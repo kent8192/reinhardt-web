@@ -1,5 +1,6 @@
 //! Opt-in command capability preparation and invocation-owned resources.
 
+use crate::local_infra::DatabaseInfraInput;
 use crate::{CommandError, CommandResult};
 use async_trait::async_trait;
 use clap::{ArgMatches, Command};
@@ -13,6 +14,7 @@ use reinhardt_conf::settings::{ComposedSettings, PendingSettings};
 use reinhardt_conf::{HasCommonSettings, MigrationSettings};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// A type-erased invocation-owned resource returned by an application provider.
@@ -116,7 +118,21 @@ impl SettingsView for SelectedDatabase {
 
 	fn resolve(settings: &ScopedSettings, alias: Option<&str>) -> Result<Self, BuildError> {
 		let alias = alias.unwrap_or("default");
-		let config = settings.require_path::<DatabaseConfig>(&["core", "databases", alias])?;
+		if crate::database_selector::alias_looks_sensitive(alias) {
+			return Err(BuildError::Deserialization(
+				"database alias must be a name, not a connection URL".to_owned(),
+			));
+		}
+		let config = settings
+			.first_present_path::<DatabaseConfig>(&[
+				&["core", "databases", alias],
+				&["databases", alias],
+			])?
+			.ok_or_else(|| {
+				BuildError::Deserialization(format!(
+					"missing required settings path `core.databases.{alias}`"
+				))
+			})?;
 		if config.name.is_empty() {
 			return Err(BuildError::Deserialization(format!(
 				"database alias `{alias}` requires a non-empty `name`"
@@ -138,6 +154,182 @@ impl SettingsView for SelectedDatabase {
 			alias: alias.to_owned(),
 			config,
 		})
+	}
+}
+
+/// Core migration inputs that do not require a runtime secret or database.
+pub struct CoreMigrationMetadata {
+	/// Project base directory used for the default migration-file location.
+	pub base_dir: PathBuf,
+	/// Application names used for dependency resolution.
+	pub installed_apps: Vec<String>,
+	/// Conditional migration dependency features.
+	pub migration_features: Vec<String>,
+	/// Swappable migration dependency settings.
+	pub migration_swappable_settings: HashMap<String, String>,
+}
+
+impl SettingsView for CoreMigrationMetadata {
+	const NAME: &'static str = "core migration metadata";
+
+	fn resolve(settings: &ScopedSettings, alias: Option<&str>) -> Result<Self, BuildError> {
+		if alias.is_some() {
+			return Err(BuildError::Deserialization(
+				"core migration metadata does not accept an alias".to_owned(),
+			));
+		}
+		Ok(Self {
+			base_dir: settings
+				.first_present_path(&[&["core", "base_dir"], &["base_dir"]])?
+				.unwrap_or_else(|| PathBuf::from(".")),
+			installed_apps: settings
+				.first_present_path(&[&["core", "installed_apps"], &["installed_apps"]])?
+				.unwrap_or_default(),
+			migration_features: settings
+				.first_present_path(&[&["core", "migration_features"], &["migration_features"]])?
+				.unwrap_or_default(),
+			migration_swappable_settings: settings
+				.first_present_path(&[
+					&["core", "migration_swappable_settings"],
+					&["migration_swappable_settings"],
+				])?
+				.unwrap_or_default(),
+		})
+	}
+}
+
+/// Local infrastructure configuration selected without full application settings.
+pub struct LocalInfrastructureSettings {
+	/// PostgreSQL input, if the selected local database uses PostgreSQL.
+	pub database: Option<DatabaseInfraInput>,
+}
+
+/// Typed inputs for the selected system diagnostics.
+pub struct CheckInputs {
+	pub(crate) database_url: Option<String>,
+	pub(crate) static_root_configured: bool,
+	pub(crate) secret_key_length: Option<usize>,
+	pub(crate) debug: Option<bool>,
+	pub(crate) allowed_hosts_configured: bool,
+	pub(crate) ssl_redirect: bool,
+}
+
+impl SettingsView for CheckInputs {
+	const NAME: &'static str = "system check inputs";
+
+	fn resolve(settings: &ScopedSettings, mode: Option<&str>) -> Result<Self, BuildError> {
+		let deploy = match mode {
+			None => false,
+			Some("deploy") => true,
+			Some(_) => return Err(BuildError::Deserialization("unknown check mode".to_owned())),
+		};
+		let database_url = match std::env::var("DATABASE_URL") {
+			Ok(url) => Some(url),
+			Err(_)
+				if settings.has_path(&["core", "databases", "default"])
+					|| settings.has_path(&["databases", "default"]) =>
+			{
+				Some(SelectedDatabase::resolve(settings, Some("default"))?.url())
+			}
+			Err(_) => None,
+		};
+		let static_root: Option<String> = settings.first_present_path(&[
+			&["static_files", "root"],
+			&["static", "root"],
+			&["static_root"],
+		])?;
+		let secret_key_length = if deploy {
+			settings
+				.first_present_path::<String>(&[&["core", "secret_key"], &["secret_key"]])?
+				.or_else(|| std::env::var("SECRET_KEY").ok())
+				.map(|value| value.len())
+		} else {
+			None
+		};
+		let debug = settings
+			.first_present_path(&[&["core", "debug"], &["debug"]])?
+			.or_else(|| std::env::var("DEBUG").ok().map(|value| value == "true"))
+			.or(deploy.then_some(true));
+		let allowed_hosts_configured = if deploy {
+			settings
+				.first_present_path::<Vec<String>>(&[
+					&["core", "allowed_hosts"],
+					&["allowed_hosts"],
+				])?
+				.is_some_and(|hosts| !hosts.is_empty())
+				|| std::env::var_os("ALLOWED_HOSTS").is_some()
+		} else {
+			false
+		};
+		let ssl_redirect = if deploy {
+			settings
+				.first_present_path(&[
+					&["core", "security", "secure_ssl_redirect"],
+					&["security", "secure_ssl_redirect"],
+				])?
+				.unwrap_or_else(|| {
+					std::env::var("SECURE_SSL_REDIRECT").is_ok_and(|value| value == "true")
+				})
+		} else {
+			false
+		};
+		Ok(Self {
+			database_url,
+			static_root_configured: static_root.is_some_and(|root| !root.is_empty())
+				|| std::env::var_os("STATIC_ROOT").is_some(),
+			secret_key_length,
+			debug,
+			allowed_hosts_configured,
+			ssl_redirect,
+		})
+	}
+}
+
+impl SettingsView for LocalInfrastructureSettings {
+	const NAME: &'static str = "local infrastructure settings";
+
+	fn resolve(settings: &ScopedSettings, alias: Option<&str>) -> Result<Self, BuildError> {
+		if alias.is_some() {
+			return Err(BuildError::Deserialization(
+				"local infrastructure settings do not accept an alias".to_owned(),
+			));
+		}
+		let paths: &[&[&str]] = &[&["core", "databases", "default"], &["databases", "default"]];
+		let configured = paths.iter().any(|path| settings.has_path(path));
+		let engine: Option<String> = settings.first_present_path(&[
+			&["core", "databases", "default", "engine"],
+			&["databases", "default", "engine"],
+		])?;
+		if configured && engine.is_none() {
+			return Err(BuildError::Deserialization(
+				"selected local database requires an engine".to_owned(),
+			));
+		}
+		let database = if engine.is_some_and(|engine| engine.contains("postgres")) {
+			let config: DatabaseConfig = settings.first_present_path(paths)?.ok_or_else(|| {
+				BuildError::Deserialization(
+					"missing selected local PostgreSQL database settings".to_owned(),
+				)
+			})?;
+			if config.name.is_empty() {
+				return Err(BuildError::Deserialization(
+					"local PostgreSQL database requires a non-empty name".to_owned(),
+				));
+			}
+			Some(DatabaseInfraInput {
+				engine: config.engine,
+				host: config.host.unwrap_or_else(|| "127.0.0.1".to_owned()),
+				port: config.port.unwrap_or(5432),
+				name: config.name,
+				user: config.user.unwrap_or_else(|| "postgres".to_owned()),
+				password: config
+					.password
+					.map(|password| password.expose_secret().to_owned()),
+			})
+		} else {
+			None
+		};
+		Ok(Self { database })
 	}
 }
 
@@ -205,7 +397,7 @@ impl CapabilityContext {
 				"command `{}` did not declare capability `{name}`{}; add it to requirements",
 				self.command,
 				alias
-					.map(|value| format!(" (alias `{value}`)"))
+					.map(|value| format!(" (alias `{}`)", safe_alias(value)))
 					.unwrap_or_default()
 			))
 		})?;
@@ -313,9 +505,17 @@ pub trait CapabilityProvider: Send + Sync {
 			requirement.name(),
 			requirement
 				.alias()
-				.map(|alias| format!(" (alias `{alias}`)"))
+				.map(|alias| format!(" (alias `{}`)", safe_alias(alias)))
 				.unwrap_or_default()
 		)))
+	}
+}
+
+fn safe_alias(alias: &str) -> &str {
+	if crate::database_selector::alias_looks_sensitive(alias) {
+		"[REDACTED]"
+	} else {
+		alias
 	}
 }
 

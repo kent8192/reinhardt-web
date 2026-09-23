@@ -40,8 +40,22 @@ fn materialize() -> TempDir {
 }
 
 fn invoke(binary: &Path, root: &Path, args: &[&str]) -> Output {
+	invoke_with_database_url(binary, root, args, None)
+}
+
+fn invoke_with_database_url(
+	binary: &Path,
+	root: &Path,
+	args: &[&str],
+	database_url: Option<&str>,
+) -> Output {
 	let mut command = Command::new(binary);
 	command.current_dir(root).args(args);
+	if let Some(database_url) = database_url {
+		command.env("DATABASE_URL", database_url);
+	} else {
+		command.env_remove("DATABASE_URL");
+	}
 	for name in [
 		"REINHARDT_CAPABILITY_RUNTIME_SECRET_6336",
 		"REINHARDT_CAPABILITY_DB_PASSWORD_6336",
@@ -101,6 +115,43 @@ fn static_collection_uses_only_declared_configuration() {
 	assert!(!invalid.status.success());
 	assert!(String::from_utf8_lossy(&invalid.stderr).contains("static"));
 	fs::write(&config, &original).unwrap();
+	let visibility = invoke(
+		&binary,
+		root,
+		&["showmigrations", "--database-url", "sqlite::memory:"],
+	);
+	assert!(
+		visibility.status.success(),
+		"migration visibility with an explicit database should skip runtime secrets: {}",
+		String::from_utf8_lossy(&visibility.stderr)
+	);
+	let plan = invoke(
+		&binary,
+		root,
+		&["migrate", "--database", "sqlite::memory:", "--plan"],
+	);
+	assert!(
+		plan.status.success(),
+		"migration plan with an explicit database should skip runtime secrets: {}",
+		String::from_utf8_lossy(&plan.stderr)
+	);
+	let check = invoke_with_database_url(&binary, root, &["check"], Some("sqlite::memory:"));
+	assert!(
+		check.status.success(),
+		"scoped system checks should skip unrelated runtime secrets: {}",
+		String::from_utf8_lossy(&check.stderr)
+	);
+	let deploy = invoke_with_database_url(
+		&binary,
+		root,
+		&["check", "--deploy"],
+		Some("sqlite::memory:"),
+	);
+	assert!(!deploy.status.success());
+	assert!(
+		String::from_utf8_lossy(&deploy.stderr)
+			.contains("REINHARDT_CAPABILITY_RUNTIME_SECRET_6336")
+	);
 
 	let offline_migrations = invoke(&binary, root, &["makemigrations", "--check"]);
 	assert!(
@@ -137,6 +188,10 @@ fn static_collection_uses_only_declared_configuration() {
 	fs::write(&config, "not = [valid TOML").unwrap();
 	assert!(invoke(&binary, root, &["--help"]).status.success());
 	assert!(invoke(&binary, root, &["--version"]).status.success());
+	let routes = invoke(&binary, root, &["showurls"]);
+	let route_error = String::from_utf8_lossy(&routes.stderr);
+	assert!(route_error.contains("No URL patterns registered."));
+	assert!(!route_error.contains("invalid TOML"));
 	let unknown = invoke(&binary, root, &["unknown-command"]);
 	assert!(!unknown.status.success());
 	assert!(!String::from_utf8_lossy(&unknown.stderr).contains("invalid TOML"));

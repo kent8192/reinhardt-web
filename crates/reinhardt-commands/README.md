@@ -128,6 +128,17 @@ load. A failed selected source never falls back to another source on the new
 entry point. `--dry-run` suppresses file writes but does not change state
 selection. The legacy entry points keep their existing fallback strategy.
 
+The provider entry point also scopes `migrate`, `showmigrations`, `sqlmigrate`,
+`inspectdb`, and `dbshell` to the database selected by their existing flags.
+An explicit database URL bypasses alias lookup; otherwise only the selected
+alias is validated. `squashmigrations` uses migration metadata and files without
+opening a database. Route listing and OpenAPI generation use registered route
+metadata without loading application settings. `introspect` reads only the
+requested metadata fields; database inspection reads alias and engine names,
+not passwords. `infra` reads local PostgreSQL inputs only for operations that
+need them. `check` reads the selected diagnostic inputs and retains its live
+database checks when a database URL is configured.
+
 Configuration resolution is separate from application service preparation.
 Static collection can still invoke a compiler or optional vendor-asset fetch;
 its build dependencies must be available for offline builds. A Cloud consumer

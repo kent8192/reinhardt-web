@@ -74,6 +74,25 @@ impl ScopedSettings {
 		self.profile
 	}
 
+	/// Report whether a raw path exists without resolving or interpolating its value.
+	pub fn has_path(&self, path: &[&str]) -> bool {
+		self.raw_path(path).is_some()
+	}
+
+	/// List an object's keys without resolving any of its child values.
+	pub fn object_keys(&self, path: &[&str]) -> Result<Option<Vec<String>>, BuildError> {
+		let Some(value) = self.raw_path(path) else {
+			return Ok(None);
+		};
+		let Some(object) = value.as_object() else {
+			return Err(BuildError::Deserialization(format!(
+				"expected object at settings path `{}`",
+				path.join(".")
+			)));
+		};
+		Ok(Some(object.keys().cloned().collect()))
+	}
+
 	/// Resolve and deserialize exactly one effective configuration path.
 	///
 	/// A missing path is an error. Use [`Self::optional_path`] only for fields
@@ -372,6 +391,31 @@ mod tests {
 				.optional_path::<String>(&["static", "url"])
 				.unwrap(),
 			None
+		);
+	}
+
+	#[rstest]
+	fn object_key_inspection_does_not_expand_child_secrets() {
+		let dir = tempfile::tempdir().unwrap();
+		let config = dir.path().join("settings.toml");
+		fs::write(
+			&config,
+			"[core.databases.default]\nengine = \"postgresql\"\npassword = \"${REINHARDT_SCOPED_MISSING_DB_PASSWORD_6336}\"\n",
+		).unwrap();
+		let settings = SettingsBuilder::new()
+			.add_source(TomlFileSource::new(config))
+			.build_scoped()
+			.unwrap();
+		assert!(settings.has_path(&["core", "databases", "default", "password"]));
+		assert_eq!(
+			settings.object_keys(&["core", "databases"]).unwrap(),
+			Some(vec!["default".to_owned()])
+		);
+		assert_eq!(
+			settings
+				.require_path::<String>(&["core", "databases", "default", "engine"])
+				.unwrap(),
+			"postgresql"
 		);
 	}
 

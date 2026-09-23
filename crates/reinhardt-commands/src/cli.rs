@@ -9,7 +9,10 @@ use crate::base::BaseCommand;
 #[cfg(all(feature = "contract", feature = "migrations"))]
 use crate::builtin::MigrationStateSource;
 #[cfg(feature = "contract")]
-use crate::capabilities::{CapabilityContext, CapabilityProvider, CapabilityRequirement};
+use crate::capabilities::{
+	CapabilityContext, CapabilityProvider, CapabilityRequirement, CheckInputs,
+	CoreMigrationMetadata, LocalInfrastructureSettings,
+};
 use crate::collectstatic::{CollectStaticCommand, CollectStaticOptions};
 use crate::local_infra::InfraSubcommand;
 use crate::registry::CommandRegistry;
@@ -98,6 +101,15 @@ impl fmt::Debug for RedactedDatabaseUrl {
 			.debug_tuple("RedactedDatabaseUrl")
 			.field(&"[REDACTED]")
 			.finish()
+	}
+}
+
+#[cfg(feature = "migrations")]
+fn safe_database_alias(alias: &str) -> &str {
+	if crate::database_selector::alias_looks_sensitive(alias) {
+		"[REDACTED]"
+	} else {
+		alias
 	}
 }
 
@@ -716,16 +728,15 @@ impl fmt::Debug for Commands {
 				database,
 				database_url,
 				migrations_dir,
-			} => debug_command_fields!(
-				formatter,
-				"Showmigrations",
-				app_labels,
-				list,
-				plan,
-				database,
-				database_url,
-				migrations_dir,
-			),
+			} => formatter
+				.debug_struct("Showmigrations")
+				.field("app_labels", app_labels)
+				.field("list", list)
+				.field("plan", plan)
+				.field("database", &safe_database_alias(database))
+				.field("database_url", &RedactedStringOption(database_url))
+				.field("migrations_dir", migrations_dir)
+				.finish(),
 			#[cfg(feature = "migrations")]
 			Self::Sqlmigrate {
 				app_label,
@@ -734,16 +745,15 @@ impl fmt::Debug for Commands {
 				database,
 				database_url,
 				migrations_dir,
-			} => debug_command_fields!(
-				formatter,
-				"Sqlmigrate",
-				app_label,
-				migration_name,
-				backwards,
-				database,
-				database_url,
-				migrations_dir,
-			),
+			} => formatter
+				.debug_struct("Sqlmigrate")
+				.field("app_label", app_label)
+				.field("migration_name", migration_name)
+				.field("backwards", backwards)
+				.field("database", &safe_database_alias(database))
+				.field("database_url", &RedactedStringOption(database_url))
+				.field("migrations_dir", migrations_dir)
+				.finish(),
 			Self::Migrate {
 				app_label,
 				migration_name,
@@ -752,17 +762,16 @@ impl fmt::Debug for Commands {
 				fake_initial,
 				plan,
 				migrations_dir,
-			} => debug_command_fields!(
-				formatter,
-				"Migrate",
-				app_label,
-				migration_name,
-				database,
-				fake,
-				fake_initial,
-				plan,
-				migrations_dir,
-			),
+			} => formatter
+				.debug_struct("Migrate")
+				.field("app_label", app_label)
+				.field("migration_name", migration_name)
+				.field("database", &RedactedStringOption(database))
+				.field("fake", fake)
+				.field("fake_initial", fake_initial)
+				.field("plan", plan)
+				.field("migrations_dir", migrations_dir)
+				.finish(),
 			Self::Infra { command } => debug_command_fields!(formatter, "Infra", command),
 			Self::Runserver {
 				address,
@@ -1458,6 +1467,66 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 			.await
 			.map_err(Into::into);
 	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Squashmigrations {
+		app_label,
+		start_migration,
+		migration_name,
+		no_optimize,
+		no_input,
+		no_header,
+		squashed_name,
+		migrations_dir,
+	} = &command
+	{
+		let requirements = [
+			CapabilityRequirement::settings::<MigrationSettings>(None),
+			CapabilityRequirement::settings::<CoreMigrationMetadata>(None),
+		];
+		let prepared =
+			CapabilityContext::prepare("squashmigrations", &requirements, &provider).await?;
+		let mut ctx = CommandContext::default();
+		crate::showmigrations::attach_migration_settings(
+			&mut ctx,
+			prepared.settings::<MigrationSettings>(None)?.as_ref(),
+		);
+		crate::showmigrations::attach_core_migration_metadata(
+			&mut ctx,
+			prepared.settings::<CoreMigrationMetadata>(None)?.as_ref(),
+		);
+		if let Some(dir) = migrations_dir {
+			ctx.set_option(
+				"migrations-dir".to_owned(),
+				dir.to_string_lossy().into_owned(),
+			);
+		}
+		let dependency_context = crate::showmigrations::migration_dependency_context(&ctx);
+		let migration_path = crate::showmigrations::migration_source_path(&ctx);
+		let mut confirmation = crate::StdinConfirmationReader;
+		let stdout = std::io::stdout();
+		let stderr = std::io::stderr();
+		let mut stdout = stdout.lock();
+		let mut stderr = stderr.lock();
+		return crate::execute_squashmigrations_with_context_and_io(
+			&migration_path,
+			crate::SquashMigrationsOptions {
+				app_label: app_label.clone(),
+				start_migration: start_migration.clone(),
+				migration_name: migration_name.clone(),
+				no_optimize: *no_optimize,
+				no_input: *no_input,
+				no_header: *no_header,
+				squashed_name: squashed_name.clone(),
+			},
+			&dependency_context,
+			&mut confirmation,
+			&mut stdout,
+			&mut stderr,
+		)
+		.await
+		.map(|_| ())
+		.map_err(Into::into);
+	}
 	if let Commands::Collectstatic {
 		clear,
 		no_input,
@@ -1487,6 +1556,173 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 			verbosity,
 		)
 		.await;
+	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Migrate {
+		app_label,
+		migration_name,
+		database,
+		fake,
+		fake_initial,
+		plan,
+		migrations_dir,
+	} = &command
+	{
+		let (_prepared, selected_url) =
+			prepare_migration_database(&provider, "migrate", "default", database.as_deref())
+				.await?;
+		return execute_migrate(MigrateParams {
+			app_label: app_label.clone(),
+			migration_name: migration_name.clone(),
+			database: Some(selected_url),
+			fake: *fake,
+			fake_initial: *fake_initial,
+			plan: *plan,
+			migrations_dir: migrations_dir.clone(),
+			verbosity,
+		})
+		.await;
+	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Showmigrations {
+		app_labels,
+		list,
+		plan,
+		database,
+		database_url,
+		migrations_dir,
+	} = &command
+	{
+		let (prepared, selected_url) = prepare_migration_database(
+			&provider,
+			"showmigrations",
+			database,
+			database_url.as_deref(),
+		)
+		.await?;
+		let mut ctx = CommandContext::new(app_labels.clone());
+		ctx.set_verbosity(verbosity);
+		ctx.set_option("database".to_owned(), database.clone());
+		ctx.set_option("database-url".to_owned(), selected_url);
+		if *list {
+			ctx.set_option("list".to_owned(), "true".to_owned());
+		}
+		if *plan {
+			ctx.set_option("plan".to_owned(), "true".to_owned());
+		}
+		if let Some(dir) = migrations_dir {
+			ctx.set_option(
+				"migrations-dir".to_owned(),
+				dir.to_string_lossy().into_owned(),
+			);
+		}
+		crate::showmigrations::attach_migration_settings(
+			&mut ctx,
+			prepared.settings::<MigrationSettings>(None)?.as_ref(),
+		);
+		crate::showmigrations::attach_core_migration_metadata(
+			&mut ctx,
+			prepared.settings::<CoreMigrationMetadata>(None)?.as_ref(),
+		);
+		return crate::ShowMigrationsCommand::default()
+			.execute(&ctx)
+			.await
+			.map_err(Into::into);
+	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Sqlmigrate {
+		app_label,
+		migration_name,
+		backwards,
+		database,
+		database_url,
+		migrations_dir,
+	} = &command
+	{
+		let (prepared, selected_url) =
+			prepare_migration_database(&provider, "sqlmigrate", database, database_url.as_deref())
+				.await?;
+		let mut ctx = CommandContext::new(vec![app_label.clone(), migration_name.clone()]);
+		ctx.set_verbosity(verbosity);
+		ctx.set_option("database".to_owned(), database.clone());
+		ctx.set_option("database-url".to_owned(), selected_url);
+		if *backwards {
+			ctx.set_option("backwards".to_owned(), "true".to_owned());
+		}
+		if let Some(dir) = migrations_dir {
+			ctx.set_option(
+				"migrations-dir".to_owned(),
+				dir.to_string_lossy().into_owned(),
+			);
+		}
+		crate::showmigrations::attach_migration_settings(
+			&mut ctx,
+			prepared.settings::<MigrationSettings>(None)?.as_ref(),
+		);
+		crate::showmigrations::attach_core_migration_metadata(
+			&mut ctx,
+			prepared.settings::<CoreMigrationMetadata>(None)?.as_ref(),
+		);
+		return crate::SqlMigrateCommand::default()
+			.execute(&ctx)
+			.await
+			.map_err(Into::into);
+	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Inspectdb {
+		tables,
+		database,
+		database_url,
+		include_views,
+		include_partitions,
+		output,
+		config,
+		force,
+	} = &command
+	{
+		let selected_url = prepare_selected_database_url(
+			&provider,
+			"inspectdb",
+			database,
+			database_url.as_deref(),
+		)
+		.await?;
+		return execute_inspectdb(
+			InspectDbParams {
+				tables: tables.clone(),
+				database: database.clone(),
+				database_url: Some(selected_url),
+				include_views: *include_views,
+				include_partitions: *include_partitions,
+				output: output.clone(),
+				config: config.clone(),
+				force: *force,
+				verbosity,
+			},
+			None,
+		)
+		.await;
+	}
+	#[cfg(feature = "reinhardt-db")]
+	if let Commands::Dbshell {
+		database,
+		database_url,
+		client_arguments,
+	} = &command
+	{
+		let selected_url = prepare_selected_database_url(
+			&provider,
+			"dbshell",
+			database,
+			database_url.as_ref().map(RedactedDatabaseUrl::as_str),
+		)
+		.await?;
+		return execute_dbshell(
+			database.clone(),
+			Some(RedactedDatabaseUrl(selected_url)),
+			client_arguments.clone(),
+			None,
+		);
 	}
 	if let Commands::Custom { name, args } = &command
 		&& name == "buildstatic"
@@ -1520,6 +1756,106 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 				}
 			}
 		}
+		return Ok(());
+	}
+	#[cfg(feature = "routers")]
+	if let Commands::Showurls { names } = &command {
+		auto_register_router().await?;
+		return execute_showurls(*names, verbosity).await;
+	}
+	#[cfg(feature = "openapi")]
+	if let Commands::Generateopenapi {
+		format,
+		output,
+		postman,
+	} = &command
+	{
+		auto_register_router().await?;
+		return execute_generateopenapi(format.clone(), output.clone(), *postman, verbosity).await;
+	}
+	if let Commands::Infra { command } = &command {
+		if let InfraSubcommand::Run {
+			command: arguments, ..
+		} = command
+		{
+			crate::local_infra::InfraCommand::validate_run_command(arguments)?;
+		}
+		let database = if matches!(
+			command,
+			InfraSubcommand::Up { .. }
+				| InfraSubcommand::Reset { .. }
+				| InfraSubcommand::Run { .. }
+		) {
+			let requirements =
+				[CapabilityRequirement::settings::<LocalInfrastructureSettings>(None)];
+			let context = CapabilityContext::prepare("infra", &requirements, &provider).await?;
+			context
+				.settings::<LocalInfrastructureSettings>(None)?
+				.database
+				.clone()
+		} else {
+			None
+		};
+		return crate::local_infra::InfraCommand::execute_with_input(
+			command.clone(),
+			&env::current_dir()?,
+			database,
+		)
+		.await;
+	}
+	if let Commands::Check { app_label, deploy } = &command {
+		let mode = deploy.then_some("deploy");
+		let requirements = [CapabilityRequirement::settings::<CheckInputs>(mode)];
+		let prepared = CapabilityContext::prepare("check", &requirements, &provider).await?;
+		let mut ctx = check_context(app_label.clone(), *deploy, verbosity);
+		crate::builtin::attach_scoped_check_inputs(
+			&mut ctx,
+			prepared.settings::<CheckInputs>(mode)?.as_ref(),
+		);
+		return CheckCommand.execute(&ctx).await.map_err(Into::into);
+	}
+	#[cfg(feature = "introspect")]
+	if let Commands::Introspect { format, section } = &command {
+		if let Some(section) = section.as_deref()
+			&& ![
+				"app",
+				"databases",
+				"routes",
+				"middleware",
+				"settings",
+				"features",
+			]
+			.contains(&section)
+		{
+			return Err(crate::CommandError::InvalidArguments(
+				"invalid introspection section".to_owned(),
+			)
+			.into());
+		}
+		if section
+			.as_deref()
+			.is_none_or(|section| matches!(section, "routes" | "middleware"))
+		{
+			auto_register_router().await?;
+		}
+		let view = if section
+			.as_deref()
+			.is_none_or(|section| matches!(section, "databases" | "settings"))
+		{
+			let requirements = [CapabilityRequirement::settings::<
+				crate::introspect::IntrospectionSettings,
+			>(section.as_deref())];
+			let prepared =
+				CapabilityContext::prepare("introspect", &requirements, &provider).await?;
+			prepared.settings::<crate::introspect::IntrospectionSettings>(section.as_deref())?
+		} else {
+			Arc::new(crate::introspect::IntrospectionSettings::empty())
+		};
+		let output = crate::introspect::collect_introspect_data_with_view(view.as_ref())?;
+		println!(
+			"{}",
+			format_introspection_output(&output, section.as_deref(), *format)?
+		);
 		return Ok(());
 	}
 	if let Commands::Verify { format } = &command {
@@ -1579,6 +1915,51 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 		None,
 	)
 	.await
+}
+
+#[cfg(all(feature = "contract", feature = "reinhardt-db"))]
+async fn prepare_selected_database_url<P: CapabilityProvider>(
+	provider: &P,
+	command: &str,
+	alias: &str,
+	url_override: Option<&str>,
+) -> crate::CommandResult<String> {
+	if let Some(url) = url_override {
+		return Ok(url.to_owned());
+	}
+	let requirements = [CapabilityRequirement::settings::<crate::SelectedDatabase>(
+		Some(alias),
+	)];
+	let prepared = CapabilityContext::prepare(command, &requirements, provider).await?;
+	Ok(prepared
+		.settings::<crate::SelectedDatabase>(Some(alias))?
+		.url())
+}
+
+#[cfg(all(feature = "contract", feature = "migrations"))]
+async fn prepare_migration_database<P: CapabilityProvider>(
+	provider: &P,
+	command: &str,
+	alias: &str,
+	url_override: Option<&str>,
+) -> crate::CommandResult<(CapabilityContext, String)> {
+	let mut requirements = vec![
+		CapabilityRequirement::settings::<MigrationSettings>(None),
+		CapabilityRequirement::settings::<CoreMigrationMetadata>(None),
+	];
+	if url_override.is_none() {
+		requirements.push(CapabilityRequirement::settings::<crate::SelectedDatabase>(
+			Some(alias),
+		));
+	}
+	let prepared = CapabilityContext::prepare(command, &requirements, provider).await?;
+	let url = match url_override {
+		Some(url) => url.to_owned(),
+		None => prepared
+			.settings::<crate::SelectedDatabase>(Some(alias))?
+			.url(),
+	};
+	Ok((prepared, url))
 }
 
 /// Execute command-line arguments with resolved settings metadata and Rust shell configuration.
@@ -4416,6 +4797,44 @@ mod tests {
 			debug,
 			"Inspectdb { tables: [], database: \"default\", database_url: Some(\"[REDACTED]\"), include_views: false, include_partitions: false, output: None, config: None, force: false }"
 		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	fn migration_command_debug_redacts_database_urls() {
+		let secret_url = "postgres://user:secret@example.test/database";
+		let commands = [
+			Commands::Showmigrations {
+				app_labels: Vec::new(),
+				list: true,
+				plan: false,
+				database: "default".to_owned(),
+				database_url: Some(secret_url.to_owned()),
+				migrations_dir: None,
+			},
+			Commands::Sqlmigrate {
+				app_label: "app".to_owned(),
+				migration_name: "0001_initial".to_owned(),
+				backwards: false,
+				database: "default".to_owned(),
+				database_url: Some(secret_url.to_owned()),
+				migrations_dir: None,
+			},
+			Commands::Migrate {
+				app_label: None,
+				migration_name: None,
+				database: Some(secret_url.to_owned()),
+				fake: false,
+				fake_initial: false,
+				plan: true,
+				migrations_dir: None,
+			},
+		];
+		for command in commands {
+			let debug = format!("{command:?}");
+			assert!(debug.contains("[REDACTED]"));
+			assert!(!debug.contains("secret"));
+		}
 	}
 
 	#[cfg(all(feature = "reinhardt-db", unix))]

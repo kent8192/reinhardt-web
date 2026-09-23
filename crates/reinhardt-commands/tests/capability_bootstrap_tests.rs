@@ -2,6 +2,9 @@
 
 use async_trait::async_trait;
 use reinhardt_commands::capabilities::PreparedValue;
+use reinhardt_commands::capabilities::{
+	CheckInputs, CoreMigrationMetadata, LocalInfrastructureSettings,
+};
 use reinhardt_commands::{
 	CapabilityContext, CapabilityProvider, CapabilityRequirement, CommandError, CommandResult,
 	SelectedDatabase, SettingsView,
@@ -137,4 +140,71 @@ fn database_view_reads_only_selected_alias() {
 	assert_eq!(selected.alias(), "default");
 	assert_eq!(selected.url(), "sqlite:db.sqlite3");
 	assert!(SelectedDatabase::resolve(&scoped, Some("other")).is_err());
+	let sensitive_alias = "postgres://user:password@host/database";
+	let error = SelectedDatabase::resolve(&scoped, Some(sensitive_alias))
+		.err()
+		.expect("URL-shaped alias must be rejected")
+		.to_string();
+	assert!(!error.contains("password"));
+}
+
+#[rstest]
+fn migration_metadata_skips_unrelated_runtime_secrets() {
+	let dir = tempfile::tempdir().unwrap();
+	let config = dir.path().join("settings.toml");
+	std::fs::write(
+		&config,
+		"[core]\nsecret_key = \"${REINHARDT_SCOPED_MISSING_SECRET_6336}\"\ninstalled_apps = [\"accounts\"]\nmigration_features = [\"audit\"]\n[core.migration_swappable_settings]\nAUTH_USER_MODEL = \"accounts.User\"\n",
+	).unwrap();
+	let scoped = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(config))
+		.build_scoped()
+		.unwrap();
+	let metadata = CoreMigrationMetadata::resolve(&scoped, None).unwrap();
+	assert_eq!(metadata.installed_apps, ["accounts"]);
+	assert_eq!(metadata.migration_features, ["audit"]);
+	assert_eq!(
+		metadata
+			.migration_swappable_settings
+			.get("AUTH_USER_MODEL")
+			.map(String::as_str),
+		Some("accounts.User")
+	);
+}
+
+#[rstest]
+fn local_infrastructure_only_resolves_postgresql_inputs() {
+	let dir = tempfile::tempdir().unwrap();
+	let config = dir.path().join("settings.toml");
+	std::fs::write(
+		&config,
+		"[core]\nsecret_key = \"${REINHARDT_SCOPED_MISSING_SECRET_6336}\"\n[core.databases.default]\nengine = \"sqlite\"\nname = \"local.sqlite3\"\npassword = \"${REINHARDT_SCOPED_MISSING_DB_PASSWORD_6336}\"\n",
+	).unwrap();
+	let scoped = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(config))
+		.build_scoped()
+		.unwrap();
+	assert!(
+		LocalInfrastructureSettings::resolve(&scoped, None)
+			.unwrap()
+			.database
+			.is_none()
+	);
+}
+
+#[rstest]
+fn ordinary_check_does_not_resolve_deployment_secret() {
+	let dir = tempfile::tempdir().unwrap();
+	let config = dir.path().join("settings.toml");
+	std::fs::write(
+		&config,
+		"[core]\nsecret_key = \"${REINHARDT_SCOPED_MISSING_SECRET_6336}\"\n[static]\nroot = \"dist\"\n",
+	)
+	.unwrap();
+	let scoped = SettingsBuilder::new()
+		.add_source(TomlFileSource::new(config))
+		.build_scoped()
+		.unwrap();
+	assert!(CheckInputs::resolve(&scoped, None).is_ok());
+	assert!(CheckInputs::resolve(&scoped, Some("deploy")).is_err());
 }

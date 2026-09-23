@@ -71,6 +71,15 @@ impl InfraCommand {
 		project_root: &Path,
 		settings: Option<&dyn HasCommonSettings>,
 	) -> Result<(), Box<dyn Error>> {
+		Self::execute_with_input(command, project_root, database_input(settings)).await
+	}
+
+	/// Execute using only the selected local database configuration.
+	pub async fn execute_with_input(
+		command: InfraSubcommand,
+		project_root: &Path,
+		database: Option<DatabaseInfraInput>,
+	) -> Result<(), Box<dyn Error>> {
 		let docker = BollardDockerEngine::local()?;
 		match command {
 			InfraSubcommand::Up {
@@ -78,15 +87,15 @@ impl InfraCommand {
 				json,
 				print_env,
 			} => {
-				let config = derive_config(project_root, profile, settings)?;
+				let config = derive_config(project_root, profile, database.clone())?;
 				let state = Self::up_with_config(project_root, config, docker).await?;
-				print_up_result(&state, json, print_env, settings)?;
+				print_up_result(&state, json, print_env, database.as_ref())?;
 				Ok(())
 			}
 			InfraSubcommand::Reset { profile } => {
 				let profile_for_config = profile.clone();
 				Self::reset_with_config(project_root, profile, docker, || {
-					derive_config(project_root, profile_for_config, settings)
+					derive_config(project_root, profile_for_config, database)
 				})
 				.await
 			}
@@ -95,7 +104,7 @@ impl InfraCommand {
 					project_root,
 					profile.as_deref(),
 					command,
-					settings,
+					database.as_ref(),
 					docker,
 				)
 				.await
@@ -284,14 +293,14 @@ impl InfraCommand {
 		project_root: &Path,
 		profile: Option<&str>,
 		args: Vec<String>,
-		settings: Option<&dyn HasCommonSettings>,
+		database: Option<&DatabaseInfraInput>,
 		docker: R,
 	) -> Result<(), Box<dyn Error>>
 	where
 		R: DockerEngine,
 	{
 		let process = SystemProcessRunner;
-		Self::run_with_local_env_and_runner(project_root, profile, args, settings, docker, &process)
+		Self::run_with_local_env_and_runner(project_root, profile, args, database, docker, &process)
 			.await
 	}
 
@@ -299,7 +308,7 @@ impl InfraCommand {
 		project_root: &Path,
 		profile: Option<&str>,
 		args: Vec<String>,
-		settings: Option<&dyn HasCommonSettings>,
+		database: Option<&DatabaseInfraInput>,
 		docker: D,
 		process: &P,
 	) -> Result<(), Box<dyn Error>>
@@ -314,12 +323,10 @@ impl InfraCommand {
 			.await?
 			.ok_or("local infrastructure state does not exist; run `manage infra up` first")?;
 		let current_exe = std::env::current_exe()?;
-		let request = Self::environment_from_state(&state, settings)?
-			.into_iter()
-			.fold(
-				ProcessRequest::new(current_exe).args(args).inherit_stdio(),
-				|request, (key, value)| request.env(key, value),
-			);
+		let request = local_infra_env(&state, database)?.into_iter().fold(
+			ProcessRequest::new(current_exe).args(args).inherit_stdio(),
+			|request, (key, value)| request.env(key, value),
+		);
 		let outcome = process.run(&request)?;
 
 		if outcome.success {
@@ -370,7 +377,8 @@ impl InfraCommand {
 		state: &LocalInfraState,
 		settings: Option<&dyn HasCommonSettings>,
 	) -> Result<Vec<(String, String)>, Box<dyn Error>> {
-		local_infra_env(state, settings)
+		let database = database_input(settings);
+		local_infra_env(state, database.as_ref())
 	}
 
 	/// Validate a command targeted by `infra run`.
@@ -387,14 +395,14 @@ impl InfraCommand {
 
 fn local_infra_env(
 	state: &LocalInfraState,
-	settings: Option<&dyn HasCommonSettings>,
+	database: Option<&DatabaseInfraInput>,
 ) -> Result<Vec<(String, String)>, Box<dyn Error>> {
 	let mut env = Vec::new();
 
 	for service in &state.services {
 		match service.name.as_str() {
 			"postgres" => {
-				let database = service
+				let database_name = service
 					.metadata
 					.get("database")
 					.and_then(serde_json::Value::as_str)
@@ -404,15 +412,18 @@ fn local_infra_env(
 					.get("user")
 					.and_then(serde_json::Value::as_str)
 					.unwrap_or("postgres");
-				let password = settings
-					.and_then(|settings| settings.core().databases.get("default"))
-					.and_then(|database| database.password.as_ref())
-					.map(|password| password.expose_secret());
+				let password = database.and_then(|database| database.password.as_deref());
 				// codeql[rust/hard-coded-cryptographic-value] -- Local Docker fallback for #5300, not a production credential.
 				let password = password.unwrap_or("postgres");
 				env.push((
 					"DATABASE_URL".to_string(),
-					postgres_url(user, password, &service.host, service.host_port, database)?,
+					postgres_url(
+						user,
+						password,
+						&service.host,
+						service.host_port,
+						database_name,
+					)?,
 				));
 			}
 			"redis" => {
@@ -457,11 +468,15 @@ fn postgres_url(
 fn derive_config(
 	project_root: &Path,
 	profile: Option<String>,
-	settings: Option<&dyn HasCommonSettings>,
+	database: Option<DatabaseInfraInput>,
 ) -> Result<LocalInfraConfig, Box<dyn Error>> {
 	let project_id = project_id(project_root);
 	let profile = resolved_profile(profile.as_deref());
-	let database = settings
+	LocalInfraConfig::derive(project_id, profile, database, None).map_err(Into::into)
+}
+
+fn database_input(settings: Option<&dyn HasCommonSettings>) -> Option<DatabaseInfraInput> {
+	settings
 		.and_then(|settings| settings.core().databases.get("default"))
 		.map(|database| DatabaseInfraInput {
 			engine: database.engine.clone(),
@@ -479,9 +494,7 @@ fn derive_config(
 				.password
 				.as_ref()
 				.map(|password| password.expose_secret().to_string()),
-		});
-
-	LocalInfraConfig::derive(project_id, profile, database, None).map_err(Into::into)
+		})
 }
 
 fn resolved_profile(profile: Option<&str>) -> String {
@@ -522,13 +535,13 @@ fn print_up_result(
 	state: &LocalInfraState,
 	json: bool,
 	print_env: bool,
-	settings: Option<&dyn HasCommonSettings>,
+	database: Option<&DatabaseInfraInput>,
 ) -> Result<(), Box<dyn Error>> {
 	if json {
 		println!("{}", serde_json::to_string_pretty(state)?);
 	}
 	if print_env {
-		for (key, value) in local_infra_env(state, settings)? {
+		for (key, value) in local_infra_env(state, database)? {
 			println!("{key}={}", shell_quote(&value));
 		}
 	}

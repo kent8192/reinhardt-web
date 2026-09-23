@@ -5,9 +5,104 @@
 //! Designed for PaaS platforms to automatically infer resource requirements.
 
 use crate::base::BaseCommand;
+#[cfg(feature = "contract")]
+use crate::capabilities::SettingsView;
 use crate::{CommandContext, CommandResult};
 use async_trait::async_trait;
+#[cfg(feature = "contract")]
+use reinhardt_conf::settings::builder::BuildError;
+#[cfg(feature = "contract")]
+use reinhardt_conf::settings::scoped::ScopedSettings;
 use serde::{Deserialize, Serialize};
+
+/// Configuration fields used by metadata inspection, without runtime secrets.
+#[cfg(feature = "contract")]
+pub(crate) struct IntrospectionSettings {
+	databases: Vec<(String, String)>,
+	settings: SettingsMetadata,
+}
+
+#[cfg(feature = "contract")]
+impl IntrospectionSettings {
+	pub(crate) fn empty() -> Self {
+		Self {
+			databases: Vec::new(),
+			settings: SettingsMetadata {
+				server: ServerSettings {
+					default_port: 8000,
+					debug: true,
+				},
+				security: SecuritySettings {
+					ssl_redirect: false,
+					session_cookie_secure: false,
+					csrf_cookie_secure: false,
+					hsts_enabled: false,
+				},
+			},
+		}
+	}
+}
+
+#[cfg(feature = "contract")]
+impl SettingsView for IntrospectionSettings {
+	const NAME: &'static str = "introspection metadata";
+
+	fn resolve(scoped: &ScopedSettings, section: Option<&str>) -> Result<Self, BuildError> {
+		let mut view = Self::empty();
+		if section.is_none_or(|section| section == "databases") {
+			let mut aliases = std::collections::BTreeSet::new();
+			for path in [&["core", "databases"][..], &["databases"][..]] {
+				aliases.extend(scoped.object_keys(path)?.unwrap_or_default());
+			}
+			for alias in aliases {
+				let engine: Option<String> = scoped.first_present_path(&[
+					&["core", "databases", &alias, "engine"],
+					&["databases", &alias, "engine"],
+				])?;
+				let engine = engine.ok_or_else(|| {
+					BuildError::Deserialization(
+						"database metadata requires an engine for each alias".to_owned(),
+					)
+				})?;
+				let display_alias = if crate::database_selector::alias_looks_sensitive(&alias) {
+					"[REDACTED]".to_owned()
+				} else {
+					alias
+				};
+				view.databases.push((display_alias, engine));
+			}
+		}
+		if section.is_none_or(|section| section == "settings") {
+			view.settings.server.debug = scoped
+				.first_present_path(&[&["core", "debug"], &["debug"]])?
+				.unwrap_or(true);
+			view.settings.security.ssl_redirect = scoped
+				.first_present_path(&[
+					&["core", "security", "secure_ssl_redirect"],
+					&["security", "secure_ssl_redirect"],
+				])?
+				.unwrap_or(false);
+			view.settings.security.session_cookie_secure = scoped
+				.first_present_path(&[
+					&["core", "security", "session_cookie_secure"],
+					&["security", "session_cookie_secure"],
+				])?
+				.unwrap_or(false);
+			view.settings.security.csrf_cookie_secure = scoped
+				.first_present_path(&[
+					&["core", "security", "csrf_cookie_secure"],
+					&["security", "csrf_cookie_secure"],
+				])?
+				.unwrap_or(false);
+			let hsts_seconds: Option<u64> = scoped.first_present_path(&[
+				&["core", "security", "secure_hsts_seconds"],
+				&["security", "secure_hsts_seconds"],
+			])?;
+			view.settings.security.hsts_enabled = hsts_seconds.unwrap_or(0) > 0;
+		}
+		Ok(view)
+	}
+}
 
 /// Top-level introspect output structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,9 +301,33 @@ pub fn collect_introspect_data() -> Result<IntrospectOutput, Box<dyn std::error:
 	Ok(collect_introspect_data_from_metadata(Some(&metadata)))
 }
 
+#[cfg(feature = "contract")]
+pub(crate) fn collect_introspect_data_with_view(
+	view: &IntrospectionSettings,
+) -> Result<IntrospectOutput, Box<dyn std::error::Error>> {
+	let metadata = cargo_metadata::MetadataCommand::new().exec()?;
+	Ok(collect_introspect_data_from_parts(
+		Some(&metadata),
+		view.databases.clone(),
+		view.settings.clone(),
+	))
+}
+
 /// Collect introspection metadata using one optional Cargo metadata result.
 fn collect_introspect_data_from_metadata(
 	metadata: Option<&cargo_metadata::Metadata>,
+) -> IntrospectOutput {
+	collect_introspect_data_from_parts(
+		metadata,
+		load_settings_databases(),
+		collect_settings_metadata(),
+	)
+}
+
+fn collect_introspect_data_from_parts(
+	metadata: Option<&cargo_metadata::Metadata>,
+	database_inputs: Vec<(String, String)>,
+	settings: SettingsMetadata,
 ) -> IntrospectOutput {
 	let app = metadata
 		.map(collect_app_metadata_from)
@@ -216,10 +335,9 @@ fn collect_introspect_data_from_metadata(
 			name: "unknown".to_string(),
 			version: "0.0.0".to_string(),
 		});
-	let databases = collect_database_metadata();
+	let databases = collect_database_metadata_from(database_inputs);
 	let routes = collect_route_metadata();
 	let middleware = collect_middleware_metadata();
-	let settings = collect_settings_metadata();
 	let features = metadata
 		.map(collect_features_metadata_from)
 		.unwrap_or_else(empty_features_metadata);
@@ -250,12 +368,9 @@ fn collect_app_metadata_from(metadata: &cargo_metadata::Metadata) -> AppMetadata
 	}
 }
 
-/// Collect database metadata from settings and model registry
-fn collect_database_metadata() -> Vec<DatabaseMetadata> {
+/// Collect database metadata from selected settings and the model registry.
+fn collect_database_metadata_from(databases: Vec<(String, String)>) -> Vec<DatabaseMetadata> {
 	use reinhardt_apps::registry::get_registered_models;
-
-	// Try to load settings for database configuration
-	let databases = load_settings_databases();
 
 	if databases.is_empty() {
 		// No databases configured, still collect models under "default"
@@ -730,9 +845,34 @@ pub fn format_json(output: &IntrospectOutput) -> Result<String, Box<dyn std::err
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[cfg(feature = "contract")]
+	use reinhardt_conf::settings::builder::SettingsBuilder;
+	#[cfg(feature = "contract")]
+	use reinhardt_conf::settings::sources::TomlFileSource;
 	use rstest::rstest;
 	use std::fs;
 	use tempfile::TempDir;
+
+	#[cfg(feature = "contract")]
+	#[rstest]
+	fn scoped_introspection_reads_metadata_without_database_password() {
+		let project = TempDir::new().unwrap();
+		let config = project.path().join("settings.toml");
+		fs::write(&config, "[core]\nsecret_key = \"${REINHARDT_SCOPED_MISSING_SECRET_6336}\"\ndebug = false\n[core.databases.default]\nengine = \"postgresql\"\nname = \"app\"\npassword = \"${REINHARDT_SCOPED_MISSING_DB_PASSWORD_6336}\"\n[core.security]\nsecure_ssl_redirect = true\n").unwrap();
+		let scoped = SettingsBuilder::new()
+			.add_source(TomlFileSource::new(config))
+			.build_scoped()
+			.unwrap();
+		let view = IntrospectionSettings::resolve(&scoped, None).unwrap();
+		assert_eq!(
+			view.databases,
+			[("default".to_owned(), "postgresql".to_owned())]
+		);
+		assert!(!view.settings.server.debug);
+		assert!(view.settings.security.ssl_redirect);
+		let section = IntrospectionSettings::resolve(&scoped, Some("settings")).unwrap();
+		assert!(section.databases.is_empty());
+	}
 
 	fn metadata_fixture() -> (TempDir, cargo_metadata::Metadata) {
 		let project = TempDir::new().expect("temporary project is created");

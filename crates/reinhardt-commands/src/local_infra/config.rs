@@ -3,7 +3,7 @@
 use super::{PostgresService, RedisService, ServiceSpec};
 
 /// Database settings normalized for local infrastructure derivation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct DatabaseInfraInput {
 	/// Database engine.
 	pub engine: String,
@@ -17,6 +17,20 @@ pub struct DatabaseInfraInput {
 	pub user: String,
 	/// Optional database password.
 	pub password: Option<String>,
+}
+
+impl std::fmt::Debug for DatabaseInfraInput {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("DatabaseInfraInput")
+			.field("engine", &self.engine)
+			.field("host", &self.host)
+			.field("port", &self.port)
+			.field("name", &self.name)
+			.field("user", &self.user)
+			.field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+			.finish()
+	}
 }
 
 /// Redis settings normalized for local infrastructure derivation.
@@ -73,5 +87,28 @@ impl LocalInfraConfig {
 			profile: profile.into(),
 			services,
 		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{DatabaseInfraInput, LocalInfraConfig};
+	use rstest::rstest;
+
+	#[rstest]
+	fn database_input_debug_redacts_password() {
+		let input = DatabaseInfraInput {
+			engine: "postgresql".to_owned(),
+			host: "localhost".to_owned(),
+			port: 5432,
+			name: "app".to_owned(),
+			user: "app".to_owned(),
+			password: Some("private-password".to_owned()),
+		};
+		let debug = format!("{input:?}");
+		assert!(debug.contains("[REDACTED]"));
+		assert!(!debug.contains("private-password"));
+		let config = LocalInfraConfig::derive("project", "local", Some(input), None).unwrap();
+		assert!(!format!("{config:?}").contains("private-password"));
 	}
 }

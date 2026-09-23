@@ -77,7 +77,7 @@ impl ServiceSpec {
 }
 
 /// PostgreSQL local service settings.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PostgresService {
 	/// Preferred host port.
 	pub port: u16,
@@ -87,6 +87,18 @@ pub struct PostgresService {
 	pub user: String,
 	/// Optional database password.
 	pub password: Option<String>,
+}
+
+impl std::fmt::Debug for PostgresService {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("PostgresService")
+			.field("port", &self.port)
+			.field("database", &self.database)
+			.field("user", &self.user)
+			.field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+			.finish()
+	}
 }
 
 /// Redis local service settings.

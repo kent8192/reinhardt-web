@@ -140,10 +140,9 @@ impl BaseCommand for MigrateCommand {
 				&& !database_url.starts_with("sqlite:")
 				&& !database_url.starts_with("mysql://")
 			{
-				return Err(crate::CommandError::ExecutionError(format!(
-					"Unsupported database URL scheme: {}",
-					database_url
-				)));
+				return Err(crate::CommandError::ExecutionError(
+					"Unsupported database URL scheme.".to_owned(),
+				));
 			}
 
 			// 4. Connect to database (auto-create if it doesn't exist for PostgreSQL)
@@ -156,10 +155,10 @@ impl BaseCommand for MigrateCommand {
 				{
 					DatabaseConnection::connect_postgres_or_create(&database_url)
 						.await
-						.map_err(|error| {
-							crate::CommandError::ExecutionError(format!(
-								"Failed to connect to database: {error:?}"
-							))
+						.map_err(|_| {
+							crate::CommandError::ExecutionError(
+								"Failed to connect to PostgreSQL database.".to_owned(),
+							)
 						})?
 				}
 				#[cfg(not(feature = "postgres"))]
@@ -173,10 +172,10 @@ impl BaseCommand for MigrateCommand {
 				{
 					DatabaseConnection::connect_mysql(&database_url)
 						.await
-						.map_err(|error| {
-							crate::CommandError::ExecutionError(format!(
-								"Failed to connect to database: {error:?}"
-							))
+						.map_err(|_| {
+							crate::CommandError::ExecutionError(
+								"Failed to connect to MySQL database.".to_owned(),
+							)
 						})?
 				}
 				#[cfg(not(feature = "mysql"))]
@@ -191,10 +190,10 @@ impl BaseCommand for MigrateCommand {
 				{
 					DatabaseConnection::connect_sqlite(&database_url)
 						.await
-						.map_err(|error| {
-							crate::CommandError::ExecutionError(format!(
-								"Failed to connect to database: {error:?}"
-							))
+						.map_err(|_| {
+							crate::CommandError::ExecutionError(
+								"Failed to connect to SQLite database.".to_owned(),
+							)
 						})?
 				}
 				#[cfg(not(feature = "sqlite"))]
@@ -5732,6 +5731,50 @@ impl BaseCommand for ShowUrlsCommand {
 /// Check system command
 pub struct CheckCommand;
 
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_MARKER: &str = "__reinhardt_scoped_check";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_DATABASE_URL: &str = "__reinhardt_scoped_check_database_url";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_STATIC_ROOT: &str = "__reinhardt_scoped_check_static_root";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_SECRET_LENGTH: &str = "__reinhardt_scoped_check_secret_length";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_DEBUG: &str = "__reinhardt_scoped_check_debug";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_ALLOWED_HOSTS: &str = "__reinhardt_scoped_check_allowed_hosts";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_SSL_REDIRECT: &str = "__reinhardt_scoped_check_ssl_redirect";
+
+#[cfg(feature = "contract")]
+pub(crate) fn attach_scoped_check_inputs(
+	ctx: &mut CommandContext,
+	inputs: &crate::capabilities::CheckInputs,
+) {
+	ctx.set_option(SCOPED_CHECK_MARKER.to_owned(), "true".to_owned());
+	if let Some(url) = &inputs.database_url {
+		ctx.set_option(SCOPED_CHECK_DATABASE_URL.to_owned(), url.clone());
+	}
+	ctx.set_option(
+		SCOPED_CHECK_STATIC_ROOT.to_owned(),
+		inputs.static_root_configured.to_string(),
+	);
+	if let Some(length) = inputs.secret_key_length {
+		ctx.set_option(SCOPED_CHECK_SECRET_LENGTH.to_owned(), length.to_string());
+	}
+	if let Some(debug) = inputs.debug {
+		ctx.set_option(SCOPED_CHECK_DEBUG.to_owned(), debug.to_string());
+	}
+	ctx.set_option(
+		SCOPED_CHECK_ALLOWED_HOSTS.to_owned(),
+		inputs.allowed_hosts_configured.to_string(),
+	);
+	ctx.set_option(
+		SCOPED_CHECK_SSL_REDIRECT.to_owned(),
+		inputs.ssl_redirect.to_string(),
+	);
+}
+
 #[async_trait]
 impl BaseCommand for CheckCommand {
 	fn name(&self) -> &str {
@@ -5784,11 +5827,27 @@ impl BaseCommand for CheckCommand {
 		// 2. Settings validation
 		ctx.info("Checking settings...");
 		checks_passed += Self::check_settings(ctx, is_deploy);
+		#[cfg(feature = "contract")]
+		if is_deploy && ctx.has_option(SCOPED_CHECK_MARKER) {
+			if ctx
+				.option(SCOPED_CHECK_SECRET_LENGTH)
+				.and_then(|length| length.parse::<usize>().ok())
+				.is_none_or(|length| length < 32)
+			{
+				checks_failed += 1;
+			}
+			if ctx
+				.option(SCOPED_CHECK_DEBUG)
+				.is_some_and(|value| value == "true")
+			{
+				checks_failed += 1;
+			}
+		}
 
 		// 3. Migration status check (only when we have a database URL).
 		if database_url.is_some() {
 			ctx.info("Checking migrations...");
-			match Self::check_migrations().await {
+			match Self::check_migrations(database_url.as_deref().expect("checked above")).await {
 				Ok(count) => {
 					if count == 0 {
 						ctx.success("  ✓ All migrations applied");
@@ -5822,6 +5881,14 @@ impl BaseCommand for CheckCommand {
 		if is_deploy {
 			ctx.info("Checking security settings...");
 			checks_passed += Self::check_security(ctx);
+			#[cfg(feature = "contract")]
+			if ctx.has_option(SCOPED_CHECK_MARKER)
+				&& ctx
+					.option(SCOPED_CHECK_ALLOWED_HOSTS)
+					.is_some_and(|value| value == "false")
+			{
+				checks_failed += 1;
+			}
 		}
 
 		ctx.info("");
@@ -5847,6 +5914,10 @@ impl CheckCommand {
 	///
 	/// Returns `None` when neither source produces a URL.
 	fn resolve_database_url(ctx: &CommandContext) -> Option<String> {
+		#[cfg(feature = "contract")]
+		if ctx.has_option(SCOPED_CHECK_MARKER) {
+			return ctx.option(SCOPED_CHECK_DATABASE_URL).cloned();
+		}
 		let env_database_url = std::env::var("DATABASE_URL").ok();
 
 		#[cfg(feature = "reinhardt-db")]
@@ -5882,6 +5953,12 @@ impl CheckCommand {
 	/// Returns true when a static-files root is configured, either via
 	/// composed settings or via the `STATIC_ROOT` env var.
 	fn resolve_static_root_configured(_ctx: &CommandContext) -> bool {
+		#[cfg(feature = "contract")]
+		if _ctx.has_option(SCOPED_CHECK_MARKER) {
+			return _ctx
+				.option(SCOPED_CHECK_STATIC_ROOT)
+				.is_some_and(|value| value == "true");
+		}
 		// CoreSettings does not own the static-files root; downstream
 		// projects compose `StaticSettings` separately. Without
 		// `HasStaticSettings` in `HasCommonSettings` we cannot peek at
@@ -5909,7 +5986,7 @@ impl CheckCommand {
 							connection
 								.execute("SELECT 1", vec![])
 								.await
-								.map_err(|e| format!("Query failed: {}", e))?;
+								.map_err(|_| "Query failed".to_owned())?;
 						}
 						_ => {
 							// MySQL or other database types that don't have SQL execution support yet
@@ -5917,7 +5994,7 @@ impl CheckCommand {
 					}
 					Ok(())
 				}
-				Err(e) => Err(format!("Connection failed: {:?}", e)),
+				Err(_) => Err("Connection failed".to_owned()),
 			}
 		}
 
@@ -5931,6 +6008,31 @@ impl CheckCommand {
 	/// Check settings configuration
 	fn check_settings(ctx: &CommandContext, is_deploy: bool) -> u32 {
 		let mut passed = 0;
+		#[cfg(feature = "contract")]
+		if ctx.has_option(SCOPED_CHECK_MARKER) {
+			if is_deploy {
+				match ctx
+					.option(SCOPED_CHECK_SECRET_LENGTH)
+					.and_then(|length| length.parse::<usize>().ok())
+				{
+					Some(length) if length >= 32 => {
+						ctx.success("  ✓ SECRET_KEY configured");
+						passed += 1;
+					}
+					Some(_) => ctx.warning("  ✗ SECRET_KEY too short (minimum 32 characters)"),
+					None => ctx.warning("  ✗ SECRET_KEY not set (required for deployment)"),
+				}
+			}
+			if let Some(debug) = ctx.option(SCOPED_CHECK_DEBUG) {
+				if is_deploy && debug == "true" {
+					ctx.warning("  ✗ DEBUG=true in deployment (should be false)");
+				} else {
+					ctx.success("  ✓ DEBUG setting appropriate");
+					passed += 1;
+				}
+			}
+			return passed;
+		}
 
 		// Check SECRET_KEY (always required in deployment)
 		if is_deploy {
@@ -5960,7 +6062,7 @@ impl CheckCommand {
 	}
 
 	/// Check migrations status
-	async fn check_migrations() -> Result<u32, String> {
+	async fn check_migrations(database_url: &str) -> Result<u32, String> {
 		#[cfg(feature = "migrations")]
 		{
 			use reinhardt_db::migrations::{
@@ -5982,12 +6084,9 @@ impl CheckCommand {
 				.map_err(|e| format!("Failed to load all migrations: {:?}", e))?;
 
 			// 2. Connect to database
-			let database_url =
-				std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL not set".to_string())?;
-
-			let (_db_type, connection) = connect_database(&database_url)
+			let (_db_type, connection) = connect_database(database_url)
 				.await
-				.map_err(|e| format!("Database connection failed: {:?}", e))?;
+				.map_err(|_| "Database connection failed".to_owned())?;
 
 			// 3. Check applied migrations using Recorder
 			let recorder = DatabaseMigrationRecorder::new(connection);
@@ -6014,6 +6113,7 @@ impl CheckCommand {
 
 		#[cfg(not(feature = "migrations"))]
 		{
+			let _ = database_url;
 			// Without migrations feature, assume no unapplied migrations
 			Ok(0)
 		}
@@ -6022,6 +6122,26 @@ impl CheckCommand {
 	/// Check security settings
 	fn check_security(ctx: &CommandContext) -> u32 {
 		let mut passed = 0;
+		#[cfg(feature = "contract")]
+		if ctx.has_option(SCOPED_CHECK_MARKER) {
+			if ctx
+				.option(SCOPED_CHECK_ALLOWED_HOSTS)
+				.is_some_and(|value| value == "true")
+			{
+				ctx.success("  ✓ ALLOWED_HOSTS configured");
+				passed += 1;
+			} else {
+				ctx.warning("  ✗ ALLOWED_HOSTS not set (required for deployment)");
+			}
+			if ctx
+				.option(SCOPED_CHECK_SSL_REDIRECT)
+				.is_some_and(|value| value == "true")
+			{
+				ctx.success("  ✓ SECURE_SSL_REDIRECT enabled");
+				passed += 1;
+			}
+			return passed;
+		}
 
 		// Check ALLOWED_HOSTS
 		if std::env::var("ALLOWED_HOSTS").is_ok() {
