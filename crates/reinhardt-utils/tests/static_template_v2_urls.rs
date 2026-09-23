@@ -28,6 +28,7 @@ async fn v2_template_paths_are_encoded_once(#[case] logical: &str, #[case] encod
 		encode_manifest(manifest).unwrap(),
 	)
 	.unwrap();
+	storage.load_manifest().await.unwrap();
 
 	// Act
 	let config = TemplateStaticConfig::from_storage(&storage).await.unwrap();
@@ -37,6 +38,7 @@ async fn v2_template_paths_are_encoded_once(#[case] logical: &str, #[case] encod
 		config.resolve_url(logical),
 		format!("/static/{parent}/{encoded}")
 	);
+	assert_eq!(storage.url(logical), format!("/static/{parent}/{encoded}"));
 }
 
 #[rstest]
@@ -50,6 +52,7 @@ async fn legacy_template_urls_are_not_double_encoded() {
 		br#"{"version":"1.0","paths":{"logo.svg":"images/logo%20%231.svg"}}"#,
 	)
 	.unwrap();
+	storage.load_manifest().await.unwrap();
 
 	// Act
 	let config = TemplateStaticConfig::from_storage(&storage).await.unwrap();
@@ -59,4 +62,5 @@ async fn legacy_template_urls_are_not_double_encoded() {
 		config.resolve_url("logo.svg"),
 		"/static/images/logo%20%231.svg"
 	);
+	assert_eq!(storage.url("logo.svg"), "/static/images/logo%20%231.svg");
 }

@@ -3434,6 +3434,17 @@ fn normalize_static_url_prefix(static_url: &str) -> String {
 }
 
 #[cfg(feature = "server")]
+fn project_static_passthrough_prefixes(static_url: &str, manifest_serving: bool) -> Vec<String> {
+	let mount = static_url.trim_end_matches('/');
+	let mut prefixes = vec![format!("{mount}/admin/")];
+	if manifest_serving {
+		prefixes.push(format!("{mount}/builds/"));
+		prefixes.push(format!("{mount}/manifest.json"));
+	}
+	prefixes
+}
+
+#[cfg(feature = "server")]
 async fn load_static_manifest(
 	static_root: &std::path::Path,
 ) -> Result<std::collections::HashMap<String, String>, String> {
@@ -3956,6 +3967,11 @@ impl BaseCommand for RunServerCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		if ctx.option("asset-manifest").is_some() && !ctx.has_option("with-pages") {
+			return Err(crate::CommandError::ExecutionError(
+				"--asset-manifest requires --with-pages to enable manifest serving".into(),
+			));
+		}
 		if ctx.option("expected-asset-build-id").is_some() && !ctx.has_option("with-pages") {
 			return Err(crate::CommandError::ExecutionError(
 				"--expected-asset-build-id requires --with-pages to enable manifest serving".into(),
@@ -4437,40 +4453,13 @@ impl RunServerCommand {
 				server = server.with_middleware(StaticFilesMiddleware::new(generated_config));
 			}
 
-			// Auto-mount <project-root>/static/ at the configured static URL unless opted out.
-			// This is registered BEFORE the dist/ middleware so that, when
-			// MiddlewareChain::handle reverses registration order at request
-			// time, the project-static middleware sits outermost and runs
-			// first; misses fall through to the dist/ middleware and then to
-			// the application router (Issue #4484).
-			if !no_project_static && let Some(project_root) = PathResolver::find_project_root() {
-				let project_static_dir = project_root.join("static");
-				if project_static_dir.is_dir() {
-					let project_static_url = generated_style_url.clone();
-					let project_static_admin_url =
-						format!("{}/admin/", project_static_url.trim_end_matches('/'));
-					let mut project_static_config =
-						StaticFilesConfig::new(project_static_dir.clone())
-							.url_prefix(project_static_url.clone())
-							.spa_mode(false)
-							.auto_inject_wasm(false)
-							.passthrough_prefixes(vec![project_static_admin_url]);
-					// Disable long-lived caching in dev (mirrors #4383 for the
-					// dist/ bundle so hot-reload picks up CSS/JS edits).
-					#[cfg(debug_assertions)]
-					{
-						project_static_config =
-							project_static_config.cache_config(CacheControlConfig::disabled());
-					}
-					server =
-						server.with_middleware(StaticFilesMiddleware::new(project_static_config));
-					ctx.verbose(&format!(
-						"Project static files middleware enabled: {} (mounted at {})",
-						project_static_dir.display(),
-						project_static_url
-					));
-				}
-			}
+			// Resolve the optional project-static root here and register it below,
+			// once we know whether generation-owned paths must pass through to the
+			// manifest middleware.
+			let project_static_dir = (!no_project_static)
+				.then(|| PathResolver::find_project_root().map(|root| root.join("static")))
+				.flatten()
+				.filter(|directory| directory.is_dir());
 
 			// Automatically resolve static directory path
 			let resolved_static_dir = PathResolver::resolve_static_dir(static_dir);
@@ -4490,17 +4479,53 @@ impl RunServerCommand {
 				ctx.option("expected-asset-build-id").map(String::as_str),
 			)
 			.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+			let has_unified_manifest = store.is_some();
+			if let Some(project_static_dir) = project_static_dir {
+				let project_static_url = generated_style_url.clone();
+				let passthrough =
+					project_static_passthrough_prefixes(&project_static_url, has_unified_manifest);
+				let mut project_static_config = StaticFilesConfig::new(project_static_dir.clone())
+					.url_prefix(project_static_url.clone())
+					.spa_mode(false)
+					.auto_inject_wasm(false)
+					.passthrough_prefixes(passthrough);
+				#[cfg(debug_assertions)]
+				{
+					project_static_config =
+						project_static_config.cache_config(CacheControlConfig::disabled());
+				}
+				server = server.with_middleware(StaticFilesMiddleware::new(project_static_config));
+				ctx.verbose(&format!(
+					"Project static files middleware enabled: {} (mounted at {})",
+					project_static_dir.display(),
+					project_static_url
+				));
+			}
 			let mut unified_manifest_mounted = false;
 			if let Some(store) = store {
 				let navigation = !no_spa && !store.active().manifest().entrypoints.is_empty();
 				let store = std::sync::Arc::new(store);
-				let config = crate::runserver_assets::serving_config(
+				let hmr_injection: Option<String> = {
+					#[cfg(feature = "pages")]
+					{
+						Self::autoreload_hmr_port_from_env(ctx)
+							.map(reinhardt_pages::hmr::hmr_script_tag)
+					}
+					#[cfg(not(feature = "pages"))]
+					{
+						None
+					}
+				};
+				let mut config = crate::runserver_assets::serving_config(
 					store,
 					generated_style_url.clone(),
 					ctx.option("asset-entrypoint").map(String::as_str),
 					navigation,
 				)
 				.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+				if let Some(injection) = &hmr_injection {
+					config = config.with_trusted_html_injection(injection.clone());
+				}
 				server = server.with_middleware(
 					reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware::new(
 						config,
@@ -4574,10 +4599,12 @@ impl RunServerCommand {
 				static_config = static_config.cache_config(CacheControlConfig::disabled());
 			}
 
-			#[cfg(feature = "pages")]
-			if let Some(hmr_port) = Self::autoreload_hmr_port_from_env(ctx) {
-				static_config = static_config
-					.trusted_html_injection(reinhardt_pages::hmr::hmr_script_tag(hmr_port));
+			if !unified_manifest_mounted {
+				#[cfg(feature = "pages")]
+				if let Some(hmr_port) = Self::autoreload_hmr_port_from_env(ctx) {
+					static_config = static_config
+						.trusted_html_injection(reinhardt_pages::hmr::hmr_script_tag(hmr_port));
+				}
 			}
 
 			// Resolve index file for SPA fallback (only when SPA mode is enabled)
@@ -6834,6 +6861,92 @@ mod tests {
 			result.unwrap_err().to_string(),
 			"Execution error: --expected-asset-build-id requires --with-pages to enable manifest serving"
 		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn asset_manifest_requires_manifest_serving() {
+		// Arrange
+		let mut ctx = CommandContext::new(Vec::new());
+		ctx.set_option("asset-manifest".into(), "custom.json".into());
+		// Act
+		let result = RunServerCommand.execute(&ctx).await;
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Execution error: --asset-manifest requires --with-pages to enable manifest serving"
+		);
+	}
+
+	#[cfg(feature = "server")]
+	#[tokio::test]
+	async fn project_static_mount_passes_generation_assets_to_manifest_server() {
+		use reinhardt_http::{Handler, Middleware, MiddlewareChain, Request, Response};
+		use reinhardt_utils::staticfiles::middleware::{StaticFilesConfig, StaticFilesMiddleware};
+		use reinhardt_utils::staticfiles::publication::{
+			AssetInput, AssetMode, AssetPipeline, AssetPublisher, ManifestServingConfig,
+			ManifestStaticMiddleware, ManifestStore, SnapshotOptions,
+		};
+		use std::sync::Arc;
+
+		struct NotFound;
+		#[async_trait::async_trait]
+		impl Handler for NotFound {
+			async fn handle(&self, _: Request) -> reinhardt_core::exception::Result<Response> {
+				Ok(Response::not_found())
+			}
+		}
+
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let mut pipeline = AssetPipeline::new();
+		pipeline
+			.add_input(AssetInput::bytes("app.txt", b"published".to_vec()))
+			.unwrap();
+		AssetPublisher::new(root.path().into())
+			.publish(pipeline.prepare(AssetMode::Production).unwrap())
+			.unwrap();
+		let store = Arc::new(
+			ManifestStore::open(root.path().into(), SnapshotOptions::production()).unwrap(),
+		);
+		let published_path = store.active().manifest().paths["app.txt"].clone();
+		let config = StaticFilesConfig::new(root.path())
+			.url_prefix("/static/")
+			.spa_mode(false)
+			.passthrough_prefixes(project_static_passthrough_prefixes("/static/", true));
+		let manifest = ManifestStaticMiddleware::new(
+			ManifestServingConfig::new(store, "/static/".into()).unwrap(),
+		);
+		let chain = MiddlewareChain::new(Arc::new(NotFound))
+			.with_middleware(Arc::new(StaticFilesMiddleware::new(config)) as Arc<dyn Middleware>)
+			.with_middleware(Arc::new(manifest) as Arc<dyn Middleware>);
+
+		// Act
+		let response = chain
+			.handle(
+				Request::builder()
+					.uri(format!("/static/{published_path}"))
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, hyper::StatusCode::OK);
+		assert!(response.file_body().is_some());
+		drop(response);
+		std::fs::write(root.path().join(&published_path), b"modified!").unwrap();
+		let modified = chain
+			.handle(
+				Request::builder()
+					.uri(format!("/static/{published_path}"))
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(modified.status, hyper::StatusCode::SERVICE_UNAVAILABLE);
 	}
 
 	#[rstest::rstest]

@@ -9,8 +9,23 @@ use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
 
 pub(super) fn analyze(logical: &str, source: &str) -> Result<Vec<AssetReference>, AssetBuildError> {
+	analyze_as(logical, source, SourceType::mjs())
+}
+
+pub(super) fn analyze_script(
+	logical: &str,
+	source: &str,
+) -> Result<Vec<AssetReference>, AssetBuildError> {
+	analyze_as(logical, source, SourceType::cjs())
+}
+
+fn analyze_as(
+	logical: &str,
+	source: &str,
+	source_type: SourceType,
+) -> Result<Vec<AssetReference>, AssetBuildError> {
 	let allocator = Allocator::default();
-	let parsed = Parser::new(&allocator, source, SourceType::mjs()).parse();
+	let parsed = Parser::new(&allocator, source, source_type).parse();
 	if let Some(error) = parsed.errors.first() {
 		return Err(AssetBuildError::input(
 			logical,

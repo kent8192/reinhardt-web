@@ -376,7 +376,8 @@ logger.log_disallowed_host("malicious.com");
 
 - **Manifest System** (`ManifestStaticFilesStorage`)
   - JSON manifest for mapping original filenames to hashed versions
-  - Versioned manifest format (currently V1)
+  - Supports legacy V1 manifests and generation-manifest V2 paths
+  - Encodes decoded V2 filesystem paths once when producing static URLs, while preserving legacy pre-encoded values
   - Enables efficient static file lookup in production
   - Supports deployment workflows with pre-collected assets
 

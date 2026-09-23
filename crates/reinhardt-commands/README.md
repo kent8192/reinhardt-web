@@ -1163,7 +1163,8 @@ is used even when the canonical active pointer names another build.
 Use `--asset-entrypoint NAME` to select a named Pages entrypoint when a manifest
 contains multiple entries (also required with `manage runserver --no-spa`).
 A single entry is selected automatically; unknown names fail startup. The management
-command requires `--with-pages` for this selector and forwards it to autoreload children.
+command requires `--with-pages` for `--asset-manifest` and `--asset-entrypoint`, and
+forwards both selectors to autoreload children.
 Both servers preserve `/static/admin/` and the configured static mount's `admin/`
 routes, including percent-encoded mount paths.
 
@@ -1179,6 +1180,17 @@ when the order is `[base.css, overrides.css]`, linking only `overrides.css` is
 rejected during packaging; link both in order or leave both for injection.
 Retained generations must also remain complete and unmodified before another
 publication can be activated.
+
+Production Pages documents load their bootstrap code from a published same-origin
+module, so a strict `script-src 'self'` policy can permit it without allowing inline
+scripts. The autoreload child also injects the HMR client into manifest-rendered
+Pages documents; that development client is inline, so the development CSP must
+allow it.
+
+Web App Manifest icon, screenshot, and shortcut icon paths are rewritten when assets
+move between publication categories. Relative navigation URLs such as `start_url`
+are rejected because relocation would change their meaning; use root-relative or
+absolute URLs for those members.
 
 Module-relative computed imports are rejected because their targets cannot be
 relocated safely. An application that supplies the final URL at runtime may use

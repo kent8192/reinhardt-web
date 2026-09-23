@@ -560,6 +560,7 @@ pub struct ManifestStaticFilesStorage {
 	/// If true, lookups for unmapped files will fail rather than fall back.
 	pub manifest_strict: bool,
 	hashed_files: Arc<RwLock<HashMap<String, String>>>,
+	v2_manifest_paths: Arc<RwLock<bool>>,
 }
 
 impl ManifestStaticFilesStorage {
@@ -571,6 +572,7 @@ impl ManifestStaticFilesStorage {
 			manifest_name: "staticfiles.json".to_string(),
 			manifest_strict: true,
 			hashed_files: Arc::new(RwLock::new(HashMap::new())),
+			v2_manifest_paths: Arc::new(RwLock::new(false)),
 		}
 	}
 
@@ -701,6 +703,7 @@ impl ManifestStaticFilesStorage {
 		let manifest_content = tokio::fs::read_to_string(manifest_path).await?;
 		let decoded = super::publication::decode_manifest(manifest_content.as_bytes())
 			.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+		let v2_manifest_paths = matches!(&decoded, super::publication::DecodedAssetManifest::V2(_));
 		let mut hashed_files = write_or_recover(
 			&self.hashed_files,
 			"ManifestStaticFilesStorage::load_manifest",
@@ -710,6 +713,10 @@ impl ManifestStaticFilesStorage {
 			.iter()
 			.map(|(logical, published)| (logical.clone(), published.clone()))
 			.collect();
+		*write_or_recover(
+			&self.v2_manifest_paths,
+			"ManifestStaticFilesStorage::load_manifest version",
+		) = v2_manifest_paths;
 
 		Ok(())
 	}
@@ -765,6 +772,18 @@ impl ManifestStaticFilesStorage {
 			.unwrap_or_else(|| name.to_string());
 		drop(hashed_files);
 
-		self.normalize_url(&self.base_url, &actual_name)
+		let v2_manifest_paths = *read_or_recover(
+			&self.v2_manifest_paths,
+			"ManifestStaticFilesStorage::url version",
+		);
+		let url_path = if v2_manifest_paths {
+			reinhardt_core::types::static_assets::encode_asset_path(
+				actual_name.trim_start_matches('/'),
+			)
+			.unwrap_or(actual_name)
+		} else {
+			actual_name
+		};
+		self.normalize_url(&self.base_url, &url_path)
 	}
 }

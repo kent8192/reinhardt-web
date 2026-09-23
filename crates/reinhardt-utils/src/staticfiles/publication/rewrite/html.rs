@@ -78,11 +78,26 @@ pub(super) fn analyze(logical: &str, source: &str) -> Result<Vec<AssetReference>
 				}
 				inline = if name == "style" {
 					Some("css")
-				} else if name == "script"
-					&& attribute("type").is_some_and(|v| v.eq_ignore_ascii_case("module"))
-					&& attribute("src").is_none()
-				{
-					Some("js")
+				} else if name == "script" && attribute("src").is_none() {
+					let script_type = attribute("type").map(str::trim);
+					if script_type.is_none_or(|value| {
+						value.is_empty()
+							|| [
+								"text/javascript",
+								"application/javascript",
+								"text/ecmascript",
+								"application/ecmascript",
+							]
+							.iter()
+							.any(|kind| value.eq_ignore_ascii_case(kind))
+					}) {
+						Some("js-script")
+					} else if script_type.is_some_and(|value| value.eq_ignore_ascii_case("module"))
+					{
+						Some("js-module")
+					} else {
+						None
+					}
 				} else {
 					None
 				};
@@ -97,7 +112,16 @@ pub(super) fn analyze(logical: &str, source: &str) -> Result<Vec<AssetReference>
 						)?;
 						continue;
 					}
-					if attr_name == "srcset" && matches!(name, "img" | "source") {
+					let image_preload = name == "link"
+						&& attribute("rel").is_some_and(|value| {
+							value
+								.split_ascii_whitespace()
+								.any(|rel| rel.eq_ignore_ascii_case("preload"))
+						}) && attribute("as")
+						.is_some_and(|value| value.eq_ignore_ascii_case("image"));
+					if attr_name == "srcset" && matches!(name, "img" | "source")
+						|| attr_name == "imagesrcset" && image_preload
+					{
 						for (candidate, (start, end)) in
 							srcset_urls(&attr.value).into_iter().enumerate()
 						{
@@ -121,7 +145,7 @@ pub(super) fn analyze(logical: &str, source: &str) -> Result<Vec<AssetReference>
 							"script"
 								| "img" | "audio" | "video"
 								| "source" | "track" | "embed"
-								| "input"
+								| "iframe" | "input"
 						),
 						"href" | "xlink:href" => {
 							matches!(name, "use" | "image")
@@ -178,9 +202,15 @@ pub(super) fn analyze(logical: &str, source: &str) -> Result<Vec<AssetReference>
 				Some("css") => {
 					add_inline(&mut references, css::analyze(logical, text)?, index, None)?
 				}
-				Some("js") => add_inline(
+				Some("js-module") => add_inline(
 					&mut references,
 					javascript::analyze(logical, text)?,
+					index,
+					None,
+				)?,
+				Some("js-script") => add_inline(
+					&mut references,
+					javascript::analyze_script(logical, text)?,
 					index,
 					None,
 				)?,

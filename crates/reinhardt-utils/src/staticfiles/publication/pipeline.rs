@@ -13,6 +13,13 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use tempfile::TempDir;
 
+pub(super) const PAGES_LOADER_LOGICAL: &str = "__reinhardt__/pages-loader.js";
+const PAGES_LOADER_SOURCE: &[u8] =
+	br#"const entry = JSON.parse(document.getElementById('reinhardt-pages-entry').textContent);
+const module = await import(entry.javascript);
+await module.default({ module_or_path: entry.wasm });
+"#;
+
 /// An asset's materialized source, captured before publication starts (P0).
 #[derive(Debug, Clone)]
 pub enum ContentSource {
@@ -450,7 +457,19 @@ impl AssetPipeline {
 	}
 
 	/// Capture, classify, rewrite, and hash a coherent generation without publishing.
-	pub fn prepare(self, mode: AssetMode) -> Result<PreparedGeneration, AssetBuildError> {
+	pub fn prepare(mut self, mode: AssetMode) -> Result<PreparedGeneration, AssetBuildError> {
+		if !self.entrypoints.is_empty() {
+			if self.inputs.contains_key(PAGES_LOADER_LOGICAL) {
+				return Err(AssetBuildError::input(
+					PAGES_LOADER_LOGICAL,
+					"logical path is reserved for the generated Pages loader",
+				));
+			}
+			self.add_input(
+				AssetInput::bytes(PAGES_LOADER_LOGICAL, PAGES_LOADER_SOURCE.to_vec())
+					.with_producer(AssetProducer::Pages),
+			)?;
+		}
 		let spool = tempfile::Builder::new()
 			.prefix("reinhardt-assets-")
 			.tempdir()

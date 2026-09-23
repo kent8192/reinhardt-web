@@ -3,6 +3,7 @@
 mod css;
 mod html;
 mod javascript;
+mod manifest;
 
 pub(super) use html::document::compile as compile_document;
 
@@ -48,20 +49,34 @@ impl AssetProcessor for BuiltinProcessor {
 	fn identity(&self) -> ProcessorIdentity {
 		ProcessorIdentity {
 			id: "reinhardt.references".into(),
-			version: "1".into(),
-			options: serde_json::json!({"entry_document_contract":1}),
+			version: "2".into(),
+			options: serde_json::json!({
+				"entry_document_contract":1,
+				"inline_script_contract":2,
+				"pages_loader_contract":1,
+				"web_manifest_contract":1,
+			}),
 		}
 	}
 	fn matches(&self, asset: &PreparedAsset) -> bool {
+		if is_generated_pages_loader(asset.logical_path()) {
+			return false;
+		}
 		matches!(
 			asset.mime().split(';').next().unwrap_or_default(),
-			"text/javascript" | "application/javascript" | "text/css" | "text/html"
+			"text/javascript"
+				| "application/javascript"
+				| "text/css" | "text/html"
+				| "application/manifest+json"
 		)
 	}
 	fn prepare(&self, _: &PreparedAsset) -> Result<Vec<AssetInput>, AssetBuildError> {
 		Ok(Vec::new())
 	}
 	fn analyze(&self, asset: &PreparedAsset) -> Result<Vec<AssetReference>, AssetBuildError> {
+		if is_generated_pages_loader(asset.logical_path()) {
+			return Ok(Vec::new());
+		}
 		analyze_asset_references(asset.logical_path(), asset.mime(), &asset.read()?)
 	}
 
@@ -71,7 +86,9 @@ impl AssetProcessor for BuiltinProcessor {
 		paths: &BTreeMap<String, String>,
 	) -> Result<RewriteOutput, AssetBuildError> {
 		let bytes = asset.asset.read()?;
-		if asset.references.is_empty() {
+		let is_web_manifest =
+			asset.asset.mime().split(';').next() == Some("application/manifest+json");
+		if asset.references.is_empty() && !is_web_manifest {
 			return Ok(RewriteOutput {
 				bytes,
 				source_map: None,
@@ -120,7 +137,17 @@ impl AssetProcessor for BuiltinProcessor {
 				reference.suffix
 			))
 		};
-		let rewritten = if asset.asset.mime().split(';').next() == Some("text/html") {
+		let rewritten = if is_web_manifest {
+			// Web manifests are rewritten separately because URL-valued members are
+			// JSON strings rather than CSS, JavaScript, or HTML reference sites.
+			manifest::rewrite(
+				asset.asset.logical_path(),
+				location,
+				source,
+				&asset.references,
+				&url,
+			)?
+		} else if asset.asset.mime().split(';').next() == Some("text/html") {
 			html::rewrite(asset.asset.logical_path(), source, &asset.references, url)?
 		} else {
 			let mut edits = Vec::new();
@@ -141,6 +168,14 @@ impl AssetProcessor for BuiltinProcessor {
 	}
 }
 
+fn is_generated_pages_loader(logical: &str) -> bool {
+	let reserved = super::pipeline::PAGES_LOADER_LOGICAL;
+	logical == reserved
+		|| logical
+			.strip_suffix(reserved)
+			.is_some_and(|prefix| prefix.ends_with('/'))
+}
+
 /// Discover built-in JS, CSS, or HTML dependencies in a specified input namespace (P0).
 /// This performs syntax analysis only; the complete pipeline validates target existence.
 pub fn analyze_asset_references(
@@ -153,7 +188,11 @@ pub fn analyze_asset_references(
 		.map_err(|e| AssetBuildError::input(logical, e.to_string()))?;
 	if !matches!(
 		mime.essence_str(),
-		"text/javascript" | "application/javascript" | "text/css" | "text/html"
+		"text/javascript"
+			| "application/javascript"
+			| "text/css"
+			| "text/html"
+			| "application/manifest+json"
 	) {
 		return Ok(Vec::new());
 	}
@@ -173,6 +212,7 @@ pub fn analyze_asset_references(
 		"text/javascript" | "application/javascript" => javascript::analyze(logical, source),
 		"text/css" => css::analyze(logical, source),
 		"text/html" => html::analyze(logical, source),
+		"application/manifest+json" => manifest::analyze(logical, source),
 		_ => Ok(Vec::new()),
 	}
 }

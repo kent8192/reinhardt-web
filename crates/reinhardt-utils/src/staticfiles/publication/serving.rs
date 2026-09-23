@@ -16,10 +16,11 @@ pub struct ManifestServingConfig {
 	store: Arc<ManifestStore>,
 	static_url: String,
 	prefix: String,
-	entrypoint: Option<String>,
+	explicit_entrypoint: Option<String>,
 	navigation_fallback: bool,
 	legacy_aliases: bool,
 	passthrough: Vec<String>,
+	trusted_html_injections: Vec<String>,
 }
 
 impl ManifestServingConfig {
@@ -33,28 +34,32 @@ impl ManifestServingConfig {
 		})?;
 		let prefix = decode_path(uri.path())
 			.map_err(|reason| AssetBuildError::input(&static_url, reason))?;
-		let entrypoint = (active.manifest().entrypoints.len() == 1).then(|| {
-			active
-				.manifest()
-				.entrypoints
-				.keys()
-				.next()
-				.expect("one entry")
-				.clone()
-		});
 		Ok(Self {
 			store,
 			static_url,
 			prefix,
-			entrypoint,
+			explicit_entrypoint: None,
 			navigation_fallback: false,
 			legacy_aliases: false,
 			passthrough: vec!["/api".into(), "/docs".into(), "/openapi.json".into()],
+			trusted_html_injections: Vec::new(),
 		})
 	}
 	/// Select a named Pages entry. Call `validate` before starting a server.
 	pub fn with_pages(mut self, entrypoint: String) -> Self {
-		self.entrypoint = Some(entrypoint);
+		self.explicit_entrypoint = Some(entrypoint);
+		self
+	}
+	/// Add a trusted HTML fragment to Pages documents served by this mount.
+	///
+	/// Fragments are inserted before `</body>` or appended when the document has
+	/// no body close tag. Only framework-owned development scripts should use this.
+	/// This filesystem-backed server API is target-only (P0).
+	pub fn with_trusted_html_injection(mut self, fragment: impl Into<String>) -> Self {
+		let fragment = fragment.into();
+		if !fragment.is_empty() {
+			self.trusted_html_injections.push(fragment);
+		}
 		self
 	}
 	/// Enable navigation fallback only after the application router returns 404.
@@ -84,19 +89,34 @@ impl ManifestServingConfig {
 	/// Reject unknown or ambiguous entrypoint selection before accepting requests.
 	pub fn validate(&self) -> Result<(), AssetBuildError> {
 		let active = self.store.active();
-		if let Some(entry) = &self.entrypoint {
+		if let Some(entry) = &self.explicit_entrypoint {
 			if !active.manifest().entrypoints.contains_key(entry) {
 				return Err(AssetBuildError::input(
 					entry,
 					"unknown Pages entrypoint; select a manifest entrypoint name",
 				));
 			}
-		} else if self.navigation_fallback || active.manifest().entrypoints.len() > 1 {
+		} else if active.manifest().entrypoints.len() > 1
+			|| self.navigation_fallback && active.manifest().entrypoints.len() != 1
+		{
 			return Err(AssetBuildError::manifest(
 				"select a Pages entrypoint explicitly for navigation or a multi-entry publication",
 			));
 		}
 		Ok(())
+	}
+
+	fn selected_entrypoint(&self, snapshot: &ManifestSnapshot) -> Option<String> {
+		if let Some(entry) = &self.explicit_entrypoint {
+			return snapshot
+				.manifest()
+				.entrypoints
+				.contains_key(entry)
+				.then(|| entry.clone());
+		}
+		(snapshot.manifest().entrypoints.len() == 1)
+			.then(|| snapshot.manifest().entrypoints.keys().next().cloned())
+			.flatten()
 	}
 }
 
@@ -240,7 +260,7 @@ impl Middleware for ManifestStaticMiddleware {
 		let response = next.handle(request).await?;
 		if response.status == StatusCode::NOT_FOUND && self.config.navigation_fallback && navigation
 		{
-			let Some(entry) = &self.config.entrypoint else {
+			let Some(entry) = self.config.selected_entrypoint(&active) else {
 				return Ok(error(
 					StatusCode::SERVICE_UNAVAILABLE,
 					&request_headers.method,
@@ -249,7 +269,7 @@ impl Middleware for ManifestStaticMiddleware {
 			return Ok(dispatch(
 				self.config.clone(),
 				active,
-				Target::Document(entry.clone()),
+				Target::Document(entry),
 				false,
 				request_headers,
 			)
@@ -373,13 +393,12 @@ fn serve(
 			if record.role == AssetRole::EntryDocument {
 				let canonical = record.parent.as_deref().unwrap_or(&logical);
 				let entry = config
-					.entrypoint
-					.as_ref()
+					.selected_entrypoint(snapshot)
 					.filter(|entry| {
 						snapshot
 							.manifest()
 							.entrypoints
-							.get(*entry)
+							.get(entry.as_str())
 							.is_some_and(|entry| entry.document.as_deref() == Some(canonical))
 					})
 					.or_else(|| {
@@ -388,10 +407,10 @@ fn serve(
 							.entrypoints
 							.iter()
 							.find(|(_, entry)| entry.document.as_deref() == Some(canonical))
-							.map(|(name, _)| name)
+							.map(|(name, _)| name.clone())
 					});
 				return match entry {
-					Some(entry) => serve_document(config, snapshot, entry, request),
+					Some(entry) => serve_document(config, snapshot, &entry, request),
 					None => Ok(error(StatusCode::NOT_FOUND, &request.method)),
 				};
 			}
@@ -429,7 +448,11 @@ fn serve(
 					.get(header::RANGE)
 					.and_then(|value| value.to_str().ok())
 					// Multipart ranges and unknown units are unsupported; serve the full representation.
-					.filter(|value| value.starts_with("bytes=") && !value.contains(','))
+					.and_then(|value| {
+						let (unit, ranges) = value.split_once('=')?;
+						(unit.trim().eq_ignore_ascii_case("bytes") && !ranges.contains(','))
+							.then_some(ranges)
+					})
 			} else {
 				None
 			};
@@ -484,6 +507,12 @@ fn serve_document(
 	let template =
 		std::str::from_utf8(&template).map_err(|e| AssetBuildError::input(entry, e.to_string()))?;
 	let html = render_entry_document(snapshot, &config.static_url, entry, template)?;
+	let html = config
+		.trusted_html_injections
+		.iter()
+		.fold(html, |document, fragment| {
+			inject_html_fragment(&document, fragment)
+		});
 	let cache = if snapshot.manifest().mode == AssetMode::Development {
 		"no-store"
 	} else {
@@ -495,6 +524,24 @@ fn serve_document(
 		cache,
 		request,
 	))
+}
+
+fn inject_html_fragment(document: &str, fragment: &str) -> String {
+	let needle = b"</body>";
+	let position = document
+		.as_bytes()
+		.windows(needle.len())
+		.rposition(|window| window.eq_ignore_ascii_case(needle));
+	let mut output = String::with_capacity(document.len() + fragment.len());
+	if let Some(position) = position {
+		output.push_str(&document[..position]);
+		output.push_str(fragment);
+		output.push_str(&document[position..]);
+	} else {
+		output.push_str(document);
+		output.push_str(fragment);
+	}
+	output
 }
 
 fn buffered(bytes: Vec<u8>, mime: &str, cache: &str, request: &RequestHeaders) -> Response {
@@ -603,7 +650,7 @@ fn representation<'a>(
 }
 
 fn byte_range(value: &str, size: u64) -> Option<(u64, u64)> {
-	let (start, end) = value.strip_prefix("bytes=")?.split_once('-')?;
+	let (start, end) = value.split_once('-')?;
 	if size == 0 {
 		return None;
 	}

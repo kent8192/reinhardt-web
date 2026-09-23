@@ -314,3 +314,146 @@ fn html_prefetch_declares_and_rewrites_asset_dependencies(#[case] relation: &str
 		"{rewritten}"
 	);
 }
+
+#[rstest]
+fn image_preload_candidates_and_iframe_sources_follow_published_paths() {
+	// Arrange
+	let html = br#"<link rel="preload" as="image" imagesrcset="images/small.png 1x, images/large.png 2x"><iframe src="docs/frame.html"></iframe>"#;
+	let inputs: &[(&str, &[u8])] = &[
+		("index.html", html),
+		("images/small.png", b"small"),
+		("images/large.png", b"large"),
+		("docs/frame.html", b"<p>frame</p>"),
+	];
+	// Act
+	let packed = pipeline(inputs).prepare(AssetMode::Production).unwrap();
+	let output = String::from_utf8(packed.read_asset("index.html").unwrap()).unwrap();
+	// Assert
+	assert!(
+		output.contains("imagesrcset=\"../images/small.png 1x, ../images/large.png 2x\""),
+		"{output}"
+	);
+	assert!(
+		output.contains("<iframe src=\"./docs/frame.html\"></iframe>"),
+		"{output}"
+	);
+	assert_eq!(
+		packed.manifest().assets["index.html"].dependencies,
+		["docs/frame.html", "images/large.png", "images/small.png"]
+	);
+}
+
+#[rstest]
+fn classic_inline_scripts_rewrite_dynamic_imports() {
+	// Arrange
+	let html = br#"<script>import('./chunks/widget.js').then(({ mount }) => mount());</script>"#;
+	let inputs: &[(&str, &[u8])] = &[
+		("index.html", html),
+		("chunks/widget.js", b"export function mount(){}"),
+	];
+	// Act
+	let packed = pipeline(inputs).prepare(AssetMode::Production).unwrap();
+	let output = String::from_utf8(packed.read_asset("index.html").unwrap()).unwrap();
+	// Assert
+	assert!(
+		output.contains("import(\"../js/chunks/widget.js\")"),
+		"{output}"
+	);
+	assert_eq!(
+		packed.manifest().assets["index.html"].dependencies,
+		["chunks/widget.js"]
+	);
+}
+
+#[rstest]
+fn web_manifest_asset_urls_follow_published_paths() {
+	// Arrange
+	let inputs: &[(&str, &[u8])] = &[
+		("manifest.webmanifest", br#"{"name":"Demo","icons":[{"src":"icons/app icon.png","sizes":"192x192"}],"screenshots":[{"src":"screenshots/home.png"}],"shortcuts":[{"name":"Open","url":"/open","icons":[{"src":"icons/shortcut.png"}]}],"file_handlers":[{"action":"/open-file/","icons":[{"src":"icons/file.png"}]}]}"#),
+		("icons/app icon.png", b"app icon"),
+		("icons/shortcut.png", b"shortcut icon"),
+		("icons/file.png", b"file icon"),
+		("screenshots/home.png", b"screenshot"),
+	];
+	// Act
+	let packed = pipeline(inputs).prepare(AssetMode::Production).unwrap();
+	let output = String::from_utf8(packed.read_asset("manifest.webmanifest").unwrap()).unwrap();
+	let manifest: serde_json::Value = serde_json::from_str(&output).unwrap();
+	// Assert
+	assert_eq!(
+		manifest["icons"][0]["src"],
+		"../images/icons/app%20icon.png"
+	);
+	assert_eq!(
+		manifest["screenshots"][0]["src"],
+		"../images/screenshots/home.png"
+	);
+	assert_eq!(
+		manifest["shortcuts"][0]["icons"][0]["src"],
+		"../images/icons/shortcut.png"
+	);
+	assert_eq!(
+		manifest["file_handlers"][0]["icons"][0]["src"],
+		"../images/icons/file.png"
+	);
+	assert_eq!(
+		packed.manifest().assets["manifest.webmanifest"].dependencies,
+		[
+			"icons/app icon.png",
+			"icons/file.png",
+			"icons/shortcut.png",
+			"screenshots/home.png"
+		]
+	);
+}
+
+#[rstest]
+fn web_manifest_preserves_origin_relative_app_ids() {
+	// Arrange
+	let manifest = br#"{"name":"Demo","id":"demo-app","start_url":"/app/"}"#;
+	// Act
+	let packed = pipeline(&[("manifest.webmanifest", manifest)])
+		.prepare(AssetMode::Production)
+		.unwrap();
+	let output = String::from_utf8(packed.read_asset("manifest.webmanifest").unwrap()).unwrap();
+	// Assert
+	let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+	assert_eq!(parsed["id"], "demo-app");
+	assert_eq!(parsed["start_url"], "/app/");
+}
+
+#[rstest]
+fn web_manifest_rejects_relative_file_and_protocol_handler_urls() {
+	// Arrange
+	let file_handler = br#"{"name":"Demo","start_url":"/","file_handlers":[{"action":"open/"}]}"#;
+	let protocol_handler = br#"{"name":"Demo","start_url":"/","protocol_handlers":[{"protocol":"web+tea","url":"handlers/?url=%s"}]}"#;
+	// Act
+	let file_error = pipeline(&[("manifest.webmanifest", file_handler)])
+		.prepare(AssetMode::Production)
+		.unwrap_err();
+	let protocol_error = pipeline(&[("manifest.webmanifest", protocol_handler)])
+		.prepare(AssetMode::Production)
+		.unwrap_err();
+	// Assert
+	assert!(file_error.to_string().contains("/file_handlers/0/action"));
+	assert!(
+		protocol_error
+			.to_string()
+			.contains("/protocol_handlers/0/url")
+	);
+}
+
+#[rstest]
+fn web_manifest_rejects_relative_navigation_urls_that_change_when_relocated() {
+	// Arrange
+	let manifest = br#"{"name":"Demo","start_url":"./app/"}"#;
+	// Act
+	let result = pipeline(&[("manifest.webmanifest", manifest)]).prepare(AssetMode::Production);
+	// Assert
+	assert!(
+		result
+			.unwrap_err()
+			.to_string()
+			.contains("relative Web App Manifest URL /start_url")
+	);
+}

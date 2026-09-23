@@ -7,8 +7,9 @@ use crate::{
 	BaseCommand, COMPONENT_STYLES_PATH, CommandContext, StyleExtractor, StylePackageContext,
 };
 use async_trait::async_trait;
+use reinhardt_utils::staticfiles::publication::{DecodedAssetManifest, decode_manifest};
 use reinhardt_utils::staticfiles::{StaticFilesConfig, StaticFilesFinder};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -494,14 +495,7 @@ impl CollectStaticCommand {
 				directories.push(static_dir);
 			}
 		}
-		if let Some(base) = &self.source_base {
-			for path in &mut directories {
-				if path.is_relative() {
-					*path = base.join(&*path);
-				}
-			}
-		}
-		directories
+		normalize_static_source_dirs(directories, self.source_base.as_deref())
 	}
 
 	fn refuse_generation_overwrite(&self) -> io::Result<()> {
@@ -509,7 +503,7 @@ impl CollectStaticCommand {
 			let path = self.config.static_root.join(name);
 			if path.is_file() {
 				let bytes = fs::read(&path)?;
-				let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+				let decoded = decode_manifest(&bytes).map_err(|error| {
 					io::Error::new(
 						io::ErrorKind::InvalidData,
 						format!(
@@ -518,11 +512,7 @@ impl CollectStaticCommand {
 						),
 					)
 				})?;
-				if value
-					.get("version")
-					.and_then(|v| v.as_str())
-					.is_some_and(|version| version != "1.0")
-				{
+				if matches!(decoded, DecodedAssetManifest::V2(_)) {
 					return Err(io::Error::new(
 						io::ErrorKind::InvalidInput,
 						"collectstatic cannot overwrite a generation publication; use buildstatic or a separate legacy static root",
@@ -981,6 +971,25 @@ impl CollectStaticCommand {
 	}
 }
 
+fn normalize_static_source_dirs(
+	mut directories: Vec<PathBuf>,
+	base: Option<&Path>,
+) -> Vec<PathBuf> {
+	if let Some(base) = base {
+		for path in &mut directories {
+			if path.is_relative() {
+				*path = base.join(&*path);
+			}
+		}
+	}
+	let mut seen = HashSet::new();
+	directories.retain(|path| {
+		let normalized = fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+		seen.insert(normalized)
+	});
+	directories
+}
+
 #[derive(Debug, PartialEq)]
 enum CopyResult {
 	Copied,
@@ -1011,5 +1020,53 @@ impl Clone for CollectStaticCommand {
 			virtual_assets: self.virtual_assets.clone(),
 			source_base: self.source_base.clone(),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn flat_legacy_manifest_with_version_asset_can_be_overwritten() {
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let static_root = root.path().join("static");
+		fs::create_dir_all(&static_root).unwrap();
+		fs::write(
+			static_root.join("manifest.json"),
+			br#"{"version":"version.abc","app.js":"app.abc.js"}"#,
+		)
+		.unwrap();
+		let command = CollectStaticCommand::new(
+			StaticFilesConfig {
+				static_root,
+				..StaticFilesConfig::default()
+			},
+			CollectStaticOptions::default(),
+		);
+
+		// Act
+		let result = command.refuse_generation_overwrite();
+
+		// Assert
+		assert!(result.is_ok(), "{result:?}");
+	}
+
+	#[rstest]
+	fn static_source_directories_are_resolved_before_deduplication() {
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let base = root.path().join("project");
+		let dist = base.join("dist-wasm");
+		fs::create_dir_all(&dist).unwrap();
+		let directories = vec![dist.clone(), PathBuf::from("dist-wasm")];
+
+		// Act
+		let normalized = normalize_static_source_dirs(directories, Some(&base));
+
+		// Assert
+		assert_eq!(normalized, vec![dist]);
 	}
 }

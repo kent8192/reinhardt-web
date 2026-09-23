@@ -170,7 +170,19 @@ async fn nested_navigation_uses_full_snapshot_urls_before_module_evaluation(#[ca
 	assert!(
 		html.find("id=\"reinhardt-static-assets\"").unwrap() < html.find("const image").unwrap()
 	);
-	assert!(html.contains("module_or_path: entry.wasm"));
+	assert!(html.contains(&format!(
+		"id=\"reinhardt-pages-loader\" src=\"{}\"",
+		fixture.url("__reinhardt__/pages-loader.js")
+	)));
+	assert!(
+		fixture
+			.store
+			.active()
+			.read_asset("__reinhardt__/pages-loader.js")
+			.unwrap()
+			.windows(b"module_or_path: entry.wasm".len())
+			.any(|window| window == b"module_or_path: entry.wasm")
+	);
 	assert!(!html.contains("navigation-probe"));
 }
 
@@ -414,6 +426,17 @@ async fn every_category_streams_the_actual_bytes_and_supports_ranges(
 		)
 		.await
 		.unwrap();
+	let mixed_case_range = middleware
+		.process(
+			Request::builder()
+				.uri(&url)
+				.header(header::RANGE, "Bytes=10-15")
+				.build()
+				.unwrap(),
+			next.clone(),
+		)
+		.await
+		.unwrap();
 	let missing = middleware
 		.process(
 			Request::builder()
@@ -434,8 +457,106 @@ async fn every_category_streams_the_actual_bytes_and_supports_ranges(
 	assert_eq!(range.status, StatusCode::PARTIAL_CONTENT);
 	assert_eq!(range.headers[header::CONTENT_RANGE], "bytes 10-15/36");
 	assert_eq!(body_bytes(&range), b"abcdef");
+	assert_eq!(mixed_case_range.status, StatusCode::PARTIAL_CONTENT);
+	assert_eq!(
+		mixed_case_range.headers[header::CONTENT_RANGE],
+		"bytes 10-15/36"
+	);
+	assert_eq!(body_bytes(&mixed_case_range), b"abcdef");
 	assert_eq!(missing.status, StatusCode::RANGE_NOT_SATISFIABLE);
 	assert_eq!(missing.headers[header::CONTENT_RANGE], "bytes */36");
+}
+
+#[rstest]
+#[tokio::test]
+async fn inferred_entrypoint_tracks_reloaded_name_and_pages_loader_is_external() {
+	// Arrange
+	let root = tempfile::tempdir().unwrap();
+	let publish = |name: &str, version: u8| {
+		let mut pipeline = AssetPipeline::new();
+		pipeline
+			.add_input(
+				AssetInput::bytes(
+					"app.js",
+					format!("export default function init(){{return {version};}}; export const wasm=new URL('app_bg.wasm',import.meta.url);")
+						.into_bytes(),
+				)
+				.with_producer(AssetProducer::Pages),
+			)
+			.unwrap();
+		pipeline
+			.add_input(
+				AssetInput::bytes("app_bg.wasm", b"\0asm\x01\0\0\0".to_vec())
+					.with_producer(AssetProducer::Pages),
+			)
+			.unwrap();
+		pipeline
+			.set_entrypoint(
+				name,
+				PagesEntrypoint {
+					javascript: "app.js".into(),
+					wasm: "app_bg.wasm".into(),
+					styles: vec![],
+					document: None,
+				},
+			)
+			.unwrap();
+		AssetPublisher::new(root.path().into())
+			.publish(pipeline.prepare(AssetMode::Production).unwrap())
+			.unwrap();
+	};
+	publish("before_reload", 1);
+	let store =
+		Arc::new(ManifestStore::open(root.path().into(), SnapshotOptions::production()).unwrap());
+	let config = ManifestServingConfig::new(store.clone(), "/static/".into())
+		.unwrap()
+		.with_navigation_fallback(true)
+		.with_trusted_html_injection("<script id=\"hmr-client\"></script>");
+	config.validate().unwrap();
+	let middleware = ManifestStaticMiddleware::new(config);
+	let next = NavigationProbe::new(StatusCode::NOT_FOUND);
+	publish("after_reload", 2);
+	store.reload().unwrap();
+
+	// Act
+	let response = middleware
+		.process(
+			Request::builder()
+				.uri("/route")
+				.header(header::ACCEPT, "text/html")
+				.build()
+				.unwrap(),
+			next,
+		)
+		.await
+		.unwrap();
+	let html = String::from_utf8(body_bytes(&response)).unwrap();
+	let active = store.active();
+	let loader_url = active
+		.url_snapshot("/static/")
+		.unwrap()
+		.resolve("__reinhardt__/pages-loader.js")
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, StatusCode::OK);
+	assert!(html.contains("id=\"hmr-client\""), "{html}");
+	assert!(
+		html.contains(&format!(
+			"id=\"reinhardt-pages-loader\" src=\"{loader_url}\""
+		)),
+		"{html}"
+	);
+	assert!(
+		!html.contains("const module = await import(entry.javascript)"),
+		"{html}"
+	);
+	assert!(
+		active
+			.read_asset("__reinhardt__/pages-loader.js")
+			.unwrap()
+			.starts_with(b"const entry = JSON.parse"),
+	);
 }
 
 #[rstest]

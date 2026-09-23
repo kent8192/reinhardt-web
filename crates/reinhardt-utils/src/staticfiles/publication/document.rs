@@ -130,8 +130,6 @@ pub(super) fn validate_program(
 	Ok(())
 }
 
-const LOADER: &str = "<script type=\"module\" id=\"reinhardt-pages-loader\">\nconst snapshot = JSON.parse(document.getElementById('reinhardt-static-assets').textContent);\nconst entry = JSON.parse(document.getElementById('reinhardt-pages-entry').textContent);\nconst module = await import(entry.javascript);\nawait module.default({ module_or_path: entry.wasm });\n</script>";
-
 fn default_program() -> DocumentProgram {
 	DocumentProgram {
 		version: 1,
@@ -226,7 +224,13 @@ pub fn render_entry_document(
 					}
 				}
 			}
-			DocumentChunk::Loader => output.push_str(LOADER),
+			DocumentChunk::Loader => {
+				output.push_str("<script type=\"module\" id=\"reinhardt-pages-loader\" src=\"");
+				output.push_str(&escape_attribute(
+					&projection.resolve(super::pipeline::PAGES_LOADER_LOGICAL)?,
+				));
+				output.push_str("\"></script>");
+			}
 		}
 	}
 	Ok(output)

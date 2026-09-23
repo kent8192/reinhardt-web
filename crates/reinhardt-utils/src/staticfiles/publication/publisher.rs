@@ -193,11 +193,10 @@ impl AssetPublisher {
 				&staging.path().join("manifest.json"),
 				prepared.manifest_bytes(),
 			)?;
+			normalize_tree_permissions(staging.path())?;
 			sync_tree(staging.path())?;
 			#[cfg(all(test, unix))]
 			self.check(Checkpoint::BeforePromotion)?;
-			fs::set_permissions(staging.path(), fs::Permissions::from_mode(0o755))
-				.map_err(|e| AssetBuildError::io(staging.path(), e))?;
 			fs::rename(staging.path(), root.join(&generation))
 				.map_err(|e| AssetBuildError::io(root.join(&generation), e))?;
 			sync_directory(&root.join("builds"))?;
@@ -267,6 +266,31 @@ fn sync_tree(path: &Path) -> Result<(), AssetBuildError> {
 	sync_directory(path)
 }
 
+#[cfg(unix)]
+fn normalize_tree_permissions(path: &Path) -> Result<(), AssetBuildError> {
+	use std::os::unix::fs::PermissionsExt;
+	for entry in fs::read_dir(path).map_err(|e| AssetBuildError::io(path, e))? {
+		let entry = entry.map_err(|e| AssetBuildError::io(path, e))?;
+		let child = entry.path();
+		let metadata = fs::symlink_metadata(&child).map_err(|e| AssetBuildError::io(&child, e))?;
+		if metadata.file_type().is_dir() {
+			normalize_tree_permissions(&child)?;
+			fs::set_permissions(&child, fs::Permissions::from_mode(0o755))
+				.map_err(|e| AssetBuildError::io(&child, e))?;
+		} else if metadata.file_type().is_file() {
+			fs::set_permissions(&child, fs::Permissions::from_mode(0o644))
+				.map_err(|e| AssetBuildError::io(&child, e))?;
+		} else {
+			return Err(AssetBuildError::manifest(format!(
+				"staging generation contains a symlink or special file at {}",
+				child.display()
+			)));
+		}
+	}
+	fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+		.map_err(|e| AssetBuildError::io(path, e))
+}
+
 #[cfg(all(test, unix))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Checkpoint {
@@ -287,6 +311,50 @@ mod tests {
 			.add_input(AssetInput::bytes("a.txt", bytes.to_vec()))
 			.unwrap();
 		pipeline.prepare(AssetMode::Production).unwrap()
+	}
+
+	#[rstest]
+	fn normalize_tree_permissions_covers_nested_assets_and_manifests() {
+		use std::os::unix::fs::PermissionsExt;
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let nested = root.path().join("builds/generation/js");
+		fs::create_dir_all(&nested).unwrap();
+		let asset = nested.join("app.js");
+		let manifest = root.path().join("builds/generation/manifest.json");
+		fs::write(&asset, b"asset").unwrap();
+		fs::write(&manifest, b"manifest").unwrap();
+		for path in [
+			root.path().to_path_buf(),
+			root.path().join("builds"),
+			root.path().join("builds/generation"),
+			nested,
+		] {
+			fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+		}
+		for path in [&asset, &manifest] {
+			fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
+		}
+
+		// Act
+		normalize_tree_permissions(root.path()).unwrap();
+
+		// Assert
+		assert_eq!(
+			fs::metadata(&asset).unwrap().permissions().mode() & 0o777,
+			0o644
+		);
+		assert_eq!(
+			fs::metadata(&manifest).unwrap().permissions().mode() & 0o777,
+			0o644
+		);
+		assert_eq!(
+			fs::metadata(root.path().join("builds/generation/js"))
+				.unwrap()
+				.permissions()
+				.mode() & 0o777,
+			0o755
+		);
 	}
 
 	#[rstest]
