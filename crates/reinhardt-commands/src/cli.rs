@@ -3989,6 +3989,7 @@ async fn execute_collectstatic(
 	clippy::too_many_arguments,
 	reason = "The handler forwards independent collectstatic CLI options to the shared executor."
 )]
+#[cfg(feature = "contract")]
 async fn execute_collectstatic_with_settings(
 	settings: crate::StaticAssetSettings,
 	clear: bool,

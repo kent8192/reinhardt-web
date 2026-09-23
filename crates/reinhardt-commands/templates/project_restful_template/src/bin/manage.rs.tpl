@@ -83,9 +83,6 @@ mod native {
         ).await;
 
         if let Err(e) = result {
-            #[cfg(feature = "commands-shell")]
-            let exit_code = command_error_exit_code(&e);
-            #[cfg(not(feature = "commands-shell"))]
             let exit_code = command_error_exit_code(e.as_ref());
             eprintln!("Error: {}", e);
             process::exit(exit_code);

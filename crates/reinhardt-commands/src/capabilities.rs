@@ -205,6 +205,7 @@ pub struct LocalInfrastructureSettings {
 }
 
 /// Typed inputs for the selected system diagnostics.
+#[cfg(feature = "contract")]
 pub struct CheckInputs {
 	pub(crate) database_url: Option<String>,
 	pub(crate) static_root_configured: bool,
@@ -214,6 +215,7 @@ pub struct CheckInputs {
 	pub(crate) ssl_redirect: bool,
 }
 
+#[cfg(feature = "contract")]
 impl SettingsView for CheckInputs {
 	const NAME: &'static str = "system check inputs";
 
