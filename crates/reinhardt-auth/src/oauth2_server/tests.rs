@@ -474,6 +474,18 @@ async fn postgres_single_use_and_cross_instance_replay() {
 	assert!(pending.is_some());
 	assert!(consumed.is_none());
 	assert!(first.token("token-digest").await.unwrap().unwrap().revoked);
+
+	// Roll back through Reinhardt's migration executor, not a test-only SQL path.
+	executor
+		.rollback_migrations(&[PostgresOAuthStore::migration()])
+		.await
+		.unwrap();
+	let table: (Option<String>,) =
+		sqlx::query_as("SELECT to_regclass('oauth_server_tokens')::text")
+			.fetch_one(first.pool())
+			.await
+			.unwrap();
+	assert!(table.0.is_none());
 }
 
 struct PresentPending;
