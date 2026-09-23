@@ -27,6 +27,7 @@ params = ["reinhardt-di/params"]
 jwt = ["dep:jsonwebtoken"]
 sessions = ["dep:jsonwebtoken"]
 oauth = ["dep:argon2", "dep:password-hash"]
+oidc-op = ["oauth", "dep:rsa"]
 token = []
 basic = ["dep:argon2", "dep:password-hash"]
 argon2-hasher = ["basic"]
@@ -86,6 +87,7 @@ password-hash = { workspace = true, optional = true }
 bcrypt = { workspace = true, optional = true }
 rand = { workspace = true }
 jsonwebtoken = { workspace = true, optional = true }
+rsa = { version = "0.9", features = ["sha2"], optional = true }
 p256 = { version = "0.13", optional = true }
 clap = { version = "4.5", features = ["derive"] }
 console = "0.16.1"
@@ -151,5 +153,6 @@ reinhardt-query = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm", "sqlite", "postgres"] }
 reinhardt-macros = { workspace = true }
 wiremock = "0.6"
+openidconnect = { version = "4.0.1", default-features = false }
 rsa = { version = "0.9", features = ["sha2"] }
 rand_core = { version = "0.6", features = ["std", "getrandom"] }
