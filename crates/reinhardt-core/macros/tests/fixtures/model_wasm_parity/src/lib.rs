@@ -1,6 +1,7 @@
 #![deny(unexpected_cfgs)]
 
 mod named_validation;
+mod patch_validation;
 mod validation_regressions;
 
 use decimal as rust_decimal;

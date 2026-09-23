@@ -24,6 +24,8 @@
 //! The macro generates linkme distributed_slice registrations for each relationship,
 //! enabling `build_reverse_relations()` to construct reverse accessors at runtime.
 
+mod form_patch;
+
 use std::collections::{HashMap, HashSet};
 
 use proc_macro2::{Span, TokenStream};
@@ -3367,6 +3369,8 @@ fn generate_model_form_support(
 			"set_normalized_json",
 			"clean_and_validate",
 			"clean_and_validate_for_update",
+			"clean_and_validate_patch",
+			"__reinhardt_clean_patch",
 			"clean_and_validate_with_uploads",
 			"__reinhardt_uploads",
 			"clone",
@@ -4341,7 +4345,10 @@ fn generate_model_form_support(
 	} else {
 		quote!(#[cfg(all(target_family = "wasm", target_os = "unknown"))])
 	};
+	let patch_output =
+		form_patch::payload_patch(struct_name, field_infos, form_config, selected_fields);
 	let validation_output = quote! {
+		#patch_output
 			#cleaned_payload_trait_cfg
 			impl<P> #core_crate::model_form::ModelFormCleanedPayload
 				for #cleaned_payload_name<P>
@@ -4499,6 +4506,7 @@ fn generate_model_form_support(
 				run_validator: bool,
 				deferred_required_fields: &[&str],
 				trusted_values: ::core::option::Option<&#serde_json_crate::Value>,
+				preserve_submission: bool,
 			) -> ::core::result::Result<
 				#cleaned_payload_name<P>,
 				#core_crate::validators::ValidationErrors,
@@ -4559,7 +4567,7 @@ fn generate_model_form_support(
 					}
 
 					for descriptor in <#schema_name as #core_crate::model_form::ModelFormSchema>::fields() {
-						if descriptor.trim && !descriptor.required && (descriptor.nullable || descriptor.has_default)
+						if !preserve_submission && descriptor.trim && !descriptor.required && (descriptor.nullable || descriptor.has_default)
 							&& P::allows(descriptor.name)
 							&& !<Self as #core_crate::model_form::ModelFormPayload<P>>::is_defaulted(&self, descriptor.name)
 							&& <Self as #core_crate::model_form::ModelFormPayload<P>>::get_json(&self, descriptor.name)
@@ -4933,7 +4941,7 @@ fn generate_model_form_support(
 				Self::Cleaned,
 				#core_crate::validators::ValidationErrors,
 				> {
-					self.__reinhardt_clean_and_validate(true, true, &[], None)
+					self.__reinhardt_clean_and_validate(true, true, &[], None, false)
 				}
 
 				fn clean_and_validate_with_deferred_required_fields(
@@ -4977,7 +4985,7 @@ fn generate_model_form_support(
 					if !errors.is_empty() {
 						return ::core::result::Result::Err(errors);
 					}
-					let mut cleaned = self.__reinhardt_clean_and_validate(true, false, deferred_fields, None)?;
+					let mut cleaned = self.__reinhardt_clean_and_validate(true, false, deferred_fields, None, false)?;
 					cleaned.__reinhardt_uploads = uploads.to_vec();
 					#validator_call
 					::core::result::Result::Ok(cleaned)
@@ -5006,6 +5014,7 @@ fn generate_model_form_support(
 						false,
 						&[],
 						::core::option::Option::Some(&instance_values),
+						false,
 					)?;
 				let mut merged = cleaned.clone();
 				#(#merge_existing_into_cleaned)*
@@ -5751,6 +5760,9 @@ pub(crate) fn generate_named_model_form_contract(
 			"set_normalized_json",
 			"fields",
 			"model_form",
+			"validate_patch",
+			"validate_patch_with_existing",
+			"clean_and_validate_patch",
 			"clone",
 			"clone_from",
 			"contract_default_boolean_is_true",
@@ -6007,6 +6019,12 @@ pub(crate) fn generate_named_model_form_contract(
 			}
 		})
 		.collect::<Vec<_>>();
+	let patch_fields: Vec<_> = selected.iter().map(|field| &field.name).collect();
+	let patch_assignment_fields: Vec<_> = field_idents
+		.iter()
+		.map(|name| Ident::new(&format!("field_{}", ident_to_wire_name(name)), name.span()))
+		.collect();
+	let orm_crate = get_reinhardt_orm_crate();
 	let native_adapter = forms_crate.map(|forms_crate| {
 		quote! {
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -6016,6 +6034,34 @@ pub(crate) fn generate_named_model_form_contract(
 					data: #data_name,
 				) -> #forms_crate::model_form::ModelForm<#model_name, #policy_name> {
 					#forms_crate::model_form::ModelForm::from_payload(data.__reinhardt_into_legacy())
+				}
+				#[doc = "Validates submitted update values without loading a model. Parity: P0 (native only)."]
+				pub fn validate_patch(data: #data_name) -> ::core::result::Result<#forms_crate::model_form::ValidatedFormPatch<#model_name, Self>, #forms_crate::model_form::PatchError> {
+					#forms_crate::model_form::ValidatedFormPatch::validate(data, ::core::option::Option::None)
+				}
+				#[doc = "Validates an update using an explicit existing snapshot. Only submitted fields are written. Parity: P0 (native only)."]
+				pub fn validate_patch_with_existing(data: #data_name, existing: &#model_name) -> ::core::result::Result<#forms_crate::model_form::ValidatedFormPatch<#model_name, Self>, #forms_crate::model_form::PatchError> {
+					#forms_crate::model_form::ValidatedFormPatch::validate(data, ::core::option::Option::Some(existing))
+				}
+
+			}
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			impl #forms_crate::model_form::ModelFormPatchContract<#model_name> for #contract_name {
+				type Data = #data_name;
+				fn is_empty(data: &Self::Data) -> bool {
+					#core_crate::model_form::ModelFormPayload::<#policy_name>::supplied_fields(data).is_empty()
+				}
+				fn validated_assignments(data: Self::Data, existing: ::core::option::Option<&#model_name>) -> ::core::result::Result<::std::vec::Vec<#orm_crate::FieldAssignment>, #forms_crate::model_form::PatchError> {
+					let context = existing.map(|existing| {
+						let mut context = #legacy_data_name::<#policy_name>::empty();
+						#(context.#patch_fields = ::core::option::Option::Some(existing.#patch_fields.clone());)*
+						context
+					});
+					let cleaned = #core_crate::model_form::ModelFormPatchPayload::clean_and_validate_patch(data.__reinhardt_into_legacy(), context.as_ref())?;
+					let raw = cleaned.into_raw();
+					let mut assignments = ::std::vec::Vec::new();
+					#(if let ::core::option::Option::Some(value) = raw.#field_idents { assignments.push(#model_name::#patch_assignment_fields().assign(value)); })*
+					::core::result::Result::Ok(assignments)
 				}
 			}
 		}
@@ -6130,7 +6176,7 @@ pub(crate) fn generate_named_model_form_contract(
 		#native_adapter
 
 		#validation_cfg
-		#[doc = "A normalized named model-form payload. Parity: P2 on native and WASM targets."]
+		#[doc = "A normalized named model-form payload. Parity: P2 with native forms support; P0 (WASM-only) in core-only dependency configurations."]
 		#visibility struct #cleaned_data_name(#legacy_cleaned_name<#policy_name>);
 
 		#validation_cfg
@@ -6164,6 +6210,18 @@ pub(crate) fn generate_named_model_form_contract(
 			fn __reinhardt_into_legacy(self) -> #legacy_data_name<#policy_name> {
 				let data = self;
 				#legacy_conversion
+			}
+		}
+
+		#validation_cfg
+		impl #core_crate::model_form::ModelFormPatchPayload for #data_name {
+			type Cleaned = #cleaned_data_name;
+			type Context = Self;
+			fn clean_and_validate_patch(self, existing: ::core::option::Option<&Self>) -> ::core::result::Result<Self::Cleaned, #core_crate::model_form::PatchValidationError> {
+				let existing = existing.cloned().map(Self::__reinhardt_into_legacy);
+				#core_crate::model_form::ModelFormPatchPayload::clean_and_validate_patch(
+					self.__reinhardt_into_legacy(), existing.as_ref()
+				).map(#cleaned_data_name)
 			}
 		}
 

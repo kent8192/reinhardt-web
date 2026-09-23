@@ -67,7 +67,12 @@ serial_test = "3"
 "#,
 	)
 	.expect("write fixture build script");
-	for source in ["lib.rs", "named_validation.rs", "validation_regressions.rs"] {
+	for source in [
+		"lib.rs",
+		"named_validation.rs",
+		"patch_validation.rs",
+		"validation_regressions.rs",
+	] {
 		fs::copy(
 			fixture_dir.join("src").join(source),
 			crate_dir.path().join("src").join(source),
@@ -160,6 +165,15 @@ serial_test = "3"
 		runtime_output.contains("generated_snapshot_deferral_only_accepts_required_uploads"),
 		"WASM model macro parity fixture must execute upload deferral validation\n{runtime_output}",
 	);
+	for test_name in [
+		"patch_rejects_nonnullable_null_before_cleaning",
+		"patch_nullability_preserves_other_submissions",
+	] {
+		assert!(
+			runtime_output.contains(test_name),
+			"WASM model macro parity fixture must execute {test_name}\n{runtime_output}",
+		);
+	}
 
 	let dependency_tree = wasm_dependency_tree_command(&manifest_path)
 		.output()

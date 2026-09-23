@@ -1,0 +1,144 @@
+//! Additive update-only payload and native patch generation.
+
+use super::*;
+
+pub(super) fn payload_patch(
+	model: &Ident,
+	fields: &[FieldInfo],
+	config: &ModelFormConfig,
+	selected: Option<&[Ident]>,
+) -> TokenStream {
+	let core = get_reinhardt_core_crate();
+	let forms = get_reinhardt_forms_crate();
+	let native_cfg = if forms.is_some() {
+		quote!(#[cfg(not(all(target_family = "wasm", target_os = "unknown")))])
+	} else {
+		quote!(#[cfg(any())])
+	};
+	let enabled = if forms.is_some() {
+		quote!()
+	} else {
+		// Native validation uses the optional forms engine, as documented by
+		// ModelFormPatchPayload; core-only derives provide advisory WASM validation.
+		quote!(#[cfg(all(target_family = "wasm", target_os = "unknown"))])
+	};
+	let forms = forms.unwrap_or_else(|| quote!(::reinhardt_forms));
+	let payload = quote::format_ident!("{}ModelFormData", model);
+	let cleaned = quote::format_ident!("Cleaned{}ModelFormData", model);
+	let schema = quote::format_ident!("{}FormSchema", model);
+	let editable: Vec<_> = fields
+		.iter()
+		.filter(|field| {
+			is_model_form_editable(field, fields)
+				&& selected.is_none_or(|names| names.contains(&field.name))
+		})
+		.collect();
+	let names: Vec<_> = editable.iter().map(|field| &field.name).collect();
+	let non_optional_fields: Vec<_> = editable
+		.iter()
+		.filter(|field| !extract_option_type(&field.ty).0)
+		.map(|field| ident_to_wire_name(&field.name))
+		.collect();
+	let reject_blank_fields: Vec<_> = editable
+		.iter()
+		.filter(|field| is_string_type(&field.ty) && field.config.blank != Some(true))
+		.map(|field| {
+			let name = &field.name;
+			let wire = ident_to_wire_name(name);
+			let value = if extract_option_type(&field.ty).0 {
+				quote!(cleaned.#name.as_ref().and_then(::core::option::Option::as_ref))
+			} else {
+				quote!(cleaned.#name.as_ref())
+			};
+			quote! {
+				if #value.is_some_and(|value| value.is_empty()) {
+					errors.add(#wire, #core::validators::ValidationError::Custom("This field is required.".to_owned()));
+				}
+			}
+		})
+		.collect();
+	let validate_blank_fields = (!reject_blank_fields.is_empty()).then(|| {
+		quote! {
+			let mut errors = #core::validators::ValidationErrors::new();
+			#(#reject_blank_fields)*
+			if !errors.is_empty() {
+				return ::core::result::Result::Err(errors.into());
+			}
+		}
+	});
+	let primary_keys = editable.iter().filter(|field| field.config.primary_key).map(|field| {
+		let name = &field.name;
+		let wire = ident_to_wire_name(name);
+		quote! {
+			if self.#name.is_some() {
+				let mut errors = #core::validators::ValidationErrors::new();
+				errors.add(#wire, #core::validators::ValidationError::Custom("Primary keys cannot be patched".to_owned()));
+				return ::core::result::Result::Err(errors.into());
+			}
+		}
+	});
+	let needs_context = config.validate.is_some();
+	let validate_context = config.validate.as_ref().map(|validator| {
+		quote! {
+			if let ::core::option::Option::Some(existing) = existing {
+				let mut merged = cleaned.clone();
+				#(
+					if merged.#names.is_none() {
+						merged.#names = existing.#names.clone();
+					}
+				)*
+				#validator(&merged)?;
+			}
+		}
+	});
+	quote! {
+		#native_cfg
+		impl<P: #core::model_form::ModelFormPolicy> #payload<P> {
+			fn __reinhardt_clean_patch(mut self) -> ::core::result::Result<#cleaned<P>, #core::validators::ValidationErrors> {
+				#forms::model_form::clean_generated_patch_payload::<#schema, P, _>(&mut self)?;
+				::core::result::Result::Ok(#cleaned::from_validated_raw(self))
+			}
+		}
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		impl<P: #core::model_form::ModelFormPolicy> #payload<P> {
+			fn __reinhardt_clean_patch(self) -> ::core::result::Result<#cleaned<P>, #core::validators::ValidationErrors> {
+				self.__reinhardt_clean_and_validate(false, false, &[], ::core::option::Option::None, true)
+			}
+		}
+		#enabled
+		impl<P: #core::model_form::ModelFormPolicy> #core::model_form::ModelFormPatchPayload for #payload<P> {
+			type Cleaned = #cleaned<P>;
+			type Context = Self;
+			fn clean_and_validate_patch(self, existing: ::core::option::Option<&Self>) -> ::core::result::Result<Self::Cleaned, #core::model_form::PatchValidationError> {
+				if !self.__reinhardt_defaulted_fields.is_empty() {
+					return ::core::result::Result::Err(#core::model_form::PatchValidationError::DefaultedValues);
+				}
+				#(#primary_keys)*
+				if #needs_context && existing.is_none() {
+					return ::core::result::Result::Err(#core::model_form::PatchValidationError::ExistingValuesRequired);
+				}
+				// Enforce nullability before target-specific cleaners can coerce null.
+				let mut errors = #core::validators::ValidationErrors::new();
+				for descriptor in <#schema as #core::model_form::ModelFormSchema>::fields() {
+					if descriptor.editable
+						&& P::allows(descriptor.name)
+						&& !descriptor.nullable
+						&& !(matches!(descriptor.kind, #core::model_form::ModelFormFieldKind::Json)
+							&& (&[#(#non_optional_fields),*] as &[&str]).contains(&descriptor.name))
+						&& <Self as #core::model_form::ModelFormPayload<P>>::get_json(&self, descriptor.name)
+							.is_some_and(|value| value.is_null())
+					{
+						errors.add(descriptor.name, #core::validators::ValidationError::Custom("This field may not be null.".to_owned()));
+					}
+				}
+				if !errors.is_empty() {
+					return ::core::result::Result::Err(errors.into());
+				}
+				let cleaned = self.__reinhardt_clean_patch()?;
+				#validate_blank_fields
+				#validate_context
+				::core::result::Result::Ok(cleaned)
+			}
+		}
+	}
+}

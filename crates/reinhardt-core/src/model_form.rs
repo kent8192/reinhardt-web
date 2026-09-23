@@ -1,9 +1,14 @@
 //! Target-neutral contracts for model-backed forms.
 
+#[cfg(feature = "validators")]
+mod patch;
 mod policy;
 mod schema;
 #[cfg(feature = "validators")]
 mod validation;
+
+#[cfg(feature = "validators")]
+pub use patch::{ModelFormPatchPayload, PatchValidationError};
 
 pub use policy::{
 	AllEditableModelFields, ModelFormPayload, ModelFormPayloadError, ModelFormPolicy,
