@@ -110,7 +110,10 @@ impl IdTokenValidator {
 			SocialAuthError::InvalidIdToken(format!("JWT validation failed: {}", e))
 		})?;
 
-		let claims = token_data.claims;
+		let mut claims = token_data.claims;
+		// jsonwebtoken has verified membership against the original JWT audience
+		// claim. The public IdToken keeps a String, so expose the matched client ID.
+		claims.aud.clone_from(&self.config.audience);
 
 		// Validate nonce if provided
 		if let Some(expected_nonce) = nonce {

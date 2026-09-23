@@ -116,7 +116,7 @@ impl MockEnv {
 		})
 	}
 
-	fn sign_id_token(&self, claims: &IdToken) -> String {
+	fn sign_id_token<T: serde::Serialize>(&self, claims: &T) -> String {
 		let mut header = Header::new(Algorithm::RS256);
 		header.kid = Some(self.kid.clone());
 		let key = EncodingKey::from_rsa_pem(&self.private_pem).expect("private PEM parse");
@@ -415,6 +415,32 @@ async fn validates_well_signed_id_token(#[future] env: MockEnv) {
 	assert_eq!(validated.sub, "user-9001");
 	assert_eq!(validated.aud, audience);
 	assert_eq!(validated.iss, env.issuer());
+}
+
+#[rstest]
+#[tokio::test]
+async fn validates_array_audience_via_provider(#[future] env: MockEnv) {
+	// Arrange
+	let env = env.await;
+	let audience = "client-valid";
+	mount_discovery(&env.server, env.discovery_doc(), 1).await;
+	mount_jwks(&env.server, env.jwks_doc()).await;
+
+	let provider = GenericOidcProvider::new(build_provider_config(&env, audience))
+		.await
+		.expect("provider");
+	let mut claims = serde_json::to_value(id_token_for(&env, audience)).unwrap();
+	claims["aud"] = json!(["other-client", audience]);
+	let jwt = env.sign_id_token(&claims);
+
+	// Act
+	let validated = provider
+		.validate_id_token(&jwt, None)
+		.await
+		.expect("array audience containing the client should validate");
+
+	// Assert
+	assert_eq!(validated.aud, audience);
 }
 
 #[rstest]

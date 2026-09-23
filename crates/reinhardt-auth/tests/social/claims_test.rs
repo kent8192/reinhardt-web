@@ -2,6 +2,7 @@
 
 use reinhardt_auth::social::core::claims::{IdToken, StandardClaims};
 
+use rstest::rstest;
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -59,6 +60,44 @@ fn test_id_token_deserialize() {
 	assert_eq!(token.aud, "client_id");
 	assert_eq!(token.email, Some("user@example.com".to_string()));
 	assert_eq!(token.email_verified, Some(true));
+}
+
+#[rstest]
+#[case::single(json!("client_id"), "client_id")]
+#[case::array(json!(["first_client", "client_id"]), "first_client")]
+fn id_token_accepts_audience_shapes(#[case] audience: serde_json::Value, #[case] expected: &str) {
+	// Arrange
+	let claims = json!({
+		"sub": "user123",
+		"iss": "https://issuer.example.com",
+		"aud": audience,
+		"exp": 1735636800,
+		"iat": 1735633200,
+	});
+
+	// Act
+	let token: IdToken = serde_json::from_value(claims).unwrap();
+
+	// Assert
+	assert_eq!(token.aud, expected);
+}
+
+#[test]
+fn id_token_rejects_empty_audience_array() {
+	// Arrange
+	let claims = json!({
+		"sub": "user123",
+		"iss": "https://issuer.example.com",
+		"aud": [],
+		"exp": 1735636800,
+		"iat": 1735633200,
+	});
+
+	// Act
+	let result = serde_json::from_value::<IdToken>(claims);
+
+	// Assert
+	assert!(result.is_err());
 }
 
 #[test]
