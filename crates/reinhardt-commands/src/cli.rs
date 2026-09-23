@@ -3171,7 +3171,8 @@ fn parse_capability_cli_arguments(
 					Some("database") => MigrationStateSource::Database,
 					Some("temporary-db") => MigrationStateSource::TemporaryDb,
 					None if *check || *empty || *merge => MigrationStateSource::Files,
-					None => MigrationStateSource::TemporaryDb,
+					None if cfg!(feature = "testcontainers") => MigrationStateSource::TemporaryDb,
+					None => MigrationStateSource::Files,
 					_ => unreachable!("clap value parser rejects unsupported state sources"),
 				}
 			};
@@ -3237,6 +3238,19 @@ mod capability_cli_tests {
 		};
 		assert_eq!(selection.source, MigrationStateSource::Database);
 		assert_eq!(selection.database.as_deref(), Some("analytics"));
+	}
+
+	#[rstest]
+	fn default_migration_source_is_available_in_this_feature_set() {
+		let Ok((_, _, Some(selection))) = parse(&["manage", "makemigrations"]) else {
+			panic!("ordinary makemigrations must parse");
+		};
+		let expected = if cfg!(feature = "testcontainers") {
+			MigrationStateSource::TemporaryDb
+		} else {
+			MigrationStateSource::Files
+		};
+		assert_eq!(selection.source, expected);
 	}
 
 	#[rstest]

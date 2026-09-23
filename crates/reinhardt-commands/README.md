@@ -122,8 +122,10 @@ manage makemigrations --state-source temporary-db
 manage makemigrations --state-source database --database analytics
 ```
 
-Ordinary generation defaults to `temporary-db`. `--check`, `--empty`, and
-`--merge` are database-free; `--force-empty-state` explicitly selects empty
+Ordinary generation defaults to `temporary-db` only when the TestContainers
+feature is enabled; otherwise it uses offline migration files. The facade's
+`testcontainers` feature forwards to management commands. `--check`, `--empty`,
+and `--merge` are database-free; `--force-empty-state` explicitly selects empty
 state. These modes reject incompatible state-source arguments before settings
 load. A failed selected source never falls back to another source on the new
 entry point. `--dry-run` suppresses file writes but does not change state

@@ -211,7 +211,7 @@ di = [
   "reinhardt-tasks?/di",
 ]
 test = ["reinhardt-test", "reinhardt-pages?/testing"]
-testcontainers = ["test", "reinhardt-test/testcontainers"]
+testcontainers = ["test", "reinhardt-test/testcontainers", "reinhardt-commands?/testcontainers"]
 server-fn-test = ["test", "reinhardt-test/server-fn-test"]
 # MSW (Mock Service Worker) for WASM testing — exposes
 # `reinhardt::test::msw::MockServiceWorker` and triggers `MockableServerFn`

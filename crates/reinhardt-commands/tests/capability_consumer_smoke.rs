@@ -159,6 +159,19 @@ fn static_collection_uses_only_declared_configuration() {
 		"database-free migration check failed: {}",
 		String::from_utf8_lossy(&offline_migrations.stderr)
 	);
+	let forced_empty = invoke(
+		&binary,
+		root,
+		&["makemigrations", "--force-empty-state", "--dry-run"],
+	);
+	assert!(!forced_empty.status.success());
+	assert!(
+		String::from_utf8_lossy(&forced_empty.stderr)
+			.contains("This may create duplicate migrations!"),
+		"empty-state safety warning missing: {}",
+		String::from_utf8_lossy(&forced_empty.stderr)
+	);
+	assert!(String::from_utf8_lossy(&forced_empty.stderr).contains("No models found"));
 	let missing_alias = invoke(
 		&binary,
 		root,

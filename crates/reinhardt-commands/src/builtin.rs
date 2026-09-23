@@ -2442,13 +2442,15 @@ pub(crate) async fn execute_makemigrations_with_state(
 		// postgres_container() panics when Docker is unavailable, so the flag must
 		// be respected before attempting container startup, not as a fallback.
 		let from_db_flag = ctx.has_option("from-db");
+		if ctx.has_option("force-empty-state") {
+			ctx.warning("⚠️  Using empty state as requested (--force-empty-state)");
+			ctx.warning("This may create duplicate migrations!");
+		}
 		let from_state = if let Some(state) = prepared_state {
 			state
 		} else if is_check && !from_db_flag && !ctx.has_option("force-empty-state") {
 			build_from_state_from_files(&migrations_dir).await?
 		} else if ctx.has_option("force-empty-state") {
-			ctx.warning("⚠️  Using empty state as requested (--force-empty-state)");
-			ctx.warning("This may create duplicate migrations!");
 			ProjectState::new()
 		} else if from_db_flag {
 			// When --from-db flag is specified: prioritize database history
