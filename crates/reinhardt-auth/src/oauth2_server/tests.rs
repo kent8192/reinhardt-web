@@ -355,6 +355,21 @@ async fn wrong_pkce_cannot_issue_a_token() {
 			.unwrap_err(),
 		OAuthError::InvalidGrant
 	);
+	assert_eq!(
+		server
+			.exchange_code(
+				&code,
+				"client-a",
+				None,
+				"https://client.example/callback",
+				verifier(),
+				None,
+			)
+			.await
+			.unwrap()
+			.token_type,
+		"Bearer"
+	);
 }
 
 #[cfg(feature = "database")]
@@ -409,6 +424,11 @@ async fn postgres_single_use_and_cross_instance_replay() {
 			.unwrap()
 			.is_some()
 	);
+	let mut updated = client(ClientKind::Public);
+	updated.enabled = false;
+	second.put_client(updated).await.unwrap();
+	assert!(!first.client("client-a").await.unwrap().unwrap().enabled);
+	first.put_client(client(ClientKind::Public)).await.unwrap();
 	let code = StoredCode {
 		digest: "code-digest".into(),
 		client_id: "client-a".into(),
@@ -422,6 +442,20 @@ async fn postgres_single_use_and_cross_instance_replay() {
 		replayed: false,
 	};
 	first.put_code(code).await.unwrap();
+	assert!(matches!(
+		first
+			.redeem_code(
+				"code-digest",
+				"client-a",
+				"https://client.example/callback",
+				"wrong",
+				None,
+				1,
+			)
+			.await
+			.unwrap(),
+		CodeRedemption::Invalid
+	));
 	let pending = PendingRecord {
 		request: PendingAuthorization {
 			id: "pending".into(),
@@ -439,8 +473,22 @@ async fn postgres_single_use_and_cross_instance_replay() {
 
 	// Act: concurrent requests from distinct store instances redeem the same code.
 	let (a, b) = tokio::join!(
-		first.redeem_code("code-digest", 1),
-		second.redeem_code("code-digest", 1)
+		first.redeem_code(
+			"code-digest",
+			"client-a",
+			"https://client.example/callback",
+			"challenge",
+			None,
+			1
+		),
+		second.redeem_code(
+			"code-digest",
+			"client-a",
+			"https://client.example/callback",
+			"challenge",
+			None,
+			1
+		)
 	);
 	let outcomes = [a.unwrap(), b.unwrap()];
 	let valid = outcomes
@@ -474,6 +522,125 @@ async fn postgres_single_use_and_cross_instance_replay() {
 	assert!(pending.is_some());
 	assert!(consumed.is_none());
 	assert!(first.token("token-digest").await.unwrap().unwrap().revoked);
+	first
+		.put_token(StoredToken {
+			digest: "user-token".into(),
+			client_id: "client-a".into(),
+			principal: TokenPrincipal::User("user-a".into()),
+			scopes: vec![],
+			audience: "https://api.example".into(),
+			issued_at: 1,
+			expires_at: i64::MAX,
+			revoked: false,
+			code_digest: None,
+		})
+		.await
+		.unwrap();
+	assert_eq!(second.revoke_user("user-a").await.unwrap(), 1);
+	assert!(first.token("user-token").await.unwrap().unwrap().revoked);
+	first
+		.put_token(StoredToken {
+			digest: "client-token".into(),
+			client_id: "client-a".into(),
+			principal: TokenPrincipal::Client("client-a".into()),
+			scopes: vec![],
+			audience: "https://api.example".into(),
+			issued_at: 1,
+			expires_at: i64::MAX,
+			revoked: false,
+			code_digest: None,
+		})
+		.await
+		.unwrap();
+	assert_eq!(second.revoke_client("client-a").await.unwrap(), 1);
+	assert!(first.token("client-token").await.unwrap().unwrap().revoked);
+	first
+		.put_pending(
+			"expired-pending",
+			PendingRecord {
+				request: PendingAuthorization {
+					id: "expired-pending".into(),
+					client_id: "client-a".into(),
+					redirect_uri: "https://client.example/callback".into(),
+					scopes: vec![],
+					audience: "https://api.example".into(),
+					code_challenge: "challenge".into(),
+					state: None,
+				},
+				session_digest: "digest".into(),
+				expires_at: 2,
+			},
+		)
+		.await
+		.unwrap();
+	first
+		.put_code(StoredCode {
+			digest: "expired-code".into(),
+			client_id: "client-a".into(),
+			redirect_uri: "https://client.example/callback".into(),
+			challenge: "challenge".into(),
+			user_id: "user-a".into(),
+			scopes: vec![],
+			audience: "https://api.example".into(),
+			expires_at: 2,
+			redeemed: false,
+			replayed: false,
+		})
+		.await
+		.unwrap();
+	first
+		.put_token(StoredToken {
+			digest: "expired-token".into(),
+			client_id: "client-a".into(),
+			principal: TokenPrincipal::Client("client-a".into()),
+			scopes: vec![],
+			audience: "https://api.example".into(),
+			issued_at: 1,
+			expires_at: 2,
+			revoked: false,
+			code_digest: None,
+		})
+		.await
+		.unwrap();
+	first
+		.put_code(StoredCode {
+			digest: "retained-code".into(),
+			client_id: "client-a".into(),
+			redirect_uri: "https://client.example/callback".into(),
+			challenge: "challenge".into(),
+			user_id: "user-a".into(),
+			scopes: vec![],
+			audience: "https://api.example".into(),
+			expires_at: 2,
+			redeemed: true,
+			replayed: false,
+		})
+		.await
+		.unwrap();
+	first
+		.put_token(StoredToken {
+			digest: "live-linked-token".into(),
+			client_id: "client-a".into(),
+			principal: TokenPrincipal::User("user-a".into()),
+			scopes: vec![],
+			audience: "https://api.example".into(),
+			issued_at: 1,
+			expires_at: i64::MAX,
+			revoked: false,
+			code_digest: Some("retained-code".into()),
+		})
+		.await
+		.unwrap();
+	assert_eq!(second.purge_expired(2).await.unwrap(), 3);
+	assert!(
+		first
+			.take_pending("expired-pending")
+			.await
+			.unwrap()
+			.is_none()
+	);
+	assert!(first.token("expired-token").await.unwrap().is_none());
+	assert!(first.token("token-digest").await.unwrap().is_some());
 
 	// Roll back through Reinhardt's migration executor, not a test-only SQL path.
 	executor

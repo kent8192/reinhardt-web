@@ -23,6 +23,7 @@ use url::Url;
 
 /// OAuth error returned by the protocol core.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum OAuthError {
 	/// A parameter or request was malformed.
 	InvalidRequest,
@@ -81,6 +82,7 @@ pub enum TokenPrincipal {
 
 /// Protocol lifetimes and published endpoint URLs.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct OAuthServerConfig {
 	/// Absolute HTTPS issuer, without a trailing slash.
 	pub issuer: String,
@@ -392,7 +394,7 @@ impl OAuthServer {
 		}
 		let secret = if client.kind == ClientKind::Confidential {
 			let raw = random_secret();
-			client.secret_hash = Some(hash_password(&raw)?);
+			client.secret_hash = Some(hash_password(&raw).await?);
 			Some(raw)
 		} else {
 			client.secret_hash = None;
@@ -411,7 +413,7 @@ impl OAuthServer {
 			return Err(OAuthError::InvalidClient);
 		}
 		let raw = random_secret();
-		client.secret_hash = Some(hash_password(&raw)?);
+		client.secret_hash = Some(hash_password(&raw).await?);
 		self.store
 			.put_client(client)
 			.await
@@ -432,7 +434,7 @@ impl OAuthServer {
 			.put_resource(ResourceRegistration {
 				resource_id: resource_id.to_owned(),
 				audience: audience.to_owned(),
-				secret_hash: hash_password(&raw)?,
+				secret_hash: hash_password(&raw).await?,
 				enabled: true,
 			})
 			.await
@@ -448,7 +450,7 @@ impl OAuthServer {
 			.map_err(|_| OAuthError::ServerError)?
 			.ok_or(OAuthError::InvalidClient)?;
 		let raw = random_secret();
-		resource.secret_hash = hash_password(&raw)?;
+		resource.secret_hash = hash_password(&raw).await?;
 		self.store
 			.put_resource(resource)
 			.await
@@ -597,22 +599,24 @@ impl OAuthServer {
 		if !client.authorization_code {
 			return Err(OAuthError::UnauthorizedClient);
 		}
+		if !valid_verifier(verifier) {
+			return Err(OAuthError::InvalidGrant);
+		}
 		let redeemed = self
 			.store
-			.redeem_code(&digest(code), now())
+			.redeem_code(
+				&digest(code),
+				client_id,
+				redirect_uri,
+				&challenge(verifier),
+				resource,
+				now(),
+			)
 			.await
 			.map_err(|_| OAuthError::ServerError)?;
 		let CodeRedemption::Valid(record) = redeemed else {
 			return Err(OAuthError::InvalidGrant);
 		};
-		if record.client_id != client_id
-			|| record.redirect_uri != redirect_uri
-			|| !valid_verifier(verifier)
-			|| challenge(verifier) != record.challenge
-			|| resource.is_some_and(|r| r != record.audience)
-		{
-			return Err(OAuthError::InvalidGrant);
-		}
 		self.issue(
 			&client,
 			TokenPrincipal::User(record.user_id),
@@ -748,7 +752,7 @@ impl OAuthServer {
 			.await
 			.map_err(|_| OAuthError::ServerError)?
 			.ok_or(OAuthError::InvalidClient)?;
-		if !resource.enabled || !verify_password(secret, &resource.secret_hash) {
+		if !resource.enabled || !verify_password(secret, &resource.secret_hash).await? {
 			return Err(OAuthError::InvalidClient);
 		}
 		Ok(self
@@ -798,12 +802,15 @@ impl OAuthServer {
 		let client = self.active_client(id).await?;
 		match client.kind {
 			ClientKind::Public if secret.is_none() => Ok(client),
-			ClientKind::Confidential
-				if secret
-					.zip(client.secret_hash.as_deref())
-					.is_some_and(|(raw, hash)| verify_password(raw, hash)) =>
-			{
-				Ok(client)
+			ClientKind::Confidential => {
+				let (Some(raw), Some(hash)) = (secret, client.secret_hash.as_deref()) else {
+					return Err(OAuthError::InvalidClient);
+				};
+				if verify_password(raw, hash).await? {
+					Ok(client)
+				} else {
+					Err(OAuthError::InvalidClient)
+				}
 			}
 			_ => Err(OAuthError::InvalidClient),
 		}
@@ -960,16 +967,27 @@ fn now() -> i64 {
 		.unwrap_or_default()
 		.as_secs() as i64
 }
-fn hash_password(value: &str) -> Result<String, OAuthError> {
-	Argon2::default()
-		.hash_password(value.as_bytes(), &SaltString::generate(&mut OsRng))
-		.map(|hash| hash.to_string())
-		.map_err(|_| OAuthError::ServerError)
-}
-fn verify_password(value: &str, hash: &str) -> bool {
-	PasswordHash::new(hash).is_ok_and(|parsed| {
+async fn hash_password(value: &str) -> Result<String, OAuthError> {
+	let value = value.to_owned();
+	tokio::task::spawn_blocking(move || {
 		Argon2::default()
-			.verify_password(value.as_bytes(), &parsed)
-			.is_ok()
+			.hash_password(value.as_bytes(), &SaltString::generate(&mut OsRng))
+			.map(|hash| hash.to_string())
+			.map_err(|_| OAuthError::ServerError)
 	})
+	.await
+	.map_err(|_| OAuthError::ServerError)?
+}
+async fn verify_password(value: &str, hash: &str) -> Result<bool, OAuthError> {
+	let value = value.to_owned();
+	let hash = hash.to_owned();
+	tokio::task::spawn_blocking(move || {
+		PasswordHash::new(&hash).is_ok_and(|parsed| {
+			Argon2::default()
+				.verify_password(value.as_bytes(), &parsed)
+				.is_ok()
+		})
+	})
+	.await
+	.map_err(|_| OAuthError::ServerError)
 }

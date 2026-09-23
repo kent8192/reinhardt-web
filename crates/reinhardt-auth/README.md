@@ -644,6 +644,10 @@ Secrets are Argon2 hashes at rest. Codes and tokens are SHA-256 lookup digests.
 Resource servers authenticate separately to introspection. Use
 `PostgresOAuthStore::migration()` in the host's Reinhardt migration graph before
 serving requests; enable `reinhardt-db/postgres` in the host that runs it.
+Schedule `PostgresOAuthStore::purge_expired(now)` from a host maintenance job,
+passing the current UNIX time in seconds. It deletes expired pending requests,
+authorization codes, and tokens in one transaction and returns the deleted row count.
+Codes referenced by unexpired tokens remain until those tokens can be removed.
 Production construction uses `OAuthServer::for_production` with
 a PostgreSQL store and a host-provided shared `OAuthRateLimiter`. The
 `for_development` constructor accepts an in-memory store and limiter.

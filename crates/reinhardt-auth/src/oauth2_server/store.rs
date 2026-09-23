@@ -154,8 +154,16 @@ pub trait OAuthServerStore: Send + Sync {
 	async fn take_pending(&self, id: &str) -> Result<Option<PendingRecord>, String>;
 	/// Save an authorization code.
 	async fn put_code(&self, code: StoredCode) -> Result<(), String>;
-	/// Atomically redeem a code and revoke linked tokens on replay.
-	async fn redeem_code(&self, digest: &str, now: i64) -> Result<CodeRedemption, String>;
+	/// Atomically redeem a code only when all bindings match; revoke linked tokens on replay.
+	async fn redeem_code(
+		&self,
+		digest: &str,
+		client_id: &str,
+		redirect_uri: &str,
+		challenge: &str,
+		resource: Option<&str>,
+		now: i64,
+	) -> Result<CodeRedemption, String>;
 	/// Save access token metadata.
 	async fn put_token(&self, token: StoredToken) -> Result<(), String>;
 	/// Look up opaque token metadata.
@@ -264,11 +272,26 @@ impl OAuthServerStore for MemoryOAuthStore {
 			.insert(code.digest.clone(), code);
 		Ok(())
 	}
-	async fn redeem_code(&self, digest: &str, now: i64) -> Result<CodeRedemption, String> {
+	async fn redeem_code(
+		&self,
+		digest: &str,
+		client_id: &str,
+		redirect_uri: &str,
+		challenge: &str,
+		resource: Option<&str>,
+		now: i64,
+	) -> Result<CodeRedemption, String> {
 		let mut state = self.state.lock().await;
 		let Some(code) = state.codes.get_mut(digest) else {
 			return Ok(CodeRedemption::Invalid);
 		};
+		if code.client_id != client_id
+			|| code.redirect_uri != redirect_uri
+			|| code.challenge != challenge
+			|| resource.is_some_and(|r| r != code.audience)
+		{
+			return Ok(CodeRedemption::Invalid);
+		}
 		if code.redeemed {
 			code.replayed = true;
 			for token in state
