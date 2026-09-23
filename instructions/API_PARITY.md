@@ -17,6 +17,10 @@ The level applies per symbol. A type can be P1 while selected methods are P0.
 
 | API | Native behavior | WASM behavior |
 |---|---|---|
+| `QueryHandle::is_invalidated` | Reports whether an explicit invalidation still needs a successful completion, independently of hydration staleness. | Reports the same reactive invalidation state. |
+| `WebSocketEventError` | Represents the same payload-free error categories. | Represents the same payload-free error categories. |
+| `WebSocketSubscriptionOptions` | Stores the nonzero frame-size limit. | Stores the same limit for event decoding. |
+| `WebSocketSubscriptionOptions::new` | Constructs options from a nonzero byte limit. | Constructs the same options. |
 | `page!` controlled `bind:` directive and `control_binding` support types | Renders signal state during SSR and synchronizes values in native component tests. | Adopts the live control property during hydration, then synchronizes user and signal writes. |
 
 Both targets apply browser text-fallback sanitization for unknown input types
@@ -28,6 +32,11 @@ existing binding.
 | API | Native behavior | WASM behavior |
 |---|---|---|
 | `UnifiedRouter::server` | Invokes the closure and stores native server routes. | Type-checks and drops the closure without invoking it. |
+| `WebSocketHandle::subscribe` | Returns an inert local guard without network or callback effects. | Decodes and delivers each browser frame in the live owner scope. |
+| `WebSocketHandle::subscribe_json` | Returns an inert local guard without network or callback effects. | Decodes and delivers JSON text events. |
+| `WebSocketSubscription` | Owns inert local cleanup without network or callback effects. | Revokes delivery when dropped. |
+| `use_websocket_subscription` | Retains an inert guard for local scope cleanup without external registration or I/O. | Owns typed event delivery until scope disposal. |
+| `use_websocket_json_subscription` | Retains an inert guard for local scope cleanup without external registration or I/O. | Owns JSON event delivery until scope disposal. |
 | `UnifiedRouter::client` | Type-checks and drops the closure without invoking it. | Invokes the closure and stores client routes. |
 | `FormPageSource` | Builds the page structure and remains inert with respect to browser submission. | Builds the page structure with the existing control-binding and mutation lifecycle. |
 | `#[url_patterns]` | When `cfg(server)` is enabled, retains the complete `.server(...)` configuration and its native handler references; otherwise uses the inert/erased arm. | Erases the complete `.server(...)` argument before browser-WASM name resolution while preserving the shared builder chain. |
