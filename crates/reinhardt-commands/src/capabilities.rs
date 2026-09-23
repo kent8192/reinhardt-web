@@ -118,7 +118,7 @@ impl SettingsView for SelectedDatabase {
 
 	fn resolve(settings: &ScopedSettings, alias: Option<&str>) -> Result<Self, BuildError> {
 		let alias = alias.unwrap_or("default");
-		if crate::database_selector::alias_looks_sensitive(alias) {
+		if alias_looks_sensitive(alias) {
 			return Err(BuildError::Deserialization(
 				"database alias must be a name, not a connection URL".to_owned(),
 			));
@@ -512,11 +512,15 @@ pub trait CapabilityProvider: Send + Sync {
 }
 
 fn safe_alias(alias: &str) -> &str {
-	if crate::database_selector::alias_looks_sensitive(alias) {
+	if alias_looks_sensitive(alias) {
 		"[REDACTED]"
 	} else {
 		alias
 	}
+}
+
+fn alias_looks_sensitive(alias: &str) -> bool {
+	alias.contains("://") || alias.contains('@')
 }
 
 /// Opt-in custom command with pure CLI metadata and explicit requirements.

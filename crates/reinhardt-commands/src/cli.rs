@@ -916,10 +916,8 @@ impl fmt::Debug for Commands {
 	}
 }
 
-#[cfg(feature = "migrations")]
 struct RedactedStringOption<'a>(&'a Option<String>);
 
-#[cfg(feature = "migrations")]
 impl fmt::Debug for RedactedStringOption<'_> {
 	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self.0 {
