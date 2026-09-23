@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.15...reinhardt-commands@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(commands)* add unified buildstatic packaging
+- *(staticfiles)* unify pages and collected asset publication
+
+### Documentation
+
+- update version references to v0.3.17
+- *(commands)* explain manifest selection and publication validation
+
+### Fixed
+
+- *(commands)* honor selected and required static asset generations
+- *(commands)* stream owned file ranges in standalone runserver
+- *(commands)* preserve admin routes under manifest serving
+- *(commands)* share manifest selection and admin routing across runservers
+- *(commands)* reject static URL aliases that shadow logical inputs
+- *(staticfiles)* address publication and browser review findings
+- *(commands)* expose the management asset entrypoint selector
+- *(staticfiles)* resolve actionable publication review comments
+- *(staticfiles)* address manifest and serving regressions
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+- auto-fix fmt and clippy
+
+### Testing
+
+- *(commands)* account for registered assets in rebuild checks
+- *(commands)* account for registered static assets in repeat builds
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.14...reinhardt-commands@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation

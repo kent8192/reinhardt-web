@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.15...reinhardt-web@v0.4.0-alpha.16) - 2026-09-23
+
+### Documentation
+
+- add release announcement(s)
+- remove Tachyon Inc. attribution
+- preserve release announcement history
+- *(agents)* gate external publication by destination policy
+- *(commands)* explain manifest selection and publication validation
+- *(staticfiles)* clarify manifest serving edge cases
+
+### Fixed
+
+- *(macros)* reject aliased nested URL builders
+- *(db)* reload get-or-create winners after alternate unique races
+- *(macros)* track wrapped router binding patterns
+- *(routing)* scope nested URL router analysis
+- *(routing)* harden URL pattern parity checks
+- *(routing)* track nested builder aliases
+- *(routing)* track match arm router aliases
+- *(routing)* track destructured router aliases
+- *(routing)* validate if-let router aliases
+- *(routing)* preserve aliases across nested blocks
+- *(routing)* cover while aliases and opaque builders
+- *(routing)* track loop aliases and preserved macros
+- *(routing)* cover match blocks and function scopes
+- *(routing)* harden URL pattern scope analysis
+- *(routing)* reject typed and opaque nested server builders
+- *(routing)* cover alias flow in URL pattern analysis
+- *(routing)* cover additional URL pattern alias flows
+- *(routing)* cover control-flow router aliases
+- *(ci)* build develop release baselines with compatible Smithy types
+- *(macros)* limit companion length validators to text fields
+- *(commands)* constrain shell parser dependencies to compatible versions
+- *(ci)* fetch WASM dependencies before offline integration fixtures
+- *(ci)* resolve WASM fixture dependencies without a tracked lockfile
+- *(deps)* cover rand 0.10 patch updates in duplicate policy
+- *(staticfiles)* prioritize static mounts over passthrough routes
+- *(staticfiles)* reject templates that reverse stylesheet order
+- *(middleware)* preserve existing representation etags
+- *(testkit)* consume owned file response bodies in APIClient
+- *(staticfiles)* verify retained files before publication activation
+- *(commands)* honor selected and required static asset generations
+- *(commands)* stream owned file ranges in standalone runserver
+- *(staticfiles)* preserve explicit document-relative runtime imports
+- *(middleware)* log owned file response lengths
+- *(staticfiles)* rewrite HTML prefetch dependencies
+- *(staticfiles)* reject competing legacy publication manifests
+- *(staticfiles)* honor HTML fallback quality values
+- *(staticfiles)* ignore unsupported multipart ranges
+- *(commands)* preserve admin routes under manifest serving
+- *(staticfiles)* normalize encoded mounts and encoding quality parameters
+- *(commands)* share manifest selection and admin routing across runservers
+- *(staticfiles)* relocate CSS image-set string candidates
+- *(staticfiles)* encode v2 paths in legacy template integration
+- *(middleware)* retain representation metadata on conditional responses
+- *(commands)* reject static URL aliases that shadow logical inputs
+- *(staticfiles)* address publication and browser review findings
+- *(commands)* expose the management asset entrypoint selector
+- *(staticfiles)* resolve actionable publication review comments
+- *(staticfiles)* address manifest and serving regressions
+- *(ci)* constrain Rust shell dependencies in release baselines
+
+### Maintenance
+
+- *(wasm)* install protoc for the native browser harness
+- *(sync)* merge main into develop/0.4.0
+- *(deps)* allow the required synstructure 0.13 line
+- auto-fix fmt and clippy
+- auto-fix fmt and clippy
+- merge develop/0.4.0 into unified static assets
+
+### Testing
+
+- *(db)* standardize race recovery tests
+- *(pages)* include bootstrap in SSR timeout expectation
+- *(commands)* account for registered assets in rebuild checks
+- *(commands)* account for registered static assets in repeat builds
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.14...reinhardt-web@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation
