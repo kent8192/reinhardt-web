@@ -3,11 +3,13 @@
 //! The host owns login and consent. This module validates protocol requests,
 //! persists the pending decision and issues audience-bound opaque tokens.
 
+mod http;
 #[cfg(feature = "database")]
 mod postgres;
 mod protocol;
 mod store;
 
+pub use http::{OAuthBrowserSession, OAuthConsentPresenter, OAuthEndpoint, OAuthHandler};
 #[cfg(feature = "database")]
 pub use postgres::PostgresOAuthStore;
 pub use protocol::{
