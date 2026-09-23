@@ -68,7 +68,7 @@ fn static_collection_uses_only_declared_configuration() {
 		.current_dir(root)
 		.env("CARGO_TARGET_DIR", &target)
 		.env("CARGO_BUILD_JOBS", "2")
-		.args(["build", "--quiet", "--bin", "manage"])
+		.args(["build", "--quiet", "--bin", "capability-consumer-manage"])
 		.output()
 		.expect("build consumer management binary");
 	assert!(
@@ -76,7 +76,7 @@ fn static_collection_uses_only_declared_configuration() {
 		"consumer failed to build: {}",
 		String::from_utf8_lossy(&build.stderr)
 	);
-	let binary = target.join("debug/manage");
+	let binary = target.join("debug/capability-consumer-manage");
 
 	let collected = invoke(&binary, root, &["collectstatic", "--no-input"]);
 	assert!(
@@ -101,6 +101,30 @@ fn static_collection_uses_only_declared_configuration() {
 	assert!(!invalid.status.success());
 	assert!(String::from_utf8_lossy(&invalid.stderr).contains("static"));
 	fs::write(&config, &original).unwrap();
+
+	let offline_migrations = invoke(&binary, root, &["makemigrations", "--check"]);
+	assert!(
+		offline_migrations.status.success(),
+		"database-free migration check failed: {}",
+		String::from_utf8_lossy(&offline_migrations.stderr)
+	);
+	let missing_alias = invoke(
+		&binary,
+		root,
+		&[
+			"makemigrations",
+			"--state-source",
+			"database",
+			"--database",
+			"missing",
+		],
+	);
+	assert!(!missing_alias.status.success());
+	assert!(
+		String::from_utf8_lossy(&missing_alias.stderr).contains("core.databases.missing"),
+		"unexpected selected-database rejection: {}",
+		String::from_utf8_lossy(&missing_alias.stderr)
+	);
 
 	let runtime = invoke(&binary, root, &["runserver"]);
 	assert!(!runtime.status.success());
