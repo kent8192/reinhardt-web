@@ -57,12 +57,14 @@ struct Natural {
 	label: String,
 }
 
-#[model(app_label = "patch_test", info = false, form(name = EditJson, fields(config)))]
+#[model(app_label = "patch_test", info = false, form(name = EditJson, fields(config, optional_config)))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct JsonRecord {
 	#[field(primary_key = true)]
 	id: Option<i64>,
 	config: serde_json::Value,
+	#[field(null = false)]
+	optional_config: Option<serde_json::Value>,
 }
 
 #[rstest]
@@ -75,6 +77,24 @@ fn patch_distinguishes_json_null_from_sql_null() {
 	assert_eq!(
 		serde_json::to_value(cleaned.into_raw()).unwrap(),
 		json!({"config": null})
+	);
+}
+
+#[rstest]
+fn patch_rejects_sql_null_for_non_nullable_optional_json() {
+	// Arrange
+	let data: EditJsonData = serde_json::from_value(json!({"optional_config": null})).unwrap();
+	// Act
+	let result = data.clean_and_validate_patch(None);
+	// Assert
+	let Err(PatchValidationError::Validation(errors)) = result else {
+		panic!("non-nullable optional JSON must reject a SQL NULL patch");
+	};
+	assert_eq!(
+		errors.field_errors().get("optional_config"),
+		Some(&vec![reinhardt_core::validators::ValidationError::Custom(
+			"This field may not be null.".to_owned()
+		)])
 	);
 }
 

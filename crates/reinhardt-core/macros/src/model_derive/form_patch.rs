@@ -34,6 +34,11 @@ pub(super) fn payload_patch(
 		})
 		.collect();
 	let names: Vec<_> = editable.iter().map(|field| &field.name).collect();
+	let non_optional_fields: Vec<_> = editable
+		.iter()
+		.filter(|field| !extract_option_type(&field.ty).0)
+		.map(|field| ident_to_wire_name(&field.name))
+		.collect();
 	let reject_blank_fields: Vec<_> = editable
 		.iter()
 		.filter(|field| is_string_type(&field.ty) && field.config.blank != Some(true))
@@ -118,7 +123,8 @@ pub(super) fn payload_patch(
 					if descriptor.editable
 						&& P::allows(descriptor.name)
 						&& !descriptor.nullable
-						&& !matches!(descriptor.kind, #core::model_form::ModelFormFieldKind::Json)
+						&& !(matches!(descriptor.kind, #core::model_form::ModelFormFieldKind::Json)
+							&& (&[#(#non_optional_fields),*] as &[&str]).contains(&descriptor.name))
 						&& <Self as #core::model_form::ModelFormPayload<P>>::get_json(&self, descriptor.name)
 							.is_some_and(|value| value.is_null())
 					{

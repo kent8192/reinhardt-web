@@ -25,7 +25,10 @@ Only submitted, allowlisted fields are written. Omission preserves existing
 values; explicit null clears nullable columns; false, zero, and permitted empty
 strings remain assignments. Empty patches return `PatchError::EmptyPatch`.
 Explicit null is rejected before field cleaning when `null = false`, including
-`Option<T>` fields with a create default or `blank = true`.
+`Option<T>` fields with a create default or `blank = true`. For a non-nullable
+non-optional JSON field, a submitted JSON `null` is a JSON value, not a SQL
+NULL clear. An `Option<serde_json::Value>` field with `null = false` still
+rejects an explicit null.
 Authorization and same-field concurrency predicates belong to the caller.
 
 See the [model-form update guide](../reinhardt-pages/docs/model_forms.md#validated-patches-on-scoped-querysets)

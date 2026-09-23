@@ -671,7 +671,7 @@ include a key, `Some(key)`, and `&cluster`; the existing conversion panics for
 | Submitted update value | Meaning |
 | --- | --- |
 | Omitted field | No assignment; do not evaluate its create default |
-| Explicit `null` | SQL NULL for a nullable field; rejected for non-nullable fields |
+| Explicit `null` | SQL NULL for a nullable field; rejected for non-nullable fields, except that a non-optional JSON field retains JSON `null` |
 | `false` or `0` | Supplied value, never omission |
 | Empty string | Retained if field validation permits blank; otherwise a validation error |
 | Whitespace | Existing normalization runs; a trimmed empty string follows the preceding rule |

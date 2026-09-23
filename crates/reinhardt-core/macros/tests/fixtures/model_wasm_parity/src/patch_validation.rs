@@ -1,13 +1,14 @@
 //! Patch nullability must be independent of create defaults and blank permission.
 
 use reinhardt::model;
+use json as serde_json;
 use serde::{Deserialize, Serialize};
 
 fn unused_create_default() -> String {
 	panic!("patch validation must not evaluate create defaults")
 }
 
-#[model(app_label = "patch_nulls", info = false, form(name = EditNulls, fields(blank_text, defaulted_text, enabled, count, nullable)))]
+#[model(app_label = "patch_nulls", info = false, form(name = EditNulls, fields(blank_text, defaulted_text, enabled, count, nullable, config, optional_config)))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct NullRecord {
 	#[field(primary_key = true)]
@@ -22,6 +23,9 @@ struct NullRecord {
 	count: Option<i64>,
 	#[field(blank = true, max_length = 64)]
 	nullable: Option<String>,
+	config: serde_json::Value,
+	#[field(null = false)]
+	optional_config: Option<serde_json::Value>,
 }
 
 #[cfg(test)]
@@ -36,6 +40,7 @@ mod tests {
 	#[case::defaulted_text("defaulted_text")]
 	#[case::boolean("enabled")]
 	#[case::integer("count")]
+	#[case::optional_json("optional_config")]
 	#[cfg_attr(
 		all(target_family = "wasm", target_os = "unknown"),
 		wasm_bindgen_test::wasm_bindgen_test
@@ -61,6 +66,7 @@ mod tests {
 	#[rstest]
 	#[case::omitted(json::json!({}))]
 	#[case::nullable_null(json::json!({"nullable": null}))]
+	#[case::json_null(json::json!({"config": null}))]
 	#[case::allowed_blank(json::json!({"blank_text": ""}))]
 	#[case::defaulted_value(json::json!({"defaulted_text": "updated"}))]
 	#[case::false_value(json::json!({"enabled": false}))]
