@@ -580,6 +580,52 @@ async fn mounted_http_handlers_expose_protocol_and_registered_cors() {
 		.await
 		.unwrap();
 	assert_eq!(rejected.status, StatusCode::FORBIDDEN);
+	let invalid_code_form = url::form_urlencoded::Serializer::new(String::new())
+		.append_pair("grant_type", "authorization_code")
+		.append_pair("client_id", "client-a")
+		.append_pair("code", "unused")
+		.append_pair("redirect_uri", "https://client.example/callback")
+		.finish();
+	let invalid_code = router
+		.handle(
+			Request::builder()
+				.method(Method::POST)
+				.uri("/oauth/token")
+				.header("Content-Type", "application/x-www-form-urlencoded")
+				.header("Origin", "https://client.example")
+				.body(Bytes::from(invalid_code_form))
+				.build()
+				.unwrap(),
+		)
+		.await
+		.unwrap();
+	assert_eq!(invalid_code.status, StatusCode::BAD_REQUEST);
+	assert_eq!(
+		invalid_code
+			.headers
+			.get("access-control-allow-origin")
+			.unwrap(),
+		"https://client.example"
+	);
+	assert_eq!(
+		serde_json::from_slice::<serde_json::Value>(&invalid_code.body).unwrap()["error"],
+		"invalid_request"
+	);
+	for (uri, method, allowed) in [
+		("/oauth/token", Method::GET, "POST"),
+		(
+			"/.well-known/oauth-authorization-server",
+			Method::POST,
+			"GET",
+		),
+	] {
+		let response = router
+			.handle(Request::builder().uri(uri).method(method).build().unwrap())
+			.await
+			.unwrap();
+		assert_eq!(response.status, StatusCode::METHOD_NOT_ALLOWED);
+		assert_eq!(response.headers.get("allow").unwrap(), allowed);
+	}
 
 	let auth_query = url::form_urlencoded::Serializer::new(String::new())
 		.append_pair("response_type", "code")
@@ -668,6 +714,75 @@ async fn mounted_http_handlers_expose_protocol_and_registered_cors() {
 		.unwrap();
 	assert_eq!(revoked.status, StatusCode::OK);
 	assert!(server.token_info(access).await.unwrap().is_none());
+}
+
+#[rstest]
+#[tokio::test]
+async fn lowercase_basic_scheme_authenticates_confidential_client() {
+	use base64::{Engine as _, engine::general_purpose::STANDARD};
+	use bytes::Bytes;
+	use hyper::{Method, StatusCode};
+	use reinhardt_http::{Handler, Request};
+
+	let (server, secret) = setup(ClientKind::Confidential).await;
+	let handler = OAuthHandler::new(Arc::new(server), OAuthEndpoint::Token);
+	let credentials = STANDARD.encode(format!("client-a:{}", secret.unwrap()));
+	let response = handler
+		.handle(
+			Request::builder()
+				.method(Method::POST)
+				.uri("/oauth/token")
+				.header("Content-Type", "application/x-www-form-urlencoded")
+				.header("Authorization", format!("basic {credentials}"))
+				.body(Bytes::from_static(b"grant_type=client_credentials"))
+				.build()
+				.unwrap(),
+		)
+		.await
+		.unwrap();
+	assert_eq!(response.status, StatusCode::OK);
+}
+
+struct CaptureLimiter(Arc<tokio::sync::Mutex<Vec<String>>>);
+#[async_trait]
+impl OAuthRateLimiter for CaptureLimiter {
+	async fn allow(&self, key: &str) -> bool {
+		self.0.lock().await.push(key.to_owned());
+		true
+	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn rate_limit_uses_client_ip_from_trusted_proxy() {
+	use hyper::StatusCode;
+	use reinhardt_http::{Handler, Request, TrustedProxies};
+	use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+	let keys = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+	let server = OAuthServer::for_development(
+		config(),
+		Arc::new(MemoryOAuthStore::new()),
+		Arc::new(SimpleUserRepository),
+		Arc::new(CaptureLimiter(keys.clone())),
+	)
+	.unwrap();
+	let proxy: IpAddr = Ipv4Addr::new(10, 0, 0, 1).into();
+	let request = Request::builder()
+		.uri("/.well-known/oauth-authorization-server")
+		.remote_addr(SocketAddr::new(proxy, 8080))
+		.header("X-Forwarded-For", "203.0.113.42")
+		.header("X-Forwarded-Proto", "https")
+		.build()
+		.unwrap();
+	request.set_trusted_proxies(TrustedProxies::new(vec![proxy]));
+	assert!(request.is_secure());
+	let response = OAuthHandler::new(Arc::new(server), OAuthEndpoint::Metadata)
+		.handle(request)
+		.await
+		.unwrap();
+	assert_eq!(response.status, StatusCode::OK);
+	assert_eq!(keys.lock().await.as_slice(), &["Metadata:203.0.113.42"]);
 }
 
 #[derive(Clone)]
