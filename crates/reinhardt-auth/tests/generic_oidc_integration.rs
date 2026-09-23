@@ -431,6 +431,7 @@ async fn validates_array_audience_via_provider(#[future] env: MockEnv) {
 		.expect("provider");
 	let mut claims = serde_json::to_value(id_token_for(&env, audience)).unwrap();
 	claims["aud"] = json!(["other-client", audience]);
+	claims["azp"] = json!(audience);
 	let jwt = env.sign_id_token(&claims);
 
 	// Act

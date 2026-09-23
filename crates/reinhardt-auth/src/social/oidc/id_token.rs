@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use jsonwebtoken::{Algorithm, Validation, decode, decode_header};
+use serde_json::Value;
 
 use super::jwks::JwksCache;
 use crate::social::core::{IdToken, SocialAuthError};
@@ -63,7 +64,8 @@ impl IdTokenValidator {
 		Self { jwks_cache, config }
 	}
 
-	/// Validates an ID token
+	/// Validates an ID token, including its audience and authorized party (`azp`).
+	/// Tokens with multiple audiences must name the configured client ID in `azp`.
 	///
 	/// # Arguments
 	///
@@ -106,13 +108,37 @@ impl IdTokenValidator {
 		validation.leeway = self.config.clock_skew as u64;
 
 		// Decode and validate token
-		let token_data = decode::<IdToken>(id_token, &decoding_key, &validation).map_err(|e| {
+		let token_data = decode::<Value>(id_token, &decoding_key, &validation).map_err(|e| {
 			SocialAuthError::InvalidIdToken(format!("JWT validation failed: {}", e))
 		})?;
 
-		let mut claims = token_data.claims;
-		// jsonwebtoken has verified membership against the original JWT audience
-		// claim. The public IdToken keeps a String, so expose the matched client ID.
+		// Keep the signed audience shape until the authorized party has been checked.
+		// IdToken's public String field otherwise discards all but the first audience.
+		let raw_claims = token_data.claims;
+		let multiple_audiences = raw_claims
+			.get("aud")
+			.and_then(Value::as_array)
+			.is_some_and(|audiences| audiences.len() > 1);
+		match raw_claims.get("azp") {
+			Some(Value::String(authorized_party)) if authorized_party == &self.config.audience => {}
+			Some(_) => {
+				return Err(SocialAuthError::InvalidIdToken(
+					"ID token authorized party does not match the client ID".to_string(),
+				));
+			}
+			None if multiple_audiences => {
+				return Err(SocialAuthError::InvalidIdToken(
+					"ID token with multiple audiences is missing azp".to_string(),
+				));
+			}
+			None => {}
+		}
+
+		let mut claims: IdToken = serde_json::from_value(raw_claims).map_err(|e| {
+			SocialAuthError::InvalidIdToken(format!("Invalid ID token claims: {}", e))
+		})?;
+		// jsonwebtoken has verified membership against the original JWT audience.
+		// The public IdToken keeps a String, so expose the matched client ID.
 		claims.aud.clone_from(&self.config.audience);
 
 		// Validate nonce if provided
