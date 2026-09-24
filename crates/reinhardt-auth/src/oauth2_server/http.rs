@@ -108,7 +108,7 @@ impl OAuthHandler {
 			.begin_authorization(input.clone(), &binding)
 			.await
 		{
-			Ok(pending) => presenter.present(request, pending).await,
+			Ok(pending) => presenter.present(request, pending).await.map(no_store),
 			Err(error) => {
 				if let Some(location) = self
 					.server
@@ -145,11 +145,15 @@ impl OAuthHandler {
 			Ok(v) => v,
 			Err(e) => {
 				return self
-					.registered_origin(oauth_error(e, StatusCode::UNAUTHORIZED), &request)
+					.registered_origin(oauth_error(e, error_status(e)), &request)
 					.await;
 			}
 		};
 		let (client_id, secret) = credentials;
+		let cors_origin = match self.cors_origin(&request, &client_id).await {
+			Ok(origin) => origin,
+			Err(error) => return oauth_error(error, error_status(error)),
+		};
 		let response = match params.get("grant_type").map(String::as_str) {
 			Some("authorization_code")
 				if !["code", "redirect_uri", "code_verifier"]
@@ -194,16 +198,9 @@ impl OAuthHandler {
 		};
 		let response = match response {
 			Ok(token) => json_response(StatusCode::OK, json!(token)),
-			Err(error) => oauth_error(
-				error,
-				if error == OAuthError::InvalidClient {
-					StatusCode::UNAUTHORIZED
-				} else {
-					StatusCode::BAD_REQUEST
-				},
-			),
+			Err(error) => oauth_error(error, error_status(error)),
 		};
-		self.cors(response, &request, &client_id).await
+		apply_cors(response, cors_origin.as_deref())
 	}
 	async fn revocation_request(&self, request: Request) -> Response {
 		if request.method != Method::POST {
@@ -223,7 +220,7 @@ impl OAuthHandler {
 			Ok(v) => v,
 			Err(e) => {
 				return self
-					.registered_origin(oauth_error(e, StatusCode::UNAUTHORIZED), &request)
+					.registered_origin(oauth_error(e, error_status(e)), &request)
 					.await;
 			}
 		};
@@ -237,22 +234,19 @@ impl OAuthHandler {
 				)
 				.await;
 		}
+		let cors_origin = match self.cors_origin(&request, &client_id).await {
+			Ok(origin) => origin,
+			Err(error) => return oauth_error(error, error_status(error)),
+		};
 		let response = match self
 			.server
 			.revoke(token, &client_id, secret.as_deref())
 			.await
 		{
 			Ok(()) => no_store(Response::new(StatusCode::OK)),
-			Err(error) => oauth_error(
-				error,
-				if error == OAuthError::InvalidClient {
-					StatusCode::UNAUTHORIZED
-				} else {
-					StatusCode::BAD_REQUEST
-				},
-			),
+			Err(error) => oauth_error(error, error_status(error)),
 		};
-		self.cors(response, &request, &client_id).await
+		apply_cors(response, cors_origin.as_deref())
 	}
 	async fn introspection_request(&self, request: Request) -> Response {
 		if request.method != Method::POST {
@@ -334,22 +328,28 @@ impl OAuthHandler {
 			no_store(Response::new(StatusCode::FORBIDDEN))
 		}
 	}
-	async fn cors(&self, response: Response, request: &Request, client_id: &str) -> Response {
+	async fn cors_origin(
+		&self,
+		request: &Request,
+		client_id: &str,
+	) -> Result<Option<String>, OAuthError> {
 		let Some(origin) = request.headers.get("origin").and_then(|h| h.to_str().ok()) else {
-			return response;
+			return Ok(None);
 		};
-		let Ok(Some(client)) = self.server.client(client_id).await else {
-			return response;
+		let Some(client) = self.server.client(client_id).await? else {
+			return Ok(None);
 		};
 		if client.kind == super::store::ClientKind::Public
 			&& client.browser_origins.iter().any(|o| o == origin)
 		{
-			response
-				.with_header("Access-Control-Allow-Origin", origin)
-				.with_header("Vary", "Origin")
+			Ok(Some(origin.to_owned()))
 		} else {
-			response
+			Ok(None)
 		}
+	}
+	async fn cors(&self, response: Response, request: &Request, client_id: &str) -> Response {
+		let origin = self.cors_origin(request, client_id).await.unwrap_or(None);
+		apply_cors(response, origin.as_deref())
 	}
 }
 #[async_trait]
@@ -368,7 +368,17 @@ impl Handler for OAuthHandler {
 			client_ip.map_or_else(|| "unknown".to_owned(), |ip| ip.to_string())
 		);
 		if !self.server.allow(&key).await {
-			return Ok(no_store(Response::new(StatusCode::TOO_MANY_REQUESTS)));
+			let response = no_store(Response::new(StatusCode::TOO_MANY_REQUESTS));
+			return Ok(
+				if matches!(
+					self.endpoint,
+					OAuthEndpoint::Token | OAuthEndpoint::Revocation | OAuthEndpoint::Metadata
+				) {
+					self.registered_origin(response, &request).await
+				} else {
+					response
+				},
+			);
 		}
 		if request.method == Method::OPTIONS
 			&& matches!(
@@ -384,6 +394,35 @@ impl Handler for OAuthHandler {
 			OAuthEndpoint::Introspection => self.introspection_request(request).await,
 			OAuthEndpoint::Metadata => self.metadata_request(request).await,
 		})
+	}
+}
+fn apply_cors(response: Response, origin: Option<&str>) -> Response {
+	match origin {
+		Some(origin) => response
+			.with_header("Access-Control-Allow-Origin", origin)
+			.with_header("Vary", "Origin"),
+		None => response,
+	}
+}
+fn error_status(error: OAuthError) -> StatusCode {
+	match error {
+		OAuthError::InvalidClient => StatusCode::UNAUTHORIZED,
+		OAuthError::ServerError => StatusCode::INTERNAL_SERVER_ERROR,
+		_ => StatusCode::BAD_REQUEST,
+	}
+}
+
+#[cfg(test)]
+mod status_tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	#[case(OAuthError::InvalidRequest, StatusCode::BAD_REQUEST)]
+	#[case(OAuthError::InvalidClient, StatusCode::UNAUTHORIZED)]
+	#[case(OAuthError::ServerError, StatusCode::INTERNAL_SERVER_ERROR)]
+	fn oauth_errors_use_their_http_status(#[case] error: OAuthError, #[case] expected: StatusCode) {
+		assert_eq!(error_status(error), expected);
 	}
 }
 fn parse_params(bytes: &[u8]) -> Result<HashMap<String, String>, OAuthError> {

@@ -2,8 +2,8 @@
 
 use super::protocol::TokenPrincipal;
 use super::store::{
-	ClientRegistration, CodeRedemption, OAuthServerStore, PendingRecord, ResourceRegistration,
-	StoredCode, StoredToken,
+	ClientRegistration, CodeRedemption, CodeRedemptionRequest, OAuthServerStore, PendingRecord,
+	ResourceRegistration, StoredCode, StoredToken, token_matches_code,
 };
 use async_trait::async_trait;
 use reinhardt_db::migrations::{Migration, Operation};
@@ -12,7 +12,7 @@ use reinhardt_query::prelude::{
 	QueryStatementBuilder, Value,
 };
 use serde::Serialize;
-use sqlx::{PgPool, types::Json};
+use sqlx::{PgPool, Postgres, Transaction, types::Json};
 
 /// OAuth state store shared by PostgreSQL-backed server instances.
 #[derive(Clone)]
@@ -117,6 +117,54 @@ fn update_flag(table: &'static str, field: &'static str, key: &'static str, valu
 		.and_where(Expr::col(Alias::new(key).into_iden()).eq(value))
 		.build(PostgresQueryBuilder)
 		.0
+}
+
+async fn insert_token(
+	tx: &mut Transaction<'_, Postgres>,
+	token: &StoredToken,
+) -> Result<(), String> {
+	let user_id = match &token.principal {
+		TokenPrincipal::User(id) => Some(id.as_str()),
+		TokenPrincipal::Client(_) => None,
+	};
+	let (sql, _) = Query::insert()
+		.into_table(Alias::new("oauth_server_tokens"))
+		.columns([
+			"digest",
+			"payload",
+			"client_id",
+			"user_id",
+			"code_digest",
+			"expires_at",
+			"revoked",
+		])
+		.values(vec![
+			token.digest.clone().into(),
+			json_value(token)?,
+			token.client_id.clone().into(),
+			Value::String(user_id.map(|id| Box::new(id.to_owned()))),
+			Value::String(token.code_digest.clone().map(Box::new)),
+			token.expires_at.into(),
+			token.revoked.into(),
+		])?
+		.build(PostgresQueryBuilder);
+	let mut query = sqlx::query(&sql)
+		.bind(&token.digest)
+		.bind(Json(token))
+		.bind(&token.client_id);
+	if let Some(user_id) = user_id {
+		query = query.bind(user_id);
+	}
+	if let Some(code_digest) = &token.code_digest {
+		query = query.bind(code_digest);
+	}
+	query
+		.bind(token.expires_at)
+		.bind(token.revoked)
+		.execute(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	Ok(())
 }
 #[async_trait]
 impl OAuthServerStore for PostgresOAuthStore {
@@ -240,18 +288,46 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.map_err(|e| e.to_string())?;
 		Ok(())
 	}
-	async fn take_pending(&self, id: &str) -> Result<Option<PendingRecord>, String> {
+	async fn take_pending(
+		&self,
+		id: &str,
+		session_digest: &str,
+		oidc: bool,
+		now: i64,
+	) -> Result<Option<PendingRecord>, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let (select_sql, _) = Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new("oauth_server_pending"))
+			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
+			.lock_exclusive()
+			.build(PostgresQueryBuilder);
+		let row: Option<(Json<PendingRecord>,)> = sqlx::query_as(&select_sql)
+			.bind(id)
+			.fetch_optional(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		let Some((Json(pending),)) = row else {
+			return Ok(None);
+		};
+		if pending.session_digest != session_digest
+			|| pending.oidc != oidc
+			|| pending.expires_at <= now
+		{
+			return Ok(None);
+		}
 		let (sql, _) = Query::delete()
 			.from_table(Alias::new("oauth_server_pending"))
 			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
 			.returning(["payload"])
 			.build(PostgresQueryBuilder);
-		let row: Option<(Json<PendingRecord>,)> = sqlx::query_as(&sql)
+		sqlx::query(&sql)
 			.bind(id)
-			.fetch_optional(&self.pool)
+			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		Ok(row.map(|(Json(pending),)| pending))
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(Some(pending))
 	}
 	async fn put_code(&self, code: StoredCode) -> Result<(), String> {
 		let (sql, _) = Query::insert()
@@ -274,15 +350,33 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.map_err(|e| e.to_string())?;
 		Ok(())
 	}
-	async fn redeem_code(
+	async fn code(&self, digest: &str) -> Result<Option<StoredCode>, String> {
+		let (sql, _) = Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new("oauth_server_codes"))
+			.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
+			.build(PostgresQueryBuilder);
+		let row: Option<(Json<StoredCode>,)> = sqlx::query_as(&sql)
+			.bind(digest)
+			.fetch_optional(&self.pool)
+			.await
+			.map_err(|e| e.to_string())?;
+		Ok(row.map(|(Json(code),)| code))
+	}
+	async fn redeem_code_and_store_token(
 		&self,
-		digest: &str,
-		client_id: &str,
-		redirect_uri: &str,
-		challenge: &str,
-		resource: Option<&str>,
-		now: i64,
+		request: CodeRedemptionRequest<'_>,
 	) -> Result<CodeRedemption, String> {
+		let CodeRedemptionRequest {
+			digest,
+			client_id,
+			redirect_uri,
+			challenge,
+			resource,
+			expect_oidc,
+			now,
+			token,
+		} = request;
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
 		let (sql, _) = Query::select()
 			.columns(["payload", "redeemed", "expires_at"])
@@ -295,117 +389,65 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.fetch_optional(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		let result = match row {
-			None => CodeRedemption::Invalid,
-			Some((Json(code), _, _))
-				if code.client_id != client_id
-					|| code.redirect_uri != redirect_uri
-					|| code.challenge != challenge
-					|| resource.is_some_and(|r| r != code.audience) =>
-			{
-				CodeRedemption::Invalid
-			}
-			Some((_, true, _)) => {
-				sqlx::query(&update_flag(
-					"oauth_server_codes",
-					"replayed",
-					"digest",
-					digest,
-				))
-				.bind(digest)
-				.execute(&mut *tx)
-				.await
-				.map_err(|e| e.to_string())?;
-				sqlx::query(&update_flag(
-					"oauth_server_tokens",
-					"revoked",
-					"code_digest",
-					digest,
-				))
-				.bind(digest)
-				.execute(&mut *tx)
-				.await
-				.map_err(|e| e.to_string())?;
-				CodeRedemption::Replay
-			}
-			Some((_, false, expiry)) if expiry <= now => CodeRedemption::Invalid,
-			Some((Json(mut code), false, _)) => {
-				sqlx::query(&update_flag(
-					"oauth_server_codes",
-					"redeemed",
-					"digest",
-					digest,
-				))
-				.bind(digest)
-				.execute(&mut *tx)
-				.await
-				.map_err(|e| e.to_string())?;
-				code.redeemed = true;
-				CodeRedemption::Valid(code)
-			}
+		let Some((Json(mut code), redeemed, expiry)) = row else {
+			return Ok(CodeRedemption::Invalid);
 		};
-		tx.commit().await.map_err(|e| e.to_string())?;
-		Ok(result)
-	}
-	async fn put_token(&self, mut token: StoredToken) -> Result<(), String> {
-		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		if let Some(code_digest) = &token.code_digest {
-			let (sql, _) = Query::select()
-				.column(Alias::new("replayed"))
-				.from(Alias::new("oauth_server_codes"))
-				.and_where(Expr::col(Alias::new("digest").into_iden()).eq(code_digest.as_str()))
-				.lock_exclusive()
-				.build(PostgresQueryBuilder);
-			let row: Option<(bool,)> = sqlx::query_as(&sql)
-				.bind(code_digest)
-				.fetch_optional(&mut *tx)
-				.await
-				.map_err(|e| e.to_string())?;
-			if row.is_none_or(|(replayed,)| replayed) {
-				token.revoked = true;
-			}
+		if code.client_id != client_id
+			|| code.redirect_uri != redirect_uri
+			|| code.challenge != challenge
+			|| resource.is_some_and(|r| r != code.audience)
+			|| code.oidc != expect_oidc
+		{
+			return Ok(CodeRedemption::Invalid);
 		}
-		let user_id = match &token.principal {
-			TokenPrincipal::User(id) => Some(id.as_str()),
-			TokenPrincipal::Client(_) => None,
-		};
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oauth_server_tokens"))
-			.columns([
+		if redeemed {
+			sqlx::query(&update_flag(
+				"oauth_server_codes",
+				"replayed",
 				"digest",
-				"payload",
-				"client_id",
-				"user_id",
-				"code_digest",
-				"expires_at",
-				"revoked",
-			])
-			.values(vec![
-				token.digest.clone().into(),
-				json_value(&token)?,
-				token.client_id.clone().into(),
-				Value::String(user_id.map(|id| Box::new(id.to_owned()))),
-				Value::String(token.code_digest.clone().map(Box::new)),
-				token.expires_at.into(),
-				token.revoked.into(),
-			])?
-			.build(PostgresQueryBuilder);
-		let mut query = sqlx::query(&sql)
-			.bind(&token.digest)
-			.bind(Json(&token))
-			.bind(&token.client_id);
-		if let Some(user_id) = user_id {
-			query = query.bind(user_id);
-		}
-		if let Some(code_digest) = &token.code_digest {
-			query = query.bind(code_digest);
-		}
-		query
-			.bind(token.expires_at)
-			.bind(token.revoked)
+				digest,
+			))
+			.bind(digest)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
+			sqlx::query(&update_flag(
+				"oauth_server_tokens",
+				"revoked",
+				"code_digest",
+				digest,
+			))
+			.bind(digest)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+			tx.commit().await.map_err(|e| e.to_string())?;
+			return Ok(CodeRedemption::Replay);
+		}
+		if expiry <= now || !token_matches_code(&token, &code) {
+			return Ok(CodeRedemption::Invalid);
+		}
+		sqlx::query(&update_flag(
+			"oauth_server_codes",
+			"redeemed",
+			"digest",
+			digest,
+		))
+		.bind(digest)
+		.execute(&mut *tx)
+		.await
+		.map_err(|e| e.to_string())?;
+		code.redeemed = true;
+		insert_token(&mut tx, &token).await?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(CodeRedemption::Valid(code))
+	}
+	async fn put_token(&self, token: StoredToken) -> Result<(), String> {
+		if token.code_digest.is_some() {
+			return Err("code-linked tokens require atomic redemption".to_owned());
+		}
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		insert_token(&mut tx, &token).await?;
 		tx.commit().await.map_err(|e| e.to_string())?;
 		Ok(())
 	}
@@ -456,6 +498,32 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.await
 			.map_err(|e| e.to_string())?;
 		Ok(result.rows_affected())
+	}
+	async fn retire_user(&self, user_id: &str) -> Result<(), String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let (sql, _) = Query::update()
+			.table(Alias::new("oauth_server_codes"))
+			.value_expr(Alias::new("redeemed"), Expr::cust("TRUE"))
+			.value_expr(Alias::new("replayed"), Expr::cust("TRUE"))
+			.and_where(Expr::cust_with_values("payload->>'user_id' = ?", [user_id]))
+			.build(PostgresQueryBuilder);
+		sqlx::query(&sql)
+			.bind(user_id)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		let (sql, _) = Query::update()
+			.table(Alias::new("oauth_server_tokens"))
+			.value_expr(Alias::new("revoked"), Expr::cust("TRUE"))
+			.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
+			.build(PostgresQueryBuilder);
+		sqlx::query(&sql)
+			.bind(user_id)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(())
 	}
 	async fn revoke_client(&self, client_id: &str) -> Result<u64, String> {
 		let (sql, _) = Query::update()

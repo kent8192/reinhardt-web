@@ -1,8 +1,8 @@
 //! Authorization, issuance, and inspection rules.
 
 use super::store::{
-	ClientKind, ClientRegistration, CodeRedemption, OAuthServerStore, PendingRecord,
-	ResourceRegistration, StoredCode, StoredToken,
+	ClientKind, ClientRegistration, CodeRedemption, CodeRedemptionRequest, OAuthServerStore,
+	PendingRecord, ResourceRegistration, StoredCode, StoredToken,
 };
 use crate::repository::UserRepository;
 use argon2::Argon2;
@@ -130,7 +130,10 @@ impl OAuthServerConfig {
 			pending_ttl: Duration::from_secs(600),
 			token_ttl: Duration::from_secs(3600),
 		};
-		if config.issuer.starts_with("http://") {
+		if Url::parse(&config.issuer)
+			.map_err(|_| OAuthError::InvalidRequest)?
+			.scheme() != "https"
+		{
 			return Err(OAuthError::InvalidRequest);
 		}
 		config.validate()?;
@@ -154,7 +157,10 @@ impl OAuthServerConfig {
 			pending_ttl: Duration::from_secs(600),
 			token_ttl: Duration::from_secs(3600),
 		};
-		if !config.issuer.starts_with("http://") {
+		if Url::parse(&config.issuer)
+			.map_err(|_| OAuthError::InvalidRequest)?
+			.scheme() != "http"
+		{
 			return Err(OAuthError::InvalidRequest);
 		}
 		config.validate()?;
@@ -358,7 +364,10 @@ impl OAuthServer {
 		limiter: Arc<L>,
 	) -> Result<Self, OAuthError> {
 		config.validate()?;
-		if config.issuer.starts_with("http://") {
+		if Url::parse(&config.issuer)
+			.map_err(|_| OAuthError::InvalidRequest)?
+			.scheme() != "https"
+		{
 			return Err(OAuthError::InvalidRequest);
 		}
 		Ok(Self {
@@ -656,16 +665,10 @@ impl OAuthServer {
 		}
 		let pending = self
 			.store
-			.take_pending(pending_id)
+			.take_pending(pending_id, &digest(browser_session), oidc, now())
 			.await
 			.map_err(|_| OAuthError::ServerError)?
 			.ok_or(OAuthError::InvalidGrant)?;
-		if pending.expires_at <= now()
-			|| pending.session_digest != digest(browser_session)
-			|| pending.oidc != oidc
-		{
-			return Err(OAuthError::InvalidGrant);
-		}
 		let request = pending.request;
 		let client = self.active_client(&request.client_id).await?;
 		if !client.authorization_code
@@ -784,36 +787,56 @@ impl OAuthServer {
 		if !valid_verifier(verifier) {
 			return Err(OAuthError::InvalidGrant);
 		}
+		let code_digest = digest(code);
+		let record = self
+			.store
+			.code(&code_digest)
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+			.ok_or(OAuthError::InvalidGrant)?;
+		if record.oidc != expect_oidc {
+			return Err(OAuthError::InvalidGrant);
+		}
+		self.active_audience(&record.audience).await?;
+		let raw = random_secret();
+		let issued_at = now();
+		let token = StoredToken {
+			digest: digest(&raw),
+			client_id: client.client_id.clone(),
+			principal: TokenPrincipal::User(record.user_id.clone()),
+			scopes: record.scopes.clone(),
+			audience: record.audience.clone(),
+			issued_at,
+			expires_at: issued_at + ttl.as_secs() as i64,
+			revoked: false,
+			code_digest: Some(code_digest.clone()),
+		};
 		let redeemed = self
 			.store
-			.redeem_code(
-				&digest(code),
+			.redeem_code_and_store_token(CodeRedemptionRequest {
+				digest: &code_digest,
 				client_id,
 				redirect_uri,
-				&challenge(verifier),
+				challenge: &challenge(verifier),
 				resource,
-				now(),
-			)
+				expect_oidc,
+				now: now(),
+				token,
+			})
 			.await
 			.map_err(|_| OAuthError::ServerError)?;
 		let CodeRedemption::Valid(record) = redeemed else {
 			return Err(OAuthError::InvalidGrant);
 		};
-		if record.oidc != expect_oidc {
-			return Err(OAuthError::InvalidGrant);
-		}
-		let user_id = record.user_id.clone();
-		let token = self
-			.issue(
-				&client,
-				TokenPrincipal::User(record.user_id),
-				record.scopes,
-				record.audience,
-				Some(record.digest),
-				ttl,
-			)
-			.await?;
-		Ok((token, user_id))
+		Ok((
+			IssuedToken {
+				access_token: raw,
+				token_type: "Bearer",
+				expires_in: ttl.as_secs(),
+				scope: record.scopes.join(" "),
+			},
+			record.user_id,
+		))
 	}
 	/// Issue a client-credentials token for a confidential client.
 	pub async fn client_credentials(
@@ -958,6 +981,12 @@ impl OAuthServer {
 	pub async fn revoke_user(&self, user_id: &str) -> Result<u64, OAuthError> {
 		self.store
 			.revoke_user(user_id)
+			.await
+			.map_err(|_| OAuthError::ServerError)
+	}
+	pub(crate) async fn retire_user(&self, user_id: &str) -> Result<(), OAuthError> {
+		self.store
+			.retire_user(user_id)
 			.await
 			.map_err(|_| OAuthError::ServerError)
 	}

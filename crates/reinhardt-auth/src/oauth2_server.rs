@@ -36,8 +36,8 @@ pub use protocol::{
 	TokenPrincipal,
 };
 pub use store::{
-	ClientKind, ClientRegistration, CodeRedemption, MemoryOAuthStore, OAuthServerStore,
-	PendingRecord, ResourceRegistration, StoredCode, StoredToken,
+	ClientKind, ClientRegistration, CodeRedemption, CodeRedemptionRequest, MemoryOAuthStore,
+	OAuthServerStore, PendingRecord, ResourceRegistration, StoredCode, StoredToken,
 };
 
 #[cfg(test)]

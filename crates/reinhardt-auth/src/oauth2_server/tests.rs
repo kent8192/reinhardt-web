@@ -4,6 +4,7 @@ use super::protocol::challenge;
 use super::*;
 use crate::repository::SimpleUserRepository;
 use async_trait::async_trait;
+use base64::Engine as _;
 use rstest::rstest;
 use std::sync::Arc;
 
@@ -12,6 +13,59 @@ struct AllowAll;
 impl OAuthRateLimiter for AllowAll {
 	async fn allow(&self, _: &str) -> bool {
 		true
+	}
+}
+
+struct DenyAll;
+#[async_trait]
+impl OAuthRateLimiter for DenyAll {
+	async fn allow(&self, _: &str) -> bool {
+		false
+	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn rate_limited_browser_endpoints_expose_429_to_registered_origins() {
+	use hyper::StatusCode;
+	use reinhardt_http::{Handler, Request};
+	let server = Arc::new(
+		OAuthServer::for_development(
+			config(),
+			Arc::new(MemoryOAuthStore::new()),
+			Arc::new(SimpleUserRepository),
+			Arc::new(DenyAll),
+		)
+		.unwrap(),
+	);
+	server
+		.register_resource("resource-a", "https://api.example")
+		.await
+		.unwrap();
+	server
+		.register_client(client(ClientKind::Public))
+		.await
+		.unwrap();
+	for endpoint in [
+		OAuthEndpoint::Token,
+		OAuthEndpoint::Revocation,
+		OAuthEndpoint::Metadata,
+	] {
+		let response = OAuthHandler::new(server.clone(), endpoint)
+			.handle(
+				Request::builder()
+					.uri("/oauth")
+					.header("Origin", "https://client.example")
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(response.status, StatusCode::TOO_MANY_REQUESTS);
+		assert_eq!(
+			response.headers.get("access-control-allow-origin").unwrap(),
+			"https://client.example"
+		);
 	}
 }
 
@@ -42,6 +96,17 @@ fn metadata_location_uses_rfc8414_path_insertion() {
 	assert_eq!(
 		nested.metadata_url().unwrap(),
 		"https://auth.example/.well-known/oauth-authorization-server/tenant"
+	);
+	assert_eq!(
+		OAuthServerConfig::new(
+			"HTTP://localhost",
+			"http://localhost/authorize",
+			"http://localhost/token",
+			"http://localhost/revoke",
+			"http://localhost/introspect",
+		)
+		.unwrap_err(),
+		OAuthError::InvalidRequest
 	);
 }
 fn server() -> OAuthServer {
@@ -375,6 +440,86 @@ async fn wrong_pkce_cannot_issue_a_token() {
 	);
 }
 
+#[rstest]
+#[tokio::test]
+async fn disabled_resource_does_not_consume_authorization_code() {
+	let store = Arc::new(MemoryOAuthStore::new());
+	let server = OAuthServer::for_development(
+		config(),
+		store.clone(),
+		Arc::new(SimpleUserRepository),
+		Arc::new(AllowAll),
+	)
+	.unwrap();
+	server
+		.register_resource("resource-a", "https://api.example")
+		.await
+		.unwrap();
+	server
+		.register_client(client(ClientKind::Public))
+		.await
+		.unwrap();
+	let pending = server
+		.begin_authorization(request("https://client.example/callback"), "session")
+		.await
+		.unwrap();
+	let redirect = server
+		.complete_authorization(
+			&pending.id,
+			"session",
+			AuthorizationDecision::Approve {
+				user_id: "user-a".into(),
+				scopes: vec!["read".into()],
+			},
+		)
+		.await
+		.unwrap();
+	let code = url::Url::parse(&redirect)
+		.unwrap()
+		.query_pairs()
+		.find(|(key, _)| key == "code")
+		.unwrap()
+		.1
+		.into_owned();
+	let resource = |enabled| ResourceRegistration {
+		resource_id: "resource-a".into(),
+		audience: "https://api.example".into(),
+		secret_hash: "unused".into(),
+		enabled,
+	};
+	store.put_resource(resource(false)).await.unwrap();
+	assert_eq!(
+		server
+			.exchange_code(
+				&code,
+				"client-a",
+				None,
+				"https://client.example/callback",
+				verifier(),
+				None
+			)
+			.await
+			.unwrap_err(),
+		OAuthError::InvalidTarget
+	);
+	store.put_resource(resource(true)).await.unwrap();
+	assert_eq!(
+		server
+			.exchange_code(
+				&code,
+				"client-a",
+				None,
+				"https://client.example/callback",
+				verifier(),
+				None
+			)
+			.await
+			.unwrap()
+			.token_type,
+		"Bearer"
+	);
+}
+
 #[cfg(feature = "database")]
 #[rstest]
 #[tokio::test]
@@ -446,16 +591,29 @@ async fn postgres_single_use_and_cross_instance_replay() {
 		replayed: false,
 	};
 	first.put_code(code).await.unwrap();
+	let redemption = |challenge: &'static str, token_digest: &str| CodeRedemptionRequest {
+		digest: "code-digest",
+		client_id: "client-a",
+		redirect_uri: "https://client.example/callback",
+		challenge,
+		resource: None,
+		expect_oidc: false,
+		now: 1,
+		token: StoredToken {
+			digest: token_digest.into(),
+			client_id: "client-a".into(),
+			principal: TokenPrincipal::User("user-a".into()),
+			scopes: vec!["read".into()],
+			audience: "https://api.example".into(),
+			issued_at: 1,
+			expires_at: i64::MAX,
+			revoked: false,
+			code_digest: Some("code-digest".into()),
+		},
+	};
 	assert!(matches!(
 		first
-			.redeem_code(
-				"code-digest",
-				"client-a",
-				"https://client.example/callback",
-				"wrong",
-				None,
-				1,
-			)
+			.redeem_code_and_store_token(redemption("wrong", "wrong-token"))
 			.await
 			.unwrap(),
 		CodeRedemption::Invalid
@@ -475,25 +633,25 @@ async fn postgres_single_use_and_cross_instance_replay() {
 		expires_at: i64::MAX,
 	};
 	first.put_pending("pending", pending).await.unwrap();
+	assert!(
+		second
+			.take_pending("pending", "other-session", false, 1)
+			.await
+			.unwrap()
+			.is_none()
+	);
+	assert!(
+		second
+			.take_pending("pending", "session-digest", true, 1)
+			.await
+			.unwrap()
+			.is_none()
+	);
 
 	// Act: concurrent requests from distinct store instances redeem the same code.
 	let (a, b) = tokio::join!(
-		first.redeem_code(
-			"code-digest",
-			"client-a",
-			"https://client.example/callback",
-			"challenge",
-			None,
-			1
-		),
-		second.redeem_code(
-			"code-digest",
-			"client-a",
-			"https://client.example/callback",
-			"challenge",
-			None,
-			1
-		)
+		first.redeem_code_and_store_token(redemption("challenge", "first-token")),
+		second.redeem_code_and_store_token(redemption("challenge", "second-token"))
 	);
 	let outcomes = [a.unwrap(), b.unwrap()];
 	let valid = outcomes
@@ -504,29 +662,88 @@ async fn postgres_single_use_and_cross_instance_replay() {
 		.iter()
 		.filter(|o| matches!(o, CodeRedemption::Replay))
 		.count();
-	let pending = second.take_pending("pending").await.unwrap();
-	let consumed = first.take_pending("pending").await.unwrap();
-	second
-		.put_token(StoredToken {
-			digest: "token-digest".into(),
-			client_id: "client-a".into(),
-			principal: TokenPrincipal::User("user-a".into()),
-			scopes: vec!["read".into()],
-			audience: "https://api.example".into(),
-			issued_at: 1,
-			expires_at: i64::MAX,
-			revoked: false,
-			code_digest: Some("code-digest".into()),
-		})
+	let pending = second
+		.take_pending("pending", "session-digest", false, 1)
 		.await
 		.unwrap();
-
-	// Assert: the replay flag prevents a token written after the replay from becoming active.
+	let consumed = first
+		.take_pending("pending", "session-digest", false, 1)
+		.await
+		.unwrap();
+	// Assert: only the winning exchange stores a token, and replay revokes it.
 	assert_eq!(valid, 1);
 	assert_eq!(replay, 1);
 	assert!(pending.is_some());
 	assert!(consumed.is_none());
-	assert!(first.token("token-digest").await.unwrap().unwrap().revoked);
+	let issued_digest = if first.token("first-token").await.unwrap().is_some() {
+		"first-token"
+	} else {
+		"second-token"
+	};
+	assert!(first.token(issued_digest).await.unwrap().unwrap().revoked);
+	let atomic_code = StoredCode {
+		digest: "atomic-code".into(),
+		client_id: "client-a".into(),
+		redirect_uri: "https://client.example/callback".into(),
+		challenge: "challenge".into(),
+		user_id: "user-a".into(),
+		scopes: vec!["read".into()],
+		audience: "https://api.example".into(),
+		oidc: false,
+		expires_at: i64::MAX,
+		redeemed: false,
+		replayed: false,
+	};
+	first.put_code(atomic_code).await.unwrap();
+	let make_token = |digest: &str| StoredToken {
+		digest: digest.into(),
+		client_id: "client-a".into(),
+		principal: TokenPrincipal::User("user-a".into()),
+		scopes: vec!["read".into()],
+		audience: "https://api.example".into(),
+		issued_at: 1,
+		expires_at: i64::MAX,
+		revoked: false,
+		code_digest: Some("atomic-code".into()),
+	};
+	let redemption = |token_digest: &str| CodeRedemptionRequest {
+		digest: "atomic-code",
+		client_id: "client-a",
+		redirect_uri: "https://client.example/callback",
+		challenge: "challenge",
+		resource: None,
+		expect_oidc: false,
+		now: 1,
+		token: make_token(token_digest),
+	};
+	assert!(
+		first
+			.redeem_code_and_store_token(redemption(issued_digest))
+			.await
+			.is_err()
+	);
+	assert!(matches!(
+		second
+			.redeem_code_and_store_token(redemption("atomic-token"))
+			.await
+			.unwrap(),
+		CodeRedemption::Valid(_)
+	));
+	assert!(!first.token("atomic-token").await.unwrap().unwrap().revoked);
+	assert!(matches!(
+		first
+			.redeem_code_and_store_token(redemption("unused-token"))
+			.await
+			.unwrap(),
+		CodeRedemption::Replay
+	));
+	assert!(second.token("atomic-token").await.unwrap().unwrap().revoked);
+	assert!(
+		second
+			.put_token(redemption("late-token").token)
+			.await
+			.is_err()
+	);
 	first
 		.put_token(StoredToken {
 			digest: "user-token".into(),
@@ -620,35 +837,47 @@ async fn postgres_single_use_and_cross_instance_replay() {
 			audience: "https://api.example".into(),
 			oidc: false,
 			expires_at: 2,
-			redeemed: true,
+			redeemed: false,
 			replayed: false,
 		})
 		.await
 		.unwrap();
-	first
-		.put_token(StoredToken {
-			digest: "live-linked-token".into(),
-			client_id: "client-a".into(),
-			principal: TokenPrincipal::User("user-a".into()),
-			scopes: vec![],
-			audience: "https://api.example".into(),
-			issued_at: 1,
-			expires_at: i64::MAX,
-			revoked: false,
-			code_digest: Some("retained-code".into()),
-		})
-		.await
-		.unwrap();
+	assert!(matches!(
+		first
+			.redeem_code_and_store_token(CodeRedemptionRequest {
+				digest: "retained-code",
+				client_id: "client-a",
+				redirect_uri: "https://client.example/callback",
+				challenge: "challenge",
+				resource: None,
+				expect_oidc: false,
+				now: 1,
+				token: StoredToken {
+					digest: "live-linked-token".into(),
+					client_id: "client-a".into(),
+					principal: TokenPrincipal::User("user-a".into()),
+					scopes: vec![],
+					audience: "https://api.example".into(),
+					issued_at: 1,
+					expires_at: i64::MAX,
+					revoked: false,
+					code_digest: Some("retained-code".into()),
+				}
+			})
+			.await
+			.unwrap(),
+		CodeRedemption::Valid(_)
+	));
 	assert_eq!(second.purge_expired(2).await.unwrap(), 3);
 	assert!(
 		first
-			.take_pending("expired-pending")
+			.take_pending("expired-pending", "digest", false, 2)
 			.await
 			.unwrap()
 			.is_none()
 	);
 	assert!(first.token("expired-token").await.unwrap().is_none());
-	assert!(first.token("token-digest").await.unwrap().is_some());
+	assert!(first.token(issued_digest).await.unwrap().is_some());
 
 	// Roll back through Reinhardt's migration executor, not a test-only SQL path.
 	executor
@@ -786,6 +1015,32 @@ async fn mounted_http_handlers_expose_protocol_and_registered_cors() {
 		serde_json::from_slice::<serde_json::Value>(&invalid_code.body).unwrap()["error"],
 		"invalid_request"
 	);
+	for uri in ["/oauth/token", "/oauth/revoke"] {
+		let response = router
+			.handle(
+				Request::builder()
+					.method(Method::POST)
+					.uri(uri)
+					.header("Content-Type", "application/x-www-form-urlencoded")
+					.header(
+						"Authorization",
+						format!(
+							"Basic {}",
+							base64::engine::general_purpose::STANDARD.encode("client-a:secret")
+						),
+					)
+					.body(Bytes::from("client_id=client-a"))
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(response.status, StatusCode::BAD_REQUEST);
+		assert_eq!(
+			serde_json::from_slice::<serde_json::Value>(&response.body).unwrap()["error"],
+			"invalid_request"
+		);
+	}
 	for (uri, method, allowed) in [
 		("/oauth/token", Method::GET, "POST"),
 		(
@@ -817,6 +1072,8 @@ async fn mounted_http_handlers_expose_protocol_and_registered_cors() {
 		.insert(OAuthBrowserSession("session".into()));
 	let pending = router.handle(auth).await.unwrap();
 	assert_eq!(pending.status, StatusCode::OK);
+	assert_eq!(pending.headers.get("cache-control").unwrap(), "no-store");
+	assert_eq!(pending.headers.get("pragma").unwrap(), "no-cache");
 	let pending: PendingAuthorization = serde_json::from_slice(&pending.body).unwrap();
 	let location = server
 		.complete_authorization(
