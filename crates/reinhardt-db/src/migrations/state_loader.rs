@@ -267,6 +267,16 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 /// - Failed to load migrations from the source
 /// - Circular dependency is detected in the migration graph
 pub async fn build_state_from_files<S: MigrationSource>(source: &S) -> Result<ProjectState> {
+	build_state_from_files_with_context(source, &super::DependencyResolutionContext::default())
+		.await
+}
+
+/// Reconstruct file-backed migration state using the project's conditional
+/// and swappable dependency settings.
+pub async fn build_state_from_files_with_context<S: MigrationSource>(
+	source: &S,
+	context: &super::DependencyResolutionContext,
+) -> Result<ProjectState> {
 	// 1. Load all available migrations from source
 	let all_migrations = source.all_migrations().await?;
 
@@ -278,21 +288,7 @@ pub async fn build_state_from_files<S: MigrationSource>(source: &S) -> Result<Pr
 	// 2. Build a graph from ALL migrations (not filtered by applied status)
 	let mut graph = MigrationGraph::new();
 	for migration in &all_migrations {
-		let key = MigrationKey::new(migration.app_label.clone(), migration.name.clone());
-
-		let dependencies: Vec<MigrationKey> = migration
-			.dependencies
-			.iter()
-			.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-			.collect();
-
-		let replaces: Vec<MigrationKey> = migration
-			.replaces
-			.iter()
-			.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-			.collect();
-
-		graph.add_migration_with_replaces(key, dependencies, replaces);
+		graph.add_migration_with_context(migration, context);
 	}
 
 	// 3. Select one valid replacement history before ordering migrations.
@@ -804,6 +800,7 @@ mod tests {
 mod build_state_from_files_tests {
 	use super::*;
 	use crate::migrations::FieldType;
+	use crate::migrations::dependency::{DependencyCondition, OptionalDependency};
 	use crate::migrations::operations::{ColumnDefinition, Operation};
 	use rstest::rstest;
 
@@ -994,6 +991,46 @@ mod build_state_from_files_tests {
 		assert_eq!(state.models.len(), 2);
 		assert!(state.find_model_by_table("auth_users").is_some());
 		assert!(state.find_model_by_table("posts_post").is_some());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn file_state_orders_active_optional_dependencies() {
+		let mut dependent = create_migration(
+			"a",
+			"0001_extra",
+			vec![add_column_operation("shared_table", "extra")],
+			vec![],
+		);
+		dependent
+			.optional_dependencies
+			.push(OptionalDependency::new(
+				"z",
+				"0001_base",
+				DependencyCondition::FeatureEnabled("extra".to_owned()),
+			));
+		let source = MockMigrationSource {
+			migrations: vec![
+				dependent,
+				create_migration(
+					"z",
+					"0001_base",
+					vec![create_table_operation("shared_table", vec!["id"])],
+					vec![],
+				),
+			],
+		};
+		let context = super::super::DependencyResolutionContext::new().with_feature("extra");
+		let state = build_state_from_files_with_context(&source, &context)
+			.await
+			.unwrap();
+		assert!(
+			state
+				.find_model_by_table("shared_table")
+				.unwrap()
+				.fields
+				.contains_key("extra")
+		);
 	}
 
 	/// CreateTable followed by DropTable results in empty state

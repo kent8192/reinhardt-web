@@ -1417,7 +1417,10 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 			)
 			.into());
 		}
-		let mut requirements = vec![CapabilityRequirement::settings::<MigrationSettings>(None)];
+		let mut requirements = vec![
+			CapabilityRequirement::settings::<MigrationSettings>(None),
+			CapabilityRequirement::settings::<CoreMigrationMetadata>(None),
+		];
 		if selection.source == MigrationStateSource::Database {
 			requirements.push(CapabilityRequirement::settings::<crate::SelectedDatabase>(
 				Some(selection.database.as_deref().unwrap_or("default")),
@@ -1425,7 +1428,6 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 		}
 		let context =
 			CapabilityContext::prepare("makemigrations", &requirements, &provider).await?;
-		let _migration_settings = context.settings::<MigrationSettings>(None)?;
 		let database_url = if selection.source == MigrationStateSource::Database {
 			Some(
 				context
@@ -1447,6 +1449,14 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 			*force_empty_state,
 			verbosity,
 		);
+		crate::showmigrations::attach_migration_settings(
+			&mut command_context,
+			context.settings::<MigrationSettings>(None)?.as_ref(),
+		);
+		crate::showmigrations::attach_core_migration_metadata(
+			&mut command_context,
+			context.settings::<CoreMigrationMetadata>(None)?.as_ref(),
+		);
 		command_context.set_option(
 			"migrations-dir".to_owned(),
 			migration_dir.to_string_lossy().into_owned(),
@@ -1454,11 +1464,14 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 		let prepared_state = if *empty || *merge {
 			None
 		} else {
+			let dependency_context =
+				crate::showmigrations::migration_dependency_context(&command_context);
 			Some(
 				crate::builtin::prepare_makemigrations_state(
 					selection.source,
 					migration_dir,
 					database_url.as_deref(),
+					&dependency_context,
 				)
 				.await?,
 			)
@@ -1568,9 +1581,10 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 		migrations_dir,
 	} = &command
 	{
+		let environment_url = env::var("DATABASE_URL").ok();
+		let url_override = database.as_deref().or(environment_url.as_deref());
 		let (_prepared, selected_url) =
-			prepare_migration_database(&provider, "migrate", "default", database.as_deref())
-				.await?;
+			prepare_migration_database(&provider, "migrate", "default", url_override).await?;
 		return execute_migrate(MigrateParams {
 			app_label: app_label.clone(),
 			migration_name: migration_name.clone(),
@@ -3095,6 +3109,12 @@ fn parse_capability_cli_arguments(
 	raw_args: &[OsString],
 	registry: &CommandRegistry,
 ) -> Result<(Commands, u8, Option<MigrationCliSelection>), DriverParseError> {
+	if let Some((name, args, verbosity)) =
+		resolve_custom_command(raw_args, registry).map_err(DriverParseError::Command)?
+		&& registry.get_capability(&name).is_some()
+	{
+		return Ok((Commands::Custom { name, args }, verbosity, None));
+	}
 	#[cfg(feature = "migrations")]
 	{
 		let parser = Cli::command().mut_subcommand("makemigrations", |command| {

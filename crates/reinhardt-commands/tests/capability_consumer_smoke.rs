@@ -135,6 +135,17 @@ fn static_collection_uses_only_declared_configuration() {
 		"migration plan with an explicit database should skip runtime secrets: {}",
 		String::from_utf8_lossy(&plan.stderr)
 	);
+	let env_plan = invoke_with_database_url(
+		&binary,
+		root,
+		&["migrate", "--plan"],
+		Some("sqlite::memory:"),
+	);
+	assert!(
+		env_plan.status.success(),
+		"migration plan should use DATABASE_URL before the configured default: {}",
+		String::from_utf8_lossy(&env_plan.stderr)
+	);
 	let check = invoke_with_database_url(&binary, root, &["check"], Some("sqlite::memory:"));
 	assert!(
 		check.status.success(),

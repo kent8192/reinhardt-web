@@ -1892,10 +1892,31 @@ async fn build_from_state_from_testcontainers(
 	use reinhardt_db::migrations::{
 		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
 	};
-	use reinhardt_test::fixtures::postgres_container;
+	use reinhardt_test::testcontainers::{
+		GenericImage, ImageExt,
+		core::{IntoContainerPort, WaitFor},
+		runners::AsyncRunner,
+	};
 
-	// 1. Start temporary PostgreSQL container (panics on failure during tests)
-	let (_container, _pool, _port, url) = postgres_container().await;
+	// Keep the container owned by this invocation until state reconstruction finishes.
+	let image = GenericImage::new("postgres", "16-alpine")
+		.with_exposed_port(5432.tcp())
+		.with_wait_for(WaitFor::message_on_stderr(
+			"database system is ready to accept connections",
+		))
+		.with_startup_timeout(std::time::Duration::from_secs(120))
+		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
+	let container = image.start().await.map_err(|error| {
+		crate::CommandError::ExecutionError(format!("TestContainers startup failed: {error}"))
+	})?;
+	let port = container.get_host_port_ipv4(5432).await.map_err(|error| {
+		crate::CommandError::ExecutionError(format!("TestContainers port lookup failed: {error}"))
+	})?;
+	let host = container.get_host().await.map_err(|error| {
+		crate::CommandError::ExecutionError(format!("TestContainers host lookup failed: {error}"))
+	})?;
+	let url = format!("postgres://postgres@{host}:{port}/postgres?sslmode=disable");
+	let _container = container;
 
 	// 2. Connect to temporary database
 	let connection = DatabaseConnection::connect_postgres(&url)
@@ -1951,8 +1972,11 @@ async fn build_from_state_from_testcontainers(
 #[cfg(feature = "migrations")]
 async fn build_from_state_from_files(
 	migrations_dir: &std::path::Path,
+	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
-	use reinhardt_db::migrations::{FilesystemSource, MigrationSource, build_state_from_files};
+	use reinhardt_db::migrations::{
+		FilesystemSource, MigrationSource, build_state_from_files_with_context,
+	};
 
 	let source = FilesystemSource::new(migrations_dir);
 
@@ -1974,12 +1998,14 @@ async fn build_from_state_from_files(
 		eprintln!("[DEBUG]   - {}/{}", migration.app_label, migration.name);
 	}
 
-	build_state_from_files(&source).await.map_err(|e| {
-		crate::CommandError::ExecutionError(format!(
-			"Failed to build state from migration files: {}",
-			e
-		))
-	})
+	build_state_from_files_with_context(&source, dependency_context)
+		.await
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to build state from migration files: {}",
+				e
+			))
+		})
 }
 
 /// Explicit state source used by the capability-aware migration entry point.
@@ -1999,9 +2025,12 @@ pub(crate) async fn prepare_makemigrations_state(
 	source: MigrationStateSource,
 	migrations_dir: &std::path::Path,
 	database_url: Option<&str>,
+	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	match source {
-		MigrationStateSource::Files => build_from_state_from_files(migrations_dir).await,
+		MigrationStateSource::Files => {
+			build_from_state_from_files(migrations_dir, dependency_context).await
+		}
 		MigrationStateSource::TemporaryDb => {
 			build_from_state_from_testcontainers(migrations_dir).await
 		}
@@ -2449,7 +2478,11 @@ pub(crate) async fn execute_makemigrations_with_state(
 		let from_state = if let Some(state) = prepared_state {
 			state
 		} else if is_check && !from_db_flag && !ctx.has_option("force-empty-state") {
-			build_from_state_from_files(&migrations_dir).await?
+			build_from_state_from_files(
+				&migrations_dir,
+				&crate::showmigrations::migration_dependency_context(ctx),
+			)
+			.await?
 		} else if ctx.has_option("force-empty-state") {
 			ProjectState::new()
 		} else if from_db_flag {
@@ -2470,7 +2503,12 @@ pub(crate) async fn execute_makemigrations_with_state(
 						Err(e) => {
 							ctx.warning(&format!("Failed to use TestContainers: {}", e));
 							ctx.info("Falling back to file-based state reconstruction...");
-							match build_from_state_from_files(&migrations_dir).await {
+							match build_from_state_from_files(
+								&migrations_dir,
+								&crate::showmigrations::migration_dependency_context(ctx),
+							)
+							.await
+							{
 								Ok(state) => {
 									ctx.verbose("Built state from migration files (offline)");
 									state
@@ -2522,7 +2560,12 @@ pub(crate) async fn execute_makemigrations_with_state(
 						Err(e) => {
 							ctx.warning(&format!("Failed to connect to database: {}", e));
 							ctx.info("Falling back to file-based state reconstruction...");
-							match build_from_state_from_files(&migrations_dir).await {
+							match build_from_state_from_files(
+								&migrations_dir,
+								&crate::showmigrations::migration_dependency_context(ctx),
+							)
+							.await
+							{
 								Ok(state) => {
 									ctx.verbose("Built state from migration files (offline)");
 									state

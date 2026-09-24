@@ -61,6 +61,25 @@ impl ScopedSettings {
 				}
 			}
 		}
+		if let Some(overrides) = super::testing::overrides::current_overrides() {
+			for (key, value) in overrides {
+				let path = vec![key.clone()];
+				let existed = values.contains_key(&key);
+				let previous = values.get_mut(&key);
+				merge_value(
+					previous,
+					&value,
+					&path,
+					MergeStrategy::Deep,
+					&mut provenance,
+					None,
+					sources.len(),
+				);
+				if !existed {
+					values.insert(key, value);
+				}
+			}
+		}
 		Ok(Self {
 			values,
 			provenance,
@@ -343,6 +362,7 @@ mod tests {
 	use super::*;
 	use crate::settings::builder::SettingsBuilder;
 	use crate::settings::sources::{ConfigSource, DefaultSource, SourceError, TomlFileSource};
+	use crate::settings::testing::overrides::SettingsOverride;
 	use rstest::*;
 	use serde_json::json;
 	use std::fs;
@@ -372,6 +392,30 @@ mod tests {
 			settings
 				.require_path::<String>(&["server", "secret"])
 				.is_err()
+		);
+	}
+
+	#[rstest]
+	fn scoped_build_preserves_high_priority_test_overrides() {
+		let _guard = SettingsOverride::new()
+			.set("static.root", "override")
+			.activate();
+		let settings = SettingsBuilder::new()
+			.add_source(
+				DefaultSource::new()
+					.with_value("static", json!({"root": "original", "url": "/static/"})),
+			)
+			.build_scoped()
+			.unwrap();
+		assert_eq!(
+			settings
+				.require_path::<String>(&["static", "root"])
+				.unwrap(),
+			"override"
+		);
+		assert_eq!(
+			settings.require_path::<String>(&["static", "url"]).unwrap(),
+			"/static/"
 		);
 	}
 

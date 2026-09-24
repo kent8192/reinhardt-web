@@ -32,7 +32,7 @@ impl StaticAssetSettings {
 	/// Explicit malformed values fail instead of silently using defaults.
 	pub fn from_scoped(settings: &ScopedSettings) -> Result<Self, BuildError> {
 		let base_dir = settings
-			.optional_path::<PathBuf>(&["core", "base_dir"])?
+			.first_present_path::<PathBuf>(&[&["core", "base_dir"], &["base_dir"]])?
 			.unwrap_or(std::env::current_dir().map_err(|error| {
 				BuildError::Deserialization(format!("cannot find project directory: {error}"))
 			})?);
@@ -191,5 +191,28 @@ mod scoped_tests {
 		let settings = SettingsBuilder::new().build_scoped().unwrap();
 		let error = StaticAssetSettings::from_scoped(&settings).unwrap_err();
 		assert!(error.to_string().contains("static.root"));
+	}
+
+	#[rstest]
+	fn flat_base_dir_resolves_relative_static_paths() {
+		let project = tempfile::tempdir().unwrap();
+		let settings = SettingsBuilder::new()
+			.add_source(
+				DefaultSource::new()
+					.with_value(
+						"base_dir",
+						Value::String(project.path().to_string_lossy().into_owned()),
+					)
+					.with_value("static", serde_json::json!({"root": "dist"}))
+					.with_value("staticfiles_dirs", serde_json::json!(["assets"])),
+			)
+			.build_scoped()
+			.unwrap();
+		let static_settings = StaticAssetSettings::from_scoped(&settings).unwrap();
+		assert_eq!(static_settings.static_root, project.path().join("dist"));
+		assert_eq!(
+			static_settings.staticfiles_dirs,
+			vec![project.path().join("assets")]
+		);
 	}
 }
