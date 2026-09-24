@@ -21,6 +21,16 @@ use std::{
 };
 use url::Url;
 
+pub(crate) struct CodeExchangeRequest<'a> {
+	pub(crate) code: &'a str,
+	pub(crate) client_id: &'a str,
+	pub(crate) client_secret: Option<&'a str>,
+	pub(crate) redirect_uri: &'a str,
+	pub(crate) verifier: &'a str,
+	pub(crate) resource: Option<&'a str>,
+	pub(crate) ttl: Duration,
+}
+
 /// OAuth error returned by the protocol core.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -729,14 +739,16 @@ impl OAuthServer {
 		resource: Option<&str>,
 	) -> Result<IssuedToken, OAuthError> {
 		self.exchange_code_inner(
-			code,
-			client_id,
-			client_secret,
-			redirect_uri,
-			verifier,
-			resource,
+			CodeExchangeRequest {
+				code,
+				client_id,
+				client_secret,
+				redirect_uri,
+				verifier,
+				resource,
+				ttl: self.config.token_ttl,
+			},
 			false,
-			self.config.token_ttl,
 		)
 		.await
 		.map(|(token, _)| token)
@@ -744,40 +756,27 @@ impl OAuthServer {
 	/// Redeem an OIDC code with an OIDC-specific access-token lifetime.
 	pub(crate) async fn exchange_oidc_code(
 		&self,
-		code: &str,
-		client_id: &str,
-		client_secret: &str,
-		redirect_uri: &str,
-		verifier: &str,
-		resource: &str,
-		ttl: Duration,
+		request: CodeExchangeRequest<'_>,
 	) -> Result<(IssuedToken, String), OAuthError> {
-		if ttl.is_zero() || ttl > Duration::from_secs(3600) {
+		if request.ttl.is_zero() || request.ttl > Duration::from_secs(3600) {
 			return Err(OAuthError::InvalidRequest);
 		}
-		self.exchange_code_inner(
-			code,
-			client_id,
-			Some(client_secret),
-			redirect_uri,
-			verifier,
-			Some(resource),
-			true,
-			ttl,
-		)
-		.await
+		self.exchange_code_inner(request, true).await
 	}
 	async fn exchange_code_inner(
 		&self,
-		code: &str,
-		client_id: &str,
-		client_secret: Option<&str>,
-		redirect_uri: &str,
-		verifier: &str,
-		resource: Option<&str>,
+		request: CodeExchangeRequest<'_>,
 		expect_oidc: bool,
-		ttl: Duration,
 	) -> Result<(IssuedToken, String), OAuthError> {
+		let CodeExchangeRequest {
+			code,
+			client_id,
+			client_secret,
+			redirect_uri,
+			verifier,
+			resource,
+			ttl,
+		} = request;
 		let client = self.authenticate_client(client_id, client_secret).await?;
 		if !client.authorization_code || (expect_oidc && !client.oidc_enabled) {
 			return Err(OAuthError::UnauthorizedClient);

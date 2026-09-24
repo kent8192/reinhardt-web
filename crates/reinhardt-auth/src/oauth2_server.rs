@@ -25,6 +25,8 @@ mod postgres;
 mod protocol;
 mod store;
 
+pub(crate) use protocol::CodeExchangeRequest;
+
 pub use http::{OAuthBrowserSession, OAuthConsentPresenter, OAuthEndpoint, OAuthHandler};
 #[cfg(feature = "database")]
 pub use postgres::PostgresOAuthStore;

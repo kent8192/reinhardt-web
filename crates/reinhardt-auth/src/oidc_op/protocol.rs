@@ -5,7 +5,8 @@ use super::PostgresOidcStore;
 use super::signer::OidcSigner;
 use super::store::{OidcCodeContext, OidcPending, OidcStateStore};
 use crate::oauth2_server::{
-	AuthorizationDecision, AuthorizationRequest, ClientKind, OAuthError, OAuthServer,
+	AuthorizationDecision, AuthorizationRequest, ClientKind, CodeExchangeRequest, OAuthError,
+	OAuthServer,
 };
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -761,15 +762,15 @@ impl OidcProvider {
 		let id_token = self.sign_id_token(&context, &subject).await?;
 		let (issued, redeemed_user) = self
 			.oauth
-			.exchange_oidc_code(
+			.exchange_oidc_code(CodeExchangeRequest {
 				code,
 				client_id,
-				client_secret,
+				client_secret: Some(client_secret),
 				redirect_uri,
 				verifier,
-				&self.config.userinfo_endpoint,
-				self.config.access_token_ttl,
-			)
+				resource: Some(&self.config.userinfo_endpoint),
+				ttl: self.config.access_token_ttl,
+			})
 			.await?;
 		if redeemed_user != context.user_id || issued.scope != "openid" {
 			let _ = self
