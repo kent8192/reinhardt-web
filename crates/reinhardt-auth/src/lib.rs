@@ -13,6 +13,7 @@
 //! - **Group Management**: User groups and permission assignment
 //! - **REST API Authentication**: Multiple authentication backends (JWT, Token, Session, legacy OAuth2 helpers, social OAuth state)
 //! - **OAuth 2.0 Server**: Authorization Code with PKCE, Client Credentials, revocation, introspection, and metadata (`oauth` feature)
+//! - **OpenID Provider**: Authorization Code with PKCE, RS256 ID Tokens, Discovery, JWKS, and UserInfo (`oidc-op` feature)
 //! - **Standard Permissions**: Permission classes for common authorization scenarios
 //! - **createsuperuser Command**: CLI tool for creating admin users
 //!
@@ -44,6 +45,7 @@
 //! | `jwt` | disabled | JWT-based authentication backend |
 //! | `sessions` | disabled | Session-based authentication |
 //! | `oauth` | disabled | OAuth2 authorization server and legacy in-process helpers |
+//! | `oidc-op` | disabled | OpenID Connect provider on the OAuth server |
 //! | `token` | disabled | Token-based authentication |
 //! | `argon2-hasher` | disabled | Argon2 password hashing |
 //! | `bcrypt-hasher` | disabled | bcrypt password hashing for compatibility |
@@ -148,6 +150,9 @@ pub mod oauth2;
 pub mod oauth2_server;
 /// Object-level permission checking.
 pub mod object_permissions;
+/// Opt-in OpenID Connect provider for first-party clients.
+#[cfg(feature = "oidc-op")]
+pub mod oidc_op;
 /// Database-backed permission model.
 #[cfg(feature = "database")]
 pub mod permission;

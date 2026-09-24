@@ -45,10 +45,5 @@ jobs:
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
 
-      - name: Install cargo-make
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-make
-
       - name: Run direct dynamic error dependency check
-        run: cargo make anyhow-check
+        run: bash scripts/check-anyhow.sh

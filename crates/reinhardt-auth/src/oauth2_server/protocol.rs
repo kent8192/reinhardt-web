@@ -21,6 +21,16 @@ use std::{
 };
 use url::Url;
 
+pub(crate) struct CodeExchangeRequest<'a> {
+	pub(crate) code: &'a str,
+	pub(crate) client_id: &'a str,
+	pub(crate) client_secret: Option<&'a str>,
+	pub(crate) redirect_uri: &'a str,
+	pub(crate) verifier: &'a str,
+	pub(crate) resource: Option<&'a str>,
+	pub(crate) ttl: Duration,
+}
+
 /// OAuth error returned by the protocol core.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -120,6 +130,33 @@ impl OAuthServerConfig {
 			pending_ttl: Duration::from_secs(600),
 			token_ttl: Duration::from_secs(3600),
 		};
+		if config.issuer.starts_with("http://") {
+			return Err(OAuthError::InvalidRequest);
+		}
+		config.validate()?;
+		Ok(config)
+	}
+	/// Construct an explicit HTTP loopback issuer for development and tests.
+	pub fn for_loopback_development(
+		issuer: &str,
+		authorization_endpoint: &str,
+		token_endpoint: &str,
+		revocation_endpoint: &str,
+		introspection_endpoint: &str,
+	) -> Result<Self, OAuthError> {
+		let config = Self {
+			issuer: issuer.trim_end_matches('/').to_owned(),
+			authorization_endpoint: authorization_endpoint.to_owned(),
+			token_endpoint: token_endpoint.to_owned(),
+			revocation_endpoint: revocation_endpoint.to_owned(),
+			introspection_endpoint: introspection_endpoint.to_owned(),
+			code_ttl: Duration::from_secs(300),
+			pending_ttl: Duration::from_secs(600),
+			token_ttl: Duration::from_secs(3600),
+		};
+		if !config.issuer.starts_with("http://") {
+			return Err(OAuthError::InvalidRequest);
+		}
 		config.validate()?;
 		Ok(config)
 	}
@@ -142,8 +179,12 @@ impl OAuthServerConfig {
 	}
 	fn validate(&self) -> Result<(), OAuthError> {
 		let issuer = Url::parse(&self.issuer).map_err(|_| OAuthError::InvalidRequest)?;
-		if issuer.scheme() != "https"
-			|| issuer.query().is_some()
+		if !(issuer.scheme() == "https"
+			|| (issuer.scheme() == "http"
+				&& matches!(
+					issuer.host_str(),
+					Some("localhost" | "127.0.0.1" | "::1" | "[::1]")
+				))) || issuer.query().is_some()
 			|| issuer.fragment().is_some()
 			|| issuer.username() != ""
 			|| issuer.password().is_some()
@@ -157,7 +198,7 @@ impl OAuthServerConfig {
 			&self.introspection_endpoint,
 		] {
 			let url = Url::parse(endpoint).map_err(|_| OAuthError::InvalidRequest)?;
-			if url.scheme() != "https"
+			if url.scheme() != issuer.scheme()
 				|| url.origin() != issuer.origin()
 				|| !url.username().is_empty()
 				|| url.password().is_some()
@@ -317,6 +358,9 @@ impl OAuthServer {
 		limiter: Arc<L>,
 	) -> Result<Self, OAuthError> {
 		config.validate()?;
+		if config.issuer.starts_with("http://") {
+			return Err(OAuthError::InvalidRequest);
+		}
 		Ok(Self {
 			config,
 			store: Arc::new(store),
@@ -395,9 +439,13 @@ impl OAuthServer {
 		let secret = if client.kind == ClientKind::Confidential {
 			let raw = random_secret();
 			client.secret_hash = Some(hash_password(&raw).await?);
+			client.previous_secret_hash = None;
+			client.previous_secret_expires_at = None;
 			Some(raw)
 		} else {
 			client.secret_hash = None;
+			client.previous_secret_hash = None;
+			client.previous_secret_expires_at = None;
 			None
 		};
 		self.store
@@ -408,11 +456,33 @@ impl OAuthServer {
 	}
 	/// Rotate a confidential client's secret; old credentials become invalid immediately.
 	pub async fn rotate_client_secret(&self, id: &str) -> Result<String, OAuthError> {
+		self.rotate_client_secret_with_overlap(id, Duration::ZERO)
+			.await
+	}
+	/// Rotate a client secret with at most twenty-four hours of old-secret overlap.
+	pub async fn rotate_client_secret_with_overlap(
+		&self,
+		id: &str,
+		overlap: Duration,
+	) -> Result<String, OAuthError> {
+		if overlap > Duration::from_secs(24 * 3600) {
+			return Err(OAuthError::InvalidRequest);
+		}
 		let mut client = self.active_client(id).await?;
 		if client.kind != ClientKind::Confidential {
 			return Err(OAuthError::InvalidClient);
 		}
 		let raw = random_secret();
+		client.previous_secret_hash = if overlap.is_zero() {
+			None
+		} else {
+			client.secret_hash.take()
+		};
+		client.previous_secret_expires_at = if overlap.is_zero() {
+			None
+		} else {
+			Some(now() + overlap.as_secs() as i64)
+		};
 		client.secret_hash = Some(hash_password(&raw).await?);
 		self.store
 			.put_client(client)
@@ -420,13 +490,37 @@ impl OAuthServer {
 			.map_err(|_| OAuthError::ServerError)?;
 		Ok(raw)
 	}
+	/// Immediately invalidate a previous client credential during rotation.
+	pub async fn revoke_previous_client_secret(&self, id: &str) -> Result<(), OAuthError> {
+		let mut client = self.active_client(id).await?;
+		client.previous_secret_hash = None;
+		client.previous_secret_expires_at = None;
+		self.store
+			.put_client(client)
+			.await
+			.map_err(|_| OAuthError::ServerError)
+	}
+	/// Disable a registration before revoking all of its issued access tokens.
+	pub async fn disable_client(&self, id: &str) -> Result<u64, OAuthError> {
+		let mut client = self.active_client(id).await?;
+		client.enabled = false;
+		self.store
+			.put_client(client)
+			.await
+			.map_err(|_| OAuthError::ServerError)?;
+		self.revoke_client(id).await
+	}
 	/// Register a resource server and return its new introspection secret.
 	pub async fn register_resource(
 		&self,
 		resource_id: &str,
 		audience: &str,
 	) -> Result<String, OAuthError> {
-		if resource_id.is_empty() || audience.is_empty() || !valid_resource_uri(audience) {
+		if resource_id.is_empty()
+			|| audience.is_empty()
+			|| !valid_resource_uri(audience)
+			|| (audience.starts_with("http://") && !self.config.issuer.starts_with("http://"))
+		{
 			return Err(OAuthError::InvalidRequest);
 		}
 		let raw = random_secret();
@@ -463,6 +557,24 @@ impl OAuthServer {
 		request: AuthorizationRequest,
 		browser_session: &str,
 	) -> Result<PendingAuthorization, OAuthError> {
+		self.begin_authorization_inner(request, browser_session, false)
+			.await
+	}
+	/// Begin an OIDC request while binding openid to the OIDC code endpoint.
+	pub(crate) async fn begin_oidc_authorization(
+		&self,
+		request: AuthorizationRequest,
+		browser_session: &str,
+	) -> Result<PendingAuthorization, OAuthError> {
+		self.begin_authorization_inner(request, browser_session, true)
+			.await
+	}
+	async fn begin_authorization_inner(
+		&self,
+		request: AuthorizationRequest,
+		browser_session: &str,
+		oidc: bool,
+	) -> Result<PendingAuthorization, OAuthError> {
 		if request.response_type != "code" {
 			return Err(OAuthError::UnsupportedResponseType);
 		}
@@ -484,6 +596,11 @@ impl OAuthServer {
 			return Err(OAuthError::InvalidRequest);
 		}
 		let scopes = choose_scopes(&client, request.scope.as_deref())?;
+		if (oidc && (!client.oidc_enabled || scopes.len() != 1 || scopes[0] != "openid"))
+			|| (!oidc && scopes.iter().any(|scope| scope == "openid"))
+		{
+			return Err(OAuthError::InvalidScope);
+		}
 		let audience = choose_audience(&client, request.resource.as_deref())?;
 		self.active_audience(&audience).await?;
 		let pending = PendingAuthorization {
@@ -497,6 +614,7 @@ impl OAuthServer {
 		};
 		let record = PendingRecord {
 			request: pending.clone(),
+			oidc,
 			session_digest: digest(browser_session),
 			expires_at: now() + self.config.pending_ttl.as_secs() as i64,
 		};
@@ -513,6 +631,26 @@ impl OAuthServer {
 		browser_session: &str,
 		decision: AuthorizationDecision,
 	) -> Result<String, OAuthError> {
+		self.complete_authorization_inner(pending_id, browser_session, decision, false)
+			.await
+	}
+	/// Complete an OIDC authorization; the resulting code can only be redeemed by OIDC.
+	pub(crate) async fn complete_oidc_authorization(
+		&self,
+		pending_id: &str,
+		browser_session: &str,
+		decision: AuthorizationDecision,
+	) -> Result<String, OAuthError> {
+		self.complete_authorization_inner(pending_id, browser_session, decision, true)
+			.await
+	}
+	async fn complete_authorization_inner(
+		&self,
+		pending_id: &str,
+		browser_session: &str,
+		decision: AuthorizationDecision,
+		oidc: bool,
+	) -> Result<String, OAuthError> {
 		if browser_session.is_empty() {
 			return Err(OAuthError::InvalidRequest);
 		}
@@ -522,12 +660,16 @@ impl OAuthServer {
 			.await
 			.map_err(|_| OAuthError::ServerError)?
 			.ok_or(OAuthError::InvalidGrant)?;
-		if pending.expires_at <= now() || pending.session_digest != digest(browser_session) {
+		if pending.expires_at <= now()
+			|| pending.session_digest != digest(browser_session)
+			|| pending.oidc != oidc
+		{
 			return Err(OAuthError::InvalidGrant);
 		}
 		let request = pending.request;
 		let client = self.active_client(&request.client_id).await?;
 		if !client.authorization_code
+			|| (oidc && !client.oidc_enabled)
 			|| !client
 				.redirect_uris
 				.iter()
@@ -567,6 +709,7 @@ impl OAuthServer {
 							user_id,
 							scopes,
 							audience: request.audience,
+							oidc,
 							expires_at: now() + self.config.code_ttl.as_secs() as i64,
 							redeemed: false,
 							replayed: false,
@@ -595,8 +738,47 @@ impl OAuthServer {
 		verifier: &str,
 		resource: Option<&str>,
 	) -> Result<IssuedToken, OAuthError> {
+		self.exchange_code_inner(
+			CodeExchangeRequest {
+				code,
+				client_id,
+				client_secret,
+				redirect_uri,
+				verifier,
+				resource,
+				ttl: self.config.token_ttl,
+			},
+			false,
+		)
+		.await
+		.map(|(token, _)| token)
+	}
+	/// Redeem an OIDC code with an OIDC-specific access-token lifetime.
+	pub(crate) async fn exchange_oidc_code(
+		&self,
+		request: CodeExchangeRequest<'_>,
+	) -> Result<(IssuedToken, String), OAuthError> {
+		if request.ttl.is_zero() || request.ttl > Duration::from_secs(3600) {
+			return Err(OAuthError::InvalidRequest);
+		}
+		self.exchange_code_inner(request, true).await
+	}
+	async fn exchange_code_inner(
+		&self,
+		request: CodeExchangeRequest<'_>,
+		expect_oidc: bool,
+	) -> Result<(IssuedToken, String), OAuthError> {
+		let CodeExchangeRequest {
+			code,
+			client_id,
+			client_secret,
+			redirect_uri,
+			verifier,
+			resource,
+			ttl,
+		} = request;
 		let client = self.authenticate_client(client_id, client_secret).await?;
-		if !client.authorization_code {
+		if !client.authorization_code || (expect_oidc && !client.oidc_enabled) {
 			return Err(OAuthError::UnauthorizedClient);
 		}
 		if !valid_verifier(verifier) {
@@ -617,14 +799,21 @@ impl OAuthServer {
 		let CodeRedemption::Valid(record) = redeemed else {
 			return Err(OAuthError::InvalidGrant);
 		};
-		self.issue(
-			&client,
-			TokenPrincipal::User(record.user_id),
-			record.scopes,
-			record.audience,
-			Some(record.digest),
-		)
-		.await
+		if record.oidc != expect_oidc {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let user_id = record.user_id.clone();
+		let token = self
+			.issue(
+				&client,
+				TokenPrincipal::User(record.user_id),
+				record.scopes,
+				record.audience,
+				Some(record.digest),
+				ttl,
+			)
+			.await?;
+		Ok((token, user_id))
 	}
 	/// Issue a client-credentials token for a confidential client.
 	pub async fn client_credentials(
@@ -639,6 +828,9 @@ impl OAuthServer {
 			return Err(OAuthError::UnauthorizedClient);
 		}
 		let scopes = choose_scopes(&client, scope)?;
+		if scopes.iter().any(|scope| scope == "openid") {
+			return Err(OAuthError::InvalidScope);
+		}
 		let audience = choose_audience(&client, resource)?;
 		self.active_audience(&audience).await?;
 		self.issue(
@@ -647,6 +839,7 @@ impl OAuthServer {
 			scopes,
 			audience,
 			None,
+			self.config.token_ttl,
 		)
 		.await
 	}
@@ -657,6 +850,7 @@ impl OAuthServer {
 		scopes: Vec<String>,
 		audience: String,
 		code_digest: Option<String>,
+		ttl: Duration,
 	) -> Result<IssuedToken, OAuthError> {
 		let raw = random_secret();
 		let issued_at = now();
@@ -668,7 +862,7 @@ impl OAuthServer {
 				scopes: scopes.clone(),
 				audience,
 				issued_at,
-				expires_at: issued_at + self.config.token_ttl.as_secs() as i64,
+				expires_at: issued_at + ttl.as_secs() as i64,
 				revoked: false,
 				code_digest,
 			})
@@ -677,7 +871,7 @@ impl OAuthServer {
 		Ok(IssuedToken {
 			access_token: raw,
 			token_type: "Bearer",
-			expires_in: self.config.token_ttl.as_secs(),
+			expires_in: ttl.as_secs(),
 			scope: scopes.join(" "),
 		})
 	}
@@ -806,7 +1000,19 @@ impl OAuthServer {
 				let (Some(raw), Some(hash)) = (secret, client.secret_hash.as_deref()) else {
 					return Err(OAuthError::InvalidClient);
 				};
-				if verify_password(raw, hash).await? {
+				let current_matches = verify_password(raw, hash).await?;
+				let previous_matches = if client
+					.previous_secret_expires_at
+					.is_some_and(|end| end > now())
+				{
+					match client.previous_secret_hash.as_deref() {
+						Some(previous) => verify_password(raw, previous).await?,
+						None => false,
+					}
+				} else {
+					false
+				};
+				if current_matches || previous_matches {
 					Ok(client)
 				} else {
 					Err(OAuthError::InvalidClient)
@@ -822,6 +1028,10 @@ fn validate_client_registration(client: &ClientRegistration) -> Result<(), OAuth
 		|| !(client.authorization_code || client.client_credentials)
 		|| (client.kind == ClientKind::Public && client.client_credentials)
 		|| (client.kind != ClientKind::Public && !client.browser_origins.is_empty())
+		|| (client.oidc_enabled
+			&& (client.kind != ClientKind::Confidential
+				|| !client.authorization_code
+				|| !client.scopes.iter().any(|scope| scope == "openid")))
 		|| !subset(&client.default_scopes, &client.scopes)
 		|| client.scopes.iter().any(|s| !valid_scope(s))
 		|| client.scopes.iter().collect::<HashSet<_>>().len() != client.scopes.len()
@@ -854,8 +1064,12 @@ fn validate_client_registration(client: &ClientRegistration) -> Result<(), OAuth
 }
 fn valid_resource_uri(value: &str) -> bool {
 	Url::parse(value).is_ok_and(|url| {
-		url.scheme() == "https"
-			&& url.host_str().is_some()
+		(url.scheme() == "https"
+			|| (url.scheme() == "http"
+				&& matches!(
+					url.host_str(),
+					Some("localhost" | "127.0.0.1" | "::1" | "[::1]")
+				))) && url.host_str().is_some()
 			&& url.fragment().is_none()
 			&& url.username().is_empty()
 			&& url.password().is_none()

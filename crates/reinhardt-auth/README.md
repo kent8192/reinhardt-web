@@ -715,6 +715,83 @@ origins. Distribute each new confidential-client secret once. Update clients to
 use the mounted HTTPS endpoints and PKCE `S256`; users must authorize again.
 Retire the legacy helper only after its existing callers have moved.
 
+### OpenID Provider
+
+Enable `oidc-op` on `reinhardt-auth` (or `auth-oidc-op` on the root
+`reinhardt` crate) to serve an opt-in OpenID Connect issuer on the OAuth
+authorization server. The first profile supports first-party confidential web
+clients, Authorization Code with mandatory PKCE `S256`, `client_secret_basic`,
+the `openid` scope, RS256 ID Tokens, a UserInfo-only opaque access token,
+Discovery, and JWKS. It does not issue refresh tokens or expose a logout,
+dynamic registration, or claims endpoint. The RP redirect URI must match its
+registration exactly and use HTTPS. `OidcConfig::for_loopback_development`
+permits HTTP only for explicit loopback development.
+
+Use one root-path HTTPS issuer and mount these handlers at the exact URLs in
+`OidcConfig`. Discovery is always at `config.discovery_url()`.
+
+```rust,ignore
+use reinhardt_auth::oidc_op::{OidcEndpoint, OidcHandler, OidcInteraction, OidcProvider};
+use reinhardt_urls::routers::ServerRouter;
+use std::sync::Arc;
+
+fn oidc_routes(
+    provider: Arc<OidcProvider>,
+    interaction: Arc<dyn OidcInteraction>,
+) -> ServerRouter {
+    ServerRouter::new()
+        .handler_arc("/oidc/authorize", Arc::new(OidcHandler::authorization(provider.clone(), interaction)))
+        .handler_arc("/oidc/token", Arc::new(OidcHandler::new(provider.clone(), OidcEndpoint::Token)))
+        .handler_arc("/oidc/userinfo", Arc::new(OidcHandler::new(provider.clone(), OidcEndpoint::UserInfo)))
+        .handler_arc("/oidc/jwks", Arc::new(OidcHandler::new(provider.clone(), OidcEndpoint::Jwks)))
+        .handler_arc("/.well-known/openid-configuration", Arc::new(OidcHandler::new(provider, OidcEndpoint::Discovery)))
+}
+```
+
+Apply `PostgresOAuthStore::migration()` and then
+`PostgresOidcStore::migration()` with the host's Reinhardt migration executor.
+Production construction requires `OAuthServer::for_production` and
+`OidcProvider::for_production` with PostgreSQL-backed state, a shared OAuth
+rate limiter, an active signing key, an `OidcSigner` that has the matching
+private key on every signing node, and a host `OidcAccountStatus` adapter.
+The adapter must return the current active status and fail closed when account
+lookup fails. The built-in `RsaPemKeyRing` accepts RSA private PEM keys of at
+least 2048 bits; a KMS or non-exportable key can implement `OidcSigner`.
+Provision a public key in the OIDC store before constructing a production
+provider, and keep private key material outside the database.
+
+Register the UserInfo URL as an OAuth resource audience before registering an
+OIDC client. Set `ClientRegistration.oidc_enabled = true`, use
+`ClientKind::Confidential`, allow Authorization Code, register the exact HTTPS
+redirect URI, and allow `openid` and the UserInfo audience. The OAuth and
+OIDC flows share this registration and token store. The ordinary OAuth
+authorization and token endpoints cannot complete or redeem an OIDC code.
+Rotate a client secret with `rotate_client_secret_with_overlap` for at most
+24 hours of overlap; `revoke_previous_client_secret` ends the overlap, and
+`disable_client` invalidates its access tokens.
+
+The host supplies `OAuthBrowserSession` on authorization requests and
+implements `OidcInteraction` to handle login, reauthentication, consent, and
+account selection. Use the same session binding when calling
+`OidcProvider::complete_authorization`. For `prompt=none`, avoid presenting UI
+and deny with `login_required`, `consent_required`, or another applicable OIDC
+error when silent completion is impossible. `auth_time` must be the time of
+the active host authentication. The provider enforces `prompt=login`,
+`prompt=consent`, `prompt=select_account`, and `max_age` against the decision
+supplied by the host. An opaque public `sub` remains stable for a live account;
+call `retire_user` during account deletion to revoke tokens and permanently
+reserve its former subject.
+
+ID Tokens default to five minutes and can be configured up to fifteen;
+UserInfo access tokens default to ten minutes and can be configured up to one
+hour. `signing_key_rotation_due` reports the configured rotation interval
+(thirty days by default); schedule provisioning of a new key and call
+`rotate_signing_key` when due. Retired public keys remain in JWKS for the
+maximum ID Token lifetime plus clock skew. For a compromise, provision and
+activate a replacement, then call `compromise_signing_key` on the old key and
+notify RPs: an RP with a cached old JWKS key may still accept an unexpired
+ID Token. Never log client secrets, codes, access tokens, or private keys.
+
 #### Browser-Bound Social OAuth State
 
 Enable the `social-auth` feature to bind a social OAuth callback to a
