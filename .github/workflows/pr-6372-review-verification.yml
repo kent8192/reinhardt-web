@@ -16,30 +16,35 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
-  regressions:
+  fixes:
     if: github.repository == 'kent8192/reinhardt-web'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 2
           persist-credentials: false
-      - name: Verify the original auth source tree
-        run: test "$(git rev-parse HEAD:crates/reinhardt-auth)" = 8c20a74776ce17681a9f397a18c611d2d1b06519
-      - name: Add regression tests without changing production code
+      - name: Apply the exact reviewed source patch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          test "$(git rev-parse HEAD:crates/reinhardt-auth)" = 8c20a74776ce17681a9f397a18c611d2d1b06519
+          mkdir -p /tmp/pr-6372-evidence
           python3 - <<'PY'
-          import base64, gzip, hashlib, pathlib, re, subprocess
-          source = subprocess.check_output(['git', 'show', '8b405e9df59fc36146b5e37839843206dceed197:.github/workflows/pr-6372-review-verification.yml'], text=True)
-          encoded = re.search(r'^\s+PATCH_GZIP_BASE64: (\S+)$', source, re.M).group(1)
-          encoded = encoded.replace('f6r6pVf', 'f6rKpVf')
-          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
-          assert hashlib.sha256(patch).hexdigest() == '7acbdcdae6cbe9d1ab7240e5791af39b6e3100d1f53eb86a38d0a5d8094930ed'
-          path = pathlib.Path('/tmp/pr-6372-baseline.patch')
+          import base64, gzip, hashlib, json, os, pathlib, subprocess, urllib.request
+          blobs = ['8c321e7884ea1ba1da30f05bd226ba1877f143a6', '74bf8cd7b0d9c5496c29b2f3f23e7f501082c0d2', '472e220b1f1202d896b68456d1d303d77ea9b96b']
+          chunks = []
+          for sha in blobs:
+              request = urllib.request.Request('https://api.github.com/repos/kent8192/reinhardt-web/git/blobs/' + sha, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  chunks.append(base64.b64decode(json.load(response)['content']))
+          patch = gzip.decompress(b''.join(chunks))
+          assert hashlib.sha256(patch).hexdigest() == '53ef449f71fdd4c2541c36b6b90a6a53f7fba3d001fa3de3bd26af6fe3eb6f4a'
+          path = pathlib.Path('/tmp/pr-6372-evidence/review.patch')
           path.write_bytes(patch)
           subprocess.run(['git', 'apply', '--check', str(path)], check=True)
           subprocess.run(['git', 'apply', str(path)], check=True)
+          subprocess.run(['git', 'add', '-N', 'crates/reinhardt-auth/src/oauth2_server/tests/review_tests.rs', 'crates/reinhardt-auth/src/oidc_op/tests/review_tests.rs'], check=True)
           PY
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
@@ -50,25 +55,38 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           version: '28.x'
-      - name: Reproduce failing assertions on the original implementation
+      - name: Format and run all review regressions
         run: |
           cargo fmt -p reinhardt-auth
-          set +e
-          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib review_tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-baseline.log
-          result=${PIPESTATUS[0]}
-          set -e
-          test "$result" -ne 0
-          grep -q 'test result: FAILED' /tmp/pr-6372-baseline.log
-      - name: Package test evidence
+          git diff --check
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib review_tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/regressions.log
+      - name: Run the complete affected OAuth and OIDC suites
+        run: |
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oauth2_server::tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/oauth-tests.log
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oidc_op::tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/oidc-tests.log
+      - name: Check isolated and combined feature configurations
+        run: |
+          for features in oauth oauth,database oidc-op oidc-op,database; do
+            cargo check -p reinhardt-auth --no-default-features --features "$features" 2>&1 | tee "/tmp/pr-6372-evidence/check-${features//,/-}.log"
+          done
+      - name: Lint the affected crate and tests with host extraction enabled
+        run: cargo clippy -p reinhardt-auth --features oidc-op,database --lib --tests -- -D warnings 2>&1 | tee /tmp/pr-6372-evidence/clippy.log
+      - name: Check rustdoc and executable documentation
+        run: |
+          RUSTDOCFLAGS='-D warnings' cargo doc -p reinhardt-auth --features oidc-op,database --no-deps 2>&1 | tee /tmp/pr-6372-evidence/rustdoc.log
+          cargo test -p reinhardt-auth --features oidc-op,database --doc 2>&1 | tee /tmp/pr-6372-evidence/doctests.log
+          cargo fmt -p reinhardt-auth --check
+      - name: Package exact source and verification evidence
         if: always()
         run: |
-          git diff --check
-          tar -czf /tmp/pr-6372-baseline-source.tar.gz crates/reinhardt-auth
+          mkdir -p /tmp/pr-6372-evidence
+          git diff --binary -- crates/reinhardt-auth > /tmp/pr-6372-evidence/formatted.patch
+          git diff --stat -- crates/reinhardt-auth > /tmp/pr-6372-evidence/diffstat.txt
+          tar -czf /tmp/pr-6372-evidence/auth-source.tar.gz crates/reinhardt-auth
+          git rev-parse HEAD > /tmp/pr-6372-evidence/checkout.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: pr-6372-baseline-evidence
-          path: |
-            /tmp/pr-6372-baseline.log
-            /tmp/pr-6372-baseline-source.tar.gz
+          name: pr-6372-fix-evidence
+          path: /tmp/pr-6372-evidence/
           retention-days: 1
