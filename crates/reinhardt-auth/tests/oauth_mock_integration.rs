@@ -135,9 +135,9 @@ impl MockEnv {
 		})
 	}
 
-	/// Sign an `IdToken` claim set into a compact JWS string using the
+	/// Sign a claim set into a compact JWS string using the
 	/// RSA private key with RS256 and the JWK's `kid` header.
-	fn sign_id_token(&self, claims: &IdToken) -> String {
+	fn sign_id_token<T: serde::Serialize>(&self, claims: &T) -> String {
 		let mut header = Header::new(Algorithm::RS256);
 		header.kid = Some(self.kid.clone());
 		let key = EncodingKey::from_rsa_pem(&self.private_pem)
@@ -383,6 +383,127 @@ async fn id_token_validates_with_matching_jwks(#[future] mock_env: MockEnv) {
 	assert_eq!(validated.sub, "user-42");
 	assert_eq!(validated.iss, env.issuer());
 	assert_eq!(validated.aud, audience);
+}
+
+#[rstest]
+#[case::configured_first(json!(["test_client_id", "other_client"]))]
+#[case::configured_second(json!(["other_client", "test_client_id"]))]
+#[tokio::test]
+async fn id_token_accepts_array_audience_containing_client(
+	#[future] mock_env: MockEnv,
+	#[case] audiences: serde_json::Value,
+) {
+	// Arrange
+	let env = mock_env.await;
+	let client_id = "test_client_id";
+	let mut claims = serde_json::to_value(base_id_token(&env.issuer(), client_id)).unwrap();
+	claims["aud"] = audiences;
+	claims["azp"] = json!(client_id);
+	let jwt = env.sign_id_token(&claims);
+
+	Mock::given(method("GET"))
+		.and(path("/jwks.json"))
+		.respond_with(ResponseTemplate::new(200).set_body_json(env.jwks_json()))
+		.mount(&env.server)
+		.await;
+
+	let cache = Arc::new(JwksCache::new(OAuth2Client::new()));
+	let validator = IdTokenValidator::new(
+		cache,
+		ValidationConfig::new(env.issuer(), client_id.to_string()),
+	);
+
+	// Act
+	let validated = validator
+		.validate(&jwt, &env.jwks_url(), None)
+		.await
+		.expect("array audience containing the client must validate");
+
+	// Assert
+	assert_eq!(validated.aud, client_id);
+}
+
+#[rstest]
+#[case::missing(json!(["test_client_id", "other_client"]), None, "missing azp")]
+#[case::different_client(json!(["test_client_id", "other_client"]), Some(json!("attacker_client")), "authorized party")]
+#[case::non_string(json!(["test_client_id", "other_client"]), Some(json!(42)), "authorized party")]
+#[case::single_audience_wrong_party(json!("test_client_id"), Some(json!("attacker_client")), "authorized party")]
+#[tokio::test]
+async fn id_token_rejects_invalid_authorized_party(
+	#[future] mock_env: MockEnv,
+	#[case] audiences: serde_json::Value,
+	#[case] authorized_party: Option<serde_json::Value>,
+	#[case] expected_error: &str,
+) {
+	// Arrange
+	let env = mock_env.await;
+	let client_id = "test_client_id";
+	let mut claims = serde_json::to_value(base_id_token(&env.issuer(), client_id)).unwrap();
+	claims["aud"] = audiences;
+	if let Some(authorized_party) = authorized_party {
+		claims["azp"] = authorized_party;
+	}
+	let jwt = env.sign_id_token(&claims);
+
+	Mock::given(method("GET"))
+		.and(path("/jwks.json"))
+		.respond_with(ResponseTemplate::new(200).set_body_json(env.jwks_json()))
+		.mount(&env.server)
+		.await;
+
+	let cache = Arc::new(JwksCache::new(OAuth2Client::new()));
+	let validator = IdTokenValidator::new(
+		cache,
+		ValidationConfig::new(env.issuer(), client_id.to_string()),
+	);
+
+	// Act
+	let result = validator.validate(&jwt, &env.jwks_url(), None).await;
+
+	// Assert
+	match result {
+		Err(reinhardt_auth::social::core::SocialAuthError::InvalidIdToken(message)) => {
+			assert!(message.contains(expected_error), "{message}");
+		}
+		other => panic!("expected authorized party validation error, got {other:?}"),
+	}
+}
+
+#[rstest]
+#[case::missing_client(json!(["other_client", "another_client"]))]
+#[case::empty(json!([]))]
+#[tokio::test]
+async fn id_token_rejects_array_audience_without_client(
+	#[future] mock_env: MockEnv,
+	#[case] audiences: serde_json::Value,
+) {
+	// Arrange
+	let env = mock_env.await;
+	let client_id = "test_client_id";
+	let mut claims = serde_json::to_value(base_id_token(&env.issuer(), client_id)).unwrap();
+	claims["aud"] = audiences;
+	let jwt = env.sign_id_token(&claims);
+
+	Mock::given(method("GET"))
+		.and(path("/jwks.json"))
+		.respond_with(ResponseTemplate::new(200).set_body_json(env.jwks_json()))
+		.mount(&env.server)
+		.await;
+
+	let cache = Arc::new(JwksCache::new(OAuth2Client::new()));
+	let validator = IdTokenValidator::new(
+		cache,
+		ValidationConfig::new(env.issuer(), client_id.to_string()),
+	);
+
+	// Act
+	let result = validator.validate(&jwt, &env.jwks_url(), None).await;
+
+	// Assert
+	assert!(matches!(
+		result,
+		Err(reinhardt_auth::social::core::SocialAuthError::InvalidIdToken(_))
+	));
 }
 
 #[rstest]
