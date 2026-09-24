@@ -28,6 +28,7 @@ use std::sync::{
 	Arc,
 	atomic::{AtomicBool, Ordering},
 };
+use std::time::Duration;
 
 const ISSUER: &str = "https://auth.example";
 const REDIRECT: &str = "https://rp.example/callback";
@@ -417,6 +418,39 @@ async fn issuer_configuration_rejects_insecure_or_inconsistent_urls() {
 			.await
 			.is_none()
 	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn issuer_configuration_rejects_subsecond_token_lifetimes() {
+	let test = issuer().await;
+	let config = OidcConfig::new(
+		ISSUER,
+		"https://auth.example/oidc/authorize",
+		"https://auth.example/oidc/token",
+		USERINFO,
+		"https://auth.example/oidc/jwks",
+	)
+	.unwrap();
+	for (id_token_ttl, access_token_ttl) in [
+		(Duration::from_millis(500), Duration::from_secs(600)),
+		(Duration::from_secs(300), Duration::from_millis(500)),
+	] {
+		let mut invalid = config.clone();
+		invalid.id_token_ttl = id_token_ttl;
+		invalid.access_token_ttl = access_token_ttl;
+		assert_eq!(
+			OidcProvider::for_development(
+				invalid,
+				test.oauth.clone(),
+				test.state.clone(),
+				Arc::new(HostAccounts(test.active.clone())),
+				test.signer.clone(),
+			)
+			.err(),
+			Some(OidcError::InvalidRequest)
+		);
+	}
 }
 
 #[rstest]

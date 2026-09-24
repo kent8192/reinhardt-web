@@ -102,9 +102,9 @@ pub struct OidcConfig {
 	pub userinfo_endpoint: String,
 	/// Mounted JWKS endpoint URL.
 	pub jwks_uri: String,
-	/// ID Token lifetime; default five minutes, maximum fifteen.
+	/// ID Token lifetime; minimum one second, default five minutes, maximum fifteen.
 	pub id_token_ttl: Duration,
-	/// UserInfo access-token lifetime; default ten minutes, maximum one hour.
+	/// UserInfo access-token lifetime; minimum one second, default ten minutes, maximum one hour.
 	pub access_token_ttl: Duration,
 	/// Scheduled key-rotation interval; default thirty days.
 	pub key_rotation_interval: Duration,
@@ -223,9 +223,9 @@ impl OidcConfig {
 				return Err(OidcError::InvalidRequest);
 			}
 		}
-		if self.id_token_ttl.is_zero()
+		if self.id_token_ttl.as_secs() == 0
 			|| self.id_token_ttl > Duration::from_secs(900)
-			|| self.access_token_ttl.is_zero()
+			|| self.access_token_ttl.as_secs() == 0
 			|| self.access_token_ttl > Duration::from_secs(3600)
 			|| self.key_rotation_interval.is_zero()
 			|| self.clock_skew > Duration::from_secs(300)
