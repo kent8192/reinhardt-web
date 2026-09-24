@@ -740,6 +740,55 @@ mod postgres {
 		);
 	}
 
+	#[rstest]
+	#[tokio::test]
+	async fn late_review_postgres_resource_cas_rejects_concurrent_and_stale_updates() {
+		let issuer = pg_issuer().await;
+		let store = &issuer.oauth_store;
+		issuer
+			.oauth
+			.register_resource("cas-resource", "https://cas.example")
+			.await
+			.unwrap();
+		let expected = store.resource("cas-resource").await.unwrap().unwrap();
+		let mut first = expected.clone();
+		first.secret_hash = "first".into();
+		let mut second = expected.clone();
+		second.secret_hash = "second".into();
+		let (left, right) = tokio::join!(
+			store.compare_and_swap_resource(&expected, first),
+			store.compare_and_swap_resource(&expected, second)
+		);
+		assert_eq!(
+			[left.unwrap(), right.unwrap()]
+				.into_iter()
+				.filter(|won| *won)
+				.count(),
+			1
+		);
+		let mut disabled = store.resource("cas-resource").await.unwrap().unwrap();
+		disabled.enabled = false;
+		store.put_resource(disabled.clone()).await.unwrap();
+		assert!(
+			!store
+				.compare_and_swap_resource(&expected, expected.clone())
+				.await
+				.unwrap()
+		);
+		assert_eq!(
+			store.resource("cas-resource").await.unwrap(),
+			Some(disabled.clone())
+		);
+		let mut changed_identity = disabled.clone();
+		changed_identity.audience = "https://other.example".into();
+		assert!(
+			store
+				.compare_and_swap_resource(&disabled, changed_identity)
+				.await
+				.is_err()
+		);
+	}
+
 	struct CloseOnceUsers {
 		pool: PgPool,
 		close: AtomicBool,
@@ -1176,4 +1225,101 @@ mod postgres {
 				.is_ok()
 		);
 	}
+}
+
+#[rstest]
+#[case::duplicate_id(true, "client_id=rp-a", StatusCode::BAD_REQUEST, "invalid_request")]
+#[case::duplicate_secret(
+	true,
+	"client_secret=secret",
+	StatusCode::BAD_REQUEST,
+	"invalid_request"
+)]
+#[case::empty_duplicate_id(true, "client_id=", StatusCode::BAD_REQUEST, "invalid_request")]
+#[case::body_only_id(false, "client_id=rp-a", StatusCode::UNAUTHORIZED, "invalid_client")]
+#[case::body_only_secret(
+	false,
+	"client_secret=secret",
+	StatusCode::UNAUTHORIZED,
+	"invalid_client"
+)]
+#[tokio::test]
+async fn late_review_oidc_distinguishes_duplicate_and_missing_client_auth(
+	#[case] with_header: bool,
+	#[case] body: &str,
+	#[case] status: StatusCode,
+	#[case] error: &str,
+) {
+	let test = issuer().await;
+	let mut request = Request::builder()
+		.method(Method::POST)
+		.uri("/oidc/token")
+		.header("Content-Type", "application/x-www-form-urlencoded")
+		.body(Bytes::from(body.to_owned()));
+	if with_header {
+		request = request.header(
+			"Authorization",
+			format!("Basic {}", STANDARD.encode(format!("rp-a:{}", test.secret))),
+		);
+	}
+	let response = OidcHandler::new(test.provider.clone(), OidcEndpoint::Token)
+		.handle(request.build().unwrap())
+		.await
+		.unwrap();
+	assert_eq!(response.status, status);
+	assert_eq!(
+		serde_json::from_slice::<Value>(&response.body).unwrap()["error"],
+		error
+	);
+	assert_eq!(response.headers.get("cache-control").unwrap(), "no-store");
+}
+#[rstest]
+#[tokio::test]
+async fn late_review_discovery_covers_every_issued_claim() {
+	let test = issuer().await;
+	let pending = test
+		.provider
+		.begin_authorization(request(), "session")
+		.await
+		.unwrap();
+	let code = code_from(
+		&test
+			.provider
+			.complete_authorization(&pending.id, "session", approve())
+			.await
+			.unwrap(),
+	);
+	let token = test
+		.provider
+		.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	let claims: Value = serde_json::from_slice(
+		&URL_SAFE_NO_PAD
+			.decode(token.id_token.split('.').nth(1).unwrap())
+			.unwrap(),
+	)
+	.unwrap();
+	let metadata = test.provider.discovery();
+	let advertised = metadata["claims_supported"].as_array().unwrap();
+	for name in claims.as_object().unwrap().keys() {
+		assert!(
+			advertised.contains(&Value::String(name.clone())),
+			"missing claim: {name}"
+		);
+	}
+	assert!(advertised.contains(&Value::String("nonce".into())));
+	assert!(!advertised.contains(&Value::String("email".into())));
+}
+#[test]
+fn late_review_auth_full_includes_oidc_op() {
+	let manifest = include_str!("../../../Cargo.toml");
+	let preset = manifest
+		.split("auth-full = [")
+		.nth(1)
+		.unwrap()
+		.split(']')
+		.next()
+		.unwrap();
+	assert!(preset.contains(r#""oidc-op""#));
 }

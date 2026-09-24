@@ -366,6 +366,49 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.map_err(|e| e.to_string())?;
 		Ok(())
 	}
+	async fn compare_and_swap_resource(
+		&self,
+		expected: &ResourceRegistration,
+		replacement: ResourceRegistration,
+	) -> Result<bool, String> {
+		if replacement.resource_id != expected.resource_id
+			|| replacement.audience != expected.audience
+		{
+			return Err("resource identity cannot change".to_owned());
+		}
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let (sql, _) = Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new("oauth_server_resources"))
+			.and_where(
+				Expr::col(Alias::new("resource_id").into_iden()).eq(expected.resource_id.as_str()),
+			)
+			.lock_exclusive()
+			.build(PostgresQueryBuilder);
+		let row: Option<(Json<ResourceRegistration>,)> = sqlx::query_as(&sql)
+			.bind(&expected.resource_id)
+			.fetch_optional(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		if row.as_ref().map(|(Json(client),)| client) != Some(expected) {
+			return Ok(false);
+		}
+		let (sql, _) = Query::update()
+			.table(Alias::new("oauth_server_resources"))
+			.value(Alias::new("payload"), json_value(&replacement)?)
+			.and_where(
+				Expr::col(Alias::new("resource_id").into_iden()).eq(expected.resource_id.as_str()),
+			)
+			.build(PostgresQueryBuilder);
+		sqlx::query(&sql)
+			.bind(Json(&replacement))
+			.bind(&expected.resource_id)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(true)
+	}
 	async fn resource(&self, id: &str) -> Result<Option<ResourceRegistration>, String> {
 		let (sql, _) = Query::select()
 			.column(Alias::new("payload"))

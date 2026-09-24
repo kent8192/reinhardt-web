@@ -563,20 +563,27 @@ impl OAuthServer {
 			.map_err(|_| OAuthError::ServerError)?;
 		Ok(raw)
 	}
-	/// Rotate a resource server's introspection secret.
+
+	/// Rotate a resource server's introspection secret using an atomic snapshot check.
+	/// A concurrent registration change returns `ServerError` without publishing a secret.
 	pub async fn rotate_resource_secret(&self, id: &str) -> Result<String, OAuthError> {
-		let mut resource = self
+		let expected = self
 			.store
 			.resource(id)
 			.await
 			.map_err(|_| OAuthError::ServerError)?
 			.ok_or(OAuthError::InvalidClient)?;
 		let raw = random_secret();
-		resource.secret_hash = hash_password(&raw).await?;
-		self.store
-			.put_resource(resource)
+		let mut replacement = expected.clone();
+		replacement.secret_hash = hash_password(&raw).await?;
+		if !self
+			.store
+			.compare_and_swap_resource(&expected, replacement)
 			.await
-			.map_err(|_| OAuthError::ServerError)?;
+			.map_err(|_| OAuthError::ServerError)?
+		{
+			return Err(OAuthError::ServerError);
+		}
 		Ok(raw)
 	}
 	/// Validate a browser authorization request and persist a pending decision.

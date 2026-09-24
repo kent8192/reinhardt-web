@@ -407,7 +407,7 @@ impl OidcProvider {
 			"subject_types_supported": ["public"],
 			"id_token_signing_alg_values_supported": ["RS256"],
 			"scopes_supported": ["openid"],
-			"claims_supported": ["sub"],
+			"claims_supported": ["iss", "sub", "aud", "iat", "exp", "auth_time", "nonce"],
 			"token_endpoint_auth_methods_supported": ["client_secret_basic"],
 			"code_challenge_methods_supported": ["S256"],
 			"request_parameter_supported": false,

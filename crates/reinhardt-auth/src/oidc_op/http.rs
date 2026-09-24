@@ -176,7 +176,11 @@ impl OidcHandler {
 			Err(error) => return oidc_error(error),
 		};
 		if params.contains_key("client_id") || params.contains_key("client_secret") {
-			return oidc_error(OidcError::InvalidClient);
+			return oidc_error(if request.headers.contains_key("authorization") {
+				OidcError::InvalidRequest
+			} else {
+				OidcError::InvalidClient
+			});
 		}
 		let Some((client_id, secret)) = basic_auth(&request) else {
 			return oidc_error(OidcError::InvalidClient);

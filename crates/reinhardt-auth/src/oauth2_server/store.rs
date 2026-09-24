@@ -54,7 +54,7 @@ pub struct ClientRegistration {
 }
 
 /// Administrative registration of a resource server.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ResourceRegistration {
 	/// Unique resource identifier used as the audience.
 	pub audience: String,
@@ -253,6 +253,14 @@ pub trait OAuthServerStore: Send + Sync {
 	async fn put_resource(&self, resource: ResourceRegistration) -> Result<(), String>;
 	/// Get a resource server registration.
 	async fn resource(&self, resource_id: &str) -> Result<Option<ResourceRegistration>, String>;
+	/// Compare the complete resource snapshot and atomically replace its registration.
+	/// The resource identifier and audience must remain unchanged. Returns false on conflict.
+	async fn compare_and_swap_resource(
+		&self,
+		expected: &ResourceRegistration,
+		replacement: ResourceRegistration,
+	) -> Result<bool, String>;
+
 	/// Find a registered resource by its unique audience.
 	async fn resource_for_audience(
 		&self,
@@ -426,6 +434,25 @@ impl OAuthServerStore for MemoryOAuthStore {
 			.resources
 			.insert(resource.resource_id.clone(), resource);
 		Ok(())
+	}
+	async fn compare_and_swap_resource(
+		&self,
+		expected: &ResourceRegistration,
+		replacement: ResourceRegistration,
+	) -> Result<bool, String> {
+		if replacement.resource_id != expected.resource_id
+			|| replacement.audience != expected.audience
+		{
+			return Err("resource identity cannot change".to_owned());
+		}
+		let mut state = self.state.lock().await;
+		if state.resources.get(&expected.resource_id) != Some(expected) {
+			return Ok(false);
+		}
+		state
+			.resources
+			.insert(replacement.resource_id.clone(), replacement);
+		Ok(true)
 	}
 	async fn resource(&self, id: &str) -> Result<Option<ResourceRegistration>, String> {
 		Ok(self.state.lock().await.resources.get(id).cloned())

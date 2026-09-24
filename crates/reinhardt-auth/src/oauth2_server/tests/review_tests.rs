@@ -492,3 +492,162 @@ async fn loopback_development_origins_are_explicit_and_cors_usable(
 		);
 	}
 }
+
+// Force both rotations to read the same revision, independently of scheduler timing.
+struct ResourceReadBarrier {
+	inner: Arc<dyn OAuthServerStore>,
+	reads: std::sync::atomic::AtomicUsize,
+	gate: tokio::sync::Barrier,
+}
+#[async_trait]
+impl OAuthServerStore for ResourceReadBarrier {
+	async fn compare_and_swap_resource(
+		&self,
+		expected: &ResourceRegistration,
+		replacement: ResourceRegistration,
+	) -> Result<bool, String> {
+		self.inner
+			.compare_and_swap_resource(expected, replacement)
+			.await
+	}
+
+	async fn put_client(&self, client: ClientRegistration) -> Result<(), String> {
+		self.inner.put_client(client).await
+	}
+	async fn compare_and_swap_client(
+		&self,
+		expected: &ClientRegistration,
+		replacement: ClientRegistration,
+	) -> Result<bool, String> {
+		self.inner
+			.compare_and_swap_client(expected, replacement)
+			.await
+	}
+	async fn disable_client(&self, client_id: &str) -> Result<Option<u64>, String> {
+		self.inner.disable_client(client_id).await
+	}
+	async fn client(&self, client_id: &str) -> Result<Option<ClientRegistration>, String> {
+		self.inner.client(client_id).await
+	}
+	async fn public_client_for_origin(
+		&self,
+		origin: &str,
+	) -> Result<Option<ClientRegistration>, String> {
+		self.inner.public_client_for_origin(origin).await
+	}
+	async fn put_resource(&self, resource: ResourceRegistration) -> Result<(), String> {
+		self.inner.put_resource(resource).await
+	}
+	async fn resource(&self, resource_id: &str) -> Result<Option<ResourceRegistration>, String> {
+		let snapshot = self.inner.resource(resource_id).await?;
+		if self.reads.fetch_add(1, Ordering::SeqCst) < 2 {
+			self.gate.wait().await;
+		}
+		Ok(snapshot)
+	}
+	async fn resource_for_audience(
+		&self,
+		audience: &str,
+	) -> Result<Option<ResourceRegistration>, String> {
+		self.inner.resource_for_audience(audience).await
+	}
+	async fn put_pending(&self, id: &str, pending: PendingRecord) -> Result<(), String> {
+		self.inner.put_pending(id, pending).await
+	}
+	async fn pending(&self, id: &str) -> Result<Option<PendingRecord>, String> {
+		self.inner.pending(id).await
+	}
+	async fn complete_pending(&self, request: AuthorizationCommit<'_>) -> Result<bool, String> {
+		self.inner.complete_pending(request).await
+	}
+	async fn take_pending(
+		&self,
+		id: &str,
+		session_digest: &str,
+		oidc: bool,
+		now: i64,
+	) -> Result<Option<PendingRecord>, String> {
+		self.inner.take_pending(id, session_digest, oidc, now).await
+	}
+	async fn put_code(&self, code: StoredCode) -> Result<(), String> {
+		self.inner.put_code(code).await
+	}
+	async fn code(&self, digest: &str) -> Result<Option<StoredCode>, String> {
+		self.inner.code(digest).await
+	}
+	async fn inspect_code_for_exchange(
+		&self,
+		request: CodeInspection<'_>,
+	) -> Result<Option<StoredCode>, String> {
+		self.inner.inspect_code_for_exchange(request).await
+	}
+	async fn redeem_code_and_store_token(
+		&self,
+		request: CodeRedemptionRequest<'_>,
+	) -> Result<CodeRedemption, String> {
+		self.inner.redeem_code_and_store_token(request).await
+	}
+	async fn put_token(&self, token: StoredToken) -> Result<(), String> {
+		self.inner.put_token(token).await
+	}
+	async fn token(&self, digest: &str) -> Result<Option<StoredToken>, String> {
+		self.inner.token(digest).await
+	}
+	async fn revoke_token(&self, digest: &str, client_id: &str) -> Result<(), String> {
+		self.inner.revoke_token(digest, client_id).await
+	}
+	async fn revoke_user(&self, user_id: &str) -> Result<u64, String> {
+		self.inner.revoke_user(user_id).await
+	}
+	async fn retire_user(&self, user_id: &str) -> Result<(), String> {
+		self.inner.retire_user(user_id).await
+	}
+	async fn revoke_client(&self, client_id: &str) -> Result<u64, String> {
+		self.inner.revoke_client(client_id).await
+	}
+}
+#[rstest]
+#[tokio::test]
+async fn late_review_resource_rotation_has_one_winner_for_a_shared_snapshot() {
+	let store = Arc::new(ResourceReadBarrier {
+		inner: Arc::new(MemoryOAuthStore::new()),
+		reads: std::sync::atomic::AtomicUsize::new(0),
+		gate: tokio::sync::Barrier::new(2),
+	});
+	let server = OAuthServer::for_development(
+		config(),
+		store,
+		Arc::new(SimpleUserRepository),
+		Arc::new(AllowAll),
+	)
+	.unwrap();
+	server
+		.register_resource("resource-a", "https://api.example")
+		.await
+		.unwrap();
+	let (left, right) = tokio::time::timeout(Duration::from_secs(10), async {
+		tokio::join!(
+			server.rotate_resource_secret("resource-a"),
+			server.rotate_resource_secret("resource-a")
+		)
+	})
+	.await
+	.expect("rotation must not retain a store lock over host or hashing work");
+	let results = [left, right];
+	assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+	assert_eq!(
+		results
+			.iter()
+			.filter(|result| matches!(result, Err(OAuthError::ServerError)))
+			.count(),
+		1
+	);
+	for secret in results.into_iter().filter_map(Result::ok) {
+		assert!(
+			server
+				.introspect("unknown-token", "resource-a", &secret)
+				.await
+				.is_ok()
+		);
+	}
+}

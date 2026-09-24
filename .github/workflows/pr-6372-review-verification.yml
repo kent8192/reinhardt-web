@@ -45,12 +45,19 @@ jobs:
           set -euo pipefail
           cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oauth2_server::tests -- --test-threads=2 2>&1 | tee /tmp/auth-verification/oauth.log
           cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oidc_op::tests -- --test-threads=2 2>&1 | tee /tmp/auth-verification/oidc.log
-      - name: Check isolated feature configurations
+      - name: Check isolated and aggregate feature configurations
         run: |
           set -euo pipefail
-          for features in oauth oauth,database oidc-op oidc-op,database; do
+          for features in oauth oauth,database oidc-op oidc-op,database auth-full; do
             cargo check -p reinhardt-auth --no-default-features --features "$features" 2>&1 | tee "/tmp/auth-verification/check-${features//,/-}.log"
           done
+          python3 - <<'PY'
+          import pathlib, tomllib
+          root = tomllib.loads(pathlib.Path('Cargo.toml').read_text())
+          auth = tomllib.loads(pathlib.Path('crates/reinhardt-auth/Cargo.toml').read_text())
+          assert 'reinhardt-auth/auth-full' in root['features']['full']
+          assert 'oidc-op' in auth['features']['auth-full']
+          PY
       - name: Check production lint and documentation
         run: |
           set -euo pipefail

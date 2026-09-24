@@ -43,6 +43,7 @@ rate-limit = ["reinhardt-throttling"]
 
 # Aggregate all auth features
 auth-full = [
+  "oidc-op",
   "params",
   "jwt",
   "sessions",
