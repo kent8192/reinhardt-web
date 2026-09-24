@@ -8,21 +8,64 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_TERM_COLOR: never
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
-  snapshot:
+  regressions:
     if: github.repository == 'kent8192/reinhardt-web'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Archive the exact review checkout
-        run: |
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git archive --format=tar.gz HEAD > /tmp/pr-6372-source.tar.gz
-      - uses: actions/upload-artifact@v4
+      - name: Verify the original auth source tree
+        run: test "$(git rev-parse HEAD:crates/reinhardt-auth)" = 8c20a74776ce17681a9f397a18c611d2d1b06519
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
-          name: pr-6372-source
-          path: /tmp/pr-6372-source.tar.gz
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pr-6372-auth-review
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: '28.x'
+      - name: Add regression tests without changing production code
+        env:
+          PATCH_GZIP_BASE64: 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
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, os, pathlib, subprocess
+          patch = gzip.decompress(base64.b64decode(os.environ['PATCH_GZIP_BASE64']))
+          path = pathlib.Path('/tmp/pr-6372-baseline.patch')
+          path.write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', str(path)], check=True)
+          subprocess.run(['git', 'apply', str(path)], check=True)
+          PY
+          cargo fmt -p reinhardt-auth
+      - name: Reproduce failing assertions on the original implementation
+        run: |
+          set +e
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib review_tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-baseline.log
+          result=${PIPESTATUS[0]}
+          set -e
+          test "$result" -ne 0
+          grep -q 'test result: FAILED' /tmp/pr-6372-baseline.log
+      - name: Package test evidence
+        if: always()
+        run: |
+          git diff --check
+          tar -czf /tmp/pr-6372-baseline-source.tar.gz crates/reinhardt-auth
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr-6372-baseline-evidence
+          path: |
+            /tmp/pr-6372-baseline.log
+            /tmp/pr-6372-baseline-source.tar.gz
           retention-days: 1
