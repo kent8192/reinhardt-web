@@ -270,7 +270,9 @@ pub use sql_plan::{
 	plan_migration_sql_with_states,
 };
 pub use squash::{MigrationSquasher, SquashOptions, SquashResult};
-pub use state_loader::{MigrationStateLoader, build_state_from_files};
+pub use state_loader::{
+	MigrationStateLoader, build_state_from_files, build_state_from_files_with_context,
+};
 pub use verification::{
 	SchemaCheckError, SchemaContractState, SchemaFinding, SchemaVerification,
 	verify_schema_contract,

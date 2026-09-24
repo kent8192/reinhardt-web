@@ -9,6 +9,7 @@
 //! - **Standard Commands**: migrate, shell, runserver, etc.
 //! - **Argument Parsing**: Clap-based argument handling
 //! - **Command Registry**: Automatic command discovery
+//! - **Capability bootstrap**: Opt-in typed settings and invocation-owned service preparation
 //! - **Interactive Mode**: Support for interactive prompts
 //! - **Colored Output**: Rich terminal output
 //! - **Data Fixtures**: Django-compatible `dumpdata`, transaction-safe `loaddata`,
@@ -366,6 +367,7 @@ pub mod base;
 pub mod buildstatic;
 /// Built-in management commands (migrate, runserver, shell, etc.).
 pub mod builtin;
+pub mod capabilities;
 /// CLI argument parsing and command dispatch.
 pub mod cli;
 /// Static file collection command.
@@ -516,6 +518,10 @@ pub use builtin::MakeMigrationsCommand;
 #[cfg(feature = "routers")]
 pub use builtin::ShowUrlsCommand;
 pub use builtin::{CheckCommand, CheckDiCommand, MigrateCommand, RunServerCommand, ShellCommand};
+pub use capabilities::{
+	CapabilityCommand, CapabilityContext, CapabilityProvider, CapabilityRequirement,
+	SelectedDatabase, SettingsView,
+};
 #[cfg(feature = "server")]
 pub use cli::start_server;
 pub use cli::{
@@ -529,7 +535,9 @@ pub use cli::{
 };
 #[cfg(feature = "contract")]
 pub use cli::{
-	ContractOutputFormat, ContractSubcommand, execute_from_command_line_with_pending_settings,
+	ContractOutputFormat, ContractSubcommand, execute_from_command_line_with_capabilities,
+	execute_from_command_line_with_capabilities_and_shell,
+	execute_from_command_line_with_pending_settings,
 	execute_from_command_line_with_pending_settings_and_cargo_context,
 	execute_from_command_line_with_pending_settings_and_cargo_context_and_shell,
 	execute_from_command_line_with_pending_settings_and_shell,

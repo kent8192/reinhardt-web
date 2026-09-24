@@ -142,6 +142,8 @@ fn assert_generated_common_and_migration_settings(root: &Path) {
 	for required in [
 		"pub fn get_settings() -> Result<PendingSettings<ProjectSettings>, BuildError>",
 		".build_pending_composed::<ProjectSettings>()",
+		"pub fn get_scoped_settings() -> Result<ScopedSettings, BuildError>",
+		".build_scoped()",
 		"pub fn get_shell_settings() -> ProjectSettings",
 		".resolve()",
 		".into_parts()",
@@ -282,12 +284,12 @@ fn assert_generated_shell_wiring(root: &Path, crate_name: &str) {
 		"command_error_exit_code",
 		"process::exit(exit_code)",
 		"#[cfg(feature = \"commands-shell\")]",
-		"execute_from_command_line_with_pending_settings_and_cargo_context_and_shell(",
+		"execute_from_command_line_with_capabilities_and_shell(",
 		"get_shell_config()",
 		"#[cfg(not(feature = \"commands-shell\"))]",
-		"execute_from_command_line_with_pending_settings_and_cargo_context(",
+		"execute_from_command_line_with_capabilities(",
 		"CargoCheckContext::from_launcher(",
-		"get_settings,",
+		"ProjectProvider,",
 		"#[cfg(target_arch = \"wasm32\")]\nfn main() {}",
 	] {
 		assert!(

@@ -12,6 +12,7 @@ Guide to serving static files (CSS, JavaScript, images, etc.).
 - [Basic Setup](#basic-setup)
 - [Storage Backends](#storage-backends)
 - [Unified Asset Classification](#unified-asset-classification)
+- [Command-Aware Collection](#command-aware-collection)
 - [Building a Complete Asset Set](#building-a-complete-asset-set)
 - [Development vs Production](#development-vs-production)
 - [Path Resolution](#path-resolution)
@@ -49,6 +50,23 @@ let middleware = StaticFilesMiddleware::new(config);
 > This example uses the storage version. The storage config is also re-exported at `reinhardt_utils::staticfiles::StaticFilesConfig`.
 
 ---
+
+## Command-Aware Collection
+
+Newly generated Pages and RESTful management binaries use the capability-aware
+entry point. `collectstatic` and `buildstatic` parse arguments before loading
+settings and validate only selected static inputs. Configure a non-empty
+`[static].root` (or `[static_files].root`); the URL defaults to `/static/` and
+must be a slash-prefixed path or HTTP(S) URL ending in `/`. An invalid explicit
+value fails instead of falling back to a default. Unused runtime secrets and
+database aliases do not need to be present for collection. `runserver` still
+requires fully valid runtime settings.
+
+This boundary applies to application configuration and service initialization.
+Pages compilation still needs its Rust dependencies; a requested vendor asset
+fetch may still need network access. Pre-provision both for an offline build.
+Existing applications using eager settings entry points must migrate their
+management launcher to the provider API before removing build-time secrets.
 
 ## Building a Complete Asset Set
 

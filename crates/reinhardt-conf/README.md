@@ -91,6 +91,19 @@ let database_url = settings.get::<String>("DATABASE_URL")?;
 
 ### Resolved composed settings metadata
 
+`SettingsBuilder::build_scoped()` supports command-aware settings resolution.
+It syntax-checks configured sources and merges raw values first, preserving
+their priority. `ScopedSettings::require_path` and `optional_path` then expand
+`${VAR}` and deserialize only the requested effective path. A shadowed value
+or unrelated secret is not expanded. `optional_path` returns `None` only when
+the path is absent; a malformed explicit value remains an error. TOML syntax
+errors are still reported even in unselected sections.
+
+Custom `ConfigSource` implementations must implement `load_scoped` to opt in.
+The default rejects scoped loading instead of calling an eager loader that
+might evaluate unrelated secrets. Existing `build`, `build_composed`, and
+`build_pending_composed` behavior remains unchanged.
+
 `SettingsBuilder::build_resolved_composed()` returns typed composed settings
 with value-free metadata for resolved leaf paths. The metadata records each
 leaf's type, policy, secret classification, and merged-key presence; it never

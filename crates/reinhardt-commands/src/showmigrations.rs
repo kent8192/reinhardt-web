@@ -17,6 +17,39 @@ use std::sync::Arc;
 
 const MIGRATION_FEATURES_OPTION: &str = "__reinhardt_migration_features";
 const MIGRATION_SETTING_OPTION_PREFIX: &str = "__reinhardt_migration_setting:";
+#[cfg(feature = "contract")]
+const CORE_MIGRATION_APPS_OPTION: &str = "__reinhardt_core_migration_apps";
+#[cfg(feature = "contract")]
+const CORE_MIGRATION_FEATURES_OPTION: &str = "__reinhardt_core_migration_features";
+#[cfg(feature = "contract")]
+const CORE_MIGRATION_SETTING_OPTION_PREFIX: &str = "__reinhardt_core_migration_setting:";
+#[cfg(feature = "contract")]
+const CORE_MIGRATION_BASE_DIR_OPTION: &str = "__reinhardt_core_migration_base_dir";
+
+#[cfg(feature = "contract")]
+pub(crate) fn attach_core_migration_metadata(
+	ctx: &mut CommandContext,
+	metadata: &crate::capabilities::CoreMigrationMetadata,
+) {
+	ctx.set_option_multi(
+		CORE_MIGRATION_APPS_OPTION.to_owned(),
+		metadata.installed_apps.clone(),
+	);
+	ctx.set_option_multi(
+		CORE_MIGRATION_FEATURES_OPTION.to_owned(),
+		metadata.migration_features.clone(),
+	);
+	ctx.set_option(
+		CORE_MIGRATION_BASE_DIR_OPTION.to_owned(),
+		metadata.base_dir.to_string_lossy().into_owned(),
+	);
+	for (key, value) in &metadata.migration_swappable_settings {
+		ctx.set_option(
+			format!("{CORE_MIGRATION_SETTING_OPTION_PREFIX}{key}"),
+			value.clone(),
+		);
+	}
+}
 
 pub(crate) fn attach_migration_settings(ctx: &mut CommandContext, settings: &MigrationSettings) {
 	ctx.set_option_multi(
@@ -38,6 +71,17 @@ pub(crate) fn attach_migration_settings(ctx: &mut CommandContext, settings: &Mig
 pub(crate) fn migration_source_path(ctx: &CommandContext) -> PathBuf {
 	ctx.option("migrations-dir")
 		.map(PathBuf::from)
+		.or_else(|| {
+			#[cfg(feature = "contract")]
+			{
+				ctx.option(CORE_MIGRATION_BASE_DIR_OPTION)
+					.map(|base| PathBuf::from(base).join("migrations"))
+			}
+			#[cfg(not(feature = "contract"))]
+			{
+				None
+			}
+		})
 		.unwrap_or_else(|| {
 			ctx.settings.as_ref().map_or_else(
 				|| PathBuf::from("./migrations"),
@@ -62,6 +106,28 @@ pub(crate) fn migration_dependency_context(ctx: &CommandContext) -> DependencyRe
 				}
 				context
 			});
+	#[cfg(feature = "contract")]
+	{
+		for app in ctx
+			.option_values(CORE_MIGRATION_APPS_OPTION)
+			.unwrap_or_default()
+		{
+			dependency_context = dependency_context.with_apps([app]);
+		}
+		for feature in ctx
+			.option_values(CORE_MIGRATION_FEATURES_OPTION)
+			.unwrap_or_default()
+		{
+			dependency_context = dependency_context.with_feature(feature);
+		}
+		for (option, values) in &ctx.options {
+			if let Some(key) = option.strip_prefix(CORE_MIGRATION_SETTING_OPTION_PREFIX)
+				&& let Some(value) = values.first()
+			{
+				dependency_context = dependency_context.with_setting(key, value);
+			}
+		}
+	}
 	for feature in ctx
 		.option_values(MIGRATION_FEATURES_OPTION)
 		.unwrap_or_default()
