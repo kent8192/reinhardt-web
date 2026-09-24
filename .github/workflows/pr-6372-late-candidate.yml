@@ -1,0 +1,143 @@
+name: PR 6372 late candidate preparation
+on:
+  push:
+    branches: [feature/issue-6355-oauth-authorization-server]
+    paths: [.github/workflows/pr-6372-late-candidate.yml]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+env:
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_TERM_COLOR: never
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      archive_sha: ${{ steps.package.outputs.archive_sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Load the authored regression and fix scripts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:crates/reinhardt-auth)" = 9469bf97b0793347734e3f3174b7b32c5b4ec095
+          mkdir -p /tmp/late-review
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, urllib.request
+          for name, sha in [('tests', '5c0d9e6d38c6140438f62f1877bf45c2f4c04194'), ('fixes', '43a94e28fd30a0dbc2dd19f9512e58f29f44f41c')]:
+              request = urllib.request.Request('https://api.github.com/repos/kent8192/reinhardt-web/git/blobs/' + sha, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  source = base64.b64decode(json.load(response)['content'])
+              assert hashlib.sha1(b'blob ' + str(len(source)).encode() + b'\0' + source).hexdigest() == sha
+              pathlib.Path('/tmp/late-review/' + name + '.py').write_bytes(source)
+          PY
+          python3 /tmp/late-review/tests.py
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pr-6372-auth-review
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: '28.x'
+      - name: Reproduce all four late findings before changing production code
+        run: |
+          set -euo pipefail
+          set +e
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib late_review -- --test-threads=2 > /tmp/late-review/red.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/late-review/red.log
+          test "$status" -ne 0
+          grep -F 'test result: FAILED. 2 passed; 6 failed;' /tmp/late-review/red.log
+      - name: Apply the authored fixes and verify complete affected suites
+        run: |
+          set -euo pipefail
+          python3 /tmp/late-review/fixes.py
+          cargo fmt -p reinhardt-auth
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oauth2_server::tests -- --test-threads=2 2>&1 | tee /tmp/late-review/oauth.log
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oidc_op::tests -- --test-threads=2 2>&1 | tee /tmp/late-review/oidc.log
+      - name: Verify aggregate feature wiring and production quality
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, tomllib
+          root = tomllib.loads(pathlib.Path('Cargo.toml').read_text())
+          auth = tomllib.loads(pathlib.Path('crates/reinhardt-auth/Cargo.toml').read_text())
+          assert 'reinhardt-auth/auth-full' in root['features']['full']
+          assert 'oidc-op' in auth['features']['auth-full']
+          PY
+          cargo check -p reinhardt-auth --no-default-features --features auth-full 2>&1 | tee /tmp/late-review/auth-full.log
+          cargo clippy -p reinhardt-auth --features oidc-op,database,reinhardt-db/postgres --lib --no-deps -- -D warnings 2>&1 | tee /tmp/late-review/clippy.log
+          RUSTDOCFLAGS='-D warnings' cargo doc -p reinhardt-auth --features oidc-op,database,reinhardt-db/postgres --no-deps 2>&1 | tee /tmp/late-review/rustdoc.log
+          cargo fmt -p reinhardt-auth --check
+          git diff --check
+      - name: Package candidate source for inspection, not branch publication
+        id: package
+        if: always()
+        run: |
+          mkdir -p /tmp/late-review
+          git diff --binary -- crates/reinhardt-auth > /tmp/late-review/source.patch
+          tar -czf /tmp/late-review/auth-source.tar.gz crates/reinhardt-auth
+          echo "archive_sha=$(sha256sum /tmp/late-review/auth-source.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          git rev-parse HEAD > /tmp/late-review/checkout.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr-6372-late-candidate
+          path: /tmp/late-review/
+          retention-days: 7
+  stage:
+    needs: candidate
+    runs-on: macos-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pr-6372-late-candidate
+          path: input
+      - name: Stage approved-path blobs without committing or moving a ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_ARCHIVE: ${{ needs.candidate.outputs.archive_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, tarfile, urllib.request
+          archive = pathlib.Path('input/auth-source.tar.gz')
+          assert hashlib.sha256(archive.read_bytes()).hexdigest() == os.environ['EXPECTED_ARCHIVE']
+          paths = ['Cargo.toml', 'src/oauth2_server/store.rs', 'src/oauth2_server/postgres.rs', 'src/oauth2_server/protocol.rs', 'src/oauth2_server/tests/review_tests.rs', 'src/oidc_op/http.rs', 'src/oidc_op/protocol.rs', 'src/oidc_op/tests/review_tests.rs']
+          result = {}
+          with tarfile.open(archive) as tar:
+              for suffix in paths:
+                  path = 'crates/reinhardt-auth/' + suffix
+                  entry = tar.getmember(path)
+                  assert entry.isfile() and entry.size < 200000
+                  source = tar.extractfile(entry).read()
+                  sha = hashlib.sha1(b'blob ' + str(len(source)).encode() + b'\0' + source).hexdigest()
+                  request = urllib.request.Request('https://api.github.com/repos/kent8192/reinhardt-web/git/blobs', data=json.dumps({'encoding': 'base64', 'content': base64.b64encode(source).decode()}).encode(), method='POST', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'})
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      assert json.load(response)['sha'] == sha
+                  result[path] = sha
+          pathlib.Path('staged.json').write_text(json.dumps(result, indent=2))
+          print(json.dumps(result, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-6372-late-staged-blobs
+          path: staged.json
+          retention-days: 7
