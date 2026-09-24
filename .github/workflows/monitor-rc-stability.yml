@@ -51,32 +51,28 @@ jobs:
           echo "tag_date=${TAG_DATE}" >> "$GITHUB_OUTPUT"
           echo "Latest RC tag: ${LATEST_RC_TAG} (${TAG_DATE})"
 
-      - name: Check for blocking issues (excluding agent-suspect)
+      - name: Check for blocking issues
         if: steps.rc-tag.outputs.found == 'true'
         id: issues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Count critical issues that are NOT agent-suspect
-          CRITICAL_COUNT=$(gh issue list --state open --label critical --json labels,number \
-            | jq '[.[] | select(.labels | map(.name) | index("agent-suspect") | not)] | length')
+          # Count open critical issues
+          CRITICAL_COUNT=$(gh issue list --state open --label critical \
+            --json number | jq 'length')
 
-          # Count high issues that are NOT agent-suspect
-          HIGH_COUNT=$(gh issue list --state open --label high --json labels,number \
-            | jq '[.[] | select(.labels | map(.name) | index("agent-suspect") | not)] | length')
-
-          # Count agent-suspect issues (for reporting only)
-          AGENT_SUSPECT_COUNT=$(gh issue list --state open --label agent-suspect --json number | jq 'length')
-
-          echo "critical_count=${CRITICAL_COUNT}" >> "$GITHUB_OUTPUT"
-          echo "high_count=${HIGH_COUNT}" >> "$GITHUB_OUTPUT"
-          echo "agent_suspect_count=${AGENT_SUSPECT_COUNT}" >> "$GITHUB_OUTPUT"
+          # Count open high priority issues
+          HIGH_COUNT=$(gh issue list --state open --label high \
+            --json number | jq 'length')
 
           BLOCKING_COUNT=$((CRITICAL_COUNT + HIGH_COUNT))
-          echo "blocking_count=${BLOCKING_COUNT}" >> "$GITHUB_OUTPUT"
+          {
+            echo "critical_count=${CRITICAL_COUNT}"
+            echo "high_count=${HIGH_COUNT}"
+            echo "blocking_count=${BLOCKING_COUNT}"
+          } >> "$GITHUB_OUTPUT"
 
           echo "Blocking issues (critical: ${CRITICAL_COUNT}, high: ${HIGH_COUNT})"
-          echo "Agent-suspect issues (excluded from timer): ${AGENT_SUSPECT_COUNT}"
 
       - name: Calculate stability period
         if: steps.rc-tag.outputs.found == 'true'
@@ -124,7 +120,6 @@ jobs:
           echo "| Required Stability | ${{ steps.config.outputs.stability_days }} days |"
           echo "| Critical Issues | ${{ steps.issues.outputs.critical_count }} |"
           echo "| High Issues | ${{ steps.issues.outputs.high_count }} |"
-          echo "| Agent-Suspect (excluded) | ${{ steps.issues.outputs.agent_suspect_count }} |"
           echo "| Ready for Stable | ${{ steps.stability.outputs.ready }} |"
           echo ""
           if [ "${{ steps.stability.outputs.ready }}" = "true" ]; then
