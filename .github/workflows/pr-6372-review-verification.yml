@@ -1,0 +1,28 @@
+name: PR 6372 review verification
+
+on:
+  push:
+    branches: [feature/issue-6355-oauth-authorization-server]
+    paths: [.github/workflows/pr-6372-review-verification.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    if: github.repository == 'kent8192/reinhardt-web'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Archive the exact review checkout
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git archive --format=tar.gz HEAD > /tmp/pr-6372-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-6372-source
+          path: /tmp/pr-6372-source.tar.gz
+          retention-days: 1
