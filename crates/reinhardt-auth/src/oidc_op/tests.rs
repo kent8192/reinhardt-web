@@ -44,6 +44,21 @@ impl OAuthRateLimiter for AllowAll {
 #[cfg(feature = "database")]
 impl crate::oauth2_server::SharedOAuthRateLimiter for AllowAll {}
 
+#[cfg(feature = "database")]
+struct CaptureLimiter(Arc<tokio::sync::Mutex<Vec<String>>>);
+
+#[cfg(feature = "database")]
+#[async_trait]
+impl OAuthRateLimiter for CaptureLimiter {
+	async fn allow(&self, key: &str) -> bool {
+		self.0.lock().await.push(key.to_owned());
+		true
+	}
+}
+
+#[cfg(feature = "database")]
+impl crate::oauth2_server::SharedOAuthRateLimiter for CaptureLimiter {}
+
 struct HostAccounts(Arc<AtomicBool>);
 #[async_trait]
 impl OidcAccountStatus for HostAccounts {
@@ -1051,7 +1066,9 @@ async fn production_nodes_complete_one_cross_instance_login() {
 	use crate::oauth2_server::PostgresOAuthStore;
 	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::DatabaseMigrationExecutor;
+	use reinhardt_http::TrustedProxies;
 	use sqlx::PgPool;
+	use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 	use testcontainers::runners::AsyncRunner;
 	use testcontainers_modules::postgres::Postgres;
 
@@ -1082,12 +1099,14 @@ async fn production_nodes_complete_one_cross_instance_login() {
 		)
 		.unwrap()
 	};
+	let rate_limit_keys = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+	let limiter = Arc::new(CaptureLimiter(rate_limit_keys.clone()));
 	let oauth_a = Arc::new(
 		OAuthServer::for_production(
 			oauth_config(),
 			PostgresOAuthStore::new(pool_a.clone()),
 			Arc::new(SimpleUserRepository),
-			Arc::new(AllowAll),
+			limiter.clone(),
 		)
 		.unwrap(),
 	);
@@ -1096,7 +1115,7 @@ async fn production_nodes_complete_one_cross_instance_login() {
 			oauth_config(),
 			PostgresOAuthStore::new(pool_b.clone()),
 			Arc::new(SimpleUserRepository),
-			Arc::new(AllowAll),
+			limiter,
 		)
 		.unwrap(),
 	);
@@ -1144,13 +1163,42 @@ async fn production_nodes_complete_one_cross_instance_login() {
 		.unwrap()
 	};
 	let accounts = Arc::new(HostAccounts(Arc::new(AtomicBool::new(true))));
-	let first =
+	let first = Arc::new(
 		OidcProvider::for_production(config(), oauth_a, state_a, accounts.clone(), signer.clone())
 			.await
-			.unwrap();
+			.unwrap(),
+	);
 	let second = OidcProvider::for_production(config(), oauth_b, state_b, accounts, signer.clone())
 		.await
 		.unwrap();
+	let discovery = OidcHandler::new(first.clone(), OidcEndpoint::Discovery);
+	let proxy: IpAddr = Ipv4Addr::new(10, 0, 0, 1).into();
+	let forwarded_request = Request::builder()
+		.uri("/.well-known/openid-configuration")
+		.remote_addr(SocketAddr::new(proxy, 8080))
+		.header("X-Forwarded-For", "203.0.113.42")
+		.header("X-Forwarded-Proto", "https")
+		.build()
+		.unwrap();
+	forwarded_request.set_trusted_proxies(TrustedProxies::new(vec![proxy]));
+	assert_eq!(
+		discovery.handle(forwarded_request).await.unwrap().status,
+		StatusCode::OK
+	);
+	assert_eq!(
+		rate_limit_keys.lock().await.as_slice(),
+		&["oidc:Discovery:203.0.113.42"]
+	);
+	let missing_ip = Request::builder()
+		.uri("/.well-known/openid-configuration")
+		.secure(true)
+		.build()
+		.unwrap();
+	assert_eq!(
+		discovery.handle(missing_ip).await.unwrap().status,
+		StatusCode::BAD_REQUEST
+	);
+	assert_eq!(rate_limit_keys.lock().await.len(), 1);
 	let pending = first
 		.begin_authorization(request(), "browser-a")
 		.await
