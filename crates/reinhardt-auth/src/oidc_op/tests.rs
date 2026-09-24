@@ -384,8 +384,16 @@ async fn account_disable_and_retirement_revoke_userinfo_without_reusing_subject(
 	);
 	let code = authorize_disabled(&test).await;
 	assert_eq!(code, OidcError::AccessDenied);
-	test.provider.retire_user("user-a").await.unwrap();
 	test.active.store(true, Ordering::SeqCst);
+	let unredeemed_code = authorize(&test).await;
+	test.provider.retire_user("user-a").await.unwrap();
+	assert_eq!(
+		test.provider
+			.exchange_code(&unredeemed_code, "rp-a", &test.secret, REDIRECT, VERIFIER)
+			.await
+			.unwrap_err(),
+		OidcError::InvalidGrant
+	);
 	let second_code = authorize(&test).await;
 	let second = test
 		.provider
@@ -497,6 +505,53 @@ async fn mounted_handlers_support_mock_rp_login_and_userinfo() {
 		.append_pair("state", "rp-state")
 		.append_pair("nonce", "rp-nonce")
 		.finish();
+	let query_mode = Request::builder()
+		.uri(format!("/oidc/authorize?{query}&response_mode=query"))
+		.build()
+		.unwrap();
+	query_mode
+		.extensions
+		.insert(OAuthBrowserSession("browser-a".into()));
+	let mode_response = OidcHandler::authorization(
+		test.provider.clone(),
+		Arc::new(ApproveInteraction(test.provider.clone())),
+	)
+	.handle(query_mode)
+	.await
+	.unwrap();
+	assert_eq!(mode_response.status, StatusCode::FOUND);
+	assert!(
+		mode_response
+			.headers
+			.get("location")
+			.unwrap()
+			.to_str()
+			.unwrap()
+			.contains("code=")
+	);
+	let invalid_age = Request::builder()
+		.uri(format!("/oidc/authorize?{query}&max_age=invalid"))
+		.build()
+		.unwrap();
+	invalid_age
+		.extensions
+		.insert(OAuthBrowserSession("browser-a".into()));
+	let age_response = OidcHandler::authorization(
+		test.provider.clone(),
+		Arc::new(ApproveInteraction(test.provider.clone())),
+	)
+	.handle(invalid_age)
+	.await
+	.unwrap();
+	assert_eq!(age_response.status, StatusCode::FOUND);
+	let age_location = age_response
+		.headers
+		.get("location")
+		.unwrap()
+		.to_str()
+		.unwrap();
+	assert!(age_location.contains("error=invalid_request"));
+	assert!(age_location.contains("state=rp-state"));
 	let authorization = Request::builder()
 		.uri(format!("/oidc/authorize?{query}"))
 		.build()
@@ -624,13 +679,12 @@ async fn oauth_token_endpoint_cannot_redeem_oidc_code() {
 			.unwrap_err(),
 		crate::oauth2_server::OAuthError::InvalidGrant
 	);
-	assert_eq!(
-		test.provider
-			.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
-			.await
-			.unwrap_err(),
-		OidcError::InvalidGrant
-	);
+	let valid = test
+		.provider
+		.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	assert_eq!(valid.scope, "openid");
 }
 
 #[rstest]
@@ -656,13 +710,12 @@ async fn oauth_completion_cannot_convert_oidc_pending_into_oauth_code() {
 			.unwrap_err(),
 		crate::oauth2_server::OAuthError::InvalidGrant
 	);
-	assert_eq!(
-		test.provider
-			.complete_authorization(&pending.id, "browser-a", approve())
-			.await
-			.unwrap_err(),
-		OidcError::InvalidGrant
-	);
+	let redirect = test
+		.provider
+		.complete_authorization(&pending.id, "browser-a", approve())
+		.await
+		.unwrap();
+	assert!(redirect.contains("code="));
 }
 
 #[rstest]
@@ -882,6 +935,7 @@ async fn postgres_state_is_shared_and_single_use_across_instances() {
 		Some(subject.as_str())
 	);
 	let pending = OidcPending {
+		session_digest: "session-digest".into(),
 		requested_at: 1,
 		client_id: "rp-a".into(),
 		redirect_uri: REDIRECT.into(),
@@ -892,9 +946,16 @@ async fn postgres_state_is_shared_and_single_use_across_instances() {
 		expires_at: i64::MAX,
 	};
 	first.put_pending("pending-a", pending).await.unwrap();
+	assert!(
+		second
+			.take_pending("pending-a", "other-session", 1)
+			.await
+			.unwrap()
+			.is_none()
+	);
 	let (left, right) = tokio::join!(
-		first.take_pending("pending-a"),
-		second.take_pending("pending-a")
+		first.take_pending("pending-a", "session-digest", 1),
+		second.take_pending("pending-a", "session-digest", 1)
 	);
 	assert_eq!(
 		usize::from(left.unwrap().is_some()) + usize::from(right.unwrap().is_some()),
@@ -915,6 +976,36 @@ async fn postgres_state_is_shared_and_single_use_across_instances() {
 		second.code("digest-a").await.unwrap().unwrap().user_id,
 		"user-a"
 	);
+	first
+		.put_pending(
+			"expired-pending",
+			OidcPending {
+				session_digest: "session-digest".into(),
+				requested_at: 1,
+				client_id: "rp-a".into(),
+				redirect_uri: REDIRECT.into(),
+				state: None,
+				nonce: None,
+				prompts: vec![],
+				max_age: None,
+				expires_at: 2,
+			},
+		)
+		.await
+		.unwrap();
+	first
+		.put_code(OidcCodeContext {
+			digest: "expired-code".into(),
+			user_id: "user-a".into(),
+			client_id: "rp-a".into(),
+			nonce: None,
+			auth_time: 1,
+			expires_at: 2,
+		})
+		.await
+		.unwrap();
+	assert_eq!(second.purge_expired(2).await.unwrap(), 2);
+	assert!(first.code("expired-code").await.unwrap().is_none());
 
 	let signer = RsaPemKeyRing::new();
 	let key_a = add_key(&signer, "key-a");
@@ -1082,6 +1173,23 @@ async fn production_nodes_complete_one_cross_instance_login() {
 	assert_eq!(
 		first
 			.exchange_code(&code, "rp-a", &secret, REDIRECT, VERIFIER)
+			.await
+			.unwrap_err(),
+		OidcError::InvalidGrant
+	);
+	let pending = first
+		.begin_authorization(request(), "browser-a")
+		.await
+		.unwrap();
+	let redirect = second
+		.complete_authorization(&pending.id, "browser-a", approve())
+		.await
+		.unwrap();
+	let retired_code = code_from(&redirect);
+	second.retire_user("user-a").await.unwrap();
+	assert_eq!(
+		first
+			.exchange_code(&retired_code, "rp-a", &secret, REDIRECT, VERIFIER)
 			.await
 			.unwrap_err(),
 		OidcError::InvalidGrant

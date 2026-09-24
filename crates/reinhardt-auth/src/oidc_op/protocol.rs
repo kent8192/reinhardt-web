@@ -22,6 +22,7 @@ use url::Url;
 
 /// OIDC protocol or host-integration error.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum OidcError {
 	/// A request parameter is malformed or unsupported.
 	InvalidRequest,
@@ -536,6 +537,7 @@ impl OidcProvider {
 			)
 			.await?;
 		let oidc = OidcPending {
+			session_digest: digest(browser_session),
 			requested_at: now(),
 			client_id: request.client_id,
 			redirect_uri: request.redirect_uri,
@@ -564,13 +566,10 @@ impl OidcProvider {
 	) -> Result<String, OidcError> {
 		let pending = self
 			.state
-			.take_pending(pending_id)
+			.take_pending(pending_id, &digest(browser_session), now())
 			.await
 			.map_err(|_| OidcError::ServerError)?
 			.ok_or(OidcError::InvalidGrant)?;
-		if pending.expires_at <= now() {
-			return Err(OidcError::InvalidGrant);
-		}
 		let denial = match &decision {
 			OidcAuthorizationDecision::Deny(error) => Some(*error),
 			OidcAuthorizationDecision::Approve {
@@ -867,11 +866,13 @@ impl OidcProvider {
 		Ok(subject.map(|sub| json!({"sub":sub})))
 	}
 
-	/// Revoke all access tokens and retire the published subject after deletion.
+	/// Invalidate codes and tokens and retire the published subject after deletion.
 	pub async fn retire_user(&self, user_id: &str) -> Result<(), OidcError> {
-		self.oauth.revoke_user(user_id).await?;
+		if !self.production {
+			self.oauth.retire_user(user_id).await?;
+		}
 		self.state
-			.retire_subject(user_id)
+			.retire_user(user_id)
 			.await
 			.map_err(|_| OidcError::ServerError)?;
 		tracing::info!(event = "oidc_subject_retired");

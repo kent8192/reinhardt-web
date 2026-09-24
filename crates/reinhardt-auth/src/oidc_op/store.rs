@@ -34,6 +34,8 @@ pub struct OidcKey {
 /// OIDC fields bound to the OAuth pending authorization identifier.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OidcPending {
+	/// SHA-256 digest of the browser session allowed to consume this continuation.
+	pub session_digest: String,
 	/// UNIX time when the validated request began.
 	pub requested_at: i64,
 	/// Registered client identifier.
@@ -78,10 +80,17 @@ pub trait OidcStateStore: Send + Sync {
 	async fn subject(&self, user_id: &str) -> Result<Option<String>, String>;
 	/// Remove a user's live link while permanently reserving the subject.
 	async fn retire_subject(&self, user_id: &str) -> Result<(), String>;
+	/// Invalidate a retired user's code contexts and subject; PostgreSQL also invalidates OAuth codes and tokens in the same transaction.
+	async fn retire_user(&self, user_id: &str) -> Result<(), String>;
 	/// Persist a validated pending OIDC request.
 	async fn put_pending(&self, id: &str, pending: OidcPending) -> Result<(), String>;
-	/// Consume a pending OIDC request exactly once.
-	async fn take_pending(&self, id: &str) -> Result<Option<OidcPending>, String>;
+	/// Consume an unexpired OIDC request only for its browser session.
+	async fn take_pending(
+		&self,
+		id: &str,
+		session_digest: &str,
+		now: i64,
+	) -> Result<Option<OidcPending>, String>;
 	/// Bind OIDC claims to a code before disclosing it to the RP.
 	async fn put_code(&self, context: OidcCodeContext) -> Result<(), String>;
 	/// Read claims for a code that is atomically redeemed by the OAuth store.
@@ -145,6 +154,12 @@ impl OidcStateStore for MemoryOidcStore {
 		self.state.lock().await.subjects.remove(user_id);
 		Ok(())
 	}
+	async fn retire_user(&self, user_id: &str) -> Result<(), String> {
+		let mut state = self.state.lock().await;
+		state.subjects.remove(user_id);
+		state.codes.retain(|_, code| code.user_id != user_id);
+		Ok(())
+	}
 	async fn put_pending(&self, id: &str, pending: OidcPending) -> Result<(), String> {
 		self.state
 			.lock()
@@ -153,8 +168,19 @@ impl OidcStateStore for MemoryOidcStore {
 			.insert(id.to_owned(), pending);
 		Ok(())
 	}
-	async fn take_pending(&self, id: &str) -> Result<Option<OidcPending>, String> {
-		Ok(self.state.lock().await.pending.remove(id))
+	async fn take_pending(
+		&self,
+		id: &str,
+		session_digest: &str,
+		now: i64,
+	) -> Result<Option<OidcPending>, String> {
+		let mut state = self.state.lock().await;
+		if state.pending.get(id).is_none_or(|pending| {
+			pending.session_digest != session_digest || pending.expires_at <= now
+		}) {
+			return Ok(None);
+		}
+		Ok(state.pending.remove(id))
 	}
 	async fn put_code(&self, context: OidcCodeContext) -> Result<(), String> {
 		self.state

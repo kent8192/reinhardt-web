@@ -90,9 +90,12 @@ impl OidcHandler {
 		let client_id = params.get("client_id").cloned().unwrap_or_default();
 		let redirect_uri = params.get("redirect_uri").cloned().unwrap_or_default();
 		let state = params.get("state").cloned();
-		if ["request", "request_uri", "claims", "response_mode"]
+		if ["request", "request_uri", "claims"]
 			.iter()
 			.any(|key| params.contains_key(*key))
+			|| params
+				.get("response_mode")
+				.is_some_and(|mode| mode != "query")
 		{
 			return Ok(self
 				.authorization_error(
@@ -106,7 +109,16 @@ impl OidcHandler {
 		let max_age = match params.get("max_age") {
 			Some(value) => match value.parse::<u64>() {
 				Ok(value) if value <= i64::MAX as u64 => Some(value),
-				_ => return Ok(oidc_error(OidcError::InvalidRequest)),
+				_ => {
+					return Ok(self
+						.authorization_error(
+							&client_id,
+							&redirect_uri,
+							state.as_deref(),
+							OidcError::InvalidRequest,
+						)
+						.await);
+				}
 			},
 			None => None,
 		};
@@ -228,16 +240,17 @@ impl OidcHandler {
 #[async_trait]
 impl Handler for OidcHandler {
 	async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
-		if self.provider.is_production() && !request.is_secure {
+		if self.provider.is_production() && !request.is_secure() {
+			return Ok(no_store(Response::new(StatusCode::BAD_REQUEST)));
+		}
+		let client_ip = request.get_client_ip();
+		if self.provider.is_production() && client_ip.is_none() {
 			return Ok(no_store(Response::new(StatusCode::BAD_REQUEST)));
 		}
 		let key = format!(
 			"oidc:{:?}:{}",
 			self.endpoint,
-			request
-				.remote_addr
-				.map(|addr| addr.ip().to_string())
-				.unwrap_or_default(),
+			client_ip.map_or_else(|| "unknown".to_owned(), |ip| ip.to_string()),
 		);
 		if !self.provider.allow(&key).await {
 			return Ok(no_store(Response::new(StatusCode::TOO_MANY_REQUESTS)));
