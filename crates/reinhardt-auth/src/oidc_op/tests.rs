@@ -282,11 +282,12 @@ async fn invalid_client_redirect_pkce_and_prompt_are_rejected() {
 			.unwrap_err(),
 		OidcError::InvalidGrant
 	);
-	assert!(test
-		.provider
-		.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
-		.await
-		.is_ok());
+	assert!(
+		test.provider
+			.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
+			.await
+			.is_ok()
+	);
 }
 
 #[rstest]
