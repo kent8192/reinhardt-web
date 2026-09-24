@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.16...reinhardt-web@v0.4.0-alpha.17) - 2026-09-24
+
+### Added
+
+- *(conf)* resolve selected settings paths lazily
+- *(commands)* prepare declared command capabilities
+- *(commands)* adopt scoped bootstrap in project scaffolds
+- *(commands)* scope built-in command requirements
+- *(commands)* propagate CLI verbosity to capability commands
+
+### Fixed
+
+- *(commands)* compile scoped capabilities without database features
+- *(commands)* default migration state to files without TestContainers
+- *(commands)* align lean feature gates and generated launchers
+- *(ci)* refresh standalone example dependencies
+- *(commands)* address capability review findings
+- *(commands)* resolve follow-up capability review
+
+### Testing
+
+- *(commands)* exercise generated Pages and migration boundaries
+- *(pages)* refresh consumer lockfile after dependency graph changes
+
 ## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.15...reinhardt-web@v0.4.0-alpha.16) - 2026-09-23
 
 ### Documentation
