@@ -1,5 +1,6 @@
 //! Durable OIDC state contracts, separate from shared OAuth client and token state.
 
+use crate::oauth2_server::{AuthorizationCommit, OAuthServerStore};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -32,7 +33,7 @@ pub struct OidcKey {
 }
 
 /// OIDC fields bound to the OAuth pending authorization identifier.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct OidcPending {
 	/// SHA-256 digest of the browser session allowed to consume this continuation.
 	pub session_digest: String,
@@ -84,6 +85,18 @@ pub trait OidcStateStore: Send + Sync {
 	async fn retire_user(&self, user_id: &str) -> Result<(), String>;
 	/// Persist a validated pending OIDC request.
 	async fn put_pending(&self, id: &str, pending: OidcPending) -> Result<(), String>;
+	/// Read a continuation without consuming it before fallible host validation.
+	async fn pending(&self, id: &str) -> Result<Option<OidcPending>, String>;
+	/// Atomically consume both matching continuations and store both code records.
+	/// PostgreSQL stores must share a database; in-memory stores use a synchronous
+	/// commit callback under both locks. Incompatible backends fail without changes.
+	async fn complete_authorization(
+		&self,
+		oauth: &dyn OAuthServerStore,
+		request: AuthorizationCommit<'_>,
+		pending: &OidcPending,
+		context: Option<&OidcCodeContext>,
+	) -> Result<bool, String>;
 	/// Consume an unexpired OIDC request only for its browser session.
 	async fn take_pending(
 		&self,
@@ -108,6 +121,33 @@ pub trait OidcStateStore: Send + Sync {
 	async fn public_keys(&self, now: i64) -> Result<Vec<OidcKey>, String>;
 	/// Remove a compromised key from signing and JWKS immediately.
 	async fn compromise_key(&self, kid: &str) -> Result<(), String>;
+}
+
+pub(crate) fn authorization_matches(
+	request: AuthorizationCommit<'_>,
+	pending: &OidcPending,
+	context: Option<&OidcCodeContext>,
+) -> bool {
+	let oauth = request.pending;
+	request.is_valid()
+		&& oauth.oidc
+		&& pending.expires_at > request.now
+		&& pending.session_digest == oauth.session_digest
+		&& pending.client_id == oauth.request.client_id
+		&& pending.redirect_uri == oauth.request.redirect_uri
+		&& pending.state == oauth.request.state
+		&& match (request.code, context) {
+			(None, None) => true,
+			(Some(code), Some(context)) => {
+				context.digest == code.digest
+					&& context.user_id == code.user_id
+					&& context.client_id == code.client_id
+					&& context.nonce == pending.nonce
+					&& context.expires_at == code.expires_at
+					&& context.auth_time > 0
+			}
+			_ => false,
+		}
 }
 
 /// Development and test store; production uses a shared SQL store.
@@ -167,6 +207,37 @@ impl OidcStateStore for MemoryOidcStore {
 			.pending
 			.insert(id.to_owned(), pending);
 		Ok(())
+	}
+	async fn pending(&self, id: &str) -> Result<Option<OidcPending>, String> {
+		Ok(self.state.lock().await.pending.get(id).cloned())
+	}
+	async fn complete_authorization(
+		&self,
+		oauth: &dyn OAuthServerStore,
+		request: AuthorizationCommit<'_>,
+		pending: &OidcPending,
+		context: Option<&OidcCodeContext>,
+	) -> Result<bool, String> {
+		// Always acquire OIDC before OAuth. Waiting for either lock changes no state.
+		let mut state = self.state.lock().await;
+		let id = &request.pending.request.id;
+		if state.pending.get(id) != Some(pending)
+			|| !authorization_matches(request, pending, context)
+		{
+			return Ok(false);
+		}
+		if context.is_some_and(|context| state.codes.contains_key(&context.digest)) {
+			return Err("OIDC code digest collision".to_owned());
+		}
+		let mut on_commit = || {
+			if let Some(context) = context {
+				state.codes.insert(context.digest.clone(), context.clone());
+			}
+			state.pending.remove(id);
+		};
+		oauth
+			.complete_pending_in_memory(request, &mut on_commit)
+			.await
 	}
 	async fn take_pending(
 		&self,

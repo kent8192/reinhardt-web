@@ -16,7 +16,7 @@ pub enum ClientKind {
 }
 
 /// Administrative registration of an OAuth client.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ClientRegistration {
 	/// Unique identifier.
 	pub client_id: String,
@@ -67,7 +67,7 @@ pub struct ResourceRegistration {
 }
 
 /// Persisted pending authorization, bound to a browser session digest.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PendingRecord {
 	/// Request data to present to the host.
 	pub request: PendingAuthorization,
@@ -108,6 +108,40 @@ pub struct StoredCode {
 	pub replayed: bool,
 }
 
+/// Validated authorization state to commit atomically with an optional code.
+#[derive(Clone, Copy, Debug)]
+pub struct AuthorizationCommit<'a> {
+	/// Exact pending snapshot used for validation; rechecked under the store lock.
+	pub pending: &'a PendingRecord,
+	/// Approved code, or none when authorization was denied.
+	pub code: Option<&'a StoredCode>,
+	/// Current UNIX time for the final expiry check.
+	pub now: i64,
+}
+impl AuthorizationCommit<'_> {
+	pub(crate) fn is_valid(&self) -> bool {
+		let pending = self.pending;
+		let request = &pending.request;
+		pending.expires_at > self.now
+			&& self.code.is_none_or(|code| {
+				code.client_id == request.client_id
+					&& code.redirect_uri == request.redirect_uri
+					&& code.challenge == request.code_challenge
+					&& code.audience == request.audience
+					&& code.oidc == pending.oidc
+					&& !code.user_id.is_empty()
+					&& !code.digest.is_empty()
+					&& code
+						.scopes
+						.iter()
+						.all(|scope| request.scopes.contains(scope))
+					&& code.expires_at > self.now
+					&& !code.redeemed
+					&& !code.replayed
+			})
+	}
+}
+
 /// Result of atomic code redemption.
 #[derive(Clone, Debug)]
 pub enum CodeRedemption {
@@ -117,6 +151,36 @@ pub enum CodeRedemption {
 	Replay,
 	/// Code is absent or expired.
 	Invalid,
+}
+
+/// Authenticated bindings for inspecting a code before fallible host checks.
+#[derive(Clone, Copy, Debug)]
+pub struct CodeInspection<'a> {
+	/// SHA-256 digest of the presented authorization code.
+	pub digest: &'a str,
+	/// Authenticated client identifier.
+	pub client_id: &'a str,
+	/// Exact original redirect URI.
+	pub redirect_uri: &'a str,
+	/// PKCE S256 challenge computed from the supplied verifier.
+	pub challenge: &'a str,
+	/// Optional requested resource audience.
+	pub resource: Option<&'a str>,
+	/// Whether the request belongs to the OIDC token endpoint.
+	pub expect_oidc: bool,
+	/// Current UNIX time for rejecting an unused expired code.
+	pub now: i64,
+}
+impl CodeInspection<'_> {
+	pub(crate) fn matches(&self, code: &StoredCode) -> bool {
+		code.client_id == self.client_id
+			&& code.redirect_uri == self.redirect_uri
+			&& code.challenge == self.challenge
+			&& code.oidc == self.expect_oidc
+			&& self
+				.resource
+				.is_none_or(|resource| resource == code.audience)
+	}
 }
 
 /// Validated code bindings and the token to store in one atomic redemption.
@@ -168,6 +232,16 @@ pub struct StoredToken {
 pub trait OAuthServerStore: Send + Sync {
 	/// Save a validated registration.
 	async fn put_client(&self, client: ClientRegistration) -> Result<(), String>;
+	/// Replace a registration only if its complete current value matches the snapshot.
+	/// A concurrent administrative change returns false without writing.
+	async fn compare_and_swap_client(
+		&self,
+		expected: &ClientRegistration,
+		replacement: ClientRegistration,
+	) -> Result<bool, String>;
+	/// Atomically disable a client and invalidate its pending requests, codes, and tokens.
+	/// Returns the number of newly revoked tokens, or none for a missing registration.
+	async fn disable_client(&self, client_id: &str) -> Result<Option<u64>, String>;
 	/// Get a client registration.
 	async fn client(&self, client_id: &str) -> Result<Option<ClientRegistration>, String>;
 	/// Find an enabled public client that registered a browser origin.
@@ -186,6 +260,33 @@ pub trait OAuthServerStore: Send + Sync {
 	) -> Result<Option<ResourceRegistration>, String>;
 	/// Save a pending request with a random identifier.
 	async fn put_pending(&self, id: &str, pending: PendingRecord) -> Result<(), String>;
+	/// Read a pending snapshot without consuming it before fallible host validation.
+	async fn pending(&self, id: &str) -> Result<Option<PendingRecord>, String>;
+	/// Atomically consume the matching pending snapshot and insert its approved code.
+	/// Returns false for a stale or expired snapshot; errors leave both unchanged.
+	async fn complete_pending(&self, request: AuthorizationCommit<'_>) -> Result<bool, String>;
+	/// In-memory coordination hook. Invoke the infallible callback synchronously
+	/// under the commit lock, with no intervening await after either state changes.
+	/// Stores without this capability must fail without invoking the callback.
+	#[doc(hidden)]
+	async fn complete_pending_in_memory(
+		&self,
+		_request: AuthorizationCommit<'_>,
+		_on_commit: &mut (dyn FnMut() + Send),
+	) -> Result<bool, String> {
+		Err("store does not support in-memory authorization coordination".to_owned())
+	}
+	/// PostgreSQL coordination hook. All writes belong to the supplied transaction;
+	/// the caller owns commit or rollback. P0: unavailable without database support.
+	#[doc(hidden)]
+	#[cfg(feature = "database")]
+	async fn complete_pending_in_transaction(
+		&self,
+		_tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+		_request: AuthorizationCommit<'_>,
+	) -> Result<bool, String> {
+		Err("store does not support PostgreSQL authorization coordination".to_owned())
+	}
 	/// Atomically consume an unexpired pending request for its browser session and flow.
 	async fn take_pending(
 		&self,
@@ -198,6 +299,13 @@ pub trait OAuthServerStore: Send + Sync {
 	async fn put_code(&self, code: StoredCode) -> Result<(), String>;
 	/// Read code metadata before constructing a token; redemption rechecks it under lock.
 	async fn code(&self, digest: &str) -> Result<Option<StoredCode>, String>;
+	/// Inspect bindings under the code lock without consuming an unused code.
+	/// A correctly bound replay atomically revokes linked tokens, even if expired.
+	/// Returns none for missing, mismatched, expired, or replayed codes.
+	async fn inspect_code_for_exchange(
+		&self,
+		request: CodeInspection<'_>,
+	) -> Result<Option<StoredCode>, String>;
 	/// Atomically redeem a bound code and save its token, rolling both back on failure.
 	async fn redeem_code_and_store_token(
 		&self,
@@ -209,7 +317,7 @@ pub trait OAuthServerStore: Send + Sync {
 	async fn token(&self, digest: &str) -> Result<Option<StoredToken>, String>;
 	/// Revoke a token belonging to the specified client.
 	async fn revoke_token(&self, digest: &str, client_id: &str) -> Result<(), String>;
-	/// Revoke all user tokens (for host account-security events).
+	/// Invalidate outstanding user codes and revoke tokens atomically. Returns newly revoked token count.
 	async fn revoke_user(&self, user_id: &str) -> Result<u64, String>;
 	/// Invalidate a retired user's codes and tokens together.
 	async fn retire_user(&self, user_id: &str) -> Result<(), String>;
@@ -245,6 +353,47 @@ impl OAuthServerStore for MemoryOAuthStore {
 			.clients
 			.insert(client.client_id.clone(), client);
 		Ok(())
+	}
+	async fn compare_and_swap_client(
+		&self,
+		expected: &ClientRegistration,
+		replacement: ClientRegistration,
+	) -> Result<bool, String> {
+		if replacement.client_id != expected.client_id {
+			return Err("client identity cannot change".to_owned());
+		}
+		let mut state = self.state.lock().await;
+		if state.clients.get(&expected.client_id) != Some(expected) {
+			return Ok(false);
+		}
+		state
+			.clients
+			.insert(replacement.client_id.clone(), replacement);
+		Ok(true)
+	}
+	async fn disable_client(&self, id: &str) -> Result<Option<u64>, String> {
+		let mut state = self.state.lock().await;
+		let Some(client) = state.clients.get_mut(id) else {
+			return Ok(None);
+		};
+		client.enabled = false;
+		state
+			.pending
+			.retain(|_, pending| pending.request.client_id != id);
+		for code in state.codes.values_mut().filter(|code| code.client_id == id) {
+			code.redeemed = true;
+			code.replayed = true;
+		}
+		let mut count = 0;
+		for token in state
+			.tokens
+			.values_mut()
+			.filter(|token| token.client_id == id && !token.revoked)
+		{
+			token.revoked = true;
+			count += 1;
+		}
+		Ok(Some(count))
 	}
 	async fn client(&self, id: &str) -> Result<Option<ClientRegistration>, String> {
 		Ok(self.state.lock().await.clients.get(id).cloned())
@@ -302,6 +451,33 @@ impl OAuthServerStore for MemoryOAuthStore {
 			.insert(id.to_owned(), pending);
 		Ok(())
 	}
+	async fn pending(&self, id: &str) -> Result<Option<PendingRecord>, String> {
+		Ok(self.state.lock().await.pending.get(id).cloned())
+	}
+	async fn complete_pending(&self, request: AuthorizationCommit<'_>) -> Result<bool, String> {
+		self.complete_pending_in_memory(request, &mut || {}).await
+	}
+	async fn complete_pending_in_memory(
+		&self,
+		request: AuthorizationCommit<'_>,
+		on_commit: &mut (dyn FnMut() + Send),
+	) -> Result<bool, String> {
+		let mut state = self.state.lock().await;
+		let id = &request.pending.request.id;
+		if state.pending.get(id) != Some(request.pending) || !request.is_valid() {
+			return Ok(false);
+		}
+		if let Some(code) = request.code {
+			if state.codes.contains_key(&code.digest) {
+				return Err("code digest collision".to_owned());
+			}
+			state.codes.insert(code.digest.clone(), code.clone());
+		}
+		state.pending.remove(id);
+		// No await or fallible operation between the two stores' mutations.
+		on_commit();
+		Ok(true)
+	}
 	async fn take_pending(
 		&self,
 		id: &str,
@@ -329,6 +505,30 @@ impl OAuthServerStore for MemoryOAuthStore {
 	}
 	async fn code(&self, digest: &str) -> Result<Option<StoredCode>, String> {
 		Ok(self.state.lock().await.codes.get(digest).cloned())
+	}
+	async fn inspect_code_for_exchange(
+		&self,
+		request: CodeInspection<'_>,
+	) -> Result<Option<StoredCode>, String> {
+		let mut state = self.state.lock().await;
+		let Some(code) = state.codes.get_mut(request.digest) else {
+			return Ok(None);
+		};
+		if !request.matches(code) {
+			return Ok(None);
+		}
+		if code.redeemed {
+			code.replayed = true;
+			for token in state
+				.tokens
+				.values_mut()
+				.filter(|token| token.code_digest.as_deref() == Some(request.digest))
+			{
+				token.revoked = true;
+			}
+			return Ok(None);
+		}
+		Ok((code.expires_at > request.now).then(|| code.clone()))
 	}
 	async fn redeem_code_and_store_token(
 		&self,
@@ -400,6 +600,14 @@ impl OAuthServerStore for MemoryOAuthStore {
 	}
 	async fn revoke_user(&self, user_id: &str) -> Result<u64, String> {
 		let mut state = self.state.lock().await;
+		for code in state
+			.codes
+			.values_mut()
+			.filter(|code| code.user_id == user_id)
+		{
+			code.redeemed = true;
+			code.replayed = true;
+		}
 		let mut count = 0;
 		for token in state.tokens.values_mut() {
 			if token.principal == TokenPrincipal::User(user_id.to_owned()) && !token.revoked {

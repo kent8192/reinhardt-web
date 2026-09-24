@@ -26,6 +26,8 @@ mod protocol;
 mod store;
 
 pub(crate) use protocol::CodeExchangeRequest;
+#[cfg(feature = "oidc-op")]
+pub(crate) use protocol::PreparedAuthorization;
 
 pub use http::{OAuthBrowserSession, OAuthConsentPresenter, OAuthEndpoint, OAuthHandler};
 #[cfg(feature = "database")]
@@ -36,8 +38,9 @@ pub use protocol::{
 	TokenPrincipal,
 };
 pub use store::{
-	ClientKind, ClientRegistration, CodeRedemption, CodeRedemptionRequest, MemoryOAuthStore,
-	OAuthServerStore, PendingRecord, ResourceRegistration, StoredCode, StoredToken,
+	AuthorizationCommit, ClientKind, ClientRegistration, CodeInspection, CodeRedemption,
+	CodeRedemptionRequest, MemoryOAuthStore, OAuthServerStore, PendingRecord, ResourceRegistration,
+	StoredCode, StoredToken,
 };
 
 #[cfg(test)]

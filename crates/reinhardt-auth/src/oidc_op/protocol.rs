@@ -5,8 +5,8 @@ use super::PostgresOidcStore;
 use super::signer::OidcSigner;
 use super::store::{OidcCodeContext, OidcPending, OidcStateStore};
 use crate::oauth2_server::{
-	AuthorizationDecision, AuthorizationRequest, ClientKind, CodeExchangeRequest, OAuthError,
-	OAuthServer,
+	AuthorizationCommit, AuthorizationDecision, AuthorizationRequest, ClientKind,
+	CodeExchangeRequest, OAuthError, OAuthServer, PreparedAuthorization,
 };
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -561,6 +561,8 @@ impl OidcProvider {
 	}
 
 	/// Complete a one-time login continuation and return the RP redirect.
+	/// Both pending records and code records commit together; storage or host
+	/// failures leave the continuation available for retry until its expiry.
 	pub async fn complete_authorization(
 		&self,
 		pending_id: &str,
@@ -569,9 +571,12 @@ impl OidcProvider {
 	) -> Result<String, OidcError> {
 		let pending = self
 			.state
-			.take_pending(pending_id, &digest(browser_session), now())
+			.pending(pending_id)
 			.await
 			.map_err(|_| OidcError::ServerError)?
+			.filter(|pending| {
+				pending.session_digest == digest(browser_session) && pending.expires_at > now()
+			})
 			.ok_or(OidcError::InvalidGrant)?;
 		let denial = match &decision {
 			OidcAuthorizationDecision::Deny(error) => Some(*error),
@@ -630,13 +635,15 @@ impl OidcProvider {
 			}
 		};
 		if let Some(error) = denial {
-			self.oauth
-				.complete_oidc_authorization(
+			let prepared = self
+				.oauth
+				.prepare_oidc_authorization(
 					pending_id,
 					browser_session,
 					AuthorizationDecision::Deny,
 				)
 				.await?;
+			self.commit_authorization(prepared, &pending, None).await?;
 			tracing::info!(event = "oidc_authorization_denied", client_id = %pending.client_id, reason = error.as_str());
 			return self.redirect_error(&pending.redirect_uri, pending.state.as_deref(), error);
 		}
@@ -651,9 +658,9 @@ impl OidcProvider {
 			.subject_or_insert(&user_id, &subject)
 			.await
 			.map_err(|_| OidcError::ServerError)?;
-		let redirect = self
+		let prepared = self
 			.oauth
-			.complete_oidc_authorization(
+			.prepare_oidc_authorization(
 				pending_id,
 				browser_session,
 				AuthorizationDecision::Approve {
@@ -662,27 +669,48 @@ impl OidcProvider {
 				},
 			)
 			.await?;
-		let url = Url::parse(&redirect).map_err(|_| OidcError::ServerError)?;
-		let Some(code) = url
-			.query_pairs()
-			.find(|(key, _)| key == "code")
-			.map(|(_, value)| value.into_owned())
-		else {
-			return Ok(redirect);
-		};
-		self.state
-			.put_code(OidcCodeContext {
-				digest: digest(&code),
-				user_id,
-				client_id: pending.client_id.clone(),
-				nonce: pending.nonce,
-				auth_time,
-				expires_at: now() + self.oauth.config().code_ttl.as_secs() as i64,
-			})
+		let context = prepared.code.as_ref().map(|code| OidcCodeContext {
+			digest: code.digest.clone(),
+			user_id,
+			client_id: pending.client_id.clone(),
+			nonce: pending.nonce.clone(),
+			auth_time,
+			expires_at: code.expires_at,
+		});
+		let approved = context.is_some();
+		let redirect = self
+			.commit_authorization(prepared, &pending, context)
+			.await?;
+		if approved {
+			tracing::info!(event = "oidc_authorization_code_issued", client_id = %pending.client_id);
+		}
+		Ok(redirect)
+	}
+
+	async fn commit_authorization(
+		&self,
+		prepared: PreparedAuthorization,
+		pending: &OidcPending,
+		context: Option<OidcCodeContext>,
+	) -> Result<String, OidcError> {
+		let committed = self
+			.state
+			.complete_authorization(
+				self.oauth.store(),
+				AuthorizationCommit {
+					pending: &prepared.pending,
+					code: prepared.code.as_ref(),
+					now: now(),
+				},
+				pending,
+				context.as_ref(),
+			)
 			.await
 			.map_err(|_| OidcError::ServerError)?;
-		tracing::info!(event = "oidc_authorization_code_issued", client_id = %pending.client_id);
-		Ok(redirect)
+		if !committed {
+			return Err(OidcError::InvalidGrant);
+		}
+		Ok(prepared.redirect)
 	}
 
 	/// Redirect an authorization error only to an enabled client's exact URI.
@@ -740,6 +768,17 @@ impl OidcProvider {
 		redirect_uri: &str,
 		verifier: &str,
 	) -> Result<OidcTokenResponse, OidcError> {
+		let exchange = CodeExchangeRequest {
+			code,
+			client_id,
+			client_secret: Some(client_secret),
+			redirect_uri,
+			verifier,
+			resource: Some(&self.config.userinfo_endpoint),
+			ttl: self.config.access_token_ttl,
+		};
+		// Authentication and bound replay revocation precede all host/KMS operations.
+		self.oauth.inspect_code_exchange(&exchange, true).await?;
 		let context = self
 			.state
 			.code(&digest(code))
@@ -762,18 +801,7 @@ impl OidcProvider {
 			.map_err(|_| OidcError::ServerError)?
 			.ok_or(OidcError::InvalidGrant)?;
 		let id_token = self.sign_id_token(&context, &subject).await?;
-		let (issued, redeemed_user) = self
-			.oauth
-			.exchange_oidc_code(CodeExchangeRequest {
-				code,
-				client_id,
-				client_secret: Some(client_secret),
-				redirect_uri,
-				verifier,
-				resource: Some(&self.config.userinfo_endpoint),
-				ttl: self.config.access_token_ttl,
-			})
-			.await?;
+		let (issued, redeemed_user) = self.oauth.exchange_oidc_code(exchange).await?;
 		if redeemed_user != context.user_id || issued.scope != "openid" {
 			let _ = self
 				.oauth

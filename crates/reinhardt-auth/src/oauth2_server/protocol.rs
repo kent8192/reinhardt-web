@@ -1,8 +1,9 @@
 //! Authorization, issuance, and inspection rules.
 
 use super::store::{
-	ClientKind, ClientRegistration, CodeRedemption, CodeRedemptionRequest, OAuthServerStore,
-	PendingRecord, ResourceRegistration, StoredCode, StoredToken,
+	AuthorizationCommit, ClientKind, ClientRegistration, CodeInspection, CodeRedemption,
+	CodeRedemptionRequest, OAuthServerStore, PendingRecord, ResourceRegistration, StoredCode,
+	StoredToken,
 };
 use crate::repository::UserRepository;
 use argon2::Argon2;
@@ -29,6 +30,12 @@ pub(crate) struct CodeExchangeRequest<'a> {
 	pub(crate) verifier: &'a str,
 	pub(crate) resource: Option<&'a str>,
 	pub(crate) ttl: Duration,
+}
+
+pub(crate) struct PreparedAuthorization {
+	pub(crate) pending: PendingRecord,
+	pub(crate) code: Option<StoredCode>,
+	pub(crate) redirect: String,
 }
 
 /// OAuth error returned by the protocol core.
@@ -228,7 +235,7 @@ impl OAuthServerConfig {
 }
 
 /// Validated request shown to the host's login and consent UI.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PendingAuthorization {
 	/// Opaque, one-time pending-request identifier.
 	pub id: String,
@@ -434,7 +441,7 @@ impl OAuthServer {
 		&self,
 		mut client: ClientRegistration,
 	) -> Result<Option<String>, OAuthError> {
-		validate_client_registration(&client)?;
+		validate_client_registration(&client, &self.config)?;
 		for audience in &client.audiences {
 			let resource = self
 				.store
@@ -469,6 +476,7 @@ impl OAuthServer {
 			.await
 	}
 	/// Rotate a client secret with at most twenty-four hours of old-secret overlap.
+	/// Concurrent administrative changes return `ServerError`; retry with fresh state.
 	pub async fn rotate_client_secret_with_overlap(
 		&self,
 		id: &str,
@@ -477,7 +485,8 @@ impl OAuthServer {
 		if overlap > Duration::from_secs(24 * 3600) {
 			return Err(OAuthError::InvalidRequest);
 		}
-		let mut client = self.active_client(id).await?;
+		let expected = self.active_client(id).await?;
+		let mut client = expected.clone();
 		if client.kind != ClientKind::Confidential {
 			return Err(OAuthError::InvalidClient);
 		}
@@ -493,31 +502,39 @@ impl OAuthServer {
 			Some(now() + overlap.as_secs() as i64)
 		};
 		client.secret_hash = Some(hash_password(&raw).await?);
-		self.store
-			.put_client(client)
-			.await
-			.map_err(|_| OAuthError::ServerError)?;
+		self.replace_client(&expected, client).await?;
 		Ok(raw)
 	}
 	/// Immediately invalidate a previous client credential during rotation.
 	pub async fn revoke_previous_client_secret(&self, id: &str) -> Result<(), OAuthError> {
-		let mut client = self.active_client(id).await?;
+		let expected = self.active_client(id).await?;
+		let mut client = expected.clone();
 		client.previous_secret_hash = None;
 		client.previous_secret_expires_at = None;
-		self.store
-			.put_client(client)
-			.await
-			.map_err(|_| OAuthError::ServerError)
+		self.replace_client(&expected, client).await
 	}
-	/// Disable a registration before revoking all of its issued access tokens.
+	/// Atomically disable a client and invalidate its pending requests, codes, and tokens.
 	pub async fn disable_client(&self, id: &str) -> Result<u64, OAuthError> {
-		let mut client = self.active_client(id).await?;
-		client.enabled = false;
 		self.store
-			.put_client(client)
+			.disable_client(id)
 			.await
-			.map_err(|_| OAuthError::ServerError)?;
-		self.revoke_client(id).await
+			.map_err(|_| OAuthError::ServerError)?
+			.ok_or(OAuthError::InvalidClient)
+	}
+	async fn replace_client(
+		&self,
+		expected: &ClientRegistration,
+		replacement: ClientRegistration,
+	) -> Result<(), OAuthError> {
+		if !self
+			.store
+			.compare_and_swap_client(expected, replacement)
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+		{
+			return Err(OAuthError::ServerError);
+		}
+		Ok(())
 	}
 	/// Register a resource server and return its new introspection secret.
 	pub async fn register_resource(
@@ -635,43 +652,69 @@ impl OAuthServer {
 			.map_err(|_| OAuthError::ServerError)?;
 		Ok(pending)
 	}
-	/// Complete exactly one pending request. Returns the validated redirect URL.
+	/// Complete exactly one pending request. Failed persistence leaves it retryable.
 	pub async fn complete_authorization(
 		&self,
 		pending_id: &str,
 		browser_session: &str,
 		decision: AuthorizationDecision,
 	) -> Result<String, OAuthError> {
-		self.complete_authorization_inner(pending_id, browser_session, decision, false)
+		let prepared = self
+			.prepare_authorization(pending_id, browser_session, decision, false)
+			.await?;
+		if !self
+			.store
+			.complete_pending(AuthorizationCommit {
+				pending: &prepared.pending,
+				code: prepared.code.as_ref(),
+				now: now(),
+			})
 			.await
+			.map_err(|_| OAuthError::ServerError)?
+		{
+			return Err(OAuthError::InvalidGrant);
+		}
+		Ok(prepared.redirect)
 	}
-	/// Complete an OIDC authorization; the resulting code can only be redeemed by OIDC.
-	pub(crate) async fn complete_oidc_authorization(
+	/// Prepare OIDC approval without consuming either continuation or writing a code.
+	#[cfg(feature = "oidc-op")]
+	pub(crate) async fn prepare_oidc_authorization(
 		&self,
 		pending_id: &str,
 		browser_session: &str,
 		decision: AuthorizationDecision,
-	) -> Result<String, OAuthError> {
-		self.complete_authorization_inner(pending_id, browser_session, decision, true)
+	) -> Result<PreparedAuthorization, OAuthError> {
+		self.prepare_authorization(pending_id, browser_session, decision, true)
 			.await
 	}
-	async fn complete_authorization_inner(
+	#[cfg(feature = "oidc-op")]
+	pub(crate) fn store(&self) -> &dyn OAuthServerStore {
+		self.store.as_ref()
+	}
+	async fn prepare_authorization(
 		&self,
 		pending_id: &str,
 		browser_session: &str,
 		decision: AuthorizationDecision,
 		oidc: bool,
-	) -> Result<String, OAuthError> {
+	) -> Result<PreparedAuthorization, OAuthError> {
 		if browser_session.is_empty() {
 			return Err(OAuthError::InvalidRequest);
 		}
 		let pending = self
 			.store
-			.take_pending(pending_id, &digest(browser_session), oidc, now())
+			.pending(pending_id)
 			.await
 			.map_err(|_| OAuthError::ServerError)?
+			.filter(|pending| {
+				pending.request.id == pending_id
+					&& pending.session_digest == digest(browser_session)
+					&& pending.oidc == oidc
+					&& pending.expires_at > now()
+			})
 			.ok_or(OAuthError::InvalidGrant)?;
-		let request = pending.request;
+		let request = &pending.request;
+		let mut code = None;
 		let client = self.active_client(&request.client_id).await?;
 		if !client.authorization_code
 			|| (oidc && !client.oidc_enabled)
@@ -705,33 +748,34 @@ impl OAuthServer {
 						return Err(OAuthError::InvalidScope);
 					}
 					let raw = random_secret();
-					self.store
-						.put_code(StoredCode {
-							digest: digest(&raw),
-							client_id: request.client_id,
-							redirect_uri: request.redirect_uri,
-							challenge: request.code_challenge,
-							user_id,
-							scopes,
-							audience: request.audience,
-							oidc,
-							expires_at: now() + self.config.code_ttl.as_secs() as i64,
-							redeemed: false,
-							replayed: false,
-						})
-						.await
-						.map_err(|_| OAuthError::ServerError)?;
+					code = Some(StoredCode {
+						digest: digest(&raw),
+						client_id: request.client_id.clone(),
+						redirect_uri: request.redirect_uri.clone(),
+						challenge: request.code_challenge.clone(),
+						user_id,
+						scopes,
+						audience: request.audience.clone(),
+						oidc,
+						expires_at: now() + self.config.code_ttl.as_secs() as i64,
+						redeemed: false,
+						replayed: false,
+					});
 					redirect.query_pairs_mut().append_pair("code", &raw);
 				}
 			}
 		}
-		if let Some(state) = request.state {
-			redirect.query_pairs_mut().append_pair("state", &state);
+		if let Some(state) = &request.state {
+			redirect.query_pairs_mut().append_pair("state", state);
 		}
 		redirect
 			.query_pairs_mut()
 			.append_pair("iss", &self.config.issuer);
-		Ok(redirect.into())
+		Ok(PreparedAuthorization {
+			pending,
+			code,
+			redirect: redirect.into(),
+		})
 	}
 	/// Exchange a one-time code for an opaque access token.
 	pub async fn exchange_code(
@@ -768,6 +812,39 @@ impl OAuthServer {
 		}
 		self.exchange_code_inner(request, true).await
 	}
+	/// Authenticate and inspect replay state before account/resource lookups or signing.
+	pub(crate) async fn inspect_code_exchange(
+		&self,
+		request: &CodeExchangeRequest<'_>,
+		expect_oidc: bool,
+	) -> Result<(ClientRegistration, StoredCode), OAuthError> {
+		let client = self
+			.authenticate_client(request.client_id, request.client_secret)
+			.await?;
+		if !client.authorization_code
+			|| (expect_oidc && (!client.oidc_enabled || client.kind != ClientKind::Confidential))
+		{
+			return Err(OAuthError::UnauthorizedClient);
+		}
+		if !valid_verifier(request.verifier) {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let record = self
+			.store
+			.inspect_code_for_exchange(CodeInspection {
+				digest: &digest(request.code),
+				client_id: request.client_id,
+				redirect_uri: request.redirect_uri,
+				challenge: &challenge(request.verifier),
+				resource: request.resource,
+				expect_oidc,
+				now: now(),
+			})
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+			.ok_or(OAuthError::InvalidGrant)?;
+		Ok((client, record))
+	}
 	async fn exchange_code_inner(
 		&self,
 		request: CodeExchangeRequest<'_>,
@@ -776,30 +853,23 @@ impl OAuthServer {
 		let CodeExchangeRequest {
 			code,
 			client_id,
-			client_secret,
+			client_secret: _,
 			redirect_uri,
 			verifier,
 			resource,
 			ttl,
 		} = request;
-		let client = self.authenticate_client(client_id, client_secret).await?;
-		if !client.authorization_code || (expect_oidc && !client.oidc_enabled) {
-			return Err(OAuthError::UnauthorizedClient);
-		}
-		if !valid_verifier(verifier) {
-			return Err(OAuthError::InvalidGrant);
-		}
+		let (client, record) = self.inspect_code_exchange(&request, expect_oidc).await?;
 		let code_digest = digest(code);
-		let record = self
-			.store
-			.code(&code_digest)
+		self.active_audience(&record.audience).await?;
+		let user = self
+			.users
+			.get_user_by_id(&record.user_id)
 			.await
-			.map_err(|_| OAuthError::ServerError)?
-			.ok_or(OAuthError::InvalidGrant)?;
-		if record.oidc != expect_oidc {
+			.map_err(|_| OAuthError::ServerError)?;
+		if !user.is_some_and(|user| user.is_account_active() && user.is_authenticated()) {
 			return Err(OAuthError::InvalidGrant);
 		}
-		self.active_audience(&record.audience).await?;
 		let raw = random_secret();
 		let issued_at = now();
 		let token = StoredToken {
@@ -979,7 +1049,8 @@ impl OAuthServer {
 			.await?
 			.filter(|info| info.audience == resource.audience))
 	}
-	/// Revoke all tokens issued to a user after a host account security event.
+	/// Invalidate outstanding codes and revoke tokens after a host account security event.
+	/// Returns the number of newly revoked tokens without retiring the user or OIDC subject.
 	pub async fn revoke_user(&self, user_id: &str) -> Result<u64, OAuthError> {
 		self.store
 			.revoke_user(user_id)
@@ -1054,7 +1125,10 @@ impl OAuthServer {
 	}
 }
 
-fn validate_client_registration(client: &ClientRegistration) -> Result<(), OAuthError> {
+fn validate_client_registration(
+	client: &ClientRegistration,
+	config: &OAuthServerConfig,
+) -> Result<(), OAuthError> {
 	if client.client_id.is_empty()
 		|| !(client.authorization_code || client.client_credentials)
 		|| (client.kind == ClientKind::Public && client.client_credentials)
@@ -1083,7 +1157,11 @@ fn validate_client_registration(client: &ClientRegistration) -> Result<(), OAuth
 	}
 	for origin in &client.browser_origins {
 		let url = Url::parse(origin).map_err(|_| OAuthError::InvalidRequest)?;
-		if url.scheme() != "https"
+		let loopback_http = Url::parse(&config.issuer)
+			.is_ok_and(|issuer| issuer.scheme() == "http")
+			&& url.scheme() == "http"
+			&& valid_resource_url(&url);
+		if (url.scheme() != "https" && !loopback_http)
 			|| url.origin().ascii_serialization() != *origin
 			|| url.username() != ""
 			|| url.password().is_some()

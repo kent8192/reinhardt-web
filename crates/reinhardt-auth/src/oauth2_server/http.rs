@@ -122,7 +122,12 @@ impl OAuthHandler {
 				{
 					Ok(redirect(&location))
 				} else {
-					Ok(oauth_error(error, StatusCode::BAD_REQUEST))
+					let status = if error == OAuthError::ServerError {
+						StatusCode::INTERNAL_SERVER_ERROR
+					} else {
+						StatusCode::BAD_REQUEST
+					};
+					Ok(oauth_error(error, status))
 				}
 			}
 		}

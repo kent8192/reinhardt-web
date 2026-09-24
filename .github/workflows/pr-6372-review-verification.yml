@@ -1,56 +1,29 @@
-name: PR 6372 review verification
-
+name: OAuth and OIDC committed-source verification
 on:
   push:
     branches: [feature/issue-6355-oauth-authorization-server]
-    paths: [.github/workflows/pr-6372-review-verification.yml]
-
+    paths:
+      - crates/reinhardt-auth/**
+      - .github/workflows/pr-6372-review-verification.yml
 permissions:
   contents: read
-
+defaults:
+  run:
+    shell: bash
 env:
   CARGO_BUILD_JOBS: '2'
   CARGO_INCREMENTAL: '0'
   CARGO_PROFILE_TEST_DEBUG: '0'
   CARGO_TERM_COLOR: never
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 jobs:
-  fixes:
-    if: github.repository == 'kent8192/reinhardt-web'
+  committed-source:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Apply the verified initial fixes and new regression tests
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$(git rev-parse HEAD:crates/reinhardt-auth)" = 8c20a74776ce17681a9f397a18c611d2d1b06519
-          mkdir -p /tmp/pr-6372-evidence
-          python3 - <<'PY'
-          import base64, gzip, hashlib, json, os, pathlib, subprocess, urllib.request
-          def blob(sha):
-              request = urllib.request.Request('https://api.github.com/repos/kent8192/reinhardt-web/git/blobs/' + sha, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  return base64.b64decode(json.load(response)['content'])
-          initial = ['8c321e7884ea1ba1da30f05bd226ba1877f143a6', '74bf8cd7b0d9c5496c29b2f3f23e7f501082c0d2', '472e220b1f1202d896b68456d1d303d77ea9b96b']
-          patch = gzip.decompress(b''.join(map(blob, initial)))
-          assert hashlib.sha256(patch).hexdigest() == '53ef449f71fdd4c2541c36b6b90a6a53f7fba3d001fa3de3bd26af6fe3eb6f4a'
-          path = pathlib.Path('/tmp/pr-6372-evidence/initial.patch')
-          path.write_bytes(patch)
-          subprocess.run(['git', 'apply', '--check', str(path)], check=True)
-          subprocess.run(['git', 'apply', str(path)], check=True)
-          followups = ['a7ca42f388f046f10694dbc0b6f59994c7c9c833', 'e8fab293d9f818275a8befebbf448103d0c14027', '1560a3f6c59fc9a64e4409c9ece6702d70f1fc6e', '774ebcfc6cc07be5fdef03d64435f4273f3c4ca2']
-          patch = gzip.decompress(base64.b64decode(b''.join(map(blob, followups)), validate=True))
-          assert hashlib.sha256(patch).hexdigest() == '486d1581080c75f0e7cc5117ea1e4c4062b5014d25a1a20298c5d7544dacf7b9'
-          path = pathlib.Path('/tmp/pr-6372-evidence/followups.patch')
-          path.write_bytes(patch)
-          subprocess.run(['git', 'apply', '--include=*/tests/*', str(path)], check=True)
-          subprocess.run(['git', 'add', '-N', 'crates/reinhardt-auth/src/oauth2_server/tests/review_tests.rs', 'crates/reinhardt-auth/src/oidc_op/tests/review_tests.rs'], check=True)
-          PY
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt,clippy
@@ -60,47 +33,36 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           version: '28.x'
-      - name: Reproduce the additional findings before their fixes
+      - name: Record the unmodified checkout
         run: |
-          set +e
-          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib review_tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/followup-baseline.log
-          result=${PIPESTATUS[0]}
-          set -e
-          test "$result" -ne 0
-          grep -q 'test result: FAILED' /tmp/pr-6372-evidence/followup-baseline.log
-      - name: Apply follow-up production fixes and run all regressions
+          set -euo pipefail
+          mkdir -p /tmp/auth-verification
+          git rev-parse HEAD | tee /tmp/auth-verification/commit.txt
+          git rev-parse HEAD:crates/reinhardt-auth | tee /tmp/auth-verification/auth-tree.txt
+          test -z "$(git status --porcelain)"
+      - name: Run the affected suites including every review regression
         run: |
-          git apply --exclude='*/tests/*' /tmp/pr-6372-evidence/followups.patch
-          cargo fmt -p reinhardt-auth
-          git diff --check
-          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib review_tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/regressions.log
-      - name: Run complete affected OAuth and OIDC suites
+          set -euo pipefail
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oauth2_server::tests -- --test-threads=2 2>&1 | tee /tmp/auth-verification/oauth.log
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oidc_op::tests -- --test-threads=2 2>&1 | tee /tmp/auth-verification/oidc.log
+      - name: Check isolated feature configurations
         run: |
-          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oauth2_server::tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/oauth-tests.log
-          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oidc_op::tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/oidc-tests.log
-      - name: Check isolated and combined feature configurations
-        run: |
+          set -euo pipefail
           for features in oauth oauth,database oidc-op oidc-op,database; do
-            cargo check -p reinhardt-auth --no-default-features --features "$features" 2>&1 | tee "/tmp/pr-6372-evidence/check-${features//,/-}.log"
+            cargo check -p reinhardt-auth --no-default-features --features "$features" 2>&1 | tee "/tmp/auth-verification/check-${features//,/-}.log"
           done
-      - name: Lint the affected crate and tests
-        run: cargo clippy -p reinhardt-auth --features oidc-op,database --lib --tests -- -D warnings 2>&1 | tee /tmp/pr-6372-evidence/clippy.log
-      - name: Check rustdoc and executable documentation
+      - name: Check production lint and documentation
         run: |
-          RUSTDOCFLAGS='-D warnings' cargo doc -p reinhardt-auth --features oidc-op,database --no-deps 2>&1 | tee /tmp/pr-6372-evidence/rustdoc.log
-          cargo test -p reinhardt-auth --features oidc-op,database --doc 2>&1 | tee /tmp/pr-6372-evidence/doctests.log
+          set -euo pipefail
+          cargo clippy -p reinhardt-auth --features oidc-op,database,reinhardt-db/postgres --lib --no-deps -- -D warnings 2>&1 | tee /tmp/auth-verification/clippy.log
+          RUSTDOCFLAGS='-D warnings' cargo doc -p reinhardt-auth --features oidc-op,database,reinhardt-db/postgres --no-deps 2>&1 | tee /tmp/auth-verification/rustdoc.log
+          cargo test -p reinhardt-auth --features oidc-op,database --doc oauth2_server 2>&1 | tee /tmp/auth-verification/doctest.log
           cargo fmt -p reinhardt-auth --check
-      - name: Package exact source and verification evidence
-        if: always()
-        run: |
-          mkdir -p /tmp/pr-6372-evidence
-          git diff --binary -- crates/reinhardt-auth > /tmp/pr-6372-evidence/formatted.patch
-          git diff --stat -- crates/reinhardt-auth > /tmp/pr-6372-evidence/diffstat.txt
-          tar -czf /tmp/pr-6372-evidence/auth-source.tar.gz crates/reinhardt-auth
-          git rev-parse HEAD > /tmp/pr-6372-evidence/checkout.txt
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: pr-6372-fix-evidence
-          path: /tmp/pr-6372-evidence/
-          retention-days: 1
+          name: auth-committed-source-verification
+          path: /tmp/auth-verification/
+          retention-days: 7

@@ -1073,7 +1073,10 @@ async fn postgres_state_is_shared_and_single_use_across_instances() {
 	let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 	let mut executor = DatabaseMigrationExecutor::new(connection);
 	executor
-		.apply_migrations(&[PostgresOidcStore::migration()])
+		.apply_migrations(&[
+			crate::oauth2_server::PostgresOAuthStore::migration(),
+			PostgresOidcStore::migration(),
+		])
 		.await
 		.unwrap();
 	let first = PostgresOidcStore::new(PgPool::connect(&url).await.unwrap());
@@ -1190,7 +1193,10 @@ async fn postgres_state_is_shared_and_single_use_across_instances() {
 	assert!(first.subject("user-a").await.unwrap().is_none());
 	assert!(first.subject_or_insert("user-b", &subject).await.is_err());
 	executor
-		.rollback_migrations(&[PostgresOidcStore::migration()])
+		.rollback_migrations(&[
+			PostgresOidcStore::migration(),
+			crate::oauth2_server::PostgresOAuthStore::migration(),
+		])
 		.await
 		.unwrap();
 	let table: (Option<String>,) =
@@ -1392,3 +1398,5 @@ async fn production_nodes_complete_one_cross_instance_login() {
 		.await
 		.unwrap();
 }
+
+mod review_tests;

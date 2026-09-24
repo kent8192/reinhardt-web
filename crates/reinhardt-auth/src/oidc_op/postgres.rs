@@ -1,6 +1,9 @@
 //! PostgreSQL implementation of the issuer's OIDC-specific state.
 
-use super::store::{OidcCodeContext, OidcKey, OidcPending, OidcStateStore, PublicRsaJwk};
+use super::store::{
+	OidcCodeContext, OidcKey, OidcPending, OidcStateStore, PublicRsaJwk, authorization_matches,
+};
+use crate::oauth2_server::{AuthorizationCommit, OAuthServerStore};
 use async_trait::async_trait;
 use reinhardt_db::migrations::{Migration, Operation};
 use reinhardt_query::prelude::{
@@ -8,7 +11,7 @@ use reinhardt_query::prelude::{
 	QueryStatementBuilder, Value,
 };
 use serde::Serialize;
-use sqlx::{PgPool, types::Json};
+use sqlx::{PgPool, Postgres, Transaction, types::Json};
 
 /// OIDC subject, continuation, and key state shared by PostgreSQL-backed nodes.
 #[derive(Clone)]
@@ -61,15 +64,28 @@ impl PostgresOidcStore {
 	}
 
 	/// Delete expired OIDC continuations and code contexts from shared storage.
-	/// Run this periodically from the host maintenance job.
+	/// Run after OAuth expiry maintenance. Code contexts are retained while the
+	/// corresponding OAuth code exists so replay can still revoke live tokens.
 	pub async fn purge_expired(&self, now: i64) -> Result<u64, String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
 		let mut deleted = 0;
 		for table in ["oidc_op_pending", "oidc_op_codes"] {
-			let (sql, _) = Query::delete()
+			let mut query = Query::delete();
+			query
 				.from_table(Alias::new(table))
-				.and_where(Expr::col(Alias::new("expires_at").into_iden()).lte(now))
-				.build(PostgresQueryBuilder);
+				.and_where(Expr::col(Alias::new("expires_at").into_iden()).lte(now));
+			if table == "oidc_op_codes" {
+				let mut codes = Query::select();
+				codes
+					.column(Alias::new("digest"))
+					.from(Alias::new("oauth_server_codes"))
+					.and_where(
+						Expr::col(("oauth_server_codes", "digest"))
+							.eq(Expr::col(("oidc_op_codes", "digest"))),
+					);
+				query.and_where(Expr::not_exists(codes));
+			}
+			let (sql, _) = query.build(PostgresQueryBuilder);
 			deleted += sqlx::query(&sql)
 				.bind(now)
 				.execute(&mut *tx)
@@ -86,6 +102,29 @@ fn json_value<T: Serialize>(value: &T) -> Result<Value, String> {
 	serde_json::to_value(value)
 		.map(|json| Value::Json(Some(Box::new(json))))
 		.map_err(|e| e.to_string())
+}
+
+async fn insert_context(
+	tx: &mut Transaction<'_, Postgres>,
+	context: &OidcCodeContext,
+) -> Result<(), String> {
+	let (sql, _) = Query::insert()
+		.into_table(Alias::new("oidc_op_codes"))
+		.columns(["digest", "payload", "expires_at"])
+		.values(vec![
+			context.digest.clone().into(),
+			json_value(context)?,
+			context.expires_at.into(),
+		])?
+		.build(PostgresQueryBuilder);
+	sqlx::query(&sql)
+		.bind(&context.digest)
+		.bind(Json(context))
+		.bind(context.expires_at)
+		.execute(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	Ok(())
 }
 
 #[async_trait]
@@ -243,6 +282,65 @@ impl OidcStateStore for PostgresOidcStore {
 		Ok(())
 	}
 
+	async fn pending(&self, id: &str) -> Result<Option<OidcPending>, String> {
+		let (sql, _) = Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new("oidc_op_pending"))
+			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
+			.build(PostgresQueryBuilder);
+		let row: Option<(Json<OidcPending>,)> = sqlx::query_as(&sql)
+			.bind(id)
+			.fetch_optional(&self.pool)
+			.await
+			.map_err(|e| e.to_string())?;
+		Ok(row.map(|(Json(pending),)| pending))
+	}
+	async fn complete_authorization(
+		&self,
+		oauth: &dyn OAuthServerStore,
+		request: AuthorizationCommit<'_>,
+		pending: &OidcPending,
+		context: Option<&OidcCodeContext>,
+	) -> Result<bool, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let id = &request.pending.request.id;
+		let (sql, _) = Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new("oidc_op_pending"))
+			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id.as_str()))
+			.lock_exclusive()
+			.build(PostgresQueryBuilder);
+		let row: Option<(Json<OidcPending>,)> = sqlx::query_as(&sql)
+			.bind(id)
+			.fetch_optional(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		if row.as_ref().map(|(Json(stored),)| stored) != Some(pending)
+			|| !authorization_matches(request, pending, context)
+		{
+			return Ok(false);
+		}
+		if !oauth
+			.complete_pending_in_transaction(&mut tx, request)
+			.await?
+		{
+			return Ok(false);
+		}
+		if let Some(context) = context {
+			insert_context(&mut tx, context).await?;
+		}
+		let (sql, _) = Query::delete()
+			.from_table(Alias::new("oidc_op_pending"))
+			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id.as_str()))
+			.build(PostgresQueryBuilder);
+		sqlx::query(&sql)
+			.bind(id)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(true)
+	}
 	async fn take_pending(
 		&self,
 		id: &str,
@@ -281,23 +379,9 @@ impl OidcStateStore for PostgresOidcStore {
 	}
 
 	async fn put_code(&self, context: OidcCodeContext) -> Result<(), String> {
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oidc_op_codes"))
-			.columns(["digest", "payload", "expires_at"])
-			.values(vec![
-				context.digest.clone().into(),
-				json_value(&context)?,
-				context.expires_at.into(),
-			])?
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(&context.digest)
-			.bind(Json(&context))
-			.bind(context.expires_at)
-			.execute(&self.pool)
-			.await
-			.map_err(|e| e.to_string())?;
-		Ok(())
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		insert_context(&mut tx, &context).await?;
+		tx.commit().await.map_err(|e| e.to_string())
 	}
 
 	async fn code(&self, digest: &str) -> Result<Option<OidcCodeContext>, String> {

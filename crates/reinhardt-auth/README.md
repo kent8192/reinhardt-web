@@ -636,14 +636,23 @@ session into authorization requests and implement `OAuthConsentPresenter` for
 login and consent. The session binding must be unpredictable and retained
 across login redirects. Approval must call `complete_authorization` with that same
 browser-session binding and an authenticated active user ID. The host controls
-remembered consent and calls `revoke_user` after account security events.
+remembered consent and calls `revoke_user` after account security events. That
+operation invalidates outstanding authorization codes and tokens together,
+returns only the number of newly revoked tokens, and does not retire the user or
+OIDC subject. Code exchange rechecks the user's current authenticated, active
+status; a missing or inactive user, or failed user lookup, cannot consume a code.
 
 Register resource servers before clients. A confidential client receives a
 secret once at registration; store it securely. A public client has no secret.
 Secrets are Argon2 hashes at rest. Codes and tokens are SHA-256 lookup digests.
 Code exchange commits redemption and token insertion together; custom stores
 must implement `redeem_code_and_store_token` atomically. `put_token` accepts
-client-credentials tokens only.
+client-credentials tokens only. Authorization completion separately prepares its
+validated pending snapshot and code, then calls `complete_pending` to persist
+both atomically. Client-secret rotation uses `compare_and_swap_client` so a
+concurrent administrative update cannot be overwritten. A conflicting rotation,
+previous-secret revocation, or disable operation returns `ServerError`; retry
+with fresh state rather than using an uncommitted credential.
 Resource servers authenticate separately to introspection. Use
 `PostgresOAuthStore::migration()` in the host's Reinhardt migration graph before
 serving requests; enable `reinhardt-db/postgres` in the host that runs it.
@@ -754,8 +763,10 @@ fn oidc_routes(
 Apply `PostgresOAuthStore::migration()` and then
 `PostgresOidcStore::migration()` with the host's Reinhardt migration executor.
 Use the same database for both stores. Schedule
-`PostgresOidcStore::purge_expired(now)` alongside the OAuth purge job; it
-removes expired OIDC pending requests and code contexts.
+`PostgresOidcStore::purge_expired(now)` after the OAuth purge job. It removes
+expired OIDC pending requests, but retains code contexts while their OAuth code
+still exists. This preserves replay-triggered revocation until linked tokens
+expire and OAuth maintenance removes their code.
 Production construction requires `OAuthServer::for_production` and
 `OidcProvider::for_production` with PostgreSQL-backed state, a shared OAuth
 rate limiter, an active signing key, an `OidcSigner` that has the matching
@@ -779,7 +790,12 @@ Rotate a client secret with `rotate_client_secret_with_overlap` for at most
 The host supplies `OAuthBrowserSession` on authorization requests and
 implements `OidcInteraction` to handle login, reauthentication, consent, and
 account selection. Use the same session binding when calling
-`OidcProvider::complete_authorization`. For `prompt=none`, avoid presenting UI
+`OidcProvider::complete_authorization`. Completion consumes both pending rows and
+stores both code records in one PostgreSQL transaction (or under coordinated
+in-memory locks without an intervening await). Host or storage failures leave
+both continuations retryable until expiry. Custom stores must implement the
+corresponding atomic coordination hook; mixed in-memory/PostgreSQL backends
+are rejected rather than risking a partial commit. For `prompt=none`, avoid presenting UI
 and deny with `login_required`, `consent_required`, or another applicable OIDC
 error when silent completion is impossible. `auth_time` must be the time of
 the active host authentication. The provider enforces `prompt=login`,
@@ -1117,3 +1133,17 @@ impl AuthBackend for MyAuthBackend {
 ## License
 
 Licensed under the BSD 3-Clause License.
+
+Client disabling invalidates pending approvals and unused authorization codes together
+with the registration and its tokens; re-registering the same client identifier does
+not reactivate those grants. Client secret rotation uses a compare-and-swap snapshot;
+a conflicting administrative update fails rather than returning an unusable secret.
+
+For local public SPAs, an explicit HTTP loopback development issuer permits canonical
+HTTP origins on localhost, 127.0.0.1, and [::1]. HTTPS issuer configurations still reject
+HTTP browser origins. Origins must not contain credentials, paths, queries, or fragments.
+
+Code exchange authenticates the client and checks bound replay state before account,
+resource, or signing dependencies. A correctly bound replay permanently revokes linked
+tokens even while the account or resource is disabled. An unused code remains available
+when a temporary host validation or signing failure prevents issuance.
