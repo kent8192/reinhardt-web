@@ -3302,6 +3302,21 @@ mod capability_cli_tests {
 	}
 
 	#[rstest]
+	#[case("--bogus", clap::error::ErrorKind::UnknownArgument)]
+	#[case("--help", clap::error::ErrorKind::DisplayHelp)]
+	#[case("--version", clap::error::ErrorKind::DisplayVersion)]
+	fn capability_override_keeps_global_flags_in_clap(
+		#[case] flag: &str,
+		#[case] expected: clap::error::ErrorKind,
+	) {
+		let mut registry = CommandRegistry::new();
+		registry.register_capability(Box::new(OverrideCommand("buildstatic")));
+		let args = ["manage", flag, "buildstatic"].map(OsString::from);
+		let result = parse_capability_cli_arguments(&args, &registry);
+		assert!(matches!(result, Err(DriverParseError::Clap(error)) if error.kind() == expected));
+	}
+
+	#[rstest]
 	fn migration_check_uses_files_and_rejects_database_source() {
 		let Ok((_, _, Some(selection))) = parse(&["manage", "makemigrations", "--check"]) else {
 			panic!("--check must parse");
@@ -3468,6 +3483,10 @@ fn resolve_custom_command<T: AsRef<OsStr>>(
 				return Ok(None);
 			};
 			verbosity = value;
+		} else {
+			// Leave help, version, and unknown global options to clap. Otherwise
+			// an early capability override would silently discard them.
+			return Ok(None);
 		}
 	}
 

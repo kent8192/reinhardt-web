@@ -1829,6 +1829,7 @@ async fn plan_applied_migrations(
 async fn build_from_state_from_db(
 	migrations_dir: &std::path::Path,
 	database_url: &str,
+	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::{
@@ -1866,7 +1867,8 @@ async fn build_from_state_from_db(
 		eprintln!("[DEBUG]   - {}/{}", migration.app_label, migration.name);
 	}
 
-	let loader = MigrationStateLoader::new(recorder, source);
+	let loader = MigrationStateLoader::new(recorder, source)
+		.with_dependency_context(dependency_context.clone());
 
 	let state = loader.build_current_state().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to build state: {}", e))
@@ -1886,6 +1888,7 @@ async fn build_from_state_from_db(
 #[cfg(all(feature = "migrations", feature = "testcontainers"))]
 async fn build_from_state_from_testcontainers(
 	migrations_dir: &std::path::Path,
+	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
@@ -1933,7 +1936,8 @@ async fn build_from_state_from_testcontainers(
 
 	// 4. Apply all existing migrations
 	if !all_migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.clone());
+		let mut executor = DatabaseMigrationExecutor::new(connection.clone())
+			.with_dependency_context(dependency_context.clone());
 		executor
 			.apply_migrations(&all_migrations)
 			.await
@@ -1944,7 +1948,8 @@ async fn build_from_state_from_testcontainers(
 
 	// 5. Build current state from applied migrations
 	let recorder = DatabaseMigrationRecorder::new(connection.clone());
-	let loader = MigrationStateLoader::new(recorder, source);
+	let loader = MigrationStateLoader::new(recorder, source)
+		.with_dependency_context(dependency_context.clone());
 
 	loader.build_current_state().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!(
@@ -1958,6 +1963,7 @@ async fn build_from_state_from_testcontainers(
 #[cfg(all(feature = "migrations", not(feature = "testcontainers")))]
 async fn build_from_state_from_testcontainers(
 	_migrations_dir: &std::path::Path,
+	_dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	Err(crate::CommandError::ExecutionError(
 		"TestContainers feature not enabled. Enable with --features testcontainers".to_string(),
@@ -2032,7 +2038,7 @@ pub(crate) async fn prepare_makemigrations_state(
 			build_from_state_from_files(migrations_dir, dependency_context).await
 		}
 		MigrationStateSource::TemporaryDb => {
-			build_from_state_from_testcontainers(migrations_dir).await
+			build_from_state_from_testcontainers(migrations_dir, dependency_context).await
 		}
 		MigrationStateSource::Database => {
 			let url = database_url.ok_or_else(|| {
@@ -2040,7 +2046,7 @@ pub(crate) async fn prepare_makemigrations_state(
 					"database state source requires a selected database URL".to_owned(),
 				)
 			})?;
-			build_from_state_from_db(migrations_dir, url).await
+			build_from_state_from_db(migrations_dir, url, dependency_context).await
 		}
 		MigrationStateSource::Empty => Ok(reinhardt_db::migrations::ProjectState::new()),
 	}
@@ -2468,9 +2474,8 @@ pub(crate) async fn execute_makemigrations_with_state(
 		// Build from_state based on strategy (default: TestContainers)
 		//
 		// #3871: Check --force-empty-state before any TestContainers or DB call.
-		// postgres_container() panics when Docker is unavailable, so the flag must
-		// be respected before attempting container startup, not as a fallback.
 		let from_db_flag = ctx.has_option("from-db");
+		let dependency_context = crate::showmigrations::migration_dependency_context(ctx);
 		if ctx.has_option("force-empty-state") {
 			ctx.warning("⚠️  Using empty state as requested (--force-empty-state)");
 			ctx.warning("This may create duplicate migrations!");
@@ -2478,16 +2483,14 @@ pub(crate) async fn execute_makemigrations_with_state(
 		let from_state = if let Some(state) = prepared_state {
 			state
 		} else if is_check && !from_db_flag && !ctx.has_option("force-empty-state") {
-			build_from_state_from_files(
-				&migrations_dir,
-				&crate::showmigrations::migration_dependency_context(ctx),
-			)
-			.await?
+			build_from_state_from_files(&migrations_dir, &dependency_context).await?
 		} else if ctx.has_option("force-empty-state") {
 			ProjectState::new()
 		} else if from_db_flag {
 			// When --from-db flag is specified: prioritize database history
-			match build_from_state_from_db(&migrations_dir, &database_url).await {
+			match build_from_state_from_db(&migrations_dir, &database_url, &dependency_context)
+				.await
+			{
 				Ok(state) => {
 					ctx.verbose("Built state from database history");
 					state
@@ -2495,7 +2498,9 @@ pub(crate) async fn execute_makemigrations_with_state(
 				Err(e) => {
 					ctx.warning(&format!("Failed to connect to database: {}", e));
 					ctx.info("Falling back to TestContainers...");
-					match build_from_state_from_testcontainers(&migrations_dir).await {
+					match build_from_state_from_testcontainers(&migrations_dir, &dependency_context)
+						.await
+					{
 						Ok(state) => {
 							ctx.verbose("Built state from TestContainers");
 							state
@@ -2503,11 +2508,8 @@ pub(crate) async fn execute_makemigrations_with_state(
 						Err(e) => {
 							ctx.warning(&format!("Failed to use TestContainers: {}", e));
 							ctx.info("Falling back to file-based state reconstruction...");
-							match build_from_state_from_files(
-								&migrations_dir,
-								&crate::showmigrations::migration_dependency_context(ctx),
-							)
-							.await
+							match build_from_state_from_files(&migrations_dir, &dependency_context)
+								.await
 							{
 								Ok(state) => {
 									ctx.verbose("Built state from migration files (offline)");
@@ -2544,7 +2546,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 			}
 		} else {
 			// Default: prioritize TestContainers
-			match build_from_state_from_testcontainers(&migrations_dir).await {
+			match build_from_state_from_testcontainers(&migrations_dir, &dependency_context).await {
 				Ok(state) => {
 					ctx.verbose("Built state from TestContainers");
 					state
@@ -2552,7 +2554,13 @@ pub(crate) async fn execute_makemigrations_with_state(
 				Err(e) => {
 					ctx.warning(&format!("Failed to use TestContainers: {}", e));
 					ctx.info("Falling back to database history...");
-					match build_from_state_from_db(&migrations_dir, &database_url).await {
+					match build_from_state_from_db(
+						&migrations_dir,
+						&database_url,
+						&dependency_context,
+					)
+					.await
+					{
 						Ok(state) => {
 							ctx.verbose("Built state from database history");
 							state
@@ -2560,11 +2568,8 @@ pub(crate) async fn execute_makemigrations_with_state(
 						Err(e) => {
 							ctx.warning(&format!("Failed to connect to database: {}", e));
 							ctx.info("Falling back to file-based state reconstruction...");
-							match build_from_state_from_files(
-								&migrations_dir,
-								&crate::showmigrations::migration_dependency_context(ctx),
-							)
-							.await
+							match build_from_state_from_files(&migrations_dir, &dependency_context)
+								.await
 							{
 								Ok(state) => {
 									ctx.verbose("Built state from migration files (offline)");
@@ -5934,6 +5939,14 @@ impl BaseCommand for CheckCommand {
 			{
 				checks_failed += 1;
 			}
+			#[cfg(feature = "contract")]
+			if ctx.has_option(SCOPED_CHECK_MARKER)
+				&& ctx
+					.option(SCOPED_CHECK_SSL_REDIRECT)
+					.is_some_and(|value| value == "false")
+			{
+				checks_failed += 1;
+			}
 		}
 
 		ctx.info("");
@@ -6184,6 +6197,8 @@ impl CheckCommand {
 			{
 				ctx.success("  ✓ SECURE_SSL_REDIRECT enabled");
 				passed += 1;
+			} else {
+				ctx.warning("  ✗ SECURE_SSL_REDIRECT disabled (required for deployment)");
 			}
 			return passed;
 		}
@@ -8594,6 +8609,26 @@ name = "db.sqlite3"
 		// Assert
 		assert_eq!(protected_count, 2);
 		assert_eq!(unprotected_count, 0);
+	}
+
+	#[cfg(feature = "contract")]
+	#[tokio::test]
+	async fn scoped_deployment_check_fails_without_https_redirect() {
+		let mut ctx = CommandContext::default();
+		ctx.set_option("deploy".to_owned(), "true".to_owned());
+		attach_scoped_check_inputs(
+			&mut ctx,
+			&crate::capabilities::CheckInputs {
+				database_url: None,
+				static_root_configured: true,
+				secret_key_length: Some(32),
+				debug: Some(false),
+				allowed_hosts_configured: true,
+				ssl_redirect: false,
+			},
+		);
+		let error = CheckCommand.execute(&ctx).await.unwrap_err();
+		assert_eq!(error.to_string(), "Execution error: 1 check(s) failed");
 	}
 
 	#[tokio::test]
