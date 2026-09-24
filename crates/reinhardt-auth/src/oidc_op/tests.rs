@@ -535,6 +535,11 @@ async fn mounted_handlers_support_mock_rp_login_and_userinfo() {
 	.await
 	.unwrap();
 	assert_eq!(mode_response.status, StatusCode::FOUND);
+	assert_eq!(
+		mode_response.headers.get("cache-control").unwrap(),
+		"no-store"
+	);
+	assert_eq!(mode_response.headers.get("pragma").unwrap(), "no-cache");
 	assert!(
 		mode_response
 			.headers
@@ -598,7 +603,7 @@ async fn mounted_handlers_support_mock_rp_login_and_userinfo() {
 				.method(Method::POST)
 				.uri("/oidc/token")
 				.header("Content-Type", "application/x-www-form-urlencoded")
-				.header("Authorization", format!("Basic {basic}"))
+				.header("Authorization", format!("basic {basic}"))
 				.body(Bytes::from(form))
 				.build()
 				.unwrap(),
@@ -619,7 +624,7 @@ async fn mounted_handlers_support_mock_rp_login_and_userinfo() {
 				.uri("/oidc/userinfo")
 				.header(
 					"Authorization",
-					format!("Bearer {}", tokens["access_token"].as_str().unwrap()),
+					format!("bearer {}", tokens["access_token"].as_str().unwrap()),
 				)
 				.build()
 				.unwrap(),
@@ -629,6 +634,62 @@ async fn mounted_handlers_support_mock_rp_login_and_userinfo() {
 	assert_eq!(info.status, StatusCode::OK);
 	let userinfo: Value = serde_json::from_slice(&info.body).unwrap();
 	assert_eq!(userinfo["sub"], claims["sub"]);
+}
+
+#[rstest]
+#[tokio::test]
+async fn oidc_method_errors_advertise_endpoint_specific_allowed_methods() {
+	let test = issuer().await;
+	for (endpoint, allow) in [
+		(OidcEndpoint::Authorization, "GET"),
+		(OidcEndpoint::Token, "POST"),
+		(OidcEndpoint::UserInfo, "GET, POST"),
+		(OidcEndpoint::Discovery, "GET"),
+		(OidcEndpoint::Jwks, "GET"),
+	] {
+		let response = OidcHandler::new(test.provider.clone(), endpoint)
+			.handle(
+				Request::builder()
+					.method(Method::PUT)
+					.uri("/oidc")
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(response.status, StatusCode::METHOD_NOT_ALLOWED);
+		assert_eq!(response.headers.get("allow").unwrap(), allow);
+		assert_eq!(response.headers.get("cache-control").unwrap(), "no-store");
+	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn oidc_token_endpoint_distinguishes_missing_and_unsupported_grants() {
+	let test = issuer().await;
+	let basic = STANDARD.encode(format!("rp-a:{}", test.secret));
+	for (body, expected) in [
+		("", "invalid_request"),
+		("grant_type=", "invalid_request"),
+		("grant_type=refresh_token", "unsupported_grant_type"),
+	] {
+		let response = OidcHandler::new(test.provider.clone(), OidcEndpoint::Token)
+			.handle(
+				Request::builder()
+					.method(Method::POST)
+					.uri("/oidc/token")
+					.header("Content-Type", "application/x-www-form-urlencoded")
+					.header("Authorization", format!("Basic {basic}"))
+					.body(Bytes::from(body))
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(response.status, StatusCode::BAD_REQUEST);
+		let value: Value = serde_json::from_slice(&response.body).unwrap();
+		assert_eq!(value["error"], expected);
+	}
 }
 
 #[rstest]

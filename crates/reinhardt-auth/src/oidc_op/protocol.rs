@@ -26,6 +26,8 @@ use url::Url;
 pub enum OidcError {
 	/// A request parameter is malformed or unsupported.
 	InvalidRequest,
+	/// The requested token grant is not implemented.
+	UnsupportedGrantType,
 	/// Client authentication failed.
 	InvalidClient,
 	/// The client is not registered for this flow.
@@ -55,6 +57,7 @@ impl OidcError {
 	pub fn as_str(self) -> &'static str {
 		match self {
 			Self::InvalidRequest => "invalid_request",
+			Self::UnsupportedGrantType => "unsupported_grant_type",
 			Self::InvalidClient => "invalid_client",
 			Self::UnauthorizedClient => "unauthorized_client",
 			Self::InvalidGrant => "invalid_grant",
@@ -79,7 +82,7 @@ impl From<OAuthError> for OidcError {
 			OAuthError::InvalidGrant => Self::InvalidGrant,
 			OAuthError::InvalidScope => Self::InvalidScope,
 			OAuthError::AccessDenied => Self::AccessDenied,
-			OAuthError::UnsupportedGrantType => Self::InvalidRequest,
+			OAuthError::UnsupportedGrantType => Self::UnsupportedGrantType,
 			OAuthError::UnsupportedResponseType => Self::UnsupportedResponseType,
 			OAuthError::ServerError => Self::ServerError,
 		}

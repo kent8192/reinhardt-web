@@ -75,7 +75,7 @@ impl OidcHandler {
 		request: Request,
 	) -> reinhardt_core::exception::Result<Response> {
 		if request.method != Method::GET {
-			return Ok(method_not_allowed());
+			return Ok(method_not_allowed("GET"));
 		}
 		let Some(interaction) = &self.interaction else {
 			return Ok(oidc_error(OidcError::ServerError));
@@ -143,7 +143,7 @@ impl OidcHandler {
 			.begin_authorization(input, &browser_session)
 			.await
 		{
-			Ok(pending) => interaction.present(request, pending).await,
+			Ok(pending) => interaction.present(request, pending).await.map(no_store),
 			Err(error) => Ok(self
 				.authorization_error(&client_id, &redirect_uri, state.as_deref(), error)
 				.await),
@@ -169,7 +169,7 @@ impl OidcHandler {
 
 	async fn token_request(&self, request: Request) -> Response {
 		if request.method != Method::POST {
-			return method_not_allowed();
+			return method_not_allowed("POST");
 		}
 		let params = match form_params(&request) {
 			Ok(params) => params,
@@ -181,8 +181,10 @@ impl OidcHandler {
 		let Some((client_id, secret)) = basic_auth(&request) else {
 			return oidc_error(OidcError::InvalidClient);
 		};
-		if params.get("grant_type").map(String::as_str) != Some("authorization_code") {
-			return oidc_error(OidcError::InvalidRequest);
+		match params.get("grant_type").map(String::as_str) {
+			Some("authorization_code") => {}
+			Some("") | None => return oidc_error(OidcError::InvalidRequest),
+			Some(_) => return oidc_error(OidcError::UnsupportedGrantType),
 		}
 		let required = |key| {
 			params
@@ -209,13 +211,13 @@ impl OidcHandler {
 
 	async fn userinfo_request(&self, request: Request) -> Response {
 		if request.method != Method::GET && request.method != Method::POST {
-			return method_not_allowed();
+			return method_not_allowed("GET, POST");
 		}
 		let token = request
 			.headers
 			.get("authorization")
 			.and_then(|header| header.to_str().ok())
-			.and_then(|value| value.strip_prefix("Bearer "));
+			.and_then(|value| auth_credentials(value, "Bearer"));
 		let Some(token) = token.filter(|value| !value.is_empty()) else {
 			return invalid_userinfo_token();
 		};
@@ -228,7 +230,7 @@ impl OidcHandler {
 
 	async fn jwks_request(&self, request: Request) -> Response {
 		if request.method != Method::GET {
-			return method_not_allowed();
+			return method_not_allowed("GET");
 		}
 		match self.provider.jwks().await {
 			Ok(value) => json_response(StatusCode::OK, value),
@@ -262,7 +264,7 @@ impl Handler for OidcHandler {
 			OidcEndpoint::Discovery => Ok(if request.method == Method::GET {
 				json_response(StatusCode::OK, self.provider.discovery())
 			} else {
-				method_not_allowed()
+				method_not_allowed("GET")
 			}),
 			OidcEndpoint::Jwks => Ok(self.jwks_request(request).await),
 		}
@@ -301,12 +303,8 @@ fn form_params(request: &Request) -> Result<HashMap<String, String>, OidcError> 
 }
 
 fn basic_auth(request: &Request) -> Option<(String, String)> {
-	let value = request
-		.headers
-		.get("authorization")?
-		.to_str()
-		.ok()?
-		.strip_prefix("Basic ")?;
+	let value = request.headers.get("authorization")?.to_str().ok()?;
+	let value = auth_credentials(value, "Basic")?;
 	let raw = STANDARD.decode(value).ok()?;
 	let raw = std::str::from_utf8(&raw).ok()?;
 	let (id, secret) = raw.split_once(':')?;
@@ -316,6 +314,11 @@ fn basic_auth(request: &Request) -> Option<(String, String)> {
 			.map(|(_, value)| value.into_owned())
 	};
 	Some((decode(id)?, decode(secret)?))
+}
+
+fn auth_credentials<'a>(value: &'a str, scheme: &str) -> Option<&'a str> {
+	let (actual_scheme, credentials) = value.split_once(' ')?;
+	(actual_scheme.eq_ignore_ascii_case(scheme) && !credentials.is_empty()).then_some(credentials)
 }
 
 fn no_store(response: Response) -> Response {
@@ -355,6 +358,6 @@ fn redirect(location: &str) -> Response {
 	no_store(Response::new(StatusCode::FOUND).with_header("Location", location))
 }
 
-fn method_not_allowed() -> Response {
-	no_store(Response::new(StatusCode::METHOD_NOT_ALLOWED))
+fn method_not_allowed(allow: &'static str) -> Response {
+	no_store(Response::new(StatusCode::METHOD_NOT_ALLOWED).with_header("Allow", allow))
 }
