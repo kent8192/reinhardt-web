@@ -1,0 +1,190 @@
+name: PR 6372 independent concurrency verification
+
+on:
+  push:
+    branches: [feature/issue-6355-oauth-authorization-server]
+    paths: [.github/workflows/pr-6372-concurrency-verification.yml]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_TERM_COLOR: never
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  concurrency:
+    if: github.repository == 'kent8192/reinhardt-web'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Apply the concurrent review patch and add deterministic race coverage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD:crates/reinhardt-auth)" = 8c20a74776ce17681a9f397a18c611d2d1b06519
+          mkdir -p /tmp/pr-6372-concurrency
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, os, pathlib, subprocess, urllib.request
+          chunks = []
+          for sha in ['8c321e7884ea1ba1da30f05bd226ba1877f143a6', '74bf8cd7b0d9c5496c29b2f3f23e7f501082c0d2', '472e220b1f1202d896b68456d1d303d77ea9b96b']:
+              request = urllib.request.Request('https://api.github.com/repos/kent8192/reinhardt-web/git/blobs/' + sha, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  chunks.append(base64.b64decode(json.load(response)['content']))
+          patch = gzip.decompress(b''.join(chunks))
+          assert hashlib.sha256(patch).hexdigest() == '53ef449f71fdd4c2541c36b6b90a6a53f7fba3d001fa3de3bd26af6fe3eb6f4a'
+          subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
+          subprocess.run(['git', 'apply', '-'], input=patch, check=True)
+          path = pathlib.Path('crates/reinhardt-auth/src/oidc_op/tests/review_tests.rs')
+          source = path.read_text()
+          outer = r'''
+          struct CompletionBarrierUsers(Arc<tokio::sync::Barrier>);
+          #[async_trait]
+          impl crate::UserRepository for CompletionBarrierUsers {
+              async fn get_user_by_id(&self, id: &str) -> Result<Option<Box<dyn crate::AuthIdentity>>, String> {
+                  self.0.wait().await;
+                  crate::UserRepository::get_user_by_id(&SimpleUserRepository, id).await
+              }
+          }
+
+          #[rstest]
+          #[tokio::test]
+          async fn independent_review_memory_completion_race() {
+              let issuer = issuer().await;
+              let oauth = Arc::new(OAuthServer::for_development(
+                  issuer.oauth.config().clone(), issuer.oauth_store.clone(),
+                  Arc::new(CompletionBarrierUsers(Arc::new(tokio::sync::Barrier::new(2)))),
+                  Arc::new(AllowAll),
+              ).unwrap());
+              let provider = OidcProvider::for_development(
+                  issuer.provider.config().clone(), oauth, issuer.state.clone(),
+                  Arc::new(HostAccounts(issuer.active.clone())), issuer.signer.clone(),
+              ).unwrap();
+              let pending = provider.begin_authorization(request(), "session").await.unwrap();
+              let (first, second) = tokio::time::timeout(Duration::from_secs(10), async {
+                  tokio::join!(
+                      provider.complete_authorization(&pending.id, "session", approve()),
+                      provider.complete_authorization(&pending.id, "session", approve()),
+                  )
+              }).await.expect("host lookups must not hold pending-state locks");
+              let results = [first, second];
+              assert_eq!(results.iter().filter(|r| r.is_ok()).count(), 1);
+              assert_eq!(results.iter().filter(|r| **r == Err(OidcError::InvalidGrant)).count(), 1);
+              let code = code_from(results.into_iter().find_map(Result::ok).as_ref().unwrap());
+              assert!(issuer.provider.exchange_code(&code, "rp-a", &issuer.secret, REDIRECT, VERIFIER).await.is_ok());
+          }
+          '''
+          anchor = '#[cfg(feature = "database")]\nmod postgres {'
+          assert source.count(anchor) == 1
+          source = source.replace(anchor, outer + '\n' + anchor)
+          inner = r'''
+              #[rstest]
+              #[tokio::test]
+              async fn independent_review_postgres_completion_race() {
+                  let issuer = pg_issuer().await;
+                  let oauth = Arc::new(OAuthServer::for_development(
+                      issuer.oauth.config().clone(), Arc::new(issuer.oauth_store.clone()),
+                      Arc::new(CompletionBarrierUsers(Arc::new(tokio::sync::Barrier::new(2)))),
+                      Arc::new(AllowAll),
+                  ).unwrap());
+                  let first = OidcProvider::for_development(
+                      issuer.provider.config().clone(), oauth.clone(), Arc::new(issuer.state.clone()),
+                      Arc::new(HostAccounts(Arc::new(AtomicBool::new(true)))), issuer.signer.clone(),
+                  ).unwrap();
+                  let second = OidcProvider::for_development(
+                      issuer.provider.config().clone(), oauth, Arc::new(issuer.state.clone()),
+                      Arc::new(HostAccounts(Arc::new(AtomicBool::new(true)))), issuer.signer.clone(),
+                  ).unwrap();
+                  let pending = first.begin_authorization(request(), "session").await.unwrap();
+                  let (first, second) = tokio::time::timeout(Duration::from_secs(10), async {
+                      tokio::join!(
+                          first.complete_authorization(&pending.id, "session", approve()),
+                          second.complete_authorization(&pending.id, "session", approve()),
+                      )
+                  }).await.expect("host lookups must not hold database pending-state locks");
+                  let results = [first, second];
+                  assert_eq!(results.iter().filter(|r| r.is_ok()).count(), 1);
+                  assert_eq!(results.iter().filter(|r| **r == Err(OidcError::InvalidGrant)).count(), 1);
+                  let pool = issuer.oauth_store.pool();
+                  assert_eq!(count(pool, "oauth_server_codes").await, 1);
+                  assert_eq!(count(pool, "oidc_op_codes").await, 1);
+                  assert_eq!(count(pool, "oauth_server_pending").await, 0);
+                  assert_eq!(count(pool, "oidc_op_pending").await, 0);
+                  let code = code_from(results.into_iter().find_map(Result::ok).as_ref().unwrap());
+                  assert!(issuer.provider.exchange_code(&code, "rp-a", &issuer.secret, REDIRECT, VERIFIER).await.is_ok());
+              }
+
+              #[rstest]
+              #[tokio::test]
+              async fn independent_review_postgres_secret_rotation_race() {
+                  let issuer = pg_issuer().await;
+                  let second = OAuthServer::for_development(
+                      issuer.oauth.config().clone(), Arc::new(issuer.oauth_store.clone()),
+                      Arc::new(SimpleUserRepository), Arc::new(AllowAll),
+                  ).unwrap();
+                  let overlap = Duration::from_secs(60);
+                  let (first, second) = tokio::join!(
+                      issuer.oauth.rotate_client_secret_with_overlap("rp-a", overlap),
+                      second.rotate_client_secret_with_overlap("rp-a", overlap),
+                  );
+                  let secrets: Vec<_> = [first, second].into_iter().filter_map(Result::ok).collect();
+                  assert!(!secrets.is_empty());
+                  for secret in secrets {
+                      let code = authorize(&issuer.provider).await;
+                      assert!(issuer.provider.exchange_code(&code, "rp-a", &secret, REDIRECT, VERIFIER).await.is_ok());
+                  }
+              }
+
+              #[rstest]
+              #[tokio::test]
+              async fn independent_review_reverse_maintenance_preserves_replay() {
+                  let issuer = pg_issuer().await;
+                  let code = authorize(&issuer.provider).await;
+                  let token = issuer.provider.exchange_code(&code, "rp-a", &issuer.secret, REDIRECT, VERIFIER).await.unwrap();
+                  let digest = hex::encode(Sha256::digest(code.as_bytes()));
+                  let context = issuer.state.code(&digest).await.unwrap().unwrap();
+                  assert_eq!(issuer.state.purge_expired(context.expires_at).await.unwrap(), 0);
+                  assert_eq!(issuer.oauth_store.purge_expired(context.expires_at).await.unwrap(), 0);
+                  assert!(issuer.state.code(&digest).await.unwrap().is_some());
+                  assert_eq!(issuer.provider.exchange_code(&code, "rp-a", &issuer.secret, REDIRECT, VERIFIER).await.unwrap_err(), OidcError::InvalidGrant);
+                  assert!(issuer.provider.userinfo(&token.access_token).await.unwrap().is_none());
+              }
+          '''
+          anchor = '\tstruct CloseOnceUsers {'
+          assert source.count(anchor) == 1
+          path.write_text(source.replace(anchor, inner + '\n' + anchor))
+          subprocess.run(['git', 'add', '-N', 'crates/reinhardt-auth/src/oauth2_server/tests/review_tests.rs', str(path)], check=True)
+          PY
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pr-6372-auth-review
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: '28.x'
+      - name: Verify independent race regressions
+        run: |
+          cargo fmt -p reinhardt-auth
+          git diff --check
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib independent_review -- --test-threads=2 2>&1 | tee /tmp/pr-6372-concurrency/tests.log
+      - name: Package inspected source and evidence
+        if: always()
+        run: |
+          mkdir -p /tmp/pr-6372-concurrency
+          git diff --binary -- crates/reinhardt-auth > /tmp/pr-6372-concurrency/source.patch
+          tar -czf /tmp/pr-6372-concurrency/auth-source.tar.gz crates/reinhardt-auth
+          git rev-parse HEAD > /tmp/pr-6372-concurrency/checkout.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr-6372-concurrency-evidence
+          path: /tmp/pr-6372-concurrency/
+          retention-days: 1
