@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Apply the exact reviewed source patch
+      - name: Apply the verified initial fixes and new regression tests
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -32,18 +32,23 @@ jobs:
           mkdir -p /tmp/pr-6372-evidence
           python3 - <<'PY'
           import base64, gzip, hashlib, json, os, pathlib, subprocess, urllib.request
-          blobs = ['8c321e7884ea1ba1da30f05bd226ba1877f143a6', '74bf8cd7b0d9c5496c29b2f3f23e7f501082c0d2', '472e220b1f1202d896b68456d1d303d77ea9b96b']
-          chunks = []
-          for sha in blobs:
+          def blob(sha):
               request = urllib.request.Request('https://api.github.com/repos/kent8192/reinhardt-web/git/blobs/' + sha, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
               with urllib.request.urlopen(request, timeout=30) as response:
-                  chunks.append(base64.b64decode(json.load(response)['content']))
-          patch = gzip.decompress(b''.join(chunks))
+                  return base64.b64decode(json.load(response)['content'])
+          initial = ['8c321e7884ea1ba1da30f05bd226ba1877f143a6', '74bf8cd7b0d9c5496c29b2f3f23e7f501082c0d2', '472e220b1f1202d896b68456d1d303d77ea9b96b']
+          patch = gzip.decompress(b''.join(map(blob, initial)))
           assert hashlib.sha256(patch).hexdigest() == '53ef449f71fdd4c2541c36b6b90a6a53f7fba3d001fa3de3bd26af6fe3eb6f4a'
-          path = pathlib.Path('/tmp/pr-6372-evidence/review.patch')
+          path = pathlib.Path('/tmp/pr-6372-evidence/initial.patch')
           path.write_bytes(patch)
           subprocess.run(['git', 'apply', '--check', str(path)], check=True)
           subprocess.run(['git', 'apply', str(path)], check=True)
+          followups = ['a7ca42f388f046f10694dbc0b6f59994c7c9c833', 'e8fab293d9f818275a8befebbf448103d0c14027', '1560a3f6c59fc9a64e4409c9ece6702d70f1fc6e', '774ebcfc6cc07be5fdef03d64435f4273f3c4ca2']
+          patch = gzip.decompress(base64.b64decode(b''.join(map(blob, followups)), validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '486d1581080c75f0e7cc5117ea1e4c4062b5014d25a1a20298c5d7544dacf7b9'
+          path = pathlib.Path('/tmp/pr-6372-evidence/followups.patch')
+          path.write_bytes(patch)
+          subprocess.run(['git', 'apply', '--include=*/tests/*', str(path)], check=True)
           subprocess.run(['git', 'add', '-N', 'crates/reinhardt-auth/src/oauth2_server/tests/review_tests.rs', 'crates/reinhardt-auth/src/oidc_op/tests/review_tests.rs'], check=True)
           PY
       - uses: dtolnay/rust-toolchain@1.96.0
@@ -55,12 +60,21 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           version: '28.x'
-      - name: Format and run all review regressions
+      - name: Reproduce the additional findings before their fixes
         run: |
+          set +e
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib review_tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/followup-baseline.log
+          result=${PIPESTATUS[0]}
+          set -e
+          test "$result" -ne 0
+          grep -q 'test result: FAILED' /tmp/pr-6372-evidence/followup-baseline.log
+      - name: Apply follow-up production fixes and run all regressions
+        run: |
+          git apply --exclude='*/tests/*' /tmp/pr-6372-evidence/followups.patch
           cargo fmt -p reinhardt-auth
           git diff --check
           cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib review_tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/regressions.log
-      - name: Run the complete affected OAuth and OIDC suites
+      - name: Run complete affected OAuth and OIDC suites
         run: |
           cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oauth2_server::tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/oauth-tests.log
           cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oidc_op::tests -- --test-threads=2 2>&1 | tee /tmp/pr-6372-evidence/oidc-tests.log
@@ -69,7 +83,7 @@ jobs:
           for features in oauth oauth,database oidc-op oidc-op,database; do
             cargo check -p reinhardt-auth --no-default-features --features "$features" 2>&1 | tee "/tmp/pr-6372-evidence/check-${features//,/-}.log"
           done
-      - name: Lint the affected crate and tests with host extraction enabled
+      - name: Lint the affected crate and tests
         run: cargo clippy -p reinhardt-auth --features oidc-op,database --lib --tests -- -D warnings 2>&1 | tee /tmp/pr-6372-evidence/clippy.log
       - name: Check rustdoc and executable documentation
         run: |
