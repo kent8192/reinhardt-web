@@ -641,6 +641,9 @@ remembered consent and calls `revoke_user` after account security events.
 Register resource servers before clients. A confidential client receives a
 secret once at registration; store it securely. A public client has no secret.
 Secrets are Argon2 hashes at rest. Codes and tokens are SHA-256 lookup digests.
+Code exchange commits redemption and token insertion together; custom stores
+must implement `redeem_code_and_store_token` atomically. `put_token` accepts
+client-credentials tokens only.
 Resource servers authenticate separately to introspection. Use
 `PostgresOAuthStore::migration()` in the host's Reinhardt migration graph before
 serving requests; enable `reinhardt-db/postgres` in the host that runs it.
@@ -750,6 +753,9 @@ fn oidc_routes(
 
 Apply `PostgresOAuthStore::migration()` and then
 `PostgresOidcStore::migration()` with the host's Reinhardt migration executor.
+Use the same database for both stores. Schedule
+`PostgresOidcStore::purge_expired(now)` alongside the OAuth purge job; it
+removes expired OIDC pending requests and code contexts.
 Production construction requires `OAuthServer::for_production` and
 `OidcProvider::for_production` with PostgreSQL-backed state, a shared OAuth
 rate limiter, an active signing key, an `OidcSigner` that has the matching
@@ -779,8 +785,8 @@ error when silent completion is impossible. `auth_time` must be the time of
 the active host authentication. The provider enforces `prompt=login`,
 `prompt=consent`, `prompt=select_account`, and `max_age` against the decision
 supplied by the host. An opaque public `sub` remains stable for a live account;
-call `retire_user` during account deletion to revoke tokens and permanently
-reserve its former subject.
+call `retire_user` during account deletion to invalidate unredeemed codes and
+tokens, remove OIDC code contexts, and permanently reserve its former subject.
 
 ID Tokens default to five minutes and can be configured up to fifteen;
 UserInfo access tokens default to ten minutes and can be configured up to one
