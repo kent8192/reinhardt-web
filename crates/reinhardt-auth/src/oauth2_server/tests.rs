@@ -118,6 +118,25 @@ fn server() -> OAuthServer {
 	)
 	.unwrap()
 }
+
+#[rstest]
+#[tokio::test]
+async fn https_issuer_rejects_case_variant_http_resource_scheme() {
+	let server = server();
+	assert_eq!(
+		server
+			.register_resource("insecure", "HTTP://localhost/resource")
+			.await
+			.unwrap_err(),
+		OAuthError::InvalidRequest
+	);
+	assert!(
+		server
+			.register_resource("secure", "https://api.example/resource")
+			.await
+			.is_ok()
+	);
+}
 fn client(kind: ClientKind) -> ClientRegistration {
 	ClientRegistration {
 		client_id: "client-a".into(),

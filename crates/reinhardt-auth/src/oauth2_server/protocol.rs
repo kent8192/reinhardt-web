@@ -525,10 +525,12 @@ impl OAuthServer {
 		resource_id: &str,
 		audience: &str,
 	) -> Result<String, OAuthError> {
+		let audience_url = Url::parse(audience).map_err(|_| OAuthError::InvalidRequest)?;
+		let issuer_url = Url::parse(&self.config.issuer).map_err(|_| OAuthError::InvalidRequest)?;
 		if resource_id.is_empty()
 			|| audience.is_empty()
-			|| !valid_resource_uri(audience)
-			|| (audience.starts_with("http://") && !self.config.issuer.starts_with("http://"))
+			|| !valid_resource_url(&audience_url)
+			|| (audience_url.scheme() == "http" && issuer_url.scheme() != "http")
 		{
 			return Err(OAuthError::InvalidRequest);
 		}
@@ -1092,17 +1094,19 @@ fn validate_client_registration(client: &ClientRegistration) -> Result<(), OAuth
 	Ok(())
 }
 fn valid_resource_uri(value: &str) -> bool {
-	Url::parse(value).is_ok_and(|url| {
-		(url.scheme() == "https"
-			|| (url.scheme() == "http"
-				&& matches!(
-					url.host_str(),
-					Some("localhost" | "127.0.0.1" | "::1" | "[::1]")
-				))) && url.host_str().is_some()
-			&& url.fragment().is_none()
-			&& url.username().is_empty()
-			&& url.password().is_none()
-	})
+	Url::parse(value).is_ok_and(|url| valid_resource_url(&url))
+}
+
+fn valid_resource_url(url: &Url) -> bool {
+	(url.scheme() == "https"
+		|| (url.scheme() == "http"
+			&& matches!(
+				url.host_str(),
+				Some("localhost" | "127.0.0.1" | "::1" | "[::1]")
+			))) && url.host_str().is_some()
+		&& url.fragment().is_none()
+		&& url.username().is_empty()
+		&& url.password().is_none()
 }
 fn validate_redirect(value: &str) -> Result<(), OAuthError> {
 	let url = Url::parse(value).map_err(|_| OAuthError::InvalidRequest)?;
