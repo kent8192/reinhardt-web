@@ -48,7 +48,7 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 ```bash
 # Pin the documented Reinhardt release for reproducibility.
 # Omit --version to let Cargo choose the latest stable release.
-cargo install reinhardt-admin-cli --version "0.4.0-alpha.16"
+cargo install reinhardt-admin-cli --version "0.4.0-alpha.17"
 
 reinhardt-admin startproject my-api && cd my-api
 cargo run --bin manage runserver  # Visit http://127.0.0.1:8000
@@ -103,7 +103,7 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current release line:** Reinhardt documentation tracks `0.4.0-alpha.16`. From
+**Current release line:** Reinhardt documentation tracks `0.4.0-alpha.17`. From
 `0.1.0` onward, all public APIs follow SemVer 2.0; future breaking changes
 move through the documented alpha and RC lifecycle before stable publication.
 
@@ -146,7 +146,7 @@ Get a well-balanced feature set with zero configuration:
 [dependencies]
 # Import as 'reinhardt', published as 'reinhardt-web'
 # Default enables the "standard" preset (balanced feature set)
-reinhardt = { version = "0.4.0-alpha.16", package = "reinhardt-web" }
+reinhardt = { version = "0.4.0-alpha.17", package = "reinhardt-web" }
 ```
 
 **Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
@@ -168,7 +168,7 @@ For compatibility checks, framework development, and projects that intentionally
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.16", package = "reinhardt-web", default-features = false, features = ["full"] }
+reinhardt = { version = "0.4.0-alpha.17", package = "reinhardt-web", default-features = false, features = ["full"] }
 ```
 
 **Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
@@ -182,7 +182,7 @@ Lightweight and fast, perfect for simple APIs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.16", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.4.0-alpha.17", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
@@ -197,27 +197,27 @@ Install only the components you need:
 ```toml
 [dependencies]
 # Core components
-reinhardt-http = "0.4.0-alpha.16"
-reinhardt-urls = "0.4.0-alpha.16"
+reinhardt-http = "0.4.0-alpha.17"
+reinhardt-urls = "0.4.0-alpha.17"
 
 # Optional: Database
-reinhardt-db = "0.4.0-alpha.16"
+reinhardt-db = "0.4.0-alpha.17"
 
 # Optional: Authentication
-reinhardt-auth = "0.4.0-alpha.16"
+reinhardt-auth = "0.4.0-alpha.17"
 
 # Optional: browser-bound social OAuth state (add `session-redis` for Redis)
-reinhardt = { version = "0.4.0-alpha.16", package = "reinhardt-web", default-features = false, features = ["social-auth"] }
+reinhardt = { version = "0.4.0-alpha.17", package = "reinhardt-web", default-features = false, features = ["social-auth"] }
 
 # Optional: REST API features
-reinhardt-rest = "0.4.0-alpha.16"
+reinhardt-rest = "0.4.0-alpha.17"
 
 # Optional: Admin panel
-reinhardt-admin = "0.4.0-alpha.16"
+reinhardt-admin = "0.4.0-alpha.17"
 
 # Optional: Advanced features
-reinhardt-graphql = "0.4.0-alpha.16"
-reinhardt-websockets = "0.4.0-alpha.16"
+reinhardt-graphql = "0.4.0-alpha.17"
+reinhardt-websockets = "0.4.0-alpha.17"
 ```
 
 **Note on Crate Naming:**
@@ -235,7 +235,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.4.0-alpha.16"
+cargo install reinhardt-admin-cli --version "0.4.0-alpha.17"
 ```
 
 ### 2. Create a New Project
@@ -252,7 +252,7 @@ during project creation. Scripts can pass them explicitly:
 <!-- reinhardt-version-sync -->
 ```bash
 reinhardt-admin startproject my-api \
-  --reinhardt-version "0.4.0-alpha.16" \
+  --reinhardt-version "0.4.0-alpha.17" \
   --features standard,admin \
   --no-interactive
 ```
