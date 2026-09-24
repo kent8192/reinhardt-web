@@ -4,7 +4,7 @@ use super::*;
 use crate::oauth2_server::OAuthBrowserSession;
 use crate::oauth2_server::{
 	ClientKind, ClientRegistration, MemoryOAuthStore, OAuthRateLimiter, OAuthServer,
-	OAuthServerConfig,
+	OAuthServerConfig, OAuthServerStore,
 };
 use crate::repository::SimpleUserRepository;
 use async_trait::async_trait;
@@ -70,6 +70,8 @@ impl OidcAccountStatus for HostAccounts {
 struct TestIssuer {
 	provider: Arc<OidcProvider>,
 	oauth: Arc<OAuthServer>,
+	oauth_store: Arc<MemoryOAuthStore>,
+	state: Arc<MemoryOidcStore>,
 	signer: Arc<RsaPemKeyRing>,
 	secret: String,
 	active: Arc<AtomicBool>,
@@ -82,6 +84,7 @@ fn add_key(ring: &RsaPemKeyRing, kid: &str) -> PublicRsaJwk {
 }
 
 async fn issuer() -> TestIssuer {
+	let oauth_store = Arc::new(MemoryOAuthStore::new());
 	let oauth = Arc::new(
 		OAuthServer::for_development(
 			OAuthServerConfig::new(
@@ -92,7 +95,7 @@ async fn issuer() -> TestIssuer {
 				"https://auth.example/oauth/introspect",
 			)
 			.unwrap(),
-			Arc::new(MemoryOAuthStore::new()),
+			oauth_store.clone(),
 			Arc::new(SimpleUserRepository),
 			Arc::new(AllowAll),
 		)
@@ -126,6 +129,7 @@ async fn issuer() -> TestIssuer {
 	let active = Arc::new(AtomicBool::new(true));
 	let signer = Arc::new(RsaPemKeyRing::new());
 	add_key(&signer, "key-a");
+	let state = Arc::new(MemoryOidcStore::new());
 	let provider = Arc::new(
 		OidcProvider::for_development(
 			OidcConfig::new(
@@ -137,7 +141,7 @@ async fn issuer() -> TestIssuer {
 			)
 			.unwrap(),
 			oauth.clone(),
-			Arc::new(MemoryOidcStore::new()),
+			state.clone(),
 			Arc::new(HostAccounts(active.clone())),
 			signer.clone(),
 		)
@@ -147,6 +151,8 @@ async fn issuer() -> TestIssuer {
 	TestIssuer {
 		provider,
 		oauth,
+		oauth_store,
+		state,
 		signer,
 		secret,
 		active,
@@ -261,6 +267,47 @@ async fn code_flow_issues_verifiable_id_token_and_matching_userinfo_subject() {
 	assert!(
 		test.provider
 			.userinfo(&response.access_token)
+			.await
+			.unwrap()
+			.is_none()
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn replay_after_code_expiry_revokes_the_issued_userinfo_token() {
+	let test = issuer().await;
+	let code = authorize(&test).await;
+	let issued = test
+		.provider
+		.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
+		.await
+		.unwrap();
+	assert!(
+		test.provider
+			.userinfo(&issued.access_token)
+			.await
+			.unwrap()
+			.is_some()
+	);
+	let code_digest = hex::encode(Sha256::digest(code.as_bytes()));
+	let mut context = test.state.code(&code_digest).await.unwrap().unwrap();
+	context.expires_at = 0;
+	test.state.put_code(context).await.unwrap();
+	let mut oauth_code = test.oauth_store.code(&code_digest).await.unwrap().unwrap();
+	oauth_code.expires_at = 0;
+	test.oauth_store.put_code(oauth_code).await.unwrap();
+
+	assert_eq!(
+		test.provider
+			.exchange_code(&code, "rp-a", &test.secret, REDIRECT, VERIFIER)
+			.await
+			.unwrap_err(),
+		OidcError::InvalidGrant
+	);
+	assert!(
+		test.provider
+			.userinfo(&issued.access_token)
 			.await
 			.unwrap()
 			.is_none()

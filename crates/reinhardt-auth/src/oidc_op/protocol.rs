@@ -745,7 +745,7 @@ impl OidcProvider {
 			.code(&digest(code))
 			.await
 			.map_err(|_| OidcError::ServerError)?
-			.filter(|context| context.expires_at > now() && context.client_id == client_id)
+			.filter(|context| context.client_id == client_id)
 			.ok_or(OidcError::InvalidGrant)?;
 		if !self
 			.accounts
