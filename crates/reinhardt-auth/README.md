@@ -645,6 +645,13 @@ status; a missing or inactive user, or failed user lookup, cannot consume a code
 Register resource servers before clients. A confidential client receives a
 secret once at registration; store it securely. A public client has no secret.
 Secrets are Argon2 hashes at rest. Codes and tokens are SHA-256 lookup digests.
+New registrations use atomic insert-if-absent; re-registration compares the
+complete stored snapshot before replacing it. Concurrent registration or
+rotation can return `ServerError`; retry using current state rather than
+distributing a secret from a failed operation. A resource identifier keeps its
+original audience when re-registered. Custom stores used for registration must
+implement `insert_client_if_absent`, `insert_resource_if_absent`, and the
+corresponding compare-and-swap methods atomically.
 Code exchange commits redemption and token insertion together; custom stores
 must implement `redeem_code_and_store_token` atomically. `put_token` accepts
 client-credentials tokens only. Authorization completion separately prepares its

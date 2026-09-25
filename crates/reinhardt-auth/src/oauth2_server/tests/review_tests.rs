@@ -501,6 +501,15 @@ struct ResourceReadBarrier {
 }
 #[async_trait]
 impl OAuthServerStore for ResourceReadBarrier {
+	async fn insert_client_if_absent(&self, client: ClientRegistration) -> Result<bool, String> {
+		self.inner.insert_client_if_absent(client).await
+	}
+	async fn insert_resource_if_absent(
+		&self,
+		resource: ResourceRegistration,
+	) -> Result<bool, String> {
+		self.inner.insert_resource_if_absent(resource).await
+	}
 	async fn compare_and_swap_resource(
 		&self,
 		expected: &ResourceRegistration,
@@ -540,7 +549,7 @@ impl OAuthServerStore for ResourceReadBarrier {
 	}
 	async fn resource(&self, resource_id: &str) -> Result<Option<ResourceRegistration>, String> {
 		let snapshot = self.inner.resource(resource_id).await?;
-		if self.reads.fetch_add(1, Ordering::SeqCst) < 2 {
+		if snapshot.is_some() && self.reads.fetch_add(1, Ordering::SeqCst) < 2 {
 			self.gate.wait().await;
 		}
 		Ok(snapshot)
@@ -650,4 +659,61 @@ async fn late_review_resource_rotation_has_one_winner_for_a_shared_snapshot() {
 				.is_ok()
 		);
 	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn concurrent_new_client_registrations_return_only_the_usable_secret() {
+	let server = server();
+	server
+		.register_resource("resource-a", "https://api.example")
+		.await
+		.unwrap();
+	let (left, right) = tokio::join!(
+		server.register_client(client(ClientKind::Confidential)),
+		server.register_client(client(ClientKind::Confidential)),
+	);
+	let results = [left, right];
+	assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+	assert_eq!(
+		results
+			.iter()
+			.filter(|result| result.as_ref().err() == Some(&OAuthError::ServerError))
+			.count(),
+		1
+	);
+	let secret = results.into_iter().find_map(Result::ok).unwrap().unwrap();
+	assert!(
+		server
+			.client_credentials("client-a", &secret, None, None)
+			.await
+			.is_ok()
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn concurrent_new_resource_registrations_return_only_the_usable_secret() {
+	let server = server();
+	let (left, right) = tokio::join!(
+		server.register_resource("resource-a", "https://api.example"),
+		server.register_resource("resource-a", "https://api.example"),
+	);
+	let results = [left, right];
+	assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+	assert_eq!(
+		results
+			.iter()
+			.filter(|result| result.as_ref().err() == Some(&OAuthError::ServerError))
+			.count(),
+		1
+	);
+	let secret = results.into_iter().find_map(Result::ok).unwrap();
+	assert!(
+		server
+			.introspect("unknown", "resource-a", &secret)
+			.await
+			.unwrap()
+			.is_none()
+	);
 }

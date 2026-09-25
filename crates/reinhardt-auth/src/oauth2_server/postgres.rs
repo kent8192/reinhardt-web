@@ -206,6 +206,21 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.map_err(|e| e.to_string())?;
 		Ok(())
 	}
+	async fn insert_client_if_absent(&self, client: ClientRegistration) -> Result<bool, String> {
+		let (sql, _) = Query::insert()
+			.into_table(Alias::new("oauth_server_clients"))
+			.columns(["client_id", "payload"])
+			.values(vec![client.client_id.clone().into(), json_value(&client)?])?
+			.on_conflict(OnConflict::column("client_id").do_nothing())
+			.build(PostgresQueryBuilder);
+		let result = sqlx::query(&sql)
+			.bind(&client.client_id)
+			.bind(Json(&client))
+			.execute(&self.pool)
+			.await
+			.map_err(|e| e.to_string())?;
+		Ok(result.rows_affected() == 1)
+	}
 	async fn compare_and_swap_client(
 		&self,
 		expected: &ClientRegistration,
@@ -365,6 +380,27 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.await
 			.map_err(|e| e.to_string())?;
 		Ok(())
+	}
+	async fn insert_resource_if_absent(
+		&self,
+		resource: ResourceRegistration,
+	) -> Result<bool, String> {
+		let (sql, _) = Query::insert()
+			.into_table(Alias::new("oauth_server_resources"))
+			.columns(["resource_id", "payload"])
+			.values(vec![
+				resource.resource_id.clone().into(),
+				json_value(&resource)?,
+			])?
+			.on_conflict(OnConflict::column("resource_id").do_nothing())
+			.build(PostgresQueryBuilder);
+		let result = sqlx::query(&sql)
+			.bind(&resource.resource_id)
+			.bind(Json(&resource))
+			.execute(&self.pool)
+			.await
+			.map_err(|e| e.to_string())?;
+		Ok(result.rows_affected() == 1)
 	}
 	async fn compare_and_swap_resource(
 		&self,

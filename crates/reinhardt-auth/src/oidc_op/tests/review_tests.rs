@@ -436,6 +436,61 @@ mod postgres {
 		}
 	}
 
+	#[rstest]
+	#[tokio::test]
+	async fn postgres_initial_registrations_have_one_winner() {
+		let issuer = pg_issuer().await;
+		let other = issuer.oauth_store.clone();
+		let mut client = issuer.oauth_store.client("rp-a").await.unwrap().unwrap();
+		client.client_id = "new-rp".into();
+		let mut competing_client = client.clone();
+		competing_client.secret_hash = Some("competing".into());
+		let (first, second) = tokio::join!(
+			issuer.oauth_store.insert_client_if_absent(client.clone()),
+			other.insert_client_if_absent(competing_client.clone()),
+		);
+		assert_eq!(
+			[first.unwrap(), second.unwrap()]
+				.iter()
+				.filter(|won| **won)
+				.count(),
+			1
+		);
+		let saved = issuer.oauth_store.client("new-rp").await.unwrap().unwrap();
+		assert!(saved == client || saved == competing_client);
+
+		let mut resource = issuer
+			.oauth_store
+			.resource("oidc-userinfo")
+			.await
+			.unwrap()
+			.unwrap();
+		resource.resource_id = "new-resource".into();
+		resource.audience = "https://auth.example/new-resource".into();
+		let mut competing_resource = resource.clone();
+		competing_resource.secret_hash = "competing".into();
+		let (first, second) = tokio::join!(
+			issuer
+				.oauth_store
+				.insert_resource_if_absent(resource.clone()),
+			other.insert_resource_if_absent(competing_resource.clone()),
+		);
+		assert_eq!(
+			[first.unwrap(), second.unwrap()]
+				.iter()
+				.filter(|won| **won)
+				.count(),
+			1
+		);
+		let saved = issuer
+			.oauth_store
+			.resource("new-resource")
+			.await
+			.unwrap()
+			.unwrap();
+		assert!(saved == resource || saved == competing_resource);
+	}
+
 	async fn authorize(provider: &OidcProvider) -> String {
 		let pending = provider
 			.begin_authorization(request(), "session")

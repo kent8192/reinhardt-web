@@ -442,6 +442,11 @@ impl OAuthServer {
 		mut client: ClientRegistration,
 	) -> Result<Option<String>, OAuthError> {
 		validate_client_registration(&client, &self.config)?;
+		let expected = self
+			.store
+			.client(&client.client_id)
+			.await
+			.map_err(|_| OAuthError::ServerError)?;
 		for audience in &client.audiences {
 			let resource = self
 				.store
@@ -464,10 +469,14 @@ impl OAuthServer {
 			client.previous_secret_expires_at = None;
 			None
 		};
-		self.store
-			.put_client(client)
-			.await
-			.map_err(|_| OAuthError::ServerError)?;
+		let written = match expected {
+			Some(expected) => self.store.compare_and_swap_client(&expected, client).await,
+			None => self.store.insert_client_if_absent(client).await,
+		}
+		.map_err(|_| OAuthError::ServerError)?;
+		if !written {
+			return Err(OAuthError::ServerError);
+		}
 		Ok(secret)
 	}
 	/// Rotate a confidential client's secret; old credentials become invalid immediately.
@@ -551,16 +560,33 @@ impl OAuthServer {
 		{
 			return Err(OAuthError::InvalidRequest);
 		}
-		let raw = random_secret();
-		self.store
-			.put_resource(ResourceRegistration {
-				resource_id: resource_id.to_owned(),
-				audience: audience.to_owned(),
-				secret_hash: hash_password(&raw).await?,
-				enabled: true,
-			})
+		let expected = self
+			.store
+			.resource(resource_id)
 			.await
 			.map_err(|_| OAuthError::ServerError)?;
+		if expected.as_ref().is_some_and(|r| r.audience != audience) {
+			return Err(OAuthError::InvalidRequest);
+		}
+		let raw = random_secret();
+		let replacement = ResourceRegistration {
+			resource_id: resource_id.to_owned(),
+			audience: audience.to_owned(),
+			secret_hash: hash_password(&raw).await?,
+			enabled: true,
+		};
+		let written = match expected {
+			Some(expected) => {
+				self.store
+					.compare_and_swap_resource(&expected, replacement)
+					.await
+			}
+			None => self.store.insert_resource_if_absent(replacement).await,
+		}
+		.map_err(|_| OAuthError::ServerError)?;
+		if !written {
+			return Err(OAuthError::ServerError);
+		}
 		Ok(raw)
 	}
 

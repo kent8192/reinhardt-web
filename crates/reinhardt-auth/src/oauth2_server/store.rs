@@ -232,6 +232,11 @@ pub struct StoredToken {
 pub trait OAuthServerStore: Send + Sync {
 	/// Save a validated registration.
 	async fn put_client(&self, client: ClientRegistration) -> Result<(), String>;
+	/// Insert a registration only if its identifier is absent, including across instances.
+	/// Stores used for administrative registration must implement this atomic operation.
+	async fn insert_client_if_absent(&self, _client: ClientRegistration) -> Result<bool, String> {
+		Err("store does not support atomic client registration".to_owned())
+	}
 	/// Replace a registration only if its complete current value matches the snapshot.
 	/// A concurrent administrative change returns false without writing.
 	async fn compare_and_swap_client(
@@ -251,6 +256,14 @@ pub trait OAuthServerStore: Send + Sync {
 	) -> Result<Option<ClientRegistration>, String>;
 	/// Save a resource server registration.
 	async fn put_resource(&self, resource: ResourceRegistration) -> Result<(), String>;
+	/// Insert a resource only if its identifier and audience are unclaimed.
+	/// Stores used for administrative registration must implement this atomic operation.
+	async fn insert_resource_if_absent(
+		&self,
+		_resource: ResourceRegistration,
+	) -> Result<bool, String> {
+		Err("store does not support atomic resource registration".to_owned())
+	}
 	/// Get a resource server registration.
 	async fn resource(&self, resource_id: &str) -> Result<Option<ResourceRegistration>, String>;
 	/// Compare the complete resource snapshot and atomically replace its registration.
@@ -362,6 +375,14 @@ impl OAuthServerStore for MemoryOAuthStore {
 			.insert(client.client_id.clone(), client);
 		Ok(())
 	}
+	async fn insert_client_if_absent(&self, client: ClientRegistration) -> Result<bool, String> {
+		let mut state = self.state.lock().await;
+		if state.clients.contains_key(&client.client_id) {
+			return Ok(false);
+		}
+		state.clients.insert(client.client_id.clone(), client);
+		Ok(true)
+	}
 	async fn compare_and_swap_client(
 		&self,
 		expected: &ClientRegistration,
@@ -434,6 +455,24 @@ impl OAuthServerStore for MemoryOAuthStore {
 			.resources
 			.insert(resource.resource_id.clone(), resource);
 		Ok(())
+	}
+	async fn insert_resource_if_absent(
+		&self,
+		resource: ResourceRegistration,
+	) -> Result<bool, String> {
+		let mut state = self.state.lock().await;
+		if state.resources.contains_key(&resource.resource_id)
+			|| state
+				.resources
+				.values()
+				.any(|r| r.audience == resource.audience)
+		{
+			return Ok(false);
+		}
+		state
+			.resources
+			.insert(resource.resource_id.clone(), resource);
+		Ok(true)
 	}
 	async fn compare_and_swap_resource(
 		&self,
