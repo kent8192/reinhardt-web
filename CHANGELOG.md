@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.19...reinhardt-web@v0.3.20) - 2026-09-25
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(ci)* allow compatible rand 0.10 patch releases
+- *(auth)* accept array audiences in OIDC ID tokens
+
+### Maintenance
+
+- *(ci)* remove unused cargo-deny policy entries
+
+### Security
+
+- *(auth)* validate azp on multi-audience ID tokens
+
 ## [0.3.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.18...reinhardt-web@v0.3.19) - 2026-09-20
 
 ### Documentation
