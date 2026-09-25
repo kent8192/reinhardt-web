@@ -26,6 +26,57 @@ impl OAuthRateLimiter for DenyAll {
 
 #[rstest]
 #[tokio::test]
+async fn missing_browser_session_is_a_server_failure() {
+	use hyper::StatusCode;
+	use reinhardt_http::{Handler, Request};
+	let handler = OAuthHandler::new(Arc::new(server()), OAuthEndpoint::Authorization);
+	let response = handler
+		.handle(Request::builder().uri("/oauth/authorize").build().unwrap())
+		.await
+		.unwrap();
+	assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+	assert_eq!(
+		serde_json::from_slice::<serde_json::Value>(&response.body).unwrap()["error"],
+		"server_error"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn cors_preflight_advertises_only_the_endpoint_method() {
+	use hyper::{Method, StatusCode};
+	use reinhardt_http::{Handler, Request};
+	let (server, _) = setup(ClientKind::Public).await;
+	let server = Arc::new(server);
+	for (endpoint, expected) in [
+		(OAuthEndpoint::Token, "POST, OPTIONS"),
+		(OAuthEndpoint::Revocation, "POST, OPTIONS"),
+		(OAuthEndpoint::Metadata, "GET, OPTIONS"),
+	] {
+		let response = OAuthHandler::new(server.clone(), endpoint)
+			.handle(
+				Request::builder()
+					.method(Method::OPTIONS)
+					.uri("/oauth")
+					.header("Origin", "https://client.example")
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(response.status, StatusCode::NO_CONTENT);
+		assert_eq!(
+			response
+				.headers
+				.get("access-control-allow-methods")
+				.unwrap(),
+			expected
+		);
+	}
+}
+
+#[rstest]
+#[tokio::test]
 async fn rate_limited_browser_endpoints_expose_429_to_registered_origins() {
 	use hyper::StatusCode;
 	use reinhardt_http::{Handler, Request};

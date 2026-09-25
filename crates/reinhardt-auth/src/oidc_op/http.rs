@@ -163,7 +163,14 @@ impl OidcHandler {
 			.await
 		{
 			Some(location) => redirect(&location),
-			None => oidc_error(error),
+			None => json_response(
+				if error == OidcError::ServerError {
+					StatusCode::INTERNAL_SERVER_ERROR
+				} else {
+					StatusCode::BAD_REQUEST
+				},
+				json!({"error":error.as_str()}),
+			),
 		}
 	}
 

@@ -77,8 +77,8 @@ impl OAuthHandler {
 		}
 		let Some(browser_session) = request.extensions.get::<OAuthBrowserSession>() else {
 			return Ok(oauth_error(
-				OAuthError::InvalidRequest,
-				StatusCode::BAD_REQUEST,
+				OAuthError::ServerError,
+				StatusCode::INTERNAL_SERVER_ERROR,
 			));
 		};
 		let Some(presenter) = &self.presenter else {
@@ -322,8 +322,14 @@ impl OAuthHandler {
 			.registered_origin(no_store(Response::new(StatusCode::NO_CONTENT)), request)
 			.await;
 		if response.headers.contains_key("Access-Control-Allow-Origin") {
+			let methods = match self.endpoint {
+				OAuthEndpoint::Token | OAuthEndpoint::Revocation => "POST, OPTIONS",
+				OAuthEndpoint::Metadata => "GET, OPTIONS",
+				OAuthEndpoint::Authorization => return method_not_allowed("GET"),
+				OAuthEndpoint::Introspection => return method_not_allowed("POST"),
+			};
 			response
-				.with_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				.with_header("Access-Control-Allow-Methods", methods)
 				.with_header(
 					"Access-Control-Allow-Headers",
 					"Content-Type, Authorization",

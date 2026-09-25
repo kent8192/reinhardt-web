@@ -568,6 +568,31 @@ impl OidcInteraction for ApproveInteraction {
 
 #[rstest]
 #[tokio::test]
+async fn unknown_authorization_client_does_not_trigger_basic_authentication() {
+	let test = issuer().await;
+	let request = Request::builder()
+		.uri(format!(
+			"/oidc/authorize?client_id=unknown&redirect_uri={REDIRECT}&response_type=code"
+		))
+		.build()
+		.unwrap();
+	request
+		.extensions
+		.insert(OAuthBrowserSession("browser-a".into()));
+	let response = OidcHandler::authorization(
+		test.provider.clone(),
+		Arc::new(ApproveInteraction(test.provider.clone())),
+	)
+	.handle(request)
+	.await
+	.unwrap();
+	assert_eq!(response.status, StatusCode::BAD_REQUEST);
+	assert!(!response.headers.contains_key("www-authenticate"));
+	assert!(!response.headers.contains_key("location"));
+}
+
+#[rstest]
+#[tokio::test]
 async fn mounted_handlers_support_mock_rp_login_and_userinfo() {
 	let test = issuer().await;
 	let discovery = OidcHandler::new(test.provider.clone(), OidcEndpoint::Discovery)
