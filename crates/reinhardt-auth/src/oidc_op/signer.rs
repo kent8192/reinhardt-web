@@ -12,7 +12,10 @@ use rsa::{
 	traits::PublicKeyParts,
 };
 use sha2::Sha256;
-use std::{collections::HashMap, sync::RwLock};
+use std::{
+	collections::HashMap,
+	sync::{Arc, RwLock},
+};
 
 /// Host signing capability; private key bytes never pass through the state store.
 #[async_trait]
@@ -25,13 +28,14 @@ pub trait OidcSigner: Send + Sync {
 
 struct KeyMaterial {
 	public: PublicRsaJwk,
-	signing: SigningKey<Sha256>,
+	signing: Arc<SigningKey<Sha256>>,
 }
 
 /// Development or host-managed RSA PEM key ring.
 ///
 /// Each production node must receive the same provisioned key material before
 /// the corresponding key is activated in the shared OIDC state store.
+/// Private-key signing runs on Tokio's blocking pool.
 #[derive(Default)]
 pub struct RsaPemKeyRing {
 	keys: RwLock<HashMap<String, KeyMaterial>>,
@@ -68,7 +72,7 @@ impl RsaPemKeyRing {
 			kid.to_owned(),
 			KeyMaterial {
 				public: public.clone(),
-				signing: SigningKey::<Sha256>::new(key),
+				signing: Arc::new(SigningKey::<Sha256>::new(key)),
 			},
 		);
 		Ok(public)
@@ -87,8 +91,13 @@ impl OidcSigner for RsaPemKeyRing {
 	}
 
 	async fn sign(&self, kid: &str, input: &[u8]) -> Result<Vec<u8>, String> {
-		let keys = self.keys.read().map_err(|_| "key ring lock poisoned")?;
-		let key = keys.get(kid).ok_or("signing key unavailable")?;
-		Ok(key.signing.sign(input).to_vec())
+		let signing = {
+			let keys = self.keys.read().map_err(|_| "key ring lock poisoned")?;
+			Arc::clone(&keys.get(kid).ok_or("signing key unavailable")?.signing)
+		};
+		let input = input.to_vec();
+		tokio::task::spawn_blocking(move || signing.sign(&input).to_vec())
+			.await
+			.map_err(|_| "RSA signing task failed".to_owned())
 	}
 }
