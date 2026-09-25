@@ -31,6 +31,12 @@ ignore = [
   { id = "RUSTSEC-2024-0320", reason = "yaml-rust is retained by transitive configuration dependencies; remediation is tracked in issue #5492." },
   { id = "RUSTSEC-2026-0249", reason = "smartstring is retained transitively by rhai; no patched release exists, and remediation is tracked in issue #5492." },
   { id = "RUSTSEC-2026-0258", reason = "h2 0.3.27 is retained by aws-smithy-http-client and hyper 0.14; migration to the patched h2 0.4 line is tracked in issue #5492." },
+  # Temporary: evcxr 0.22.0's rust-analyzer stack needs Salsa 0.28.2; track the
+  # compatible upgrade and advisory remediation in issue #6379.
+  # Remove this exception once the shell compiles with Salsa >=0.28.5.
+  # Ideal: the shell feature depends on evcxr without direct salsa or
+  # salsa-macro-rules compatibility dependencies or this advisory exception.
+  { id = "RUSTSEC-2026-0308", reason = "Optional evcxr shell pins Salsa 0.28.2 for rust-analyzer compatibility; temporary until a compatible patched Salsa can be used (issue #6379)." },
 ]
 
 [licenses]
