@@ -29,11 +29,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.15", features = ["conf"] }
+reinhardt = { version = "0.4.0-alpha.16", features = ["conf"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.4.0-alpha.15", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.4.0-alpha.15", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.16", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.16", features = ["full"] }      # All features
 ```
 
 Then import configuration features:
@@ -52,13 +52,13 @@ Enable specific features based on your needs:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 # With async support
-reinhardt = { version = "0.4.0-alpha.15", features = ["conf", "async"] }
+reinhardt = { version = "0.4.0-alpha.16", features = ["conf", "async"] }
 
 # With encryption
-reinhardt = { version = "0.4.0-alpha.15", features = ["conf", "encryption"] }
+reinhardt = { version = "0.4.0-alpha.16", features = ["conf", "encryption"] }
 
 # With Vault integration
-reinhardt = { version = "0.4.0-alpha.15", features = ["conf", "vault"] }
+reinhardt = { version = "0.4.0-alpha.16", features = ["conf", "vault"] }
 ```
 
 Available features:
@@ -90,6 +90,19 @@ let database_url = settings.get::<String>("DATABASE_URL")?;
 ```
 
 ### Resolved composed settings metadata
+
+`SettingsBuilder::build_scoped()` supports command-aware settings resolution.
+It syntax-checks configured sources and merges raw values first, preserving
+their priority. `ScopedSettings::require_path` and `optional_path` then expand
+`${VAR}` and deserialize only the requested effective path. A shadowed value
+or unrelated secret is not expanded. `optional_path` returns `None` only when
+the path is absent; a malformed explicit value remains an error. TOML syntax
+errors are still reported even in unselected sections.
+
+Custom `ConfigSource` implementations must implement `load_scoped` to opt in.
+The default rejects scoped loading instead of calling an eager loader that
+might evaluate unrelated secrets. Existing `build`, `build_composed`, and
+`build_pending_composed` behavior remains unchanged.
 
 `SettingsBuilder::build_resolved_composed()` returns typed composed settings
 with value-free metadata for resolved leaf paths. The metadata records each

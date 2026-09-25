@@ -5,6 +5,7 @@
 
 use super::composed::{ComposedSettings, PendingSettings, ResolvedSettings};
 use super::profile::Profile;
+use super::scoped::ScopedSettings;
 use super::sources::{ConfigSource, DotEnvSource, EnvSource, SourceError};
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
@@ -275,6 +276,20 @@ impl SettingsBuilder {
 			typed_coercion,
 			marker: PhantomData,
 		})
+	}
+
+	/// Merge syntax-checked configuration for selected command capabilities.
+	///
+	/// Unlike `build_pending_composed`, this path defers TOML interpolation until
+	/// an effective settings path is requested. Eager-only custom sources fail
+	/// with guidance instead of loading unrelated configuration.
+	pub fn build_scoped(self) -> Result<ScopedSettings, BuildError> {
+		ScopedSettings::build(
+			self.sources,
+			self.profile,
+			self.typed_coercion,
+			self.merge_strategy.unwrap_or(MergeStrategy::Deep),
+		)
 	}
 
 	/// Build the configuration by merging all sources

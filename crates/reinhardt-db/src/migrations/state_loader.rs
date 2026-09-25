@@ -9,8 +9,8 @@
 
 use super::recorder::MigrationRecord;
 use super::{
-	DatabaseMigrationRecorder, Migration, MigrationGraph, MigrationKey, MigrationSource,
-	ProjectState, Result,
+	DatabaseMigrationRecorder, DependencyResolutionContext, Migration, MigrationGraph,
+	MigrationKey, MigrationSource, ProjectState, Result,
 };
 
 /// Loader for building ProjectState from migration history.
@@ -37,6 +37,7 @@ use super::{
 pub struct MigrationStateLoader<S: MigrationSource> {
 	recorder: DatabaseMigrationRecorder,
 	source: S,
+	dependency_context: Option<DependencyResolutionContext>,
 }
 
 impl<S: MigrationSource> MigrationStateLoader<S> {
@@ -47,7 +48,17 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 	/// * `recorder` - The migration recorder to get applied migrations from
 	/// * `source` - The migration source to load migration definitions from
 	pub fn new(recorder: DatabaseMigrationRecorder, source: S) -> Self {
-		Self { recorder, source }
+		Self {
+			recorder,
+			source,
+			dependency_context: None,
+		}
+	}
+
+	/// Resolve conditional and swappable dependencies while replaying applied migrations.
+	pub fn with_dependency_context(mut self, context: DependencyResolutionContext) -> Self {
+		self.dependency_context = Some(context);
+		self
 	}
 
 	/// Build the current ProjectState by replaying all applied migrations.
@@ -139,23 +150,22 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 				continue;
 			}
 
-			let key = MigrationKey::new(migration.app_label.clone(), migration.name.clone());
-
-			// Convert dependencies to MigrationKey
-			let dependencies: Vec<MigrationKey> = migration
-				.dependencies
-				.iter()
-				.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-				.collect();
-
-			// Convert replaces to MigrationKey
-			let replaces: Vec<MigrationKey> = migration
-				.replaces
-				.iter()
-				.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-				.collect();
-
-			graph.add_migration_with_replaces(key, dependencies, replaces);
+			if let Some(context) = &self.dependency_context {
+				graph.add_migration_with_context(migration, context);
+			} else {
+				let key = MigrationKey::new(migration.app_label.clone(), migration.name.clone());
+				let dependencies = migration
+					.dependencies
+					.iter()
+					.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
+					.collect();
+				let replaces = migration
+					.replaces
+					.iter()
+					.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
+					.collect();
+				graph.add_migration_with_replaces(key, dependencies, replaces);
+			}
 		}
 
 		Ok(graph)
@@ -267,6 +277,16 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 /// - Failed to load migrations from the source
 /// - Circular dependency is detected in the migration graph
 pub async fn build_state_from_files<S: MigrationSource>(source: &S) -> Result<ProjectState> {
+	build_state_from_files_with_context(source, &super::DependencyResolutionContext::default())
+		.await
+}
+
+/// Reconstruct file-backed migration state using the project's conditional
+/// and swappable dependency settings.
+pub async fn build_state_from_files_with_context<S: MigrationSource>(
+	source: &S,
+	context: &super::DependencyResolutionContext,
+) -> Result<ProjectState> {
 	// 1. Load all available migrations from source
 	let all_migrations = source.all_migrations().await?;
 
@@ -278,21 +298,7 @@ pub async fn build_state_from_files<S: MigrationSource>(source: &S) -> Result<Pr
 	// 2. Build a graph from ALL migrations (not filtered by applied status)
 	let mut graph = MigrationGraph::new();
 	for migration in &all_migrations {
-		let key = MigrationKey::new(migration.app_label.clone(), migration.name.clone());
-
-		let dependencies: Vec<MigrationKey> = migration
-			.dependencies
-			.iter()
-			.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-			.collect();
-
-		let replaces: Vec<MigrationKey> = migration
-			.replaces
-			.iter()
-			.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-			.collect();
-
-		graph.add_migration_with_replaces(key, dependencies, replaces);
+		graph.add_migration_with_context(migration, context);
 	}
 
 	// 3. Select one valid replacement history before ordering migrations.
@@ -644,6 +650,45 @@ mod tests {
 				"users should come before posts in topological order"
 			);
 		}
+
+		#[tokio::test]
+		async fn applied_state_graph_orders_active_optional_dependencies() {
+			use crate::migrations::dependency::{DependencyCondition, OptionalDependency};
+
+			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+				.await
+				.unwrap();
+			let recorder = DatabaseMigrationRecorder::new(connection);
+			let mut dependent = create_migration("a", "0001_extra", vec![], vec![]);
+			dependent
+				.optional_dependencies
+				.push(OptionalDependency::new(
+					"z",
+					"0001_base",
+					DependencyCondition::FeatureEnabled("extra".to_owned()),
+				));
+			let base = create_migration("z", "0001_base", vec![], vec![]);
+			let migrations = vec![dependent, base];
+			let records = vec![
+				create_migration_record("a", "0001_extra"),
+				create_migration_record("z", "0001_base"),
+			];
+			let context = DependencyResolutionContext::new().with_feature("extra");
+			let loader = MigrationStateLoader::new(
+				recorder,
+				MockMigrationSource {
+					migrations: migrations.clone(),
+				},
+			)
+			.with_dependency_context(context);
+
+			let graph = loader
+				.build_applied_migration_graph(&records, &migrations)
+				.unwrap();
+			let order = graph.topological_sort().unwrap();
+			assert_eq!(order[0], MigrationKey::new("z", "0001_base"));
+			assert_eq!(order[1], MigrationKey::new("a", "0001_extra"));
+		}
 	}
 
 	mod project_state_replay {
@@ -804,6 +849,7 @@ mod tests {
 mod build_state_from_files_tests {
 	use super::*;
 	use crate::migrations::FieldType;
+	use crate::migrations::dependency::{DependencyCondition, OptionalDependency};
 	use crate::migrations::operations::{ColumnDefinition, Operation};
 	use rstest::rstest;
 
@@ -994,6 +1040,46 @@ mod build_state_from_files_tests {
 		assert_eq!(state.models.len(), 2);
 		assert!(state.find_model_by_table("auth_users").is_some());
 		assert!(state.find_model_by_table("posts_post").is_some());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn file_state_orders_active_optional_dependencies() {
+		let mut dependent = create_migration(
+			"a",
+			"0001_extra",
+			vec![add_column_operation("shared_table", "extra")],
+			vec![],
+		);
+		dependent
+			.optional_dependencies
+			.push(OptionalDependency::new(
+				"z",
+				"0001_base",
+				DependencyCondition::FeatureEnabled("extra".to_owned()),
+			));
+		let source = MockMigrationSource {
+			migrations: vec![
+				dependent,
+				create_migration(
+					"z",
+					"0001_base",
+					vec![create_table_operation("shared_table", vec!["id"])],
+					vec![],
+				),
+			],
+		};
+		let context = super::super::DependencyResolutionContext::new().with_feature("extra");
+		let state = build_state_from_files_with_context(&source, &context)
+			.await
+			.unwrap();
+		assert!(
+			state
+				.find_model_by_table("shared_table")
+				.unwrap()
+				.fields
+				.contains_key("extra")
+		);
 	}
 
 	/// CreateTable followed by DropTable results in empty state

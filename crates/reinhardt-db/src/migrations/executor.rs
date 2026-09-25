@@ -287,6 +287,7 @@ pub struct DatabaseMigrationExecutor {
 	recorder: DatabaseMigrationRecorder,
 	db_type: DatabaseType,
 	planner: Arc<dyn SqlPlanner>,
+	dependency_context: Option<super::DependencyResolutionContext>,
 }
 
 impl DatabaseMigrationExecutor {
@@ -315,6 +316,7 @@ impl DatabaseMigrationExecutor {
 			recorder,
 			db_type,
 			planner: Arc::new(DefaultSqlPlanner),
+			dependency_context: None,
 		}
 	}
 
@@ -327,7 +329,14 @@ impl DatabaseMigrationExecutor {
 			recorder,
 			db_type,
 			planner,
+			dependency_context: None,
 		}
+	}
+
+	/// Resolve conditional and swappable dependencies when ordering migrations.
+	pub fn with_dependency_context(mut self, context: super::DependencyResolutionContext) -> Self {
+		self.dependency_context = Some(context);
+		self
 	}
 
 	/// Get a reference to the database connection
@@ -466,16 +475,24 @@ impl DatabaseMigrationExecutor {
 				migration.app_label.clone(),
 				migration.name.clone(),
 			);
-			let deps: Vec<super::graph::MigrationKey> = migration
-				.dependencies
-				.iter()
-				.flat_map(|(app, name)| {
+			let resolved_dependencies = if let Some(context) = &self.dependency_context {
+				let mut resolved = super::graph::MigrationGraph::new();
+				resolved.add_migration_with_context(migration, context);
+				resolved.get_dependencies(&key).unwrap_or(&[]).to_vec()
+			} else {
+				migration
+					.dependencies
+					.iter()
+					.map(|(app, name)| super::graph::MigrationKey::new(app, name))
+					.collect()
+			};
+			let deps = resolved_dependencies
+				.into_iter()
+				.flat_map(|dependency| {
 					partial_replacement_dependencies
-						.get(&(app.clone(), name.clone()))
+						.get(&(dependency.app_label.clone(), dependency.name.clone()))
 						.cloned()
-						.unwrap_or_else(|| {
-							vec![super::graph::MigrationKey::new(app.clone(), name.clone())]
-						})
+						.unwrap_or_else(|| vec![dependency])
 				})
 				.collect();
 
@@ -3961,6 +3978,38 @@ mod vector_index_validation_state_tests {
 			Err(MigrationError::InvalidMigration(message))
 				if message == "approximate vector index on table `scalar_documents` targets non-vector column `embedding`"
 		));
+	}
+}
+
+#[cfg(all(test, feature = "sqlite"))]
+mod dependency_context_execution_tests {
+	use super::*;
+	use crate::migrations::Migration;
+	use crate::migrations::dependency::{DependencyCondition, OptionalDependency};
+
+	#[tokio::test]
+	async fn apply_migrations_orders_active_optional_dependencies() {
+		let mut dependent = Migration::new("0001_extra", "a");
+		dependent
+			.optional_dependencies
+			.push(OptionalDependency::new(
+				"z",
+				"0001_base",
+				DependencyCondition::FeatureEnabled("extra".to_owned()),
+			));
+		let base = Migration::new("0001_base", "z");
+		let context = super::super::DependencyResolutionContext::new().with_feature("extra");
+		let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.unwrap();
+		let mut executor =
+			DatabaseMigrationExecutor::new(connection).with_dependency_context(context);
+
+		let result = executor
+			.apply_migrations(&[dependent.clone(), base.clone()])
+			.await
+			.unwrap();
+		assert_eq!(result.applied, vec![base.id(), dependent.id()]);
 	}
 }
 

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.15...reinhardt-macros@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(forms)* add scoped validated form patches
+
+### Fixed
+
+- *(pages)* harden model form default metadata
+- *(pages)* preserve JSON string scalars in multipart forms
+- *(pages)* preserve JSON types in multipart model forms
+- *(macros)* limit companion length validators to text fields
+- *(forms)* enforce patch validation contracts
+- *(forms)* reject non-nullable null patch values before cleaning
+- *(forms)* preserve JSON null in validated form patches
+- *(forms)* reject SQL null in optional JSON form patches
+
+### Maintenance
+
+- merge develop/0.4.0 into model form mutation pages
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.14...reinhardt-macros@v0.4.0-alpha.15) - 2026-09-10
 
 ### Maintenance

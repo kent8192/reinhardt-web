@@ -2,8 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
+use reinhardt_conf::settings::builder::BuildError;
 use reinhardt_conf::settings::builder::{MergedSettings, SettingsBuilder};
 use reinhardt_conf::settings::profile::Profile;
+use reinhardt_conf::settings::scoped::ScopedSettings;
 use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
 use serde::Deserialize;
 use serde_json::Value;
@@ -26,6 +28,61 @@ struct StaticSection {
 }
 
 impl StaticAssetSettings {
+	/// Resolve only the static input paths selected for an asset command.
+	/// Explicit malformed values fail instead of silently using defaults.
+	pub fn from_scoped(settings: &ScopedSettings) -> Result<Self, BuildError> {
+		let base_dir = settings
+			.first_present_path::<PathBuf>(&[&["core", "base_dir"], &["base_dir"]])?
+			.unwrap_or(std::env::current_dir().map_err(|error| {
+				BuildError::Deserialization(format!("cannot find project directory: {error}"))
+			})?);
+		let static_url = settings
+			.first_present_path::<String>(&[
+				&["static_files", "url"],
+				&["static", "url"],
+				&["static_url"],
+			])?
+			.unwrap_or_else(|| "/static/".to_owned());
+		let absolute_url = url::Url::parse(&static_url)
+			.is_ok_and(|url| matches!(url.scheme(), "http" | "https") && url.host_str().is_some());
+		if !static_url.ends_with('/') || !(static_url.starts_with('/') || absolute_url) {
+			return Err(BuildError::Deserialization(
+				"static URL must be a slash-prefixed path or HTTP(S) URL ending with `/` (settings path `static.url`)".to_owned(),
+			));
+		}
+		let static_root = settings
+			.first_present_path::<PathBuf>(&[
+				&["static_files", "root"],
+				&["static", "root"],
+				&["static_root"],
+			])?
+			.ok_or_else(|| {
+				BuildError::Deserialization(
+				"missing required static output path `static.root`; configure it in settings TOML"
+					.to_owned(),
+			)
+			})?;
+		if static_root.as_os_str().is_empty() {
+			return Err(BuildError::Deserialization(
+				"static output path `static.root` must not be empty".to_owned(),
+			));
+		}
+		let staticfiles_dirs = settings
+			.optional_path::<Vec<PathBuf>>(&["staticfiles_dirs"])?
+			.unwrap_or_default();
+		let relative_to_base = |path: PathBuf| {
+			if path.is_absolute() {
+				path
+			} else {
+				base_dir.join(path)
+			}
+		};
+		Ok(Self {
+			static_url,
+			static_root: relative_to_base(static_root),
+			staticfiles_dirs: staticfiles_dirs.into_iter().map(relative_to_base).collect(),
+		})
+	}
 	/// Load static asset settings from the project's active settings profile.
 	pub fn from_project_dir(base_dir: &Path) -> Result<Self, String> {
 		let profile_name = std::env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
@@ -83,5 +140,79 @@ impl StaticAssetSettings {
 			}
 		}
 		resolved
+	}
+}
+
+impl crate::capabilities::SettingsView for StaticAssetSettings {
+	const NAME: &'static str = "static asset settings";
+
+	fn resolve(settings: &ScopedSettings, alias: Option<&str>) -> Result<Self, BuildError> {
+		if alias.is_some() {
+			return Err(BuildError::Deserialization(
+				"static asset settings do not accept an alias".to_owned(),
+			));
+		}
+		Self::from_scoped(settings)
+	}
+}
+
+#[cfg(test)]
+mod scoped_tests {
+	use super::*;
+	use rstest::*;
+	use std::fs;
+
+	#[rstest]
+	fn static_view_ignores_runtime_secret_but_validates_selected_root() {
+		let dir = tempfile::tempdir().unwrap();
+		let config = dir.path().join("settings.toml");
+		fs::write(&config, "[core]\nsecret_key = \"${REINHARDT_SCOPED_MISSING_SECRET_6336}\"\n[static]\nurl = \"/assets/\"\nroot = \"dist\"\n").unwrap();
+		let settings = SettingsBuilder::new()
+			.add_source(TomlFileSource::new(&config))
+			.build_scoped()
+			.unwrap();
+		let static_settings = StaticAssetSettings::from_scoped(&settings).unwrap();
+		assert_eq!(static_settings.static_url, "/assets/");
+		assert_eq!(
+			static_settings.static_root,
+			std::env::current_dir().unwrap().join("dist")
+		);
+
+		fs::write(&config, "[static]\nurl = \"/assets/\"\nroot = 7\n").unwrap();
+		let settings = SettingsBuilder::new()
+			.add_source(TomlFileSource::new(&config))
+			.build_scoped()
+			.unwrap();
+		assert!(StaticAssetSettings::from_scoped(&settings).is_err());
+	}
+
+	#[rstest]
+	fn missing_static_root_has_actionable_error() {
+		let settings = SettingsBuilder::new().build_scoped().unwrap();
+		let error = StaticAssetSettings::from_scoped(&settings).unwrap_err();
+		assert!(error.to_string().contains("static.root"));
+	}
+
+	#[rstest]
+	fn flat_base_dir_resolves_relative_static_paths() {
+		let project = tempfile::tempdir().unwrap();
+		let settings = SettingsBuilder::new()
+			.add_source(
+				DefaultSource::new()
+					.with_value(
+						"base_dir",
+						Value::String(project.path().to_string_lossy().into_owned()),
+					)
+					.with_value("static", serde_json::json!({"root": "dist"}))
+					.with_value("staticfiles_dirs", serde_json::json!(["assets"])),
+			)
+			.build_scoped()
+			.unwrap();
+		let static_settings = StaticAssetSettings::from_scoped(&settings).unwrap();
+		assert_eq!(static_settings.static_root, project.path().join("dist"));
+		assert_eq!(
+			static_settings.staticfiles_dirs,
+			vec![project.path().join("assets")]
+		);
 	}
 }
