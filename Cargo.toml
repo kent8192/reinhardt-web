@@ -354,6 +354,7 @@ test-utils = ["reinhardt-test", "reinhardt-test/testcontainers", "database"]
 auth-jwt = ["auth", "reinhardt-auth/jwt"]
 auth-session = ["auth", "reinhardt-auth/sessions", "sessions"]
 auth-oauth = ["auth", "reinhardt-auth/oauth"]
+auth-oidc-op = ["auth-oauth", "reinhardt-auth/oidc-op"]
 auth-social = ["auth-oauth", "reinhardt-auth/social"]
 auth-token = ["auth", "reinhardt-auth/token"]
 

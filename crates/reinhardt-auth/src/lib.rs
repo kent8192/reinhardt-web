@@ -11,7 +11,9 @@
 //! - **Object-Level Permissions**: Fine-grained access control on individual objects
 //! - **User Management**: CRUD operations for users with password hashing
 //! - **Group Management**: User groups and permission assignment
-//! - **REST API Authentication**: Multiple authentication backends (JWT, Token, Session, OAuth2, social OAuth state)
+//! - **REST API Authentication**: Multiple authentication backends (JWT, Token, Session, legacy OAuth2 helpers, social OAuth state)
+//! - **OAuth 2.0 Server**: Authorization Code with PKCE, Client Credentials, revocation, introspection, and metadata (`oauth` feature)
+//! - **OpenID Provider**: Authorization Code with PKCE, RS256 ID Tokens, Discovery, JWKS, and UserInfo (`oidc-op` feature)
 //! - **Standard Permissions**: Permission classes for common authorization scenarios
 //! - **createsuperuser Command**: CLI tool for creating admin users
 //!
@@ -42,7 +44,8 @@
 //! | `params` | enabled | Parameter extraction via DI |
 //! | `jwt` | disabled | JWT-based authentication backend |
 //! | `sessions` | disabled | Session-based authentication |
-//! | `oauth` | disabled | OAuth2 authorization code flow |
+//! | `oauth` | disabled | OAuth2 authorization server and legacy in-process helpers |
+//! | `oidc-op` | disabled | OpenID Connect provider on the OAuth server |
 //! | `token` | disabled | Token-based authentication |
 //! | `argon2-hasher` | disabled | Argon2 password hashing |
 //! | `bcrypt-hasher` | disabled | bcrypt password hashing for compatibility |
@@ -139,11 +142,17 @@ pub mod jwt;
 pub mod mfa;
 /// Django-compatible model-level permissions.
 pub mod model_permissions;
-/// OAuth2 authentication provider.
+/// Legacy in-process OAuth2 authentication helpers.
 #[cfg(feature = "oauth")]
 pub mod oauth2;
+/// OAuth 2.0 authorization server with PKCE and audience-bound tokens.
+#[cfg(feature = "oauth")]
+pub mod oauth2_server;
 /// Object-level permission checking.
 pub mod object_permissions;
+/// Opt-in OpenID Connect provider for first-party clients.
+#[cfg(feature = "oidc-op")]
+pub mod oidc_op;
 /// Database-backed permission model.
 #[cfg(feature = "database")]
 pub mod permission;

@@ -1,6 +1,6 @@
 //! OAuth2 Authentication
 //!
-//! Provides OAuth2 authorization flow support for third-party authentication.
+//! Legacy in-process OAuth2 helpers. Use [`crate::oauth2_server`] for a routable server.
 
 use crate::core::AuthIdentity;
 use crate::repository::{SimpleUserRepository, UserRepository};
@@ -22,9 +22,13 @@ pub enum GrantType {
 	AuthorizationCode,
 	/// Client credentials grant
 	ClientCredentials,
-	/// Refresh token grant
+	/// Legacy refresh-token variant; no refresh flow is implemented.
+	#[deprecated(
+		note = "refresh tokens are not issued or accepted; use a new authorization request"
+	)]
 	RefreshToken,
-	/// Implicit grant (deprecated, not recommended)
+	/// Legacy implicit variant; no implicit flow is implemented.
+	#[deprecated(note = "the implicit grant is unsupported; use authorization code with PKCE")]
 	Implicit,
 }
 
@@ -37,7 +41,7 @@ pub struct AccessToken {
 	pub token_type: String,
 	/// Expires in seconds
 	pub expires_in: u64,
-	/// Refresh token
+	/// Refresh token (not issued by the implemented flows)
 	pub refresh_token: Option<String>,
 	/// Scope granted
 	pub scope: Option<String>,
@@ -120,7 +124,7 @@ pub trait OAuth2TokenStore: Send + Sync {
 /// ```
 pub struct InMemoryOAuth2Store {
 	codes: Arc<Mutex<HashMap<String, AuthorizationCode>>>,
-	tokens: Arc<Mutex<HashMap<String, String>>>, // token -> user_id
+	tokens: Arc<Mutex<HashMap<String, (String, Instant)>>>, // token -> (user_id, expiry)
 }
 
 impl InMemoryOAuth2Store {
@@ -158,14 +162,19 @@ impl OAuth2TokenStore for InMemoryOAuth2Store {
 	}
 
 	async fn store_token(&self, user_id: &str, token: AccessToken) -> Result<(), String> {
+		let expires_at = Instant::now()
+			.checked_add(Duration::from_secs(token.expires_in))
+			.ok_or_else(|| "Access token lifetime is too long".to_string())?;
 		let mut tokens = self.tokens.lock().await;
-		tokens.insert(token.token.clone(), user_id.to_string());
+		tokens.insert(token.token.clone(), (user_id.to_string(), expires_at));
 		Ok(())
 	}
 
 	async fn get_token(&self, token: &str) -> Result<Option<String>, String> {
 		let tokens = self.tokens.lock().await;
-		Ok(tokens.get(token).cloned())
+		Ok(tokens
+			.get(token)
+			.and_then(|(user_id, expiry)| (*expiry > Instant::now()).then(|| user_id.clone())))
 	}
 
 	async fn revoke_token(&self, token: &str) -> Result<(), String> {
@@ -291,6 +300,17 @@ impl OAuth2Authentication {
 		user_id: &str,
 		scope: Option<String>,
 	) -> Result<String, String> {
+		let applications = self.applications.lock().await;
+		let app = applications
+			.get(client_id)
+			.ok_or_else(|| "Unknown client".to_string())?;
+		if !app.grant_types.contains(&GrantType::AuthorizationCode) {
+			return Err("Authorization code grant is not registered".to_string());
+		}
+		if !app.redirect_uris.iter().any(|uri| uri == redirect_uri) {
+			return Err("redirect_uri is not registered".to_string());
+		}
+		drop(applications);
 		let code = format!("code_{}", Uuid::new_v4());
 
 		let auth_code = AuthorizationCode {
@@ -319,6 +339,15 @@ impl OAuth2Authentication {
 			return Err("Invalid client credentials".to_string());
 		}
 
+		let applications = self.applications.lock().await;
+		if !applications
+			.get(client_id)
+			.is_some_and(|app| app.grant_types.contains(&GrantType::AuthorizationCode))
+		{
+			return Err("Authorization code grant is not registered".to_string());
+		}
+		drop(applications);
+
 		// Consume authorization code
 		let auth_code = self
 			.token_store
@@ -342,7 +371,7 @@ impl OAuth2Authentication {
 			token: format!("access_{}", Uuid::new_v4()),
 			token_type: "Bearer".to_string(),
 			expires_in: 3600,
-			refresh_token: Some(format!("refresh_{}", Uuid::new_v4())),
+			refresh_token: None,
 			scope: auth_code.scope.clone(),
 		};
 
@@ -472,7 +501,7 @@ mod tests {
 
 		assert_eq!(token.token_type, "Bearer");
 		assert_eq!(token.expires_in, 3600);
-		assert!(token.refresh_token.is_some());
+		assert!(token.refresh_token.is_none());
 	}
 
 	#[rstest]
