@@ -618,44 +618,208 @@ let code = "123456"; // from user's authenticator app
 assert!(mfa.verify_code("alice", code).await?);
 ```
 
-### OAuth2 Support
+### OAuth2 Authorization Server
 
-#### OAuth2 Authentication
+Enable `oauth` for the authorization server and `database` for its PostgreSQL
+store. The server supports Authorization Code with mandatory PKCE `S256` and
+Client Credentials. It issues audience-bound opaque Bearer tokens. Refresh and
+Implicit grants are unavailable; no refresh token is issued.
 
-- **OAuth2Authentication**: Full OAuth2 provider implementation
-- **Grant Types**: Authorization Code, Client Credentials, Refresh Token,
-  Implicit
-- **Application Management**: `OAuth2Application` with client credentials
-- **Token Management**: `OAuth2Token` with access and refresh tokens
-- **Authorization Flow**:
-  - Authorization code generation and validation
-  - Token exchange (code → access token)
-  - Token refresh with refresh tokens
-- **OAuth2TokenStore Trait**: Persistent token storage interface
-- **InMemoryTokenStore**: Built-in in-memory token storage
+`OAuthServer` provides administrative client and resource registration, typed
+pending authorization requests, explicit host approval, token inspection,
+revocation, and introspection. `OAuthHandler` implements Reinhardt's `Handler`
+for the authorization, token, revocation, introspection, and metadata routes.
+Mount those handlers at the exact HTTPS URLs configured in `OAuthServerConfig`;
+mount metadata at the URL returned by `metadata_url()`.
+The host must insert `OAuthBrowserSession` from its browser
+session into authorization requests and implement `OAuthConsentPresenter` for
+login and consent. The session binding must be unpredictable and retained
+across login redirects. Approval must call `complete_authorization` with that same
+browser-session binding and an authenticated active user ID. The host controls
+remembered consent and calls `revoke_user` after account security events. That
+operation invalidates outstanding authorization codes and tokens together,
+returns only the number of newly revoked tokens, and does not retire the user or
+OIDC subject. Code exchange rechecks the user's current authenticated, active
+status; a missing or inactive user, or failed user lookup, cannot consume a code.
+
+Register resource servers before clients. A confidential client receives a
+secret once at registration; store it securely. A public client has no secret.
+Secrets are Argon2 hashes at rest. Codes and tokens are SHA-256 lookup digests.
+New registrations use atomic insert-if-absent; re-registration compares the
+complete stored snapshot before replacing it. Concurrent registration or
+rotation can return `ServerError`; retry using current state rather than
+distributing a secret from a failed operation. A resource identifier keeps its
+original audience when re-registered. Custom stores used for registration must
+implement `insert_client_if_absent`, `insert_resource_if_absent`, and the
+corresponding compare-and-swap methods atomically.
+Code exchange commits redemption and token insertion together; custom stores
+must implement `redeem_code_and_store_token` atomically. `put_token` accepts
+client-credentials tokens only. Authorization completion separately prepares its
+validated pending snapshot and code, then calls `complete_pending` to persist
+both atomically. Client-secret rotation uses `compare_and_swap_client` so a
+concurrent administrative update cannot be overwritten. A conflicting rotation,
+previous-secret revocation, or disable operation returns `ServerError`; retry
+with fresh state rather than using an uncommitted credential.
+Resource servers authenticate separately to introspection. Use
+`PostgresOAuthStore::migration()` in the host's Reinhardt migration graph before
+serving requests; enable `reinhardt-db/postgres` in the host that runs it.
+Schedule `PostgresOAuthStore::purge_expired(now)` from a host maintenance job,
+passing the current UNIX time in seconds. It deletes expired pending requests,
+authorization codes, and tokens in one transaction and returns the deleted row count.
+Codes referenced by unexpired tokens remain until those tokens can be removed.
+Production construction uses `OAuthServer::for_production` with
+a PostgreSQL store and a host-provided shared `OAuthRateLimiter`. The
+`for_development` constructor accepts an in-memory store and limiter.
 
 ```rust
-use reinhardt::auth::{OAuth2Authentication, OAuth2Application, GrantType};
-
-// OAuth2Authentication::new() takes no arguments; use ::with_repository() for custom storage.
-let oauth2 = OAuth2Authentication::new();
-
-// Register an OAuth2 application by passing an OAuth2Application struct.
-let app = OAuth2Application {
-    client_id: "client123".to_string(),
-    client_secret: "secret456".to_string(),
-    redirect_uris: vec!["https://example.com/callback".to_string()],
-    grant_types: vec![GrantType::AuthorizationCode],
+use reinhardt_auth::UserRepository;
+use reinhardt_auth::oauth2_server::{
+    OAuthError, OAuthServer, OAuthServerConfig, PostgresOAuthStore,
+    SharedOAuthRateLimiter,
 };
-oauth2.register_application(app).await;
+use sqlx::PgPool;
+use std::sync::Arc;
 
-// Authorization code flow
-let code = oauth2.generate_authorization_code("client123", "user123", vec!["read", "write"]).await?;
-let token = oauth2.exchange_code(&code, "client123").await?;
-
-// Use access token
-let claims = oauth2.verify_token(&token.access_token).await?;
+fn create_server<L: SharedOAuthRateLimiter + 'static>(
+    pool: PgPool,
+    users: Arc<dyn UserRepository>,
+    limiter: Arc<L>,
+) -> Result<OAuthServer, OAuthError> {
+    let config = OAuthServerConfig::new(
+        "https://auth.example.com",
+        "https://auth.example.com/oauth/authorize",
+        "https://auth.example.com/oauth/token",
+        "https://auth.example.com/oauth/revoke",
+        "https://auth.example.com/oauth/introspect",
+    )?;
+    OAuthServer::for_production(config, PostgresOAuthStore::new(pool), users, limiter)
+}
 ```
+
+Mount the handlers in the host router (the example uses a root-path issuer):
+
+```rust
+use reinhardt_auth::oauth2_server::{
+    OAuthConsentPresenter, OAuthEndpoint, OAuthHandler, OAuthServer,
+};
+use reinhardt_urls::routers::ServerRouter;
+use std::sync::Arc;
+
+fn oauth_routes(
+    server: Arc<OAuthServer>,
+    presenter: Arc<dyn OAuthConsentPresenter>,
+) -> ServerRouter {
+    ServerRouter::new()
+        .handler_arc("/oauth/authorize", Arc::new(OAuthHandler::authorization(server.clone(), presenter)))
+        .handler_arc("/oauth/token", Arc::new(OAuthHandler::new(server.clone(), OAuthEndpoint::Token)))
+        .handler_arc("/oauth/revoke", Arc::new(OAuthHandler::new(server.clone(), OAuthEndpoint::Revocation)))
+        .handler_arc("/oauth/introspect", Arc::new(OAuthHandler::new(server.clone(), OAuthEndpoint::Introspection)))
+        .handler_arc("/.well-known/oauth-authorization-server", Arc::new(OAuthHandler::new(server, OAuthEndpoint::Metadata)))
+}
+```
+
+The previous `OAuth2Authentication`, `OAuth2Application`, and `OAuth2TokenStore`
+remain in-process compatibility helpers. They do not implement a routable
+authorization server and cannot be supplied as the new server's store. Their
+code flow validates registered clients and redirect URIs, expires in-memory
+tokens, and does not issue refresh tokens. Existing client registrations must
+be explicitly recreated with the typed `ClientRegistration` API, including
+redirect URIs, scopes, audience, grant permissions, and a new secret.
+Legacy codes and tokens are not imported.
+
+For migration, apply the OAuth server migration first, register each intended
+resource audience, then recreate each client with its allowed grants, exact
+redirect URIs, scopes, default scopes, audiences, default audience, and browser
+origins. Distribute each new confidential-client secret once. Update clients to
+use the mounted HTTPS endpoints and PKCE `S256`; users must authorize again.
+Retire the legacy helper only after its existing callers have moved.
+
+### OpenID Provider
+
+Enable `oidc-op` on `reinhardt-auth` (or `auth-oidc-op` on the root
+`reinhardt` crate) to serve an opt-in OpenID Connect issuer on the OAuth
+authorization server. The first profile supports first-party confidential web
+clients, Authorization Code with mandatory PKCE `S256`, `client_secret_basic`,
+the `openid` scope, RS256 ID Tokens, a UserInfo-only opaque access token,
+Discovery, and JWKS. It does not issue refresh tokens or expose a logout,
+dynamic registration, or claims endpoint. The RP redirect URI must match its
+registration exactly and use HTTPS. `OidcConfig::for_loopback_development`
+permits HTTP only for explicit loopback development.
+
+Use one root-path HTTPS issuer and mount these handlers at the exact URLs in
+`OidcConfig`. Discovery is always at `config.discovery_url()`.
+
+```rust,ignore
+use reinhardt_auth::oidc_op::{OidcEndpoint, OidcHandler, OidcInteraction, OidcProvider};
+use reinhardt_urls::routers::ServerRouter;
+use std::sync::Arc;
+
+fn oidc_routes(
+    provider: Arc<OidcProvider>,
+    interaction: Arc<dyn OidcInteraction>,
+) -> ServerRouter {
+    ServerRouter::new()
+        .handler_arc("/oidc/authorize", Arc::new(OidcHandler::authorization(provider.clone(), interaction)))
+        .handler_arc("/oidc/token", Arc::new(OidcHandler::new(provider.clone(), OidcEndpoint::Token)))
+        .handler_arc("/oidc/userinfo", Arc::new(OidcHandler::new(provider.clone(), OidcEndpoint::UserInfo)))
+        .handler_arc("/oidc/jwks", Arc::new(OidcHandler::new(provider.clone(), OidcEndpoint::Jwks)))
+        .handler_arc("/.well-known/openid-configuration", Arc::new(OidcHandler::new(provider, OidcEndpoint::Discovery)))
+}
+```
+
+Apply `PostgresOAuthStore::migration()` and then
+`PostgresOidcStore::migration()` with the host's Reinhardt migration executor.
+Use the same database for both stores. Schedule
+`PostgresOidcStore::purge_expired(now)` after the OAuth purge job. It removes
+expired OIDC pending requests, but retains code contexts while their OAuth code
+still exists. This preserves replay-triggered revocation until linked tokens
+expire and OAuth maintenance removes their code.
+Production construction requires `OAuthServer::for_production` and
+`OidcProvider::for_production` with PostgreSQL-backed state, a shared OAuth
+rate limiter, an active signing key, an `OidcSigner` that has the matching
+private key on every signing node, and a host `OidcAccountStatus` adapter.
+The adapter must return the current active status and fail closed when account
+lookup fails. The built-in `RsaPemKeyRing` accepts RSA private PEM keys of at
+least 2048 bits; a KMS or non-exportable key can implement `OidcSigner`.
+Provision a public key in the OIDC store before constructing a production
+provider, and keep private key material outside the database.
+
+Register the UserInfo URL as an OAuth resource audience before registering an
+OIDC client. Set `ClientRegistration.oidc_enabled = true`, use
+`ClientKind::Confidential`, allow Authorization Code, register the exact HTTPS
+redirect URI, and allow `openid` and the UserInfo audience. The OAuth and
+OIDC flows share this registration and token store. The ordinary OAuth
+authorization and token endpoints cannot complete or redeem an OIDC code.
+Rotate a client secret with `rotate_client_secret_with_overlap` for at most
+24 hours of overlap; `revoke_previous_client_secret` ends the overlap, and
+`disable_client` invalidates its access tokens.
+
+The host supplies `OAuthBrowserSession` on authorization requests and
+implements `OidcInteraction` to handle login, reauthentication, consent, and
+account selection. Use the same session binding when calling
+`OidcProvider::complete_authorization`. Completion consumes both pending rows and
+stores both code records in one PostgreSQL transaction (or under coordinated
+in-memory locks without an intervening await). Host or storage failures leave
+both continuations retryable until expiry. Custom stores must implement the
+corresponding atomic coordination hook; mixed in-memory/PostgreSQL backends
+are rejected rather than risking a partial commit. For `prompt=none`, avoid presenting UI
+and deny with `login_required`, `consent_required`, or another applicable OIDC
+error when silent completion is impossible. `auth_time` must be the time of
+the active host authentication. The provider enforces `prompt=login`,
+`prompt=consent`, `prompt=select_account`, and `max_age` against the decision
+supplied by the host. An opaque public `sub` remains stable for a live account;
+call `retire_user` during account deletion to invalidate unredeemed codes and
+tokens, remove OIDC code contexts, and permanently reserve its former subject.
+
+ID Tokens default to five minutes and can be configured up to fifteen;
+UserInfo access tokens default to ten minutes and can be configured up to one
+hour. `signing_key_rotation_due` reports the configured rotation interval
+(thirty days by default); schedule provisioning of a new key and call
+`rotate_signing_key` when due. Retired public keys remain in JWKS for the
+maximum ID Token lifetime plus clock skew. For a compromise, provision and
+activate a replacement, then call `compromise_signing_key` on the old key and
+notify RPs: an RP with a cached old JWKS key may still accept an unexpired
+ID Token. Never log client secrets, codes, access tokens, or private keys.
 
 #### Browser-Bound Social OAuth State
 
@@ -976,3 +1140,17 @@ impl AuthBackend for MyAuthBackend {
 ## License
 
 Licensed under the BSD 3-Clause License.
+
+Client disabling invalidates pending approvals and unused authorization codes together
+with the registration and its tokens; re-registering the same client identifier does
+not reactivate those grants. Client secret rotation uses a compare-and-swap snapshot;
+a conflicting administrative update fails rather than returning an unusable secret.
+
+For local public SPAs, an explicit HTTP loopback development issuer permits canonical
+HTTP origins on localhost, 127.0.0.1, and [::1]. HTTPS issuer configurations still reject
+HTTP browser origins. Origins must not contain credentials, paths, queries, or fragments.
+
+Code exchange authenticates the client and checks bound replay state before account,
+resource, or signing dependencies. A correctly bound replay permanently revokes linked
+tokens even while the account or resource is disabled. An unused code remains available
+when a temporary host validation or signing failure prevents issuance.

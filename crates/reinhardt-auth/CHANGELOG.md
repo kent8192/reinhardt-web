@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add routable OAuth 2.0 Authorization Code with PKCE `S256` and Client Credentials endpoints, PostgreSQL-backed state, token revocation, introspection, and server metadata.
+
+### Breaking Changes
+
+- Legacy `OAuth2Authentication` helpers now require a registered client, an allowed authorization-code grant, and an exact redirect URI before issuing a code. In-memory access-token lookup enforces expiry, and code exchange no longer returns an unusable refresh token. The new server does not import legacy codes, tokens, or client registrations. These changes prevent unregistered redirects, expired-token acceptance, and promises of a refresh flow that does not exist.
+
+**Migration:** Apply `PostgresOAuthStore::migration()` in the host's Reinhardt migration graph, register resource audiences, and recreate clients with explicit grants, redirect URIs, scopes, audiences, browser origins, and new secrets. For example, after constructing `server: OAuthServer`:
+
+```rust
+use reinhardt_auth::oauth2_server::{ClientKind, ClientRegistration};
+
+let resource_secret = server.register_resource("api", "https://api.example").await?;
+let client_secret = server.register_client(ClientRegistration {
+    client_id: "client-a".into(),
+    kind: ClientKind::Confidential,
+    secret_hash: None,
+    previous_secret_hash: None,
+    previous_secret_expires_at: None,
+    oidc_enabled: false,
+    authorization_code: true,
+    client_credentials: false,
+    redirect_uris: vec!["https://client.example/callback".into()],
+    scopes: vec!["read".into()],
+    default_scopes: vec!["read".into()],
+    audiences: vec!["https://api.example".into()],
+    default_audience: Some("https://api.example".into()),
+    browser_origins: vec![],
+    enabled: true,
+}).await?;
+// Deliver both generated secrets to their respective operators once.
+```
+
+Mount the `OAuthHandler` authorization and token endpoints, then have clients use PKCE `S256`. Users must authorize again because legacy codes and tokens are not imported. See [OAuth2 Authorization Server](README.md#oauth2-authorization-server) for setup and routing examples. The legacy helper types remain available; no removal date is scheduled.
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.14...reinhardt-auth@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation

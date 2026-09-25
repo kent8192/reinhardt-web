@@ -173,6 +173,7 @@ impl ServerRouter {
 				Method::PUT,
 				Method::DELETE,
 				Method::PATCH,
+				Method::OPTIONS,
 			] {
 				if let Err(e) =
 					insert_compiled_route(&mut compiled, &method, route_path, route_handler.clone())
