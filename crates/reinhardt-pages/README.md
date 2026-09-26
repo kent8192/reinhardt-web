@@ -1856,17 +1856,23 @@ fn counter() -> View {
 
 | Feature | Description |
 |---------|-------------|
+| `i18n` | Reactive page translations backed by `reinhardt-i18n` catalogs |
+| `console_error_panic_hook` | Enables readable panic messages in browser-WASM builds |
 | `msgpack` | MessagePack serialization support |
 | `model-server-fnset` | Native model-backed typed CRUD server function sets plus cross-target wire/client generation |
 | `msw` | Typed marker metadata for component and MSW server function mocks |
 | `testing` | Cross-target testing support; combine with `msw` for native component mocks |
 | `pages-full` | Browser-oriented bundle (`msgpack` + `web-sys-full`); enable `model-server-fnset`, `msw`, and `testing` separately |
+| `hmr` | Development template hot reload for Pages WASM clients |
 | `static` | Static file serving |
 | `urls` | URL routing integration |
 | `debug-hooks` | Debug hooks for development |
 | `uuid` | Compatibility marker; UUID types are always available for named model-form contracts |
 | `chrono` | Compatibility marker; Chrono types are always available for named model-form contracts |
-| `ast` | AST processing support |
+| `ast` | Compatibility marker; the AST crate is re-exported unconditionally |
+| `e2e-cdp-test` | Enables the `spa_navigation_e2e_test` integration test |
+| `wasm-diag-test` | Enables the WASM observer-system diagnostic test suite |
+| `nav-diag-dom` | Enables DOM-based SPA navigation diagnostics for development |
 | `web-sys-full` | All required web-sys features for WASM applications |
 
 ## Testing
