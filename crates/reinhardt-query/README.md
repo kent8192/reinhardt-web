@@ -23,7 +23,7 @@ A type-safe SQL query builder for the Reinhardt framework.
 - **View operations** - CREATE VIEW, DROP VIEW
 - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
 - **Sequence operations** - CREATE/ALTER/DROP SEQUENCE (PostgreSQL, CockroachDB)
-- **Database operations** - CREATE/ALTER/DROP DATABASE (all backends)
+- **Database operations** - CREATE/DROP DATABASE (PostgreSQL, MySQL, CockroachDB); ALTER DATABASE (PostgreSQL, CockroachDB)
 - **Functions & Procedures** - CREATE/ALTER/DROP FUNCTION/PROCEDURE (PostgreSQL, MySQL, CockroachDB)
 - **Custom types** - CREATE/ALTER/DROP TYPE (PostgreSQL, CockroachDB)
 - **Materialized views** - CREATE/ALTER/DROP/REFRESH MATERIALIZED VIEW (PostgreSQL, CockroachDB)
@@ -468,14 +468,17 @@ Supported object types: Function, Procedure, Routine, Type, Domain, ForeignDataW
 |---------|-----------|-------|--------|-------------|
 | CREATE/ALTER/DROP SCHEMA | ✅ | ❌ | ❌ | ✅ |
 | CREATE/ALTER/DROP SEQUENCE | ✅ | ❌ | ❌ | ✅ |
-| CREATE/ALTER/DROP DATABASE | ✅ | ✅ | ✅ | ✅ |
+| CREATE DATABASE | ✅ | ✅ | ❌ | ✅ |
+| ALTER DATABASE | ✅ | ❌ | ❌ | ✅ |
+| DROP DATABASE | ✅ | ✅ | ❌ | ✅ |
 | CREATE/ALTER/DROP FUNCTION | ✅ | ✅ | ❌ | ✅ |
 | CREATE/ALTER/DROP PROCEDURE | ✅ | ✅ | ❌ | ✅ |
 | CREATE/ALTER/DROP TYPE | ✅ | ❌ | ❌ | ✅ |
 | CREATE/ALTER/DROP EVENT | ❌ | ✅ | ❌ | ❌ |
 | MATERIALIZED VIEW | ✅ | ❌ | ❌ | ✅ |
 | COMMENT ON | ✅ | ❌ | ❌ | ✅ |
-| VACUUM/ANALYZE | ✅ | ❌ | ✅ | ✅ |
+| VACUUM | ✅ | ❌ | ❌ | ✅ |
+| ANALYZE | ✅ | ❌ | ❌ | ✅ |
 | OPTIMIZE/REPAIR/CHECK | ❌ | ✅ | ❌ | ❌ |
 
 ### DCL Features
