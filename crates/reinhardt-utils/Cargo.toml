@@ -62,8 +62,6 @@ cssparser = { version = "0.34.0", optional = true }
 html5ever = { version = "0.29.1", optional = true }
 aws-config = { version = "1.0", optional = true }
 aws-sdk-s3 = { version = "1.0", optional = true }
-# Activate the workspace AWS compatibility constraint (reinhardt-web#6318).
-aws-smithy-types = { workspace = true, optional = true }
 time = { workspace = true, optional = true }
 percent-encoding = { version = "2.3", optional = true }
 google-cloud-storage = { version = "1.12.0", optional = true }
@@ -102,7 +100,7 @@ all-backends = [
   "memcached-backend",
 ]
 full = ["advanced-minification", "all-backends", "asset-publication", "azure", "compression", "dev-server", "gcs", "image-optimization", "processing", "s3", "source-maps"]
-s3 = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-smithy-types", "time"]
+s3 = ["dep:aws-config", "dep:aws-sdk-s3", "time"]
 azure = ["dep:hmac", "dep:percent-encoding"]
 gcs = ["dep:google-cloud-storage", "dep:google-cloud-auth"]
 processing = []
