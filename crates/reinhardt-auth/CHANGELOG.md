@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.16...reinhardt-auth@v0.4.0-alpha.17) - 2026-09-25
+
+### Added
+
+- *(auth)* add OAuth authorization and token core
+- *(auth)* persist OAuth state in PostgreSQL
+- *(auth)* expose OAuth HTTP protocol handlers
+- *(auth)* isolate OIDC grants in the OAuth server
+- *(auth)* persist OIDC subjects and signing-key state
+- *(auth)* serve OIDC code flow and provider metadata
+
+### Changed
+
+- *(auth)* group code exchange parameters
+
+### Documentation
+
+- *(auth)* explain OAuth server setup and migration
+- *(auth)* show OAuth handler routing
+- *(auth)* [**breaking**] document OAuth server migration
+- *(auth)* explain OIDC issuer integration and key operations
+- *(auth)* document atomic code exchange and OIDC state maintenance
+
+### Fixed
+
+- *(auth)* validate legacy OAuth codes and stop refresh issuance
+- *(auth)* [**breaking**] bind OAuth continuations and token issuance to validated state
+- *(auth)* [**breaking**] bind OIDC continuations to sessions and retire accounts atomically
+- *(auth)* reject case-variant HTTP resource audiences
+- *(auth)* align OIDC HTTP responses with protocol requirements
+- *(auth)* revoke OIDC tokens on expired code replay
+- *(auth)* reject subsecond OIDC token lifetimes
+- *(auth)* [**breaking**] make authorization lifecycle transitions atomic
+- *(auth)* [**breaking**] resolve resource rotation and OIDC review findings
+- *(auth)* correct OAuth and OIDC endpoint error responses
+- *(auth)* move OIDC RSA signing to blocking workers
+- *(auth)* [**breaking**] reject conflicting OAuth registrations atomically
+
+### Maintenance
+
+- *(auth)* merge updated OAuth server foundation
+
+### Styling
+
+- *(auth)* format OIDC integration test assertion
+
+### Testing
+
+- *(auth)* cover OAuth grants and replay boundaries
+- *(auth)* verify OAuth migration rollback
+- *(auth)* verify OIDC flows with an independent RP and PostgreSQL
+- *(auth)* cover OIDC HTTPS and client IP behind trusted proxies
+
 ### Added
 
 - Add routable OAuth 2.0 Authorization Code with PKCE `S256` and Client Credentials endpoints, PostgreSQL-backed state, token revocation, introspection, and server metadata.
