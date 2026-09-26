@@ -10,27 +10,29 @@ Supports task scheduling, retries, task priorities, and multiple worker processe
 
 ## Installation
 
-Add the facade task feature and the direct task-crate dependency to your `Cargo.toml`. The facade does not forward the Kafka backend feature:
+Add the facade task and streaming features and the direct task-crate dependency
+to your `Cargo.toml`. The facade does not forward the Kafka backend feature;
+its `streaming` feature exposes the Kafka configuration type:
 
-<!-- reinhardt-version-sync:3 -->
+<!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["tasks"] }
+reinhardt = { version = "0.3.20", features = ["tasks", "streaming"] }
 reinhardt-tasks = { version = "0.3.20", features = ["kafka-backend"] }
-
-# Or use a preset:
-# reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.20", features = ["full"] }      # All features
 ```
 
 Then import task features:
 
 ```rust
 use reinhardt::tasks::{Task, TaskQueue, TaskExecutor};
-use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
+use reinhardt::tasks::backend::TaskBackend;
+use reinhardt::streaming::kafka::KafkaConfig;
+use reinhardt_tasks::backends::KafkaTaskBackend;
 ```
 
-**Note:** The facade's `tasks` feature exposes task APIs but does not forward `kafka-backend`; use the direct dependency shown above. The `standard` preset does not enable task APIs.
+**Note:** The facade's `tasks` feature exposes task APIs but does not forward
+`kafka-backend`; use the direct dependency shown above. The `standard` preset
+does not enable task APIs.
 
 ## Features
 

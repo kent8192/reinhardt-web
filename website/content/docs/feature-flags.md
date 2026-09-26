@@ -467,10 +467,13 @@ The `tasks` feature provides background job processing with multiple backend opt
 | `sqs-backend` | AWS SQS | Yes | Very High | Production (AWS) |
 | `kafka-backend` | Kafka | Broker-backed messages; in-memory status and task data | One process, partition 0, in-memory offsets | Topic transport for tasks that accept an empty argument payload |
 
-**Configuration Example** (enable the backend on a direct `reinhardt-tasks` dependency):
+**Configuration Example** (enable facade APIs and the backend on a direct
+`reinhardt-tasks` dependency):
 
+<!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
+reinhardt = { version = "0.3.20", features = ["tasks", "streaming"] }
 reinhardt-tasks = { version = "0.3.20", features = ["kafka-backend"] }
 ```
 
