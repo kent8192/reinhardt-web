@@ -173,8 +173,8 @@ Standard capabilities that plugins can provide:
 | `StaticSiteGeneration` | Build static HTML from routes and components | ❌ (Static only) |
 | `FrontendSsr` | Server-side rendering for frontend frameworks | ❌ |
 | `FrontendHydration` | Client-side hydration and state restoration | ❌ |
-| `TypeScriptRuntime` | TypeScript/JavaScript execution through Deno/V8 | ❌ |
-| `BuildToolIntegration` | Integration with frontend build tools | ✅ |
+| `TypeScriptRuntime` | JavaScript execution through the Boa ECMAScript engine | ❌ |
+| `BuildToolIntegration` | Integration with frontend build tools | ❌ (WASM configuration maps it as a custom capability, not the standard capability) |
 | `HotModuleReplacement` | Development-time dynamic module reload | ❌ |
 
 ### PluginRegistry
