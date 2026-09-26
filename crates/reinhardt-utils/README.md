@@ -12,7 +12,7 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
 
 Add `reinhardt-utils` to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync:3 -->
+<!-- reinhardt-version-sync:1 -->
 ```toml
 [dependencies]
 reinhardt-utils = "0.3.20"
@@ -28,10 +28,11 @@ use reinhardt_utils::storage::{Storage, LocalStorage};
 use reinhardt_utils::html::{escape, unescape};
 ```
 
-**Note:** Applications using the `reinhardt` facade can instead enable a feature
-that activates `reinhardt-utils` (such as `cache`, `storage`, `static-files`, or
-`full`) and import these modules through `reinhardt::utils`. The `standard`
-preset alone does not activate this optional dependency.
+**Note:** Native applications using the `reinhardt` facade can instead enable a
+feature that activates `reinhardt-utils` (such as `cache`, `storage`,
+`static-files`, or `full`) and import these modules through `reinhardt::utils`.
+The facade exposes this module only on native targets. The `standard` preset
+alone does not activate this optional dependency.
 
 ## Features
 
