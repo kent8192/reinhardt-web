@@ -26,8 +26,8 @@ struct TaskEnvelope {
 
 /// Kafka-backed task queue. Tasks are published as JSON to the `reinhardt-tasks` topic.
 ///
-/// Status tracking is in-memory; for distributed deployments, extend with a
-/// persistent status store (e.g., Redis or a database).
+/// Status and task data are held in process memory. This backend does not expose
+/// an injection point for a persistent status store.
 pub struct KafkaTaskBackend {
 	producer: Arc<KafkaProducer>,
 	consumer: Arc<KafkaConsumer>,

@@ -10,12 +10,13 @@ Supports task scheduling, retries, task priorities, and multiple worker processe
 
 ## Installation
 
-Add `reinhardt` to your `Cargo.toml`:
+Add the facade task feature and the direct task-crate dependency to your `Cargo.toml`. The facade does not forward the Kafka backend feature:
 
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
 reinhardt = { version = "0.3.20", features = ["tasks"] }
+reinhardt-tasks = { version = "0.3.20", features = ["kafka-backend"] }
 
 # Or use a preset:
 # reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
@@ -29,7 +30,7 @@ use reinhardt::tasks::{Task, TaskQueue, TaskExecutor};
 use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
 ```
 
-**Note:** Task features are included in the `standard` and `full` feature presets.
+**Note:** The facade's `tasks` feature exposes task APIs but does not forward `kafka-backend`; use the direct dependency shown above. The `standard` preset does not enable task APIs.
 
 ## Features
 
@@ -75,9 +76,9 @@ use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
   - Delivery mode configuration (persistent/transient)
   - Metadata store abstraction for task tracking
 - **KafkaTaskBackend** (feature: `kafka-backend`): Kafka-backed task queue
-  - Publishes serialized task envelopes to the `reinhardt-tasks` topic
-  - Queue messages are stored by Kafka; task status and task data are in-memory
-  - Use a persistent status store when status must survive process restarts
+  - Publishes task IDs and names to the `reinhardt-tasks` topic with an empty `{}` argument payload; tasks that require arguments cannot be reconstructed yet
+  - Queue messages are stored by Kafka; task status and task data are held in process memory, and no persistent status-store injection is available
+  - Reads partition 0 and tracks offsets in process memory; workers can read the same records, and a restart begins reading again from offset 0
 
 #### Task Queue
 
@@ -233,7 +234,7 @@ let metadata = store.get("task-123")?;
 | **Redis** | Yes | High | Production, caching |
 | **RabbitMQ** | Yes | Very High | Production, messaging, complex routing |
 | **SQLite** | Yes | Low | Small-scale production, embedded |
-| **Kafka** | Broker-backed queue; in-memory status | Distributed | Kafka topic-based task transport |
+| **Kafka** | Broker-backed messages; in-memory status and task data | One process, partition 0, in-memory offsets | Topic transport for tasks that accept an empty argument payload |
 
 #### Choosing a Backend
 
@@ -241,7 +242,7 @@ let metadata = store.get("task-123")?;
 - **Testing**: Use `DummyBackend` or `InMemoryMetadataStore`
 - **Small-scale production**: Use `SqliteBackend`
 - **Large-scale production**: Use `RabbitMQBackend` or `RedisTaskBackend`
-- **Kafka topic-based task transport**: Use `KafkaTaskBackend`; add a persistent status store if status must survive process restarts
+- **Kafka topic-based task transport**: Use `KafkaTaskBackend` for tasks that accept an empty argument payload; status-store injection, consumer groups, and multi-partition processing are not currently supported
 - **Complex routing needs**: Use `RabbitMQBackend` for exchange-based routing
 
 ## Testing
