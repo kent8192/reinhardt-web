@@ -473,7 +473,7 @@ The `tasks` feature provides background job processing with multiple backend opt
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["tasks", "streaming"] }
+reinhardt = { package = "reinhardt-web", version = "0.3.20", features = ["tasks", "streaming"] }
 reinhardt-tasks = { version = "0.3.20", features = ["kafka-backend"] }
 ```
 

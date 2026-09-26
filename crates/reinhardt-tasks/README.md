@@ -17,7 +17,7 @@ its `streaming` feature exposes the Kafka configuration type:
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["tasks", "streaming"] }
+reinhardt = { package = "reinhardt-web", version = "0.3.20", features = ["tasks", "streaming"] }
 reinhardt-tasks = { version = "0.3.20", features = ["kafka-backend"] }
 ```
 
@@ -80,7 +80,8 @@ does not enable task APIs.
 - **KafkaTaskBackend** (feature: `kafka-backend`): Kafka-backed task queue
   - Publishes task IDs and names to the `reinhardt-tasks` topic with an empty `{}` argument payload; tasks that require arguments cannot be reconstructed yet
   - Queue messages are stored by Kafka; task status and task data are held in process memory, and no persistent status-store injection is available
-  - Reads partition 0 and tracks offsets in process memory; workers can read the same records, and a restart begins reading again from offset 0
+  - Reads partition 0 and advances its in-memory offset as soon as a record is dequeued; there is no broker acknowledgement/commit or failure requeue, so failed tasks are not redelivered in the same process
+  - Workers can read the same records, and a restart begins at offset 0, replaying both failed and successful tasks
 
 #### Task Queue
 
