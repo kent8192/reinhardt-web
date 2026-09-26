@@ -468,14 +468,17 @@ Supported object types: Function, Procedure, Routine, Type, Domain, ForeignDataW
 |---------|-----------|-------|--------|-------------|
 | CREATE/ALTER/DROP SCHEMA | ✅ | ❌ | ❌ | ✅ |
 | CREATE/ALTER/DROP SEQUENCE | ✅ | ❌ | ❌ | ✅ |
-| CREATE/ALTER/DROP DATABASE | ✅ | ✅ | ✅ | ✅ |
+| CREATE DATABASE | ✅ | ✅ | ❌ | ✅ |
+| ALTER DATABASE | ✅ | ❌ | ❌ | ✅ |
+| DROP DATABASE | ✅ | ✅ | ❌ | ✅ |
 | CREATE/ALTER/DROP FUNCTION | ✅ | ✅ | ❌ | ✅ |
 | CREATE/ALTER/DROP PROCEDURE | ✅ | ✅ | ❌ | ✅ |
 | CREATE/ALTER/DROP TYPE | ✅ | ❌ | ❌ | ✅ |
 | CREATE/ALTER/DROP EVENT | ❌ | ✅ | ❌ | ❌ |
 | MATERIALIZED VIEW | ✅ | ❌ | ❌ | ✅ |
 | COMMENT ON | ✅ | ❌ | ❌ | ✅ |
-| VACUUM/ANALYZE | ✅ | ❌ | ✅ | ✅ |
+| VACUUM | ✅ | ❌ | ❌ | ✅ |
+| ANALYZE | ✅ | ❌ | ❌ | ✅ |
 | OPTIMIZE/REPAIR/CHECK | ❌ | ✅ | ❌ | ❌ |
 
 ### DCL Features
