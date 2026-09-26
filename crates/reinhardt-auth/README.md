@@ -15,7 +15,8 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["auth"] }
+reinhardt = { version = "0.3.20", features = ["auth", "auth-oauth"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 # Or use a preset:
 # reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
@@ -613,8 +614,10 @@ Before generating a code for a browser request, the host application must
 validate that the client is registered, the requested redirect URI is allowed
 for that client, and the authorization-code grant is enabled. This helper stores
 the supplied values without checking them against the registered application;
-`exchange_code` only checks the client credentials and that its redirect URI
-matches the one stored in the code.
+`exchange_code` validates the client credentials and that the authorization code
+was issued to the same client, then checks that the supplied redirect URI matches
+the one stored in the code. It does not check that stored URI against the
+registered client's allowed redirect URIs.
 
 ```rust
 use reinhardt::auth::{GrantType, OAuth2Application, OAuth2Authentication};

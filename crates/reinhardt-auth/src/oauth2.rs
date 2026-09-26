@@ -30,7 +30,11 @@ pub enum GrantType {
 	Implicit,
 }
 
-/// OAuth2 access token
+/// Access-token data returned by the in-process OAuth2 helper.
+///
+/// `expires_in` is returned to callers, but the default [`InMemoryOAuth2Store`]
+/// and [`OAuth2Authentication`] bearer-token lookup do not enforce expiration.
+/// A custom store or host application must enforce token expiry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccessToken {
 	/// Token value
