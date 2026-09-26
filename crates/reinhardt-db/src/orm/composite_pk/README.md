@@ -2,11 +2,14 @@
 
 ## Overview
 
-This module provides full support for composite primary keys in Reinhardt ORM, addressing one of Django's well-known limitations.
+This module provides composite primary key support in the Reinhardt ORM. Django
+also supports composite primary keys through `CompositePrimaryKey`, introduced
+in Django 5.2.
 
-**Django Limitation**: Django only supports single-column primary keys.
-
-**Reinhardt Solution**: Full composite primary key support with type-safe validation and SQL generation.
+Current Django documentation lists limitations in admin registration,
+relationship fields, and migrations that change a composite primary key after
+table creation. See the Django documentation links below for version history and
+current limitations.
 
 ## Features
 
@@ -249,7 +252,7 @@ assert!(matches!(result, Err(CompositePkError::MissingField(_))));
 | Feature | Django | Reinhardt |
 |---------|--------|-----------|
 | Single PK | ✅ Yes | ✅ Yes |
-| Composite PK | ❌ No | ✅ Yes |
+| Composite PK | ✅ Since 5.2; admin, relation, and migration limits | ✅ Yes |
 | Type Safety | ⚠️ Runtime | ✅ Compile-time |
 | Custom Names | ✅ Yes | ✅ Yes |
 | SQL Generation | ✅ Yes | ✅ Yes |
@@ -313,7 +316,8 @@ cargo test --package reinhardt-orm --lib composite_pk
 
 - [Constraints Module](../constraints.rs) - General constraint system
 - [Model Macro](../../reinhardt-macros) - Model definition macros
-- [Django Documentation](https://docs.djangoproject.com/en/stable/topics/db/models/#composite-primary-keys) - Django's limitations
+- [Django 5.2 release notes](https://docs.djangoproject.com/en/5.2/releases/5.2/) - Introduces `CompositePrimaryKey`
+- [Django 6.1 composite primary key documentation](https://docs.djangoproject.com/en/6.1/topics/composite-primary-key/) - Current feature support and limitations
 
 ## Contributing
 
@@ -326,5 +330,3 @@ Composite primary key support is actively maintained. If you encounter issues or
 ---
 
 **Status**: ✅ Fully Implemented (Since v0.1.0)
-
-**Django Parity**: ✅ Exceeds Django capabilities
