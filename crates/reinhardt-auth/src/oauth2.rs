@@ -1,6 +1,8 @@
-//! OAuth2 Authentication
+//! Legacy in-process OAuth2 authentication helpers.
 //!
-//! Provides OAuth2 authorization flow support for third-party authentication.
+//! Provides authorization-code generation and exchange plus bearer-token
+//! lookup. This module does not implement HTTP authorization or token endpoints
+//! or a complete OAuth2 provider.
 
 use crate::core::AuthIdentity;
 use crate::repository::{SimpleUserRepository, UserRepository};
@@ -175,9 +177,17 @@ impl OAuth2TokenStore for InMemoryOAuth2Store {
 	}
 }
 
-/// OAuth2 authentication backend
+/// Legacy in-process authorization-code and bearer-token helper.
 ///
-/// Provides OAuth2 authorization flow support with customizable user storage.
+/// This type generates and exchanges authorization codes and implements
+/// [`AuthBackend`] for bearer-token lookup, with customizable token storage and
+/// user repositories. It does not implement HTTP authorization or token
+/// endpoints, Client Credentials, Implicit, or Refresh Token flows.
+///
+/// The host application must validate the registered client, allowed redirect
+/// URI, and grant type before generating an authorization code. This helper
+/// stores the supplied values without checking them against the application
+/// registration.
 ///
 /// # User Repository
 ///
@@ -262,7 +272,10 @@ impl OAuth2Authentication {
 		}
 	}
 
-	/// Register an OAuth2 application
+	/// Store an OAuth2 application registration.
+	///
+	/// This stores the supplied application metadata; it does not validate
+	/// redirect URIs or grant types when authorization codes are generated.
 	pub async fn register_application(&self, app: OAuth2Application) {
 		let mut applications = self.applications.lock().await;
 		applications.insert(app.client_id.clone(), app);
@@ -283,7 +296,12 @@ impl OAuth2Authentication {
 		}
 	}
 
-	/// Generate authorization code
+	/// Generate an authorization code for the supplied client and redirect URI.
+	///
+	/// The host application must validate that the client is registered, the
+	/// redirect URI is allowed for that client, and the authorization-code grant
+	/// is enabled before calling this method. This method stores the supplied
+	/// values without checking the application registration.
 	pub async fn generate_authorization_code(
 		&self,
 		client_id: &str,

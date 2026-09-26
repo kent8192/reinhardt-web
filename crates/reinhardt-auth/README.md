@@ -595,6 +595,9 @@ implement authorization or token endpoints, Client Credentials, Refresh Token,
 or Implicit grant flows. The presence of those variants in `GrantType` does not
 add those flows.
 
+Enable the facade's `auth-oauth` feature to use these types; `auth` and the
+`standard` preset alone do not expose this OAuth2 module.
+
 The helper returns an `expires_in` value, but its built-in token store does not
 enforce token expiry during lookup. `exchange_code` also returns a
 `refresh_token` value, but there is no refresh-token flow that can consume it;
@@ -605,6 +608,13 @@ custom persistence, but does not add HTTP endpoint support.
 The following example shows the supported in-process code generation and
 exchange calls. The host application remains responsible for authenticating the
 user and handling any browser authorization or consent interaction.
+
+Before generating a code for a browser request, the host application must
+validate that the client is registered, the requested redirect URI is allowed
+for that client, and the authorization-code grant is enabled. This helper stores
+the supplied values without checking them against the registered application;
+`exchange_code` only checks the client credentials and that its redirect URI
+matches the one stored in the code.
 
 ```rust
 use reinhardt::auth::{GrantType, OAuth2Application, OAuth2Authentication};
