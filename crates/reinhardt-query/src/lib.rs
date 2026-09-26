@@ -19,7 +19,7 @@
 //! ### DDL (Data Definition Language)
 //! - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
 //! - **Sequence operations** - CREATE/ALTER/DROP SEQUENCE (PostgreSQL, CockroachDB)
-//! - **Database operations** - CREATE/ALTER/DROP DATABASE (all backends)
+//! - **Database operations** - CREATE/DROP DATABASE (PostgreSQL, MySQL, CockroachDB); ALTER DATABASE (PostgreSQL, CockroachDB)
 //! - **Functions & Procedures** - CREATE/ALTER/DROP FUNCTION/PROCEDURE (PostgreSQL, MySQL, CockroachDB)
 //! - **Custom types** - CREATE/ALTER/DROP TYPE (PostgreSQL, CockroachDB)
 //! - **Materialized views** - CREATE/ALTER/DROP/REFRESH MATERIALIZED VIEW (PostgreSQL, CockroachDB)
