@@ -15,7 +15,8 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["auth"] }
+reinhardt = { version = "0.3.20", features = ["auth", "auth-oauth"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 # Or use a preset:
 # reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
@@ -586,41 +587,73 @@ assert!(mfa.verify_code("alice", code).await?);
 
 ### OAuth2 Support
 
-#### OAuth2 Authentication
+#### Legacy in-process authorization-code helper
 
-- **OAuth2Authentication**: Full OAuth2 provider implementation
-- **Grant Types**: Authorization Code, Client Credentials, Refresh Token,
-  Implicit
-- **Application Management**: `OAuth2Application` with client credentials
-- **Token Management**: `OAuth2Token` with access and refresh tokens
-- **Authorization Flow**:
-  - Authorization code generation and validation
-  - Token exchange (code → access token)
-  - Token refresh with refresh tokens
-- **OAuth2TokenStore Trait**: Persistent token storage interface
-- **InMemoryTokenStore**: Built-in in-memory token storage
+`OAuth2Authentication` provides in-process authorization-code generation and
+exchange, plus Bearer-token lookup through its `AuthBackend` implementation. It
+is not a complete OAuth2 provider or HTTP authorization server: it does not
+implement authorization or token endpoints, Client Credentials, Refresh Token,
+or Implicit grant flows. The presence of those variants in `GrantType` does not
+add those flows.
+
+Enable the facade's `auth-oauth` feature to use these types; `auth` and the
+`standard` preset alone do not expose this OAuth2 module.
+
+The helper returns an `expires_in` value, but its built-in token store does not
+enforce token expiry during lookup. `exchange_code` also returns a
+`refresh_token` value, but there is no refresh-token flow that can consume it;
+do not use it as a refresh credential. The default `InMemoryOAuth2Store` keeps
+codes and tokens in process memory; implementing `OAuth2TokenStore` can provide
+custom persistence, but does not add HTTP endpoint support.
+
+The following example shows the supported in-process code generation and
+exchange calls. The host application remains responsible for authenticating the
+user and handling any browser authorization or consent interaction.
+
+Before generating a code for a browser request, the host application must
+validate that the client is registered, the requested redirect URI is allowed
+for that client, and the authorization-code grant is enabled. This helper stores
+the supplied values without checking them against the registered application;
+`exchange_code` validates the client credentials and that the authorization code
+was issued to the same client, then checks that the supplied redirect URI matches
+the one stored in the code. It does not check that stored URI against the
+registered client's allowed redirect URIs.
 
 ```rust
-use reinhardt::auth::{OAuth2Authentication, OAuth2Application, GrantType};
+use reinhardt::auth::{GrantType, OAuth2Application, OAuth2Authentication};
 
-// OAuth2Authentication::new() takes no arguments; use ::with_repository() for custom storage.
-let oauth2 = OAuth2Authentication::new();
+#[tokio::main]
+async fn main() -> Result<(), String> {
+    let oauth2 = OAuth2Authentication::new();
+    oauth2
+        .register_application(OAuth2Application {
+            client_id: "client123".into(),
+            client_secret: "secret456".into(),
+            redirect_uris: vec!["https://example.com/callback".into()],
+            grant_types: vec![GrantType::AuthorizationCode],
+        })
+        .await;
 
-// Register an OAuth2 application by passing an OAuth2Application struct.
-let app = OAuth2Application {
-    client_id: "client123".to_string(),
-    client_secret: "secret456".to_string(),
-    redirect_uris: vec!["https://example.com/callback".to_string()],
-    grant_types: vec![GrantType::AuthorizationCode],
-};
-oauth2.register_application(app).await;
+    let code = oauth2
+        .generate_authorization_code(
+            "client123",
+            "https://example.com/callback",
+            "user123",
+            Some("read write".into()),
+        )
+        .await?;
+    let token = oauth2
+        .exchange_code(
+            &code,
+            "client123",
+            "secret456",
+            "https://example.com/callback",
+        )
+        .await?;
 
-// Authorization code flow
-let code = oauth2.generate_authorization_code("client123", "user123", vec!["read", "write"]).await?;
-let token = oauth2.exchange_code(&code, "client123").await?;
-
-// Use access token
-let claims = oauth2.verify_token(&token.access_token).await?;
+    assert_eq!(token.token_type, "Bearer");
+    Ok(())
+}
 ```
 
 #### Browser-Bound Social OAuth State
