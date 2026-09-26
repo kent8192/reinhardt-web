@@ -1870,7 +1870,7 @@ fn counter() -> View {
 | `uuid` | Compatibility marker; UUID types are always available for named model-form contracts |
 | `chrono` | Compatibility marker; Chrono types are always available for named model-form contracts |
 | `ast` | Compatibility marker; the AST crate is re-exported unconditionally |
-| `e2e-cdp-test` | Enables the `spa_navigation_e2e_test` integration test |
+| `e2e-cdp-test` | Enables the CDP-based SPA navigation E2E suite (`spa_navigation_e2e_test` and `spa_navigation_full_layout_e2e_test`) |
 | `wasm-diag-test` | Enables the WASM observer-system diagnostic test suite |
 | `nav-diag-dom` | Enables DOM-based SPA navigation diagnostics for development |
 | `web-sys-full` | All required web-sys features for WASM applications |
