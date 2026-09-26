@@ -665,16 +665,6 @@ reinhardt-routers-macros = { path = "crates/reinhardt-urls/routers-macros", vers
 
 # Streaming
 rskafka = { version = "0.6" }
-# Workaround for smithy-lang/smithy-rs#4853 (tracked in reinhardt-web#6318).
-# aws-config 1.12.0 uses JSON/schema releases incompatible with types 1.7.0.
-# Activate this constraint in every optional AWS integration so downstream
-# consumers also resolve a compatible graph without a workspace lockfile.
-# Remove when fresh AWS dependency resolution passes compilation and cargo-deny.
-#
-# Ideal implementation (without workaround):
-#   no direct aws-smithy-types dependency or feature activation is needed.
-aws-smithy-types = "=1.6.3"
-
 # Workaround for time-rs/time#783.
 # Remove when time 0.3.48+ no longer causes coherence conflicts in downstream
 # blanket impls.

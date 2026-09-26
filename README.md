@@ -130,13 +130,6 @@ Reinhardt is a modular framework. Choose your starting point:
 
 Feature presets are layered. `full`, `standard`, and `minimal` are top-level presets; each preset enables lower-level feature groups, and those groups enable atom feature flags such as `viewset-routing`, `signals`, `image-validation`, `compressed-parsers`, `commands-autoreload`, `browsable-api`, and `openapi-swagger-ui`. External dependencies are attached at the atom feature boundary wherever possible, so choosing `minimal` or `standard` does not implicitly import every dependency carried by `full`.
 
-The optional AWS integrations (Secrets Manager, DynamoDB, provider credentials,
-SQS, and S3) temporarily constrain `aws-smithy-types` to `1.6.3`. This keeps fresh
-dependency resolution compatible with the JSON implementation used by
-`aws-config 1.12.0`, including for independent consumers of each integration.
-See [the upstream compatibility report](https://github.com/smithy-lang/smithy-rs/issues/4853)
-and [the removal tracking issue](https://github.com/kent8192/reinhardt-web/issues/6318).
-
 ### Default: Standard Setup (Balanced) ⚠️ Default Preset
 
 Get a well-balanced feature set with zero configuration:

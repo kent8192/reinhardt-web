@@ -329,7 +329,9 @@
 //! - `with-json`: Enable JSON type in `Value`
 //! - `with-rust_decimal`: Enable Decimal type in `Value`
 //! - `with-bigdecimal`: Enable BigDecimal type in `Value`
-//! - `full`: Enable all optional features
+//! - `nosql-redis`: Enable Redis command builder APIs
+//! - `pgvector`: Enable PostgreSQL vector types and distance operators with backend validation
+//! - `full`: Enable `derive`, all optional value types, `nosql-redis`, and `pgvector`
 
 // Core modules
 pub mod types;
