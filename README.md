@@ -1336,7 +1336,7 @@ Reinhardt offers modular components you can mix and match:
 | **Advanced**        |                           |                                             |
 | Admin Panel         | `reinhardt-admin`         | Django-style admin interface                |
 | Plugin System       | `reinhardt-dentdelion`    | Static & WASM plugin support, CLI management|
-| Background Tasks    | `reinhardt-tasks`         | Task queues (Redis, RabbitMQ, SQLite)       |
+| Background Tasks    | `reinhardt-tasks`         | Task queues (Redis, RabbitMQ, SQLite; optional Kafka via `kafka-backend`) |
 | GraphQL             | `reinhardt-graphql`       | Schema generation, subscriptions            |
 | WebSockets          | `reinhardt-websockets`    | Real-time communication                     |
 | i18n                | `reinhardt-i18n`          | Multi-language support                      |

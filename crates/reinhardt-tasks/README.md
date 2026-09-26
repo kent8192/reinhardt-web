@@ -74,6 +74,10 @@ use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
   - Prefetch count for worker concurrency control
   - Delivery mode configuration (persistent/transient)
   - Metadata store abstraction for task tracking
+- **KafkaTaskBackend** (feature: `kafka-backend`): Kafka-backed task queue
+  - Publishes serialized task envelopes to the `reinhardt-tasks` topic
+  - Queue messages are stored by Kafka; task status and task data are in-memory
+  - Use a persistent status store when status must survive process restarts
 
 #### Task Queue
 
@@ -229,6 +233,7 @@ let metadata = store.get("task-123")?;
 | **Redis** | Yes | High | Production, caching |
 | **RabbitMQ** | Yes | Very High | Production, messaging, complex routing |
 | **SQLite** | Yes | Low | Small-scale production, embedded |
+| **Kafka** | Broker-backed queue; in-memory status | Distributed | Kafka topic-based task transport |
 
 #### Choosing a Backend
 
@@ -236,6 +241,7 @@ let metadata = store.get("task-123")?;
 - **Testing**: Use `DummyBackend` or `InMemoryMetadataStore`
 - **Small-scale production**: Use `SqliteBackend`
 - **Large-scale production**: Use `RabbitMQBackend` or `RedisTaskBackend`
+- **Kafka topic-based task transport**: Use `KafkaTaskBackend`; add a persistent status store if status must survive process restarts
 - **Complex routing needs**: Use `RabbitMQBackend` for exchange-based routing
 
 ## Testing
