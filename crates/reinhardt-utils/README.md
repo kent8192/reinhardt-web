@@ -300,47 +300,51 @@ use reinhardt::utils::core::html::{escape, unescape};
   - Suspicious file operations
   - Disallowed host access
 - **SecurityError**: Enum for categorizing security events
-  - `AuthenticationFailed`, `AuthorizationFailed`, `InvalidToken`
-  - `RateLimitExceeded`, `SuspiciousActivity`, `CsrfViolation`
-  - `InvalidInput`, `AccessDenied`, `DisallowedHost`
+  - `AuthenticationFailed(String)`, `AuthorizationDenied(String)`, `RateLimitExceeded(String)`
+  - `SuspiciousOperation(String)`, `SuspiciousFileOperation(String)`, `CsrfViolation(String)`, `DisallowedHost(String)`
 
 **Usage Example**:
 
 ```rust
-use reinhardt::utils::logging::security::{SecurityLogger, SecurityError};
+use reinhardt_utils::logging::{Logger, SecurityError, SecurityLogger};
+use std::sync::Arc;
 
-let logger = SecurityLogger::new();
+#[tokio::main]
+async fn main() {
+    let logger = Arc::new(Logger::new("security"));
+    let security_logger = SecurityLogger::new(logger);
 
-// Log authentication events
-logger.log_auth_event(true, "user@example.com");  // INFO level
-logger.log_auth_event(false, "attacker@evil.com"); // WARNING level
+    // Log authentication events
+    security_logger.log_auth_event("alice", true, Some("192.0.2.10")).await;
+    security_logger.log_auth_event("unknown", false, None).await;
 
-// Log security errors
-logger.log_security_error(&SecurityError::CsrfViolation);  // ERROR level
+    // All SecurityError variants are logged at ERROR by this method.
+    security_logger
+        .log_security_error(&SecurityError::CsrfViolation("token mismatch".into()))
+        .await;
 
-// Log CSRF violation with details
-logger.log_csrf_violation("http://evil.com");
-
-// Log rate limit exceeded
-logger.log_rate_limit_exceeded("192.0.2.10", 100);
-
-// Log suspicious file operations
-logger.log_suspicious_file_operation("delete", Path::new("/etc/passwd"));
-
-// Log disallowed host access
-logger.log_disallowed_host("malicious.com");
+    security_logger.log_csrf_violation("/transfer").await;
+    security_logger.log_rate_limit_exceeded("192.0.2.10", 100).await;
+    security_logger
+        .log_suspicious_file_operation("delete", "/etc/passwd")
+        .await;
+    security_logger
+        .log_disallowed_host("evil.example", "/admin/")
+        .await;
+}
 ```
 
 **Log Level Mapping**:
 
-| Event | Log Level |
-|-------|-----------|
-| Authentication success | INFO |
-| Authentication failure | WARNING |
-| CSRF violation | ERROR |
-| Rate limit exceeded | WARNING |
-| Authorization failure | WARNING |
-| Suspicious activity | ERROR |
+| Method or Event | Log Level |
+|-----------------|-----------|
+| Successful `log_auth_event` | INFO |
+| Failed `log_auth_event` | WARNING |
+| `log_security_info` | INFO |
+| `log_security_warning`, `log_rate_limit_exceeded` | WARNING |
+| `log_security_error` (all `SecurityError` variants) | ERROR |
+| `log_csrf_violation`, `log_suspicious_file_operation`, `log_disallowed_host` | ERROR |
+
 
 
 ## static
