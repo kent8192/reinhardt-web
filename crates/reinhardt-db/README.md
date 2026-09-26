@@ -433,7 +433,7 @@ let all_users = User::objects().all().fetch().await?;
 
 | Hook | Trigger | Purpose |
 |------|---------|---------|
-| `before_save` | `create` / `update` | Validate / mutate model before insert |
+| `before_save` | `create` / `update` | Validate / mutate model before persistence |
 | `before_delete` | `delete` | Block destructive operations |
 | `before_bulk_update` | `bulk_update` | Validate / rewrite a batch |
 
