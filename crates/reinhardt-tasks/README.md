@@ -10,26 +10,29 @@ Supports task scheduling, retries, task priorities, and multiple worker processe
 
 ## Installation
 
-Add `reinhardt` to your `Cargo.toml`:
+Add the facade task and streaming features and the direct task-crate dependency
+to your `Cargo.toml`. The facade does not forward the Kafka backend feature;
+its `streaming` feature exposes the Kafka configuration type:
 
-<!-- reinhardt-version-sync:3 -->
+<!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["tasks"] }
-
-# Or use a preset:
-# reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.20", features = ["full"] }      # All features
+reinhardt = { package = "reinhardt-web", version = "0.3.20", features = ["tasks", "streaming"] }
+reinhardt-tasks = { version = "0.3.20", features = ["kafka-backend"] }
 ```
 
 Then import task features:
 
 ```rust
 use reinhardt::tasks::{Task, TaskQueue, TaskExecutor};
-use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
+use reinhardt::tasks::backend::TaskBackend;
+use reinhardt::streaming::kafka::KafkaConfig;
+use reinhardt_tasks::backends::KafkaTaskBackend;
 ```
 
-**Note:** Task features are included in the `standard` and `full` feature presets.
+**Note:** The facade's `tasks` feature exposes task APIs but does not forward
+`kafka-backend`; use the direct dependency shown above. The `standard` preset
+does not enable task APIs.
 
 ## Features
 
@@ -74,6 +77,11 @@ use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
   - Prefetch count for worker concurrency control
   - Delivery mode configuration (persistent/transient)
   - Metadata store abstraction for task tracking
+- **KafkaTaskBackend** (feature: `kafka-backend`): Kafka-backed task queue
+  - Publishes task IDs and names to the `reinhardt-tasks` topic with an empty `{}` argument payload; tasks that require arguments cannot be reconstructed yet
+  - Queue messages are stored by Kafka; task status and task data are held in process memory, and no persistent status-store injection is available
+  - Reads partition 0 and advances its in-memory offset as soon as a record is dequeued; there is no broker acknowledgement/commit or failure requeue, so failed tasks are not redelivered in the same process
+  - Workers can read the same records, and a restart begins at offset 0, replaying both failed and successful tasks
 
 #### Task Queue
 
@@ -229,6 +237,7 @@ let metadata = store.get("task-123")?;
 | **Redis** | Yes | High | Production, caching |
 | **RabbitMQ** | Yes | Very High | Production, messaging, complex routing |
 | **SQLite** | Yes | Low | Small-scale production, embedded |
+| **Kafka** | Broker-backed messages; in-memory status and task data | One process, partition 0, in-memory offsets | Topic transport for tasks that accept an empty argument payload |
 
 #### Choosing a Backend
 
@@ -236,6 +245,7 @@ let metadata = store.get("task-123")?;
 - **Testing**: Use `DummyBackend` or `InMemoryMetadataStore`
 - **Small-scale production**: Use `SqliteBackend`
 - **Large-scale production**: Use `RabbitMQBackend` or `RedisTaskBackend`
+- **Kafka topic-based task transport**: Use `KafkaTaskBackend` for tasks that accept an empty argument payload; status-store injection, consumer groups, and multi-partition processing are not currently supported
 - **Complex routing needs**: Use `RabbitMQBackend` for exchange-based routing
 
 ## Testing

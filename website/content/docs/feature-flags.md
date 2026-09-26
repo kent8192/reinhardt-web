@@ -465,19 +465,19 @@ The `tasks` feature provides background job processing with multiple backend opt
 | `rabbitmq-backend` | RabbitMQ | Yes | Very High | Production (messaging) |
 | `database-backend` | SQLx (Postgres/MySQL/SQLite) | Yes | Low-Medium | Small-scale production |
 | `sqs-backend` | AWS SQS | Yes | Very High | Production (AWS) |
+| `kafka-backend` | Kafka | Broker-backed messages; in-memory status and task data | One process, partition 0, in-memory offsets | Topic transport for tasks that accept an empty argument payload |
 
-**Configuration Example**:
+**Configuration Example** (enable facade APIs and the backend on a direct
+`reinhardt-tasks` dependency):
 
+<!-- reinhardt-version-sync:2 -->
 ```toml
-# Redis backend
-reinhardt-tasks = { version = "0.1", features = ["redis-backend"] }
-
-# RabbitMQ backend (recommended for production)
-reinhardt-tasks = { version = "0.1", features = ["rabbitmq-backend"] }
-
-# SQLite backend
-reinhardt-tasks = { version = "0.1", features = ["database-backend"] }
+[dependencies]
+reinhardt = { package = "reinhardt-web", version = "0.3.20", features = ["tasks", "streaming"] }
+reinhardt-tasks = { version = "0.3.20", features = ["kafka-backend"] }
 ```
+
+For another backend, replace `kafka-backend` with `redis-backend`, `rabbitmq-backend`, `database-backend`, or `sqs-backend`.
 
 See [Task Backends Documentation](https://github.com/kent8192/reinhardt-web/blob/main/crates/reinhardt-tasks/README.md#backend-comparison) for detailed comparison.
 
@@ -496,7 +496,7 @@ See [Task Backends Documentation](https://github.com/kent8192/reinhardt-web/blob
 | `reinhardt-auth` (sessions) | None | `session-database`, `session-file`, `session-cookie`, `session-jwt` |
 | `reinhardt-test` | None | `testcontainers`, `static`, `websockets` |
 | `reinhardt-dentdelion` | None | `wasm`, `cli`, `full` |
-| `reinhardt-tasks` | None | `redis-backend`, `rabbitmq-backend`, `database-backend` |
+| `reinhardt-tasks` | None | `redis-backend`, `rabbitmq-backend`, `database-backend`, `kafka-backend` |
 
 **Auto-enabled dependencies**:
 - `di` feature → `reinhardt-di/params`, `reinhardt-db?/di` (parameter extraction types, database connection injection)

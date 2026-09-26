@@ -14,6 +14,16 @@
 //! - Task execution metrics and monitoring
 //! - Worker load balancing (Round-robin, Least-connections, Weighted, Random)
 //! - Webhook notifications for task completion
+//! - Optional Redis, SQLite, SQS, RabbitMQ, and Kafka backends
+//!
+//! ## Kafka Backend
+//!
+//! Enable the `kafka-backend` feature to use `backends::KafkaTaskBackend`.
+//! The current implementation sends an empty task-argument payload, reads only
+//! partition 0, and keeps task data and offsets in process memory. It has no
+//! consumer-group coordination, broker acknowledgement/commit, or failure
+//! requeue. A failed task is not redelivered in the same process; restarting
+//! begins at offset 0 and replays the topic, including successful tasks.
 //!
 //! ## Planned
 //!
@@ -70,7 +80,7 @@
 
 /// Task backend trait and built-in implementations.
 pub mod backend;
-/// Feature-gated backend implementations (Redis, SQLite, SQS, RabbitMQ).
+/// Feature-gated backend implementations (Redis, SQLite, SQS, RabbitMQ, Kafka).
 pub mod backends;
 /// Task chaining for sequential execution pipelines.
 pub mod chain;
