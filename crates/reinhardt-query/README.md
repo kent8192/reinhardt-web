@@ -648,12 +648,15 @@ let stmt = Query::select().column("name").from("user");
 | Flag | Description |
 |------|-------------|
 | `thread-safe` | Use `Arc` instead of `Rc` for `DynIden` |
+| `derive` | Enable procedural derive macros from `reinhardt-query-macros` |
 | `with-chrono` | Enable chrono date/time types in `Value` |
 | `with-uuid` | Enable UUID type in `Value` |
 | `with-json` | Enable JSON type in `Value` |
 | `with-rust_decimal` | Enable Decimal type in `Value` |
 | `with-bigdecimal` | Enable BigDecimal type in `Value` |
-| `full` | Enable all optional features |
+| `nosql-redis` | Enable Redis command builder APIs |
+| `pgvector` | Enable PostgreSQL vector types and distance operators with backend validation |
+| `full` | Enable `derive`, all optional value types, `nosql-redis`, and `pgvector` |
 
 ## Security Considerations
 
