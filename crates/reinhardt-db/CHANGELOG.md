@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.20...reinhardt-db@v0.3.21) - 2026-09-26
+
+### Documentation
+
+- *(db)* update Django composite key comparison
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.17...reinhardt-db@v0.3.18) - 2026-09-16
 
 ### Fixed
