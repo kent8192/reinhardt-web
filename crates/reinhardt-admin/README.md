@@ -657,15 +657,17 @@ For comprehensive routing documentation, see the [`core::router`](src/core/route
 
 | Feature | Description |
 |---------|-------------|
-| `adapters` | Adapter layer utilities |
-| `core` | Core admin functionality |
-| `pages` | Page rendering support |
-| `server` | Server-side request handling |
-| `types` | Shared type definitions |
-| `all` | All of the above (`adapters`, `core`, `pages`, `server`, `types`) |
+| `adapters` | Backward-compatibility marker; the module is always compiled |
+| `core` | Backward-compatibility marker; the module is always compiled |
+| `pages` | Backward-compatibility marker; the module is always compiled |
+| `server` | Backward-compatibility marker; the module is always compiled |
+| `types` | Backward-compatibility marker; the module is always compiled |
+| `all` | Enables the five module compatibility markers; it does not gate module compilation |
 | `file-uploads` | Storage-backed `FileField`/`ImageField` admin uploads, validation, replacement, clear, and delete cleanup |
 | `admin` | Admin feature marker |
-| `full` | All features including `file-uploads` |
+| `console_error_panic_hook` | Enables readable panic messages in browser-WASM builds |
+| `pgvector` | Enables `reinhardt-db` pgvector support |
+| `full` | Enables `console_error_panic_hook`, `file-uploads`, and `all`; it does not include `pgvector` |
 
 By default, no features are enabled (`default = []`).
 

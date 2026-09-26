@@ -856,6 +856,7 @@ The `makemigrations` command supports the following flags and options:
 | Flag / Option | Description |
 |---------------|-------------|
 | `--dry-run` | Show what would be created without writing files |
+| `--check` | Check for missing migrations without writing files; returns an error when migrations would be created |
 | `--empty` | Create an empty migration |
 | `--from-db` | Use database history instead of TestContainers for state building |
 | `--force-empty-state` | Force using empty state when database/TestContainers is unavailable (**dangerous**) |
