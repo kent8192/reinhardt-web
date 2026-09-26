@@ -565,6 +565,23 @@ Tests continue to work because the project always runs tests with `--all-feature
 
 **Rule**: Functional crates that need test utilities **must** use one of the strategies above. Never use `reinhardt-test = { workspace = true }` or `reinhardt-testkit = { workspace = true }` in `[dev-dependencies]` (workspace deps include version, triggering Cargo resolution).
 
+The same packaging rule applies to local router fixtures. `reinhardt-auth` uses
+`reinhardt-urls` only in its OAuth router tests, but inheriting its workspace
+version makes Cargo require that version from crates.io before auth can publish.
+Release run [36216771198](https://github.com/kent8192/reinhardt-web/actions/runs/36216771198/job/108334183264)
+failed on `reinhardt-urls = "^0.4.0-alpha.17"` after the rate-limit retry, because
+the registry still contained only `0.4.0-alpha.16`. A versionless path
+dev-dependency keeps those fixtures available locally while Cargo omits the
+dependency from the published manifest. Preserve `default-features = false`
+from the workspace declaration. Remove the local dependency when these
+cross-crate router tests move to the integration-test crate; making it a regular
+dependency would introduce a cycle through middleware back to auth.
+
+Validate this boundary with `cargo publish --dry-run --no-verify -p reinhardt-auth`
+(add `--allow-dirty` for uncommitted changes), inspect the packaged `Cargo.toml`
+for the omitted dev-dependency, and run the local OAuth router test. Retrying the
+unchanged versioned dependency cannot repair an unpublished prerequisite.
+
 **Tracking**: [cargo#15151](https://github.com/rust-lang/cargo/issues/15151)
 
 (Ref: [#185](https://github.com/kent8192/reinhardt-web/pull/185), [#207](https://github.com/kent8192/reinhardt-web/pull/207), [#223](https://github.com/kent8192/reinhardt-web/pull/223), [#1869](https://github.com/kent8192/reinhardt-web/issues/1869))
