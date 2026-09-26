@@ -10,28 +10,29 @@ Includes date/time utilities, string manipulation, encoding/decoding, and other 
 
 ## Installation
 
-Add `reinhardt` to your `Cargo.toml`:
+Add `reinhardt-utils` to your `Cargo.toml`:
 
-<!-- reinhardt-version-sync:3 -->
+<!-- reinhardt-version-sync:1 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["utils"] }
-
-# Or use a preset:
-# reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.20", features = ["full"] }      # All features
+reinhardt-utils = "0.3.20"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
 Then import utility features:
 
 ```rust
-use reinhardt::utils::cache::{Cache, InMemoryCache};
-use reinhardt::utils::logging::{Logger, LogLevel};
-use reinhardt::utils::storage::{Storage, LocalStorage};
-use reinhardt::utils::core::html::{escape, unescape};
+use reinhardt_utils::cache::{Cache, InMemoryCache};
+use reinhardt_utils::logging::{Logger, LogLevel};
+use reinhardt_utils::storage::{Storage, LocalStorage};
+use reinhardt_utils::html::{escape, unescape};
 ```
 
-**Note:** Utility features are included in the `standard` and `full` feature presets.
+**Note:** Native applications using the `reinhardt` facade can instead enable a
+feature that activates `reinhardt-utils` (such as `cache`, `storage`,
+`static-files`, or `full`) and import these modules through `reinhardt::utils`.
+The facade exposes this module only on native targets. The `standard` preset
+alone does not activate this optional dependency.
 
 ## Features
 
@@ -300,47 +301,61 @@ use reinhardt::utils::core::html::{escape, unescape};
   - Suspicious file operations
   - Disallowed host access
 - **SecurityError**: Enum for categorizing security events
-  - `AuthenticationFailed`, `AuthorizationFailed`, `InvalidToken`
-  - `RateLimitExceeded`, `SuspiciousActivity`, `CsrfViolation`
-  - `InvalidInput`, `AccessDenied`, `DisallowedHost`
+  - `AuthenticationFailed(String)`, `AuthorizationDenied(String)`, `RateLimitExceeded(String)`
+  - `SuspiciousOperation(String)`, `SuspiciousFileOperation(String)`, `CsrfViolation(String)`, `DisallowedHost(String)`
 
 **Usage Example**:
 
+`SecurityLogger` sends records only to handlers registered with its `Logger`.
+This example attaches `MemoryHandler` so the emitted records are captured; use
+an appropriate durable handler when production audit retention is required.
+
 ```rust
-use reinhardt::utils::logging::security::{SecurityLogger, SecurityError};
+use reinhardt_utils::logging::{
+    LogLevel, Logger, MemoryHandler, SecurityError, SecurityLogger,
+};
+use std::sync::Arc;
 
-let logger = SecurityLogger::new();
+#[tokio::main]
+async fn main() {
+    let logger = Arc::new(Logger::new("security"));
+    let handler = Arc::new(MemoryHandler::new(LogLevel::Debug));
+    logger.add_handler(handler.clone()).await;
+    let security_logger = SecurityLogger::new(logger);
 
-// Log authentication events
-logger.log_auth_event(true, "user@example.com");  // INFO level
-logger.log_auth_event(false, "attacker@evil.com"); // WARNING level
+    // Log authentication events
+    security_logger.log_auth_event("alice", true, Some("192.0.2.10")).await;
+    security_logger.log_auth_event("unknown", false, None).await;
 
-// Log security errors
-logger.log_security_error(&SecurityError::CsrfViolation);  // ERROR level
+    // All SecurityError variants are logged at ERROR by this method.
+    security_logger
+        .log_security_error(&SecurityError::CsrfViolation("token mismatch".into()))
+        .await;
 
-// Log CSRF violation with details
-logger.log_csrf_violation("http://evil.com");
+    security_logger.log_csrf_violation("/transfer").await;
+    security_logger.log_rate_limit_exceeded("192.0.2.10", 100).await;
+    security_logger
+        .log_suspicious_file_operation("delete", "/etc/passwd")
+        .await;
+    security_logger
+        .log_disallowed_host("evil.example", "/admin/")
+        .await;
 
-// Log rate limit exceeded
-logger.log_rate_limit_exceeded("192.0.2.10", 100);
-
-// Log suspicious file operations
-logger.log_suspicious_file_operation("delete", Path::new("/etc/passwd"));
-
-// Log disallowed host access
-logger.log_disallowed_host("malicious.com");
+    assert!(!handler.get_records().is_empty());
+}
 ```
 
 **Log Level Mapping**:
 
-| Event | Log Level |
-|-------|-----------|
-| Authentication success | INFO |
-| Authentication failure | WARNING |
-| CSRF violation | ERROR |
-| Rate limit exceeded | WARNING |
-| Authorization failure | WARNING |
-| Suspicious activity | ERROR |
+| Method or Event | Log Level |
+|-----------------|-----------|
+| Successful `log_auth_event` | INFO |
+| Failed `log_auth_event` | WARNING |
+| `log_security_info` | INFO |
+| `log_security_warning`, `log_rate_limit_exceeded` | WARNING |
+| `log_security_error` (all `SecurityError` variants) | ERROR |
+| `log_csrf_violation`, `log_suspicious_file_operation`, `log_disallowed_host` | ERROR |
+
 
 
 ## static
