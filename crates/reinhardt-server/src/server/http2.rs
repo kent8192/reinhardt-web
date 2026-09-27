@@ -1,6 +1,9 @@
+use super::response_body::{
+	ServerResponseBody, into_hyper_response, request_body_too_large_response,
+};
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
-use hyper::StatusCode;
+use http_body_util::BodyExt;
+use http_body_util::Full;
 use hyper::body::Incoming;
 use hyper::server::conn::http2;
 use hyper::service::Service;
@@ -234,7 +237,7 @@ struct RequestService {
 }
 
 impl Service<hyper::Request<Incoming>> for RequestService {
-	type Response = hyper::Response<Full<Bytes>>;
+	type Response = hyper::Response<ServerResponseBody>;
 	type Error = Box<dyn std::error::Error + Send + Sync>;
 	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
@@ -249,14 +252,12 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 				&& let Ok(len) = len_str.parse::<u64>()
 				&& len > max_body_size
 			{
-				return Ok(hyper::Response::builder()
-					.status(StatusCode::PAYLOAD_TOO_LARGE)
-					.body(Full::new(Bytes::from("Request body too large")))
-					.expect("Failed to build 413 response"));
+				return Ok(request_body_too_large_response());
 			}
 
 			// Extract request parts
 			let (parts, body) = req.into_parts();
+			let is_head = parts.method == hyper::Method::HEAD;
 
 			// Read body with size limit
 			let body_bytes = http_body_util::Limited::new(body, max_body_size as usize)
@@ -286,15 +287,12 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 				.await
 				.unwrap_or_else(|_| Response::internal_server_error());
 
-			// Convert to hyper response
-			let mut hyper_response = hyper::Response::builder().status(response.status);
-
-			// Add headers
-			for (key, value) in response.headers.iter() {
-				hyper_response = hyper_response.header(key, value);
+			let mut response = into_hyper_response(response);
+			if is_head {
+				// HTTP/2 must end a HEAD response without polling a pending producer.
+				*response.body_mut() = ServerResponseBody::Buffered(Full::new(Bytes::new()));
 			}
-
-			Ok(hyper_response.body(Full::new(response.body))?)
+			Ok(response)
 		})
 	}
 }

@@ -25,6 +25,12 @@ This crate provides the following modules:
 - **Migrations**: Schema migration system
   - Automatic migration generation from model changes
   - Initial `CreateTable` operations follow foreign-key order from field metadata
+  - Generated foreign-key names, including many-to-many intermediate tables, fit
+    PostgreSQL's 63-byte identifier limit. Longer names retain a UTF-8-safe prefix
+    and a deterministic 64-bit hash of the full name, preventing collisions from
+    backend truncation. Names already within the limit and explicitly named
+    constraints are unchanged. Existing migration files are not rewritten;
+    regenerate unapplied migrations with oversized generated names.
   - Forward and backward migrations
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
