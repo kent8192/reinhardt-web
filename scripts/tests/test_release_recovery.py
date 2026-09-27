@@ -670,7 +670,7 @@ class WorkflowTests(unittest.TestCase):
                 self.assertIn(f"source_sha={expected}", output.read_text())
                 self.assertIn("release_pr=6383", output.read_text())
 
-    def test_recovery_announces_its_verified_tag_instead_of_the_latest_tag(self):
+    def test_publication_announces_its_verified_tag_instead_of_the_latest_tag(self):
         selection = next(
             step
             for step in self.jobs["release-announcement-pr"]["steps"]
@@ -704,26 +704,50 @@ class WorkflowTests(unittest.TestCase):
                 "BACKFILL_MODE": "resume-release",
                 "VERIFIED_RELEASE_TAG": "reinhardt-web@v0.4.0-alpha.17",
             }
-            result = subprocess.run(
-                ["bash", "-c", selection["run"]],
-                cwd=repo,
-                env=env,
-                text=True,
-                capture_output=True,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(
-                output.read_text(), "tags=reinhardt-web@v0.4.0-alpha.17\nskip=false\n"
-            )
+            for mode in ("", "resume-release"):
+                with self.subTest(mode=mode):
+                    output.write_text("")
+                    result = subprocess.run(
+                        ["bash", "-c", selection["run"]],
+                        cwd=repo,
+                        env=env | {"BACKFILL_MODE": mode},
+                        text=True,
+                        capture_output=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(
+                        output.read_text(),
+                        "tags=reinhardt-web@v0.4.0-alpha.17\nskip=false\n",
+                    )
 
     def test_successful_reconciliation_announces_without_a_new_tag(self):
-        self.assertTrue(
+        for event, mode in (("push", ""), ("workflow_dispatch", "resume-release")):
+            with self.subTest(event=event):
+                self.assertTrue(
+                    self.condition(
+                        "release-announcement-pr",
+                        event,
+                        mode,
+                        result="success",
+                        release_tag="reinhardt-web@v0.4.0-alpha.17",
+                    )
+                )
+
+    def test_push_announcement_requires_successful_reconciliation(self):
+        for result in ("failure", "cancelled", "skipped"):
+            with self.subTest(result=result):
+                self.assertFalse(
+                    self.condition(
+                        "release-announcement-pr",
+                        "push",
+                        result=result,
+                        released="true",
+                        release_tag="reinhardt-web@v0.4.0-alpha.17",
+                    )
+                )
+        self.assertFalse(
             self.condition(
-                "release-announcement-pr",
-                "workflow_dispatch",
-                "resume-release",
-                result="success",
-                release_tag="reinhardt-web@v0.4.0-alpha.17",
+                "release-announcement-pr", "push", result="success", released="true"
             )
         )
 

@@ -342,6 +342,11 @@ During this publish path, release-plz:
 - Only publishable crates are processed (respects `publish = false` in Cargo.toml)
 - Workspace dependencies are published in the correct order
 
+Both normal publication and recovery reruns select announcements from the
+verified facade tag emitted by final reconciliation. An existing tag does not
+suppress announcement recovery after a transient verification failure; existing
+announcement files and Discussions still prevent duplicate generation.
+
 The following diagram summarizes the 5-step release workflow:
 
 ```mermaid
