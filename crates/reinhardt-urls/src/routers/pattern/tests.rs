@@ -6,6 +6,7 @@ use super::radix::RadixRouter;
 use super::validation::{
 	MAX_PATH_SEGMENTS, MAX_PATTERN_LENGTH, validate_path_param, validate_reverse_param,
 };
+use rstest::rstest;
 use std::collections::HashMap;
 
 #[test]
@@ -517,6 +518,30 @@ fn test_validate_path_param_rejects_absolute_paths() {
 	// Arrange & Act & Assert
 	assert!(!validate_path_param("/etc/passwd"));
 	assert!(!validate_path_param("\\windows\\system32"));
+}
+
+#[rstest]
+#[case::absolute_forward("C:/Windows/win.ini")]
+#[case::absolute_backward(r"C:\Windows\win.ini")]
+#[case::lowercase_drive("c:/Windows/win.ini")]
+#[case::drive_relative("C:secret.txt")]
+#[case::bare_drive("C:")]
+fn typed_path_rejects_windows_drive_prefixes(#[case] value: &str) {
+	// Arrange
+	let pattern = PathPattern::new("/files/{<path:asset>}").unwrap();
+	let path = format!("/files/{value}");
+
+	// Act
+	let extracted = pattern.extract_params(&path);
+	let safe = pattern.extract_params("/files/reports/version:1.txt");
+
+	// Assert
+	assert_eq!(extracted, None);
+	assert!(!validate_path_param(value));
+	assert_eq!(
+		safe.unwrap().get("asset").map(String::as_str),
+		Some("reports/version:1.txt")
+	);
 }
 
 #[test]

@@ -1749,6 +1749,9 @@ async fn inherited_exception_handler_reaches_router_middleware() {
 #[case::encoded_null("foo/%00secret")]
 #[case::absolute("/etc/passwd")]
 #[case::backslash("foo\\..\\secret")]
+#[case::drive_absolute("C:/Windows/win.ini")]
+#[case::drive_backslash(r"C:\Windows\win.ini")]
+#[case::drive_relative("c:secret.txt")]
 fn test_typed_path_endpoint_rejects_traversal(
 	#[case] asset: &str,
 	#[values(false, true)] prefixed: bool,
@@ -1796,6 +1799,8 @@ fn test_typed_path_endpoint_rejects_traversal(
 #[rstest]
 #[case::parent("foo/../secret")]
 #[case::encoded("foo/%2e%2e/secret")]
+#[case::drive_absolute("C:/Windows/win.ini")]
+#[case::drive_relative("c:secret.txt")]
 #[tokio::test]
 async fn rejected_typed_paths_report_not_found(
 	#[case] asset: &str,

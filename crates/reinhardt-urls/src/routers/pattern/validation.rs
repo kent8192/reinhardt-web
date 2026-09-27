@@ -76,6 +76,7 @@ pub(super) fn type_spec_to_regex(type_spec: &str) -> &'static str {
 /// - Percent-encoded traversal sequences (`%2e`, `%2f`, `%2E`, `%2F`, `%5c`, `%5C`)
 /// - Null bytes (literal or encoded `%00`)
 /// - Absolute paths starting with `/` or `\`
+/// - Windows drive prefixes, including drive-relative paths such as `C:secret.txt`
 pub(crate) fn validate_path_param(value: &str) -> bool {
 	// Reject null bytes
 	if value.contains('\0') {
@@ -93,8 +94,11 @@ pub(crate) fn validate_path_param(value: &str) -> bool {
 		return false;
 	}
 
-	// Reject absolute paths
-	if value.starts_with('/') || value.starts_with('\\') {
+	// Reject absolute paths and Windows drive prefixes on every platform.
+	// Even a drive-relative prefix can replace a base directory on Windows.
+	let bytes = value.as_bytes();
+	let has_drive_prefix = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+	if value.starts_with('/') || value.starts_with('\\') || has_drive_prefix {
 		return false;
 	}
 
