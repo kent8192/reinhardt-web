@@ -409,6 +409,10 @@ impl CacheMiddleware {
 
 	/// Check if a response is safe to store in a shared cache.
 	fn is_shareable_response(&self, response: &Response) -> bool {
+		// A streaming producer cannot be replayed from the empty compatibility buffer.
+		if response.is_streaming() {
+			return false;
+		}
 		!response.headers.contains_key(SET_COOKIE)
 			&& response.headers.get_all(CACHE_CONTROL).iter().all(|value| {
 				value
