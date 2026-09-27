@@ -2,6 +2,7 @@
 //!
 //! Provides middleware for automatically serving browsable HTML responses
 //! when accessed from a web browser, similar to Django REST Framework.
+//! File and streaming responses pass through with their original representation.
 
 use async_trait::async_trait;
 use hyper::{Method, Uri};
@@ -221,7 +222,7 @@ impl Middleware for BrowsableApiMiddleware {
 		};
 
 		// If client prefers HTML and response is JSON, convert to browsable HTML
-		if prefers_html && Self::is_json_response(&response) {
+		if prefers_html && !response.is_streaming() && Self::is_json_response(&response) {
 			self.convert_to_html_with_info(&request_uri, &request_method, response)
 		} else {
 			Ok(response)
@@ -416,5 +417,48 @@ mod tests {
 			.unwrap();
 
 		assert!(!BrowsableApiMiddleware::prefers_html(&request));
+	}
+	struct StreamingJsonHandler;
+
+	#[async_trait]
+	impl Handler for StreamingJsonHandler {
+		async fn handle(&self, _: Request) -> Result<Response> {
+			Ok(Response::ok()
+				.with_stream(futures_util::stream::iter([Ok(Bytes::from_static(
+					br#"{"data":"stream"}"#,
+				))]))
+				.with_header("content-type", "application/json"))
+		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn browsable_api_preserves_streaming_json_for_html_accept() {
+		use futures_util::TryStreamExt;
+		// Arrange
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/api/stream")
+			.header("accept", "text/html")
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let mut response = BrowsableApiMiddleware::new()
+			.process(request, Arc::new(StreamingJsonHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.headers["content-type"], "application/json");
+		let chunks: Vec<Bytes> = response
+			.take_stream_body()
+			.unwrap()
+			.try_collect()
+			.await
+			.unwrap();
+		assert_eq!(chunks, vec![Bytes::from_static(br#"{"data":"stream"}"#)]);
 	}
 }
