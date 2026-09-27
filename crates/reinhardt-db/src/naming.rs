@@ -66,3 +66,30 @@ pub fn to_snake_case(name: &str) -> String {
 
 	result
 }
+
+// Keep generated names portable across PostgreSQL (63 bytes), MySQL (64
+// characters), and SQLite. Hash the full logical name before truncating so
+// columns that differ only at the end retain distinct constraint names.
+#[cfg(feature = "migrations")]
+pub(crate) fn foreign_key_constraint_name(table: &str, column: &str) -> String {
+	const MAX_IDENTIFIER_BYTES: usize = 63;
+	const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+	const FNV_PRIME: u64 = 0x00000100000001b3;
+
+	let logical_name = format!("fk_{table}_{column}");
+	if logical_name.len() <= MAX_IDENTIFIER_BYTES {
+		return logical_name;
+	}
+
+	// FNV-1a has an explicit, stable algorithm; DefaultHasher does not promise
+	// the same output across Rust versions. Persisted migrations need that stability.
+	let hash = logical_name.bytes().fold(FNV_OFFSET_BASIS, |hash, byte| {
+		(hash ^ u64::from(byte)).wrapping_mul(FNV_PRIME)
+	});
+	let suffix = format!("_{hash:016x}");
+	let mut boundary = MAX_IDENTIFIER_BYTES - suffix.len();
+	while !logical_name.is_char_boundary(boundary) {
+		boundary -= 1;
+	}
+	format!("{}{suffix}", &logical_name[..boundary])
+}

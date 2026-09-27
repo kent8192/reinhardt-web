@@ -102,7 +102,7 @@ impl ServerRouter {
 			patch_router: RwLock::new(MatchitRouter::new()),
 			head_router: RwLock::new(MatchitRouter::new()),
 			options_router: RwLock::new(MatchitRouter::new()),
-			routes_compiled: RwLock::new(false),
+			route_compilation: RwLock::new(None),
 			exception_handler: None,
 		}
 	}

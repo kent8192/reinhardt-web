@@ -41,6 +41,7 @@ pub mod http2;
 pub mod rate_limit;
 /// Settings-first configuration fragment for rate limiting.
 pub mod rate_limit_settings;
+mod response_body;
 /// Graceful shutdown coordination for server instances.
 pub mod shutdown;
 /// Request timeout handler for enforcing maximum execution time.

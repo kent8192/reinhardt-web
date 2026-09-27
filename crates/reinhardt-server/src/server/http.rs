@@ -1,6 +1,7 @@
-use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
-use hyper::StatusCode;
+use super::response_body::{
+	ServerResponseBody, into_hyper_response, request_body_too_large_response,
+};
+use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::Service;
@@ -404,7 +405,7 @@ struct RequestService {
 }
 
 impl Service<hyper::Request<Incoming>> for RequestService {
-	type Response = hyper::Response<Full<Bytes>>;
+	type Response = hyper::Response<ServerResponseBody>;
 	type Error = Box<dyn std::error::Error + Send + Sync>;
 	type Future =
 		Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
@@ -422,10 +423,7 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 				&& let Ok(len) = len_str.parse::<u64>()
 				&& len > max_body_size
 			{
-				return Ok(hyper::Response::builder()
-					.status(StatusCode::PAYLOAD_TOO_LARGE)
-					.body(Full::new(Bytes::from("Request body too large")))
-					.expect("Failed to build 413 response"));
+				return Ok(request_body_too_large_response());
 			}
 
 			// Extract request parts
@@ -475,15 +473,7 @@ impl Service<hyper::Request<Incoming>> for RequestService {
 				Response::from(e)
 			});
 
-			// Convert to hyper response
-			let mut hyper_response = hyper::Response::builder().status(response.status);
-
-			// Add headers
-			for (key, value) in response.headers.iter() {
-				hyper_response = hyper_response.header(key, value);
-			}
-
-			Ok(hyper_response.body(Full::new(response.body))?)
+			Ok(into_hyper_response(response))
 		})
 	}
 }
@@ -572,6 +562,8 @@ pub async fn serve_with_shutdown<H: Handler + 'static>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use bytes::Bytes;
+	use hyper::StatusCode;
 	use rstest::rstest;
 
 	struct TestHandler;
@@ -654,7 +646,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_middleware_chain_execution() {
-		use bytes::Bytes;
 		use hyper::{HeaderMap, Method, Version};
 		use reinhardt_http::Middleware;
 

@@ -157,6 +157,9 @@ impl ServerRouter {
 			($matched:expr) => {{
 				let matched = $matched;
 				let route_handler = matched.value;
+				if !route_handler.path_params_are_valid(&matched.params) {
+					return None;
+				}
 
 				// Extract parameters from matchit. matchit's `Params` iterator
 				// yields parameters in URL pattern declaration order, so we
@@ -235,7 +238,9 @@ impl ServerRouter {
 		let path_exists = |candidate_path: &str| {
 			for router_lock in method_routers {
 				let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
-				if router.at(candidate_path).is_ok() {
+				if let Ok(matched) = router.at(candidate_path)
+					&& matched.value.path_params_are_valid(&matched.params)
+				{
 					return true;
 				}
 			}

@@ -210,8 +210,9 @@ pub struct ServerRouter {
 	/// Matchit router for OPTIONS requests
 	pub(crate) options_router: RwLock<MatchitRouter<RouteHandler>>,
 
-	/// Flag indicating if routes have been compiled (uses RwLock for thread-safety)
-	pub(crate) routes_compiled: RwLock<bool>,
+	/// Cached compilation diagnostics; `None` means compilation has not run.
+	/// An empty cached list indicates success. Failures remain available to validation.
+	pub(crate) route_compilation: RwLock<Option<Vec<String>>>,
 
 	/// Applied instead of the default `Response::from` conversion when a request
 	/// fails.

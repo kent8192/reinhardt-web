@@ -72,11 +72,12 @@ pub(super) fn type_spec_to_regex(type_spec: &str) -> &'static str {
 /// extracted values for `..` segments that could enable path traversal.
 ///
 /// Rejects:
-/// - `..` as a path segment (forward-slash or backslash separated)
+/// - `..` as a path segment, including mixed forward-slash/backslash separators
 /// - Percent-encoded traversal sequences (`%2e`, `%2f`, `%2E`, `%2F`, `%5c`, `%5C`)
 /// - Null bytes (literal or encoded `%00`)
 /// - Absolute paths starting with `/` or `\`
-pub(super) fn validate_path_param(value: &str) -> bool {
+/// - Literal or percent-encoded Windows drive prefixes, including drive-relative paths
+pub(crate) fn validate_path_param(value: &str) -> bool {
 	// Reject null bytes
 	if value.contains('\0') {
 		return false;
@@ -93,25 +94,40 @@ pub(super) fn validate_path_param(value: &str) -> bool {
 		return false;
 	}
 
-	// Reject absolute paths
-	if value.starts_with('/') || value.starts_with('\\') {
+	// Reject absolute paths and Windows drive prefixes on every platform.
+	// Even a drive-relative prefix can replace a base directory on Windows.
+	if value.starts_with('/') || value.starts_with('\\') || has_windows_drive_prefix(value) {
 		return false;
 	}
 
-	// Check for `..` as a complete path segment (forward-slash separated)
-	for segment in value.split('/') {
-		if segment == ".." {
-			return false;
-		}
-	}
-	// Also reject backslash-separated `..` segments
-	for segment in value.split('\\') {
+	// Windows recognizes both separators, including within the same path.
+	for segment in value.split(['/', '\\']) {
 		if segment == ".." {
 			return false;
 		}
 	}
 
 	true
+}
+
+/// Check the first two bytes after one percent-decoding pass, without allocating.
+/// This catches encoded letters and colons while preserving unrelated encodings.
+fn has_windows_drive_prefix(value: &str) -> bool {
+	let mut bytes = value.bytes();
+	let mut next_decoded = || {
+		let byte = bytes.next()?;
+		if byte == b'%' {
+			let high = char::from(bytes.next()?).to_digit(16)?;
+			let low = char::from(bytes.next()?).to_digit(16)?;
+			u8::try_from(high * 16 + low).ok()
+		} else {
+			Some(byte)
+		}
+	};
+	matches!(
+		(next_decoded(), next_decoded()),
+		(Some(letter), Some(b':')) if letter.is_ascii_alphabetic()
+	)
 }
 
 /// Validate a parameter value for URL reversal against injection attacks.
@@ -153,4 +169,13 @@ pub(crate) fn validate_reverse_param(value: &str) -> bool {
 	}
 
 	true
+}
+
+/// Validate a `path` converter value for URL reversal.
+///
+/// Forward-slash-separated relative paths are allowed. Each segment retains
+/// the URL injection checks used by ordinary parameters, while the complete
+/// value must pass the same traversal and absolute-path checks as dispatch.
+pub(super) fn validate_path_reverse_param(value: &str) -> bool {
+	!value.is_empty() && validate_path_param(value) && value.split('/').all(validate_reverse_param)
 }

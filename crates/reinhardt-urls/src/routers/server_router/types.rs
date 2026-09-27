@@ -5,6 +5,7 @@
 //! method bodies live in dedicated submodules (`builder`, `registration`,
 //! `compile`, `introspection`, `dispatch`).
 
+use crate::routers::pattern::validate_path_param;
 use hyper::Method;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::{Handler, PathParams};
@@ -89,11 +90,23 @@ pub(crate) fn join_path(prefix: &str, suffix: &str) -> String {
 /// Handler information stored in matchit router
 #[derive(Clone)]
 pub(crate) struct RouteHandler {
+	/// Typed path captures that require traversal validation before dispatch.
+	pub(crate) path_type_params: Vec<String>,
+
 	/// The actual handler
 	pub(crate) handler: Arc<dyn Handler>,
 
 	/// Route-level middleware
 	pub(crate) middleware: Vec<Arc<dyn Middleware>>,
+}
+
+impl RouteHandler {
+	/// Apply typed converter validation to a match before treating it as a route.
+	pub(super) fn path_params_are_valid(&self, params: &matchit::Params<'_, '_>) -> bool {
+		params.iter().all(|(key, value)| {
+			!self.path_type_params.iter().any(|name| name == key) || validate_path_param(value)
+		})
+	}
 }
 
 /// Route match result with metadata
