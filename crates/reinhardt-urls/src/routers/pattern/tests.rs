@@ -545,6 +545,12 @@ fn test_validate_path_param_rejects_absolute_paths() {
 #[case::lowercase_drive("c:/Windows/win.ini")]
 #[case::drive_relative("C:secret.txt")]
 #[case::bare_drive("C:")]
+#[case::encoded_colon("C%3A/Windows/win.ini")]
+#[case::encoded_letter("%43:/Windows/win.ini")]
+#[case::encoded_both("%43%3a/Windows/win.ini")]
+#[case::encoded_relative_colon("c%3asecret.txt")]
+#[case::encoded_relative_letter("%63:secret.txt")]
+#[case::encoded_bare_drive("%5a%3A")]
 fn typed_path_rejects_windows_drive_prefixes(#[case] value: &str) {
 	// Arrange
 	let pattern = PathPattern::new("/files/{<path:asset>}").unwrap();

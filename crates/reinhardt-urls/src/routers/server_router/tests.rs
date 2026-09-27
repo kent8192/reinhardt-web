@@ -314,11 +314,19 @@ fn test_nested_namespace_registration() {
 #[case::nested("nested/file.txt", true)]
 #[case::unicode("images/日本語.png", true)]
 #[case::colon_filename("reports/version:1.txt", true)]
+#[case::encoded_colon_filename("reports/version%3A1.txt", true)]
+#[case::encoded_initial_letter("%43ss/file.txt", true)]
 #[case::empty("", false)]
 #[case::parent("nested/../secret", false)]
 #[case::trailing_parent("nested/..", false)]
 #[case::absolute("/etc/passwd", false)]
 #[case::drive("C:/Windows/win.ini", false)]
+#[case::encoded_drive_colon("C%3A/Windows/win.ini", false)]
+#[case::encoded_drive_letter("%43:/Windows/win.ini", false)]
+#[case::encoded_drive_both("%43%3a/Windows/win.ini", false)]
+#[case::encoded_relative_colon("c%3asecret.txt", false)]
+#[case::encoded_relative_letter("%63:secret.txt", false)]
+#[case::encoded_bare_drive("%5a%3A", false)]
 #[case::backslash(r"nested\file.txt", false)]
 #[case::query("nested/file.txt?admin=1", false)]
 #[case::fragment("nested/file.txt#admin", false)]
@@ -1807,6 +1815,9 @@ async fn inherited_exception_handler_reaches_router_middleware() {
 #[case::drive_absolute("C:/Windows/win.ini")]
 #[case::drive_backslash(r"C:\Windows\win.ini")]
 #[case::drive_relative("c:secret.txt")]
+#[case::encoded_drive_colon("C%3A/Windows/win.ini")]
+#[case::encoded_drive_letter("%43:/Windows/win.ini")]
+#[case::encoded_drive_both("%43%3a/Windows/win.ini")]
 fn test_typed_path_endpoint_rejects_traversal(
 	#[case] asset: &str,
 	#[values(false, true)] prefixed: bool,
@@ -1858,6 +1869,8 @@ fn test_typed_path_endpoint_rejects_traversal(
 #[case::mixed_backward(r"foo\../..\secret")]
 #[case::drive_absolute("C:/Windows/win.ini")]
 #[case::drive_relative("c:secret.txt")]
+#[case::encoded_drive_colon("C%3A/Windows/win.ini")]
+#[case::encoded_drive_letter("%43:/Windows/win.ini")]
 #[tokio::test]
 async fn rejected_typed_paths_report_not_found(
 	#[case] asset: &str,

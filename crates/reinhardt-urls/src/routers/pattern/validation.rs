@@ -76,7 +76,7 @@ pub(super) fn type_spec_to_regex(type_spec: &str) -> &'static str {
 /// - Percent-encoded traversal sequences (`%2e`, `%2f`, `%2E`, `%2F`, `%5c`, `%5C`)
 /// - Null bytes (literal or encoded `%00`)
 /// - Absolute paths starting with `/` or `\`
-/// - Windows drive prefixes, including drive-relative paths such as `C:secret.txt`
+/// - Literal or percent-encoded Windows drive prefixes, including drive-relative paths
 pub(crate) fn validate_path_param(value: &str) -> bool {
 	// Reject null bytes
 	if value.contains('\0') {
@@ -96,9 +96,7 @@ pub(crate) fn validate_path_param(value: &str) -> bool {
 
 	// Reject absolute paths and Windows drive prefixes on every platform.
 	// Even a drive-relative prefix can replace a base directory on Windows.
-	let bytes = value.as_bytes();
-	let has_drive_prefix = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
-	if value.starts_with('/') || value.starts_with('\\') || has_drive_prefix {
+	if value.starts_with('/') || value.starts_with('\\') || has_windows_drive_prefix(value) {
 		return false;
 	}
 
@@ -110,6 +108,26 @@ pub(crate) fn validate_path_param(value: &str) -> bool {
 	}
 
 	true
+}
+
+/// Check the first two bytes after one percent-decoding pass, without allocating.
+/// This catches encoded letters and colons while preserving unrelated encodings.
+fn has_windows_drive_prefix(value: &str) -> bool {
+	let mut bytes = value.bytes();
+	let mut next_decoded = || {
+		let byte = bytes.next()?;
+		if byte == b'%' {
+			let high = char::from(bytes.next()?).to_digit(16)?;
+			let low = char::from(bytes.next()?).to_digit(16)?;
+			u8::try_from(high * 16 + low).ok()
+		} else {
+			Some(byte)
+		}
+	};
+	matches!(
+		(next_decoded(), next_decoded()),
+		(Some(letter), Some(b':')) if letter.is_ascii_alphabetic()
+	)
 }
 
 /// Validate a parameter value for URL reversal against injection attacks.
