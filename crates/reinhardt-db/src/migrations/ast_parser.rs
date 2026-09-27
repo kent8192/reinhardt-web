@@ -190,129 +190,131 @@ fn extract_migration_expression_strict(
 	})
 }
 
-fn builder_declares_atomic(expr: &Expr) -> bool {
-	match expr {
-		Expr::MethodCall(call) => {
-			call.method == "atomic" || builder_declares_atomic(&call.receiver)
+fn builder_declares_atomic(mut expr: &Expr) -> bool {
+	while let Expr::MethodCall(call) = expr {
+		if call.method == "atomic" {
+			return true;
 		}
-		_ => false,
+		expr = &call.receiver;
 	}
+	false
 }
 
 fn parse_migration_builder_strict(expr: &Expr, app_label: &str, name: &str) -> Result<Migration> {
-	match expr {
-		Expr::Call(call)
-			if call_path_is(&call.func, "Migration", "new") && call.args.len() == 2 =>
-		{
-			Ok(Migration::new(name, app_label))
-		}
-		Expr::MethodCall(call) => {
-			let mut migration = parse_migration_builder_strict(&call.receiver, app_label, name)?;
-			match call.method.to_string().as_str() {
-				"add_operation" if call.args.len() == 1 => {
-					let index = migration.operations.len();
-					migration
-						.operations
-						.push(parse_single_operation_strict(&call.args[0], index)?);
-				}
-				"add_dependency" if call.args.len() == 2 => {
-					let dependency_app = extract_string_expr(&call.args[0]).ok_or_else(|| {
-						MigrationError::InvalidMigration(
-							"Migration builder dependency app label must be a string literal"
-								.to_string(),
-						)
-					})?;
-					let dependency_name = extract_string_expr(&call.args[1]).ok_or_else(|| {
-						MigrationError::InvalidMigration(
-							"Migration builder dependency name must be a string literal"
-								.to_string(),
-						)
-					})?;
-					migration
-						.dependencies
-						.push((dependency_app, dependency_name));
-				}
-				"add_replacement" if call.args.len() == 2 => {
-					let replacement_app = extract_string_expr(&call.args[0]).ok_or_else(|| {
-						MigrationError::InvalidMigration(
-							"Migration builder replacement app label must be a string literal"
-								.to_string(),
-						)
-					})?;
-					let replacement_name = extract_string_expr(&call.args[1]).ok_or_else(|| {
-						MigrationError::InvalidMigration(
-							"Migration builder replacement name must be a string literal"
-								.to_string(),
-						)
-					})?;
-					migration.replaces.push((replacement_app, replacement_name));
-				}
-				"add_swappable_dependency" if call.args.len() == 1 => {
-					migration
-						.swappable_dependencies
-						.push(parse_swappable_dependency_expr(&call.args[0], "builder")?);
-				}
-				"add_optional_dependency" if call.args.len() == 1 => {
-					migration
-						.optional_dependencies
-						.push(parse_optional_dependency_expr(&call.args[0], "builder")?);
-				}
-				"atomic" if call.args.len() == 1 => {
-					migration.atomic = parse_bool_expression(&call.args[0]).ok_or_else(|| {
-						MigrationError::InvalidMigration(
-							"Migration builder atomic flag must be a boolean literal".to_string(),
-						)
-					})?;
-				}
-				"initial" if call.args.len() == 1 => {
-					migration.initial =
-						Some(parse_bool_expression(&call.args[0]).ok_or_else(|| {
-							MigrationError::InvalidMigration(
-								"Migration builder initial flag must be a boolean literal"
-									.to_string(),
-							)
-						})?);
-				}
-				"with_initial" if call.args.len() == 1 => {
-					migration.initial =
-						parse_optional_bool_expression(&call.args[0]).ok_or_else(|| {
-							MigrationError::InvalidMigration(
-								"Migration builder initial flag must be Some(bool) or None"
-									.to_string(),
-							)
-						})?;
-				}
-				"state_only" if call.args.len() == 1 => {
-					migration.state_only =
-						parse_bool_expression(&call.args[0]).ok_or_else(|| {
-							MigrationError::InvalidMigration(
-								"Migration builder state_only flag must be a boolean literal"
-									.to_string(),
-							)
-						})?;
-				}
-				"database_only" if call.args.len() == 1 => {
-					migration.database_only =
-						parse_bool_expression(&call.args[0]).ok_or_else(|| {
-							MigrationError::InvalidMigration(
-								"Migration builder database_only flag must be a boolean literal"
-									.to_string(),
-							)
-						})?;
-				}
-				unsupported => {
-					return Err(MigrationError::InvalidMigration(format!(
-						"Migration builder method '{unsupported}' is unsupported or malformed"
-					)));
-				}
-			}
-			Ok(migration)
-		}
-		_ => Err(MigrationError::InvalidMigration(
-			"migration() must return a Migration struct literal or supported builder chain"
-				.to_string(),
-		)),
+	// Collect borrowed calls from the outside in, then apply them in source order.
+	// Recursing through receivers consumes stack space for every migration operation.
+	let mut calls = Vec::new();
+	let mut receiver = expr;
+	while let Expr::MethodCall(call) = receiver {
+		calls.push(call);
+		receiver = &call.receiver;
 	}
+	match receiver {
+		Expr::Call(call)
+			if call_path_is(&call.func, "Migration", "new") && call.args.len() == 2 => {}
+		_ => {
+			return Err(MigrationError::InvalidMigration(
+				"migration() must return a Migration struct literal or supported builder chain"
+					.to_string(),
+			));
+		}
+	}
+	let mut migration = Migration::new(name, app_label);
+	for call in calls.into_iter().rev() {
+		match call.method.to_string().as_str() {
+			"add_operation" if call.args.len() == 1 => {
+				let index = migration.operations.len();
+				migration
+					.operations
+					.push(parse_single_operation_strict(&call.args[0], index)?);
+			}
+			"add_dependency" if call.args.len() == 2 => {
+				let dependency_app = extract_string_expr(&call.args[0]).ok_or_else(|| {
+					MigrationError::InvalidMigration(
+						"Migration builder dependency app label must be a string literal"
+							.to_string(),
+					)
+				})?;
+				let dependency_name = extract_string_expr(&call.args[1]).ok_or_else(|| {
+					MigrationError::InvalidMigration(
+						"Migration builder dependency name must be a string literal".to_string(),
+					)
+				})?;
+				migration
+					.dependencies
+					.push((dependency_app, dependency_name));
+			}
+			"add_replacement" if call.args.len() == 2 => {
+				let replacement_app = extract_string_expr(&call.args[0]).ok_or_else(|| {
+					MigrationError::InvalidMigration(
+						"Migration builder replacement app label must be a string literal"
+							.to_string(),
+					)
+				})?;
+				let replacement_name = extract_string_expr(&call.args[1]).ok_or_else(|| {
+					MigrationError::InvalidMigration(
+						"Migration builder replacement name must be a string literal".to_string(),
+					)
+				})?;
+				migration.replaces.push((replacement_app, replacement_name));
+			}
+			"add_swappable_dependency" if call.args.len() == 1 => {
+				migration
+					.swappable_dependencies
+					.push(parse_swappable_dependency_expr(&call.args[0], "builder")?);
+			}
+			"add_optional_dependency" if call.args.len() == 1 => {
+				migration
+					.optional_dependencies
+					.push(parse_optional_dependency_expr(&call.args[0], "builder")?);
+			}
+			"atomic" if call.args.len() == 1 => {
+				migration.atomic = parse_bool_expression(&call.args[0]).ok_or_else(|| {
+					MigrationError::InvalidMigration(
+						"Migration builder atomic flag must be a boolean literal".to_string(),
+					)
+				})?;
+			}
+			"initial" if call.args.len() == 1 => {
+				migration.initial =
+					Some(parse_bool_expression(&call.args[0]).ok_or_else(|| {
+						MigrationError::InvalidMigration(
+							"Migration builder initial flag must be a boolean literal".to_string(),
+						)
+					})?);
+			}
+			"with_initial" if call.args.len() == 1 => {
+				migration.initial =
+					parse_optional_bool_expression(&call.args[0]).ok_or_else(|| {
+						MigrationError::InvalidMigration(
+							"Migration builder initial flag must be Some(bool) or None".to_string(),
+						)
+					})?;
+			}
+			"state_only" if call.args.len() == 1 => {
+				migration.state_only = parse_bool_expression(&call.args[0]).ok_or_else(|| {
+					MigrationError::InvalidMigration(
+						"Migration builder state_only flag must be a boolean literal".to_string(),
+					)
+				})?;
+			}
+			"database_only" if call.args.len() == 1 => {
+				migration.database_only =
+					parse_bool_expression(&call.args[0]).ok_or_else(|| {
+						MigrationError::InvalidMigration(
+							"Migration builder database_only flag must be a boolean literal"
+								.to_string(),
+						)
+					})?;
+			}
+			unsupported => {
+				return Err(MigrationError::InvalidMigration(format!(
+					"Migration builder method '{unsupported}' is unsupported or malformed"
+				)));
+			}
+		}
+	}
+	Ok(migration)
 }
 
 fn parse_bool_expression(expr: &Expr) -> Option<bool> {
