@@ -226,6 +226,11 @@ impl Middleware for ETagMiddleware {
 			Err(e) => Response::from(e),
 		};
 
+		// Streaming bodies expose an empty compatibility buffer, not their content.
+		if response.is_streaming() {
+			return Ok(response);
+		}
+
 		// Generate ETag
 		let etag = self.generate_etag(&response.body);
 

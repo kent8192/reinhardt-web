@@ -242,7 +242,12 @@ The `makemigrations` command supports the following flags and options:
 | `--force-empty-state` | Force using empty state when database/TestContainers is unavailable (**dangerous**) |
 | `-v`, `--verbose` | Show detailed operation list |
 | `-n`, `--name <NAME>` | Name for the migration |
-| `--migrations-dir <DIR>` | Directory for migration files (default: `migrations`) |
+| `--migration-dir <DIR>` | Directory for reading and writing migration files (default: `./migrations`) |
+
+`--migration-dir` accepts a path relative to the project root or an absolute
+path. New files are written under `<DIR>/<app_label>/`; existing migrations in
+that directory determine numbering and dependencies. The same directory is used
+by `--dry-run`, `--check`, and `--merge`.
 
 Initial migrations record `dependencies` for every external table provider
 referenced by inline foreign keys. Same-app `CreateTable` operations are

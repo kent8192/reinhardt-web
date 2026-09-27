@@ -268,34 +268,48 @@ assert!(response.should_stop_chain());
 
 ### Streaming Response
 
+HTTP macro endpoints can return `ViewResult<StreamingResponse<StreamBody>>`
+directly through `ServerRouter`, middleware, and native `manage runserver`:
+
 ```rust
-use reinhardt::http::StreamingResponse;
-use futures::stream::{self, StreamExt};
 use bytes::Bytes;
-use hyper::StatusCode;
+use reinhardt::{get, ServerRouter};
+use reinhardt::http::{StreamingResponse, StreamBody, ViewResult};
 
-let data = vec![
-	Bytes::from("chunk1"),
-	Bytes::from("chunk2"),
-	Bytes::from("chunk3"),
-];
+#[get("/events", name = "events")]
+async fn events() -> ViewResult<StreamingResponse<StreamBody>> {
+	let stream: StreamBody = Box::pin(futures_util::stream::iter([
+		Ok(Bytes::from_static(b"data: hello\n\n")),
+	]));
+	Ok(StreamingResponse::new(stream).media_type("text/event-stream"))
+}
 
-let stream = stream::iter(data.into_iter().map(Ok));
-
-// Create streaming response (default status: 200 OK)
-let response = StreamingResponse::new(Box::pin(stream))
-	.status(StatusCode::OK)
-	.media_type("text/plain");
-
-// Or use with_status for custom status code
-let response = StreamingResponse::with_status(
-	Box::pin(stream),
-	StatusCode::OK,
-)
-.media_type("text/plain");
-
-// Use for large files, server-sent events, etc.
+let router = ServerRouter::new().endpoint(events);
 ```
+
+Use the `api-only` facade feature with `bytes = "1"` and
+`futures-util = "0.3"`. Replace the finite example stream with a channel receiver
+or another asynchronous producer for an unbounded event feed. Manual `Handler`
+implementations return `Ok(streaming_response.into())`; alternatively construct
+`Response::ok().with_stream(stream)`.
+
+HTTP/1 and HTTP/2 send available chunks before the producer completes. The
+transport polls on demand without collecting the stream or spawning a producer
+task. A body error terminates the transfer rather than becoming successful EOF.
+Disconnecting drops the stream; any background producer owned by the application
+must observe receiver closure or use its own cancellation guard.
+
+The response's buffered `body` field is empty for streams. Middleware must check
+`Response::is_streaming()` before inspecting or transforming those bytes. Built-in
+buffered compression, caching, and automatic ETag generation skip streaming
+bodies. Application-supplied validators remain usable with conditional GET middleware. Body replacement through
+`with_body` or `with_json` releases the old
+stream. Stream construction removes `Content-Length` and `Transfer-Encoding` so
+the transport chooses framing for the unknown body length.
+
+Cloning `Response` shares a single-use producer, not replayable data. The first
+transport takes ownership; sending a second clone returns a body error. Retaining
+another clone does not keep a producer alive after its transport disconnects.
 
 ## API Reference
 
