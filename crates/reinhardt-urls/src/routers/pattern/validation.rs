@@ -76,7 +76,7 @@ pub(super) fn type_spec_to_regex(type_spec: &str) -> &'static str {
 /// - Percent-encoded traversal sequences (`%2e`, `%2f`, `%2E`, `%2F`, `%5c`, `%5C`)
 /// - Null bytes (literal or encoded `%00`)
 /// - Absolute paths starting with `/` or `\`
-pub(super) fn validate_path_param(value: &str) -> bool {
+pub(crate) fn validate_path_param(value: &str) -> bool {
 	// Reject null bytes
 	if value.contains('\0') {
 		return false;

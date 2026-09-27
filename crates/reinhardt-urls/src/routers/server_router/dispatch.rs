@@ -5,6 +5,7 @@
 
 use super::ServerRouter;
 use super::types::RouteMatch;
+use crate::routers::pattern::validate_path_param;
 use hyper::Method;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::PathParams;
@@ -164,6 +165,14 @@ impl ServerRouter {
 				// tuple extractor (see issue #4013).
 				let mut params = PathParams::with_capacity(matched.params.iter().count());
 				for (key, value) in matched.params.iter() {
+					if route_handler
+						.path_type_params
+						.iter()
+						.any(|name| name == key)
+						&& !validate_path_param(value)
+					{
+						return None;
+					}
 					params.insert(key, value);
 				}
 

@@ -210,6 +210,13 @@ impl PathPattern {
 	// Share syntax normalization with ServerRouter without requiring its raw
 	// matchit patterns (including catch-alls and escaped braces) to parse as regexes.
 	pub(crate) fn normalize_matchit_pattern(pattern: &str) -> String {
+		Self::normalize_matchit_pattern_with_path_params(pattern).0
+	}
+
+	pub(crate) fn normalize_matchit_pattern_with_path_params(
+		pattern: &str,
+	) -> (String, Vec<String>) {
+		let mut path_params = Vec::new();
 		let mut result = String::new();
 		let mut chars = pattern.chars().peekable();
 
@@ -245,6 +252,7 @@ impl PathPattern {
 						let name = &inner[colon_pos + 1..];
 						if type_spec == "path" {
 							// Convert path type to matchit catch-all: {*name}
+							path_params.push(name.to_owned());
 							result.push_str(&format!("{{*{}}}", name));
 						} else {
 							// Other typed params use simple {name}
@@ -262,7 +270,7 @@ impl PathPattern {
 			}
 		}
 
-		result
+		(result, path_params)
 	}
 	/// Get the list of parameter names in the pattern
 	///

@@ -1731,3 +1731,53 @@ async fn inherited_exception_handler_reaches_router_middleware() {
 		assert_eq!(calls.load(Ordering::SeqCst), 1);
 	}
 }
+
+#[rstest]
+#[case::parent("foo/../../etc/passwd")]
+#[case::encoded_dots("foo/%2e%2e/etc/passwd")]
+#[case::encoded_slashes("foo%2f..%2fsecret")]
+#[case::encoded_backslash("foo%5C..%5csecret")]
+#[case::encoded_null("foo/%00secret")]
+#[case::absolute("/etc/passwd")]
+#[case::backslash("foo\\..\\secret")]
+fn test_typed_path_endpoint_rejects_traversal(
+	#[case] asset: &str,
+	#[values(false, true)] prefixed: bool,
+) {
+	// Arrange
+	let router = if prefixed {
+		ServerRouter::new().with_prefix("/api/").mount(
+			"/static/",
+			ServerRouter::new().endpoint(|| TestEndpoint::<29>),
+		)
+	} else {
+		ServerRouter::new().endpoint(|| TestEndpoint::<29>)
+	};
+	let path = if prefixed {
+		format!("/api/static/files/{asset}")
+	} else {
+		format!("/files/{asset}")
+	};
+
+	let safe_path = if prefixed {
+		"/api/static/files/nested/asset.txt"
+	} else {
+		"/files/nested/asset.txt"
+	};
+
+	// Act
+	let safe_match = router.resolve(safe_path, &Method::GET);
+	let matched = router.resolve(&path, &Method::GET);
+
+	// Assert
+	assert_eq!(
+		safe_match
+			.expect("safe nested path should resolve")
+			.param("asset"),
+		Some("nested/asset.txt")
+	);
+	assert!(
+		matched.is_none(),
+		"unsafe typed path must not reach its handler"
+	);
+}

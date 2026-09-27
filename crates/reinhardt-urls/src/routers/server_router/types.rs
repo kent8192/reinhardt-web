@@ -89,6 +89,9 @@ pub(crate) fn join_path(prefix: &str, suffix: &str) -> String {
 /// Handler information stored in matchit router
 #[derive(Clone)]
 pub(crate) struct RouteHandler {
+	/// Typed path captures that require traversal validation before dispatch.
+	pub(crate) path_type_params: Vec<String>,
+
 	/// The actual handler
 	pub(crate) handler: Arc<dyn Handler>,
 
