@@ -43,6 +43,13 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			26 => "/items",
 			27 => "/users",
 			28 => "/profile",
+			29 => "/files/{<path:asset>}",
+			30 => "/files/{*asset}",
+			31 => "/users/{<int:id>}/files/{<path:asset>}",
+			32 => "/files/{<path:asset>}/metadata",
+			33 => "/files/{{<path:literal>}}/{<path:asset>}",
+			34 => "/files/{<path:asset>",
+			35 => "/static/files/{<path:asset>}",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -85,6 +92,12 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			26 => "items-list",
 			27 => "users-create",
 			28 => "!profile_detail",
+			29 | 30 => "files",
+			31 => "user-files",
+			32 => "file-metadata",
+			33 => "escaped-files",
+			34 => "unclosed-files",
+			35 => "prefixed-files",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -298,6 +311,66 @@ fn test_nested_namespace_registration() {
 }
 
 #[rstest]
+#[case::nested("nested/file.txt", true)]
+#[case::unicode("images/日本語.png", true)]
+#[case::colon_filename("reports/version:1.txt", true)]
+#[case::encoded_colon_filename("reports/version%3A1.txt", true)]
+#[case::encoded_initial_letter("%43ss/file.txt", true)]
+#[case::empty("", false)]
+#[case::parent("nested/../secret", false)]
+#[case::trailing_parent("nested/..", false)]
+#[case::absolute("/etc/passwd", false)]
+#[case::drive("C:/Windows/win.ini", false)]
+#[case::encoded_drive_colon("C%3A/Windows/win.ini", false)]
+#[case::encoded_drive_letter("%43:/Windows/win.ini", false)]
+#[case::encoded_drive_both("%43%3a/Windows/win.ini", false)]
+#[case::encoded_relative_colon("c%3asecret.txt", false)]
+#[case::encoded_relative_letter("%63:secret.txt", false)]
+#[case::encoded_bare_drive("%5a%3A", false)]
+#[case::backslash(r"nested\file.txt", false)]
+#[case::query("nested/file.txt?admin=1", false)]
+#[case::fragment("nested/file.txt#admin", false)]
+#[case::encoded_parent("nested/%2e%2e/secret", false)]
+#[case::encoded_separator("nested%2Ffile.txt", false)]
+#[case::encoded_query("nested/file.txt%3Fadmin=1", false)]
+#[case::encoded_fragment("nested/file.txt%23admin", false)]
+fn registered_typed_path_reverse_validates_converter_values(
+	#[case] asset: &str,
+	#[case] valid: bool,
+	#[values(false, true)] mounted: bool,
+) {
+	// Arrange
+	let child = ServerRouter::new().endpoint(|| TestEndpoint::<29>);
+	let (mut router, name, prefix) = if mounted {
+		(
+			ServerRouter::new()
+				.with_namespace("v1")
+				.with_prefix("/api/")
+				.mount("/static/", child.with_namespace("media")),
+			"v1:media:files",
+			"/api/static",
+		)
+	} else {
+		(child, "files", "")
+	};
+	let registration_errors = router.register_all_routes();
+
+	// Act
+	let reversed = router.reverse(name, &[("asset", asset)]);
+	let captured = reversed
+		.as_deref()
+		.and_then(|path| router.resolve(path, &Method::GET));
+
+	// Assert
+	assert_eq!(registration_errors, Vec::<String>::new());
+	assert_eq!(reversed, valid.then(|| format!("{prefix}/files/{asset}")));
+	assert_eq!(
+		captured.as_ref().and_then(|matched| matched.param("asset")),
+		valid.then_some(asset)
+	);
+}
+
+#[rstest]
 fn test_mount_prefix_inheritance() {
 	// Arrange
 	let child = ServerRouter::new();
@@ -430,6 +503,162 @@ async fn test_route_matching_different_methods() {
 }
 
 #[rstest]
+#[case::single_segment("/files/single.txt", "single.txt")]
+#[case::nested_path("/files/nested/file.txt", "nested/file.txt")]
+#[case::trailing_slash("/files/nested/directory/", "nested/directory/")]
+fn test_catch_all_endpoint_matching(
+	#[case] path: &str,
+	#[case] asset: &str,
+	#[values(false, true)] typed: bool,
+) {
+	// Arrange
+	let router = if typed {
+		ServerRouter::new().endpoint(|| TestEndpoint::<29>)
+	} else {
+		ServerRouter::new().endpoint(|| TestEndpoint::<30>)
+	};
+
+	// Act
+	let validation = router.validate_routes();
+	let matched = router.resolve(path, &Method::GET);
+
+	// Assert
+	assert_eq!(validation, Ok(()));
+	let matched = matched.expect("a validated catch-all endpoint should match");
+	assert_eq!(
+		matched.params.as_slice(),
+		&[(String::from("asset"), asset.to_owned())]
+	);
+}
+
+#[rstest]
+fn test_typed_endpoint_preserves_parameter_names_and_order() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<31>);
+
+	// Act
+	let validation = router.validate_routes();
+	let matched = router.resolve("/users/42/files/nested/file.txt", &Method::GET);
+
+	// Assert
+	assert_eq!(validation, Ok(()));
+	let matched = matched.expect("typed parameters should match");
+	assert_eq!(
+		matched.params.as_slice(),
+		&[
+			(String::from("id"), String::from("42")),
+			(String::from("asset"), String::from("nested/file.txt")),
+		]
+	);
+}
+
+#[rstest]
+#[case::direct(0)]
+#[case::child(1)]
+#[case::grandchild(2)]
+fn test_validate_routes_rejects_nonterminal_path_converter(
+	#[case] depth: usize,
+	#[values(false, true)] lazy_first: bool,
+) {
+	// Arrange
+	let mut router = ServerRouter::new().endpoint(|| TestEndpoint::<32>);
+	let mut valid_router = ServerRouter::new().endpoint(|| TestEndpoint::<29>);
+	for _ in 0..depth {
+		router = ServerRouter::new().mount("/child/", router);
+		valid_router = ServerRouter::new().mount("/child/", valid_router);
+	}
+	let mut matcher = matchit::Router::new();
+	let expected_error = matcher
+		.insert("/files/{*asset}/metadata", ())
+		.expect_err("catch-all parameters must be terminal");
+
+	// Act
+	let lazy_match = lazy_first.then(|| {
+		router
+			.resolve(
+				&format!("{}/files/nested/file.txt/metadata", "/child".repeat(depth)),
+				&Method::GET,
+			)
+			.is_some()
+	});
+	let validation = router.validate_routes();
+	let repeated = router.validate_routes();
+	let valid_first = valid_router.validate_routes();
+	let valid_repeated = valid_router.validate_routes();
+
+	// Assert
+	assert_eq!(lazy_match, lazy_first.then_some(false));
+	assert_eq!(valid_first, Ok(()));
+	assert_eq!(valid_repeated, Ok(()));
+	assert_eq!(
+		validation,
+		Err(vec![format!(
+			"Failed to compile route '/files/{{<path:asset>}}/metadata' (GET): {expected_error}"
+		)])
+	);
+	assert_eq!(repeated, validation);
+}
+
+#[rstest]
+fn test_typed_endpoint_preserves_escaped_literal_braces() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<33>);
+
+	// Act
+	let validation = router.validate_routes();
+	let matched = router.resolve("/files/{<path:literal>}/nested/file.txt", &Method::GET);
+
+	// Assert
+	assert_eq!(validation, Ok(()));
+	let matched = matched.expect("escaped braces should remain literal");
+	assert_eq!(
+		matched.params.as_slice(),
+		&[(String::from("asset"), String::from("nested/file.txt"))]
+	);
+}
+
+#[rstest]
+fn test_validate_routes_rejects_unclosed_typed_parameter() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<34>);
+	let mut matcher = matchit::Router::new();
+	let expected_error = matcher
+		.insert("/files/{<path:asset>", ())
+		.expect_err("parameter braces must be closed");
+
+	// Act
+	let validation = router.validate_routes();
+
+	// Assert
+	assert_eq!(
+		validation,
+		Err(vec![format!(
+			"Failed to compile route '/files/{{<path:asset>' (GET): {expected_error}"
+		)])
+	);
+}
+
+#[rstest]
+fn test_typed_endpoint_with_absolute_prefix() {
+	// Arrange
+	let router = ServerRouter::new()
+		.with_prefix("/static")
+		.endpoint(|| TestEndpoint::<35>);
+
+	// Act
+	let validation = router.validate_routes();
+	let matched = router.resolve("/static/files/nested/file.txt", &Method::GET);
+
+	// Assert
+	assert_eq!(validation, Ok(()));
+	let matched = matched.expect("an absolute endpoint prefix must only be applied once");
+	assert_eq!(
+		matched.params.as_slice(),
+		&[(String::from("asset"), String::from("nested/file.txt"))]
+	);
+}
+
+#[rstest]
 fn test_validate_routes_success() {
 	// Arrange
 	let router = ServerRouter::new()
@@ -479,9 +708,9 @@ fn test_router_recovers_from_poisoned_rwlock() {
 	// Arrange
 	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
 
-	// Poison the routes_compiled RwLock by panicking while holding write guard
+	// Poison the compilation-result RwLock by panicking while holding its write guard
 	let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-		let _guard = router.routes_compiled.write().unwrap();
+		let _guard = router.route_compilation.write().unwrap();
 		panic!("intentional panic to poison lock");
 	}));
 
@@ -1587,4 +1816,119 @@ async fn inherited_exception_handler_reaches_router_middleware() {
 		assert_eq!(response.body, bytes::Bytes::from_static(b"teapot"));
 		assert_eq!(calls.load(Ordering::SeqCst), 1);
 	}
+}
+
+#[rstest]
+#[case::parent("foo/../../etc/passwd")]
+#[case::encoded_dots("foo/%2e%2e/etc/passwd")]
+#[case::encoded_slashes("foo%2f..%2fsecret")]
+#[case::encoded_backslash("foo%5C..%5csecret")]
+#[case::encoded_null("foo/%00secret")]
+#[case::absolute("/etc/passwd")]
+#[case::backslash("foo\\..\\secret")]
+#[case::mixed_forward(r"foo/..\../secret")]
+#[case::mixed_backward(r"foo\../..\secret")]
+#[case::mixed_adjacent(r"foo/..\/secret")]
+#[case::drive_absolute("C:/Windows/win.ini")]
+#[case::drive_backslash(r"C:\Windows\win.ini")]
+#[case::drive_relative("c:secret.txt")]
+#[case::encoded_drive_colon("C%3A/Windows/win.ini")]
+#[case::encoded_drive_letter("%43:/Windows/win.ini")]
+#[case::encoded_drive_both("%43%3a/Windows/win.ini")]
+fn test_typed_path_endpoint_rejects_traversal(
+	#[case] asset: &str,
+	#[values(false, true)] prefixed: bool,
+) {
+	// Arrange
+	let router = if prefixed {
+		ServerRouter::new().with_prefix("/api/").mount(
+			"/static/",
+			ServerRouter::new().endpoint(|| TestEndpoint::<29>),
+		)
+	} else {
+		ServerRouter::new().endpoint(|| TestEndpoint::<29>)
+	};
+	let path = if prefixed {
+		format!("/api/static/files/{asset}")
+	} else {
+		format!("/files/{asset}")
+	};
+
+	let safe_path = if prefixed {
+		"/api/static/files/nested/asset.txt"
+	} else {
+		"/files/nested/asset.txt"
+	};
+
+	// Act
+	let safe_match = router.resolve(safe_path, &Method::GET);
+	let matched = router.resolve(&path, &Method::GET);
+
+	// Assert
+	assert_eq!(
+		safe_match
+			.expect("safe nested path should resolve")
+			.param("asset"),
+		Some("nested/asset.txt")
+	);
+	assert!(
+		matched.is_none(),
+		"unsafe typed path must not reach its handler"
+	);
+	assert!(!router.path_exists_for_any_method(&path));
+	assert!(router.path_exists_for_any_method(safe_path));
+}
+
+#[rstest]
+#[case::parent("foo/../secret")]
+#[case::encoded("foo/%2e%2e/secret")]
+#[case::mixed_forward(r"foo/..\../secret")]
+#[case::mixed_backward(r"foo\../..\secret")]
+#[case::drive_absolute("C:/Windows/win.ini")]
+#[case::drive_relative("c:secret.txt")]
+#[case::encoded_drive_colon("C%3A/Windows/win.ini")]
+#[case::encoded_drive_letter("%43:/Windows/win.ini")]
+#[tokio::test]
+async fn rejected_typed_paths_report_not_found(
+	#[case] asset: &str,
+	#[values(false, true)] mounted: bool,
+	#[values(Method::GET, Method::POST)] method: Method,
+) {
+	// Arrange
+	let child = ServerRouter::new().endpoint(|| TestEndpoint::<29>);
+	let (router, prefix) = if mounted {
+		(ServerRouter::new().mount("/static/", child), "/static")
+	} else {
+		(child, "")
+	};
+	let path = format!("{prefix}/files/{asset}");
+	let request = Request::builder()
+		.method(method.clone())
+		.uri(&path)
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
+	let valid_wrong_method = Request::builder()
+		.method(Method::POST)
+		.uri(format!("{prefix}/files/nested/file.txt"))
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
+
+	// Act
+	let rejected = router.handle(request).await.expect_err("rejected route");
+	let wrong_method = router
+		.handle(valid_wrong_method)
+		.await
+		.expect_err("GET-only route");
+
+	// Assert
+	assert!(
+		matches!(rejected, reinhardt_http::Error::NotFound(ref message)
+		if message == &format!("No route for {method} {path}"))
+	);
+	assert!(
+		matches!(wrong_method, reinhardt_http::Error::MethodNotAllowed(ref message)
+		if message == &format!("Method POST not allowed for {prefix}/files/nested/file.txt"))
+	);
 }

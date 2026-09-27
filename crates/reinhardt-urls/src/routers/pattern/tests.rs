@@ -6,6 +6,7 @@ use super::radix::RadixRouter;
 use super::validation::{
 	MAX_PATH_SEGMENTS, MAX_PATTERN_LENGTH, validate_path_param, validate_reverse_param,
 };
+use rstest::rstest;
 use std::collections::HashMap;
 
 #[test]
@@ -77,6 +78,25 @@ fn test_reverse_single_parameter() {
 
 	let result = pattern.reverse(&params).unwrap();
 	assert_eq!(result, "/users/123/");
+}
+
+#[rstest]
+fn typed_path_reverse_keeps_single_segment_parameters_restricted() {
+	// Arrange
+	let pattern = PathPattern::new("/users/{id}/files/{<path:asset>}").unwrap();
+	let params = HashMap::from([
+		("id".into(), "alice/admin".into()),
+		("asset".into(), "nested/file.txt".into()),
+	]);
+
+	// Act
+	let reversed = pattern.reverse(&params);
+
+	// Assert
+	assert_eq!(
+		reversed,
+		Err("Invalid parameter value for 'id': contains dangerous characters".into())
+	);
 }
 
 #[test]
@@ -517,6 +537,68 @@ fn test_validate_path_param_rejects_absolute_paths() {
 	// Arrange & Act & Assert
 	assert!(!validate_path_param("/etc/passwd"));
 	assert!(!validate_path_param("\\windows\\system32"));
+}
+
+#[rstest]
+#[case::absolute_forward("C:/Windows/win.ini")]
+#[case::absolute_backward(r"C:\Windows\win.ini")]
+#[case::lowercase_drive("c:/Windows/win.ini")]
+#[case::drive_relative("C:secret.txt")]
+#[case::bare_drive("C:")]
+#[case::encoded_colon("C%3A/Windows/win.ini")]
+#[case::encoded_letter("%43:/Windows/win.ini")]
+#[case::encoded_both("%43%3a/Windows/win.ini")]
+#[case::encoded_relative_colon("c%3asecret.txt")]
+#[case::encoded_relative_letter("%63:secret.txt")]
+#[case::encoded_bare_drive("%5a%3A")]
+fn typed_path_rejects_windows_drive_prefixes(#[case] value: &str) {
+	// Arrange
+	let pattern = PathPattern::new("/files/{<path:asset>}").unwrap();
+	let path = format!("/files/{value}");
+
+	// Act
+	let extracted = pattern.extract_params(&path);
+	let safe = pattern.extract_params("/files/reports/version:1.txt");
+
+	// Assert
+	assert_eq!(extracted, None);
+	assert!(!validate_path_param(value));
+	assert_eq!(
+		safe.unwrap().get("asset").map(String::as_str),
+		Some("reports/version:1.txt")
+	);
+}
+
+#[rstest]
+#[case::mixed_forward(r"foo/..\../secret")]
+#[case::mixed_backward(r"foo\../..\secret")]
+#[case::mixed_adjacent(r"foo/..\/secret")]
+fn typed_path_rejects_mixed_separator_traversal(
+	#[case] value: &str,
+	#[values(MatchingMode::Linear, MatchingMode::RadixTree)] mode: MatchingMode,
+) {
+	// Arrange
+	let pattern = PathPattern::new("/files/{<path:asset>}").unwrap();
+	let path = format!("/files/{value}");
+	let mut matcher = PathMatcher::with_mode(mode);
+	matcher
+		.add_pattern(pattern.clone(), "files".into())
+		.unwrap();
+
+	// Act
+	let extracted = pattern.extract_params(&path);
+	let matched = matcher.match_path(&path);
+	let safe = matcher.match_path("/files/nested/..hidden/file.txt");
+
+	// Assert
+	assert_eq!(extracted, None);
+	assert_eq!(matched, None);
+	let (handler, params) = safe.expect("a dot-prefixed filename should remain accepted");
+	assert_eq!(handler, "files");
+	assert_eq!(
+		params.get("asset").map(String::as_str),
+		Some("nested/..hidden/file.txt")
+	);
 }
 
 #[test]

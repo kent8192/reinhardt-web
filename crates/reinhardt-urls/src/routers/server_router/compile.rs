@@ -8,6 +8,7 @@ use super::ServerRouter;
 #[cfg(feature = "viewsets")]
 use super::handlers::ViewSetHandler;
 use super::types::RouteHandler;
+use crate::routers::pattern::PathPattern;
 use hyper::Method;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::Action;
@@ -26,24 +27,30 @@ impl ServerRouter {
 	/// all routes compiled successfully. RwLock poisoning is recovered from
 	/// via `PoisonError::into_inner` to prevent cascade failures.
 	pub(crate) fn compile_routes(&self) -> Vec<String> {
-		// Check if already compiled (read lock, recovers from poisoning)
-		if *self
-			.routes_compiled
-			.read()
-			.unwrap_or_else(PoisonError::into_inner)
+		// Preserve diagnostics for repeated validation and lazy resolution.
 		{
-			return Vec::new();
+			let cached = self
+				.route_compilation
+				.read()
+				.unwrap_or_else(PoisonError::into_inner);
+			if let Some(errors) = cached.as_ref() {
+				return errors.clone();
+			}
+		}
+
+		// Serialize cold compilation so concurrent callers cannot insert duplicates.
+		let mut cached = self
+			.route_compilation
+			.write()
+			.unwrap_or_else(PoisonError::into_inner);
+		if let Some(errors) = cached.as_ref() {
+			return errors.clone();
 		}
 
 		let mut errors = Vec::new();
 
 		// Compile endpoint routes
 		for func_route in &self.functions {
-			let route_handler = RouteHandler {
-				handler: func_route.handler.clone(),
-				middleware: func_route.middleware.clone(),
-			};
-
 			// Strip prefix from route path to avoid double-prefix matching.
 			// Routes may be registered with absolute paths that already include the prefix
 			// (e.g., server functions register as "/api/server_fn/login"). Since resolve()
@@ -51,9 +58,16 @@ impl ServerRouter {
 			// we must also strip the prefix here during compilation.
 			let route_path_owned = Self::strip_prefix_normalized(&self.prefix, &func_route.path)
 				.unwrap_or_else(|| Cow::Borrowed(&func_route.path));
-			let route_path: &str = &route_path_owned;
+			let (route_path, path_type_params) =
+				PathPattern::normalize_matchit_pattern_with_path_params(&route_path_owned);
+			let route_handler = RouteHandler {
+				handler: func_route.handler.clone(),
+				middleware: func_route.middleware.clone(),
+				path_type_params,
+			};
 
-			// matchit uses {name} format which matches our pattern
+			// Normalize typed converters before matching so catch-alls consume
+			// nested paths and matchit exposes the declared parameter names.
 			let router_lock = match func_route.method {
 				Method::GET => &self.get_router,
 				Method::POST => &self.post_router,
@@ -67,7 +81,7 @@ impl ServerRouter {
 			if let Err(e) = router_lock
 				.write()
 				.unwrap_or_else(PoisonError::into_inner)
-				.insert(route_path, route_handler)
+				.insert(&route_path, route_handler)
 			{
 				errors.push(format!(
 					"Failed to compile route '{}' ({}): {}",
@@ -79,6 +93,7 @@ impl ServerRouter {
 		// Compile view routes (views handle all methods internally)
 		for view_route in &self.views {
 			let route_handler = RouteHandler {
+				path_type_params: Vec::new(),
 				handler: view_route.handler.clone(),
 				middleware: view_route.middleware.clone(),
 			};
@@ -112,6 +127,7 @@ impl ServerRouter {
 		// Compile raw routes (routes handle all methods internally)
 		for route in &self.routes {
 			let route_handler = RouteHandler {
+				path_type_params: Vec::new(),
 				handler: route.handler_arc(),
 				middleware: route.middleware.clone(),
 			};
@@ -145,11 +161,8 @@ impl ServerRouter {
 		#[cfg(feature = "viewsets")]
 		self.compile_viewset_routes(&mut errors);
 
-		// Mark routes as compiled
-		*self
-			.routes_compiled
-			.write()
-			.unwrap_or_else(PoisonError::into_inner) = true;
+		// Cache the result, including failures, without recompiling partial routers.
+		*cached = Some(errors.clone());
 
 		errors
 	}
@@ -164,6 +177,7 @@ impl ServerRouter {
 			let collection_path = format!("{}/", base_path.trim_end_matches('/'));
 
 			let list_handler = RouteHandler {
+				path_type_params: Vec::new(),
 				handler: Arc::new(ViewSetHandler {
 					viewset: viewset.clone(),
 					action: Action::list(),
@@ -183,6 +197,7 @@ impl ServerRouter {
 			}
 
 			let create_handler = RouteHandler {
+				path_type_params: Vec::new(),
 				handler: Arc::new(ViewSetHandler {
 					viewset: viewset.clone(),
 					action: Action::create(),
@@ -205,6 +220,7 @@ impl ServerRouter {
 			let detail_path = format!("{}/{{{}}}/", base_path.trim_end_matches('/'), lookup_field);
 
 			let retrieve_handler = RouteHandler {
+				path_type_params: Vec::new(),
 				handler: Arc::new(ViewSetHandler {
 					viewset: viewset.clone(),
 					action: Action::retrieve(),
@@ -224,6 +240,7 @@ impl ServerRouter {
 			}
 
 			let update_handler = RouteHandler {
+				path_type_params: Vec::new(),
 				handler: Arc::new(ViewSetHandler {
 					viewset: viewset.clone(),
 					action: Action::update(),
@@ -243,6 +260,7 @@ impl ServerRouter {
 			}
 
 			let destroy_handler = RouteHandler {
+				path_type_params: Vec::new(),
 				handler: Arc::new(ViewSetHandler {
 					viewset: viewset.clone(),
 					action: Action::destroy(),
@@ -263,11 +281,12 @@ impl ServerRouter {
 		}
 	}
 
-	/// Validate all routes by compiling them and returning any errors.
+	/// Validate this router and all descendants by compiling their routes.
 	///
 	/// Call this at application startup to detect invalid route patterns early.
 	/// Returns `Ok(())` if all routes compiled successfully, or `Err` with
 	/// a list of compilation error messages.
+	/// Cached failures remain visible on repeated calls and after lazy resolution.
 	///
 	/// # Examples
 	///
@@ -294,7 +313,8 @@ impl ServerRouter {
 	/// assert!(router.validate_routes().is_ok());
 	/// ```
 	pub fn validate_routes(&self) -> std::result::Result<(), Vec<String>> {
-		let mut errors = self.compile_routes();
+		let mut errors = Vec::new();
+		self.collect_compilation_errors(&mut errors);
 		if let Err(name_errors) = self.validate_route_names() {
 			errors.extend(name_errors);
 		}
@@ -302,6 +322,13 @@ impl ServerRouter {
 			Ok(())
 		} else {
 			Err(errors)
+		}
+	}
+
+	fn collect_compilation_errors(&self, errors: &mut Vec<String>) {
+		errors.extend(self.compile_routes());
+		for child in &self.children {
+			child.collect_compilation_errors(errors);
 		}
 	}
 

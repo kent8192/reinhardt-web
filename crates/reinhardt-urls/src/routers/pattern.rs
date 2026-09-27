@@ -21,4 +21,4 @@ mod tests;
 pub use matcher::{MatchingMode, PathMatcher};
 pub use path_pattern::PathPattern;
 pub use radix::{RadixRouter, RadixRouterError};
-pub(crate) use validation::validate_reverse_param;
+pub(crate) use validation::{validate_path_param, validate_reverse_param};

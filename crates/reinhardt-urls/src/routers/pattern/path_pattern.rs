@@ -1,6 +1,6 @@
 use super::validation::{
 	MAX_PATH_SEGMENTS, MAX_PATTERN_LENGTH, MAX_REGEX_SIZE, type_spec_to_regex, validate_path_param,
-	validate_reverse_param,
+	validate_path_reverse_param, validate_reverse_param,
 };
 use aho_corasick::AhoCorasick;
 use regex::Regex;
@@ -204,18 +204,44 @@ impl PathPattern {
 	/// for use with the matchit radix router. Non-path parameters remain
 	/// as `{name}`.
 	pub(crate) fn to_matchit_pattern(&self) -> String {
+		Self::normalize_matchit_pattern(&self.pattern)
+	}
+
+	// Share syntax normalization with ServerRouter without requiring its raw
+	// matchit patterns (including catch-alls and escaped braces) to parse as regexes.
+	pub(crate) fn normalize_matchit_pattern(pattern: &str) -> String {
+		Self::normalize_matchit_pattern_with_path_params(pattern).0
+	}
+
+	pub(crate) fn normalize_matchit_pattern_with_path_params(
+		pattern: &str,
+	) -> (String, Vec<String>) {
+		let mut path_params = Vec::new();
 		let mut result = String::new();
-		let mut chars = self.pattern.chars().peekable();
+		let mut chars = pattern.chars().peekable();
 
 		while let Some(ch) = chars.next() {
 			if ch == '{' {
+				if chars.next_if_eq(&'{').is_some() {
+					result.push_str("{{");
+					continue;
+				}
 				let mut param_content = String::new();
+				let mut closed = false;
 				while let Some(&next_ch) = chars.peek() {
 					if next_ch == '}' {
 						chars.next();
+						closed = true;
 						break;
 					}
 					param_content.push(chars.next().unwrap());
+				}
+				if !closed {
+					// Preserve malformed input so matchit reports it instead of
+					// silently accepting a repaired route.
+					result.push('{');
+					result.push_str(&param_content);
+					break;
 				}
 
 				// Check for typed parameter: {<type:name>}
@@ -226,6 +252,7 @@ impl PathPattern {
 						let name = &inner[colon_pos + 1..];
 						if type_spec == "path" {
 							// Convert path type to matchit catch-all: {*name}
+							path_params.push(name.to_owned());
 							result.push_str(&format!("{{*{}}}", name));
 						} else {
 							// Other typed params use simple {name}
@@ -243,7 +270,7 @@ impl PathPattern {
 			}
 		}
 
-		result
+		(result, path_params)
 	}
 	/// Get the list of parameter names in the pattern
 	///
@@ -310,6 +337,10 @@ impl PathPattern {
 	/// - m: total parameter values length
 	/// - z: number of placeholder matches
 	///
+	/// `path` converter parameters accept non-empty relative paths containing
+	/// forward slashes. Other parameters remain limited to a single segment.
+	/// Traversal, absolute paths, and URL query or fragment injection are rejected.
+	///
 	/// # Arguments
 	///
 	/// * `params` - HashMap of parameter names to values
@@ -317,7 +348,7 @@ impl PathPattern {
 	/// # Returns
 	///
 	/// * `Ok(String)` - Reversed URL with parameters substituted
-	/// * `Err(String)` - If required parameters are missing
+	/// * `Err(String)` - If required parameters are missing or values are unsafe
 	///
 	/// # Examples
 	///
@@ -333,6 +364,10 @@ impl PathPattern {
 	///
 	/// let url = pattern.reverse(&params).unwrap();
 	/// assert_eq!(url, "/users/123/posts/456/");
+	///
+	/// let files = PathPattern::new("/files/{<path:asset>}").unwrap();
+	/// let params = HashMap::from([("asset".to_string(), "nested/file.txt".to_string())]);
+	/// assert_eq!(files.reverse(&params).unwrap(), "/files/nested/file.txt");
 	/// ```
 	pub fn reverse(&self, params: &HashMap<String, String>) -> Result<String, String> {
 		// Validate all required parameters are present
@@ -344,7 +379,12 @@ impl PathPattern {
 
 		// Validate parameter values against injection attacks
 		for (name, value) in params {
-			if !validate_reverse_param(value) {
+			let valid = if self.path_type_params.contains(name) {
+				validate_path_reverse_param(value)
+			} else {
+				validate_reverse_param(value)
+			};
+			if !valid {
 				return Err(format!(
 					"Invalid parameter value for '{}': contains dangerous characters",
 					name
