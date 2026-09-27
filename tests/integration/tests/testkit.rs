@@ -15,5 +15,8 @@ mod static_files_integration;
 #[path = "testkit/server_fn_integration.rs"]
 mod server_fn_integration;
 
+#[path = "testkit/server_guard_lifecycle.rs"]
+mod server_guard_lifecycle;
+
 #[path = "testkit/mock_integration.rs"]
 mod mock_integration;
