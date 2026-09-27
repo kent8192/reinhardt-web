@@ -133,7 +133,10 @@ brotli = { version = "8.0.2", optional = true }
 prometheus = { version = "0.14.0", optional = true }
 
 [dev-dependencies]
-reinhardt-urls = { workspace = true }
+# Keep router fixtures local: a versioned dev-dependency blocks publication
+# before reinhardt-urls is released (instructions/RELEASE_PROCESS.md, KI-2).
+# Remove this dependency when router integration tests move to the tests crate.
+reinhardt-urls = { path = "../reinhardt-urls", default-features = false }
 insta = { workspace = true }
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
