@@ -204,18 +204,37 @@ impl PathPattern {
 	/// for use with the matchit radix router. Non-path parameters remain
 	/// as `{name}`.
 	pub(crate) fn to_matchit_pattern(&self) -> String {
+		Self::normalize_matchit_pattern(&self.pattern)
+	}
+
+	// Share syntax normalization with ServerRouter without requiring its raw
+	// matchit patterns (including catch-alls and escaped braces) to parse as regexes.
+	pub(crate) fn normalize_matchit_pattern(pattern: &str) -> String {
 		let mut result = String::new();
-		let mut chars = self.pattern.chars().peekable();
+		let mut chars = pattern.chars().peekable();
 
 		while let Some(ch) = chars.next() {
 			if ch == '{' {
+				if chars.next_if_eq(&'{').is_some() {
+					result.push_str("{{");
+					continue;
+				}
 				let mut param_content = String::new();
+				let mut closed = false;
 				while let Some(&next_ch) = chars.peek() {
 					if next_ch == '}' {
 						chars.next();
+						closed = true;
 						break;
 					}
 					param_content.push(chars.next().unwrap());
+				}
+				if !closed {
+					// Preserve malformed input so matchit reports it instead of
+					// silently accepting a repaired route.
+					result.push('{');
+					result.push_str(&param_content);
+					break;
 				}
 
 				// Check for typed parameter: {<type:name>}

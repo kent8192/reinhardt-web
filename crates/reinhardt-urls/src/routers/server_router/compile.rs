@@ -8,6 +8,7 @@ use super::ServerRouter;
 #[cfg(feature = "viewsets")]
 use super::handlers::ViewSetHandler;
 use super::types::RouteHandler;
+use crate::routers::pattern::PathPattern;
 use hyper::Method;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::Action;
@@ -51,9 +52,10 @@ impl ServerRouter {
 			// we must also strip the prefix here during compilation.
 			let route_path_owned = Self::strip_prefix_normalized(&self.prefix, &func_route.path)
 				.unwrap_or_else(|| Cow::Borrowed(&func_route.path));
-			let route_path: &str = &route_path_owned;
+			let route_path = PathPattern::normalize_matchit_pattern(&route_path_owned);
 
-			// matchit uses {name} format which matches our pattern
+			// Normalize typed converters before matching so catch-alls consume
+			// nested paths and matchit exposes the declared parameter names.
 			let router_lock = match func_route.method {
 				Method::GET => &self.get_router,
 				Method::POST => &self.post_router,
@@ -67,7 +69,7 @@ impl ServerRouter {
 			if let Err(e) = router_lock
 				.write()
 				.unwrap_or_else(PoisonError::into_inner)
-				.insert(route_path, route_handler)
+				.insert(&route_path, route_handler)
 			{
 				errors.push(format!(
 					"Failed to compile route '{}' ({}): {}",

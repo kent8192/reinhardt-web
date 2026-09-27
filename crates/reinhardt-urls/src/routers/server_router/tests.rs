@@ -43,6 +43,13 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			26 => "/items",
 			27 => "/users",
 			28 => "/profile",
+			29 => "/files/{<path:asset>}",
+			30 => "/files/{*asset}",
+			31 => "/users/{<int:id>}/files/{<path:asset>}",
+			32 => "/files/{<path:asset>}/metadata",
+			33 => "/files/{{<path:literal>}}/{<path:asset>}",
+			34 => "/files/{<path:asset>",
+			35 => "/static/files/{<path:asset>}",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -85,6 +92,12 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			26 => "items-list",
 			27 => "users-create",
 			28 => "!profile_detail",
+			29 | 30 => "files",
+			31 => "user-files",
+			32 => "file-metadata",
+			33 => "escaped-files",
+			34 => "unclosed-files",
+			35 => "prefixed-files",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -427,6 +440,136 @@ async fn test_route_matching_different_methods() {
 	// Act & Assert - unsupported method
 	let result = router.match_own_routes("/users", &Method::DELETE);
 	assert!(result.is_none());
+}
+
+#[rstest]
+#[case::single_segment("/files/single.txt", "single.txt")]
+#[case::nested_path("/files/nested/file.txt", "nested/file.txt")]
+#[case::trailing_slash("/files/nested/directory/", "nested/directory/")]
+fn test_catch_all_endpoint_matching(
+	#[case] path: &str,
+	#[case] asset: &str,
+	#[values(false, true)] typed: bool,
+) {
+	// Arrange
+	let router = if typed {
+		ServerRouter::new().endpoint(|| TestEndpoint::<29>)
+	} else {
+		ServerRouter::new().endpoint(|| TestEndpoint::<30>)
+	};
+
+	// Act
+	let validation = router.validate_routes();
+	let matched = router.resolve(path, &Method::GET);
+
+	// Assert
+	assert_eq!(validation, Ok(()));
+	let matched = matched.expect("a validated catch-all endpoint should match");
+	assert_eq!(
+		matched.params.as_slice(),
+		&[(String::from("asset"), asset.to_owned())]
+	);
+}
+
+#[rstest]
+fn test_typed_endpoint_preserves_parameter_names_and_order() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<31>);
+
+	// Act
+	let validation = router.validate_routes();
+	let matched = router.resolve("/users/42/files/nested/file.txt", &Method::GET);
+
+	// Assert
+	assert_eq!(validation, Ok(()));
+	let matched = matched.expect("typed parameters should match");
+	assert_eq!(
+		matched.params.as_slice(),
+		&[
+			(String::from("id"), String::from("42")),
+			(String::from("asset"), String::from("nested/file.txt")),
+		]
+	);
+}
+
+#[rstest]
+fn test_validate_routes_rejects_nonterminal_path_converter() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<32>);
+	let mut matcher = matchit::Router::new();
+	let expected_error = matcher
+		.insert("/files/{*asset}/metadata", ())
+		.expect_err("catch-all parameters must be terminal");
+
+	// Act
+	let validation = router.validate_routes();
+
+	// Assert
+	assert_eq!(
+		validation,
+		Err(vec![format!(
+			"Failed to compile route '/files/{{<path:asset>}}/metadata' (GET): {expected_error}"
+		)])
+	);
+}
+
+#[rstest]
+fn test_typed_endpoint_preserves_escaped_literal_braces() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<33>);
+
+	// Act
+	let validation = router.validate_routes();
+	let matched = router.resolve("/files/{<path:literal>}/nested/file.txt", &Method::GET);
+
+	// Assert
+	assert_eq!(validation, Ok(()));
+	let matched = matched.expect("escaped braces should remain literal");
+	assert_eq!(
+		matched.params.as_slice(),
+		&[(String::from("asset"), String::from("nested/file.txt"))]
+	);
+}
+
+#[rstest]
+fn test_validate_routes_rejects_unclosed_typed_parameter() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<34>);
+	let mut matcher = matchit::Router::new();
+	let expected_error = matcher
+		.insert("/files/{<path:asset>", ())
+		.expect_err("parameter braces must be closed");
+
+	// Act
+	let validation = router.validate_routes();
+
+	// Assert
+	assert_eq!(
+		validation,
+		Err(vec![format!(
+			"Failed to compile route '/files/{{<path:asset>' (GET): {expected_error}"
+		)])
+	);
+}
+
+#[rstest]
+fn test_typed_endpoint_with_absolute_prefix() {
+	// Arrange
+	let router = ServerRouter::new()
+		.with_prefix("/static")
+		.endpoint(|| TestEndpoint::<35>);
+
+	// Act
+	let validation = router.validate_routes();
+	let matched = router.resolve("/static/files/nested/file.txt", &Method::GET);
+
+	// Assert
+	assert_eq!(validation, Ok(()));
+	let matched = matched.expect("an absolute endpoint prefix must only be applied once");
+	assert_eq!(
+		matched.params.as_slice(),
+		&[(String::from("asset"), String::from("nested/file.txt"))]
+	);
 }
 
 #[rstest]
