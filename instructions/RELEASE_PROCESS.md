@@ -270,8 +270,10 @@ Packages introduced after the completed facade release belong to the next
 release and are excluded from this preflight.
 It checks the crates.io sparse index, matching reachable Git tags, and enabled
 GitHub Releases. Network errors, yanked versions, and inconsistent tags fail
-closed. Incomplete publication holds the next Release PR and points operators
-to RP-1; it never falls back to an older baseline or bumps past missing versions.
+closed. Release jobs explicitly provision Python 3.12 before running the
+`tomllib`-based validation on self-hosted runners. Incomplete publication holds
+the next Release PR and points operators to RP-1; it never falls back to an older
+baseline or bumps past missing versions.
 
 The disposable baseline receives the AWS Smithy `=1.6.3` dependency constraint
 where an AWS integration lacks it. Published versions predate this constraint,
@@ -719,8 +721,11 @@ applicable authorization in COMMIT_GUIDELINE.md CE-1.
 2. Prepare a recovery commit descending from the original Release PR merge,
    containing only the required packaging/source repair. Preserve the root
    `Cargo.toml`, `release-plz.toml`, package membership, and all package versions.
-   Already-published package directories must match their verified release tags
-   (or the original release merge when the tag is missing). This also permits
+   Already-published packages must match their verified release tags
+   (or the original release merge when the tag is missing). For the workspace
+   root, compare Cargo's actual published file lists at both revisions, including
+   deleted files, so a repair in an unpublished sibling is allowed. Other
+   package directories remain protected in full. This also permits
    repeated resumptions after a recovery publishes some repaired packages. Changes to
    shared dependency policy belong in the next release.
 3. Integrate that recovery commit into the release branch with a normal merge
@@ -738,6 +743,10 @@ applicable authorization in COMMIT_GUIDELINE.md CE-1.
      -f release_pr=6383 -f release_sha="FULL_40_CHARACTER_RECOVERY_SHA"
    ```
 
+Recovery requires an explicit full SHA and positive PR number before checking
+out the publication source; omitted inputs never default to the branch HEAD.
+Other manual modes do not require these recovery-only inputs.
+
 The workflow checks the PR's merged state, `release` label, repository, branch
 prefix, and base. The original merge must be an ancestor of the recovery source,
 and the recovery source must already be an ancestor of the dispatch revision.
@@ -749,6 +758,10 @@ Workflow scripts run from the dispatch revision, while publication uses a
 separate checkout pinned to the verified recovery SHA. After publication the
 workflow checks every enabled package's registry version and matching tags plus
 enabled GitHub Releases. A failed or incomplete recovery cannot announce success.
+A successful recovery exports the verified facade tag for announcement selection,
+even when that tag was created by an earlier attempt. A fully published source
+may be reconciled again to finish an announcement interrupted by a previous
+verification failure; release-plz skips the already-published packages.
 Missing metadata for an already-published package remains an explicit failure;
 never synthesize tags manually or treat a green retry as publication proof.
 
