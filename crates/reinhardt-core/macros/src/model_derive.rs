@@ -11461,13 +11461,20 @@ fn generate_new_alias(
 
 	let slot_count = user_fields
 		.iter()
-		.filter(|f| !fk_field_names.contains(&ident_to_wire_name(&f.name)))
+		.filter(|f| {
+			!(fk_field_names.contains(&ident_to_wire_name(&f.name))
+				|| f.is_fk_id_field && extract_option_type(&f.ty).0)
+		})
 		.count()
 		+ fk_id_field_names
 			.iter()
 			.filter(|id_name| {
 				let id_str = ident_to_wire_name(id_name);
 				fk_id_to_fk_field.contains_key(&id_str)
+					&& field_infos
+						.iter()
+						.find(|field| field.name == **id_name)
+						.is_some_and(|field| !extract_option_type(&field.ty).0)
 			})
 			.count();
 
@@ -11543,10 +11550,16 @@ fn generate_build_function(
 		.filter(|f| is_auto_generated_field(f))
 		.collect();
 
+	let nullable_fk_fields: Vec<_> = field_infos
+		.iter()
+		.filter(|field| fk_id_field_names.contains(&field.name) && extract_option_type(&field.ty).0)
+		.collect();
+
 	let optional_auto_fields: Vec<_> = auto_fields
 		.iter()
 		.copied()
 		.filter(|f| is_builder_optional_auto_field(f))
+		.chain(nullable_fk_fields.iter().copied())
 		.collect();
 
 	// Map of `*_id` (in field_infos / fk_id_field_names) -> related FK field name
@@ -11596,6 +11609,9 @@ fn generate_build_function(
 	for f in user_fields.iter() {
 		let name_str = ident_to_wire_name(&f.name);
 		if let Some(fk_field_name) = fk_id_to_fk_field.get(&name_str) {
+			if extract_option_type(&f.ty).0 {
+				continue;
+			}
 			// FK `*_id` field. Look up the related model type from the FK field.
 			let fk_field_info = field_infos
 				.iter()
@@ -11639,6 +11655,12 @@ fn generate_build_function(
 	// can supply the related model / primary key.
 	for fk_id_name in fk_id_field_names.iter() {
 		let fk_id_str = ident_to_wire_name(fk_id_name);
+		if nullable_fk_fields
+			.iter()
+			.any(|field| field.name == *fk_id_name)
+		{
+			continue;
+		}
 		// `fk_id_to_fk_field` only retains `*_id`-suffixed names (see its
 		// construction above); names that don't follow the convention have no
 		// implicit related-field name and are intentionally skipped.
@@ -11935,6 +11957,9 @@ fn generate_build_function(
 		.map(|fk_id_name| {
 			let name = fk_id_name.clone();
 			let name_wire = ident_to_wire_name(&name);
+			if nullable_fk_fields.iter().any(|field| field.name == name) {
+				return quote! { #name: self.#name.unwrap_or(::core::option::Option::None) };
+			}
 			quote! {
 				#name: self
 					.#name
@@ -11999,9 +12024,26 @@ fn generate_build_function(
 		.map(|f| {
 			let name = &f.name;
 			let ty = &f.ty;
+			let relation_setter = if let Some(fk_name) = fk_id_to_fk_field.get(&ident_to_wire_name(name)) {
+				let related_field = field_infos.iter().find(|field| ident_to_wire_name(&field.name) == *fk_name)
+					.expect("generated relation ID has a source field");
+				let setter_name = &related_field.name;
+				let related_type = extract_foreign_key_target_type(&related_field.ty);
+				quote! {
+					/// Set a present nullable relation using its model or raw primary key.
+					/// To store NULL, omit this setter or pass `None` to the generated ID setter.
+					pub fn #setter_name<__FkArg>(mut self, value: __FkArg) -> Self
+					where __FkArg: #orm_crate::IntoPrimaryKey<#related_type>,
+					{
+						self.#name = ::core::option::Option::Some(::core::option::Option::Some(value.into_primary_key()));
+						self
+					}
+				}
+			} else { quote! {} };
 			quote! {
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				impl #state_param_list #builder_name #state_param_list {
+					#relation_setter
 					/// Override this macro-managed field for this builder instance.
 					///
 					/// If this setter is not called, `finish()` uses the field's
