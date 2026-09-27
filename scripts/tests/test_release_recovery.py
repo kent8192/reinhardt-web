@@ -221,6 +221,53 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(ReleaseError, "uncommitted"):
             self.check()
 
+    def test_existing_tag_guards_a_repair_before_registry_visibility(self):
+        self.git("tag", "reinhardt-auth@v0.4.0-alpha.17")
+        state = self.state()
+        auth = next(
+            item for item in state["packages"] if item["name"] == "reinhardt-auth"
+        )
+        self.assertFalse(auth["published"])
+        self.assertTrue(auth["tag_exists"])
+        self.assertEqual(self.check(state=state)["mode"], "resume-release")
+
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn changed_again() {}\n")
+        self.source = self.workflow = self.commit("fixture: changed after recovery tag")
+        with self.assertRaisesRegex(
+            ReleaseError, "already-published package reinhardt-auth"
+        ):
+            self.check(state=self.state())
+
+    def test_existing_root_tag_guards_package_files_before_registry_visibility(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        tagged = self.source
+        for operation in ("modify", "add", "delete"):
+            with self.subTest(operation=operation):
+                self.git("checkout", "--detach", tagged)
+                if operation == "modify":
+                    (self.repo / "README.md").write_text(
+                        "Changed facade documentation\n"
+                    )
+                elif operation == "add":
+                    (self.repo / "src/extra.txt").write_text("New facade asset\n")
+                else:
+                    (self.repo / "src/data.txt").unlink()
+                self.source = self.workflow = self.commit(
+                    f"fixture: {operation} root file after release tag"
+                )
+                with self.assertRaisesRegex(
+                    ReleaseError, "already-published package reinhardt-web"
+                ):
+                    self.check(state=self.state())
+
+    def test_existing_root_tag_allows_an_unpublished_sibling_repair(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn repaired() {}\n")
+        self.source = self.workflow = self.commit("fixture: repair untagged auth")
+        before = self.git("worktree", "list", "--porcelain")
+        self.assertEqual(self.check(state=self.state())["mode"], "resume-release")
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
     def test_complete_release_can_be_reconciled_again_for_announcement(self):
         self.git("tag", "reinhardt-auth@v0.4.0-alpha.17")
         self.git("tag", "reinhardt-web@v0.4.0-alpha.17")

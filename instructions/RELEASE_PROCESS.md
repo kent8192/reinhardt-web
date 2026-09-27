@@ -739,8 +739,9 @@ applicable authorization in COMMIT_GUIDELINE.md CE-1.
 2. Prepare a recovery commit descending from the original Release PR merge,
    containing only the required packaging/source repair. Preserve the root
    `Cargo.toml`, `release-plz.toml`, package membership, and all package versions.
-   Already-published packages must match their verified release tags
-   (or the original release merge when the tag is missing). For the workspace
+   Packages with existing release tags must match those verified tags even
+   while registry visibility is delayed. Already-published packages without
+   tags must match the original release merge. For the workspace
    root, compare Cargo's actual published file lists at both revisions, including
    deleted files, so a repair in an unpublished sibling is allowed. Other
    package directories remain protected in full. This also permits

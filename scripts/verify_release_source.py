@@ -180,9 +180,10 @@ def verify(
         raise ReleaseError("Recovery must preserve package membership")
     state = state if state is not None else audit(repo, repository, inventory)
     for package in state["packages"]:
-        if package["published"]:
+        if package["published"] or (package["tag"] and package["tag_exists"]):
             # A prior recovery may already have published this exact repair.
-            # Its verified tag is the source boundary on subsequent resumptions.
+            # Its verified tag is a source boundary even before the registry
+            # index reflects publication on subsequent resumptions.
             published_source = (
                 f"refs/tags/{package['tag']}"
                 if package["tag"] and package["tag_exists"]
