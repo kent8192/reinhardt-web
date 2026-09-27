@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.17...reinhardt-query@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+- *(query)* split database and maintenance support rows
+- *(query)* correct database DDL backend support
+
+### Fixed
+
+- *(query)* preserve quoted SQL during parameter inlining
+- *(query)* apply MySQL line comment rules during inlining
+- *(query)* preserve build overrides when inlining values
+- *(query)* respect backend syntax during parameter inlining
+- *(query)* preserve postgres backtick operators
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.8...reinhardt-query@v0.4.0-alpha.9) - 2026-08-23
 
 ### Documentation
