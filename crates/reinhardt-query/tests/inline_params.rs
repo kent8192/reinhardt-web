@@ -165,3 +165,35 @@ fn inline_params_without_values_preserves_sql() {
 	let sql = r#"SELECT "$1", '$2', ?, $1"#;
 	assert_eq!(inline_params(sql, &Values::new()), sql);
 }
+
+#[rstest]
+fn mysql_to_string_inlines_after_two_minus_operators() {
+	let query = Query::select()
+		.expr(Expr::cust_with_values("1--?", [7]))
+		.to_owned();
+	assert_eq!(query.to_string(MySqlQueryBuilder), "SELECT 1--7");
+}
+
+#[rstest]
+#[case::mysql_space(MySqlQueryBuilder, "1-- ?\n2", "SELECT 1-- ?\n2, 7")]
+#[case::mysql_tab(MySqlQueryBuilder, "1--\t?\n2", "SELECT 1--\t?\n2, 7")]
+#[case::mysql_control(MySqlQueryBuilder, "1--\u{000b}?\n2", "SELECT 1--\u{000b}?\n2, 7")]
+#[case::sqlite_comment(SqliteQueryBuilder, "1--?\n2", "SELECT 1--?\n2, 7")]
+#[case::postgres_comment(PostgresQueryBuilder, "1--?\n2", "SELECT 1--?\n2, 7")]
+fn to_string_respects_backend_line_comments(
+	#[case] builder: impl QueryBuilderTrait,
+	#[case] expression: &str,
+	#[case] expected: &str,
+) {
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::cust(expression))
+		.expr(Expr::val(7))
+		.to_owned();
+
+	// Act
+	let inlined = query.to_string(builder);
+
+	// Assert
+	assert_eq!(inlined, expected);
+}

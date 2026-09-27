@@ -14,14 +14,20 @@ use crate::value::Values;
 /// Quoted identifiers, string literals (including PostgreSQL dollar quotes),
 /// and SQL comments are preserved. Only tokens in the original SQL are replaced;
 /// placeholder-like text inside inserted values is never interpreted again.
+/// This standalone helper uses standard SQL line comments. Statement
+/// `to_string()` methods additionally apply the selected backend's comment rules.
 /// Numbered tokens take precedence over `?` tokens, which can be PostgreSQL
 /// operators. Placeholders without a corresponding value are left unchanged.
 pub fn inline_params(sql: &str, values: &Values) -> String {
+	inline_params_with_dialect(sql, values, false)
+}
+
+fn inline_params_with_dialect(sql: &str, values: &Values, mysql: bool) -> String {
 	if values.is_empty() {
 		return sql.to_string();
 	}
 
-	let placeholders = placeholder_ranges(sql);
+	let placeholders = placeholder_ranges(sql, mysql);
 	let numbered = placeholders
 		.iter()
 		.any(|range| sql.as_bytes()[range.start] == b'$');
@@ -52,7 +58,7 @@ pub fn inline_params(sql: &str, values: &Values) -> String {
 
 // Locate complete placeholder tokens before rendering any values. Byte scanning
 // is safe here: delimiters are ASCII and slices end only at token boundaries.
-fn placeholder_ranges(sql: &str) -> Vec<Range<usize>> {
+fn placeholder_ranges(sql: &str, mysql: bool) -> Vec<Range<usize>> {
 	let bytes = sql.as_bytes();
 	let mut ranges = Vec::new();
 	let mut i = 0;
@@ -65,7 +71,12 @@ fn placeholder_ranges(sql: &str) -> Vec<Range<usize>> {
 					&& (i == 1 || !is_identifier_continue(bytes[i - 2]));
 				i = quoted_end(bytes, i, escape);
 			}
-			b'-' if bytes.get(i + 1) == Some(&b'-') => {
+			b'-' if bytes.get(i + 1) == Some(&b'-')
+				&& (!mysql
+					|| bytes
+						.get(i + 2)
+						.is_some_and(|ch| ch.is_ascii_whitespace() || ch.is_ascii_control())) =>
+			{
 				i += 2;
 				while i < bytes.len() && !matches!(bytes[i], b'\n' | b'\r') {
 					i += 1;
@@ -210,8 +221,9 @@ pub trait QueryStatementBuilder: Debug {
 	/// // sql = "SELECT `name` FROM `users` WHERE `active` = TRUE"
 	/// ```
 	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
-		let (sql, values) = self.build(query_builder);
-		inline_params(&sql, &values)
+		let (sql, values) = self.build_any(&query_builder);
+		// Backtick-quoting builders use MySQL comment syntax.
+		inline_params_with_dialect(&sql, &values, query_builder.quote_char() == '`')
 	}
 
 	/// Build SQL statement with parameter collection
