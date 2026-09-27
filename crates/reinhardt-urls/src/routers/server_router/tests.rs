@@ -493,9 +493,17 @@ fn test_typed_endpoint_preserves_parameter_names_and_order() {
 }
 
 #[rstest]
-fn test_validate_routes_rejects_nonterminal_path_converter() {
+#[case::direct(0)]
+#[case::child(1)]
+#[case::grandchild(2)]
+fn test_validate_routes_rejects_nonterminal_path_converter(#[case] depth: usize) {
 	// Arrange
-	let router = ServerRouter::new().endpoint(|| TestEndpoint::<32>);
+	let mut router = ServerRouter::new().endpoint(|| TestEndpoint::<32>);
+	let mut valid_router = ServerRouter::new().endpoint(|| TestEndpoint::<29>);
+	for _ in 0..depth {
+		router = ServerRouter::new().mount("/child/", router);
+		valid_router = ServerRouter::new().mount("/child/", valid_router);
+	}
 	let mut matcher = matchit::Router::new();
 	let expected_error = matcher
 		.insert("/files/{*asset}/metadata", ())
@@ -505,6 +513,7 @@ fn test_validate_routes_rejects_nonterminal_path_converter() {
 	let validation = router.validate_routes();
 
 	// Assert
+	assert!(valid_router.validate_routes().is_ok());
 	assert_eq!(
 		validation,
 		Err(vec![format!(

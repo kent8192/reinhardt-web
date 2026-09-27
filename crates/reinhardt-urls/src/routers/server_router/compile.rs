@@ -273,7 +273,7 @@ impl ServerRouter {
 		}
 	}
 
-	/// Validate all routes by compiling them and returning any errors.
+	/// Validate this router and all descendants by compiling their routes.
 	///
 	/// Call this at application startup to detect invalid route patterns early.
 	/// Returns `Ok(())` if all routes compiled successfully, or `Err` with
@@ -304,7 +304,8 @@ impl ServerRouter {
 	/// assert!(router.validate_routes().is_ok());
 	/// ```
 	pub fn validate_routes(&self) -> std::result::Result<(), Vec<String>> {
-		let mut errors = self.compile_routes();
+		let mut errors = Vec::new();
+		self.collect_compilation_errors(&mut errors);
 		if let Err(name_errors) = self.validate_route_names() {
 			errors.extend(name_errors);
 		}
@@ -312,6 +313,13 @@ impl ServerRouter {
 			Ok(())
 		} else {
 			Err(errors)
+		}
+	}
+
+	fn collect_compilation_errors(&self, errors: &mut Vec<String>) {
+		errors.extend(self.compile_routes());
+		for child in &self.children {
+			child.collect_compilation_errors(errors);
 		}
 	}
 
