@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -87,17 +88,75 @@ def packages(repo):
     return sorted(result, key=lambda item: item["name"])
 
 
-def previous_release_packages(repo):
-    """Do not mistake packages added after a completed facade release for a partial release."""
+def packages_at(repo, revision):
+    """Read historical membership, versions, and release policy in a disposable checkout."""
+    with tempfile.TemporaryDirectory(prefix="release-inventory-", dir="/tmp") as temp:
+        checkout = Path(temp) / "repo"
+        git(repo, "worktree", "add", "--quiet", "--detach", str(checkout), revision)
+        try:
+            return packages(checkout)
+        finally:
+            git(repo, "worktree", "remove", "--force", str(checkout))
+
+
+def manual_version_transition(previous, current):
+    """Recognize only the documented initialize, freeze, and promote gates."""
+    version = r"(\d+\.\d+\.\d+)"
+    if target := re.fullmatch(version + r"-alpha\.1", current):
+        return bool(re.fullmatch(version, previous)) and tuple(
+            map(int, previous.split("."))
+        ) < tuple(map(int, target[1].split(".")))
+    if target := re.fullmatch(version + r"-rc\.1", current):
+        return bool(re.fullmatch(re.escape(target[1]) + r"-alpha\.\d+", previous))
+    return bool(re.fullmatch(version, current)) and bool(
+        re.fullmatch(re.escape(current) + r"-(?:alpha|beta|rc)\.\d+", previous)
+    )
+
+
+def previous_release_packages(repo, registry=None):
+    """Select the last release without skipping an incomplete release in its phase."""
     inventory = packages(repo)
     root = next(item for item in inventory if item["manifest"] == "Cargo.toml")
+    if root["tag"] and not git(repo, "tag", "--list", root["tag"]):
+        # Follow the first-parent version history, not global tag ordering. The
+        # immediately preceding phase must be complete, even if its facade tag
+        # is missing; a partial counter bump must never fall back to an older tag.
+        for revision in git(repo, "log", "--first-parent", "--format=%H").splitlines():
+            name, version = version_at(repo, revision, "Cargo.toml")
+            if (name, version) == (root["name"], root["version"]):
+                continue
+            if name == root["name"] and manual_version_transition(
+                version, root["version"]
+            ):
+                previous = packages_at(repo, revision)
+                versions = {item["name"]: item["version"] for item in previous}
+                for item in inventory:
+                    if versions.get(item["name"]) == item["version"]:
+                        continue
+                    # A partial first release in a new phase must be completed,
+                    # not mistaken for an unstarted operator transition. The
+                    # preflight checks crates.io even when tag creation failed.
+                    if (item["tag"] and git(repo, "tag", "--list", item["tag"])) or (
+                        registry is not None
+                        and item["publish"]
+                        and registry(item["name"], item["version"])
+                    ):
+                        return inventory
+                inventory = previous
+                root = next(
+                    item for item in inventory if item["manifest"] == "Cargo.toml"
+                )
+            break
     tag = root["tag"]
     if not tag or not git(repo, "tag", "--list", tag):
         return inventory
-    manifests = set(
-        git(repo, "ls-tree", "-r", "--name-only", f"refs/tags/{tag}").splitlines()
-    )
-    return [item for item in inventory if item["manifest"] in manifests]
+    commit = git(repo, "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}")
+    if not ancestor(repo, commit, "HEAD"):
+        raise ReleaseError(f"Release tag '{tag}' is not an ancestor of HEAD.")
+    name, version = version_at(repo, commit, "Cargo.toml")
+    if (name, version) != (root["name"], root["version"]):
+        raise ReleaseError(f"Release tag '{tag}' contains '{name}@{version}'.")
+    return packages_at(repo, commit)
 
 
 def registry_version(name, version, opener=urlopen):
@@ -249,7 +308,12 @@ def completed_release_tag(report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
-    parser.add_argument("--repository", required=True)
+    parser.add_argument("--repository")
+    parser.add_argument(
+        "--print-baseline-tag",
+        action="store_true",
+        help="Select the Release PR baseline tag without querying remote services",
+    )
     parser.add_argument("--require-complete", action="store_true")
     parser.add_argument(
         "--github-output", type=Path, help="Export the completed facade tag"
@@ -257,12 +321,28 @@ def main():
     parser.add_argument(
         "--before-release-pr",
         action="store_true",
-        help="Exclude new packages introduced after the completed facade release",
+        help="Audit the previous release, including before a manual phase transition",
     )
     args = parser.parse_args()
+    if not args.print_baseline_tag and not args.repository:
+        parser.error("--repository is required for publication auditing")
     try:
         repo = args.repo.resolve()
-        inventory = previous_release_packages(repo) if args.before_release_pr else None
+        if args.print_baseline_tag:
+            root = next(
+                item
+                for item in previous_release_packages(repo)
+                if item["manifest"] == "Cargo.toml"
+            )
+            if not root["tag"]:
+                raise ReleaseError("The Release PR baseline requires a facade tag")
+            print(root["tag"])
+            return 0
+        inventory = (
+            previous_release_packages(repo, registry=registry_version)
+            if args.before_release_pr
+            else None
+        )
         report = audit(repo, args.repository, inventory)
         print(json.dumps(report, indent=2))
         if args.require_complete and report["state"] != "complete":

@@ -256,24 +256,36 @@ automatically:
 5. Creates a Release PR
 
 `scripts/run-release-pr.sh` compares each release line against the root package's
-current release tag (`reinhardt-web@v<VERSION>`) using release-plz's
-`--registry-manifest-path` option. Main requires a stable version; a develop
-version must match its `develop/X.Y.Z` branch. The tag must exist, be reachable
-from the current commit, and contain the matching package name and version.
-A temporary detached worktree supplies that baseline and is removed on exit.
-Missing or inconsistent tags stop release generation rather than selecting a
-release from another branch.
+release tag (`reinhardt-web@v<VERSION>`) using release-plz's
+`--registry-manifest-path` option. It shares baseline selection with
+`scripts/release_state.py`: use the current version's tag when present; after
+DBR-1 initialization, DBR-2 freeze, or stable promotion, use the immediately
+preceding phase found in the first-parent manifest history. Ordinary version
+counter bumps cannot fall back, and a missing tag for the preceding phase stops
+the transition instead of selecting an older completed release. If changed
+versions in the new phase already have tags or registry publications, preflight
+continues auditing that phase, including when publication succeeded but tag
+creation failed.
+
+Main requires a stable current version; a develop version must match its
+`develop/X.Y.Z` branch. The selected tag must exist, be reachable from the current
+commit, and contain the matching package name and version. Temporary detached
+worktrees supply historical metadata and the comparison baseline and are removed
+on exit. Missing or inconsistent tags stop release generation rather than
+selecting a release from another branch.
 
 Before generating a Release PR, `scripts/release_state.py --require-complete
---before-release-pr` checks the previous release at exact manifest versions.
-Packages introduced after the completed facade release belong to the next
-release and are excluded from this preflight.
+--before-release-pr` checks the selected previous release using its historical
+package membership, exact versions, and release configuration. This preserves
+independently versioned and subsequently removed packages in the audit. Packages
+introduced after the completed facade release belong to the next release and are
+excluded from this preflight.
 It checks the crates.io sparse index, matching reachable Git tags, and enabled
 GitHub Releases. Network errors, yanked versions, and inconsistent tags fail
 closed. Release jobs explicitly provision Python 3.12 before running the
 `tomllib`-based validation on self-hosted runners. Incomplete publication holds
-the next Release PR and points operators to RP-1; it never falls back to an older
-baseline or bumps past missing versions.
+the next Release PR and points operators to RP-1; manual phase transitions also
+cannot bypass an incomplete preceding release.
 
 The disposable baseline receives the AWS Smithy `=1.6.3` dependency constraint
 where an AWS integration lacks it. Published versions predate this constraint,

@@ -328,6 +328,137 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(state["state"], "complete")
         self.assertIn("reinhardt-new", [item["name"] for item in packages(self.repo)])
 
+    def write_versions(self, previous, current):
+        if previous == current:
+            return
+        for manifest in self.repo.glob("**/Cargo.toml"):
+            manifest.write_text(manifest.read_text().replace(previous, current))
+        self.commit(f"fixture: transition to {current}")
+
+    def tag_inventory(self):
+        for item in packages(self.repo):
+            if not self.git("tag", "--list", item["tag"]):
+                self.git("tag", item["tag"])
+
+    def test_manual_transitions_audit_the_previous_published_versions(self):
+        for previous, current in (
+            ("0.3.16", "0.4.0-alpha.1"),
+            ("0.4.0-alpha.17", "0.4.0-rc.1"),
+            ("0.4.0-rc.5", "0.4.0"),
+            ("0.4.0-alpha.17", "0.4.0"),
+        ):
+            with self.subTest(previous=previous, current=current):
+                self.git("checkout", "--detach", self.source)
+                self.write_versions("0.4.0-alpha.17", previous)
+                self.tag_inventory()
+                self.write_versions(previous, current)
+                before = self.git("worktree", "list", "--porcelain")
+                inventory = previous_release_packages(self.repo)
+                self.assertEqual({item["version"] for item in inventory}, {previous})
+                report = audit(
+                    self.repo,
+                    "test/reinhardt-web",
+                    inventory,
+                    registry=lambda _name, version: version == previous,
+                    release=lambda *_args: True,
+                )
+                self.assertEqual(report["state"], "complete")
+                self.assertEqual(
+                    completed_release_tag(report), f"reinhardt-web@v{previous}"
+                )
+                self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_previous_release_retains_historical_members_and_independent_versions(self):
+        manifest = self.repo / "crates/core/Cargo.toml"
+        manifest.write_text(manifest.read_text().replace("0.4.0-alpha.17", "0.1.0"))
+        self.commit("fixture: independently versioned core")
+        self.tag_inventory()
+        self.git("rm", "-r", "crates/core")
+        self.write_versions("0.4.0-alpha.17", "0.4.0-rc.1")
+        inventory = previous_release_packages(self.repo)
+        self.assertEqual(
+            {item["name"]: item["version"] for item in inventory},
+            {
+                "reinhardt-auth": "0.4.0-alpha.17",
+                "reinhardt-core": "0.1.0",
+                "reinhardt-web": "0.4.0-alpha.17",
+            },
+        )
+
+    def test_a_counter_bump_or_transition_cannot_skip_a_partial_release(self):
+        self.tag_inventory()
+        self.write_versions("0.4.0-alpha.17", "0.4.0-alpha.18")
+        self.git("tag", "reinhardt-core@v0.4.0-alpha.18")
+        root = self.repo / "crates/new"
+        (root / "src").mkdir(parents=True)
+        (root / "Cargo.toml").write_text(
+            '[package]\nname = "reinhardt-new"\nversion = "0.4.0-alpha.18"\nedition = "2024"\n'
+        )
+        (root / "src/lib.rs").write_text("pub fn new_package() {}\n")
+        self.commit("fixture: add a member before the phase transition")
+        for transition in (False, True):
+            with self.subTest(transition=transition):
+                if transition:
+                    self.write_versions("0.4.0-alpha.18", "0.4.0-rc.1")
+                inventory = previous_release_packages(self.repo)
+                self.assertEqual(
+                    {item["version"] for item in inventory}, {"0.4.0-alpha.18"}
+                )
+                report = audit(
+                    self.repo,
+                    "test/reinhardt-web",
+                    inventory,
+                    registry=lambda name, _version: name == "reinhardt-core",
+                    release=lambda *_args: True,
+                )
+                self.assertEqual(report["state"], "incomplete")
+                self.assertIn("reinhardt-web@v0.4.0-alpha.18", report["missing_tags"])
+                self.assertIn("reinhardt-new@0.4.0-alpha.18", report["unpublished"])
+
+    def test_previous_release_snapshot_is_removed_after_metadata_failure(self):
+        self.tag_inventory()
+        before = self.git("worktree", "list", "--porcelain")
+        with patch(
+            "release_state.packages",
+            side_effect=[self.inventory, ReleaseError("metadata failed")],
+        ):
+            with self.assertRaisesRegex(ReleaseError, "metadata failed"):
+                previous_release_packages(self.repo)
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_partial_first_publication_in_a_phase_cannot_fall_back(self):
+        self.tag_inventory()
+        self.write_versions("0.4.0-alpha.17", "0.4.0")
+        for tagged in (False, True):
+            with self.subTest(tagged=tagged):
+                if tagged:
+                    self.git("tag", "reinhardt-core@v0.4.0")
+                inventory = previous_release_packages(
+                    self.repo,
+                    registry=(
+                        None
+                        if tagged
+                        else lambda name, _version: name == "reinhardt-core"
+                    ),
+                )
+                self.assertEqual({item["version"] for item in inventory}, {"0.4.0"})
+
+    def test_unstarted_phase_transition_checks_exact_current_registry_versions(self):
+        self.tag_inventory()
+        self.write_versions("0.4.0-alpha.17", "0.4.0-rc.1")
+        queries = []
+
+        def unpublished(name, version):
+            queries.append((name, version))
+            return False
+
+        inventory = previous_release_packages(self.repo, registry=unpublished)
+        self.assertEqual(
+            queries,
+            [(f"reinhardt-{name}", "0.4.0-rc.1") for name in ("auth", "core", "web")],
+        )
+        self.assertEqual({item["version"] for item in inventory}, {"0.4.0-alpha.17"})
+
     def test_ordinary_repair_merge_cannot_publish(self):
         with self.assertRaisesRegex(ReleaseError, "normal release"):
             self.check(resume=False)
