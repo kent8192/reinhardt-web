@@ -524,13 +524,43 @@ pub trait ExprTrait: Sized {
 	// Type casting
 	// =========================================================================
 
-	/// CAST expression.
+	/// Cast an expression to a type identifier.
+	///
+	/// The type name is quoted and escaped as a single identifier, preserving its
+	/// case. It is not raw SQL: type modifiers and multi-word SQL type keywords
+	/// cannot be passed as the type name.
+	///
+	/// PostgreSQL resolves quoted type names case-sensitively. Use lowercase
+	/// catalog names for built-in types, such as `"text"`, `"int4"`, and
+	/// `"timestamptz"`. For example, `"TEXT"` refers to a user-defined type named
+	/// exactly `TEXT`, not the built-in `text` type. User-defined types must use
+	/// their exact name, including case.
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// Expr::col("age").cast_as("TEXT")
-	/// // Generates: CAST("age" AS TEXT)
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let (sql, values) = Query::select()
+	///     .expr(Expr::col("age").cast_as("text"))
+	///     .from("users")
+	///     .build(PostgresQueryBuilder);
+	///
+	/// assert_eq!(sql, r#"SELECT CAST("age" AS "text") FROM "users""#);
+	/// assert!(values.0.is_empty());
+	/// ```
+	///
+	/// A timestamp with time zone uses the PostgreSQL catalog name `timestamptz`:
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let (sql, values) = Query::select()
+	///     .expr(Expr::value("2026-01-02T03:04:05Z").cast_as("timestamptz"))
+	///     .build(PostgresQueryBuilder);
+	///
+	/// assert_eq!(sql, r#"SELECT CAST($1 AS "timestamptz")"#);
+	/// assert_eq!(values.0, vec![Value::from("2026-01-02T03:04:05Z")]);
 	/// ```
 	fn cast_as<T>(self, type_name: T) -> SimpleExpr
 	where

@@ -18,6 +18,10 @@ include = [
 [lib]
 name = "reinhardt"
 
+[[test]]
+name = "native_http_streaming"
+required-features = ["minimal"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -388,6 +392,10 @@ thiserror = { workspace = true }
 toml = { workspace = true }
 
 [dev-dependencies]
+futures-util = { workspace = true }
+reqwest = { workspace = true, features = ["stream"] }
+rstest = { workspace = true }
+tokio = { workspace = true }
 # The root integration test target reuses `tests/build.rs`, which invokes this macro.
 cfg_aliases = "0.2"
 

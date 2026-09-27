@@ -214,6 +214,17 @@ impl ToSchema for bool {
 	}
 }
 
+/// An unrestricted JSON schema that accepts every JSON value, including null.
+impl ToSchema for serde_json::Value {
+	fn schema() -> Schema {
+		Schema::Object(
+			ObjectBuilder::new()
+				.schema_type(SchemaType::AnyValue)
+				.build(),
+		)
+	}
+}
+
 impl<T: ToSchema> ToSchema for Option<T> {
 	fn schema() -> Schema {
 		// Option<T> makes the field optional in parent object
@@ -283,6 +294,27 @@ impl<V: ToSchema> ToSchema for std::collections::HashMap<String, V> {
 	}
 }
 
+/// `BTreeMap<String, V>` support for OpenAPI schema generation.
+///
+/// Like `HashMap<String, V>`, generates an object schema with the value type's
+/// schema as `additionalProperties`. Only string keys are supported.
+impl<V: ToSchema> ToSchema for std::collections::BTreeMap<String, V> {
+	fn schema() -> Schema {
+		Schema::Object(
+			ObjectBuilder::new()
+				.schema_type(SchemaType::Type(Type::Object))
+				.additional_properties(Some(V::schema()))
+				.build(),
+		)
+	}
+
+	fn schema_name() -> Option<String> {
+		V::schema_name()
+			.map(|name| format!("BTreeMap_String_{name}"))
+			.or_else(|| Some("BTreeMap_String_Value".into()))
+	}
+}
+
 // DateTime<Utc> support for OpenAPI schema generation
 impl ToSchema for chrono::DateTime<chrono::Utc> {
 	fn schema() -> Schema {
@@ -313,7 +345,8 @@ impl ToSchema for uuid::Uuid {
 mod tests {
 	use super::*;
 	use rstest::rstest;
-	use std::collections::HashMap;
+	use serde_json::json;
+	use std::collections::{BTreeMap, HashMap};
 
 	/// Custom test struct for HashMap value testing
 	// Allow dead_code: test struct providing ToSchema impl for OpenAPI schema generation tests
@@ -459,6 +492,50 @@ mod tests {
 			}
 			_ => panic!("Expected Object schemas for both Option<i32> and i32"),
 		}
+	}
+
+	#[rstest]
+	#[case::integer(BTreeMap::<String, i32>::schema(), json!({"type": "integer"}))]
+	#[case::optional(BTreeMap::<String, Option<i32>>::schema(), json!({"type": "integer"}))]
+	#[case::array(
+		BTreeMap::<String, Vec<String>>::schema(),
+		json!({"type": "array", "items": {"type": "string"}})
+	)]
+	#[case::nested(
+		BTreeMap::<String, BTreeMap<String, bool>>::schema(),
+		json!({"type": "object", "additionalProperties": {"type": "boolean"}})
+	)]
+	#[case::custom(
+		BTreeMap::<String, User>::schema(),
+		json!({
+			"type": "object",
+			"properties": {"id": {"type": "integer"}, "name": {"type": "string"}},
+			"required": ["id", "name"]
+		})
+	)]
+	fn test_btreemap_preserves_value_schema(
+		#[case] schema: Schema,
+		#[case] value_schema: serde_json::Value,
+	) {
+		// Arrange
+		let expected = json!({"type": "object", "additionalProperties": value_schema});
+
+		// Act
+		let actual = serde_json::to_value(schema).unwrap();
+
+		// Assert
+		assert_eq!(actual, expected);
+	}
+
+	#[rstest]
+	#[case::primitive(BTreeMap::<String, i32>::schema_name(), "BTreeMap_String_Value")]
+	#[case::custom(BTreeMap::<String, User>::schema_name(), "BTreeMap_String_User")]
+	#[case::nested(
+		BTreeMap::<String, BTreeMap<String, User>>::schema_name(),
+		"BTreeMap_String_BTreeMap_String_User"
+	)]
+	fn test_btreemap_schema_name(#[case] actual: Option<String>, #[case] expected: &str) {
+		assert_eq!(actual.as_deref(), Some(expected));
 	}
 
 	#[rstest]
