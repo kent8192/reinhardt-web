@@ -14,23 +14,41 @@ use crate::value::Values;
 /// Quoted identifiers, string literals (including PostgreSQL dollar quotes),
 /// and SQL comments are preserved. Only tokens in the original SQL are replaced;
 /// placeholder-like text inside inserted values is never interpreted again.
-/// This standalone helper uses standard SQL line comments. Statement
-/// `to_string()` methods additionally apply the selected backend's comment rules.
+/// This standalone helper uses PostgreSQL lexical rules and infers the
+/// placeholder style. Statement `to_string()` methods use the selected backend's
+/// placeholder style and lexical rules (including MySQL's default string escapes).
 /// Numbered tokens take precedence over `?` tokens, which can be PostgreSQL
 /// operators. Placeholders without a corresponding value are left unchanged.
 pub fn inline_params(sql: &str, values: &Values) -> String {
-	inline_params_with_dialect(sql, values, false)
+	inline_params_with_dialect(
+		sql,
+		values,
+		InlineDialect {
+			mysql: false,
+			postgres: true,
+			numbered: None,
+		},
+	)
 }
 
-fn inline_params_with_dialect(sql: &str, values: &Values, mysql: bool) -> String {
+#[derive(Clone, Copy)]
+struct InlineDialect {
+	mysql: bool,
+	postgres: bool,
+	numbered: Option<bool>,
+}
+
+fn inline_params_with_dialect(sql: &str, values: &Values, dialect: InlineDialect) -> String {
 	if values.is_empty() {
 		return sql.to_string();
 	}
 
-	let placeholders = placeholder_ranges(sql, mysql);
-	let numbered = placeholders
-		.iter()
-		.any(|range| sql.as_bytes()[range.start] == b'$');
+	let placeholders = placeholder_ranges(sql, dialect);
+	let numbered = dialect.numbered.unwrap_or_else(|| {
+		placeholders
+			.iter()
+			.any(|range| sql.as_bytes()[range.start] == b'$')
+	});
 	let mut result = String::with_capacity(sql.len());
 	let mut copied_until = 0;
 	let mut positional_index = 0;
@@ -58,21 +76,22 @@ fn inline_params_with_dialect(sql: &str, values: &Values, mysql: bool) -> String
 
 // Locate complete placeholder tokens before rendering any values. Byte scanning
 // is safe here: delimiters are ASCII and slices end only at token boundaries.
-fn placeholder_ranges(sql: &str, mysql: bool) -> Vec<Range<usize>> {
+fn placeholder_ranges(sql: &str, dialect: InlineDialect) -> Vec<Range<usize>> {
 	let bytes = sql.as_bytes();
 	let mut ranges = Vec::new();
 	let mut i = 0;
 	while i < bytes.len() {
 		match bytes[i] {
 			b'\'' | b'"' | b'`' => {
-				// Backslashes escape quotes only in PostgreSQL E'...' strings.
-				let escape = bytes[i] == b'\''
-					&& i > 0 && matches!(bytes[i - 1], b'e' | b'E')
-					&& (i == 1 || !is_identifier_continue(bytes[i - 2]));
+				let escape = (dialect.mysql && matches!(bytes[i], b'\'' | b'"'))
+					|| (dialect.postgres
+						&& bytes[i] == b'\''
+						&& i > 0 && matches!(bytes[i - 1], b'e' | b'E')
+						&& (i == 1 || !is_identifier_continue(bytes[i - 2])));
 				i = quoted_end(bytes, i, escape);
 			}
 			b'-' if bytes.get(i + 1) == Some(&b'-')
-				&& (!mysql
+				&& (!dialect.mysql
 					|| bytes
 						.get(i + 2)
 						.is_some_and(|ch| ch.is_ascii_whitespace() || ch.is_ascii_control())) =>
@@ -82,11 +101,34 @@ fn placeholder_ranges(sql: &str, mysql: bool) -> Vec<Range<usize>> {
 					i += 1;
 				}
 			}
+			b'#' if dialect.mysql => {
+				while i < bytes.len() && !matches!(bytes[i], b'\n' | b'\r') {
+					i += 1;
+				}
+			}
+			b'/' if dialect.mysql
+				&& bytes[i..].starts_with(b"/*!")
+				&& (!bytes.get(i + 3).is_some_and(u8::is_ascii_digit)
+					|| bytes[i + 3..]
+						.iter()
+						.take_while(|ch| ch.is_ascii_digit())
+						.count() >= 5) =>
+			{
+				// Executable comment contents use SQL syntax, bounded by the comment end.
+				let start = i + 3;
+				let end = sql[start..]
+					.find("*/")
+					.map_or(bytes.len(), |offset| start + offset);
+				for range in placeholder_ranges(&sql[start..end], dialect) {
+					ranges.push(start + range.start..start + range.end);
+				}
+				i = (end + 2).min(bytes.len());
+			}
 			b'/' if bytes.get(i + 1) == Some(&b'*') => {
 				i += 2;
 				let mut depth = 1;
 				while i < bytes.len() && depth > 0 {
-					if bytes[i..].starts_with(b"/*") {
+					if dialect.postgres && bytes[i..].starts_with(b"/*") {
 						depth += 1;
 						i += 2;
 					} else if bytes[i..].starts_with(b"*/") {
@@ -100,16 +142,18 @@ fn placeholder_ranges(sql: &str, mysql: bool) -> Vec<Range<usize>> {
 			b'$' => {
 				let start = i;
 				i += 1;
-				if bytes.get(i).is_some_and(u8::is_ascii_digit) {
+				if dialect.numbered != Some(false) && bytes.get(i).is_some_and(u8::is_ascii_digit) {
 					while bytes.get(i).is_some_and(u8::is_ascii_digit) {
 						i += 1;
 					}
 					ranges.push(start..i);
-				} else if let Some(end) = dollar_quoted_end(sql, start) {
+				} else if dialect.postgres
+					&& let Some(end) = dollar_quoted_end(sql, start)
+				{
 					i = end;
 				}
 			}
-			b'?' => {
+			b'?' if dialect.numbered != Some(true) => {
 				ranges.push(i..i + 1);
 				i += 1;
 			}
@@ -222,9 +266,14 @@ pub trait QueryStatementBuilder: Debug {
 	/// ```
 	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
 		// Backtick-quoting builders use MySQL comment syntax.
-		let mysql = query_builder.quote_char() == '`';
+		let (placeholder, numbered) = query_builder.placeholder();
+		let dialect = InlineDialect {
+			mysql: query_builder.quote_char() == '`',
+			postgres: numbered && placeholder == "$",
+			numbered: Some(numbered),
+		};
 		let (sql, values) = self.build(query_builder);
-		inline_params_with_dialect(&sql, &values, mysql)
+		inline_params_with_dialect(&sql, &values, dialect)
 	}
 
 	/// Build SQL statement with parameter collection

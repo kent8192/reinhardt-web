@@ -222,3 +222,64 @@ fn to_string_respects_downstream_build_override() {
 		Values(vec![7_i32.into()])
 	);
 }
+
+#[rstest]
+#[case::mysql_numbered_identifier(MySqlQueryBuilder, "$2", "SELECT $2, 7")]
+#[case::sqlite_numbered_text(SqliteQueryBuilder, "$2", "SELECT $2, 7")]
+#[case::mysql_dollar_identifier(MySqlQueryBuilder, "$tag$", "SELECT $tag$, 7")]
+#[case::sqlite_dollar_text(SqliteQueryBuilder, "$tag$", "SELECT $tag$, 7")]
+#[case::mysql_block_comment(MySqlQueryBuilder, "1 /* /* */", "SELECT 1 /* /* */, 7")]
+#[case::sqlite_block_comment(SqliteQueryBuilder, "1 /* /* */", "SELECT 1 /* /* */, 7")]
+#[case::postgres_nested_comment(
+	PostgresQueryBuilder,
+	"1 /* /* */ $9 */",
+	"SELECT 1 /* /* */ $9 */, 7"
+)]
+#[case::postgres_dollar_quote(
+	PostgresQueryBuilder,
+	"$tag$ ? $1 $tag$",
+	"SELECT $tag$ ? $1 $tag$, 7"
+)]
+#[case::mysql_double_quote(MySqlQueryBuilder, r#""a\"b""#, r#"SELECT "a\"b", 7"#)]
+#[case::mysql_single_quote(MySqlQueryBuilder, r"'a\'b'", r"SELECT 'a\'b', 7")]
+#[case::sqlite_standard_escape(SqliteQueryBuilder, r"'\'", r"SELECT '\', 7")]
+#[case::mysql_hash_comment(MySqlQueryBuilder, "1 # ? $1\n", "SELECT 1 # ? $1\n, 7")]
+#[case::mysql_short_version_comment(
+	MySqlQueryBuilder,
+	"1 /*!1234 + ? */",
+	"SELECT 1 /*!1234 + ? */, 7"
+)]
+fn to_string_uses_backend_lexical_rules(
+	#[case] builder: impl QueryBuilderTrait,
+	#[case] expression: &str,
+	#[case] expected: &str,
+) {
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::cust(expression))
+		.expr(Expr::val(7))
+		.to_owned();
+
+	// Act
+	let inlined = query.to_string(builder);
+
+	// Assert
+	assert_eq!(inlined, expected);
+}
+
+#[rstest]
+#[case::versioned("1 /*!80000 + ? */", "SELECT 1 /*!80000 + 7 */")]
+#[case::unversioned("1 /*! + ? */", "SELECT 1 /*! + 7 */")]
+#[case::following_value("1 /*!80000 + ? */ + ?", "SELECT 1 /*!80000 + 7 */ + 11")]
+fn mysql_to_string_inlines_executable_comments(#[case] expression: &str, #[case] expected: &str) {
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::cust_with_values(expression, [7, 11]))
+		.to_owned();
+
+	// Act
+	let inlined = query.to_string(MySqlQueryBuilder);
+
+	// Assert
+	assert_eq!(inlined, expected);
+}
