@@ -166,7 +166,8 @@ serial_test = "3"
 		"WASM model macro parity fixture must execute upload deferral validation\n{runtime_output}",
 	);
 	for test_name in [
-		"nullable_relation_ids_round_trip_without_model_forms",
+		"nullable_relation_ids_round_trip_without_model_forms::case_1_null",
+		"nullable_relation_ids_round_trip_without_model_forms::case_2_present",
 		"patch_rejects_nonnullable_null_before_cleaning",
 		"patch_nullability_preserves_other_submissions",
 	] {
