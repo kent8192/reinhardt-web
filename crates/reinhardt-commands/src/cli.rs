@@ -91,7 +91,7 @@ pub enum Commands {
 		#[arg(long)]
 		force_empty_state: bool,
 
-		/// Migration directory
+		/// Migration directory (must be a UTF-8 path)
 		#[arg(long, default_value = "./migrations")]
 		migration_dir: PathBuf,
 	},
@@ -636,7 +636,7 @@ pub async fn run_command_with_registry(
 #[derive(Debug)]
 enum BuiltinCommandPlan {
 	#[cfg(feature = "migrations")]
-	Makemigrations(CommandContext),
+	Makemigrations(std::io::Result<CommandContext>),
 	Migrate(CommandContext),
 	Infra(InfraSubcommand),
 	Runserver(CommandContext),
@@ -847,7 +847,8 @@ async fn execute_builtin_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
 	match plan {
 		#[cfg(feature = "migrations")]
-		BuiltinCommandPlan::Makemigrations(mut ctx) => {
+		BuiltinCommandPlan::Makemigrations(ctx) => {
+			let mut ctx = ctx?;
 			// `makemigrations` does not initialize the ORM database, so attach the
 			// composed settings here for database URL resolution (#5042).
 			if let Some(settings) = settings {
@@ -1031,7 +1032,13 @@ fn makemigrations_context(
 	force_empty_state: bool,
 	migration_dir: &Path,
 	verbosity: u8,
-) -> CommandContext {
+) -> std::io::Result<CommandContext> {
+	let migration_dir = migration_dir.to_str().ok_or_else(|| {
+		std::io::Error::new(
+			std::io::ErrorKind::InvalidInput,
+			"--migration-dir must be a valid UTF-8 path",
+		)
+	})?;
 	let mut ctx = CommandContext::default();
 	ctx.set_verbosity(verbosity);
 
@@ -1059,12 +1066,9 @@ fn makemigrations_context(
 	if let Some(n) = name {
 		ctx.set_option("name".to_string(), n);
 	}
-	ctx.set_option(
-		"migrations-dir".to_owned(),
-		migration_dir.to_string_lossy().into_owned(),
-	);
+	ctx.set_option("migrations-dir".to_owned(), migration_dir.to_owned());
 
-	ctx
+	Ok(ctx)
 }
 
 /// Parameters for the migrate command
@@ -1970,7 +1974,7 @@ mod tests {
 				| BuiltinCommandPlan::Check(ctx)
 				| BuiltinCommandPlan::Showurls(ctx) => ctx,
 				#[cfg(feature = "migrations")]
-				BuiltinCommandPlan::Makemigrations(ctx) => ctx,
+				BuiltinCommandPlan::Makemigrations(ctx) => ctx.expect("valid UTF-8 path"),
 				_ => panic!("test case must produce a context-backed plan"),
 			}
 		}
@@ -2099,6 +2103,7 @@ mod tests {
 		let BuiltinCommandPlan::Makemigrations(ctx) = plan else {
 			panic!("makemigrations command creates a makemigrations plan");
 		};
+		let ctx = ctx.expect("UTF-8 migration path maps to a valid context");
 		assert_eq!(ctx.args, vec!["accounts", "profiles"]);
 		assert_eq!(ctx.options.len(), 7);
 		assert_eq!(ctx.option("dry-run").map(String::as_str), Some("true"));
@@ -3058,5 +3063,33 @@ mod tests {
 
 		// Assert
 		assert!(!result);
+	}
+	#[cfg(all(unix, feature = "migrations"))]
+	#[rstest]
+	#[tokio::test]
+	async fn makemigrations_rejects_non_utf8_directory_before_dispatch() {
+		use std::ffi::OsString;
+		use std::os::unix::ffi::OsStringExt;
+		// Arrange
+		let cli = Cli::try_parse_from([
+			OsString::from("manage"),
+			OsString::from("makemigrations"),
+			OsString::from("--migration-dir"),
+			OsString::from_vec(b"migrations-\xff".to_vec()),
+		])
+		.expect("clap preserves path bytes");
+
+		// Act
+		let error = run_command(cli.command, cli.verbosity).await.unwrap_err();
+
+		// Assert
+		let error = error
+			.downcast_ref::<std::io::Error>()
+			.expect("invalid path error");
+		assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+		assert_eq!(
+			error.to_string(),
+			"--migration-dir must be a valid UTF-8 path"
+		);
 	}
 }
