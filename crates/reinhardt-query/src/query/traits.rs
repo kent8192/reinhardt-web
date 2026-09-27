@@ -2,7 +2,7 @@
 //!
 //! This module defines the core traits for building and executing SQL queries.
 
-use std::{any::Any, fmt::Debug};
+use std::{any::Any, fmt::Debug, ops::Range};
 
 use crate::value::Values;
 
@@ -11,43 +11,157 @@ use crate::value::Values;
 /// Supports both numbered (`$1, $2, ...`) and positional (`?`) placeholders.
 /// This enables `to_string()` to produce complete SQL with values inlined,
 /// matching reinhardt-query behavior for debugging and non-parameterized execution.
+/// Quoted identifiers, string literals (including PostgreSQL dollar quotes),
+/// and SQL comments are preserved. Only tokens in the original SQL are replaced;
+/// placeholder-like text inside inserted values is never interpreted again.
+/// Numbered tokens take precedence over `?` tokens, which can be PostgreSQL
+/// operators. Placeholders without a corresponding value are left unchanged.
 pub fn inline_params(sql: &str, values: &Values) -> String {
 	if values.is_empty() {
 		return sql.to_string();
 	}
 
-	let vals = values.iter().collect::<Vec<_>>();
+	let placeholders = placeholder_ranges(sql);
+	let numbered = placeholders
+		.iter()
+		.any(|range| sql.as_bytes()[range.start] == b'$');
+	let mut result = String::with_capacity(sql.len());
+	let mut copied_until = 0;
+	let mut positional_index = 0;
 
-	// Detect placeholder style: if SQL contains `$1`, it's numbered (PostgreSQL)
-	if sql.contains("$1") {
-		// Replace from highest index down to avoid `$1` matching inside `$10`
-		let mut result = sql.to_string();
-		for i in (0..vals.len()).rev() {
-			let placeholder = format!("${}", i + 1);
-			result = result.replacen(&placeholder, &vals[i].to_sql_literal(), 1);
+	for range in placeholders {
+		let token = &sql[range.clone()];
+		let index = if let Some(number) = token.strip_prefix('$') {
+			number.parse::<usize>().ok().and_then(|n| n.checked_sub(1))
+		} else if !numbered {
+			let index = positional_index;
+			positional_index += 1;
+			Some(index)
+		} else {
+			None
+		};
+		if let Some(value) = index.and_then(|index| values.0.get(index)) {
+			result.push_str(&sql[copied_until..range.start]);
+			result.push_str(&value.to_sql_literal());
+			copied_until = range.end;
 		}
-		result
-	} else {
-		// Positional `?` placeholders (MySQL/SQLite)
-		let mut result = String::with_capacity(sql.len());
-		let mut val_idx = 0;
-		let chars = sql.chars().peekable();
-		let mut in_single_quote = false;
-
-		for ch in chars {
-			// Track single-quoted strings to avoid replacing `?` inside them
-			if ch == '\'' {
-				in_single_quote = !in_single_quote;
-				result.push(ch);
-			} else if ch == '?' && !in_single_quote && val_idx < vals.len() {
-				result.push_str(&vals[val_idx].to_sql_literal());
-				val_idx += 1;
-			} else {
-				result.push(ch);
-			}
-		}
-		result
 	}
+	result.push_str(&sql[copied_until..]);
+	result
+}
+
+// Locate complete placeholder tokens before rendering any values. Byte scanning
+// is safe here: delimiters are ASCII and slices end only at token boundaries.
+fn placeholder_ranges(sql: &str) -> Vec<Range<usize>> {
+	let bytes = sql.as_bytes();
+	let mut ranges = Vec::new();
+	let mut i = 0;
+	while i < bytes.len() {
+		match bytes[i] {
+			b'\'' | b'"' | b'`' => {
+				// Backslashes escape quotes only in PostgreSQL E'...' strings.
+				let escape = bytes[i] == b'\''
+					&& i > 0 && matches!(bytes[i - 1], b'e' | b'E')
+					&& (i == 1 || !is_identifier_continue(bytes[i - 2]));
+				i = quoted_end(bytes, i, escape);
+			}
+			b'-' if bytes.get(i + 1) == Some(&b'-') => {
+				i += 2;
+				while i < bytes.len() && !matches!(bytes[i], b'\n' | b'\r') {
+					i += 1;
+				}
+			}
+			b'/' if bytes.get(i + 1) == Some(&b'*') => {
+				i += 2;
+				let mut depth = 1;
+				while i < bytes.len() && depth > 0 {
+					if bytes[i..].starts_with(b"/*") {
+						depth += 1;
+						i += 2;
+					} else if bytes[i..].starts_with(b"*/") {
+						depth -= 1;
+						i += 2;
+					} else {
+						i += 1;
+					}
+				}
+			}
+			b'$' => {
+				let start = i;
+				i += 1;
+				if bytes.get(i).is_some_and(u8::is_ascii_digit) {
+					while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+						i += 1;
+					}
+					ranges.push(start..i);
+				} else if let Some(end) = dollar_quoted_end(sql, start) {
+					i = end;
+				}
+			}
+			b'?' => {
+				ranges.push(i..i + 1);
+				i += 1;
+			}
+			ch if is_identifier_start(ch) => {
+				// Dollar signs may be part of unquoted PostgreSQL identifiers.
+				i += 1;
+				while i < bytes.len() && is_identifier_continue(bytes[i]) {
+					i += 1;
+				}
+			}
+			_ => i += 1,
+		}
+	}
+	ranges
+}
+
+fn is_identifier_start(ch: u8) -> bool {
+	ch.is_ascii_alphabetic() || ch == b'_' || !ch.is_ascii()
+}
+
+fn is_identifier_continue(ch: u8) -> bool {
+	is_identifier_start(ch) || ch.is_ascii_digit() || ch == b'$'
+}
+
+fn quoted_end(bytes: &[u8], start: usize, escape: bool) -> usize {
+	let quote = bytes[start];
+	let mut i = start + 1;
+	while i < bytes.len() {
+		if escape && bytes[i] == b'\\' {
+			i = (i + 2).min(bytes.len());
+		} else if bytes[i] == quote {
+			i += 1;
+			if bytes.get(i) != Some(&quote) {
+				break;
+			}
+			i += 1;
+		} else {
+			i += 1;
+		}
+	}
+	i
+}
+
+fn dollar_quoted_end(sql: &str, start: usize) -> Option<usize> {
+	let bytes = sql.as_bytes();
+	let mut end = start + 1;
+	if end < bytes.len() && is_identifier_start(bytes[end]) {
+		end += 1;
+		while end < bytes.len() && (is_identifier_start(bytes[end]) || bytes[end].is_ascii_digit())
+		{
+			end += 1;
+		}
+	}
+	if bytes.get(end) != Some(&b'$') {
+		return None;
+	}
+	end += 1;
+	let delimiter = &sql[start..end];
+	Some(
+		sql[end..]
+			.find(delimiter)
+			.map_or(sql.len(), |offset| end + offset + delimiter.len()),
+	)
 }
 
 /// Trait for building query statements
