@@ -183,7 +183,7 @@ impl Middleware for ConditionalGetMiddleware {
 
 		// Generate ETag if not present and configured to do so
 		let etag = if self.generate_etag
-			&& response.file_body().is_none()
+			&& !response.is_streaming()
 			&& !response.headers.contains_key(ETAG)
 		{
 			let generated = self.generate_etag_from_body(&response.body);

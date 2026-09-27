@@ -227,9 +227,9 @@ impl Middleware for ETagMiddleware {
 		};
 
 		// Generate ETag
-		// File responses already own their representation and expose an empty
+		// File and streaming responses own their representation and expose an empty
 		// compatibility buffer. Never hash that buffer as the entity body.
-		if response.file_body().is_some() && !response.headers.contains_key(hyper::header::ETAG) {
+		if response.is_streaming() && !response.headers.contains_key(hyper::header::ETAG) {
 			return Ok(response);
 		}
 		let etag = if response.headers.contains_key(hyper::header::ETAG) {

@@ -1,10 +1,10 @@
-//! Preserve buffered responses while streaming owned file ranges with backpressure.
+//! Stream owned producers and file ranges with transport backpressure.
 
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::body::{Body, Frame, SizeHint};
-use reinhardt_http::Response;
 use reinhardt_http::response::FileResponseBody;
+use reinhardt_http::{Response, StreamBody};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -15,6 +15,7 @@ const CHUNK_SIZE: usize = 64 * 1024;
 
 pub(super) enum ServerResponseBody {
 	Buffered(Full<Bytes>),
+	Stream(Option<StreamBody>),
 	File {
 		source: FileResponseBody,
 		position: u64,
@@ -24,7 +25,10 @@ pub(super) enum ServerResponseBody {
 }
 
 impl ServerResponseBody {
-	fn from_response(response: &Response) -> Self {
+	fn from_response(response: &mut Response) -> Self {
+		if let Some(stream) = response.take_stream_body() {
+			return Self::Stream(Some(stream));
+		}
 		match response.file_body() {
 			Some(source) => Self::File {
 				source: source.clone(),
@@ -49,6 +53,21 @@ impl Body for ServerResponseBody {
 			Self::Buffered(body) => Pin::new(body)
 				.poll_frame(cx)
 				.map(|frame| frame.map(|result| result.map_err(|never| match never {}))),
+			Self::Stream(source) => {
+				let Some(stream) = source.as_mut() else {
+					return Poll::Ready(None);
+				};
+				match stream.as_mut().poll_next(cx) {
+					Poll::Ready(Some(Ok(bytes))) => Poll::Ready(Some(Ok(Frame::data(bytes)))),
+					Poll::Ready(result) => {
+						// Release the producer at EOF or the first error, even if the
+						// transport keeps this body allocated until connection teardown.
+						*source = None;
+						Poll::Ready(result.map(|result| result.map(Frame::data)))
+					}
+					Poll::Pending => Poll::Pending,
+				}
+			}
 			Self::File {
 				source,
 				position,
@@ -89,6 +108,7 @@ impl Body for ServerResponseBody {
 	fn is_end_stream(&self) -> bool {
 		match self {
 			Self::Buffered(body) => body.is_end_stream(),
+			Self::Stream(source) => source.is_none(),
 			Self::File {
 				source,
 				position,
@@ -101,6 +121,8 @@ impl Body for ServerResponseBody {
 	fn size_hint(&self) -> SizeHint {
 		match self {
 			Self::Buffered(body) => body.size_hint(),
+			Self::Stream(Some(_)) => SizeHint::default(),
+			Self::Stream(None) => SizeHint::with_exact(0),
 			Self::File {
 				source, position, ..
 			} => SizeHint::with_exact(source.len() - position),
@@ -122,8 +144,8 @@ impl Drop for ServerResponseBody {
 	}
 }
 
-pub(super) fn into_hyper_response(response: Response) -> hyper::Response<ServerResponseBody> {
-	let body = ServerResponseBody::from_response(&response);
+pub(super) fn into_hyper_response(mut response: Response) -> hyper::Response<ServerResponseBody> {
+	let body = ServerResponseBody::from_response(&mut response);
 	let mut output = hyper::Response::new(body);
 	*output.status_mut() = response.status;
 	*output.headers_mut() = response.headers;
@@ -146,6 +168,65 @@ mod tests {
 	use std::sync::Arc;
 
 	struct FileHandler(std::fs::File);
+
+	#[rstest]
+	#[tokio::test]
+	async fn stream_transport_polls_on_demand_and_stops_after_errors() {
+		// Arrange
+		use std::sync::atomic::{AtomicUsize, Ordering};
+		let polls = Arc::new(AtomicUsize::new(0));
+		let observed = polls.clone();
+		let stream = futures_util::stream::poll_fn(move |_| {
+			let result = match observed.fetch_add(1, Ordering::SeqCst) {
+				0 => Ok(Bytes::from_static(b"first")),
+				1 => Err(std::io::Error::other("producer failed").into()),
+				_ => panic!("producer must not be polled after its first error"),
+			};
+			Poll::Ready(Some(result))
+		});
+		let mut body = into_hyper_response(Response::ok().with_stream(stream)).into_body();
+		assert_eq!(polls.load(Ordering::SeqCst), 0);
+		assert_eq!(body.size_hint().exact(), None);
+		assert!(!body.is_end_stream());
+		// Act / Assert: each requested frame polls exactly once; nothing is prefetched.
+		assert_eq!(
+			body.frame().await.unwrap().unwrap().into_data().unwrap(),
+			"first"
+		);
+		assert_eq!(polls.load(Ordering::SeqCst), 1);
+		assert_eq!(
+			body.frame().await.unwrap().unwrap_err().to_string(),
+			"producer failed"
+		);
+		assert!(body.is_end_stream());
+		assert_eq!(body.size_hint().exact(), Some(0));
+		assert!(body.frame().await.is_none());
+		assert_eq!(polls.load(Ordering::SeqCst), 2);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn stream_transport_releases_producer_on_completion() {
+		// Arrange
+		let (sender, receiver) = tokio::sync::oneshot::channel::<()>();
+		let stream = futures_util::stream::poll_fn(move |_| {
+			let _keep_alive = &sender;
+			Poll::Ready(None::<Result<Bytes, BoxError>>)
+		});
+		let mut response = Response::ok().with_stream(stream);
+		let surviving_clone = response.clone();
+		let mut body = ServerResponseBody::from_response(&mut response);
+		// Act
+		assert!(body.frame().await.is_none());
+		// Assert
+		assert!(body.is_end_stream());
+		assert_eq!(body.size_hint().exact(), Some(0));
+		assert!(surviving_clone.is_streaming());
+		assert!(
+			receiver.await.is_err(),
+			"EOF must release the producer immediately"
+		);
+	}
 
 	#[async_trait::async_trait]
 	impl reinhardt_http::Handler for FileHandler {

@@ -473,7 +473,11 @@ async fn dispatch_router_request(
 }
 
 #[cfg(feature = "routers")]
-fn framework_response_body(response: reinhardt_http::Response) -> BoxBody {
+fn framework_response_body(mut response: reinhardt_http::Response) -> BoxBody {
+	if let Some(stream) = response.take_stream_body() {
+		let frames = stream.map(|chunk| chunk.map(Frame::data).map_err(std::io::Error::other));
+		return StreamBody::new(frames).boxed_unsync();
+	}
 	let Some(source) = response.file_body().cloned() else {
 		return full_body(response.body);
 	};
@@ -1356,6 +1360,76 @@ mod tests {
 	use clap::Parser;
 	use http_body_util::BodyExt;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case(false)]
+	#[case(true)]
+	#[cfg(feature = "routers")]
+	#[tokio::test]
+	async fn streaming_response_converters_preserve_pending_frames_and_errors(
+		#[case] manifest: bool,
+	) {
+		// Arrange
+		let (sender, receiver) = tokio::sync::mpsc::channel(1);
+		let stream = futures_util::stream::unfold(receiver, |mut receiver| async {
+			receiver.recv().await.map(|chunk| (chunk, receiver))
+		});
+		let response = reinhardt_http::Response::ok()
+			.with_stream(stream)
+			.with_header("content-type", "text/event-stream");
+		let converted = if manifest {
+			convert_manifest_response(response)
+		} else {
+			convert_to_hyper_response(response)
+		}
+		.unwrap();
+		assert_eq!(converted.headers()["content-type"], "text/event-stream");
+		assert!(!converted.headers().contains_key("content-length"));
+		let mut body = converted.into_body();
+		// Act / Assert
+		sender
+			.send(Ok(Bytes::from_static(b"data: first\n\n")))
+			.await
+			.unwrap();
+		let first = tokio::time::timeout(std::time::Duration::from_secs(5), body.frame())
+			.await
+			.unwrap();
+		assert_eq!(
+			first.unwrap().unwrap().into_data().unwrap(),
+			"data: first\n\n"
+		);
+		assert!(!sender.is_closed());
+		sender
+			.send(Err(std::io::Error::other("producer failed").into()))
+			.await
+			.unwrap();
+		assert_eq!(
+			body.frame().await.unwrap().unwrap_err().to_string(),
+			"producer failed"
+		);
+		drop(body);
+		assert!(sender.is_closed());
+	}
+
+	#[rstest]
+	#[cfg(feature = "routers")]
+	#[tokio::test]
+	async fn dropping_streaming_response_converter_cancels_a_pending_producer() {
+		// Arrange
+		let (sender, receiver) = tokio::sync::oneshot::channel::<()>();
+		let stream = futures_util::stream::once(async move {
+			let _result = receiver.await;
+			Ok(Bytes::new())
+		});
+		let response = reinhardt_http::Response::ok().with_stream(stream);
+		let surviving_clone = response.clone();
+		let body = framework_response_body(response);
+		// Act
+		drop(body);
+		// Assert
+		assert!(surviving_clone.is_streaming());
+		assert!(sender.is_closed());
+	}
 
 	#[rstest]
 	#[case(false)]
