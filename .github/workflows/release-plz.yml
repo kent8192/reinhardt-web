@@ -157,6 +157,11 @@ jobs:
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
 
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Require the previous release to be complete
         env:
           GH_TOKEN: ${{ github.token }}
@@ -382,6 +387,11 @@ jobs:
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Setup protoc
         uses: arduino/setup-protoc@v3

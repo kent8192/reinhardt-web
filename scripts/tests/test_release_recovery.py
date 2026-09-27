@@ -508,6 +508,23 @@ class WorkflowTests(unittest.TestCase):
             )
         )
 
+    def test_release_jobs_provision_supported_python_before_scripts(self):
+        for name in ("release-plz-pr", "release-plz-release"):
+            with self.subTest(job=name):
+                steps = self.jobs[name]["steps"]
+                setup = next(
+                    i
+                    for i, step in enumerate(steps)
+                    if step.get("uses", "").startswith("actions/setup-python@")
+                )
+                self.assertEqual(steps[setup]["with"]["python-version"], "3.12")
+                first_python = next(
+                    i
+                    for i, step in enumerate(steps)
+                    if "python3 scripts/" in step.get("run", "")
+                )
+                self.assertLess(setup, first_python)
+
 
 if __name__ == "__main__":
     unittest.main()
