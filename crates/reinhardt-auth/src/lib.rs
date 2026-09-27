@@ -142,7 +142,7 @@ pub mod jwt;
 pub mod mfa;
 /// Django-compatible model-level permissions.
 pub mod model_permissions;
-/// Legacy in-process OAuth2 authentication helpers.
+/// Legacy in-process OAuth2 authorization-code and bearer-token helpers.
 #[cfg(feature = "oauth")]
 pub mod oauth2;
 /// OAuth 2.0 authorization server with PKCE and audience-bound tokens.

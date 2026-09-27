@@ -222,55 +222,57 @@ impl DatabaseMigrationRecorder {
 		Self { connection }
 	}
 
-	/// Performs the ensure schema table operation.
+	/// Ensure that the migration table and its unique index exist.
+	///
+	/// PostgreSQL holds a transaction-scoped advisory lock on the same connection
+	/// as both schema operations. Commit releases the lock before returning;
+	/// errors or cancellation roll the transaction back through RAII cleanup.
 	pub async fn ensure_schema_table(&self) -> super::Result<()> {
-		// `DatabaseType` is only referenced from the mysql-gated match arm below;
-		// import it under the same gate so the non-mysql build does not warn.
-		#[cfg(feature = "mysql")]
 		use crate::backends::types::DatabaseType;
 
-		// CockroachDB is wire-compatible with PostgreSQL but does NOT implement
-		// `pg_advisory_lock()` (returns `function undefined`). Route through a
-		// CockroachDB-specific path that locks a sentinel row via
-		// `SELECT ... FOR UPDATE` instead. See issue #4642.
+		// CockroachDB does not implement PostgreSQL advisory locks. Keep its
+		// sentinel-row locking path separate from the PostgreSQL transaction.
 		#[cfg(feature = "postgres")]
 		if self.connection.is_cockroachdb() {
 			return self.ensure_schema_table_cockroachdb().await;
 		}
 
-		// MySQL `GET_LOCK()` / `RELEASE_LOCK()` are session-scoped: the lock is owned
-		// by the connection that called `GET_LOCK`, and `RELEASE_LOCK` only succeeds
-		// when issued on that same session. The pooled `DatabaseConnection::execute`
-		// path acquires a new pool connection per call, so acquiring and releasing
-		// through it routinely hits two different sessions — the lock is acquired on
-		// session A and the bogus release runs on session B, leaving the lock leaked
-		// in session A. Subsequent migration calls in the same process then time out
-		// waiting for the leaked lock (manifesting as the rollback timeout in
-		// issue #4585). To make the lock symmetrical, MySQL must acquire and release
-		// on a single dedicated pool connection that we hold for the lock's lifetime.
 		match self.connection.database_type() {
+			DatabaseType::Postgres => self.ensure_schema_table_postgres().await,
 			#[cfg(feature = "mysql")]
 			DatabaseType::Mysql => self.ensure_schema_table_mysql().await,
-			_ => {
-				// Acquire advisory lock to prevent concurrent schema modifications
-				self.acquire_schema_lock().await?;
-
-				// Execute schema operations
-				let result = self.ensure_schema_table_internal().await;
-
-				// Always release lock, even if operations failed
-				let _ = self.release_schema_lock().await;
-
-				result
-			}
+			_ => self.ensure_schema_table_internal().await,
 		}
+	}
+
+	async fn ensure_schema_table_postgres(&self) -> super::Result<()> {
+		use reinhardt_query::prelude::{Expr, PostgresQueryBuilder, Query, QueryStatementBuilder};
+
+		let (create_table_sql, create_index_sql) = self.schema_table_sql();
+		// Preserve the existing lock key so older migrators still serialize with
+		// this path. PostgreSQL shares keys between session and transaction locks.
+		let lock_sql = Query::select()
+			.expr(Expr::cust(
+				"pg_advisory_xact_lock(hashtext('reinhardt_migrations'))",
+			))
+			.to_string(PostgresQueryBuilder);
+
+		// The backend transaction owns one pooled session and rolls back on drop.
+		// Run DDL on that session too, so a single-connection pool cannot deadlock
+		// waiting for another connection while holding the migration lock.
+		let mut transaction = self.connection.begin().await?;
+		transaction.execute(&lock_sql, vec![]).await?;
+		transaction.execute(&create_table_sql, vec![]).await?;
+		transaction.execute(&create_index_sql, vec![]).await?;
+		transaction.commit().await?;
+		Ok(())
 	}
 
 	/// CockroachDB-specific variant of `ensure_schema_table`.
 	///
 	/// CockroachDB does not implement PostgreSQL's `pg_advisory_lock()`
 	/// (returns `unknown function: pg_advisory_lock(): function undefined`),
-	/// so the generic Postgres path in `acquire_schema_lock` fails immediately.
+	/// so the PostgreSQL advisory-lock path cannot be used.
 	/// To serialise concurrent migrators we use a sentinel-row mutex: a
 	/// single-row `_reinhardt_migration_lock` table whose row is locked with
 	/// `SELECT ... FOR UPDATE` inside a held transaction. CockroachDB blocks
@@ -505,147 +507,64 @@ impl DatabaseMigrationRecorder {
 		}
 	}
 
-	/// Acquire a database-level advisory lock for schema operations
-	///
-	/// This prevents concurrent schema modifications that could cause conflicts.
-	/// Different databases use different locking mechanisms:
-	/// - PostgreSQL: pg_advisory_lock() with hash of string
-	/// - MySQL: GET_LOCK() with timeout
-	/// - SQLite: No additional lock needed (handled by transaction isolation)
-	async fn acquire_schema_lock(&self) -> super::Result<()> {
-		use crate::backends::types::DatabaseType;
-
-		match self.connection.database_type() {
-			DatabaseType::Postgres => {
-				// PostgreSQL advisory lock using string hash
-				self.connection
-					.execute(
-						"SELECT pg_advisory_lock(hashtext('reinhardt_migrations'))",
-						vec![],
-					)
-					.await
-					.map_err(map_framework_database_error)?;
-			}
-			DatabaseType::Mysql => {
-				// MySQL GET_LOCK with 10 second timeout
-				let result = self
-					.connection
-					.fetch_one(
-						"SELECT GET_LOCK('reinhardt_migrations', 10) as locked",
-						vec![],
-					)
-					.await
-					.map_err(map_framework_database_error)?;
-
-				// Try to get the lock status as i64 or bool
-				let locked = if let Ok(val) = result.get::<i64>("locked") {
-					val == 1
-				} else {
-					result.get::<bool>("locked").unwrap_or_default()
-				};
-
-				if !locked {
-					return Err(super::MigrationError::DatabaseError(DatabaseError::new(
-						DatabaseErrorKind::Timeout,
-						"Failed to acquire migration lock (timeout)",
-					)));
-				}
-			}
-			DatabaseType::Sqlite => {
-				// SQLite uses transaction isolation, no additional lock needed
-			}
-		}
-
-		Ok(())
-	}
-
-	/// Release the database-level advisory lock
-	///
-	/// Should be called after schema operations complete, even if they fail.
-	async fn release_schema_lock(&self) -> super::Result<()> {
-		use crate::backends::types::DatabaseType;
-
-		match self.connection.database_type() {
-			DatabaseType::Postgres => {
-				self.connection
-					.execute(
-						"SELECT pg_advisory_unlock(hashtext('reinhardt_migrations'))",
-						vec![],
-					)
-					.await
-					.map_err(map_framework_database_error)?;
-			}
-			DatabaseType::Mysql => {
-				self.connection
-					.execute("SELECT RELEASE_LOCK('reinhardt_migrations')", vec![])
-					.await
-					.map_err(map_framework_database_error)?;
-			}
-			DatabaseType::Sqlite => {
-				// SQLite uses transaction isolation, no explicit unlock needed
-			}
-		}
-
-		Ok(())
-	}
-
-	/// Internal implementation of ensure_schema_table without locking
-	///
-	/// This is called by ensure_schema_table() after acquiring the lock.
-	pub(crate) async fn ensure_schema_table_internal(&self) -> super::Result<()> {
+	fn schema_table_sql(&self) -> (String, String) {
 		use crate::backends::types::DatabaseType;
 		use reinhardt_query::prelude::{
 			Alias, ColumnDef, Expr, MySqlQueryBuilder, PostgresQueryBuilder, Query,
 			QueryStatementBuilder, SqliteQueryBuilder,
 		};
 
-		// Build SQL using appropriate query builder based on database type
-		// Scope stmt to ensure it's dropped before await
-		let (create_table_sql, create_index_sql) = {
-			let create_table_stmt = Query::create_table()
-				.table(Alias::new("reinhardt_migrations"))
-				.if_not_exists()
-				.col(
-					ColumnDef::new("id")
-						.integer()
-						.not_null(true)
-						.auto_increment(true)
-						.primary_key(true),
-				)
-				.col(ColumnDef::new("app").string_len(255).not_null(true))
-				.col(ColumnDef::new("name").string_len(255).not_null(true))
-				.col(
-					ColumnDef::new("applied")
-						.timestamp()
-						.not_null(true)
-						.default(Expr::current_timestamp().into_simple_expr()),
-				)
-				.to_owned();
+		let create_table_stmt = Query::create_table()
+			.table(Alias::new("reinhardt_migrations"))
+			.if_not_exists()
+			.col(
+				ColumnDef::new("id")
+					.integer()
+					.not_null(true)
+					.auto_increment(true)
+					.primary_key(true),
+			)
+			.col(ColumnDef::new("app").string_len(255).not_null(true))
+			.col(ColumnDef::new("name").string_len(255).not_null(true))
+			.col(
+				ColumnDef::new("applied")
+					.timestamp()
+					.not_null(true)
+					.default(Expr::current_timestamp().into_simple_expr()),
+			)
+			.to_owned();
 
-			let create_index_stmt = Query::create_index()
-				.if_not_exists()
-				.name("reinhardt_migrations_app_name_unique")
-				.table(Alias::new("reinhardt_migrations"))
-				.col(Alias::new("app"))
-				.col(Alias::new("name"))
-				.unique()
-				.to_owned();
+		let create_index_stmt = Query::create_index()
+			.if_not_exists()
+			.name("reinhardt_migrations_app_name_unique")
+			.table(Alias::new("reinhardt_migrations"))
+			.col(Alias::new("app"))
+			.col(Alias::new("name"))
+			.unique()
+			.to_owned();
 
-			match self.connection.database_type() {
-				DatabaseType::Postgres => (
-					create_table_stmt.to_string(PostgresQueryBuilder),
-					create_index_stmt.to_string(PostgresQueryBuilder),
-				),
-				DatabaseType::Mysql => (
-					create_table_stmt.to_string(MySqlQueryBuilder),
-					create_index_stmt.to_string(MySqlQueryBuilder),
-				),
-				DatabaseType::Sqlite => (
-					create_table_stmt.to_string(SqliteQueryBuilder),
-					create_index_stmt.to_string(SqliteQueryBuilder),
-				),
-			}
-		}; // stmts are dropped here, before await
+		match self.connection.database_type() {
+			DatabaseType::Postgres => (
+				create_table_stmt.to_string(PostgresQueryBuilder),
+				create_index_stmt.to_string(PostgresQueryBuilder),
+			),
+			DatabaseType::Mysql => (
+				create_table_stmt.to_string(MySqlQueryBuilder),
+				create_index_stmt.to_string(MySqlQueryBuilder),
+			),
+			DatabaseType::Sqlite => (
+				create_table_stmt.to_string(SqliteQueryBuilder),
+				create_index_stmt.to_string(SqliteQueryBuilder),
+			),
+		}
+	}
+
+	/// Create the schema through the pool for SQLite and the dedicated MySQL
+	/// and CockroachDB locking paths.
+	pub(crate) async fn ensure_schema_table_internal(&self) -> super::Result<()> {
+		use crate::backends::types::DatabaseType;
+
+		let (create_table_sql, create_index_sql) = self.schema_table_sql();
 
 		// Create table
 		self.connection

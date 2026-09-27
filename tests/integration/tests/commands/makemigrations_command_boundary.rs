@@ -3,12 +3,13 @@
 //! These tests exercise `MakeMigrationsCommand::execute()` directly instead of
 //! mirroring its internals with `AutoMigrationGenerator` and `MigrationService`.
 
-use reinhardt_commands::{BaseCommand, CommandContext, MakeMigrationsCommand};
+use clap::Parser;
+use reinhardt_commands::{BaseCommand, Cli, CommandContext, MakeMigrationsCommand, run_command};
 use reinhardt_db::migrations::model_registry::{FieldMetadata, ModelMetadata, global_registry};
 use reinhardt_db::migrations::{
 	ColumnDefinition, FieldType, FilesystemRepository, Migration, MigrationRepository, Operation,
 };
-use rstest::rstest;
+use rstest::{fixture, rstest};
 use serial_test::serial;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -47,6 +48,7 @@ impl Drop for ModelRegistryGuard {
 	}
 }
 
+#[fixture]
 fn create_project_root() -> TempDir {
 	let project_dir = TempDir::new().expect("temporary project dir should be created");
 	std::fs::create_dir_all(project_dir.path().join("src/bin")).expect("src/bin should be created");
@@ -574,4 +576,220 @@ fn migration() -> Migration {
 		std::fs::read(&path).expect("check mode should preserve the upgraded source"),
 		upgraded.source.as_bytes()
 	);
+}
+
+async fn execute_cli(arguments: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+	let cli = Cli::try_parse_from(arguments).expect("management CLI arguments should parse");
+	run_command(cli.command, cli.verbosity).await
+}
+
+#[rstest]
+#[case::default(None, false)]
+#[case::relative(Some("requested"), false)]
+#[case::absolute_with_spaces_and_unicode(Some("custom migrations/日本語"), true)]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn cli_empty_migrations_use_selected_directory(
+	create_project_root: TempDir,
+	#[case] directory: Option<&str>,
+	#[case] absolute: bool,
+) {
+	// Arrange
+	let project_dir = create_project_root;
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join(directory.unwrap_or("migrations"));
+	let selected_path = if absolute {
+		migrations_dir.clone()
+	} else {
+		PathBuf::from(directory.unwrap_or("migrations"))
+	};
+	let mut arguments = vec![
+		"manage",
+		"makemigrations",
+		"testapp",
+		"--empty",
+		"--name",
+		"manual",
+	];
+	if directory.is_some() {
+		arguments.extend(["--migration-dir", selected_path.to_str().unwrap()]);
+	}
+
+	// Act: create the first migration in a previously nonexistent directory.
+	execute_cli(&arguments)
+		.await
+		.expect("first migration should be created");
+
+	// Assert
+	assert_eq!(
+		migration_file_names(&migrations_dir, "testapp"),
+		["0001_manual.rs"]
+	);
+	let default_dir = project_dir.path().join("migrations");
+	if directory.is_some() {
+		assert!(!default_dir.exists());
+		// A different history in the default directory must not affect the next migration.
+		write_migration_file(&default_dir, "testapp", "0099_default", &[]);
+	}
+
+	// Act: reuse the selected history for numbering and dependencies.
+	execute_cli(&arguments)
+		.await
+		.expect("second migration should be created");
+
+	// Assert
+	assert_eq!(
+		migration_file_names(&migrations_dir, "testapp"),
+		["0001_manual.rs", "0002_manual.rs"]
+	);
+	let migration = FilesystemRepository::new(&migrations_dir)
+		.get("testapp", "0002_manual")
+		.await
+		.expect("generated migration should be readable");
+	assert_eq!(
+		migration.dependencies,
+		[("testapp".to_owned(), "0001_manual".to_owned())]
+	);
+	assert!(migration.operations.is_empty());
+	if directory.is_some() {
+		assert_eq!(
+			migration_file_names(&default_dir, "testapp"),
+			["0099_default.rs"]
+		);
+	}
+}
+
+#[rstest]
+#[case::dry_run("--dry-run")]
+#[case::check("--check")]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn cli_inspection_modes_read_selected_directory(
+	create_project_root: TempDir,
+	#[case] mode: &str,
+) {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let project_dir = create_project_root;
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join("requested");
+
+	write_migration_file(&migrations_dir, "testapp", "0001_initial", &[]);
+	write_migration_file(
+		&migrations_dir,
+		"testapp",
+		"0002_left",
+		&[("testapp", "0001_initial")],
+	);
+	write_migration_file(
+		&migrations_dir,
+		"testapp",
+		"0002_right",
+		&[("testapp", "0001_initial")],
+	);
+	register_test_model("testapp", "TestModel", "testapp_testmodel");
+
+	// Act
+	let err = execute_cli(&[
+		"manage",
+		"makemigrations",
+		"testapp",
+		mode,
+		"--force-empty-state",
+		"--migration-dir",
+		"requested",
+	])
+	.await
+	.expect_err("inspection must detect conflicts in the selected directory");
+
+	// Assert
+	assert_eq!(
+		err.to_string(),
+		"Execution error: Run 'makemigrations --merge' to resolve migration conflicts."
+	);
+	assert_eq!(
+		migration_file_names(&migrations_dir, "testapp"),
+		["0001_initial.rs", "0002_left.rs", "0002_right.rs"]
+	);
+	assert!(!project_dir.path().join("migrations").exists());
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn cli_merge_uses_selected_directory(create_project_root: TempDir) {
+	// Arrange
+	let project_dir = create_project_root;
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join("requested");
+
+	write_migration_file(&migrations_dir, "testapp", "0001_initial", &[]);
+	write_migration_file(
+		&migrations_dir,
+		"testapp",
+		"0002_left",
+		&[("testapp", "0001_initial")],
+	);
+	write_migration_file(
+		&migrations_dir,
+		"testapp",
+		"0002_right",
+		&[("testapp", "0001_initial")],
+	);
+
+	// Act: dry-run must inspect the selected graph without resolving it on disk.
+	execute_cli(&[
+		"manage",
+		"makemigrations",
+		"testapp",
+		"--merge",
+		"--dry-run",
+		"--migration-dir",
+		"requested",
+	])
+	.await
+	.expect("merge dry-run should succeed");
+	assert_eq!(
+		migration_file_names(&migrations_dir, "testapp"),
+		["0001_initial.rs", "0002_left.rs", "0002_right.rs"]
+	);
+	assert!(!project_dir.path().join("migrations").exists());
+
+	execute_cli(&[
+		"manage",
+		"makemigrations",
+		"testapp",
+		"--merge",
+		"--name",
+		"merge",
+		"--migration-dir",
+		"requested",
+	])
+	.await
+	.expect("merge should resolve the selected graph");
+
+	// Assert
+	let mut migration = FilesystemRepository::new(&migrations_dir)
+		.get("testapp", "0003_merge")
+		.await
+		.expect("merge migration should be readable");
+	migration.dependencies.sort();
+	assert_eq!(
+		migration.dependencies,
+		[
+			("testapp".to_owned(), "0002_left".to_owned()),
+			("testapp".to_owned(), "0002_right".to_owned()),
+		]
+	);
+	assert!(migration.operations.is_empty());
+	assert_eq!(
+		migration_file_names(&migrations_dir, "testapp"),
+		[
+			"0001_initial.rs",
+			"0002_left.rs",
+			"0002_right.rs",
+			"0003_merge.rs"
+		]
+	);
+	assert!(!project_dir.path().join("migrations").exists());
 }

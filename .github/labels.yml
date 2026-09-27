@@ -163,11 +163,6 @@
   color: "0075ca"
   description: "Tracking issue for upstream dependency bug"
 
-# Agent Labels
-- name: agent-suspect
-  color: "d4c5f9"
-  description: "Agent-detected issue pending independent verification"
-
 # Migration Labels
 - name: stable-migration
   color: "0969da"

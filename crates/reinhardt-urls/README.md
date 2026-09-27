@@ -184,6 +184,20 @@ impl SyncHandler for HealthHandler {
 let router = ServerRouter::new().handler_sync("/health", HealthHandler);
 ```
 
+### Catch-All Endpoint Paths
+
+HTTP macros accept the typed path converter syntax, for example
+`#[get("/files/{<path:asset>}", name = "files")]`. Registering this endpoint with
+`ServerRouter::endpoint` captures both `single.txt` and `nested/file.txt` as
+`asset`; `Path<String>` receives the complete captured value, including slashes.
+The same pattern works when the router is mounted at a literal prefix such as
+`/static/`.
+
+The `path` converter must be the final part of the endpoint path.
+`ServerRouter::validate_routes()` checks the normalized catch-all pattern used
+for request dispatch. Use `{<path:asset>}` in HTTP macros; the raw matchit syntax
+`{*asset}` is not accepted by their compile-time validator.
+
 ### Router Exception Handling
 
 `ServerRouter::with_exception_handler` installs an application-defined

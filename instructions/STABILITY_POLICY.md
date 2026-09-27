@@ -18,7 +18,6 @@ This document defines the stability guarantees and versioning policies for the R
 - [Migration Guide Requirements](#migration-guide-requirements)
 - [RC to Stable Criteria](#rc-to-stable-criteria)
 - [Version Bump Rules During RC](#version-bump-rules-during-rc)
-- [SemVer Verification](#semver-verification)
 - [Quick Reference](#quick-reference)
 - [References](#references)
 
@@ -94,7 +93,7 @@ Items explicitly documented as experimental are **experimental** and may change 
 
 > **Note**: There is currently no `unstable` feature flag in the codebase. Experimental items are identified by documentation annotations rather than feature-gating.
 >
-> **Enforcement mechanism**: Because experimental items are still part of the public API surface, `cargo-semver-checks` run locally will flag breaking changes to them just like changes to stable APIs. Permission to break an experimental API in a MINOR release is granted at review time via the `breaking-change` label combined with a CHANGELOG migration note — not through any automated SemVer exemption. Maintainers MUST verify, before applying the label, that the affected item is documented as experimental.
+> **Enforcement mechanism**: Permission to break an experimental API in a MINOR release is granted at review time via the `breaking-change` label combined with a CHANGELOG migration note. Maintainers MUST verify, before applying the label, that the affected item is documented as experimental.
 
 ### Internal API
 
@@ -286,7 +285,7 @@ Non-breaking API additions during the RC phase require a lightweight approval pr
 - Additions that require changes to existing API signatures
 - Additions that alter the behavior of existing APIs
 
-**Rationale:** SemVer and industry practice (e.g., Bevy) permit non-breaking additions in pre-release versions. A lightweight approval process ensures quality without unnecessarily blocking improvements. The local `cargo-semver-checks --release-type minor` check validates that additions are non-breaking.
+**Rationale:** SemVer and industry practice (e.g., Bevy) permit non-breaking additions in pre-release versions. A lightweight approval process ensures quality without unnecessarily blocking improvements.
 
 ---
 
@@ -450,7 +449,6 @@ excluded by a stable-tag regex filter in `release-plz.yml`.
 The existing CI configuration (`ci.yml`) runs on all pull requests regardless of target branch:
 
 - PRs targeting `develop/0.x+1.0` are automatically covered by CI
-- SemVer compatibility is verified locally rather than by an automatic PR workflow
 - All other CI checks (tests, clippy, fmt, docs) apply normally
 
 ---
@@ -486,8 +484,7 @@ This exception applies only to those already-landed behaviors in 0.3.17.
 All other changes and later releases retain the normal compatibility policy.
 The release must identify the breaking security change prominently in the
 root and GraphQL changelogs and provide the
-[0.3.17 migration guide](MIGRATION_0.3.17.md). SemVer checks remain enabled;
-an API-compatible check result does not cover these runtime changes.
+[0.3.17 migration guide](MIGRATION_0.3.17.md).
 
 ---
 
@@ -619,7 +616,7 @@ rc.2 released (fix)    → Timer restarts (Day 0)
 No issues for 14 days  → Ready for stable (Day 14)
 ```
 
-The following diagram visualizes the stability timer behavior including agent-detected bug handling:
+The following diagram visualizes the stability timer behavior:
 
 ```mermaid
 flowchart LR
@@ -628,42 +625,7 @@ flowchart LR
     C -->|"New rc.N+1"| D["RESET to Day 0"]
     C -->|"Critical/High bug fix"| D
     C -->|"Breaking change (SP-3)"| D
-    C -->|"Agent detects bug"| E["agent-suspect label<br/>Timer NOT reset"]
-    E --> F{Independent verification}
-    F -->|Confirmed| G["Remove label<br/>Timer RESETS"]
-    F -->|False positive| H["Close issue<br/>No impact"]
     C -->|"14 days clear"| I["Ready for stable"]
-```
-
-### SC-2a (MUST): Agent-Detected Bug Verification (Two-Step Process)
-
-Bugs detected by LLM agents follow a **two-step verification process** before affecting the stability timer:
-
-**Step 1: Initial Detection**
-- Agent creates an Issue with the `agent-suspect` label
-- Issues with `agent-suspect` label are **excluded** from SC-2 stability timer reset
-- Even if labeled `critical` or `high`, the timer does NOT reset while `agent-suspect` is present
-
-**Step 2: Independent Verification**
-- An independent agent (with separate context) OR a human reviewer verifies the issue
-- Delegate verification only on an explicit user request for the current task; otherwise, keep `agent-suspect` until independent verification is available
-- Verification must be performed by an entity that did NOT participate in the initial detection
-- If confirmed as a real bug:
-  - Remove the `agent-suspect` label
-  - The issue now counts toward SC-2 stability timer reset (if `critical` or `high`)
-- If determined to be a false positive:
-  - Close the issue with explanation
-  - No impact on stability timer
-
-**Rationale:** LLM agents have a 5-15% false positive rate. Without verification, agent-detected issues could repeatedly reset the stability timer and indefinitely delay stable releases.
-
-**Example Timeline:**
-```
-rc.1 released                          → Timer starts (Day 0)
-Agent finds critical bug (agent-suspect) → Timer NOT reset (Day 5)
-Human verifies bug is real             → agent-suspect removed, Timer resets (Day 7)
-rc.2 released (fix)                    → Timer restarts (Day 0)
-No issues for 14 days                  → Ready for stable (Day 14)
 ```
 
 ### SC-3 (SHOULD): Pre-Release Validation
@@ -724,14 +686,6 @@ During the RC phase:
 
 ---
 
-## SemVer Verification
-
-SemVer compatibility is verified locally with [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks). The shared GitHub Actions workflow remains available for explicit dispatch or reuse by another workflow, but does not run automatically on pull requests.
-
-- **Shared workflow**: `.github/workflows/semver-check.yml` supports `workflow_dispatch` and `workflow_call`.
-- **Local verification**: `cargo make semver-check` mirrors the shared workflow and MUST be run before converting a Draft PR to Ready for Review on any PR touching public API (see `instructions/PR_GUIDELINE.md` § RP-1a).
-- **Audit trail**: A full breaking change audit is maintained at `docs/breaking-change-audit.md`.
-
 ---
 
 ## Quick Reference
@@ -750,8 +704,6 @@ SemVer compatibility is verified locally with [`cargo-semver-checks`](https://gi
 - Increment RC version for each bug fix release (`rc.1` → `rc.2`)
 - Use the API Change Proposal template for breaking changes during RC
 - Obtain SP-6 approval (issue + `rc-addition` label + maintainer sign-off) before adding non-breaking APIs during RC
-- Verify agent-detected bugs independently before removing `agent-suspect` label (SC-2a)
-- Exclude `agent-suspect` labeled issues from stability timer reset
 - Create `develop/0.x+1.0` branch when version group enters RC phase (DB-1)
 - Direct next-version features and breaking changes to `develop/0.x+1.0` during RC (DB-2)
 - Apply RC bug fixes to `main` first, then forward-merge to develop (DB-3)
@@ -774,8 +726,6 @@ SemVer compatibility is verified locally with [`cargo-semver-checks`](https://gi
 - Skip the 2-week stability period
 - Publish stable release with open critical or high severity bugs
 - Introduce new pre-release identifiers during RC (e.g., `-beta`)
-- Remove `agent-suspect` label without independent verification (separate agent or human)
-- Count `agent-suspect` labeled issues toward stability timer reset
 - Merge next-version features or breaking changes directly into `main` during RC (use `develop/0.x+1.0`)
 - Apply bug fixes only to the develop branch without fixing on `main` first (DB-3)
 - Push to `develop/m.n.l` before running `scripts/init-develop-branch.sh m.n.l` (release-plz would otherwise publish a stable `m.n.l` immediately, bypassing the alpha phase) (DBR-1)
@@ -800,8 +750,6 @@ SemVer compatibility is verified locally with [`cargo-semver-checks`](https://gi
 - [RFC 1105: API Evolution](https://rust-lang.github.io/rfcs/1105-api-evolution.html)
 - [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
 - [Breaking Change Audit](../docs/breaking-change-audit.md)
-- [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks)
-
 ---
 
 **Note**: This document governs the stability guarantees of Reinhardt's public API surface. For release mechanics (publishing, tagging, CI/CD), see instructions/RELEASE_PROCESS.md.

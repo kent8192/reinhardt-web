@@ -31,6 +31,12 @@ This crate provides the following modules:
   - Versioned, source-preserving generated migration files
     (`reinhardt-admin migrations upgrade-source [PATH]`)
   - Initial `CreateTable` operations follow foreign-key order from field metadata
+  - Generated foreign-key names, including many-to-many intermediate tables, fit
+    PostgreSQL's 63-byte identifier limit. Longer names retain a UTF-8-safe prefix
+    and a deterministic 64-bit hash of the full name, preventing collisions from
+    backend truncation. Names already within the limit and explicitly named
+    constraints are unchanged. Existing migration files are not rewritten;
+    regenerate unapplied migrations with oversized generated names.
   - Forward and backward migrations
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
@@ -1395,7 +1401,7 @@ let all_users = User::objects().all().fetch().await?;
 
 | Hook | Trigger | Purpose |
 |------|---------|---------|
-| `before_save` | `create` / `update` | Validate / mutate model before insert |
+| `before_save` | `create` / `update` | Validate / mutate model before persistence |
 | `before_delete` | `delete` | Block destructive operations |
 | `before_bulk_update` | `bulk_update` | Validate / rewrite a batch |
 

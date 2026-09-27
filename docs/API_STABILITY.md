@@ -12,8 +12,7 @@ See [`instructions/STABILITY_POLICY.md`](../instructions/STABILITY_POLICY.md) fo
 - Breaking change policy and `#[non_exhaustive]` guidance
 - Deprecation policy
 - Migration guide requirements
-- RC-to-stable criteria (SC-1 〜 SC-3, including agent-detected bug verification)
-- Continuous SemVer verification
+- RC-to-stable criteria (SC-1 〜 SC-3)
 
 ## Legacy Anchor Compatibility
 
@@ -39,8 +38,6 @@ Inbound deep-links to the old section anchors below continue to resolve to this 
 
 <a id="non-exhaustive-as-a-preventative-measure"></a>**`#non-exhaustive-as-a-preventative-measure`** → [BC-4](../instructions/STABILITY_POLICY.md#bc-4-should-non_exhaustive-as-a-preventative-measure)
 
-<a id="deprecation-policy"></a>**`#deprecation-policy`** → [Deprecation Policy](../instructions/STABILITY_POLICY.md#deprecation-policy)
+<a id="deprecation-policy"></a>**`#deprecation-policy`** → [Deprecation Policy](../instructions/STABILITY_POLICY.md#sp-4-must-deprecation-policy)
 
 <a id="migration-guide-requirements"></a>**`#migration-guide-requirements`** → [Migration Guide Requirements](../instructions/STABILITY_POLICY.md#migration-guide-requirements)
-
-<a id="continuous-semver-verification"></a>**`#continuous-semver-verification`** → [Continuous SemVer Verification](../instructions/STABILITY_POLICY.md#continuous-semver-verification)

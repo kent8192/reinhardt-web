@@ -324,6 +324,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(db)* align migration compatibility contracts
 
+## [0.3.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.19...reinhardt-web@v0.3.20) - 2026-09-25
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(ci)* allow compatible rand 0.10 patch releases
+- *(auth)* accept array audiences in OIDC ID tokens
+
+### Maintenance
+
+- *(ci)* remove unused cargo-deny policy entries
+
+### Security
+
+- *(auth)* validate azp on multi-audience ID tokens
+
+## [0.3.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.18...reinhardt-web@v0.3.19) - 2026-09-20
+
+### Documentation
+
+- add release announcement(s)
+- *(agents)* gate external publication by destination policy
+
+### Fixed
+
+- *(pages)* honor WebSocket retry options with owned cancellation
+
+## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.17...reinhardt-web@v0.3.18) - 2026-09-16
+
+### Documentation
+
+- *(dispatch)* make the legacy exception adapter example executable
+- add release announcement(s)
+- *(agents)* reconcile execution policies and task prompts
+- *(release)* constrain announcements to supplied evidence
+
+### Fixed
+
+- *(urls)* defer unmatched route errors through middleware
+- *(http)* inherit exception handlers in nested dispatch
+- *(commands)* preserve configured exception responses on routing misses
+- *(urls)* expose the exception handler builder on WASM
+- track exception handler invocation
+- preserve dispatch errors for exception handlers
+- *(http)* unify exception handler dispatch
+- *(dispatch)* preserve legacy exception handler contract
+- *(http)* preserve routing context for exception handlers
+- *(http)* preserve routing context through middleware
+- *(http)* refresh routing context across middleware paths
+- *(http)* narrow routing context snapshots
+- *(routing)* mirror exception handlers in wasm stubs
+- *(dispatch)* keep test mutex import out of production code
+- *(ci)* detect release tags with consistent snapshot ordering
+- *(deps)* constrain AWS Smithy releases on the stable line
+- *(ci)* constrain AWS dependencies in published release baselines
+
+### Maintenance
+
+- auto-fix fmt and clippy
+- auto-fix fmt and clippy
+- *(deps)* allow the required synstructure 0.13 line
+- avoid workspace lock conflicts in publish checks
+
 ## [0.3.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.16...reinhardt-web@v0.3.17) - 2026-09-13
 
 ### Documentation

@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use strsim::{jaro_winkler, levenshtein};
 
 use super::model_registry::ManyToManyMetadata;
+use crate::naming::foreign_key_constraint_name;
 
 /// ForeignKey action for ON DELETE and ON UPDATE clauses
 #[derive(
@@ -850,7 +851,7 @@ impl ModelState {
 			&& let Some(ref fk_info) = field.foreign_key
 		{
 			let constraint = ConstraintDefinition {
-				name: crate::naming::foreign_key_constraint_name(&self.table_name, field_name),
+				name: foreign_key_constraint_name(&self.table_name, field_name),
 				constraint_type: "foreign_key".to_string(),
 				fields: vec![field_name.to_string()],
 				expression: None,
@@ -7291,7 +7292,7 @@ impl MigrationAutodetector {
 		let constraints = vec![
 			// Foreign key to source table
 			super::Constraint::ForeignKey {
-				name: crate::naming::foreign_key_constraint_name(&table_name, &source_column),
+				name: foreign_key_constraint_name(&table_name, &source_column),
 				columns: vec![source_column.clone()],
 				referenced_table: source_table.clone(),
 				referenced_columns: vec!["id".to_string()],
@@ -7301,7 +7302,7 @@ impl MigrationAutodetector {
 			},
 			// Foreign key to target table
 			super::Constraint::ForeignKey {
-				name: crate::naming::foreign_key_constraint_name(&table_name, &target_column),
+				name: foreign_key_constraint_name(&table_name, &target_column),
 				columns: vec![target_column.clone()],
 				referenced_table: target_table.clone(),
 				referenced_columns: vec!["id".to_string()],
@@ -8901,7 +8902,7 @@ impl MigrationAutodetector {
 			// Create FK constraints for the intermediate table
 			let constraints = vec![
 				super::operations::Constraint::ForeignKey {
-					name: crate::naming::foreign_key_constraint_name(through_table, &source_column),
+					name: foreign_key_constraint_name(through_table, &source_column),
 					columns: vec![source_column.clone()],
 					referenced_table: source_table.clone(),
 					referenced_columns: vec!["id".to_string()],
@@ -8910,7 +8911,7 @@ impl MigrationAutodetector {
 					deferrable: None,
 				},
 				super::operations::Constraint::ForeignKey {
-					name: crate::naming::foreign_key_constraint_name(through_table, &target_column),
+					name: foreign_key_constraint_name(through_table, &target_column),
 					columns: vec![target_column.clone()],
 					referenced_table: target_table,
 					referenced_columns: vec!["id".to_string()],
