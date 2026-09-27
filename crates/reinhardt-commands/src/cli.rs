@@ -687,7 +687,7 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			empty,
 			merge,
 			force_empty_state,
-			migration_dir: _,
+			migration_dir,
 		} => BuiltinCommandPlan::Makemigrations(makemigrations_context(
 			app_labels,
 			dry_run,
@@ -696,6 +696,7 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			empty,
 			merge,
 			force_empty_state,
+			&migration_dir,
 			verbosity,
 		)),
 		Commands::Migrate {
@@ -1028,6 +1029,7 @@ fn makemigrations_context(
 	empty: bool,
 	merge: bool,
 	force_empty_state: bool,
+	migration_dir: &Path,
 	verbosity: u8,
 ) -> CommandContext {
 	let mut ctx = CommandContext::default();
@@ -1057,6 +1059,10 @@ fn makemigrations_context(
 	if let Some(n) = name {
 		ctx.set_option("name".to_string(), n);
 	}
+	ctx.set_option(
+		"migrations-dir".to_owned(),
+		migration_dir.to_string_lossy().into_owned(),
+	);
 
 	ctx
 }
@@ -2069,7 +2075,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "migrations")]
-	#[test]
+	#[rstest]
 	fn builtin_command_plan_maps_makemigrations_context() {
 		let cli = Cli::try_parse_from([
 			"manage",
@@ -2085,7 +2091,7 @@ mod tests {
 			"--merge",
 			"--force-empty-state",
 			"--migration-dir",
-			"ignored-by-command-context",
+			"db/migrations",
 		])
 		.expect("CLI input parses");
 		let plan = builtin_command_plan(cli.command, cli.verbosity);
@@ -2094,7 +2100,7 @@ mod tests {
 			panic!("makemigrations command creates a makemigrations plan");
 		};
 		assert_eq!(ctx.args, vec!["accounts", "profiles"]);
-		assert_eq!(ctx.options.len(), 6);
+		assert_eq!(ctx.options.len(), 7);
 		assert_eq!(ctx.option("dry-run").map(String::as_str), Some("true"));
 		assert_eq!(ctx.option("name").map(String::as_str), Some("add_profile"));
 		assert_eq!(ctx.option("check").map(String::as_str), Some("true"));
@@ -2103,6 +2109,10 @@ mod tests {
 		assert_eq!(
 			ctx.option("force-empty-state").map(String::as_str),
 			Some("true")
+		);
+		assert_eq!(
+			ctx.option("migrations-dir").map(String::as_str),
+			Some("db/migrations")
 		);
 		assert_eq!(ctx.verbosity(), 4);
 	}
