@@ -30,7 +30,7 @@ on:
         description: "Merged Release PR number (required for resume-release)"
         type: string
       release_sha:
-        description: "Full recovery SHA already integrated into this release branch"
+        description: "Full recovery SHA already integrated into this release branch (required for resume-release)"
         type: string
   pull_request:
     types: [closed]
@@ -377,10 +377,37 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.generate-token.outputs.token }}
 
+      - name: Select publication source
+        id: publication-source
+        env:
+          RELEASE_MODE: ${{ inputs.mode }}
+          INPUT_RELEASE_PR: ${{ inputs.release_pr }}
+          INPUT_RELEASE_SHA: ${{ inputs.release_sha }}
+          CLASSIFIED_RELEASE_PR: ${{ needs.classify-release-push.outputs.release_pr_number }}
+        run: |
+          set -euo pipefail
+          if [ "$RELEASE_MODE" = resume-release ]; then
+            SOURCE_SHA="$INPUT_RELEASE_SHA"
+            PR_NUMBER="$INPUT_RELEASE_PR"
+          else
+            SOURCE_SHA="$GITHUB_SHA"
+            PR_NUMBER="$CLASSIFIED_RELEASE_PR"
+          fi
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::A full 40-character release_sha is required for resume-release."
+            exit 1
+          fi
+          if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::A merged Release PR number is required."
+            exit 1
+          fi
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "release_pr=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
       - name: Checkout publication source
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.mode == 'resume-release' && inputs.release_sha || github.sha }}
+          ref: ${{ steps.publication-source.outputs.source_sha }}
           path: release-source
           fetch-depth: 0
           token: ${{ steps.generate-token.outputs.token }}
@@ -415,8 +442,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_MODE: ${{ inputs.mode }}
-          RELEASE_PR: ${{ inputs.mode == 'resume-release' && inputs.release_pr || needs.classify-release-push.outputs.release_pr_number }}
-          RELEASE_SHA: ${{ inputs.mode == 'resume-release' && inputs.release_sha || github.sha }}
+          RELEASE_PR: ${{ steps.publication-source.outputs.release_pr }}
+          RELEASE_SHA: ${{ steps.publication-source.outputs.source_sha }}
         run: |
           set -euo pipefail
           args=()

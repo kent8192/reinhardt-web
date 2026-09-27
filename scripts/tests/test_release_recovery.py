@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 import io
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -524,6 +525,62 @@ class WorkflowTests(unittest.TestCase):
                     if "python3 scripts/" in step.get("run", "")
                 )
                 self.assertLess(setup, first_python)
+
+    def test_recovery_requires_explicit_full_sha_before_checkout(self):
+        steps = self.jobs["release-plz-release"]["steps"]
+        selection = next(
+            step for step in steps if step.get("id") == "publication-source"
+        )
+        checkout = next(
+            step for step in steps if step["name"] == "Checkout publication source"
+        )
+        self.assertLess(steps.index(selection), steps.index(checkout))
+        self.assertEqual(
+            checkout["with"]["ref"],
+            "${{ steps.publication-source.outputs.source_sha }}",
+        )
+        with tempfile.TemporaryDirectory(dir="/tmp") as directory:
+            output = Path(directory) / "output"
+            for sha, pr in (
+                ("", "6383"),
+                ("abc123", "6383"),
+                ("develop/0.4.0", "6383"),
+                ("b" * 40, ""),
+            ):
+                with self.subTest(sha=sha, pr=pr):
+                    output.write_text("")
+                    env = os.environ | {
+                        "GITHUB_OUTPUT": str(output),
+                        "GITHUB_SHA": "a" * 40,
+                        "RELEASE_MODE": "resume-release",
+                        "INPUT_RELEASE_SHA": sha,
+                        "INPUT_RELEASE_PR": pr,
+                        "CLASSIFIED_RELEASE_PR": "6383",
+                    }
+                    result = subprocess.run(
+                        ["bash", "-c", selection["run"]],
+                        env=env,
+                        text=True,
+                        capture_output=True,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(output.read_text(), "")
+            for mode, expected in (("resume-release", "b" * 40), ("", "a" * 40)):
+                output.write_text("")
+                env.update(
+                    RELEASE_MODE=mode,
+                    INPUT_RELEASE_SHA="b" * 40,
+                    INPUT_RELEASE_PR="6383",
+                )
+                result = subprocess.run(
+                    ["bash", "-c", selection["run"]],
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"source_sha={expected}", output.read_text())
+                self.assertIn("release_pr=6383", output.read_text())
 
 
 if __name__ == "__main__":
