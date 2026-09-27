@@ -85,6 +85,61 @@ macro_rules! relation_nullability_tests {
 			}
 
 			#[rstest]
+			#[case::omitted(false, None)]
+			#[case::explicit_null(true, None)]
+			#[case::explicit_present(true, Some(Uuid::from_u128(3)))]
+			fn builder_constructs_nullable_relations(
+				#[case] explicit: bool,
+				#[case] expected: Option<Uuid>,
+			) {
+				// Arrange
+				let parent: Parent =
+					serde_json::from_value(serde_json::json!({"id": Uuid::from_u128(2)})).unwrap();
+				let builder = Child::new()
+					.label("child")
+					.required_parent(&parent)
+					.explicit_required_parent(&parent)
+					.required_profile(&parent)
+					.explicit_required_profile(&parent);
+
+				// Act
+				let child = if explicit {
+					builder
+						.optional_parent_id(expected)
+						.optional_profile_id(expected)
+						.finish()
+				} else {
+					builder.finish()
+				};
+
+				// Assert
+				assert_eq!(child.optional_parent_id, expected);
+				assert_eq!(child.optional_profile_id, expected);
+				assert_eq!(child.explicit_required_parent_id, Uuid::from_u128(2));
+			}
+
+			#[rstest]
+			fn builder_preserves_nullable_model_reference_setters() {
+				// Arrange
+				let parent: Parent =
+					serde_json::from_value(serde_json::json!({"id": Uuid::from_u128(2)})).unwrap();
+
+				// Act
+				let child = Child::build()
+					.label("child")
+					.required_parent(&parent)
+					.explicit_required_parent(&parent)
+					.required_profile(&parent)
+					.explicit_required_profile(&parent)
+					.optional_parent(&parent)
+					.optional_profile(&parent)
+					.finish();
+
+				// Assert
+				assert_eq!(child.optional_parent_id, Some(Uuid::from_u128(2)));
+				assert_eq!(child.optional_profile_id, Some(Uuid::from_u128(2)));
+			}
+			#[rstest]
 			fn omitted_nullable_relation_ids_default_to_none(required_fields: serde_json::Value) {
 				// Act
 				let child: Child = serde_json::from_value(required_fields).unwrap();
