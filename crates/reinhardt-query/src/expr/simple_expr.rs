@@ -108,7 +108,10 @@ pub enum SimpleExpr {
 	/// An aliased expression (e.g., `expr AS alias_name`)
 	ExprAlias(Box<SimpleExpr>, DynIden),
 
-	/// A CAST expression (e.g., `CAST(x AS INTEGER)`)
+	/// A CAST expression with an escaped type identifier.
+	///
+	/// For PostgreSQL, use a lowercase built-in catalog name, such as `text`:
+	/// `CAST(x AS "text")`. See [`ExprTrait::cast_as`](super::ExprTrait::cast_as).
 	Cast(Box<SimpleExpr>, DynIden),
 
 	/// A window function with inline window specification
