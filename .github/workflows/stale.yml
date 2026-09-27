@@ -30,7 +30,7 @@ jobs:
           close-issue-label: auto-closed
           exempt-issue-labels: >
             enhancement,help wanted,security,critical,high,
-            migration-approved,rc-addition,agent-suspect,good first issue
+            migration-approved,rc-addition,good first issue
 
           # PR settings
           days-before-pr-stale: 14

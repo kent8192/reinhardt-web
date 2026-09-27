@@ -181,6 +181,9 @@ impl ServerRouter {
 		// Django-style APPEND_SLASH fallback path if the primary lookup misses.
 		if let Ok(matched) = router.at(search_path.as_ref()) {
 			let route_handler = matched.value;
+			if !route_handler.path_params_are_valid(&matched.params) {
+				return None;
+			}
 			// Extract parameters from matchit. matchit's `Params` iterator
 			// yields parameters in URL pattern declaration order, so we
 			// store them in ordered `PathParams` all the way down to the
@@ -208,6 +211,9 @@ impl ServerRouter {
 				&& let Ok(matched) = router.at(fallback_path)
 			{
 				let route_handler = matched.value;
+				if !route_handler.path_params_are_valid(&matched.params) {
+					return None;
+				}
 				let params = if route_handler.param_names.is_empty() {
 					None
 				} else {
@@ -222,6 +228,9 @@ impl ServerRouter {
 			let fallback_path = format!("{}/", search_path.as_ref());
 			if let Ok(matched) = router.at(&fallback_path) {
 				let route_handler = matched.value;
+				if !route_handler.path_params_are_valid(&matched.params) {
+					return None;
+				}
 				let params = if route_handler.param_names.is_empty() {
 					None
 				} else {
@@ -252,7 +261,9 @@ impl ServerRouter {
 
 		let path_exists = |candidate_path: &str| {
 			for router in compiled_routes.method_routers() {
-				if router.at(candidate_path).is_ok() {
+				if let Ok(matched) = router.at(candidate_path)
+					&& matched.value.path_params_are_valid(&matched.params)
+				{
 					return true;
 				}
 			}

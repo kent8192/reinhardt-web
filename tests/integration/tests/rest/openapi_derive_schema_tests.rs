@@ -8,6 +8,8 @@
 use reinhardt_rest::openapi::{Schema, ToSchema};
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::collections::BTreeMap;
 use utoipa::openapi::{
 	Deprecated,
 	schema::{SchemaFormat, SchemaType, Type},
@@ -16,6 +18,81 @@ use utoipa::openapi::{
 // ============================================================================
 // Struct Schema Tests
 // ============================================================================
+
+#[rstest]
+fn test_serde_json_value_field_has_unrestricted_schema() {
+	// Arrange
+	#[derive(Serialize, Deserialize, Schema)]
+	struct JsonPayload {
+		data: serde_json::Value,
+	}
+
+	// Act
+	let schema = serde_json::to_value(JsonPayload::schema()).unwrap();
+
+	// Assert
+	assert_eq!(
+		schema,
+		json!({
+			"type": "object",
+			"properties": {"data": {}},
+			"required": ["data"]
+		})
+	);
+}
+
+#[rstest]
+fn test_btreemap_field_has_typed_additional_properties() {
+	// Arrange
+	#[derive(Serialize, Deserialize, Schema)]
+	struct MapPayload {
+		labels: BTreeMap<String, String>,
+	}
+
+	// Act
+	let schema = serde_json::to_value(MapPayload::schema()).unwrap();
+
+	// Assert
+	assert_eq!(
+		schema,
+		json!({
+			"type": "object",
+			"properties": {
+				"labels": {"type": "object", "additionalProperties": {"type": "string"}}
+			},
+			"required": ["labels"]
+		})
+	);
+}
+
+#[rstest]
+fn test_json_and_btreemap_fields_compose_with_optional_and_array_types() {
+	// Arrange
+	#[derive(Serialize, Deserialize, Schema)]
+	struct NestedPayload {
+		data: Option<serde_json::Value>,
+		entries: Vec<BTreeMap<String, serde_json::Value>>,
+	}
+
+	// Act
+	let schema = serde_json::to_value(NestedPayload::schema()).unwrap();
+
+	// Assert
+	assert_eq!(
+		schema,
+		json!({
+			"type": "object",
+			"properties": {
+				"data": {},
+				"entries": {
+					"type": "array",
+					"items": {"type": "object", "additionalProperties": {}}
+				}
+			},
+			"required": ["entries"]
+		})
+	);
+}
 
 #[rstest]
 fn test_simple_struct_schema_generation() {

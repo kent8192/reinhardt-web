@@ -111,3 +111,6 @@ mod sqlite_default_value_preservation;
 // CockroachDB migration lock regression tests (reinhardt-web#4642)
 #[path = "migrations/cockroachdb_migration_lock.rs"]
 mod cockroachdb_migration_lock;
+
+#[path = "migrations/postgres_schema_lock.rs"]
+mod postgres_schema_lock;

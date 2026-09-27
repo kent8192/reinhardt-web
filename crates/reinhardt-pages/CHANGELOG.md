@@ -187,6 +187,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(pages)* support optional typed query extraction across route components, layouts, loaders, page props, and manual request props; optional loader cache identity distinguishes missing and present values
 
+## [0.3.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.18...reinhardt-pages@v0.3.19) - 2026-09-20
+
+### Fixed
+
+- *(pages)* honor WebSocket retry options with owned cancellation
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.15...reinhardt-pages@v0.3.16) - 2026-09-08
 
 ### Fixed

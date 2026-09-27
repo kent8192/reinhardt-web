@@ -170,6 +170,12 @@ Standard capabilities that plugins can provide:
 | `Handlers` | HTTP handlers/views | ✅ |
 | `NetworkAccess` | HTTP client for external requests | ✅ |
 | `DatabaseAccess` | SQL query execution | ✅ |
+| `StaticSiteGeneration` | Build static HTML from routes and components | ❌ (Static only) |
+| `FrontendSsr` | Server-side rendering for frontend frameworks | ❌ |
+| `FrontendHydration` | Client-side hydration and state restoration | ❌ |
+| `TypeScriptRuntime` | JavaScript execution through the Boa ECMAScript engine | ❌ |
+| `BuildToolIntegration` | Integration with frontend build tools | ❌ (WASM configuration maps it as a custom capability, not the standard capability) |
+| `HotModuleReplacement` | Development-time dynamic module reload | ❌ |
 
 ### PluginRegistry
 

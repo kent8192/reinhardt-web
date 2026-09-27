@@ -79,17 +79,18 @@ jobs:
           EXCLUDES=$(cargo metadata --no-deps --format-version=1 \
             | jq -r '.packages[] | select(.publish == [] or .publish == ["!crates-io"]) | "--exclude \(.name)"' \
             | tr '\n' ' ')
+          read -r -a exclude_args <<< "$EXCLUDES"
 
           # Workaround for topiary/topiary#1246 (tracked in reinhardt-web#4827).
-          # Avoid validating publishable library crates with the workspace
-          # lockfile embedded, because the workspace may intentionally carry
-          # newer wasm-bindgen/js-sys versions than Topiary's registry-form
-          # exact pins allow during package dependency resolution.
-          # Remove this option when Topiary publishes relaxed constraints.
+          # Packaging removes workspace patches, so the workspace lockfile's
+          # newer js-sys conflicts with the registry Topiary wasm-bindgen pin.
+          # Omit lockfiles from these CI tarballs; the consumer fixture below
+          # resolves the packaged manifests independently.
+          # Remove this flag when Topiary publishes compatible constraints.
           #
           # Ideal implementation (without workaround):
-          #   eval cargo package --workspace --no-verify --allow-dirty $EXCLUDES
-          eval cargo package --workspace --exclude-lockfile --no-verify --allow-dirty $EXCLUDES
+          #   cargo package --workspace --no-verify --allow-dirty "${exclude_args[@]}"
+          cargo package --workspace --exclude-lockfile --no-verify --allow-dirty "${exclude_args[@]}"
           echo ""
           echo "=== All crates passed packaging check ==="
 

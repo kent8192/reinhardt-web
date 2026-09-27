@@ -1,7 +1,7 @@
 //! Raw request and typed extractor route integration tests.
 
 use bytes::Bytes;
-use hyper::{Method, header};
+use hyper::{Method, StatusCode, header};
 use reinhardt_di::params::{Json, Path};
 use reinhardt_http::{Handler, Request, Response, ViewResult};
 use reinhardt_macros::{get, post};
@@ -18,6 +18,56 @@ struct ImportRequest {
 async fn get_import_job(req: Request, Path(job_id): Path<String>) -> ViewResult<Response> {
 	let cookie = req.get_header("cookie").unwrap_or_default();
 	Ok(Response::ok().with_body(format!("{job_id}:{cookie}")))
+}
+
+#[get("/files/{<path:asset>}", name = "typed-path-asset")]
+async fn get_asset(req: Request, Path(asset): Path<String>) -> ViewResult<Response> {
+	assert_eq!(
+		req.path_params.to_vec(),
+		vec![(String::from("asset"), asset.clone())]
+	);
+	Ok(Response::ok().with_body(asset))
+}
+
+#[rstest]
+#[case::single_segment("single.txt")]
+#[case::nested_path("nested/file.txt")]
+#[case::deep_path("scripts/vendor/app.js")]
+#[case::trailing_slash("nested/directory/")]
+#[tokio::test]
+async fn http_path_converter_dispatches_validated_endpoint(
+	#[case] asset: &str,
+	#[values("", "/", "/static/")] mount_prefix: &str,
+	#[values(false, true)] validate_first: bool,
+) {
+	// Arrange
+	let endpoint_router = ServerRouter::new().endpoint(get_asset);
+	if validate_first {
+		assert_eq!(endpoint_router.validate_routes(), Ok(()));
+	}
+	let router = if mount_prefix.is_empty() {
+		endpoint_router
+	} else {
+		ServerRouter::new().mount(mount_prefix, endpoint_router)
+	};
+	let path = format!("{}/files/{asset}", mount_prefix.trim_end_matches('/'));
+	let request = Request::builder()
+		.uri(path)
+		.build()
+		.expect("asset request should be valid");
+	if validate_first {
+		assert_eq!(router.validate_routes(), Ok(()));
+	}
+
+	// Act
+	let response = router
+		.handle(request)
+		.await
+		.expect("typed catch-all endpoint should dispatch");
+
+	// Assert
+	assert_eq!(response.status, StatusCode::OK);
+	assert_eq!(response.body.as_ref(), asset.as_bytes());
 }
 
 #[get(

@@ -1,6 +1,6 @@
 //! OIDC claims types
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -13,7 +13,9 @@ pub struct IdToken {
 	/// Issuer
 	pub iss: String,
 
-	/// Audience (client ID)
+	/// Audience (client ID). For an array-valued claim, deserialization keeps its
+	/// first entry; ID token validation sets this to the validated client ID.
+	#[serde(deserialize_with = "deserialize_audience")]
 	pub aud: String,
 
 	/// Expiration time (Unix timestamp)
@@ -57,6 +59,26 @@ pub struct IdToken {
 	/// Additional claims (provider-specific)
 	#[serde(flatten)]
 	pub additional_claims: HashMap<String, Value>,
+}
+
+fn deserialize_audience<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+	D: Deserializer<'de>,
+{
+	#[derive(Deserialize)]
+	#[serde(untagged)]
+	enum Audience {
+		Single(String),
+		Multiple(Vec<String>),
+	}
+
+	match Audience::deserialize(deserializer)? {
+		Audience::Single(audience) => Ok(audience),
+		Audience::Multiple(audiences) => audiences
+			.into_iter()
+			.next()
+			.ok_or_else(|| D::Error::custom("audience array must not be empty")),
+	}
 }
 
 /// Standard OIDC claims (from ID token or UserInfo endpoint)

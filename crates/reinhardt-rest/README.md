@@ -282,6 +282,7 @@ let response = result.into_api_response();
   - `schema_name()` method returns optional schema identifier
   - Implemented for all Rust primitive types (i8-i64, u8-u64, f32-f64, bool, String)
   - Generic implementations for `Option<T>` and `Vec<T>`
+  - Unrestricted JSON schemas for `serde_json::Value`, including scalar, array, object, and null values
 
 - **Schema Derive Macro**: `#[derive(Schema)]` procedural macro for automatic schema generation
   - Automatic field metadata extraction (type, required, nullable)
@@ -301,7 +302,7 @@ let response = result.into_api_response();
   - Schema registry for component reuse
   - Validation constraint reflection (min, max, pattern)
   - Example value generation
-- **HashMap Support**: `HashMap<K,V>` schema generation
+- **Map Support**: `HashMap<String, V>` and `BTreeMap<String, V>` schemas use the value type's schema for `additionalProperties`, including nested maps
 - **Tuple Struct Support**: Schema generation for tuple structs
 
 #### ViewSet Integration

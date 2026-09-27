@@ -140,7 +140,7 @@ pub fn generated_unique_constraint_names(
 
 #[doc(hidden)]
 pub fn foreign_key_constraint_name(table: &str, column: &str) -> String {
-	format!("fk_{table}_{column}")
+	truncate_identifier_with_hash(&format!("fk_{table}_{column}"))
 }
 
 #[doc(hidden)]

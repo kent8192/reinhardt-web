@@ -209,6 +209,17 @@ Mount the `OAuthHandler` authorization and token endpoints, then have clients us
 
 - merge main into develop/0.4.0
 - merge anyhow removal into atomic transactions
+
+## [0.3.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.19...reinhardt-auth@v0.3.20) - 2026-09-25
+
+### Fixed
+
+- *(auth)* accept array audiences in OIDC ID tokens
+
+### Security
+
+- *(auth)* validate azp on multi-audience ID tokens
+
 ## [0.3.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.13...reinhardt-auth@v0.3.14) - 2026-08-29
 
 ### Added

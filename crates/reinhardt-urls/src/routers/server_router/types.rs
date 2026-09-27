@@ -5,6 +5,7 @@
 //! method bodies live in dedicated submodules (`builder`, `registration`,
 //! `compile`, `introspection`, `dispatch`).
 
+use crate::routers::pattern::validate_path_param;
 use hyper::Method;
 use matchit::Router as MatchitRouter;
 use reinhardt_core::endpoint::AuthProtection;
@@ -249,6 +250,9 @@ pub(crate) fn join_path(prefix: &str, suffix: &str) -> String {
 /// Handler information stored in matchit router
 #[derive(Clone)]
 pub(crate) struct RouteHandler {
+	/// Typed path captures that require traversal validation before dispatch.
+	pub(crate) path_type_params: Vec<String>,
+
 	/// The actual handler
 	pub(crate) handler: Arc<dyn Handler>,
 
@@ -263,6 +267,15 @@ pub(crate) struct RouteHandler {
 
 	/// Path parameter names in URL pattern declaration order.
 	pub(crate) param_names: Arc<[String]>,
+}
+
+impl RouteHandler {
+	/// Apply typed converter validation to a match before treating it as a route.
+	pub(super) fn path_params_are_valid(&self, params: &matchit::Params<'_, '_>) -> bool {
+		params.iter().all(|(key, value)| {
+			!self.path_type_params.iter().any(|name| name == key) || validate_path_param(value)
+		})
+	}
 }
 
 /// Route match result with metadata
