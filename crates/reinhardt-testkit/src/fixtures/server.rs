@@ -1,4 +1,4 @@
-//! Server test fixtures with automatic graceful shutdown.
+//! Server test fixtures with automatic shutdown.
 //!
 //! This module provides rstest fixtures for testing HTTP servers with automatic
 //! cleanup via RAII pattern.
@@ -19,7 +19,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 
 #[cfg(feature = "websockets")]
 use reinhardt_server::WebSocketServer;
@@ -27,27 +27,29 @@ use reinhardt_server::WebSocketServer;
 #[cfg(feature = "graphql")]
 use reinhardt_server::GraphQLHandler;
 
-/// Test server guard with automatic graceful shutdown.
+/// Test server guard with automatic connection cleanup.
 ///
-/// This guard automatically performs graceful shutdown when dropped, ensuring
-/// proper cleanup of server resources even if the test panics.
+/// Dropping the guard cancels the listener and all accepted HTTP connections,
+/// including pending handlers and the resources they own, even if the test panics.
+/// Cancellation completes asynchronously as the Tokio runtime polls the aborted
+/// tasks. In-flight requests are cancelled instead of being drained to completion.
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```
 /// use reinhardt_testkit::fixtures::*;
 /// use reinhardt_urls::routers::ServerRouter as Router;
 ///
-/// #[tokio::test]
-/// async fn test_example() {
-///     let router = Router::new();
+/// # #[tokio::main]
+/// # async fn main() {
+///     let router = Router::new().handler("/test", BasicHandler);
 ///     let server = test_server_guard(router).await;
 ///     let response = reqwest::get(&format!("{}/test", server.url))
 ///         .await
 ///         .unwrap();
 ///     assert_eq!(response.status(), 200);
-///     // Automatic graceful shutdown when server goes out of scope
-/// }
+///     // Automatic connection cleanup when server goes out of scope
+/// # }
 /// ```
 pub struct TestServerGuard {
 	/// Server URL (e.g., "http://127.0.0.1:12345")
@@ -86,13 +88,15 @@ impl TestServerGuard {
 		let server = HttpServer::new(handler);
 		let mut shutdown_rx = server_coordinator.subscribe();
 		let server_task = tokio::spawn(async move {
+			// Dropping the accept loop must also cancel every accepted connection.
+			let mut connections = JoinSet::new();
 			loop {
 				tokio::select! {
 					result = listener.accept() => {
 						match result {
 							Ok((stream, socket_addr)) => {
 								let handler_clone = server.handler();
-								tokio::spawn(async move {
+								connections.spawn(async move {
 									if let Err(e) =
 										HttpServer::handle_connection(stream, socket_addr, handler_clone, None)
 											.await
@@ -110,6 +114,8 @@ impl TestServerGuard {
 					_ = shutdown_rx.recv() => {
 						break;
 					}
+					// Reap completed tasks so long-lived fixtures do not retain them.
+					_ = connections.join_next(), if !connections.is_empty() => {}
 				}
 			}
 		});
@@ -133,9 +139,7 @@ impl Drop for TestServerGuard {
 		// Trigger shutdown signal
 		self.coordinator.shutdown();
 
-		// Abort the server task
-		// The ShutdownCoordinator will handle graceful shutdown,
-		// but we need to ensure the task is terminated
+		// Aborting the accept loop drops its JoinSet and cancels active connections.
 		if let Some(task) = self.server_task.take() {
 			task.abort();
 		}
@@ -145,7 +149,8 @@ impl Drop for TestServerGuard {
 /// Create a test server guard with the given router.
 ///
 /// This is a helper function (not an rstest fixture) that creates a test server
-/// with automatic graceful shutdown. Use it directly in your tests.
+/// with automatic connection cleanup. Use it directly in your tests.
+/// See [`TestServerGuard`] for the cancellation behavior on drop.
 ///
 /// # Examples
 ///
@@ -520,7 +525,11 @@ pub async fn graphql_server() -> TestServer {
 // TestServer Structure with Builder Pattern
 // ============================================================================
 
-/// Test server with automatic graceful shutdown
+/// Test server with automatic shutdown.
+///
+/// For HTTP/1.1 fixtures, dropping the guard also cancels accepted connections
+/// and pending handlers. Their resources are released asynchronously when the
+/// Tokio runtime polls the aborted tasks.
 pub struct TestServer {
 	/// Server URL (e.g., "http://127.0.0.1:12345")
 	pub url: String,
@@ -652,6 +661,8 @@ impl TestServerBuilder {
 					// Use the already-bound listener directly to avoid TOCTOU race
 					let server = HttpServer::new(h);
 					let mut shutdown_rx = server_coordinator.subscribe();
+					// Own connections so both shutdown and task abortion release them.
+					let mut connections = JoinSet::new();
 					loop {
 						tokio::select! {
 							result = listener.accept() => {
@@ -659,7 +670,7 @@ impl TestServerBuilder {
 									Ok((stream, socket_addr)) => {
 										let handler_clone = server.handler();
 										let di_ctx = di_context.clone();
-										tokio::spawn(async move {
+										connections.spawn(async move {
 											if let Err(e) =
 												HttpServer::handle_connection(stream, socket_addr, handler_clone, di_ctx)
 													.await
@@ -677,6 +688,7 @@ impl TestServerBuilder {
 							_ = shutdown_rx.recv() => {
 								break;
 							}
+							_ = connections.join_next(), if !connections.is_empty() => {}
 						}
 					}
 				}
