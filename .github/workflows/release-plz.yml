@@ -457,6 +457,23 @@ jobs:
             --workflow-sha "$GITHUB_SHA" --source-sha "$RELEASE_SHA" \
             --release-pr "$RELEASE_PR" "${args[@]}"
 
+      - name: Attach publication source to a tracking branch
+        working-directory: release-source
+        env:
+          RELEASE_SHA: ${{ steps.publication-source.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$RELEASE_SHA" ]; then
+            echo "::error::Publication checkout no longer matches the verified source SHA."
+            exit 1
+          fi
+          # release-plz reads @{upstream} and rejects a detached HEAD. Attach
+          # the verified commit locally; never check out the remote branch tip.
+          git switch --no-track --create release-publication "$RELEASE_SHA"
+          git branch --set-upstream-to="origin/$GITHUB_REF_NAME" release-publication
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}')" = "origin/$GITHUB_REF_NAME"
+
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@b874e25ea559687bec77e281e9b271aa1367b624 # v1.23.0
         env:
