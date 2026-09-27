@@ -123,11 +123,13 @@ pub(crate) fn model_attribute_impl(
 		})
 	}
 
-	fn relation_is_nullable(attrs: &[Attribute]) -> bool {
-		attrs.iter().any(|attr| {
-			attr.path().is_ident("rel")
-				&& matches!(&attr.meta, syn::Meta::List(meta_list) if meta_list.tokens.to_string().contains("null = true"))
-		})
+	fn relation_is_nullable(attrs: &[Attribute]) -> syn::Result<bool> {
+		for attr in attrs.iter().filter(|attr| attr.path().is_ident("rel")) {
+			if crate::rel::RelAttribute::from_attribute(attr)?.null == Some(true) {
+				return Ok(true);
+			}
+		}
+		Ok(false)
 	}
 
 	fn relation_db_column(attrs: &[Attribute]) -> Option<syn::LitStr> {
@@ -219,7 +221,7 @@ pub(crate) fn model_attribute_impl(
 					let db_column_attr = db_column.map(|column| {
 						quote! { #[field(db_column = #column)] }
 					});
-					let new_field: Field = if relation_is_nullable(&field.attrs) {
+					let new_field: Field = if relation_is_nullable(&field.attrs)? {
 						syn::parse_quote! {
 							#[serde(default)]
 							#db_column_attr

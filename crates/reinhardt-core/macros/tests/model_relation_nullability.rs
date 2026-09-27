@@ -33,7 +33,7 @@ macro_rules! relation_nullability_tests {
 				optional_parent: db::associations::ForeignKeyField<Parent>,
 				#[rel(foreign_key)]
 				required_parent: db::associations::ForeignKeyField<Parent>,
-				#[rel(foreign_key, null = false)]
+				#[rel(foreign_key, null = false, db_constraint = "fk_not_null = true")]
 				explicit_required_parent: db::associations::ForeignKeyField<Parent>,
 				#[rel(one_to_one, null = true)]
 				optional_profile: db::associations::OneToOneField<Parent>,
