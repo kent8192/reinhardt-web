@@ -556,7 +556,10 @@ fn test_typed_endpoint_preserves_parameter_names_and_order() {
 #[case::direct(0)]
 #[case::child(1)]
 #[case::grandchild(2)]
-fn test_validate_routes_rejects_nonterminal_path_converter(#[case] depth: usize) {
+fn test_validate_routes_rejects_nonterminal_path_converter(
+	#[case] depth: usize,
+	#[values(false, true)] lazy_first: bool,
+) {
 	// Arrange
 	let mut router = ServerRouter::new().endpoint(|| TestEndpoint::<32>);
 	let mut valid_router = ServerRouter::new().endpoint(|| TestEndpoint::<29>);
@@ -570,16 +573,30 @@ fn test_validate_routes_rejects_nonterminal_path_converter(#[case] depth: usize)
 		.expect_err("catch-all parameters must be terminal");
 
 	// Act
+	let lazy_match = lazy_first.then(|| {
+		router
+			.resolve(
+				&format!("{}/files/nested/file.txt/metadata", "/child".repeat(depth)),
+				&Method::GET,
+			)
+			.is_some()
+	});
 	let validation = router.validate_routes();
+	let repeated = router.validate_routes();
+	let valid_first = valid_router.validate_routes();
+	let valid_repeated = valid_router.validate_routes();
 
 	// Assert
-	assert!(valid_router.validate_routes().is_ok());
+	assert_eq!(lazy_match, lazy_first.then_some(false));
+	assert_eq!(valid_first, Ok(()));
+	assert_eq!(valid_repeated, Ok(()));
 	assert_eq!(
 		validation,
 		Err(vec![format!(
 			"Failed to compile route '/files/{{<path:asset>}}/metadata' (GET): {expected_error}"
 		)])
 	);
+	assert_eq!(repeated, validation);
 }
 
 #[rstest]
@@ -691,9 +708,9 @@ fn test_router_recovers_from_poisoned_rwlock() {
 	// Arrange
 	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
 
-	// Poison the routes_compiled RwLock by panicking while holding write guard
+	// Poison the compilation-result RwLock by panicking while holding its write guard
 	let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-		let _guard = router.routes_compiled.write().unwrap();
+		let _guard = router.route_compilation.write().unwrap();
 		panic!("intentional panic to poison lock");
 	}));
 

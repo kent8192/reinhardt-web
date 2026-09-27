@@ -27,13 +27,24 @@ impl ServerRouter {
 	/// all routes compiled successfully. RwLock poisoning is recovered from
 	/// via `PoisonError::into_inner` to prevent cascade failures.
 	pub(crate) fn compile_routes(&self) -> Vec<String> {
-		// Check if already compiled (read lock, recovers from poisoning)
-		if *self
-			.routes_compiled
-			.read()
-			.unwrap_or_else(PoisonError::into_inner)
+		// Preserve diagnostics for repeated validation and lazy resolution.
 		{
-			return Vec::new();
+			let cached = self
+				.route_compilation
+				.read()
+				.unwrap_or_else(PoisonError::into_inner);
+			if let Some(errors) = cached.as_ref() {
+				return errors.clone();
+			}
+		}
+
+		// Serialize cold compilation so concurrent callers cannot insert duplicates.
+		let mut cached = self
+			.route_compilation
+			.write()
+			.unwrap_or_else(PoisonError::into_inner);
+		if let Some(errors) = cached.as_ref() {
+			return errors.clone();
 		}
 
 		let mut errors = Vec::new();
@@ -150,11 +161,8 @@ impl ServerRouter {
 		#[cfg(feature = "viewsets")]
 		self.compile_viewset_routes(&mut errors);
 
-		// Mark routes as compiled
-		*self
-			.routes_compiled
-			.write()
-			.unwrap_or_else(PoisonError::into_inner) = true;
+		// Cache the result, including failures, without recompiling partial routers.
+		*cached = Some(errors.clone());
 
 		errors
 	}
@@ -278,6 +286,7 @@ impl ServerRouter {
 	/// Call this at application startup to detect invalid route patterns early.
 	/// Returns `Ok(())` if all routes compiled successfully, or `Err` with
 	/// a list of compilation error messages.
+	/// Cached failures remain visible on repeated calls and after lazy resolution.
 	///
 	/// # Examples
 	///
