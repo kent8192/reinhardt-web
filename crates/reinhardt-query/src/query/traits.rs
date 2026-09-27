@@ -82,7 +82,7 @@ fn placeholder_ranges(sql: &str, dialect: InlineDialect) -> Vec<Range<usize>> {
 	let mut i = 0;
 	while i < bytes.len() {
 		match bytes[i] {
-			b'\'' | b'"' | b'`' => {
+			b'\'' | b'"' | b'`' if bytes[i] != b'`' || !dialect.postgres => {
 				let escape = (dialect.mysql && matches!(bytes[i], b'\'' | b'"'))
 					|| (dialect.postgres
 						&& bytes[i] == b'\''

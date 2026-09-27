@@ -228,6 +228,8 @@ fn to_string_respects_downstream_build_override() {
 #[case::sqlite_numbered_text(SqliteQueryBuilder, "$2", "SELECT $2, 7")]
 #[case::mysql_dollar_identifier(MySqlQueryBuilder, "$tag$", "SELECT $tag$, 7")]
 #[case::sqlite_dollar_text(SqliteQueryBuilder, "$tag$", "SELECT $tag$, 7")]
+#[case::postgres_backtick_operator(PostgresQueryBuilder, "lhs ` rhs", "SELECT lhs ` rhs, 7")]
+#[case::sqlite_backtick_identifier(SqliteQueryBuilder, "`$1?`", "SELECT `$1?`, 7")]
 #[case::mysql_block_comment(MySqlQueryBuilder, "1 /* /* */", "SELECT 1 /* /* */, 7")]
 #[case::sqlite_block_comment(SqliteQueryBuilder, "1 /* /* */", "SELECT 1 /* /* */, 7")]
 #[case::postgres_nested_comment(
