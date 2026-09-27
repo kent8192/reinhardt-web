@@ -1,6 +1,6 @@
 use super::validation::{
 	MAX_PATH_SEGMENTS, MAX_PATTERN_LENGTH, MAX_REGEX_SIZE, type_spec_to_regex, validate_path_param,
-	validate_reverse_param,
+	validate_path_reverse_param, validate_reverse_param,
 };
 use aho_corasick::AhoCorasick;
 use regex::Regex;
@@ -337,6 +337,10 @@ impl PathPattern {
 	/// - m: total parameter values length
 	/// - z: number of placeholder matches
 	///
+	/// `path` converter parameters accept non-empty relative paths containing
+	/// forward slashes. Other parameters remain limited to a single segment.
+	/// Traversal, absolute paths, and URL query or fragment injection are rejected.
+	///
 	/// # Arguments
 	///
 	/// * `params` - HashMap of parameter names to values
@@ -344,7 +348,7 @@ impl PathPattern {
 	/// # Returns
 	///
 	/// * `Ok(String)` - Reversed URL with parameters substituted
-	/// * `Err(String)` - If required parameters are missing
+	/// * `Err(String)` - If required parameters are missing or values are unsafe
 	///
 	/// # Examples
 	///
@@ -360,6 +364,10 @@ impl PathPattern {
 	///
 	/// let url = pattern.reverse(&params).unwrap();
 	/// assert_eq!(url, "/users/123/posts/456/");
+	///
+	/// let files = PathPattern::new("/files/{<path:asset>}").unwrap();
+	/// let params = HashMap::from([("asset".to_string(), "nested/file.txt".to_string())]);
+	/// assert_eq!(files.reverse(&params).unwrap(), "/files/nested/file.txt");
 	/// ```
 	pub fn reverse(&self, params: &HashMap<String, String>) -> Result<String, String> {
 		// Validate all required parameters are present
@@ -371,7 +379,12 @@ impl PathPattern {
 
 		// Validate parameter values against injection attacks
 		for (name, value) in params {
-			if !validate_reverse_param(value) {
+			let valid = if self.path_type_params.contains(name) {
+				validate_path_reverse_param(value)
+			} else {
+				validate_reverse_param(value)
+			};
+			if !valid {
 				return Err(format!(
 					"Invalid parameter value for '{}': contains dangerous characters",
 					name

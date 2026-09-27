@@ -80,6 +80,25 @@ fn test_reverse_single_parameter() {
 	assert_eq!(result, "/users/123/");
 }
 
+#[rstest]
+fn typed_path_reverse_keeps_single_segment_parameters_restricted() {
+	// Arrange
+	let pattern = PathPattern::new("/users/{id}/files/{<path:asset>}").unwrap();
+	let params = HashMap::from([
+		("id".into(), "alice/admin".into()),
+		("asset".into(), "nested/file.txt".into()),
+	]);
+
+	// Act
+	let reversed = pattern.reverse(&params);
+
+	// Assert
+	assert_eq!(
+		reversed,
+		Err("Invalid parameter value for 'id': contains dangerous characters".into())
+	);
+}
+
 #[test]
 fn test_reverse_multiple_parameters() {
 	let pattern = PathPattern::new(reinhardt_routers_macros::path!(

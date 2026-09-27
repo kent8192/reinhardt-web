@@ -158,3 +158,12 @@ pub(crate) fn validate_reverse_param(value: &str) -> bool {
 
 	true
 }
+
+/// Validate a `path` converter value for URL reversal.
+///
+/// Forward-slash-separated relative paths are allowed. Each segment retains
+/// the URL injection checks used by ordinary parameters, while the complete
+/// value must pass the same traversal and absolute-path checks as dispatch.
+pub(super) fn validate_path_reverse_param(value: &str) -> bool {
+	!value.is_empty() && validate_path_param(value) && value.split('/').all(validate_reverse_param)
+}

@@ -311,6 +311,58 @@ fn test_nested_namespace_registration() {
 }
 
 #[rstest]
+#[case::nested("nested/file.txt", true)]
+#[case::unicode("images/日本語.png", true)]
+#[case::colon_filename("reports/version:1.txt", true)]
+#[case::empty("", false)]
+#[case::parent("nested/../secret", false)]
+#[case::trailing_parent("nested/..", false)]
+#[case::absolute("/etc/passwd", false)]
+#[case::drive("C:/Windows/win.ini", false)]
+#[case::backslash(r"nested\file.txt", false)]
+#[case::query("nested/file.txt?admin=1", false)]
+#[case::fragment("nested/file.txt#admin", false)]
+#[case::encoded_parent("nested/%2e%2e/secret", false)]
+#[case::encoded_separator("nested%2Ffile.txt", false)]
+#[case::encoded_query("nested/file.txt%3Fadmin=1", false)]
+#[case::encoded_fragment("nested/file.txt%23admin", false)]
+fn registered_typed_path_reverse_validates_converter_values(
+	#[case] asset: &str,
+	#[case] valid: bool,
+	#[values(false, true)] mounted: bool,
+) {
+	// Arrange
+	let child = ServerRouter::new().endpoint(|| TestEndpoint::<29>);
+	let (mut router, name, prefix) = if mounted {
+		(
+			ServerRouter::new()
+				.with_namespace("v1")
+				.with_prefix("/api/")
+				.mount("/static/", child.with_namespace("media")),
+			"v1:media:files",
+			"/api/static",
+		)
+	} else {
+		(child, "files", "")
+	};
+	let registration_errors = router.register_all_routes();
+
+	// Act
+	let reversed = router.reverse(name, &[("asset", asset)]);
+	let captured = reversed
+		.as_deref()
+		.and_then(|path| router.resolve(path, &Method::GET));
+
+	// Assert
+	assert_eq!(registration_errors, Vec::<String>::new());
+	assert_eq!(reversed, valid.then(|| format!("{prefix}/files/{asset}")));
+	assert_eq!(
+		captured.as_ref().and_then(|matched| matched.param("asset")),
+		valid.then_some(asset)
+	);
+}
+
+#[rstest]
 fn test_mount_prefix_inheritance() {
 	// Arrange
 	let child = ServerRouter::new();
@@ -1829,12 +1881,11 @@ async fn rejected_typed_paths_report_not_found(
 		.unwrap();
 
 	// Act
-	let rejected = router.handle(request).await.err().expect("rejected route");
+	let rejected = router.handle(request).await.expect_err("rejected route");
 	let wrong_method = router
 		.handle(valid_wrong_method)
 		.await
-		.err()
-		.expect("GET-only route");
+		.expect_err("GET-only route");
 
 	// Assert
 	assert!(
