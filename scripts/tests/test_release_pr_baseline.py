@@ -164,6 +164,40 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         self.assertFalse(self.capture.exists())
         self.assert_no_baseline_left()
 
+    def test_manual_transitions_use_the_last_reachable_phase(self):
+        for previous, current, branch in (
+            ("0.3.16", "0.4.0-alpha.1", "develop/0.4.0"),
+            ("0.4.0-alpha.15", "0.4.0-rc.1", "develop/0.4.0"),
+            ("0.4.0-rc.5", "0.4.0", "main"),
+        ):
+            with self.subTest(previous=previous, current=current):
+                self.run_git("checkout", "-q", "--detach", self.stable_commit)
+                if previous != "0.3.16":
+                    self.write_version(previous)
+                    self.commit("fixture: previous phase")
+                    self.run_git("tag", "-f", f"reinhardt-web@v{previous}")
+                expected = self.run_git("rev-parse", "HEAD")
+                self.write_version(current)
+                self.commit("fixture: manual transition")
+                result = self.invoke(GITHUB_REF_NAME=branch)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                record = json.loads(self.capture.read_text())
+                self.assertEqual(record["sha"], expected)
+                self.assertIn(f'version = "{previous}"', record["version"])
+                self.assert_no_baseline_left()
+
+    def test_manual_transition_cannot_skip_missing_previous_facade_tag(self):
+        self.run_git("checkout", "-q", "develop/0.4.0")
+        self.write_version("0.4.0-alpha.16")
+        self.commit("fixture: incomplete release")
+        self.write_version("0.4.0-rc.1")
+        self.commit("fixture: freeze after incomplete release")
+        result = self.invoke(GITHUB_REF_NAME="develop/0.4.0")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Missing release tag 'reinhardt-web@v0.4.0-alpha.16'", result.stderr)
+        self.assertFalse(self.capture.exists())
+        self.assert_no_baseline_left()
+
     def test_aws_baseline_pin_preserves_source_and_checkout(self):
         manifest = self.repo / "Cargo.toml"
         manifest.write_text(manifest.read_text() +
@@ -270,6 +304,7 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         (self.repo / "scripts").mkdir()
         shutil.copyfile(SCRIPT, self.repo / "scripts/run-release-pr.sh")
         shutil.copyfile(SCRIPT.parent / "prepare-release-baseline.py", self.repo / "scripts/prepare-release-baseline.py")
+        shutil.copyfile(SCRIPT.parent / "release_state.py", self.repo / "scripts/release_state.py")
         step = subprocess.check_output([
             "ruby", "-ryaml", "-e",
             'print YAML.load_file(ARGV[0])["jobs"]["release-plz-pr"]["steps"].find { |s| s["id"] == "release-plz-pr" }.fetch("run")',

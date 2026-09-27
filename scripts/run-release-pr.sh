@@ -48,7 +48,7 @@ elif [[ "$ref_name" =~ ^develop/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 else
 	fail "Unsupported release base '$ref_name'; expected main or develop/X.Y.Z."
 fi
-tag="$package@v$version"
+tag=$(python3 -B "$script_dir/release_state.py" --repo "$repo_root" --print-baseline-tag)
 baseline_commit=$(git rev-parse --verify "refs/tags/$tag^{commit}") || fail "Missing release tag '$tag'."
 git merge-base --is-ancestor "$baseline_commit" HEAD || fail "Release tag '$tag' is not an ancestor of HEAD."
 
@@ -56,7 +56,7 @@ baseline_temp=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/reinhardt-release-bas
 git worktree add --quiet --detach "$baseline_temp/repo" "$baseline_commit"
 baseline_manifest="$baseline_temp/repo/Cargo.toml"
 baseline_package=$(cargo read-manifest --manifest-path "$baseline_manifest" | jq -er '[.name, .version] | join("@")')
-[ "$baseline_package" = "$package@$version" ] || fail "Release tag '$tag' contains '$baseline_package'."
+[ "$baseline_package" = "$package@${tag#"$package@v"}" ] || fail "Release tag '$tag' contains '$baseline_package'."
 python3 "$script_dir/prepare-release-baseline.py" "$baseline_temp/repo"
 printf 'Comparing %s against release %s (%s).\n' "$ref_name" "$tag" "$baseline_commit" >&2
 args+=(--registry-manifest-path "$baseline_manifest")

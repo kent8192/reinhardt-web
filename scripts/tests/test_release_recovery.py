@@ -1,0 +1,1053 @@
+"""Exercise partial publication and recovery with real Git/Cargo fixtures."""
+
+from contextlib import redirect_stderr, redirect_stdout
+from copy import deepcopy
+from datetime import datetime, timezone
+import io
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+from urllib.error import HTTPError
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from release_state import (
+    ReleaseError,
+    audit,
+    completed_release_tag,
+    packages,
+    previous_release_packages,
+    registry_version,
+)
+from run_release_publish import publish, retry_delay, run_attempt
+from verify_release_source import verify
+
+
+class RegistryTests(unittest.TestCase):
+    def opener(self, entries):
+        return lambda *_args, **_kwargs: io.BytesIO(
+            "\n".join(json.dumps(entry) for entry in entries).encode()
+        )
+
+    def test_exact_version_and_yank_status(self):
+        entry = {"name": "crate-a", "vers": "0.4.0-alpha.16", "yanked": False}
+        self.assertFalse(
+            registry_version("crate-a", "0.4.0-alpha.17", self.opener([entry]))
+        )
+        entry["vers"] = "0.4.0-alpha.17"
+        self.assertTrue(
+            registry_version("crate-a", entry["vers"], self.opener([entry]))
+        )
+        entry["yanked"] = True
+        with self.assertRaisesRegex(ReleaseError, "yanked"):
+            registry_version("crate-a", entry["vers"], self.opener([entry]))
+
+    def test_only_404_means_unpublished(self):
+        for code in (404, 403, 429, 503):
+
+            def opener(*_args, **_kwargs):
+                raise HTTPError(
+                    "https://index.crates.io/test", code, "fixture", None, None
+                )
+
+            with self.subTest(code=code):
+                if code == 404:
+                    self.assertFalse(registry_version("crate-a", "1.0.0", opener))
+                else:
+                    with self.assertRaisesRegex(ReleaseError, f"HTTP {code}"):
+                        registry_version("crate-a", "1.0.0", opener)
+
+    def test_malformed_registry_response_is_not_unpublished(self):
+        for data in (
+            [],
+            [{"name": "different", "vers": "1.0.0"}],
+            [{"name": "crate-a"}],
+        ):
+            with self.subTest(data=data), self.assertRaisesRegex(
+                ReleaseError, "Malformed"
+            ):
+                registry_version("crate-a", "1.0.0", self.opener(data))
+
+
+class RecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(
+            prefix="release-recovery-test-", dir="/tmp"
+        )
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name)
+        self.git("init", "-q", "-b", "develop/0.4.0")
+        self.git("config", "user.name", "Release Test")
+        self.git("config", "user.email", "release-test@example.invalid")
+        self.git("config", "commit.gpgsign", "false")
+        self.git("config", "tag.gpgsign", "false")
+        (self.repo / "Cargo.toml").write_text(
+            '[package]\nname = "reinhardt-web"\nversion = "0.4.0-alpha.17"\nedition = "2024"\n'
+            'include = ["src/**", "Cargo.toml", "README.md"]\n'
+            '[workspace]\nmembers = ["crates/*"]\nresolver = "3"\n'
+        )
+        (self.repo / "src").mkdir()
+        (self.repo / "src/lib.rs").write_text("pub fn facade() {}\n")
+        (self.repo / "src/data.txt").write_text("published asset\n")
+        (self.repo / "README.md").write_text("Published facade documentation\n")
+        (self.repo / "release-plz.toml").write_text(
+            "[workspace]\ngit_release_enable = false\n"
+            'git_tag_name = "{{ package }}@v{{ version }}"\n'
+            '[[package]]\nname = "reinhardt-web"\ngit_release_enable = true\n'
+        )
+        for name in ("core", "auth"):
+            root = self.repo / "crates" / name
+            (root / "src").mkdir(parents=True)
+            (root / "Cargo.toml").write_text(
+                f'[package]\nname = "reinhardt-{name}"\nversion = "0.4.0-alpha.17"\nedition = "2024"\n'
+            )
+            (root / "src/lib.rs").write_text(f"pub fn {name}() {{}}\n")
+        self.original = self.commit("chore: release")
+        self.git("tag", "reinhardt-core@v0.4.0-alpha.17")
+        with (self.repo / "crates/auth/Cargo.toml").open("a") as manifest:
+            manifest.write("# Correct local test packaging\n")
+        self.source = self.commit("fix(auth): repair packaging")
+        self.workflow = self.source
+        self.inventory = packages(self.repo)
+        self.pr = {
+            "number": 42,
+            "merged": True,
+            "state": "closed",
+            "merge_commit_sha": self.original,
+            "base": {
+                "ref": "develop/0.4.0",
+                "repo": {"full_name": "test/reinhardt-web"},
+            },
+            "head": {
+                "ref": "develop-release-plz-fixture",
+                "repo": {"full_name": "test/reinhardt-web"},
+            },
+            "labels": [{"name": "release"}],
+        }
+
+    def git(self, *args):
+        return subprocess.check_output(
+            ["git", *args], cwd=self.repo, text=True, stderr=subprocess.PIPE
+        ).strip()
+
+    def commit(self, message):
+        self.git("add", ".")
+        self.git("commit", "-qm", message)
+        return self.git("rev-parse", "HEAD")
+
+    def state(self, published=("reinhardt-core",), release=False):
+        return audit(
+            self.repo,
+            "test/reinhardt-web",
+            self.inventory,
+            registry=lambda name, _version: name in published,
+            release=lambda *_args: release,
+        )
+
+    def check(self, **kwargs):
+        args = dict(
+            repo=self.repo,
+            repository="test/reinhardt-web",
+            base="develop/0.4.0",
+            workflow_sha=self.workflow,
+            source_sha=self.source,
+            pr=self.pr,
+            resume=True,
+            inventory=self.inventory,
+            state=self.state(),
+        )
+        args.update(kwargs)
+        return verify(**args)
+
+    def test_partial_release_reports_each_missing_artifact(self):
+        result = self.state()
+        self.assertEqual(result["state"], "incomplete")
+        self.assertEqual(
+            result["unpublished"],
+            ["reinhardt-auth@0.4.0-alpha.17", "reinhardt-web@0.4.0-alpha.17"],
+        )
+        self.assertEqual(
+            result["missing_tags"],
+            ["reinhardt-auth@v0.4.0-alpha.17", "reinhardt-web@v0.4.0-alpha.17"],
+        )
+        self.assertEqual(result["missing_releases"], ["reinhardt-web@v0.4.0-alpha.17"])
+
+    def test_registry_tag_and_github_release_are_all_required(self):
+        names = [item["name"] for item in self.inventory]
+        self.assertEqual(self.state(names, True)["state"], "incomplete")
+        for item in self.inventory:
+            if item["name"] != "reinhardt-core":
+                self.git("tag", item["tag"])
+        self.assertEqual(self.state(names, False)["state"], "incomplete")
+        self.assertEqual(self.state(names, True)["state"], "complete")
+
+    def test_mislabeled_tag_is_rejected(self):
+        manifest = self.repo / "crates/core/Cargo.toml"
+        manifest.write_text(manifest.read_text().replace("alpha.17", "alpha.18"))
+        self.commit("fixture: wrong version tag")
+        self.git("tag", "-f", "reinhardt-core@v0.4.0-alpha.17")
+        manifest.write_text(manifest.read_text().replace("alpha.18", "alpha.17"))
+        self.commit("fixture: restore version")
+        with self.assertRaisesRegex(ReleaseError, "different package/version"):
+            self.state()
+
+    def test_verified_recovery_is_accepted(self):
+        result = self.check()
+        self.assertEqual(
+            (result["mode"], result["source_sha"], result["release_pr"]),
+            ("resume-release", self.source, 42),
+        )
+
+    def test_repeated_recovery_accepts_the_already_published_repair(self):
+        self.git("tag", "reinhardt-auth@v0.4.0-alpha.17")
+        state = self.state(published=("reinhardt-core", "reinhardt-auth"))
+        self.assertEqual(self.check(state=state)["mode"], "resume-release")
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn changed_again() {}\n")
+        self.source = self.workflow = self.commit(
+            "fixture: changed after recovery publication"
+        )
+        with self.assertRaisesRegex(
+            ReleaseError, "already-published package reinhardt-auth"
+        ):
+            self.check(state=self.state(published=("reinhardt-core", "reinhardt-auth")))
+
+    def test_dirty_source_is_rejected_before_publication(self):
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn uncommitted() {}\n")
+        with self.assertRaisesRegex(ReleaseError, "uncommitted"):
+            self.check()
+
+    def test_existing_tag_guards_a_repair_before_registry_visibility(self):
+        self.git("tag", "reinhardt-auth@v0.4.0-alpha.17")
+        state = self.state()
+        auth = next(
+            item for item in state["packages"] if item["name"] == "reinhardt-auth"
+        )
+        self.assertFalse(auth["published"])
+        self.assertTrue(auth["tag_exists"])
+        self.assertEqual(self.check(state=state)["mode"], "resume-release")
+
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn changed_again() {}\n")
+        self.source = self.workflow = self.commit("fixture: changed after recovery tag")
+        with self.assertRaisesRegex(
+            ReleaseError, "already-published package reinhardt-auth"
+        ):
+            self.check(state=self.state())
+
+    def test_existing_root_tag_guards_package_files_before_registry_visibility(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        tagged = self.source
+        for operation in ("modify", "add", "delete"):
+            with self.subTest(operation=operation):
+                self.git("checkout", "--detach", tagged)
+                if operation == "modify":
+                    (self.repo / "README.md").write_text(
+                        "Changed facade documentation\n"
+                    )
+                elif operation == "add":
+                    (self.repo / "src/extra.txt").write_text("New facade asset\n")
+                else:
+                    (self.repo / "src/data.txt").unlink()
+                self.source = self.workflow = self.commit(
+                    f"fixture: {operation} root file after release tag"
+                )
+                with self.assertRaisesRegex(
+                    ReleaseError, "already-published package reinhardt-web"
+                ):
+                    self.check(state=self.state())
+
+    def test_existing_root_tag_allows_an_unpublished_sibling_repair(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn repaired() {}\n")
+        self.source = self.workflow = self.commit("fixture: repair untagged auth")
+        before = self.git("worktree", "list", "--porcelain")
+        self.assertEqual(self.check(state=self.state())["mode"], "resume-release")
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_complete_release_can_be_reconciled_again_for_announcement(self):
+        self.git("tag", "reinhardt-auth@v0.4.0-alpha.17")
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        state = self.state(
+            published=tuple(item["name"] for item in self.inventory), release=True
+        )
+        self.assertEqual(self.check(state=state)["state"]["state"], "complete")
+
+    def test_published_root_allows_repairing_an_unpublished_member(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn repaired() {}\n")
+        self.source = self.workflow = self.commit("fixture: repair remaining auth")
+        before = self.git("worktree", "list", "--porcelain")
+        result = self.check(
+            state=self.state(
+                published=("reinhardt-core", "reinhardt-web"), release=True
+            )
+        )
+        self.assertEqual(result["mode"], "resume-release")
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_published_root_rejects_changed_added_and_deleted_package_files(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        published = self.source
+        for operation in ("modify", "add", "delete"):
+            with self.subTest(operation=operation):
+                self.git("checkout", "--detach", published)
+                if operation == "modify":
+                    (self.repo / "README.md").write_text(
+                        "Changed published documentation\n"
+                    )
+                elif operation == "add":
+                    (self.repo / "src/extra.txt").write_text("New published asset\n")
+                else:
+                    (self.repo / "src/data.txt").unlink()
+                self.source = self.workflow = self.commit(
+                    f"fixture: {operation} root package file"
+                )
+                with self.assertRaisesRegex(
+                    ReleaseError, "already-published package reinhardt-web"
+                ):
+                    self.check(
+                        state=self.state(
+                            published=("reinhardt-core", "reinhardt-web"), release=True
+                        )
+                    )
+
+    def test_published_root_snapshot_is_removed_after_inventory_failure(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn repaired() {}\n")
+        self.source = self.workflow = self.commit("fixture: repair remaining auth")
+        before = self.git("worktree", "list", "--porcelain")
+        with patch(
+            "verify_release_source.package_files",
+            side_effect=[set(), ReleaseError("inventory failed")],
+        ):
+            with self.assertRaisesRegex(ReleaseError, "inventory failed"):
+                self.check(
+                    state=self.state(
+                        published=("reinhardt-core", "reinhardt-web"), release=True
+                    )
+                )
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_only_complete_publication_emits_a_facade_tag(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        with self.assertRaisesRegex(ReleaseError, "incomplete"):
+            completed_release_tag(
+                self.state(published=("reinhardt-core", "reinhardt-web"), release=True)
+            )
+        self.git("tag", "reinhardt-auth@v0.4.0-alpha.17")
+        names = tuple(item["name"] for item in self.inventory)
+        self.assertEqual(
+            completed_release_tag(self.state(published=names, release=True)),
+            "reinhardt-web@v0.4.0-alpha.17",
+        )
+        with self.assertRaisesRegex(ReleaseError, "incomplete"):
+            completed_release_tag(self.state(published=names, release=False))
+
+    def test_removed_package_membership_is_rejected(self):
+        self.git("rm", "-r", "crates/auth")
+        self.source = self.workflow = self.commit("fixture: removed package")
+        self.inventory = packages(self.repo)
+        with self.assertRaisesRegex(ReleaseError, "package membership"):
+            self.check()
+
+    def write_non_member_fixture(self):
+        fixture = self.repo / "crates/auth/tests/fixtures/local"
+        (fixture / "src").mkdir(parents=True)
+        (fixture / "Cargo.toml").write_text(
+            '[package]\nname = "local-fixture"\nversion = "1.0.0"\nedition = "2024"\n'
+            "[workspace]\n"
+        )
+        (fixture / "src/lib.rs").write_text("pub fn fixture() {}\n")
+
+    def test_adding_a_non_member_fixture_allows_recovery(self):
+        self.write_non_member_fixture()
+        self.source = self.workflow = self.commit(
+            "fixture: add local packaging fixture"
+        )
+        self.inventory = packages(self.repo)
+        self.assertEqual(len(self.inventory), 3)
+        before = self.git("worktree", "list", "--porcelain")
+        self.assertEqual(self.check()["mode"], "resume-release")
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_removing_a_non_member_fixture_allows_recovery(self):
+        self.write_non_member_fixture()
+        self.original = self.commit("fixture: release with local packaging fixture")
+        self.pr["merge_commit_sha"] = self.original
+        self.git("rm", "-r", "crates/auth/tests/fixtures/local")
+        self.source = self.workflow = self.commit(
+            "fixture: remove local packaging fixture"
+        )
+        self.inventory = packages(self.repo)
+        self.assertEqual(len(self.inventory), 3)
+        self.assertEqual(self.check()["mode"], "resume-release")
+
+    def write_non_publishable_member(self):
+        member = self.repo / "crates/internal"
+        (member / "src").mkdir(parents=True)
+        (member / "Cargo.toml").write_text(
+            '[package]\nname = "internal-member"\nversion = "1.0.0"\nedition = "2024"\n'
+            "publish = false\n"
+        )
+        (member / "src/lib.rs").write_text("pub fn internal() {}\n")
+
+    def test_adding_a_non_publishable_workspace_member_is_rejected(self):
+        self.write_non_publishable_member()
+        self.source = self.workflow = self.commit(
+            "fixture: add internal workspace member"
+        )
+        self.assertEqual(packages(self.repo), self.inventory)
+        with self.assertRaisesRegex(ReleaseError, "package membership"):
+            self.check()
+
+    def test_removing_a_non_publishable_workspace_member_is_rejected(self):
+        self.write_non_publishable_member()
+        self.original = self.commit("fixture: release with internal workspace member")
+        self.pr["merge_commit_sha"] = self.original
+        self.git("rm", "-r", "crates/internal")
+        self.source = self.workflow = self.commit(
+            "fixture: remove internal workspace member"
+        )
+        self.assertEqual(packages(self.repo), self.inventory)
+        with self.assertRaisesRegex(ReleaseError, "package membership"):
+            self.check()
+
+    def test_membership_snapshot_is_removed_after_metadata_failure(self):
+        before = self.git("worktree", "list", "--porcelain")
+        with patch(
+            "verify_release_source.workspace_manifests",
+            side_effect=[{"Cargo.toml"}, ReleaseError("membership metadata failed")],
+        ):
+            with self.assertRaisesRegex(ReleaseError, "membership metadata failed"):
+                self.check()
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_new_packages_do_not_block_the_next_release_pr(self):
+        self.git("tag", "reinhardt-auth@v0.4.0-alpha.17")
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        root = self.repo / "crates/new"
+        (root / "src").mkdir(parents=True)
+        (root / "Cargo.toml").write_text(
+            '[package]\nname = "reinhardt-new"\nversion = "0.1.0"\nedition = "2024"\n'
+        )
+        (root / "src/lib.rs").write_text("pub fn new_package() {}\n")
+        inventory = previous_release_packages(self.repo)
+        self.assertNotIn("reinhardt-new", [item["name"] for item in inventory])
+        state = audit(
+            self.repo,
+            "test/reinhardt-web",
+            inventory,
+            registry=lambda name, _version: name != "reinhardt-new",
+            release=lambda *_args: True,
+        )
+        self.assertEqual(state["state"], "complete")
+        self.assertIn("reinhardt-new", [item["name"] for item in packages(self.repo)])
+
+    def write_versions(self, previous, current):
+        if previous == current:
+            return
+        for manifest in self.repo.glob("**/Cargo.toml"):
+            manifest.write_text(manifest.read_text().replace(previous, current))
+        self.commit(f"fixture: transition to {current}")
+
+    def tag_inventory(self):
+        for item in packages(self.repo):
+            if not self.git("tag", "--list", item["tag"]):
+                self.git("tag", item["tag"])
+
+    def test_manual_transitions_audit_the_previous_published_versions(self):
+        for previous, current in (
+            ("0.3.16", "0.4.0-alpha.1"),
+            ("0.4.0-alpha.17", "0.4.0-rc.1"),
+            ("0.4.0-rc.5", "0.4.0"),
+            ("0.4.0-alpha.17", "0.4.0"),
+        ):
+            with self.subTest(previous=previous, current=current):
+                self.git("checkout", "--detach", self.source)
+                self.write_versions("0.4.0-alpha.17", previous)
+                self.tag_inventory()
+                self.write_versions(previous, current)
+                before = self.git("worktree", "list", "--porcelain")
+                inventory = previous_release_packages(self.repo)
+                self.assertEqual({item["version"] for item in inventory}, {previous})
+                report = audit(
+                    self.repo,
+                    "test/reinhardt-web",
+                    inventory,
+                    registry=lambda _name, version: version == previous,
+                    release=lambda *_args: True,
+                )
+                self.assertEqual(report["state"], "complete")
+                self.assertEqual(
+                    completed_release_tag(report), f"reinhardt-web@v{previous}"
+                )
+                self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_previous_release_retains_historical_members_and_independent_versions(self):
+        manifest = self.repo / "crates/core/Cargo.toml"
+        manifest.write_text(manifest.read_text().replace("0.4.0-alpha.17", "0.1.0"))
+        self.commit("fixture: independently versioned core")
+        self.tag_inventory()
+        self.git("rm", "-r", "crates/core")
+        self.write_versions("0.4.0-alpha.17", "0.4.0-rc.1")
+        inventory = previous_release_packages(self.repo)
+        self.assertEqual(
+            {item["name"]: item["version"] for item in inventory},
+            {
+                "reinhardt-auth": "0.4.0-alpha.17",
+                "reinhardt-core": "0.1.0",
+                "reinhardt-web": "0.4.0-alpha.17",
+            },
+        )
+
+    def test_a_counter_bump_or_transition_cannot_skip_a_partial_release(self):
+        self.tag_inventory()
+        self.write_versions("0.4.0-alpha.17", "0.4.0-alpha.18")
+        self.git("tag", "reinhardt-core@v0.4.0-alpha.18")
+        root = self.repo / "crates/new"
+        (root / "src").mkdir(parents=True)
+        (root / "Cargo.toml").write_text(
+            '[package]\nname = "reinhardt-new"\nversion = "0.4.0-alpha.18"\nedition = "2024"\n'
+        )
+        (root / "src/lib.rs").write_text("pub fn new_package() {}\n")
+        self.commit("fixture: add a member before the phase transition")
+        for transition in (False, True):
+            with self.subTest(transition=transition):
+                if transition:
+                    self.write_versions("0.4.0-alpha.18", "0.4.0-rc.1")
+                inventory = previous_release_packages(self.repo)
+                self.assertEqual(
+                    {item["version"] for item in inventory}, {"0.4.0-alpha.18"}
+                )
+                report = audit(
+                    self.repo,
+                    "test/reinhardt-web",
+                    inventory,
+                    registry=lambda name, _version: name == "reinhardt-core",
+                    release=lambda *_args: True,
+                )
+                self.assertEqual(report["state"], "incomplete")
+                self.assertIn("reinhardt-web@v0.4.0-alpha.18", report["missing_tags"])
+                self.assertIn("reinhardt-new@0.4.0-alpha.18", report["unpublished"])
+
+    def test_previous_release_snapshot_is_removed_after_metadata_failure(self):
+        self.tag_inventory()
+        before = self.git("worktree", "list", "--porcelain")
+        with patch(
+            "release_state.packages",
+            side_effect=[self.inventory, ReleaseError("metadata failed")],
+        ):
+            with self.assertRaisesRegex(ReleaseError, "metadata failed"):
+                previous_release_packages(self.repo)
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_partial_first_publication_in_a_phase_cannot_fall_back(self):
+        self.tag_inventory()
+        self.write_versions("0.4.0-alpha.17", "0.4.0")
+        for tagged in (False, True):
+            with self.subTest(tagged=tagged):
+                if tagged:
+                    self.git("tag", "reinhardt-core@v0.4.0")
+                inventory = previous_release_packages(
+                    self.repo,
+                    registry=(
+                        None
+                        if tagged
+                        else lambda name, _version: name == "reinhardt-core"
+                    ),
+                )
+                self.assertEqual({item["version"] for item in inventory}, {"0.4.0"})
+
+    def test_unstarted_phase_transition_checks_exact_current_registry_versions(self):
+        self.tag_inventory()
+        self.write_versions("0.4.0-alpha.17", "0.4.0-rc.1")
+        queries = []
+
+        def unpublished(name, version):
+            queries.append((name, version))
+            return False
+
+        inventory = previous_release_packages(self.repo, registry=unpublished)
+        self.assertEqual(
+            queries,
+            [(f"reinhardt-{name}", "0.4.0-rc.1") for name in ("auth", "core", "web")],
+        )
+        self.assertEqual({item["version"] for item in inventory}, {"0.4.0-alpha.17"})
+
+    def test_ordinary_repair_merge_cannot_publish(self):
+        with self.assertRaisesRegex(ReleaseError, "normal release"):
+            self.check(resume=False)
+        self.git("checkout", "--detach", self.original)
+        result = self.check(
+            resume=False, source_sha=self.original, workflow_sha=self.original
+        )
+        self.assertEqual(result["mode"], "release")
+
+    def test_wrong_pr_metadata_is_rejected(self):
+        for mutation in ("unmerged", "open", "label", "prefix", "base", "fork"):
+            pr = deepcopy(self.pr)
+            if mutation == "unmerged":
+                pr["merged"] = False
+            if mutation == "open":
+                pr["state"] = "open"
+            if mutation == "label":
+                pr["labels"] = []
+            if mutation == "prefix":
+                pr["head"]["ref"] = "release-plz-stable"
+            if mutation == "base":
+                pr["base"]["ref"] = "main"
+            if mutation == "fork":
+                pr["head"]["repo"]["full_name"] = "fork/reinhardt-web"
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(
+                ReleaseError, "merged, release-labelled"
+            ):
+                self.check(pr=pr)
+
+    def test_sha_and_release_line_boundaries(self):
+        for args, expected in (
+            ({"source_sha": "develop/0.4.0"}, "full 40"),
+            ({"source_sha": self.original}, "Checked-out"),
+            ({"base": "feature/test"}, "requires main"),
+            ({"base": "develop/0.5.0"}, "Source version"),
+            ({"workflow_sha": self.original}, "already be integrated"),
+        ):
+            with self.subTest(args=args), self.assertRaisesRegex(
+                ReleaseError, expected
+            ):
+                self.check(**args)
+
+    def test_original_release_must_be_in_source_history(self):
+        self.git("checkout", "-q", "-b", "unrelated", self.original)
+        (self.repo / "unrelated.txt").write_text("another branch")
+        different = self.commit("fixture: unrelated")
+        self.git("checkout", "--detach", self.source)
+        pr = deepcopy(self.pr)
+        pr["merge_commit_sha"] = different
+        with self.assertRaisesRegex(ReleaseError, "contain the original"):
+            self.check(pr=pr)
+
+    def test_published_package_changes_are_rejected(self):
+        (self.repo / "crates/core/src/lib.rs").write_text("pub fn changed() {}\n")
+        self.source = self.workflow = self.commit("fixture: changed published source")
+        with self.assertRaisesRegex(
+            ReleaseError, "already-published package reinhardt-core"
+        ):
+            self.check()
+
+    def test_shared_manifest_changes_are_rejected(self):
+        with (self.repo / "Cargo.toml").open("a") as manifest:
+            manifest.write("\n[workspace.dependencies]\nserde = '1'\n")
+        self.source = self.workflow = self.commit(
+            "fixture: changed shared dependencies"
+        )
+        with self.assertRaisesRegex(ReleaseError, "root manifest"):
+            self.check()
+
+    def test_package_version_change_is_rejected(self):
+        manifest = self.repo / "crates/auth/Cargo.toml"
+        manifest.write_text(manifest.read_text().replace("alpha.17", "alpha.18"))
+        self.source = self.workflow = self.commit("fixture: changed package version")
+        self.inventory = packages(self.repo)
+        with self.assertRaisesRegex(ReleaseError, "changed the release version"):
+            self.check()
+
+    def test_newer_release_on_selected_branch_is_rejected(self):
+        manifest = self.repo / "crates/auth/Cargo.toml"
+        manifest.write_text(manifest.read_text().replace("alpha.17", "alpha.18"))
+        self.workflow = self.commit("fixture: a later release")
+        self.git("checkout", "--detach", self.source)
+        with self.assertRaisesRegex(ReleaseError, "advanced past"):
+            self.check()
+
+    def test_disabled_packages_are_not_release_prerequisites(self):
+        with (self.repo / "release-plz.toml").open("a") as config:
+            config.write('[[package]]\nname = "reinhardt-auth"\nrelease = false\n')
+        self.assertEqual(
+            [item["name"] for item in packages(self.repo)],
+            ["reinhardt-core", "reinhardt-web"],
+        )
+
+
+class PublishTests(unittest.TestCase):
+    def setUp(self):
+        # Expected failures must not emit GitHub error annotations from passing tests.
+        self.output = io.StringIO()
+        self.errors = io.StringIO()
+        self.enterContext(redirect_stdout(self.output))
+        self.enterContext(redirect_stderr(self.errors))
+
+    def test_dependency_failure_does_not_wait_or_retry(self):
+        calls, waits = [], []
+
+        def runner(*args):
+            calls.append(args)
+            return (
+                101,
+                'failed to select a version for the requirement `reinhardt-urls = "^0.4.0-alpha.17"`',
+            )
+
+        self.assertEqual(
+            publish(["release-plz"], Path("/tmp"), runner, waits.append), 101
+        )
+        self.assertEqual((len(calls), waits), (1, []))
+
+    def test_rate_limit_then_dependency_failure_stops_on_second_attempt(self):
+        outcomes = iter(
+            [
+                (1, "status 429 Too Many Requests\nRetry-After: 8"),
+                (101, "failed to select a version"),
+            ]
+        )
+        waits = []
+        result = publish([], Path("/tmp"), lambda *_args: next(outcomes), waits.append)
+        self.assertEqual((result, waits), (101, [1200]))
+
+    def test_transient_failures_retry_to_success_and_have_a_limit(self):
+        for final in (0, 2):
+            outcomes = iter(
+                [(1, "HTTP 503"), (1, "connection reset"), (final, "HTTP 503")]
+            )
+            waits = []
+            result = publish(
+                [], Path("/tmp"), lambda *_args: next(outcomes), waits.append
+            )
+            self.assertEqual((result, waits), (final, [30, 60]))
+
+    def test_crates_io_reset_deadline_and_unknown_errors(self):
+        now = datetime(2026, 9, 26, 4, 10, 53, tzinfo=timezone.utc)
+        message = "status 429 Too Many Requests: Please try again after Sat, 26 Sep 2026 04:11:28 GMT"
+        self.assertEqual(retry_delay(message, 1, now), 1200)
+        self.assertEqual(retry_delay("HTTP 429\nRetry-After: 1900", 1), 1905)
+        self.assertEqual(retry_delay("HTTP 429", 2), 1800)
+        self.assertIsNone(retry_delay("unclassified publication error", 1))
+        self.assertIsNone(retry_delay("HTTP 429 then failed to select a version", 1))
+        self.assertIsNone(retry_delay("status 403", 1))
+        self.assertIsNone(retry_delay("failed at source line 429", 1))
+
+    def test_cargo_response_errors_retry_only_server_failures(self):
+        for message in (
+            "failed to get a 200 OK response, got 503",
+            "failed to get successful HTTP response from `https://crates.io/api/v1/crates/new`, got 502",
+        ):
+            with self.subTest(message=message):
+                outcomes = iter([(101, message), (0, "published")])
+                waits = []
+                self.assertEqual(
+                    publish(
+                        [], Path("/tmp"), lambda *_args: next(outcomes), waits.append
+                    ),
+                    0,
+                )
+                self.assertEqual(waits, [30])
+                self.assertIsNone(
+                    retry_delay(message + "\nfailed to select a version", 1)
+                )
+        for message in (
+            "failed to get a 200 OK response, got 404",
+            "expected 502 bytes, got 503",
+            "compile error at line 503",
+        ):
+            self.assertIsNone(retry_delay(message, 1))
+
+    def test_cargo_rate_limit_responses_preserve_quota_cooldowns(self):
+        for message in (
+            "failed to get a 200 OK response, got 429",
+            "failed to get successful HTTP response from `https://crates.io/api/v1/crates/new`, got 429",
+        ):
+            with self.subTest(message=message):
+                outcomes = iter([(101, message), (101, message), (0, "published")])
+                waits = []
+                self.assertEqual(
+                    publish(
+                        [], Path("/tmp"), lambda *_args: next(outcomes), waits.append
+                    ),
+                    0,
+                )
+                self.assertEqual(waits, [1200, 1800])
+                self.assertEqual(retry_delay(message + "\nRetry-After: 1900", 1), 1905)
+                self.assertEqual(retry_delay(message + "\nRetry-After: 7200", 1), 3600)
+                self.assertIsNone(
+                    retry_delay(message + "\nfailed to select a version", 1)
+                )
+
+    def test_unrelated_429_and_permanent_cargo_responses_do_not_retry(self):
+        for message in (
+            "expected 200 bytes, got 429",
+            "compile error at line 429",
+            "failed to get a 200 OK response, got 401",
+            "failed to get successful HTTP response, got 403",
+        ):
+            with self.subTest(message=message):
+                self.assertIsNone(retry_delay(message, 1))
+
+    def test_child_exit_and_diagnostics_are_preserved(self):
+        code, log = run_attempt(
+            [sys.executable, "-c", "import sys; print('package error'); sys.exit(7)"],
+            Path("/tmp"),
+        )
+        self.assertEqual((code, log), (7, "package error\n"))
+        self.assertEqual(self.output.getvalue(), "package error\n")
+
+
+class WorkflowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        workflow = (
+            Path(__file__).resolve().parents[2] / ".github/workflows/release-plz.yml"
+        )
+        cls.jobs = json.loads(
+            subprocess.check_output(
+                [
+                    "ruby",
+                    "-ryaml",
+                    "-rjson",
+                    "-e",
+                    'puts JSON.generate(YAML.load_file(ARGV[0])["jobs"])',
+                    str(workflow),
+                ],
+                text=True,
+            )
+        )
+
+    def condition(
+        self,
+        job,
+        event,
+        mode="",
+        classified="false",
+        classification="skipped",
+        result="skipped",
+        released="false",
+        release_tag="",
+        cancelled=False,
+    ):
+        values = {
+            "github.event_name": event,
+            "inputs.mode": mode,
+            "needs.classify-release-push.result": classification,
+            "needs.classify-release-push.outputs.is_release_merge": classified,
+            "needs.release-plz-release.result": result,
+            "needs.release-plz-release.outputs.released": released,
+            "needs.release-plz-release.outputs.release_tag": release_tag,
+            "github.ref": "refs/heads/develop/0.4.0",
+        }
+        expression = self.jobs[job]["if"].strip()
+        for key in sorted(values, key=len, reverse=True):
+            expression = expression.replace(key, repr(values[key]))
+        expression = expression.replace("always()", "True").replace(
+            "!cancelled()", repr(not cancelled)
+        )
+        expression = expression.replace("&&", " and ").replace("||", " or ")
+        expression = re.sub(
+            r"startsWith\(([^,]+), ([^)]+)\)", r"str.startswith(\1, \2)", expression
+        )
+        return eval(" ".join(expression.split()), {"__builtins__": {}, "str": str})
+
+    def test_release_jobs_provision_supported_python_before_scripts(self):
+        for name in ("release-plz-pr", "release-plz-release"):
+            with self.subTest(job=name):
+                steps = self.jobs[name]["steps"]
+                setup = next(
+                    i
+                    for i, step in enumerate(steps)
+                    if step.get("uses", "").startswith("actions/setup-python@")
+                )
+                self.assertEqual(steps[setup]["with"]["python-version"], "3.12")
+                first_python = next(
+                    i
+                    for i, step in enumerate(steps)
+                    if "python3 scripts/" in step.get("run", "")
+                )
+                self.assertLess(setup, first_python)
+
+    def test_recovery_requires_explicit_full_sha_before_checkout(self):
+        steps = self.jobs["release-plz-release"]["steps"]
+        selection = next(
+            step for step in steps if step.get("id") == "publication-source"
+        )
+        checkout = next(
+            step for step in steps if step["name"] == "Checkout publication source"
+        )
+        self.assertLess(steps.index(selection), steps.index(checkout))
+        self.assertEqual(
+            checkout["with"]["ref"],
+            "${{ steps.publication-source.outputs.source_sha }}",
+        )
+        with tempfile.TemporaryDirectory(dir="/tmp") as directory:
+            output = Path(directory) / "output"
+            for sha, pr in (
+                ("", "6383"),
+                ("abc123", "6383"),
+                ("develop/0.4.0", "6383"),
+                ("b" * 40, ""),
+            ):
+                with self.subTest(sha=sha, pr=pr):
+                    output.write_text("")
+                    env = os.environ | {
+                        "GITHUB_OUTPUT": str(output),
+                        "GITHUB_SHA": "a" * 40,
+                        "RELEASE_MODE": "resume-release",
+                        "INPUT_RELEASE_SHA": sha,
+                        "INPUT_RELEASE_PR": pr,
+                        "CLASSIFIED_RELEASE_PR": "6383",
+                    }
+                    result = subprocess.run(
+                        ["bash", "-c", selection["run"]],
+                        env=env,
+                        text=True,
+                        capture_output=True,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(output.read_text(), "")
+            for mode, expected in (("resume-release", "b" * 40), ("", "a" * 40)):
+                output.write_text("")
+                env.update(
+                    RELEASE_MODE=mode,
+                    INPUT_RELEASE_SHA="b" * 40,
+                    INPUT_RELEASE_PR="6383",
+                )
+                result = subprocess.run(
+                    ["bash", "-c", selection["run"]],
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"source_sha={expected}", output.read_text())
+                self.assertIn("release_pr=6383", output.read_text())
+
+    def test_publication_announces_its_verified_tag_instead_of_the_latest_tag(self):
+        selection = next(
+            step
+            for step in self.jobs["release-announcement-pr"]["steps"]
+            if step.get("id") == "tags"
+        )
+        with tempfile.TemporaryDirectory(dir="/tmp") as directory:
+            repo = Path(directory)
+            for args in (
+                ("init", "-q"),
+                (
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    "fixture",
+                ),
+                ("tag", "reinhardt-web@v0.4.0-alpha.17"),
+                ("tag", "reinhardt-web@v0.4.0-alpha.18"),
+            ):
+                subprocess.run(
+                    ["git", *args], cwd=repo, capture_output=True, check=True
+                )
+            output = repo / "output"
+            env = os.environ | {
+                "GITHUB_OUTPUT": str(output),
+                "BACKFILL_MODE": "resume-release",
+                "VERIFIED_RELEASE_TAG": "reinhardt-web@v0.4.0-alpha.17",
+            }
+            for mode in ("", "resume-release"):
+                with self.subTest(mode=mode):
+                    output.write_text("")
+                    result = subprocess.run(
+                        ["bash", "-c", selection["run"]],
+                        cwd=repo,
+                        env=env | {"BACKFILL_MODE": mode},
+                        text=True,
+                        capture_output=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(
+                        output.read_text(),
+                        "tags=reinhardt-web@v0.4.0-alpha.17\nskip=false\n",
+                    )
+
+    def test_successful_reconciliation_announces_without_a_new_tag(self):
+        for event, mode in (("push", ""), ("workflow_dispatch", "resume-release")):
+            with self.subTest(event=event):
+                self.assertTrue(
+                    self.condition(
+                        "release-announcement-pr",
+                        event,
+                        mode,
+                        result="success",
+                        release_tag="reinhardt-web@v0.4.0-alpha.17",
+                    )
+                )
+
+    def test_push_announcement_requires_successful_reconciliation(self):
+        for result in ("failure", "cancelled", "skipped"):
+            with self.subTest(result=result):
+                self.assertFalse(
+                    self.condition(
+                        "release-announcement-pr",
+                        "push",
+                        result=result,
+                        released="true",
+                        release_tag="reinhardt-web@v0.4.0-alpha.17",
+                    )
+                )
+        self.assertFalse(
+            self.condition(
+                "release-announcement-pr", "push", result="success", released="true"
+            )
+        )
+
+    def test_publish_gate_accepts_only_verified_push_or_explicit_recovery(self):
+        job = "release-plz-release"
+        self.assertFalse(self.condition(job, "push", classification="success"))
+        self.assertTrue(
+            self.condition(job, "push", classification="success", classified="true")
+        )
+        self.assertFalse(
+            self.condition(job, "push", classification="failure", classified="true")
+        )
+        self.assertTrue(self.condition(job, "workflow_dispatch", "resume-release"))
+        for mode in ("release", "backfill", ""):
+            self.assertFalse(self.condition(job, "workflow_dispatch", mode))
+        self.assertFalse(
+            self.condition(job, "workflow_dispatch", "resume-release", cancelled=True)
+        )
+
+    def test_failed_or_incomplete_recovery_cannot_announce(self):
+        for result in ("failure", "cancelled", "skipped"):
+            self.assertFalse(
+                self.condition(
+                    "release-announcement-pr",
+                    "workflow_dispatch",
+                    "resume-release",
+                    result=result,
+                    released="true",
+                    release_tag="reinhardt-web@v0.4.0-alpha.17",
+                )
+            )
+        self.assertTrue(
+            self.condition(
+                "release-announcement-pr",
+                "workflow_dispatch",
+                "resume-release",
+                result="success",
+                released="true",
+                release_tag="reinhardt-web@v0.4.0-alpha.17",
+            )
+        )
+        self.assertFalse(
+            self.condition(
+                "release-announcement-pr",
+                "workflow_dispatch",
+                "resume-release",
+                result="success",
+            )
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
