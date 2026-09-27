@@ -237,6 +237,7 @@ async fn handle_request(
 ) -> Result<hyper::Response<ServerResponseBody>, BoxError> {
 	// Extract request parts
 	let (parts, body) = req.into_parts();
+	let is_head = parts.method == hyper::Method::HEAD;
 
 	let body_bytes =
 		match request_body_plan_collecting_unsized(&parts.method, &parts.headers, max_body_size) {
@@ -267,7 +268,14 @@ async fn handle_request(
 		.await
 		.unwrap_or_else(Response::from);
 
-	Ok(into_hyper_response(response))
+	let mut response = into_hyper_response(response);
+	if is_head {
+		// HTTP/2 does not suppress a pending body for HEAD automatically. Drop
+		// the transferred producer now while preserving representation headers.
+		*response.body_mut() =
+			ServerResponseBody::Buffered(http_body_util::Full::new(Bytes::new()));
+	}
+	Ok(response)
 }
 
 /// Helper function to create and run an HTTP/2 server
