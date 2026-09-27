@@ -197,3 +197,28 @@ fn to_string_respects_backend_line_comments(
 	// Assert
 	assert_eq!(inlined, expected);
 }
+
+#[rstest]
+fn to_string_respects_downstream_build_override() {
+	// Arrange
+	#[derive(Debug)]
+	struct CustomStatement;
+	impl QueryStatementBuilder for CustomStatement {
+		fn build_any(&self, _: &dyn QueryBuilderTrait) -> (String, Values) {
+			("SELECT ?".to_owned(), Values(vec![11_i32.into()]))
+		}
+		fn build<T: QueryBuilderTrait>(&self, _: T) -> (String, Values) {
+			("SELECT ?".to_owned(), Values(vec![7_i32.into()]))
+		}
+	}
+
+	// Act
+	let inlined = CustomStatement.to_string(MySqlQueryBuilder);
+
+	// Assert
+	assert_eq!(inlined, "SELECT 7");
+	assert_eq!(
+		CustomStatement.build(MySqlQueryBuilder).1,
+		Values(vec![7_i32.into()])
+	);
+}

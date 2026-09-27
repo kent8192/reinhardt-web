@@ -221,9 +221,10 @@ pub trait QueryStatementBuilder: Debug {
 	/// // sql = "SELECT `name` FROM `users` WHERE `active` = TRUE"
 	/// ```
 	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
-		let (sql, values) = self.build_any(&query_builder);
 		// Backtick-quoting builders use MySQL comment syntax.
-		inline_params_with_dialect(&sql, &values, query_builder.quote_char() == '`')
+		let mysql = query_builder.quote_char() == '`';
+		let (sql, values) = self.build(query_builder);
+		inline_params_with_dialect(&sql, &values, mysql)
 	}
 
 	/// Build SQL statement with parameter collection
