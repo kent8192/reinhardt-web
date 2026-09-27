@@ -230,6 +230,18 @@ impl Middleware for ETagMiddleware {
 		// File and streaming responses own their representation and expose an empty
 		// compatibility buffer. Never hash that buffer as the entity body.
 		if response.is_streaming() && !response.headers.contains_key(hyper::header::ETAG) {
+			if response.status.is_success()
+				&& (method == "GET" || method == "HEAD")
+				&& if_none_match
+					.as_ref()
+					.is_some_and(|value| value.trim() == "*")
+			{
+				let mut not_modified = response.with_body(bytes::Bytes::new());
+				not_modified.status = StatusCode::NOT_MODIFIED;
+				not_modified.headers.remove(hyper::header::CONTENT_LENGTH);
+				not_modified.headers.remove(hyper::header::CONTENT_RANGE);
+				return Ok(not_modified);
+			}
 			return Ok(response);
 		}
 		let etag = if response.headers.contains_key(hyper::header::ETAG) {
@@ -781,5 +793,65 @@ mod tests {
 			StatusCode::NOT_MODIFIED,
 			"If-None-Match: * should return 304 for GET requests per RFC 7232"
 		);
+	}
+	struct StreamingHandler {
+		polls: Arc<std::sync::atomic::AtomicUsize>,
+	}
+
+	#[async_trait]
+	impl Handler for StreamingHandler {
+		async fn handle(&self, _: Request) -> Result<Response> {
+			let polls = self.polls.clone();
+			Ok(Response::ok()
+				.with_stream(futures::stream::poll_fn(move |_| {
+					polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+					std::task::Poll::Ready(Some(Ok(Bytes::from_static(b"chunk"))))
+				}))
+				.with_header("cache-control", "public, max-age=60")
+				.with_header("content-range", "bytes 0-4/5"))
+		}
+	}
+
+	#[rstest::rstest]
+	#[case(Method::GET, "*", StatusCode::NOT_MODIFIED, false)]
+	#[case(Method::HEAD, " * ", StatusCode::NOT_MODIFIED, false)]
+	#[case(Method::GET, "\"other\"", StatusCode::OK, true)]
+	#[case(Method::POST, "*", StatusCode::OK, true)]
+	#[tokio::test]
+	async fn streaming_conditionals_do_not_require_a_generated_etag(
+		#[case] method: Method,
+		#[case] if_none_match: &str,
+		#[case] expected_status: StatusCode,
+		#[case] expected_streaming: bool,
+	) {
+		// Arrange
+		let polls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+		let handler = Arc::new(StreamingHandler {
+			polls: polls.clone(),
+		});
+		let request = Request::builder()
+			.method(method)
+			.uri("/stream")
+			.header("if-none-match", if_none_match)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = ETagMiddleware::default()
+			.process(request, handler)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, expected_status);
+		assert_eq!(response.is_streaming(), expected_streaming);
+		assert_eq!(response.headers["cache-control"], "public, max-age=60");
+		assert!(!response.headers.contains_key("etag"));
+		assert_eq!(
+			response.headers.contains_key("content-range"),
+			expected_streaming
+		);
+		assert_eq!(polls.load(std::sync::atomic::Ordering::SeqCst), 0);
 	}
 }

@@ -181,6 +181,16 @@ impl Middleware for ConditionalGetMiddleware {
 			return Ok(response);
 		}
 
+		// The existence wildcard does not require a representation ETag.
+		if response.is_streaming()
+			&& if_none_match
+				.as_ref()
+				.and_then(|value| value.to_str().ok())
+				.is_some_and(|value| value.trim() == "*")
+		{
+			return Ok(not_modified_response(response));
+		}
+
 		// Generate ETag if not present and configured to do so
 		let etag = if self.generate_etag
 			&& !response.is_streaming()
@@ -651,5 +661,65 @@ mod tests {
 		if !file_backed {
 			assert_eq!(response.body.as_ref(), b"asset-v2");
 		}
+	}
+	struct StreamingHandler {
+		polls: Arc<std::sync::atomic::AtomicUsize>,
+	}
+
+	#[async_trait]
+	impl Handler for StreamingHandler {
+		async fn handle(&self, _: Request) -> Result<Response> {
+			let polls = self.polls.clone();
+			Ok(Response::ok()
+				.with_stream(futures::stream::poll_fn(move |_| {
+					polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+					std::task::Poll::Ready(Some(Ok(Bytes::from_static(b"chunk"))))
+				}))
+				.with_header("cache-control", "public, max-age=60")
+				.with_header("content-range", "bytes 0-4/5"))
+		}
+	}
+
+	#[rstest::rstest]
+	#[case(Method::GET, "*", StatusCode::NOT_MODIFIED, false)]
+	#[case(Method::HEAD, " * ", StatusCode::NOT_MODIFIED, false)]
+	#[case(Method::GET, "\"other\"", StatusCode::OK, true)]
+	#[case(Method::POST, "*", StatusCode::OK, true)]
+	#[tokio::test]
+	async fn streaming_conditionals_do_not_require_a_generated_etag(
+		#[case] method: Method,
+		#[case] if_none_match: &str,
+		#[case] expected_status: StatusCode,
+		#[case] expected_streaming: bool,
+	) {
+		// Arrange
+		let polls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+		let handler = Arc::new(StreamingHandler {
+			polls: polls.clone(),
+		});
+		let request = Request::builder()
+			.method(method)
+			.uri("/stream")
+			.header("if-none-match", if_none_match)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = ConditionalGetMiddleware::new()
+			.process(request, handler)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, expected_status);
+		assert_eq!(response.is_streaming(), expected_streaming);
+		assert_eq!(response.headers["cache-control"], "public, max-age=60");
+		assert!(!response.headers.contains_key("etag"));
+		assert_eq!(
+			response.headers.contains_key("content-range"),
+			expected_streaming
+		);
+		assert_eq!(polls.load(std::sync::atomic::Ordering::SeqCst), 0);
 	}
 }
