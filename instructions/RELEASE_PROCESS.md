@@ -534,7 +534,8 @@ flowchart TD
     A[Release/Publish failed] --> B{Error type?}
     B -->|Circular dependency| C["RP-2: Fix dependency chain<br/>Use optional deps for reinhardt-test"]
     B -->|Dev-dependency resolution| D["KI-2: Choose strategy<br/>optional dep / path-only / separate testkit"]
-    B -->|Partial failure| E["RP-1: Identify published/unpublished<br/>rollback unpublished versions<br/>new Release PR and merge"]
+    B -->|Partial failure| E["RP-1: Audit exact versions, tags, and releases<br/>repair unpublished packages and integrate recovery<br/>resume-release with immutable SHA and original Release PR"]
+    E --> J["Verify complete publication<br/>then allow the next Release PR"]
     B -->|gix cache panic| F["RP-3: Re-run release-plz<br/>(transient error)"]
     B -->|Phantom version bump| G["KI-5: Set release_always = true"]
     B -->|Yanked prerelease| H["KI-7: Advance to fresh prerelease<br/>do not reuse yanked version"]
