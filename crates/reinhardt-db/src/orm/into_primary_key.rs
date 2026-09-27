@@ -3,7 +3,28 @@
 /// This trait enables flexible function signatures in generated builder setters,
 /// allowing both model instances and raw primary key values to be passed.
 ///
+/// Supported raw keys are [`uuid::Uuid`], [`i32`], [`i64`], and [`String`] when
+/// they match the related model's primary key type. Models with a [`String`]
+/// primary key also accept string slices (`&str`). An owned string is moved
+/// unchanged, while a string slice is copied into the owned key stored by the
+/// relationship.
+/// A model reference (`&T`) extracts the model's primary key.
+///
 /// # Examples
+///
+/// Convert owned and borrowed text keys without loading a related model:
+///
+/// ```rust
+/// use reinhardt_db::orm::{IntoPrimaryKey, Model};
+///
+/// fn owned_key<T: Model<PrimaryKey = String>>(key: String) -> String {
+///     <String as IntoPrimaryKey<T>>::into_primary_key(key)
+/// }
+///
+/// fn borrowed_key<T: Model<PrimaryKey = String>>(key: &str) -> String {
+///     <&str as IntoPrimaryKey<T>>::into_primary_key(key)
+/// }
+/// ```
 ///
 /// ```rust,ignore
 /// use reinhardt::db::orm::{Model, IntoPrimaryKey};
@@ -60,6 +81,20 @@ impl<T: super::Model<PrimaryKey = i32>> IntoPrimaryKey<T> for i32 {
 impl<T: super::Model<PrimaryKey = i64>> IntoPrimaryKey<T> for i64 {
 	fn into_primary_key(self) -> T::PrimaryKey {
 		self
+	}
+}
+
+// String
+impl<T: super::Model<PrimaryKey = String>> IntoPrimaryKey<T> for String {
+	fn into_primary_key(self) -> T::PrimaryKey {
+		self
+	}
+}
+
+// Borrowed text for models with owned String primary keys
+impl<T: super::Model<PrimaryKey = String>> IntoPrimaryKey<T> for &str {
+	fn into_primary_key(self) -> T::PrimaryKey {
+		self.to_owned()
 	}
 }
 
