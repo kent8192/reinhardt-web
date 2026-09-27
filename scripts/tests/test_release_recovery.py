@@ -378,7 +378,7 @@ class PublishTests(unittest.TestCase):
         )
         waits = []
         result = publish([], Path("/tmp"), lambda *_args: next(outcomes), waits.append)
-        self.assertEqual((result, waits), (101, [13]))
+        self.assertEqual((result, waits), (101, [1200]))
 
     def test_transient_failures_retry_to_success_and_have_a_limit(self):
         for final in (0, 2):
@@ -394,7 +394,9 @@ class PublishTests(unittest.TestCase):
     def test_crates_io_reset_deadline_and_unknown_errors(self):
         now = datetime(2026, 9, 26, 4, 10, 53, tzinfo=timezone.utc)
         message = "status 429 Too Many Requests: Please try again after Sat, 26 Sep 2026 04:11:28 GMT"
-        self.assertEqual(retry_delay(message, 1, now), 40)
+        self.assertEqual(retry_delay(message, 1, now), 1200)
+        self.assertEqual(retry_delay("HTTP 429\nRetry-After: 1900", 1), 1905)
+        self.assertEqual(retry_delay("HTTP 429", 2), 1800)
         self.assertIsNone(retry_delay("unclassified publication error", 1))
         self.assertIsNone(retry_delay("HTTP 429 then failed to select a version", 1))
         self.assertIsNone(retry_delay("status 403", 1))
@@ -407,6 +409,104 @@ class PublishTests(unittest.TestCase):
         )
         self.assertEqual((code, log), (7, "package error\n"))
         self.assertEqual(self.output.getvalue(), "package error\n")
+
+
+class WorkflowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        workflow = (
+            Path(__file__).resolve().parents[2] / ".github/workflows/release-plz.yml"
+        )
+        cls.jobs = json.loads(
+            subprocess.check_output(
+                [
+                    "ruby",
+                    "-ryaml",
+                    "-rjson",
+                    "-e",
+                    'puts JSON.generate(YAML.load_file(ARGV[0])["jobs"])',
+                    str(workflow),
+                ],
+                text=True,
+            )
+        )
+
+    def condition(
+        self,
+        job,
+        event,
+        mode="",
+        classified="false",
+        classification="skipped",
+        result="skipped",
+        released="false",
+        cancelled=False,
+    ):
+        values = {
+            "github.event_name": event,
+            "inputs.mode": mode,
+            "needs.classify-release-push.result": classification,
+            "needs.classify-release-push.outputs.is_release_merge": classified,
+            "needs.release-plz-release.result": result,
+            "needs.release-plz-release.outputs.released": released,
+            "github.ref": "refs/heads/develop/0.4.0",
+        }
+        expression = self.jobs[job]["if"].strip()
+        for key in sorted(values, key=len, reverse=True):
+            expression = expression.replace(key, repr(values[key]))
+        expression = expression.replace("always()", "True").replace(
+            "!cancelled()", repr(not cancelled)
+        )
+        expression = expression.replace("&&", " and ").replace("||", " or ")
+        expression = re.sub(
+            r"startsWith\(([^,]+), ([^)]+)\)", r"str.startswith(\1, \2)", expression
+        )
+        return eval(" ".join(expression.split()), {"__builtins__": {}, "str": str})
+
+    def test_publish_gate_accepts_only_verified_push_or_explicit_recovery(self):
+        job = "release-plz-release"
+        self.assertFalse(self.condition(job, "push", classification="success"))
+        self.assertTrue(
+            self.condition(job, "push", classification="success", classified="true")
+        )
+        self.assertFalse(
+            self.condition(job, "push", classification="failure", classified="true")
+        )
+        self.assertTrue(self.condition(job, "workflow_dispatch", "resume-release"))
+        for mode in ("release", "backfill", ""):
+            self.assertFalse(self.condition(job, "workflow_dispatch", mode))
+        self.assertFalse(
+            self.condition(job, "workflow_dispatch", "resume-release", cancelled=True)
+        )
+
+    def test_failed_or_incomplete_recovery_cannot_announce(self):
+        for result in ("failure", "cancelled", "skipped"):
+            self.assertFalse(
+                self.condition(
+                    "release-announcement-pr",
+                    "workflow_dispatch",
+                    "resume-release",
+                    result=result,
+                    released="true",
+                )
+            )
+        self.assertTrue(
+            self.condition(
+                "release-announcement-pr",
+                "workflow_dispatch",
+                "resume-release",
+                result="success",
+                released="true",
+            )
+        )
+        self.assertFalse(
+            self.condition(
+                "release-announcement-pr",
+                "workflow_dispatch",
+                "resume-release",
+                result="success",
+            )
+        )
 
 
 if __name__ == "__main__":

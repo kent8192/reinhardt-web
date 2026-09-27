@@ -25,9 +25,12 @@ def retry_delay(log, attempt, now=None):
     if re.search(
         r"(?:status(?: code)?|HTTP[/\d.]*)[ :]+429\b|too many requests", log, re.I
     ):
+        # Refill the workspace publish budget, not just the next single token.
+        # The existing 20/30 minute cooldowns cover multi-package releases.
+        cooldown = 1200 if attempt == 1 else 1800
         header = re.search(r"retry-after:\s*(\d+)", log, re.I)
         if header:
-            return min(int(header[1]) + 5, 3600)
+            return min(max(int(header[1]) + 5, cooldown), 3600)
         deadline = re.search(
             r"(?:try again after|retry-after:)\s*([^\n]+?GMT)", log, re.I
         )
@@ -35,10 +38,10 @@ def retry_delay(log, attempt, now=None):
             try:
                 current = now or datetime.now(timezone.utc)
                 seconds = (parsedate_to_datetime(deadline[1]) - current).total_seconds()
-                return min(max(int(seconds) + 5, 5), 3600)
+                return min(max(int(seconds) + 5, cooldown), 3600)
             except (ValueError, TypeError):
                 pass
-        return 120 * attempt
+        return cooldown
     if re.search(
         r"(?:status(?: code)?|HTTP[/\d.]*)[ :]+5\d\d\b|"
         r"connection (?:reset|timed out)|operation timed out|could not resolve host|"

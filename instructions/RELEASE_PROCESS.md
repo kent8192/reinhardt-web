@@ -264,6 +264,15 @@ A temporary detached worktree supplies that baseline and is removed on exit.
 Missing or inconsistent tags stop release generation rather than selecting a
 release from another branch.
 
+Before generating a Release PR, `scripts/release_state.py --require-complete
+--before-release-pr` checks the previous release at exact manifest versions.
+Packages introduced after the completed facade release belong to the next
+release and are excluded from this preflight.
+It checks the crates.io sparse index, matching reachable Git tags, and enabled
+GitHub Releases. Network errors, yanked versions, and inconsistent tags fail
+closed. Incomplete publication holds the next Release PR and points operators
+to RP-1; it never falls back to an older baseline or bumps past missing versions.
+
 The disposable baseline receives the AWS Smithy `=1.6.3` dependency constraint
 where an AWS integration lacks it. Published versions predate this constraint,
 so fixing current manifests alone cannot make baseline rustdoc compilation pass.
@@ -588,16 +597,15 @@ unchanged versioned dependency cannot repair an unpublished prerequisite.
 
 ### KI-3: Partial Release Failure Deadlock
 
-**Problem**: When release-plz publishes multiple crates in dependency order, a failure partway through (e.g., network error, crates.io outage) leaves some crates published at their new versions while others remain at their old versions. The next `release-plz release-pr` run sees the already-published crates as released and generates a new Release PR only for the remaining crates — but with potentially incorrect dependency version requirements.
+A failed multi-package release can leave a version group partially published.
+An ordinary repair merge does not publish: the automatic publish gate accepts
+only a verified Release PR merge. If the facade is still unpublished, its tag
+is also missing and cannot serve as the next Release PR's comparison baseline.
 
-**Symptoms**:
-- Release PR contains version bumps for only a subset of crates
-- Published crates reference dependency versions that do not exist on crates.io
-- Subsequent publish attempts fail with dependency resolution errors
-
-**Resolution**: Follow [RP-1: Partial Release Failure Recovery](#rp-1-partial-release-failure-recovery).
-
-(Ref: [#204](https://github.com/kent8192/reinhardt-web/pull/204), [#223](https://github.com/kent8192/reinhardt-web/pull/223), [#226](https://github.com/kent8192/reinhardt-web/pull/226))
+The release-state preflight explicitly reports the unpublished versions,
+missing tags, and missing GitHub Releases. Complete the original release through
+[RP-1](#rp-1-partial-release-failure-recovery) before generating its successor.
+Keep package versions and changelogs intact; release-plz owns tags and releases.
 
 ### KI-4: gix/gitoxide Slotmap Overflow
 
@@ -607,7 +615,7 @@ unchanged versioned dependency cannot repair an unpublished prerequisite.
 - CI workflow fails with a panic in `gix` or `gitoxide` code paths
 - Error messages reference slotmap capacity or object cache
 
-**Workaround**: Re-run the workflow (the issue is intermittent). If persistent, clear the GitHub Actions cache for the release-plz workflow. A `workflow_dispatch` trigger has been added to allow manual re-runs.
+**Workaround**: Re-run the original workflow if its source is still correct. A rerun retains the original SHA. If source repairs are required after partial publication, use RP-1. The `resume-release` dispatch mode verifies an explicitly selected recovery source; other dispatch modes generate announcements only.
 
 **Tracking**: [gitoxide#1788](https://github.com/GitoxideLabs/gitoxide/issues/1788)
 
@@ -627,25 +635,23 @@ unchanged versioned dependency cannot repair an unpublished prerequisite.
 
 (Ref: [#246](https://github.com/kent8192/reinhardt-web/issues/246))
 
-### KI-6: crates.io Rate Limit (429 Too Many Requests)
+### KI-6: Transient Publish Failures
 
-**Status**: Mitigated (CI workflow has retry with delay)
+`scripts/run_release_publish.py` runs the pinned release-plz CLI up to three
+times, retaining each attempt's diagnostics and exit status. Only recognized
+HTTP 429, HTTP 5xx, and connection/DNS/timeout failures are retried. A 429 uses
+`Retry-After` or crates.io's reset timestamp plus a five-second margin when
+available, with minimum cooldowns of 20 and 30 minutes. Refilling only the next
+publish token can exhaust all attempts one package at a time in a large
+workspace. Other transient errors wait 30 and 60 seconds. A single wait is
+bounded to one hour.
 
-**Problem**: crates.io enforces a publish rate limit of 1 crate per minute with
-a burst allowance of 30 crates. With 45+ crates in the workspace, publishing
-exceeds the burst limit, resulting in HTTP 429 errors.
-
-**Mitigation**:
-- The release workflow (`release-plz.yml`) includes up to 3 publish attempts
-  with 120-second delays between retries
-- release-plz automatically skips already-published crates on retry
-- Each attempt can publish up to 30 crates (burst), covering 90 total
-
-**If the issue persists** (e.g., workspace grows beyond 90 crates):
-- Contact crates.io support (`help@crates.io`) to request a rate limit increase
-- Alternatively, increase the delay or add more retry rounds
-
-**Reference**: `<https://github.com/rust-lang/crates.io/issues/1643>`
+Version resolution, malformed manifests, verification/permission failures, and
+unknown errors stop immediately. A packaging error takes precedence over an
+earlier transient message in the same attempt. Waiting cannot make an
+unpublished dev-dependency available. Already-published versions are skipped by
+release-plz on a retry. Publication is successful only after registry, tag, and
+GitHub Release reconciliation, not merely when the CLI exits successfully.
 
 ### KI-7: Yanked Prerelease Version Blocks `release-plz release-pr`
 
@@ -702,48 +708,63 @@ let release-plz regenerate the Release PR.
 
 ### RP-1: Partial Release Failure Recovery
 
-Use this procedure when some crates were published successfully but others failed during a release cycle.
+Use `resume-release` after diagnosing the failed leaf-job log and repairing the
+unpublished package. Publication and protected-branch merges require the
+applicable authorization in COMMIT_GUIDELINE.md CE-1.
 
-**Step 1: Identify published and unpublished crates**
+1. Fetch trusted origin tags with `git fetch origin --tags` (without force),
+   then run `python3 scripts/release_state.py --repository kent8192/reinhardt-web`
+   in the selected checkout. Inspect exact versions, not the registry's latest
+   stable version. A registry lookup failure is not evidence of an absent crate.
+2. Prepare a recovery commit descending from the original Release PR merge,
+   containing only the required packaging/source repair. Preserve the root
+   `Cargo.toml`, `release-plz.toml`, package membership, and all package versions.
+   Already-published package directories must match their verified release tags
+   (or the original release merge when the tag is missing). This also permits
+   repeated resumptions after a recovery publishes some repaired packages. Changes to
+   shared dependency policy belong in the next release.
+3. Integrate that recovery commit into the release branch with a normal merge
+   through the approved repair PR. Preserve its ancestry: squashing or rebasing
+   would discard the fixed source identity. The branch may contain later changes;
+   the selected recovery SHA must retain the original release contents plus its
+   bounded repair. Do not edit a generated release-plz branch.
+4. Validate the affected `cargo publish --dry-run --no-verify` and packaged
+   manifest, then dispatch the workflow from the release branch using the full
+   immutable recovery SHA and original merged Release PR number:
+
+   ```bash
+   gh workflow run release-plz.yml --repo kent8192/reinhardt-web \
+     --ref develop/0.4.0 -f mode=resume-release \
+     -f release_pr=6383 -f release_sha="FULL_40_CHARACTER_RECOVERY_SHA"
+   ```
+
+The workflow checks the PR's merged state, `release` label, repository, branch
+prefix, and base. The original merge must be an ancestor of the recovery source,
+and the recovery source must already be an ancestor of the dispatch revision.
+The release branch and source must still contain the original package versions;
+a later release cannot be used to resume an older one. Normal push publication
+continues to require equality with the verified Release PR merge SHA.
+
+Workflow scripts run from the dispatch revision, while publication uses a
+separate checkout pinned to the verified recovery SHA. After publication the
+workflow checks every enabled package's registry version and matching tags plus
+enabled GitHub Releases. A failed or incomplete recovery cannot announce success.
+Missing metadata for an already-published package remains an explicit failure;
+never synthesize tags manually or treat a green retry as publication proof.
+
+Once the original release is complete, the next ordinary push can regenerate a
+Release PR using its actual completed release tag. `release` and `backfill`
+dispatch modes continue to generate announcements; they do not publish crates.
+
+Validate the workflow without publishing:
 
 ```bash
-# Check which crate versions exist on crates.io
-for crate in reinhardt-core reinhardt-db reinhardt-db-macros reinhardt-macros reinhardt-test reinhardt-web; do
-  version=$(curl -s "https://crates.io/api/v1/crates/$crate" | jq -r '.crate.max_version // "not found"')
-  echo "$crate: $version"
-done
+bash scripts/tests/test-release-recovery.sh
+bash scripts/tests/test-release-pr-baseline.sh
+bash scripts/tests/test-classify-release-push.sh
+bash scripts/tests/test-release-tag-snapshots.sh
+actionlint -shellcheck= .github/workflows/release-plz.yml
 ```
-
-Compare the crates.io versions with the versions in the failed Release PR to identify which crates were not published.
-
-**Step 2: Roll back unpublished crate versions**
-
-For each crate that was **not** published, revert its version and CHANGELOG changes to match the current crates.io version:
-
-```bash
-# Revert Cargo.toml version for unpublished crates
-git checkout main -- crates/<unpublished-crate>/Cargo.toml
-git checkout main -- crates/<unpublished-crate>/CHANGELOG.md
-```
-
-**Step 3: Push and wait for new Release PR**
-
-```bash
-git add -A
-git commit -m "fix(release): roll back unpublished crate versions after partial release failure"
-git push origin main
-```
-
-release-plz will detect the version discrepancies and create a new Release PR containing only the unpublished crates with correct dependency versions.
-
-**Step 4: Review and merge the new Release PR**
-
-Verify that:
-- Only unpublished crates have version bumps
-- Dependency versions reference published versions
-- CHANGELOG entries are correct
-
-(Ref: [#204](https://github.com/kent8192/reinhardt-web/pull/204), [#223](https://github.com/kent8192/reinhardt-web/pull/223), [#226](https://github.com/kent8192/reinhardt-web/pull/226))
 
 ### RP-2: Circular Dependency Deadlock Recovery
 
@@ -808,13 +829,11 @@ gh cache list
 gh cache delete <cache-key>
 ```
 
-**Step 3: Manual dispatch**
+**Step 3: Resume only if the source needs repair**
 
-The release-plz workflow supports `workflow_dispatch` for manual triggering:
-
-```bash
-gh workflow run release-plz.yml
-```
+After a source repair, use [RP-1](#rp-1-partial-release-failure-recovery) to
+dispatch `resume-release` with a verified recovery SHA. The default manual
+`release` mode generates announcements and does not retry crate publication.
 
 (Ref: [#225](https://github.com/kent8192/reinhardt-web/pull/225))
 
