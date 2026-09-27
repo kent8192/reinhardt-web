@@ -44,6 +44,7 @@ def retry_delay(log, attempt, now=None):
         return cooldown
     if re.search(
         r"(?:status(?: code)?|HTTP[/\d.]*)[ :]+5\d\d\b|"
+        r"failed to get (?:a )?(?:200 OK|successful HTTP) response[^\n]*\bgot[ :]+5\d\d\b|"
         r"connection (?:reset|timed out)|operation timed out|could not resolve host|"
         r"failed to lookup address|connection closed before message completed",
         log,

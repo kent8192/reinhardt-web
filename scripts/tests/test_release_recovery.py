@@ -471,6 +471,31 @@ class PublishTests(unittest.TestCase):
         self.assertEqual((code, log), (7, "package error\n"))
         self.assertEqual(self.output.getvalue(), "package error\n")
 
+    def test_cargo_response_errors_retry_only_server_failures(self):
+        for message in (
+            "failed to get a 200 OK response, got 503",
+            "failed to get successful HTTP response from `https://crates.io/api/v1/crates/new`, got 502",
+        ):
+            with self.subTest(message=message):
+                outcomes = iter([(101, message), (0, "published")])
+                waits = []
+                self.assertEqual(
+                    publish(
+                        [], Path("/tmp"), lambda *_args: next(outcomes), waits.append
+                    ),
+                    0,
+                )
+                self.assertEqual(waits, [30])
+                self.assertIsNone(
+                    retry_delay(message + "\nfailed to select a version", 1)
+                )
+        for message in (
+            "failed to get a 200 OK response, got 404",
+            "expected 502 bytes, got 503",
+            "compile error at line 503",
+        ):
+            self.assertIsNone(retry_delay(message, 1))
+
 
 class WorkflowTests(unittest.TestCase):
     @classmethod
