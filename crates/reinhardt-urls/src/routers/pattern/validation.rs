@@ -72,7 +72,7 @@ pub(super) fn type_spec_to_regex(type_spec: &str) -> &'static str {
 /// extracted values for `..` segments that could enable path traversal.
 ///
 /// Rejects:
-/// - `..` as a path segment (forward-slash or backslash separated)
+/// - `..` as a path segment, including mixed forward-slash/backslash separators
 /// - Percent-encoded traversal sequences (`%2e`, `%2f`, `%2E`, `%2F`, `%5c`, `%5C`)
 /// - Null bytes (literal or encoded `%00`)
 /// - Absolute paths starting with `/` or `\`
@@ -102,14 +102,8 @@ pub(crate) fn validate_path_param(value: &str) -> bool {
 		return false;
 	}
 
-	// Check for `..` as a complete path segment (forward-slash separated)
-	for segment in value.split('/') {
-		if segment == ".." {
-			return false;
-		}
-	}
-	// Also reject backslash-separated `..` segments
-	for segment in value.split('\\') {
+	// Windows recognizes both separators, including within the same path.
+	for segment in value.split(['/', '\\']) {
 		if segment == ".." {
 			return false;
 		}

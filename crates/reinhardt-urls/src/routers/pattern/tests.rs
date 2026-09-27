@@ -563,6 +563,38 @@ fn typed_path_rejects_windows_drive_prefixes(#[case] value: &str) {
 	);
 }
 
+#[rstest]
+#[case::mixed_forward(r"foo/..\../secret")]
+#[case::mixed_backward(r"foo\../..\secret")]
+#[case::mixed_adjacent(r"foo/..\/secret")]
+fn typed_path_rejects_mixed_separator_traversal(
+	#[case] value: &str,
+	#[values(MatchingMode::Linear, MatchingMode::RadixTree)] mode: MatchingMode,
+) {
+	// Arrange
+	let pattern = PathPattern::new("/files/{<path:asset>}").unwrap();
+	let path = format!("/files/{value}");
+	let mut matcher = PathMatcher::with_mode(mode);
+	matcher
+		.add_pattern(pattern.clone(), "files".into())
+		.unwrap();
+
+	// Act
+	let extracted = pattern.extract_params(&path);
+	let matched = matcher.match_path(&path);
+	let safe = matcher.match_path("/files/nested/..hidden/file.txt");
+
+	// Assert
+	assert_eq!(extracted, None);
+	assert_eq!(matched, None);
+	let (handler, params) = safe.expect("a dot-prefixed filename should remain accepted");
+	assert_eq!(handler, "files");
+	assert_eq!(
+		params.get("asset").map(String::as_str),
+		Some("nested/..hidden/file.txt")
+	);
+}
+
 #[test]
 fn test_path_type_rejects_encoded_traversal() {
 	// Arrange
