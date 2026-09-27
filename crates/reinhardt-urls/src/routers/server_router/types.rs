@@ -5,6 +5,7 @@
 //! method bodies live in dedicated submodules (`builder`, `registration`,
 //! `compile`, `introspection`, `dispatch`).
 
+use crate::routers::pattern::validate_path_param;
 use hyper::Method;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::{Handler, PathParams};
@@ -97,6 +98,15 @@ pub(crate) struct RouteHandler {
 
 	/// Route-level middleware
 	pub(crate) middleware: Vec<Arc<dyn Middleware>>,
+}
+
+impl RouteHandler {
+	/// Apply typed converter validation to a match before treating it as a route.
+	pub(super) fn path_params_are_valid(&self, params: &matchit::Params<'_, '_>) -> bool {
+		params.iter().all(|(key, value)| {
+			!self.path_type_params.iter().any(|name| name == key) || validate_path_param(value)
+		})
+	}
 }
 
 /// Route match result with metadata

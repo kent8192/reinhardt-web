@@ -1780,4 +1780,55 @@ fn test_typed_path_endpoint_rejects_traversal(
 		matched.is_none(),
 		"unsafe typed path must not reach its handler"
 	);
+	assert!(!router.path_exists_for_any_method(&path));
+	assert!(router.path_exists_for_any_method(safe_path));
+}
+
+#[rstest]
+#[case::parent("foo/../secret")]
+#[case::encoded("foo/%2e%2e/secret")]
+#[tokio::test]
+async fn rejected_typed_paths_report_not_found(
+	#[case] asset: &str,
+	#[values(false, true)] mounted: bool,
+	#[values(Method::GET, Method::POST)] method: Method,
+) {
+	// Arrange
+	let child = ServerRouter::new().endpoint(|| TestEndpoint::<29>);
+	let (router, prefix) = if mounted {
+		(ServerRouter::new().mount("/static/", child), "/static")
+	} else {
+		(child, "")
+	};
+	let path = format!("{prefix}/files/{asset}");
+	let request = Request::builder()
+		.method(method.clone())
+		.uri(&path)
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
+	let valid_wrong_method = Request::builder()
+		.method(Method::POST)
+		.uri(format!("{prefix}/files/nested/file.txt"))
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
+
+	// Act
+	let rejected = router.handle(request).await.err().expect("rejected route");
+	let wrong_method = router
+		.handle(valid_wrong_method)
+		.await
+		.err()
+		.expect("GET-only route");
+
+	// Assert
+	assert!(
+		matches!(rejected, reinhardt_http::Error::NotFound(ref message)
+		if message == &format!("No route for {method} {path}"))
+	);
+	assert!(
+		matches!(wrong_method, reinhardt_http::Error::MethodNotAllowed(ref message)
+		if message == &format!("Method POST not allowed for {prefix}/files/nested/file.txt"))
+	);
 }
