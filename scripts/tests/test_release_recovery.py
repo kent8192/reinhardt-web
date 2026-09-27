@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from urllib.error import HTTPError
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from release_state import (
@@ -86,10 +87,13 @@ class RecoveryTests(unittest.TestCase):
         self.git("config", "tag.gpgsign", "false")
         (self.repo / "Cargo.toml").write_text(
             '[package]\nname = "reinhardt-web"\nversion = "0.4.0-alpha.17"\nedition = "2024"\n'
+            'include = ["src/**", "Cargo.toml", "README.md"]\n'
             '[workspace]\nmembers = ["crates/*"]\nresolver = "3"\n'
         )
         (self.repo / "src").mkdir()
         (self.repo / "src/lib.rs").write_text("pub fn facade() {}\n")
+        (self.repo / "src/data.txt").write_text("published asset\n")
+        (self.repo / "README.md").write_text("Published facade documentation\n")
         (self.repo / "release-plz.toml").write_text(
             "[workspace]\ngit_release_enable = false\n"
             'git_tag_name = "{{ package }}@v{{ version }}"\n'
@@ -345,6 +349,62 @@ class RecoveryTests(unittest.TestCase):
             [item["name"] for item in packages(self.repo)],
             ["reinhardt-core", "reinhardt-web"],
         )
+
+    def test_published_root_allows_repairing_an_unpublished_member(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn repaired() {}\n")
+        self.source = self.workflow = self.commit("fixture: repair remaining auth")
+        before = self.git("worktree", "list", "--porcelain")
+        result = self.check(
+            state=self.state(
+                published=("reinhardt-core", "reinhardt-web"), release=True
+            )
+        )
+        self.assertEqual(result["mode"], "resume-release")
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_published_root_rejects_changed_added_and_deleted_package_files(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        published = self.source
+        for operation in ("modify", "add", "delete"):
+            with self.subTest(operation=operation):
+                self.git("checkout", "--detach", published)
+                if operation == "modify":
+                    (self.repo / "README.md").write_text(
+                        "Changed published documentation\n"
+                    )
+                elif operation == "add":
+                    (self.repo / "src/extra.txt").write_text("New published asset\n")
+                else:
+                    (self.repo / "src/data.txt").unlink()
+                self.source = self.workflow = self.commit(
+                    f"fixture: {operation} root package file"
+                )
+                with self.assertRaisesRegex(
+                    ReleaseError, "already-published package reinhardt-web"
+                ):
+                    self.check(
+                        state=self.state(
+                            published=("reinhardt-core", "reinhardt-web"), release=True
+                        )
+                    )
+
+    def test_published_root_snapshot_is_removed_after_inventory_failure(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn repaired() {}\n")
+        self.source = self.workflow = self.commit("fixture: repair remaining auth")
+        before = self.git("worktree", "list", "--porcelain")
+        with patch(
+            "verify_release_source.package_files",
+            side_effect=[set(), ReleaseError("inventory failed")],
+        ):
+            with self.assertRaisesRegex(ReleaseError, "inventory failed"):
+                self.check(
+                    state=self.state(
+                        published=("reinhardt-core", "reinhardt-web"), release=True
+                    )
+                )
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
 
 
 class PublishTests(unittest.TestCase):

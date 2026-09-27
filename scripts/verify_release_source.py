@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from tempfile import TemporaryDirectory
 
 from release_state import (
     ReleaseError,
@@ -16,6 +17,68 @@ from release_state import (
     packages,
     version_at,
 )
+
+
+def package_files(repo, package):
+    """Ask Cargo for its include/exclude and implicit package-file boundaries."""
+    directory = Path(package["manifest"]).parent
+    listed = command(
+        repo,
+        "cargo",
+        "package",
+        "--list",
+        "--offline",
+        "--no-verify",
+        "--allow-dirty",
+        "--manifest-path",
+        str(repo / package["manifest"]),
+    )
+    return {str(directory / name) for name in listed.splitlines()}
+
+
+def published_package_changed(repo, published_source, source_sha, package):
+    directory = str(Path(package["manifest"]).parent)
+    changed = set(
+        filter(
+            None,
+            git(
+                repo,
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                published_source,
+                source_sha,
+                "--",
+                directory,
+            ).split("\0"),
+        )
+    )
+    if not changed or directory != ".":
+        return bool(changed)
+    # A workspace root is also a package. Its sibling crates and CI files are
+    # not necessarily published; Cargo is authoritative for glob semantics.
+    current_files = package_files(repo, package)
+    if changed & current_files:
+        return True
+    # Include the previous file inventory so deleted package files stay guarded.
+    with TemporaryDirectory(prefix="release-package-files-", dir="/tmp") as temp:
+        checkout = Path(temp) / "source"
+        git(
+            repo,
+            "worktree",
+            "add",
+            "--quiet",
+            "--detach",
+            str(checkout),
+            published_source,
+        )
+        try:
+            previous_files = package_files(checkout, package)
+        finally:
+            # This invocation owns the disposable checkout and any generated files.
+            git(repo, "worktree", "remove", "--force", str(checkout))
+    return bool(changed & previous_files)
 
 
 def verify(
@@ -118,7 +181,6 @@ def verify(
     state = state if state is not None else audit(repo, repository, inventory)
     for package in state["packages"]:
         if package["published"]:
-            directory = str(Path(package["manifest"]).parent)
             # A prior recovery may already have published this exact repair.
             # Its verified tag is the source boundary on subsequent resumptions.
             published_source = (
@@ -126,15 +188,7 @@ def verify(
                 if package["tag"] and package["tag_exists"]
                 else merge_sha
             )
-            if git(
-                repo,
-                "diff",
-                "--name-only",
-                published_source,
-                source_sha,
-                "--",
-                directory,
-            ):
+            if published_package_changed(repo, published_source, source_sha, package):
                 raise ReleaseError(
                     f"Recovery modifies already-published package {package['name']}"
                 )
