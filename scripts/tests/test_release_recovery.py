@@ -920,6 +920,130 @@ class WorkflowTests(unittest.TestCase):
                 self.assertIn(f"source_sha={expected}", output.read_text())
                 self.assertIn("release_pr=6383", output.read_text())
 
+    def publication_checkout(self, base):
+        temp = tempfile.TemporaryDirectory(dir="/tmp")
+        self.addCleanup(temp.cleanup)
+        origin = Path(temp.name) / "origin"
+        repo = Path(temp.name) / "release-source"
+        origin.mkdir()
+        repo.mkdir()
+        self.git(origin, "init", "-q", "-b", base)
+        self.git(origin, "config", "user.name", "Release Test")
+        self.git(origin, "config", "user.email", "release-test@example.invalid")
+        self.git(origin, "config", "commit.gpgsign", "false")
+        (origin / "source.txt").write_text("approved publication source\n")
+        self.git(origin, "add", ".")
+        self.git(origin, "commit", "-qm", "chore: release")
+        source = self.git(origin, "rev-parse", "HEAD")
+        (origin / "source.txt").write_text("later branch contents\n")
+        self.git(origin, "commit", "-qam", "ci: fix publication workflow")
+        tip = self.git(origin, "rev-parse", "HEAD")
+        self.git(repo, "init", "-q")
+        self.git(repo, "remote", "add", "origin", str(origin))
+        self.git(repo, "fetch", "-q", "origin")
+        self.git(repo, "checkout", "--detach", source)
+        return repo, source, tip
+
+    def git(self, repo, *args):
+        return subprocess.check_output(
+            ["git", *args], cwd=repo, text=True, stderr=subprocess.PIPE
+        ).strip()
+
+    def attach_publication_source(self, repo, source, base):
+        steps = self.jobs["release-plz-release"]["steps"]
+        step = next(
+            step
+            for step in steps
+            if step["name"] == "Attach publication source to a tracking branch"
+        )
+        verification = next(
+            step
+            for step in steps
+            if step["name"] == "Verify release PR and publication source"
+        )
+        publication = next(
+            step
+            for step in steps
+            if step["name"] == "Publish to crates.io and create releases"
+        )
+        self.assertLess(steps.index(verification), steps.index(step))
+        self.assertLess(steps.index(step), steps.index(publication))
+        self.assertNotIn("if", step)
+        self.assertEqual(step["working-directory"], "release-source")
+        self.assertEqual(
+            step["env"]["RELEASE_SHA"],
+            "${{ steps.publication-source.outputs.source_sha }}",
+        )
+        return subprocess.run(
+            ["bash", "-c", step["run"]],
+            cwd=repo,
+            env=os.environ | {"RELEASE_SHA": source, "GITHUB_REF_NAME": base},
+            text=True,
+            capture_output=True,
+        )
+
+    def test_publication_branch_preserves_source_when_upstream_is_ahead(self):
+        for base in ("main", "develop/0.4.0"):
+            for recovery in (False, True):
+                with self.subTest(base=base, recovery=recovery):
+                    repo, source, tip = self.publication_checkout(base)
+                    if not recovery:
+                        source = tip
+                        self.git(repo, "checkout", "--detach", source)
+                    contents = (repo / "source.txt").read_text()
+                    detached = subprocess.run(
+                        [
+                            "git",
+                            "rev-parse",
+                            "--abbrev-ref",
+                            "--symbolic-full-name",
+                            "@{upstream}",
+                        ],
+                        cwd=repo,
+                        text=True,
+                        capture_output=True,
+                    )
+                    self.assertNotEqual(detached.returncode, 0)
+                    result = self.attach_publication_source(repo, source, base)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(self.git(repo, "rev-parse", "HEAD"), source)
+                    self.assertEqual(
+                        self.git(repo, "branch", "--show-current"),
+                        "release-publication",
+                    )
+                    self.assertEqual(
+                        self.git(
+                            repo,
+                            "rev-parse",
+                            "--abbrev-ref",
+                            "--symbolic-full-name",
+                            "@{upstream}",
+                        ),
+                        f"origin/{base}",
+                    )
+                    self.assertEqual((repo / "source.txt").read_text(), contents)
+                    self.assertEqual(self.git(repo, "status", "--porcelain"), "")
+                    self.assertEqual(self.git(repo, "rev-parse", f"origin/{base}"), tip)
+                    self.assertEqual(
+                        self.git(repo, "ls-remote", "origin", f"refs/heads/{base}"),
+                        f"{tip}\trefs/heads/{base}",
+                    )
+
+    def test_publication_branch_rejects_changed_source(self):
+        repo, source, tip = self.publication_checkout("develop/0.4.0")
+        result = self.attach_publication_source(repo, tip, "develop/0.4.0")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no longer matches the verified source SHA", result.stdout)
+        self.assertEqual(self.git(repo, "rev-parse", "HEAD"), source)
+        self.assertEqual(self.git(repo, "branch", "--show-current"), "")
+
+    def test_publication_branch_requires_existing_upstream(self):
+        repo, source, _tip = self.publication_checkout("develop/0.4.0")
+        result = self.attach_publication_source(repo, source, "develop/missing")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not exist", result.stderr)
+        self.assertEqual(self.git(repo, "rev-parse", "HEAD"), source)
+
     def test_publication_announces_its_verified_tag_instead_of_the_latest_tag(self):
         selection = next(
             step

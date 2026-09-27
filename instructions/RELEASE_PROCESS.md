@@ -778,9 +778,14 @@ a later release cannot be used to resume an older one. Normal push publication
 continues to require equality with the verified Release PR merge SHA.
 
 Workflow scripts run from the dispatch revision, while publication uses a
-separate checkout pinned to the verified recovery SHA. After publication the
-workflow checks every enabled package's registry version and matching tags plus
-enabled GitHub Releases. A failed or incomplete recovery cannot announce success.
+separate checkout pinned to the verified recovery SHA. After source verification,
+the workflow attaches that commit to a local `release-publication` branch tracking
+`origin/<release branch>`: release-plz requires branch context and rejects a
+detached HEAD. Configuring the upstream must not move the checkout to the remote
+branch tip; the workflow rechecks the selected SHA before publishing. After
+publication the workflow checks every enabled package's registry version and
+matching tags plus enabled GitHub Releases. A failed or incomplete recovery cannot
+announce success.
 A successful recovery exports the verified facade tag for announcement selection,
 even when that tag was created by an earlier attempt. A fully published source
 may be reconciled again to finish an announcement interrupted by a previous
