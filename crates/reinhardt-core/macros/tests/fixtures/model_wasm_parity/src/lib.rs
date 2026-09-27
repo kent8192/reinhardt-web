@@ -60,6 +60,19 @@ pub struct Job {
 	pub job_type: String,
 }
 
+#[model(app_label = "jobs", table_name = "nullable_jobs", info = false)]
+#[derive(Clone, Serialize, Deserialize)]
+pub struct NullableJob {
+	#[field(primary_key = true)]
+	pub id: i64,
+
+	#[rel(foreign_key, null = true)]
+	pub project: reinhardt::db::associations::ForeignKeyField<Project>,
+
+	#[rel(one_to_one, null = true)]
+	pub profile: reinhardt::db::associations::OneToOneField<Project>,
+}
+
 #[model(app_label = "forms", table_name = "forms", form = true, info = false)]
 #[derive(Clone, Serialize, Deserialize)]
 #[form(validate = validate_form_project)]
@@ -401,6 +414,28 @@ mod tests {
 	use rstest::rstest;
 	use wasm_bindgen_test::wasm_bindgen_test;
 
+	#[rstest]
+	#[case::null(None)]
+	#[case::present(Some("project-alpha".to_owned()))]
+	#[cfg_attr(all(target_family = "wasm", target_os = "unknown"), wasm_bindgen_test)]
+	fn nullable_relation_ids_round_trip_without_model_forms(#[case] expected: Option<String>) {
+		// Arrange
+		let value = serde_json::json!({
+			"id": 1,
+			"project_id": expected,
+			"profile_id": expected,
+		});
+
+		// Act
+		let job: NullableJob = serde_json::from_value(value.clone()).unwrap();
+		let project_id: Option<String> = job.project_id();
+		let profile_id: Option<String> = job.profile_id();
+
+		// Assert
+		assert_eq!(project_id, expected);
+		assert_eq!(profile_id, expected);
+		assert_eq!(serde_json::to_value(job).unwrap(), value);
+	}
 	const PARITY_NUMERIC_ERRORS: &[(&str, &str)] = &[
 		(
 			"quantity",

@@ -806,6 +806,16 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 /// This provides a cleaner syntax by eliminating the need to explicitly write
 /// `#[derive(Model)]` on every model struct.
 ///
+/// # Relationship ID Fields
+///
+/// `#[rel(foreign_key)]` and `#[rel(one_to_one)]` generate a `{field}_id` field
+/// using the related model's primary-key type. With `null = true`, its type is
+/// `Option<PrimaryKey>`; otherwise it is `PrimaryKey`. This applies independently
+/// of model-form generation. Nullable IDs accept `None` for SQL NULL and
+/// `Some(id)` for an existing relationship, including on models without `form`.
+/// Code that previously assigned a bare ID to a nullable relation must wrap it
+/// in `Some(...)`.
+///
 /// # Info Companion Type (Issues #4194, #5272)
 ///
 /// By default, generates a `{Model}Info` companion struct with `pub` fields,
