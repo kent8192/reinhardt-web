@@ -22,11 +22,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.17", features = ["dentdelion"] }
+reinhardt = { version = "0.4.0-alpha.18", features = ["dentdelion"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.4.0-alpha.17", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.4.0-alpha.17", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.18", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.18", features = ["full"] }      # All features
 ```
 
 Then import dentdelion features:
@@ -62,7 +62,7 @@ pub struct MyPlugin {
 impl MyPlugin {
     pub fn new() -> Self {
         Self {
-            metadata: PluginMetadata::builder("my-plugin", "0.4.0-alpha.17")
+            metadata: PluginMetadata::builder("my-plugin", "0.4.0-alpha.18")
                 .description("My custom plugin")
                 .author("Your Name")
                 .build()
@@ -231,7 +231,7 @@ Dentdelion uses the WebAssembly Interface Types (WIT) standard for plugin interf
 
 <!-- reinhardt-version-sync -->
 ```wit
-package reinhardt:dentdelion@0.4.0-alpha.17;
+package reinhardt:dentdelion@0.4.0-alpha.18;
 
 // Host functions available to plugins
 interface host {
