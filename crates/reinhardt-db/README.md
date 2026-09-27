@@ -54,6 +54,10 @@ reinhardt-admin migrations upgrade-source --check migrations
 `--check` performs a preflight and exits unsuccessfully when conversion is
 needed; neither form opens a database connection.
 
+Filesystem loading walks migration builder chains iteratively, preserving
+operation and dependency order and applying later flag values last. Adding
+operations does not add recursive frames to the migration builder parser.
+
 Pre-0.4 generated `DropColumn` operations without `old_definition` are upgraded
 with `old_definition: None`. Explicit definitions retain their meaning; the
 existing rollback path can recover a missing definition from prior migration
