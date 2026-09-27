@@ -354,6 +354,78 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(ReleaseError, "package membership"):
             self.check()
 
+    def write_non_member_fixture(self):
+        fixture = self.repo / "crates/auth/tests/fixtures/local"
+        (fixture / "src").mkdir(parents=True)
+        (fixture / "Cargo.toml").write_text(
+            '[package]\nname = "local-fixture"\nversion = "1.0.0"\nedition = "2024"\n'
+            "[workspace]\n"
+        )
+        (fixture / "src/lib.rs").write_text("pub fn fixture() {}\n")
+
+    def test_adding_a_non_member_fixture_allows_recovery(self):
+        self.write_non_member_fixture()
+        self.source = self.workflow = self.commit(
+            "fixture: add local packaging fixture"
+        )
+        self.inventory = packages(self.repo)
+        self.assertEqual(len(self.inventory), 3)
+        before = self.git("worktree", "list", "--porcelain")
+        self.assertEqual(self.check()["mode"], "resume-release")
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_removing_a_non_member_fixture_allows_recovery(self):
+        self.write_non_member_fixture()
+        self.original = self.commit("fixture: release with local packaging fixture")
+        self.pr["merge_commit_sha"] = self.original
+        self.git("rm", "-r", "crates/auth/tests/fixtures/local")
+        self.source = self.workflow = self.commit(
+            "fixture: remove local packaging fixture"
+        )
+        self.inventory = packages(self.repo)
+        self.assertEqual(len(self.inventory), 3)
+        self.assertEqual(self.check()["mode"], "resume-release")
+
+    def write_non_publishable_member(self):
+        member = self.repo / "crates/internal"
+        (member / "src").mkdir(parents=True)
+        (member / "Cargo.toml").write_text(
+            '[package]\nname = "internal-member"\nversion = "1.0.0"\nedition = "2024"\n'
+            "publish = false\n"
+        )
+        (member / "src/lib.rs").write_text("pub fn internal() {}\n")
+
+    def test_adding_a_non_publishable_workspace_member_is_rejected(self):
+        self.write_non_publishable_member()
+        self.source = self.workflow = self.commit(
+            "fixture: add internal workspace member"
+        )
+        self.assertEqual(packages(self.repo), self.inventory)
+        with self.assertRaisesRegex(ReleaseError, "package membership"):
+            self.check()
+
+    def test_removing_a_non_publishable_workspace_member_is_rejected(self):
+        self.write_non_publishable_member()
+        self.original = self.commit("fixture: release with internal workspace member")
+        self.pr["merge_commit_sha"] = self.original
+        self.git("rm", "-r", "crates/internal")
+        self.source = self.workflow = self.commit(
+            "fixture: remove internal workspace member"
+        )
+        self.assertEqual(packages(self.repo), self.inventory)
+        with self.assertRaisesRegex(ReleaseError, "package membership"):
+            self.check()
+
+    def test_membership_snapshot_is_removed_after_metadata_failure(self):
+        before = self.git("worktree", "list", "--porcelain")
+        with patch(
+            "verify_release_source.workspace_manifests",
+            side_effect=[{"Cargo.toml"}, ReleaseError("membership metadata failed")],
+        ):
+            with self.assertRaisesRegex(ReleaseError, "membership metadata failed"):
+                self.check()
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
     def test_new_packages_do_not_block_the_next_release_pr(self):
         self.git("tag", "reinhardt-auth@v0.4.0-alpha.17")
         self.git("tag", "reinhardt-web@v0.4.0-alpha.17")

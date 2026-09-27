@@ -19,6 +19,32 @@ from release_state import (
 )
 
 
+def workspace_manifests(repo):
+    """Read actual workspace members, including packages excluded from releases."""
+    repo = repo.resolve()
+    metadata = json.loads(
+        command(repo, "cargo", "metadata", "--no-deps", "--format-version", "1")
+    )
+    members = set(metadata["workspace_members"])
+    return {
+        str(Path(package["manifest_path"]).resolve().relative_to(repo))
+        for package in metadata["packages"]
+        if package["id"] in members
+    }
+
+
+def workspace_manifests_at(repo, revision):
+    """Read historical membership without modifying the publication checkout."""
+    with TemporaryDirectory(prefix="release-membership-", dir="/tmp") as temp:
+        checkout = Path(temp) / "source"
+        git(repo, "worktree", "add", "--quiet", "--detach", str(checkout), revision)
+        try:
+            return workspace_manifests(checkout)
+        finally:
+            # This invocation owns the checkout and Cargo-generated files.
+            git(repo, "worktree", "remove", "--force", str(checkout))
+
+
 def package_files(repo, package):
     """Ask Cargo for its include/exclude and implicit package-file boundaries."""
     directory = Path(package["manifest"]).parent
@@ -153,6 +179,8 @@ def verify(
             "Recovery must preserve the original root manifest and release configuration"
         )
     inventory = inventory if inventory is not None else packages(repo)
+    if workspace_manifests(repo) != workspace_manifests_at(repo, merge_sha):
+        raise ReleaseError("Recovery must preserve package membership")
     for package in inventory:
         if version_at(repo, merge_sha, package["manifest"]) != (
             package["name"],
@@ -168,16 +196,6 @@ def verify(
             raise ReleaseError(
                 f"The selected release branch has advanced past {package['name']}@{package['version']}"
             )
-    original_manifests = git(
-        repo, "ls-tree", "-r", "--name-only", merge_sha
-    ).splitlines()
-    source_manifests = git(
-        repo, "ls-tree", "-r", "--name-only", source_sha
-    ).splitlines()
-    if {p for p in original_manifests if p.endswith("Cargo.toml")} != {
-        p for p in source_manifests if p.endswith("Cargo.toml")
-    }:
-        raise ReleaseError("Recovery must preserve package membership")
     state = state if state is not None else audit(repo, repository, inventory)
     for package in state["packages"]:
         if package["published"] or (package["tag"] and package["tag_exists"]):

@@ -738,7 +738,10 @@ applicable authorization in COMMIT_GUIDELINE.md CE-1.
    stable version. A registry lookup failure is not evidence of an absent crate.
 2. Prepare a recovery commit descending from the original Release PR merge,
    containing only the required packaging/source repair. Preserve the root
-   `Cargo.toml`, `release-plz.toml`, package membership, and all package versions.
+   `Cargo.toml`, `release-plz.toml`, workspace membership, and all package versions.
+   Compare member manifest paths from Cargo metadata at both revisions,
+   including non-publishable members. Non-member fixture/example manifests
+   may be added or removed within an unpublished package's repair.
    Packages with existing release tags must match those verified tags even
    while registry visibility is delayed. Already-published packages without
    tags must match the original release merge. For the workspace
