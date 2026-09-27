@@ -23,7 +23,10 @@ def retry_delay(log, attempt, now=None):
     ):
         return None
     if re.search(
-        r"(?:status(?: code)?|HTTP[/\d.]*)[ :]+429\b|too many requests", log, re.I
+        r"(?:status(?: code)?|HTTP[/\d.]*)[ :]+429\b|too many requests|"
+        r"failed to get (?:a )?(?:200 OK|successful HTTP) response[^\n]*\bgot[ :]+429\b",
+        log,
+        re.I,
     ):
         # Refill the workspace publish budget, not just the next single token.
         # The existing 20/30 minute cooldowns cover multi-package releases.

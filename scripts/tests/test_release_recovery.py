@@ -503,6 +503,37 @@ class PublishTests(unittest.TestCase):
         ):
             self.assertIsNone(retry_delay(message, 1))
 
+    def test_cargo_rate_limit_responses_preserve_quota_cooldowns(self):
+        for message in (
+            "failed to get a 200 OK response, got 429",
+            "failed to get successful HTTP response from `https://crates.io/api/v1/crates/new`, got 429",
+        ):
+            with self.subTest(message=message):
+                outcomes = iter([(101, message), (101, message), (0, "published")])
+                waits = []
+                self.assertEqual(
+                    publish(
+                        [], Path("/tmp"), lambda *_args: next(outcomes), waits.append
+                    ),
+                    0,
+                )
+                self.assertEqual(waits, [1200, 1800])
+                self.assertEqual(retry_delay(message + "\nRetry-After: 1900", 1), 1905)
+                self.assertEqual(retry_delay(message + "\nRetry-After: 7200", 1), 3600)
+                self.assertIsNone(
+                    retry_delay(message + "\nfailed to select a version", 1)
+                )
+
+    def test_unrelated_429_and_permanent_cargo_responses_do_not_retry(self):
+        for message in (
+            "expected 200 bytes, got 429",
+            "compile error at line 429",
+            "failed to get a 200 OK response, got 401",
+            "failed to get successful HTTP response, got 403",
+        ):
+            with self.subTest(message=message):
+                self.assertIsNone(retry_delay(message, 1))
+
     def test_child_exit_and_diagnostics_are_preserved(self):
         code, log = run_attempt(
             [sys.executable, "-c", "import sys; print('package error'); sys.exit(7)"],

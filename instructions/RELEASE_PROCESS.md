@@ -641,7 +641,8 @@ Keep package versions and changelogs intact; release-plz owns tags and releases.
 
 `scripts/run_release_publish.py` runs the pinned release-plz CLI up to three
 times, retaining each attempt's diagnostics and exit status. Only recognized
-HTTP 429, HTTP 5xx, and connection/DNS/timeout failures are retried. A 429 uses
+HTTP 429, HTTP 5xx, and connection/DNS/timeout failures are retried, including
+Cargo's `failed to get ... response, got 429` form. A 429 uses
 `Retry-After` or crates.io's reset timestamp plus a five-second margin when
 available, with minimum cooldowns of 20 and 30 minutes. Refilling only the next
 publish token can exhaust all attempts one package at a time in a large
