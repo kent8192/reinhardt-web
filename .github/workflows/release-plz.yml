@@ -360,6 +360,7 @@ jobs:
     timeout-minutes: 360
     outputs:
       released: ${{ steps.check-release.outputs.released }}
+      release_tag: ${{ steps.publication.outputs.release_tag }}
     concurrency:
       group: release-plz-release-${{ github.ref }}
       cancel-in-progress: false
@@ -523,11 +524,12 @@ jobs:
           fi
 
       - name: Verify completed publication
+        id: publication
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/release_state.py --repo "$GITHUB_WORKSPACE/release-source" \
-            --repository "$GITHUB_REPOSITORY" --require-complete
+            --repository "$GITHUB_REPOSITORY" --require-complete --github-output "$GITHUB_OUTPUT"
 
   # --- Release Announcement Automation ---
   # Job 3: Generate announcement content and create PR for human review
@@ -545,10 +547,12 @@ jobs:
       always() &&
       (
         (
-          (github.event_name == 'push' ||
-           (github.event_name == 'workflow_dispatch' && inputs.mode == 'resume-release')) &&
           needs.release-plz-release.result == 'success' &&
-          needs.release-plz-release.outputs.released == 'true' &&
+          (
+            (github.event_name == 'push' && needs.release-plz-release.outputs.released == 'true') ||
+            (github.event_name == 'workflow_dispatch' && inputs.mode == 'resume-release' &&
+             needs.release-plz-release.outputs.release_tag != '')
+          ) &&
           (
             github.ref == 'refs/heads/main' ||
             startsWith(github.ref, 'refs/heads/develop/')
@@ -590,6 +594,7 @@ jobs:
         id: tags
         env:
           BACKFILL_MODE: ${{ inputs.mode }}
+          VERIFIED_RELEASE_TAG: ${{ needs.release-plz-release.outputs.release_tag }}
         run: |
           # Scope tag selection to the checked-out HEAD's history via
           # `--merged HEAD`. Tags are a global namespace, so without this
@@ -609,7 +614,13 @@ jobs:
           # Duplicate generation for tags that already have announcements
           # or Discussions is prevented by the file-exists and
           # Discussion-exists checks further down in this job.
-          if [ "$BACKFILL_MODE" = "backfill" ]; then
+          if [ "$BACKFILL_MODE" = "resume-release" ]; then
+            if [ -z "$VERIFIED_RELEASE_TAG" ]; then
+              echo "::error::Recovery did not emit a verified release tag."
+              exit 1
+            fi
+            TAGS="$VERIFIED_RELEASE_TAG"
+          elif [ "$BACKFILL_MODE" = "backfill" ]; then
             TAGS=$(git tag --merged HEAD --list 'reinhardt-web@v*' --sort=version:refname | tr '\n' ' ')
           else
             TAGS=$(git tag --merged HEAD --list 'reinhardt-web@v*' --sort=-version:refname | head -1)

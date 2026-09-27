@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from release_state import (
     ReleaseError,
     audit,
+    completed_release_tag,
     packages,
     previous_release_packages,
     registry_version,
@@ -220,14 +221,84 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(ReleaseError, "uncommitted"):
             self.check()
 
-    def test_complete_release_is_not_resumed(self):
+    def test_complete_release_can_be_reconciled_again_for_announcement(self):
         self.git("tag", "reinhardt-auth@v0.4.0-alpha.17")
         self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
         state = self.state(
             published=tuple(item["name"] for item in self.inventory), release=True
         )
-        with self.assertRaisesRegex(ReleaseError, "already complete"):
-            self.check(state=state)
+        self.assertEqual(self.check(state=state)["state"]["state"], "complete")
+
+    def test_published_root_allows_repairing_an_unpublished_member(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn repaired() {}\n")
+        self.source = self.workflow = self.commit("fixture: repair remaining auth")
+        before = self.git("worktree", "list", "--porcelain")
+        result = self.check(
+            state=self.state(
+                published=("reinhardt-core", "reinhardt-web"), release=True
+            )
+        )
+        self.assertEqual(result["mode"], "resume-release")
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_published_root_rejects_changed_added_and_deleted_package_files(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        published = self.source
+        for operation in ("modify", "add", "delete"):
+            with self.subTest(operation=operation):
+                self.git("checkout", "--detach", published)
+                if operation == "modify":
+                    (self.repo / "README.md").write_text(
+                        "Changed published documentation\n"
+                    )
+                elif operation == "add":
+                    (self.repo / "src/extra.txt").write_text("New published asset\n")
+                else:
+                    (self.repo / "src/data.txt").unlink()
+                self.source = self.workflow = self.commit(
+                    f"fixture: {operation} root package file"
+                )
+                with self.assertRaisesRegex(
+                    ReleaseError, "already-published package reinhardt-web"
+                ):
+                    self.check(
+                        state=self.state(
+                            published=("reinhardt-core", "reinhardt-web"), release=True
+                        )
+                    )
+
+    def test_published_root_snapshot_is_removed_after_inventory_failure(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn repaired() {}\n")
+        self.source = self.workflow = self.commit("fixture: repair remaining auth")
+        before = self.git("worktree", "list", "--porcelain")
+        with patch(
+            "verify_release_source.package_files",
+            side_effect=[set(), ReleaseError("inventory failed")],
+        ):
+            with self.assertRaisesRegex(ReleaseError, "inventory failed"):
+                self.check(
+                    state=self.state(
+                        published=("reinhardt-core", "reinhardt-web"), release=True
+                    )
+                )
+        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
+
+    def test_only_complete_publication_emits_a_facade_tag(self):
+        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
+        with self.assertRaisesRegex(ReleaseError, "incomplete"):
+            completed_release_tag(
+                self.state(published=("reinhardt-core", "reinhardt-web"), release=True)
+            )
+        self.git("tag", "reinhardt-auth@v0.4.0-alpha.17")
+        names = tuple(item["name"] for item in self.inventory)
+        self.assertEqual(
+            completed_release_tag(self.state(published=names, release=True)),
+            "reinhardt-web@v0.4.0-alpha.17",
+        )
+        with self.assertRaisesRegex(ReleaseError, "incomplete"):
+            completed_release_tag(self.state(published=names, release=False))
 
     def test_removed_package_membership_is_rejected(self):
         self.git("rm", "-r", "crates/auth")
@@ -350,62 +421,6 @@ class RecoveryTests(unittest.TestCase):
             ["reinhardt-core", "reinhardt-web"],
         )
 
-    def test_published_root_allows_repairing_an_unpublished_member(self):
-        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
-        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn repaired() {}\n")
-        self.source = self.workflow = self.commit("fixture: repair remaining auth")
-        before = self.git("worktree", "list", "--porcelain")
-        result = self.check(
-            state=self.state(
-                published=("reinhardt-core", "reinhardt-web"), release=True
-            )
-        )
-        self.assertEqual(result["mode"], "resume-release")
-        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
-
-    def test_published_root_rejects_changed_added_and_deleted_package_files(self):
-        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
-        published = self.source
-        for operation in ("modify", "add", "delete"):
-            with self.subTest(operation=operation):
-                self.git("checkout", "--detach", published)
-                if operation == "modify":
-                    (self.repo / "README.md").write_text(
-                        "Changed published documentation\n"
-                    )
-                elif operation == "add":
-                    (self.repo / "src/extra.txt").write_text("New published asset\n")
-                else:
-                    (self.repo / "src/data.txt").unlink()
-                self.source = self.workflow = self.commit(
-                    f"fixture: {operation} root package file"
-                )
-                with self.assertRaisesRegex(
-                    ReleaseError, "already-published package reinhardt-web"
-                ):
-                    self.check(
-                        state=self.state(
-                            published=("reinhardt-core", "reinhardt-web"), release=True
-                        )
-                    )
-
-    def test_published_root_snapshot_is_removed_after_inventory_failure(self):
-        self.git("tag", "reinhardt-web@v0.4.0-alpha.17")
-        (self.repo / "crates/auth/src/lib.rs").write_text("pub fn repaired() {}\n")
-        self.source = self.workflow = self.commit("fixture: repair remaining auth")
-        before = self.git("worktree", "list", "--porcelain")
-        with patch(
-            "verify_release_source.package_files",
-            side_effect=[set(), ReleaseError("inventory failed")],
-        ):
-            with self.assertRaisesRegex(ReleaseError, "inventory failed"):
-                self.check(
-                    state=self.state(
-                        published=("reinhardt-core", "reinhardt-web"), release=True
-                    )
-                )
-        self.assertEqual(self.git("worktree", "list", "--porcelain"), before)
-
 
 class PublishTests(unittest.TestCase):
     def setUp(self):
@@ -463,14 +478,6 @@ class PublishTests(unittest.TestCase):
         self.assertIsNone(retry_delay("status 403", 1))
         self.assertIsNone(retry_delay("failed at source line 429", 1))
 
-    def test_child_exit_and_diagnostics_are_preserved(self):
-        code, log = run_attempt(
-            [sys.executable, "-c", "import sys; print('package error'); sys.exit(7)"],
-            Path("/tmp"),
-        )
-        self.assertEqual((code, log), (7, "package error\n"))
-        self.assertEqual(self.output.getvalue(), "package error\n")
-
     def test_cargo_response_errors_retry_only_server_failures(self):
         for message in (
             "failed to get a 200 OK response, got 503",
@@ -495,6 +502,14 @@ class PublishTests(unittest.TestCase):
             "compile error at line 503",
         ):
             self.assertIsNone(retry_delay(message, 1))
+
+    def test_child_exit_and_diagnostics_are_preserved(self):
+        code, log = run_attempt(
+            [sys.executable, "-c", "import sys; print('package error'); sys.exit(7)"],
+            Path("/tmp"),
+        )
+        self.assertEqual((code, log), (7, "package error\n"))
+        self.assertEqual(self.output.getvalue(), "package error\n")
 
 
 class WorkflowTests(unittest.TestCase):
@@ -526,6 +541,7 @@ class WorkflowTests(unittest.TestCase):
         classification="skipped",
         result="skipped",
         released="false",
+        release_tag="",
         cancelled=False,
     ):
         values = {
@@ -535,6 +551,7 @@ class WorkflowTests(unittest.TestCase):
             "needs.classify-release-push.outputs.is_release_merge": classified,
             "needs.release-plz-release.result": result,
             "needs.release-plz-release.outputs.released": released,
+            "needs.release-plz-release.outputs.release_tag": release_tag,
             "github.ref": "refs/heads/develop/0.4.0",
         }
         expression = self.jobs[job]["if"].strip()
@@ -548,51 +565,6 @@ class WorkflowTests(unittest.TestCase):
             r"startsWith\(([^,]+), ([^)]+)\)", r"str.startswith(\1, \2)", expression
         )
         return eval(" ".join(expression.split()), {"__builtins__": {}, "str": str})
-
-    def test_publish_gate_accepts_only_verified_push_or_explicit_recovery(self):
-        job = "release-plz-release"
-        self.assertFalse(self.condition(job, "push", classification="success"))
-        self.assertTrue(
-            self.condition(job, "push", classification="success", classified="true")
-        )
-        self.assertFalse(
-            self.condition(job, "push", classification="failure", classified="true")
-        )
-        self.assertTrue(self.condition(job, "workflow_dispatch", "resume-release"))
-        for mode in ("release", "backfill", ""):
-            self.assertFalse(self.condition(job, "workflow_dispatch", mode))
-        self.assertFalse(
-            self.condition(job, "workflow_dispatch", "resume-release", cancelled=True)
-        )
-
-    def test_failed_or_incomplete_recovery_cannot_announce(self):
-        for result in ("failure", "cancelled", "skipped"):
-            self.assertFalse(
-                self.condition(
-                    "release-announcement-pr",
-                    "workflow_dispatch",
-                    "resume-release",
-                    result=result,
-                    released="true",
-                )
-            )
-        self.assertTrue(
-            self.condition(
-                "release-announcement-pr",
-                "workflow_dispatch",
-                "resume-release",
-                result="success",
-                released="true",
-            )
-        )
-        self.assertFalse(
-            self.condition(
-                "release-announcement-pr",
-                "workflow_dispatch",
-                "resume-release",
-                result="success",
-            )
-        )
 
     def test_release_jobs_provision_supported_python_before_scripts(self):
         for name in ("release-plz-pr", "release-plz-release"):
@@ -666,6 +638,110 @@ class WorkflowTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(f"source_sha={expected}", output.read_text())
                 self.assertIn("release_pr=6383", output.read_text())
+
+    def test_recovery_announces_its_verified_tag_instead_of_the_latest_tag(self):
+        selection = next(
+            step
+            for step in self.jobs["release-announcement-pr"]["steps"]
+            if step.get("id") == "tags"
+        )
+        with tempfile.TemporaryDirectory(dir="/tmp") as directory:
+            repo = Path(directory)
+            for args in (
+                ("init", "-q"),
+                (
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    "fixture",
+                ),
+                ("tag", "reinhardt-web@v0.4.0-alpha.17"),
+                ("tag", "reinhardt-web@v0.4.0-alpha.18"),
+            ):
+                subprocess.run(
+                    ["git", *args], cwd=repo, capture_output=True, check=True
+                )
+            output = repo / "output"
+            env = os.environ | {
+                "GITHUB_OUTPUT": str(output),
+                "BACKFILL_MODE": "resume-release",
+                "VERIFIED_RELEASE_TAG": "reinhardt-web@v0.4.0-alpha.17",
+            }
+            result = subprocess.run(
+                ["bash", "-c", selection["run"]],
+                cwd=repo,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                output.read_text(), "tags=reinhardt-web@v0.4.0-alpha.17\nskip=false\n"
+            )
+
+    def test_successful_reconciliation_announces_without_a_new_tag(self):
+        self.assertTrue(
+            self.condition(
+                "release-announcement-pr",
+                "workflow_dispatch",
+                "resume-release",
+                result="success",
+                release_tag="reinhardt-web@v0.4.0-alpha.17",
+            )
+        )
+
+    def test_publish_gate_accepts_only_verified_push_or_explicit_recovery(self):
+        job = "release-plz-release"
+        self.assertFalse(self.condition(job, "push", classification="success"))
+        self.assertTrue(
+            self.condition(job, "push", classification="success", classified="true")
+        )
+        self.assertFalse(
+            self.condition(job, "push", classification="failure", classified="true")
+        )
+        self.assertTrue(self.condition(job, "workflow_dispatch", "resume-release"))
+        for mode in ("release", "backfill", ""):
+            self.assertFalse(self.condition(job, "workflow_dispatch", mode))
+        self.assertFalse(
+            self.condition(job, "workflow_dispatch", "resume-release", cancelled=True)
+        )
+
+    def test_failed_or_incomplete_recovery_cannot_announce(self):
+        for result in ("failure", "cancelled", "skipped"):
+            self.assertFalse(
+                self.condition(
+                    "release-announcement-pr",
+                    "workflow_dispatch",
+                    "resume-release",
+                    result=result,
+                    released="true",
+                    release_tag="reinhardt-web@v0.4.0-alpha.17",
+                )
+            )
+        self.assertTrue(
+            self.condition(
+                "release-announcement-pr",
+                "workflow_dispatch",
+                "resume-release",
+                result="success",
+                released="true",
+                release_tag="reinhardt-web@v0.4.0-alpha.17",
+            )
+        )
+        self.assertFalse(
+            self.condition(
+                "release-announcement-pr",
+                "workflow_dispatch",
+                "resume-release",
+                result="success",
+            )
+        )
 
 
 if __name__ == "__main__":

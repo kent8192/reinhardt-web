@@ -235,11 +235,25 @@ def audit(
     }
 
 
+def completed_release_tag(report):
+    if report["state"] != "complete":
+        raise ReleaseError("Cannot announce an incomplete release")
+    root = next(
+        (item for item in report["packages"] if item["manifest"] == "Cargo.toml"), None
+    )
+    if not root or not root["tag"] or not root["tag_exists"]:
+        raise ReleaseError("Completed release has no verified facade tag")
+    return root["tag"]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--repository", required=True)
     parser.add_argument("--require-complete", action="store_true")
+    parser.add_argument(
+        "--github-output", type=Path, help="Export the completed facade tag"
+    )
     parser.add_argument(
         "--before-release-pr",
         action="store_true",
@@ -259,6 +273,10 @@ def main():
                 f"missing tags: {', '.join(report['missing_tags']) or 'none'}; "
                 f"missing GitHub releases: {', '.join(report['missing_releases']) or 'none'}"
             )
+        if args.github_output:
+            tag = completed_release_tag(report)
+            with args.github_output.open("a") as output:
+                output.write(f"release_tag={tag}\n")
     except ReleaseError as error:
         print(f"::error::{error}", file=sys.stderr)
         return 1

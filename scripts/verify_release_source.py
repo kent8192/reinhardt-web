@@ -192,10 +192,8 @@ def verify(
                 raise ReleaseError(
                     f"Recovery modifies already-published package {package['name']}"
                 )
-    if state["state"] == "complete":
-        raise ReleaseError(
-            "The selected release is already complete; no recovery is needed"
-        )
+    # A completed release may still need an announcement after a prior final
+    # reconciliation failed. Verified repeat runs are safe: release-plz skips it.
     return {
         "mode": "resume-release",
         "source_sha": source_sha,
