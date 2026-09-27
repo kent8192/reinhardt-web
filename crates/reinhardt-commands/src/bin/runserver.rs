@@ -7,7 +7,9 @@
 
 use clap::Parser;
 use colored::Colorize;
-use http_body_util::Full;
+#[cfg(feature = "routers")]
+use futures_util::StreamExt;
+use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -42,10 +44,18 @@ use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, Tom
 
 #[cfg(feature = "routers")]
 use {
-	http_body_util::{BodyExt, Limited},
-	reinhardt_commands::auto_register_router,
+	http_body_util::Limited, reinhardt_commands::auto_register_router,
 	reinhardt_urls::routers::get_router,
 };
+
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
+type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, BoxError>;
+
+fn full_body(body: impl Into<Bytes>) -> BoxBody {
+	Full::new(body.into())
+		.map_err(|never| match never {})
+		.boxed_unsync()
+}
 
 /// Settings bundle needed by the runserver command.
 struct RunServerSettings {
@@ -156,7 +166,7 @@ fn get_mime_type(path: &Path) -> &'static str {
 }
 
 /// Serve a static file
-async fn serve_static_file(file_path: &Path) -> Result<Response<Full<Bytes>>, Infallible> {
+async fn serve_static_file(file_path: &Path) -> Result<Response<BoxBody>, Infallible> {
 	// Read file content
 	match tokio::fs::read(file_path).await {
 		Ok(content) => {
@@ -166,13 +176,13 @@ async fn serve_static_file(file_path: &Path) -> Result<Response<Full<Bytes>>, In
 				.status(StatusCode::OK)
 				.header("Content-Type", mime_type)
 				.header("Cache-Control", "no-cache")
-				.body(Full::new(Bytes::from(content)))
+				.body(full_body(Bytes::from(content)))
 				.unwrap())
 		}
 		Err(_) => Ok(Response::builder()
 			.status(StatusCode::NOT_FOUND)
 			.header("Content-Type", "text/plain")
-			.body(Full::new(Bytes::from("File not found")))
+			.body(full_body(Bytes::from("File not found")))
 			.unwrap()),
 	}
 }
@@ -308,7 +318,7 @@ fn load_settings() -> RunServerSettings {
 async fn dispatch_through_router(
 	req: hyper::Request<hyper::body::Incoming>,
 	remote_addr: std::net::SocketAddr,
-) -> Option<hyper::Response<Full<Bytes>>> {
+) -> Option<hyper::Response<BoxBody>> {
 	const MAX_BODY: usize = 10 * 1024 * 1024; // 10 MiB
 	let router = get_router()?;
 
@@ -320,7 +330,7 @@ async fn dispatch_through_router(
 				hyper::Response::builder()
 					.status(StatusCode::PAYLOAD_TOO_LARGE)
 					.header("Content-Type", "text/plain; charset=utf-8")
-					.body(Full::new(Bytes::from("Request body exceeds 10 MiB")))
+					.body(full_body(Bytes::from("Request body exceeds 10 MiB")))
 					.expect("failed to build 413 response"),
 			);
 		}
@@ -351,7 +361,7 @@ async fn dispatch_through_router(
 async fn dispatch_router_request(
 	router: &dyn reinhardt_http::Handler,
 	request: reinhardt_http::Request,
-) -> Option<hyper::Response<Full<Bytes>>> {
+) -> Option<hyper::Response<BoxBody>> {
 	let extensions = request.extensions.clone();
 	let response = router
 		.handle(request)
@@ -367,13 +377,20 @@ async fn dispatch_router_request(
 
 #[cfg(feature = "routers")]
 fn convert_to_hyper_response(
-	response: reinhardt_http::Response,
-) -> Option<hyper::Response<Full<Bytes>>> {
+	mut response: reinhardt_http::Response,
+) -> Option<hyper::Response<BoxBody>> {
+	let body = match response.take_stream_body() {
+		Some(stream) => {
+			http_body_util::StreamBody::new(stream.map(|chunk| chunk.map(hyper::body::Frame::data)))
+				.boxed_unsync()
+		}
+		None => full_body(response.body),
+	};
 	let mut hyper_resp = hyper::Response::builder().status(response.status);
 	for (key, value) in response.headers.iter() {
 		hyper_resp = hyper_resp.header(key, value);
 	}
-	hyper_resp.body(Full::new(response.body)).ok()
+	hyper_resp.body(body).ok()
 }
 
 /// Resolve a non-router request path against static files, SPA fallback, or the welcome page.
@@ -384,7 +401,7 @@ async fn respond_to_path(
 	path: &str,
 	settings: &RunServerSettings,
 	spa_index: Option<&Path>,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+) -> Result<Response<BoxBody>, Infallible> {
 	// Serve static files in debug mode from staticfiles_dirs
 	if settings.debug && path.starts_with(&settings.static_url) {
 		// Strip static_url prefix to get relative path
@@ -426,7 +443,7 @@ async fn respond_to_path(
 			return Ok(Response::builder()
 				.status(StatusCode::INTERNAL_SERVER_ERROR)
 				.header("Content-Type", "text/plain")
-				.body(Full::new(Bytes::from(format!(
+				.body(full_body(Bytes::from(format!(
 					"Internal Server Error: Static file conflict for '{}'. Check server logs.",
 					relative_path
 				))))
@@ -462,7 +479,7 @@ async fn respond_to_path(
 		return Ok(Response::builder()
 			.status(StatusCode::NOT_FOUND)
 			.header("Content-Type", "text/plain")
-			.body(Full::new(Bytes::from(format!(
+			.body(full_body(Bytes::from(format!(
 				"Static file not found: {}",
 				relative_path
 			))))
@@ -481,7 +498,7 @@ async fn handle_request(
 	settings: Arc<RunServerSettings>,
 	spa_index: Option<Arc<PathBuf>>,
 	_remote_addr: SocketAddr,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+) -> Result<Response<BoxBody>, Infallible> {
 	let path = req.uri().path().to_string();
 
 	// Route dispatch through registered ServerRouter
@@ -496,7 +513,7 @@ async fn handle_request(
 }
 
 /// Serve the welcome page
-fn serve_welcome_page() -> Result<Response<Full<Bytes>>, Infallible> {
+fn serve_welcome_page() -> Result<Response<BoxBody>, Infallible> {
 	let component = WelcomePage::new(env!("CARGO_PKG_VERSION"));
 	let mut renderer = SsrRenderer::new();
 	let html = renderer.render_page_with_view_head(component.render());
@@ -504,7 +521,7 @@ fn serve_welcome_page() -> Result<Response<Full<Bytes>>, Infallible> {
 	Ok(Response::builder()
 		.status(StatusCode::OK)
 		.header("Content-Type", "text/html; charset=utf-8")
-		.body(Full::new(Bytes::from(html)))
+		.body(full_body(Bytes::from(html)))
 		.unwrap())
 }
 
@@ -1060,6 +1077,67 @@ mod tests {
 	use http_body_util::BodyExt;
 	use rstest::rstest;
 
+	#[rstest]
+	#[cfg(feature = "routers")]
+	#[tokio::test]
+	async fn streaming_response_converter_preserves_pending_frames_and_errors() {
+		// Arrange
+		let (sender, receiver) = tokio::sync::mpsc::channel(1);
+		let stream = futures_util::stream::unfold(receiver, |mut receiver| async {
+			receiver.recv().await.map(|chunk| (chunk, receiver))
+		});
+		let response = reinhardt_http::Response::ok()
+			.with_stream(stream)
+			.with_header("content-type", "text/event-stream");
+		let converted = convert_to_hyper_response(response).unwrap();
+		assert_eq!(converted.headers()["content-type"], "text/event-stream");
+		assert!(!converted.headers().contains_key("content-length"));
+		let mut body = converted.into_body();
+		// Act / Assert
+		sender
+			.send(Ok(Bytes::from_static(b"data: first\n\n")))
+			.await
+			.unwrap();
+		let first = tokio::time::timeout(std::time::Duration::from_secs(5), body.frame())
+			.await
+			.unwrap();
+		assert_eq!(
+			first.unwrap().unwrap().into_data().unwrap(),
+			"data: first\n\n"
+		);
+		assert!(!sender.is_closed());
+		sender
+			.send(Err(std::io::Error::other("producer failed").into()))
+			.await
+			.unwrap();
+		assert_eq!(
+			body.frame().await.unwrap().unwrap_err().to_string(),
+			"producer failed"
+		);
+		drop(body);
+		assert!(sender.is_closed());
+	}
+
+	#[rstest]
+	#[cfg(feature = "routers")]
+	#[tokio::test]
+	async fn dropping_streaming_response_converter_cancels_a_pending_producer() {
+		// Arrange
+		let (sender, receiver) = tokio::sync::oneshot::channel::<()>();
+		let stream = futures_util::stream::once(async move {
+			let _result = receiver.await;
+			Ok(Bytes::new())
+		});
+		let response = reinhardt_http::Response::ok().with_stream(stream);
+		let surviving_clone = response.clone();
+		let body = convert_to_hyper_response(response).unwrap().into_body();
+		// Act
+		drop(body);
+		// Assert
+		assert!(surviving_clone.is_streaming());
+		assert!(sender.is_closed());
+	}
+
 	#[test]
 	fn args_apply_documented_defaults_and_explicit_server_options() {
 		// Act
@@ -1333,9 +1411,7 @@ mod tests {
 		assert!(load_tls_config(&cert_path, &temp_dir.path().join("missing-key.pem")).is_err());
 	}
 
-	async fn response_text(
-		response: Response<Full<Bytes>>,
-	) -> (StatusCode, hyper::HeaderMap, String) {
+	async fn response_text(response: Response<BoxBody>) -> (StatusCode, hyper::HeaderMap, String) {
 		let (parts, body) = response.into_parts();
 		let body = body
 			.collect()
