@@ -349,6 +349,9 @@ impl APIClient {
 	/// // let client = APIClient::from_handler(router);
 	/// // let resp = client.get("/api/health/").await.unwrap();
 	/// ```
+	///
+	/// File bodies and finite streaming bodies are collected into the test response.
+	/// A streaming producer error is returned as `ClientError::RequestFailed`.
 	pub fn from_handler(handler: impl HttpHandler + 'static) -> Self {
 		APIClientBuilder::new().handler(handler).build()
 	}
@@ -878,7 +881,7 @@ impl APIClient {
 				fw_request.set_di_context(Arc::clone(ctx));
 			}
 
-			let fw_response = async_handler
+			let mut fw_response = async_handler
 				.handle(fw_request)
 				.await
 				.unwrap_or_else(HttpResponse::from);
@@ -887,7 +890,16 @@ impl APIClient {
 			for (key, value) in fw_response.headers.iter() {
 				builder = builder.header(key, value);
 			}
-			let body = if let Some(source) = fw_response.file_body().cloned() {
+			let body = if let Some(mut stream) = fw_response.take_stream_body() {
+				use futures::StreamExt;
+				let mut body = bytes::BytesMut::new();
+				while let Some(chunk) = stream.next().await {
+					let chunk =
+						chunk.map_err(|error| ClientError::RequestFailed(error.to_string()))?;
+					body.extend_from_slice(&chunk);
+				}
+				body.freeze()
+			} else if let Some(source) = fw_response.file_body().cloned() {
 				// The test client buffers its result, but file I/O must stay off the executor.
 				tokio::task::spawn_blocking(move || {
 					let mut body = bytes::BytesMut::new();
@@ -1167,6 +1179,50 @@ mod tests {
 			client.get("/asset").await,
 			Err(ClientError::RequestFailed(_))
 		));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn in_process_client_collects_streaming_chunks() {
+		// Arrange
+		let response = HttpResponse::ok()
+			.with_stream(futures::stream::iter([
+				Ok(Bytes::from_static(b"first")),
+				Ok(Bytes::from_static(b"second")),
+			]))
+			.with_header("content-type", "text/event-stream");
+		let client = APIClient::from_handler(FileHandler { response });
+
+		// Act
+		let result = client.get("/stream").await.unwrap();
+
+		// Assert
+		assert_eq!(result.status(), http::StatusCode::OK);
+		assert_eq!(result.body().as_ref(), b"firstsecond");
+		assert_eq!(result.headers()["content-type"], "text/event-stream");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn in_process_client_propagates_stream_error() {
+		// Arrange
+		let error: Box<dyn std::error::Error + Send + Sync> =
+			std::io::Error::other("producer failed").into();
+		let response = HttpResponse::ok().with_stream(futures::stream::iter([
+			Ok(Bytes::from_static(b"partial")),
+			Err(error),
+		]));
+		let client = APIClient::from_handler(FileHandler { response });
+
+		// Act
+		let result = client.get("/stream").await;
+
+		// Assert
+		match result {
+			Err(ClientError::RequestFailed(message)) => assert_eq!(message, "producer failed"),
+			Err(other) => panic!("expected producer failure, got {other}"),
+			Ok(_) => panic!("expected producer failure, got a successful response"),
+		}
 	}
 
 	/// Handler that echoes request metadata through X-Echo-* response headers.

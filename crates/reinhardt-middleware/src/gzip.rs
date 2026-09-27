@@ -211,7 +211,7 @@ impl Middleware for GZipMiddleware {
 			Ok(resp) => resp,
 			Err(e) => Response::from(e),
 		};
-		if response.file_body().is_some() {
+		if response.is_streaming() {
 			return Ok(response);
 		}
 

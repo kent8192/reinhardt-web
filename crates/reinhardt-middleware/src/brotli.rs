@@ -240,7 +240,7 @@ impl Middleware for BrotliMiddleware {
 			Ok(resp) => resp,
 			Err(e) => Response::from(e),
 		};
-		if response.file_body().is_some() {
+		if response.is_streaming() {
 			return Ok(response);
 		}
 

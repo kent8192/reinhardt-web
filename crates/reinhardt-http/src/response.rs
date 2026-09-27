@@ -1,6 +1,8 @@
 mod file_body;
+mod stream_body;
 
 pub use file_body::FileResponseBody;
+use stream_body::StreamResponseBody;
 
 use bytes::Bytes;
 use futures::stream::Stream;
@@ -213,22 +215,36 @@ pub fn truncate_for_log(input: &str, max_length: usize) -> String {
 	}
 }
 
-/// HTTP Response representation
+/// HTTP response with a buffered, file, or single-use streaming body.
+///
+/// Clones share a stream's ownership slot, not a replayable copy of its data.
+/// The first transport to call [`Self::take_stream_body`] owns the producer;
+/// attempting to send another clone produces a body error. Stream equality
+/// compares source identity. Buffered and file response cloning is unchanged.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
 	/// The HTTP status code.
 	pub status: StatusCode,
 	/// The response headers.
 	pub headers: HeaderMap,
-	/// The response body as raw bytes.
+	/// Buffered response bytes. Empty for file and streaming bodies.
 	pub body: Bytes,
 	/// Indicates whether the middleware chain should stop processing
 	/// When true, no further middleware or handlers will be executed
 	stop_chain: bool,
 	file_body: Option<FileResponseBody>,
+	stream_body: Option<StreamResponseBody>,
 }
 
-/// Streaming HTTP Response
+/// Streaming HTTP response.
+///
+/// HTTP macro endpoints can return `ViewResult<StreamingResponse<S>>`. Manual
+/// [`crate::Handler`] implementations can convert it with [`Response::from`].
+/// Native HTTP/1 and HTTP/2 transports poll the producer on demand and drop it
+/// when the body completes, fails, or the client disconnects. Detached producer
+/// tasks must arrange their own cancellation when their receiver is dropped.
+///
+/// P0 parity: the HTTP response API is native-only in the Reinhardt facade.
 pub struct StreamingResponse<S> {
 	/// The HTTP status code.
 	pub status: StatusCode,
@@ -262,6 +278,7 @@ impl Response {
 			body: Bytes::new(),
 			stop_chain: false,
 			file_body: None,
+			stream_body: None,
 		}
 	}
 
@@ -302,6 +319,7 @@ impl Response {
 			body: body.into(),
 			stop_chain: false,
 			file_body: None,
+			stream_body: None,
 		}
 	}
 
@@ -317,6 +335,7 @@ impl Response {
 			body: body.into(),
 			stop_chain: false,
 			file_body: None,
+			stream_body: None,
 		}
 	}
 	/// Create a Response with HTTP 200 OK status
@@ -550,11 +569,63 @@ impl Response {
 	/// assert_eq!(response.body, Bytes::from("Hello, World!"));
 	/// ```
 	pub fn with_body(mut self, body: impl Into<Bytes>) -> Self {
-		if self.file_body.take().is_some() {
-			self.headers.remove(hyper::header::CONTENT_LENGTH);
-		}
+		self.clear_non_buffered_body();
 		self.body = body.into();
 		self
+	}
+
+	fn clear_non_buffered_body(&mut self) {
+		if self.is_streaming() {
+			self.headers.remove(hyper::header::CONTENT_LENGTH);
+			self.headers.remove(hyper::header::TRANSFER_ENCODING);
+		}
+		self.file_body = None;
+		self.stream_body = None;
+	}
+
+	/// Set a single-use streaming body without polling or buffering it (native-only, P0).
+	///
+	/// Replaces any buffered or file body and removes framing headers so the native
+	/// transport can frame an unknown-length stream. Body-transforming middleware
+	/// must check [`Self::is_streaming`] before using the legacy `body` field.
+	/// Clones share one producer; see [`Self::take_stream_body`].
+	///
+	/// ```
+	/// use bytes::Bytes;
+	/// use futures::stream;
+	/// use reinhardt_http::Response;
+	///
+	/// let response = Response::ok()
+	///     .with_stream(stream::iter([Ok(Bytes::from_static(b"data: hello\n\n"))]))
+	///     .with_header("content-type", "text/event-stream");
+	/// assert!(response.is_streaming());
+	/// assert!(response.body.is_empty());
+	/// ```
+	pub fn with_stream<S>(mut self, stream: S) -> Self
+	where
+		S: Stream<Item = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
+	{
+		self.file_body = None;
+		self.body = Bytes::new();
+		self.stream_body = Some(StreamResponseBody::new(Box::pin(stream)));
+		self.headers.remove(hyper::header::CONTENT_LENGTH);
+		self.headers.remove(hyper::header::TRANSFER_ENCODING);
+		self
+	}
+
+	/// Whether the representation is a file or stream rather than `body` bytes (P0).
+	pub fn is_streaming(&self) -> bool {
+		self.file_body.is_some() || self.stream_body.is_some()
+	}
+
+	/// Transfer the streaming producer to a transport without polling it (P0).
+	///
+	/// Returns `None` for buffered/file responses or after taking this response's
+	/// stream. A clone whose shared producer was already taken yields an error
+	/// stream instead of silently sending an empty successful response. Once taken,
+	/// the returned stream owns producer cleanup, independently of surviving clones.
+	pub fn take_stream_body(&mut self) -> Option<StreamBody> {
+		self.stream_body.take().map(StreamResponseBody::take)
 	}
 	/// Set an owned file range without allocating its complete body (experimental, P0).
 	///
@@ -579,7 +650,9 @@ impl Response {
 		offset: u64,
 		length: u64,
 	) -> std::io::Result<Self> {
-		self.file_body = Some(FileResponseBody::new(file, offset, length)?);
+		let file_body = FileResponseBody::new(file, offset, length)?;
+		self.clear_non_buffered_body();
+		self.file_body = Some(file_body);
 		self.body = Bytes::new();
 		self.headers.insert(
 			hyper::header::CONTENT_LENGTH,
@@ -607,9 +680,7 @@ impl Response {
 	/// assert_eq!(response.body, Bytes::from_static(b"ok"));
 	/// ```
 	pub fn with_static_body(mut self, body: &'static [u8]) -> Self {
-		if self.file_body.take().is_some() {
-			self.headers.remove(hyper::header::CONTENT_LENGTH);
-		}
+		self.clear_non_buffered_body();
 		self.body = Bytes::from_static(body);
 		self
 	}
@@ -859,9 +930,7 @@ impl Response {
 	pub fn with_json<T: Serialize>(mut self, data: &T) -> crate::Result<Self> {
 		use crate::Error;
 		let json = serde_json::to_vec(data).map_err(|e| Error::Serialization(e.to_string()))?;
-		if self.file_body.take().is_some() {
-			self.headers.remove(hyper::header::CONTENT_LENGTH);
-		}
+		self.clear_non_buffered_body();
 		self.body = Bytes::from(json);
 		self.headers.insert(
 			hyper::header::CONTENT_TYPE,
@@ -972,6 +1041,17 @@ impl From<crate::Error> for Response {
 		}
 
 		response.build()
+	}
+}
+
+impl<S> From<StreamingResponse<S>> for Response
+where
+	S: Stream<Item = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
+{
+	fn from(streaming: StreamingResponse<S>) -> Self {
+		let mut response = Self::new(streaming.status);
+		response.headers = streaming.headers;
+		response.with_stream(streaming.stream)
 	}
 }
 
