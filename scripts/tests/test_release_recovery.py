@@ -21,6 +21,7 @@ from release_state import (
     previous_release_packages,
     registry_version,
 )
+from run_release_publish import publish, retry_delay, run_attempt
 from verify_release_source import verify
 
 
@@ -343,6 +344,69 @@ class RecoveryTests(unittest.TestCase):
             [item["name"] for item in packages(self.repo)],
             ["reinhardt-core", "reinhardt-web"],
         )
+
+
+class PublishTests(unittest.TestCase):
+    def setUp(self):
+        # Expected failures must not emit GitHub error annotations from passing tests.
+        self.output = io.StringIO()
+        self.errors = io.StringIO()
+        self.enterContext(redirect_stdout(self.output))
+        self.enterContext(redirect_stderr(self.errors))
+
+    def test_dependency_failure_does_not_wait_or_retry(self):
+        calls, waits = [], []
+
+        def runner(*args):
+            calls.append(args)
+            return (
+                101,
+                'failed to select a version for the requirement `reinhardt-urls = "^0.4.0-alpha.17"`',
+            )
+
+        self.assertEqual(
+            publish(["release-plz"], Path("/tmp"), runner, waits.append), 101
+        )
+        self.assertEqual((len(calls), waits), (1, []))
+
+    def test_rate_limit_then_dependency_failure_stops_on_second_attempt(self):
+        outcomes = iter(
+            [
+                (1, "status 429 Too Many Requests\nRetry-After: 8"),
+                (101, "failed to select a version"),
+            ]
+        )
+        waits = []
+        result = publish([], Path("/tmp"), lambda *_args: next(outcomes), waits.append)
+        self.assertEqual((result, waits), (101, [13]))
+
+    def test_transient_failures_retry_to_success_and_have_a_limit(self):
+        for final in (0, 2):
+            outcomes = iter(
+                [(1, "HTTP 503"), (1, "connection reset"), (final, "HTTP 503")]
+            )
+            waits = []
+            result = publish(
+                [], Path("/tmp"), lambda *_args: next(outcomes), waits.append
+            )
+            self.assertEqual((result, waits), (final, [30, 60]))
+
+    def test_crates_io_reset_deadline_and_unknown_errors(self):
+        now = datetime(2026, 9, 26, 4, 10, 53, tzinfo=timezone.utc)
+        message = "status 429 Too Many Requests: Please try again after Sat, 26 Sep 2026 04:11:28 GMT"
+        self.assertEqual(retry_delay(message, 1, now), 40)
+        self.assertIsNone(retry_delay("unclassified publication error", 1))
+        self.assertIsNone(retry_delay("HTTP 429 then failed to select a version", 1))
+        self.assertIsNone(retry_delay("status 403", 1))
+        self.assertIsNone(retry_delay("failed at source line 429", 1))
+
+    def test_child_exit_and_diagnostics_are_preserved(self):
+        code, log = run_attempt(
+            [sys.executable, "-c", "import sys; print('package error'); sys.exit(7)"],
+            Path("/tmp"),
+        )
+        self.assertEqual((code, log), (7, "package error\n"))
+        self.assertEqual(self.output.getvalue(), "package error\n")
 
 
 if __name__ == "__main__":
