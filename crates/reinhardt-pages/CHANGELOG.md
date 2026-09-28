@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.17...reinhardt-pages@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- *(pages)* document feature flags accurately
+- *(pages)* clarify the SPA navigation E2E suite
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.16...reinhardt-pages@v0.4.0-alpha.17) - 2026-09-25
 
 ### Testing

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.17...reinhardt-urls@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+
+### Fixed
+
+- *(urls)* match typed path converters in server endpoints
+- *(urls)* validate typed path captures before dispatch
+- *(urls)* classify rejected path captures as not found
+- *(urls)* validate route compilation in descendant routers
+- *(urls)* reject windows drive prefixes in typed paths
+- *(urls)* reverse nested path converter values safely
+- *(urls)* reject mixed path separator traversal
+- *(urls)* reject encoded windows drive prefixes
+- *(urls)* retain route compilation failures
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.16...reinhardt-urls@v0.4.0-alpha.17) - 2026-09-25
 
 ### Added

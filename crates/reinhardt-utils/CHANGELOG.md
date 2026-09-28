@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.4.0-alpha.17...reinhardt-utils@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+- *(utils)* align security logging guide with API
+- *(utils)* fix security logging setup example
+- *(utils)* fix version marker and native facade note
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.4.0-alpha.15...reinhardt-utils@v0.4.0-alpha.16) - 2026-09-23
 
 ### Added

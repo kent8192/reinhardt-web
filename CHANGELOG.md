@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.17...reinhardt-web@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- add release announcement(s)
+- *(agents)* gate external publication by destination policy
+- update version references to v0.3.19
+- add release announcement(s)
+- update version references to v0.3.20
+- *(auth)* clarify legacy OAuth2 helper scope
+- *(auth)* clarify OAuth2 helper scope and validation
+- *(auth)* complete OAuth setup and token docs
+- *(auth)* align OAuth2 module catalog wording
+
+### Fixed
+
+- *(pages)* honor WebSocket retry options with owned cancellation
+- *(ci)* allow compatible rand 0.10 patch releases
+- *(auth)* accept array audiences in OIDC ID tokens
+- *(commands)* honor makemigrations migration directory
+- *(commands)* reject non-utf8 migration directory paths
+
+### Maintenance
+
+- *(deps)* allow the required synstructure 0.13 line
+- avoid workspace lock conflicts in publish checks
+- *(ci)* remove unused cargo-deny policy entries
+- merge main into develop/0.4.0
+
+### Security
+
+- *(auth)* validate azp on multi-audience ID tokens
+
 ## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.16...reinhardt-web@v0.4.0-alpha.17) - 2026-09-25
 
 ### Added
