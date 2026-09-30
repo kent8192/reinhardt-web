@@ -105,6 +105,7 @@ impl MySqlBackend {
 		Ok(match value {
 			QueryValue::Null => query.bind(None::<i32>),
 			QueryValue::Bool(b) => query.bind(b),
+			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
 			QueryValue::Float(f) => query.bind(f),
 			QueryValue::String(s) => query.bind(s),
@@ -410,6 +411,7 @@ impl MySqlTransactionExecutor {
 		Ok(match value {
 			QueryValue::Null => query.bind(None::<i32>),
 			QueryValue::Bool(b) => query.bind(b),
+			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
 			QueryValue::Float(f) => query.bind(f),
 			QueryValue::String(s) => query.bind(s),

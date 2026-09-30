@@ -49,14 +49,18 @@ impl DatabaseType {
 	}
 }
 
-/// Query value types
+/// Query value types.
+///
+/// Integer parameters retain their binding width: `Int32` binds as PostgreSQL
+/// `integer`, while `Int` binds as `bigint`. Use `QueryValue::from(3_i32)` for
+/// functions requiring an `integer` argument, such as `right(text, integer)`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum QueryValue {
 	/// Null variant.
 	Null,
 	/// Bool variant.
 	Bool(bool),
-	/// Int variant.
+	/// Signed 64-bit integer parameter.
 	Int(i64),
 	/// Float variant.
 	Float(f64),
@@ -91,6 +95,8 @@ pub enum QueryValue {
 	UuidArray(Vec<Uuid>),
 	/// Represents SQL NOW() function
 	Now,
+	/// Signed 32-bit integer parameter.
+	Int32(i32),
 }
 
 impl From<&str> for QueryValue {
@@ -113,7 +119,7 @@ impl From<i64> for QueryValue {
 
 impl From<i32> for QueryValue {
 	fn from(i: i32) -> Self {
-		QueryValue::Int(i as i64)
+		QueryValue::Int32(i)
 	}
 }
 
@@ -201,6 +207,7 @@ impl TryFrom<QueryValue> for i64 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
+			QueryValue::Int32(i) => Ok(i64::from(i)),
 			QueryValue::Int(i) => Ok(i),
 			_ => Err(DatabaseError::new(
 				DatabaseErrorKind::Type,
@@ -215,6 +222,7 @@ impl TryFrom<QueryValue> for i32 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
+			QueryValue::Int32(i) => Ok(i),
 			QueryValue::Int(i) => i32::try_from(i).map_err(|_| {
 				DatabaseError::new(
 					DatabaseErrorKind::Type,
@@ -234,6 +242,7 @@ impl TryFrom<QueryValue> for u64 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
+			QueryValue::Int32(i) => Self::try_from(QueryValue::Int(i64::from(i))),
 			QueryValue::Int(i) => u64::try_from(i).map_err(|_| {
 				DatabaseError::new(
 					DatabaseErrorKind::Type,
@@ -253,6 +262,7 @@ impl TryFrom<QueryValue> for u32 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
+			QueryValue::Int32(i) => Self::try_from(QueryValue::Int(i64::from(i))),
 			QueryValue::Int(i) => u32::try_from(i).map_err(|_| {
 				DatabaseError::new(
 					DatabaseErrorKind::Type,
@@ -865,6 +875,34 @@ impl RowLockCapabilities {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case::min(i32::MIN)]
+	#[case::negative(-1)]
+	#[case::zero(0)]
+	#[case::max(i32::MAX)]
+	fn int32_values_support_numeric_row_conversions(#[case] value: i32) {
+		// Arrange
+		let mut row = Row::new();
+		row.insert("value".to_owned(), QueryValue::from(value));
+
+		// Act & Assert
+		assert_eq!(row.get::<i32>("value").unwrap(), value);
+		assert_eq!(row.get::<i64>("value").unwrap(), i64::from(value));
+		if value >= 0 {
+			assert_eq!(row.get::<u32>("value").unwrap(), value as u32);
+			assert_eq!(row.get::<u64>("value").unwrap(), value as u64);
+		} else {
+			assert_eq!(
+				row.get::<u32>("value").unwrap_err().kind(),
+				DatabaseErrorKind::Type
+			);
+			assert_eq!(
+				row.get::<u64>("value").unwrap_err().kind(),
+				DatabaseErrorKind::Type
+			);
+		}
+	}
 
 	struct LegacyExecutor;
 
