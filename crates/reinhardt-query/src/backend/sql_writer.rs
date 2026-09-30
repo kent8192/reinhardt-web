@@ -34,6 +34,8 @@ pub struct SqlWriter {
 	values: Values,
 	/// Current parameter index (1-based for PostgreSQL)
 	param_index: usize,
+	/// Render managed values directly, preserving raw SQL fragments verbatim.
+	inline_values: bool,
 }
 
 impl SqlWriter {
@@ -43,6 +45,23 @@ impl SqlWriter {
 			sql: String::new(),
 			values: Values::default(),
 			param_index: 1,
+			inline_values: false,
+		}
+	}
+
+	pub(crate) fn new_inlined() -> Self {
+		Self {
+			inline_values: true,
+			..Self::new()
+		}
+	}
+
+	// A nested query must use the same rendering mode as its parent. In inline
+	// mode it collects no parameters, so raw bind markers are never renumbered.
+	pub(crate) fn for_subquery(&self) -> Self {
+		Self {
+			inline_values: self.inline_values,
+			..Self::new()
 		}
 	}
 
@@ -106,6 +125,11 @@ impl SqlWriter {
 		// (e.g., PostgreSQL rejects `$1::int4` for TEXT columns)
 		if value.is_null() {
 			self.sql.push_str("NULL");
+			return None;
+		}
+
+		if self.inline_values {
+			self.sql.push_str(&value.to_sql_literal());
 			return None;
 		}
 

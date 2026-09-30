@@ -1,11 +1,281 @@
 //! Regression coverage for SQL parameter inlining.
 
 use reinhardt_query::query::traits::inline_params;
+use reinhardt_query::types::{TriggerEvent, TriggerScope, TriggerTiming};
 use reinhardt_query::{
-	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilderTrait,
-	QueryStatementBuilder, SqliteQueryBuilder, Value, Values,
+	Alias, ColumnDef, Expr, ExprTrait, IntoIden, MySqlQueryBuilder, PostgresQueryBuilder, Query,
+	QueryBuilderTrait, QueryStatementBuilder, SelectStatement, SqliteQueryBuilder, TableRef, Value,
+	Values,
 };
 use rstest::{fixture, rstest};
+
+#[rstest]
+fn postgres_to_string_preserves_raw_bind_marker() {
+	// Arrange
+	let query = Query::select()
+		.column(Alias::new("id"))
+		.from(Alias::new("records"))
+		.and_where(Expr::col(Alias::new("id")).eq(Expr::cust("$1")))
+		.and_where(Expr::col(Alias::new("enabled")).eq(true))
+		.to_owned();
+
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+	let inlined = query.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(
+		sql,
+		r#"SELECT "id" FROM "records" WHERE "id" = $1 AND "enabled" = $1"#
+	);
+	assert_eq!(values, Values(vec![true.into()]));
+	assert_eq!(
+		inlined,
+		r#"SELECT "id" FROM "records" WHERE "id" = $1 AND "enabled" = TRUE"#
+	);
+}
+
+#[rstest]
+#[case::first_index("$1")]
+#[case::later_index("$2")]
+#[case::multi_digit("$10")]
+#[case::repeated("$1 + $1")]
+#[case::out_of_order("$2 + $1")]
+#[case::cast("$1::uuid")]
+#[case::unicode("COALESCE($1, '価格')")]
+#[case::quoted_and_commented("COALESCE($1, '$1') /* $1 */")]
+fn postgres_to_string_preserves_raw_fragments_around_values(#[case] raw: &str) {
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::cust(raw))
+		.expr(Expr::val(7))
+		.expr(Expr::val("it's $1, $2, ?"))
+		.expr(Expr::cust(raw))
+		.expr(Expr::val(None::<i32>))
+		.limit(10)
+		.offset(2)
+		.to_owned();
+
+	// Act
+	let before = query.build(PostgresQueryBuilder);
+	let inlined = query.to_string(PostgresQueryBuilder);
+	let after = query.build(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(
+		inlined,
+		format!("SELECT {raw}, 7, 'it''s $1, $2, ?', {raw}, NULL LIMIT 10 OFFSET 2")
+	);
+	assert_eq!(after, before);
+}
+
+#[rstest]
+fn postgres_to_string_distinguishes_raw_markers_in_custom_templates() {
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::val(11))
+		.expr(Expr::cust_with_values("$1 + ? + $2 + ?", [7, 13]))
+		.to_owned();
+
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+	let inlined = query.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(sql, "SELECT $1, $1 + $2 + $2 + $3");
+	assert_eq!(values, Values(vec![11.into(), 7.into(), 13.into()]));
+	assert_eq!(inlined, "SELECT 11, $1 + 7 + $2 + 13");
+}
+
+#[fixture]
+fn raw_bind_select() -> SelectStatement {
+	Query::select()
+		.expr(Expr::cust("$1"))
+		.expr(Expr::val(7))
+		.to_owned()
+}
+
+#[rstest]
+#[case::scalar(
+	|inner| Query::select().expr(Expr::val(11)).expr(Expr::subquery(inner)).to_owned(),
+	"SELECT 11, (SELECT $1, 7)"
+)]
+#[case::from(
+	|inner| Query::select().expr(Expr::val(11)).from_subquery(inner, Alias::new("source")).to_owned(),
+	r#"SELECT 11 FROM (SELECT $1, 7) AS "source""#
+)]
+#[case::lateral(
+	|inner| Query::select().expr(Expr::val(11)).from(TableRef::LateralSubQuery(Box::new(inner), Alias::new("source").into_iden())).to_owned(),
+	r#"SELECT 11 FROM LATERAL (SELECT $1, 7) AS "source""#
+)]
+#[case::cte(
+	|inner| Query::select().with_cte(Alias::new("source"), inner).expr(Expr::val(11)).from(Alias::new("source")).to_owned(),
+	r#"WITH "source" AS (SELECT $1, 7) SELECT 11 FROM "source""#
+)]
+#[case::union(
+	|inner| Query::select().expr(Expr::val(11)).union_all(inner).to_owned(),
+	"SELECT 11 UNION ALL SELECT $1, 7"
+)]
+fn postgres_to_string_preserves_raw_markers_in_nested_queries(
+	raw_bind_select: SelectStatement,
+	#[case] wrap: fn(SelectStatement) -> SelectStatement,
+	#[case] expected: &str,
+) {
+	// Arrange
+	let query = wrap(raw_bind_select);
+
+	// Act
+	let inlined = query.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(inlined, expected);
+}
+
+#[rstest]
+fn postgres_to_string_preserves_raw_select_without_values() {
+	// Arrange
+	let inner = SelectStatement::raw("SELECT $1");
+	let query = Query::select()
+		.expr(Expr::val(7))
+		.expr(Expr::subquery(inner.clone()))
+		.to_owned();
+
+	// Act
+	let raw = inner.to_string(PostgresQueryBuilder);
+	let nested = query.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(raw, "SELECT $1");
+	assert_eq!(nested, "SELECT 7, (SELECT $1)");
+}
+
+#[rstest]
+fn postgres_to_string_preserves_raw_markers_in_mutations(raw_bind_select: SelectStatement) {
+	// Arrange
+	let insert = Query::insert()
+		.into_table(Alias::new("records"))
+		.columns([Alias::new("id"), Alias::new("score")])
+		.from_subquery(raw_bind_select)
+		.to_owned();
+	let update = Query::update()
+		.table(Alias::new("records"))
+		.value(Alias::new("score"), 7)
+		.and_where(Expr::col(Alias::new("id")).eq(Expr::cust("$1")))
+		.to_owned();
+	let delete = Query::delete()
+		.from_table(Alias::new("records"))
+		.and_where(Expr::col(Alias::new("id")).eq(Expr::cust("$1")))
+		.and_where(Expr::col(Alias::new("score")).eq(7))
+		.to_owned();
+
+	// Act
+	let insert_sql = insert.to_string(PostgresQueryBuilder);
+	let update_sql = update.to_string(PostgresQueryBuilder);
+	let delete_sql = delete.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(
+		insert_sql,
+		r#"INSERT INTO "records" ("id", "score") SELECT $1, 7"#
+	);
+	assert_eq!(
+		update_sql,
+		r#"UPDATE "records" SET "score" = 7 WHERE "id" = $1"#
+	);
+	assert_eq!(
+		delete_sql,
+		r#"DELETE FROM "records" WHERE "id" = $1 AND "score" = 7"#
+	);
+}
+
+#[rstest]
+fn postgres_to_string_preserves_raw_markers_in_views(raw_bind_select: SelectStatement) {
+	// Arrange
+	let view = Query::create_view()
+		.name(Alias::new("records"))
+		.as_select(raw_bind_select.clone())
+		.to_owned();
+	let materialized = Query::create_materialized_view()
+		.name(Alias::new("records"))
+		.as_select(raw_bind_select)
+		.to_owned();
+
+	// Act
+	let view_sql = view.to_string(PostgresQueryBuilder);
+	let materialized_sql = materialized.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(view_sql, r#"CREATE VIEW "records" AS SELECT $1, 7"#);
+	assert_eq!(
+		materialized_sql,
+		r#"CREATE MATERIALIZED VIEW "records" AS SELECT $1, 7"#
+	);
+}
+
+#[rstest]
+fn postgres_to_string_preserves_raw_markers_in_table_defaults() {
+	// Arrange
+	let column = ColumnDef::new(Alias::new("score"))
+		.integer()
+		.default(Expr::cust_with_values("COALESCE($1, ?)", [7]).into());
+	let create = Query::create_table()
+		.table(Alias::new("records"))
+		.col(column.clone())
+		.to_owned();
+	let alter = Query::alter_table()
+		.table(Alias::new("records"))
+		.add_column(column)
+		.to_owned();
+
+	// Act
+	let create_sql = create.to_string(PostgresQueryBuilder);
+	let alter_sql = alter.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(
+		create_sql,
+		r#"CREATE TABLE "records" ("score" INTEGER DEFAULT COALESCE($1, 7))"#
+	);
+	assert_eq!(
+		alter_sql,
+		r#"ALTER TABLE "records" ADD COLUMN "score" INTEGER DEFAULT COALESCE($1, 7)"#
+	);
+}
+
+#[rstest]
+fn postgres_to_string_preserves_raw_markers_in_schema_conditions() {
+	// Arrange
+	let condition = Expr::cust_with_values("$1 > ?", [7]).into_simple_expr();
+	let index = Query::create_index()
+		.name(Alias::new("records_score"))
+		.table(Alias::new("records"))
+		.col(Alias::new("score"))
+		.r#where(condition.clone())
+		.to_owned();
+	let trigger = Query::create_trigger()
+		.name(Alias::new("records_score"))
+		.timing(TriggerTiming::Before)
+		.event(TriggerEvent::Update { columns: None })
+		.on_table(Alias::new("records"))
+		.for_each(TriggerScope::Row)
+		.when_condition(condition)
+		.execute_function("check_score")
+		.to_owned();
+
+	// Act
+	let index_sql = index.to_string(PostgresQueryBuilder);
+	let trigger_sql = trigger.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(
+		index_sql,
+		r#"CREATE INDEX "records_score" ON "records" ("score") WHERE $1 > 7"#
+	);
+	assert_eq!(
+		trigger_sql,
+		r#"CREATE TRIGGER "records_score" BEFORE UPDATE ON "records" FOR EACH ROW WHEN ($1 > 7) EXECUTE FUNCTION "check_score"()"#
+	);
+}
 
 #[rstest]
 #[case::exact(
