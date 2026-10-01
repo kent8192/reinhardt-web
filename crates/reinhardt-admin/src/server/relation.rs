@@ -567,7 +567,7 @@ mod many_to_many_tests {
 		);
 		assert_eq!(
 			executor.executions[0].1,
-			vec![QueryValue::Int(7), QueryValue::String("1".to_string())]
+			vec![QueryValue::Int32(7), QueryValue::String("1".to_string())]
 		);
 		assert_eq!(
 			executor.executions[1].0,
@@ -575,7 +575,7 @@ mod many_to_many_tests {
 		);
 		assert_eq!(
 			executor.executions[1].1,
-			vec![QueryValue::Int(7), QueryValue::String("3".to_string())]
+			vec![QueryValue::Int32(7), QueryValue::String("3".to_string())]
 		);
 	}
 
