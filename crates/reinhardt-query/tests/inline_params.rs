@@ -10,6 +10,47 @@ use reinhardt_query::{
 use rstest::{fixture, rstest};
 
 #[rstest]
+#[case::mysql(
+	MySqlQueryBuilder,
+	r"SELECT `title` LIKE ? ESCAPE '\\', `content` LIKE ? ESCAPE '\\', `suffix` LIKE ? ESCAPE '\\'",
+	r"SELECT `title` LIKE '%web%' ESCAPE '\\', `content` LIKE 'guide%' ESCAPE '\\', `suffix` LIKE '%.md' ESCAPE '\\'"
+)]
+#[case::postgres(
+	PostgresQueryBuilder,
+	r#"SELECT "title" LIKE $1 ESCAPE '\', "content" LIKE $2 ESCAPE '\', "suffix" LIKE $3 ESCAPE '\'"#,
+	r#"SELECT "title" LIKE '%web%' ESCAPE '\', "content" LIKE 'guide%' ESCAPE '\', "suffix" LIKE '%.md' ESCAPE '\'"#
+)]
+#[case::sqlite(
+	SqliteQueryBuilder,
+	r#"SELECT "title" LIKE ? ESCAPE '\', "content" LIKE ? ESCAPE '\', "suffix" LIKE ? ESCAPE '\'"#,
+	r#"SELECT "title" LIKE '%web%' ESCAPE '\', "content" LIKE 'guide%' ESCAPE '\', "suffix" LIKE '%.md' ESCAPE '\'"#
+)]
+fn to_string_inlines_values_after_like_escape_clauses(
+	#[case] builder: impl QueryBuilderTrait + Clone,
+	#[case] expected_build: &str,
+	#[case] expected_inline: &str,
+) {
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::col("title").contains("web"))
+		.expr(Expr::col("content").starts_with("guide"))
+		.expr(Expr::col("suffix").ends_with(".md"))
+		.to_owned();
+
+	// Act
+	let (sql, values) = query.build(builder.clone());
+	let inlined = query.to_string(builder);
+
+	// Assert
+	assert_eq!(inlined, expected_inline);
+	assert_eq!(sql, expected_build);
+	assert_eq!(
+		values,
+		Values(vec!["%web%".into(), "guide%".into(), "%.md".into()])
+	);
+}
+
+#[rstest]
 fn postgres_to_string_preserves_raw_bind_marker() {
 	// Arrange
 	let query = Query::select()

@@ -513,6 +513,12 @@ impl PostgresQueryBuilder {
 			SimpleExpr::Custom(sql) => {
 				writer.push(sql);
 			}
+			SimpleExpr::LikeWithEscape(expr, pattern) => {
+				self.write_simple_expr(writer, expr);
+				writer.push(" LIKE ");
+				self.write_simple_expr(writer, pattern);
+				writer.push(" ESCAPE '\\'");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');
@@ -667,6 +673,12 @@ impl PostgresQueryBuilder {
 						writer.push("NULL");
 					}
 				}
+			}
+			SimpleExpr::LikeWithEscape(expr, pattern) => {
+				self.write_simple_expr_unquoted(writer, expr);
+				writer.push(" LIKE ");
+				self.write_simple_expr_unquoted(writer, pattern);
+				writer.push(" ESCAPE '\\'");
 			}
 			SimpleExpr::Binary(left, op, right) => match (op, right.as_ref()) {
 				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
