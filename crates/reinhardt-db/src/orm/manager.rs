@@ -1,9 +1,10 @@
 use super::connection::{DatabaseBackend, DatabaseConnection};
+use super::inspection::FieldInfo;
 use super::{Model, QuerySet};
 use reinhardt_query::prelude::{
-	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, Func, InsertStatement, MySqlQueryBuilder,
-	PostgresQueryBuilder, Query, QueryBuilder, SelectStatement, SqliteQueryBuilder,
-	UpdateStatement, Values,
+	Alias, ColumnRef, Condition, DeleteStatement, Expr, ExprTrait, Func, InsertStatement,
+	MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder, SelectStatement,
+	SqliteQueryBuilder, UpdateStatement, Values,
 };
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -913,6 +914,128 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
+	fn primary_key_fields(field_metadata: &[FieldInfo]) -> Vec<String> {
+		let Some(composite) = M::composite_primary_key() else {
+			return vec![M::primary_key_field().to_owned()];
+		};
+
+		// Serialized values are keyed by logical names even when composite metadata
+		// names physical columns. Prefer the marked model fields when available.
+		let fields: Vec<_> = field_metadata
+			.iter()
+			.filter(|field| field.primary_key)
+			.map(|field| field.name.clone())
+			.collect();
+		if fields.len() == composite.fields().len() {
+			return fields;
+		}
+
+		composite
+			.fields()
+			.iter()
+			.map(|name| {
+				field_metadata
+					.iter()
+					.find(|field| field.name == *name || field.db_column_name() == name)
+					.map_or_else(|| name.clone(), |field| field.name.clone())
+			})
+			.collect()
+	}
+
+	fn column_name<'a>(name: &'a str, metadata: &'a [FieldInfo]) -> &'a str {
+		metadata
+			.iter()
+			.find(|field| field.name == name)
+			.map_or(name, FieldInfo::db_column_name)
+	}
+
+	fn primary_key_condition_from_object(
+		model: &M,
+		obj: &serde_json::Map<String, serde_json::Value>,
+	) -> reinhardt_core::exception::Result<Condition> {
+		use super::composite_pk::PkValue;
+		use reinhardt_core::exception::Error;
+		use reinhardt_query::value::Value;
+
+		let metadata = M::field_metadata();
+		let fields = Self::primary_key_fields(&metadata);
+
+		let mut condition = Condition::all();
+		if M::composite_primary_key().is_some() {
+			for field in &fields {
+				if obj.get(field).is_none_or(serde_json::Value::is_null) {
+					return Err(Error::Database(format!(
+						"Model must have non-null primary key field '{field}'"
+					)));
+				}
+			}
+			let values = model.get_composite_pk_values();
+			for field in fields {
+				let column = Self::column_name(&field, &metadata);
+				let value = values
+					.get(column)
+					.or_else(|| values.get(&field))
+					.ok_or_else(|| {
+						Error::Database(format!("Model must have primary key field '{field}'"))
+					})?;
+				// Composite key values already carry their storage types. In particular,
+				// UUID-looking or numeric strings must remain text bindings.
+				let value = match value {
+					PkValue::String(value) => Value::String(Some(Box::new(value.clone()))),
+					PkValue::Int(value) => Value::BigInt(Some(*value)),
+					PkValue::Uint(value) => Value::BigUnsigned(Some(*value)),
+					PkValue::Bool(value) => Value::Bool(Some(*value)),
+				};
+				condition = condition.add(Expr::col(Alias::new(column)).eq(value));
+			}
+		} else {
+			let pk = model
+				.primary_key()
+				.ok_or_else(|| Error::Database("Model must have primary key".to_owned()))?;
+			let value = M::primary_key_filter_value(pk);
+			let value = QuerySet::<M>::filter_value_to_sea_value(&value);
+			let column = Self::column_name(M::primary_key_field(), &metadata);
+			condition = condition.add(Expr::col(Alias::new(column)).eq(value));
+		}
+		Ok(condition)
+	}
+
+	fn build_update_statement_from_object_with_returning(
+		model: &M,
+		obj: &serde_json::Map<String, serde_json::Value>,
+		returning: bool,
+	) -> reinhardt_core::exception::Result<UpdateStatement> {
+		let metadata = M::field_metadata();
+		let key_fields = Self::primary_key_fields(&metadata);
+		let condition = Self::primary_key_condition_from_object(model, obj)?;
+		let mut stmt = Query::update();
+		stmt.table(Alias::new(M::table_name()));
+		let mut has_assignment = false;
+		for (field, value) in obj.iter().filter(|(field, _)| !key_fields.contains(field)) {
+			let column = Alias::new(Self::column_name(field, &metadata));
+			if value.is_null() {
+				// An untyped NULL also works for timestamp and UUID columns.
+				stmt.value_expr(column, Expr::cust("NULL"));
+			} else {
+				stmt.value(column, Self::json_to_sea_value(value));
+			}
+			has_assignment = true;
+		}
+		if !has_assignment {
+			// Key-only models still need a valid statement and the complete predicate.
+			let column = Alias::new(Self::column_name(&key_fields[0], &metadata));
+			stmt.value_expr(column.clone(), Expr::col(column));
+		}
+		stmt.cond_where(condition);
+		if returning {
+			stmt.returning(
+				obj.keys()
+					.map(|field| Alias::new(Self::column_name(field, &metadata))),
+			);
+		}
+		Ok(stmt)
+	}
+
 	/// Update an existing record using reinhardt-query for SQL injection protection
 	pub async fn update(&self, model: &M) -> reinhardt_core::exception::Result<M> {
 		let conn = get_connection().await?;
@@ -951,62 +1074,51 @@ impl<M: Model> Manager<M> {
 		conn: &DatabaseConnection,
 		model: &M,
 	) -> reinhardt_core::exception::Result<M> {
-		let pk = model.primary_key().ok_or_else(|| {
-			reinhardt_core::exception::Error::Database("Model must have primary key".to_string())
-		})?;
-
 		let json = serde_json::to_value(model)
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
-
 		let obj = json.as_object().ok_or_else(|| {
-			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
+			reinhardt_core::exception::Error::Database("Model must serialize to object".to_owned())
 		})?;
-
-		// Build reinhardt-query UPDATE statement
-		let mut stmt = Query::update();
-		stmt.table(Alias::new(M::table_name()));
-
-		// Add SET clauses for all fields except primary key
-		for (k, v) in obj
-			.iter()
-			.filter(|(k, _)| k.as_str() != M::primary_key_field())
-		{
-			if v.is_null() {
-				// Use untyped NULL to avoid PostgreSQL type mismatch errors
-				// (e.g., setting timestamp column to NULL would fail with Int(None))
-				stmt.value_expr(Alias::new(k.as_str()), Expr::cust("NULL"));
-			} else {
-				stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
-			}
-		}
-
-		// Add WHERE clause for primary key
-		// Try to parse as i64 first (common for primary keys), fallback to string
-		let pk_str = pk.to_string();
-		let pk_value = if let Ok(int_value) = pk_str.parse::<i64>() {
-			reinhardt_query::value::Value::BigInt(Some(int_value))
-		} else if let Ok(uuid) = Uuid::parse_str(&pk_str) {
-			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
-		} else {
-			reinhardt_query::value::Value::String(Some(Box::new(pk_str)))
-		};
-		stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
-
-		// Add RETURNING clause with explicit column names from JSON object
-		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
-		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
-		stmt.returning(all_columns);
-
+		let returning = conn.backend() != DatabaseBackend::MySql;
+		let stmt = Self::build_update_statement_from_object_with_returning(model, obj, returning)?;
 		let (sql, values) = build_update_sql(&stmt, conn.backend());
-		let values: Vec<_> = values
+		let values = values
 			.0
 			.into_iter()
 			.map(Self::sea_value_to_query_value)
 			.collect();
-
-		let row = conn.query_one(&sql, values).await?;
-		// row.data is already serde_json::Value::Object so deserialize directly
-		serde_json::from_value(row.data.clone())
+		let metadata = M::field_metadata();
+		let row = if returning {
+			conn.query_one(&sql, values).await?
+		} else {
+			conn.execute(&sql, values).await?;
+			let mut select = Query::select();
+			select
+				.from(Alias::new(M::table_name()))
+				.columns(
+					obj.keys()
+						.map(|field| Alias::new(Self::column_name(field, &metadata))),
+				)
+				.cond_where(Self::primary_key_condition_from_object(model, obj)?)
+				.limit(1);
+			let (sql, values) = build_select_sql(&select, conn.backend());
+			let values = values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			conn.query_one(&sql, values).await?
+		};
+		// RETURNING and MySQL reloads yield physical columns; serde expects model fields.
+		let data = obj
+			.keys()
+			.filter_map(|field| {
+				row.data
+					.get(Self::column_name(field, &metadata))
+					.map(|value| (field.clone(), value.clone()))
+			})
+			.collect();
+		serde_json::from_value(serde_json::Value::Object(data))
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
 	}
 
@@ -1939,6 +2051,221 @@ mod tests {
 			vec![reinhardt_query::value::Value::String(Some(Box::new(
 				"external:42".to_owned()
 			)))]
+		);
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct CompositeUpdateModel {
+		tenant_key: String,
+		entry_key: String,
+		body: String,
+	}
+
+	impl Model for CompositeUpdateModel {
+		type PrimaryKey = String;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"composite_entries"
+		}
+		fn primary_key_field() -> &'static str {
+			"tenant_key"
+		}
+		fn primary_key(&self) -> Option<String> {
+			Some(self.tenant_key.clone())
+		}
+		fn set_primary_key(&mut self, value: String) {
+			self.tenant_key = value;
+		}
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+		fn composite_primary_key() -> Option<crate::orm::composite_pk::CompositePrimaryKey> {
+			Some(
+				crate::orm::composite_pk::CompositePrimaryKey::new(vec![
+					"tenant".into(),
+					"entry".into(),
+				])
+				.unwrap(),
+			)
+		}
+		fn get_composite_pk_values(&self) -> HashMap<String, crate::orm::composite_pk::PkValue> {
+			HashMap::from([
+				("tenant".into(), self.tenant_key.clone().into()),
+				("entry".into(), self.entry_key.clone().into()),
+			])
+		}
+		fn field_metadata() -> Vec<FieldInfo> {
+			[("tenant_key", "tenant"), ("entry_key", "entry")]
+				.into_iter()
+				.map(|(name, column)| {
+					let mut field = CharField::new(64);
+					field.set_attributes_from_name(name);
+					let mut info = FieldInfo::from_field(&field);
+					info.primary_key = true;
+					info.db_column = Some(column.to_owned());
+					info
+				})
+				.collect()
+		}
+	}
+
+	#[rstest::fixture]
+	fn composite_update_model() -> CompositeUpdateModel {
+		CompositeUpdateModel {
+			tenant_key: "00123".to_owned(),
+			entry_key: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+			body: "changed".to_owned(),
+		}
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		"UPDATE \"composite_entries\" SET \"body\" = $1 WHERE (\"tenant\" = $2 AND \"entry\" = $3) RETURNING \"body\", \"entry\", \"tenant\""
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"UPDATE `composite_entries` SET `body` = ? WHERE (`tenant` = ? AND `entry` = ?)"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		"UPDATE \"composite_entries\" SET \"body\" = ? WHERE (\"tenant\" = ? AND \"entry\" = ?) RETURNING \"body\", \"entry\", \"tenant\""
+	)]
+	fn update_matches_every_composite_key(
+		composite_update_model: CompositeUpdateModel,
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let mut json = serde_json::to_value(&composite_update_model).unwrap();
+		json.as_object_mut().unwrap().sort_keys();
+		// Act
+		let stmt =
+			Manager::<CompositeUpdateModel>::build_update_statement_from_object_with_returning(
+				&composite_update_model,
+				json.as_object().unwrap(),
+				backend != DatabaseBackend::MySql,
+			)
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&stmt, backend);
+		// Assert: text keys retain their storage type and never enter SET.
+		assert_eq!(sql, expected_sql);
+		assert_eq!(
+			values.0,
+			vec![
+				reinhardt_query::value::Value::from("changed"),
+				reinhardt_query::value::Value::from("00123"),
+				reinhardt_query::value::Value::from("550e8400-e29b-41d4-a716-446655440000"),
+			]
+		);
+	}
+
+	#[rstest]
+	fn update_rejects_incomplete_composite_keys(
+		composite_update_model: CompositeUpdateModel,
+		#[values("tenant_key", "entry_key")] field: &str,
+		#[values(false, true)] missing: bool,
+	) {
+		// Arrange
+		let mut json = serde_json::to_value(&composite_update_model).unwrap();
+		let obj = json.as_object_mut().unwrap();
+		if missing {
+			obj.remove(field);
+		} else {
+			obj.insert(field.to_owned(), serde_json::Value::Null);
+		}
+		// Act
+		let error =
+			Manager::<CompositeUpdateModel>::build_update_statement_from_object_with_returning(
+				&composite_update_model,
+				obj,
+				true,
+			)
+			.unwrap_err();
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			format!("Database error: Model must have non-null primary key field '{field}'")
+		);
+	}
+
+	#[rstest]
+	fn key_only_update_keeps_complete_predicate(composite_update_model: CompositeUpdateModel) {
+		// Arrange
+		let mut json = serde_json::to_value(&composite_update_model).unwrap();
+		let obj = json.as_object_mut().unwrap();
+		obj.remove("body");
+		obj.sort_keys();
+		// Act
+		let stmt =
+			Manager::<CompositeUpdateModel>::build_update_statement_from_object_with_returning(
+				&composite_update_model,
+				obj,
+				true,
+			)
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&stmt, DatabaseBackend::Postgres);
+		// Assert
+		assert_eq!(
+			sql,
+			"UPDATE \"composite_entries\" SET \"tenant\" = \"tenant\" WHERE (\"tenant\" = $1 AND \"entry\" = $2) RETURNING \"entry\", \"tenant\""
+		);
+		assert_eq!(
+			values.0,
+			vec![
+				reinhardt_query::value::Value::from("00123"),
+				reinhardt_query::value::Value::from("550e8400-e29b-41d4-a716-446655440000"),
+			]
+		);
+	}
+
+	#[rstest]
+	fn update_preserves_scalar_key_bindings() {
+		// Arrange
+		let numeric = TestUser {
+			id: Some(42),
+			name: "Alice".into(),
+			email: "alice@example.com".into(),
+		};
+		let text = TestStringUser { id: "00123".into() };
+		let uuid = TestUuidUser {
+			id: Uuid::from_u128(1),
+		};
+		let custom = TypedKeyUser {
+			external_id: ExternalId("42".into()),
+		};
+		macro_rules! bindings {
+			($ty:ty, $model:expr) => {{
+				let json = serde_json::to_value(&$model).unwrap();
+				let stmt = Manager::<$ty>::build_update_statement_from_object_with_returning(
+					&$model,
+					json.as_object().unwrap(),
+					true,
+				)
+				.unwrap();
+				super::build_update_sql(&stmt, DatabaseBackend::Postgres)
+					.1
+					.0
+			}};
+		}
+		// Act and Assert
+		assert_eq!(
+			bindings!(TestUser, numeric).last(),
+			Some(&reinhardt_query::value::Value::BigInt(Some(42)))
+		);
+		assert_eq!(
+			bindings!(TestStringUser, text),
+			vec![reinhardt_query::value::Value::from("00123")]
+		);
+		assert_eq!(
+			bindings!(TestUuidUser, uuid),
+			vec![reinhardt_query::value::Value::from(Uuid::from_u128(1))]
+		);
+		assert_eq!(
+			bindings!(TypedKeyUser, custom),
+			vec![reinhardt_query::value::Value::from("external:42")]
 		);
 	}
 

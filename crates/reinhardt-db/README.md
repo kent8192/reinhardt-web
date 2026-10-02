@@ -157,6 +157,23 @@ Advanced features for specific use cases:
   - Document, Key-Value, Column-Family, Graph paradigms
   - **When to use**: Working with NoSQL databases like MongoDB
 
+### Updating composite primary keys
+
+`Manager::update` and `update_with_conn` match every component of a composite
+primary key. Key components are excluded from assignments, and physical column
+aliases are resolved through model metadata for writes and returned models.
+Missing or null key components are rejected before execution. MySQL reloads the
+updated row using the same complete key. Composite bindings use the model's
+`get_composite_pk_values()` storage values, preserving strings that resemble
+numbers or UUIDs.
+
+Use these per-model update methods for composite-key writes. `bulk_update` and
+`bulk_update_with_conn` still assume a scalar key, as do the primary-key arguments
+of `Manager::get` and the manager's delete methods. For composite-key lookups,
+use `get_composite` or filter explicitly on every key component. Generated UUID
+and enum composite keys remain subject to
+[#6456](https://github.com/kent8192/reinhardt-web/issues/6456).
+
 ## Installation
 
 Add this to your `Cargo.toml`:
