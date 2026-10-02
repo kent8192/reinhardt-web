@@ -1,12 +1,17 @@
 # Migration Guide: 0.3.x to 0.4.0
 
 This guide covers the Rust management-shell migration, breaking Reinhardt Pages
-event API, closure-scoped ORM transaction API, and typed manager upsert API
-introduced for 0.4.
+event API, closure-scoped ORM transaction API, typed manager upsert API, and
+text-key conversion compatibility introduced for 0.4.
 
 For the complete `get_or_create` and `update_or_create` migration, including
 transaction, uniqueness, race, and custom-manager hook semantics, see
 [`0.4.0-typed-manager-upserts.md`](../docs/migration/0.4.0-typed-manager-upserts.md).
+
+For models with `PrimaryKey = String`, remove overlapping downstream
+`IntoPrimaryKey` implementations for `String` and `&str`. Preserve custom
+conversion behavior on a local newtype as described in the
+[text primary-key migration guide](../docs/migration/0.4.0-string-primary-key-conversions.md).
 
 ## Storage-backed `FileField` source migration
 

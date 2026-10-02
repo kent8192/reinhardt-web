@@ -16,6 +16,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `QueryValue::Int(i64)` to retain `bigint` binding. Result-row integer
   normalization is unchanged.
 
+### Changed
+
+- **Breaking:** Classify the `IntoPrimaryKey<T>` implementations for `String`
+  and `&str` introduced by PR #6423 as source-breaking: they overlap with
+  previously legal downstream text-key implementations and produce E0119.
+  Generated relationship and Info builders continue to accept raw text keys.
+
+### Migration guide
+
+Before compiling against a revision containing PR #6423, remove downstream
+`IntoPrimaryKey<LocalModel>` implementations for `String` and `&str` when the
+model's primary key is `String`. Identity conversion is supplied by the
+framework, so calls such as `builder.node("peer-001").finish()` keep working.
+Move application-specific normalization or other conversion behavior to a
+local newtype implementing `IntoPrimaryKey<LocalModel>` and pass that newtype to
+the setter. No schema or stored-key migration is required.
+
+The `reinhardt-db@v0.4.0-alpha.18` tag already contains the implementations;
+this entry corrects their compatibility classification. See the
+[complete migration guide](../../docs/migration/0.4.0-string-primary-key-conversions.md)
+for before/after examples, the supported extension point, and design alternatives.
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.17...reinhardt-db@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation
