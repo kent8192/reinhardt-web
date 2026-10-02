@@ -5,8 +5,8 @@
 
 use super::*;
 use crate::types::BinOper;
-use crate::value::Value;
-use crate::{all, any};
+use crate::value::{Value, Values};
+use crate::{PostgresQueryBuilder, Query, QueryStatementBuilder, all, any};
 use rstest::rstest;
 
 // =============================================================================
@@ -136,44 +136,29 @@ fn test_arithmetic_expression_chain() {
 
 #[rstest]
 fn test_pattern_matching_helpers() {
-	// Test starts_with - now uses CustomWithExpr with ESCAPE clause
-	let expr1 = Expr::col("name").starts_with("John");
-	if let SimpleExpr::CustomWithExpr(template, args) = &expr1 {
-		assert_eq!(template, "? LIKE ? ESCAPE '\\'");
-		if let SimpleExpr::Value(Value::String(Some(s))) = &args[1] {
-			assert_eq!(**s, "John%");
-		} else {
-			panic!("Expected String value in LIKE pattern");
-		}
-	} else {
-		panic!("Expected CustomWithExpr with 'John%' pattern");
-	}
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::col("name").starts_with("John"))
+		.expr(Expr::col("email").ends_with("@example.com"))
+		.expr(Expr::col("description").contains("important"))
+		.to_owned();
 
-	// Test ends_with
-	let expr2 = Expr::col("email").ends_with("@example.com");
-	if let SimpleExpr::CustomWithExpr(template, args) = &expr2 {
-		assert_eq!(template, "? LIKE ? ESCAPE '\\'");
-		if let SimpleExpr::Value(Value::String(Some(s))) = &args[1] {
-			assert_eq!(**s, "%@example.com");
-		} else {
-			panic!("Expected String value in LIKE pattern");
-		}
-	} else {
-		panic!("Expected CustomWithExpr with '%@example.com' pattern");
-	}
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
 
-	// Test contains
-	let expr3 = Expr::col("description").contains("important");
-	if let SimpleExpr::CustomWithExpr(template, args) = &expr3 {
-		assert_eq!(template, "? LIKE ? ESCAPE '\\'");
-		if let SimpleExpr::Value(Value::String(Some(s))) = &args[1] {
-			assert_eq!(**s, "%important%");
-		} else {
-			panic!("Expected String value in LIKE pattern");
-		}
-	} else {
-		panic!("Expected CustomWithExpr with '%important%' pattern");
-	}
+	// Assert
+	assert_eq!(
+		sql,
+		r#"SELECT "name" LIKE $1 ESCAPE '\', "email" LIKE $2 ESCAPE '\', "description" LIKE $3 ESCAPE '\'"#
+	);
+	assert_eq!(
+		values,
+		Values(vec![
+			"John%".into(),
+			"%@example.com".into(),
+			"%important%".into()
+		])
+	);
 }
 
 // =============================================================================
@@ -326,78 +311,62 @@ fn test_is_not_in_nonempty_works_normally() {
 
 #[rstest]
 fn test_starts_with_escapes_wildcards() {
-	// Arrange / Act
-	let expr = Expr::col("name").starts_with("100%_done");
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::col("name").starts_with("100%_done"))
+		.to_owned();
 
-	// Assert - now uses CustomWithExpr with ESCAPE clause
-	if let SimpleExpr::CustomWithExpr(template, args) = &expr {
-		assert_eq!(template, "? LIKE ? ESCAPE '\\'");
-		assert_eq!(args.len(), 2);
-		if let SimpleExpr::Value(Value::String(Some(s))) = &args[1] {
-			assert_eq!(**s, "100\\%\\_done%");
-		} else {
-			panic!("Expected String value in LIKE pattern");
-		}
-	} else {
-		panic!("Expected CustomWithExpr expression, got: {:?}", expr);
-	}
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(sql, r#"SELECT "name" LIKE $1 ESCAPE '\'"#);
+	assert_eq!(values, Values(vec![r"100\%\_done%".into()]));
 }
 
 #[rstest]
 fn test_ends_with_escapes_wildcards() {
-	// Arrange / Act
-	let expr = Expr::col("name").ends_with("test%");
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::col("name").ends_with("test%"))
+		.to_owned();
 
-	// Assert - now uses CustomWithExpr with ESCAPE clause
-	if let SimpleExpr::CustomWithExpr(template, args) = &expr {
-		assert_eq!(template, "? LIKE ? ESCAPE '\\'");
-		assert_eq!(args.len(), 2);
-		if let SimpleExpr::Value(Value::String(Some(s))) = &args[1] {
-			assert_eq!(**s, "%test\\%");
-		} else {
-			panic!("Expected String value in LIKE pattern");
-		}
-	} else {
-		panic!("Expected CustomWithExpr expression, got: {:?}", expr);
-	}
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(sql, r#"SELECT "name" LIKE $1 ESCAPE '\'"#);
+	assert_eq!(values, Values(vec![r"%test\%".into()]));
 }
 
 #[rstest]
 fn test_contains_escapes_wildcards() {
-	// Arrange / Act
-	let expr = Expr::col("name").contains("50%_off");
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::col("name").contains("50%_off"))
+		.to_owned();
 
-	// Assert - now uses CustomWithExpr with ESCAPE clause
-	if let SimpleExpr::CustomWithExpr(template, args) = &expr {
-		assert_eq!(template, "? LIKE ? ESCAPE '\\'");
-		assert_eq!(args.len(), 2);
-		if let SimpleExpr::Value(Value::String(Some(s))) = &args[1] {
-			assert_eq!(**s, "%50\\%\\_off%");
-		} else {
-			panic!("Expected String value in LIKE pattern");
-		}
-	} else {
-		panic!("Expected CustomWithExpr expression, got: {:?}", expr);
-	}
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(sql, r#"SELECT "name" LIKE $1 ESCAPE '\'"#);
+	assert_eq!(values, Values(vec![r"%50\%\_off%".into()]));
 }
 
 #[rstest]
 fn test_contains_escapes_backslash() {
-	// Arrange / Act
-	let expr = Expr::col("path").contains("C:\\Users");
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::col("path").contains(r"C:\Users"))
+		.to_owned();
 
-	// Assert - now uses CustomWithExpr with ESCAPE clause
-	if let SimpleExpr::CustomWithExpr(template, args) = &expr {
-		assert_eq!(template, "? LIKE ? ESCAPE '\\'");
-		assert_eq!(args.len(), 2);
-		if let SimpleExpr::Value(Value::String(Some(s))) = &args[1] {
-			assert_eq!(**s, "%C:\\\\Users%");
-		} else {
-			panic!("Expected String value in LIKE pattern");
-		}
-	} else {
-		panic!("Expected CustomWithExpr expression, got: {:?}", expr);
-	}
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(sql, r#"SELECT "path" LIKE $1 ESCAPE '\'"#);
+	assert_eq!(values, Values(vec![r"%C:\\Users%".into()]));
 }
 
 // =============================================================================
