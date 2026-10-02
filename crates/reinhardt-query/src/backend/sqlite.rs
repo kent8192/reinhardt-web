@@ -533,6 +533,12 @@ impl SqliteQueryBuilder {
 			SimpleExpr::Custom(sql) => {
 				writer.push(sql);
 			}
+			SimpleExpr::LikeWithEscape(expr, pattern) => {
+				self.write_simple_expr(writer, expr);
+				writer.push(" LIKE ");
+				self.write_simple_expr(writer, pattern);
+				writer.push(" ESCAPE '\\'");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');
@@ -1066,21 +1072,23 @@ impl QueryBuilder for SqliteQueryBuilder {
 		if let Some(on_conflict) = &stmt.on_conflict {
 			use crate::query::{OnConflictAction, OnConflictTarget};
 			writer.push_keyword("ON CONFLICT");
-			writer.push_space();
 
 			// Target columns
-			writer.push("(");
-			match &on_conflict.target {
-				OnConflictTarget::Column(col) => {
-					writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+			if !matches!(&on_conflict.target, OnConflictTarget::Columns(cols) if cols.is_empty()) {
+				writer.push_space();
+				writer.push("(");
+				match &on_conflict.target {
+					OnConflictTarget::Column(col) => {
+						writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+					}
+					OnConflictTarget::Columns(cols) => {
+						writer.push_list(cols, ", ", |w, col| {
+							w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+						});
+					}
 				}
-				OnConflictTarget::Columns(cols) => {
-					writer.push_list(cols, ", ", |w, col| {
-						w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
-					});
-				}
+				writer.push(")");
 			}
-			writer.push(")");
 
 			// Action
 			match &on_conflict.action {

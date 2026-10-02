@@ -11,6 +11,8 @@ pub enum OnConflictTarget {
 	/// Single column target
 	Column(DynIden),
 	/// Multiple columns target
+	///
+	/// An empty vector represents an omitted conflict target.
 	Columns(Vec<DynIden>),
 }
 
@@ -43,7 +45,43 @@ pub struct OnConflict {
 	pub(crate) action: OnConflictAction,
 }
 
+impl Default for OnConflict {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl OnConflict {
+	/// Create a targetless ON CONFLICT DO NOTHING clause.
+	///
+	/// PostgreSQL and SQLite render `ON CONFLICT DO NOTHING`, handling conflicts
+	/// on any usable unique constraint or index. MySQL uses its existing no-op
+	/// `ON DUPLICATE KEY UPDATE` emulation and requires an insert column.
+	///
+	/// **P2 (behavioral parity):** This builder behaves identically on native and
+	/// WASM targets.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::{OnConflict, PostgresQueryBuilder, Query, QueryStatementBuilder};
+	///
+	/// let sql = Query::insert()
+	///     .into_table("users")
+	///     .columns(["id"])
+	///     .values_panic([1])
+	///     .on_conflict(OnConflict::new().do_nothing())
+	///     .to_string(PostgresQueryBuilder);
+	/// assert_eq!(sql, "INSERT INTO \"users\" (\"id\") VALUES (1) ON CONFLICT DO NOTHING");
+	/// ```
+	#[must_use]
+	pub fn new() -> Self {
+		Self {
+			target: OnConflictTarget::Columns(Vec::new()),
+			action: OnConflictAction::DoNothing,
+		}
+	}
+
 	/// Create an ON CONFLICT clause targeting a single column.
 	pub fn column<C: IntoIden>(col: C) -> Self {
 		Self {
@@ -53,6 +91,8 @@ impl OnConflict {
 	}
 
 	/// Create an ON CONFLICT clause targeting multiple columns.
+	///
+	/// An empty iterator omits the target, equivalent to [`Self::new`].
 	pub fn columns<I, C>(cols: I) -> Self
 	where
 		I: IntoIterator<Item = C>,
@@ -72,6 +112,10 @@ impl OnConflict {
 	}
 
 	/// Set the action to DO UPDATE SET with specified columns.
+	///
+	/// PostgreSQL requires a nonempty conflict target for this action and panics
+	/// during rendering if the target is omitted. SQLite 3.35 and later and MySQL
+	/// support targetless updates.
 	#[must_use]
 	pub fn update_columns<I, C>(mut self, cols: I) -> Self
 	where

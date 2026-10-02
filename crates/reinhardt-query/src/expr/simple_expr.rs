@@ -121,6 +121,13 @@ pub enum SimpleExpr {
 	/// A binary operation (e.g., `x = y`, `a AND b`, `x + y`)
 	Binary(Box<SimpleExpr>, BinOper, Box<SimpleExpr>),
 
+	/// A LIKE expression with an explicit backslash escape character.
+	///
+	/// Used by `ExprTrait::starts_with`, `ExprTrait::ends_with`, and
+	/// `ExprTrait::contains`. Each backend renders the escape literal using
+	/// its string syntax. Supports native/WASM behavioral parity (P2).
+	LikeWithEscape(Box<SimpleExpr>, Box<SimpleExpr>),
+
 	/// A function call (e.g., `MAX(x)`, `LOWER(name)`)
 	FunctionCall(DynIden, Vec<SimpleExpr>),
 

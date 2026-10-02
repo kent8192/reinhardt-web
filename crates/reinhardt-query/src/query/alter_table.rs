@@ -408,6 +408,14 @@ impl Default for AlterTableStatement {
 }
 
 impl QueryStatementBuilder for AlterTableStatement {
+	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
+		crate::query::traits::postgres_to_string(
+			self,
+			query_builder,
+			crate::backend::PostgresQueryBuilder::build_alter_table_with_writer,
+		)
+	}
+
 	fn build_any(&self, query_builder: &dyn QueryBuilderTrait) -> (String, crate::value::Values) {
 		// Downcast to concrete QueryBuilder type
 		use std::any::Any;

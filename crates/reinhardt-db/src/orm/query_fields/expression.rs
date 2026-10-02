@@ -46,7 +46,7 @@ fn qualify_model_root_in_place(expr: &mut SimpleExpr, root_alias: &str) {
 		| SimpleExpr::WindowNamed {
 			func: expression, ..
 		} => qualify_model_root_in_place(expression, root_alias),
-		SimpleExpr::Binary(left, _, right) => {
+		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
 			qualify_model_root_in_place(left, root_alias);
 			qualify_model_root_in_place(right, root_alias);
 		}
@@ -627,6 +627,27 @@ mod tests {
 	use crate::orm::query_fields::literal;
 	use reinhardt_core::exception::Error;
 	use reinhardt_query::prelude::{PostgresQueryBuilder, Query, QueryStatementBuilder};
+
+	#[rstest::rstest]
+	fn escaped_like_qualifies_both_model_operands() {
+		// Arrange
+		let expression = SimpleExpr::LikeWithEscape(
+			Box::new(Expr::col("name").into()),
+			Box::new(Expr::col("pattern").into()),
+		);
+
+		// Act
+		let qualified = qualify_model_root(&expression, "root");
+		let sql = Query::select()
+			.expr(qualified)
+			.to_string(PostgresQueryBuilder);
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT "root"."name" LIKE "root"."pattern" ESCAPE '\'"#
+		);
+	}
 
 	#[derive(Clone)]
 	struct TestModel;

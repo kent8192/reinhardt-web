@@ -10714,16 +10714,22 @@ fn generate_relationship_registrations(
 fn generate_composite_pk_impl(pk_fields: &[&FieldInfo]) -> TokenStream {
 	let orm_crate = get_reinhardt_orm_crate();
 
-	let field_name_strings: Vec<String> = pk_fields
+	let column_names: Vec<_> = pk_fields
 		.iter()
-		.map(|f| ident_to_wire_name(&f.name))
+		.map(|field| {
+			field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| ident_to_wire_name(&field.name))
+		})
 		.collect();
 
 	quote! {
 		fn composite_primary_key() -> Option<#orm_crate::composite_pk::CompositePrimaryKey> {
 			Some(
 				#orm_crate::composite_pk::CompositePrimaryKey::new(
-					vec![#(#field_name_strings.to_string()),*]
+					vec![#(#column_names.to_string()),*]
 				)
 				.expect("Invalid composite primary key")
 			)
@@ -10758,9 +10764,15 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 		syn::Ident::new(&format!("{}CompositePk", struct_name), struct_name.span());
 
 	let field_indices: Vec<_> = (0..pk_fields.len()).map(syn::Index::from).collect();
-	let field_name_strings: Vec<_> = pk_fields
+	let column_names: Vec<_> = pk_fields
 		.iter()
-		.map(|field| ident_to_wire_name(&field.name))
+		.map(|field| {
+			field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| ident_to_wire_name(&field.name))
+		})
 		.collect();
 
 	// Extract field names and types
@@ -10787,7 +10799,11 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 		.zip(&field_types)
 		.map(|(field, ty)| {
 			let name = &field.name;
-			let name_wire = ident_to_wire_name(name);
+			let column_name = field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| ident_to_wire_name(name));
 			let context = generate_field_codec_context(struct_name, field);
 			quote! {
 				<#ty as #orm_crate::DatabaseField>::validate_database_context(
@@ -10795,7 +10811,7 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 					&#context,
 				)?;
 				values.insert(
-					#name_wire.to_string(),
+					#column_name.to_string(),
 					#orm_crate::composite_pk::PkValue::from_field(&self.#name)?
 				);
 			}
@@ -10866,7 +10882,7 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 			fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				let encoded_values = match self.to_pk_values().and_then(|values| {
-					::core::result::Result::Ok([#(values[#field_name_strings].to_key_string()?),*])
+					::core::result::Result::Ok([#(values[#column_names].to_key_string()?),*])
 				}) {
 					::core::result::Result::Ok(values) => values,
 					::core::result::Result::Err(_) => return write!(f, "<invalid composite primary key>"),

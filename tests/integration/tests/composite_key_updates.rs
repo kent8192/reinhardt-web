@@ -1,14 +1,17 @@
-//! Composite-key updates preserve neighboring rows through owned connections and transactions.
+//! Composite-key updates preserve neighboring rows and resolve physical column aliases.
 
 #![cfg(feature = "postgres")]
 
 use reinhardt::db::backends::DatabaseConnection as BackendsConnection;
-use reinhardt::db::orm::{DatabaseConnection, DatabaseConnectionLease, Manager, Model};
+use reinhardt::db::orm::{
+	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, Manager, Model,
+};
 use reinhardt::model;
 use reinhardt_query::prelude::{
-	ColumnDef, IntoIden, Order, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	ColumnDef, ColumnType, IntoIden, MySqlQueryBuilder, Order, PostgresQueryBuilder, Query,
+	QueryStatementBuilder, SqliteQueryBuilder,
 };
-use reinhardt_test::fixtures::postgres_container;
+use reinhardt_test::fixtures::{mysql_container, postgres_container};
 use rstest::{fixture, rstest};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -52,7 +55,6 @@ enum CompositeUpdateEntries {
 
 struct UpdateFixture {
 	connection: DatabaseConnection,
-	pool: Arc<sqlx::PgPool>,
 	_lease: DatabaseConnectionLease,
 	_container: ContainerAsync<GenericImage>,
 }
@@ -61,32 +63,76 @@ struct UpdateFixture {
 async fn update_fixture(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) -> UpdateFixture {
-	let (container, pool, _port, url) = postgres_container.await;
-	let owner = BackendsConnection::connect_postgres(&url).await.unwrap();
+	let (container, _pool, _port, url) = postgres_container.await;
+	let owner = BackendsConnection::connect(&url).await.unwrap();
 	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let connection = lease.handle();
+	seed_entries(&connection).await;
+	UpdateFixture {
+		connection,
+		_lease: lease,
+		_container: container,
+	}
+}
+
+#[fixture]
+async fn mysql_update_fixture(
+	#[future] mysql_container: (
+		ContainerAsync<GenericImage>,
+		Arc<sqlx::MySqlPool>,
+		u16,
+		String,
+	),
+) -> UpdateFixture {
+	let (container, _pool, _port, url) = mysql_container.await;
+	let owner = BackendsConnection::connect(&url).await.unwrap();
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let connection = lease.handle();
+	seed_entries(&connection).await;
+	UpdateFixture {
+		connection,
+		_lease: lease,
+		_container: container,
+	}
+}
+
+fn render(statement: &impl QueryStatementBuilder, backend: DatabaseBackend) -> String {
+	match backend {
+		DatabaseBackend::Postgres => statement.to_string(PostgresQueryBuilder),
+		DatabaseBackend::MySql => statement.to_string(MySqlQueryBuilder),
+		DatabaseBackend::Sqlite => statement.to_string(SqliteQueryBuilder),
+	}
+}
+
+async fn seed_entries(connection: &DatabaseConnection) {
 	let schema = Query::create_table()
 		.table(CompositeUpdateEntries::Table.into_iden())
 		.col(
 			ColumnDef::new(CompositeUpdateEntries::Tenant)
-				.text()
+				.column_type(ColumnType::String(Some(64)))
 				.not_null(true),
 		)
 		.col(
 			ColumnDef::new(CompositeUpdateEntries::Entry)
-				.text()
+				.column_type(ColumnType::String(Some(64)))
 				.not_null(true),
 		)
 		.col(
 			ColumnDef::new(CompositeUpdateEntries::Body)
-				.text()
+				.column_type(ColumnType::String(Some(64)))
 				.not_null(true),
 		)
 		.primary_key([
 			CompositeUpdateEntries::Tenant,
 			CompositeUpdateEntries::Entry,
 		])
-		.to_string(PostgresQueryBuilder);
-	sqlx::query(&schema).execute(pool.as_ref()).await.unwrap();
+		.to_owned();
+	let schema = match connection.backend() {
+		DatabaseBackend::Postgres => schema.to_string(PostgresQueryBuilder),
+		DatabaseBackend::MySql => schema.to_string(MySqlQueryBuilder),
+		DatabaseBackend::Sqlite => schema.to_string(SqliteQueryBuilder),
+	};
+	connection.execute(&schema, vec![]).await.unwrap();
 	let seed = Query::insert()
 		.into_table(CompositeUpdateEntries::Table.into_iden())
 		.columns([
@@ -97,14 +143,11 @@ async fn update_fixture(
 		.values_panic(["t", "a", "old-a"])
 		.values_panic(["t", "b", "old-b"])
 		.values_panic(["u", "a", "other-tenant"])
-		.to_string(PostgresQueryBuilder);
-	sqlx::query(&seed).execute(pool.as_ref()).await.unwrap();
-	UpdateFixture {
-		connection: lease.handle(),
-		pool,
-		_lease: lease,
-		_container: container,
-	}
+		.to_owned();
+	connection
+		.execute(&render(&seed, connection.backend()), vec![])
+		.await
+		.unwrap();
 }
 
 async fn update_entry<M: Model>(connection: &mut DatabaseConnection, model: &M, transaction: bool) {
@@ -132,9 +175,45 @@ async fn composite_update_preserves_other_rows(
 	#[case] transaction: bool,
 	#[values(false, true)] aliased: bool,
 ) {
-	// Arrange
 	let mut fixture = update_fixture.await;
+	assert_composite_update(&mut fixture.connection, aliased, transaction).await;
+}
 
+#[rstest]
+#[case::owned(false)]
+#[case::atomic(true)]
+#[tokio::test]
+async fn mysql_composite_update_reloads_complete_key(
+	#[future] mysql_update_fixture: UpdateFixture,
+	#[case] transaction: bool,
+	#[values(false, true)] aliased: bool,
+) {
+	let mut fixture = mysql_update_fixture.await;
+	assert_composite_update(&mut fixture.connection, aliased, transaction).await;
+}
+
+#[rstest]
+#[case::owned(false)]
+#[case::atomic(true)]
+#[tokio::test]
+async fn sqlite_composite_update_preserves_other_rows(
+	#[values(false, true)] aliased: bool,
+	#[case] transaction: bool,
+) {
+	let owner = BackendsConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.unwrap();
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let mut connection = lease.handle();
+	seed_entries(&connection).await;
+	assert_composite_update(&mut connection, aliased, transaction).await;
+}
+
+async fn assert_composite_update(
+	connection: &mut DatabaseConnection,
+	aliased: bool,
+	transaction: bool,
+) {
 	// Act
 	if aliased {
 		let model = AliasedEntry::build()
@@ -142,10 +221,10 @@ async fn composite_update_preserves_other_rows(
 			.entry_key("a")
 			.body("new-a")
 			.finish();
-		update_entry(&mut fixture.connection, &model, transaction).await;
+		update_entry(connection, &model, transaction).await;
 	} else {
 		let model = Entry::build().tenant("t").entry("a").body("new-a").finish();
-		update_entry(&mut fixture.connection, &model, transaction).await;
+		update_entry(connection, &model, transaction).await;
 	}
 
 	// Assert: neither sharing the tenant nor sharing the entry is enough to match.
@@ -158,17 +237,20 @@ async fn composite_update_preserves_other_rows(
 		])
 		.order_by(CompositeUpdateEntries::Tenant, Order::Asc)
 		.order_by(CompositeUpdateEntries::Entry, Order::Asc)
-		.to_string(PostgresQueryBuilder);
-	let rows: Vec<(String, String, String)> = sqlx::query_as(&select)
-		.fetch_all(fixture.pool.as_ref())
+		.to_owned();
+	let rows: Vec<_> = connection
+		.query(&render(&select, connection.backend()), vec![])
 		.await
-		.unwrap();
+		.unwrap()
+		.into_iter()
+		.map(|row| row.data)
+		.collect();
 	assert_eq!(
 		rows,
 		vec![
-			("t".to_owned(), "a".to_owned(), "new-a".to_owned()),
-			("t".to_owned(), "b".to_owned(), "old-b".to_owned()),
-			("u".to_owned(), "a".to_owned(), "other-tenant".to_owned()),
+			serde_json::json!({"tenant": "t", "entry": "a", "body": "new-a"}),
+			serde_json::json!({"tenant": "t", "entry": "b", "body": "old-b"}),
+			serde_json::json!({"tenant": "u", "entry": "a", "body": "other-tenant"}),
 		]
 	);
 }

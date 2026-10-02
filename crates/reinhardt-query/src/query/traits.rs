@@ -4,6 +4,7 @@
 
 use std::{any::Any, fmt::Debug, ops::Range};
 
+use crate::backend::{PostgresQueryBuilder, SqlWriter};
 use crate::value::Values;
 
 /// Replace parameter placeholders in SQL with inline value literals.
@@ -15,8 +16,11 @@ use crate::value::Values;
 /// and SQL comments are preserved. Only tokens in the original SQL are replaced;
 /// placeholder-like text inside inserted values is never interpreted again.
 /// This standalone helper uses PostgreSQL lexical rules and infers the
-/// placeholder style. Statement `to_string()` methods use the selected backend's
-/// placeholder style and lexical rules (including MySQL's default string escapes).
+/// placeholder style. It cannot distinguish raw bind markers from generated
+/// parameters once both are present in the SQL string. Built-in PostgreSQL
+/// statements avoid that ambiguity by rendering managed values directly in
+/// `to_string()`. Other backends use their own placeholder style and lexical rules
+/// (including MySQL's default string escapes).
 /// Numbered tokens take precedence over `?` tokens, which can be PostgreSQL
 /// operators. Placeholders without a corresponding value are left unchanged.
 pub fn inline_params(sql: &str, values: &Values) -> String {
@@ -219,6 +223,36 @@ fn dollar_quoted_end(sql: &str, start: usize) -> Option<usize> {
 	)
 }
 
+fn inline_statement<S: QueryStatementBuilder + ?Sized, T: QueryBuilderTrait>(
+	statement: &S,
+	query_builder: T,
+) -> String {
+	// Backtick-quoting builders use MySQL comment syntax.
+	let (placeholder, numbered) = query_builder.placeholder();
+	let dialect = InlineDialect {
+		mysql: query_builder.quote_char() == '`',
+		postgres: numbered && placeholder == "$",
+		numbered: Some(numbered),
+	};
+	let (sql, values) = statement.build(query_builder);
+	inline_params_with_dialect(&sql, &values, dialect)
+}
+
+// Built-in statements can retain value provenance by choosing the writer before
+// rendering. Keep the default build() path for other backends and downstream
+// QueryStatementBuilder implementations, including their build() overrides.
+pub(crate) fn postgres_to_string<S: QueryStatementBuilder, T: QueryBuilderTrait>(
+	statement: &S,
+	query_builder: T,
+	render: fn(&PostgresQueryBuilder, &S, SqlWriter) -> (String, Values),
+) -> String {
+	if let Some(postgres) = (&query_builder as &dyn Any).downcast_ref::<PostgresQueryBuilder>() {
+		render(postgres, statement, SqlWriter::new_inlined()).0
+	} else {
+		inline_statement(statement, query_builder)
+	}
+}
+
 /// Trait for building query statements
 ///
 /// This trait provides methods to build SQL statements for different database backends
@@ -251,29 +285,25 @@ pub trait QueryStatementBuilder: Debug {
 	/// directly, suitable for debugging, inspection, or execution against
 	/// databases that do not support parameterized queries.
 	///
+	/// Built-in PostgreSQL statements inline only values supplied to the builder.
+	/// Raw SQL fragments, including `$n` bind markers in [`crate::Expr::cust`], are
+	/// preserved verbatim. Such markers still require caller-supplied bindings;
+	/// prefer fully managed parameters when executing queries with [`Self::build`].
+	///
 	/// # Examples
 	///
-	/// ```rust,ignore
-	/// use reinhardt_query::prelude::*;
+	/// ```rust
+	/// use reinhardt_query::{Expr, PostgresQueryBuilder, Query, QueryStatementBuilder};
 	///
 	/// let query = Query::select()
-	///     .column(Expr::col("name"))
-	///     .from("users")
-	///     .and_where(Expr::col("active").eq(true));
+	///     .expr(Expr::cust("$1::int4"))
+	///     .expr(Expr::val(42))
+	///     .to_owned();
 	///
-	/// let sql = query.to_string(MysqlQueryBuilder);
-	/// // sql = "SELECT `name` FROM `users` WHERE `active` = TRUE"
+	/// assert_eq!(query.to_string(PostgresQueryBuilder), "SELECT $1::int4, 42");
 	/// ```
 	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
-		// Backtick-quoting builders use MySQL comment syntax.
-		let (placeholder, numbered) = query_builder.placeholder();
-		let dialect = InlineDialect {
-			mysql: query_builder.quote_char() == '`',
-			postgres: numbered && placeholder == "$",
-			numbered: Some(numbered),
-		};
-		let (sql, values) = self.build(query_builder);
-		inline_params_with_dialect(&sql, &values, dialect)
+		inline_statement(self, query_builder)
 	}
 
 	/// Build SQL statement with parameter collection
