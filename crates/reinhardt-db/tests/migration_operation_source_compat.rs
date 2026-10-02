@@ -474,7 +474,6 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 		mysql_options,
 		operator_class,
 	});
-	#[cfg(feature = "pgvector")]
 	operations.push(Operation::CreateNamedIndex {
 		table: "accounts".to_string(),
 		name: "accounts_value_idx".to_string(),
@@ -601,10 +600,7 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 		},
 	]);
 	let expected_variants = operations.len();
-	#[cfg(feature = "pgvector")]
 	assert_eq!(expected_variants, 33);
-	#[cfg(not(feature = "pgvector"))]
-	assert_eq!(expected_variants, 32);
 	for (index, operation) in operations.into_iter().enumerate() {
 		let (kind, supported) = match &operation {
 			Operation::CreateTable { .. } => ("CreateTable", true),
@@ -621,7 +617,6 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			Operation::DropConstraint { .. } => ("DropConstraint", true),
 			Operation::DropConstraintDefinition { .. } => ("DropConstraintDefinition", true),
 			Operation::CreateIndex { .. } => ("CreateIndex", true),
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex { .. } => ("CreateNamedIndex", true),
 			Operation::CreateIndexRepair { .. } => ("CreateIndexRepair", true),
 			Operation::RestoreIndexOnRollback { .. } => ("RestoreIndexOnRollback", true),

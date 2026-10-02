@@ -1237,7 +1237,6 @@ fn parse_index_operation_strict(
 	}
 
 	let name = parse_string_field_strict(&operation.fields, "name", context)?;
-	#[cfg(feature = "pgvector")]
 	{
 		Ok(if operation_name == "CreateNamedIndex" {
 			super::Operation::CreateNamedIndex {
@@ -1266,39 +1265,6 @@ fn parse_index_operation_strict(
 				operator_class,
 			}
 		})
-	}
-	#[cfg(not(feature = "pgvector"))]
-	{
-		if operation_name == "DropNamedIndex" {
-			Ok(super::Operation::DropNamedIndex {
-				table,
-				name,
-				columns,
-				unique,
-				index_type,
-				where_clause,
-				concurrently,
-				expressions,
-				mysql_options,
-				operator_class,
-			})
-		} else {
-			let _ = (
-				table,
-				name,
-				columns,
-				unique,
-				index_type,
-				where_clause,
-				concurrently,
-				expressions,
-				mysql_options,
-				operator_class,
-			);
-			Err(MigrationError::InvalidMigration(format!(
-				"{context} is unsupported or malformed"
-			)))
-		}
 	}
 }
 
@@ -2114,22 +2080,9 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 						mysql_options,
 						operator_class,
 					},
-					#[cfg(feature = "pgvector")]
 					"CreateNamedIndex" => super::Operation::CreateNamedIndex {
 						table,
 						name: name?,
-						columns,
-						unique,
-						index_type,
-						where_clause,
-						concurrently,
-						expressions,
-						mysql_options,
-						operator_class,
-					},
-					#[cfg(not(feature = "pgvector"))]
-					"CreateNamedIndex" => super::Operation::CreateIndex {
-						table,
 						columns,
 						unique,
 						index_type,
@@ -4247,7 +4200,18 @@ fn parse_signed_integer_expr(expr: &Expr) -> Option<i128> {
 
 fn extract_string_expr(expr: &Expr) -> Option<String> {
 	match expr {
-		Expr::MethodCall(call) if call.method == "to_string" => extract_string_expr(&call.receiver),
+		Expr::MethodCall(call)
+			if call.args.is_empty()
+				&& call
+					.turbofish
+					.as_ref()
+					.is_none_or(|arguments| arguments.args.is_empty())
+				&& (call.method == "to_string"
+					|| call.method == "into"
+					|| call.method == "to_owned") =>
+		{
+			extract_string_expr(&call.receiver)
+		}
 		Expr::Lit(syn::ExprLit {
 			lit: syn::Lit::Str(value),
 			..
@@ -5842,7 +5806,7 @@ mod parser_tests {
 			table: "posts".to_string(),
 			constraint: Constraint::Unique {
 				name: "posts_tenant_slug_key".to_string(),
-				columns: vec!["tenant_id".to_string(), "slug".to_owned()],
+				columns: vec!["tenant_id".to_string(), slug.to_owned()],
 			},
 		}"#,
 		"Invalid migration: operations[0].AddConstraintDefinition.constraint.columns[1] is unsupported or malformed"
@@ -5914,11 +5878,11 @@ mod parser_tests {
 		"Invalid migration: operations[0].CreateIndex.unique is unsupported or malformed"
 	)]
 	#[case(
-		r#"columns: vec!["tenant_id".to_string(), "slug".to_owned()],"#,
+		r#"columns: vec!["tenant_id".to_string(), slug.to_owned()],"#,
 		"Invalid migration: operations[0].CreateIndex.columns[1] is unsupported or malformed"
 	)]
 	#[case(
-		r#"expressions: Some(vec!["LOWER(slug)".to_owned()]),"#,
+		r#"expressions: Some(vec![index_expression.to_owned()]),"#,
 		"Invalid migration: operations[0].CreateIndex.expressions[0] is unsupported or malformed"
 	)]
 	#[case(

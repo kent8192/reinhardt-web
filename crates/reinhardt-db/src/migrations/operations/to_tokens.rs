@@ -709,7 +709,6 @@ impl ToTokens for Operation {
 					}
 				});
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex {
 				table,
 				name,
@@ -724,6 +723,7 @@ impl ToTokens for Operation {
 			} => {
 				let columns_iter = columns.iter();
 				let index_type_token = match index_type {
+					#[cfg(feature = "pgvector")]
 					Some(IndexType::Hnsw { m, ef_construction }) => {
 						let m = optional_u16_to_tokens(*m);
 						let ef_construction = optional_u16_to_tokens(*ef_construction);
@@ -734,6 +734,7 @@ impl ToTokens for Operation {
 							})
 						}
 					}
+					#[cfg(feature = "pgvector")]
 					Some(IndexType::Ivfflat { lists }) => {
 						let lists = optional_u32_to_tokens(*lists);
 						quote! { Some(IndexType::Ivfflat { lists: #lists }) }

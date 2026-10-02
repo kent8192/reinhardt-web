@@ -286,6 +286,7 @@ impl AutoMigrationGenerator {
 						table,
 						columns,
 						expressions.as_deref(),
+						where_clause.as_deref(),
 					),
 					columns: columns.clone(),
 					unique: *unique,
@@ -296,7 +297,6 @@ impl AutoMigrationGenerator {
 					mysql_options: *mysql_options,
 					operator_class: operator_class.clone(),
 				}),
-				#[cfg(feature = "pgvector")]
 				Operation::CreateNamedIndex {
 					table,
 					name,
@@ -345,7 +345,6 @@ impl AutoMigrationGenerator {
 					operator_class: operator_class.clone(),
 				}),
 				Operation::DropIndex { .. } => None, // Cannot rollback without index definition
-				#[cfg(feature = "pgvector")]
 				Operation::DropNamedIndex {
 					table,
 					name,
@@ -361,32 +360,6 @@ impl AutoMigrationGenerator {
 					Operation::CreateNamedIndex {
 						table: table.clone(),
 						name: name.clone(),
-						columns: columns.clone(),
-						unique: *unique,
-						index_type: *index_type,
-						where_clause: where_clause.clone(),
-						concurrently: *concurrently,
-						expressions: expressions.clone(),
-						mysql_options: *mysql_options,
-						operator_class: operator_class.clone(),
-					}
-				}),
-				#[cfg(not(feature = "pgvector"))]
-				Operation::DropNamedIndex {
-					table,
-					name,
-					columns,
-					unique,
-					index_type,
-					where_clause,
-					concurrently,
-					expressions,
-					mysql_options,
-					operator_class,
-				} => named_index_has_target(columns, expressions.as_deref()).then(|| {
-					Operation::CreateIndexRepair {
-						table: table.clone(),
-						name: Some(name.clone()),
 						columns: columns.clone(),
 						unique: *unique,
 						index_type: *index_type,
@@ -697,7 +670,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			rollback[0].to_sql(&SqlDialect::Postgres),
-			"DROP INDEX idx_source_expr;"
+			"DROP INDEX idx_source_expr_0887263130f7b374;"
 		);
 	}
 
@@ -888,6 +861,72 @@ mod tests {
 
 		// Assert
 		assert!(rollback.is_empty());
+	}
+
+	#[rstest::rstest]
+	#[case(None)]
+	#[case(Some("sequence > 0"))]
+	fn rollback_indexes_preserve_generated_names_and_repair_semantics(
+		#[case] predicate: Option<&str>,
+		#[values(false, true)] repair: bool,
+	) {
+		// Arrange
+		let generator = AutoMigrationGenerator::new(
+			DatabaseSchema::default(),
+			Arc::new(Mutex::new(TestRepository::new())),
+		);
+		let state = super::super::ProjectState::new();
+		let mut operation = Operation::CreateIndex {
+			table: "events".to_owned(),
+			columns: vec!["sequence".to_owned()],
+			unique: false,
+			index_type: None,
+			where_clause: predicate.map(str::to_owned),
+			concurrently: false,
+			expressions: Some(vec!["(data->>'tenant')".to_owned(), "sequence".to_owned()]),
+			mysql_options: None,
+			operator_class: None,
+		};
+		if repair {
+			let Operation::CreateIndex {
+				table,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			} = operation
+			else {
+				panic!("expected CreateIndex");
+			};
+			operation = Operation::CreateIndexRepair {
+				table,
+				name: None,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			};
+		}
+		let expected = operation.to_reverse_operation(&state).unwrap();
+
+		// Act
+		let rollback = generator.generate_rollback(&[operation]);
+
+		// Assert
+		if repair {
+			assert!(expected.is_none());
+			assert!(rollback.is_empty());
+		} else {
+			assert_eq!(rollback, vec![expected.unwrap()]);
+		}
 	}
 
 	#[test]

@@ -13,6 +13,12 @@ use syn::File;
 /// This source scans directories for `.rs` migration files and parses them
 /// using `syn` to extract metadata like dependencies, atomic flag, and replaces.
 ///
+/// String payloads in migration operations and constraint vectors accept string
+/// literals, `"text".to_string()`, `"text".into()`, and `"text".to_owned()`.
+/// These conversions must have no arguments or generic parameters. The parser
+/// reads literal values without evaluating variables, functions, or other Rust
+/// expressions.
+///
 /// The filesystem path is authoritative for migration identity. For a path
 /// `<root>/<app>/<name>.rs`, the loaded migration uses `<app>` and `<name>` even
 /// if duplicate `app_label` or `name` fields appear in the source literal.
