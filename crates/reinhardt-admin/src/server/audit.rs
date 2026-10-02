@@ -785,68 +785,66 @@ mod tests {
 		assert!(output.contains("action=UPDATE"));
 	}
 
-	// ============================================================
-	// Log function tests (verify entry construction)
-	// ============================================================
+	#[derive(Clone, Default)]
+	struct AuditCapture(std::sync::Arc<std::sync::Mutex<Vec<(tracing::Level, String)>>>);
 
-	#[rstest]
-	fn test_log_create_constructs_correct_entry() {
-		// Arrange
-		let mut data = HashMap::new();
-		data.insert("name".to_string(), serde_json::json!("Alice"));
-		data.insert("email".to_string(), serde_json::json!("alice@example.com"));
-
-		// Act - just verify no panic; logging goes to the log infrastructure
-		log_create("user-42", "User", &data, true);
+	impl tracing::Subscriber for AuditCapture {
+		fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+			true
+		}
+		fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+			tracing::span::Id::from_u64(1)
+		}
+		fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+		fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+		fn enter(&self, _: &tracing::span::Id) {}
+		fn exit(&self, _: &tracing::span::Id) {}
+		fn event(&self, event: &tracing::Event<'_>) {
+			struct Message(String);
+			impl tracing::field::Visit for Message {
+				fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
+					if field.name() == "message" {
+						self.0 = format!("{value:?}");
+					}
+				}
+			}
+			let mut message = Message(String::new());
+			event.record(&mut message);
+			self.0
+				.lock()
+				.unwrap()
+				.push((*event.metadata().level(), message.0));
+		}
 	}
 
 	#[rstest]
-	fn test_log_update_constructs_correct_entry() {
+	#[case::create(|| log_create("user-42", "User", &HashMap::from([("name".into(), serde_json::json!("Alice"))]), true), tracing::Level::INFO, "user=user-42 action=CREATE model=User changed_fields=[name] affected=1 success=true")]
+	#[case::update(|| log_update("user-42", "User", "123", &HashMap::from([("email".into(), serde_json::json!("new@example.com"))]), true), tracing::Level::INFO, "user=user-42 action=UPDATE model=User record_id=123 changed_fields=[email] affected=1 success=true")]
+	#[case::delete(|| log_delete("user-42", "User", "123", true), tracing::Level::INFO, "user=user-42 action=DELETE model=User record_id=123 affected=1 success=true")]
+	#[case::bulk_delete(|| log_bulk_delete("user-42", "User", &["1".into(), "2".into(), "3".into()], 2, true), tracing::Level::INFO, "user=user-42 action=BULK_DELETE model=User record_id=[\"1\",\"2\",\"3\"] affected=2 success=true")]
+	#[case::failure(|| log_create("user-42", "User", &HashMap::new(), false), tracing::Level::WARN, "user=user-42 action=CREATE model=User changed_fields=[] success=false")]
+	fn test_crud_emits_audit_record(
+		#[case] log: fn(),
+		#[case] expected_level: tracing::Level,
+		#[case] expected_fields: &str,
+	) {
 		// Arrange
-		let mut data = HashMap::new();
-		data.insert("email".to_string(), serde_json::json!("new@example.com"));
+		let capture = AuditCapture::default();
+		let before = chrono::Utc::now();
 
-		// Act
-		log_update("user-42", "User", "123", &data, true);
-	}
-
-	#[rstest]
-	fn test_log_delete_constructs_correct_entry() {
-		// Act
-		log_delete("user-42", "User", "123", true);
-	}
-
-	#[rstest]
-	fn test_log_bulk_delete_constructs_correct_entry() {
-		// Arrange
-		let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
-
-		// Act - construct the AuditEntry the same way log_bulk_delete does
-		// to verify the JSON array format used for record_id
-		let entry = AuditEntry {
-			timestamp: chrono::Utc::now().to_rfc3339(),
-			user_id: "user-42".to_string(),
-			action: AuditAction::BulkDelete,
-			model_name: "User".to_string(),
-			record_id: Some(serde_json::to_string(&ids).unwrap_or_else(|_| ids.join(","))),
-			changed_fields: None,
-			success: true,
-			affected_count: Some(3),
-		};
+		// Act: a scoped subscriber observes the production emission without global state.
+		tracing::subscriber::with_default(capture.clone(), log);
+		let after = chrono::Utc::now();
 
 		// Assert
-		assert_eq!(entry.record_id, Some("[\"1\",\"2\",\"3\"]".to_string()));
-		assert_eq!(entry.action, AuditAction::BulkDelete);
-		assert!(entry.success);
-	}
-
-	#[rstest]
-	fn test_log_create_with_failure() {
-		// Arrange
-		let data = HashMap::new();
-
-		// Act
-		log_create("user-42", "User", &data, false);
+		let events = capture.0.lock().unwrap();
+		assert_eq!(events.len(), 1);
+		assert_eq!(events[0].0, expected_level);
+		let record = events[0].1.strip_prefix("[ADMIN_AUDIT] ").unwrap();
+		let (timestamp, fields) = record.split_once(' ').unwrap();
+		let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp).unwrap();
+		assert!(timestamp >= before && timestamp <= after);
+		assert_eq!(fields, expected_fields);
 	}
 
 	// ============================================================
