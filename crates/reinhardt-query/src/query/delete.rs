@@ -144,6 +144,14 @@ impl Default for DeleteStatement {
 }
 
 impl QueryStatementBuilder for DeleteStatement {
+	fn to_string<T: QueryBuilderTrait>(&self, query_builder: T) -> String {
+		crate::query::traits::postgres_to_string(
+			self,
+			query_builder,
+			crate::backend::PostgresQueryBuilder::build_delete_with_writer,
+		)
+	}
+
 	fn build_any(&self, query_builder: &dyn QueryBuilderTrait) -> (String, Values) {
 		use crate::backend::{
 			MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqliteQueryBuilder,
