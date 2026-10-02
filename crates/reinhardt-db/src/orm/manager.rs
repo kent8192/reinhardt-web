@@ -9,7 +9,7 @@ use super::query::RelationLoadInput;
 use super::{DatabaseValue, FieldCodecError, Model, QuerySet};
 use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 use reinhardt_query::prelude::{
-	Alias, CockroachDBQueryBuilder, ColumnRef, DeleteStatement, Expr, ExprTrait, Func,
+	Alias, CockroachDBQueryBuilder, ColumnRef, Condition, DeleteStatement, Expr, ExprTrait, Func,
 	InsertStatement, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder, SelectStatement,
 	SqliteQueryBuilder, UpdateStatement, Values,
 };
@@ -972,6 +972,58 @@ impl<M: Model> Manager<M> {
 			.collect()
 	}
 
+	fn primary_key_fields(field_metadata: &[FieldInfo]) -> Vec<String> {
+		let Some(composite) = M::composite_primary_key() else {
+			return vec![M::primary_key_field().to_owned()];
+		};
+
+		// Field codecs are keyed by logical names even when composite metadata
+		// names physical columns. Prefer the marked model fields when available.
+		let fields: Vec<_> = field_metadata
+			.iter()
+			.filter(|field| field.primary_key)
+			.map(|field| field.name.clone())
+			.collect();
+		if fields.len() == composite.fields().len() {
+			return fields;
+		}
+
+		composite
+			.fields()
+			.iter()
+			.map(|name| {
+				field_metadata
+					.iter()
+					.find(|field| field.name == *name || field.db_column_name() == name)
+					.map_or_else(|| name.clone(), |field| field.name.clone())
+			})
+			.collect()
+	}
+
+	fn primary_key_condition_from_object(
+		obj: &std::collections::BTreeMap<String, DatabaseValue>,
+	) -> Result<Condition, FieldCodecError> {
+		let field_metadata = M::field_metadata();
+		let mut condition = Condition::all();
+		for field in Self::primary_key_fields(&field_metadata) {
+			let value = obj
+				.get(&field)
+				.filter(|value| !matches!(value, DatabaseValue::Null))
+				.cloned()
+				.ok_or_else(|| {
+					FieldCodecError::Serialization(format!(
+						"encoded {} fields must contain a non-null primary key '{}'",
+						M::table_name(),
+						field
+					))
+				})?;
+			let column = Self::field_column(&field_metadata, &field);
+			condition = condition
+				.add(Expr::col(Alias::new(column)).eq(database_value_to_query_value(value)));
+		}
+		Ok(condition)
+	}
+
 	fn build_update_statement_from_object(
 		obj: &std::collections::BTreeMap<String, DatabaseValue>,
 		_field_is_none: impl Fn(&str) -> bool,
@@ -986,11 +1038,12 @@ impl<M: Model> Manager<M> {
 		let mut stmt = Query::update();
 		stmt.table(Alias::new(M::table_name()));
 		let field_metadata = M::field_metadata();
+		let primary_key_fields = Self::primary_key_fields(&field_metadata);
 
 		let mut has_values = false;
 		for (k, v) in obj.iter().filter(|(k, _)| {
 			let key = k.as_str();
-			key != M::primary_key_field() && !Self::is_generated_field(key)
+			!primary_key_fields.iter().any(|field| field == key) && !Self::is_generated_field(key)
 		}) {
 			let column_name = Self::field_column(&field_metadata, k);
 			if matches!(v, DatabaseValue::Null) {
@@ -1013,21 +1066,7 @@ impl<M: Model> Manager<M> {
 			);
 		}
 
-		let pk_value = obj
-			.get(M::primary_key_field())
-			.filter(|value| !matches!(value, DatabaseValue::Null))
-			.cloned()
-			.ok_or_else(|| {
-				FieldCodecError::Serialization(format!(
-					"encoded {} fields must contain a non-null primary key '{}'",
-					M::table_name(),
-					M::primary_key_field()
-				))
-			})?;
-		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
-		stmt.and_where(
-			Expr::col(Alias::new(primary_key_column)).eq(database_value_to_query_value(pk_value)),
-		);
+		stmt.cond_where(Self::primary_key_condition_from_object(obj)?);
 
 		if include_returning {
 			stmt.returning(Self::returning_columns_from_object(obj));
@@ -2319,7 +2358,7 @@ impl<M: Model> Manager<M> {
 		executor: &mut dyn super::connection::TransactionExecutor,
 		model: &M,
 	) -> Result<M, crate::backends::error::DatabaseError> {
-		let pk = model.primary_key().ok_or_else(|| {
+		model.primary_key().ok_or_else(|| {
 			crate::backends::error::DatabaseError::new(
 				crate::backends::error::DatabaseErrorKind::Query,
 				"Model must have primary key",
@@ -2351,11 +2390,9 @@ impl<M: Model> Manager<M> {
 			let mut select = Query::select();
 			select.from(Alias::new(M::table_name()));
 			select.column(ColumnRef::Asterisk);
-			let field_metadata = M::field_metadata();
-			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
-			select.and_where(
-				Expr::col(Alias::new(primary_key_column))
-					.eq(Self::primary_key_query_value(&pk).map_err(executor_field_codec_error)?),
+			select.cond_where(
+				Self::primary_key_condition_from_object(&obj)
+					.map_err(executor_field_codec_error)?,
 			);
 			let (select_sql, select_values) =
 				build_select_sql_checked(&select, backend, executor.is_cockroachdb())
@@ -2437,23 +2474,14 @@ impl<M: Model> Manager<M> {
 			.map(Self::sea_value_to_query_value)
 			.collect();
 
-		let pk = model.primary_key().ok_or_else(|| {
-			Error::from(DatabaseError::new(
-				DatabaseErrorKind::Query,
-				"Model must have primary key",
-			))
-		})?;
 		if backend == DatabaseBackend::MySql {
 			conn.execute_with_context(&sql, values, context).await?;
-			let field_metadata = M::field_metadata();
-			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
 			let mut select = Query::select();
 			select
 				.from(Alias::new(M::table_name()))
 				.column(ColumnRef::Asterisk)
-				.and_where(
-					Expr::col(Alias::new(primary_key_column))
-						.eq(Self::primary_key_query_value(&pk).map_err(field_codec_error)?),
+				.cond_where(
+					Self::primary_key_condition_from_object(&obj).map_err(field_codec_error)?,
 				);
 			let (select_sql, select_values) =
 				build_select_sql_checked(&select, backend, conn.is_cockroachdb())?;
@@ -4350,6 +4378,187 @@ mod tests {
 			choices: None,
 			attributes: HashMap::new(),
 		}
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct CompositeUpdateModel {
+		tenant_key: String,
+		entry_key: String,
+		body: String,
+	}
+
+	impl Model for CompositeUpdateModel {
+		type PrimaryKey = String;
+		type Fields = JsonManagerModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"composite_updates"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"tenant_key"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.tenant_key.clone())
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.tenant_key = value;
+		}
+
+		fn new_fields() -> Self::Fields {
+			JsonManagerModelFields
+		}
+
+		fn composite_primary_key() -> Option<crate::orm::composite_pk::CompositePrimaryKey> {
+			Some(
+				crate::orm::composite_pk::CompositePrimaryKey::new(vec![
+					"tenant_key".to_owned(),
+					"entry_key".to_owned(),
+				])
+				.unwrap(),
+			)
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut tenant = test_manager_field_info("tenant_key", "CharField", false, true);
+			tenant.db_column = Some("tenant_id".to_owned());
+			let mut entry = test_manager_field_info("entry_key", "CharField", false, true);
+			entry.db_column = Some("entry_id".to_owned());
+			vec![
+				tenant,
+				entry,
+				test_manager_field_info("body", "TextField", false, false),
+			]
+		}
+	}
+
+	#[rstest]
+	#[case(
+		DatabaseBackend::Postgres,
+		"UPDATE \"composite_updates\" SET \"body\" = $1 WHERE (\"tenant_id\" = $2 AND \"entry_id\" = $3) RETURNING \"tenant_id\", \"body\", \"entry_id\""
+	)]
+	#[case(
+		DatabaseBackend::MySql,
+		"UPDATE `composite_updates` SET `body` = ? WHERE (`tenant_id` = ? AND `entry_id` = ?)"
+	)]
+	#[case(
+		DatabaseBackend::Sqlite,
+		"UPDATE \"composite_updates\" SET \"body\" = ? WHERE (\"tenant_id\" = ? AND \"entry_id\" = ?) RETURNING \"tenant_id\", \"body\", \"entry_id\""
+	)]
+	fn composite_update_binds_every_key_and_preserves_database_values(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange: encoded UUID and enum storage values must remain typed.
+		let tenant = uuid::Uuid::from_u128(42);
+		let obj = std::collections::BTreeMap::from([
+			("tenant_key".to_owned(), DatabaseValue::Uuid(tenant)),
+			(
+				"entry_key".to_owned(),
+				DatabaseValue::String("stored-task".to_owned()),
+			),
+			(
+				"body".to_owned(),
+				DatabaseValue::String("new body".to_owned()),
+			),
+		]);
+
+		// Act
+		let stmt =
+			Manager::<CompositeUpdateModel>::build_update_statement_from_object_with_returning(
+				&obj,
+				backend != DatabaseBackend::MySql,
+			)
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&stmt, backend);
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(
+			values.0,
+			vec![
+				super::database_value_to_query_value(DatabaseValue::String("new body".to_owned())),
+				super::database_value_to_query_value(DatabaseValue::Uuid(tenant)),
+				super::database_value_to_query_value(DatabaseValue::String(
+					"stored-task".to_owned()
+				)),
+			]
+		);
+	}
+
+	#[rstest]
+	#[case("tenant_key", false)]
+	#[case("tenant_key", true)]
+	#[case("entry_key", false)]
+	#[case("entry_key", true)]
+	fn composite_update_rejects_missing_or_null_key_components(
+		#[case] field: &str,
+		#[case] null: bool,
+	) {
+		// Arrange
+		let mut obj = std::collections::BTreeMap::from([
+			(
+				"tenant_key".to_owned(),
+				DatabaseValue::String("t".to_owned()),
+			),
+			(
+				"entry_key".to_owned(),
+				DatabaseValue::String("a".to_owned()),
+			),
+			(
+				"body".to_owned(),
+				DatabaseValue::String("new body".to_owned()),
+			),
+		]);
+		if null {
+			obj.insert(field.to_owned(), DatabaseValue::Null);
+		} else {
+			obj.remove(field);
+		}
+
+		// Act
+		let error =
+			Manager::<CompositeUpdateModel>::build_update_statement_from_object(&obj, |_| false)
+				.unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error,
+			FieldCodecError::Serialization(format!(
+				"encoded composite_updates fields must contain a non-null primary key '{field}'"
+			))
+		);
+	}
+
+	#[rstest]
+	fn composite_update_without_mutable_fields_keeps_all_key_predicates() {
+		// Arrange
+		let obj = std::collections::BTreeMap::from([
+			(
+				"tenant_key".to_owned(),
+				DatabaseValue::String("t".to_owned()),
+			),
+			(
+				"entry_key".to_owned(),
+				DatabaseValue::String("a".to_owned()),
+			),
+		]);
+
+		// Act
+		let stmt =
+			Manager::<CompositeUpdateModel>::build_update_statement_from_object(&obj, |_| false)
+				.unwrap();
+		let (sql, values) = super::build_update_sql(&stmt, DatabaseBackend::Postgres);
+
+		// Assert
+		assert_eq!(
+			sql,
+			"UPDATE \"composite_updates\" SET \"tenant_id\" = \"tenant_id\" WHERE (\"tenant_id\" = $1 AND \"entry_id\" = $2) RETURNING \"tenant_id\", \"entry_id\""
+		);
+		assert_eq!(values.0, vec!["t".into(), "a".into()]);
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
