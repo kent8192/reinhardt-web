@@ -24,6 +24,8 @@ fn publication_predicate() -> SimpleExpr {
 #[case::between_operand(Expr::val(1).eq(2).between(false, true), "SELECT ($1 = $2) BETWEEN $3 AND $4", "SELECT (1 = 2) BETWEEN FALSE AND TRUE")]
 #[case::in_operand(Expr::val(true).or(false).is_in([true, false]), "SELECT ($1 OR $2) IN ($3, $4)", "SELECT (TRUE OR FALSE) IN (TRUE, FALSE)")]
 #[case::postfix_cast(Expr::val(true).eq(false).as_enum("bool"), "SELECT ($1 = $2)::\"bool\"", "SELECT (TRUE = FALSE)::\"bool\"")]
+#[case::escaped_like_cast(Expr::col("name").starts_with("prefix").as_enum("bool"), r#"SELECT ("name" LIKE $1 ESCAPE '\')::"bool""#, r#"SELECT ("name" LIKE 'prefix%' ESCAPE '\')::"bool""#)]
+#[case::escaped_like_in(Expr::col("name").starts_with("prefix").is_in([true]), r#"SELECT ("name" LIKE $1 ESCAPE '\') IN ($2)"#, r#"SELECT ("name" LIKE 'prefix%' ESCAPE '\') IN (TRUE)"#)]
 fn postgres_boolean_preserves_grouping(
 	#[case] expression: SimpleExpr,
 	#[case] expected_sql: &str,
