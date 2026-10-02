@@ -425,51 +425,94 @@ async fn test_smtp_batch_send(#[future] mailpit_container: MailpitContainer) {
 	assert_eq!(received.len(), 5, "Mailpit should receive 5 messages");
 }
 
-/// Test: Send timeout (short timeout)
+/// The SMTP server's 421 timeout response is propagated by the real send path.
+/// SmtpConfig::timeout bounds TCP connection setup, not the entire SMTP exchange.
 #[rstest]
 #[tokio::test]
-async fn test_smtp_send_timeout(#[future] mailpit_container: MailpitContainer) {
-	let mailpit = mailpit_container.await;
-	delete_all_messages(&mailpit).await;
+async fn test_smtp_server_timeout_response() {
+	use tokio::io::AsyncWriteExt;
 
-	let config = SmtpConfig::new("localhost", mailpit.smtp_port())
+	// Arrange
+	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let config = SmtpConfig::new("127.0.0.1", listener.local_addr().unwrap().port())
 		.with_security(SmtpSecurity::None)
-		.with_timeout(Duration::from_millis(1)); // Very short timeout
-
-	let backend = SmtpBackend::new(config).expect("Failed to create SMTP backend");
-
+		.with_timeout(Duration::from_secs(1));
+	let backend = SmtpBackend::new(config).unwrap();
 	let message = EmailMessage::builder()
-		.from("timeout@example.com")
-		.to(vec!["test@example.com".to_string()])
-		.subject("Timeout Test")
-		.body("This might timeout")
+		.from("sender@example.com")
+		.to(vec!["recipient@example.com".into()])
+		.subject("Server timeout")
+		.body("The server rejects this SMTP session")
 		.build()
 		.unwrap();
+	// JoinSet aborts the peer on every exit path, including assertion failure.
+	let mut peers = tokio::task::JoinSet::new();
+	peers.spawn(async move {
+		let (mut stream, _) = listener.accept().await.unwrap();
+		stream
+			.write_all(b"421 4.4.2 SMTP session timed out\r\n")
+			.await
+			.unwrap();
+	});
 
-	// This may or may not succeed due to timing
-	let result = backend.send_messages(&[message]).await;
-	// We just verify it doesn't panic
-	assert!(result.is_ok() || result.is_err(), "Should return result");
+	// Act
+	let result = tokio::time::timeout(Duration::from_secs(5), backend.send_messages(&[message]))
+		.await
+		.expect("the server rejection must complete the send");
+
+	// Assert: awaiting the peer proves that the failure happened after connection.
+	tokio::time::timeout(Duration::from_secs(1), peers.join_next())
+		.await
+		.expect("send must reach the SMTP peer")
+		.unwrap()
+		.unwrap();
+	let reinhardt_mail::EmailError::SmtpError(error) = result.unwrap_err() else {
+		panic!("expected the SMTP server's timeout error");
+	};
+	assert!(error.contains("421"), "missing SMTP reply code: {error}");
+	assert!(
+		error.contains("SMTP session timed out"),
+		"missing server response: {error}"
+	);
 }
 
-/// Test: Connection error (invalid port)
+/// A peer closing before its SMTP greeting must fail the send, not configuration.
 #[rstest]
 #[tokio::test]
-async fn test_smtp_connection_error(#[future] mailpit_container: MailpitContainer) {
-	let _mailpit = mailpit_container.await;
+async fn test_smtp_connection_closed_before_greeting() {
+	// Arrange
+	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let config = SmtpConfig::new("127.0.0.1", listener.local_addr().unwrap().port())
+		.with_security(SmtpSecurity::None)
+		.with_timeout(Duration::from_secs(1));
+	let backend = SmtpBackend::new(config).unwrap();
+	let message = EmailMessage::builder()
+		.from("sender@example.com")
+		.to(vec!["recipient@example.com".into()])
+		.subject("Disconnected peer")
+		.body("The peer closes before accepting this message")
+		.build()
+		.unwrap();
+	let mut peers = tokio::task::JoinSet::new();
+	peers.spawn(async move {
+		let (stream, _) = listener.accept().await.unwrap();
+		drop(stream);
+	});
 
-	let config = SmtpConfig::new(
-		"localhost",
-		65534, // Invalid port
-	)
-	.with_security(SmtpSecurity::None)
-	.with_timeout(Duration::from_secs(1));
+	// Act
+	let result = tokio::time::timeout(Duration::from_secs(5), backend.send_messages(&[message]))
+		.await
+		.expect("a closed connection must complete the send");
 
-	let result = SmtpBackend::new(config);
-	// Connection creation might fail or send might fail
+	// Assert
+	tokio::time::timeout(Duration::from_secs(1), peers.join_next())
+		.await
+		.expect("send must reach the SMTP peer")
+		.unwrap()
+		.unwrap();
 	assert!(
-		result.is_err() || result.is_ok(),
-		"Should handle invalid port"
+		matches!(result, Err(reinhardt_mail::EmailError::SmtpError(_))),
+		"{result:?}"
 	);
 }
 
