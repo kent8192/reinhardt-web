@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Preserve `i32` native query parameters as `QueryValue::Int32(i32)` so
+  PostgreSQL resolves `integer` function overloads. Exhaustive `QueryValue`
+  matches must handle the new variant. `QueryValue::from(i32)` and the Query
+  value conversion paths now return `Int32`; use an `i64` or explicit
+  `QueryValue::Int(i64)` to retain `bigint` binding. Result-row integer
+  normalization is unchanged.
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.17...reinhardt-db@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation

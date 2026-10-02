@@ -684,6 +684,21 @@ the default, `full`, and `all-databases` feature groups.
 
 ## Usage
 
+### Native integer parameters
+
+`orm::execution::convert_values` and `QueryValue::from(i32)` preserve a 32-bit
+integer as `QueryValue::Int32`. PostgreSQL binds it as `integer`, allowing calls
+such as `right(text, integer)` without `.cast_as("int4")`. An `i64` or explicit
+`QueryValue::Int` continues to bind as `bigint`, regardless of its value.
+The same distinction applies to transaction and streaming execution.
+
+When migrating exhaustive matches over `QueryValue`, handle `Int32(i32)` as
+well as `Int(i64)`. Use `i64::from(value)` when normalizing an `Int32` value for
+application logic. Code that intentionally needs a `bigint` parameter should
+pass an `i64` or construct `QueryValue::Int` explicitly. Database result rows
+continue to normalize signed integers to `QueryValue::Int`; numeric `Row::get`
+conversions also accept `Int32` values supplied by custom backends.
+
 ### Define Models
 
 `app_label` is required and identifies the application used by migrations and
