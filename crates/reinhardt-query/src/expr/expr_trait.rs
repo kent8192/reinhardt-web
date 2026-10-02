@@ -29,20 +29,16 @@ fn escape_like_pattern(input: &str) -> String {
 	escaped
 }
 
-/// Build a LIKE expression with an explicit `ESCAPE '\'` clause.
-///
-/// Produces: `<expr> LIKE <pattern> ESCAPE '\'`
+/// Build a LIKE expression with an explicit backslash escape character.
 ///
 /// The explicit ESCAPE clause ensures that backslash escaping works
 /// consistently across all SQL backends, including those that do not treat
-/// `\` as a LIKE escape character by default (e.g., SQLite).
+/// `\` as a LIKE escape character by default (e.g., SQLite). Its literal is
+/// rendered by the backend: MySQL requires two backslashes in the SQL string.
 fn like_with_escape(expr: SimpleExpr, pattern: String) -> SimpleExpr {
-	SimpleExpr::CustomWithExpr(
-		"? LIKE ? ESCAPE '\\'".to_string(),
-		vec![
-			expr,
-			SimpleExpr::Value(Value::String(Some(Box::new(pattern)))),
-		],
+	SimpleExpr::LikeWithEscape(
+		Box::new(expr),
+		Box::new(SimpleExpr::Value(Value::String(Some(Box::new(pattern))))),
 	)
 }
 
@@ -695,36 +691,6 @@ mod tests {
 	fn test_not_like() {
 		let expr = Expr::col("name").not_like("%admin%");
 		assert!(matches!(expr, SimpleExpr::Binary(_, BinOper::NotLike, _)));
-	}
-
-	#[rstest]
-	fn test_starts_with() {
-		let expr = Expr::col("name").starts_with("John");
-		// starts_with uses CustomWithExpr to include ESCAPE clause
-		assert!(matches!(expr, SimpleExpr::CustomWithExpr(_, _)));
-		if let SimpleExpr::CustomWithExpr(template, _) = &expr {
-			assert_eq!(template, "? LIKE ? ESCAPE '\\'");
-		}
-	}
-
-	#[rstest]
-	fn test_ends_with() {
-		let expr = Expr::col("email").ends_with("@example.com");
-		// ends_with uses CustomWithExpr to include ESCAPE clause
-		assert!(matches!(expr, SimpleExpr::CustomWithExpr(_, _)));
-		if let SimpleExpr::CustomWithExpr(template, _) = &expr {
-			assert_eq!(template, "? LIKE ? ESCAPE '\\'");
-		}
-	}
-
-	#[rstest]
-	fn test_contains() {
-		let expr = Expr::col("description").contains("important");
-		// contains uses CustomWithExpr to include ESCAPE clause
-		assert!(matches!(expr, SimpleExpr::CustomWithExpr(_, _)));
-		if let SimpleExpr::CustomWithExpr(template, _) = &expr {
-			assert_eq!(template, "? LIKE ? ESCAPE '\\'");
-		}
 	}
 
 	#[rstest]

@@ -323,6 +323,12 @@ impl SqliteQueryBuilder {
 			SimpleExpr::Custom(sql) => {
 				writer.push(sql);
 			}
+			SimpleExpr::LikeWithEscape(expr, pattern) => {
+				self.write_simple_expr(writer, expr);
+				writer.push(" LIKE ");
+				self.write_simple_expr(writer, pattern);
+				writer.push(" ESCAPE '\\'");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');

@@ -61,6 +61,8 @@ use crate::{
 /// This struct implements SQL generation for PostgreSQL, using the following conventions:
 /// - Identifiers: Double quotes (`"table_name"`)
 /// - Placeholders: Numbered (`$1`, `$2`, ...)
+/// - Grouping: Typed expressions retain their precedence and associativity
+///   through parentheses, including WHERE/HAVING predicates and DDL constraints
 ///
 /// # Examples
 ///
@@ -294,7 +296,8 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
 			TableRef::SubQuery(query, alias) => {
-				let (subquery_sql, subquery_values) = self.build_select(query);
+				let (subquery_sql, subquery_values) =
+					self.build_select_with_writer(query, writer.for_subquery());
 
 				// Adjust placeholders using token-based approach to avoid false-positive replacements
 				let offset = writer.param_index() - 1;
@@ -312,7 +315,8 @@ impl PostgresQueryBuilder {
 				writer.append_values(&subquery_values);
 			}
 			TableRef::LateralSubQuery(query, alias) => {
-				let (subquery_sql, subquery_values) = self.build_select(query);
+				let (subquery_sql, subquery_values) =
+					self.build_select_with_writer(query, writer.for_subquery());
 				let offset = writer.param_index() - 1;
 				let adjusted_sql =
 					Self::adjust_placeholder_offsets(&subquery_sql, subquery_values.len(), offset);
@@ -357,6 +361,95 @@ impl PostgresQueryBuilder {
 		}
 	}
 
+	// PostgreSQL groups generic operators together, unlike the backend-neutral
+	// precedence table (notably for bitwise and PostgreSQL-specific operators).
+	fn binary_precedence(op: BinOper) -> u8 {
+		match op {
+			BinOper::Or => 1,
+			BinOper::And => 2,
+			// Logical NOT has precedence 3.
+			BinOper::Is | BinOper::IsNot => 4,
+			BinOper::Equal
+			| BinOper::NotEqual
+			| BinOper::SmallerThan
+			| BinOper::SmallerThanOrEqual
+			| BinOper::GreaterThan
+			| BinOper::GreaterThanOrEqual => 5,
+			BinOper::Between
+			| BinOper::NotBetween
+			| BinOper::In
+			| BinOper::NotIn
+			| BinOper::Like
+			| BinOper::NotLike
+			| BinOper::ILike
+			| BinOper::NotILike
+			| BinOper::SimilarTo
+			| BinOper::NotSimilarTo => 6,
+			BinOper::Matches
+			| BinOper::NotMatches
+			| BinOper::BitAnd
+			| BinOper::BitOr
+			| BinOper::LShift
+			| BinOper::RShift
+			| BinOper::PgOperator(_) => 7,
+			BinOper::Add | BinOper::Sub => 8,
+			BinOper::Mul | BinOper::Div | BinOper::Mod => 9,
+		}
+	}
+
+	fn write_grouped_expr(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		parenthesized: bool,
+		unquoted: bool,
+	) {
+		if parenthesized {
+			writer.push("(");
+		}
+		if unquoted {
+			self.write_simple_expr_unquoted(writer, expr);
+		} else {
+			self.write_simple_expr(writer, expr);
+		}
+		if parenthesized {
+			writer.push(")");
+		}
+	}
+
+	fn write_binary_operand(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		parent: BinOper,
+		right_operand: bool,
+		unquoted: bool,
+	) {
+		let parent_precedence = Self::binary_precedence(parent);
+		let parenthesized = match expr {
+			SimpleExpr::Binary(_, child, _) => {
+				let child_precedence = Self::binary_precedence(*child);
+				let associative_logical = matches!(
+					(parent, child),
+					(BinOper::And, BinOper::And) | (BinOper::Or, BinOper::Or)
+				);
+				// Comparisons and predicates are non-associative. Arithmetic
+				// is left-associative, so equal-precedence right children must
+				// retain their grouping, even for addition and multiplication.
+				let non_associative = (4..=6).contains(&parent_precedence);
+				child_precedence < parent_precedence
+					|| (child_precedence == parent_precedence
+						&& (non_associative || (right_operand && !associative_logical)))
+			}
+			SimpleExpr::LikeWithEscape(..) => {
+				parent_precedence >= Self::binary_precedence(BinOper::Like)
+			}
+			SimpleExpr::Unary(_, _) => parent_precedence > 3,
+			_ => false,
+		};
+		self.write_grouped_expr(writer, expr, parenthesized, unquoted);
+	}
+
 	/// Write a simple expression
 	fn write_simple_expr(&self, writer: &mut SqlWriter, expr: &SimpleExpr) {
 		match expr {
@@ -370,16 +463,16 @@ impl PostgresQueryBuilder {
 				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
 					if items.len() == 2 =>
 				{
-					self.write_simple_expr(writer, left);
+					self.write_binary_operand(writer, left, *op, false, false);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr(writer, &items[0]);
+					self.write_binary_operand(writer, &items[0], *op, true, false);
 					writer.push(" AND ");
-					self.write_simple_expr(writer, &items[1]);
+					self.write_binary_operand(writer, &items[1], *op, true, false);
 				}
 				(BinOper::In | BinOper::NotIn, SimpleExpr::Tuple(items)) => {
-					self.write_simple_expr(writer, left);
+					self.write_binary_operand(writer, left, *op, false, false);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push(" (");
@@ -389,17 +482,21 @@ impl PostgresQueryBuilder {
 					writer.push(")");
 				}
 				_ => {
-					self.write_simple_expr(writer, left);
+					self.write_binary_operand(writer, left, *op, false, false);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr(writer, right);
+					self.write_binary_operand(writer, right, *op, true, false);
 				}
 			},
 			SimpleExpr::Unary(op, expr) => {
 				writer.push(op.as_str());
 				writer.push_space();
-				self.write_simple_expr(writer, expr);
+				let parenthesized = matches!(
+					expr.as_ref(),
+					SimpleExpr::Binary(_, BinOper::And | BinOper::Or, _)
+				);
+				self.write_grouped_expr(writer, expr, parenthesized, false);
 			}
 			SimpleExpr::FunctionCall(func_name, args) => {
 				writer.push(&func_name.to_string());
@@ -448,7 +545,8 @@ impl PostgresQueryBuilder {
 				writer.push("(");
 
 				// Recursively build the subquery
-				let (subquery_sql, subquery_values) = self.build_select(select_stmt);
+				let (subquery_sql, subquery_values) =
+					self.build_select_with_writer(select_stmt, writer.for_subquery());
 
 				// Adjust placeholders using token-based approach to avoid false-positive replacements
 				let offset = writer.param_index() - 1;
@@ -510,6 +608,12 @@ impl PostgresQueryBuilder {
 			SimpleExpr::Custom(sql) => {
 				writer.push(sql);
 			}
+			SimpleExpr::LikeWithEscape(expr, pattern) => {
+				self.write_binary_operand(writer, expr, BinOper::Like, false, false);
+				writer.push(" LIKE ");
+				self.write_binary_operand(writer, pattern, BinOper::Like, true, false);
+				writer.push(" ESCAPE '\\'");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');
@@ -533,7 +637,11 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 			}
 			SimpleExpr::AsEnum(name, expr) => {
-				self.write_simple_expr(writer, expr);
+				let parenthesized = matches!(
+					expr.as_ref(),
+					SimpleExpr::Binary(..) | SimpleExpr::Unary(..) | SimpleExpr::LikeWithEscape(..)
+				);
+				self.write_grouped_expr(writer, expr, parenthesized, false);
 				writer.push("::");
 				writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 			}
@@ -665,20 +773,26 @@ impl PostgresQueryBuilder {
 					}
 				}
 			}
+			SimpleExpr::LikeWithEscape(expr, pattern) => {
+				self.write_binary_operand(writer, expr, BinOper::Like, false, true);
+				writer.push(" LIKE ");
+				self.write_binary_operand(writer, pattern, BinOper::Like, true, true);
+				writer.push(" ESCAPE '\\'");
+			}
 			SimpleExpr::Binary(left, op, right) => match (op, right.as_ref()) {
 				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
 					if items.len() == 2 =>
 				{
-					self.write_simple_expr_unquoted(writer, left);
+					self.write_binary_operand(writer, left, *op, false, true);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr_unquoted(writer, &items[0]);
+					self.write_binary_operand(writer, &items[0], *op, true, true);
 					writer.push(" AND ");
-					self.write_simple_expr_unquoted(writer, &items[1]);
+					self.write_binary_operand(writer, &items[1], *op, true, true);
 				}
 				(BinOper::In | BinOper::NotIn, SimpleExpr::Tuple(items)) => {
-					self.write_simple_expr_unquoted(writer, left);
+					self.write_binary_operand(writer, left, *op, false, true);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push(" (");
@@ -688,17 +802,21 @@ impl PostgresQueryBuilder {
 					writer.push(")");
 				}
 				_ => {
-					self.write_simple_expr_unquoted(writer, left);
+					self.write_binary_operand(writer, left, *op, false, true);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr_unquoted(writer, right);
+					self.write_binary_operand(writer, right, *op, true, true);
 				}
 			},
 			SimpleExpr::Unary(op, expr) => {
 				writer.push(op.as_str());
 				writer.push_space();
-				self.write_simple_expr_unquoted(writer, expr);
+				let parenthesized = matches!(
+					expr.as_ref(),
+					SimpleExpr::Binary(_, BinOper::And | BinOper::Or, _)
+				);
+				self.write_grouped_expr(writer, expr, parenthesized, true);
 			}
 			SimpleExpr::FunctionCall(func_name, args) => {
 				writer.push(&func_name.to_string());
@@ -772,7 +890,11 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 			}
 			SimpleExpr::AsEnum(name, expr) => {
-				self.write_simple_expr_unquoted(writer, expr);
+				let parenthesized = matches!(
+					expr.as_ref(),
+					SimpleExpr::Binary(..) | SimpleExpr::Unary(..) | SimpleExpr::LikeWithEscape(..)
+				);
+				self.write_grouped_expr(writer, expr, parenthesized, true);
 				writer.push("::");
 				writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 			}
@@ -805,17 +927,23 @@ impl PostgresQueryBuilder {
 		}
 
 		if condition.conditions.len() == 1 {
-			self.write_condition_expr(writer, &condition.conditions[0]);
+			if condition.negate {
+				writer.push("(");
+				self.write_condition_expr(writer, &condition.conditions[0], BinOper::Or);
+				writer.push(")");
+			} else {
+				self.write_condition_expr(writer, &condition.conditions[0], BinOper::And);
+			}
 			return;
 		}
 
 		writer.push("(");
-		let separator = match condition.condition_type {
-			ConditionType::All => " AND ",
-			ConditionType::Any => " OR ",
+		let (separator, parent) = match condition.condition_type {
+			ConditionType::All => (" AND ", BinOper::And),
+			ConditionType::Any => (" OR ", BinOper::Or),
 		};
 		writer.push_list(&condition.conditions, separator, |w, cond_expr| {
-			self.write_condition_expr(w, cond_expr);
+			self.write_condition_expr(w, cond_expr, parent);
 		});
 		writer.push(")");
 	}
@@ -825,6 +953,7 @@ impl PostgresQueryBuilder {
 		&self,
 		writer: &mut SqlWriter,
 		cond_expr: &crate::expr::ConditionExpression,
+		parent: BinOper,
 	) {
 		use crate::expr::ConditionExpression;
 
@@ -833,7 +962,7 @@ impl PostgresQueryBuilder {
 				self.write_condition(writer, cond);
 			}
 			ConditionExpression::SimpleExpr(expr) => {
-				self.write_simple_expr(writer, expr);
+				self.write_binary_operand(writer, expr, parent, false, false);
 			}
 		}
 	}
@@ -992,12 +1121,15 @@ impl PostgresQueryBuilder {
 	}
 }
 
-impl QueryBuilder for PostgresQueryBuilder {
-	fn build_select(&self, stmt: &SelectStatement) -> (String, Values) {
+impl PostgresQueryBuilder {
+	pub(crate) fn build_select_with_writer(
+		&self,
+		stmt: &SelectStatement,
+		mut writer: SqlWriter,
+	) -> (String, Values) {
 		if let Some(raw_sql) = &stmt.raw_sql {
 			return (raw_sql.clone(), Values::new());
 		}
-		let mut writer = SqlWriter::new();
 
 		// WITH clause (Common Table Expressions)
 		if !stmt.ctes.is_empty() {
@@ -1022,7 +1154,8 @@ impl QueryBuilder for PostgresQueryBuilder {
 				w.push("(");
 
 				// Recursively build the CTE query
-				let (cte_sql, cte_values) = self.build_select(&cte.query);
+				let (cte_sql, cte_values) =
+					self.build_select_with_writer(&cte.query, w.for_subquery());
 
 				// Adjust placeholders using token-based approach to avoid false-positive replacements
 				let offset = w.param_index() - 1;
@@ -1104,7 +1237,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_space();
 			// Write all conditions in the ConditionHolder with AND
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, BinOper::And);
 			});
 		}
 
@@ -1123,7 +1256,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_space();
 			// Write all conditions in the ConditionHolder with AND
 			writer.push_list(&stmt.having.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, BinOper::And);
 			});
 		}
 
@@ -1211,7 +1344,8 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_space();
 
 			// Recursively build the union query
-			let (union_sql, union_values) = self.build_select(union_stmt);
+			let (union_sql, union_values) =
+				self.build_select_with_writer(union_stmt, writer.for_subquery());
 
 			// Adjust placeholders using token-based approach to avoid false-positive replacements
 			let offset = writer.param_index() - 1;
@@ -1234,10 +1368,12 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
-	fn build_insert(&self, stmt: &InsertStatement) -> (String, Values) {
+	pub(crate) fn build_insert_with_writer(
+		&self,
+		stmt: &InsertStatement,
+		mut writer: SqlWriter,
+	) -> (String, Values) {
 		use crate::query::insert::InsertSource;
-
-		let mut writer = SqlWriter::new();
 
 		// INSERT INTO clause
 		writer.push("INSERT INTO");
@@ -1276,7 +1412,8 @@ impl QueryBuilder for PostgresQueryBuilder {
 			}
 			InsertSource::Subquery(select) => {
 				writer.push_space();
-				let (select_sql, select_values) = self.build_select(select);
+				let (select_sql, select_values) =
+					self.build_select_with_writer(select, writer.for_subquery());
 				writer.push(&select_sql);
 				writer.append_values(&select_values);
 			}
@@ -1352,9 +1489,11 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
-	fn build_update(&self, stmt: &UpdateStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
+	pub(crate) fn build_update_with_writer(
+		&self,
+		stmt: &UpdateStatement,
+		mut writer: SqlWriter,
+	) -> (String, Values) {
 		// UPDATE clause
 		writer.push("UPDATE");
 		writer.push_space();
@@ -1382,7 +1521,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_keyword("WHERE");
 			writer.push_space();
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, BinOper::And);
 			});
 		}
 
@@ -1407,9 +1546,11 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
-	fn build_delete(&self, stmt: &DeleteStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
+	pub(crate) fn build_delete_with_writer(
+		&self,
+		stmt: &DeleteStatement,
+		mut writer: SqlWriter,
+	) -> (String, Values) {
 		// DELETE FROM clause
 		writer.push("DELETE FROM");
 		writer.push_space();
@@ -1425,7 +1566,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_keyword("WHERE");
 			writer.push_space();
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, BinOper::And);
 			});
 		}
 
@@ -1450,9 +1591,11 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
-	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
+	pub(crate) fn build_create_table_with_writer(
+		&self,
+		stmt: &CreateTableStatement,
+		mut writer: SqlWriter,
+	) -> (String, Values) {
 		writer.push("CREATE TABLE");
 		writer.push_space();
 
@@ -1545,9 +1688,11 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
-	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
+	pub(crate) fn build_alter_table_with_writer(
+		&self,
+		stmt: &AlterTableStatement,
+		mut writer: SqlWriter,
+	) -> (String, Values) {
 		// ALTER TABLE table_name
 		writer.push("ALTER TABLE");
 		writer.push_space();
@@ -1662,39 +1807,11 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
-	fn build_drop_table(&self, stmt: &DropTableStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
-		// DROP TABLE
-		writer.push("DROP TABLE");
-		writer.push_space();
-
-		// IF EXISTS clause
-		if stmt.if_exists {
-			writer.push_keyword("IF EXISTS");
-			writer.push_space();
-		}
-
-		// Table names
-		writer.push_list(&stmt.tables, ", ", |w, table_ref| {
-			self.write_table_ref(w, table_ref);
-		});
-
-		// CASCADE/RESTRICT clause
-		if stmt.cascade {
-			writer.push_space();
-			writer.push_keyword("CASCADE");
-		} else if stmt.restrict {
-			writer.push_space();
-			writer.push_keyword("RESTRICT");
-		}
-
-		writer.finish()
-	}
-
-	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
+	pub(crate) fn build_create_index_with_writer(
+		&self,
+		stmt: &CreateIndexStatement,
+		mut writer: SqlWriter,
+	) -> (String, Values) {
 		// CREATE UNIQUE INDEX IF NOT EXISTS
 		writer.push("CREATE");
 		writer.push_space();
@@ -1761,39 +1878,11 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
-	fn build_drop_index(&self, stmt: &DropIndexStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
-		// DROP INDEX
-		writer.push("DROP INDEX");
-		writer.push_space();
-
-		// IF EXISTS clause
-		if stmt.if_exists {
-			writer.push_keyword("IF EXISTS");
-			writer.push_space();
-		}
-
-		// Index name
-		if let Some(name) = &stmt.name {
-			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
-		}
-
-		// CASCADE/RESTRICT clause
-		if stmt.cascade {
-			writer.push_space();
-			writer.push_keyword("CASCADE");
-		} else if stmt.restrict {
-			writer.push_space();
-			writer.push_keyword("RESTRICT");
-		}
-
-		writer.finish()
-	}
-
-	fn build_create_view(&self, stmt: &CreateViewStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
+	pub(crate) fn build_create_view_with_writer(
+		&self,
+		stmt: &CreateViewStatement,
+		mut writer: SqlWriter,
+	) -> (String, Values) {
 		writer.push("CREATE");
 
 		if stmt.or_replace {
@@ -1827,7 +1916,8 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.push_keyword("AS");
 
 		if let Some(select) = &stmt.select {
-			let (select_sql, select_values) = self.build_select(select);
+			let (select_sql, select_values) =
+				self.build_select_with_writer(select, writer.for_subquery());
 			writer.push_space();
 			writer.push(&select_sql);
 			writer.append_values(&select_values);
@@ -1836,69 +1926,12 @@ impl QueryBuilder for PostgresQueryBuilder {
 		writer.finish()
 	}
 
-	fn build_drop_view(&self, stmt: &DropViewStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
-		writer.push("DROP");
-
-		if stmt.materialized {
-			writer.push_keyword("MATERIALIZED");
-		}
-
-		writer.push_keyword("VIEW");
-
-		if stmt.if_exists {
-			writer.push_keyword("IF EXISTS");
-		}
-
-		writer.push_space();
-		writer.push_list(stmt.names.iter(), ", ", |w, name| {
-			w.push_identifier(&name.to_string(), |s| self.escape_iden(s));
-		});
-
-		if stmt.cascade {
-			writer.push_keyword("CASCADE");
-		} else if stmt.restrict {
-			writer.push_keyword("RESTRICT");
-		}
-
-		writer.finish()
-	}
-
-	fn build_truncate_table(&self, stmt: &TruncateTableStatement) -> (String, Values) {
-		let mut writer = SqlWriter::new();
-
-		// TRUNCATE TABLE
-		writer.push("TRUNCATE TABLE");
-		writer.push_space();
-
-		// Table names
-		writer.push_list(&stmt.tables, ", ", |w, table_ref| {
-			self.write_table_ref(w, table_ref);
-		});
-
-		// RESTART IDENTITY clause (PostgreSQL-specific)
-		if stmt.restart_identity {
-			writer.push_space();
-			writer.push_keyword("RESTART IDENTITY");
-		}
-
-		// CASCADE/RESTRICT clause
-		if stmt.cascade {
-			writer.push_space();
-			writer.push_keyword("CASCADE");
-		} else if stmt.restrict {
-			writer.push_space();
-			writer.push_keyword("RESTRICT");
-		}
-
-		writer.finish()
-	}
-
-	fn build_create_trigger(&self, stmt: &CreateTriggerStatement) -> (String, Values) {
+	pub(crate) fn build_create_trigger_with_writer(
+		&self,
+		stmt: &CreateTriggerStatement,
+		mut writer: SqlWriter,
+	) -> (String, Values) {
 		use crate::types::{TriggerEvent, TriggerScope, TriggerTiming};
-
-		let mut writer = SqlWriter::new();
 
 		// CREATE TRIGGER
 		writer.push("CREATE TRIGGER");
@@ -1987,6 +2020,227 @@ impl QueryBuilder for PostgresQueryBuilder {
 		}
 
 		writer.finish()
+	}
+
+	pub(crate) fn build_create_materialized_view_with_writer(
+		&self,
+		stmt: &crate::query::CreateMaterializedViewStatement,
+		mut writer: SqlWriter,
+	) -> (String, Values) {
+		use crate::types::Iden;
+
+		writer.push_keyword("CREATE MATERIALIZED VIEW");
+
+		// IF NOT EXISTS
+		if stmt.def.if_not_exists {
+			writer.push_keyword("IF NOT EXISTS");
+		}
+
+		// View name
+		writer.push_space();
+		writer.push_identifier(&Iden::to_string(stmt.def.name.as_ref()), |s| {
+			self.escape_iden(s)
+		});
+
+		// Column names
+		if !stmt.def.columns.is_empty() {
+			writer.push_space();
+			writer.push("(");
+			writer.push_list(&stmt.def.columns, ", ", |w, col| {
+				w.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
+			});
+			writer.push(")");
+		}
+
+		// TABLESPACE
+		if let Some(ref tablespace) = stmt.def.tablespace {
+			writer.push_keyword("TABLESPACE");
+			writer.push_space();
+			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| {
+				self.escape_iden(s)
+			});
+		}
+
+		// AS SELECT
+		if let Some(ref select) = stmt.select {
+			writer.push_keyword("AS");
+			writer.push_space();
+			let (select_sql, select_values) =
+				self.build_select_with_writer(select, writer.for_subquery());
+			writer.push(&select_sql);
+
+			// WITH [NO] DATA
+			if let Some(with_data) = stmt.def.with_data {
+				writer.push_space();
+				if with_data {
+					writer.push_keyword("WITH DATA");
+				} else {
+					writer.push_keyword("WITH NO DATA");
+				}
+			}
+
+			let (sql, _) = writer.finish();
+			return (sql, select_values);
+		}
+
+		writer.finish()
+	}
+}
+
+impl QueryBuilder for PostgresQueryBuilder {
+	fn build_select(&self, stmt: &SelectStatement) -> (String, Values) {
+		self.build_select_with_writer(stmt, SqlWriter::new())
+	}
+
+	fn build_insert(&self, stmt: &InsertStatement) -> (String, Values) {
+		self.build_insert_with_writer(stmt, SqlWriter::new())
+	}
+
+	fn build_update(&self, stmt: &UpdateStatement) -> (String, Values) {
+		self.build_update_with_writer(stmt, SqlWriter::new())
+	}
+
+	fn build_delete(&self, stmt: &DeleteStatement) -> (String, Values) {
+		self.build_delete_with_writer(stmt, SqlWriter::new())
+	}
+
+	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values) {
+		self.build_create_table_with_writer(stmt, SqlWriter::new())
+	}
+
+	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values) {
+		self.build_alter_table_with_writer(stmt, SqlWriter::new())
+	}
+
+	fn build_drop_table(&self, stmt: &DropTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP TABLE
+		writer.push("DROP TABLE");
+		writer.push_space();
+
+		// IF EXISTS clause
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+			writer.push_space();
+		}
+
+		// Table names
+		writer.push_list(&stmt.tables, ", ", |w, table_ref| {
+			self.write_table_ref(w, table_ref);
+		});
+
+		// CASCADE/RESTRICT clause
+		if stmt.cascade {
+			writer.push_space();
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_space();
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
+		self.build_create_index_with_writer(stmt, SqlWriter::new())
+	}
+
+	fn build_drop_index(&self, stmt: &DropIndexStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// DROP INDEX
+		writer.push("DROP INDEX");
+		writer.push_space();
+
+		// IF EXISTS clause
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+			writer.push_space();
+		}
+
+		// Index name
+		if let Some(name) = &stmt.name {
+			writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		}
+
+		// CASCADE/RESTRICT clause
+		if stmt.cascade {
+			writer.push_space();
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_space();
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_view(&self, stmt: &CreateViewStatement) -> (String, Values) {
+		self.build_create_view_with_writer(stmt, SqlWriter::new())
+	}
+
+	fn build_drop_view(&self, stmt: &DropViewStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		writer.push("DROP");
+
+		if stmt.materialized {
+			writer.push_keyword("MATERIALIZED");
+		}
+
+		writer.push_keyword("VIEW");
+
+		if stmt.if_exists {
+			writer.push_keyword("IF EXISTS");
+		}
+
+		writer.push_space();
+		writer.push_list(stmt.names.iter(), ", ", |w, name| {
+			w.push_identifier(&name.to_string(), |s| self.escape_iden(s));
+		});
+
+		if stmt.cascade {
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_truncate_table(&self, stmt: &TruncateTableStatement) -> (String, Values) {
+		let mut writer = SqlWriter::new();
+
+		// TRUNCATE TABLE
+		writer.push("TRUNCATE TABLE");
+		writer.push_space();
+
+		// Table names
+		writer.push_list(&stmt.tables, ", ", |w, table_ref| {
+			self.write_table_ref(w, table_ref);
+		});
+
+		// RESTART IDENTITY clause (PostgreSQL-specific)
+		if stmt.restart_identity {
+			writer.push_space();
+			writer.push_keyword("RESTART IDENTITY");
+		}
+
+		// CASCADE/RESTRICT clause
+		if stmt.cascade {
+			writer.push_space();
+			writer.push_keyword("CASCADE");
+		} else if stmt.restrict {
+			writer.push_space();
+			writer.push_keyword("RESTRICT");
+		}
+
+		writer.finish()
+	}
+
+	fn build_create_trigger(&self, stmt: &CreateTriggerStatement) -> (String, Values) {
+		self.build_create_trigger_with_writer(stmt, SqlWriter::new())
 	}
 
 	fn build_drop_trigger(&self, stmt: &DropTriggerStatement) -> (String, Values) {
@@ -3623,63 +3877,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 		&self,
 		stmt: &crate::query::CreateMaterializedViewStatement,
 	) -> (String, Values) {
-		use crate::types::Iden;
-		let mut writer = SqlWriter::new();
-
-		writer.push_keyword("CREATE MATERIALIZED VIEW");
-
-		// IF NOT EXISTS
-		if stmt.def.if_not_exists {
-			writer.push_keyword("IF NOT EXISTS");
-		}
-
-		// View name
-		writer.push_space();
-		writer.push_identifier(&Iden::to_string(stmt.def.name.as_ref()), |s| {
-			self.escape_iden(s)
-		});
-
-		// Column names
-		if !stmt.def.columns.is_empty() {
-			writer.push_space();
-			writer.push("(");
-			writer.push_list(&stmt.def.columns, ", ", |w, col| {
-				w.push_identifier(&Iden::to_string(col.as_ref()), |s| self.escape_iden(s));
-			});
-			writer.push(")");
-		}
-
-		// TABLESPACE
-		if let Some(ref tablespace) = stmt.def.tablespace {
-			writer.push_keyword("TABLESPACE");
-			writer.push_space();
-			writer.push_identifier(&Iden::to_string(tablespace.as_ref()), |s| {
-				self.escape_iden(s)
-			});
-		}
-
-		// AS SELECT
-		if let Some(ref select) = stmt.select {
-			writer.push_keyword("AS");
-			writer.push_space();
-			let (select_sql, select_values) = self.build_select(select);
-			writer.push(&select_sql);
-
-			// WITH [NO] DATA
-			if let Some(with_data) = stmt.def.with_data {
-				writer.push_space();
-				if with_data {
-					writer.push_keyword("WITH DATA");
-				} else {
-					writer.push_keyword("WITH NO DATA");
-				}
-			}
-
-			let (sql, _) = writer.finish();
-			return (sql, select_values);
-		}
-
-		writer.finish()
+		self.build_create_materialized_view_with_writer(stmt, SqlWriter::new())
 	}
 
 	fn build_alter_materialized_view(

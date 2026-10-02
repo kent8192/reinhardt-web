@@ -209,12 +209,12 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	let register_fn_name = format_ident!("__reinhardt_register_{}", fn_name);
 
 	// Generate the expanded code
+	// Reuse the original function block directly. Nesting it inside generated braces
+	// lets unused_braces suggest deleting the user's required function delimiters.
 	let expanded = quote! {
 		// Original implementation function (private)
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-		async fn #original_fn_name(#(#original_params),*) -> #return_type {
-			#fn_block
-		}
+		async fn #original_fn_name(#(#original_params),*) -> #return_type #fn_block
 
 		// Public wrapper factory function
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
