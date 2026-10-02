@@ -2100,10 +2100,17 @@ mod tests {
 		assert_eq!(format!("{}", f), "field");
 	}
 
-	#[test]
-	fn test_q_simple_condition() {
-		let q = Q::new("age", ">=", "18");
-		assert_eq!(q.to_sql(), "\"age\" >= 18");
+	#[rstest::rstest]
+	#[case("age", ">=", "18", "\"age\" >= 18")]
+	#[case("status", "=", "active", "\"status\" = 'active'")]
+	fn test_q_simple_condition(
+		#[case] field: &str,
+		#[case] operator: &str,
+		#[case] value: &str,
+		#[case] expected_sql: &str,
+	) {
+		let q = Q::new(field, operator, value);
+		assert_eq!(q.to_sql(), expected_sql);
 	}
 
 	#[test]
@@ -2359,30 +2366,6 @@ mod expressions_extended_tests {
 
 	#[test]
 	// From: Django/expressions
-	fn test_annotate_values_filter() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_annotate_values_filter_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
 	fn test_annotation_with_deeply_nested_outerref() {
 		// Test deeply nested OuterRef
 		let outer_ref = OuterRef::new("parent.grandparent.id");
@@ -2476,30 +2459,6 @@ mod expressions_extended_tests {
 
 	#[test]
 	// From: Django/expressions
-	fn test_case_in_filter_if_boolean_output_field() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_case_in_filter_if_boolean_output_field_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
 	fn test_date_subquery_subtraction() {
 		// Test date subtraction in subquery
 		let subquery = Subquery::new("SELECT date1 - date2 FROM events");
@@ -2538,30 +2497,6 @@ mod expressions_extended_tests {
 		// Test datetime and duration addition
 		let f = F::new("start_time + duration");
 		assert_eq!(f.to_sql(), "\"start_time + duration\"");
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_datetime_and_durationfield_addition_with_filter() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_datetime_and_durationfield_addition_with_filter_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
 	}
 
 	#[test]
@@ -2608,30 +2543,6 @@ mod expressions_extended_tests {
 
 	#[test]
 	// From: Django/expressions
-	fn test_exists_in_filter() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_exists_in_filter_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
 	fn test_expressions_range_lookups_join_choice() {
 		// Test range lookups with expressions
 		let q1 = Q::new("price", ">=", "10");
@@ -2657,222 +2568,6 @@ mod expressions_extended_tests {
 			sql, "(\"age\" > 18 AND \"age\" < 65)",
 			"Expected exact age range query, got: {}",
 			sql
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_by_empty_exists() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_by_empty_exists_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_decimal_expression() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_decimal_expression_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_inter_attribute() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_inter_attribute_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_not_equals_other_field() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_not_equals_other_field_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_with_join() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filter_with_join_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filtering_on_annotate_that_uses_q() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filtering_on_annotate_that_uses_q_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filtering_on_q_that_is_boolean() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filtering_on_q_that_is_boolean_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filtering_on_rawsql_that_is_boolean() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
-		);
-	}
-
-	#[test]
-	// From: Django/expressions
-	fn test_filtering_on_rawsql_that_is_boolean_1() {
-		let q = Q::new("status", "=", "active");
-		assert_eq!(
-			q.to_sql(),
-			"\"status\" = 'active'",
-			"Expected exact Q condition SQL, got: {}",
-			q.to_sql()
 		);
 	}
 
