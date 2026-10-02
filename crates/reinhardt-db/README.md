@@ -40,6 +40,29 @@ This crate provides the following modules:
   - Forward and backward migrations
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
+  - `Operation::CreateIndex` gives expression and partial indexes a deterministic
+    hash suffix (the first 64 bits of SHA-256), derived from the table, ordered
+    expressions (or columns), and exact `WHERE` predicate. These hashed names fit
+    PostgreSQL's 63-byte limit;
+    ordinary column-index names remain unchanged. Creation, rollback, and state
+    reconstruction use the same name. Expression and predicate text is not
+    normalized, so formatting changes can produce a different name.
+    For indexes already applied with a legacy name such as `idx_events_expr` or
+    an unhashed partial-index name, use an explicit compatibility migration to
+    rename the physical index to its new generated name before relying on
+    automatic rollback, or preserve the legacy name in custom creation and
+    backward SQL. For example, PostgreSQL supports `ALTER INDEX old_name RENAME
+    TO generated_name`. Upgrading does not rename database indexes automatically.
+    `CreateIndexRepair { name: Some(existing_name), .. }` retains creation and
+    state-replay names, but is forward-only and does not generate rollback drops;
+    `DropIndex` describes ordinary column indexes only.
+    Model-declared partial indexes use `CreateNamedIndex` to retain their declared
+    physical name during creation, state replay, and rollback, with or without
+    `pgvector`. Replaying an initial or incremental migration therefore produces
+    no index changes when compared with the unchanged model. The generated hash
+    rule applies to unnamed `CreateIndex` operations, not explicit model names.
+    `CreateNamedIndex` is now available in every `migrations` configuration;
+    exhaustive `Operation` matches without `pgvector` must add this variant.
   - State management and autodetection
   - Automatic non-unique indexes for default-indexed foreign-key ID columns
   - CockroachDB concurrent migrator serialization with a sentinel-row lock

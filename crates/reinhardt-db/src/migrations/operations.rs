@@ -63,6 +63,7 @@ use reinhardt_query::prelude::{
 	QueryBuilder, SchemaExpr, SchemaFunc, SimpleExpr, SqliteQueryBuilder, Value,
 };
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 /// Prefix for the migration-only envelope that carries file-field policy
@@ -350,13 +351,44 @@ pub(crate) fn generated_index_name(
 	table: &str,
 	columns: &[String],
 	expressions: Option<&[String]>,
+	where_clause: Option<&str>,
 ) -> String {
-	let suffix = if expressions.is_some_and(|expressions| !expressions.is_empty()) {
-		"expr".to_string()
-	} else {
-		columns.join("_")
-	};
-	default_index_name(table, &suffix)
+	let expressions = expressions.filter(|expressions| !expressions.is_empty());
+	let suffix = expressions.map_or_else(|| columns.join("_"), |_| "expr".to_owned());
+	if expressions.is_none() && where_clause.is_none() {
+		return default_index_name(table, &suffix);
+	}
+	let mut name = format!("idx_{table}_{suffix}");
+
+	// Use a fixed hash algorithm and length-prefixed fields so migration names
+	// remain stable across processes and ambiguous expression boundaries.
+	let fields = expressions.unwrap_or(columns);
+	let mut hasher = Sha256::new();
+	hasher.update(b"reinhardt-index-v1");
+	hasher.update((fields.len() as u64).to_be_bytes());
+	for value in std::iter::once(table).chain(fields.iter().map(String::as_str)) {
+		hasher.update((value.len() as u64).to_be_bytes());
+		hasher.update(value.as_bytes());
+	}
+	hasher.update([
+		u8::from(expressions.is_some()),
+		u8::from(where_clause.is_some()),
+	]);
+	if let Some(predicate) = where_clause {
+		hasher.update(predicate.as_bytes());
+	}
+	let digest = format!("{:x}", hasher.finalize());
+	let hash_suffix = format!("_{}", &digest[..16]);
+
+	// Preserve the hash within PostgreSQL's 63-byte identifier limit, including
+	// when table/column names need a UTF-8-safe truncation.
+	let mut prefix_len = name.len().min(63 - hash_suffix.len());
+	while !name.is_char_boundary(prefix_len) {
+		prefix_len -= 1;
+	}
+	name.truncate(prefix_len);
+	name.push_str(&hash_suffix);
+	name
 }
 // ============================================================================
 // MySQL-Specific ALTER TABLE Options
@@ -1371,7 +1403,13 @@ pub enum Operation {
 		/// The typed constraint definition captured before it is dropped.
 		constraint: Constraint,
 	},
-	/// CreateIndex variant.
+	/// Create an index with a deterministic generated name.
+	///
+	/// Expression and partial indexes include a hash of the table, ordered
+	/// expressions or columns, and exact predicate. Ordinary column indexes
+	/// retain their existing generated names. Applied indexes are not renamed
+	/// automatically; legacy expression and partial indexes need a compatibility
+	/// rename or explicit backward SQL before relying on automatic rollback.
 	CreateIndex {
 		/// The table.
 		table: String,
@@ -1437,10 +1475,11 @@ pub enum Operation {
 	},
 	/// Creates an index with an explicit physical name.
 	///
-	/// This additive variant preserves source compatibility for legacy
-	/// [`Operation::CreateIndex`] struct literals while allowing model-declared
-	/// indexes to keep their configured names.
-	#[cfg(feature = "pgvector")]
+	/// Model-declared partial indexes keep their configured names regardless of
+	/// whether `pgvector` is enabled. Creation, state replay, and both rollback
+	/// APIs preserve the name. Existing [`Operation::CreateIndex`] struct literals
+	/// retain generated naming; exhaustive matches must handle this variant even
+	/// without `pgvector`.
 	CreateNamedIndex {
 		/// The table.
 		table: String,
@@ -1473,7 +1512,7 @@ pub enum Operation {
 	CreateIndexRepair {
 		/// The table.
 		table: String,
-		/// Explicit index name.
+		/// Explicit index name, or the generated name when `None`.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		name: Option<String>,
 		/// The columns.
@@ -2269,7 +2308,12 @@ impl Operation {
 					return;
 				}
 				if let Some(model) = state.find_model_by_table_mut(table) {
-					let name = generated_index_name(table, columns, expressions.as_deref());
+					let name = generated_index_name(
+						table,
+						columns,
+						expressions.as_deref(),
+						where_clause.as_deref(),
+					);
 					model.indexes.retain(|index| index.name != name);
 					model.indexes.push(IndexDefinition {
 						name,
@@ -2298,7 +2342,12 @@ impl Operation {
 			} => {
 				if let Some(model) = state.find_model_by_table_mut(table) {
 					let name = name.clone().unwrap_or_else(|| {
-						generated_index_name(table, columns, expressions.as_deref())
+						generated_index_name(
+							table,
+							columns,
+							expressions.as_deref(),
+							where_clause.as_deref(),
+						)
 					});
 					model.indexes.retain(|index| index.name != name);
 					model.indexes.push(IndexDefinition {
@@ -2368,7 +2417,6 @@ impl Operation {
 			Operation::CreateCompositePrimaryKey { .. } => {
 				state.has_opaque_schema_operations = true;
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex {
 				table,
 				name,
@@ -3042,22 +3090,22 @@ impl Operation {
 
 	/// Returns whether this operation creates an index outside a transaction.
 	pub(crate) fn creates_index_concurrently(&self) -> bool {
-		match self {
+		matches!(
+			self,
 			Operation::CreateIndex {
-				concurrently: true, ..
+				concurrently: true,
+				..
+			} | Operation::CreateIndexRepair {
+				concurrently: true,
+				..
+			} | Operation::RestoreIndexOnRollback {
+				concurrently: true,
+				..
+			} | Operation::CreateNamedIndex {
+				concurrently: true,
+				..
 			}
-			| Operation::CreateIndexRepair {
-				concurrently: true, ..
-			}
-			| Operation::RestoreIndexOnRollback {
-				concurrently: true, ..
-			} => true,
-			#[cfg(feature = "pgvector")]
-			Operation::CreateNamedIndex {
-				concurrently: true, ..
-			} => true,
-			_ => false,
-		}
+		)
 	}
 
 	/// Generate forward SQL
@@ -3378,11 +3426,10 @@ impl Operation {
 				};
 
 				// Determine what to index: expressions or columns
-				let (index_content, name_suffix) =
+				let index_content =
 					if let Some(exprs) = expressions.as_ref().filter(|e| !e.is_empty()) {
-						// For expression indexes, use expressions and generate a hash-based suffix
 						// Expressions are assumed to be properly formatted, no additional quoting needed
-						let content = if let Some(operator_class) = operator_class
+						if let Some(operator_class) = operator_class
 							&& matches!(dialect, SqlDialect::Postgres)
 						{
 							exprs
@@ -3392,12 +3439,10 @@ impl Operation {
 								.join(", ")
 						} else {
 							exprs.join(", ")
-						};
-						let suffix = "expr";
-						(content, suffix.to_string())
+						}
 					} else {
 						// Use columns with optional operator class
-						let content = if let Some(op_class) = operator_class {
+						if let Some(op_class) = operator_class {
 							// Apply operator class to each column (PostgreSQL-specific)
 							if matches!(dialect, SqlDialect::Postgres) {
 								columns
@@ -3426,15 +3471,19 @@ impl Operation {
 								.map(|c| Self::quote_schema_identifier(c, dialect))
 								.collect::<Vec<_>>()
 								.join(", ")
-						};
-						(content, columns.join("_"))
+						}
 					};
 
 				let idx_name = match self {
 					Operation::CreateIndexRepair {
 						name: Some(name), ..
 					} => name.clone(),
-					_ => super::operations::default_index_name(table, &name_suffix),
+					_ => generated_index_name(
+						table,
+						columns,
+						expressions.as_deref(),
+						where_clause.as_deref(),
+					),
 				};
 
 				// Index type clause (USING type) - PostgreSQL, CockroachDB
@@ -3516,7 +3565,6 @@ impl Operation {
 				sql.push(';');
 				sql
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex {
 				table,
 				name,
@@ -3933,7 +3981,6 @@ impl Operation {
 
 	/// Validates every field definition rendered by this operation.
 	pub fn validate_for_dialect(&self, dialect: &SqlDialect) -> super::Result<()> {
-		#[cfg(feature = "pgvector")]
 		if let Self::CreateNamedIndex { name, .. } | Self::DropNamedIndex { name, .. } = self {
 			if name.is_empty() {
 				return Err(super::MigrationError::InvalidMigration(
@@ -3964,7 +4011,6 @@ impl Operation {
 			Self::CreateIndex { where_clause, .. }
 			| Self::CreateIndexRepair { where_clause, .. }
 			| Self::RestoreIndexOnRollback { where_clause, .. } => where_clause.is_some(),
-			#[cfg(feature = "pgvector")]
 			Self::CreateNamedIndex { where_clause, .. } => where_clause.is_some(),
 			_ => false,
 		};
@@ -4039,7 +4085,6 @@ impl Operation {
 				operator_class.as_deref(),
 				dialect,
 			)?,
-			#[cfg(feature = "pgvector")]
 			Self::CreateNamedIndex {
 				columns,
 				unique,
@@ -4441,19 +4486,17 @@ impl Operation {
 				table,
 				columns,
 				expressions,
+				where_clause,
 				..
 			} => {
 				// Mirror the forward SQL naming convention so rollback targets
 				// expression indexes as well as column indexes.
-				let name_suffix = if expressions
-					.as_ref()
-					.is_some_and(|expressions| !expressions.is_empty())
-				{
-					"expr".to_string()
-				} else {
-					columns.join("_")
-				};
-				let index_name = super::operations::default_index_name(table, &name_suffix);
+				let index_name = generated_index_name(
+					table,
+					columns,
+					expressions.as_deref(),
+					where_clause.as_deref(),
+				);
 				// MySQL requires `DROP INDEX <name> ON <table>`; PostgreSQL/SQLite/CockroachDB
 				// only need the index name. Mirror the dialect dispatch used by the forward
 				// `Operation::DropIndex` SQL generator above.
@@ -4472,7 +4515,6 @@ impl Operation {
 				};
 				Ok(Some(vec![sql]))
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex { table, name, .. } => {
 				let sql = match dialect {
 					SqlDialect::Mysql => format!(
@@ -4664,8 +4706,9 @@ impl Operation {
 					})
 				}) {
 					return Ok(Some(vec![
-						Operation::CreateIndex {
+						Operation::CreateIndexRepair {
 							table: table.clone(),
+							name: Some(index.name.clone()),
 							columns: index.fields.clone(),
 							unique: index.unique,
 							index_type: index.index_type(),
@@ -4695,7 +4738,6 @@ impl Operation {
 					columns_list
 				)]))
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::DropNamedIndex {
 				table,
 				name,
@@ -4715,41 +4757,6 @@ impl Operation {
 					Operation::CreateNamedIndex {
 						table: table.clone(),
 						name: name.clone(),
-						columns: columns.clone(),
-						unique: *unique,
-						index_type: *index_type,
-						where_clause: (!matches!(dialect, SqlDialect::Mysql))
-							.then(|| where_clause.clone())
-							.flatten(),
-						concurrently: *concurrently,
-						expressions: expressions.clone(),
-						mysql_options: *mysql_options,
-						operator_class: operator_class.clone(),
-					}
-					.try_to_sql(dialect)?,
-				]))
-			}
-			#[cfg(not(feature = "pgvector"))]
-			Operation::DropNamedIndex {
-				table,
-				name,
-				columns,
-				unique,
-				index_type,
-				where_clause,
-				concurrently,
-				expressions,
-				mysql_options,
-				operator_class,
-				..
-			} => {
-				if !named_index_has_target(columns, expressions.as_deref()) {
-					return Ok(None);
-				}
-				Ok(Some(vec![
-					Operation::CreateIndexRepair {
-						table: table.clone(),
-						name: Some(name.clone()),
 						columns: columns.clone(),
 						unique: *unique,
 						index_type: *index_type,
@@ -4990,13 +4997,11 @@ impl Operation {
 					}
 				}
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex { table, name, .. } => {
 				if let Some(model) = state.find_model_by_table_mut(table) {
 					model.indexes.retain(|index| index.name != *name);
 				}
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::DropNamedIndex {
 				table,
 				name,
@@ -5027,26 +5032,6 @@ impl Operation {
 						#[cfg(feature = "pgvector")]
 						expressions: expressions.clone(),
 					});
-				}
-			}
-			#[cfg(not(feature = "pgvector"))]
-			Operation::DropNamedIndex {
-				table,
-				name,
-				columns,
-				unique,
-				where_clause,
-				expressions,
-				..
-			} => {
-				if !named_index_has_target(columns, expressions.as_deref()) {
-					return;
-				}
-				if let Some(model) = state.find_model_by_table_mut(table) {
-					model.indexes.retain(|index| index.name != *name);
-					let mut index = IndexDefinition::new(name.clone(), columns.clone(), *unique);
-					index.where_clause = where_clause.clone();
-					model.indexes.push(index);
 				}
 			}
 			_ => {
@@ -6632,7 +6617,12 @@ impl Operation {
 				operator_class,
 			} => Ok(Some(Operation::DropNamedIndex {
 				table: table.clone(),
-				name: generated_index_name(table, columns, expressions.as_deref()),
+				name: generated_index_name(
+					table,
+					columns,
+					expressions.as_deref(),
+					where_clause.as_deref(),
+				),
 				columns: columns.clone(),
 				unique: *unique,
 				index_type: *index_type,
@@ -6642,7 +6632,6 @@ impl Operation {
 				mysql_options: *mysql_options,
 				operator_class: operator_class.clone(),
 			})),
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex {
 				table,
 				name,
@@ -6673,7 +6662,6 @@ impl Operation {
 				let _ = (table, columns);
 				Ok(None)
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::DropNamedIndex {
 				table,
 				name,
@@ -6692,36 +6680,6 @@ impl Operation {
 				Ok(Some(Operation::CreateNamedIndex {
 					table: table.clone(),
 					name: name.clone(),
-					columns: columns.clone(),
-					unique: *unique,
-					index_type: *index_type,
-					where_clause: where_clause.clone(),
-					concurrently: *concurrently,
-					expressions: expressions.clone(),
-					mysql_options: *mysql_options,
-					operator_class: operator_class.clone(),
-				}))
-			}
-			#[cfg(not(feature = "pgvector"))]
-			Operation::DropNamedIndex {
-				table,
-				name,
-				columns,
-				unique,
-				index_type,
-				where_clause,
-				concurrently,
-				expressions,
-				mysql_options,
-				operator_class,
-				..
-			} => {
-				if !named_index_has_target(columns, expressions.as_deref()) {
-					return Ok(None);
-				}
-				Ok(Some(Operation::CreateIndexRepair {
-					table: table.clone(),
-					name: Some(name.clone()),
 					columns: columns.clone(),
 					unique: *unique,
 					index_type: *index_type,
@@ -6995,13 +6953,17 @@ impl Operation {
 					Operation::CreateIndexRepair {
 						name: Some(name), ..
 					} => name.clone(),
-					_ => generated_index_name(table, columns, expressions.as_deref()),
+					_ => generated_index_name(
+						table,
+						columns,
+						expressions.as_deref(),
+						where_clause.as_deref(),
+					),
 				};
 				OperationStatement::IndexCreate(
 					self.build_create_index(&idx_name, table, columns, *unique),
 				)
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex {
 				table,
 				name,
@@ -7708,7 +7670,6 @@ impl MigrationOperation for Operation {
 					Some(format!("create_index_{}", table.to_lowercase()))
 				}
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex { table, unique, .. } => {
 				if *unique {
 					Some(format!("create_unique_index_{}", table.to_lowercase()))
@@ -7818,7 +7779,6 @@ impl MigrationOperation for Operation {
 					format!("Create index on {}", table)
 				}
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex { table, unique, .. } => {
 				if *unique {
 					format!("Create unique index on {}", table)
@@ -7954,7 +7914,6 @@ impl MigrationOperation for Operation {
 					operator_class: operator_class.clone(),
 				}
 			}
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex {
 				table,
 				name,
@@ -9177,7 +9136,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			"CREATE INDEX idx_users_email ON users (email) WHERE deleted_at IS NULL;"
+			"CREATE INDEX idx_users_email_e64fe6668f8f0a78 ON users (email) WHERE deleted_at IS NULL;"
 		);
 	}
 
@@ -12374,9 +12333,12 @@ mod tests {
 		// Assert
 		assert_eq!(
 			forward_sql,
-			"CREATE INDEX idx_source_expr ON source USING hnsw (normalize(embedding) vector_ip_ops);"
+			"CREATE INDEX idx_source_expr_0887263130f7b374 ON source USING hnsw (normalize(embedding) vector_ip_ops);"
 		);
-		assert_eq!(backward_sql, vec!["DROP INDEX \"idx_source_expr\";"]);
+		assert_eq!(
+			backward_sql,
+			vec!["DROP INDEX \"idx_source_expr_0887263130f7b374\";"]
+		);
 	}
 
 	#[rstest]

@@ -1497,7 +1497,6 @@ async fn sqlite_advance_virtual_schema(
 				});
 			schemas.insert(table.clone(), Some(schema));
 		}
-		#[cfg(feature = "pgvector")]
 		Operation::CreateNamedIndex {
 			table,
 			name,
@@ -1616,7 +1615,6 @@ fn sqlite_forward_virtual_effect(operation: &Operation) -> SqliteVirtualEffect {
 		| Operation::DropIndex { .. }
 		| Operation::CreateInheritedTable { .. }
 		| Operation::AddDiscriminatorColumn { .. } => SqliteVirtualEffect::Simulate,
-		#[cfg(feature = "pgvector")]
 		Operation::CreateNamedIndex { .. } => SqliteVirtualEffect::Simulate,
 		Operation::DropNamedIndex { .. } => SqliteVirtualEffect::Simulate,
 		Operation::MoveModel { rename_table, .. } if *rename_table => SqliteVirtualEffect::Simulate,
@@ -1687,7 +1685,6 @@ fn sqlite_virtual_effect(
 			| Operation::CreateCompositePrimaryKey { .. } => planned_operation
 				.map(sqlite_forward_virtual_effect)
 				.unwrap_or(SqliteVirtualEffect::SchemaNeutral),
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex { .. } => planned_operation
 				.map(sqlite_forward_virtual_effect)
 				.unwrap_or(SqliteVirtualEffect::SchemaNeutral),
