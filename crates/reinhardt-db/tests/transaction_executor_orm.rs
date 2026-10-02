@@ -525,10 +525,14 @@ impl Model for ArticleLocale {
 	}
 
 	fn primary_key(&self) -> Option<Self::PrimaryKey> {
-		None
+		Some(format!("{}:{}", self.article_id, self.locale))
 	}
 
 	fn set_primary_key(&mut self, _value: Self::PrimaryKey) {}
+
+	fn primary_key_field() -> &'static str {
+		"article_id"
+	}
 
 	fn composite_primary_key() -> Option<CompositePrimaryKey> {
 		CompositePrimaryKey::new(vec!["article_id".to_string(), "locale".to_string()]).ok()
@@ -1889,6 +1893,83 @@ async fn model_events_wrap_the_same_executor_backed_insert() {
 	);
 	assert_eq!(executor.calls.len(), 1);
 	assert_eq!(executor.calls[0].kind, "fetch_one");
+}
+
+#[rstest]
+#[case::postgres(DatabaseBackend::Postgres)]
+#[case::mysql(DatabaseBackend::MySql)]
+#[case::sqlite(DatabaseBackend::Sqlite)]
+#[tokio::test]
+async fn composite_update_and_reload_use_every_key_component(
+	#[case] backend: DatabaseBackend,
+	#[values(false, true)] transaction_executor: bool,
+) {
+	// Arrange
+	let model = ArticleLocale {
+		article_id: 17,
+		locale: "ja".to_owned(),
+		title: "updated".to_owned(),
+	};
+	let row = article_locale_row(17, "ja", "updated");
+	let manager = Manager::<ArticleLocale>::new();
+
+	// Act
+	let (updated, calls) = if transaction_executor {
+		let backend = match backend {
+			DatabaseBackend::Postgres => reinhardt_db::backends::DatabaseType::Postgres,
+			DatabaseBackend::MySql => reinhardt_db::backends::DatabaseType::Mysql,
+			DatabaseBackend::Sqlite => reinhardt_db::backends::DatabaseType::Sqlite,
+		};
+		let mut executor = RecordingTransactionExecutor::new(backend).with_fetch_one(row);
+		let updated = manager
+			.save_with_executor(&mut executor, &model)
+			.await
+			.unwrap();
+		(updated, executor.calls)
+	} else {
+		let mut executor = RecordingExecutor::new(backend)
+			.with_fetch_one(row)
+			.with_execute_result(QueryResult {
+				rows_affected: 1,
+				last_insert_id: None,
+			});
+		let updated = manager
+			.update_with_conn(&mut executor, &model)
+			.await
+			.unwrap();
+		(updated, executor.calls)
+	};
+
+	// Assert
+	assert_eq!(updated, model);
+	let (kind, sql) = match backend {
+		DatabaseBackend::Postgres => (
+			"fetch_one",
+			"UPDATE \"article_locales\" SET \"title\" = $1 WHERE (\"article_id\" = $2 AND \"locale\" = $3) RETURNING \"article_id\", \"locale\", \"title\"",
+		),
+		DatabaseBackend::MySql => (
+			"execute",
+			"UPDATE `article_locales` SET `title` = ? WHERE (`article_id` = ? AND `locale` = ?)",
+		),
+		DatabaseBackend::Sqlite => (
+			"fetch_one",
+			"UPDATE \"article_locales\" SET \"title\" = ? WHERE (\"article_id\" = ? AND \"locale\" = ?) RETURNING \"article_id\", \"locale\", \"title\"",
+		),
+	};
+	let mut expected = vec![RecordedCall {
+		kind,
+		sql: sql.to_owned(),
+		params: vec!["updated".into(), QueryValue::Int(17), "ja".into()],
+	}];
+	if backend == DatabaseBackend::MySql {
+		expected.push(RecordedCall {
+			kind: "fetch_one",
+			sql: "SELECT * FROM `article_locales` WHERE (`article_id` = ? AND `locale` = ?)"
+				.to_owned(),
+			params: vec![QueryValue::Int(17), "ja".into()],
+		});
+	}
+	assert_eq!(calls, expected);
 }
 
 #[tokio::test]

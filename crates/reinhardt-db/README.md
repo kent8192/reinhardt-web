@@ -176,6 +176,24 @@ repeated `LIMIT`/`OFFSET` pagination for this API.
   - `Error::database_kind()` supports category matching without driver-specific downcasts
   - `DatabaseError::code()` preserves an optional vendor code for diagnostics
 
+### Updating composite primary keys
+
+`Manager::update`, `update_with_conn`, and the update path of
+`save_with_executor` match every component of a composite primary key. Key
+components are excluded from assignments, column aliases come from model
+metadata, and bound values retain their field codec representations. Missing or
+null key components are rejected before execution. MySQL reloads the updated
+row using the same complete key.
+
+Use these per-model update methods for composite-key writes.
+`bulk_update` and `bulk_update_with_conn` still assume a scalar key, as do the
+primary-key arguments of `Manager::get` and the manager's delete methods.
+For composite-key lookups, use `get_composite` or filter explicitly on every key component.
+Generated UUID and enum composite keys remain subject to
+[#6456](https://github.com/kent8192/reinhardt-web/issues/6456); the composite
+metadata/value-map alias contract is tracked separately in
+[#6457](https://github.com/kent8192/reinhardt-web/issues/6457).
+
 ### Structured Error Handling
 
 Construct framework database failures with a portable category and inspect that
