@@ -3721,13 +3721,22 @@ fn generate_relationship_registrations(
 fn generate_composite_pk_impl(pk_fields: &[&FieldInfo]) -> TokenStream {
 	let orm_crate = get_reinhardt_orm_crate();
 
-	let field_name_strings: Vec<String> = pk_fields.iter().map(|f| f.name.to_string()).collect();
+	let column_names: Vec<_> = pk_fields
+		.iter()
+		.map(|field| {
+			field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| field.name.to_string())
+		})
+		.collect();
 
 	quote! {
 		fn composite_primary_key() -> Option<#orm_crate::composite_pk::CompositePrimaryKey> {
 			Some(
 				#orm_crate::composite_pk::CompositePrimaryKey::new(
-					vec![#(#field_name_strings.to_string()),*]
+					vec![#(#column_names.to_string()),*]
 				)
 				.expect("Invalid composite primary key")
 			)
@@ -3777,12 +3786,18 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 	};
 
 	// Generate individual field conversions for PkValue
-	let pk_value_conversions: Vec<_> = field_names
+	let pk_value_conversions: Vec<_> = pk_fields
 		.iter()
-		.map(|name| {
+		.map(|field| {
+			let name = &field.name;
+			let column_name = field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| name.to_string());
 			quote! {
 				values.insert(
-					stringify!(#name).to_string(),
+					#column_name.to_string(),
 					#orm_crate::composite_pk::PkValue::from(&self.#name)
 				);
 			}
