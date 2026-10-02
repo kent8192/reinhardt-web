@@ -61,6 +61,8 @@ use crate::{
 /// This struct implements SQL generation for PostgreSQL, using the following conventions:
 /// - Identifiers: Double quotes (`"table_name"`)
 /// - Placeholders: Numbered (`$1`, `$2`, ...)
+/// - Grouping: Typed expressions retain their precedence and associativity
+///   through parentheses, including WHERE/HAVING predicates and DDL constraints
 ///
 /// # Examples
 ///
@@ -357,6 +359,92 @@ impl PostgresQueryBuilder {
 		}
 	}
 
+	// PostgreSQL groups generic operators together, unlike the backend-neutral
+	// precedence table (notably for bitwise and PostgreSQL-specific operators).
+	fn binary_precedence(op: BinOper) -> u8 {
+		match op {
+			BinOper::Or => 1,
+			BinOper::And => 2,
+			// Logical NOT has precedence 3.
+			BinOper::Is | BinOper::IsNot => 4,
+			BinOper::Equal
+			| BinOper::NotEqual
+			| BinOper::SmallerThan
+			| BinOper::SmallerThanOrEqual
+			| BinOper::GreaterThan
+			| BinOper::GreaterThanOrEqual => 5,
+			BinOper::Between
+			| BinOper::NotBetween
+			| BinOper::In
+			| BinOper::NotIn
+			| BinOper::Like
+			| BinOper::NotLike
+			| BinOper::ILike
+			| BinOper::NotILike
+			| BinOper::SimilarTo
+			| BinOper::NotSimilarTo => 6,
+			BinOper::Matches
+			| BinOper::NotMatches
+			| BinOper::BitAnd
+			| BinOper::BitOr
+			| BinOper::LShift
+			| BinOper::RShift
+			| BinOper::PgOperator(_) => 7,
+			BinOper::Add | BinOper::Sub => 8,
+			BinOper::Mul | BinOper::Div | BinOper::Mod => 9,
+		}
+	}
+
+	fn write_grouped_expr(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		parenthesized: bool,
+		unquoted: bool,
+	) {
+		if parenthesized {
+			writer.push("(");
+		}
+		if unquoted {
+			self.write_simple_expr_unquoted(writer, expr);
+		} else {
+			self.write_simple_expr(writer, expr);
+		}
+		if parenthesized {
+			writer.push(")");
+		}
+	}
+
+	fn write_binary_operand(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		parent: BinOper,
+		right_operand: bool,
+		unquoted: bool,
+	) {
+		let parent_precedence = Self::binary_precedence(parent);
+		let parenthesized = match expr {
+			SimpleExpr::Binary(_, child, _) => {
+				let child_precedence = Self::binary_precedence(*child);
+				let associative_logical = matches!(
+					(parent, child),
+					(BinOper::And, BinOper::And) | (BinOper::Or, BinOper::Or)
+				);
+				// Comparisons and predicates are non-associative. Arithmetic
+				// is left-associative, so equal-precedence right children must
+				// retain their grouping, even for addition and multiplication.
+				let non_associative = (4..=6).contains(&parent_precedence);
+				child_precedence < parent_precedence
+					|| (child_precedence == parent_precedence
+						&& (non_associative || (right_operand && !associative_logical)))
+			}
+			SimpleExpr::Unary(_, _) => parent_precedence > 3,
+			_ => false,
+		};
+		self.write_grouped_expr(writer, expr, parenthesized, unquoted);
+	}
+
 	/// Write a simple expression
 	fn write_simple_expr(&self, writer: &mut SqlWriter, expr: &SimpleExpr) {
 		match expr {
@@ -370,16 +458,16 @@ impl PostgresQueryBuilder {
 				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
 					if items.len() == 2 =>
 				{
-					self.write_simple_expr(writer, left);
+					self.write_binary_operand(writer, left, *op, false, false);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr(writer, &items[0]);
+					self.write_binary_operand(writer, &items[0], *op, true, false);
 					writer.push(" AND ");
-					self.write_simple_expr(writer, &items[1]);
+					self.write_binary_operand(writer, &items[1], *op, true, false);
 				}
 				(BinOper::In | BinOper::NotIn, SimpleExpr::Tuple(items)) => {
-					self.write_simple_expr(writer, left);
+					self.write_binary_operand(writer, left, *op, false, false);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push(" (");
@@ -389,17 +477,21 @@ impl PostgresQueryBuilder {
 					writer.push(")");
 				}
 				_ => {
-					self.write_simple_expr(writer, left);
+					self.write_binary_operand(writer, left, *op, false, false);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr(writer, right);
+					self.write_binary_operand(writer, right, *op, true, false);
 				}
 			},
 			SimpleExpr::Unary(op, expr) => {
 				writer.push(op.as_str());
 				writer.push_space();
-				self.write_simple_expr(writer, expr);
+				let parenthesized = matches!(
+					expr.as_ref(),
+					SimpleExpr::Binary(_, BinOper::And | BinOper::Or, _)
+				);
+				self.write_grouped_expr(writer, expr, parenthesized, false);
 			}
 			SimpleExpr::FunctionCall(func_name, args) => {
 				writer.push(&func_name.to_string());
@@ -533,7 +625,11 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 			}
 			SimpleExpr::AsEnum(name, expr) => {
-				self.write_simple_expr(writer, expr);
+				let parenthesized = matches!(
+					expr.as_ref(),
+					SimpleExpr::Binary(..) | SimpleExpr::Unary(..)
+				);
+				self.write_grouped_expr(writer, expr, parenthesized, false);
 				writer.push("::");
 				writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 			}
@@ -669,16 +765,16 @@ impl PostgresQueryBuilder {
 				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
 					if items.len() == 2 =>
 				{
-					self.write_simple_expr_unquoted(writer, left);
+					self.write_binary_operand(writer, left, *op, false, true);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr_unquoted(writer, &items[0]);
+					self.write_binary_operand(writer, &items[0], *op, true, true);
 					writer.push(" AND ");
-					self.write_simple_expr_unquoted(writer, &items[1]);
+					self.write_binary_operand(writer, &items[1], *op, true, true);
 				}
 				(BinOper::In | BinOper::NotIn, SimpleExpr::Tuple(items)) => {
-					self.write_simple_expr_unquoted(writer, left);
+					self.write_binary_operand(writer, left, *op, false, true);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push(" (");
@@ -688,17 +784,21 @@ impl PostgresQueryBuilder {
 					writer.push(")");
 				}
 				_ => {
-					self.write_simple_expr_unquoted(writer, left);
+					self.write_binary_operand(writer, left, *op, false, true);
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr_unquoted(writer, right);
+					self.write_binary_operand(writer, right, *op, true, true);
 				}
 			},
 			SimpleExpr::Unary(op, expr) => {
 				writer.push(op.as_str());
 				writer.push_space();
-				self.write_simple_expr_unquoted(writer, expr);
+				let parenthesized = matches!(
+					expr.as_ref(),
+					SimpleExpr::Binary(_, BinOper::And | BinOper::Or, _)
+				);
+				self.write_grouped_expr(writer, expr, parenthesized, true);
 			}
 			SimpleExpr::FunctionCall(func_name, args) => {
 				writer.push(&func_name.to_string());
@@ -772,7 +872,11 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 			}
 			SimpleExpr::AsEnum(name, expr) => {
-				self.write_simple_expr_unquoted(writer, expr);
+				let parenthesized = matches!(
+					expr.as_ref(),
+					SimpleExpr::Binary(..) | SimpleExpr::Unary(..)
+				);
+				self.write_grouped_expr(writer, expr, parenthesized, true);
 				writer.push("::");
 				writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 			}
@@ -805,17 +909,23 @@ impl PostgresQueryBuilder {
 		}
 
 		if condition.conditions.len() == 1 {
-			self.write_condition_expr(writer, &condition.conditions[0]);
+			if condition.negate {
+				writer.push("(");
+				self.write_condition_expr(writer, &condition.conditions[0], BinOper::Or);
+				writer.push(")");
+			} else {
+				self.write_condition_expr(writer, &condition.conditions[0], BinOper::And);
+			}
 			return;
 		}
 
 		writer.push("(");
-		let separator = match condition.condition_type {
-			ConditionType::All => " AND ",
-			ConditionType::Any => " OR ",
+		let (separator, parent) = match condition.condition_type {
+			ConditionType::All => (" AND ", BinOper::And),
+			ConditionType::Any => (" OR ", BinOper::Or),
 		};
 		writer.push_list(&condition.conditions, separator, |w, cond_expr| {
-			self.write_condition_expr(w, cond_expr);
+			self.write_condition_expr(w, cond_expr, parent);
 		});
 		writer.push(")");
 	}
@@ -825,6 +935,7 @@ impl PostgresQueryBuilder {
 		&self,
 		writer: &mut SqlWriter,
 		cond_expr: &crate::expr::ConditionExpression,
+		parent: BinOper,
 	) {
 		use crate::expr::ConditionExpression;
 
@@ -833,7 +944,7 @@ impl PostgresQueryBuilder {
 				self.write_condition(writer, cond);
 			}
 			ConditionExpression::SimpleExpr(expr) => {
-				self.write_simple_expr(writer, expr);
+				self.write_binary_operand(writer, expr, parent, false, false);
 			}
 		}
 	}
@@ -1104,7 +1215,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_space();
 			// Write all conditions in the ConditionHolder with AND
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, BinOper::And);
 			});
 		}
 
@@ -1123,7 +1234,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_space();
 			// Write all conditions in the ConditionHolder with AND
 			writer.push_list(&stmt.having.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, BinOper::And);
 			});
 		}
 
@@ -1374,7 +1485,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_keyword("WHERE");
 			writer.push_space();
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, BinOper::And);
 			});
 		}
 
@@ -1417,7 +1528,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push_keyword("WHERE");
 			writer.push_space();
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr);
+				self.write_condition_expr(w, cond_expr, BinOper::And);
 			});
 		}
 
