@@ -1215,7 +1215,8 @@ mod tests {
 		assert_eq!(super::parse_server_version(version), expected);
 	}
 
-	#[test]
+	#[cfg(feature = "mysql")]
+	#[rstest]
 	fn maria_db_compatibility_prefix_uses_the_maria_db_version() {
 		let capabilities = super::mysql_row_lock_capabilities(Some("5.5.5-10.11.6-MariaDB"));
 
@@ -1224,14 +1225,18 @@ mod tests {
 		assert!(!capabilities.targets);
 	}
 
-	#[test]
-	fn row_lock_capabilities_follow_probed_server_versions() {
+	#[rstest]
+	fn postgres_row_lock_capabilities_follow_probed_server_versions() {
 		let postgres_94 = super::postgres_row_lock_capabilities(Some("PostgreSQL 9.4.26"), false);
 		assert!(postgres_94.update);
 		assert!(postgres_94.no_key_update);
 		assert!(postgres_94.nowait);
 		assert!(!postgres_94.skip_locked);
+	}
 
+	#[cfg(feature = "mysql")]
+	#[rstest]
+	fn mysql_row_lock_capabilities_follow_probed_server_versions() {
 		let mysql_800 = super::mysql_row_lock_capabilities(Some("8.0.0"));
 		assert!(mysql_800.update);
 		assert!(!mysql_800.nowait);

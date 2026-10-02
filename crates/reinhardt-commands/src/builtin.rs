@@ -7023,7 +7023,6 @@ mod tests {
 		assert!(archive.dependencies.is_empty());
 	}
 
-	#[cfg(feature = "reinhardt-db")]
 	struct EnvVarGuard {
 		key: &'static str,
 		original: Option<std::ffi::OsString>,

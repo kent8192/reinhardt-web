@@ -4235,7 +4235,7 @@ mod tests {
 		let restored = Manager::<TestUser>::query_value_to_sea_value(bound.clone());
 
 		// Assert
-		assert_eq!(bound, QueryValue::Int32(input));
+		assert_eq!(bound, crate::backends::QueryValue::Int32(input));
 		assert_eq!(restored, value);
 	}
 
