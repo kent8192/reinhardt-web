@@ -78,6 +78,7 @@ impl QueryRow {
 			let json_value = match value.clone() {
 				QueryValue::Null => serde_json::Value::Null,
 				QueryValue::Bool(b) => serde_json::Value::Bool(b),
+				QueryValue::Int32(i) => serde_json::Value::Number(i.into()),
 				QueryValue::Int(i) => serde_json::Value::Number(i.into()),
 				QueryValue::Float(f) => serde_json::Number::from_f64(f)
 					.map(serde_json::Value::Number)
@@ -702,6 +703,22 @@ mod tests {
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
 
 	struct TestBackend;
+
+	#[rstest::rstest]
+	#[case(i32::MIN)]
+	#[case(i32::MAX)]
+	fn backend_int32_rows_preserve_json_numbers(#[case] value: i32) {
+		// Arrange
+		let mut row = Row::new();
+		row.insert("value".to_owned(), QueryValue::from(value));
+
+		// Act
+		let query_row = QueryRow::from_backend_row(row);
+
+		// Assert
+		assert_eq!(query_row.data, serde_json::json!({"value": value}));
+		assert_eq!(query_row.get::<i32>("value"), Some(value));
+	}
 
 	#[test]
 	#[cfg(feature = "pgvector")]

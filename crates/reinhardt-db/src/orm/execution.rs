@@ -94,10 +94,10 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 		// Boolean
 		SV::Bool(Some(b)) => QueryValue::Bool(b),
 
-		// Signed integers (convert all to i64)
+		// Preserve i32 for PostgreSQL integer function overloads.
 		SV::TinyInt(Some(v)) => QueryValue::Int(v as i64),
 		SV::SmallInt(Some(v)) => QueryValue::Int(v as i64),
-		SV::Int(Some(v)) => QueryValue::Int(v as i64),
+		SV::Int(Some(v)) => QueryValue::Int32(v),
 		SV::BigInt(Some(v)) => QueryValue::Int(v),
 
 		// Unsigned integers (convert to i64 with checked conversion for large values)
@@ -181,6 +181,21 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 }
 
 /// Convert reinhardt_query Values (`Vec<Value>`) to `Vec<QueryValue>`
+///
+/// An `i32` value retains its width as `QueryValue::Int32`, so PostgreSQL can
+/// resolve functions accepting `integer` without an explicit cast. An `i64`
+/// remains `QueryValue::Int` and binds as `bigint`, even if it fits in an `i32`.
+///
+/// ```rust
+/// use reinhardt_db::{backends::QueryValue, orm::execution::convert_values};
+/// use reinhardt_query::prelude::{Expr, PostgresQueryBuilder, Query, QueryStatementBuilder};
+///
+/// let (_, values) = Query::select()
+///     .expr(Expr::value(3_i32))
+///     .expr(Expr::value(3_i64))
+///     .build(PostgresQueryBuilder);
+/// assert_eq!(convert_values(values), vec![QueryValue::Int32(3), QueryValue::Int(3)]);
+/// ```
 pub fn convert_values(values: reinhardt_query::prelude::Values) -> Vec<QueryValue> {
 	values
 		.0

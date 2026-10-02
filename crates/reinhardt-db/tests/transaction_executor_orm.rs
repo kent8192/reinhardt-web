@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
@@ -2096,6 +2097,7 @@ async fn bulk_create_never_uses_mysql_first_insert_id_for_each_model() {
 	assert!(!executor.calls[0].sql.contains("LAST_INSERT_ID"));
 }
 
+#[rstest]
 #[tokio::test]
 async fn many_to_many_manager_terminals_use_the_caller_owned_executor() {
 	let manager = ManyToManyManager::<(), (), i64>::new(
@@ -2176,17 +2178,17 @@ async fn many_to_many_manager_terminals_use_the_caller_owned_executor() {
 	assert!(executor.calls.iter().all(|call| call.sql.contains("$1")));
 	assert_eq!(
 		executor.calls[0].params,
-		vec![QueryValue::Int(1), QueryValue::Int(2)],
+		vec![QueryValue::Int(1), QueryValue::Int32(2)],
 		"manager add must preserve integer primary-key binders"
 	);
 	assert_eq!(
 		executor.calls[1].params,
-		vec![QueryValue::Int(1), QueryValue::Int(2)],
+		vec![QueryValue::Int(1), QueryValue::Int32(2)],
 		"manager remove must preserve integer primary-key binders"
 	);
 	assert_eq!(
 		executor.calls[2].params,
-		vec![QueryValue::Int(1), QueryValue::Int(2)],
+		vec![QueryValue::Int(1), QueryValue::Int32(2)],
 		"manager contains must preserve integer primary-key binders"
 	);
 	assert_eq!(
@@ -2206,6 +2208,7 @@ async fn many_to_many_manager_terminals_use_the_caller_owned_executor() {
 	);
 }
 
+#[rstest]
 #[tokio::test]
 async fn many_to_many_marker_terminals_accept_a_mutable_executor() {
 	let marker = ManyToManyField::<MarkerSource, MarkerTarget>::new();
@@ -2277,32 +2280,32 @@ async fn many_to_many_marker_terminals_accept_a_mutable_executor() {
 	assert!(executor.calls.iter().all(|call| call.sql.contains('?')));
 	assert_eq!(
 		executor.calls[0].params,
-		vec![QueryValue::Int(1), QueryValue::Int(2)],
+		vec![QueryValue::Int32(1), QueryValue::Int32(2)],
 		"marker add must preserve integer primary-key binders"
 	);
 	assert_eq!(
 		executor.calls[1].params,
-		vec![QueryValue::Int(1), QueryValue::Int(2)],
+		vec![QueryValue::Int32(1), QueryValue::Int32(2)],
 		"marker remove must preserve integer primary-key binders"
 	);
 	assert_eq!(
 		executor.calls[2].params,
-		vec![QueryValue::Int(1), QueryValue::Int(2)],
+		vec![QueryValue::Int32(1), QueryValue::Int32(2)],
 		"marker contains must preserve integer primary-key binders"
 	);
 	assert_eq!(
 		executor.calls[3].params,
-		vec![QueryValue::Int(1)],
+		vec![QueryValue::Int32(1)],
 		"marker all must preserve the source primary-key binder"
 	);
 	assert_eq!(
 		executor.calls[4].params,
-		vec![QueryValue::Int(1)],
+		vec![QueryValue::Int32(1)],
 		"marker clear must preserve the source primary-key binder"
 	);
 	assert_eq!(
 		executor.calls[5].params,
-		vec![QueryValue::Int(1)],
+		vec![QueryValue::Int32(1)],
 		"marker count must preserve the source primary-key binder"
 	);
 }

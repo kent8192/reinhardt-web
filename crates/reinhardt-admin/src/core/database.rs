@@ -3662,7 +3662,7 @@ mod tests {
 				})))),
 				QueryValue::String("read,write".to_string()),
 				QueryValue::String("2026-08-12".to_string()),
-				QueryValue::Int(1),
+				QueryValue::Int32(1),
 			]
 		);
 	}

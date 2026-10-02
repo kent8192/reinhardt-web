@@ -605,7 +605,7 @@ fn test_query_value_from_i32() {
 	let val: QueryValue = 50i32.into();
 
 	// Assert
-	assert_eq!(val, QueryValue::Int(50));
+	assert_eq!(val, QueryValue::Int32(50));
 }
 
 #[rstest]

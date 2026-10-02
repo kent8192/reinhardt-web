@@ -1,5 +1,7 @@
 use std::{fs, path::PathBuf, process::Command};
 
+use rstest::rstest;
+
 #[test]
 fn vector_module_requires_the_pgvector_feature() {
 	let temporary_project = tempfile::Builder::new()
@@ -38,7 +40,7 @@ fn vector_module_requires_the_pgvector_feature() {
 	assert!(stderr.contains("could not find `vector` in `orm`"));
 }
 
-#[test]
+#[rstest]
 fn non_pgvector_consumer_preserves_existing_public_shapes() {
 	let temporary_project = tempfile::Builder::new()
 		.prefix("reinhardt-non-pgvector-source-compat-")
@@ -95,7 +97,8 @@ fn storage_kind(value: DatabaseStorageKind) {
 
 fn query_value(value: QueryValue) {
     match value {
-        QueryValue::Null | QueryValue::Bool(_) | QueryValue::Int(_) | QueryValue::Float(_)
+        QueryValue::Null | QueryValue::Bool(_) | QueryValue::Int32(_) | QueryValue::Int(_)
+        | QueryValue::Float(_)
         | QueryValue::String(_) | QueryValue::Bytes(_) | QueryValue::Timestamp(_)
         | QueryValue::NaiveTimestamp(_)
         | QueryValue::Uuid(_) | QueryValue::Json(_) | QueryValue::StringArray(_)
