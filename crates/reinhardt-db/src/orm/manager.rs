@@ -2087,7 +2087,7 @@ impl<M: Model> Manager<M> {
 			reinhardt_query::value::Value::TinyInt(None) => QueryValue::Null,
 			reinhardt_query::value::Value::SmallInt(Some(i)) => QueryValue::Int(i as i64),
 			reinhardt_query::value::Value::SmallInt(None) => QueryValue::Null,
-			reinhardt_query::value::Value::Int(Some(i)) => QueryValue::Int(i as i64),
+			reinhardt_query::value::Value::Int(Some(i)) => QueryValue::Int32(i),
 			reinhardt_query::value::Value::Int(None) => QueryValue::Null,
 			reinhardt_query::value::Value::BigInt(Some(i)) => QueryValue::Int(i),
 			reinhardt_query::value::Value::BigInt(None) => QueryValue::Null,
@@ -2234,6 +2234,7 @@ impl<M: Model> Manager<M> {
 		match value {
 			QueryValue::Null => reinhardt_query::value::Value::Int(None),
 			QueryValue::Bool(value) => reinhardt_query::value::Value::Bool(Some(value)),
+			QueryValue::Int32(value) => reinhardt_query::value::Value::Int(Some(value)),
 			QueryValue::Int(value) => reinhardt_query::value::Value::BigInt(Some(value)),
 			QueryValue::Float(value) => reinhardt_query::value::Value::Double(Some(value)),
 			QueryValue::String(value) => {
@@ -4219,6 +4220,23 @@ mod tests {
 				)))]
 			);
 		}
+	}
+
+	#[rstest::rstest]
+	#[case(i32::MIN)]
+	#[case(0)]
+	#[case(i32::MAX)]
+	fn manager_preserves_int32_parameters(#[case] input: i32) {
+		// Arrange
+		let value = reinhardt_query::value::Value::Int(Some(input));
+
+		// Act
+		let bound = Manager::<TestUser>::sea_value_to_query_value(value.clone());
+		let restored = Manager::<TestUser>::query_value_to_sea_value(bound.clone());
+
+		// Assert
+		assert_eq!(bound, QueryValue::Int32(input));
+		assert_eq!(restored, value);
 	}
 
 	#[test]

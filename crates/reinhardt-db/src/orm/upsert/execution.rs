@@ -1633,7 +1633,7 @@ mod tests {
 			calls[1].params,
 			vec![
 				QueryValue::String("rust".to_owned()),
-				QueryValue::Int(2),
+				QueryValue::Int32(2),
 				QueryValue::String("created".to_owned()),
 			]
 		);

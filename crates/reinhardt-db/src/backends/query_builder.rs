@@ -34,6 +34,7 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 		// (consistent with PostgreSQL, MySQL, SQLite backend implementations)
 		QueryValue::Null => Value::BigInt(None),
 		QueryValue::Bool(b) => Value::Bool(Some(*b)),
+		QueryValue::Int32(i) => Value::Int(Some(*i)),
 		QueryValue::Int(i) => Value::BigInt(Some(*i)),
 		QueryValue::Float(f) => Value::Double(Some(*f)),
 		QueryValue::String(s) => Value::String(Some(Box::new(s.clone()))),
@@ -1541,6 +1542,22 @@ mod tests {
 	use crate::backends::error::DatabaseErrorKind;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
 	use rstest::rstest;
+
+	#[rstest]
+	#[case::int32_min(QueryValue::Int32(i32::MIN), Value::Int(Some(i32::MIN)))]
+	#[case::int32_max(QueryValue::Int32(i32::MAX), Value::Int(Some(i32::MAX)))]
+	#[case::bigint_small(QueryValue::Int(3), Value::BigInt(Some(3)))]
+	#[case::bigint_max(QueryValue::Int(i64::MAX), Value::BigInt(Some(i64::MAX)))]
+	fn query_builder_preserves_integer_parameter_width(
+		#[case] input: QueryValue,
+		#[case] expected: Value,
+	) {
+		// Act
+		let value = query_value_to_sea_value(&input);
+
+		// Assert
+		assert_eq!(value, expected);
+	}
 
 	// Mock transaction executor for testing
 	struct MockTransactionExecutor {

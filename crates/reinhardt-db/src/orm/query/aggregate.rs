@@ -701,6 +701,7 @@ fn normalize_aggregate_value(
 	}
 	match function {
 		TypedAggregateFn::Count => match raw {
+			QueryValue::Int32(value) => Ok(AggregateValue::Integer(i64::from(value))),
 			QueryValue::Int(value) => Ok(AggregateValue::Integer(value)),
 			other => Err(unexpected_value_error(
 				function_name(function),
@@ -748,6 +749,7 @@ fn integer_sum(
 	backend: DatabaseBackend,
 ) -> Result<AggregateValue> {
 	match raw {
+		QueryValue::Int32(value) => Ok(AggregateValue::Integer(i64::from(value))),
 		QueryValue::Int(value) => Ok(AggregateValue::Integer(value)),
 		QueryValue::String(value) => {
 			let decimal = rust_decimal::Decimal::from_str(&value).map_err(|_| {
@@ -782,6 +784,7 @@ fn float_aggregate(
 	backend: DatabaseBackend,
 ) -> Result<AggregateValue> {
 	let value = match raw {
+		QueryValue::Int32(value) => Some(f64::from(value)),
 		QueryValue::Int(value) => Some(value as f64),
 		QueryValue::Float(value) if value.is_finite() => Some(value),
 		QueryValue::String(value) => rust_decimal::Decimal::from_str(&value)
@@ -807,6 +810,7 @@ fn decimal_aggregate(
 	backend: DatabaseBackend,
 ) -> Result<AggregateValue> {
 	let value = match raw {
+		QueryValue::Int32(value) => Some(rust_decimal::Decimal::from(value)),
 		QueryValue::Int(value) => Some(rust_decimal::Decimal::from(value)),
 		QueryValue::String(value) => rust_decimal::Decimal::from_str(&value).ok(),
 		QueryValue::Float(value) if value.is_finite() => rust_decimal::Decimal::from_f64(value),
@@ -838,6 +842,7 @@ fn normalize_storage_value(
 			raw => Err(unexpected("Bool", raw)),
 		},
 		DatabaseStorageKind::I32 | DatabaseStorageKind::I64 => match raw {
+			QueryValue::Int32(value) => Ok(AggregateValue::Integer(i64::from(value))),
 			QueryValue::Int(value) => Ok(AggregateValue::Integer(value)),
 			QueryValue::String(value) => value
 				.parse::<i64>()
@@ -846,11 +851,15 @@ fn normalize_storage_value(
 			raw => Err(unexpected("Integer", raw)),
 		},
 		DatabaseStorageKind::F32 | DatabaseStorageKind::F64 => match raw {
+			QueryValue::Int32(value) => Ok(AggregateValue::Float(f64::from(value))),
 			QueryValue::Int(value) => Ok(AggregateValue::Float(value as f64)),
 			QueryValue::Float(value) if value.is_finite() => Ok(AggregateValue::Float(value)),
 			raw => Err(unexpected("Float", raw)),
 		},
 		DatabaseStorageKind::Decimal => match raw {
+			QueryValue::Int32(value) => {
+				Ok(AggregateValue::Decimal(rust_decimal::Decimal::from(value)))
+			}
 			QueryValue::Int(value) => {
 				Ok(AggregateValue::Decimal(rust_decimal::Decimal::from(value)))
 			}
@@ -1008,6 +1017,26 @@ mod tests {
 			DatabaseBackend::Postgres,
 		)
 		.expect("fixture value should match its storage kind")
+	}
+
+	#[rstest]
+	#[case(DatabaseStorageKind::I32, AggregateValue::Integer(-7))]
+	#[case(DatabaseStorageKind::I64, AggregateValue::Integer(-7))]
+	#[case(DatabaseStorageKind::F32, AggregateValue::Float(-7.0))]
+	#[case(DatabaseStorageKind::F64, AggregateValue::Float(-7.0))]
+	#[case(DatabaseStorageKind::Decimal, AggregateValue::Decimal((-7).into()))]
+	fn aggregates_accept_int32_rows(
+		#[case] storage_kind: DatabaseStorageKind,
+		#[case] expected: AggregateValue,
+	) {
+		// Arrange
+		let value = QueryValue::from(-7_i32);
+
+		// Act
+		let actual = normalize(storage_kind, value);
+
+		// Assert
+		assert_eq!(actual, expected);
 	}
 
 	#[rstest]

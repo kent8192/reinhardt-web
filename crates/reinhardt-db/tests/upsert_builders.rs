@@ -678,6 +678,7 @@ async fn custom_and_standard_managers_use_the_same_create_sequence() {
 	assert_eq!(standard.operations(), ["fetch_all", "fetch_all"]);
 }
 
+#[rstest]
 #[tokio::test]
 async fn create_hook_mutation_changes_insert_parameters() {
 	let mut executor = RecordingExecutor::new(DatabaseBackend::Postgres)
@@ -695,7 +696,7 @@ async fn create_hook_mutation_changes_insert_parameters() {
 	assert!(created);
 	assert_eq!(
 		executor.calls[1].params,
-		vec![QueryValue::String("rust".to_owned()), QueryValue::Int(42)]
+		vec![QueryValue::String("rust".to_owned()), QueryValue::Int32(42)]
 	);
 }
 
