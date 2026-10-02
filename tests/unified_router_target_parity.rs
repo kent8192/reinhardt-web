@@ -48,6 +48,22 @@ reinhardt = {{ path = "{}", package = "reinhardt-web", default-features = false,
 	.expect("copy fixture source");
 
 	let manifest_path = crate_dir.path().join("Cargo.toml");
+	// This standalone consumer resolves independently of the workspace lockfile
+	// and patches. Fetch its exact dependency graph for all targets before the
+	// offline checks, including dependencies used only by WASM.
+	let output = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+		.arg("fetch")
+		.arg("--manifest-path")
+		.arg(&manifest_path)
+		.output()
+		.expect("fetch UnifiedRouter target-parity fixture dependencies");
+	assert!(
+		output.status.success(),
+		"fixture dependencies should be available before offline checks\nstdout:\n{}\nstderr:\n{}",
+		String::from_utf8_lossy(&output.stdout),
+		String::from_utf8_lossy(&output.stderr),
+	);
+
 	let target_path = target_dir.path().to_path_buf();
 	let scenarios = [
 		("native with server cfg", Some("server"), None),
@@ -64,7 +80,7 @@ reinhardt = {{ path = "{}", package = "reinhardt-web", default-features = false,
 			command.arg("--target").arg(target);
 		}
 		let output = command
-			.arg("--offline")
+			.arg("--frozen")
 			.output()
 			.expect("run UnifiedRouter target-parity fixture");
 
