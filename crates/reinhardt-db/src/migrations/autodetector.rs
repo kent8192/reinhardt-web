@@ -283,7 +283,7 @@ fn model_index_definitions_equivalent(
 
 /// Build the physical index name used by `Operation::CreateIndex`.
 pub(crate) fn default_index_name(table: &str, fields: &[String]) -> String {
-	super::operations::generated_index_name(table, fields, None)
+	super::operations::generated_index_name(table, fields, None, None)
 }
 
 /// Compare indexes by schema semantics rather than generated names.
@@ -1320,6 +1320,7 @@ impl ProjectState {
 						table,
 						columns,
 						expressions.as_deref(),
+						where_clause.as_deref(),
 					);
 					let index = IndexDefinition {
 						name,
@@ -1366,6 +1367,7 @@ impl ProjectState {
 							table,
 							columns,
 							expressions.as_deref(),
+							where_clause.as_deref(),
 						)
 					});
 					let index = IndexDefinition {
@@ -1391,7 +1393,7 @@ impl ProjectState {
 				Operation::DropIndex { table, columns } => {
 					if let Some(model) = self.find_model_by_table_mut(table) {
 						let generated_name =
-							super::operations::generated_index_name(table, columns, None);
+							super::operations::generated_index_name(table, columns, None, None);
 						model.indexes.retain(|index| index.name != generated_name);
 						model
 							.options
@@ -8011,7 +8013,7 @@ mod tests {
 			.find_model_by_table("blog_posts")
 			.expect("replayed model")
 			.indexes[0];
-		assert_eq!(replayed_index.name, "idx_blog_posts_expr");
+		assert_eq!(replayed_index.name, "idx_blog_posts_expr_5c9ab3d876c4ec38");
 		assert_eq!(
 			replayed_index.expressions,
 			Some(vec!["LOWER(slug)".to_string()])
@@ -8036,7 +8038,7 @@ mod tests {
 				where_clause: Some(predicate),
 				expressions: Some(expressions),
 				..
-			}] if name == "idx_blog_posts_expr"
+			}] if name == "idx_blog_posts_expr_5c9ab3d876c4ec38"
 				&& predicate == "published = TRUE"
 				&& expressions == &["LOWER(slug)".to_string()]
 		));

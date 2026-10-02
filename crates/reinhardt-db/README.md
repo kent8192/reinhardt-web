@@ -34,6 +34,18 @@ This crate provides the following modules:
   - Forward and backward migrations
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
+  - `Operation::CreateIndex` gives expression and partial indexes a deterministic
+    hash suffix (the first 64 bits of SHA-256), derived from the table, ordered
+    expressions (or columns), and exact `WHERE` predicate. These hashed names fit
+    PostgreSQL's 63-byte limit;
+    ordinary column-index names remain unchanged. Creation, rollback, and state
+    reconstruction use the same name. Expression and predicate text is not
+    normalized, so formatting changes can produce a different name.
+    For indexes already applied with a legacy name such as `idx_events_expr` or
+    an unhashed partial-index name, retain that physical name using
+    `CreateIndexRepair { name: Some(existing_name), .. }` in the corresponding
+    migration before rollback or replay. Upgrading does not rename database
+    indexes automatically; `DropIndex` describes ordinary column indexes only.
   - State management and autodetection
   - Automatic non-unique indexes for default-indexed foreign-key ID columns
   - CockroachDB concurrent migrator serialization with a sentinel-row lock

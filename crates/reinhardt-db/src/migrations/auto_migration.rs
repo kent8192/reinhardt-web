@@ -264,6 +264,7 @@ impl AutoMigrationGenerator {
 						table,
 						columns,
 						expressions.as_deref(),
+						where_clause.as_deref(),
 					),
 					columns: columns.clone(),
 					unique: *unique,
@@ -292,6 +293,7 @@ impl AutoMigrationGenerator {
 							table,
 							columns,
 							expressions.as_deref(),
+							where_clause.as_deref(),
 						)
 					}),
 					columns: columns.clone(),
@@ -533,6 +535,48 @@ mod tests {
 		let rollback = generator.generate_rollback(&operations);
 		assert_eq!(rollback.len(), 1);
 		assert!(matches!(rollback[0], Operation::DropTable { .. }));
+	}
+
+	#[rstest::rstest]
+	#[case(None)]
+	#[case(Some("sequence > 0"))]
+	fn rollback_indexes_use_the_same_physical_name(
+		#[case] predicate: Option<&str>,
+		#[values(false, true)] repair: bool,
+	) {
+		// Arrange
+		let generator = AutoMigrationGenerator::new(
+			DatabaseSchema::default(),
+			Arc::new(Mutex::new(TestRepository::new())),
+		);
+		let state = super::super::ProjectState::new();
+		let mut operation = Operation::CreateIndex {
+			table: "events".to_owned(),
+			columns: vec!["sequence".to_owned()],
+			unique: false,
+			index_type: None,
+			where_clause: predicate.map(str::to_owned),
+			concurrently: false,
+			expressions: Some(vec!["(data->>'tenant')".to_owned(), "sequence".to_owned()]),
+			mysql_options: None,
+			operator_class: None,
+		};
+		if repair {
+			let drop = operation.to_reverse_operation(&state).unwrap().unwrap();
+			operation = drop.to_reverse_operation(&state).unwrap().unwrap();
+			if let Operation::CreateIndexRepair { name, .. } = &mut operation {
+				*name = None;
+			}
+		}
+		let dialect = super::super::SqlDialect::Postgres;
+		let expected = operation.to_reverse_sql(&dialect, &state).unwrap().unwrap();
+
+		// Act
+		let rollback = generator.generate_rollback(&[operation]);
+
+		// Assert
+		assert_eq!(rollback.len(), 1);
+		assert_eq!(rollback[0].to_sql(&dialect), expected[0]);
 	}
 
 	#[test]

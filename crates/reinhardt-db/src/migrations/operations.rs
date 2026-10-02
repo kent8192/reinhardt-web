@@ -59,6 +59,7 @@ use reinhardt_query::prelude::{
 	DropIndexStatement, DropTableStatement, Query, SimpleExpr, Value,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// Index type for database indexes
 ///
@@ -144,13 +145,44 @@ pub(crate) fn generated_index_name(
 	table: &str,
 	columns: &[String],
 	expressions: Option<&[String]>,
+	where_clause: Option<&str>,
 ) -> String {
-	let suffix = if expressions.is_some_and(|expressions| !expressions.is_empty()) {
-		"expr".to_string()
-	} else {
-		columns.join("_")
-	};
-	format!("idx_{table}_{suffix}")
+	let expressions = expressions.filter(|expressions| !expressions.is_empty());
+	let suffix = expressions.map_or_else(|| columns.join("_"), |_| "expr".to_owned());
+	let mut name = format!("idx_{table}_{suffix}");
+	if expressions.is_none() && where_clause.is_none() {
+		return name;
+	}
+
+	// Use a fixed hash algorithm and length-prefixed fields so migration names
+	// remain stable across processes and ambiguous expression boundaries.
+	let fields = expressions.unwrap_or(columns);
+	let mut hasher = Sha256::new();
+	hasher.update(b"reinhardt-index-v1");
+	hasher.update((fields.len() as u64).to_be_bytes());
+	for value in std::iter::once(table).chain(fields.iter().map(String::as_str)) {
+		hasher.update((value.len() as u64).to_be_bytes());
+		hasher.update(value.as_bytes());
+	}
+	hasher.update([
+		u8::from(expressions.is_some()),
+		u8::from(where_clause.is_some()),
+	]);
+	if let Some(predicate) = where_clause {
+		hasher.update(predicate.as_bytes());
+	}
+	let digest = format!("{:x}", hasher.finalize());
+	let hash_suffix = format!("_{}", &digest[..16]);
+
+	// Preserve the hash within PostgreSQL's 63-byte identifier limit, including
+	// when table/column names need a UTF-8-safe truncation.
+	let mut prefix_len = name.len().min(63 - hash_suffix.len());
+	while !name.is_char_boundary(prefix_len) {
+		prefix_len -= 1;
+	}
+	name.truncate(prefix_len);
+	name.push_str(&hash_suffix);
+	name
 }
 // ============================================================================
 // MySQL-Specific ALTER TABLE Options
@@ -902,7 +934,12 @@ pub enum Operation {
 		/// The constraint name.
 		constraint_name: String,
 	},
-	/// CreateIndex variant.
+	/// Creates an index with a deterministic generated name.
+	///
+	/// Nonempty expressions and partial-index predicates contribute a stable
+	/// hash suffix. Ordinary column indexes retain `idx_<table>_<columns>` names.
+	/// Use [`Operation::CreateIndexRepair`] with an explicit name to retain a
+	/// physical name created by an older naming algorithm.
 	CreateIndex {
 		/// The table.
 		table: String,
@@ -930,7 +967,7 @@ pub enum Operation {
 		/// Expression index (PostgreSQL, SQLite, MySQL 8.0+)
 		///
 		/// Index on computed expressions rather than simple column references.
-		/// When specified, these expressions are used instead of `columns`.
+		/// When nonempty, these expressions are used instead of `columns`.
 		///
 		/// # Examples
 		///
@@ -939,7 +976,7 @@ pub enum Operation {
 		/// expressions: Some(vec!["LOWER(email)"]),
 		/// ```
 		///
-		/// **Note**: When `expressions` is Some, `columns` is ignored for SQL generation.
+		/// **Note**: Empty expressions use `columns`, just like `None`.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		expressions: Option<Vec<String>>,
 		/// MySQL ALTER TABLE options (ALGORITHM, LOCK)
@@ -970,7 +1007,7 @@ pub enum Operation {
 	CreateIndexRepair {
 		/// The table.
 		table: String,
-		/// Explicit physical index name. `None` uses the legacy generated name.
+		/// Explicit physical index name. `None` uses the generated name.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		name: Option<String>,
 		/// The columns.
@@ -1993,16 +2030,13 @@ impl Operation {
 				};
 
 				// Determine what to index: expressions or columns
-				let (index_content, name_suffix) =
+				let index_content =
 					if let Some(exprs) = expressions.as_ref().filter(|e| !e.is_empty()) {
-						// For expression indexes, use expressions and generate a hash-based suffix
 						// Expressions are assumed to be properly formatted, no additional quoting needed
-						let content = exprs.join(", ");
-						let suffix = "expr";
-						(content, suffix.to_string())
+						exprs.join(", ")
 					} else {
 						// Use columns with optional operator class
-						let content = if let Some(op_class) = operator_class {
+						if let Some(op_class) = operator_class {
 							// Apply operator class to each column (PostgreSQL-specific)
 							if matches!(dialect, SqlDialect::Postgres) {
 								columns
@@ -2025,15 +2059,15 @@ impl Operation {
 								.map(|c| quote_identifier(c).to_string())
 								.collect::<Vec<_>>()
 								.join(", ")
-						};
-						(content, columns.join("_"))
+						}
 					};
 
-				let idx_name = if name_suffix == "expr" {
-					format!("idx_{table}_expr")
-				} else {
-					generated_index_name(table, columns, None)
-				};
+				let idx_name = generated_index_name(
+					table,
+					columns,
+					expressions.as_deref(),
+					where_clause.as_deref(),
+				);
 
 				// Index type clause (USING type) - PostgreSQL, CockroachDB
 				let using_clause = match (index_type, dialect) {
@@ -2135,15 +2169,19 @@ impl Operation {
 				};
 				let sql = create.to_sql(dialect);
 				name.as_ref().map_or(sql.clone(), |name| {
-					let generated_name =
-						generated_index_name(table, columns, expressions.as_deref());
+					let generated_name = generated_index_name(
+						table,
+						columns,
+						expressions.as_deref(),
+						where_clause.as_deref(),
+					);
 					let generated_name = quote_identifier(&generated_name);
 					let name = quote_identifier(name);
 					sql.replacen(generated_name.as_ref(), name.as_ref(), 1)
 				})
 			}
 			Operation::DropIndex { table, columns } => {
-				let idx_name = generated_index_name(table, columns, None);
+				let idx_name = generated_index_name(table, columns, None, None);
 				match dialect {
 					SqlDialect::Mysql => {
 						format!(
@@ -2722,11 +2760,17 @@ impl Operation {
 				table,
 				columns,
 				expressions,
+				where_clause,
 				..
 			} => {
 				// Use the same naming convention as to_sql(), including expression indexes.
 				// This ensures the rollback DROP INDEX targets the correct index name
-				let index_name = generated_index_name(table, columns, expressions.as_deref());
+				let index_name = generated_index_name(
+					table,
+					columns,
+					expressions.as_deref(),
+					where_clause.as_deref(),
+				);
 				// MySQL requires `DROP INDEX <name> ON <table>`; PostgreSQL/SQLite/CockroachDB
 				// only need the index name. Mirror the dialect dispatch used by the forward
 				// `Operation::DropIndex` SQL generator above.
@@ -2747,10 +2791,16 @@ impl Operation {
 				name,
 				columns,
 				expressions,
+				where_clause,
 				..
 			} => {
 				let index_name = name.clone().unwrap_or_else(|| {
-					generated_index_name(table, columns, expressions.as_deref())
+					generated_index_name(
+						table,
+						columns,
+						expressions.as_deref(),
+						where_clause.as_deref(),
+					)
 				});
 				let sql = match dialect {
 					SqlDialect::Mysql => format!(
@@ -2884,7 +2934,7 @@ impl Operation {
 				// Enhancement opportunity: Full index reconstruction would preserve
 				// index_type, where_clause, operator_class, and other advanced properties.
 				// The current implementation generates a basic CREATE INDEX statement.
-				let index_name = generated_index_name(table, columns, None);
+				let index_name = generated_index_name(table, columns, None, None);
 				let columns_list = columns
 					.iter()
 					.map(|c| quote_identifier(c).to_string())
@@ -3891,7 +3941,12 @@ impl Operation {
 				operator_class,
 			} => Ok(Some(Operation::DropNamedIndex {
 				table: table.clone(),
-				name: generated_index_name(table, columns, expressions.as_deref()),
+				name: generated_index_name(
+					table,
+					columns,
+					expressions.as_deref(),
+					where_clause.as_deref(),
+				),
 				columns: columns.clone(),
 				unique: *unique,
 				index_type: *index_type,
@@ -3915,7 +3970,12 @@ impl Operation {
 			} => Ok(Some(Operation::DropNamedIndex {
 				table: table.clone(),
 				name: name.clone().unwrap_or_else(|| {
-					generated_index_name(table, columns, expressions.as_deref())
+					generated_index_name(
+						table,
+						columns,
+						expressions.as_deref(),
+						where_clause.as_deref(),
+					)
 				}),
 				columns: columns.clone(),
 				unique: *unique,
@@ -4138,9 +4198,16 @@ impl Operation {
 				table,
 				columns,
 				unique,
+				expressions,
+				where_clause,
 				..
 			} => {
-				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
+				let idx_name = generated_index_name(
+					table,
+					columns,
+					expressions.as_deref(),
+					where_clause.as_deref(),
+				);
 				OperationStatement::IndexCreate(
 					self.build_create_index(&idx_name, table, columns, *unique),
 				)
@@ -4151,13 +4218,19 @@ impl Operation {
 				columns,
 				unique,
 				expressions,
+				where_clause,
 				..
 			} => {
 				let generated_name;
 				let idx_name = if let Some(name) = name.as_deref() {
 					name
 				} else {
-					generated_name = generated_index_name(table, columns, expressions.as_deref());
+					generated_name = generated_index_name(
+						table,
+						columns,
+						expressions.as_deref(),
+						where_clause.as_deref(),
+					);
 					&generated_name
 				};
 				OperationStatement::IndexCreate(
