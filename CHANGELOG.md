@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.20...reinhardt-web@v0.3.21) - 2026-10-02
+
+### Documentation
+
+- *(auth)* clarify legacy OAuth2 helper scope
+- *(auth)* clarify OAuth2 helper scope and validation
+- *(auth)* complete OAuth setup and token docs
+- *(auth)* align OAuth2 module catalog wording
+
+### Fixed
+
+- *(commands)* honor makemigrations migration directory
+- *(commands)* reject non-utf8 migration directory paths
+- *(query)* preserve PostgreSQL expression grouping
+- *(macros)* honor db_column in composite primary keys
+
+### Maintenance
+
+- *(query)* integrate main rendering fixes
+
+### Testing
+
+- *(db)* align negated filter SQL expectations
+
 ## [0.3.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.19...reinhardt-web@v0.3.20) - 2026-09-25
 
 ### Documentation
