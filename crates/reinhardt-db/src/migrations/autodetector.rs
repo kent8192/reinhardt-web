@@ -354,9 +354,8 @@ impl IndexDefinition {
 		table: &str,
 		state: AdvancedIndexOptionState,
 	) -> super::Operation {
-		#[cfg(feature = "pgvector")]
-		{
-			super::Operation::CreateNamedIndex {
+		if cfg!(feature = "pgvector") || self.where_clause.is_some() {
+			return super::Operation::CreateNamedIndex {
 				table: table.to_string(),
 				name: self.name.clone(),
 				columns: self.fields.clone(),
@@ -367,21 +366,18 @@ impl IndexDefinition {
 				expressions: self.expressions().cloned(),
 				mysql_options: state.mysql_options,
 				operator_class: self.operator_class().cloned(),
-			}
+			};
 		}
-		#[cfg(not(feature = "pgvector"))]
-		{
-			super::Operation::CreateIndex {
-				table: table.to_string(),
-				columns: self.fields.clone(),
-				unique: self.unique,
-				index_type: None,
-				where_clause: self.where_clause.clone(),
-				concurrently: state.concurrently,
-				expressions: None,
-				mysql_options: state.mysql_options,
-				operator_class: None,
-			}
+		super::Operation::CreateIndex {
+			table: table.to_string(),
+			columns: self.fields.clone(),
+			unique: self.unique,
+			index_type: None,
+			where_clause: self.where_clause.clone(),
+			concurrently: state.concurrently,
+			expressions: None,
+			mysql_options: state.mysql_options,
+			operator_class: None,
 		}
 	}
 
@@ -453,7 +449,7 @@ impl IndexDefinition {
 		table: &str,
 		state: AdvancedIndexOptionState,
 	) -> super::Operation {
-		if self.index_type().is_some() {
+		if self.index_type().is_some() || self.where_clause.is_some() {
 			self.create_operation_with_state(table, state)
 		} else {
 			self.create_named_operation_with_state(table, state)
@@ -1840,7 +1836,6 @@ impl ProjectState {
 						set_advanced_index_option_state(model, &state_index_name, state);
 					}
 				}
-				#[cfg(feature = "pgvector")]
 				Operation::CreateNamedIndex {
 					table,
 					name,
@@ -1855,9 +1850,14 @@ impl ProjectState {
 				} => {
 					let mut index = IndexDefinition::new(name.clone(), columns.clone(), *unique);
 					index.where_clause = where_clause.clone();
-					index.index_type = *index_type;
-					index.expressions = expressions.clone();
-					index.operator_class = operator_class.clone();
+					#[cfg(feature = "pgvector")]
+					{
+						index.index_type = *index_type;
+						index.expressions = expressions.clone();
+						index.operator_class = operator_class.clone();
+					}
+					#[cfg(not(feature = "pgvector"))]
+					let _ = (index_type, expressions, operator_class);
 					let state = AdvancedIndexOptionState::new(
 						where_clause.is_some()
 							|| index_type.is_some()
@@ -7469,7 +7469,6 @@ impl MigrationAutodetector {
 			| super::Operation::DropNamedIndex { table, .. }
 			| super::Operation::CreateCompositePrimaryKey { table, .. }
 			| super::Operation::SetAutoIncrementValue { table, .. } => table == table_name,
-			#[cfg(feature = "pgvector")]
 			super::Operation::CreateNamedIndex { table, .. } => table == table_name,
 			super::Operation::CreateTable { name, .. } | super::Operation::DropTable { name } => {
 				name == table_name
@@ -10249,8 +10248,9 @@ mod tests {
 
 		assert_eq!(
 			operations,
-			vec![super::super::Operation::CreateIndex {
+			vec![super::super::Operation::CreateNamedIndex {
 				table: "auth_token".to_string(),
+				name: "auth_tokens_user_id_idx".to_string(),
 				columns: vec!["user_id".to_string()],
 				unique: false,
 				index_type: None,

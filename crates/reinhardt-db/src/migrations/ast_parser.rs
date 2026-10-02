@@ -1237,7 +1237,6 @@ fn parse_index_operation_strict(
 	}
 
 	let name = parse_string_field_strict(&operation.fields, "name", context)?;
-	#[cfg(feature = "pgvector")]
 	{
 		Ok(if operation_name == "CreateNamedIndex" {
 			super::Operation::CreateNamedIndex {
@@ -1266,39 +1265,6 @@ fn parse_index_operation_strict(
 				operator_class,
 			}
 		})
-	}
-	#[cfg(not(feature = "pgvector"))]
-	{
-		if operation_name == "DropNamedIndex" {
-			Ok(super::Operation::DropNamedIndex {
-				table,
-				name,
-				columns,
-				unique,
-				index_type,
-				where_clause,
-				concurrently,
-				expressions,
-				mysql_options,
-				operator_class,
-			})
-		} else {
-			let _ = (
-				table,
-				name,
-				columns,
-				unique,
-				index_type,
-				where_clause,
-				concurrently,
-				expressions,
-				mysql_options,
-				operator_class,
-			);
-			Err(MigrationError::InvalidMigration(format!(
-				"{context} is unsupported or malformed"
-			)))
-		}
 	}
 }
 
@@ -2114,22 +2080,9 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 						mysql_options,
 						operator_class,
 					},
-					#[cfg(feature = "pgvector")]
 					"CreateNamedIndex" => super::Operation::CreateNamedIndex {
 						table,
 						name: name?,
-						columns,
-						unique,
-						index_type,
-						where_clause,
-						concurrently,
-						expressions,
-						mysql_options,
-						operator_class,
-					},
-					#[cfg(not(feature = "pgvector"))]
-					"CreateNamedIndex" => super::Operation::CreateIndex {
-						table,
 						columns,
 						unique,
 						index_type,

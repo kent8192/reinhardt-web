@@ -3,7 +3,8 @@
 #![cfg(feature = "migrations")]
 
 use reinhardt_db::migrations::{
-	FieldState, FieldType, MigrationAutodetector, ModelState, Operation, ProjectState, SqlDialect,
+	FieldState, FieldType, IndexDefinition, MigrationAutodetector, ModelState, Operation,
+	ProjectState, SqlDialect,
 };
 use rstest::*;
 
@@ -388,6 +389,118 @@ fn repair_operations_preserve_explicit_or_generated_names(#[case] explicit_name:
 	assert!(reverse_operation.is_none());
 }
 
+#[rstest]
+fn model_partial_indexes_round_trip_without_migration_drift(
+	#[values("idx_events_sequence", "positive_events")] name: &str,
+	#[values(false, true)] existing_table: bool,
+	#[values(false, true)] direct_replay: bool,
+) {
+	// Arrange
+	let mut model = ModelState::new("app", "Events");
+	model.table_name = "events".to_owned();
+	model.add_field(FieldState::new("sequence", FieldType::BigInteger, false));
+	let mut source = ProjectState::new();
+	if existing_table {
+		source.add_model(model.clone());
+	}
+	let mut index = IndexDefinition::new(name, vec!["sequence".to_owned()], false);
+	index.where_clause = Some("sequence > 0".to_owned());
+	model.indexes.push(index.clone());
+	let mut target = ProjectState::new();
+	target.add_model(model);
+	let operations =
+		MigrationAutodetector::new(source.clone(), target.clone()).generate_operations();
+
+	// Act
+	let mut replayed = source;
+	if direct_replay {
+		for operation in &operations {
+			operation.state_forwards("app", &mut replayed);
+		}
+	} else {
+		replayed.apply_migration_operations(&operations, "app");
+	}
+	let next_operations =
+		MigrationAutodetector::new(replayed.clone(), target).generate_operations();
+
+	// Assert
+	assert_eq!(next_operations, Vec::<Operation>::new());
+	assert_eq!(
+		replayed.find_model_by_table("events").unwrap().indexes,
+		vec![index]
+	);
+	let create = operations.last().unwrap();
+	assert_eq!(index_name(create), name);
+	let drop = create.to_reverse_operation(&replayed).unwrap().unwrap();
+	assert_eq!(
+		create
+			.to_reverse_sql(&SqlDialect::Postgres, &replayed)
+			.unwrap()
+			.unwrap(),
+		vec![format!("DROP INDEX {name};")]
+	);
+	let recreate = drop.to_reverse_operation(&replayed).unwrap().unwrap();
+	assert_eq!(recreate, *create);
+	assert_eq!(
+		recreate.to_reverse_operation(&replayed).unwrap(),
+		Some(drop)
+	);
+}
+
+#[rstest]
+fn model_partial_index_replacement_and_removal_preserve_rollback(
+	#[values(None, Some("sequence > 1"))] predicate: Option<&str>,
+) {
+	// Arrange
+	let mut model = ModelState::new("app", "Events");
+	model.table_name = "events".to_owned();
+	model.add_field(FieldState::new("sequence", FieldType::BigInteger, false));
+	let mut index = IndexDefinition::new("idx_events_sequence", vec!["sequence".to_owned()], false);
+	index.where_clause = Some("sequence > 0".to_owned());
+	model.indexes.push(index);
+	let mut source = ProjectState::new();
+	source.add_model(model.clone());
+	model.indexes.clear();
+	if let Some(predicate) = predicate {
+		let mut index =
+			IndexDefinition::new("idx_events_sequence", vec!["sequence".to_owned()], false);
+		index.where_clause = Some(predicate.to_owned());
+		model.indexes.push(index);
+	}
+	let mut target = ProjectState::new();
+	target.add_model(model);
+
+	// Act
+	let operations =
+		MigrationAutodetector::new(source.clone(), target.clone()).generate_operations();
+	let mut replayed = source.clone();
+	replayed.apply_migration_operations(&operations, "app");
+	let rollback: Vec<_> = operations
+		.iter()
+		.rev()
+		.map(|operation| operation.to_reverse_operation(&source).unwrap().unwrap())
+		.collect();
+	let mut rolled_back = replayed.clone();
+	rolled_back.apply_migration_operations(&rollback, "app");
+
+	// Assert
+	assert_eq!(operations.len(), if predicate.is_some() { 2 } else { 1 });
+	assert_eq!(
+		MigrationAutodetector::new(replayed, target).generate_operations(),
+		Vec::<Operation>::new()
+	);
+	assert_eq!(
+		MigrationAutodetector::new(rolled_back, source).generate_operations(),
+		Vec::<Operation>::new()
+	);
+	for (operation, reverse) in operations.iter().zip(rollback.iter().rev()) {
+		assert_eq!(
+			reverse.to_reverse_operation(&ProjectState::new()).unwrap(),
+			Some(operation.clone())
+		);
+	}
+}
+
 #[cfg(all(feature = "postgres", feature = "backends"))]
 mod postgres {
 	use super::*;
@@ -406,6 +519,66 @@ mod postgres {
 		);
 		let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 		(container, connection)
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn postgres_model_partial_index_keeps_declared_name_and_reversibility(
+		#[future] database: (ContainerAsync<Postgres>, DatabaseConnection),
+	) {
+		// Arrange
+		let (_container, connection) = database.await;
+		let mut model = ModelState::new("app", "Events");
+		model.table_name = "events".to_owned();
+		model.add_field(FieldState::new("sequence", FieldType::BigInteger, false));
+		let mut index =
+			IndexDefinition::new("idx_events_sequence", vec!["sequence".to_owned()], false);
+		index.where_clause = Some("sequence > 0".to_owned());
+		model.indexes.push(index);
+		let mut target = ProjectState::new();
+		target.add_model(model);
+		let operations =
+			MigrationAutodetector::new(ProjectState::new(), target.clone()).generate_operations();
+		let create = operations.last().unwrap();
+		let drop = create.to_reverse_operation(&target).unwrap().unwrap();
+		let recreate = drop.to_reverse_operation(&target).unwrap().unwrap();
+
+		// Act
+		let mut affected_rows = Vec::new();
+		for operation in &operations {
+			let result = connection
+				.execute(
+					&operation.try_to_sql(&SqlDialect::Postgres).unwrap(),
+					Vec::new(),
+				)
+				.await
+				.unwrap();
+			affected_rows.push(result.rows_affected);
+		}
+		for sql in create
+			.to_reverse_sql(&SqlDialect::Postgres, &target)
+			.unwrap()
+			.unwrap()
+		{
+			let result = connection.execute(&sql, Vec::new()).await.unwrap();
+			affected_rows.push(result.rows_affected);
+		}
+		for operation in [&recreate, &drop] {
+			let result = connection
+				.execute(
+					&operation.try_to_sql(&SqlDialect::Postgres).unwrap(),
+					Vec::new(),
+				)
+				.await
+				.unwrap();
+			affected_rows.push(result.rows_affected);
+		}
+
+		// Assert
+		assert_eq!(operations.len(), 2);
+		assert_eq!(index_name(create), "idx_events_sequence");
+		assert_eq!(recreate, *create);
+		assert_eq!(affected_rows, vec![0; 5]);
 	}
 
 	#[rstest]

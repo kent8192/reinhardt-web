@@ -133,7 +133,6 @@ impl FilesystemRepository {
 			Operation::DropConstraint { .. } => "DropConstraint",
 			Operation::DropConstraintDefinition { .. } => "DropConstraintDefinition",
 			Operation::CreateIndex { .. } => "CreateIndex",
-			#[cfg(feature = "pgvector")]
 			Operation::CreateNamedIndex { .. } => "CreateNamedIndex",
 			Operation::CreateIndexRepair { .. } => "CreateIndexRepair",
 			Operation::RestoreIndexOnRollback { .. } => "RestoreIndexOnRollback",

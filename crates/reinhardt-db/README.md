@@ -56,6 +56,13 @@ This crate provides the following modules:
     `CreateIndexRepair { name: Some(existing_name), .. }` retains creation and
     state-replay names, but is forward-only and does not generate rollback drops;
     `DropIndex` describes ordinary column indexes only.
+    Model-declared partial indexes use `CreateNamedIndex` to retain their declared
+    physical name during creation, state replay, and rollback, with or without
+    `pgvector`. Replaying an initial or incremental migration therefore produces
+    no index changes when compared with the unchanged model. The generated hash
+    rule applies to unnamed `CreateIndex` operations, not explicit model names.
+    `CreateNamedIndex` is now available in every `migrations` configuration;
+    exhaustive `Operation` matches without `pgvector` must add this variant.
   - State management and autodetection
   - Automatic non-unique indexes for default-indexed foreign-key ID columns
   - CockroachDB concurrent migrator serialization with a sentinel-row lock
