@@ -9893,6 +9893,11 @@ where
 						.binary(BinOper::Equal, Expr::value(Value::Bool(Some(v))));
 					query.and_where(condition);
 				}
+				super::composite_pk::PkValue::Database { value } => {
+					query.and_where(
+						Expr::col(col_alias).eq(database_value_to_query_value(value.clone())),
+					);
+				}
 			}
 		}
 

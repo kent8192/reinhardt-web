@@ -96,6 +96,32 @@ The `PkValue` enum supports the following types:
 - `Int(i64)` - Signed integers
 - `Uint(u64)` - Unsigned integers
 - `Bool` - Boolean values
+- `Database { value: DatabaseValue }` - Codec values such as native UUIDs, 32-bit integers,
+  dates, and other supported database scalars
+
+Generated composite keys encode every component through `DatabaseField`.
+UUIDs retain UUID binding, and `ModelEnum` components use their explicit
+`#[model_enum(value = ...)]` values, independently of serde names or display
+labels. Custom `DatabaseField` implementations follow the same path and do not
+need a `PkValue` conversion or a native `Display` implementation.
+
+Binary URL components use standard Base64, matching the typed ViewSet parser.
+For example, the bytes `[1, 2]` are displayed as `AQI=`.
+
+Storage-backed key fields receive the same codec context as model persistence,
+including the declared storage alias and maximum path length. Invalid aliases
+or over-length paths return the corresponding field-policy or codec error.
+
+Both `key.to_pk_values()` and `model.get_composite_pk_values()` return a
+`Result<HashMap<String, PkValue>, FieldCodecError>`. Propagate the error with
+`?` before passing the map to `get_composite()` or `get_composite_with_db()`.
+An incomplete optional primary key produces an empty map. Encoding and database
+lookup are native-only; the existing WASM component `Display` requirements
+remain unchanged.
+
+Native `Display` renders `<invalid composite primary key>` when a codec or its
+context policy rejects a component. It never turns that failure into a lookup
+value. Use the fallible value-extraction methods to inspect the original error.
 
 ### Automatic Conversions
 

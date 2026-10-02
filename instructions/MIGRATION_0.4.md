@@ -1,8 +1,9 @@
 # Migration Guide: 0.3.x to 0.4.0
 
 This guide covers the Rust management-shell migration, breaking Reinhardt Pages
-event API, closure-scoped ORM transaction API, typed manager upsert API, and
-text-key conversion compatibility introduced for 0.4.
+event API, closure-scoped ORM transaction API, typed manager upsert API,
+text-key conversion compatibility, and composite primary key codecs introduced
+for 0.4.
 
 For the complete `get_or_create` and `update_or_create` migration, including
 transaction, uniqueness, race, and custom-manager hook semantics, see
@@ -12,6 +13,35 @@ For models with `PrimaryKey = String`, remove overlapping downstream
 `IntoPrimaryKey` implementations for `String` and `&str`. Preserve custom
 conversion behavior on a local newtype as described in the
 [text primary-key migration guide](../docs/migration/0.4.0-string-primary-key-conversions.md).
+
+## Composite primary key codecs
+
+Generated composite keys now encode components through `DatabaseField`, so
+UUIDs, string and integer `ModelEnum` values, and custom codecs retain their
+physical database types. Native key formatting uses encoded storage values;
+custom fields no longer need `Display` for native composite keys. WASM keeps
+its existing component `Display` contract and does not gain ORM dependencies.
+
+Native binary key components use standard Base64, matching typed ViewSet route
+parsing. For example, the bytes `[1, 2]` are displayed as `AQI=`.
+
+Storage-backed key fields validate the declared `file_storage` and
+`file_max_length` metadata through the same codec context as model persistence.
+
+`Model::get_composite_pk_values()` and generated `CompositePk::to_pk_values()`
+now return `Result<HashMap<String, PkValue>, FieldCodecError>`. Add `?` at
+call sites and return `Ok(values)` from manual `Model` overrides. This permits
+custom codec failures to reach the caller before query execution.
+Native key `Display` renders `<invalid composite primary key>` on encoding or
+context validation failure; use the fallible methods to inspect the error.
+
+`PkValue` adds a `Database { value: DatabaseValue }` variant. Update exhaustive
+matches to handle it without stringifying native values. Generated 32-bit integer
+keys use `Database { value: DatabaseValue::I32(...) }`; existing manual
+`From<i32>` conversions continue to produce the legacy `Int` variant.
+The legacy variants keep their existing untagged serde representation; the
+new variant preserves the tagged
+`DatabaseValue` representation through serialization.
 
 ## Storage-backed `FileField` source migration
 

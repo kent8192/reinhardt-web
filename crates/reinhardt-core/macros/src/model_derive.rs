@@ -2789,6 +2789,29 @@ fn file_field_max_length(
 	config.max_length.unwrap_or(100).try_into()
 }
 
+/// Build the same codec context for persistence and composite key components.
+fn generate_field_codec_context(struct_name: &syn::Ident, field: &FieldInfo) -> TokenStream {
+	let orm_crate = get_reinhardt_orm_crate();
+	let logical_name = ident_to_wire_name(&field.name);
+	let column_name = field.config.db_column.as_deref().unwrap_or(&logical_name);
+	let metadata = if storage_field_kind(&field.ty).is_some() {
+		let storage_alias = field.config.file_storage.as_deref().unwrap_or("default");
+		let max_length = file_field_max_length(&field.config)
+			.expect("validated FileField max_length must fit in u32")
+			.to_string();
+		quote! { .with_metadata("file_storage", #storage_alias).with_metadata("file_max_length", #max_length) }
+	} else {
+		quote! {}
+	};
+	quote! {
+		#orm_crate::FieldCodecContext::new(
+			stringify!(#struct_name),
+			#logical_name,
+			#column_name,
+		)#metadata
+	}
+}
+
 fn valid_file_storage_alias(alias: &str) -> bool {
 	if alias == "default" {
 		return true;
@@ -8348,26 +8371,9 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		let field_name = &field.name;
 		let field_ty = &field.ty;
 		let logical_name = ident_to_wire_name(field_name);
-		let column_name = field
-			.config
-			.db_column
-			.clone()
-			.unwrap_or_else(|| logical_name.clone());
-		let context_metadata = if storage_field_kind(&field.ty).is_some() {
-			let storage_alias = field.config.file_storage.as_deref().unwrap_or("default");
-			let max_length = file_field_max_length(&field.config)
-				.expect("validated FileField max_length must fit in u32")
-				.to_string();
-			quote! { .with_metadata("file_storage", #storage_alias).with_metadata("file_max_length", #max_length) }
-		} else {
-			quote! {}
-		};
+		let context = generate_field_codec_context(struct_name, field);
 		quote! {
-			let context = #orm_crate::FieldCodecContext::new(
-				stringify!(#struct_name),
-				#logical_name,
-				#column_name,
-			)#context_metadata;
+			let context = #context;
 			<#field_ty as #orm_crate::DatabaseField>::validate_database_context(
 				&self.#field_name,
 				&context,
@@ -8400,28 +8406,11 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		let field_name = &field.name;
 		let field_ty = &field.ty;
 		let logical_name = ident_to_wire_name(field_name);
-		let column_name = field
-			.config
-			.db_column
-			.clone()
-			.unwrap_or_else(|| logical_name.clone());
-		let context_metadata = if storage_field_kind(&field.ty).is_some() {
-			let storage_alias = field.config.file_storage.as_deref().unwrap_or("default");
-			let max_length = file_field_max_length(&field.config)
-				.expect("validated FileField max_length must fit in u32")
-				.to_string();
-			quote! { .with_metadata("file_storage", #storage_alias).with_metadata("file_max_length", #max_length) }
-		} else {
-			quote! {}
-		};
+		let context = generate_field_codec_context(struct_name, field);
 		quote! {
 			#logical_name => {
 				let storage = <<#field_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::from_database_value(value)?;
-				let context = #orm_crate::FieldCodecContext::new(
-					stringify!(#struct_name),
-					#logical_name,
-					#column_name,
-				)#context_metadata;
+				let context = #context;
 				let decoded = <#field_ty as #orm_crate::DatabaseField>::decode_database(storage, &context)?;
 				#orm_crate::model::serialize_decoded_database_field(decoded)
 			}
@@ -10740,12 +10729,15 @@ fn generate_composite_pk_impl(pk_fields: &[&FieldInfo]) -> TokenStream {
 			)
 		}
 
-		fn get_composite_pk_values(&self) -> ::std::collections::HashMap<String, #orm_crate::composite_pk::PkValue> {
+		fn get_composite_pk_values(&self) -> ::core::result::Result<
+			::std::collections::HashMap<String, #orm_crate::composite_pk::PkValue>,
+			#orm_crate::FieldCodecError,
+		> {
 			// Use the generated composite PK type's to_pk_values() method
 			if let Some(pk) = self.primary_key() {
 				pk.to_pk_values()
 			} else {
-				::std::collections::HashMap::new()
+				::core::result::Result::Ok(::std::collections::HashMap::new())
 			}
 		}
 	}
@@ -10765,6 +10757,12 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 	let composite_pk_name =
 		syn::Ident::new(&format!("{}CompositePk", struct_name), struct_name.span());
 
+	let field_indices: Vec<_> = (0..pk_fields.len()).map(syn::Index::from).collect();
+	let field_name_strings: Vec<_> = pk_fields
+		.iter()
+		.map(|field| ident_to_wire_name(&field.name))
+		.collect();
+
 	// Extract field names and types
 	let field_names: Vec<_> = pk_fields.iter().map(|f| &f.name).collect();
 	let field_types: Vec<_> = pk_fields
@@ -10783,15 +10781,22 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 		quote! { (#(#field_types),*) }
 	};
 
-	// Generate individual field conversions for PkValue
-	let pk_value_conversions: Vec<_> = field_names
+	// Encode each component with the same context policy used by model persistence.
+	let pk_value_conversions: Vec<_> = pk_fields
 		.iter()
-		.map(|name| {
+		.zip(&field_types)
+		.map(|(field, ty)| {
+			let name = &field.name;
 			let name_wire = ident_to_wire_name(name);
+			let context = generate_field_codec_context(struct_name, field);
 			quote! {
+				<#ty as #orm_crate::DatabaseField>::validate_database_context(
+					&self.#name,
+					&#context,
+				)?;
 				values.insert(
 					#name_wire.to_string(),
-					#orm_crate::composite_pk::PkValue::from(&self.#name)
+					#orm_crate::composite_pk::PkValue::from_field(&self.#name)?
 				);
 			}
 		})
@@ -10824,12 +10829,18 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 				}
 			}
 
-			/// Convert to a HashMap of PkValues for database operations
+			/// Encodes key components through their database field codecs.
+			///
+			/// This native-only operation (P0) preserves database storage types and
+			/// returns codec errors before query execution.
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			pub fn to_pk_values(&self) -> ::std::collections::HashMap<String, #orm_crate::composite_pk::PkValue> {
+			pub fn to_pk_values(&self) -> ::core::result::Result<
+				::std::collections::HashMap<String, #orm_crate::composite_pk::PkValue>,
+				#orm_crate::FieldCodecError,
+			> {
 				let mut values = ::std::collections::HashMap::new();
 				#(#pk_value_conversions)*
-				values
+				::core::result::Result::Ok(values)
 			}
 		}
 
@@ -10853,12 +10864,22 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 		// Display implementation for composite primary key
 		impl ::std::fmt::Display for #composite_pk_name {
 			fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				let encoded_values = match self.to_pk_values().and_then(|values| {
+					::core::result::Result::Ok([#(values[#field_name_strings].to_key_string()?),*])
+				}) {
+					::core::result::Result::Ok(values) => values,
+					::core::result::Result::Err(_) => return write!(f, "<invalid composite primary key>"),
+				};
 				write!(f, "(v2;")?;
 				let mut first = true;
 				#(
 					if !first {
 						write!(f, ", ")?;
 					}
+					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+					let value = &encoded_values[#field_indices];
+					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 					let value = #display_values;
 					write!(f, "{}={}:{}", stringify!(#field_names), value.len(), value)?;
 					first = false;
@@ -14506,17 +14527,30 @@ mod tests {
 			quote! {
 				impl ::std::fmt::Display for MembershipCompositePk {
 					fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let encoded_values = match self.to_pk_values().and_then(|values| {
+							::core::result::Result::Ok([values["organization_id"].to_key_string()?, values["member_id"].to_key_string()?])
+						}) {
+							::core::result::Result::Ok(values) => values,
+							::core::result::Result::Err(_) => return write!(f, "<invalid composite primary key>"),
+						};
 						write!(f, "(v2;")?;
 						let mut first = true;
 						if !first {
 							write!(f, ", ")?;
 						}
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let value = &encoded_values[0];
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 						let value = self.organization_id.to_string();
 						write!(f, "{}={}:{}", stringify!(organization_id), value.len(), value)?;
 						first = false;
 						if !first {
 							write!(f, ", ")?;
 						}
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let value = &encoded_values[1];
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 						let value = self.member_id.to_string();
 						write!(f, "{}={}:{}", stringify!(member_id), value.len(), value)?;
 						first = false;
@@ -14547,17 +14581,30 @@ mod tests {
 			quote! {
 				impl ::std::fmt::Display for EventCompositePk {
 					fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let encoded_values = match self.to_pk_values().and_then(|values| {
+							::core::result::Result::Ok([values["occurred_at"].to_key_string()?, values["sequence"].to_key_string()?])
+						}) {
+							::core::result::Result::Ok(values) => values,
+							::core::result::Result::Err(_) => return write!(f, "<invalid composite primary key>"),
+						};
 						write!(f, "(v2;")?;
 						let mut first = true;
 						if !first {
 							write!(f, ", ")?;
 						}
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let value = &encoded_values[0];
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 						let value = self.occurred_at.to_rfc3339();
 						write!(f, "{}={}:{}", stringify!(occurred_at), value.len(), value)?;
 						first = false;
 						if !first {
 							write!(f, ", ")?;
 						}
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let value = &encoded_values[1];
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 						let value = self.sequence.to_string();
 						write!(f, "{}={}:{}", stringify!(sequence), value.len(), value)?;
 						first = false;
@@ -14588,17 +14635,30 @@ mod tests {
 			quote! {
 				impl ::std::fmt::Display for CustomKeyModelCompositePk {
 					fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let encoded_values = match self.to_pk_values().and_then(|values| {
+							::core::result::Result::Ok([values["business_datetime_id"].to_key_string()?, values["sequence"].to_key_string()?])
+						}) {
+							::core::result::Result::Ok(values) => values,
+							::core::result::Result::Err(_) => return write!(f, "<invalid composite primary key>"),
+						};
 						write!(f, "(v2;")?;
 						let mut first = true;
 						if !first {
 							write!(f, ", ")?;
 						}
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let value = &encoded_values[0];
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 						let value = self.business_datetime_id.to_string();
 						write!(f, "{}={}:{}", stringify!(business_datetime_id), value.len(), value)?;
 						first = false;
 						if !first {
 							write!(f, ", ")?;
 						}
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let value = &encoded_values[1];
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 						let value = self.sequence.to_string();
 						write!(f, "{}={}:{}", stringify!(sequence), value.len(), value)?;
 						first = false;
@@ -14629,17 +14689,30 @@ mod tests {
 			quote! {
 				impl ::std::fmt::Display for DomainKeyModelCompositePk {
 					fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let encoded_values = match self.to_pk_values().and_then(|values| {
+							::core::result::Result::Ok([values["occurred_at"].to_key_string()?, values["sequence"].to_key_string()?])
+						}) {
+							::core::result::Result::Ok(values) => values,
+							::core::result::Result::Err(_) => return write!(f, "<invalid composite primary key>"),
+						};
 						write!(f, "(v2;")?;
 						let mut first = true;
 						if !first {
 							write!(f, ", ")?;
 						}
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let value = &encoded_values[0];
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 						let value = self.occurred_at.to_string();
 						write!(f, "{}={}:{}", stringify!(occurred_at), value.len(), value)?;
 						first = false;
 						if !first {
 							write!(f, ", ")?;
 						}
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						let value = &encoded_values[1];
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 						let value = self.sequence.to_string();
 						write!(f, "{}={}:{}", stringify!(sequence), value.len(), value)?;
 						first = false;

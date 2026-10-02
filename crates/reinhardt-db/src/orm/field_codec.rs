@@ -8,6 +8,9 @@
 //! Macro-generated models also use this contract when managers bind primary
 //! keys for updates and deletions. Database column aliases remain model
 //! metadata, while the bound scalar comes from the primary-key field codec.
+//! Composite primary keys use the same codecs: generated `to_pk_values()` and
+//! `Model::get_composite_pk_values()` return a `Result`, preserving native UUIDs,
+//! integer widths, explicit enum storage values, and custom field codecs.
 //!
 //! # Native model enums
 //!
