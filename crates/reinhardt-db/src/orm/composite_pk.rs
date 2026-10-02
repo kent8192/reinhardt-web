@@ -7,6 +7,7 @@ use super::constraints::Constraint;
 use super::field_codec::{
 	DatabaseField, DatabaseScalar, DatabaseValue, FieldCodecError, database_value_to_query_value,
 };
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -93,12 +94,16 @@ impl PkValue {
 	///
 	/// This native ORM operation (P0) does not require the field to implement
 	/// `Display`. Values that cannot be represented as JSON return a codec error.
+	/// Binary components use standard Base64 to match model-field route parsing.
 	pub fn to_key_string(&self) -> Result<String, FieldCodecError> {
 		match self {
 			Self::String(value) => Ok(value.clone()),
 			Self::Int(value) => Ok(value.to_string()),
 			Self::Uint(value) => Ok(value.to_string()),
 			Self::Bool(value) => Ok(value.to_string()),
+			Self::Database {
+				value: DatabaseValue::Bytes(value),
+			} => Ok(base64::engine::general_purpose::STANDARD.encode(value)),
 			Self::Database { value } => match value.clone().into_json_value()? {
 				serde_json::Value::String(value) => Ok(value),
 				value => Ok(value.to_string()),
@@ -449,7 +454,7 @@ mod tests {
 		DatabaseValue::Uuid(uuid::Uuid::from_u128(1)),
 		"00000000-0000-0000-0000-000000000001"
 	)]
-	#[case(DatabaseValue::Bytes(vec![1, 2]), "[1,2]")]
+	#[case(DatabaseValue::Bytes(vec![1, 2]), "AQI=")]
 	fn codec_values_preserve_type_through_serialization(
 		#[case] value: DatabaseValue,
 		#[case] key_text: &str,

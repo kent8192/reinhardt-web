@@ -22,6 +22,9 @@ physical database types. Native key formatting uses encoded storage values;
 custom fields no longer need `Display` for native composite keys. WASM keeps
 its existing component `Display` contract and does not gain ORM dependencies.
 
+Native binary key components use standard Base64, matching typed ViewSet route
+parsing. For example, the bytes `[1, 2]` are displayed as `AQI=`.
+
 `Model::get_composite_pk_values()` and generated `CompositePk::to_pk_values()`
 now return `Result<HashMap<String, PkValue>, FieldCodecError>`. Add `?` at
 call sites and return `Ok(values)` from manual `Model` overrides. This permits

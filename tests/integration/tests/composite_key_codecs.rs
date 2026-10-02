@@ -4,16 +4,18 @@ use reinhardt::db::backends::DatabaseConnection as BackendsConnection;
 use reinhardt::db::orm::composite_pk::PkValue;
 use reinhardt::db::orm::{
 	DatabaseConnectionLease, DatabaseField, DatabaseValue, FieldCodecContext, FieldCodecError,
-	Model, QuerySet,
+	Model, QuerySet, query_types::DbBackend,
 };
 use reinhardt::{ModelEnum, model};
+use reinhardt_http::Request;
 use reinhardt_query::prelude::{
-	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	ColumnDef, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
 use reinhardt_test::fixtures::postgres_container;
+use reinhardt_views::viewsets::ModelViewSetHandler;
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 use testcontainers::{ContainerAsync, GenericImage};
 use uuid::Uuid;
 
@@ -122,6 +124,115 @@ struct OptionalMembership {
 	tenant_id: Option<Uuid>,
 	#[field(primary_key = true)]
 	member_id: Option<Uuid>,
+}
+
+#[model(app_label = "composite_codecs", table_name = "binary_revisions")]
+#[derive(Serialize, Deserialize)]
+struct BinaryRevision {
+	#[field(primary_key = true, db_column = "content_digest")]
+	digest: Vec<u8>,
+	#[field(primary_key = true)]
+	revision: i64,
+	#[field(max_length = 64)]
+	label: String,
+}
+
+#[derive(Debug, Iden)]
+enum BinaryRevisions {
+	Table,
+	ContentDigest,
+	Revision,
+	Label,
+}
+
+#[rstest]
+#[case::padded(vec![1, 2], "AQI=")]
+#[case::url_symbols(vec![251, 255], "+/8=")]
+#[tokio::test]
+async fn binary_composite_key_display_round_trips_through_database_viewset(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+	#[case] digest: Vec<u8>,
+	#[case] expected_text: &str,
+) {
+	// Arrange: the container and caller-owned pools isolate every database row.
+	let (_container, pool, _port, url) = postgres_container.await;
+	let schema = Query::create_table()
+		.table(BinaryRevisions::Table.into_iden())
+		.col(
+			ColumnDef::new(BinaryRevisions::ContentDigest)
+				.binary(2)
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(BinaryRevisions::Revision)
+				.big_integer()
+				.not_null(true),
+		)
+		.col(ColumnDef::new(BinaryRevisions::Label).text().not_null(true))
+		.primary_key([BinaryRevisions::ContentDigest, BinaryRevisions::Revision])
+		.to_string(PostgresQueryBuilder);
+	sqlx::query(&schema).execute(pool.as_ref()).await.unwrap();
+	let (seed, _) = Query::insert()
+		.into_table(BinaryRevisions::Table.into_iden())
+		.columns([
+			BinaryRevisions::ContentDigest,
+			BinaryRevisions::Revision,
+			BinaryRevisions::Label,
+		])
+		.values_panic([
+			Value::from(digest.clone()),
+			Value::from(1_i64),
+			Value::from("matched"),
+		])
+		.values_panic([
+			Value::from(digest.clone()),
+			Value::from(2_i64),
+			Value::from("neighbor"),
+		])
+		.build(PostgresQueryBuilder);
+	sqlx::query(&seed)
+		.bind(&digest)
+		.bind(1_i64)
+		.bind("matched")
+		.bind(&digest)
+		.bind(2_i64)
+		.bind("neighbor")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+	static INSTALL_DRIVERS: Once = Once::new();
+	INSTALL_DRIVERS.call_once(sqlx::any::install_default_drivers);
+	let any_pool = Arc::new(sqlx::AnyPool::connect(&url).await.unwrap());
+	let handler = ModelViewSetHandler::<BinaryRevision>::new()
+		.with_pool(any_pool)
+		.with_db_backend(DbBackend::Postgres);
+	let request = Request::builder()
+		.method(http::Method::GET)
+		.uri("/binary_revisions/")
+		.version(http::Version::HTTP_11)
+		.headers(http::HeaderMap::new())
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
+	let key = BinaryRevisionCompositePk::new(digest.clone(), 1);
+
+	// Act
+	let key_text = key.to_string();
+	let response = handler
+		.retrieve(&request, serde_json::json!(key_text))
+		.await;
+
+	// Assert
+	assert_eq!(
+		key_text,
+		format!("(v2;digest=4:{expected_text}, revision=1:1)")
+	);
+	let response = response.expect("displayed binary keys must retrieve the matching database row");
+	assert_eq!(response.status, http::StatusCode::OK);
+	assert_eq!(
+		serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
+		serde_json::json!({"digest": digest, "revision": 1, "label": "matched"}),
+	);
 }
 
 #[rstest]
