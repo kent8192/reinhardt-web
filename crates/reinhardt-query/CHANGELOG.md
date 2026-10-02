@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `OnConflict::new()` and `Default` construct a targetless `DO NOTHING` clause.
+
+### Fixed
+
+- Empty conflict-column iterators render `ON CONFLICT DO NOTHING` on PostgreSQL
+  and SQLite instead of invalid empty parentheses. PostgreSQL rejects targetless
+  `DO UPDATE` clauses during rendering.
+
 ## [0.3.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.8...reinhardt-query@v0.3.9) - 2026-08-21
 
 ### Fixed
