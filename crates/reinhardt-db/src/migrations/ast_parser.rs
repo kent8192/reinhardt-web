@@ -4247,7 +4247,18 @@ fn parse_signed_integer_expr(expr: &Expr) -> Option<i128> {
 
 fn extract_string_expr(expr: &Expr) -> Option<String> {
 	match expr {
-		Expr::MethodCall(call) if call.method == "to_string" => extract_string_expr(&call.receiver),
+		Expr::MethodCall(call)
+			if call.args.is_empty()
+				&& call
+					.turbofish
+					.as_ref()
+					.is_none_or(|arguments| arguments.args.is_empty())
+				&& (call.method == "to_string"
+					|| call.method == "into"
+					|| call.method == "to_owned") =>
+		{
+			extract_string_expr(&call.receiver)
+		}
 		Expr::Lit(syn::ExprLit {
 			lit: syn::Lit::Str(value),
 			..
@@ -5842,7 +5853,7 @@ mod parser_tests {
 			table: "posts".to_string(),
 			constraint: Constraint::Unique {
 				name: "posts_tenant_slug_key".to_string(),
-				columns: vec!["tenant_id".to_string(), "slug".to_owned()],
+				columns: vec!["tenant_id".to_string(), slug.to_owned()],
 			},
 		}"#,
 		"Invalid migration: operations[0].AddConstraintDefinition.constraint.columns[1] is unsupported or malformed"
@@ -5914,11 +5925,11 @@ mod parser_tests {
 		"Invalid migration: operations[0].CreateIndex.unique is unsupported or malformed"
 	)]
 	#[case(
-		r#"columns: vec!["tenant_id".to_string(), "slug".to_owned()],"#,
+		r#"columns: vec!["tenant_id".to_string(), slug.to_owned()],"#,
 		"Invalid migration: operations[0].CreateIndex.columns[1] is unsupported or malformed"
 	)]
 	#[case(
-		r#"expressions: Some(vec!["LOWER(slug)".to_owned()]),"#,
+		r#"expressions: Some(vec![index_expression.to_owned()]),"#,
 		"Invalid migration: operations[0].CreateIndex.expressions[0] is unsupported or malformed"
 	)]
 	#[case(
