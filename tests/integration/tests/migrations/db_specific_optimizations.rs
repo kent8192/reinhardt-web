@@ -334,10 +334,10 @@ async fn test_postgres_partial_index(
 		.await
 		.expect("Failed to create partial index");
 
-	// Verify index was created
+	// Partial index names include a stable hash of the columns and predicate.
 	let index_exists: bool =
 		sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE indexname = $1)")
-			.bind("idx_partial_orders_status")
+			.bind("idx_partial_orders_status_a2cd747ec517f6dc")
 			.fetch_one(pool.as_ref())
 			.await
 			.expect("Failed to check index");
