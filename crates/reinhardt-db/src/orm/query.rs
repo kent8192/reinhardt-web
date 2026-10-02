@@ -8501,7 +8501,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE NOT "username" = 'alice'"#
+			r#"SELECT * FROM "test_users" WHERE NOT ("username" = 'alice')"#
 		);
 	}
 
@@ -8578,7 +8578,7 @@ mod tests {
 
 		assert_eq!(
 			queryset.to_sql(),
-			r#"SELECT * FROM "test_users" WHERE NOT TRUE"#
+			r#"SELECT * FROM "test_users" WHERE NOT (TRUE)"#
 		);
 	}
 
