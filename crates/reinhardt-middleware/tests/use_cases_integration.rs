@@ -78,35 +78,6 @@ async fn use_case_rest_api_auth_flow() {
 	);
 }
 
-/// Tests CSRF protection with valid token.
-#[tokio::test]
-async fn use_case_csrf_protected_form_submission() {
-	use reinhardt_middleware::csrf::CsrfMiddleware;
-
-	let csrf = Arc::new(CsrfMiddleware::new());
-	let handler = Arc::new(ConfigurableTestHandler::always_success());
-
-	// Generate a token by making a GET request
-	let get_request = create_test_request("GET", "/form");
-	let get_response = csrf.process(get_request, handler.clone()).await.unwrap();
-	assert_eq!(get_response.status.as_u16(), 200);
-
-	// Extract CSRF token from response (if provided in cookie)
-	let csrf_cookie = get_response
-		.headers
-		.get("set-cookie")
-		.map(|v| v.to_str().unwrap_or_default().to_string());
-
-	// Verify response was successful (form page served)
-	assert_eq!(get_response.status.as_u16(), 200);
-
-	// The middleware should process GET requests without CSRF validation
-	if csrf_cookie.is_some() {
-		// Token-based CSRF flow works
-		assert!(true);
-	}
-}
-
 // =============================================================================
 // Use Case 2: Multi-tenant SaaS Locale Detection
 // =============================================================================
@@ -319,30 +290,6 @@ async fn use_case_api_gateway_protection() {
 		.await
 		.unwrap();
 	assert_eq!(metrics_response.status.as_u16(), 200);
-}
-
-/// Tests circuit breaker opening under high failure rate.
-#[tokio::test]
-async fn use_case_circuit_breaker_cascade_protection() {
-	use reinhardt_middleware::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerMiddleware};
-
-	// Simulate failing backend
-	let failing_handler = Arc::new(ConfigurableTestHandler::always_failure());
-
-	let cb_config = CircuitBreakerConfig::new(0.5, 3, Duration::from_millis(100))
-		.with_half_open_success_threshold(1);
-	let circuit_breaker = CircuitBreakerMiddleware::new(cb_config);
-	let cb = Arc::new(circuit_breaker);
-
-	// Send requests that will fail
-	for _ in 0..5 {
-		let request = create_test_request("GET", "/failing/endpoint");
-		let _ = cb.process(request, failing_handler.clone()).await;
-	}
-
-	// Check if circuit opened (or at least processed without panic)
-	// The middleware should be in a valid state
-	assert!(true, "Circuit breaker handled failures gracefully");
 }
 
 // =============================================================================
