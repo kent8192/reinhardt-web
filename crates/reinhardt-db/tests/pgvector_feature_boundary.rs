@@ -177,6 +177,7 @@ fn operation(value: Operation) {
         | Operation::DropConstraint { .. }
         | Operation::DropConstraintDefinition { .. }
         | Operation::CreateIndex { .. }
+        | Operation::CreateNamedIndex { .. }
         | Operation::CreateIndexRepair { .. }
         | Operation::RestoreIndexOnRollback { .. }
         | Operation::DropIndex { .. }

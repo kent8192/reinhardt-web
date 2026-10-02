@@ -652,7 +652,7 @@ fn lookup_filter_for_model<T: Model>(
 fn assigned_primary_key_filter<T: Model>(item: &T) -> Option<FilterCondition> {
 	let metadata = T::field_metadata();
 	if let Some(composite) = T::composite_primary_key() {
-		let values = item.get_composite_pk_values();
+		let values = item.get_composite_pk_values().ok()?;
 		let filters = composite
 			.fields()
 			.iter()
@@ -669,6 +669,9 @@ fn assigned_primary_key_filter<T: Model>(item: &T) -> Option<FilterCondition> {
 					}
 					reinhardt_db::orm::composite_pk::PkValue::Bool(value) => {
 						FilterValue::Boolean(*value)
+					}
+					reinhardt_db::orm::composite_pk::PkValue::Database { value } => {
+						FilterValue::Typed(Ok(value.clone()))
 					}
 				};
 				let column = metadata

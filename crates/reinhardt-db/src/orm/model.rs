@@ -486,9 +486,13 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// Get composite primary key values for this instance
 	///
 	/// Only meaningful for models with composite primary keys.
-	/// Returns empty HashMap for single primary key models.
-	fn get_composite_pk_values(&self) -> HashMap<String, super::composite_pk::PkValue> {
-		HashMap::new()
+	/// Returns an empty map for single primary key models or incomplete keys.
+	/// Generated models preserve field codec storage types and propagate encoding
+	/// errors. This ORM operation is native-only (P0).
+	fn get_composite_pk_values(
+		&self,
+	) -> Result<HashMap<String, super::composite_pk::PkValue>, FieldCodecError> {
+		Ok(HashMap::new())
 	}
 
 	/// Returns whether the named model field is currently `None`.
