@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.18...reinhardt-web@v0.4.0-alpha.19) - 2026-10-02
+
+### Documentation
+
+- add release announcement(s)
+- correct command and admin rustdoc links
+- *(admin)* qualify the authentication state link
+- *(pages)* qualify reactive type links in ui module
+
+### Fixed
+
+- *(orm)* match every composite key component when updating
+
+### Testing
+
+- *(router)* fetch standalone parity fixture dependencies
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.17...reinhardt-web@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation
