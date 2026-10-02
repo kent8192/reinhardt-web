@@ -1288,22 +1288,30 @@ impl QueryBuilder for PostgresQueryBuilder {
 		// ON CONFLICT clause
 		if let Some(on_conflict) = &stmt.on_conflict {
 			use crate::query::{OnConflictAction, OnConflictTarget};
+			let has_target =
+				!matches!(&on_conflict.target, OnConflictTarget::Columns(cols) if cols.is_empty());
+			assert!(
+				has_target || matches!(on_conflict.action, OnConflictAction::DoNothing),
+				"PostgreSQL ON CONFLICT DO UPDATE requires a conflict target"
+			);
 			writer.push_keyword("ON CONFLICT");
-			writer.push_space();
 
 			// Target columns
-			writer.push("(");
-			match &on_conflict.target {
-				OnConflictTarget::Column(col) => {
-					writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+			if has_target {
+				writer.push_space();
+				writer.push("(");
+				match &on_conflict.target {
+					OnConflictTarget::Column(col) => {
+						writer.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+					}
+					OnConflictTarget::Columns(cols) => {
+						writer.push_list(cols, ", ", |w, col| {
+							w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
+						});
+					}
 				}
-				OnConflictTarget::Columns(cols) => {
-					writer.push_list(cols, ", ", |w, col| {
-						w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
-					});
-				}
+				writer.push(")");
 			}
-			writer.push(")");
 
 			// Action
 			match &on_conflict.action {
