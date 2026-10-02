@@ -1,0 +1,39 @@
+error[E0277]: the trait bound `reinhardt_pages::client_form::__private::Select: reinhardt_pages::client_form::__private::AllowedWidget<reinhardt_pages::client_form::__private::BoolKind>` is not satisfied
+  --> tests/ui/client_form/view/fail/bool_select_widget.rs:6:14
+   |
+ 6 |       let _view = form! {
+   |  _________________^
+ 7 | |         client_form: RequestClientForm,
+ 8 | |         mutation: &mutation,
+ 9 | |         customize: {
+10 | |             enabled: { widget: Select }
+   | |                        ------ required by a bound introduced by this call
+11 | |         }
+12 | |     };
+   | |_____^ unsatisfied trait bound
+   |
+   = help: the trait `reinhardt_pages::client_form::__private::AllowedWidget<reinhardt_pages::client_form::__private::BoolKind>` is not implemented for `reinhardt_pages::client_form::__private::Select`
+help: `reinhardt_pages::client_form::__private::Select` implements trait `reinhardt_pages::client_form::__private::AllowedWidget<Kind>`
+  --> src/client_form/view/presentation.rs
+   |
+   |           impl AllowedWidget<$kind> for $widget {
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `reinhardt_pages::client_form::__private::AllowedWidget<reinhardt_pages::client_form::__private::OptionalBoolKind>`
+...
+   | / widgets!(
+   | |     TextInput => TextKind, Textarea => TextKind, EmailInput => TextKind,
+   | |     UrlInput => TextKind, PasswordInput => TextKind, NumberInput => NumberKind,
+   | |     CheckboxInput => BoolKind, Select => OptionalBoolKind,
+   | | );
+   | |_- in this macro invocation
+   |   impl<T> sealed::Widget<EnumKind<T>> for Select {}
+   |   impl<T> AllowedWidget<EnumKind<T>> for Select {
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `reinhardt_pages::client_form::__private::AllowedWidget<reinhardt_pages::client_form::__private::EnumKind<T>>`
+...
+   |   impl<T> AllowedWidget<OptionalEnumKind<T>> for Select {
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `reinhardt_pages::client_form::__private::AllowedWidget<reinhardt_pages::client_form::__private::OptionalEnumKind<T>>`
+note: required by a bound in `reinhardt_pages::client_form::__private::FieldPresentation::<Kind>::widget`
+  --> src/client_form/view/presentation.rs
+   |
+   |     pub fn widget<W: AllowedWidget<Kind>>(mut self, _: W) -> Self {
+   |                      ^^^^^^^^^^^^^^^^^^^ required by this bound in `FieldPresentation::<Kind>::widget`
+   = note: this error originates in the macro `widgets` (in Nightly builds, run with -Z macro-backtrace for more info)

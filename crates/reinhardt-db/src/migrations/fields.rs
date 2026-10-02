@@ -77,8 +77,8 @@ pub enum FieldType {
 	// JSON types
 	/// Json variant.
 	Json,
-	/// JsonBinary variant.
-	JsonBinary, // PostgreSQL JSONB
+	/// Jsonb variant.
+	Jsonb, // PostgreSQL JSONB
 
 	// PostgreSQL-specific types
 	/// PostgreSQL Array type with inner element type
@@ -103,6 +103,12 @@ pub enum FieldType {
 	TsVector,
 	/// PostgreSQL tsquery for full-text search queries
 	TsQuery,
+	/// PostgreSQL pgvector dense vector with fixed dimensions.
+	#[cfg(feature = "pgvector")]
+	Vector {
+		/// Number of vector elements.
+		dimensions: usize,
+	},
 
 	// Other types
 	/// Uuid variant.
@@ -189,9 +195,16 @@ impl FieldType {
 				SqlDialect::Mysql => "CHAR(36)".to_string(), // MySQL doesn't have native UUID
 				SqlDialect::Sqlite => "TEXT".to_string(),    // SQLite doesn't have native UUID
 			},
-			FieldType::JsonBinary => match dialect {
+			FieldType::Json => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb | SqlDialect::Mysql => {
+					"JSON".to_string()
+				}
+				SqlDialect::Sqlite => "TEXT".to_string(),
+			},
+			FieldType::Jsonb => match dialect {
 				SqlDialect::Postgres | SqlDialect::Cockroachdb => "JSONB".to_string(),
-				SqlDialect::Mysql | SqlDialect::Sqlite => "JSON".to_string(), // Fallback to JSON
+				SqlDialect::Mysql => "JSON".to_string(),
+				SqlDialect::Sqlite => "TEXT".to_string(),
 			},
 			// PostgreSQL-specific types with dialect handling
 			FieldType::Array(inner) => match dialect {
@@ -245,6 +258,15 @@ impl FieldType {
 				SqlDialect::Postgres | SqlDialect::Cockroachdb => "TSQUERY".to_string(),
 				SqlDialect::Mysql | SqlDialect::Sqlite => "TEXT".to_string(),
 			},
+			#[cfg(feature = "pgvector")]
+			FieldType::Vector { dimensions } => match dialect {
+				SqlDialect::Postgres => format!("VECTOR({dimensions})"),
+				SqlDialect::Mysql | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
+					panic!(
+						"vector fields require checked SQL rendering; use try_to_sql_for_dialect"
+					)
+				}
+			},
 			// SQLite requires INTEGER (not BIGINT) for AUTOINCREMENT support.
 			// Only INTEGER PRIMARY KEY columns can use AUTOINCREMENT in SQLite.
 			FieldType::BigInteger => match dialect {
@@ -262,6 +284,48 @@ impl FieldType {
 			// For all other types, use the generic SQL type
 			_ => self.to_sql_string(),
 		}
+	}
+
+	/// Converts this field type to SQL while enforcing backend-specific support.
+	pub fn try_to_sql_for_dialect(
+		&self,
+		dialect: &super::operations::SqlDialect,
+	) -> Result<String, super::MigrationError> {
+		#[cfg(feature = "pgvector")]
+		if let Self::Vector { dimensions } = self {
+			if !(1..=2_000).contains(dimensions) {
+				return Err(super::MigrationError::InvalidMigration(format!(
+					"vector dimensions must be between 1 and 2000, got {dimensions}"
+				)));
+			}
+			return match dialect {
+				super::operations::SqlDialect::Postgres => Ok(format!("VECTOR({dimensions})")),
+				super::operations::SqlDialect::Mysql => {
+					Err(super::MigrationError::UnsupportedBackendFeature {
+						feature: "vector field",
+						backend: "mysql",
+					})
+				}
+				super::operations::SqlDialect::Sqlite => {
+					Err(super::MigrationError::UnsupportedBackendFeature {
+						feature: "vector field",
+						backend: "sqlite",
+					})
+				}
+				super::operations::SqlDialect::Cockroachdb => {
+					Err(super::MigrationError::UnsupportedBackendFeature {
+						feature: "vector field",
+						backend: "cockroachdb",
+					})
+				}
+			};
+		}
+		if let Self::Array(element_type) = self {
+			return element_type
+				.try_to_sql_for_dialect(dialect)
+				.map(|element_sql| format!("{element_sql}[]"));
+		}
+		Ok(self.to_sql_for_dialect(dialect))
 	}
 
 	/// Convert FieldType to SQL string
@@ -297,7 +361,7 @@ impl FieldType {
 			FieldType::LongBlob => "LONGBLOB".to_string(),
 			FieldType::Bytea => "BYTEA".to_string(),
 			FieldType::Json => "JSON".to_string(),
-			FieldType::JsonBinary => "JSONB".to_string(),
+			FieldType::Jsonb => "JSONB".to_string(),
 			// PostgreSQL-specific types
 			FieldType::Array(inner) => format!("{}[]", inner.to_sql_string()),
 			FieldType::HStore => "HSTORE".to_string(),
@@ -310,6 +374,8 @@ impl FieldType {
 			FieldType::TsTzRange => "TSTZRANGE".to_string(),
 			FieldType::TsVector => "TSVECTOR".to_string(),
 			FieldType::TsQuery => "TSQUERY".to_string(),
+			#[cfg(feature = "pgvector")]
+			FieldType::Vector { dimensions } => format!("VECTOR({dimensions})"),
 			FieldType::Uuid => "UUID".to_string(),
 			FieldType::Year => "YEAR".to_string(),
 			FieldType::Enum { values } => {
@@ -540,5 +606,133 @@ pub mod prelude {
 impl std::fmt::Display for FieldType {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.to_sql_string())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::FieldType;
+	use crate::migrations::MigrationError;
+	use crate::migrations::operations::SqlDialect;
+
+	#[test]
+	fn jsonb_sql_uses_native_or_text_storage_by_dialect() {
+		assert_eq!(
+			FieldType::Jsonb.to_sql_for_dialect(&SqlDialect::Postgres),
+			"JSONB"
+		);
+		assert_eq!(
+			FieldType::Jsonb.to_sql_for_dialect(&SqlDialect::Cockroachdb),
+			"JSONB"
+		);
+		assert_eq!(
+			FieldType::Jsonb.to_sql_for_dialect(&SqlDialect::Mysql),
+			"JSON"
+		);
+		assert_eq!(
+			FieldType::Jsonb.to_sql_for_dialect(&SqlDialect::Sqlite),
+			"TEXT"
+		);
+	}
+
+	#[test]
+	fn json_sql_uses_text_storage_on_sqlite() {
+		assert_eq!(
+			FieldType::Json.to_sql_for_dialect(&SqlDialect::Postgres),
+			"JSON"
+		);
+		assert_eq!(
+			FieldType::Json.to_sql_for_dialect(&SqlDialect::Mysql),
+			"JSON"
+		);
+		assert_eq!(
+			FieldType::Json.to_sql_for_dialect(&SqlDialect::Sqlite),
+			"TEXT"
+		);
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn vector_sql_is_native_only_on_postgresql() {
+		let field_type = FieldType::Vector { dimensions: 3 };
+
+		assert_eq!(
+			field_type
+				.try_to_sql_for_dialect(&SqlDialect::Postgres)
+				.unwrap(),
+			"VECTOR(3)"
+		);
+		for (dialect, backend) in [
+			(SqlDialect::Mysql, "mysql"),
+			(SqlDialect::Sqlite, "sqlite"),
+			(SqlDialect::Cockroachdb, "cockroachdb"),
+		] {
+			assert!(matches!(
+				field_type.try_to_sql_for_dialect(&dialect),
+				Err(MigrationError::UnsupportedBackendFeature {
+					feature: "vector field",
+					backend: actual_backend,
+				}) if actual_backend == backend
+			));
+		}
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn vector_sql_rejects_dimensions_outside_pgvector_limits() {
+		for dimensions in [0, 2_001] {
+			assert!(matches!(
+				FieldType::Vector { dimensions }
+					.try_to_sql_for_dialect(&SqlDialect::Postgres),
+				Err(MigrationError::InvalidMigration(message))
+					if message == format!(
+						"vector dimensions must be between 1 and 2000, got {dimensions}"
+					)
+			));
+		}
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn vector_arrays_use_checked_element_rendering() {
+		let field_type = FieldType::Array(Box::new(FieldType::Vector { dimensions: 3 }));
+
+		assert_eq!(
+			field_type
+				.try_to_sql_for_dialect(&SqlDialect::Postgres)
+				.expect("PostgreSQL supports vector arrays"),
+			"VECTOR(3)[]"
+		);
+		for (dialect, backend) in [
+			(SqlDialect::Mysql, "mysql"),
+			(SqlDialect::Sqlite, "sqlite"),
+			(SqlDialect::Cockroachdb, "cockroachdb"),
+		] {
+			assert!(matches!(
+				field_type.try_to_sql_for_dialect(&dialect),
+				Err(MigrationError::UnsupportedBackendFeature {
+					feature: "vector field",
+					backend: actual_backend,
+				}) if actual_backend == backend
+			));
+		}
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn legacy_vector_sql_fails_fast_instead_of_returning_postgresql_sql() {
+		for dialect in [SqlDialect::Mysql, SqlDialect::Sqlite] {
+			let result = std::panic::catch_unwind(|| {
+				FieldType::Vector { dimensions: 3 }.to_sql_for_dialect(&dialect)
+			});
+
+			let payload = result.expect_err("legacy rendering must not return vector SQL");
+			let message = payload
+				.downcast_ref::<String>()
+				.map(String::as_str)
+				.or_else(|| payload.downcast_ref::<&str>().copied())
+				.unwrap();
+			assert!(message.contains("try_to_sql_for_dialect"));
+		}
 	}
 }

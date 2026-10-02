@@ -7,6 +7,11 @@ This guide covers only the delta from the public 0.1.x line to the final
 0.2.0 line. It does not repeat migrations that were already required before
 0.1.0 stabilized.
 
+When upgrading beyond 0.3.x, also follow the
+[0.4.0 hook dependency mode migration guide](../docs/migration/0.4.0-hook-dependency-modes.md).
+The current API uses named dependency macros rather than the tuple and unit
+forms described in this historical 0.2 migration.
+
 0.2.0 is a major-version upgrade. The main work is:
 
 - remove APIs that were already deprecated in 0.1.x,

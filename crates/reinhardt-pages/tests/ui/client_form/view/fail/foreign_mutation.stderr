@@ -1,0 +1,21 @@
+error[E0308]: mismatched types
+  --> tests/ui/client_form/view/fail/foreign_mutation.rs:10:14
+   |
+10 |       let _view = form! {
+   |  _________________^
+11 | |         client_form: OtherClientForm,
+12 | |         mutation: &mutation
+13 | |     };
+   | |     ^
+   | |     |
+   | |_____expected `&FormServerMutation<..., _, ..., _>`, found `&FormServerMutation<..., ..., ..., ...>`
+   |       arguments to this function are incorrect
+   |
+   = note: expected reference `&FormServerMutation<OtherClientForm, _, Other, _>`
+              found reference `&FormServerMutation<RequestClientForm, NoDeps, Request, std::string::String>`
+note: associated function defined here
+  --> tests/ui/client_form/view/fail/foreign_mutation.rs:2:17
+   |
+ 2 | #[derive(Clone, reinhardt_pages::ClientForm)]
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the macro `form` which comes from the expansion of the derive macro `reinhardt_pages::ClientForm` (in Nightly builds, run with -Z macro-backtrace for more info)

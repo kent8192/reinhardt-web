@@ -1,12 +1,19 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::cell::{Cell, RefCell};
+use std::future::Future;
 use std::rc::Rc;
+use std::task::{Context, Poll, Waker};
 
+use reinhardt_core::reactive::ReactiveScope;
+use reinhardt_pages::reactive::Signal;
+use reinhardt_pages::server_fn::ServerFnErrorKind;
+use reinhardt_pages::ui::{FormActionButton, FormActionResultPanel};
 use reinhardt_pages::{
 	CollectionItem, CollectionItemKey, CustomWidgetContext, CustomWidgetRawValue, FieldError,
-	FormEvent, FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, Page, ResetOnDeps,
-	RevalidateOn, UseFormSubmitOutcome, form, use_form,
+	FormEvent, FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, IntoPage, Page,
+	PageElement, ResetOnDeps, RevalidateOn, ServerFnError, UseFormAsyncSubmitOutcome,
+	UseFormSubmitOutcome, form, use_form, use_form_action, use_resource,
 };
 
 thread_local! {
@@ -175,6 +182,245 @@ fn use_form_builds_runtime_from_generated_form_contract() {
 		!runtime
 			.get_field_state(profile.display_name_field())
 			.is_dirty
+	);
+}
+
+#[test]
+fn use_form_routes_server_field_errors_and_preserves_unmatched_errors() {
+	let profile = form! {
+		name: ServerErrorProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada"
+			},
+		}
+	};
+	let runtime = use_form(&profile).build();
+	let error = ServerFnError::validation_with_message(
+		"Please correct the submitted values",
+		[
+			("display_name", "Display name is already used"),
+			("missing_field", "Unknown field"),
+		],
+	);
+
+	runtime.apply_server_error(&error);
+
+	assert_eq!(
+		runtime
+			.get_field_state(profile.display_name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("Display name is already used")
+	);
+	assert_eq!(
+		runtime.form_state().form_error.get(),
+		Some("Please correct the submitted values\nmissing_field: Unknown field".to_string())
+	);
+	assert_eq!(
+		runtime.form_state().submit_error.get(),
+		Some("Please correct the submitted values\nmissing_field: Unknown field".to_string())
+	);
+}
+
+#[test]
+fn use_form_routes_all_server_field_errors_without_form_error() {
+	let profile = form! {
+		name: AllMatchedServerErrorProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada"
+			},
+			bio: TextField {
+				initial: "Compiler engineer"
+			},
+		}
+	};
+	let runtime = use_form(&profile).build();
+	runtime
+		.form_state()
+		.submit_error
+		.set(Some("previous submit error".to_string()));
+	runtime
+		.form_state()
+		.error
+		.set(Some("previous first error".to_string()));
+	let error = ServerFnError::validation_with_message(
+		"Please correct the submitted values",
+		[
+			("display_name", "Display name is already used"),
+			("bio", "Biography is too long"),
+		],
+	);
+
+	runtime.apply_server_error(&error);
+
+	assert_eq!(
+		runtime
+			.get_field_state(profile.display_name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("Display name is already used")
+	);
+	assert_eq!(
+		runtime
+			.get_field_state(profile.bio_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("Biography is too long")
+	);
+	assert_eq!(runtime.form_state().form_error.get(), None);
+	assert_eq!(runtime.form_state().submit_error.get(), None);
+}
+
+#[test]
+fn use_form_syncs_first_error_when_all_server_errors_match_fields() {
+	let profile = form! {
+		name: FirstErrorServerErrorProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada"
+			},
+		}
+	};
+	let runtime = use_form(&profile).build();
+	runtime
+		.form_state()
+		.error
+		.set(Some("previous first error".to_string()));
+	let error = ServerFnError::validation_with_message(
+		"Please correct the submitted values",
+		[("display_name", "Display name is already used")],
+	);
+
+	runtime.apply_server_error(&error);
+
+	assert_eq!(
+		runtime.form_state().error.get(),
+		Some("Display name is already used".to_string())
+	);
+}
+
+#[test]
+fn use_form_aggregates_duplicate_server_messages_for_one_field() {
+	let profile = form! {
+		name: DuplicateServerErrorProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada"
+			},
+		}
+	};
+	let runtime = use_form(&profile).build();
+	let error = ServerFnError::validation_with_message(
+		"Please correct the submitted values",
+		[
+			("display_name", "Display name is already used"),
+			("display_name", "Display name must be unique per tenant"),
+		],
+	);
+
+	runtime.apply_server_error(&error);
+
+	assert_eq!(
+		runtime
+			.get_field_state(profile.display_name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("Display name is already used\nDisplay name must be unique per tenant")
+	);
+	assert_eq!(runtime.form_state().form_error.get(), None);
+	assert_eq!(runtime.form_state().submit_error.get(), None);
+}
+
+#[test]
+fn use_form_aggregates_unmatched_nested_server_errors_at_form_level() {
+	let profile = form! {
+		name: NestedServerErrorProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada"
+			},
+		}
+	};
+	let runtime = use_form(&profile).build();
+	runtime
+		.form_state()
+		.error
+		.set(Some("previous first error".to_string()));
+	let error = ServerFnError::validation_with_message(
+		"Please correct the submitted values",
+		[("addresses.0.street", "Street is required")],
+	);
+
+	runtime.apply_server_error(&error);
+
+	assert_eq!(
+		runtime.form_state().form_error.get(),
+		Some(
+			"Please correct the submitted values\naddresses.0.street: Street is required"
+				.to_string()
+		)
+	);
+	assert_eq!(
+		runtime.form_state().submit_error.get(),
+		Some(
+			"Please correct the submitted values\naddresses.0.street: Street is required"
+				.to_string()
+		)
+	);
+	assert_eq!(
+		runtime.get_field_state(profile.display_name_field()).error,
+		None
+	);
+	assert_eq!(
+		runtime.form_state().error.get(),
+		Some(
+			"Please correct the submitted values\naddresses.0.street: Street is required"
+				.to_string()
+		)
+	);
+}
+
+#[test]
+fn use_form_routes_server_errors_without_field_entries_to_form_level() {
+	let profile = form! {
+		name: FormOnlyServerErrorProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada"
+			},
+		}
+	};
+	let runtime = use_form(&profile).build();
+	let error = ServerFnError::validation_with_message(
+		"Please correct the submitted values",
+		std::iter::empty::<(&str, &str)>(),
+	);
+
+	runtime.apply_server_error(&error);
+
+	assert_eq!(
+		runtime.form_state().form_error.get(),
+		Some("Please correct the submitted values".to_string())
+	);
+	assert_eq!(
+		runtime.form_state().submit_error.get(),
+		Some("Please correct the submitted values".to_string())
+	);
+	assert_eq!(
+		runtime.get_field_state(profile.display_name_field()).error,
+		None
 	);
 }
 
@@ -390,11 +636,11 @@ fn use_form_can_sync_after_native_reset() {
 
 #[test]
 fn native_reset_preserves_custom_widget_and_source_subscriptions() {
-	// Arrange: an invalid custom widget coexists with ordinary bound fields.
+	// Arrange: an invalid custom widget coexists with ordinary and radio fields.
 	let booking = form! {
 		name: NativeResetCustomWidgetForm,
 		fields: {
-			answer: CharField {}
+			answer: ChoiceField<String> { widget: RadioInput }
 			name: CharField {
 				initial: "before"
 			}
@@ -1072,138 +1318,142 @@ fn field_array_min_and_max_items_set_collection_errors() {
 
 #[test]
 fn use_form_watches_and_sets_collection_field_paths() {
-	let invoice = form! {
-		name: InvoiceForm,
-		action: "/invoices",
-		fields: {
-			line_items: FieldArray {
-				fields: {
-					description: CharField {
-						required,
-					}
-					quantity: IntegerField {
-						required,
+	ReactiveScope::run(|| {
+		let invoice = form! {
+			name: InvoiceForm,
+			action: "/invoices",
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {
+							required,
+						}
+						quantity: IntegerField {
+							required,
+						}
 					}
 				}
 			}
-		}
-	};
-	let runtime = use_form(&invoice).build();
-	let collection = invoice.line_items_collection();
-	let mut item = invoice.new_line_items_item();
-	item.description = "Keyboard".to_string();
-	item.quantity = 2;
+		};
+		let runtime = use_form(&invoice).build();
+		let collection = invoice.line_items_collection();
+		let mut item = invoice.new_line_items_item();
+		item.description = "Keyboard".to_string();
+		item.quantity = 2;
 
-	let key = runtime.push_item(collection, item);
-	let quantity_path = invoice.line_items_quantity_path(key);
-	let description_path = invoice.line_items_description_path(key);
-	let quantity = runtime.watch_path::<i64>(quantity_path.clone());
-	let description = runtime.watch_path::<String>(description_path.clone());
+		let key = runtime.push_item(collection, item);
+		let quantity_path = invoice.line_items_quantity_path(key);
+		let description_path = invoice.line_items_description_path(key);
+		let quantity = runtime.watch_path::<i64>(quantity_path.clone());
+		let description = runtime.watch_path::<String>(description_path.clone());
 
-	assert_eq!(quantity.get(), 2);
-	assert_eq!(description.get(), "Keyboard".to_string());
-	assert!(runtime.get_path_state(quantity_path.clone()).is_dirty);
-	assert!(!runtime.get_path_state(quantity_path.clone()).is_touched);
+		assert_eq!(quantity.get(), 2);
+		assert_eq!(description.get(), "Keyboard".to_string());
+		assert!(runtime.get_path_state(quantity_path.clone()).is_dirty);
+		assert!(!runtime.get_path_state(quantity_path.clone()).is_touched);
 
-	runtime.reset_default_values();
+		runtime.reset_default_values();
 
-	assert!(!runtime.get_path_state(quantity_path.clone()).is_dirty);
+		assert!(!runtime.get_path_state(quantity_path.clone()).is_dirty);
 
-	runtime.set_path_value(quantity_path.clone(), 3_i64);
+		runtime.set_path_value(quantity_path.clone(), 3_i64);
 
-	assert_eq!(quantity.get(), 3);
-	assert_eq!(runtime.get_values().line_items[0].quantity, 3);
-	assert_eq!(runtime.watch().get().line_items[0].quantity, 3);
-	assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
-	assert!(runtime.get_path_state(quantity_path.clone()).is_dirty);
+		assert_eq!(quantity.get(), 3);
+		assert_eq!(runtime.get_values().line_items[0].quantity, 3);
+		assert_eq!(runtime.watch().get().line_items[0].quantity, 3);
+		assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
+		assert!(runtime.get_path_state(quantity_path.clone()).is_dirty);
 
-	let updated_item = invoice
-		.line_items()
-		.get()
-		.into_iter()
-		.next()
-		.map(|item| {
-			let mut value = item.into_value();
-			value.quantity = 5;
-			CollectionItem::new(key, 0, value)
-		})
-		.expect("line item exists");
-	invoice.line_items().set(vec![updated_item]);
+		let updated_item = invoice
+			.line_items()
+			.get()
+			.into_iter()
+			.next()
+			.map(|item| {
+				let mut value = item.into_value();
+				value.quantity = 5;
+				CollectionItem::new(key, 0, value)
+			})
+			.expect("line item exists");
+		invoice.line_items().set(vec![updated_item]);
 
-	let quantity_after_direct_set = runtime.watch_path::<i64>(quantity_path.clone());
-	assert_eq!(quantity_after_direct_set.get(), 5);
-	assert_eq!(quantity.get(), 5);
+		let quantity_after_direct_set = runtime.watch_path::<i64>(quantity_path.clone());
+		assert_eq!(quantity_after_direct_set.get(), 5);
+		assert_eq!(quantity.get(), 5);
 
-	runtime.set_path_value(description_path.clone(), "Mechanical keyboard".to_string());
+		runtime.set_path_value(description_path.clone(), "Mechanical keyboard".to_string());
 
-	assert_eq!(description.get(), "Mechanical keyboard".to_string());
-	assert_eq!(
-		runtime.get_values().line_items[0].description,
-		"Mechanical keyboard".to_string()
-	);
-	assert!(runtime.get_path_state(description_path.clone()).is_touched);
+		assert_eq!(description.get(), "Mechanical keyboard".to_string());
+		assert_eq!(
+			runtime.get_values().line_items[0].description,
+			"Mechanical keyboard".to_string()
+		);
+		assert!(runtime.get_path_state(description_path.clone()).is_touched);
 
-	assert!(runtime.remove_item(collection, key));
-	assert!(
-		::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-			runtime.watch_path::<String>(description_path.clone());
-		}))
-		.is_err()
-	);
-	assert!(
-		::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-			runtime.set_path_value(quantity_path.clone(), 4_i64);
-		}))
-		.is_err()
-	);
+		assert!(runtime.remove_item(collection, key));
+		assert!(
+			::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+				runtime.watch_path::<String>(description_path.clone());
+			}))
+			.is_err()
+		);
+		assert!(
+			::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+				runtime.set_path_value(quantity_path.clone(), 4_i64);
+			}))
+			.is_err()
+		);
+	});
 }
 
 #[test]
 fn direct_collection_signal_set_syncs_path_watchers_and_state() {
-	let invoice = form! {
-		name: InvoiceForm,
-		action: "/invoices",
-		fields: {
-			line_items: FieldArray {
-				fields: {
-					description: CharField {}
-					quantity: IntegerField {}
+	ReactiveScope::run(|| {
+		let invoice = form! {
+			name: InvoiceForm,
+			action: "/invoices",
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {}
+						quantity: IntegerField {}
+					}
 				}
 			}
-		}
-	};
-	let runtime = use_form(&invoice).build();
-	let collection = invoice.line_items_collection();
-	let key = CollectionItemKey::from_runtime_index(0);
-	let mut item = invoice.new_line_items_item();
-	item.description = "Keyboard".to_string();
-	item.quantity = 2;
+		};
+		let runtime = use_form(&invoice).build();
+		let collection = invoice.line_items_collection();
+		let key = CollectionItemKey::from_runtime_index(0);
+		let mut item = invoice.new_line_items_item();
+		item.description = "Keyboard".to_string();
+		item.quantity = 2;
 
-	invoice
-		.line_items()
-		.set(vec![CollectionItem::new(key, 0, item)]);
+		invoice
+			.line_items()
+			.set(vec![CollectionItem::new(key, 0, item)]);
 
-	let quantity_path = invoice.line_items_quantity_path(key);
-	let quantity = runtime.watch_path::<i64>(quantity_path.clone());
-	assert_eq!(quantity.get(), 2);
-	assert!(runtime.get_collection_state(collection).is_touched);
-	assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
+		let quantity_path = invoice.line_items_quantity_path(key);
+		let quantity = runtime.watch_path::<i64>(quantity_path.clone());
+		assert_eq!(quantity.get(), 2);
+		assert!(runtime.get_collection_state(collection).is_touched);
+		assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
 
-	let mut updated_item = invoice
-		.line_items()
-		.get()
-		.into_iter()
-		.next()
-		.expect("line item exists")
-		.into_value();
-	updated_item.quantity = 5;
-	invoice
-		.line_items()
-		.set(vec![CollectionItem::new(key, 0, updated_item)]);
+		let mut updated_item = invoice
+			.line_items()
+			.get()
+			.into_iter()
+			.next()
+			.expect("line item exists")
+			.into_value();
+		updated_item.quantity = 5;
+		invoice
+			.line_items()
+			.set(vec![CollectionItem::new(key, 0, updated_item)]);
 
-	assert_eq!(quantity.get(), 5);
-	assert_eq!(runtime.get_values().line_items[0].quantity, 5);
-	assert!(runtime.get_path_state(quantity_path).is_touched);
+		assert_eq!(quantity.get(), 5);
+		assert_eq!(runtime.get_values().line_items[0].quantity, 5);
+		assert!(runtime.get_path_state(quantity_path).is_touched);
+	});
 }
 
 #[test]
@@ -1712,6 +1962,259 @@ fn validation_failure_sets_form_error_and_submit_failure_state() {
 	assert!(runtime.form_state().error.get().is_none());
 }
 
+#[tokio::test]
+async fn submit_async_success_updates_state_and_runs_callbacks() {
+	let profile = form! {
+		name: AsyncSuccessForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+				required,
+			}
+		}
+	};
+	let order = Rc::new(Cell::new(0));
+	let start_order = Rc::clone(&order);
+	let success_order = Rc::clone(&order);
+	let runtime = use_form(&profile)
+		.on_submit_start(move |handle| {
+			assert!(handle.form_state().is_submitting.get());
+			assert_eq!(start_order.get(), 0);
+			start_order.set(1);
+		})
+		.on_submit_success(move |handle| {
+			assert!(!handle.form_state().is_submitting.get());
+			assert!(handle.form_state().is_submit_successful.get());
+			let callback_signal = Signal::new(1_i32);
+			assert_eq!(callback_signal.get(), 1);
+			assert_eq!(success_order.get(), 1);
+			success_order.set(2);
+		})
+		.build();
+
+	let outcome = runtime
+		.submit_async(|| async { Ok::<_, String>("saved".to_string()) })
+		.await
+		.expect("async submit should succeed");
+
+	assert_eq!(
+		outcome,
+		UseFormAsyncSubmitOutcome::Submitted("saved".to_string())
+	);
+	assert!(!runtime.form_state().is_submitting.get());
+	assert!(runtime.form_state().is_submit_successful.get());
+	assert!(runtime.form_state().submit_error.get().is_none());
+	assert!(runtime.form_state().error.get().is_none());
+	assert_eq!(order.get(), 2);
+}
+
+#[tokio::test]
+async fn submit_server_fn_returns_submitted_outcome() {
+	let profile = form! {
+		name: TypedAsyncSuccessForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada"
+			},
+		}
+	};
+	let runtime = use_form(&profile).build();
+
+	let outcome = runtime
+		.submit_server_fn(|| async { Ok::<_, ServerFnError>("saved".to_string()) })
+		.await
+		.expect("typed server-function submit should succeed");
+
+	assert_eq!(
+		outcome,
+		UseFormAsyncSubmitOutcome::Submitted("saved".to_string())
+	);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn submit_server_fn_routes_typed_server_errors() {
+	// Arrange
+	let profile = form! {
+		name: TypedAsyncServerErrorForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada"
+			},
+		}
+	};
+	let runtime = use_form(&profile).build();
+
+	// Act
+	let result = runtime
+		.submit_server_fn(|| async {
+			Err::<(), _>(ServerFnError::validation([(
+				"display_name",
+				"Display name is already used",
+			)]))
+		})
+		.await;
+
+	// Assert
+	assert!(matches!(result, Err(error) if error.kind() == ServerFnErrorKind::Validation));
+	assert_eq!(
+		runtime
+			.get_field_state(profile.display_name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("Display name is already used")
+	);
+}
+
+#[tokio::test]
+async fn submit_async_validation_failure_blocks_submit_closure() {
+	let signup = form! {
+		name: AsyncValidationForm,
+		action: "/signup",
+		fields: {
+			email: CharField {
+				initial: "",
+				required,
+			}
+		}
+	};
+	let submit_calls = Rc::new(Cell::new(0));
+	let submit_calls_for_closure = Rc::clone(&submit_calls);
+	let runtime = use_form(&signup).build();
+
+	let outcome = runtime
+		.submit_async(move || {
+			submit_calls_for_closure.set(submit_calls_for_closure.get() + 1);
+			async { Ok::<_, String>(()) }
+		})
+		.await
+		.expect("validation failure is reported as an outcome");
+
+	assert_eq!(outcome, UseFormAsyncSubmitOutcome::ValidationFailed);
+	assert_eq!(submit_calls.get(), 0);
+	assert!(!runtime.form_state().is_submitting.get());
+	assert!(!runtime.form_state().is_submit_successful.get());
+	assert_eq!(
+		runtime
+			.get_field_state(signup.email_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("email is required")
+	);
+}
+
+#[tokio::test]
+async fn submit_async_submit_error_records_error_text() {
+	let profile = form! {
+		name: AsyncSubmitErrorForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+				required,
+			}
+		}
+	};
+	let error_count = Rc::new(Cell::new(0));
+	let error_count_for_callback = Rc::clone(&error_count);
+	let runtime = use_form(&profile)
+		.on_submit_error(move |handle| {
+			assert!(!handle.form_state().is_submitting.get());
+			assert!(!handle.form_state().is_submit_successful.get());
+			assert_eq!(
+				handle.form_state().submit_error.get().as_deref(),
+				Some("network unavailable")
+			);
+			error_count_for_callback.set(error_count_for_callback.get() + 1);
+		})
+		.build();
+
+	let result = runtime
+		.submit_async(|| async { Err::<(), _>("network unavailable".to_string()) })
+		.await;
+
+	assert_eq!(result, Err("network unavailable".to_string()));
+	assert_eq!(
+		runtime.form_state().submit_error.get().as_deref(),
+		Some("network unavailable")
+	);
+	assert_eq!(
+		runtime.form_state().error.get().as_deref(),
+		Some("network unavailable")
+	);
+	assert!(!runtime.form_state().is_submitting.get());
+	assert!(!runtime.form_state().is_submit_successful.get());
+	assert_eq!(error_count.get(), 1);
+}
+
+#[tokio::test]
+async fn submit_async_returns_already_pending_for_reentrant_submit() {
+	let profile = form! {
+		name: AsyncPendingForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+				required,
+			}
+		}
+	};
+	let runtime = use_form(&profile).build();
+	let runtime_for_inner = runtime.clone();
+
+	let outcome = runtime
+		.submit_async(move || {
+			let runtime_for_inner = runtime_for_inner.clone();
+			async move {
+				runtime_for_inner
+					.submit_async(|| async { Ok::<_, String>("inner".to_string()) })
+					.await
+			}
+		})
+		.await
+		.expect("outer async submit should succeed");
+
+	assert_eq!(
+		outcome,
+		UseFormAsyncSubmitOutcome::Submitted(UseFormAsyncSubmitOutcome::AlreadyPending)
+	);
+	assert!(!runtime.form_state().is_submitting.get());
+	assert!(runtime.form_state().is_submit_successful.get());
+}
+
+#[test]
+fn submit_async_cancellation_clears_submitting_state() {
+	let profile = form! {
+		name: AsyncCancelledForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField {
+				initial: "Ada",
+				required,
+			}
+		}
+	};
+	let runtime = use_form(&profile).build();
+
+	let mut submit = Box::pin(
+		runtime.submit_async(|| async { std::future::pending::<Result<(), String>>().await }),
+	);
+	let mut context = Context::from_waker(Waker::noop());
+
+	assert!(matches!(submit.as_mut().poll(&mut context), Poll::Pending));
+	assert!(runtime.form_state().is_submitting.get());
+
+	drop(submit);
+
+	assert!(!runtime.form_state().is_submitting.get());
+	assert!(!runtime.form_state().is_submit_successful.get());
+}
+
 #[test]
 fn use_form_accepts_file_field_runtime_contracts() {
 	let upload = form! {
@@ -1810,4 +2313,219 @@ fn submit_callbacks_survive_deps_configured_after_callback_registration() {
 
 	assert_eq!(runtime.handle_submit(), UseFormSubmitOutcome::Submitted);
 	assert_eq!(success_count.get(), 1);
+}
+
+#[test]
+fn use_form_action_validates_before_dispatching() {
+	ReactiveScope::run(|| {
+		let signup = form! {
+			name: SignupForm,
+			action: "/signup",
+			fields: {
+				email: CharField {
+					initial: "",
+					required,
+				}
+			}
+		};
+		let runtime = use_form(&signup).build();
+		let dispatch_count = Rc::new(Cell::new(0));
+		let dispatch_count_for_action = Rc::clone(&dispatch_count);
+		let save = use_form_action(&runtime, move |_values| {
+			dispatch_count_for_action.set(dispatch_count_for_action.get() + 1);
+			async { Ok::<(), String>(()) }
+		});
+
+		assert_eq!(save.submit(), UseFormSubmitOutcome::ValidationFailed);
+		assert_eq!(dispatch_count.get(), 0);
+		assert!(!save.is_pending());
+		assert!(!runtime.form_state().is_submit_successful.get());
+		assert_eq!(save.error_message().as_deref(), Some("email is required"));
+		assert_eq!(
+			runtime
+				.get_field_state(signup.email_field())
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("email is required")
+		);
+	});
+}
+
+#[test]
+fn use_form_action_dispatches_current_values_after_validation() {
+	ReactiveScope::run(|| {
+		let profile = form! {
+			name: ProfileForm,
+			action: "/profile",
+			fields: {
+				display_name: CharField {
+					initial: "Ada",
+					required,
+				}
+			}
+		};
+		let runtime = use_form(&profile).build();
+		runtime.set_value(profile.display_name_field(), "Grace".to_string());
+
+		let captured_name = Rc::new(RefCell::new(None));
+		let captured_name_for_action = Rc::clone(&captured_name);
+		let save = use_form_action(&runtime, move |values| {
+			*captured_name_for_action.borrow_mut() = Some(values.display_name);
+			async { Ok::<(), String>(()) }
+		});
+
+		assert_eq!(save.submit(), UseFormSubmitOutcome::Submitted);
+		assert_eq!(captured_name.borrow().as_deref(), Some("Grace"));
+		assert!(!save.is_pending());
+		assert!(save.error_message().is_none());
+	});
+}
+
+#[test]
+fn form_action_ui_preserves_submit_semantics_and_renders_validation_errors() {
+	ReactiveScope::run(|| {
+		let signup = form! {
+			name: SignupForm,
+			action: "/signup",
+			fields: {
+				email: CharField {
+					initial: "",
+					required,
+				}
+			}
+		};
+		let runtime = use_form(&signup).build();
+		let save = use_form_action(&runtime, |_values| async { Ok::<(), String>(()) });
+		let button = FormActionButton::new(save.clone(), Page::text("Save"))
+			.attr("type", "button")
+			.attr("aria-label", "Save signup");
+		let panel = FormActionResultPanel::new(save.clone())
+			.idle(|| Page::text("idle"))
+			.validation_error(|message| Page::text(format!("validation:{message}")));
+		let resource = use_resource(|| async { Ok::<(), String>(()) }, reinhardt_pages::deps![]);
+		let latest = resource.latest_after_form(&save);
+		let form_page = PageElement::new("form")
+			.on(reinhardt_pages::EventType::Submit, save.submit_handler())
+			.child(button)
+			.into_page();
+
+		assert_eq!(
+			form_page.render_to_string(),
+			r#"<form><button type="submit" formnovalidate="formnovalidate" aria-label="Save signup">Save</button></form>"#
+		);
+		assert_eq!(panel.render().render_to_string(), "idle");
+		assert_eq!(latest.value(), None);
+
+		assert_eq!(save.submit(), UseFormSubmitOutcome::ValidationFailed);
+		assert_eq!(
+			panel.render().render_to_string(),
+			"validation:email is required"
+		);
+	});
+}
+
+#[rstest::rstest]
+#[serial_test::serial(reactive_runtime)]
+fn form_reset_ignores_disposed_connected_action_scope() {
+	ReactiveScope::run(|| {
+		// Arrange
+		let profile = form! {
+			name: ProfileForm,
+			action: "/profile",
+			fields: {
+				display_name: CharField {
+					initial: "Ada",
+				}
+			}
+		};
+		let runtime = use_form(&profile).build();
+		let child_scope = ReactiveScope::new();
+		let retained_action = {
+			let action = child_scope
+				.enter(|| use_form_action(&runtime, |_values| async { Ok::<(), String>(()) }));
+			action.clone()
+		};
+		runtime.set_value(profile.display_name_field(), "Grace".to_owned());
+		runtime.set_error(profile.display_name_field(), FieldError::new("invalid"));
+		child_scope.dispose();
+
+		// Act
+		runtime.reset();
+
+		// Assert
+		assert_eq!(retained_action.form().get_values().display_name, "Ada");
+		assert!(!runtime.form_state().is_dirty.get());
+		assert!(!runtime.form_state().is_touched.get());
+		assert_eq!(
+			runtime.get_field_state(profile.display_name_field()).error,
+			None
+		);
+	});
+}
+
+#[rstest::rstest]
+#[case::field_reset("reset_field")]
+#[case::field_write("set_value")]
+#[case::all_values("set_values")]
+#[case::form_reset("reset")]
+fn numeric_editor_errors_survive_display_clearing_until_values_are_repaired(#[case] repair: &str) {
+	use reinhardt_pages::component::ControlValue;
+	use reinhardt_pages::control_binding::__private::{NumberBinding, into_control_binding};
+
+	ReactiveScope::run(|| {
+		// Arrange
+		let form = form! {
+			name: NumericRepairForm,
+			action: "/numbers",
+			fields: {
+				count: IntegerField {},
+				ratio: FloatField {},
+			},
+		};
+		let runtime = use_form(&form).build();
+		let count = into_control_binding::<NumberBinding, _>(runtime.field(form.count_field()), ());
+		let ratio = into_control_binding::<NumberBinding, _>(runtime.field(form.ratio_field()), ());
+		count.write(ControlValue::Text("7".to_owned())).unwrap();
+		count.write(ControlValue::Text("1e".to_owned())).unwrap();
+		ratio.write(ControlValue::Text("-".to_owned())).unwrap();
+
+		// Act: clearing messages cannot make the stale typed value submittable.
+		runtime.clear_errors();
+		runtime.clear_field_error(form.count_field());
+		let errors = runtime
+			.trigger()
+			.expect_err("raw numeric errors still block validation");
+		assert_eq!(errors.field_errors().len(), 2);
+		assert_eq!(form.count().get(), 7);
+
+		match repair {
+			"reset_field" => runtime.reset_field(form.count_field()),
+			"set_value" => runtime.set_value(form.count_field(), 0_i64),
+			"set_values" => {
+				let mut values = runtime.get_values();
+				values.count = 0;
+				runtime.set_values(values);
+			}
+			"reset" => runtime.reset(),
+			_ => unreachable!("known repair operation"),
+		}
+
+		// Assert: repairing one field preserves the other rejected editor value.
+		assert_eq!(form.count().get(), 0);
+		assert_eq!(runtime.get_field_state(form.count_field()).error, None);
+		if matches!(repair, "reset_field" | "set_value") {
+			let errors = runtime.trigger().expect_err("ratio is still invalid");
+			assert_eq!(errors.field_errors().len(), 1);
+			assert_eq!(
+				errors
+					.field_errors()
+					.get(&form.ratio_field())
+					.map(FieldError::message),
+				Some("cannot parse numeric control value \"-\": Incomplete"),
+			);
+			runtime.reset_field(form.ratio_field());
+		}
+		assert!(runtime.trigger().is_ok());
+	});
 }

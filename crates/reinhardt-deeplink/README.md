@@ -14,6 +14,7 @@ Mobile deep linking support for the Reinhardt web framework.
 
 ```rust
 use reinhardt_deeplink::{DeeplinkConfig, IosConfig, AndroidConfig, DeeplinkRouterExt};
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_urls::routers::UnifiedRouter;
 
 // Configure deep links
@@ -34,10 +35,12 @@ let config = DeeplinkConfig::builder()
     )
     .build();
 
-// Add to router
-let router = UnifiedRouter::new()
-    .with_deeplinks(config)
-    .unwrap();
+// Add to router inside the application's reactive lifetime
+ReactiveScope::run(|| {
+    let _router = UnifiedRouter::new()
+        .with_deeplinks(config)
+        .unwrap();
+});
 ```
 
 ## Endpoints

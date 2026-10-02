@@ -1,0 +1,13 @@
+error: form! cannot generate a use_form runtime contract for unsupported field(s): token (HiddenField).
+  --> tests/ui/form/fail/radio_input_unsupported_generic.rs:6:14
+   |
+ 6 |       let _form = form! {
+   |  _________________^
+ 7 | |         name: UnsupportedGenericRadio,
+ 8 | |         fields: {
+ 9 | |             answer: ChoiceField<String> { widget: RadioInput }
+...  |
+14 | |     };
+   | |_____^
+   |
+   = note: this error originates in the macro `form` (in Nightly builds, run with -Z macro-backtrace for more info)

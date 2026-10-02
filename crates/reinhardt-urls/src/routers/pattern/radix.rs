@@ -46,7 +46,7 @@ pub enum RadixRouterError {
 /// assert!(result.is_some());
 /// let (handler_id, params) = result.unwrap();
 /// assert_eq!(handler_id, "users_detail");
-/// assert_eq!(params.get("id"), Some(&"123".to_string()));
+/// assert_eq!(params.get("id"), Some("123"));
 /// ```
 pub struct RadixRouter {
 	router: MatchitRouter<String>,
@@ -126,8 +126,8 @@ impl RadixRouter {
 	///
 	/// let (handler_id, params) = result.unwrap();
 	/// assert_eq!(handler_id, "post_detail");
-	/// assert_eq!(params.get("id"), Some(&"123".to_string()));
-	/// assert_eq!(params.get("post_id"), Some(&"456".to_string()));
+	/// assert_eq!(params.get("id"), Some("123"));
+	/// assert_eq!(params.get("post_id"), Some("456"));
 	/// ```
 	pub fn match_path(&self, path: &str) -> Option<(String, PathParams)> {
 		match self.router.at(path) {

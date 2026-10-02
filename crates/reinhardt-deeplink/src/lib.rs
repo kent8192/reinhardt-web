@@ -38,13 +38,26 @@
 //!
 //! # Router Integration
 //!
-//! ```rust,ignore
+//! ```rust
+//! # #![allow(deprecated)]
+//! use reinhardt_core::reactive::ReactiveScope;
+//! use reinhardt_deeplink::{DeeplinkConfig, DeeplinkRouterExt, IosConfig};
 //! use reinhardt_urls::routers::UnifiedRouter;
-//! use reinhardt_deeplink::DeeplinkRouterExt;
 //!
-//! let router = UnifiedRouter::new()
-//!     .with_deeplinks(config)
-//!     .unwrap();
+//! let config = DeeplinkConfig::builder()
+//!     .ios(
+//!         IosConfig::builder()
+//!             .app_id("TEAM_ID.com.example.app")
+//!             .paths(&["/"])
+//!             .build()
+//!     )
+//!     .build();
+//!
+//! ReactiveScope::run(|| {
+//!     let _router = UnifiedRouter::new()
+//!         .with_deeplinks(config)
+//!         .unwrap();
+//! });
 //! ```
 
 pub mod config;

@@ -2,11 +2,7 @@
 
 #![allow(unused_imports)] // Broad imports keep compile-fail diagnostics focused.
 
-use reinhardt_di::{FactoryOutput, injectable};
-
-struct MyServiceKey;
-
-impl reinhardt_di::InjectableKey for MyServiceKey {}
+use reinhardt_di::injectable;
 
 #[derive(Clone)]
 struct MyService {
@@ -14,8 +10,8 @@ struct MyService {
 }
 
 #[injectable(scope = "singleton")]
-async fn make_service(name: String) -> FactoryOutput<MyServiceKey, MyService> {
-	FactoryOutput::new(MyService { name })
+async fn make_service(name: String) -> MyService {
+	MyService { name }
 }
 
 fn main() {}

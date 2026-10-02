@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-pages"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -11,18 +11,23 @@ keywords = ["wasm", "web", "frontend", "reactive", "django"]
 categories = ["wasm", "web-programming"]
 
 [features]
+i18n = ["dep:reinhardt-i18n"]
 default = []
 console_error_panic_hook = ["dep:console_error_panic_hook"]
 msgpack = ["dep:rmp-serde"]
 testing = []
 # Exposes MockableServerFn trait for MSW-style testing
 msw = ["reinhardt-pages-macros/msw"]
+model-server-fnset = ["dep:reinhardt-db", "reinhardt-pages-macros/model-server-fnset"]
 pages-full = ["msgpack", "web-sys-full"]
 static = []
 urls = []
 debug-hooks = []
-uuid = ["dep:uuid"]
-chrono = ["dep:chrono"]
+# Named model-form contracts always need these crates, so they are required
+# dependencies. These features remain as compatibility markers: `dep:uuid`
+# and `dep:chrono` are invalid once the crates are no longer optional.
+uuid = []
+chrono = []
 ast = []
 # Enables the `tests/integration/spa_navigation_e2e_test.rs` integration
 # test (Refs #4088). This is a marker feature: the actual test deps
@@ -50,12 +55,22 @@ wasm-diag-test = []
 #
 # OFF by default: production builds incur zero overhead.
 nav-diag-dom = []
-hmr = ["dep:notify", "dep:tokio-tungstenite", "dep:futures-util"]
+hmr = [
+	"dep:notify",
+	"dep:tokio-tungstenite",
+	"dep:futures-util",
+	"reinhardt-core/page-hot-reload",
+	"reinhardt-pages-macros/hmr",
+]
 # web-sys features for WASM applications
 # Applications should use this feature to get all required web-sys features
 web-sys-full = [
 	"web-sys/Window",
 	"web-sys/Document",
+	"web-sys/DocumentFragment",
+	"web-sys/ShadowRoot",
+	"web-sys/ShadowRootInit",
+	"web-sys/ShadowRootMode",
 	"web-sys/Element",
 	"web-sys/HtmlElement",
 	"web-sys/Node",
@@ -68,7 +83,9 @@ web-sys-full = [
 	"web-sys/console",
 	"web-sys/MouseEvent",
 	"web-sys/InputEvent",
+	"web-sys/InputEventInit",
 	"web-sys/KeyboardEvent",
+	"web-sys/KeyboardEventInit",
 	"web-sys/FocusEvent",
 	"web-sys/PopStateEvent",
 	"web-sys/File",
@@ -78,6 +95,7 @@ web-sys-full = [
 	"web-sys/HtmlDivElement",
 	"web-sys/HtmlSpanElement",
 	"web-sys/HtmlFormElement",
+	"web-sys/FormData",
 	"web-sys/HtmlTextAreaElement",
 	"web-sys/HtmlSelectElement",
 	"web-sys/HtmlOptionElement",
@@ -86,7 +104,10 @@ web-sys-full = [
 	"web-sys/Attr",
 	"web-sys/HtmlCollection",
 	"web-sys/NodeList",
+	"web-sys/MutationObserver",
+	"web-sys/MutationObserverInit",
 	"web-sys/HtmlDocument",
+	"web-sys/HtmlHeadElement",
 	"web-sys/History",
 	"web-sys/Location",
 	"web-sys/Url",
@@ -95,6 +116,11 @@ web-sys-full = [
 	"web-sys/RequestCredentials",
 	"web-sys/RequestInit",
 	"web-sys/RequestMode",
+	"web-sys/AbortController",
+	"web-sys/AbortSignal",
+	"web-sys/IntersectionObserver",
+	"web-sys/IntersectionObserverEntry",
+	"web-sys/IntersectionObserverInit",
 	"web-sys/Response",
 	"web-sys/WebSocket",
 	"web-sys/MessageEvent",
@@ -104,6 +130,7 @@ web-sys-full = [
 ]
 
 [dependencies]
+rust_decimal = { workspace = true }
 # Builder generator for `Component { ... }` invocation form (spec §3.5.2).
 # Used as a runtime dep so user code can `#[derive(bon::Builder)]` on
 # component prop structs. Staged for removal under spec §10.
@@ -121,6 +148,12 @@ reinhardt-pages-ast = { workspace = true }
 
 # Procedural macros
 reinhardt-pages-macros = { workspace = true }
+reinhardt-event-catalog = { workspace = true }
+reinhardt-i18n = { workspace = true, optional = true }
+sha2 = { workspace = true }
+bytes = { workspace = true }
+futures-util = "0.3"
+getrandom = { workspace = true }
 
 # Core WASM bindings (low-level APIs only)
 wasm-bindgen = "0.2.106"
@@ -137,6 +170,7 @@ serde_urlencoded = "0.7"
 serde-wasm-bindgen = "0.6"
 rmp-serde = { version = "1.3", optional = true }
 urlencoding = "2.1"
+url = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
@@ -150,30 +184,60 @@ inventory = { workspace = true }
 # Optional panic hook for readable WASM console errors (used by ClientLauncher)
 console_error_panic_hook = { version = "0.1", optional = true }
 
-# Optional type support for path parameters
-uuid = { version = "1.0", optional = true, features = ["std"] }
-chrono = { version = "0.4", optional = true, default-features = false, features = ["std"] }
+# Type support for path parameters and model form contracts
+uuid = { version = "1.0", features = ["std"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 # Web APIs
 web-sys = { version = "0.3.83", features = [
 	"Window",
 	"Document",
+	"VisibilityState",
+	"DocumentFragment",
+	"ShadowRoot",
+	"ShadowRootInit",
+	"ShadowRootMode",
 	"Element",
 	"HtmlElement",
 	"Node",
 	"Comment",
 	"Text",
 	"Event",
+	"EventInit",
 	"EventTarget",
 	"CustomEvent",
 	"CustomEventInit",
 	"console",
 	# Event types
 	"MouseEvent",
+	"MouseEventInit",
 	"InputEvent",
+	"InputEventInit",
 	"KeyboardEvent",
+	"KeyboardEventInit",
 	"FocusEvent",
+	"PointerEvent",
+	"PointerEventInit",
+	"SubmitEvent",
+	"TouchEvent",
+	"WheelEvent",
+	"SecurityPolicyViolationEvent",
 	"PopStateEvent",
+	"IntersectionObserver",
+	"IntersectionObserverEntry",
+	"IntersectionObserverInit",
+	"AnimationEvent",
+	"ClipboardEvent",
+	"CommandEvent",
+	"CompositionEvent",
+	"DragEvent",
+	"MediaEncryptedEvent",
+	"TimeEvent",
+	"ToggleEvent",
+	"TransitionEvent",
+	"TouchList",
+	"Touch",
+	"DataTransfer",
 	# HTML element types
 	"File",
 	"FileList",
@@ -182,6 +246,7 @@ web-sys = { version = "0.3.83", features = [
 	"HtmlDivElement",
 	"HtmlSpanElement",
 	"HtmlFormElement",
+	"FormData",
 	"HtmlTextAreaElement",
 	"HtmlSelectElement",
 	"HtmlOptionElement",
@@ -206,6 +271,8 @@ web-sys = { version = "0.3.83", features = [
 	"RequestCredentials",
 	"RequestInit",
 	"RequestMode",
+	"AbortController",
+	"AbortSignal",
 	"Response",
 	# Storage API (for JWT token management)
 	"Storage",
@@ -218,13 +285,13 @@ web-sys = { version = "0.3.83", features = [
 ] }
 
 # Async support for WASM
-reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "security"]}
+# Shared named DTOs retain the same validation derive on native and browser targets.
+reinhardt-core = {workspace = true, default-features = false, features = ["types", "reactive", "page", "parsers", "security", "validators", "macros"]}
 smallvec = { workspace = true }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
 # Observe native form reset after its browser default action finishes.
 gloo-timers = { version = "0.3", features = ["futures"] }
-getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { version = "1.7", features = ["v7", "js"] }
 # Issue #4217: depend on reinhardt-urls on wasm to consume the canonical
 # `client_router::history` primitives (deduplicates with the server-side
@@ -234,6 +301,7 @@ reinhardt-urls = { workspace = true, default-features = false, features = ["clie
 
 # Server-side only dependencies (DI, HTTP, Forms, Server Function Registry)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+reinhardt-db = { workspace = true, optional = true, features = ["orm"] }
 reinhardt-forms = { workspace = true }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
@@ -257,24 +325,33 @@ cfg_aliases = "0.2"
 
 [dev-dependencies]
 insta = { workspace = true }
-reinhardt-forms = { workspace = true }
 wasm-bindgen-test = "0.3.56"
 serial_test = "3"
 trybuild = "1.0"
 rstest = { workspace = true }
 tempfile = { workspace = true }
+# Compile the real model attribute in the WASM model-form proof fixture.
+reinhardt-macros = { workspace = true }
 # `form!`'s `DateField` / `TimeField` / `DateTimeField` codegen emits bare
 # `chrono::Naive*` paths, so trybuild fixtures exercising those fields need
 # `chrono` resolvable in the generated fixture binary.
 chrono = { workspace = true }
+base64 = { workspace = true }
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
+# Path-only dependency keeps browser fixtures outside release-plz publish ordering.
+reinhardt-test = { path = "../reinhardt-test", default-features = false, features = ["wasm"] }
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+reinhardt-forms = { workspace = true }
 criterion = { workspace = true }
 proptest = { workspace = true }
 hyper-util = { workspace = true }
 http-body-util = { workspace = true }
 bytes = { workspace = true }
 tokio-tungstenite = { workspace = true }
+tokio-test = { workspace = true }
 futures-util = "0.3"
 # Enable `validation` feature for trybuild UI tests that exercise
 # `Validated<Form<T>>` extractors in `tests/ui/server_fn/with_extractors.rs`
@@ -305,12 +382,42 @@ harness = false
 [[test]]
 name = "csrf_wasm_test"
 path = "tests/wasm/csrf_wasm_test.rs"
-required-features = []
+required-features = ["testing"]
 
 [[test]]
 name = "server_fn_wasm_test"
 path = "tests/wasm/server_fn_wasm_test.rs"
-required-features = []
+required-features = ["testing"]
+
+[[test]]
+name = "server_mutation_wasm_test"
+path = "tests/wasm/server_mutation_wasm_test.rs"
+required-features = ["testing"]
+
+[[test]]
+name = "client_form_view_wasm_test"
+path = "tests/wasm/client_form_view_wasm_test.rs"
+required-features = ["testing"]
+
+[[test]]
+name = "model_form_file_upload_wasm_test"
+path = "tests/model_form_file_upload_wasm_test.rs"
+required-features = ["testing"]
+
+[[test]]
+name = "document_head_wasm_test"
+path = "tests/wasm/document_head_wasm_test.rs"
+required-features = ["testing"]
+
+[[test]]
+name = "query_client_wasm_test"
+path = "tests/wasm/query_client_wasm_test.rs"
+required-features = ["testing"]
+
+[[test]]
+name = "server_fnset_wasm_compile_test"
+path = "tests/wasm/server_fnset_wasm_compile_test.rs"
+required-features = ["model-server-fnset"]
 
 [[test]]
 name = "suspense_boundary_wasm_test"
@@ -320,6 +427,11 @@ required-features = []
 [[test]]
 name = "activity_view_transition_wasm_test"
 path = "tests/wasm/activity_view_transition_wasm_test.rs"
+required-features = []
+
+[[test]]
+name = "ui_primitives_wasm_test"
+path = "tests/wasm/ui_primitives_wasm_test.rs"
 required-features = []
 
 [[test]]
@@ -335,6 +447,26 @@ required-features = []
 [[test]]
 name = "client_launcher_router_client_test"
 path = "tests/wasm/client_launcher_router_client_test.rs"
+required-features = []
+
+[[test]]
+name = "named_navigation_wasm_test"
+path = "tests/wasm/named_navigation_wasm_test.rs"
+required-features = []
+
+[[test]]
+name = "route_loader_navigation_wasm_test"
+path = "tests/wasm/route_loader_navigation_wasm_test.rs"
+required-features = []
+
+[[test]]
+name = "route_loader_prefetch_wasm_test"
+path = "tests/wasm/route_loader_prefetch_wasm_test.rs"
+required-features = []
+
+[[test]]
+name = "navigation_guard_wasm_test"
+path = "tests/wasm/navigation_guard_wasm_test.rs"
 required-features = []
 
 [[test]]

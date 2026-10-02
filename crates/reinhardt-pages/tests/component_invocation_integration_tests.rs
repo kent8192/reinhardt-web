@@ -8,9 +8,31 @@
 //!
 //! Refs #4668 (P7) #4524.
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::component::Page;
-use reinhardt_pages::page;
+use reinhardt_pages::{Loader, Query, component, loader, page};
 use rstest::rstest;
+
+#[loader]
+async fn integration_greeting_loader() -> Result<String, String> {
+	Ok("unused fetch".to_owned())
+}
+
+#[component(
+	"/greeting/",
+	name = "integration-greeting",
+	loader = integration_greeting_loader
+)]
+fn integration_greeting(Loader(message): Loader<String>) -> Page {
+	page!(|message: String| {
+		p { { message } }
+	})(message)
+}
+
+#[component("/optional-query/", name = "integration-optional-query")]
+fn integration_optional_query(Query(logs): Query<Option<i64>>) -> Page {
+	Page::text(logs.map_or_else(|| "none".to_owned(), |id| id.to_string()))
+}
 
 #[derive(bon::Builder)]
 struct CardProps {
@@ -136,17 +158,63 @@ fn component_macro_props_render_like_page_brace_invocation() {
 	use reinhardt_pages::router::ClientRouter;
 	use reinhardt_pages::{Path, component};
 
-	#[component("/users/{id}/", "user-detail")]
+	#[component("/users/{id}/", name = "user-detail")]
 	fn user_page(Path(id): Path<i64>) -> Page {
 		page!(|id: i64| {
 			div { { format!("user {id}") } }
 		})(id)
 	}
 
-	let direct = user_page(UserPageProps::builder().id(7).build());
-	let router = ClientRouter::new().component(user_page);
-	router.current_path().set("/users/7/".to_string());
-	let routed = router.render_current();
+	ReactiveScope::run(|| {
+		let direct = user_page(UserPageProps::builder().id(7).build());
+		let router = ClientRouter::new().component(user_page);
+		router.current_path().set("/users/7/".to_string());
+		let routed = router.render_current();
 
-	assert_eq!(direct.render_to_string(), routed.render_to_string());
+		assert_eq!(direct.render_to_string(), routed.render_to_string());
+	});
+}
+
+#[test]
+fn routed_component_reads_prepared_loader_value() {
+	use reinhardt_pages::{LoaderStore, RouteLoader, enter_loader_store};
+
+	let store = LoaderStore::new();
+	store
+		.insert(
+			<integration_greeting_loader::marker as RouteLoader>::ID,
+			"prepared greeting".to_owned(),
+		)
+		.expect("the test value is serializable");
+
+	let _scope = enter_loader_store(store);
+	let rendered =
+		integration_greeting(IntegrationGreetingProps::builder().build()).render_to_string();
+	assert_eq!(rendered, "<p>prepared greeting</p>");
+}
+
+#[test]
+fn routed_component_extracts_optional_query_values() {
+	use reinhardt_pages::router::ClientRouter;
+
+	ReactiveScope::run(|| {
+		let router = ClientRouter::new().component(integration_optional_query);
+
+		assert_eq!(
+			router.render_path("/optional-query/").render_to_string(),
+			"none"
+		);
+		assert_eq!(
+			router
+				.render_path("/optional-query/?logs=42")
+				.render_to_string(),
+			"42"
+		);
+		assert_eq!(
+			router
+				.render_path("/optional-query/?logs=invalid")
+				.render_to_string(),
+			"route extraction error on `/optional-query/`: failed to parse `logs`: invalid digit found in string"
+		);
+	});
 }

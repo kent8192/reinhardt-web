@@ -10,6 +10,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
+reinhardt_apps::register_app_locale!("i18n-command-test", "registered_locale");
+
 struct CurrentDirGuard {
 	original_dir: PathBuf,
 }
@@ -39,7 +41,7 @@ where
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_valid_locale() {
 	let temp_dir = TempDir::new().unwrap();
 	let locale_dir = temp_dir.path().join("locale");
@@ -63,7 +65,7 @@ async fn test_makemessages_valid_locale() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_invalid_locale_uppercase() {
 	let temp_dir = TempDir::new().unwrap();
 
@@ -80,7 +82,7 @@ async fn test_makemessages_invalid_locale_uppercase() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_no_locale() {
 	let temp_dir = TempDir::new().unwrap();
 	let result = run_in_dir(temp_dir.path(), || async {
@@ -95,7 +97,7 @@ async fn test_makemessages_no_locale() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_compilemessages_one_locale() {
 	let temp_dir = TempDir::new().unwrap();
 	let locale_dir = temp_dir.path().join("locale/ja_jp/LC_MESSAGES");
@@ -123,7 +125,7 @@ async fn test_compilemessages_one_locale() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_compilemessages_multiple_locales() {
 	let temp_dir = TempDir::new().unwrap();
 
@@ -167,7 +169,7 @@ async fn test_compilemessages_multiple_locales() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_compilemessages_exclude() {
 	let temp_dir = TempDir::new().unwrap();
 
@@ -215,7 +217,7 @@ async fn test_compilemessages_exclude() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_compilemessages_no_locales() {
 	let temp_dir = TempDir::new().unwrap();
 	let result = run_in_dir(temp_dir.path(), || async {
@@ -230,7 +232,7 @@ async fn test_compilemessages_no_locales() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_multiple_locales() {
 	let temp_dir = TempDir::new().unwrap();
 	let locale_dir = temp_dir.path().join("locale");
@@ -265,7 +267,7 @@ async fn test_makemessages_multiple_locales() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_invalid_locale_start_with_underscore() {
 	let temp_dir = TempDir::new().unwrap();
 	let result = run_in_dir(temp_dir.path(), || async {
@@ -279,7 +281,7 @@ async fn test_makemessages_invalid_locale_start_with_underscore() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_pot_charset_header() {
 	let temp_dir = TempDir::new().unwrap();
 	let locale_dir = temp_dir.path().join("locale");
@@ -304,7 +306,7 @@ async fn test_makemessages_pot_charset_header() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_update_existing_po() {
 	let temp_dir = TempDir::new().unwrap();
 	let locale_dir = temp_dir.path().join("locale/en_us/LC_MESSAGES");
@@ -332,7 +334,170 @@ async fn test_makemessages_update_existing_po() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
+async fn test_makemessages_updates_registered_app_catalog_with_interpolated_macros() {
+	let temp_dir = TempDir::new().unwrap();
+	let app_locale_dir = temp_dir.path().join("registered_locale/ja/LC_MESSAGES");
+	fs::create_dir_all(&app_locale_dir).unwrap();
+	let existing_catalog = r#"msgid "Escaped \"label\""
+msgstr "Étiquette \"échappée\""
+
+msgid "Line one\nLine two"
+msgstr "Ligne un\nLigne deux"
+
+msgctxt "navigation"
+msgid ""
+"Page "
+"title"
+msgstr "Titre de navigation"
+
+msgid "Project"
+msgid_plural "Projects"
+msgstr[0] "Projet"
+msgstr[1] "Projets"
+"#;
+	let app_catalogs = [
+		app_locale_dir.join("django.po"),
+		app_locale_dir.join("messages.po"),
+	];
+	for app_catalog in &app_catalogs {
+		fs::write(app_catalog, existing_catalog).unwrap();
+	}
+
+	let src_dir = temp_dir.path().join("src");
+	fs::create_dir(&src_dir).unwrap();
+	fs::write(
+		src_dir.join("lib.rs"),
+		r#"
+fn labels(project_id: u64) {
+	let _ = t!("Project {id}", id = project_id);
+	let _ = t!(
+		"Escaped \"label\"",
+	);
+	let _ = page!(|| { h1 { { t!("Page title") } } });
+	let _ = t!("Line one
+Line two");
+}
+"#,
+	)
+	.unwrap();
+
+	let result = run_in_dir(temp_dir.path(), || async {
+		let cmd = MakeMessagesCommand;
+		let mut ctx = CommandContext::new(vec![]);
+		ctx.set_option_multi("locale".to_string(), vec!["ja".to_string()]);
+		cmd.execute(&ctx).await
+	})
+	.await;
+
+	assert!(result.is_ok(), "makemessages failed: {result:?}");
+	for app_catalog in app_catalogs {
+		let content = fs::read_to_string(app_catalog).unwrap();
+		let entries: Vec<_> = content.lines().filter(|line| !line.is_empty()).collect();
+		assert_eq!(
+			entries,
+			vec![
+				r#"msgid "Escaped \"label\"""#,
+				r#"msgstr "Étiquette \"échappée\"""#,
+				r#"msgid "Line one\nLine two""#,
+				r#"msgstr "Ligne un\nLigne deux""#,
+				r#"msgctxt "navigation""#,
+				r#"msgid """#,
+				r#""Page ""#,
+				r#""title""#,
+				r#"msgstr "Titre de navigation""#,
+				r#"msgid "Project""#,
+				r#"msgid_plural "Projects""#,
+				r#"msgstr[0] "Projet""#,
+				r#"msgstr[1] "Projets""#,
+				r#"msgid "Page title""#,
+				r#"msgstr """#,
+				r#"msgid "Project {id}""#,
+				r#"msgstr """#,
+			]
+		);
+	}
+}
+
+#[tokio::test]
+#[serial(cwd)]
+async fn test_makemessages_skips_empty_message_ids() {
+	let temp_dir = TempDir::new().unwrap();
+	let src_dir = temp_dir.path().join("src");
+	fs::create_dir(&src_dir).unwrap();
+	fs::write(
+		src_dir.join("lib.rs"),
+		"fn labels() { let _ = t!(\"\"); let _ = t!(\"Visible\"); }",
+	)
+	.unwrap();
+
+	let result = run_in_dir(temp_dir.path(), || async {
+		let cmd = MakeMessagesCommand;
+		let mut ctx = CommandContext::new(vec![]);
+		ctx.set_option_multi("locale".to_string(), vec!["ja".to_string()]);
+		cmd.execute(&ctx).await
+	})
+	.await;
+
+	assert!(result.is_ok(), "makemessages failed: {result:?}");
+	let content =
+		fs::read_to_string(temp_dir.path().join("locale/ja/LC_MESSAGES/reinhardt.po")).unwrap();
+	let msgids: Vec<_> = content
+		.lines()
+		.filter(|line| line.starts_with("msgid "))
+		.collect();
+	assert_eq!(msgids, vec![r#"msgid """#, r#"msgid "Visible""#]);
+}
+
+#[tokio::test]
+#[serial(cwd)]
+async fn test_makemessages_all_discovers_registered_app_locales() {
+	let temp_dir = TempDir::new().unwrap();
+	let app_locale_dir = temp_dir.path().join("registered_locale/fr/LC_MESSAGES");
+	fs::create_dir_all(&app_locale_dir).unwrap();
+	let app_catalog = app_locale_dir.join("django.po");
+	fs::write(&app_catalog, "msgid \"\"\nmsgstr \"\"\n").unwrap();
+
+	let result = run_in_dir(temp_dir.path(), || async {
+		let cmd = MakeMessagesCommand;
+		let mut ctx = CommandContext::new(vec![]);
+		ctx.set_option("all".to_string(), "true".to_string());
+		cmd.execute(&ctx).await
+	})
+	.await;
+
+	assert!(result.is_ok(), "makemessages failed: {result:?}");
+	assert!(app_catalog.exists());
+}
+
+#[tokio::test]
+#[serial(cwd)]
+async fn test_compilemessages_compiles_registered_app_catalog() {
+	let temp_dir = TempDir::new().unwrap();
+	let app_locale_dir = temp_dir.path().join("registered_locale/ja/LC_MESSAGES");
+	fs::create_dir_all(&app_locale_dir).unwrap();
+	for domain in ["django", "messages"] {
+		fs::write(
+			app_locale_dir.join(format!("{domain}.po")),
+			"msgid \"\"\nmsgstr \"\"\n\nmsgid \"Hello\"\nmsgstr \"こんにちは\"\n",
+		)
+		.unwrap();
+	}
+
+	let result = run_in_dir(temp_dir.path(), || async {
+		let cmd = CompileMessagesCommand;
+		let ctx = CommandContext::new(vec![]);
+		cmd.execute(&ctx).await
+	})
+	.await;
+
+	assert!(result.is_ok(), "compilemessages failed: {result:?}");
+	assert!(app_locale_dir.join("django.mo").exists());
+	assert!(app_locale_dir.join("messages.mo").exists());
+}
+
+#[tokio::test]
+#[serial(cwd)]
 async fn test_makemessages_all_option() {
 	let temp_dir = TempDir::new().unwrap();
 
@@ -358,7 +523,7 @@ async fn test_makemessages_all_option() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_invalid_locale_hyphen() {
 	let temp_dir = TempDir::new().unwrap();
 	let result = run_in_dir(temp_dir.path(), || async {
@@ -375,7 +540,7 @@ async fn test_makemessages_invalid_locale_hyphen() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_invalid_locale_special_chars() {
 	let temp_dir = TempDir::new().unwrap();
 	let result = run_in_dir(temp_dir.path(), || async {
@@ -389,7 +554,7 @@ async fn test_makemessages_invalid_locale_special_chars() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_compilemessages_missing_po_file() {
 	let temp_dir = TempDir::new().unwrap();
 	let locale_dir = temp_dir.path().join("locale/en_us/LC_MESSAGES");
@@ -415,7 +580,7 @@ async fn test_compilemessages_missing_po_file() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_compilemessages_all_locales() {
 	let temp_dir = TempDir::new().unwrap();
 
@@ -460,7 +625,7 @@ async fn test_compilemessages_all_locales() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_compilemessages_multiple_excludes() {
 	let temp_dir = TempDir::new().unwrap();
 
@@ -515,7 +680,7 @@ async fn test_compilemessages_multiple_excludes() {
 }
 
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_po_file_structure() {
 	let temp_dir = TempDir::new().unwrap();
 	let locale_dir = temp_dir.path().join("locale");
@@ -550,7 +715,7 @@ use rstest::rstest;
 
 #[rstest]
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_makemessages_po_content_survives_compile() {
 	// Arrange: create locale dir and a source file with a translatable string
 	let temp_dir = TempDir::new().unwrap();
@@ -618,7 +783,7 @@ async fn test_makemessages_po_content_survives_compile() {
 
 #[rstest]
 #[tokio::test]
-#[serial(i18n_cwd)]
+#[serial(cwd)]
 async fn test_compilemessages_mo_byte_header_is_valid() {
 	// Arrange: a minimal PO file with one translated message
 	let temp_dir = TempDir::new().unwrap();

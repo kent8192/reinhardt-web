@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-admin-cli"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -14,6 +14,7 @@ publish = true
 aquamarine = { workspace = true }
 
 reinhardt-commands = { workspace = true, features = ["plugins"] }
+reinhardt-db = { workspace = true, default-features = false, features = ["backends", "migrations"] }
 reinhardt-dentdelion = { workspace = true, features = ["cli"] }
 clap = { version = "4.5", features = ["derive", "cargo"] }
 dialoguer = "0.12.0"
@@ -26,7 +27,7 @@ prettyplease = "0.2"
 colored = { workspace = true }
 ctrlc = "3.4"
 regex = "1.10"
-anyhow = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.8"

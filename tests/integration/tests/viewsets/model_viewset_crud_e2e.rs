@@ -14,14 +14,13 @@ use bytes::Bytes;
 use hyper::{HeaderMap, Method, StatusCode, Version};
 use reinhardt_apps::Request;
 use reinhardt_db::orm::{
-	CustomManager, Filter, FilterCondition, FilterOperator, FilterValue, Manager, QuerySet,
-	query_types::DbBackend,
+	CustomManager, Filter, FilterOperator, FilterValue, Manager, QuerySet, query_types::DbBackend,
 };
 use reinhardt_macros::model;
 use reinhardt_rest::serializers::JsonSerializer;
 use reinhardt_test::fixtures::testcontainers::{ContainerAsync, GenericImage, postgres_container};
 use reinhardt_urls::routers::{DefaultRouter, Router};
-use reinhardt_views::viewsets::{ModelViewSet, ReadOnlyModelViewSet, ViewError};
+use reinhardt_views::viewsets::{ModelViewSet, QuerySetProvider, ReadOnlyModelViewSet, ViewError};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use sqlx::AnyPool;
@@ -30,7 +29,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Once};
 
 #[allow(dead_code)]
-#[model(table_name = "items")]
+#[model(app_label = "default", table_name = "items")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Item {
 	#[field(primary_key = true)]
@@ -112,6 +111,23 @@ struct TimestampKeyItem {
 #[derive(Clone, Copy, Debug)]
 struct OrganizationId(i64);
 
+struct ScopedItemProvider<F>(F);
+
+impl<F> QuerySetProvider<ScopedItem> for ScopedItemProvider<F>
+where
+	F: Fn(&Request, QuerySet<ScopedItem>) -> std::result::Result<QuerySet<ScopedItem>, ViewError>
+		+ Send
+		+ Sync,
+{
+	fn get_queryset(
+		&self,
+		request: &Request,
+		base: QuerySet<ScopedItem>,
+	) -> std::result::Result<QuerySet<ScopedItem>, ViewError> {
+		(self.0)(request, base)
+	}
+}
+
 fn scoped_request(
 	method: Method,
 	uri: &str,
@@ -132,17 +148,19 @@ fn scoped_request(
 	request
 }
 
-fn organization_filter(request: &Request) -> std::result::Result<FilterCondition, ViewError> {
+fn organization_queryset(
+	request: &Request,
+	base: QuerySet<ScopedItem>,
+) -> std::result::Result<QuerySet<ScopedItem>, ViewError> {
 	let organization = request
 		.extensions
 		.get::<OrganizationId>()
 		.ok_or_else(|| ViewError::Permission("organization scope is missing".to_owned()))?;
-	Ok(Filter::new(
+	Ok(base.filter(Filter::new(
 		"organization_id",
 		FilterOperator::Eq,
 		FilterValue::Integer(organization.0),
-	)
-	.into())
+	)))
 }
 
 async fn any_pool(pg_url: &str) -> Arc<AnyPool> {
@@ -301,6 +319,41 @@ async fn modelviewset_create_returns_real_data_not_placeholder(
 
 #[rstest]
 #[tokio::test]
+async fn modelviewset_create_with_existing_primary_key_does_not_update_row(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+) {
+	// Arrange
+	let (_container, _pg_pool, _port, pg_url) = postgres_container.await;
+	let pool = pool_with_items_table(&pg_url).await;
+	sqlx::query("INSERT INTO items (id, name) VALUES (1, 'original')")
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+
+	let mut router = DefaultRouter::new();
+	let viewset: Arc<ModelViewSet<Item, ItemSerializer>> = Arc::new(
+		ModelViewSet::new("items")
+			.with_pool(pool.clone())
+			.with_db_backend(DbBackend::Postgres),
+	);
+	router.register_viewset("items", viewset);
+
+	// Act
+	let result = router
+		.route(create_request("/items/", r#"{"id":1,"name":"replaced"}"#))
+		.await;
+
+	// Assert
+	assert!(result.is_err());
+	let existing_name = sqlx::query_scalar::<_, String>("SELECT name FROM items WHERE id = 1")
+		.fetch_one(pool.as_ref())
+		.await
+		.unwrap();
+	assert_eq!(existing_name, "original");
+}
+
+#[rstest]
+#[tokio::test]
 async fn modelviewset_list_returns_real_rows_from_database(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
@@ -421,7 +474,7 @@ async fn readonlymodelviewset_rejects_writes(
 
 #[rstest]
 #[tokio::test]
-async fn model_and_readonly_viewsets_queryset_fn_scope_list_and_detail_in_database(
+async fn model_and_readonly_viewsets_queryset_provider_scope_list_and_detail_in_database(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// Arrange
@@ -431,7 +484,7 @@ async fn model_and_readonly_viewsets_queryset_fn_scope_list_and_detail_in_databa
 	let mut model_router = DefaultRouter::new();
 	let model_viewset: Arc<ModelViewSet<ScopedItem, JsonSerializer<ScopedItem>>> = Arc::new(
 		ModelViewSet::new("scoped-items")
-			.with_queryset_fn(organization_filter)
+			.with_queryset_provider(ScopedItemProvider(organization_queryset))
 			.with_pool(pool.clone())
 			.with_db_backend(DbBackend::Postgres),
 	);
@@ -441,7 +494,7 @@ async fn model_and_readonly_viewsets_queryset_fn_scope_list_and_detail_in_databa
 	let readonly_viewset: Arc<ReadOnlyModelViewSet<ScopedItem, JsonSerializer<ScopedItem>>> =
 		Arc::new(
 			ReadOnlyModelViewSet::new("scoped-items")
-				.with_queryset_fn(organization_filter)
+				.with_queryset_provider(ScopedItemProvider(organization_queryset))
 				.with_pool(pool)
 				.with_db_backend(DbBackend::Postgres),
 		);
@@ -474,7 +527,7 @@ async fn model_and_readonly_viewsets_apply_custom_lookup_to_scoped_database_quer
 		Arc::new(
 			ReadOnlyModelViewSet::<ScopedItem, JsonSerializer<ScopedItem>>::new("scoped-items")
 				.with_lookup_field("name")
-				.with_queryset_fn(organization_filter)
+				.with_queryset_provider(ScopedItemProvider(organization_queryset))
 				.with_pool(pool.clone())
 				.with_db_backend(DbBackend::Postgres),
 		),
@@ -509,7 +562,7 @@ async fn model_and_readonly_viewsets_apply_custom_lookup_to_scoped_database_quer
 		Arc::new(
 			ModelViewSet::<ScopedItem, JsonSerializer<ScopedItem>>::new("scoped-items")
 				.with_lookup_field("name")
-				.with_queryset_fn(organization_filter)
+				.with_queryset_provider(ScopedItemProvider(organization_queryset))
 				.with_pool(pool.clone())
 				.with_db_backend(DbBackend::Postgres),
 		),
@@ -559,7 +612,7 @@ async fn model_and_readonly_viewsets_apply_custom_lookup_to_scoped_database_quer
 
 #[rstest]
 #[tokio::test]
-async fn modelviewset_queryset_fn_blocks_cross_scope_update_and_destroy(
+async fn modelviewset_queryset_provider_blocks_cross_scope_update_and_destroy(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// Arrange
@@ -578,7 +631,7 @@ async fn modelviewset_queryset_fn_blocks_cross_scope_update_and_destroy(
 	let mut router = DefaultRouter::new();
 	let viewset: Arc<ModelViewSet<ScopedItem, JsonSerializer<ScopedItem>>> = Arc::new(
 		ModelViewSet::new("scoped-items")
-			.with_queryset_fn(organization_filter)
+			.with_queryset_provider(ScopedItemProvider(organization_queryset))
 			.with_pool(pool.clone())
 			.with_db_backend(DbBackend::Postgres),
 	);
@@ -680,7 +733,7 @@ async fn modelviewset_scoped_update_preserves_route_primary_key(
 	let mut router = DefaultRouter::new();
 	let viewset: Arc<ModelViewSet<ScopedItem, JsonSerializer<ScopedItem>>> = Arc::new(
 		ModelViewSet::new("scoped-items")
-			.with_queryset_fn(organization_filter)
+			.with_queryset_provider(ScopedItemProvider(organization_queryset))
 			.with_pool(pool.clone())
 			.with_db_backend(DbBackend::Postgres),
 	);
@@ -722,7 +775,7 @@ async fn modelviewset_scoped_update_preserves_route_primary_key(
 
 #[rstest]
 #[tokio::test]
-async fn modelviewset_create_with_existing_primary_key_does_not_update_row(
+async fn modelviewset_scoped_create_with_existing_primary_key_does_not_update_row(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// Arrange
@@ -977,7 +1030,7 @@ async fn modelviewset_detail_uses_typed_primary_key_filters(
 
 #[rstest]
 #[tokio::test]
-async fn modelviewset_create_skips_queryset_fn_and_refetches_by_primary_key(
+async fn modelviewset_create_skips_queryset_provider_and_refetches_by_primary_key(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// Arrange
@@ -986,10 +1039,12 @@ async fn modelviewset_create_skips_queryset_fn_and_refetches_by_primary_key(
 	let calls = Arc::new(AtomicUsize::new(0));
 	let hook_calls = calls.clone();
 	let viewset = ModelViewSet::<ScopedItem, JsonSerializer<ScopedItem>>::new("scoped-items")
-		.with_queryset_fn(move |_| {
-			hook_calls.fetch_add(1, Ordering::SeqCst);
-			Err(ViewError::Permission("hook must not run".to_owned()))
-		})
+		.with_queryset_provider(ScopedItemProvider(
+			move |_request: &Request, _base: QuerySet<ScopedItem>| {
+				hook_calls.fetch_add(1, Ordering::SeqCst);
+				Err(ViewError::Permission("hook must not run".to_owned()))
+			},
+		))
 		.with_pool(pool)
 		.with_db_backend(DbBackend::Postgres);
 	let mut router = DefaultRouter::new();
@@ -1017,7 +1072,7 @@ async fn modelviewset_create_skips_queryset_fn_and_refetches_by_primary_key(
 
 #[rstest]
 #[tokio::test]
-async fn queryset_fn_errors_before_query_and_without_pool_fails_closed(
+async fn queryset_provider_errors_before_query_and_without_pool_fails_closed(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) {
 	// Arrange
@@ -1028,11 +1083,13 @@ async fn queryset_fn_errors_before_query_and_without_pool_fails_closed(
 		"scoped-items",
 		Arc::new(
 			ModelViewSet::<ScopedItem, JsonSerializer<ScopedItem>>::new("scoped-items")
-				.with_queryset_fn(|_| {
-					Err(ViewError::Permission(
-						"organization scope is missing".to_owned(),
-					))
-				})
+				.with_queryset_provider(ScopedItemProvider(
+					|_request: &Request, _base: QuerySet<ScopedItem>| {
+						Err(ViewError::Permission(
+							"organization scope is missing".to_owned(),
+						))
+					},
+				))
 				.with_pool(pool)
 				.with_db_backend(DbBackend::Postgres),
 		),
@@ -1049,7 +1106,7 @@ async fn queryset_fn_errors_before_query_and_without_pool_fails_closed(
 					is_archived: false,
 					name: "own".to_owned(),
 				}])
-				.with_queryset_fn(organization_filter),
+				.with_queryset_provider(ScopedItemProvider(organization_queryset)),
 		),
 	);
 

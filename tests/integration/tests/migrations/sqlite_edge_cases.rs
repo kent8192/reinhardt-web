@@ -30,58 +30,22 @@ use std::sync::Arc;
 
 /// Create a basic column definition
 fn create_column(name: &str, type_def: FieldType) -> ColumnDefinition {
-	ColumnDefinition {
-		name: name.to_string(),
-		type_definition: type_def,
-		not_null: false,
-		unique: false,
-		primary_key: false,
-		auto_increment: false,
-		default: None,
-	}
+	ColumnDefinition::from_parts(name.to_string(), type_def, false, false, false, false, None, None, None)
 }
 
 /// Create a primary key column with auto-increment
 fn create_pk_column(name: &str) -> ColumnDefinition {
-	ColumnDefinition {
-		name: name.to_string(),
-		type_definition: FieldType::Integer,
-		not_null: true,
-		unique: false,
-		primary_key: true,
-		auto_increment: true,
-		default: None,
-	}
+	ColumnDefinition::from_parts(name.to_string(), FieldType::Integer, true, false, true, true, None, None, None)
 }
 
 /// Create a NOT NULL column
 fn create_required_column(name: &str, type_def: FieldType) -> ColumnDefinition {
-	ColumnDefinition {
-		name: name.to_string(),
-		type_definition: type_def,
-		not_null: true,
-		unique: false,
-		primary_key: false,
-		auto_increment: false,
-		default: None,
-	}
+	ColumnDefinition::from_parts(name.to_string(), type_def, true, false, false, false, None, None, None)
 }
 
 /// Create a test migration
 fn create_test_migration(app: &str, name: &str, operations: Vec<Operation>) -> Migration {
-	Migration {
-		app_label: app.to_string(),
-		name: name.to_string(),
-		operations,
-		dependencies: vec![],
-		replaces: vec![],
-		atomic: true,
-		initial: None,
-		state_only: false,
-		database_only: false,
-		swappable_dependencies: vec![],
-		optional_dependencies: vec![],
-	}
+	Migration::from_parts(name.to_string(), app.to_string(), operations, vec![], vec![], true, None, false, false, vec![], vec![])
 }
 
 // ============================================================================
@@ -234,6 +198,7 @@ async fn ec_db_01_table_recreation_preserves_fk(
 		vec![Operation::DropColumn {
 			table: "edge_child".to_string(),
 			column: "value".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -434,6 +399,7 @@ async fn ec_db_01_multiple_fk_constraints_preserved() {
 		vec![Operation::DropColumn {
 			table: "multi_fk_child".to_string(),
 			column: "extra".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -522,6 +488,7 @@ async fn ec_db_02_data_preservation_with_1000_rows(
 		vec![Operation::DropColumn {
 			table: "edge_data".to_string(),
 			column: "extra".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -650,6 +617,7 @@ async fn ec_db_02_data_preservation_with_2000_rows() {
 		vec![Operation::DropColumn {
 			table: "large_data".to_string(),
 			column: "field_c".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -757,6 +725,7 @@ async fn ec_db_02_data_preservation_with_special_characters() {
 		vec![Operation::DropColumn {
 			table: "special_chars".to_string(),
 			column: "extra".to_string(),
+			old_definition: None,
 		}],
 	);
 
@@ -882,6 +851,7 @@ async fn ec_db_02_data_preservation_with_nulls() {
 		vec![Operation::DropColumn {
 			table: "null_test".to_string(),
 			column: "col_c".to_string(),
+			old_definition: None,
 		}],
 	);
 

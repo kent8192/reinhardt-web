@@ -6,22 +6,48 @@
 #[cfg(feature = "migrations")]
 use crate::MakeMigrationsCommand;
 use crate::base::BaseCommand;
+#[cfg(all(feature = "contract", feature = "migrations"))]
+use crate::builtin::MigrationStateSource;
+#[cfg(feature = "contract")]
+use crate::capabilities::{
+	CapabilityContext, CapabilityProvider, CapabilityRequirement, CheckInputs,
+	CoreMigrationMetadata, LocalInfrastructureSettings,
+};
 use crate::collectstatic::{CollectStaticCommand, CollectStaticOptions};
 use crate::local_infra::InfraSubcommand;
 use crate::registry::CommandRegistry;
-use crate::{CheckCommand, CommandContext, MigrateCommand, RunServerCommand, ShellCommand};
-#[cfg(feature = "introspect")]
+#[cfg(feature = "contract")]
+use crate::verify::{CargoCheckContext, VerificationOutputFormat, execute_verify_with_provider};
+use crate::{
+	CheckCommand, CommandContext, MigrateCommand, RunServerCommand, ShellCommand, ShellConfig,
+};
+#[cfg(any(feature = "introspect", feature = "contract"))]
 use clap::ValueEnum;
+#[cfg(all(feature = "contract", feature = "migrations"))]
+use clap::{Arg, CommandFactory, FromArgMatches};
 use clap::{Parser, Subcommand};
-use reinhardt_conf::HasCommonSettings;
+#[cfg(feature = "contract")]
+use reinhardt_conf::ResolvedSettings;
+use reinhardt_conf::settings::SettingsContractState;
 use reinhardt_conf::settings::builder::{MergedSettings, SettingsBuilder};
+use reinhardt_conf::settings::fragment::HasSettings;
 use reinhardt_conf::settings::profile::Profile;
 use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, TomlFileSource};
+#[cfg(feature = "contract")]
+use reinhardt_conf::settings::{ComposedSettings, PendingSettings};
+use reinhardt_conf::{HasCommonSettings, MigrationSettings, SettingsResolutionMetadata};
+#[cfg(feature = "migrations")]
+use reinhardt_db::migrations::DependencyResolutionContext;
+#[cfg(feature = "migrations")]
+use reinhardt_utils::staticfiles::PathResolver;
 use reinhardt_utils::staticfiles::StaticFilesConfig;
 use serde_json::Value;
 use std::env;
-#[allow(unused)]
+use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::path::{Path, PathBuf};
+#[cfg(feature = "reinhardt-db")]
+use std::str::FromStr;
 use std::sync::Arc;
 
 #[cfg(feature = "routers")]
@@ -35,6 +61,9 @@ use crate::builtin::ShowUrlsCommand;
 #[command(name = "manage")]
 #[command(about = "Reinhardt management interface", long_about = None)]
 #[command(version)]
+#[command(
+	after_help = "Additional built-in command:\n  buildstatic  Publish a complete static generation (use buildstatic --help)"
+)]
 pub struct Cli {
 	/// Subcommand to execute
 	#[command(subcommand)]
@@ -43,6 +72,61 @@ pub struct Cli {
 	/// Verbosity level (can be repeated for more output)
 	#[arg(short, long, action = clap::ArgAction::Count)]
 	pub verbosity: u8,
+}
+
+/// A database URL override whose debug representation never exposes its value.
+#[cfg(feature = "reinhardt-db")]
+#[derive(Clone, PartialEq, Eq)]
+pub struct RedactedDatabaseUrl(String);
+
+#[cfg(feature = "reinhardt-db")]
+impl RedactedDatabaseUrl {
+	/// Returns the database URL value.
+	///
+	/// Callers must avoid including the returned value in diagnostics because it
+	/// can contain database credentials.
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
+
+	pub(crate) fn into_inner(self) -> String {
+		self.0
+	}
+}
+
+#[cfg(feature = "reinhardt-db")]
+impl fmt::Debug for RedactedDatabaseUrl {
+	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+		formatter
+			.debug_tuple("RedactedDatabaseUrl")
+			.field(&"[REDACTED]")
+			.finish()
+	}
+}
+
+#[cfg(feature = "migrations")]
+fn safe_database_alias(alias: &str) -> &str {
+	if crate::database_selector::alias_looks_sensitive(alias) {
+		"[REDACTED]"
+	} else {
+		alias
+	}
+}
+
+#[cfg(feature = "reinhardt-db")]
+impl FromStr for RedactedDatabaseUrl {
+	type Err = std::convert::Infallible;
+
+	fn from_str(value: &str) -> Result<Self, Self::Err> {
+		Ok(Self(value.to_string()))
+	}
+}
+
+#[cfg(feature = "migrations")]
+fn default_migrations_dir() -> PathBuf {
+	PathResolver::find_project_root()
+		.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+		.join("migrations")
 }
 
 /// Output format for the introspect command
@@ -55,11 +139,55 @@ pub enum OutputFormat {
 	Json,
 }
 
+/// Output format for application contracts.
+#[cfg(feature = "contract")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum ContractOutputFormat {
+	/// JSON application contract version 0.
+	Json,
+}
+
+/// Application contract commands.
+#[cfg(feature = "contract")]
+#[derive(Clone, Debug, Subcommand)]
+pub enum ContractSubcommand {
+	/// Export the resolved application contract.
+	Export {
+		/// Required output format.
+		#[arg(long, value_enum)]
+		format: ContractOutputFormat,
+
+		/// Configured database alias.
+		#[arg(long)]
+		database: Option<String>,
+
+		/// One-off database URL override.
+		#[arg(long)]
+		database_url: Option<RedactedDatabaseUrl>,
+	},
+}
+
 /// Command-line interface commands
 ///
 /// This enum defines all available management commands.
-#[derive(Debug, Clone, Subcommand)]
+#[derive(Clone, Subcommand)]
 pub enum Commands {
+	/// Export a machine-readable application contract.
+	#[cfg(feature = "contract")]
+	Contract {
+		/// Contract subcommand to execute.
+		#[command(subcommand)]
+		command: ContractSubcommand,
+	},
+
+	/// Replay the consumer Cargo check and verify the application contract.
+	#[cfg(feature = "contract")]
+	Verify {
+		/// Output format for verification results.
+		#[arg(long, value_enum, default_value = "human")]
+		format: VerificationOutputFormat,
+	},
+
 	/// Create new migrations based on model changes
 	#[cfg(feature = "migrations")]
 	Makemigrations {
@@ -94,6 +222,105 @@ pub enum Commands {
 		/// Migration directory (must be a UTF-8 path)
 		#[arg(long, default_value = "./migrations")]
 		migration_dir: PathBuf,
+	},
+
+	/// Squash a continuous range of migrations into one migration
+	#[cfg(feature = "migrations")]
+	#[command(allow_missing_positional = true)]
+	Squashmigrations {
+		/// Application whose migrations will be squashed
+		#[arg(value_name = "APP_LABEL")]
+		app_label: String,
+
+		/// Optional first migration in the squash range
+		#[arg(value_name = "START_MIGRATION")]
+		start_migration: Option<String>,
+
+		/// Last migration in the squash range
+		#[arg(value_name = "MIGRATION_NAME")]
+		migration_name: String,
+
+		/// Preserve the exact source operation order
+		#[arg(long)]
+		no_optimize: bool,
+
+		/// Do not prompt for confirmation
+		#[arg(long, visible_alias = "noinput")]
+		no_input: bool,
+
+		/// Omit the generated-file header
+		#[arg(long)]
+		no_header: bool,
+
+		/// Explicit name for the new squashed migration
+		#[arg(long, value_name = "NAME")]
+		squashed_name: Option<String>,
+
+		/// Root directory containing migration files
+		#[arg(long, value_name = "DIR")]
+		migrations_dir: Option<PathBuf>,
+	},
+
+	/// Display migration application state or dependency order
+	#[cfg(feature = "migrations")]
+	Showmigrations {
+		/// Applications to include, together with their transitive dependencies
+		#[arg(value_name = "APP_LABEL")]
+		app_labels: Vec<String>,
+
+		/// Display migrations grouped by application
+		#[arg(
+			short = 'l',
+			long,
+			default_value_t = true,
+			default_value_if("plan", clap::builder::ArgPredicate::IsPresent, "false"),
+			conflicts_with = "plan"
+		)]
+		list: bool,
+
+		/// Display the complete selected dependency plan
+		#[arg(short = 'p', long, conflicts_with = "list")]
+		plan: bool,
+
+		/// Configured database alias
+		#[arg(long, default_value = "default")]
+		database: String,
+
+		/// One-off database URL override
+		#[arg(long)]
+		database_url: Option<String>,
+
+		/// Root directory containing migration files
+		#[arg(long, value_name = "DIR")]
+		migrations_dir: Option<PathBuf>,
+	},
+
+	/// Render the SQL for one migration without executing it
+	#[cfg(feature = "migrations")]
+	Sqlmigrate {
+		/// Application containing the migration
+		#[arg(value_name = "APP_LABEL")]
+		app_label: String,
+
+		/// Exact migration name or unambiguous prefix
+		#[arg(value_name = "MIGRATION_NAME")]
+		migration_name: String,
+
+		/// Render rollback SQL
+		#[arg(long)]
+		backwards: bool,
+
+		/// Configured database alias
+		#[arg(long, default_value = "default")]
+		database: String,
+
+		/// One-off database URL override
+		#[arg(long)]
+		database_url: Option<String>,
+
+		/// Root directory containing migration files
+		#[arg(long, value_name = "DIR")]
+		migrations_dir: Option<PathBuf>,
 	},
 
 	/// Apply database migrations
@@ -140,6 +367,14 @@ pub enum Commands {
 		/// Server address (default: 127.0.0.1:8000)
 		#[arg(value_name = "ADDRESS", default_value = "127.0.0.1:8000")]
 		address: String,
+
+		/// gRPC server address (default: 127.0.0.1:50051)
+		#[arg(
+			long = "grpc-address",
+			value_name = "ADDRESS",
+			default_value = "127.0.0.1:50051"
+		)]
+		grpc_address: String,
 
 		/// Disable auto-reload
 		#[arg(long)]
@@ -192,6 +427,39 @@ pub enum Commands {
 		/// Path to index.html for SPA fallback (auto-detected from project root)
 		#[arg(long)]
 		index: Option<String>,
+
+		/// Unified asset publication mode (production or development)
+		#[arg(long, default_value = "production", value_parser = ["production", "development"])]
+		asset_mode: String,
+
+		/// Explicit unified asset manifest path
+		#[arg(long)]
+		asset_manifest: Option<String>,
+
+		/// Select a Pages entrypoint from a multi-entry asset manifest
+		#[arg(long, value_name = "NAME")]
+		asset_entrypoint: Option<String>,
+
+		/// Require a specific unified asset build identifier
+		#[arg(long)]
+		expected_asset_build_id: Option<String>,
+
+		/// Cargo package containing component style definitions
+		#[arg(long, value_name = "NAME")]
+		package: Option<String>,
+
+		/// Cargo features enabled for the Pages component style package
+		#[arg(
+			long,
+			value_delimiter = ',',
+			value_name = "FEATURE",
+			conflicts_with = "all_features"
+		)]
+		features: Vec<String>,
+
+		/// Enable all Cargo features for the Pages component style package
+		#[arg(long)]
+		all_features: bool,
 	},
 
 	/// Run an interactive Rust shell (REPL)
@@ -238,6 +506,23 @@ pub enum Commands {
 		/// Path to index.html source file (auto-detected from project root)
 		#[arg(long)]
 		index: Option<String>,
+
+		/// Cargo package containing component style definitions
+		#[arg(long, value_name = "NAME")]
+		package: Option<String>,
+
+		/// Cargo features enabled for the component style package
+		#[arg(
+			long,
+			value_delimiter = ',',
+			value_name = "FEATURE",
+			conflicts_with = "all_features"
+		)]
+		features: Vec<String>,
+
+		/// Enable all Cargo features for the component style package
+		#[arg(long)]
+		all_features: bool,
 	},
 
 	/// Display all registered server URL patterns
@@ -245,6 +530,58 @@ pub enum Commands {
 		/// Show only named URLs
 		#[arg(long)]
 		names: bool,
+	},
+
+	/// Generate Reinhardt models from an existing database schema
+	#[cfg(feature = "migrations")]
+	Inspectdb {
+		/// Exact table names to inspect
+		#[arg(value_name = "TABLE")]
+		tables: Vec<String>,
+
+		/// Configured database alias
+		#[arg(long, default_value = "default")]
+		database: String,
+
+		/// One-off database URL override
+		#[arg(long)]
+		database_url: Option<String>,
+
+		/// Request database views (currently unsupported for model generation)
+		#[arg(long)]
+		include_views: bool,
+
+		/// Include PostgreSQL partitions
+		#[arg(long)]
+		include_partitions: bool,
+
+		/// Output directory for the existing multi-file generator layout
+		#[arg(short = 'o', long)]
+		output: Option<PathBuf>,
+
+		/// Path to inspectdb generation configuration
+		#[arg(short = 'c', long)]
+		config: Option<PathBuf>,
+
+		/// Overwrite existing generated files
+		#[arg(long, requires = "output")]
+		force: bool,
+	},
+
+	/// Launch the native client for a configured database
+	#[cfg(feature = "reinhardt-db")]
+	Dbshell {
+		/// Configured database alias
+		#[arg(long, default_value = "default")]
+		database: String,
+
+		/// One-off database URL override
+		#[arg(long)]
+		database_url: Option<RedactedDatabaseUrl>,
+
+		/// Arguments passed directly to the native database client
+		#[arg(last = true, allow_hyphen_values = true)]
+		client_arguments: Vec<OsString>,
 	},
 
 	/// Output structured project metadata for platform introspection
@@ -311,7 +648,8 @@ pub enum Commands {
 	///
 	/// This variant is not exposed in the CLI help. It is used internally
 	/// by [`execute_from_command_line_with_registry`] to dispatch commands
-	/// that are not built-in but were registered by the downstream project.
+	/// registered by the downstream project and fixture commands that preserve
+	/// their CLI syntax without expanding this public enum.
 	#[command(skip)]
 	Custom {
 		/// The name of the custom command to execute.
@@ -319,6 +657,360 @@ pub enum Commands {
 		/// Positional arguments forwarded to the custom command.
 		args: Vec<String>,
 	},
+}
+
+macro_rules! debug_command_fields {
+	($formatter:expr, $name:literal, $($field:ident),* $(,)?) => {{
+		let mut debug = $formatter.debug_struct($name);
+		$(debug.field(stringify!($field), $field);)*
+		debug.finish()
+	}};
+}
+
+impl fmt::Debug for Commands {
+	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			#[cfg(feature = "contract")]
+			Self::Contract { command } => {
+				debug_command_fields!(formatter, "Contract", command)
+			}
+			#[cfg(feature = "contract")]
+			Self::Verify { format } => debug_command_fields!(formatter, "Verify", format),
+			#[cfg(feature = "migrations")]
+			Self::Makemigrations {
+				app_labels,
+				dry_run,
+				name,
+				check,
+				empty,
+				merge,
+				force_empty_state,
+				migration_dir,
+			} => debug_command_fields!(
+				formatter,
+				"Makemigrations",
+				app_labels,
+				dry_run,
+				name,
+				check,
+				empty,
+				merge,
+				force_empty_state,
+				migration_dir,
+			),
+			#[cfg(feature = "migrations")]
+			Self::Squashmigrations {
+				app_label,
+				start_migration,
+				migration_name,
+				no_optimize,
+				no_input,
+				no_header,
+				squashed_name,
+				migrations_dir,
+			} => debug_command_fields!(
+				formatter,
+				"Squashmigrations",
+				app_label,
+				start_migration,
+				migration_name,
+				no_optimize,
+				no_input,
+				no_header,
+				squashed_name,
+				migrations_dir,
+			),
+			#[cfg(feature = "migrations")]
+			Self::Showmigrations {
+				app_labels,
+				list,
+				plan,
+				database,
+				database_url,
+				migrations_dir,
+			} => formatter
+				.debug_struct("Showmigrations")
+				.field("app_labels", app_labels)
+				.field("list", list)
+				.field("plan", plan)
+				.field("database", &safe_database_alias(database))
+				.field("database_url", &RedactedStringOption(database_url))
+				.field("migrations_dir", migrations_dir)
+				.finish(),
+			#[cfg(feature = "migrations")]
+			Self::Sqlmigrate {
+				app_label,
+				migration_name,
+				backwards,
+				database,
+				database_url,
+				migrations_dir,
+			} => formatter
+				.debug_struct("Sqlmigrate")
+				.field("app_label", app_label)
+				.field("migration_name", migration_name)
+				.field("backwards", backwards)
+				.field("database", &safe_database_alias(database))
+				.field("database_url", &RedactedStringOption(database_url))
+				.field("migrations_dir", migrations_dir)
+				.finish(),
+			Self::Migrate {
+				app_label,
+				migration_name,
+				database,
+				fake,
+				fake_initial,
+				plan,
+				migrations_dir,
+			} => formatter
+				.debug_struct("Migrate")
+				.field("app_label", app_label)
+				.field("migration_name", migration_name)
+				.field("database", &RedactedStringOption(database))
+				.field("fake", fake)
+				.field("fake_initial", fake_initial)
+				.field("plan", plan)
+				.field("migrations_dir", migrations_dir)
+				.finish(),
+			Self::Infra { command } => debug_command_fields!(formatter, "Infra", command),
+			Self::Runserver {
+				address,
+				grpc_address,
+				noreload,
+				watch_delay,
+				no_wasm_rebuild,
+				no_wasm,
+				no_override_wasm,
+				force_wasm,
+				wasm_optional,
+				insecure,
+				no_docs,
+				with_pages,
+				static_dir,
+				no_spa,
+				index,
+				asset_mode,
+				asset_manifest,
+				asset_entrypoint,
+				expected_asset_build_id,
+				package,
+				features,
+				all_features,
+			} => debug_command_fields!(
+				formatter,
+				"Runserver",
+				address,
+				grpc_address,
+				noreload,
+				watch_delay,
+				no_wasm_rebuild,
+				no_wasm,
+				no_override_wasm,
+				force_wasm,
+				wasm_optional,
+				insecure,
+				no_docs,
+				with_pages,
+				static_dir,
+				no_spa,
+				index,
+				asset_mode,
+				asset_manifest,
+				asset_entrypoint,
+				expected_asset_build_id,
+				package,
+				features,
+				all_features,
+			),
+			Self::Shell { command } => debug_command_fields!(formatter, "Shell", command),
+			Self::Check { app_label, deploy } => {
+				debug_command_fields!(formatter, "Check", app_label, deploy)
+			}
+			Self::Collectstatic {
+				clear,
+				no_input,
+				dry_run,
+				link,
+				ignore,
+				index,
+				package,
+				features,
+				all_features,
+			} => debug_command_fields!(
+				formatter,
+				"Collectstatic",
+				clear,
+				no_input,
+				dry_run,
+				link,
+				ignore,
+				index,
+				package,
+				features,
+				all_features,
+			),
+			Self::Showurls { names } => debug_command_fields!(formatter, "Showurls", names),
+			#[cfg(feature = "migrations")]
+			Self::Inspectdb {
+				tables,
+				database,
+				database_url,
+				include_views,
+				include_partitions,
+				output,
+				config,
+				force,
+			} => formatter
+				.debug_struct("Inspectdb")
+				.field("tables", tables)
+				.field("database", database)
+				.field("database_url", &RedactedStringOption(database_url))
+				.field("include_views", include_views)
+				.field("include_partitions", include_partitions)
+				.field("output", output)
+				.field("config", config)
+				.field("force", force)
+				.finish(),
+			#[cfg(feature = "reinhardt-db")]
+			Self::Dbshell {
+				database,
+				database_url,
+				client_arguments,
+			} => formatter
+				.debug_struct("Dbshell")
+				.field("database", database)
+				.field("database_url", database_url)
+				.field(
+					"client_arguments",
+					&crate::dbshell::RedactedArguments(client_arguments),
+				)
+				.finish(),
+			#[cfg(feature = "introspect")]
+			Self::Introspect { format, section } => {
+				debug_command_fields!(formatter, "Introspect", format, section)
+			}
+			#[cfg(feature = "openapi")]
+			Self::Generateopenapi {
+				format,
+				output,
+				postman,
+			} => debug_command_fields!(formatter, "Generateopenapi", format, output, postman),
+			#[cfg(feature = "auth")]
+			Self::Createsuperuser {
+				username,
+				email,
+				no_password,
+				noinput,
+				database,
+			} => debug_command_fields!(
+				formatter,
+				"Createsuperuser",
+				username,
+				email,
+				no_password,
+				noinput,
+				database,
+			),
+			Self::Custom { name, args } => debug_command_fields!(formatter, "Custom", name, args),
+		}
+	}
+}
+
+struct RedactedStringOption<'a>(&'a Option<String>);
+
+impl fmt::Debug for RedactedStringOption<'_> {
+	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self.0 {
+			Some(_) => formatter.debug_tuple("Some").field(&"[REDACTED]").finish(),
+			None => formatter.write_str("None"),
+		}
+	}
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug)]
+enum FixtureCommand {
+	Dumpdata {
+		selectors: Vec<String>,
+		exclude: Vec<String>,
+	},
+	Loaddata {
+		fixtures: Vec<PathBuf>,
+	},
+	Seed {
+		app_labels: Vec<String>,
+	},
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug, Parser)]
+#[command(name = "dumpdata")]
+struct DumpdataArgs {
+	#[arg(value_name = "APP_OR_MODEL")]
+	selectors: Vec<String>,
+	#[arg(long, value_name = "APP_OR_MODEL")]
+	exclude: Vec<String>,
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug, Parser)]
+#[command(name = "loaddata")]
+struct LoaddataArgs {
+	#[arg(value_name = "FIXTURE")]
+	fixtures: Vec<PathBuf>,
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug, Parser)]
+#[command(name = "seed")]
+struct SeedArgs {
+	#[arg(value_name = "APP_LABEL")]
+	app_labels: Vec<String>,
+}
+
+#[cfg(feature = "reinhardt-db")]
+fn fixture_command_argv(name: &str, args: &[String]) -> Vec<String> {
+	std::iter::once(name.to_string())
+		.chain(args.iter().cloned())
+		.collect()
+}
+
+#[cfg(feature = "reinhardt-db")]
+fn parse_fixture_command(
+	name: &str,
+	args: &[String],
+) -> Result<Option<FixtureCommand>, clap::Error> {
+	match name {
+		"dumpdata" => DumpdataArgs::try_parse_from(fixture_command_argv(name, args)).map(|args| {
+			Some(FixtureCommand::Dumpdata {
+				selectors: args.selectors,
+				exclude: args.exclude,
+			})
+		}),
+		"loaddata" => LoaddataArgs::try_parse_from(fixture_command_argv(name, args)).map(|args| {
+			Some(FixtureCommand::Loaddata {
+				fixtures: args.fixtures,
+			})
+		}),
+		"seed" => SeedArgs::try_parse_from(fixture_command_argv(name, args)).map(|args| {
+			Some(FixtureCommand::Seed {
+				app_labels: args.app_labels,
+			})
+		}),
+		_ => Ok(None),
+	}
+}
+
+fn is_fixture_command_name(name: &str) -> bool {
+	#[cfg(feature = "reinhardt-db")]
+	{
+		matches!(name, "dumpdata" | "loaddata" | "seed")
+	}
+	#[cfg(not(feature = "reinhardt-db"))]
+	{
+		let _ = name;
+		false
+	}
 }
 
 /// Execute commands from command-line arguments
@@ -415,6 +1107,944 @@ where
 	execute_from_command_line_with_registry_and_settings(CommandRegistry::new(), settings).await
 }
 
+/// Execute command-line arguments with project settings and Rust shell configuration.
+pub async fn execute_from_command_line_with_settings_and_shell<S>(
+	settings: S,
+	shell: ShellConfig,
+) -> crate::CommandResult<()>
+where
+	S: HasCommonSettings + Clone + Send + Sync + 'static,
+{
+	execute_from_command_line_with_registry_and_settings_and_shell(
+		CommandRegistry::new(),
+		settings,
+		shell,
+	)
+	.await
+}
+
+/// Execute command-line arguments with common and migration project settings.
+///
+/// Unlike [`execute_from_command_line_with_settings`], this entry point also
+/// reads the project's [`MigrationSettings`] fragment and uses it to resolve
+/// conditional dependencies for migration commands.
+pub async fn execute_from_command_line_with_migration_settings<S>(
+	settings: S,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+	S: HasCommonSettings + HasSettings<MigrationSettings> + 'static,
+{
+	let migration_settings = HasSettings::<MigrationSettings>::get_settings(&settings).clone();
+	execute_with_registry_and_optional_settings(
+		CommandRegistry::new(),
+		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+		Some(migration_settings),
+		None,
+		None,
+	)
+	.await
+}
+
+/// Execute command-line arguments with migration settings and Rust shell configuration.
+pub async fn execute_from_command_line_with_migration_settings_and_shell<S>(
+	settings: S,
+	shell: ShellConfig,
+) -> crate::CommandResult<()>
+where
+	S: HasCommonSettings + HasSettings<MigrationSettings> + Clone + Send + Sync + 'static,
+{
+	let migration_settings = HasSettings::<MigrationSettings>::get_settings(&settings).clone();
+	execute_with_registry_and_optional_settings(
+		CommandRegistry::new(),
+		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+		Some(migration_settings),
+		None,
+		Some(shell),
+	)
+	.await
+	.map_err(boxed_command_error)
+}
+
+/// Execute command-line arguments with resolved settings metadata.
+#[cfg(feature = "contract")]
+pub async fn execute_from_command_line_with_resolved_settings<S>(
+	resolved: ResolvedSettings<S>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+	S: HasCommonSettings + HasSettings<MigrationSettings> + 'static,
+{
+	let contract_state = resolved.contract_state();
+	let (settings, metadata) = resolved.into_parts();
+	let migration_settings = HasSettings::<MigrationSettings>::get_settings(&settings).clone();
+	execute_with_registry_and_optional_settings_with_contract_state(
+		CommandRegistry::new(),
+		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+		Some(migration_settings),
+		Some(metadata),
+		None,
+		Some(contract_state),
+	)
+	.await
+}
+
+/// Parse the selected command before creating and resolving project settings.
+#[cfg(feature = "contract")]
+pub async fn execute_from_command_line_with_pending_settings<S, F>(
+	provider: F,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+	S: ComposedSettings
+		+ HasCommonSettings
+		+ HasSettings<MigrationSettings>
+		+ Send
+		+ Sync
+		+ 'static,
+	F: FnOnce() -> Result<PendingSettings<S>, reinhardt_conf::settings::builder::BuildError>,
+{
+	execute_with_pending_settings(provider, None, None).await
+}
+
+/// Parse the selected command and use explicit consumer Cargo replay context.
+#[cfg(feature = "contract")]
+pub async fn execute_from_command_line_with_pending_settings_and_cargo_context<S, F>(
+	provider: F,
+	cargo_context: CargoCheckContext,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+	S: ComposedSettings
+		+ HasCommonSettings
+		+ HasSettings<MigrationSettings>
+		+ Send
+		+ Sync
+		+ 'static,
+	F: FnOnce() -> Result<PendingSettings<S>, reinhardt_conf::settings::builder::BuildError>,
+{
+	execute_with_pending_settings(provider, None, Some(cargo_context)).await
+}
+
+/// Parse the selected command with Cargo replay context and shell settings.
+#[cfg(feature = "contract")]
+pub async fn execute_from_command_line_with_pending_settings_and_cargo_context_and_shell<S, F>(
+	provider: F,
+	shell: ShellConfig,
+	cargo_context: CargoCheckContext,
+) -> crate::CommandResult<()>
+where
+	S: ComposedSettings
+		+ HasCommonSettings
+		+ HasSettings<MigrationSettings>
+		+ Send
+		+ Sync
+		+ 'static,
+	F: FnOnce() -> Result<PendingSettings<S>, reinhardt_conf::settings::builder::BuildError>,
+{
+	execute_with_pending_settings(provider, Some(shell), Some(cargo_context))
+		.await
+		.map_err(boxed_command_error)
+}
+
+/// Parse the selected command before resolving project settings and shell configuration.
+#[cfg(feature = "contract")]
+pub async fn execute_from_command_line_with_pending_settings_and_shell<S, F>(
+	provider: F,
+	shell: ShellConfig,
+) -> crate::CommandResult<()>
+where
+	S: ComposedSettings
+		+ HasCommonSettings
+		+ HasSettings<MigrationSettings>
+		+ Send
+		+ Sync
+		+ 'static,
+	F: FnOnce() -> Result<PendingSettings<S>, reinhardt_conf::settings::builder::BuildError>,
+{
+	execute_with_pending_settings(provider, Some(shell), None)
+		.await
+		.map_err(boxed_command_error)
+}
+
+#[cfg(feature = "contract")]
+async fn execute_with_pending_settings<S, F>(
+	provider: F,
+	shell: Option<ShellConfig>,
+	cargo_context: Option<CargoCheckContext>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+	S: ComposedSettings
+		+ HasCommonSettings
+		+ HasSettings<MigrationSettings>
+		+ Send
+		+ Sync
+		+ 'static,
+	F: FnOnce() -> Result<PendingSettings<S>, reinhardt_conf::settings::builder::BuildError>,
+{
+	let raw_args: Vec<OsString> = env::args_os().collect();
+	let registry = CommandRegistry::new();
+	let (command, verbosity) = match parse_cli_arguments(&raw_args, &registry) {
+		Ok(parsed) => parsed,
+		Err(DriverParseError::Clap(error)) => (*error).exit(),
+		Err(DriverParseError::Command(error)) => return Err(error.into()),
+	};
+	if let Commands::Verify { format } = &command {
+		let format = *format;
+		let Some(cargo_context) = cargo_context else {
+			return Err(crate::CommandError::ExecutionError(
+				"verify requires launcher Cargo context".to_owned(),
+			)
+			.into());
+		};
+		let standard_output = std::io::stdout();
+		let standard_error = std::io::stderr();
+		return execute_verify_with_provider(
+			&cargo_context,
+			provider,
+			format,
+			&mut standard_output.lock(),
+			&mut standard_error.lock(),
+		)
+		.await
+		.map_err(Into::into);
+	}
+	let pending = provider()?;
+	if let Commands::Contract { command } = command.clone() {
+		let ContractSubcommand::Export {
+			format: ContractOutputFormat::Json,
+			database,
+			database_url,
+		} = command;
+		let standard_output = std::io::stdout();
+		let standard_error = std::io::stderr();
+		return crate::contract::execute_contract_export(
+			&pending,
+			database,
+			database_url.map(RedactedDatabaseUrl::into_inner),
+			&mut standard_output.lock(),
+			&mut standard_error.lock(),
+		)
+		.await
+		.map_err(Into::into);
+	}
+	if requires_router(&command) {
+		auto_register_router().await?;
+	}
+	#[cfg(feature = "auth")]
+	reinhardt_auth::auto_register_superuser_creator();
+	let resolved = pending.resolve()?;
+	let (settings, metadata) = resolved.into_parts();
+	let migration_settings = HasSettings::<MigrationSettings>::get_settings(&settings).clone();
+	run_command_core_with_contract_state(
+		command,
+		verbosity,
+		registry,
+		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+		Some(migration_settings),
+		Some(metadata),
+		shell,
+		None,
+	)
+	.await
+}
+
+/// Parse the command before invoking an application provider, then prepare
+/// only its declared settings and services. Commands without opt-in declarations
+/// keep the strict full-runtime bootstrap of the existing pending entry point.
+#[cfg(feature = "contract")]
+pub async fn execute_from_command_line_with_capabilities<P: CapabilityProvider>(
+	registry: CommandRegistry,
+	provider: P,
+	cargo_context: Option<CargoCheckContext>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	execute_with_capabilities(registry, provider, cargo_context, None).await
+}
+
+/// Capability-aware management entry point with a configured Rust shell.
+#[cfg(feature = "contract")]
+pub async fn execute_from_command_line_with_capabilities_and_shell<P: CapabilityProvider>(
+	registry: CommandRegistry,
+	provider: P,
+	cargo_context: Option<CargoCheckContext>,
+	shell: ShellConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+	execute_with_capabilities(registry, provider, cargo_context, Some(shell)).await
+}
+
+#[cfg(feature = "contract")]
+async fn execute_with_capabilities<P: CapabilityProvider>(
+	registry: CommandRegistry,
+	provider: P,
+	cargo_context: Option<CargoCheckContext>,
+	shell: Option<ShellConfig>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let raw_args: Vec<OsString> = env::args_os().collect();
+	let (command, verbosity, migration_selection) =
+		match parse_capability_cli_arguments(&raw_args, &registry) {
+			Ok(parsed) => parsed,
+			Err(DriverParseError::Clap(error)) => (*error).exit(),
+			Err(DriverParseError::Command(error)) => return Err(error.into()),
+		};
+	if let Commands::Custom { name, args } = &command
+		&& let Some(custom) = registry.get_capability(name)
+	{
+		let matches = match custom.cli().try_get_matches_from(
+			std::iter::once(name.as_str()).chain(args.iter().map(String::as_str)),
+		) {
+			Ok(matches) => matches,
+			Err(error) => error.exit(),
+		};
+		let requirements = custom.requirements(&matches);
+		let context =
+			CapabilityContext::prepare_with_verbosity(name, verbosity, &requirements, &provider)
+				.await?;
+		return custom.execute(&matches, &context).await.map_err(Into::into);
+	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Makemigrations {
+		app_labels,
+		dry_run,
+		name,
+		check,
+		empty,
+		merge,
+		force_empty_state,
+		migration_dir,
+	} = &command
+	{
+		let selection = migration_selection.expect("migration command has state selection");
+		if !Path::new("src/bin/manage.rs").exists() {
+			return Err(crate::CommandError::ExecutionError(
+				"makemigrations must run from the project root containing src/bin/manage.rs"
+					.to_owned(),
+			)
+			.into());
+		}
+		let mut requirements = vec![
+			CapabilityRequirement::settings::<MigrationSettings>(None),
+			CapabilityRequirement::settings::<CoreMigrationMetadata>(None),
+		];
+		if selection.source == MigrationStateSource::Database {
+			requirements.push(CapabilityRequirement::settings::<crate::SelectedDatabase>(
+				Some(selection.database.as_deref().unwrap_or("default")),
+			));
+		}
+		let context =
+			CapabilityContext::prepare("makemigrations", &requirements, &provider).await?;
+		let database_url = if selection.source == MigrationStateSource::Database {
+			Some(
+				context
+					.settings::<crate::SelectedDatabase>(Some(
+						selection.database.as_deref().unwrap_or("default"),
+					))?
+					.url(),
+			)
+		} else {
+			None
+		};
+		let mut command_context = makemigrations_context(
+			app_labels.clone(),
+			*dry_run,
+			name.clone(),
+			*check,
+			*empty,
+			*merge,
+			*force_empty_state,
+			migration_dir,
+			verbosity,
+		)?;
+		crate::showmigrations::attach_migration_settings(
+			&mut command_context,
+			context.settings::<MigrationSettings>(None)?.as_ref(),
+		);
+		crate::showmigrations::attach_core_migration_metadata(
+			&mut command_context,
+			context.settings::<CoreMigrationMetadata>(None)?.as_ref(),
+		);
+		let prepared_state = if *empty || *merge {
+			None
+		} else {
+			let dependency_context =
+				crate::showmigrations::migration_dependency_context(&command_context);
+			Some(
+				crate::builtin::prepare_makemigrations_state(
+					selection.source,
+					migration_dir,
+					database_url.as_deref(),
+					&dependency_context,
+				)
+				.await?,
+			)
+		};
+		return crate::builtin::execute_makemigrations_with_state(&command_context, prepared_state)
+			.await
+			.map_err(Into::into);
+	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Squashmigrations {
+		app_label,
+		start_migration,
+		migration_name,
+		no_optimize,
+		no_input,
+		no_header,
+		squashed_name,
+		migrations_dir,
+	} = &command
+	{
+		let requirements = [
+			CapabilityRequirement::settings::<MigrationSettings>(None),
+			CapabilityRequirement::settings::<CoreMigrationMetadata>(None),
+		];
+		let prepared =
+			CapabilityContext::prepare("squashmigrations", &requirements, &provider).await?;
+		let mut ctx = CommandContext::default();
+		crate::showmigrations::attach_migration_settings(
+			&mut ctx,
+			prepared.settings::<MigrationSettings>(None)?.as_ref(),
+		);
+		crate::showmigrations::attach_core_migration_metadata(
+			&mut ctx,
+			prepared.settings::<CoreMigrationMetadata>(None)?.as_ref(),
+		);
+		if let Some(dir) = migrations_dir {
+			ctx.set_option(
+				"migrations-dir".to_owned(),
+				dir.to_string_lossy().into_owned(),
+			);
+		}
+		let dependency_context = crate::showmigrations::migration_dependency_context(&ctx);
+		let migration_path = crate::showmigrations::migration_source_path(&ctx);
+		let mut confirmation = crate::StdinConfirmationReader;
+		let stdout = std::io::stdout();
+		let stderr = std::io::stderr();
+		let mut stdout = stdout.lock();
+		let mut stderr = stderr.lock();
+		return crate::execute_squashmigrations_with_context_and_io(
+			&migration_path,
+			crate::SquashMigrationsOptions {
+				app_label: app_label.clone(),
+				start_migration: start_migration.clone(),
+				migration_name: migration_name.clone(),
+				no_optimize: *no_optimize,
+				no_input: *no_input,
+				no_header: *no_header,
+				squashed_name: squashed_name.clone(),
+			},
+			&dependency_context,
+			&mut confirmation,
+			&mut stdout,
+			&mut stderr,
+		)
+		.await
+		.map(|_| ())
+		.map_err(Into::into);
+	}
+	if let Commands::Collectstatic {
+		clear,
+		no_input,
+		dry_run,
+		link,
+		ignore,
+		index,
+		package,
+		features,
+		all_features,
+	} = &command
+	{
+		let requirements = [CapabilityRequirement::settings::<crate::StaticAssetSettings>(None)];
+		let context = CapabilityContext::prepare("collectstatic", &requirements, &provider).await?;
+		let settings = context.settings::<crate::StaticAssetSettings>(None)?;
+		return execute_collectstatic_with_settings(
+			settings.as_ref().clone(),
+			*clear,
+			*no_input,
+			*dry_run,
+			*link,
+			ignore.clone(),
+			index.clone(),
+			package.clone(),
+			features.clone(),
+			*all_features,
+			verbosity,
+		)
+		.await;
+	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Migrate {
+		app_label,
+		migration_name,
+		database,
+		fake,
+		fake_initial,
+		plan,
+		migrations_dir,
+	} = &command
+	{
+		let environment_url = env::var("DATABASE_URL").ok();
+		let url_override = database.as_deref().or(environment_url.as_deref());
+		let (_prepared, selected_url) =
+			prepare_migration_database(&provider, "migrate", "default", url_override).await?;
+		return execute_migrate(MigrateParams {
+			app_label: app_label.clone(),
+			migration_name: migration_name.clone(),
+			database: Some(selected_url),
+			fake: *fake,
+			fake_initial: *fake_initial,
+			plan: *plan,
+			migrations_dir: migrations_dir.clone(),
+			verbosity,
+		})
+		.await;
+	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Showmigrations {
+		app_labels,
+		list,
+		plan,
+		database,
+		database_url,
+		migrations_dir,
+	} = &command
+	{
+		let (prepared, selected_url) = prepare_migration_database(
+			&provider,
+			"showmigrations",
+			database,
+			database_url.as_deref(),
+		)
+		.await?;
+		let mut ctx = CommandContext::new(app_labels.clone());
+		ctx.set_verbosity(verbosity);
+		ctx.set_option("database".to_owned(), database.clone());
+		ctx.set_option("database-url".to_owned(), selected_url);
+		if *list {
+			ctx.set_option("list".to_owned(), "true".to_owned());
+		}
+		if *plan {
+			ctx.set_option("plan".to_owned(), "true".to_owned());
+		}
+		if let Some(dir) = migrations_dir {
+			ctx.set_option(
+				"migrations-dir".to_owned(),
+				dir.to_string_lossy().into_owned(),
+			);
+		}
+		crate::showmigrations::attach_migration_settings(
+			&mut ctx,
+			prepared.settings::<MigrationSettings>(None)?.as_ref(),
+		);
+		crate::showmigrations::attach_core_migration_metadata(
+			&mut ctx,
+			prepared.settings::<CoreMigrationMetadata>(None)?.as_ref(),
+		);
+		return crate::ShowMigrationsCommand::default()
+			.execute(&ctx)
+			.await
+			.map_err(Into::into);
+	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Sqlmigrate {
+		app_label,
+		migration_name,
+		backwards,
+		database,
+		database_url,
+		migrations_dir,
+	} = &command
+	{
+		let (prepared, selected_url) =
+			prepare_migration_database(&provider, "sqlmigrate", database, database_url.as_deref())
+				.await?;
+		let mut ctx = CommandContext::new(vec![app_label.clone(), migration_name.clone()]);
+		ctx.set_verbosity(verbosity);
+		ctx.set_option("database".to_owned(), database.clone());
+		ctx.set_option("database-url".to_owned(), selected_url);
+		if *backwards {
+			ctx.set_option("backwards".to_owned(), "true".to_owned());
+		}
+		if let Some(dir) = migrations_dir {
+			ctx.set_option(
+				"migrations-dir".to_owned(),
+				dir.to_string_lossy().into_owned(),
+			);
+		}
+		crate::showmigrations::attach_migration_settings(
+			&mut ctx,
+			prepared.settings::<MigrationSettings>(None)?.as_ref(),
+		);
+		crate::showmigrations::attach_core_migration_metadata(
+			&mut ctx,
+			prepared.settings::<CoreMigrationMetadata>(None)?.as_ref(),
+		);
+		return crate::SqlMigrateCommand::default()
+			.execute(&ctx)
+			.await
+			.map_err(Into::into);
+	}
+	#[cfg(feature = "migrations")]
+	if let Commands::Inspectdb {
+		tables,
+		database,
+		database_url,
+		include_views,
+		include_partitions,
+		output,
+		config,
+		force,
+	} = &command
+	{
+		let selected_url = prepare_selected_database_url(
+			&provider,
+			"inspectdb",
+			database,
+			database_url.as_deref(),
+		)
+		.await?;
+		return execute_inspectdb(
+			InspectDbParams {
+				tables: tables.clone(),
+				database: database.clone(),
+				database_url: Some(selected_url),
+				include_views: *include_views,
+				include_partitions: *include_partitions,
+				output: output.clone(),
+				config: config.clone(),
+				force: *force,
+				verbosity,
+			},
+			None,
+		)
+		.await;
+	}
+	#[cfg(feature = "reinhardt-db")]
+	if let Commands::Dbshell {
+		database,
+		database_url,
+		client_arguments,
+	} = &command
+	{
+		let selected_url = prepare_selected_database_url(
+			&provider,
+			"dbshell",
+			database,
+			database_url.as_ref().map(RedactedDatabaseUrl::as_str),
+		)
+		.await?;
+		return execute_dbshell(
+			database.clone(),
+			Some(RedactedDatabaseUrl(selected_url)),
+			client_arguments.clone(),
+			None,
+		);
+	}
+	if let Commands::Custom { name, args } = &command
+		&& name == "buildstatic"
+		&& registry.get(name).is_none()
+	{
+		let parsed = parse_buildstatic_command(args)?;
+		let requirements = [CapabilityRequirement::settings::<crate::StaticAssetSettings>(None)];
+		let context = CapabilityContext::prepare("buildstatic", &requirements, &provider).await?;
+		let settings = context.settings::<crate::StaticAssetSettings>(None)?;
+		let base = env::current_dir()?;
+		let result = crate::buildstatic::BuildStaticCommand::new(settings.as_ref().clone())
+			.execute(parsed.into_request(base))?;
+		match result {
+			crate::buildstatic::BuildStaticResult::Published(snapshot) => println!(
+				"Published static generation {} ({} assets)",
+				snapshot.manifest().build_id,
+				snapshot.manifest().assets.len()
+			),
+			crate::buildstatic::BuildStaticResult::DryRun(preview) => {
+				for (logical, path) in preview.assignments {
+					println!("{logical} -> {path}");
+				}
+				for conflict in &preview.conflicts {
+					eprintln!("Conflict: {conflict}");
+				}
+				for pending in preview.pending_checks {
+					println!("Pending: {pending}");
+				}
+				if !preview.conflicts.is_empty() {
+					return Err("static discovery has conflicting inputs".into());
+				}
+			}
+		}
+		return Ok(());
+	}
+	#[cfg(feature = "routers")]
+	if let Commands::Showurls { names } = &command {
+		auto_register_router().await?;
+		return execute_showurls(*names, verbosity).await;
+	}
+	#[cfg(feature = "openapi")]
+	if let Commands::Generateopenapi {
+		format,
+		output,
+		postman,
+	} = &command
+	{
+		auto_register_router().await?;
+		return execute_generateopenapi(format.clone(), output.clone(), *postman, verbosity).await;
+	}
+	if let Commands::Infra { command } = &command {
+		if let InfraSubcommand::Run {
+			command: arguments, ..
+		} = command
+		{
+			crate::local_infra::InfraCommand::validate_run_command(arguments)?;
+		}
+		let database = if matches!(
+			command,
+			InfraSubcommand::Up { .. }
+				| InfraSubcommand::Reset { .. }
+				| InfraSubcommand::Run { .. }
+		) {
+			let requirements =
+				[CapabilityRequirement::settings::<LocalInfrastructureSettings>(None)];
+			let context = CapabilityContext::prepare("infra", &requirements, &provider).await?;
+			context
+				.settings::<LocalInfrastructureSettings>(None)?
+				.database
+				.clone()
+		} else {
+			None
+		};
+		return crate::local_infra::InfraCommand::execute_with_input(
+			command.clone(),
+			&env::current_dir()?,
+			database,
+		)
+		.await;
+	}
+	if let Commands::Check { app_label, deploy } = &command {
+		let mode = deploy.then_some("deploy");
+		let requirements = [CapabilityRequirement::settings::<CheckInputs>(mode)];
+		let prepared = CapabilityContext::prepare("check", &requirements, &provider).await?;
+		let mut ctx = check_context(app_label.clone(), *deploy, verbosity);
+		crate::builtin::attach_scoped_check_inputs(
+			&mut ctx,
+			prepared.settings::<CheckInputs>(mode)?.as_ref(),
+		);
+		return CheckCommand.execute(&ctx).await.map_err(Into::into);
+	}
+	#[cfg(feature = "introspect")]
+	if let Commands::Introspect { format, section } = &command {
+		if let Some(section) = section.as_deref()
+			&& ![
+				"app",
+				"databases",
+				"routes",
+				"middleware",
+				"settings",
+				"features",
+			]
+			.contains(&section)
+		{
+			return Err(crate::CommandError::InvalidArguments(
+				"invalid introspection section".to_owned(),
+			)
+			.into());
+		}
+		if section
+			.as_deref()
+			.is_none_or(|section| matches!(section, "routes" | "middleware"))
+		{
+			auto_register_router().await?;
+		}
+		let view = if section
+			.as_deref()
+			.is_none_or(|section| matches!(section, "databases" | "settings"))
+		{
+			let requirements = [CapabilityRequirement::settings::<
+				crate::introspect::IntrospectionSettings,
+			>(section.as_deref())];
+			let prepared =
+				CapabilityContext::prepare("introspect", &requirements, &provider).await?;
+			prepared.settings::<crate::introspect::IntrospectionSettings>(section.as_deref())?
+		} else {
+			Arc::new(crate::introspect::IntrospectionSettings::empty())
+		};
+		let output = crate::introspect::collect_introspect_data_with_view(view.as_ref())?;
+		println!(
+			"{}",
+			format_introspection_output(&output, section.as_deref(), *format)?
+		);
+		return Ok(());
+	}
+	if let Commands::Verify { format } = &command {
+		let Some(cargo_context) = cargo_context else {
+			return Err(crate::CommandError::ExecutionError(
+				"verify requires launcher Cargo context".to_owned(),
+			)
+			.into());
+		};
+		let stdout = std::io::stdout();
+		let stderr = std::io::stderr();
+		return execute_verify_with_provider(
+			&cargo_context,
+			|| provider.full_settings(),
+			*format,
+			&mut stdout.lock(),
+			&mut stderr.lock(),
+		)
+		.await
+		.map_err(Into::into);
+	}
+	let pending = provider.full_settings()?;
+	if let Commands::Contract { command } = command.clone() {
+		let ContractSubcommand::Export {
+			format: ContractOutputFormat::Json,
+			database,
+			database_url,
+		} = command;
+		let stdout = std::io::stdout();
+		let stderr = std::io::stderr();
+		return crate::contract::execute_contract_export(
+			&pending,
+			database,
+			database_url.map(RedactedDatabaseUrl::into_inner),
+			&mut stdout.lock(),
+			&mut stderr.lock(),
+		)
+		.await
+		.map_err(Into::into);
+	}
+	if requires_router(&command) {
+		auto_register_router().await?;
+	}
+	#[cfg(feature = "auth")]
+	reinhardt_auth::auto_register_superuser_creator();
+	let resolved = pending.resolve()?;
+	let (settings, metadata) = resolved.into_parts();
+	let migration_settings = HasSettings::<MigrationSettings>::get_settings(&settings).clone();
+	run_command_core_with_contract_state(
+		command,
+		verbosity,
+		registry,
+		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+		Some(migration_settings),
+		Some(metadata),
+		shell,
+		None,
+	)
+	.await
+}
+
+#[cfg(all(feature = "contract", feature = "reinhardt-db"))]
+async fn prepare_selected_database_url<P: CapabilityProvider>(
+	provider: &P,
+	command: &str,
+	alias: &str,
+	url_override: Option<&str>,
+) -> crate::CommandResult<String> {
+	if let Some(url) = url_override {
+		return Ok(url.to_owned());
+	}
+	let requirements = [CapabilityRequirement::settings::<crate::SelectedDatabase>(
+		Some(alias),
+	)];
+	let prepared = CapabilityContext::prepare(command, &requirements, provider).await?;
+	Ok(prepared
+		.settings::<crate::SelectedDatabase>(Some(alias))?
+		.url())
+}
+
+#[cfg(all(feature = "contract", feature = "migrations"))]
+async fn prepare_migration_database<P: CapabilityProvider>(
+	provider: &P,
+	command: &str,
+	alias: &str,
+	url_override: Option<&str>,
+) -> crate::CommandResult<(CapabilityContext, String)> {
+	let mut requirements = vec![
+		CapabilityRequirement::settings::<MigrationSettings>(None),
+		CapabilityRequirement::settings::<CoreMigrationMetadata>(None),
+	];
+	if url_override.is_none() {
+		requirements.push(CapabilityRequirement::settings::<crate::SelectedDatabase>(
+			Some(alias),
+		));
+	}
+	let prepared = CapabilityContext::prepare(command, &requirements, provider).await?;
+	let url = match url_override {
+		Some(url) => url.to_owned(),
+		None => prepared
+			.settings::<crate::SelectedDatabase>(Some(alias))?
+			.url(),
+	};
+	Ok((prepared, url))
+}
+
+/// Execute command-line arguments with resolved settings metadata and Rust shell configuration.
+#[cfg(feature = "contract")]
+pub async fn execute_from_command_line_with_resolved_settings_and_shell<S>(
+	resolved: ResolvedSettings<S>,
+	shell: ShellConfig,
+) -> crate::CommandResult<()>
+where
+	S: HasCommonSettings + HasSettings<MigrationSettings> + Clone + Send + Sync + 'static,
+{
+	let contract_state = resolved.contract_state();
+	let (settings, metadata) = resolved.into_parts();
+	let migration_settings = HasSettings::<MigrationSettings>::get_settings(&settings).clone();
+	execute_with_registry_and_optional_settings_with_contract_state(
+		CommandRegistry::new(),
+		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+		Some(migration_settings),
+		Some(metadata),
+		Some(shell),
+		Some(contract_state),
+	)
+	.await
+	.map_err(boxed_command_error)
+}
+
+/// Execute command-line arguments with a custom command registry and resolved settings metadata.
+#[cfg(feature = "contract")]
+pub async fn execute_from_command_line_with_registry_and_resolved_settings<S>(
+	registry: CommandRegistry,
+	resolved: ResolvedSettings<S>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+	S: HasCommonSettings + HasSettings<MigrationSettings> + 'static,
+{
+	let contract_state = resolved.contract_state();
+	let (settings, metadata) = resolved.into_parts();
+	let migration_settings = HasSettings::<MigrationSettings>::get_settings(&settings).clone();
+	execute_with_registry_and_optional_settings_with_contract_state(
+		registry,
+		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+		Some(migration_settings),
+		Some(metadata),
+		None,
+		Some(contract_state),
+	)
+	.await
+}
+
+/// Execute command-line arguments with a custom registry, resolved settings, and shell config.
+#[cfg(feature = "contract")]
+pub async fn execute_from_command_line_with_registry_and_resolved_settings_and_shell<S>(
+	registry: CommandRegistry,
+	resolved: ResolvedSettings<S>,
+	shell: ShellConfig,
+) -> crate::CommandResult<()>
+where
+	S: HasCommonSettings + HasSettings<MigrationSettings> + Clone + Send + Sync + 'static,
+{
+	let contract_state = resolved.contract_state();
+	let (settings, metadata) = resolved.into_parts();
+	let migration_settings = HasSettings::<MigrationSettings>::get_settings(&settings).clone();
+	execute_with_registry_and_optional_settings_with_contract_state(
+		registry,
+		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+		Some(migration_settings),
+		Some(metadata),
+		Some(shell),
+		Some(contract_state),
+	)
+	.await
+	.map_err(boxed_command_error)
+}
+
 /// Execute commands from command-line arguments with a custom command registry.
 ///
 /// This entry point works like [`execute_from_command_line`] but additionally
@@ -454,7 +2084,7 @@ where
 pub async fn execute_from_command_line_with_registry(
 	registry: CommandRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	execute_with_registry_and_optional_settings(registry, None).await
+	execute_with_registry_and_optional_settings(registry, None, None, None, None).await
 }
 
 /// Execute commands from CLI arguments with a custom command registry **and** the
@@ -482,8 +2112,38 @@ where
 	execute_with_registry_and_optional_settings(
 		registry,
 		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+		None,
+		None,
+		None,
 	)
 	.await
+}
+
+/// Execute CLI arguments with a custom registry, project settings, and shell configuration.
+pub async fn execute_from_command_line_with_registry_and_settings_and_shell<S>(
+	registry: CommandRegistry,
+	settings: S,
+	shell: ShellConfig,
+) -> crate::CommandResult<()>
+where
+	S: HasCommonSettings + Clone + Send + Sync + 'static,
+{
+	execute_with_registry_and_optional_settings(
+		registry,
+		Some(Arc::new(settings) as Arc<dyn HasCommonSettings>),
+		None,
+		None,
+		Some(shell),
+	)
+	.await
+	.map_err(boxed_command_error)
+}
+
+fn boxed_command_error(error: Box<dyn std::error::Error>) -> crate::CommandError {
+	match error.downcast::<crate::CommandError>() {
+		Ok(error) => *error,
+		Err(error) => crate::CommandError::ExecutionError(error.to_string()),
+	}
 }
 
 /// Shared driver: parse CLI arguments, perform pre-dispatch registration, and run
@@ -492,10 +2152,36 @@ where
 async fn execute_with_registry_and_optional_settings(
 	registry: CommandRegistry,
 	settings: Option<Arc<dyn HasCommonSettings>>,
+	migration_settings: Option<MigrationSettings>,
+	settings_metadata: Option<SettingsResolutionMetadata>,
+	shell: Option<ShellConfig>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let (command, verbosity) = match resolve_cli_command(env::args_os(), &registry) {
-		Ok(resolved) => resolved,
-		Err(clap_err) => clap_err.exit(),
+	execute_with_registry_and_optional_settings_with_contract_state(
+		registry,
+		settings,
+		migration_settings,
+		settings_metadata,
+		shell,
+		None,
+	)
+	.await
+}
+
+async fn execute_with_registry_and_optional_settings_with_contract_state(
+	registry: CommandRegistry,
+	settings: Option<Arc<dyn HasCommonSettings>>,
+	migration_settings: Option<MigrationSettings>,
+	settings_metadata: Option<SettingsResolutionMetadata>,
+	shell: Option<ShellConfig>,
+	settings_contract_state: Option<SettingsContractState>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	// Attempt normal clap parsing first. If it fails (e.g., unknown subcommand),
+	// fall back to checking the registry for a matching custom command.
+	let raw_args: Vec<OsString> = env::args_os().collect();
+	let (command, verbosity) = match parse_cli_arguments(&raw_args, &registry) {
+		Ok(parsed) => parsed,
+		Err(DriverParseError::Clap(error)) => (*error).exit(),
+		Err(DriverParseError::Command(error)) => return Err(error.into()),
 	};
 
 	// Only register router for commands that serve HTTP traffic.
@@ -511,13 +2197,24 @@ async fn execute_with_registry_and_optional_settings(
 	#[cfg(feature = "auth")]
 	reinhardt_auth::auto_register_superuser_creator();
 
-	run_command_core(command, verbosity, registry, settings).await
+	run_command_core_with_contract_state(
+		command,
+		verbosity,
+		registry,
+		settings,
+		migration_settings,
+		settings_metadata,
+		shell,
+		settings_contract_state,
+	)
+	.await
 }
 
 /// Resolve CLI arguments into a built-in or registered custom command.
 ///
 /// The resolver is deliberately side-effect free so callers can inspect clap
 /// errors without terminating the current process.
+#[cfg(test)]
 fn resolve_cli_command<I, T>(
 	args: I,
 	registry: &CommandRegistry,
@@ -531,9 +2228,12 @@ where
 	match Cli::try_parse_from(raw_args.clone()) {
 		Ok(cli) => Ok((cli.command, cli.verbosity)),
 		Err(clap_err) if is_unknown_subcommand(&clap_err) => {
-			resolve_custom_command(&raw_args, registry)
-				.map(|(name, args, verbosity)| (Commands::Custom { name, args }, verbosity))
-				.ok_or(clap_err)
+			match resolve_custom_command(&raw_args, registry).map_err(|error| {
+				clap::Error::raw(clap::error::ErrorKind::ValueValidation, error.to_string())
+			})? {
+				Some((name, args, verbosity)) => Ok((Commands::Custom { name, args }, verbosity)),
+				None => Err(clap_err),
+			}
 		}
 		Err(clap_err) => Err(clap_err),
 	}
@@ -544,7 +2244,7 @@ where
 ///
 /// `Runserver` is intentionally **not** in this list (Refs #4453): the
 /// HTTP-route inventory pull is now performed explicitly inside
-/// [`RunServerCommand::execute`](crate::RunServerCommand) so that the
+/// [`RunServerCommand::execute`] so that the
 /// registration step is visible at the command's call site rather than
 /// hidden in this dispatch loop. `Showurls` / `Introspect` /
 /// `Generateopenapi` still receive the pre-dispatch
@@ -552,6 +2252,8 @@ where
 /// `register_*_from_inventory()` methods (tracked separately).
 fn requires_router(command: &Commands) -> bool {
 	match command {
+		#[cfg(feature = "contract")]
+		Commands::Contract { .. } => false,
 		#[cfg(feature = "routers")]
 		Commands::Showurls { .. } => true,
 		#[cfg(feature = "introspect")]
@@ -565,13 +2267,19 @@ fn requires_router(command: &Commands) -> bool {
 /// Returns `true` for commands that require ORM database initialization.
 ///
 /// Database-requiring commands get automatic ORM initialization
-/// before execution via [`initialize_orm_database()`](crate::builtin::initialize_orm_database).
+/// before execution via [`initialize_orm_database()`].
 /// This is symmetric with [`requires_router()`] which controls HTTP route registration.
 #[cfg(feature = "reinhardt-db")]
-fn requires_database(command: &Commands) -> bool {
+fn requires_database(command: &Commands, registry: &CommandRegistry) -> bool {
 	match command {
 		Commands::Runserver { .. } => true,
 		Commands::Migrate { .. } => true,
+		Commands::Shell { .. } => false,
+		Commands::Custom { name, .. } => {
+			registry.get(name).is_none()
+				&& registry.get_capability(name).is_none()
+				&& is_fixture_command_name(name)
+		}
 		#[cfg(feature = "auth")]
 		Commands::Createsuperuser { .. } => true,
 		_ => false,
@@ -584,8 +2292,9 @@ fn requires_database(command: &Commands) -> bool {
 /// For most use cases, prefer using [`execute_from_command_line`] or
 /// [`execute_from_command_line_with_registry`] instead.
 ///
-/// Note: this function does **not** dispatch [`Commands::Custom`] variants.
-/// Use [`run_command_with_registry`] when custom commands may be present.
+/// Fixture command names carried by [`Commands::Custom`] are dispatched
+/// directly. Use [`run_command_with_registry`] when registered custom commands
+/// may be present.
 ///
 /// # Arguments
 ///
@@ -621,7 +2330,7 @@ pub async fn run_command_with_registry(
 	verbosity: u8,
 	registry: CommandRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	run_command_core(command, verbosity, registry, None).await
+	run_command_core(command, verbosity, registry, None, None, None, None).await
 }
 
 /// Execute a command with optional composed settings threaded into the context.
@@ -630,9 +2339,10 @@ pub async fn run_command_with_registry(
 /// ([`run_command`], [`run_command_with_registry`]) and the settings-aware ones
 /// ([`execute_from_command_line_with_settings`]). When `settings` is `Some`, the
 /// database-init context receives the composed `ProjectSettings`, so
-/// [`initialize_orm_database`](crate::builtin::initialize_orm_database) can
+/// [`initialize_orm_database`] can
 /// resolve the URL from `[core.databases.default]` even when `DATABASE_URL` is
 /// unset (#5042).
+#[cfg(test)]
 #[derive(Debug)]
 enum BuiltinCommandPlan {
 	#[cfg(feature = "migrations")]
@@ -674,8 +2384,10 @@ enum BuiltinCommandPlan {
 		database: Option<String>,
 		verbosity: u8,
 	},
+	Other,
 }
 
+#[cfg(test)]
 fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan {
 	match command {
 		#[cfg(feature = "migrations")]
@@ -720,6 +2432,7 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 		Commands::Infra { command } => BuiltinCommandPlan::Infra(command),
 		Commands::Runserver {
 			address,
+			grpc_address,
 			noreload,
 			watch_delay,
 			no_wasm_rebuild,
@@ -733,8 +2446,16 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			static_dir,
 			no_spa,
 			index,
+			asset_mode,
+			asset_manifest,
+			asset_entrypoint,
+			expected_asset_build_id,
+			package,
+			features,
+			all_features,
 		} => BuiltinCommandPlan::Runserver(runserver_context_from_options(&RunServerOptions {
 			address,
+			grpc_address,
 			noreload,
 			watch_delay,
 			no_wasm_rebuild,
@@ -748,6 +2469,13 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			static_dir,
 			no_spa,
 			index,
+			asset_mode,
+			asset_manifest,
+			asset_entrypoint,
+			expected_asset_build_id,
+			package,
+			features,
+			all_features,
 			verbosity,
 		})),
 		Commands::Shell { command } => BuiltinCommandPlan::Shell(shell_context(command, verbosity)),
@@ -761,6 +2489,7 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			link,
 			ignore,
 			index,
+			..
 		} => BuiltinCommandPlan::Collectstatic {
 			clear,
 			no_input,
@@ -805,7 +2534,7 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			database,
 			verbosity,
 		},
-		Commands::Custom { .. } => unreachable!("custom commands bypass built-in planning"),
+		_ => BuiltinCommandPlan::Other,
 	}
 }
 
@@ -814,14 +2543,56 @@ async fn run_command_core(
 	verbosity: u8,
 	registry: CommandRegistry,
 	settings: Option<Arc<dyn HasCommonSettings>>,
+	migration_settings: Option<MigrationSettings>,
+	settings_metadata: Option<SettingsResolutionMetadata>,
+	shell: Option<ShellConfig>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	run_command_core_with_contract_state(
+		command,
+		verbosity,
+		registry,
+		settings,
+		migration_settings,
+		settings_metadata,
+		shell,
+		None,
+	)
+	.await
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "The command core keeps independently optional runtime contexts explicit."
+)]
+async fn run_command_core_with_contract_state(
+	command: Commands,
+	verbosity: u8,
+	registry: CommandRegistry,
+	settings: Option<Arc<dyn HasCommonSettings>>,
+	migration_settings: Option<MigrationSettings>,
+	settings_metadata: Option<SettingsResolutionMetadata>,
+	shell: Option<ShellConfig>,
+	settings_contract_state: Option<SettingsContractState>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	if let Commands::Custom { name, .. } = &command
+		&& registry.get_capability(name).is_some()
+	{
+		return Err(crate::CommandError::ExecutionError(format!(
+			"command `{name}` requires execute_from_command_line_with_capabilities"
+		))
+		.into());
+	}
 	// Initialize ORM database for commands that require it.
 	// This must happen before command dispatch so that commands like
 	// createsuperuser can use the ORM connection pool. (#3186)
 	#[cfg(feature = "reinhardt-db")]
-	if requires_database(&command) {
+	if requires_database(&command, &registry) {
 		let mut ctx = crate::CommandContext::new(vec![]);
 		ctx.verbosity = verbosity;
+		ctx.set_output_suppressed(matches!(
+			&command,
+			Commands::Custom { name, .. } if name == "dumpdata"
+		));
 		// Thread the project's composed settings into the ORM-init context so the
 		// database URL can be resolved from `settings/*.toml`
 		// (`[core.databases.default]`) when `DATABASE_URL` is unset (#5042).
@@ -831,27 +2602,93 @@ async fn run_command_core(
 		crate::builtin::initialize_orm_database(&ctx).await?;
 	}
 
-	match command {
-		Commands::Custom { name, args } => {
-			execute_custom_command(&name, &args, verbosity, &registry).await
-		}
-		command => {
-			execute_builtin_command(builtin_command_plan(command, verbosity), settings).await
-		}
-	}
-}
+	// `settings` is consumed by the database-init block above and the
+	// `makemigrations` arm below; bind it in feature combinations where neither
+	// path is compiled so it does not trip the unused-variable lint.
+	#[cfg(not(any(feature = "reinhardt-db", feature = "migrations")))]
+	let _ = &settings;
+	#[cfg(not(feature = "migrations"))]
+	let _ = &migration_settings;
+	#[cfg(not(feature = "contract"))]
+	let _ = &settings_metadata;
+	#[cfg(not(feature = "contract"))]
+	let _ = &settings_contract_state;
 
-async fn execute_builtin_command(
-	plan: BuiltinCommandPlan,
-	settings: Option<Arc<dyn HasCommonSettings>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-	match plan {
+	match command {
+		#[cfg(feature = "contract")]
+		Commands::Verify { .. } => Err(crate::CommandError::ExecutionError(
+			"verify requires execute_from_command_line_with_pending_settings_and_cargo_context"
+				.to_owned(),
+		)
+		.into()),
+		#[cfg(feature = "contract")]
+		Commands::Contract { command } => match command {
+			ContractSubcommand::Export {
+				format: ContractOutputFormat::Json,
+				database,
+				database_url,
+			} => {
+				let (
+					Some(settings),
+					Some(migration_settings),
+					Some(settings_metadata),
+					Some(contract_state),
+				) = (
+					settings,
+					migration_settings,
+					settings_metadata,
+					settings_contract_state,
+				)
+				else {
+					return Err(crate::CommandError::ExecutionError(
+						"contract export requires execute_from_command_line_with_resolved_settings"
+							.to_string(),
+					)
+					.into());
+				};
+				let standard_output = std::io::stdout();
+				let standard_error = std::io::stderr();
+				let mut stdout = standard_output.lock();
+				let mut stderr = standard_error.lock();
+				return crate::contract::execute_contract_export_from_resolved_settings(
+					settings,
+					migration_settings,
+					settings_metadata,
+					contract_state,
+					database,
+					database_url.map(RedactedDatabaseUrl::into_inner),
+					&mut stdout,
+					&mut stderr,
+				)
+				.await
+				.map_err(Into::into);
+			}
+		},
 		#[cfg(feature = "migrations")]
-		BuiltinCommandPlan::Makemigrations(ctx) => {
-			let mut ctx = ctx?;
+		Commands::Makemigrations {
+			app_labels,
+			dry_run,
+			name,
+			check,
+			empty,
+			merge,
+			force_empty_state,
+			migration_dir,
+		} => {
+			let mut ctx = makemigrations_context(
+				app_labels,
+				dry_run,
+				name,
+				check,
+				empty,
+				merge,
+				force_empty_state,
+				&migration_dir,
+				verbosity,
+			)?;
 			// `makemigrations` does not initialize the ORM database, so attach the
 			// composed settings here for database URL resolution (#5042).
-			if let Some(settings) = settings {
+			if let Some(settings) = settings.clone() {
 				ctx = ctx.with_settings(settings);
 			}
 			MakeMigrationsCommand
@@ -859,10 +2696,174 @@ async fn execute_builtin_command(
 				.await
 				.map_err(|e| e.into())
 		}
-		BuiltinCommandPlan::Migrate(ctx) => {
-			MigrateCommand.execute(&ctx).await.map_err(|e| e.into())
+		#[cfg(feature = "migrations")]
+		Commands::Squashmigrations {
+			app_label,
+			start_migration,
+			migration_name,
+			no_optimize,
+			no_input,
+			no_header,
+			squashed_name,
+			migrations_dir,
+		} => {
+			let dependency_context =
+				settings
+					.as_ref()
+					.map_or_else(DependencyResolutionContext::new, |settings| {
+						DependencyResolutionContext::new()
+							.with_apps(settings.core().installed_apps.iter().cloned())
+					});
+			let dependency_context = match migration_settings.as_ref() {
+				Some(migration_settings) => {
+					let context = migration_settings
+						.migration_features
+						.iter()
+						.fold(dependency_context, |context, feature| {
+							context.with_feature(feature.clone())
+						});
+					let context = migration_settings
+						.migration_settings
+						.iter()
+						.fold(context, |context, (key, value)| {
+							context.with_setting(key.clone(), value.clone())
+						});
+					migration_settings
+						.migration_swappable_settings
+						.iter()
+						.fold(context, |context, (key, value)| {
+							context.with_setting(key.clone(), value.clone())
+						})
+				}
+				None => dependency_context,
+			};
+			let mut confirmation = crate::StdinConfirmationReader;
+			let standard_output = std::io::stdout();
+			let standard_error = std::io::stderr();
+			let mut stdout = standard_output.lock();
+			let mut stderr = standard_error.lock();
+			let migrations_dir = migrations_dir.unwrap_or_else(|| {
+				settings
+					.as_ref()
+					.map_or_else(default_migrations_dir, |settings| {
+						settings.core().base_dir.join("migrations")
+					})
+			});
+			crate::execute_squashmigrations_with_context_and_io(
+				&migrations_dir,
+				crate::SquashMigrationsOptions {
+					app_label,
+					start_migration,
+					migration_name,
+					no_optimize,
+					no_input,
+					no_header,
+					squashed_name,
+				},
+				&dependency_context,
+				&mut confirmation,
+				&mut stdout,
+				&mut stderr,
+			)
+			.await
+			.map(|_| ())
+			.map_err(Into::into)
 		}
-		BuiltinCommandPlan::Infra(command) => {
+		#[cfg(feature = "migrations")]
+		Commands::Showmigrations {
+			app_labels,
+			list,
+			plan,
+			database,
+			database_url,
+			migrations_dir,
+		} => {
+			let mut ctx = CommandContext::new(app_labels);
+			if let Some(migration_settings) = migration_settings.as_ref() {
+				crate::showmigrations::attach_migration_settings(&mut ctx, migration_settings);
+			}
+			ctx.set_verbosity(verbosity);
+			ctx.set_option("database".to_string(), database);
+			if list {
+				ctx.set_option("list".to_string(), "true".to_string());
+			}
+			if plan {
+				ctx.set_option("plan".to_string(), "true".to_string());
+			}
+			if let Some(database_url) = database_url {
+				ctx.set_option("database-url".to_string(), database_url);
+			}
+			if let Some(migrations_dir) = migrations_dir {
+				ctx.set_option(
+					"migrations-dir".to_string(),
+					migrations_dir.to_string_lossy().into_owned(),
+				);
+			}
+			if let Some(settings) = settings.clone() {
+				ctx = ctx.with_settings(settings);
+			}
+			crate::ShowMigrationsCommand::default()
+				.execute(&ctx)
+				.await
+				.map_err(Into::into)
+		}
+		#[cfg(feature = "migrations")]
+		Commands::Sqlmigrate {
+			app_label,
+			migration_name,
+			backwards,
+			database,
+			database_url,
+			migrations_dir,
+		} => {
+			let mut ctx = CommandContext::new(vec![app_label, migration_name]);
+			if let Some(migration_settings) = migration_settings.as_ref() {
+				crate::showmigrations::attach_migration_settings(&mut ctx, migration_settings);
+			}
+			ctx.set_verbosity(verbosity);
+			ctx.set_option("database".to_string(), database);
+			if backwards {
+				ctx.set_option("backwards".to_string(), "true".to_string());
+			}
+			if let Some(database_url) = database_url {
+				ctx.set_option("database-url".to_string(), database_url);
+			}
+			if let Some(migrations_dir) = migrations_dir {
+				ctx.set_option(
+					"migrations-dir".to_string(),
+					migrations_dir.to_string_lossy().into_owned(),
+				);
+			}
+			if let Some(settings) = settings.clone() {
+				ctx = ctx.with_settings(settings);
+			}
+			crate::SqlMigrateCommand::default()
+				.execute(&ctx)
+				.await
+				.map_err(Into::into)
+		}
+		Commands::Migrate {
+			app_label,
+			migration_name,
+			database,
+			fake,
+			fake_initial,
+			plan,
+			migrations_dir,
+		} => {
+			execute_migrate(MigrateParams {
+				app_label,
+				migration_name,
+				database,
+				fake,
+				fake_initial,
+				plan,
+				migrations_dir,
+				verbosity,
+			})
+			.await
+		}
+		Commands::Infra { command } => {
 			crate::local_infra::InfraCommand::execute(
 				command,
 				&std::env::current_dir()?,
@@ -870,42 +2871,138 @@ async fn execute_builtin_command(
 			)
 			.await
 		}
-		BuiltinCommandPlan::Runserver(ctx) => {
-			RunServerCommand.execute(&ctx).await.map_err(|e| e.into())
+		Commands::Runserver {
+			address,
+			grpc_address,
+			noreload,
+			watch_delay,
+			no_wasm_rebuild,
+			no_wasm,
+			no_override_wasm,
+			force_wasm,
+			wasm_optional,
+			insecure,
+			no_docs,
+			with_pages,
+			static_dir,
+			no_spa,
+			index,
+			asset_mode,
+			asset_manifest,
+			asset_entrypoint,
+			expected_asset_build_id,
+			package,
+			features,
+			all_features,
+		} => {
+			execute_runserver(RunServerOptions {
+				address,
+				grpc_address,
+				noreload,
+				watch_delay,
+				no_wasm_rebuild,
+				no_wasm,
+				no_override_wasm,
+				force_wasm,
+				wasm_optional,
+				insecure,
+				no_docs,
+				with_pages,
+				static_dir,
+				no_spa,
+				index,
+				asset_mode,
+				asset_manifest,
+				asset_entrypoint,
+				expected_asset_build_id,
+				package,
+				features,
+				all_features,
+				verbosity,
+			})
+			.await
 		}
-		BuiltinCommandPlan::Shell(ctx) => ShellCommand.execute(&ctx).await.map_err(|e| e.into()),
-		BuiltinCommandPlan::Check(ctx) => CheckCommand.execute(&ctx).await.map_err(|e| e.into()),
-		BuiltinCommandPlan::Collectstatic {
+		Commands::Shell { command } => execute_shell(command, verbosity, shell).await,
+		Commands::Check { app_label, deploy } => execute_check(app_label, deploy, verbosity).await,
+		Commands::Collectstatic {
 			clear,
 			no_input,
 			dry_run,
 			link,
 			ignore,
 			index,
-			verbosity,
-		} => execute_collectstatic(clear, no_input, dry_run, link, ignore, index, verbosity).await,
-		BuiltinCommandPlan::Showurls(ctx) => execute_showurls(ctx).await,
+			package,
+			features,
+			all_features,
+		} => {
+			execute_collectstatic(
+				clear,
+				no_input,
+				dry_run,
+				link,
+				ignore,
+				index,
+				package,
+				features,
+				all_features,
+				verbosity,
+			)
+			.await
+		}
+		Commands::Showurls { names } => execute_showurls(names, verbosity).await,
+		#[cfg(feature = "migrations")]
+		Commands::Inspectdb {
+			tables,
+			database,
+			database_url,
+			include_views,
+			include_partitions,
+			output,
+			config,
+			force,
+		} => {
+			execute_inspectdb(
+				InspectDbParams {
+					tables,
+					database,
+					database_url,
+					include_views,
+					include_partitions,
+					output,
+					config,
+					force,
+					verbosity,
+				},
+				settings.clone(),
+			)
+			.await
+		}
+		#[cfg(feature = "reinhardt-db")]
+		Commands::Dbshell {
+			database,
+			database_url,
+			client_arguments,
+		} => execute_dbshell(
+			database,
+			database_url,
+			client_arguments,
+			settings.as_deref(),
+		),
 		#[cfg(feature = "introspect")]
-		BuiltinCommandPlan::Introspect {
-			format,
-			section,
-			verbosity,
-		} => execute_introspect(format, section, verbosity).await,
+		Commands::Introspect { format, section } => execute_introspect(format, section, verbosity).await,
 		#[cfg(feature = "openapi")]
-		BuiltinCommandPlan::Generateopenapi {
+		Commands::Generateopenapi {
 			format,
 			output,
 			postman,
-			verbosity,
 		} => execute_generateopenapi(format, output, postman, verbosity).await,
 		#[cfg(feature = "auth")]
-		BuiltinCommandPlan::Createsuperuser {
+		Commands::Createsuperuser {
 			username,
 			email,
 			no_password,
 			noinput,
 			database,
-			verbosity,
 		} => {
 			crate::createsuperuser::execute_createsuperuser(
 				username,
@@ -917,7 +3014,417 @@ async fn execute_builtin_command(
 			)
 			.await
 		}
+		Commands::Custom { name, args } => {
+			if registry.get(&name).is_none() && name == "buildstatic" {
+				let parsed = parse_buildstatic_command(&args)?;
+				let base = env::current_dir()?;
+				let static_settings = crate::StaticAssetSettings::from_project_dir(&base)?;
+				let result = crate::buildstatic::BuildStaticCommand::new(static_settings)
+					.execute(parsed.into_request(base))?;
+				match result {
+					crate::buildstatic::BuildStaticResult::Published(snapshot) => println!(
+						"Published static generation {} ({} assets)",
+						snapshot.manifest().build_id,
+						snapshot.manifest().assets.len()
+					),
+					crate::buildstatic::BuildStaticResult::DryRun(preview) => {
+						for (logical, path) in preview.assignments {
+							println!("{logical} -> {path}");
+						}
+						for conflict in &preview.conflicts {
+							eprintln!("Conflict: {conflict}");
+						}
+						for pending in preview.pending_checks {
+							println!("Pending: {pending}");
+						}
+						if !preview.conflicts.is_empty() {
+							return Err("static discovery has conflicting inputs".into());
+						}
+					}
+				}
+				return Ok(());
+			}
+			#[cfg(feature = "reinhardt-db")]
+			if registry.get(&name).is_none()
+				&& let Some(command) = parse_fixture_command(&name, &args)?
+			{
+				return execute_fixture_command(command, verbosity, settings).await;
+			}
+			execute_custom_command(&name, &args, verbosity, &registry).await
+		}
 	}
+}
+
+#[cfg(feature = "reinhardt-db")]
+fn execute_dbshell(
+	database: String,
+	database_url: Option<RedactedDatabaseUrl>,
+	client_arguments: Vec<OsString>,
+	settings: Option<&dyn HasCommonSettings>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	execute_dbshell_with_runner(
+		database,
+		database_url,
+		client_arguments,
+		settings,
+		&crate::dbshell::PortableDbClientRunner,
+	)
+}
+
+#[cfg(feature = "reinhardt-db")]
+fn execute_dbshell_with_runner(
+	database: String,
+	database_url: Option<RedactedDatabaseUrl>,
+	client_arguments: Vec<OsString>,
+	settings: Option<&dyn HasCommonSettings>,
+	runner: &dyn crate::dbshell::DbClientRunner,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let database = crate::database_selector::resolve_database(
+		&crate::database_selector::DatabaseSelector {
+			alias: database,
+			url_override: database_url.map(RedactedDatabaseUrl::into_inner),
+		},
+		settings,
+	)?;
+	crate::dbshell::run_database_shell(&database, &client_arguments, runner).map_err(Into::into)
+}
+
+#[derive(Debug)]
+enum DriverParseError {
+	Clap(Box<clap::Error>),
+	Command(crate::CommandError),
+}
+
+#[cfg(all(feature = "contract", feature = "migrations"))]
+struct MigrationCliSelection {
+	source: MigrationStateSource,
+	database: Option<String>,
+}
+
+/// Extend only the provider entry point's clap parser. The public
+/// `Commands::Makemigrations` fields and legacy parser remain unchanged.
+#[cfg(feature = "contract")]
+fn parse_capability_cli_arguments(
+	raw_args: &[OsString],
+	registry: &CommandRegistry,
+) -> Result<(Commands, u8, Option<MigrationCliSelection>), DriverParseError> {
+	if let Some((name, args, verbosity)) =
+		resolve_custom_command(raw_args, registry).map_err(DriverParseError::Command)?
+		&& registry.get_capability(&name).is_some()
+	{
+		return Ok((Commands::Custom { name, args }, verbosity, None));
+	}
+	#[cfg(feature = "migrations")]
+	{
+		let parser = Cli::command().mut_subcommand("makemigrations", |command| {
+			command
+				.arg(
+					Arg::new("state-source")
+						.long("state-source")
+						.value_parser(["files", "temporary-db", "database"])
+						.help("Choose migration state: files, temporary-db, or database"),
+				)
+				.arg(
+					Arg::new("database")
+						.long("database")
+						.value_name("ALIAS")
+						.help("Configured database alias with --state-source database"),
+				)
+		});
+		let normalized = normalize_count_style_verbosity_args(raw_args);
+		let mut matches = match parser.try_get_matches_from(normalized) {
+			Ok(matches) => matches,
+			Err(error) if is_unknown_subcommand(&error) => {
+				return parse_cli_arguments(raw_args, registry)
+					.map(|(command, verbosity)| (command, verbosity, None));
+			}
+			Err(error) => return Err(DriverParseError::Clap(Box::new(error))),
+		};
+		let source = matches
+			.subcommand_matches("makemigrations")
+			.and_then(|sub| sub.get_one::<String>("state-source"))
+			.cloned();
+		let database = matches
+			.subcommand_matches("makemigrations")
+			.and_then(|sub| sub.get_one::<String>("database"))
+			.cloned();
+		let cli = Cli::from_arg_matches_mut(&mut matches)
+			.map_err(|error| DriverParseError::Clap(Box::new(error)))?;
+		let selection = if let Commands::Makemigrations {
+			check,
+			empty,
+			merge,
+			force_empty_state,
+			..
+		} = &cli.command
+		{
+			let conflict = |message: &str| {
+				DriverParseError::Clap(Box::new(clap::Error::raw(
+					clap::error::ErrorKind::ArgumentConflict,
+					message,
+				)))
+			};
+			if *empty && *merge {
+				return Err(conflict("--empty and --merge cannot be used together"));
+			}
+			if *force_empty_state && source.is_some() {
+				return Err(conflict(
+					"--force-empty-state conflicts with --state-source",
+				));
+			}
+			if database.is_some() && source.as_deref() != Some("database") {
+				return Err(conflict("--database requires --state-source database"));
+			}
+			if (*check || *empty || *merge)
+				&& matches!(source.as_deref(), Some("temporary-db" | "database"))
+			{
+				return Err(conflict(
+					"--check, --empty, and --merge require a database-free state source",
+				));
+			}
+			let source = if *force_empty_state {
+				MigrationStateSource::Empty
+			} else {
+				match source.as_deref() {
+					Some("files") => MigrationStateSource::Files,
+					Some("database") => MigrationStateSource::Database,
+					Some("temporary-db") => MigrationStateSource::TemporaryDb,
+					None if *check || *empty || *merge => MigrationStateSource::Files,
+					None if cfg!(feature = "testcontainers") => MigrationStateSource::TemporaryDb,
+					None => MigrationStateSource::Files,
+					_ => unreachable!("clap value parser rejects unsupported state sources"),
+				}
+			};
+			Some(MigrationCliSelection { source, database })
+		} else {
+			None
+		};
+		Ok((cli.command, cli.verbosity, selection))
+	}
+	#[cfg(not(feature = "migrations"))]
+	{
+		parse_cli_arguments(raw_args, registry)
+			.map(|(command, verbosity)| (command, verbosity, None))
+	}
+}
+
+#[cfg(all(test, feature = "contract", feature = "migrations"))]
+mod capability_cli_tests {
+	use super::*;
+	use crate::capabilities::CapabilityCommand;
+	use rstest::*;
+
+	struct OverrideCommand(&'static str);
+
+	#[async_trait::async_trait]
+	impl CapabilityCommand for OverrideCommand {
+		fn cli(&self) -> clap::Command {
+			clap::Command::new(self.0).arg(Arg::new("custom-opt").long("custom-opt").num_args(1))
+		}
+
+		fn requirements(&self, _matches: &clap::ArgMatches) -> Vec<CapabilityRequirement> {
+			Vec::new()
+		}
+
+		async fn execute(
+			&self,
+			_matches: &clap::ArgMatches,
+			_context: &CapabilityContext,
+		) -> crate::CommandResult<()> {
+			Ok(())
+		}
+	}
+
+	fn parse(
+		args: &[&str],
+	) -> Result<(Commands, u8, Option<MigrationCliSelection>), DriverParseError> {
+		let args: Vec<OsString> = args.iter().map(OsString::from).collect();
+		parse_capability_cli_arguments(&args, &CommandRegistry::new())
+	}
+
+	#[rstest]
+	fn migration_state_source_and_alias_are_selected_before_settings() {
+		let parsed = parse(&[
+			"manage",
+			"makemigrations",
+			"--state-source",
+			"database",
+			"--database",
+			"analytics",
+		]);
+		let Ok((Commands::Makemigrations { .. }, _, Some(selection))) = parsed else {
+			panic!("valid migration state selection must parse");
+		};
+		assert_eq!(selection.source, MigrationStateSource::Database);
+		assert_eq!(selection.database.as_deref(), Some("analytics"));
+	}
+
+	#[rstest]
+	fn default_migration_source_is_available_in_this_feature_set() {
+		let Ok((_, _, Some(selection))) = parse(&["manage", "makemigrations"]) else {
+			panic!("ordinary makemigrations must parse");
+		};
+		let expected = if cfg!(feature = "testcontainers") {
+			MigrationStateSource::TemporaryDb
+		} else {
+			MigrationStateSource::Files
+		};
+		assert_eq!(selection.source, expected);
+	}
+
+	#[rstest]
+	#[case("buildstatic")]
+	#[case("dumpdata")]
+	fn capability_override_uses_its_own_arguments(#[case] name: &'static str) {
+		let mut registry = CommandRegistry::new();
+		registry.register_capability(Box::new(OverrideCommand(name)));
+		let args: Vec<OsString> = ["manage", name, "--custom-opt", "ready"]
+			.into_iter()
+			.map(OsString::from)
+			.collect();
+		let (command, _, _) = parse_capability_cli_arguments(&args, &registry).unwrap();
+		let Commands::Custom { name, args } = command else {
+			panic!("capability override must reach custom dispatch");
+		};
+		let matches = registry
+			.get_capability(&name)
+			.unwrap()
+			.cli()
+			.try_get_matches_from(
+				std::iter::once(name.as_str()).chain(args.iter().map(String::as_str)),
+			)
+			.unwrap();
+		assert_eq!(
+			matches.get_one::<String>("custom-opt").map(String::as_str),
+			Some("ready")
+		);
+	}
+
+	#[rstest]
+	#[case("--bogus", clap::error::ErrorKind::UnknownArgument)]
+	#[case("--help", clap::error::ErrorKind::DisplayHelp)]
+	#[case("--version", clap::error::ErrorKind::DisplayVersion)]
+	fn capability_override_keeps_global_flags_in_clap(
+		#[case] flag: &str,
+		#[case] expected: clap::error::ErrorKind,
+	) {
+		let mut registry = CommandRegistry::new();
+		registry.register_capability(Box::new(OverrideCommand("buildstatic")));
+		let args = ["manage", flag, "buildstatic"].map(OsString::from);
+		let result = parse_capability_cli_arguments(&args, &registry);
+		assert!(matches!(result, Err(DriverParseError::Clap(error)) if error.kind() == expected));
+	}
+
+	#[rstest]
+	fn migration_check_uses_files_and_rejects_database_source() {
+		let Ok((_, _, Some(selection))) = parse(&["manage", "makemigrations", "--check"]) else {
+			panic!("--check must parse");
+		};
+		assert_eq!(selection.source, MigrationStateSource::Files);
+		assert!(
+			parse(&[
+				"manage",
+				"makemigrations",
+				"--check",
+				"--state-source",
+				"database",
+			])
+			.is_err()
+		);
+		assert!(parse(&["manage", "makemigrations", "--database", "analytics",]).is_err());
+	}
+
+	#[rstest]
+	fn migration_help_and_invalid_arguments_finish_in_parser() {
+		for args in [
+			&["manage", "makemigrations", "--help"][..],
+			&["manage", "makemigrations", "--state-source", "unknown"][..],
+		] {
+			assert!(matches!(parse(args), Err(DriverParseError::Clap(_))));
+		}
+	}
+}
+
+fn parse_buildstatic_command(
+	args: &[String],
+) -> Result<crate::buildstatic::BuildStaticArgs, clap::Error> {
+	crate::buildstatic::BuildStaticArgs::try_parse_from(
+		std::iter::once("buildstatic").chain(args.iter().map(String::as_str)),
+	)
+}
+
+fn parse_cli_arguments(
+	raw_args: &[OsString],
+	registry: &CommandRegistry,
+) -> Result<(Commands, u8), DriverParseError> {
+	let normalized_args = normalize_count_style_verbosity_args(raw_args);
+	match Cli::try_parse_from(&normalized_args) {
+		Ok(cli) => Ok((cli.command, cli.verbosity)),
+		Err(clap_error) if !is_unknown_subcommand(&clap_error) => {
+			Err(DriverParseError::Clap(Box::new(clap_error)))
+		}
+		Err(clap_error) => {
+			match resolve_custom_command(raw_args, registry).map_err(DriverParseError::Command)? {
+				Some((name, args, verbosity)) => {
+					if registry.get(&name).is_none()
+						&& registry.get_capability(&name).is_none()
+						&& name == "buildstatic"
+						&& let Err(error) = parse_buildstatic_command(&args)
+					{
+						return Err(DriverParseError::Clap(Box::new(error)));
+					}
+					#[cfg(feature = "reinhardt-db")]
+					if registry.get(&name).is_none()
+						&& registry.get_capability(&name).is_none()
+						&& is_fixture_command_name(&name)
+						&& let Err(error) = parse_fixture_command(&name, &args)
+					{
+						return Err(DriverParseError::Clap(Box::new(error)));
+					}
+					Ok((Commands::Custom { name, args }, verbosity))
+				}
+				None => Err(DriverParseError::Clap(Box::new(clap_error))),
+			}
+		}
+	}
+}
+
+/// Rewrite `--verbosity=N` into clap's count-style verbosity flags.
+///
+/// This lets the standard parser reach its `InvalidSubcommand` path for a
+/// custom command, while [`resolve_custom_command`] still reads the original
+/// arguments and passes the requested numeric verbosity to that command.
+fn normalize_count_style_verbosity_args<T: AsRef<OsStr>>(raw_args: &[T]) -> Vec<OsString> {
+	let mut normalized = Vec::with_capacity(raw_args.len());
+	let mut reached_argument_separator = false;
+	for argument in raw_args {
+		let argument = argument.as_ref();
+		if reached_argument_separator {
+			normalized.push(argument.to_os_string());
+			continue;
+		}
+		if argument == OsStr::new("--") {
+			normalized.push(argument.to_os_string());
+			reached_argument_separator = true;
+			continue;
+		}
+		let Some(value) = argument
+			.to_str()
+			.and_then(|argument| argument.strip_prefix("--verbosity="))
+		else {
+			normalized.push(argument.to_os_string());
+			continue;
+		};
+		let Ok(count) = value.parse::<u8>() else {
+			normalized.push(argument.to_os_string());
+			continue;
+		};
+		normalized.extend(std::iter::repeat_n(
+			OsString::from("--verbosity"),
+			count.into(),
+		));
+	}
+	normalized
 }
 
 /// Returns `true` when the clap error represents an unrecognised subcommand.
@@ -929,35 +3436,25 @@ fn is_unknown_subcommand(err: &clap::Error) -> bool {
 	matches!(err.kind(), clap::error::ErrorKind::InvalidSubcommand)
 }
 
-/// Known global options that accept a separate value argument.
-///
-/// When skipping leading flags we must also consume the following token for
-/// options that take a value (e.g. `--verbosity 2`). Without this, the value
-/// would be mistaken for the subcommand name.
-const GLOBAL_OPTIONS_WITH_VALUE: &[&str] = &["--verbosity"];
-
 /// Try to resolve raw CLI arguments into a custom command from the registry.
 ///
 /// The convention is: `manage <subcommand> [args...]`.  Global flags that
-/// appear before the subcommand (e.g., `-v`) are skipped.  The function also
-/// extracts the verbosity level so it can be forwarded to the custom command.
-fn resolve_custom_command(
-	raw_args: &[std::ffi::OsString],
+/// appear before the subcommand (e.g., `-v`) are skipped. Both count-style
+/// `--verbosity` and legacy value-style `--verbosity 2` are accepted.
+fn resolve_custom_command<T: AsRef<OsStr>>(
+	raw_args: &[T],
 	registry: &CommandRegistry,
-) -> Option<(String, Vec<String>, u8)> {
+) -> crate::CommandResult<Option<(String, Vec<String>, u8)>> {
 	let mut verbosity: u8 = 0;
 
 	// Skip the binary name (argv[0]) and parse leading global flags.
-	let raw_args: Vec<String> = raw_args
-		.iter()
-		.map(|argument| argument.to_string_lossy().into_owned())
-		.collect();
 	let mut iter = raw_args.iter().skip(1).peekable();
 	while let Some(arg) = iter.peek() {
+		let arg = utf8_custom_argument(arg.as_ref())?;
 		if !arg.starts_with('-') {
 			break;
 		}
-		let flag = iter.next().unwrap(); // safe: peeked above
+		let flag = utf8_custom_argument(iter.next().unwrap().as_ref())?; // safe: peeked above
 
 		if flag == "--verbose" {
 			verbosity = verbosity.saturating_add(1);
@@ -969,28 +3466,53 @@ fn resolve_custom_command(
 				verbosity = verbosity.saturating_add(1);
 			}
 		} else if flag == "--verbosity" {
-			// Consume the next token as the value.
-			if let Some(val) = iter.peek()
-				&& !val.starts_with('-')
+			if let Some(value) = iter
+				.peek()
+				.map(|value| utf8_custom_argument(value.as_ref()))
+				.transpose()?
+				.and_then(|value| value.parse::<u8>().ok())
 			{
-				verbosity = val.parse().unwrap_or(0);
+				verbosity = value;
 				iter.next();
+			} else {
+				verbosity = verbosity.saturating_add(1);
 			}
-		} else if let Some(val) = flag.strip_prefix("--verbosity=") {
-			verbosity = val.parse().unwrap_or(0);
-		} else if GLOBAL_OPTIONS_WITH_VALUE.contains(&flag.as_str()) {
-			// Skip the value for other known options that take one.
-			iter.next();
+		} else if let Some(value) = flag.strip_prefix("--verbosity=") {
+			let Ok(value) = value.parse() else {
+				return Ok(None);
+			};
+			verbosity = value;
+		} else {
+			// Leave help, version, and unknown global options to clap. Otherwise
+			// an early capability override would silently discard them.
+			return Ok(None);
 		}
 	}
 
-	let subcommand = iter.next()?;
-	if registry.get(subcommand).is_some() {
-		let remaining: Vec<String> = iter.cloned().collect();
-		Some((subcommand.clone(), remaining, verbosity))
+	let Some(subcommand) = iter.next() else {
+		return Ok(None);
+	};
+	let subcommand = utf8_custom_argument(subcommand.as_ref())?;
+	if registry.get(subcommand).is_some()
+		|| registry.get_capability(subcommand).is_some()
+		|| is_fixture_command_name(subcommand)
+		|| subcommand == "buildstatic"
+	{
+		let remaining = iter
+			.map(|argument| utf8_custom_argument(argument.as_ref()).map(str::to_string))
+			.collect::<crate::CommandResult<Vec<_>>>()?;
+		Ok(Some((subcommand.to_string(), remaining, verbosity)))
 	} else {
-		None
+		Ok(None)
 	}
+}
+
+fn utf8_custom_argument(argument: &OsStr) -> crate::CommandResult<&str> {
+	argument.to_str().ok_or_else(|| {
+		crate::CommandError::InvalidArguments(
+			"Custom command names and arguments must be valid UTF-8.".to_string(),
+		)
+	})
 }
 
 /// Execute a custom command looked up from the registry.
@@ -1018,7 +3540,26 @@ async fn execute_custom_command(
 	cmd.execute(&ctx).await.map_err(|e| e.into())
 }
 
-/// Convert makemigrations CLI options into a command context.
+#[cfg(feature = "reinhardt-db")]
+async fn execute_fixture_command(
+	command: FixtureCommand,
+	verbosity: u8,
+	settings: Option<Arc<dyn HasCommonSettings>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	match command {
+		FixtureCommand::Dumpdata { selectors, exclude } => {
+			crate::data_commands::execute_dumpdata(selectors, exclude).await
+		}
+		FixtureCommand::Loaddata { fixtures } => {
+			crate::data_commands::execute_loaddata(fixtures).await
+		}
+		FixtureCommand::Seed { app_labels } => {
+			crate::data_commands::execute_seed(app_labels, verbosity, settings).await
+		}
+	}
+}
+
+/// Execute the makemigrations command
 #[cfg(feature = "migrations")]
 // Allow too_many_arguments: CLI flags are mapped 1:1 to function parameters for clarity
 #[allow(clippy::too_many_arguments)]
@@ -1084,7 +3625,62 @@ struct MigrateParams {
 	verbosity: u8,
 }
 
-/// Convert migrate CLI parameters into a command context.
+#[cfg(feature = "migrations")]
+struct InspectDbParams {
+	tables: Vec<String>,
+	database: String,
+	database_url: Option<String>,
+	include_views: bool,
+	include_partitions: bool,
+	output: Option<PathBuf>,
+	config: Option<PathBuf>,
+	force: bool,
+	verbosity: u8,
+}
+
+#[cfg(feature = "migrations")]
+async fn execute_inspectdb(
+	params: InspectDbParams,
+	settings: Option<Arc<dyn HasCommonSettings>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let mut ctx = CommandContext::new(params.tables);
+	ctx.set_verbosity(params.verbosity);
+	ctx.set_option("database".to_string(), params.database);
+	if let Some(database_url) = params.database_url {
+		ctx.set_option("database-url".to_string(), database_url);
+	}
+	if params.include_views {
+		ctx.set_option("include-views".to_string(), "true".to_string());
+	}
+	if params.include_partitions {
+		ctx.set_option("include-partitions".to_string(), "true".to_string());
+	}
+	if let Some(output) = params.output {
+		ctx.set_option("output".to_string(), output.to_string_lossy().into_owned());
+	}
+	if let Some(config) = params.config {
+		ctx.set_option("config".to_string(), config.to_string_lossy().into_owned());
+	}
+	if params.force {
+		ctx.set_option("force".to_string(), "true".to_string());
+	}
+	if let Some(settings) = settings {
+		ctx = ctx.with_settings(settings);
+	}
+
+	crate::InspectDbCommand::default()
+		.execute(&ctx)
+		.await
+		.map_err(Into::into)
+}
+
+/// Execute the migrate command
+async fn execute_migrate(params: MigrateParams) -> Result<(), Box<dyn std::error::Error>> {
+	let ctx = migrate_context_from_params(params);
+	let cmd = MigrateCommand;
+	cmd.execute(&ctx).await.map_err(|error| error.into())
+}
+
 fn migrate_context_from_params(params: MigrateParams) -> CommandContext {
 	let mut ctx = CommandContext::default();
 	ctx.set_verbosity(params.verbosity);
@@ -1121,6 +3717,7 @@ fn migrate_context_from_params(params: MigrateParams) -> CommandContext {
 /// Options for the runserver command
 struct RunServerOptions {
 	address: String,
+	grpc_address: String,
 	noreload: bool,
 	watch_delay: u64,
 	no_wasm_rebuild: bool,
@@ -1134,6 +3731,13 @@ struct RunServerOptions {
 	static_dir: String,
 	no_spa: bool,
 	index: Option<String>,
+	asset_mode: String,
+	asset_manifest: Option<String>,
+	asset_entrypoint: Option<String>,
+	expected_asset_build_id: Option<String>,
+	package: Option<String>,
+	features: Vec<String>,
+	all_features: bool,
 	verbosity: u8,
 }
 
@@ -1141,6 +3745,7 @@ fn runserver_context_from_options(options: &RunServerOptions) -> CommandContext 
 	let mut ctx = CommandContext::default();
 	ctx.set_verbosity(options.verbosity);
 	ctx.add_arg(options.address.clone());
+	ctx.set_option("grpc-address".to_string(), options.grpc_address.clone());
 	ctx.set_option("watch-delay".to_string(), options.watch_delay.to_string());
 
 	if options.noreload {
@@ -1177,8 +3782,47 @@ fn runserver_context_from_options(options: &RunServerOptions) -> CommandContext 
 	if let Some(ref index) = options.index {
 		ctx.set_option("index".to_string(), index.clone());
 	}
+	if options.asset_mode != "production" {
+		ctx.set_option("asset-mode".to_string(), options.asset_mode.clone());
+	}
+	if let Some(ref manifest) = options.asset_manifest {
+		ctx.set_option("asset-manifest".to_string(), manifest.clone());
+	}
+	if let Some(ref entrypoint) = options.asset_entrypoint {
+		ctx.set_option("asset-entrypoint".to_string(), entrypoint.clone());
+	}
+	if let Some(ref build_id) = options.expected_asset_build_id {
+		ctx.set_option("expected-asset-build-id".to_string(), build_id.clone());
+	}
+	if let Some(ref package) = options.package {
+		ctx.set_option("package".to_string(), package.clone());
+	}
+	if !options.features.is_empty() {
+		ctx.set_option("features".to_string(), options.features.join(","));
+	}
+	if options.all_features {
+		ctx.set_option("all-features".to_string(), "true".to_string());
+	}
 
 	ctx
+}
+
+/// Execute the runserver command
+async fn execute_runserver(options: RunServerOptions) -> Result<(), Box<dyn std::error::Error>> {
+	let ctx = runserver_context_from_options(&options);
+	let cmd = RunServerCommand;
+	cmd.execute(&ctx).await.map_err(|e| e.into())
+}
+
+/// Execute the shell command
+async fn execute_shell(
+	command: Option<String>,
+	verbosity: u8,
+	shell: Option<ShellConfig>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let ctx = shell_context(command, verbosity);
+	let cmd = shell.map(ShellCommand::new).unwrap_or_default();
+	cmd.execute(&ctx).await.map_err(|error| error.into())
 }
 
 fn shell_context(command: Option<String>, verbosity: u8) -> CommandContext {
@@ -1207,6 +3851,18 @@ fn check_context(app_label: Option<String>, deploy: bool, verbosity: u8) -> Comm
 	ctx
 }
 
+async fn execute_check(
+	app_label: Option<String>,
+	deploy: bool,
+	verbosity: u8,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let ctx = check_context(app_label, deploy, verbosity);
+	CheckCommand
+		.execute(&ctx)
+		.await
+		.map_err(|error| error.into())
+}
+
 struct CollectStaticRequest {
 	config: StaticFilesConfig,
 	options: CollectStaticOptions,
@@ -1226,15 +3882,39 @@ fn collectstatic_request(
 	index: Option<String>,
 	verbosity: u8,
 ) -> CollectStaticRequest {
-	let static_root = merged
-		.get::<String>("static_root")
-		.ok()
-		.map(PathBuf::from)
-		.unwrap_or_else(|| base_dir.join("staticfiles"));
+	let static_settings = crate::StaticAssetSettings::from_merged(merged, base_dir);
+	collectstatic_request_from_settings(
+		base_dir,
+		static_settings,
+		clear,
+		no_input,
+		dry_run,
+		link,
+		ignore,
+		index,
+		verbosity,
+	)
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "The helper maps independent collectstatic CLI options without hiding them in shared state."
+)]
+fn collectstatic_request_from_settings(
+	base_dir: &Path,
+	static_settings: crate::StaticAssetSettings,
+	clear: bool,
+	no_input: bool,
+	dry_run: bool,
+	link: bool,
+	ignore: Vec<String>,
+	index: Option<String>,
+	verbosity: u8,
+) -> CollectStaticRequest {
 	let config = StaticFilesConfig {
-		static_root,
-		static_url: merged.get_or("static_url", "/static/".to_string()),
-		staticfiles_dirs: merged.get_or("staticfiles_dirs", Vec::new()),
+		static_root: static_settings.static_root,
+		static_url: static_settings.static_url,
+		staticfiles_dirs: static_settings.staticfiles_dirs,
 		media_url: None,
 	};
 	let options = CollectStaticOptions {
@@ -1261,6 +3941,7 @@ fn collectstatic_request(
 }
 
 /// Execute the collectstatic command
+#[allow(clippy::too_many_arguments)] // The handler mirrors collectstatic's independent CLI options.
 async fn execute_collectstatic(
 	clear: bool,
 	no_input: bool,
@@ -1268,6 +3949,9 @@ async fn execute_collectstatic(
 	link: bool,
 	ignore: Vec<String>,
 	index: Option<String>,
+	package: Option<String>,
+	features: Vec<String>,
+	all_features: bool,
 	verbosity: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	// Load settings from TOML files
@@ -1344,10 +4028,56 @@ async fn execute_collectstatic(
 	let request = collectstatic_request(
 		&base_dir, &merged, clear, no_input, dry_run, link, ignore, index, verbosity,
 	);
+	execute_prepared_collectstatic(request, &base_dir, package, features, all_features).await
+}
 
+#[allow(
+	clippy::too_many_arguments,
+	reason = "The handler forwards independent collectstatic CLI options to the shared executor."
+)]
+#[cfg(feature = "contract")]
+async fn execute_collectstatic_with_settings(
+	settings: crate::StaticAssetSettings,
+	clear: bool,
+	no_input: bool,
+	dry_run: bool,
+	link: bool,
+	ignore: Vec<String>,
+	index: Option<String>,
+	package: Option<String>,
+	features: Vec<String>,
+	all_features: bool,
+	verbosity: u8,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let base_dir = env::current_dir()?;
+	let request = collectstatic_request_from_settings(
+		&base_dir, settings, clear, no_input, dry_run, link, ignore, index, verbosity,
+	);
+	execute_prepared_collectstatic(request, &base_dir, package, features, all_features).await
+}
+
+async fn execute_prepared_collectstatic(
+	request: CollectStaticRequest,
+	base_dir: &Path,
+	package: Option<String>,
+	features: Vec<String>,
+	all_features: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
 	// Create and execute command in blocking context
 	let mut cmd = CollectStaticCommand::new(request.config, request.options);
 	cmd.set_index_source(request.index_source);
+	let feature_selection = if all_features {
+		crate::StyleFeatureSelection::all_features()
+	} else {
+		crate::StyleFeatureSelection::with_features(features)
+	};
+	let style_context = resolve_collectstatic_style_context(
+		&base_dir.join("Cargo.toml"),
+		package.as_deref(),
+		feature_selection,
+	)
+	.map_err(|error| format!("failed to select component style package: {error}"))?;
+	cmd.set_style_context(style_context);
 	let result = tokio::task::spawn_blocking(move || {
 		// Call the sync execute() method directly (not the BaseCommand trait method)
 		CollectStaticCommand::execute(&mut cmd)
@@ -1359,6 +4089,31 @@ async fn execute_collectstatic(
 		Ok(Err(e)) => Err(Box::new(e) as Box<dyn std::error::Error>),
 		Err(e) => Err(Box::new(e) as Box<dyn std::error::Error>),
 	}
+}
+
+fn resolve_collectstatic_style_context(
+	manifest_path: &Path,
+	requested_package: Option<&str>,
+	feature_selection: crate::StyleFeatureSelection,
+) -> Result<Option<crate::StylePackageContext>, String> {
+	match crate::StylePackageContext::resolve_with_features(
+		manifest_path,
+		requested_package,
+		feature_selection,
+	) {
+		Ok(context) => Ok(Some(context)),
+		Err(error)
+			if requested_package.is_none() && virtual_workspace_has_no_style_package(&error) =>
+		{
+			Ok(None)
+		}
+		Err(error) => Err(error),
+	}
+}
+
+fn virtual_workspace_has_no_style_package(error: &str) -> bool {
+	error == "the Cargo workspace has no root package; pass --package <NAME>"
+		|| (error.contains("manifest is virtual") && error.contains("workspace has no members"))
 }
 
 fn showurls_context(names: bool, verbosity: u8) -> CommandContext {
@@ -1374,13 +4129,14 @@ fn showurls_context(names: bool, verbosity: u8) -> CommandContext {
 
 /// Execute the showurls command.
 #[cfg(feature = "routers")]
-async fn execute_showurls(ctx: CommandContext) -> Result<(), Box<dyn std::error::Error>> {
+async fn execute_showurls(names: bool, verbosity: u8) -> Result<(), Box<dyn std::error::Error>> {
+	let ctx = showurls_context(names, verbosity);
 	ShowUrlsCommand.execute(&ctx).await.map_err(|e| e.into())
 }
 
 /// Execute the showurls command.
 #[cfg(not(feature = "routers"))]
-async fn execute_showurls(_ctx: CommandContext) -> Result<(), Box<dyn std::error::Error>> {
+async fn execute_showurls(_names: bool, _verbosity: u8) -> Result<(), Box<dyn std::error::Error>> {
 	Err("showurls command requires 'routers' feature. \
 		Enable it in your Cargo.toml: \
 		reinhardt-commands = { version = \"0.1.0\", features = [\"routers\"] }"
@@ -1563,7 +4319,7 @@ async fn execute_generateopenapi(
 /// subcommands, so most applications never need to invoke it directly. It is
 /// exposed as a public building block for **non-CLI server entrypoints** —
 /// for example, a container entrypoint binary that calls
-/// [`RunServerCommand::execute`](crate::RunServerCommand) directly without
+/// [`RunServerCommand::execute`] directly without
 /// going through clap argument parsing.
 ///
 /// For the common "just start the HTTP server" case, prefer the higher-level
@@ -1583,12 +4339,10 @@ async fn execute_generateopenapi(
 /// you need control beyond what [`start_server`] offers:
 ///
 /// ```rust,no_run
-/// use reinhardt_commands::{auto_register_router, BaseCommand, CommandContext, RunServerCommand};
+/// use reinhardt_commands::{BaseCommand, CommandContext, RunServerCommand};
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     auto_register_router().await?;
-///
 ///     let mut ctx = CommandContext::new(vec!["0.0.0.0:8080".to_string()]);
 ///     ctx.set_option("noreload".to_string(), "true".to_string());
 ///
@@ -1704,10 +4458,591 @@ pub(crate) fn generate_random_secret_key() -> String {
 
 #[cfg(test)]
 mod tests {
+	#[rstest::rstest]
+	#[case(false)]
+	#[case(true)]
+	fn runserver_asset_entrypoint_parses_and_forwards(#[case] no_spa: bool) {
+		// Arrange
+		let mut args = vec![
+			"manage",
+			"-vv",
+			"runserver",
+			"--with-pages",
+			"--asset-entrypoint",
+			"dashboard",
+		];
+		if no_spa {
+			args.push("--no-spa");
+		}
+		// Act
+		let cli = Cli::try_parse_from(args).expect("management entrypoint selector should parse");
+		let BuiltinCommandPlan::Runserver(ctx) = builtin_command_plan(cli.command, cli.verbosity)
+		else {
+			panic!("runserver should produce a runserver context");
+		};
+		// Assert
+		assert_eq!(
+			ctx.option("asset-entrypoint").map(String::as_str),
+			Some("dashboard")
+		);
+		assert_eq!(ctx.option("with-pages").map(String::as_str), Some("true"));
+		assert_eq!(ctx.has_option("no-spa"), no_spa);
+		assert_eq!(ctx.verbosity(), 2);
+	}
+
+	#[rstest::rstest]
+	fn runserver_asset_entrypoint_is_omitted_by_default() {
+		// Arrange
+		let cli = Cli::try_parse_from(["manage", "runserver"])
+			.expect("existing runserver arguments should parse");
+		// Act
+		let BuiltinCommandPlan::Runserver(ctx) = builtin_command_plan(cli.command, cli.verbosity)
+		else {
+			panic!("runserver should produce a runserver context");
+		};
+		// Assert
+		assert!(!ctx.has_option("asset-entrypoint"));
+	}
+
+	#[rstest::rstest]
+	fn runserver_asset_entrypoint_requires_a_value() {
+		// Arrange
+		let args = ["manage", "runserver", "--asset-entrypoint"];
+		// Act
+		let error = Cli::try_parse_from(args).expect_err("entrypoint requires a name");
+		// Assert
+		assert_eq!(error.kind(), ErrorKind::InvalidValue);
+		assert!(error.to_string().contains("--asset-entrypoint <NAME>"));
+	}
+
+	#[rstest::rstest]
+	fn runserver_asset_entrypoint_is_listed_in_help() {
+		// Arrange
+		let args = ["manage", "runserver", "--help"];
+		// Act
+		let help = Cli::try_parse_from(args).expect_err("help should be displayed");
+		// Assert
+		assert_eq!(help.kind(), ErrorKind::DisplayHelp);
+		assert!(help.to_string().contains("--asset-entrypoint <NAME>"));
+	}
+
+	#[rstest::rstest]
+	fn buildstatic_driver_keeps_custom_enum_compatibility_and_validates_help() {
+		// Arrange
+		let registry = super::CommandRegistry::new();
+		let args = [
+			"manage",
+			"buildstatic",
+			"--pages",
+			"--package",
+			"dashboard",
+			"--release",
+		]
+		.map(std::ffi::OsString::from);
+		// Act
+		let (command, _) = super::parse_cli_arguments(&args, &registry).unwrap();
+		let help = ["manage", "buildstatic", "--help"].map(std::ffi::OsString::from);
+		// Assert
+		assert!(matches!(command, super::Commands::Custom { name, .. } if name == "buildstatic"));
+		let super::DriverParseError::Clap(error) =
+			super::parse_cli_arguments(&help, &registry).unwrap_err()
+		else {
+			panic!("clap help expected")
+		};
+		assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+		assert!(error.to_string().contains("--pages-dir"));
+	}
+
 	use super::*;
 	use async_trait::async_trait;
 	use clap::error::ErrorKind;
+	#[cfg(feature = "migrations")]
+	use reinhardt_conf::MigrationSettings;
+	#[cfg(feature = "migrations")]
+	use reinhardt_conf::settings::contacts::ContactSettings;
+	#[cfg(feature = "migrations")]
+	use reinhardt_conf::settings::core_settings::CoreSettings;
+	#[cfg(feature = "migrations")]
+	use reinhardt_conf::settings::fragment::HasSettings;
+	#[cfg(feature = "migrations")]
+	use reinhardt_db::migrations::{
+		DependencyCondition, FilesystemRepository, Migration, MigrationRenderOptions,
+		OptionalDependency,
+	};
 	use rstest::rstest;
+	#[cfg(feature = "reinhardt-db")]
+	use std::cell::Cell;
+	#[cfg(feature = "reinhardt-db")]
+	use std::sync::atomic::{AtomicBool, Ordering};
+	#[cfg(feature = "migrations")]
+	use tempfile::TempDir;
+
+	#[cfg(feature = "migrations")]
+	struct SquashTestSettings {
+		core: CoreSettings,
+		contacts: ContactSettings,
+		migrations: MigrationSettings,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl HasSettings<CoreSettings> for SquashTestSettings {
+		fn get_settings(&self) -> &CoreSettings {
+			&self.core
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	impl HasSettings<ContactSettings> for SquashTestSettings {
+		fn get_settings(&self) -> &ContactSettings {
+			&self.contacts
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	impl HasSettings<MigrationSettings> for SquashTestSettings {
+		fn get_settings(&self) -> &MigrationSettings {
+			&self.migrations
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	fn create_cli_squash_project(setting_condition: Option<&str>) -> TempDir {
+		let project = tempfile::tempdir().expect("create temporary project");
+		let migrations_dir = project.path().join("migrations");
+		let repository = FilesystemRepository::new(&migrations_dir);
+		let first = Migration::new("0001_initial", "polls");
+		let mut second = Migration::new("0002_follow_up", "polls");
+		second.dependencies = vec![("polls".to_string(), "0001_initial".to_string())];
+		if let Some(setting_key) = setting_condition {
+			second.optional_dependencies.push(OptionalDependency::new(
+				"audit",
+				"0001_initial",
+				DependencyCondition::SettingEnabled(setting_key.to_string()),
+			));
+		}
+
+		for migration in [&first, &second] {
+			let source = repository
+				.render(
+					migration,
+					MigrationRenderOptions {
+						include_header: true,
+					},
+				)
+				.expect("render migration");
+			repository
+				.create_new_source(&migration.app_label, &migration.name, &source)
+				.expect("write migration");
+		}
+
+		project
+	}
+
+	#[cfg(feature = "migrations")]
+	fn squash_test_settings(
+		base_dir: &Path,
+		migration_settings: serde_json::Value,
+	) -> (Arc<dyn HasCommonSettings>, MigrationSettings) {
+		let core = serde_json::from_value(serde_json::json!({
+			"base_dir": base_dir,
+			"secret_key": "test-secret",
+		}))
+		.expect("deserialize squash test settings");
+		let migrations: MigrationSettings = serde_json::from_value(serde_json::json!({
+			"migration_settings": migration_settings,
+		}))
+		.expect("deserialize migration settings");
+		(
+			Arc::new(SquashTestSettings {
+				core,
+				contacts: ContactSettings::default(),
+				migrations: migrations.clone(),
+			}),
+			migrations,
+		)
+	}
+
+	#[cfg(feature = "migrations")]
+	fn squash_command(migrations_dir: Option<PathBuf>) -> Commands {
+		Commands::Squashmigrations {
+			app_label: "polls".to_string(),
+			start_migration: None,
+			migration_name: "0002".to_string(),
+			no_optimize: false,
+			no_input: true,
+			no_header: false,
+			squashed_name: None,
+			migrations_dir,
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	fn migration_visibility_uses_project_path_and_migration_fragment() {
+		let project = tempfile::tempdir().expect("create temporary project");
+		let (settings, mut migration_settings) =
+			squash_test_settings(project.path(), serde_json::json!({"ENABLE_AUDIT": "true"}));
+		migration_settings.migration_features = vec!["gis".to_string()];
+		migration_settings
+			.migration_swappable_settings
+			.insert("AUTH_USER_MODEL".to_string(), "accounts.User".to_string());
+		let mut ctx = CommandContext::new(Vec::new()).with_settings(settings);
+
+		crate::showmigrations::attach_migration_settings(&mut ctx, &migration_settings);
+		let dependency_context = crate::showmigrations::migration_dependency_context(&ctx);
+
+		assert_eq!(
+			crate::showmigrations::migration_source_path(&ctx),
+			project.path().join("migrations")
+		);
+		assert_eq!(
+			dependency_context.get_setting("ENABLE_AUDIT"),
+			Some(&"true".to_string())
+		);
+		assert_eq!(
+			dependency_context.get_setting("AUTH_USER_MODEL"),
+			Some(&"accounts.User".to_string())
+		);
+		assert!(dependency_context.is_feature_enabled("gis"));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	#[tokio::test]
+	async fn squashmigrations_uses_general_settings_for_setting_enabled_dependencies() {
+		// Arrange
+		let project = create_cli_squash_project(Some("ENABLE_AUDIT"));
+		let migrations_dir = project.path().join("migrations");
+		let (settings, migration_settings) =
+			squash_test_settings(project.path(), serde_json::json!({"ENABLE_AUDIT": "true"}));
+
+		// Act
+		let error = run_command_core(
+			squash_command(Some(migrations_dir)),
+			0,
+			CommandRegistry::new(),
+			Some(settings),
+			Some(migration_settings),
+			None,
+			None,
+		)
+		.await
+		.expect_err("enabled optional dependency must be validated");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Invalid arguments: Dependency error: Missing dependency audit.0001_initial required by \
+			 polls.0002_follow_up"
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	#[tokio::test]
+	async fn squashmigrations_uses_project_base_dir_for_default_migrations_path() {
+		// Arrange
+		let project = create_cli_squash_project(None);
+		let migrations_dir = project.path().join("migrations");
+		let (settings, migration_settings) =
+			squash_test_settings(project.path(), serde_json::json!({}));
+
+		// Act
+		run_command_core(
+			squash_command(None),
+			0,
+			CommandRegistry::new(),
+			Some(settings),
+			Some(migration_settings),
+			None,
+			None,
+		)
+		.await
+		.expect("project base directory must supply the default migrations path");
+
+		// Assert
+		assert!(migrations_dir.join("polls/0001_squashed_0002.rs").is_file());
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	#[tokio::test]
+	async fn squashmigrations_explicit_migrations_path_overrides_project_base_dir() {
+		// Arrange
+		let project = create_cli_squash_project(None);
+		let migrations_dir = project.path().join("migrations");
+		let (settings, migration_settings) = squash_test_settings(
+			&project.path().join("different-project"),
+			serde_json::json!({}),
+		);
+
+		// Act
+		run_command_core(
+			squash_command(Some(migrations_dir.clone())),
+			0,
+			CommandRegistry::new(),
+			Some(settings),
+			Some(migration_settings),
+			None,
+			None,
+		)
+		.await
+		.expect("explicit migrations path must remain authoritative");
+
+		// Assert
+		assert!(migrations_dir.join("polls/0001_squashed_0002.rs").is_file());
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	struct RecordingDbClientRunner {
+		called: Cell<bool>,
+		outcome: crate::dbshell::DbShellOutcome,
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	impl crate::dbshell::DbClientRunner for RecordingDbClientRunner {
+		fn run(
+			&self,
+			_spec: &crate::dbshell::DbClientSpec,
+		) -> crate::CommandResult<crate::dbshell::DbShellOutcome> {
+			self.called.set(true);
+			Ok(self.outcome)
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	struct RegisteredFixtureNameCommand;
+
+	#[cfg(feature = "reinhardt-db")]
+	static REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED: AtomicBool = AtomicBool::new(false);
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest::rstest]
+	fn dbshell_dispatch_resolves_url_override_without_settings() {
+		let runner = RecordingDbClientRunner {
+			called: Cell::new(false),
+			outcome: crate::dbshell::DbShellOutcome::Exited(0),
+		};
+
+		let result = execute_dbshell_with_runner(
+			"default".to_string(),
+			Some(
+				"sqlite:db.sqlite3"
+					.parse()
+					.expect("database URL wrapper should parse"),
+			),
+			vec![OsString::from("-readonly")],
+			None,
+			&runner,
+		);
+
+		assert!(result.is_ok());
+		assert!(runner.called.get());
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest::rstest]
+	fn dbshell_does_not_require_orm_initialization() {
+		let command = Commands::Dbshell {
+			database: "default".to_string(),
+			database_url: Some(
+				"sqlite:db.sqlite3"
+					.parse()
+					.expect("database URL wrapper should parse"),
+			),
+			client_arguments: Vec::new(),
+		};
+
+		assert!(!requires_database(&command, &CommandRegistry::new()));
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest::rstest]
+	fn dbshell_debug_redacts_sensitive_passthrough_arguments() {
+		// Arrange
+		let command = Commands::Dbshell {
+			database: "default".to_string(),
+			database_url: None,
+			client_arguments: vec![
+				OsString::from("--password=cli-secret"),
+				OsString::from("--token"),
+				OsString::from("token-secret"),
+				OsString::from("--database-url"),
+				OsString::from("mysql://operator:database-secret@localhost/app"),
+				OsString::from("--safe-option"),
+			],
+		};
+
+		// Act
+		let debug = format!("{command:?}");
+
+		// Assert
+		assert_eq!(
+			debug,
+			"Dbshell { database: \"default\", database_url: None, client_arguments: [\"[REDACTED]\", \"--token\", \"[REDACTED]\", \"--database-url\", \"[REDACTED]\", \"--safe-option\"] }"
+		);
+		assert!(!debug.contains("cli-secret"));
+		assert!(!debug.contains("token-secret"));
+		assert!(!debug.contains("database-secret"));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	fn inspectdb_debug_redacts_database_url() {
+		// Arrange
+		let secret_url = "postgres://user:secret@example.test/database";
+		let command = Commands::Inspectdb {
+			tables: Vec::new(),
+			database: "default".to_string(),
+			database_url: Some(secret_url.to_string()),
+			include_views: false,
+			include_partitions: false,
+			output: None,
+			config: None,
+			force: false,
+		};
+
+		// Act
+		let debug = format!("{command:?}");
+
+		// Assert
+		assert_eq!(
+			debug,
+			"Inspectdb { tables: [], database: \"default\", database_url: Some(\"[REDACTED]\"), include_views: false, include_partitions: false, output: None, config: None, force: false }"
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	fn migration_command_debug_redacts_database_urls() {
+		let secret_url = "postgres://user:secret@example.test/database";
+		let commands = [
+			Commands::Showmigrations {
+				app_labels: Vec::new(),
+				list: true,
+				plan: false,
+				database: "default".to_owned(),
+				database_url: Some(secret_url.to_owned()),
+				migrations_dir: None,
+			},
+			Commands::Sqlmigrate {
+				app_label: "app".to_owned(),
+				migration_name: "0001_initial".to_owned(),
+				backwards: false,
+				database: "default".to_owned(),
+				database_url: Some(secret_url.to_owned()),
+				migrations_dir: None,
+			},
+			Commands::Migrate {
+				app_label: None,
+				migration_name: None,
+				database: Some(secret_url.to_owned()),
+				fake: false,
+				fake_initial: false,
+				plan: true,
+				migrations_dir: None,
+			},
+		];
+		for command in commands {
+			let debug = format!("{command:?}");
+			assert!(debug.contains("[REDACTED]"));
+			assert!(!debug.contains("secret"));
+		}
+	}
+
+	#[cfg(all(feature = "reinhardt-db", unix))]
+	#[rstest::rstest]
+	fn driver_parser_preserves_non_utf8_dbshell_passthrough() {
+		use std::os::unix::ffi::OsStringExt;
+
+		let non_utf8 = OsString::from_vec(vec![0xff, b'-', 0xfe]);
+		let raw_args = vec![
+			OsString::from("manage"),
+			OsString::from("dbshell"),
+			OsString::from("--database-url"),
+			OsString::from("sqlite:db.sqlite3"),
+			OsString::from("--"),
+			non_utf8.clone(),
+		];
+
+		let (command, verbosity) = parse_cli_arguments(&raw_args, &CommandRegistry::new())
+			.expect("parse dbshell arguments");
+
+		assert_eq!(verbosity, 0);
+		match command {
+			Commands::Dbshell {
+				client_arguments, ..
+			} => assert_eq!(client_arguments, vec![non_utf8]),
+			other => panic!("Expected Dbshell command, got {other:?}"),
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest::rstest]
+	fn driver_parser_does_not_normalize_dbshell_passthrough_verbosity() {
+		let raw_args = vec![
+			OsString::from("manage"),
+			OsString::from("--verbosity=2"),
+			OsString::from("dbshell"),
+			OsString::from("--database-url"),
+			OsString::from("sqlite:db.sqlite3"),
+			OsString::from("--"),
+			OsString::from("--verbosity=2"),
+			OsString::from("-v"),
+		];
+
+		let (command, verbosity) = parse_cli_arguments(&raw_args, &CommandRegistry::new())
+			.expect("parse dbshell arguments");
+
+		assert_eq!(verbosity, 2);
+		match command {
+			Commands::Dbshell {
+				client_arguments, ..
+			} => assert_eq!(
+				client_arguments,
+				vec![OsString::from("--verbosity=2"), OsString::from("-v")]
+			),
+			other => panic!("Expected Dbshell command, got {other:?}"),
+		}
+	}
+
+	#[cfg(all(feature = "reinhardt-db", unix))]
+	#[rstest::rstest]
+	fn custom_command_non_utf8_error_omits_raw_argument_bytes() {
+		use std::os::unix::ffi::OsStringExt;
+
+		let raw_args = vec![
+			OsString::from("manage"),
+			OsString::from("seed"),
+			OsString::from_vec(vec![
+				0xff, b'd', b'o', b'-', b'n', b'o', b't', b'-', b'p', b'r', b'i', b'n', b't',
+			]),
+		];
+
+		let diagnostic = resolve_custom_command(&raw_args, &CommandRegistry::new())
+			.expect_err("custom command arguments must be valid UTF-8")
+			.to_string();
+
+		assert_eq!(
+			diagnostic,
+			"Invalid arguments: Custom command names and arguments must be valid UTF-8."
+		);
+		assert!(!diagnostic.contains("do-not-print"));
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[async_trait::async_trait]
+	impl BaseCommand for RegisteredFixtureNameCommand {
+		fn name(&self) -> &str {
+			"seed"
+		}
+
+		async fn execute(&self, _ctx: &CommandContext) -> crate::CommandResult<()> {
+			REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED.store(true, Ordering::SeqCst);
+			Ok(())
+		}
+	}
+
 	use std::sync::{Arc, Mutex};
 
 	#[cfg(feature = "openapi")]
@@ -2030,6 +5365,7 @@ mod tests {
 				],
 				vec!["0.0.0.0:9000"],
 				vec![
+					("grpc-address", "127.0.0.1:50051"),
 					("watch-delay", "25"),
 					("noreload", "true"),
 					("no-wasm-rebuild", "true"),
@@ -2149,6 +5485,9 @@ mod tests {
 				link: true,
 				ignore: vec!["*.map".to_string()],
 				index: Some("frontend/index.html".to_string()),
+				package: None,
+				features: Vec::new(),
+				all_features: false,
 			},
 			2,
 		);
@@ -2240,7 +5579,7 @@ mod tests {
 	#[cfg(not(feature = "routers"))]
 	#[tokio::test]
 	async fn execute_showurls_reports_the_feature_requirement_exactly() {
-		let error = execute_showurls(showurls_context(false, 0))
+		let error = execute_showurls(false, 0)
 			.await
 			.expect_err("showurls requires the routers feature");
 
@@ -2446,6 +5785,7 @@ mod tests {
 		// Arrange
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
+			grpc_address: "127.0.0.1:50051".to_string(),
 			noreload: false,
 			watch_delay: 120,
 			no_wasm_rebuild: false,
@@ -2459,6 +5799,13 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
@@ -2479,6 +5826,21 @@ mod tests {
 
 		// Assert
 		assert!(result);
+	}
+
+	#[cfg(all(feature = "contract", feature = "reinhardt-db"))]
+	#[rstest]
+	fn contract_export_registers_routes_without_global_database_initialization() {
+		let command = Commands::Contract {
+			command: ContractSubcommand::Export {
+				format: ContractOutputFormat::Json,
+				database: None,
+				database_url: None,
+			},
+		};
+
+		assert!(!requires_router(&command));
+		assert!(!requires_database(&command, &CommandRegistry::new()));
 	}
 
 	#[cfg(feature = "openapi")]
@@ -2555,6 +5917,9 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
@@ -2635,6 +6000,7 @@ mod tests {
 		// Arrange
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
+			grpc_address: "127.0.0.1:50051".to_string(),
 			noreload: false,
 			watch_delay: 120,
 			no_wasm_rebuild: false,
@@ -2648,6 +6014,13 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act & Assert
@@ -2663,6 +6036,7 @@ mod tests {
 		// Arrange
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
+			grpc_address: "127.0.0.1:50051".to_string(),
 			noreload: false,
 			watch_delay: 120,
 			no_wasm_rebuild: false,
@@ -2676,6 +6050,13 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act & Assert
@@ -2691,6 +6072,7 @@ mod tests {
 		// Arrange & Act
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
+			grpc_address: "127.0.0.1:50051".to_string(),
 			noreload: false,
 			watch_delay: 120,
 			no_wasm_rebuild: false,
@@ -2704,6 +6086,13 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: true,
 			index: Some("./index.html".to_string()),
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -2720,6 +6109,7 @@ mod tests {
 		// Arrange & Act
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
+			grpc_address: "127.0.0.1:50051".to_string(),
 			noreload: false,
 			watch_delay: 120,
 			no_wasm_rebuild: false,
@@ -2733,6 +6123,13 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -2752,6 +6149,7 @@ mod tests {
 		// Arrange: build options as the CLI parser would after `--no-wasm-rebuild`
 		let options = RunServerOptions {
 			address: "127.0.0.1:8000".to_string(),
+			grpc_address: "127.0.0.1:50051".to_string(),
 			noreload: false,
 			watch_delay: 120,
 			no_wasm_rebuild: true,
@@ -2765,6 +6163,13 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -2781,6 +6186,7 @@ mod tests {
 		// Arrange: build options as the CLI parser would after `--no-override-wasm`
 		let options = RunServerOptions {
 			address: "127.0.0.1:8000".to_string(),
+			grpc_address: "127.0.0.1:50051".to_string(),
 			noreload: false,
 			watch_delay: 120,
 			no_wasm_rebuild: false,
@@ -2794,6 +6200,13 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -2812,6 +6225,7 @@ mod tests {
 		// can detect it and emit the warning.
 		let options = RunServerOptions {
 			address: "127.0.0.1:8000".to_string(),
+			grpc_address: "127.0.0.1:50051".to_string(),
 			noreload: false,
 			watch_delay: 120,
 			no_wasm_rebuild: false,
@@ -2825,6 +6239,13 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -2840,6 +6261,7 @@ mod tests {
 		// Arrange
 		let options = RunServerOptions {
 			address: "127.0.0.1:8000".to_string(),
+			grpc_address: "127.0.0.1:50051".to_string(),
 			noreload: false,
 			watch_delay: 75,
 			no_wasm_rebuild: false,
@@ -2853,6 +6275,13 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -2928,6 +6357,173 @@ mod tests {
 		}
 	}
 
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_fixture_commands_parse_without_public_command_variants() {
+		let command = parse_fixture_command(
+			"dumpdata",
+			&[
+				"writing_sources.WritingProject".to_string(),
+				"auth".to_string(),
+				"--exclude".to_string(),
+				"sessions.Session".to_string(),
+			],
+		)
+		.expect("dumpdata arguments must parse")
+		.expect("dumpdata must be recognized as a built-in fixture command");
+
+		match command {
+			FixtureCommand::Dumpdata { selectors, exclude } => {
+				assert_eq!(
+					selectors,
+					vec![
+						"writing_sources.WritingProject".to_string(),
+						"auth".to_string()
+					]
+				);
+				assert_eq!(exclude, vec!["sessions.Session".to_string()]);
+			}
+			_ => panic!("Expected FixtureCommand::Dumpdata"),
+		}
+
+		let registry = CommandRegistry::new();
+		let resolved = resolve_custom_command(
+			&[
+				"manage".to_string(),
+				"dumpdata".to_string(),
+				"writing_sources.WritingProject".to_string(),
+			],
+			&registry,
+		)
+		.expect("fixture arguments must be valid UTF-8");
+
+		assert_eq!(
+			resolved,
+			Some((
+				"dumpdata".to_string(),
+				vec!["writing_sources.WritingProject".to_string()],
+				0,
+			))
+		);
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_fixture_commands_resolve_after_count_style_verbosity() {
+		let registry = CommandRegistry::new();
+
+		for fixture_command in ["dumpdata", "seed"] {
+			let resolved = resolve_custom_command(
+				&[
+					"manage".to_string(),
+					"--verbosity".to_string(),
+					fixture_command.to_string(),
+				],
+				&registry,
+			)
+			.expect("fixture arguments must be valid UTF-8");
+
+			assert_eq!(resolved, Some((fixture_command.to_string(), Vec::new(), 1)));
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_fixture_commands_resolve_after_value_style_verbosity() {
+		let registry = CommandRegistry::new();
+
+		for args in [
+			vec!["--verbosity".to_string(), "2".to_string()],
+			vec!["--verbosity=2".to_string()],
+		] {
+			let mut raw_args = vec!["manage".to_string()];
+			raw_args.extend(args);
+			raw_args.push("dumpdata".to_string());
+			assert_eq!(
+				resolve_custom_command(&raw_args, &registry)
+					.expect("fixture arguments must be valid UTF-8"),
+				Some(("dumpdata".to_string(), Vec::new(), 2))
+			);
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_value_style_verbosity_reaches_the_custom_command_fallback() {
+		let registry = CommandRegistry::new();
+		let raw_args = vec![
+			"manage".to_string(),
+			"--verbosity=2".to_string(),
+			"seed".to_string(),
+		];
+
+		let normalized_args = normalize_count_style_verbosity_args(&raw_args);
+		let clap_error = Cli::try_parse_from(&normalized_args)
+			.expect_err("fixture subcommands must remain eligible for custom resolution");
+
+		assert!(is_unknown_subcommand(&clap_error));
+		assert_eq!(
+			resolve_custom_command(&raw_args, &registry)
+				.expect("fixture arguments must be valid UTF-8"),
+			Some(("seed".to_string(), Vec::new(), 2))
+		);
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[tokio::test]
+	async fn test_registered_fixture_name_dispatches_before_fixture_commands() {
+		REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED.store(false, Ordering::SeqCst);
+		let mut registry = CommandRegistry::new();
+		registry.register(Box::new(RegisteredFixtureNameCommand));
+		let command = Commands::Custom {
+			name: "seed".to_string(),
+			args: vec!["project".to_string()],
+		};
+
+		assert!(!requires_database(&command, &registry));
+		run_command_with_registry(command, 0, registry)
+			.await
+			.expect("registered fixture-named commands must dispatch through the registry");
+		assert!(REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED.load(Ordering::SeqCst));
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_loaddata_fixture_parser_accepts_paths() {
+		let command = parse_fixture_command("loaddata", &["fixtures/dev.json".to_string()])
+			.expect("loaddata arguments must parse")
+			.expect("loaddata must be recognized as a built-in fixture command");
+
+		match command {
+			FixtureCommand::Loaddata { fixtures } => {
+				assert_eq!(
+					fixtures,
+					vec![std::path::PathBuf::from("fixtures/dev.json")]
+				);
+			}
+			_ => panic!("Expected FixtureCommand::Loaddata"),
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_seed_fixture_parser_accepts_app_labels() {
+		let command =
+			parse_fixture_command("seed", &["writing_sources".to_string(), "auth".to_string()])
+				.expect("seed arguments must parse")
+				.expect("seed must be recognized as a built-in fixture command");
+
+		match command {
+			FixtureCommand::Seed { app_labels } => {
+				assert_eq!(
+					app_labels,
+					vec!["writing_sources".to_string(), "auth".to_string()]
+				);
+			}
+			_ => panic!("Expected FixtureCommand::Seed"),
+		}
+	}
+
 	#[rstest]
 	fn test_collectstatic_with_index_option() {
 		// Arrange & Act
@@ -2938,6 +6534,9 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: Some("./index.html".to_string()),
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -2948,12 +6547,125 @@ mod tests {
 		}
 	}
 
+	#[rstest]
+	fn collectstatic_package_option_parses() {
+		let cli = Cli::try_parse_from(["manage", "collectstatic", "--package", "poll-app"])
+			.expect("collectstatic package option should parse");
+
+		match cli.command {
+			Commands::Collectstatic { package, .. } => {
+				assert_eq!(package.as_deref(), Some("poll-app"));
+			}
+			_ => panic!("expected collectstatic command"),
+		}
+	}
+
+	#[rstest]
+	fn collectstatic_style_feature_options_parse() {
+		let cli = Cli::try_parse_from(["manage", "collectstatic", "--features", "theme,brand"])
+			.expect("collectstatic style features should parse");
+
+		let Commands::Collectstatic {
+			features,
+			all_features,
+			..
+		} = cli.command
+		else {
+			panic!("expected collectstatic command");
+		};
+		assert_eq!(features, ["theme", "brand"]);
+		assert!(!all_features);
+	}
+
+	#[rstest]
+	fn collectstatic_without_package_allows_a_virtual_workspace_root() {
+		let directory = tempfile::tempdir().expect("create temporary workspace");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::write(
+			&manifest_path,
+			"[workspace]\nmembers = []\nresolver = \"3\"\n",
+		)
+		.expect("write virtual workspace manifest");
+
+		let context = resolve_collectstatic_style_context(
+			&manifest_path,
+			None,
+			crate::StyleFeatureSelection::default(),
+		)
+		.expect("a virtual workspace has no component stylesheet package by default");
+
+		assert!(context.is_none());
+	}
+
+	#[rstest]
+	fn runserver_package_option_parses_and_forwards() {
+		let cli = Cli::try_parse_from(["manage", "runserver", "--package", "poll-app"])
+			.expect("runserver package option should parse");
+
+		let Commands::Runserver { package, .. } = cli.command else {
+			panic!("expected runserver command");
+		};
+		assert_eq!(package.as_deref(), Some("poll-app"));
+	}
+
+	#[rstest]
+	fn runserver_all_style_features_option_parses() {
+		let cli = Cli::try_parse_from(["manage", "runserver", "--all-features"])
+			.expect("runserver all style features should parse");
+
+		let Commands::Runserver {
+			features,
+			all_features,
+			..
+		} = cli.command
+		else {
+			panic!("expected runserver command");
+		};
+		assert!(features.is_empty());
+		assert!(all_features);
+	}
+
+	#[rstest]
+	fn runserver_unified_asset_options_parse_and_forward() {
+		let cli = Cli::try_parse_from([
+			"manage",
+			"runserver",
+			"--asset-mode",
+			"development",
+			"--asset-manifest",
+			"public/manifest.json",
+			"--expected-asset-build-id",
+			"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		])
+		.expect("unified asset options should parse");
+
+		let Commands::Runserver {
+			asset_mode,
+			asset_manifest,
+			asset_entrypoint,
+			expected_asset_build_id,
+			..
+		} = cli.command
+		else {
+			panic!("expected runserver command");
+		};
+
+		assert_eq!(asset_mode, "development");
+		assert!(asset_entrypoint.is_none());
+		assert_eq!(asset_manifest.as_deref(), Some("public/manifest.json"));
+		assert_eq!(
+			expected_asset_build_id.as_deref(),
+			Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+		);
+	}
+
 	#[cfg(feature = "reinhardt-db")]
 	#[rstest]
 	fn test_requires_database_for_runserver() {
 		// Arrange
 		let command = Commands::Runserver {
 			address: "127.0.0.1:8000".to_string(),
+			grpc_address: "127.0.0.1:50051".to_string(),
 			noreload: false,
 			watch_delay: 120,
 			no_wasm_rebuild: false,
@@ -2967,10 +6679,17 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(result);
@@ -2989,7 +6708,7 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(result);
@@ -3010,10 +6729,84 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(result);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	fn test_squashmigrations_does_not_require_database_initialization() {
+		// Arrange
+		let command = Commands::Squashmigrations {
+			app_label: "polls".to_string(),
+			start_migration: None,
+			migration_name: "0002".to_string(),
+			no_optimize: false,
+			no_input: true,
+			no_header: false,
+			squashed_name: None,
+			migrations_dir: None,
+		};
+
+		// Act
+		let result = requires_database(&command, &CommandRegistry::new());
+
+		// Assert
+		assert!(!result);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	fn migration_visibility_commands_select_their_own_database() {
+		let commands = [
+			Commands::Showmigrations {
+				app_labels: Vec::new(),
+				list: true,
+				plan: false,
+				database: "default".to_string(),
+				database_url: None,
+				migrations_dir: None,
+			},
+			Commands::Sqlmigrate {
+				app_label: "polls".to_string(),
+				migration_name: "0001".to_string(),
+				backwards: false,
+				database: "default".to_string(),
+				database_url: None,
+				migrations_dir: None,
+			},
+		];
+
+		for command in commands {
+			assert!(!requires_database(&command, &CommandRegistry::new()));
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_requires_database_for_model_fixture_commands() {
+		// Arrange
+		let commands = [
+			Commands::Custom {
+				name: "dumpdata".to_string(),
+				args: vec![],
+			},
+			Commands::Custom {
+				name: "loaddata".to_string(),
+				args: vec!["fixtures/dev.json".to_string()],
+			},
+			Commands::Custom {
+				name: "seed".to_string(),
+				args: vec![],
+			},
+		];
+
+		// Act & Assert
+		for command in commands {
+			assert!(requires_database(&command, &CommandRegistry::new()));
+		}
 	}
 
 	#[cfg(feature = "reinhardt-db")]
@@ -3023,10 +6816,25 @@ mod tests {
 		let command = Commands::Shell { command: None };
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(!result);
+	}
+
+	#[cfg(not(feature = "shell"))]
+	#[tokio::test]
+	async fn shell_without_feature_returns_the_direct_and_facade_feature_error() {
+		let error = execute_shell(None, 0, None)
+			.await
+			.expect_err("disabled shell support must return a nonzero error");
+
+		assert_eq!(
+			error.to_string(),
+			"The shell command requires the `shell` feature when using \
+			 `reinhardt-commands` directly, or `commands-shell` through the \
+			 `reinhardt` facade."
+		);
 	}
 
 	#[cfg(feature = "reinhardt-db")]
@@ -3039,7 +6847,7 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(!result);
@@ -3056,10 +6864,13 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(!result);

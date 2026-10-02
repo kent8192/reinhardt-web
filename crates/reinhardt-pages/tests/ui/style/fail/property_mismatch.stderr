@@ -1,0 +1,5 @@
+error: value for property `width` has type `Color`; expected OR(NON_NEGATIVE(LENGTH_PERCENTAGE),KW(size))
+ --> tests/ui/style/fail/property_mismatch.rs:6:10
+  |
+6 |         width: red;
+  |                ^^^

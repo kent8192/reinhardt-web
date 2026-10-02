@@ -18,6 +18,7 @@
 //!
 //! Total: 32 tests
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::auth::{AuthData, AuthState, auth_state};
 use reinhardt_pages::reactive::{Effect, Signal, with_runtime};
 use std::collections::HashSet;
@@ -380,99 +381,107 @@ fn test_signal_updates_on_logout() {
 #[test]
 #[serial_test::serial(reactive)]
 fn test_effect_triggered_by_auth_change() {
-	let state = AuthState::new();
-	let auth_signal = state.is_authenticated_signal();
-	let triggered = Signal::new(false);
+	ReactiveScope::run(|| {
+		let state = AuthState::new();
+		let auth_signal = state.is_authenticated_signal();
+		let triggered = Signal::new(false);
 
-	let triggered_clone = triggered.clone();
-	let _effect = Effect::new(move || {
-		if auth_signal.get() {
-			triggered_clone.set(true);
-		}
+		let triggered_clone = triggered.clone();
+		let _effect = Effect::new(move || {
+			if auth_signal.get() {
+				triggered_clone.set(true);
+			}
+		});
+
+		// Effect should not be triggered initially
+		assert!(!triggered.get());
+
+		// Trigger effect by logging in
+		state.login("1", "effect_test");
+		with_runtime(|rt| rt.flush_updates());
+
+		// Effect should be triggered
+		assert!(triggered.get());
 	});
-
-	// Effect should not be triggered initially
-	assert!(!triggered.get());
-
-	// Trigger effect by logging in
-	state.login("1", "effect_test");
-	with_runtime(|rt| rt.flush_updates());
-
-	// Effect should be triggered
-	assert!(triggered.get());
 }
 
 /// Tests effect triggered by user_id change
 #[test]
 #[serial_test::serial(reactive)]
 fn test_effect_triggered_by_user_id_change() {
-	let state = AuthState::new();
-	let user_id_signal = state.user_id_signal();
-	let captured_id = Signal::new(None);
+	ReactiveScope::run(|| {
+		let state = AuthState::new();
+		let user_id_signal = state.user_id_signal();
+		let captured_id = Signal::new(None);
 
-	let captured_clone = captured_id.clone();
-	let _effect = Effect::new(move || {
-		captured_clone.set(user_id_signal.get());
+		let captured_clone = captured_id.clone();
+		let _effect = Effect::new(move || {
+			captured_clone.set(user_id_signal.get());
+		});
+
+		state.login("42", "user");
+		with_runtime(|rt| rt.flush_updates());
+
+		assert_eq!(captured_id.get(), Some("42".to_string()));
 	});
-
-	state.login("42", "user");
-	with_runtime(|rt| rt.flush_updates());
-
-	assert_eq!(captured_id.get(), Some("42".to_string()));
 }
 
 /// Tests effect triggered by permission change
 #[test]
 #[serial_test::serial(reactive)]
 fn test_effect_triggered_by_permission_change() {
-	let state = AuthState::new();
-	let perm_signal = state.permissions_signal();
-	let perm_count = Signal::new(0);
+	ReactiveScope::run(|| {
+		let state = AuthState::new();
+		let perm_signal = state.permissions_signal();
+		let perm_count = Signal::new(0);
 
-	let count_clone = perm_count.clone();
-	let _effect = Effect::new(move || {
-		count_clone.set(perm_signal.get().len());
+		let count_clone = perm_count.clone();
+		let _effect = Effect::new(move || {
+			count_clone.set(perm_signal.get().len());
+		});
+
+		let mut perms = HashSet::new();
+		perms.insert("perm1".to_string());
+		perms.insert("perm2".to_string());
+		state.set_permissions(perms);
+		with_runtime(|rt| rt.flush_updates());
+
+		assert_eq!(perm_count.get(), 2);
 	});
-
-	let mut perms = HashSet::new();
-	perms.insert("perm1".to_string());
-	perms.insert("perm2".to_string());
-	state.set_permissions(perms);
-	with_runtime(|rt| rt.flush_updates());
-
-	assert_eq!(perm_count.get(), 2);
 }
 
 /// Tests multiple effects on same signal
 #[test]
 #[serial_test::serial(reactive)]
 fn test_multiple_effects_on_same_signal() {
-	let state = AuthState::new();
-	let auth_signal = state.is_authenticated_signal();
+	ReactiveScope::run(|| {
+		let state = AuthState::new();
+		let auth_signal = state.is_authenticated_signal();
 
-	let effect1_triggered = Signal::new(false);
-	let effect2_triggered = Signal::new(false);
+		let effect1_triggered = Signal::new(false);
+		let effect2_triggered = Signal::new(false);
 
-	let e1 = effect1_triggered.clone();
-	let _effect1 = Effect::new(move || {
-		if auth_signal.get() {
-			e1.set(true);
-		}
+		let e1 = effect1_triggered.clone();
+		let _effect1 = Effect::new(move || {
+			if auth_signal.get() {
+				e1.set(true);
+			}
+		});
+
+		let e2 = effect2_triggered.clone();
+		let auth_signal_2 = state.is_authenticated_signal();
+		let _effect2 = Effect::new(move || {
+			if auth_signal_2.get() {
+				e2.set(true);
+			}
+		});
+
+		state.login("1", "multi_effect");
+		with_runtime(|rt| rt.flush_updates());
+
+		assert!(effect1_triggered.get());
+		assert!(effect2_triggered.get());
 	});
-
-	let e2 = effect2_triggered.clone();
-	let auth_signal_2 = state.is_authenticated_signal();
-	let _effect2 = Effect::new(move || {
-		if auth_signal_2.get() {
-			e2.set(true);
-		}
-	});
-
-	state.login("1", "multi_effect");
-	with_runtime(|rt| rt.flush_updates());
-
-	assert!(effect1_triggered.get());
-	assert!(effect2_triggered.get());
 }
 
 /// Tests signal clone shares same underlying value

@@ -1,12 +1,14 @@
 //! Command-boundary tests for `makemigrations`.
 //!
-//! These tests exercise CLI dispatch and `MakeMigrationsCommand::execute()`
-//! instead of mirroring migration generation internals.
+//! These tests exercise `MakeMigrationsCommand::execute()` directly instead of
+//! mirroring its internals with `AutoMigrationGenerator` and `MigrationService`.
 
 use clap::Parser;
 use reinhardt_commands::{BaseCommand, Cli, CommandContext, MakeMigrationsCommand, run_command};
 use reinhardt_db::migrations::model_registry::{FieldMetadata, ModelMetadata, global_registry};
-use reinhardt_db::migrations::{FieldType, FilesystemSource, MigrationSource};
+use reinhardt_db::migrations::{
+	ColumnDefinition, FieldType, FilesystemRepository, Migration, MigrationRepository, Operation,
+};
 use rstest::{fixture, rstest};
 use serial_test::serial;
 use std::path::{Path, PathBuf};
@@ -140,14 +142,9 @@ fn read_migration_file(migrations_dir: &Path, app_label: &str, name: &str) -> St
 		.expect("migration file should be readable")
 }
 
-async fn execute_cli(arguments: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
-	let cli = Cli::try_parse_from(arguments).expect("management CLI arguments should parse");
-	run_command(cli.command, cli.verbosity).await
-}
-
 #[rstest]
 #[tokio::test]
-#[serial(makemigrations_command_boundary)]
+#[serial(command_current_dir)]
 async fn execute_generates_initial_migration_file_from_registered_model() {
 	let _registry = ModelRegistryGuard::clear();
 	let project_dir = create_project_root();
@@ -175,14 +172,14 @@ async fn execute_generates_initial_migration_file_from_registered_model() {
 		file_names[0].trim_end_matches(".rs"),
 	);
 	assert!(content.contains("pub(super) fn migration() -> Migration"));
-	assert!(content.contains("app_label: \"testapp\".to_string()"));
+	assert!(content.contains("Migration::new(\"0001_initial\", \"testapp\")"));
 	assert!(content.contains("Operation::CreateTable"));
-	assert!(content.contains("initial: Some(true)"));
+	assert!(content.contains(".with_initial(Some(true))"));
 }
 
 #[rstest]
 #[tokio::test]
-#[serial(makemigrations_command_boundary)]
+#[serial(command_current_dir)]
 async fn execute_dry_run_does_not_write_migration_file() {
 	let _registry = ModelRegistryGuard::clear();
 	let project_dir = create_project_root();
@@ -206,7 +203,66 @@ async fn execute_dry_run_does_not_write_migration_file() {
 
 #[rstest]
 #[tokio::test]
-#[serial(makemigrations_command_boundary)]
+#[serial(command_current_dir)]
+async fn execute_check_succeeds_for_empty_model_registry() {
+	let _registry = ModelRegistryGuard::clear();
+	let project_dir = create_project_root();
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join("migrations");
+
+	let mut ctx = makemigrations_context(None, &migrations_dir);
+	ctx.set_option("check".to_string(), "true".to_string());
+
+	let result = MakeMigrationsCommand.execute(&ctx).await;
+
+	assert!(result.is_ok(), "check failed: {:?}", result.err());
+	assert!(
+		!migrations_dir.exists(),
+		"check must not create the migrations directory"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn execute_check_detects_deleted_last_registered_model() {
+	let _registry = ModelRegistryGuard::clear();
+	let project_dir = create_project_root();
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join("migrations");
+	let mut repository = FilesystemRepository::new(&migrations_dir);
+	let migration =
+		Migration::new("0001_initial", "testapp").add_operation(Operation::CreateTable {
+			name: "testapp_testmodel".to_string(),
+			columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
+			constraints: vec![],
+			without_rowid: None,
+			partition: None,
+			interleave_in_parent: None,
+		});
+	repository
+		.save(&migration)
+		.await
+		.expect("existing migration should be written");
+
+	let mut ctx = makemigrations_context(None, &migrations_dir);
+	ctx.set_option("check".to_string(), "true".to_string());
+
+	let error = MakeMigrationsCommand
+		.execute(&ctx)
+		.await
+		.expect_err("deleting the last registered model should require a migration");
+
+	assert_eq!(
+		error.to_string(),
+		"Execution error: 1 migration(s) would be created"
+	);
+	assert_eq!(migration_file_names(&migrations_dir, "testapp").len(), 1);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
 async fn execute_empty_requires_app_label() {
 	let _registry = ModelRegistryGuard::clear();
 	let project_dir = create_project_root();
@@ -232,11 +288,307 @@ async fn execute_empty_requires_app_label() {
 }
 
 #[rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn execute_empty_writes_empty_migration_with_previous_dependency() {
+	let _registry = ModelRegistryGuard::clear();
+	let project_dir = create_project_root();
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join("migrations");
+
+	write_migration_file(&migrations_dir, "testapp", "0001_initial", &[]);
+
+	let mut ctx = makemigrations_context(Some("testapp"), &migrations_dir);
+	ctx.set_option("empty".to_string(), "true".to_string());
+	ctx.set_option("name".to_string(), "manual".to_string());
+
+	let result = MakeMigrationsCommand.execute(&ctx).await;
+
+	assert!(result.is_ok(), "empty migration failed: {:?}", result.err());
+	let content = read_migration_file(&migrations_dir, "testapp", "0002_manual");
+	assert!(content.contains("Migration::new(\"0002_manual\", \"testapp\")"));
+	assert!(content.contains(".add_dependency(\"testapp\", \"0001_initial\")"));
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn execute_conflict_without_merge_returns_actionable_error() {
+	let _registry = ModelRegistryGuard::clear();
+	let project_dir = create_project_root();
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join("migrations");
+
+	write_migration_file(&migrations_dir, "testapp", "0001_initial", &[]);
+	write_migration_file(
+		&migrations_dir,
+		"testapp",
+		"0002_left",
+		&[("testapp", "0001_initial")],
+	);
+	write_migration_file(
+		&migrations_dir,
+		"testapp",
+		"0002_right",
+		&[("testapp", "0001_initial")],
+	);
+	register_test_model("testapp", "TestModel", "testapp_testmodel");
+
+	let mut ctx = makemigrations_context(Some("testapp"), &migrations_dir);
+	ctx.set_option("force-empty-state".to_string(), "true".to_string());
+
+	let err = MakeMigrationsCommand
+		.execute(&ctx)
+		.await
+		.expect_err("conflicting migrations should fail without --merge");
+
+	assert!(
+		err.to_string().contains("Run 'makemigrations --merge'"),
+		"unexpected error: {err}"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn execute_merge_writes_merge_migration() {
+	let _registry = ModelRegistryGuard::clear();
+	let project_dir = create_project_root();
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join("migrations");
+
+	write_migration_file(&migrations_dir, "testapp", "0001_initial", &[]);
+	write_migration_file(
+		&migrations_dir,
+		"testapp",
+		"0002_left",
+		&[("testapp", "0001_initial")],
+	);
+	write_migration_file(
+		&migrations_dir,
+		"testapp",
+		"0002_right",
+		&[("testapp", "0001_initial")],
+	);
+
+	let mut ctx = makemigrations_context(Some("testapp"), &migrations_dir);
+	ctx.set_option("merge".to_string(), "true".to_string());
+	ctx.set_option("name".to_string(), "merge".to_string());
+
+	let result = MakeMigrationsCommand.execute(&ctx).await;
+
+	assert!(result.is_ok(), "merge failed: {:?}", result.err());
+	let content = read_migration_file(&migrations_dir, "testapp", "0003_merge");
+	assert!(content.contains("Migration::new(\"0003_merge\", \"testapp\")"));
+	assert!(content.contains(".add_dependency(\"testapp\", \"0002_left\")"));
+	assert!(content.contains(".add_dependency(\"testapp\", \"0002_right\")"));
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn execute_merge_dry_run_writes_no_merge_file() {
+	let _registry = ModelRegistryGuard::clear();
+	let project_dir = create_project_root();
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join("migrations");
+
+	write_migration_file(&migrations_dir, "testapp", "0001_initial", &[]);
+	write_migration_file(
+		&migrations_dir,
+		"testapp",
+		"0002_left",
+		&[("testapp", "0001_initial")],
+	);
+	write_migration_file(
+		&migrations_dir,
+		"testapp",
+		"0002_right",
+		&[("testapp", "0001_initial")],
+	);
+
+	let mut ctx = makemigrations_context(Some("testapp"), &migrations_dir);
+	ctx.set_option("merge".to_string(), "true".to_string());
+	ctx.set_option("dry-run".to_string(), "true".to_string());
+	ctx.set_option("name".to_string(), "merge".to_string());
+
+	let result = MakeMigrationsCommand.execute(&ctx).await;
+
+	assert!(result.is_ok(), "merge dry-run failed: {:?}", result.err());
+	assert!(
+		!migrations_dir
+			.join("testapp")
+			.join("0003_merge.rs")
+			.exists(),
+		"merge dry-run must not write migration file"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn execute_outside_project_root_errors_before_writing() {
+	let _registry = ModelRegistryGuard::clear();
+	let project_dir = TempDir::new().expect("temporary non-project dir should be created");
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join("migrations");
+
+	register_test_model("testapp", "TestModel", "testapp_testmodel");
+
+	let mut ctx = makemigrations_context(Some("testapp"), &migrations_dir);
+	ctx.set_option("force-empty-state".to_string(), "true".to_string());
+
+	let err = MakeMigrationsCommand
+		.execute(&ctx)
+		.await
+		.expect_err("makemigrations outside project root should fail");
+
+	assert!(
+		err.to_string().contains("Cannot find src/bin/manage.rs"),
+		"unexpected error: {err}"
+	);
+	assert!(
+		!migrations_dir.exists(),
+		"project-root guard must run before creating migration files"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(command_current_dir)]
+async fn upgraded_legacy_history_preserves_independent_model_check() {
+	use reinhardt_db::backends::DatabaseConnection;
+	use reinhardt_db::migrations::{
+		DatabaseMigrationExecutor, FilesystemSource, MigrationSource, upgrade_source,
+	};
+
+	const BASELINE: &str = r#"// reinhardt-migration-source: 1
+fn migration() -> Migration {
+    Migration::new("0001_initial", "legacy").add_operation(Operation::CreateTable {
+        name: "items".to_string(),
+        columns: vec![ColumnDefinition::new("name", FieldType::Text)],
+        constraints: vec![], without_rowid: None,
+        partition: None, interleave_in_parent: None,
+    })
+}
+"#;
+	const ORIGINAL: &str = r#"fn migration() -> Migration {
+    Migration::new("0001_initial", "legacy")
+        .add_operation(Operation::CreateTable {
+            name: "items".to_string(),
+            columns: vec![
+                ColumnDefinition {
+                    name: "name".to_string(), type_definition: FieldType::Text,
+                    not_null: false, unique: false, primary_key: false,
+                    auto_increment: false, default: None,
+                },
+                ColumnDefinition {
+                    name: "obsolete".to_string(), type_definition: FieldType::Integer,
+                    not_null: false, unique: false, primary_key: false,
+                    auto_increment: false, default: None,
+                },
+            ],
+            constraints: vec![], without_rowid: None,
+            partition: None, interleave_in_parent: None,
+        })
+        .add_operation(Operation::DropColumn {
+            table: "items".into(), column: "obsolete".into(),
+        })
+}
+"#;
+
+	// Arrange: the model metadata is authored independently of migration replay.
+	let _registry = ModelRegistryGuard::clear();
+	let project_dir = create_project_root();
+	let _cwd = ProjectDirGuard::enter(project_dir.path());
+	let migrations_dir = project_dir.path().join("migrations");
+	let app_dir = migrations_dir.join("legacy");
+	std::fs::create_dir_all(&app_dir).expect("legacy migration directory should be created");
+	let path = app_dir.join("0001_initial.rs");
+	let mut model = ModelMetadata::new("legacy", "Items", "items");
+	model.add_field(
+		"name".into(),
+		FieldMetadata::new(FieldType::Text).with_nullable(true),
+	);
+	global_registry().register_model(model.clone());
+	let mut ctx = makemigrations_context(Some("legacy"), &migrations_dir);
+	ctx.set_option("check".into(), "true".into());
+
+	std::fs::write(&path, BASELINE).expect("current baseline should be written");
+	MakeMigrationsCommand
+		.execute(&ctx)
+		.await
+		.expect("independently authored current baseline has zero drift");
+	assert_eq!(
+		migration_file_names(&migrations_dir, "legacy"),
+		vec!["0001_initial.rs"]
+	);
+	assert_eq!(
+		std::fs::read(&path).expect("current baseline should be readable"),
+		BASELINE.as_bytes()
+	);
+
+	// Act: convert the different historical representation and apply it.
+	let upgraded = upgrade_source(ORIGINAL).expect("legacy source should upgrade");
+	std::fs::write(&path, &upgraded.source).expect("upgraded source should be written");
+	let migrations = FilesystemSource::new(&migrations_dir)
+		.all_migrations()
+		.await
+		.expect("upgraded source should load through the public source API");
+	assert_eq!(migrations.len(), 1);
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("SQLite connection should open");
+	let applied = DatabaseMigrationExecutor::new(connection)
+		.apply_migrations(&migrations)
+		.await
+		.expect("upgraded migration should apply");
+	assert_eq!(applied.failed, None);
+	assert_eq!(applied.applied.len(), 1);
+	MakeMigrationsCommand
+		.execute(&ctx)
+		.await
+		.expect("unchanged independent model stays at zero drift");
+	assert_eq!(
+		std::fs::read(&path).expect("upgraded source should remain readable"),
+		upgraded.source.as_bytes()
+	);
+
+	// Assert: a real model change fails the identical check without writing.
+	model.add_field(
+		"extra".into(),
+		FieldMetadata::new(FieldType::Integer).with_nullable(true),
+	);
+	global_registry().register_model(model);
+	let error = MakeMigrationsCommand
+		.execute(&ctx)
+		.await
+		.expect_err("adding a field should require exactly one migration");
+	assert_eq!(
+		error.to_string(),
+		"Execution error: 1 migration(s) would be created"
+	);
+	assert_eq!(
+		migration_file_names(&migrations_dir, "legacy"),
+		vec!["0001_initial.rs"]
+	);
+	assert_eq!(
+		std::fs::read(&path).expect("check mode should preserve the upgraded source"),
+		upgraded.source.as_bytes()
+	);
+}
+
+async fn execute_cli(arguments: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+	let cli = Cli::try_parse_from(arguments).expect("management CLI arguments should parse");
+	run_command(cli.command, cli.verbosity).await
+}
+
+#[rstest]
 #[case::default(None, false)]
 #[case::relative(Some("requested"), false)]
 #[case::absolute_with_spaces_and_unicode(Some("custom migrations/日本語"), true)]
 #[tokio::test]
-#[serial(makemigrations_command_boundary)]
+#[serial(command_current_dir)]
 async fn cli_empty_migrations_use_selected_directory(
 	create_project_root: TempDir,
 	#[case] directory: Option<&str>,
@@ -290,8 +642,8 @@ async fn cli_empty_migrations_use_selected_directory(
 		migration_file_names(&migrations_dir, "testapp"),
 		["0001_manual.rs", "0002_manual.rs"]
 	);
-	let migration = FilesystemSource::new(&migrations_dir)
-		.get_migration("testapp", "0002_manual")
+	let migration = FilesystemRepository::new(&migrations_dir)
+		.get("testapp", "0002_manual")
 		.await
 		.expect("generated migration should be readable");
 	assert_eq!(
@@ -311,7 +663,7 @@ async fn cli_empty_migrations_use_selected_directory(
 #[case::dry_run("--dry-run")]
 #[case::check("--check")]
 #[tokio::test]
-#[serial(makemigrations_command_boundary)]
+#[serial(command_current_dir)]
 async fn cli_inspection_modes_read_selected_directory(
 	create_project_root: TempDir,
 	#[case] mode: &str,
@@ -364,7 +716,7 @@ async fn cli_inspection_modes_read_selected_directory(
 
 #[rstest]
 #[tokio::test]
-#[serial(makemigrations_command_boundary)]
+#[serial(command_current_dir)]
 async fn cli_merge_uses_selected_directory(create_project_root: TempDir) {
 	// Arrange
 	let project_dir = create_project_root;
@@ -417,8 +769,8 @@ async fn cli_merge_uses_selected_directory(create_project_root: TempDir) {
 	.expect("merge should resolve the selected graph");
 
 	// Assert
-	let mut migration = FilesystemSource::new(&migrations_dir)
-		.get_migration("testapp", "0003_merge")
+	let mut migration = FilesystemRepository::new(&migrations_dir)
+		.get("testapp", "0003_merge")
 		.await
 		.expect("merge migration should be readable");
 	migration.dependencies.sort();
@@ -440,73 +792,4 @@ async fn cli_merge_uses_selected_directory(create_project_root: TempDir) {
 		]
 	);
 	assert!(!project_dir.path().join("migrations").exists());
-}
-
-#[rstest]
-#[tokio::test]
-#[serial(makemigrations_command_boundary)]
-async fn execute_merge_dry_run_writes_no_merge_file() {
-	let _registry = ModelRegistryGuard::clear();
-	let project_dir = create_project_root();
-	let _cwd = ProjectDirGuard::enter(project_dir.path());
-	let migrations_dir = project_dir.path().join("migrations");
-
-	write_migration_file(&migrations_dir, "testapp", "0001_initial", &[]);
-	write_migration_file(
-		&migrations_dir,
-		"testapp",
-		"0002_left",
-		&[("testapp", "0001_initial")],
-	);
-	write_migration_file(
-		&migrations_dir,
-		"testapp",
-		"0002_right",
-		&[("testapp", "0001_initial")],
-	);
-
-	let mut ctx = makemigrations_context(Some("testapp"), &migrations_dir);
-	ctx.set_option("merge".to_string(), "true".to_string());
-	ctx.set_option("dry-run".to_string(), "true".to_string());
-	ctx.set_option("name".to_string(), "merge".to_string());
-
-	let result = MakeMigrationsCommand.execute(&ctx).await;
-
-	assert!(result.is_ok(), "merge dry-run failed: {:?}", result.err());
-	assert!(
-		!migrations_dir
-			.join("testapp")
-			.join("0003_merge.rs")
-			.exists(),
-		"merge dry-run must not write migration file"
-	);
-}
-
-#[rstest]
-#[tokio::test]
-#[serial(makemigrations_command_boundary)]
-async fn execute_outside_project_root_errors_before_writing() {
-	let _registry = ModelRegistryGuard::clear();
-	let project_dir = TempDir::new().expect("temporary non-project dir should be created");
-	let _cwd = ProjectDirGuard::enter(project_dir.path());
-	let migrations_dir = project_dir.path().join("migrations");
-
-	register_test_model("testapp", "TestModel", "testapp_testmodel");
-
-	let mut ctx = makemigrations_context(Some("testapp"), &migrations_dir);
-	ctx.set_option("force-empty-state".to_string(), "true".to_string());
-
-	let err = MakeMigrationsCommand
-		.execute(&ctx)
-		.await
-		.expect_err("makemigrations outside project root should fail");
-
-	assert!(
-		err.to_string().contains("Cannot find src/bin/manage.rs"),
-		"unexpected error: {err}"
-	);
-	assert!(
-		!migrations_dir.exists(),
-		"project-root guard must run before creating migration files"
-	);
 }

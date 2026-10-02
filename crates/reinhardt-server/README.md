@@ -19,6 +19,7 @@ This crate provides the following features:
   - Builder pattern for middleware configuration
   - Efficient TCP connection management
   - Automatic request/response conversion
+  - Empty HTTP/1.1 `GET` and `HEAD` requests skip body collection when no body is declared
   - Built-in error handling
 
 - **WebSocket Support** (feature = "websocket"): WebSocket server implementation
@@ -44,17 +45,17 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:5 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["server"] }
+reinhardt = { version = "0.4.0-alpha.18", features = ["server"] }
 
 # For WebSocket support:
-# reinhardt = { version = "0.3.20", features = ["server", "websocket"] }
+# reinhardt = { version = "0.4.0-alpha.18", features = ["server", "websocket"] }
 
 # For GraphQL support:
-# reinhardt = { version = "0.3.20", features = ["server", "graphql"] }
+# reinhardt = { version = "0.4.0-alpha.18", features = ["server", "graphql"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.20", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.18", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.18", features = ["full"] }      # All features
 ```
 
 Then import server features:

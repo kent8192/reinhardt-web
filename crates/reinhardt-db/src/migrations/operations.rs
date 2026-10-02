@@ -52,14 +52,163 @@ pub use special::{RunCode, RunSQL, StateOperation};
 
 // Legacy types for backward compatibility
 // These are maintained from the original operations.rs
-use super::{FieldState, FieldType, ModelState, ProjectState};
+use super::IndexDefinition;
+use super::{ConstraintDefinition, FieldState, FieldType, ModelState, ProjectState};
+pub use crate::naming::truncate_identifier_with_hash;
 use pg_escape::{quote_identifier, quote_literal};
 use reinhardt_query::prelude::{
-	Alias, AlterTableStatement, ColumnDef, CreateIndexStatement, CreateTableStatement,
-	DropIndexStatement, DropTableStatement, Query, SimpleExpr, Value,
+	Alias, AlterTableStatement, CockroachDBQueryBuilder, ColumnDef, ColumnType as QueryColumnType,
+	CreateIndexStatement, CreateTableStatement, DropIndexStatement, DropTableStatement,
+	GeneratedColumn, GeneratedStorage, MySqlQueryBuilder, PostgresQueryBuilder, Query,
+	QueryBuilder, SchemaExpr, SchemaFunc, SimpleExpr, SqliteQueryBuilder, Value,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+
+/// Prefix for the migration-only envelope that carries file-field policy
+/// alongside the physical column definition.
+///
+/// `ColumnDefinition` is a long-standing public struct with hundreds of
+/// external struct literals in generated migrations and downstream crates.
+/// Adding a required field would make all of those literals stop compiling.
+/// The envelope keeps the existing shape and is decoded before a migration
+/// operation is applied to `ProjectState`; SQL rendering strips it so policy
+/// metadata can never become a database DEFAULT expression.
+const FILE_FIELD_METADATA_PREFIX: &str = "__reinhardt_file_field_metadata_v1__:";
+const FILE_FIELD_METADATA_KEYS: [&str; 8] = [
+	"model_field_type",
+	"upload_to",
+	"file_storage",
+	"max_length",
+	"cleanup",
+	"max_width",
+	"max_height",
+	"storage",
+];
+const REQUIRED_FILE_FIELD_METADATA_KEYS: [&str; 4] = [
+	"model_field_type",
+	"upload_to",
+	"file_storage",
+	"max_length",
+];
+
+fn is_storage_backed_field_type(value: &str) -> bool {
+	matches!(value, "file" | "image")
+}
+
+/// Encode file-field policy in the existing `ColumnDefinition.default` slot.
+///
+/// Non-file fields retain their original default representation. File fields
+/// carry both their semantic parameters and the optional SQL default in a
+/// versioned JSON object so generated migration source and serialized
+/// operations can round-trip the complete migration state.
+fn encoded_default_for_field_state(field_state: &FieldState) -> Option<String> {
+	let default = field_state.params.get("default").cloned();
+	if !field_state
+		.params
+		.get("model_field_type")
+		.is_some_and(|value| is_storage_backed_field_type(value))
+	{
+		return default;
+	}
+
+	let mut params = serde_json::Map::new();
+	for key in FILE_FIELD_METADATA_KEYS {
+		if let Some(value) = field_state.params.get(key) {
+			params.insert(key.to_string(), serde_json::Value::String(value.clone()));
+		}
+	}
+	let payload = serde_json::json!({
+		"params": params,
+		"default": default,
+	});
+	Some(format!(
+		"{FILE_FIELD_METADATA_PREFIX}{}",
+		serde_json::to_string(&payload).expect("file-field migration metadata is serializable")
+	))
+}
+
+/// Decode a `ColumnDefinition.default` value and recover file-field policy.
+///
+/// Malformed or unrelated defaults are treated as ordinary SQL expressions;
+/// this preserves compatibility with old migrations and avoids interpreting a
+/// user-supplied default as metadata merely because it shares a prefix.
+pub(crate) fn decode_file_field_metadata(
+	default: Option<&str>,
+) -> (HashMap<String, String>, Option<String>) {
+	let Some(default) = default else {
+		return (HashMap::new(), None);
+	};
+	let Some(payload) = default.strip_prefix(FILE_FIELD_METADATA_PREFIX) else {
+		return (HashMap::new(), Some(default.to_string()));
+	};
+	let Ok(payload) = serde_json::from_str::<serde_json::Value>(payload) else {
+		return (HashMap::new(), Some(default.to_string()));
+	};
+	let Some(params) = payload.get("params").and_then(serde_json::Value::as_object) else {
+		return (HashMap::new(), Some(default.to_string()));
+	};
+	let Some(model_field_type) = params
+		.get("model_field_type")
+		.and_then(serde_json::Value::as_str)
+		.filter(|value| is_storage_backed_field_type(value))
+	else {
+		return (HashMap::new(), Some(default.to_string()));
+	};
+	if REQUIRED_FILE_FIELD_METADATA_KEYS
+		.iter()
+		.any(|key| !params.get(*key).is_some_and(serde_json::Value::is_string))
+	{
+		return (HashMap::new(), Some(default.to_string()));
+	}
+	// The envelope is valid only when it carries an explicit SQL-default
+	// member (null means no default) and every known semantic parameter is a
+	// JSON string. Otherwise preserve the original value verbatim so malformed
+	// metadata can never silently remove a real database DEFAULT expression.
+	let decoded_default = match payload.get("default") {
+		Some(serde_json::Value::Null) => None,
+		Some(serde_json::Value::String(value)) => Some(value.clone()),
+		_ => return (HashMap::new(), Some(default.to_string())),
+	};
+	if params
+		.iter()
+		.any(|(key, value)| FILE_FIELD_METADATA_KEYS.contains(&key.as_str()) && !value.is_string())
+	{
+		return (HashMap::new(), Some(default.to_string()));
+	}
+
+	let mut semantic_params = HashMap::new();
+	semantic_params.insert("model_field_type".to_string(), model_field_type.to_string());
+	for key in FILE_FIELD_METADATA_KEYS {
+		if key == "model_field_type" {
+			continue;
+		}
+		if let Some(value) = params.get(key).and_then(serde_json::Value::as_str) {
+			semantic_params.insert(key.to_string(), value.to_string());
+		}
+	}
+	(semantic_params, decoded_default)
+}
+
+/// Return the SQL default represented by a column definition.
+fn effective_column_default(default: Option<&String>) -> Option<String> {
+	decode_file_field_metadata(default.map(String::as_str)).1
+}
+
+fn postgres_storage_keyword(storage: &str) -> &'static str {
+	match storage.to_ascii_lowercase().as_str() {
+		"plain" => "PLAIN",
+		"external" => "EXTERNAL",
+		"extended" => "EXTENDED",
+		"main" => "MAIN",
+		_ => panic!("unsupported PostgreSQL column storage strategy: {storage}"),
+	}
+}
+
+pub(super) fn named_index_has_target(columns: &[String], expressions: Option<&[String]>) -> bool {
+	!columns.is_empty() || expressions.is_some_and(|expressions| !expressions.is_empty())
+}
 
 /// Index type for database indexes
 ///
@@ -125,6 +274,26 @@ pub enum IndexType {
 	/// Best for: geometric/geographic data
 	/// Supported by: MySQL
 	Spatial,
+
+	/// HNSW approximate vector index
+	///
+	/// Supported by: PostgreSQL with pgvector
+	#[cfg(feature = "pgvector")]
+	Hnsw {
+		/// Maximum number of connections per layer.
+		m: Option<u16>,
+		/// Candidate list size used while constructing the index.
+		ef_construction: Option<u16>,
+	},
+
+	/// IVFFlat approximate vector index
+	///
+	/// Supported by: PostgreSQL with pgvector
+	#[cfg(feature = "pgvector")]
+	Ivfflat {
+		/// Number of inverted lists.
+		lists: Option<u32>,
+	},
 }
 
 impl std::fmt::Display for IndexType {
@@ -137,6 +306,43 @@ impl std::fmt::Display for IndexType {
 			IndexType::Brin => write!(f, "brin"),
 			IndexType::Fulltext => write!(f, "fulltext"),
 			IndexType::Spatial => write!(f, "spatial"),
+			#[cfg(feature = "pgvector")]
+			IndexType::Hnsw { .. } => write!(f, "hnsw"),
+			#[cfg(feature = "pgvector")]
+			IndexType::Ivfflat { .. } => write!(f, "ivfflat"),
+		}
+	}
+}
+
+impl IndexType {
+	fn is_approximate_vector(self) -> bool {
+		#[cfg(feature = "pgvector")]
+		{
+			matches!(self, Self::Hnsw { .. } | Self::Ivfflat { .. })
+		}
+		#[cfg(not(feature = "pgvector"))]
+		{
+			let _ = self;
+			false
+		}
+	}
+
+	fn options_sql(self) -> Option<String> {
+		match self {
+			#[cfg(feature = "pgvector")]
+			Self::Hnsw { m, ef_construction } => {
+				let mut options = Vec::new();
+				if let Some(m) = m {
+					options.push(format!("m = {m}"));
+				}
+				if let Some(ef_construction) = ef_construction {
+					options.push(format!("ef_construction = {ef_construction}"));
+				}
+				(!options.is_empty()).then(|| format!(" WITH ({})", options.join(", ")))
+			}
+			#[cfg(feature = "pgvector")]
+			Self::Ivfflat { lists } => lists.map(|lists| format!(" WITH (lists = {lists})")),
+			_ => None,
 		}
 	}
 }
@@ -149,10 +355,10 @@ pub(crate) fn generated_index_name(
 ) -> String {
 	let expressions = expressions.filter(|expressions| !expressions.is_empty());
 	let suffix = expressions.map_or_else(|| columns.join("_"), |_| "expr".to_owned());
-	let mut name = format!("idx_{table}_{suffix}");
 	if expressions.is_none() && where_clause.is_none() {
-		return name;
+		return default_index_name(table, &suffix);
 	}
+	let mut name = format!("idx_{table}_{suffix}");
 
 	// Use a fixed hash algorithm and length-prefixed fields so migration names
 	// remain stable across processes and ambiguous expression boundaries.
@@ -334,6 +540,7 @@ pub enum PartitionValues {
 }
 
 /// Individual partition definition
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PartitionDef {
 	/// The name.
@@ -370,12 +577,23 @@ impl PartitionDef {
 /// improving join performance for hierarchical data.
 ///
 /// **CockroachDB only**: This is ignored for other databases.
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InterleaveSpec {
 	/// Parent table name
 	pub parent_table: String,
 	/// Columns in the parent table to interleave with
 	pub parent_columns: Vec<String>,
+}
+
+impl InterleaveSpec {
+	/// Creates a new interleave specification.
+	pub fn new(parent_table: impl Into<String>, parent_columns: Vec<String>) -> Self {
+		Self {
+			parent_table: parent_table.into(),
+			parent_columns,
+		}
+	}
 }
 
 /// Table partitioning options
@@ -545,6 +763,15 @@ pub enum Constraint {
 		/// The SQL check expression.
 		expression: String,
 	},
+	/// Typed finite-value domain for a model enum.
+	EnumDomain {
+		/// The constraint name.
+		name: String,
+		/// The constrained database column.
+		column: String,
+		/// The structured enum domain.
+		domain: crate::field_domain::FieldDomain,
+	},
 	/// OneToOne constraint (ForeignKey + Unique combination)
 	OneToOne {
 		/// The constraint name.
@@ -589,6 +816,135 @@ pub enum Constraint {
 		/// The where clause.
 		where_clause: Option<String>,
 	},
+}
+
+impl Constraint {
+	/// Returns the database constraint name.
+	pub fn name(&self) -> &str {
+		match self {
+			Constraint::PrimaryKey { name, .. }
+			| Constraint::ForeignKey { name, .. }
+			| Constraint::Unique { name, .. }
+			| Constraint::Check { name, .. }
+			| Constraint::EnumDomain { name, .. }
+			| Constraint::OneToOne { name, .. }
+			| Constraint::ManyToMany { name, .. }
+			| Constraint::Exclude { name, .. } => name,
+		}
+	}
+
+	fn to_sql_for_dialect(&self, dialect: &SqlDialect) -> String {
+		let quote = |identifier: &str| Operation::quote_dialect_identifier(identifier, dialect);
+		let quote_columns = |columns: &[String]| {
+			columns
+				.iter()
+				.map(|column| quote(column))
+				.collect::<Vec<_>>()
+				.join(", ")
+		};
+
+		match self {
+			Constraint::PrimaryKey { name, columns } => format!(
+				"CONSTRAINT {} PRIMARY KEY ({})",
+				quote(name),
+				quote_columns(columns)
+			),
+			Constraint::ForeignKey {
+				name,
+				columns,
+				referenced_table,
+				referenced_columns,
+				on_delete,
+				on_update,
+				deferrable,
+			} => {
+				let mut sql = format!(
+					"CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({}) ON DELETE {} ON UPDATE {}",
+					quote(name),
+					quote_columns(columns),
+					Operation::quote_schema_identifier(referenced_table, dialect),
+					quote_columns(referenced_columns),
+					on_delete.to_sql_keyword(),
+					on_update.to_sql_keyword()
+				);
+				if let Some(option) = deferrable {
+					sql.push(' ');
+					sql.push_str(&option.to_string());
+				}
+				sql
+			}
+			Constraint::Unique { name, columns } => format!(
+				"CONSTRAINT {} UNIQUE ({})",
+				quote(name),
+				quote_columns(columns)
+			),
+			Constraint::Check { name, expression } => {
+				format!("CONSTRAINT {} CHECK ({})", quote(name), expression)
+			}
+			Constraint::EnumDomain {
+				name,
+				column,
+				domain,
+			} => {
+				let crate::field_domain::FieldDomain::Enum { repr, values } =
+					domain.clone().canonicalized();
+				let literals = values
+					.into_iter()
+					.map(|value| match value {
+						crate::field_domain::ModelEnumValue::String(value) => {
+							Value::String(Some(Box::new(value))).to_sql_literal()
+						}
+						crate::field_domain::ModelEnumValue::I32(value) => {
+							Value::Int(Some(value)).to_sql_literal()
+						}
+					})
+					.collect::<Vec<_>>();
+				let column_expression = if matches!(dialect, SqlDialect::Mysql)
+					&& matches!(repr, crate::field_domain::ModelEnumRepr::String)
+				{
+					format!("BINARY {}", quote(column))
+				} else {
+					quote(column)
+				};
+				format!(
+					"CONSTRAINT {} CHECK ({} IN ({}))",
+					quote(name),
+					column_expression,
+					literals.join(", ")
+				)
+			}
+			Constraint::OneToOne {
+				name,
+				column,
+				referenced_table,
+				referenced_column,
+				on_delete,
+				on_update,
+				deferrable,
+			} => {
+				let mut sql = format!(
+					"CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({}) ON DELETE {} ON UPDATE {}",
+					quote(name),
+					quote(column),
+					Operation::quote_schema_identifier(referenced_table, dialect),
+					quote(referenced_column),
+					on_delete.to_sql_keyword(),
+					on_update.to_sql_keyword()
+				);
+				if let Some(option) = deferrable {
+					sql.push(' ');
+					sql.push_str(&option.to_string());
+				}
+				sql.push_str(&format!(
+					", CONSTRAINT {} UNIQUE ({})",
+					quote(&format!("{name}_unique")),
+					quote(column)
+				));
+				sql
+			}
+			_ => self.to_string(),
+		}
+	}
 }
 
 impl std::fmt::Display for Constraint {
@@ -636,6 +992,13 @@ impl std::fmt::Display for Constraint {
 			}
 			Constraint::Check { name, expression } => {
 				write!(f, "CONSTRAINT {} CHECK ({})", name, expression)
+			}
+			Constraint::EnumDomain {
+				name: _,
+				column: _,
+				domain: _,
+			} => {
+				write!(f, "{}", self.to_sql_for_dialect(&SqlDialect::Postgres))
 			}
 			Constraint::OneToOne {
 				name,
@@ -783,15 +1146,55 @@ impl BulkLoadOptions {
 		Self::default()
 	}
 
+	/// Create bulk-load options from every persisted field.
+	#[doc(hidden)]
+	// Persistence adapters must provide every stored field without silently dropping data.
+	#[allow(clippy::too_many_arguments)]
+	pub fn from_parts(
+		delimiter: Option<char>,
+		null_string: Option<String>,
+		header: bool,
+		columns: Option<Vec<String>>,
+		local: bool,
+		quote: Option<char>,
+		escape: Option<char>,
+		line_terminator: Option<String>,
+		encoding: Option<String>,
+	) -> Self {
+		Self {
+			delimiter,
+			null_string,
+			header,
+			columns,
+			local,
+			quote,
+			escape,
+			line_terminator,
+			encoding,
+		}
+	}
+
 	/// Set the field delimiter
 	pub fn with_delimiter(mut self, delimiter: char) -> Self {
 		self.delimiter = Some(delimiter);
 		self
 	}
 
+	/// Set the optional field delimiter, including an explicit `None`.
+	pub fn with_delimiter_option(mut self, delimiter: Option<char>) -> Self {
+		self.delimiter = delimiter;
+		self
+	}
+
 	/// Set the NULL string representation
 	pub fn with_null_string(mut self, null_string: impl Into<String>) -> Self {
 		self.null_string = Some(null_string.into());
+		self
+	}
+
+	/// Set the optional NULL string, including an explicit `None`.
+	pub fn with_null_string_option(mut self, null_string: Option<String>) -> Self {
+		self.null_string = null_string;
 		self
 	}
 
@@ -807,6 +1210,12 @@ impl BulkLoadOptions {
 		self
 	}
 
+	/// Set the optional column list, including an explicit `None`.
+	pub fn with_columns_option(mut self, columns: Option<Vec<String>>) -> Self {
+		self.columns = columns;
+		self
+	}
+
 	/// Enable LOCAL keyword for MySQL
 	pub fn with_local(mut self, local: bool) -> Self {
 		self.local = local;
@@ -819,9 +1228,21 @@ impl BulkLoadOptions {
 		self
 	}
 
+	/// Set the optional quote character, including an explicit `None`.
+	pub fn with_quote_option(mut self, quote: Option<char>) -> Self {
+		self.quote = quote;
+		self
+	}
+
 	/// Set the escape character
 	pub fn with_escape(mut self, escape: char) -> Self {
 		self.escape = Some(escape);
+		self
+	}
+
+	/// Set the optional escape character, including an explicit `None`.
+	pub fn with_escape_option(mut self, escape: Option<char>) -> Self {
+		self.escape = escape;
 		self
 	}
 
@@ -831,9 +1252,21 @@ impl BulkLoadOptions {
 		self
 	}
 
+	/// Set the optional line terminator, including an explicit `None`.
+	pub fn with_line_terminator_option(mut self, terminator: Option<String>) -> Self {
+		self.line_terminator = terminator;
+		self
+	}
+
 	/// Set the file encoding (MySQL-specific)
 	pub fn with_encoding(mut self, encoding: impl Into<String>) -> Self {
 		self.encoding = Some(encoding.into());
+		self
+	}
+
+	/// Set the optional file encoding, including an explicit `None`.
+	pub fn with_encoding_option(mut self, encoding: Option<String>) -> Self {
+		self.encoding = encoding;
 		self
 	}
 }
@@ -843,6 +1276,9 @@ impl BulkLoadOptions {
 /// This enum is maintained for backward compatibility with existing code.
 /// New code should use the specific operation types from the `models`, `fields`,
 /// and `special` modules instead.
+// The legacy public variants embed ColumnDefinition by value, so boxing them would break
+// migration source compatibility. Structured field domains intentionally preserve that shape.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum Operation {
@@ -886,6 +1322,11 @@ pub enum Operation {
 		table: String,
 		/// The column.
 		column: String,
+		/// Original column definition before dropping.
+		/// This is required for generating accurate rollback SQL when the
+		/// column is replaced by a drop/add pair.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		old_definition: Option<ColumnDefinition>,
 	},
 	/// AlterColumn variant.
 	AlterColumn {
@@ -927,6 +1368,27 @@ pub enum Operation {
 		/// The constraint sql.
 		constraint_sql: String,
 	},
+	/// Adds a typed constraint with dialect-aware SQL rendering.
+	AddConstraintDefinition {
+		/// The table.
+		table: String,
+		/// The typed constraint definition.
+		constraint: Constraint,
+	},
+	/// Generated-column dependency constraint repair applied only when migrating forward.
+	AddConstraintRepair {
+		/// The table.
+		table: String,
+		/// The constraint sql.
+		constraint_sql: String,
+	},
+	/// Generated-column dependency constraint restore applied only when rolling back.
+	RestoreConstraintOnRollback {
+		/// The table.
+		table: String,
+		/// The constraint sql.
+		constraint_sql: String,
+	},
 	/// DropConstraint variant.
 	DropConstraint {
 		/// The table.
@@ -934,12 +1396,20 @@ pub enum Operation {
 		/// The constraint name.
 		constraint_name: String,
 	},
-	/// Creates an index with a deterministic generated name.
+	/// Drops a typed constraint while retaining its definition for rollback.
+	DropConstraintDefinition {
+		/// The table.
+		table: String,
+		/// The typed constraint definition captured before it is dropped.
+		constraint: Constraint,
+	},
+	/// Create an index with a deterministic generated name.
 	///
-	/// Nonempty expressions and partial-index predicates contribute a stable
-	/// hash suffix. Ordinary column indexes retain `idx_<table>_<columns>` names.
-	/// Use [`Operation::CreateIndexRepair`] with an explicit name to retain a
-	/// physical name created by an older naming algorithm.
+	/// Expression and partial indexes include a hash of the table, ordered
+	/// expressions or columns, and exact predicate. Ordinary column indexes
+	/// retain their existing generated names. Applied indexes are not renamed
+	/// automatically; legacy expression and partial indexes need a compatibility
+	/// rename or explicit backward SQL before relying on automatic rollback.
 	CreateIndex {
 		/// The table.
 		table: String,
@@ -967,7 +1437,7 @@ pub enum Operation {
 		/// Expression index (PostgreSQL, SQLite, MySQL 8.0+)
 		///
 		/// Index on computed expressions rather than simple column references.
-		/// When nonempty, these expressions are used instead of `columns`.
+		/// When specified, these expressions are used instead of `columns`.
 		///
 		/// # Examples
 		///
@@ -976,7 +1446,7 @@ pub enum Operation {
 		/// expressions: Some(vec!["LOWER(email)"]),
 		/// ```
 		///
-		/// **Note**: Empty expressions use `columns`, just like `None`.
+		/// **Note**: When `expressions` is Some, `columns` is ignored for SQL generation.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		expressions: Option<Vec<String>>,
 		/// MySQL ALTER TABLE options (ALGORITHM, LOCK)
@@ -1003,18 +1473,52 @@ pub enum Operation {
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		operator_class: Option<String>,
 	},
-	/// Creates an index while retaining an explicit physical name.
-	CreateIndexRepair {
+	/// Creates an index with an explicit physical name.
+	///
+	/// This additive variant preserves source compatibility for legacy
+	/// [`Operation::CreateIndex`] struct literals while allowing model-declared
+	/// indexes to keep their configured names.
+	#[cfg(feature = "pgvector")]
+	CreateNamedIndex {
 		/// The table.
 		table: String,
-		/// Explicit physical index name. `None` uses the generated name.
-		#[serde(default, skip_serializing_if = "Option::is_none")]
-		name: Option<String>,
+		/// Explicit physical index name.
+		name: String,
 		/// The columns.
 		columns: Vec<String>,
 		/// Whether the index is unique.
 		unique: bool,
-		/// Index method.
+		/// Typed index method and options.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		index_type: Option<IndexType>,
+		/// Partial index condition.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		where_clause: Option<String>,
+		/// Whether to create concurrently.
+		#[serde(default)]
+		concurrently: bool,
+		/// Index expressions.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		expressions: Option<Vec<String>>,
+		/// MySQL ALTER TABLE options.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		mysql_options: Option<AlterTableOptions>,
+		/// PostgreSQL operator class.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		operator_class: Option<String>,
+	},
+	/// Generated-column dependency index repair applied only when migrating forward.
+	CreateIndexRepair {
+		/// The table.
+		table: String,
+		/// Explicit index name, or the generated name when `None`.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		name: Option<String>,
+		/// The columns.
+		columns: Vec<String>,
+		/// The unique.
+		unique: bool,
+		/// Index type.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		index_type: Option<IndexType>,
 		/// Partial index condition.
@@ -1023,13 +1527,43 @@ pub enum Operation {
 		/// Create index concurrently.
 		#[serde(default)]
 		concurrently: bool,
-		/// Expression-index definitions.
+		/// Expression index values.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		expressions: Option<Vec<String>>,
-		/// MySQL index options.
+		/// MySQL ALTER TABLE options.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		mysql_options: Option<AlterTableOptions>,
-		/// PostgreSQL operator class.
+		/// Operator class for index columns.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		operator_class: Option<String>,
+	},
+	/// Generated-column dependency index restore applied only when rolling back.
+	RestoreIndexOnRollback {
+		/// The table.
+		table: String,
+		/// Explicit index name.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		name: Option<String>,
+		/// The columns.
+		columns: Vec<String>,
+		/// The unique.
+		unique: bool,
+		/// Index type.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		index_type: Option<IndexType>,
+		/// Partial index condition.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		where_clause: Option<String>,
+		/// Create index concurrently.
+		#[serde(default)]
+		concurrently: bool,
+		/// Expression index values.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		expressions: Option<Vec<String>>,
+		/// MySQL ALTER TABLE options.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		mysql_options: Option<AlterTableOptions>,
+		/// Operator class for index columns.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		operator_class: Option<String>,
 	},
@@ -1040,34 +1574,34 @@ pub enum Operation {
 		/// The columns.
 		columns: Vec<String>,
 	},
-	/// Drops an index while retaining its physical name and definition.
+	/// Drops an index by its explicit physical name.
 	DropNamedIndex {
 		/// The table containing the index.
 		table: String,
-		/// Physical index name.
+		/// Explicit physical index name.
 		name: String,
-		/// Indexed columns.
+		/// Indexed columns from the removed definition.
 		#[serde(default)]
 		columns: Vec<String>,
-		/// Whether the index is unique.
+		/// Whether the removed index is unique.
 		#[serde(default)]
 		unique: bool,
-		/// Index method.
+		/// Typed method and options from the removed definition.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		index_type: Option<IndexType>,
-		/// Partial-index predicate.
+		/// Partial index condition from the removed definition.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		where_clause: Option<String>,
-		/// Whether the index was created concurrently.
+		/// Whether the removed index was created concurrently.
 		#[serde(default)]
 		concurrently: bool,
-		/// Expression-index definitions.
+		/// Expressions from the removed definition.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		expressions: Option<Vec<String>>,
-		/// MySQL index options.
+		/// MySQL options from the removed definition.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		mysql_options: Option<AlterTableOptions>,
-		/// PostgreSQL operator class.
+		/// PostgreSQL operator class from the removed definition.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		operator_class: Option<String>,
 	},
@@ -1419,36 +1953,243 @@ const fn default_true() -> bool {
 }
 
 impl Operation {
+	#[cfg(feature = "pgvector")]
+	pub(crate) fn pgvector_operation_kind(
+		&self,
+	) -> Option<crate::backends::error::PgvectorOperationKind> {
+		use crate::backends::error::PgvectorOperationKind;
+
+		match self {
+			Self::CreateTable { columns, .. } | Self::CreateInheritedTable { columns, .. }
+				if columns
+					.iter()
+					.any(|column| matches!(column.type_definition, FieldType::Vector { .. })) =>
+			{
+				Some(PgvectorOperationKind::ColumnType)
+			}
+			Self::AddColumn { column, .. }
+			| Self::AlterColumn {
+				new_definition: column,
+				..
+			} if matches!(column.type_definition, FieldType::Vector { .. }) => {
+				Some(PgvectorOperationKind::ColumnType)
+			}
+			Self::CreateIndex { index_type, .. }
+			| Self::CreateNamedIndex { index_type, .. }
+			| Self::CreateIndexRepair { index_type, .. }
+				if index_type.is_some_and(IndexType::is_approximate_vector) =>
+			{
+				Some(PgvectorOperationKind::ApproximateIndex)
+			}
+			_ => None,
+		}
+	}
+
+	#[cfg(not(feature = "pgvector"))]
+	pub(crate) fn pgvector_operation_kind(
+		&self,
+	) -> Option<crate::backends::error::PgvectorOperationKind> {
+		None
+	}
+
+	#[cfg(feature = "pgvector")]
+	// This remains available for direct reverse-SQL callers outside migration plans.
+	#[allow(dead_code)]
+	pub(crate) fn pgvector_reverse_operation_kind(
+		&self,
+	) -> Option<crate::backends::error::PgvectorOperationKind> {
+		use crate::backends::error::PgvectorOperationKind;
+
+		match self {
+			Self::DropColumn {
+				old_definition: Some(column),
+				..
+			}
+			| Self::AlterColumn {
+				old_definition: Some(column),
+				..
+			} if matches!(column.type_definition, FieldType::Vector { .. }) => {
+				Some(PgvectorOperationKind::ColumnType)
+			}
+			Self::DropNamedIndex { index_type, .. }
+			| Self::RestoreIndexOnRollback { index_type, .. }
+				if index_type.is_some_and(IndexType::is_approximate_vector) =>
+			{
+				Some(PgvectorOperationKind::ApproximateIndex)
+			}
+			_ => None,
+		}
+	}
+
+	#[cfg(not(feature = "pgvector"))]
+	// This keeps the direct reverse-SQL API feature-independent.
+	#[allow(dead_code)]
+	pub(crate) fn pgvector_reverse_operation_kind(
+		&self,
+	) -> Option<crate::backends::error::PgvectorOperationKind> {
+		None
+	}
+
+	fn order_model_fields_by_generated_dependencies(
+		model: &ModelState,
+	) -> Vec<(&String, &FieldState)> {
+		let mut remaining: Vec<_> = model.fields.iter().collect();
+		let mut ordered = Vec::with_capacity(remaining.len());
+
+		while !remaining.is_empty() {
+			let next_index = remaining
+				.iter()
+				.enumerate()
+				.find(|(_, (field_name, field))| {
+					let Some(generated) = field.generated.as_ref() else {
+						return true;
+					};
+
+					!remaining.iter().any(|(other_field_name, _)| {
+						other_field_name.as_str() != field_name.as_str()
+							&& Self::generated_column_references_column(
+								generated,
+								other_field_name.as_str(),
+							)
+					})
+				})
+				.map(|(index, _)| index);
+
+			if let Some(index) = next_index {
+				ordered.push(remaining.remove(index));
+			} else {
+				let cycle = remaining
+					.iter()
+					.map(|(name, _)| name.as_str())
+					.collect::<Vec<_>>()
+					.join(", ");
+				panic!("generated-column dependency cycle detected among columns: {cycle}");
+			}
+		}
+
+		ordered
+	}
+
+	fn generated_column_references_column(
+		generated: &GeneratedColumnDefinition,
+		column: &str,
+	) -> bool {
+		if let Some(expr) = generated.typed_expr() {
+			return Self::schema_expr_references_column(&expr, column);
+		}
+		if let Some(raw_sql) = generated.raw_sql.as_deref() {
+			return Self::expression_text_references_column(raw_sql, column);
+		}
+		generated
+			.expr_tokens
+			.as_deref()
+			.is_some_and(|tokens| Self::expression_text_references_column(tokens, column))
+	}
+
+	fn schema_expr_references_column(expr: &SchemaExpr, column: &str) -> bool {
+		match expr {
+			SchemaExpr::Column(identifier) => identifier.to_string() == column,
+			SchemaExpr::Value(_) => false,
+			SchemaExpr::Binary { left, right, .. } => {
+				Self::schema_expr_references_column(left, column)
+					|| Self::schema_expr_references_column(right, column)
+			}
+			SchemaExpr::Function { args, .. } => args
+				.iter()
+				.any(|arg| Self::schema_expr_references_column(arg, column)),
+			SchemaExpr::Cast { expr, .. } => Self::schema_expr_references_column(expr, column),
+			_ => false,
+		}
+	}
+
+	fn expression_text_references_column(text: &str, column: &str) -> bool {
+		text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+			.any(|token| token.eq_ignore_ascii_case(column))
+	}
+
+	pub(crate) fn postgres_generated_column_dependency_violation<'a>(
+		column_name: &str,
+		generated: &GeneratedColumnDefinition,
+		generated_column_names: impl IntoIterator<Item = &'a str>,
+	) -> Option<&'a str> {
+		generated_column_names.into_iter().find(|name| {
+			*name != column_name && Self::generated_column_references_column(generated, name)
+		})
+	}
+
+	fn validate_postgres_generated_column_dependencies(
+		columns: &[ColumnDefinition],
+		dialect: &SqlDialect,
+	) {
+		if !matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+			return;
+		}
+
+		let generated_column_names: Vec<&str> = columns
+			.iter()
+			.filter(|column| column.generated.is_some())
+			.map(|column| column.name.as_str())
+			.collect();
+
+		for column in columns {
+			let Some(generated) = column.generated.as_ref() else {
+				continue;
+			};
+
+			if let Some(referenced_column) = Self::postgres_generated_column_dependency_violation(
+				column.name.as_str(),
+				generated,
+				generated_column_names.iter().copied(),
+			) {
+				panic!(
+					"PostgreSQL-compatible generated column `{}` cannot reference generated column `{}`",
+					column.name, referenced_column
+				);
+			}
+		}
+	}
+
 	/// Apply this operation to the project state (forward)
 	pub fn state_forwards(&self, app_label: &str, state: &mut ProjectState) {
 		match self {
-			Operation::CreateTable { name, columns, .. } => {
+			Operation::CreateTable {
+				name,
+				columns,
+				constraints,
+				without_rowid,
+				interleave_in_parent,
+				partition,
+				..
+			} => {
 				let mut model = ModelState::new(app_label, name.clone());
+				model.table_name = name.clone();
 				for column in columns {
-					let field = FieldState::new(
-						column.name.to_string(),
-						column.type_definition.clone(),
-						false,
-					);
-					model.add_field(field);
+					model.add_field(field_state_from_column(column));
+				}
+				model.constraints = constraints
+					.iter()
+					.map(ProjectState::constraint_to_definition)
+					.collect();
+				if without_rowid == &Some(true) {
+					model
+						.options
+						.insert("without_rowid".to_string(), "true".to_string());
+				}
+				if interleave_in_parent.is_some() || partition.is_some() {
+					state.has_opaque_schema_operations = true;
 				}
 				state.add_model(model);
 			}
 			Operation::DropTable { name } => {
-				state.remove_model(app_label, name);
+				state.remove_model_by_table_name(app_label, name);
 			}
 			Operation::AddColumn { table, column, .. } => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
-					let field = FieldState::new(
-						column.name.to_string(),
-						column.type_definition.clone(),
-						false,
-					);
-					model.add_field(field);
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
+					model.add_field(field_state_from_column(column));
 				}
 			}
-			Operation::DropColumn { table, column } => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+			Operation::DropColumn { table, column, .. } => {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.remove_field(column);
 				}
 			}
@@ -1458,24 +2199,19 @@ impl Operation {
 				new_definition,
 				..
 			} => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
-					let field = FieldState::new(
-						column.to_string(),
-						new_definition.type_definition.clone(),
-						false,
-					);
-					model.alter_field(column, field);
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
+					model.alter_field(column, field_state_from_column(new_definition));
 				}
 			}
 			Operation::RenameTable { old_name, new_name } => {
-				state.rename_model(app_label, old_name, new_name.to_string());
+				state.rename_table_in_app(app_label, old_name, new_name);
 			}
 			Operation::RenameColumn {
 				table,
 				old_name,
 				new_name,
 			} => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.rename_field(old_name, new_name.to_string());
 				}
 			}
@@ -1486,6 +2222,7 @@ impl Operation {
 				join_column,
 			} => {
 				let mut model = ModelState::new(app_label, name.clone());
+				model.table_name = name.clone();
 				model.base_model = Some(base_table.to_string());
 				model.inheritance_type = Some("joined_table".to_string());
 
@@ -1497,12 +2234,7 @@ impl Operation {
 				model.add_field(join_field);
 
 				for column in columns {
-					let field = FieldState::new(
-						column.name.to_string(),
-						column.type_definition.clone(),
-						false,
-					);
-					model.add_field(field);
+					model.add_field(field_state_from_column(column));
 				}
 				state.add_model(model);
 			}
@@ -1511,7 +2243,7 @@ impl Operation {
 				column_name,
 				default_value,
 			} => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.discriminator_column = Some(column_name.to_string());
 					model.inheritance_type = Some("single_table".to_string());
 					let field = FieldState::new(
@@ -1522,21 +2254,202 @@ impl Operation {
 					model.add_field(field);
 				}
 			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					if let Constraint::EnumDomain { column, domain, .. } = constraint
+						&& let Some(field) = model.fields.get_mut(column)
+					{
+						field.domain = Some(domain.clone().canonicalized());
+					}
+					let definition = ProjectState::constraint_to_definition(constraint);
+					if !model
+						.constraints
+						.iter()
+						.any(|existing| existing.name == definition.name)
+					{
+						model.constraints.push(definition);
+					}
+				}
+			}
+			Operation::DropConstraint {
+				table,
+				constraint_name,
+			} => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					model
+						.constraints
+						.retain(|constraint| constraint.name != *constraint_name);
+				}
+			}
+			Operation::DropConstraintDefinition { table, constraint } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					if let Constraint::EnumDomain { column, .. } = constraint
+						&& let Some(field) = model.fields.get_mut(column)
+					{
+						field.domain = None;
+					}
+					model
+						.constraints
+						.retain(|definition| definition.name != constraint.name());
+				}
+			}
+			Operation::CreateIndex {
+				table,
+				columns,
+				unique,
+				index_type: _index_type,
+				where_clause,
+				expressions,
+				operator_class: _operator_class,
+				..
+			} => {
+				if !named_index_has_target(columns, expressions.as_deref()) {
+					return;
+				}
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					let name = generated_index_name(
+						table,
+						columns,
+						expressions.as_deref(),
+						where_clause.as_deref(),
+					);
+					model.indexes.retain(|index| index.name != name);
+					model.indexes.push(IndexDefinition {
+						name,
+						fields: columns.clone(),
+						unique: *unique,
+						where_clause: where_clause.clone(),
+						#[cfg(feature = "pgvector")]
+						index_type: *_index_type,
+						#[cfg(feature = "pgvector")]
+						operator_class: _operator_class.clone(),
+						#[cfg(feature = "pgvector")]
+						expressions: expressions.clone(),
+					});
+				}
+			}
+			Operation::CreateIndexRepair {
+				table,
+				name,
+				columns,
+				unique,
+				index_type: _index_type,
+				expressions,
+				operator_class: _operator_class,
+				where_clause,
+				..
+			} => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					let name = name.clone().unwrap_or_else(|| {
+						generated_index_name(
+							table,
+							columns,
+							expressions.as_deref(),
+							where_clause.as_deref(),
+						)
+					});
+					model.indexes.retain(|index| index.name != name);
+					model.indexes.push(IndexDefinition {
+						name,
+						fields: columns.clone(),
+						unique: *unique,
+						where_clause: where_clause.clone(),
+						#[cfg(feature = "pgvector")]
+						index_type: *_index_type,
+						#[cfg(feature = "pgvector")]
+						operator_class: _operator_class.clone(),
+						#[cfg(feature = "pgvector")]
+						expressions: expressions.clone(),
+					});
+				}
+			}
+			Operation::DropIndex { table, columns } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					let name = super::operations::default_index_name(table, &columns.join("_"));
+					model.indexes.retain(|index| index.name != name);
+				}
+			}
 			Operation::AddConstraint { .. }
-			| Operation::DropConstraint { .. }
-			| Operation::CreateIndex { .. }
-			| Operation::CreateIndexRepair { .. }
-			| Operation::DropIndex { .. }
-			| Operation::DropNamedIndex { .. }
-			| Operation::RunSQL { .. }
+			| Operation::AddConstraintRepair { .. }
+			| Operation::RestoreConstraintOnRollback { .. } => {
+				state.has_opaque_schema_operations = true;
+			}
+			Operation::RunSQL { .. } => {
+				state.has_opaque_schema_operations = true;
+			}
+			Operation::AlterUniqueTogether {
+				table,
+				unique_together,
+			} => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					let prefix = format!("{table}_");
+					model.constraints.retain(|constraint| {
+						let generated_unique_together_name = constraint
+							.name
+							.strip_prefix(&prefix)
+							.and_then(|suffix| suffix.strip_suffix("_uniq"))
+							.is_some_and(|index| index.parse::<usize>().is_ok());
+						!(constraint.constraint_type.eq_ignore_ascii_case("unique")
+							&& generated_unique_together_name)
+					});
+					model
+						.constraints
+						.extend(unique_together.iter().enumerate().map(|(index, fields)| {
+							ConstraintDefinition {
+								name: format!("{table}_{index}_uniq"),
+								constraint_type: "unique".to_string(),
+								fields: fields.clone(),
+								expression: None,
+								foreign_key_info: None,
+							}
+						}));
+				}
+			}
+			Operation::RestoreIndexOnRollback { .. }
 			| Operation::RunRust { .. }
 			| Operation::AlterTableComment { .. }
-			| Operation::AlterUniqueTogether { .. }
 			| Operation::AlterModelOptions { .. }
-			| Operation::SetAutoIncrementValue { .. }
-			| Operation::CreateCompositePrimaryKey { .. } => {
+			| Operation::SetAutoIncrementValue { .. } => {
 				// Counter/constraint-level ops do not affect ProjectState
 				// (they track model-level structure only).
+			}
+			Operation::CreateCompositePrimaryKey { .. } => {
+				state.has_opaque_schema_operations = true;
+			}
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex {
+				table,
+				name,
+				columns,
+				unique,
+				index_type,
+				expressions,
+				operator_class,
+				where_clause,
+				..
+			} => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					#[cfg(not(feature = "pgvector"))]
+					let _ = (index_type, expressions, operator_class);
+					model.indexes.retain(|index| index.name != *name);
+					model.indexes.push(IndexDefinition {
+						name: name.clone(),
+						fields: columns.clone(),
+						unique: *unique,
+						where_clause: where_clause.clone(),
+						#[cfg(feature = "pgvector")]
+						index_type: *index_type,
+						#[cfg(feature = "pgvector")]
+						operator_class: operator_class.clone(),
+						#[cfg(feature = "pgvector")]
+						expressions: expressions.clone(),
+					});
+				}
+			}
+			Operation::DropNamedIndex { table, name, .. } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					model.indexes.retain(|index| index.name != *name);
+				}
 			}
 			Operation::MoveModel {
 				model_name,
@@ -1547,6 +2460,11 @@ impl Operation {
 				new_table_name,
 			} => {
 				// Move the model from one app to another in the project state
+				if *rename_table
+					&& let (Some(old_name), Some(new_name)) = (old_table_name, new_table_name)
+				{
+					state.rename_table_in_app(from_app, old_name, new_name);
+				}
 				// First get the model, then remove it from the old location
 				if let Some(model) = state.get_model(from_app, model_name).cloned() {
 					state.remove_model(from_app, model_name);
@@ -1555,14 +2473,22 @@ impl Operation {
 					let mut new_model = model;
 					new_model.app_label = to_app.to_string();
 
-					// Update table name if rename_table is true
-					if *rename_table
-						&& let (Some(_old_name), Some(new_name)) = (old_table_name, new_table_name)
-					{
-						new_model.table_name = new_name.to_string();
-					}
-
 					state.add_model(new_model);
+				}
+				for model in state.models.values_mut() {
+					for field in model.fields.values_mut() {
+						if field.params.get("fk_target_app").map(String::as_str) == Some(from_app)
+							&& field
+								.params
+								.get("fk_target_model")
+								.or_else(|| field.params.get("fk_target"))
+								.map(String::as_str) == Some(model_name)
+						{
+							field
+								.params
+								.insert("fk_target_app".to_string(), to_app.to_string());
+						}
+					}
 				}
 			}
 			// Schema operations don't affect ProjectState (models/fields only)
@@ -1645,6 +2571,18 @@ impl Operation {
 			parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
 		}
 
+		if matches!(dialect, SqlDialect::Postgres)
+			&& let Some(storage) = decode_file_field_metadata(col.default.as_deref())
+				.0
+				.remove("storage")
+		{
+			parts.push(format!("STORAGE {}", postgres_storage_keyword(&storage)).into());
+		}
+
+		if let Some(generated) = &col.generated {
+			parts.push(Self::generated_column_to_sql(generated, dialect).into());
+		}
+
 		// NOT NULL constraint
 		if col.not_null {
 			parts.push("NOT NULL".to_string().into());
@@ -1656,15 +2594,346 @@ impl Operation {
 		}
 
 		// DEFAULT value
-		if let Some(default) = &col.default {
-			parts.push(format!("DEFAULT {}", default).into());
+		if let Some(default) = effective_column_default(col.default.as_ref()) {
+			parts.push(format!("DEFAULT {default}").into());
+		}
+		parts.join(" ")
+	}
+
+	fn generated_column_to_sql(
+		generated: &GeneratedColumnDefinition,
+		dialect: &SqlDialect,
+	) -> String {
+		if generated.storage == GeneratedStorage::Virtual
+			&& matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb)
+		{
+			panic!("PostgreSQL-compatible generated columns require STORED storage");
 		}
 
-		parts.join(" ")
+		let expr_sql = if let Some(expr) = &generated.expr {
+			Self::schema_expr_to_sql(expr, dialect)
+		} else if let Some(raw_sql) = &generated.raw_sql {
+			raw_sql.clone()
+		} else {
+			panic!("generated columns require a typed expression or raw SQL body");
+		};
+
+		format!(
+			"GENERATED ALWAYS AS ({}) {}",
+			expr_sql,
+			generated.storage.as_str()
+		)
+	}
+
+	fn schema_expr_to_sql(expr: &SchemaExpr, dialect: &SqlDialect) -> String {
+		match expr {
+			SchemaExpr::Column(iden) => Self::quote_schema_identifier(&iden.to_string(), dialect),
+			SchemaExpr::Value(value) => value.to_sql_literal(),
+			SchemaExpr::Binary { left, op, right } => format!(
+				"({} {} {})",
+				Self::schema_expr_to_sql(left, dialect),
+				op.as_str(),
+				Self::schema_expr_to_sql(right, dialect)
+			),
+			SchemaExpr::Function { func, args } => match func {
+				SchemaFunc::Concat if args.is_empty() => "''".to_string(),
+				SchemaFunc::Concat if matches!(dialect, SqlDialect::Mysql) => format!(
+					"CONCAT({})",
+					args.iter()
+						.map(|arg| Self::schema_expr_to_sql(arg, dialect))
+						.collect::<Vec<_>>()
+						.join(", ")
+				),
+				SchemaFunc::Concat => args
+					.iter()
+					.map(|arg| Self::schema_expr_to_sql(arg, dialect))
+					.collect::<Vec<_>>()
+					.join(" || "),
+				SchemaFunc::Coalesce => format!(
+					"COALESCE({})",
+					args.iter()
+						.map(|arg| Self::schema_expr_to_sql(arg, dialect))
+						.collect::<Vec<_>>()
+						.join(", ")
+				),
+				_ => panic!("unsupported generated-column schema function"),
+			},
+			SchemaExpr::Cast { expr, ty } => format!(
+				"CAST({} AS {})",
+				Self::schema_expr_to_sql(expr, dialect),
+				Self::query_column_type_to_cast_sql(ty, dialect)
+			),
+			_ => panic!("unsupported generated-column schema expression"),
+		}
+	}
+
+	fn quote_schema_identifier(ident: &str, dialect: &SqlDialect) -> String {
+		if matches!(dialect, SqlDialect::Mysql) {
+			format!("`{}`", ident.replace('`', "``"))
+		} else {
+			quote_identifier(ident).to_string()
+		}
+	}
+
+	fn quote_dialect_identifier(ident: &str, dialect: &SqlDialect) -> String {
+		match dialect {
+			SqlDialect::Postgres => PostgresQueryBuilder::new().escape_identifier(ident),
+			SqlDialect::Mysql => MySqlQueryBuilder.escape_identifier(ident),
+			SqlDialect::Sqlite => SqliteQueryBuilder::new().escape_identifier(ident),
+			SqlDialect::Cockroachdb => CockroachDBQueryBuilder::new().escape_identifier(ident),
+		}
+	}
+
+	fn query_column_type_to_sql(ty: &QueryColumnType, dialect: &SqlDialect) -> String {
+		match ty {
+			QueryColumnType::Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			QueryColumnType::String(Some(len)) if matches!(dialect, SqlDialect::Mysql) => {
+				format!("CHAR({len})")
+			}
+			QueryColumnType::String(Some(len)) => format!("VARCHAR({len})"),
+			QueryColumnType::String(None) if matches!(dialect, SqlDialect::Mysql) => {
+				"CHAR".to_string()
+			}
+			QueryColumnType::String(None) => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"VARCHAR".to_string()
+				}
+			}
+			QueryColumnType::Text => "TEXT".to_string(),
+			QueryColumnType::Integer => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"INT".to_string()
+				} else {
+					"INTEGER".to_string()
+				}
+			}
+			QueryColumnType::BigInteger => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"BIGINT".to_string()
+				}
+			}
+			QueryColumnType::SmallInteger => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"SMALLINT".to_string()
+				}
+			}
+			QueryColumnType::TinyInteger => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"TINYINT".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"SMALLINT".to_string()
+				}
+			}
+			QueryColumnType::Float => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"FLOAT".to_string()
+				} else {
+					"REAL".to_string()
+				}
+			}
+			QueryColumnType::Double => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"DOUBLE PRECISION".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"REAL".to_string()
+				} else {
+					"DOUBLE".to_string()
+				}
+			}
+			QueryColumnType::Decimal(Some((precision, scale))) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					format!("NUMERIC({precision}, {scale})")
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"REAL".to_string()
+				} else {
+					format!("DECIMAL({precision}, {scale})")
+				}
+			}
+			QueryColumnType::Decimal(None) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"NUMERIC".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"REAL".to_string()
+				} else {
+					"DECIMAL".to_string()
+				}
+			}
+			QueryColumnType::Boolean => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					"TINYINT(1)".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"BOOLEAN".to_string()
+				}
+			}
+			QueryColumnType::Date => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"DATE".to_string()
+				}
+			}
+			QueryColumnType::Time => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"TIME".to_string()
+				}
+			}
+			QueryColumnType::DateTime => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"TIMESTAMP".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"DATETIME".to_string()
+				}
+			}
+			QueryColumnType::Timestamp => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"INTEGER".to_string()
+				} else {
+					"TIMESTAMP".to_string()
+				}
+			}
+			QueryColumnType::TimestampWithTimeZone => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"TIMESTAMP WITH TIME ZONE".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"TIMESTAMP".to_string()
+				}
+			}
+			QueryColumnType::Binary(Some(len)) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					format!("BLOB({len})")
+				}
+			}
+			QueryColumnType::Binary(None) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					"BLOB".to_string()
+				}
+			}
+			QueryColumnType::VarBinary(len) => {
+				if matches!(dialect, SqlDialect::Mysql) {
+					format!("VARBINARY({len})")
+				} else if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					format!("BLOB({len})")
+				}
+			}
+			QueryColumnType::Blob => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"BYTEA".to_string()
+				} else {
+					"BLOB".to_string()
+				}
+			}
+			QueryColumnType::Uuid => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"UUID".to_string()
+				} else if matches!(dialect, SqlDialect::Mysql) {
+					"CHAR(36)".to_string()
+				} else {
+					"TEXT".to_string()
+				}
+			}
+			QueryColumnType::Json => {
+				if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"JSON".to_string()
+				}
+			}
+			QueryColumnType::Jsonb => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					"JSONB".to_string()
+				} else if matches!(dialect, SqlDialect::Sqlite) {
+					"TEXT".to_string()
+				} else {
+					"JSON".to_string()
+				}
+			}
+			QueryColumnType::Array(inner) => {
+				if matches!(dialect, SqlDialect::Postgres | SqlDialect::Cockroachdb) {
+					format!("{}[]", Self::query_column_type_to_sql(inner, dialect))
+				} else if matches!(dialect, SqlDialect::Mysql) {
+					"JSON".to_string()
+				} else {
+					"TEXT".to_string()
+				}
+			}
+			#[cfg(feature = "pgvector")]
+			QueryColumnType::Vector(dimensions) => format!("VECTOR({dimensions})"),
+			QueryColumnType::Custom(custom) => custom.clone(),
+			_ => panic!("unsupported generated-column cast column type"),
+		}
+	}
+
+	fn query_column_type_to_cast_sql(ty: &QueryColumnType, dialect: &SqlDialect) -> String {
+		if !matches!(dialect, SqlDialect::Mysql) {
+			return Self::query_column_type_to_sql(ty, dialect);
+		}
+
+		match ty {
+			QueryColumnType::Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			QueryColumnType::String(Some(len)) => format!("CHAR({len})"),
+			QueryColumnType::String(None) | QueryColumnType::Text => "CHAR".to_string(),
+			QueryColumnType::TinyInteger
+			| QueryColumnType::SmallInteger
+			| QueryColumnType::Integer
+			| QueryColumnType::BigInteger => "SIGNED".to_string(),
+			QueryColumnType::Float => "FLOAT".to_string(),
+			QueryColumnType::Double => "DOUBLE".to_string(),
+			QueryColumnType::Decimal(Some((precision, scale))) => {
+				format!("DECIMAL({precision}, {scale})")
+			}
+			QueryColumnType::Decimal(None) => "DECIMAL".to_string(),
+			QueryColumnType::Boolean => "UNSIGNED".to_string(),
+			QueryColumnType::Date => "DATE".to_string(),
+			QueryColumnType::Time => "TIME".to_string(),
+			QueryColumnType::DateTime
+			| QueryColumnType::Timestamp
+			| QueryColumnType::TimestampWithTimeZone => "DATETIME".to_string(),
+			QueryColumnType::Binary(Some(len)) => format!("BINARY({len})"),
+			QueryColumnType::Binary(None) | QueryColumnType::Blob => "BINARY".to_string(),
+			QueryColumnType::VarBinary(len) => format!("BINARY({len})"),
+			QueryColumnType::Uuid => "CHAR(36)".to_string(),
+			QueryColumnType::Json | QueryColumnType::Jsonb | QueryColumnType::Array(_) => {
+				"JSON".to_string()
+			}
+			#[cfg(feature = "pgvector")]
+			QueryColumnType::Vector(dimensions) => format!("VECTOR({dimensions})"),
+			QueryColumnType::Custom(custom) => custom.clone(),
+			_ => panic!("unsupported generated-column cast column type"),
+		}
 	}
 
 	/// Generate column SQL with all constraints
 	fn column_to_sql(col: &ColumnDefinition, dialect: &SqlDialect) -> String {
+		Self::column_to_sql_with_collation(col, dialect, None)
+	}
+
+	fn column_to_sql_with_collation(
+		col: &ColumnDefinition,
+		dialect: &SqlDialect,
+		collation: Option<&str>,
+	) -> String {
 		let mut parts = Vec::new();
 
 		// Column name
@@ -1724,6 +2993,15 @@ impl Operation {
 					} else {
 						parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
 					}
+					if let Some(collation) = collation {
+						parts.push(
+							format!(
+								"COLLATE {}",
+								Self::quote_dialect_identifier(collation, &SqlDialect::Sqlite)
+							)
+							.into(),
+						);
+					}
 					// SQLite: AUTOINCREMENT requires `INTEGER PRIMARY KEY AUTOINCREMENT`.
 					// Note that `INTEGER PRIMARY KEY` alone only enables rowid auto-assignment
 					// (alias for the rowid); the explicit AUTOINCREMENT keyword is required to
@@ -1738,8 +3016,8 @@ impl Operation {
 						if col.unique {
 							parts.push("UNIQUE".to_string().into());
 						}
-						if let Some(default) = &col.default {
-							parts.push(format!("DEFAULT {}", default).into());
+						if let Some(default) = effective_column_default(col.default.as_ref()) {
+							parts.push(format!("DEFAULT {default}").into());
 						}
 						return parts.join(" ");
 					}
@@ -1747,6 +3025,27 @@ impl Operation {
 			}
 		} else {
 			parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+			if let Some(collation) = collation {
+				parts.push(
+					format!(
+						"COLLATE {}",
+						Self::quote_dialect_identifier(collation, &SqlDialect::Sqlite)
+					)
+					.into(),
+				);
+			}
+		}
+
+		if matches!(dialect, SqlDialect::Postgres)
+			&& let Some(storage) = decode_file_field_metadata(col.default.as_deref())
+				.0
+				.remove("storage")
+		{
+			parts.push(format!("STORAGE {}", postgres_storage_keyword(&storage)).into());
+		}
+
+		if let Some(generated) = &col.generated {
+			parts.push(Self::generated_column_to_sql(generated, dialect).into());
 		}
 
 		// NOT NULL constraint
@@ -1765,11 +3064,48 @@ impl Operation {
 		}
 
 		// DEFAULT value
-		if let Some(default) = &col.default {
-			parts.push(format!("DEFAULT {}", default).into());
+		if let Some(default) = effective_column_default(col.default.as_ref()) {
+			parts.push(format!("DEFAULT {default}").into());
 		}
-
 		parts.join(" ")
+	}
+
+	fn create_table_column_to_sql(
+		col: &ColumnDefinition,
+		dialect: &SqlDialect,
+		without_primary_key: bool,
+	) -> String {
+		let sql = if without_primary_key {
+			Self::column_to_sql_without_pk(col, dialect)
+		} else {
+			Self::column_to_sql(col, dialect)
+		};
+		let current_identifier = quote_identifier(&col.name).to_string();
+		let dialect_identifier = Self::quote_schema_identifier(&col.name, dialect);
+		let Some(rest) = sql.strip_prefix(&current_identifier) else {
+			return sql;
+		};
+		format!("{dialect_identifier}{rest}")
+	}
+
+	/// Returns whether this operation creates an index outside a transaction.
+	pub(crate) fn creates_index_concurrently(&self) -> bool {
+		match self {
+			Operation::CreateIndex {
+				concurrently: true, ..
+			}
+			| Operation::CreateIndexRepair {
+				concurrently: true, ..
+			}
+			| Operation::RestoreIndexOnRollback {
+				concurrently: true, ..
+			} => true,
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex {
+				concurrently: true, ..
+			} => true,
+			_ => false,
+		}
 	}
 
 	/// Generate forward SQL
@@ -1783,6 +3119,8 @@ impl Operation {
 				interleave_in_parent,
 				partition,
 			} => {
+				Self::validate_postgres_generated_column_dependencies(columns, dialect);
+
 				// Detect composite primary key
 				let pk_columns: Vec<&String> = columns
 					.iter()
@@ -1794,14 +3132,10 @@ impl Operation {
 				let mut parts = Vec::new();
 				for col in columns {
 					// Use column_to_sql_without_pk for composite PKs to avoid duplicate PRIMARY KEY
-					if has_composite_pk {
-						parts.push(format!(
-							"  {}",
-							Self::column_to_sql_without_pk(col, dialect)
-						));
-					} else {
-						parts.push(format!("  {}", Self::column_to_sql(col, dialect)));
-					}
+					parts.push(format!(
+						"  {}",
+						Self::create_table_column_to_sql(col, dialect, has_composite_pk)
+					));
 				}
 
 				// Add composite primary key constraint if detected
@@ -1809,23 +3143,23 @@ impl Operation {
 					let pk_constraint_name = format!("{}_pkey", name);
 					let quoted_pk_columns = pk_columns
 						.iter()
-						.map(|s| quote_identifier(s))
+						.map(|s| Self::quote_schema_identifier(s, dialect))
 						.collect::<Vec<_>>()
 						.join(", ");
 					let pk_constraint = format!(
 						"  CONSTRAINT {} PRIMARY KEY ({})",
-						quote_identifier(&pk_constraint_name),
+						Self::quote_schema_identifier(&pk_constraint_name, dialect),
 						quoted_pk_columns
 					);
 					parts.push(pk_constraint);
 				}
 
 				for constraint in constraints {
-					parts.push(format!("  {}", constraint));
+					parts.push(format!("  {}", constraint.to_sql_for_dialect(dialect)));
 				}
 				let mut sql = format!(
 					"CREATE TABLE {} (\n{}\n)",
-					quote_identifier(name),
+					Self::quote_schema_identifier(name, dialect),
 					parts.join(",\n")
 				);
 
@@ -1864,16 +3198,28 @@ impl Operation {
 				sql.push(';');
 				sql
 			}
-			Operation::DropTable { name } => format!("DROP TABLE {};", quote_identifier(name)),
+			Operation::DropTable { name } => format!(
+				"DROP TABLE {};",
+				Self::quote_schema_identifier(name, dialect)
+			),
 			Operation::AddColumn {
 				table,
 				column,
 				mysql_options,
 			} => {
+				if matches!(dialect, SqlDialect::Sqlite)
+					&& column
+						.generated
+						.as_ref()
+						.is_some_and(|generated| generated.storage == GeneratedStorage::Stored)
+				{
+					panic!("SQLite ADD COLUMN does not support stored generated columns");
+				}
+
 				let base_sql = format!(
 					"ALTER TABLE {} ADD COLUMN {}",
-					quote_identifier(table),
-					Self::column_to_sql(column, dialect)
+					Self::quote_schema_identifier(table, dialect),
+					Self::create_table_column_to_sql(column, dialect, false)
 				);
 
 				// MySQL: Add ALGORITHM/LOCK options
@@ -1888,11 +3234,11 @@ impl Operation {
 
 				format!("{};", base_sql)
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				format!(
 					"ALTER TABLE {} DROP COLUMN {};",
-					quote_identifier(table),
-					quote_identifier(column)
+					Self::quote_schema_identifier(table, dialect),
+					Self::quote_schema_identifier(column, dialect)
 				)
 			}
 			Operation::AlterColumn {
@@ -1907,37 +3253,58 @@ impl Operation {
 				match dialect {
 					SqlDialect::Postgres | SqlDialect::Cockroachdb => {
 						let mut statements = Vec::new();
-						if old_definition
-							.as_ref()
-							.is_some_and(|old_definition| old_definition.default.is_some())
-						{
+						if old_definition.as_ref().is_some_and(|old_definition| {
+							effective_column_default(old_definition.default.as_ref()).is_some()
+						}) {
 							statements.push(format!(
 								"ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT;",
-								quote_identifier(table),
-								quote_identifier(column)
+								Self::quote_schema_identifier(table, dialect),
+								Self::quote_schema_identifier(column, dialect)
 							));
 						}
 						statements.push(format!(
 							"ALTER TABLE {} ALTER COLUMN {} TYPE {};",
-							quote_identifier(table),
-							quote_identifier(column),
+							Self::quote_schema_identifier(table, dialect),
+							Self::quote_schema_identifier(column, dialect),
 							sql_type
 						));
-						if let Some(default) = &new_definition.default {
+						if let Some(default) =
+							effective_column_default(new_definition.default.as_ref())
+						{
 							statements.push(format!(
 								"ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {};",
-								quote_identifier(table),
-								quote_identifier(column),
+								Self::quote_schema_identifier(table, dialect),
+								Self::quote_schema_identifier(column, dialect),
 								default
 							));
+						}
+						if matches!(dialect, SqlDialect::Postgres) {
+							let old_storage = old_definition.as_ref().and_then(|definition| {
+								decode_file_field_metadata(definition.default.as_deref())
+									.0
+									.remove("storage")
+							});
+							let new_storage =
+								decode_file_field_metadata(new_definition.default.as_deref())
+									.0
+									.remove("storage");
+							if old_storage != new_storage {
+								let storage = new_storage.as_deref().unwrap_or("extended");
+								statements.push(format!(
+									"ALTER TABLE {} ALTER COLUMN {} SET STORAGE {};",
+									Self::quote_schema_identifier(table, dialect),
+									Self::quote_schema_identifier(column, dialect),
+									postgres_storage_keyword(storage)
+								));
+							}
 						}
 						statements.join(" ")
 					}
 					SqlDialect::Mysql => {
 						let base_sql = format!(
 							"ALTER TABLE {} MODIFY COLUMN {}",
-							quote_identifier(table),
-							Self::column_to_sql(new_definition, dialect)
+							Self::quote_schema_identifier(table, dialect),
+							Self::create_table_column_to_sql(new_definition, dialect, false)
 						);
 
 						// MySQL: Add ALGORITHM/LOCK options
@@ -1965,19 +3332,23 @@ impl Operation {
 			} => {
 				format!(
 					"ALTER TABLE {} RENAME COLUMN {} TO {};",
-					quote_identifier(table),
-					quote_identifier(old_name),
-					quote_identifier(new_name)
+					Self::quote_schema_identifier(table, dialect),
+					Self::quote_schema_identifier(old_name, dialect),
+					Self::quote_schema_identifier(new_name, dialect)
 				)
 			}
 			Operation::RenameTable { old_name, new_name } => {
 				format!(
 					"ALTER TABLE {} RENAME TO {};",
-					quote_identifier(old_name),
-					quote_identifier(new_name)
+					Self::quote_schema_identifier(old_name, dialect),
+					Self::quote_schema_identifier(new_name, dialect)
 				)
 			}
 			Operation::AddConstraint {
+				table,
+				constraint_sql,
+			}
+			| Operation::AddConstraintRepair {
 				table,
 				constraint_sql,
 			} => {
@@ -1988,9 +3359,17 @@ impl Operation {
 				};
 				format!(
 					"ALTER TABLE {} ADD {};",
-					quote_identifier(table),
+					Self::quote_schema_identifier(table, dialect),
 					constraint_sql
 				)
+			}
+			Operation::AddConstraintDefinition { table, constraint } => format!(
+				"ALTER TABLE {} ADD {};",
+				Self::quote_schema_identifier(table, dialect),
+				constraint.to_sql_for_dialect(dialect)
+			),
+			Operation::RestoreConstraintOnRollback { .. } => {
+				"-- rollback-only generated-column constraint restore".to_string()
 			}
 			Operation::DropConstraint {
 				table,
@@ -1998,12 +3377,29 @@ impl Operation {
 			} => {
 				format!(
 					"ALTER TABLE {} DROP CONSTRAINT {};",
-					quote_identifier(table),
-					quote_identifier(constraint_name)
+					Self::quote_schema_identifier(table, dialect),
+					Self::quote_schema_identifier(constraint_name, dialect)
 				)
 			}
+			Operation::DropConstraintDefinition { table, constraint } => format!(
+				"ALTER TABLE {} DROP CONSTRAINT {};",
+				Self::quote_schema_identifier(table, dialect),
+				Self::quote_dialect_identifier(constraint.name(), dialect)
+			),
 			Operation::CreateIndex {
 				table,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			}
+			| Operation::CreateIndexRepair {
+				table,
+				name: _,
 				columns,
 				unique,
 				index_type,
@@ -2033,7 +3429,17 @@ impl Operation {
 				let index_content =
 					if let Some(exprs) = expressions.as_ref().filter(|e| !e.is_empty()) {
 						// Expressions are assumed to be properly formatted, no additional quoting needed
-						exprs.join(", ")
+						if let Some(operator_class) = operator_class
+							&& matches!(dialect, SqlDialect::Postgres)
+						{
+							exprs
+								.iter()
+								.map(|expression| format!("{expression} {operator_class}"))
+								.collect::<Vec<_>>()
+								.join(", ")
+						} else {
+							exprs.join(", ")
+						}
 					} else {
 						// Use columns with optional operator class
 						if let Some(op_class) = operator_class {
@@ -2041,14 +3447,20 @@ impl Operation {
 							if matches!(dialect, SqlDialect::Postgres) {
 								columns
 									.iter()
-									.map(|c| format!("{} {}", quote_identifier(c), op_class))
+									.map(|c| {
+										format!(
+											"{} {}",
+											Self::quote_schema_identifier(c, dialect),
+											op_class
+										)
+									})
 									.collect::<Vec<_>>()
 									.join(", ")
 							} else {
 								// Quote column names for safety (reserved words, special chars)
 								columns
 									.iter()
-									.map(|c| quote_identifier(c).to_string())
+									.map(|c| Self::quote_schema_identifier(c, dialect))
 									.collect::<Vec<_>>()
 									.join(", ")
 							}
@@ -2056,18 +3468,23 @@ impl Operation {
 							// Quote column names for safety (reserved words, special chars)
 							columns
 								.iter()
-								.map(|c| quote_identifier(c).to_string())
+								.map(|c| Self::quote_schema_identifier(c, dialect))
 								.collect::<Vec<_>>()
 								.join(", ")
 						}
 					};
 
-				let idx_name = generated_index_name(
-					table,
-					columns,
-					expressions.as_deref(),
-					where_clause.as_deref(),
-				);
+				let idx_name = match self {
+					Operation::CreateIndexRepair {
+						name: Some(name), ..
+					} => name.clone(),
+					_ => generated_index_name(
+						table,
+						columns,
+						expressions.as_deref(),
+						where_clause.as_deref(),
+					),
+				};
 
 				// Index type clause (USING type) - PostgreSQL, CockroachDB
 				let using_clause = match (index_type, dialect) {
@@ -2093,7 +3510,7 @@ impl Operation {
 							"CREATE {}INDEX {}{}",
 							effective_unique,
 							concurrent_str,
-							quote_identifier(&idx_name)
+							Self::quote_schema_identifier(&idx_name, dialect)
 						)
 					}
 					SqlDialect::Mysql => {
@@ -2102,7 +3519,7 @@ impl Operation {
 							"CREATE {}{}INDEX {}",
 							mysql_prefix,
 							effective_unique,
-							quote_identifier(&idx_name)
+							Self::quote_schema_identifier(&idx_name, dialect)
 						)
 					}
 					SqlDialect::Sqlite => {
@@ -2110,7 +3527,7 @@ impl Operation {
 						format!(
 							"CREATE {}INDEX {}",
 							effective_unique,
-							quote_identifier(&idx_name)
+							Self::quote_schema_identifier(&idx_name, dialect)
 						)
 					}
 				};
@@ -2119,10 +3536,14 @@ impl Operation {
 				// Quote table name for safety (reserved words, special chars)
 				sql.push_str(&format!(
 					" ON {}{} ({})",
-					quote_identifier(table),
+					Self::quote_schema_identifier(table, dialect),
 					using_clause,
 					index_content
 				));
+
+				if let Some(options) = index_type.and_then(|index_type| index_type.options_sql()) {
+					sql.push_str(&options);
+				}
 
 				// Add WHERE clause for partial indexes (PostgreSQL, SQLite, CockroachDB - not MySQL)
 				if let Some(where_cond) = where_clause
@@ -2144,7 +3565,8 @@ impl Operation {
 				sql.push(';');
 				sql
 			}
-			Operation::CreateIndexRepair {
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex {
 				table,
 				name,
 				columns,
@@ -2155,54 +3577,51 @@ impl Operation {
 				expressions,
 				mysql_options,
 				operator_class,
-			} => {
-				let create = Operation::CreateIndex {
-					table: table.clone(),
-					columns: columns.clone(),
-					unique: *unique,
-					index_type: *index_type,
-					where_clause: where_clause.clone(),
-					concurrently: *concurrently,
-					expressions: expressions.clone(),
-					mysql_options: *mysql_options,
-					operator_class: operator_class.clone(),
-				};
-				let sql = create.to_sql(dialect);
-				name.as_ref().map_or(sql.clone(), |name| {
-					let generated_name = generated_index_name(
-						table,
-						columns,
-						expressions.as_deref(),
-						where_clause.as_deref(),
-					);
-					let generated_name = quote_identifier(&generated_name);
-					let name = quote_identifier(name);
-					sql.replacen(generated_name.as_ref(), name.as_ref(), 1)
-				})
+			} => Operation::CreateIndexRepair {
+				table: table.clone(),
+				name: Some(name.clone()),
+				columns: columns.clone(),
+				unique: *unique,
+				index_type: *index_type,
+				where_clause: where_clause.clone(),
+				concurrently: *concurrently,
+				expressions: expressions.clone(),
+				mysql_options: *mysql_options,
+				operator_class: operator_class.clone(),
+			}
+			.to_sql(dialect),
+			Operation::RestoreIndexOnRollback { .. } => {
+				"-- rollback-only generated-column index restore".to_string()
 			}
 			Operation::DropIndex { table, columns } => {
-				let idx_name = generated_index_name(table, columns, None, None);
+				let idx_name = super::operations::default_index_name(table, &columns.join("_"));
 				match dialect {
 					SqlDialect::Mysql => {
 						format!(
 							"DROP INDEX {} ON {};",
-							quote_identifier(&idx_name),
-							quote_identifier(table)
+							Self::quote_schema_identifier(&idx_name, dialect),
+							Self::quote_schema_identifier(table, dialect)
 						)
 					}
 					SqlDialect::Postgres | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
-						format!("DROP INDEX {};", quote_identifier(&idx_name))
+						format!(
+							"DROP INDEX {};",
+							Self::quote_schema_identifier(&idx_name, dialect)
+						)
 					}
 				}
 			}
 			Operation::DropNamedIndex { table, name, .. } => match dialect {
 				SqlDialect::Mysql => format!(
 					"DROP INDEX {} ON {};",
-					quote_identifier(name),
-					quote_identifier(table)
+					Self::quote_schema_identifier(name, dialect),
+					Self::quote_schema_identifier(table, dialect)
 				),
 				SqlDialect::Postgres | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
-					format!("DROP INDEX {};", quote_identifier(name))
+					format!(
+						"DROP INDEX {};",
+						Self::quote_schema_identifier(name, dialect)
+					)
 				}
 			},
 			Operation::RunSQL { sql, .. } => sql.to_string(),
@@ -2215,22 +3634,28 @@ impl Operation {
 					if let Some(comment_text) = comment {
 						format!(
 							"COMMENT ON TABLE {} IS '{}';",
-							quote_identifier(table),
+							Self::quote_schema_identifier(table, dialect),
 							comment_text
 						)
 					} else {
-						format!("COMMENT ON TABLE {} IS NULL;", quote_identifier(table))
+						format!(
+							"COMMENT ON TABLE {} IS NULL;",
+							Self::quote_schema_identifier(table, dialect)
+						)
 					}
 				}
 				SqlDialect::Mysql => {
 					if let Some(comment_text) = comment {
 						format!(
 							"ALTER TABLE {} COMMENT='{}';",
-							quote_identifier(table),
+							Self::quote_schema_identifier(table, dialect),
 							comment_text
 						)
 					} else {
-						format!("ALTER TABLE {} COMMENT='';", quote_identifier(table))
+						format!(
+							"ALTER TABLE {} COMMENT='';",
+							Self::quote_schema_identifier(table, dialect)
+						)
 					}
 				}
 				SqlDialect::Sqlite => String::new(),
@@ -2244,13 +3669,13 @@ impl Operation {
 					let constraint_name = format!("{}_{}_uniq", table, idx);
 					let fields_str = fields
 						.iter()
-						.map(|f| quote_identifier(f))
+						.map(|f| Self::quote_schema_identifier(f, dialect))
 						.collect::<Vec<_>>()
 						.join(", ");
 					sql.push(format!(
 						"ALTER TABLE {} ADD CONSTRAINT {} UNIQUE ({});",
-						quote_identifier(table),
-						quote_identifier(&constraint_name),
+						Self::quote_schema_identifier(table, dialect),
+						Self::quote_schema_identifier(&constraint_name, dialect),
 						fields_str
 					));
 				}
@@ -2266,15 +3691,15 @@ impl Operation {
 				let mut parts = Vec::new();
 				parts.push(format!(
 					"  {} INTEGER REFERENCES {}(id)",
-					quote_identifier(join_column),
-					quote_identifier(base_table)
+					Self::quote_schema_identifier(join_column, dialect),
+					Self::quote_schema_identifier(base_table, dialect)
 				));
 				for col in columns {
 					parts.push(format!("  {}", Self::column_to_sql(col, dialect)));
 				}
 				format!(
 					"CREATE TABLE {} (\n{}\n);",
-					quote_identifier(name),
+					Self::quote_schema_identifier(name, dialect),
 					parts.join(",\n")
 				)
 			}
@@ -2285,8 +3710,8 @@ impl Operation {
 			} => {
 				format!(
 					"ALTER TABLE {} ADD COLUMN {} VARCHAR(50) DEFAULT '{}';",
-					quote_identifier(table),
-					quote_identifier(column_name),
+					Self::quote_schema_identifier(table, dialect),
+					Self::quote_schema_identifier(column_name, dialect),
 					default_value
 				)
 			}
@@ -2304,15 +3729,15 @@ impl Operation {
 							SqlDialect::Postgres | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
 								format!(
 									"ALTER TABLE {} RENAME TO {};",
-									quote_identifier(old_name),
-									quote_identifier(new_name)
+									Self::quote_schema_identifier(old_name, dialect),
+									Self::quote_schema_identifier(new_name, dialect)
 								)
 							}
 							SqlDialect::Mysql => {
 								format!(
 									"RENAME TABLE {} TO {};",
-									quote_identifier(old_name),
-									quote_identifier(new_name)
+									Self::quote_schema_identifier(old_name, dialect),
+									Self::quote_schema_identifier(new_name, dialect)
 								)
 							}
 						}
@@ -2332,7 +3757,7 @@ impl Operation {
 				format!(
 					"CREATE SCHEMA{} {};",
 					if_not_exists_clause,
-					quote_identifier(name)
+					Self::quote_schema_identifier(name, dialect)
 				)
 			}
 			Operation::DropSchema {
@@ -2345,7 +3770,7 @@ impl Operation {
 				format!(
 					"DROP SCHEMA{} {}{};",
 					if_exists_clause,
-					quote_identifier(name),
+					Self::quote_schema_identifier(name, dialect),
 					cascade_clause
 				)
 			}
@@ -2357,14 +3782,14 @@ impl Operation {
 				// PostgreSQL-specific
 				let if_not_exists_clause = if *if_not_exists { " IF NOT EXISTS" } else { "" };
 				let schema_clause = if let Some(s) = schema {
-					format!(" SCHEMA {}", quote_identifier(s))
+					format!(" SCHEMA {}", Self::quote_schema_identifier(s, dialect))
 				} else {
 					String::new()
 				};
 				format!(
 					"CREATE EXTENSION{} {}{};",
 					if_not_exists_clause,
-					quote_identifier(name),
+					Self::quote_schema_identifier(name, dialect),
 					schema_clause
 				)
 			}
@@ -2385,6 +3810,311 @@ impl Operation {
 				constraint_name,
 			} => Self::create_composite_pk_to_sql(table, columns, constraint_name.as_deref()),
 		}
+	}
+
+	/// Generates forward SQL after validating backend-specific field support.
+	pub fn try_to_sql(&self, dialect: &SqlDialect) -> super::Result<String> {
+		self.validate_for_dialect(dialect)?;
+		Ok(self.to_sql(dialect))
+	}
+
+	/// Classifies forward planning output without losing non-SQL operations.
+	pub(crate) fn to_planned_forward_output(
+		&self,
+		dialect: &SqlDialect,
+	) -> super::Result<PlannedOperationOutput> {
+		match self {
+			Operation::RunRust { code, .. } => Ok(PlannedOperationOutput::Comment(format!(
+				"RunRust: {}",
+				code.lines().next().unwrap_or("")
+			))),
+			_ => self.try_to_sql(dialect).map(PlannedOperationOutput::Sql),
+		}
+	}
+
+	fn validate_approximate_vector_index(
+		index_type: Option<IndexType>,
+		unique: bool,
+		columns: &[String],
+		expressions: Option<&[String]>,
+		operator_class: Option<&str>,
+		dialect: &SqlDialect,
+	) -> super::Result<()> {
+		let Some(_index_type) = index_type.filter(|index_type| index_type.is_approximate_vector())
+		else {
+			return Ok(());
+		};
+
+		let backend = match dialect {
+			SqlDialect::Postgres => None,
+			SqlDialect::Mysql => Some("mysql"),
+			SqlDialect::Sqlite => Some("sqlite"),
+			SqlDialect::Cockroachdb => Some("cockroachdb"),
+		};
+		if let Some(backend) = backend {
+			return Err(super::MigrationError::UnsupportedBackendFeature {
+				feature: "approximate vector indexes",
+				backend,
+			});
+		}
+
+		if unique {
+			return Err(super::MigrationError::InvalidMigration(
+				"approximate vector indexes cannot be unique".to_string(),
+			));
+		}
+
+		let expression_count = expressions.map_or(0, <[String]>::len);
+		let has_exactly_one_target = (columns.len() == 1 && expression_count == 0)
+			|| (columns.is_empty() && expression_count == 1);
+		if !has_exactly_one_target {
+			return Err(super::MigrationError::InvalidMigration(
+				"approximate vector indexes require exactly one column or expression".to_string(),
+			));
+		}
+
+		if !operator_class.is_some_and(|operator_class| {
+			matches!(
+				operator_class,
+				"vector_l2_ops" | "vector_ip_ops" | "vector_cosine_ops"
+			)
+		}) {
+			return Err(super::MigrationError::InvalidMigration(
+				"approximate vector indexes require a supported vector operator class".to_string(),
+			));
+		}
+
+		#[cfg(feature = "pgvector")]
+		let invalid_option = match _index_type {
+			IndexType::Hnsw { m: Some(m), .. } if !(2..=100).contains(&m) => {
+				Some("m must be in the range 2..=100")
+			}
+			IndexType::Hnsw {
+				ef_construction: Some(ef_construction),
+				..
+			} if !(4..=1000).contains(&ef_construction) => {
+				Some("ef_construction must be in the range 4..=1000")
+			}
+			IndexType::Hnsw { m, ef_construction }
+				if ef_construction.unwrap_or(64) < 2 * m.unwrap_or(16) =>
+			{
+				Some("ef_construction must be at least twice m")
+			}
+			IndexType::Ivfflat { lists: Some(lists) } if !(1..=32768).contains(&lists) => {
+				Some("lists must be in the range 1..=32768")
+			}
+			_ => None,
+		};
+		#[cfg(feature = "pgvector")]
+		if let Some(option) = invalid_option {
+			return Err(super::MigrationError::InvalidMigration(format!(
+				"{option} for approximate vector indexes"
+			)));
+		}
+
+		Ok(())
+	}
+
+	/// Validates operation invariants that require the migration project state.
+	///
+	/// Expression index result types cannot be inferred from [`ProjectState`],
+	/// so PostgreSQL remains responsible for validating expression targets.
+	pub fn validate_for_state(&self, state: &ProjectState) -> super::Result<()> {
+		self.validate_for_state_with_unknown_table_policy(state, false)
+	}
+
+	/// Validates known migration state while deferring targets whose table history is absent.
+	pub(crate) fn validate_for_partial_state(&self, state: &ProjectState) -> super::Result<()> {
+		self.validate_for_state_with_unknown_table_policy(state, true)
+	}
+
+	fn validate_for_state_with_unknown_table_policy(
+		&self,
+		state: &ProjectState,
+		allow_unknown_table: bool,
+	) -> super::Result<()> {
+		#[cfg(feature = "pgvector")]
+		if let Self::CreateIndex {
+			table,
+			columns,
+			index_type,
+			expressions,
+			..
+		}
+		| Self::CreateNamedIndex {
+			table,
+			columns,
+			index_type,
+			expressions,
+			..
+		} = self && index_type.is_some_and(IndexType::is_approximate_vector)
+			&& expressions
+				.as_ref()
+				.is_none_or(|expressions| expressions.is_empty())
+			&& columns.len() == 1
+		{
+			let column = &columns[0];
+			let Some(model) = state.find_model_by_table(table) else {
+				if allow_unknown_table {
+					return Ok(());
+				}
+				return Err(super::MigrationError::InvalidMigration(format!(
+					"approximate vector index targets unknown table `{table}`"
+				)));
+			};
+			let field = model.fields.get(column).ok_or_else(|| {
+				super::MigrationError::InvalidMigration(format!(
+					"approximate vector index on table `{table}` targets unknown column `{column}`"
+				))
+			})?;
+			if !matches!(field.field_type, FieldType::Vector { .. }) {
+				return Err(super::MigrationError::InvalidMigration(format!(
+					"approximate vector index on table `{table}` targets non-vector column `{column}`"
+				)));
+			}
+		}
+
+		#[cfg(not(feature = "pgvector"))]
+		let _ = (state, allow_unknown_table);
+
+		Ok(())
+	}
+
+	/// Validates every field definition rendered by this operation.
+	pub fn validate_for_dialect(&self, dialect: &SqlDialect) -> super::Result<()> {
+		#[cfg(feature = "pgvector")]
+		if let Self::CreateNamedIndex { name, .. } | Self::DropNamedIndex { name, .. } = self {
+			if name.is_empty() {
+				return Err(super::MigrationError::InvalidMigration(
+					"physical index name must not be empty".to_string(),
+				));
+			}
+			if name.contains('\0') {
+				return Err(super::MigrationError::InvalidMigration(
+					"physical index name must not contain NUL".to_string(),
+				));
+			}
+		}
+		#[cfg(not(feature = "pgvector"))]
+		if let Self::DropNamedIndex { name, .. } = self {
+			if name.is_empty() {
+				return Err(super::MigrationError::InvalidMigration(
+					"physical index name must not be empty".to_string(),
+				));
+			}
+			if name.contains('\0') {
+				return Err(super::MigrationError::InvalidMigration(
+					"physical index name must not contain NUL".to_string(),
+				));
+			}
+		}
+
+		let partial_index_requested = match self {
+			Self::CreateIndex { where_clause, .. }
+			| Self::CreateIndexRepair { where_clause, .. }
+			| Self::RestoreIndexOnRollback { where_clause, .. } => where_clause.is_some(),
+			#[cfg(feature = "pgvector")]
+			Self::CreateNamedIndex { where_clause, .. } => where_clause.is_some(),
+			_ => false,
+		};
+		if partial_index_requested && matches!(dialect, SqlDialect::Mysql) {
+			return Err(super::MigrationError::UnsupportedBackendFeature {
+				feature: "partial indexes",
+				backend: "mysql",
+			});
+		}
+
+		match self {
+			Self::CreateTable { columns, .. } => {
+				for column in columns {
+					column.type_definition.try_to_sql_for_dialect(dialect)?;
+				}
+			}
+			Self::AddColumn { column, .. } => {
+				column.type_definition.try_to_sql_for_dialect(dialect)?;
+			}
+			Self::AlterColumn { new_definition, .. } => {
+				new_definition
+					.type_definition
+					.try_to_sql_for_dialect(dialect)?;
+			}
+			Self::CreateInheritedTable { columns, .. } => {
+				for column in columns {
+					column.type_definition.try_to_sql_for_dialect(dialect)?;
+				}
+			}
+			Self::CreateExtension { .. } => {
+				let backend = match dialect {
+					SqlDialect::Postgres => None,
+					SqlDialect::Mysql => Some("mysql"),
+					SqlDialect::Sqlite => Some("sqlite"),
+					SqlDialect::Cockroachdb => Some("cockroachdb"),
+				};
+				if let Some(backend) = backend {
+					return Err(super::MigrationError::UnsupportedBackendFeature {
+						feature: "PostgreSQL extensions",
+						backend,
+					});
+				}
+			}
+			Self::CreateIndex {
+				columns,
+				unique,
+				index_type,
+				expressions,
+				operator_class,
+				..
+			}
+			| Self::CreateIndexRepair {
+				columns,
+				unique,
+				index_type,
+				expressions,
+				operator_class,
+				..
+			}
+			| Self::RestoreIndexOnRollback {
+				columns,
+				unique,
+				index_type,
+				expressions,
+				operator_class,
+				..
+			} => Self::validate_approximate_vector_index(
+				*index_type,
+				*unique,
+				columns,
+				expressions.as_deref(),
+				operator_class.as_deref(),
+				dialect,
+			)?,
+			#[cfg(feature = "pgvector")]
+			Self::CreateNamedIndex {
+				columns,
+				unique,
+				index_type,
+				expressions,
+				operator_class,
+				..
+			}
+			| Self::DropNamedIndex {
+				columns,
+				unique,
+				index_type,
+				expressions,
+				operator_class,
+				..
+			} => Self::validate_approximate_vector_index(
+				*index_type,
+				*unique,
+				columns,
+				expressions.as_deref(),
+				operator_class.as_deref(),
+				dialect,
+			)?,
+			_ => {}
+		}
+		Ok(())
 	}
 
 	/// Generate `SetAutoIncrementValue` SQL for each dialect
@@ -2724,12 +4454,12 @@ impl Operation {
 		match self {
 			Operation::CreateTable { name, .. } => Ok(Some(vec![format!(
 				"DROP TABLE {};",
-				quote_identifier(name)
+				Self::quote_schema_identifier(name, dialect)
 			)])),
 			Operation::AddColumn { table, column, .. } => Ok(Some(vec![format!(
 				"ALTER TABLE {} DROP COLUMN {};",
-				quote_identifier(table),
-				quote_identifier(&column.name)
+				Self::quote_schema_identifier(table, dialect),
+				Self::quote_dialect_identifier(&column.name, dialect)
 			)])),
 			Operation::RunSQL { reverse_sql, .. } => {
 				Ok(reverse_sql.as_ref().map(|s| vec![s.to_string()]))
@@ -2743,8 +4473,8 @@ impl Operation {
 			// Phase 1: Simple reverse operations
 			Operation::RenameTable { old_name, new_name } => Ok(Some(vec![format!(
 				"ALTER TABLE {} RENAME TO {};",
-				quote_identifier(new_name),
-				quote_identifier(old_name)
+				Self::quote_schema_identifier(new_name, dialect),
+				Self::quote_dialect_identifier(old_name, dialect)
 			)])),
 			Operation::RenameColumn {
 				table,
@@ -2752,9 +4482,9 @@ impl Operation {
 				new_name,
 			} => Ok(Some(vec![format!(
 				"ALTER TABLE {} RENAME COLUMN {} TO {};",
-				quote_identifier(table),
-				quote_identifier(new_name),
-				quote_identifier(old_name)
+				Self::quote_schema_identifier(table, dialect),
+				Self::quote_dialect_identifier(new_name, dialect),
+				Self::quote_dialect_identifier(old_name, dialect)
 			)])),
 			Operation::CreateIndex {
 				table,
@@ -2763,8 +4493,8 @@ impl Operation {
 				where_clause,
 				..
 			} => {
-				// Use the same naming convention as to_sql(), including expression indexes.
-				// This ensures the rollback DROP INDEX targets the correct index name
+				// Mirror the forward SQL naming convention so rollback targets
+				// expression indexes as well as column indexes.
 				let index_name = generated_index_name(
 					table,
 					columns,
@@ -2777,41 +4507,58 @@ impl Operation {
 				let sql = match dialect {
 					SqlDialect::Mysql => format!(
 						"DROP INDEX {} ON {};",
-						quote_identifier(&index_name),
-						quote_identifier(table)
+						Self::quote_dialect_identifier(&index_name, dialect),
+						Self::quote_schema_identifier(table, dialect)
 					),
 					SqlDialect::Postgres | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
-						format!("DROP INDEX {};", quote_identifier(&index_name))
+						format!(
+							"DROP INDEX {};",
+							Self::quote_dialect_identifier(&index_name, dialect)
+						)
 					}
 				};
 				Ok(Some(vec![sql]))
 			}
-			Operation::CreateIndexRepair {
-				table,
-				name,
-				columns,
-				expressions,
-				where_clause,
-				..
-			} => {
-				let index_name = name.clone().unwrap_or_else(|| {
-					generated_index_name(
-						table,
-						columns,
-						expressions.as_deref(),
-						where_clause.as_deref(),
-					)
-				});
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex { table, name, .. } => {
 				let sql = match dialect {
 					SqlDialect::Mysql => format!(
 						"DROP INDEX {} ON {};",
-						quote_identifier(&index_name),
+						quote_identifier(name),
 						quote_identifier(table)
 					),
 					SqlDialect::Postgres | SqlDialect::Sqlite | SqlDialect::Cockroachdb => {
-						format!("DROP INDEX {};", quote_identifier(&index_name))
+						format!("DROP INDEX {};", quote_identifier(name))
 					}
 				};
+				Ok(Some(vec![sql]))
+			}
+			Operation::CreateIndexRepair { .. } => Ok(None),
+			Operation::RestoreIndexOnRollback {
+				table,
+				name,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			} => {
+				let sql = Operation::CreateIndexRepair {
+					table: table.clone(),
+					name: name.clone(),
+					columns: columns.clone(),
+					unique: *unique,
+					index_type: *index_type,
+					where_clause: where_clause.clone(),
+					concurrently: *concurrently,
+					expressions: expressions.clone(),
+					mysql_options: *mysql_options,
+					operator_class: operator_class.clone(),
+				}
+				.try_to_sql(dialect)?;
 				Ok(Some(vec![sql]))
 			}
 			Operation::AddConstraint {
@@ -2833,22 +4580,48 @@ impl Operation {
 					quote_identifier(&constraint_name)
 				)]))
 			}
-			// Phase 2: Complex reverse operations using ProjectState
-			Operation::DropColumn { table, column } => {
-				// Retrieve original column definition from ProjectState
-				if let Some(model) = project_state.find_model_by_table(table)
-					&& let Some(field) = model.get_field(column)
-				{
-					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
-					let col_sql = Self::column_to_sql(&col_def, dialect);
-					return Ok(Some(vec![format!(
-						"ALTER TABLE {} ADD COLUMN {};",
-						quote_identifier(table),
-						col_sql
-					)]));
+			Operation::AddConstraintDefinition { table, constraint } => Ok(Some(vec![format!(
+				"ALTER TABLE {} DROP CONSTRAINT {};",
+				Self::quote_schema_identifier(table, dialect),
+				Self::quote_dialect_identifier(constraint.name(), dialect)
+			)])),
+			Operation::AddConstraintRepair { .. } => Ok(None),
+			Operation::RestoreConstraintOnRollback {
+				table,
+				constraint_sql,
+			} => Ok(Some(vec![
+				Operation::AddConstraint {
+					table: table.clone(),
+					constraint_sql: constraint_sql.clone(),
 				}
-				// Cannot reconstruct without state
-				Ok(None)
+				.to_sql(dialect),
+			])),
+			// Phase 2: Complex reverse operations using ProjectState
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition,
+			} => {
+				// Prefer the explicit definition carried by replacement-style
+				// migrations; fall back to ProjectState for legacy migrations.
+				let resolved_old_def = old_definition.clone().or_else(|| {
+					project_state
+						.find_model_by_table(table)
+						.and_then(|model| model.get_field(column))
+						.map(|field| ColumnDefinition::from_field_state(column.clone(), field))
+				});
+
+				let Some(old_def) = resolved_old_def else {
+					// Cannot reconstruct without state
+					return Ok(None);
+				};
+
+				let col_sql = Self::column_to_sql(&old_def, dialect);
+				Ok(Some(vec![format!(
+					"ALTER TABLE {} ADD COLUMN {};",
+					quote_identifier(table),
+					col_sql
+				)]))
 			}
 			Operation::AlterColumn {
 				table,
@@ -2931,10 +4704,33 @@ impl Operation {
 				Ok(Some(stmts))
 			}
 			Operation::DropIndex { table, columns } => {
-				// Enhancement opportunity: Full index reconstruction would preserve
-				// index_type, where_clause, operator_class, and other advanced properties.
-				// The current implementation generates a basic CREATE INDEX statement.
-				let index_name = generated_index_name(table, columns, None, None);
+				if let Some(index) = project_state.find_model_by_table(table).and_then(|model| {
+					model.indexes.iter().find(|index| {
+						index.name
+							== super::operations::default_index_name(table, &columns.join("_"))
+					})
+				}) {
+					return Ok(Some(vec![
+						Operation::CreateIndexRepair {
+							table: table.clone(),
+							name: Some(index.name.clone()),
+							columns: index.fields.clone(),
+							unique: index.unique,
+							index_type: index.index_type(),
+							where_clause: (!matches!(dialect, SqlDialect::Mysql))
+								.then(|| index.where_clause.clone())
+								.flatten(),
+							concurrently: false,
+							expressions: index.expressions().cloned(),
+							mysql_options: None,
+							operator_class: index.operator_class().cloned(),
+						}
+						.try_to_sql(dialect)?,
+					]));
+				}
+
+				let columns_joined = columns.join("_");
+				let index_name = super::operations::default_index_name(table, &columns_joined);
 				let columns_list = columns
 					.iter()
 					.map(|c| quote_identifier(c).to_string())
@@ -2947,6 +4743,41 @@ impl Operation {
 					columns_list
 				)]))
 			}
+			#[cfg(feature = "pgvector")]
+			Operation::DropNamedIndex {
+				table,
+				name,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			} => {
+				if !named_index_has_target(columns, expressions.as_deref()) {
+					return Ok(None);
+				}
+				Ok(Some(vec![
+					Operation::CreateNamedIndex {
+						table: table.clone(),
+						name: name.clone(),
+						columns: columns.clone(),
+						unique: *unique,
+						index_type: *index_type,
+						where_clause: (!matches!(dialect, SqlDialect::Mysql))
+							.then(|| where_clause.clone())
+							.flatten(),
+						concurrently: *concurrently,
+						expressions: expressions.clone(),
+						mysql_options: *mysql_options,
+						operator_class: operator_class.clone(),
+					}
+					.try_to_sql(dialect)?,
+				]))
+			}
+			#[cfg(not(feature = "pgvector"))]
 			Operation::DropNamedIndex {
 				table,
 				name,
@@ -2960,19 +4791,26 @@ impl Operation {
 				operator_class,
 				..
 			} => {
-				let create = Operation::CreateIndexRepair {
-					table: table.clone(),
-					name: Some(name.clone()),
-					columns: columns.clone(),
-					unique: *unique,
-					index_type: *index_type,
-					where_clause: where_clause.clone(),
-					concurrently: *concurrently,
-					expressions: expressions.clone(),
-					mysql_options: *mysql_options,
-					operator_class: operator_class.clone(),
-				};
-				Ok(Some(vec![create.to_sql(dialect)]))
+				if !named_index_has_target(columns, expressions.as_deref()) {
+					return Ok(None);
+				}
+				Ok(Some(vec![
+					Operation::CreateIndexRepair {
+						table: table.clone(),
+						name: Some(name.clone()),
+						columns: columns.clone(),
+						unique: *unique,
+						index_type: *index_type,
+						where_clause: (!matches!(dialect, SqlDialect::Mysql))
+							.then(|| where_clause.clone())
+							.flatten(),
+						concurrently: *concurrently,
+						expressions: expressions.clone(),
+						mysql_options: *mysql_options,
+						operator_class: operator_class.clone(),
+					}
+					.try_to_sql(dialect)?,
+				]))
 			}
 			Operation::DropConstraint {
 				table,
@@ -2986,22 +4824,38 @@ impl Operation {
 						.find(|c| c.name == *constraint_name)
 				{
 					let constraint = constraint_def.to_constraint();
-					return Ok(Some(vec![format!(
-						"ALTER TABLE {} ADD {};",
-						quote_identifier(table),
-						constraint
-					)]));
+					return Ok(Some(vec![match constraint {
+						Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
+							table: table.clone(),
+							constraint,
+						}
+						.to_sql(dialect),
+						_ => format!(
+							"ALTER TABLE {} ADD {};",
+							quote_identifier(table),
+							constraint
+						),
+					}]));
 				}
 				// Cannot reconstruct without state
 				Ok(None)
 			}
+			Operation::DropConstraintDefinition { table, constraint } => Ok(Some(vec![
+				Operation::AddConstraintDefinition {
+					table: table.clone(),
+					constraint: constraint.clone(),
+				}
+				.to_sql(dialect),
+			])),
 			Operation::DropTable { name } => {
 				// Retrieve table definition from ProjectState and reconstruct CREATE TABLE
 				if let Some(model) = project_state.find_model_by_table(name) {
 					let mut parts = Vec::new();
 
 					// Convert fields to column definitions
-					for (field_name, field) in &model.fields {
+					for (field_name, field) in
+						Self::order_model_fields_by_generated_dependencies(model)
+					{
 						let col_def = ColumnDefinition::from_field_state(field_name.clone(), field);
 						parts.push(format!("  {}", Self::column_to_sql(&col_def, dialect)));
 					}
@@ -3009,14 +4863,57 @@ impl Operation {
 					// Add constraints
 					for constraint_def in &model.constraints {
 						let constraint = constraint_def.to_constraint();
-						parts.push(format!("  {}", constraint));
+						parts.push(format!("  {}", constraint.to_sql_for_dialect(dialect)));
 					}
 
-					return Ok(Some(vec![format!(
+					let mut statements = vec![format!(
 						"CREATE TABLE {} (\n{}\n);",
-						quote_identifier(name),
+						Self::quote_schema_identifier(name, dialect),
 						parts.join(",\n")
-					)]));
+					)];
+					for index in &model.indexes {
+						let operation = Operation::CreateIndexRepair {
+							table: name.clone(),
+							name: Some(index.name.clone()),
+							columns: index.fields.clone(),
+							unique: index.unique,
+							index_type: {
+								#[cfg(feature = "pgvector")]
+								{
+									index.index_type
+								}
+								#[cfg(not(feature = "pgvector"))]
+								{
+									None
+								}
+							},
+							where_clause: index.where_clause.clone(),
+							concurrently: false,
+							expressions: {
+								#[cfg(feature = "pgvector")]
+								{
+									index.expressions.clone()
+								}
+								#[cfg(not(feature = "pgvector"))]
+								{
+									None
+								}
+							},
+							mysql_options: None,
+							operator_class: {
+								#[cfg(feature = "pgvector")]
+								{
+									index.operator_class.clone()
+								}
+								#[cfg(not(feature = "pgvector"))]
+								{
+									None
+								}
+							},
+						};
+						statements.push(operation.to_sql(dialect));
+					}
+					return Ok(Some(statements));
 				}
 				// Cannot reconstruct without state
 				Ok(None)
@@ -3065,16 +4962,7 @@ impl Operation {
 				// For proper rollback, use to_reverse_sql with pre-operation ProjectState.
 			}
 			Operation::RenameTable { old_name, new_name } => {
-				// Reverse: Rename back from new_name to old_name
-				if let Some(mut model) = state
-					.models
-					.remove(&(app_label.to_string(), new_name.to_string()))
-				{
-					model.table_name = old_name.to_string();
-					state
-						.models
-						.insert((app_label.to_string(), old_name.to_string()), model);
-				}
+				state.rename_table_in_app(app_label, new_name, old_name);
 			}
 			Operation::AddColumn { table, column, .. } => {
 				// Reverse: Remove the column from the model
@@ -3085,6 +4973,7 @@ impl Operation {
 			Operation::DropColumn {
 				table: _,
 				column: _,
+				..
 			} => {
 				// Cannot reconstruct column definition without snapshot.
 				// For proper rollback, use to_reverse_sql with pre-operation ProjectState.
@@ -3116,12 +5005,97 @@ impl Operation {
 					let _ = model;
 				}
 			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					if let Constraint::EnumDomain { column, .. } = constraint
+						&& let Some(field) = model.fields.get_mut(column)
+					{
+						field.domain = None;
+					}
+					model
+						.constraints
+						.retain(|definition| definition.name != constraint.name());
+				}
+			}
 			Operation::DropConstraint {
 				table: _,
 				constraint_name: _,
+			} => {}
+			Operation::DropConstraintDefinition { table, constraint } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					let definition = ProjectState::constraint_to_definition(constraint);
+					if !model
+						.constraints
+						.iter()
+						.any(|item| item.name == constraint.name())
+					{
+						if let Constraint::EnumDomain { column, domain, .. } = constraint
+							&& let Some(field) = model.fields.get_mut(column)
+						{
+							field.domain = Some(domain.clone().canonicalized());
+						}
+						model.constraints.push(definition);
+					}
+				}
+			}
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex { table, name, .. } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					model.indexes.retain(|index| index.name != *name);
+				}
+			}
+			#[cfg(feature = "pgvector")]
+			Operation::DropNamedIndex {
+				table,
+				name,
+				columns,
+				unique,
+				index_type,
+				expressions,
+				operator_class,
+				where_clause,
+				..
 			} => {
-				// Cannot reconstruct constraint definition without snapshot.
-				// For proper rollback, use to_reverse_sql with pre-operation ProjectState.
+				if !named_index_has_target(columns, expressions.as_deref()) {
+					return;
+				}
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					#[cfg(not(feature = "pgvector"))]
+					let _ = (index_type, operator_class);
+					model.indexes.retain(|index| index.name != *name);
+					model.indexes.push(IndexDefinition {
+						name: name.clone(),
+						fields: columns.clone(),
+						unique: *unique,
+						where_clause: where_clause.clone(),
+						#[cfg(feature = "pgvector")]
+						index_type: *index_type,
+						#[cfg(feature = "pgvector")]
+						operator_class: operator_class.clone(),
+						#[cfg(feature = "pgvector")]
+						expressions: expressions.clone(),
+					});
+				}
+			}
+			#[cfg(not(feature = "pgvector"))]
+			Operation::DropNamedIndex {
+				table,
+				name,
+				columns,
+				unique,
+				where_clause,
+				expressions,
+				..
+			} => {
+				if !named_index_has_target(columns, expressions.as_deref()) {
+					return;
+				}
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					model.indexes.retain(|index| index.name != *name);
+					let mut index = IndexDefinition::new(name.clone(), columns.clone(), *unique);
+					index.where_clause = where_clause.clone();
+					model.indexes.push(index);
+				}
 			}
 			_ => {
 				// Other operations don't affect schema state
@@ -3151,7 +5125,42 @@ impl Operation {
 	}
 }
 
+/// Internal result of classifying one forward operation for SQL planning.
+pub(crate) enum PlannedOperationOutput {
+	/// Executable SQL that may contain multiple statements.
+	Sql(String),
+	/// Non-executable information retained in collected plans.
+	Comment(String),
+}
+
+pub(crate) fn field_state_from_column(column: &ColumnDefinition) -> FieldState {
+	let (semantic_params, default) = decode_file_field_metadata(column.default.as_deref());
+	let mut field = FieldState::new(
+		column.name.to_string(),
+		column.type_definition.clone(),
+		!column.not_null && !column.primary_key,
+	);
+	field.params.extend(semantic_params);
+	field
+		.params
+		.insert("primary_key".to_string(), column.primary_key.to_string());
+	field
+		.params
+		.insert("unique".to_string(), column.unique.to_string());
+	field.params.insert(
+		"auto_increment".to_string(),
+		column.auto_increment.to_string(),
+	);
+	if let Some(default) = default {
+		field.params.insert("default".to_string(), default);
+	}
+	field.generated = column.generated.clone();
+	field.domain = column.domain.clone();
+	field
+}
+
 /// Column definition for legacy operations
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ColumnDefinition {
 	/// The name.
@@ -3173,6 +5182,12 @@ pub struct ColumnDefinition {
 	#[serde(default)]
 	/// The default.
 	pub default: Option<String>,
+	#[serde(default)]
+	/// Generated-column metadata.
+	pub generated: Option<GeneratedColumnDefinition>,
+	/// Structured domain constraints for this column.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub domain: Option<crate::field_domain::FieldDomain>,
 }
 
 impl ColumnDefinition {
@@ -3186,7 +5201,85 @@ impl ColumnDefinition {
 			primary_key: false,
 			auto_increment: false,
 			default: None,
+			generated: None,
+			domain: None,
 		}
+	}
+
+	/// Create a column definition from every persisted field.
+	#[doc(hidden)]
+	// Persistence adapters must provide every stored field without silently dropping data.
+	#[allow(clippy::too_many_arguments)]
+	pub fn from_parts(
+		name: impl Into<String>,
+		type_definition: FieldType,
+		not_null: bool,
+		unique: bool,
+		primary_key: bool,
+		auto_increment: bool,
+		default: Option<String>,
+		generated: Option<GeneratedColumnDefinition>,
+		domain: Option<crate::field_domain::FieldDomain>,
+	) -> Self {
+		Self {
+			name: name.into(),
+			type_definition,
+			not_null,
+			unique,
+			primary_key,
+			auto_increment,
+			default,
+			generated,
+			domain,
+		}
+	}
+
+	/// Set the NOT NULL flag.
+	pub fn with_not_null(mut self, value: bool) -> Self {
+		self.not_null = value;
+		self
+	}
+
+	/// Set the unique flag.
+	pub fn with_unique(mut self, value: bool) -> Self {
+		self.unique = value;
+		self
+	}
+
+	/// Set the primary-key flag.
+	pub fn with_primary_key(mut self, value: bool) -> Self {
+		self.primary_key = value;
+		self
+	}
+
+	/// Set the auto-increment flag.
+	pub fn with_auto_increment(mut self, value: bool) -> Self {
+		self.auto_increment = value;
+		self
+	}
+
+	/// Set the optional default value, including an explicit `None`.
+	pub fn with_default(mut self, value: Option<String>) -> Self {
+		self.default = value;
+		self
+	}
+
+	/// Set generated-column metadata, including an explicit `None`.
+	pub fn with_generated(mut self, value: Option<GeneratedColumnDefinition>) -> Self {
+		self.generated = value;
+		self
+	}
+
+	/// Sets structured column-domain metadata and returns self for chaining.
+	pub fn with_domain(mut self, domain: crate::field_domain::FieldDomain) -> Self {
+		self.domain = Some(domain.canonicalized());
+		self
+	}
+
+	/// Set structured column-domain metadata, including an explicit `None`.
+	pub fn with_domain_option(mut self, domain: Option<crate::field_domain::FieldDomain>) -> Self {
+		self.domain = domain.map(crate::field_domain::FieldDomain::canonicalized);
+		self
 	}
 
 	/// Create a ColumnDefinition from FieldState with attribute parsing
@@ -3245,7 +5338,8 @@ impl ColumnDefinition {
 			.and_then(|v| v.parse::<bool>().ok())
 			.unwrap_or(false);
 
-		let default = params.get("default").cloned();
+		let default = encoded_default_for_field_state(field_state);
+		let generated = field_state.generated.clone();
 
 		// Resolve ForeignKey column type from the referenced model's primary
 		// key in the global `ModelRegistry`. This addresses the macro-level
@@ -3270,7 +5364,303 @@ impl ColumnDefinition {
 			primary_key,
 			auto_increment,
 			default,
+			generated,
+			domain: field_state.domain.clone(),
 		}
+	}
+}
+
+/// Generate the physical name used for a legacy table/column index operation.
+pub fn default_index_name(table: &str, suffix: &str) -> String {
+	truncate_identifier_with_hash(&format!("idx_{table}_{suffix}"))
+}
+
+/// Generated-column metadata for migration operations.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct GeneratedColumnDefinition {
+	/// Runtime typed generated expression.
+	pub expr: Option<Box<SchemaExpr>>,
+	/// Canonical Rust tokens used when writing migration files.
+	pub expr_tokens: Option<String>,
+	/// Explicit backend-specific raw SQL body.
+	pub raw_sql: Option<String>,
+	/// Generated-column storage mode.
+	pub storage: GeneratedStorage,
+}
+
+impl PartialEq for GeneratedColumnDefinition {
+	fn eq(&self, other: &Self) -> bool {
+		self.eq_with_dialect(other, None)
+	}
+}
+
+impl GeneratedColumnDefinition {
+	/// Create generated-column metadata from every persisted field.
+	#[doc(hidden)]
+	pub fn from_parts(
+		expr: Option<Box<SchemaExpr>>,
+		expr_tokens: Option<String>,
+		raw_sql: Option<String>,
+		storage: GeneratedStorage,
+	) -> Self {
+		Self {
+			expr,
+			expr_tokens,
+			raw_sql,
+			storage,
+		}
+	}
+
+	pub(crate) fn eq_for_dialect(&self, other: &Self, dialect: &SqlDialect) -> bool {
+		self.eq_with_dialect(other, Some(dialect))
+	}
+
+	fn eq_with_dialect(&self, other: &Self, dialect: Option<&SqlDialect>) -> bool {
+		if self.storage != other.storage {
+			return false;
+		}
+
+		match (self.typed_expr(), other.typed_expr()) {
+			(Some(left), Some(right)) => left == right,
+			(Some(left), None) => other
+				.raw_sql
+				.as_deref()
+				.is_some_and(|raw_sql| Self::typed_expr_matches_raw_sql(&left, raw_sql, dialect)),
+			(None, Some(right)) => self
+				.raw_sql
+				.as_deref()
+				.is_some_and(|raw_sql| Self::typed_expr_matches_raw_sql(&right, raw_sql, dialect)),
+			(None, None) => match (self.raw_sql.as_deref(), other.raw_sql.as_deref()) {
+				(Some(left), Some(right)) => Self::raw_sql_matches(left, right),
+				_ => self.expr_tokens == other.expr_tokens && self.expr == other.expr,
+			},
+		}
+	}
+
+	/// Create a typed generated-column definition.
+	pub fn typed(
+		expr: SchemaExpr,
+		expr_tokens: impl Into<String>,
+		storage: GeneratedStorage,
+	) -> Self {
+		Self {
+			expr: Some(Box::new(expr)),
+			expr_tokens: Some(expr_tokens.into()),
+			raw_sql: None,
+			storage,
+		}
+	}
+
+	/// Create generated-column metadata from reconstructable expression tokens.
+	///
+	/// This is used by metadata-driven schema builders when the derive macro
+	/// records the expression tokens but cannot construct a runtime `SchemaExpr`.
+	pub fn tokens(expr_tokens: impl Into<String>, storage: GeneratedStorage) -> Self {
+		Self {
+			expr: None,
+			expr_tokens: Some(expr_tokens.into()),
+			raw_sql: None,
+			storage,
+		}
+	}
+
+	pub(crate) fn typed_expr(&self) -> Option<SchemaExpr> {
+		self.expr.as_deref().cloned().or_else(|| {
+			self.expr_tokens
+				.as_deref()
+				.and_then(super::ast_parser::parse_schema_expr_tokens)
+		})
+	}
+
+	fn raw_sql_matches(left: &str, right: &str) -> bool {
+		normalize_generated_expression_sql(left) == normalize_generated_expression_sql(right)
+	}
+
+	fn typed_expr_matches_raw_sql(
+		expr: &SchemaExpr,
+		raw_sql: &str,
+		dialect: Option<&SqlDialect>,
+	) -> bool {
+		let normalized_raw_sql = normalize_generated_expression_sql(raw_sql);
+		if let Some(dialect) = dialect {
+			return normalize_generated_expression_sql(&Operation::schema_expr_to_sql(
+				expr, dialect,
+			)) == normalized_raw_sql;
+		}
+
+		[
+			SqlDialect::Postgres,
+			SqlDialect::Sqlite,
+			SqlDialect::Mysql,
+			SqlDialect::Cockroachdb,
+		]
+		.iter()
+		.any(|dialect| {
+			normalize_generated_expression_sql(&Operation::schema_expr_to_sql(expr, dialect))
+				== normalized_raw_sql
+		})
+	}
+
+	fn rehydrate_expr_from_tokens(&mut self) {
+		if self.expr.is_none() {
+			self.expr = self.typed_expr().map(Box::new);
+		}
+	}
+
+	/// Create an explicit raw-SQL generated-column definition.
+	pub fn raw_sql(sql: impl Into<String>, storage: GeneratedStorage) -> Self {
+		Self {
+			expr: None,
+			expr_tokens: None,
+			raw_sql: Some(sql.into()),
+			storage,
+		}
+	}
+
+	/// Convert to the query-layer generated-column metadata.
+	pub fn to_query_generated(&self) -> Option<GeneratedColumn> {
+		if let Some(expr) = self.typed_expr() {
+			Some(GeneratedColumn::typed(expr, self.storage))
+		} else {
+			self.raw_sql
+				.as_ref()
+				.map(|sql| GeneratedColumn::raw_sql(sql.clone(), self.storage))
+		}
+	}
+}
+
+fn normalize_generated_expression_sql(sql: &str) -> String {
+	let sql = strip_balanced_outer_parens(sql.trim());
+	let mut normalized = String::new();
+	let mut chars = sql.chars().peekable();
+	let mut in_string = false;
+
+	while let Some(ch) = chars.next() {
+		if in_string {
+			normalized.push(ch);
+			if ch == '\'' {
+				if matches!(chars.peek().copied(), Some('\'')) {
+					if let Some(escaped_quote) = chars.next() {
+						normalized.push(escaped_quote);
+					}
+				} else {
+					in_string = false;
+				}
+			}
+			continue;
+		}
+
+		match ch {
+			'\'' => {
+				in_string = true;
+				normalized.push(ch);
+			}
+			'"' | '`' => {}
+			character if character.is_ascii_whitespace() => {}
+			character => normalized.push(character.to_ascii_lowercase()),
+		}
+	}
+
+	normalized
+}
+
+fn strip_balanced_outer_parens(mut sql: &str) -> &str {
+	loop {
+		let trimmed = sql.trim();
+		if trimmed.len() < 2 || !trimmed.starts_with('(') || !trimmed.ends_with(')') {
+			return trimmed;
+		}
+		if !outer_parens_wrap_expression(trimmed) {
+			return trimmed;
+		}
+		sql = &trimmed[1..trimmed.len() - 1];
+	}
+}
+
+fn outer_parens_wrap_expression(sql: &str) -> bool {
+	let mut depth = 0usize;
+	let mut in_string = false;
+	let mut chars = sql.char_indices().peekable();
+
+	while let Some((index, ch)) = chars.next() {
+		if in_string {
+			if ch == '\'' {
+				if chars
+					.peek()
+					.is_some_and(|(_, escaped_quote)| *escaped_quote == '\'')
+				{
+					chars.next();
+				} else {
+					in_string = false;
+				}
+			}
+			continue;
+		}
+
+		match ch {
+			'\'' => in_string = true,
+			'(' => depth += 1,
+			')' => {
+				depth = depth.saturating_sub(1);
+				if depth == 0 && index < sql.len() - 1 {
+					return false;
+				}
+			}
+			_ => {}
+		}
+	}
+
+	depth == 0
+}
+
+impl Serialize for GeneratedColumnDefinition {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		let mut state = serializer.serialize_struct("GeneratedColumnDefinition", 3)?;
+		state.serialize_field("expr_tokens", &self.expr_tokens)?;
+		state.serialize_field("raw_sql", &self.raw_sql)?;
+		let storage = match self.storage {
+			GeneratedStorage::Stored => "stored",
+			GeneratedStorage::Virtual => "virtual",
+			_ => "stored",
+		};
+		state.serialize_field("storage", storage)?;
+		state.end()
+	}
+}
+
+impl<'de> Deserialize<'de> for GeneratedColumnDefinition {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		struct Helper {
+			#[serde(default)]
+			expr_tokens: Option<String>,
+			#[serde(default)]
+			raw_sql: Option<String>,
+			storage: String,
+		}
+
+		let helper = Helper::deserialize(deserializer)?;
+		let storage = match helper.storage.as_str() {
+			"stored" | "Stored" | "STORED" => GeneratedStorage::Stored,
+			"virtual" | "Virtual" | "VIRTUAL" => GeneratedStorage::Virtual,
+			_ => GeneratedStorage::Stored,
+		};
+
+		let mut definition = Self {
+			expr: None,
+			expr_tokens: helper.expr_tokens,
+			raw_sql: helper.raw_sql,
+			storage,
+		};
+		definition.rehydrate_expr_from_tokens();
+		Ok(definition)
 	}
 }
 
@@ -3479,6 +5869,7 @@ pub fn field_type_string_to_field_type(
 
 		// JSON types
 		"JSONField" => Ok(FieldType::Json),
+		"JsonField" => Ok(FieldType::Jsonb),
 
 		// File fields (stored as path strings)
 		"FileField" | "ImageField" => {
@@ -3550,11 +5941,119 @@ pub struct SqliteTableRecreation {
 	pub constraints: Vec<Constraint>,
 	/// Raw constraint SQL strings (for AddConstraint operations)
 	pub raw_constraint_sqls: Vec<String>,
+	/// Existing raw table constraints preserved from SQLite CREATE TABLE SQL
+	pub raw_constraints: Vec<SqliteRecreatedConstraint>,
+	/// Explicit column collations preserved from SQLite CREATE TABLE SQL
+	pub column_collations: Vec<(String, String)>,
+	/// Indexes to recreate after the table rename
+	pub indexes: Vec<SqliteRecreatedIndex>,
+	/// Trigger definitions to recreate after the table rename
+	pub triggers: Vec<String>,
 	/// WITHOUT ROWID option
 	pub without_rowid: bool,
+	/// STRICT table option
+	pub strict: bool,
+}
+
+/// SQLite index metadata preserved across table recreation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SqliteRecreatedIndex {
+	/// Index name
+	pub name: String,
+	/// Indexed columns
+	pub columns: Vec<String>,
+	/// Whether the index is unique
+	pub unique: bool,
+	/// Original CREATE INDEX SQL from sqlite_master.
+	pub sql: Option<String>,
+}
+
+/// SQLite table constraint metadata preserved verbatim across recreation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SqliteRecreatedConstraint {
+	/// Declared constraint name, when the original clause was named.
+	pub name: Option<String>,
+	/// SQLite autoindex name assigned to an unnamed table constraint.
+	pub physical_name: Option<String>,
+	/// Columns referenced by the constraint in declaration order.
+	pub columns: Vec<String>,
+	/// Original table-level constraint clause.
+	pub sql: String,
+}
+
+impl SqliteRecreatedConstraint {
+	fn references_column(&self, column_name: &str) -> bool {
+		self.columns
+			.iter()
+			.any(|column| column.eq_ignore_ascii_case(column_name))
+	}
+}
+
+impl SqliteRecreatedIndex {
+	fn normalized_sql(&self) -> Option<String> {
+		let mut sql = self.sql.as_ref()?.trim().trim_end_matches(';').to_string();
+		sql.push(';');
+		Some(sql)
+	}
+
+	fn references_column(&self, column_name: &str) -> bool {
+		self.columns.iter().any(|column| column == column_name)
+			|| self
+				.sql
+				.as_deref()
+				.is_some_and(|sql| sqlite_sql_references_identifier(sql, column_name))
+	}
+}
+
+fn sqlite_sql_references_identifier(sql: &str, identifier: &str) -> bool {
+	let unquoted = identifier.to_ascii_lowercase();
+	let double_quoted = format!("\"{}\"", identifier).to_ascii_lowercase();
+	let bracket_quoted = format!("[{}]", identifier).to_ascii_lowercase();
+	let backtick_quoted = format!("`{}`", identifier).to_ascii_lowercase();
+	let sql = sql.to_ascii_lowercase();
+	sql.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+		.any(|token| token == unquoted)
+		|| sql.contains(&double_quoted)
+		|| sql.contains(&bracket_quoted)
+		|| sql.contains(&backtick_quoted)
 }
 
 impl SqliteTableRecreation {
+	fn columns_to_copy(columns: &[ColumnDefinition]) -> Vec<String> {
+		columns
+			.iter()
+			.filter(|column| column.generated.is_none())
+			.map(|column| column.name.to_string())
+			.collect()
+	}
+
+	/// Create a new table recreation for adding a column.
+	pub fn for_add_column(
+		table_name: impl Into<String>,
+		current_columns: Vec<ColumnDefinition>,
+		column_to_add: ColumnDefinition,
+		current_constraints: Vec<Constraint>,
+	) -> Self {
+		let table_name = table_name.into();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
+		let mut new_columns = current_columns;
+		new_columns.push(column_to_add);
+
+		Self {
+			table_name,
+			new_columns,
+			columns_to_copy,
+			constraints: current_constraints,
+			raw_constraint_sqls: Vec::new(),
+			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
+			indexes: Vec::new(),
+			triggers: Vec::new(),
+			without_rowid: false,
+			strict: false,
+		}
+	}
+
 	/// Create a new table recreation for dropping a column
 	pub fn for_drop_column(
 		table_name: impl Into<String>,
@@ -3567,7 +6066,7 @@ impl SqliteTableRecreation {
 			.into_iter()
 			.filter(|c| c.name != column_to_drop)
 			.collect();
-		let columns_to_copy: Vec<_> = new_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&new_columns);
 
 		// Filter out constraints that reference the dropped column
 		let constraints: Vec<_> = current_constraints
@@ -3581,7 +6080,12 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints,
 			raw_constraint_sqls: Vec::new(),
+			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
+			indexes: Vec::new(),
+			triggers: Vec::new(),
 			without_rowid: false,
+			strict: false,
 		}
 	}
 
@@ -3604,7 +6108,7 @@ impl SqliteTableRecreation {
 				}
 			})
 			.collect();
-		let columns_to_copy: Vec<_> = new_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&new_columns);
 
 		Self {
 			table_name,
@@ -3612,7 +6116,12 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
+			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
+			indexes: Vec::new(),
+			triggers: Vec::new(),
 			without_rowid: false,
+			strict: false,
 		}
 	}
 
@@ -3627,7 +6136,7 @@ impl SqliteTableRecreation {
 		constraint_sql: String,
 	) -> Self {
 		let table_name = table_name.into();
-		let columns_to_copy: Vec<_> = current_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
 
 		Self {
 			table_name,
@@ -3635,7 +6144,38 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: vec![constraint_sql],
+			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
+			indexes: Vec::new(),
+			triggers: Vec::new(),
 			without_rowid: false,
+			strict: false,
+		}
+	}
+
+	/// Creates a recreation plan that adds a typed constraint.
+	pub fn for_add_constraint_definition(
+		table_name: impl Into<String>,
+		current_columns: Vec<ColumnDefinition>,
+		mut current_constraints: Vec<Constraint>,
+		constraint: Constraint,
+	) -> Self {
+		let table_name = table_name.into();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
+		current_constraints.push(constraint);
+
+		Self {
+			table_name,
+			new_columns: current_columns,
+			columns_to_copy,
+			constraints: current_constraints,
+			raw_constraint_sqls: Vec::new(),
+			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
+			indexes: Vec::new(),
+			triggers: Vec::new(),
+			without_rowid: false,
+			strict: false,
 		}
 	}
 
@@ -3650,7 +6190,7 @@ impl SqliteTableRecreation {
 		constraint_name: &str,
 	) -> Self {
 		let table_name = table_name.into();
-		let columns_to_copy: Vec<_> = current_columns.iter().map(|c| c.name.to_string()).collect();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
 
 		// Filter out the constraint by name
 		let constraints: Vec<_> = current_constraints
@@ -3664,35 +6204,147 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints,
 			raw_constraint_sqls: Vec::new(),
+			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
+			indexes: Vec::new(),
+			triggers: Vec::new(),
 			without_rowid: false,
+			strict: false,
 		}
 	}
 
-	/// Generate the 4-step SQL statements for table recreation
+	/// Adds indexes that should be recreated after the replacement table is renamed.
+	pub fn with_indexes(mut self, indexes: Vec<SqliteRecreatedIndex>) -> Self {
+		self.indexes = indexes;
+		self
+	}
+
+	/// Adds existing raw table constraints that must be preserved verbatim.
+	pub fn with_raw_constraints(mut self, raw_constraints: Vec<SqliteRecreatedConstraint>) -> Self {
+		self.raw_constraints = raw_constraints;
+		self
+	}
+
+	/// Adds explicit column collations that must survive table recreation.
+	pub fn with_column_collations(mut self, column_collations: Vec<(String, String)>) -> Self {
+		self.column_collations = column_collations;
+		self
+	}
+
+	/// Adds trigger definitions that should be recreated after the replacement table is renamed.
+	pub fn with_triggers(mut self, triggers: Vec<String>) -> Self {
+		self.triggers = triggers;
+		self
+	}
+
+	/// Preserves whether the recreated table uses SQLite's WITHOUT ROWID storage.
+	pub fn with_without_rowid(mut self, without_rowid: bool) -> Self {
+		self.without_rowid = without_rowid;
+		self
+	}
+
+	/// Preserves whether the recreated table uses SQLite's STRICT type enforcement.
+	pub fn with_strict(mut self, strict: bool) -> Self {
+		self.strict = strict;
+		self
+	}
+
+	/// Removes indexes that reference a column no longer present in the replacement table.
+	pub fn without_indexes_referencing(mut self, column_name: &str) -> Self {
+		self.indexes
+			.retain(|index| !index.references_column(column_name));
+		self
+	}
+
+	/// Removes preserved raw constraints that reference a dropped column.
+	pub fn without_raw_constraints_referencing(mut self, column_name: &str) -> Self {
+		self.raw_constraints
+			.retain(|constraint| !constraint.references_column(column_name));
+		self
+	}
+
+	/// Removes a preserved raw constraint by its declared name.
+	pub fn without_raw_constraint_named(mut self, constraint_name: &str) -> Self {
+		self.raw_constraints.retain(|constraint| {
+			let logical_name_differs = constraint
+				.name
+				.as_deref()
+				.is_none_or(|name| !name.eq_ignore_ascii_case(constraint_name));
+			let physical_name_differs = constraint
+				.physical_name
+				.as_deref()
+				.is_none_or(|name| !name.eq_ignore_ascii_case(constraint_name));
+			logical_name_differs && physical_name_differs
+		});
+		self
+	}
+
+	/// Generate the SQL statements for table recreation and dependent object restoration.
 	pub fn to_sql_statements(&self) -> Vec<String> {
+		self.try_to_sql_statements().unwrap_or_else(|error| {
+			panic!(
+				"SQLite recreation requires checked SQL rendering; use try_to_sql_statements: {error}"
+			)
+		})
+	}
+
+	/// Generates table-recreation SQL after validating every replacement column.
+	pub fn try_to_sql_statements(&self) -> super::Result<Vec<String>> {
+		for column in &self.new_columns {
+			column
+				.type_definition
+				.try_to_sql_for_dialect(&SqlDialect::Sqlite)?;
+		}
+		Ok(self.render_sql_statements())
+	}
+
+	fn render_sql_statements(&self) -> Vec<String> {
 		let temp_table = format!("{}_new", self.table_name);
+		let quote =
+			|identifier: &str| Operation::quote_dialect_identifier(identifier, &SqlDialect::Sqlite);
+		let quoted_temp_table = quote(&temp_table);
+		let quoted_table = quote(&self.table_name);
 
 		// Step 1: CREATE TABLE with new schema
 		let column_defs: Vec<String> = self
 			.new_columns
 			.iter()
-			.map(|c| Operation::column_to_sql(c, &SqlDialect::Sqlite))
+			.map(|column| {
+				let collation = self
+					.column_collations
+					.iter()
+					.find(|(name, _)| name.eq_ignore_ascii_case(&column.name))
+					.map(|(_, collation)| collation.as_str());
+				Operation::column_to_sql_with_collation(column, &SqlDialect::Sqlite, collation)
+			})
 			.collect();
 
-		let constraint_defs: Vec<String> = self.constraints.iter().map(|c| c.to_string()).collect();
+		let constraint_defs: Vec<String> = self
+			.constraints
+			.iter()
+			.map(|constraint| constraint.to_sql_for_dialect(&SqlDialect::Sqlite))
+			.collect();
 
 		let mut create_parts = column_defs;
 		create_parts.extend(constraint_defs);
-		// Include raw constraint SQLs (from AddConstraint operations)
+		create_parts.extend(
+			self.raw_constraints
+				.iter()
+				.map(|constraint| constraint.sql.clone()),
+		);
+		// Include raw constraint SQLs from the current AddConstraint operation.
 		create_parts.extend(self.raw_constraint_sqls.clone());
 
 		let mut create_sql = format!(
-			"CREATE TABLE \"{}\" (\n  {}\n)",
-			temp_table,
+			"CREATE TABLE {} (\n  {}\n)",
+			quoted_temp_table,
 			create_parts.join(",\n  ")
 		);
-		if self.without_rowid {
-			create_sql.push_str(" WITHOUT ROWID");
+		match (self.without_rowid, self.strict) {
+			(true, true) => create_sql.push_str(" WITHOUT ROWID, STRICT"),
+			(true, false) => create_sql.push_str(" WITHOUT ROWID"),
+			(false, true) => create_sql.push_str(" STRICT"),
+			(false, false) => {}
 		}
 		create_sql.push(';');
 
@@ -3700,24 +6352,50 @@ impl SqliteTableRecreation {
 		let columns_list = self
 			.columns_to_copy
 			.iter()
-			.map(|c| format!("\"{}\"", c))
+			.map(|column| Operation::quote_dialect_identifier(column, &SqlDialect::Sqlite))
 			.collect::<Vec<_>>()
 			.join(", ");
 		let insert_sql = format!(
-			"INSERT INTO \"{}\" SELECT {} FROM \"{}\";",
-			temp_table, columns_list, self.table_name
+			"INSERT INTO {} ({}) SELECT {} FROM {};",
+			quoted_temp_table, columns_list, columns_list, quoted_table
 		);
 
 		// Step 3: Drop old table
-		let drop_sql = format!("DROP TABLE \"{}\";", self.table_name);
+		let drop_sql = format!("DROP TABLE {quoted_table};");
 
 		// Step 4: Rename new table
 		let rename_sql = format!(
-			"ALTER TABLE \"{}\" RENAME TO \"{}\";",
-			temp_table, self.table_name
+			"ALTER TABLE {} RENAME TO {};",
+			quoted_temp_table, quoted_table
 		);
 
-		vec![create_sql, insert_sql, drop_sql, rename_sql]
+		let mut statements = vec![create_sql, insert_sql, drop_sql, rename_sql];
+		for index in &self.indexes {
+			if let Some(sql) = index.normalized_sql() {
+				statements.push(sql);
+				continue;
+			}
+			let unique = if index.unique { "UNIQUE " } else { "" };
+			let columns = index
+				.columns
+				.iter()
+				.map(|column| quote(column))
+				.collect::<Vec<_>>()
+				.join(", ");
+			statements.push(format!(
+				"CREATE {unique}INDEX {} ON {} ({});",
+				quote(&index.name),
+				quoted_table,
+				columns
+			));
+		}
+		for trigger in &self.triggers {
+			let trigger = trigger.trim().trim_end_matches(';');
+			if !trigger.is_empty() {
+				statements.push(format!("{trigger};"));
+			}
+		}
+		statements
 	}
 
 	/// Check if a constraint references a specific column
@@ -3727,6 +6405,7 @@ impl SqliteTableRecreation {
 			Constraint::ForeignKey { columns, .. } => columns.iter().any(|c| c == column_name),
 			Constraint::Unique { columns, .. } => columns.iter().any(|c| c == column_name),
 			Constraint::Check { expression, .. } => expression.contains(column_name),
+			Constraint::EnumDomain { column, .. } => column == column_name,
 			Constraint::OneToOne { column, .. } => column == column_name,
 			Constraint::ManyToMany { source_column, .. } => source_column == column_name,
 			Constraint::Exclude { elements, .. } => {
@@ -3742,6 +6421,7 @@ impl SqliteTableRecreation {
 			Constraint::ForeignKey { name, .. } => name == constraint_name,
 			Constraint::Unique { name, .. } => name == constraint_name,
 			Constraint::Check { name, .. } => name == constraint_name,
+			Constraint::EnumDomain { name, .. } => name == constraint_name,
 			Constraint::OneToOne { name, .. } => name == constraint_name,
 			Constraint::ManyToMany { name, .. } => name == constraint_name,
 			Constraint::Exclude { name, .. } => name == constraint_name,
@@ -3757,7 +6437,17 @@ impl Operation {
 			Operation::DropColumn { .. }
 				| Operation::AlterColumn { .. }
 				| Operation::AddConstraint { .. }
+				| Operation::AddConstraintDefinition { .. }
+				| Operation::AddConstraintRepair { .. }
 				| Operation::DropConstraint { .. }
+				| Operation::DropConstraintDefinition { .. }
+		) || matches!(
+			self,
+			Operation::AddColumn { column, .. }
+				if column
+					.generated
+					.as_ref()
+					.is_some_and(|generated| generated.storage == GeneratedStorage::Stored)
 		)
 	}
 
@@ -3778,11 +6468,24 @@ impl Operation {
 			// AddColumn → Reverse DropColumn (requires recreation)
 			Operation::AddColumn { .. }
 				// AlterColumn → Reverse AlterColumn (requires recreation)
-				| Operation::AlterColumn { .. }
-				// AddConstraint → Reverse DropConstraint (requires recreation)
-				| Operation::AddConstraint { .. }
-				// DropConstraint → Reverse AddConstraint (requires recreation)
-				| Operation::DropConstraint { .. }
+					| Operation::AlterColumn { .. }
+					// AddConstraint → Reverse DropConstraint (requires recreation)
+					| Operation::AddConstraint { .. }
+					| Operation::AddConstraintDefinition { .. }
+					// DropConstraint → Reverse AddConstraint (requires recreation)
+					| Operation::DropConstraint { .. }
+					| Operation::DropConstraintDefinition { .. }
+					// RestoreConstraintOnRollback → Reverse AddConstraint (requires recreation)
+					| Operation::RestoreConstraintOnRollback { .. }
+		) || matches!(
+			self,
+			Operation::DropColumn {
+				old_definition: Some(old_definition),
+				..
+			} if old_definition
+				.generated
+				.as_ref()
+				.is_some_and(|generated| generated.storage == GeneratedStorage::Stored)
 		)
 	}
 
@@ -3812,13 +6515,13 @@ impl Operation {
 			Operation::DropTable { name } => {
 				// Reconstruct CreateTable from ProjectState
 				if let Some(model) = project_state.find_model_by_table(name) {
-					let columns: Vec<ColumnDefinition> = model
-						.fields
-						.iter()
-						.map(|(field_name, field)| {
-							ColumnDefinition::from_field_state(field_name.clone(), field)
-						})
-						.collect();
+					let columns: Vec<ColumnDefinition> =
+						Self::order_model_fields_by_generated_dependencies(model)
+							.into_iter()
+							.map(|(field_name, field)| {
+								ColumnDefinition::from_field_state(field_name.clone(), field)
+							})
+							.collect();
 					let constraints: Vec<Constraint> = model
 						.constraints
 						.iter()
@@ -3838,13 +6541,23 @@ impl Operation {
 			Operation::AddColumn { table, column, .. } => Ok(Some(Operation::DropColumn {
 				table: table.clone(),
 				column: column.name.clone(),
+				old_definition: None,
 			})),
-			Operation::DropColumn { table, column } => {
-				// Reconstruct AddColumn from ProjectState
-				if let Some(model) = project_state.find_model_by_table(table)
-					&& let Some(field) = model.get_field(column)
-				{
-					let col_def = ColumnDefinition::from_field_state(column.clone(), field);
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition,
+			} => {
+				// Prefer the explicit definition carried by replacement-style
+				// migrations; fall back to ProjectState for legacy migrations.
+				let resolved_old_def = old_definition.clone().or_else(|| {
+					project_state
+						.find_model_by_table(table)
+						.and_then(|model| model.get_field(column))
+						.map(|field| ColumnDefinition::from_field_state(column.clone(), field))
+				});
+
+				if let Some(col_def) = resolved_old_def {
 					return Ok(Some(Operation::AddColumn {
 						table: table.clone(),
 						column: col_def,
@@ -3897,6 +6610,20 @@ impl Operation {
 					constraint_sql
 				)))
 			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				Ok(Some(Operation::DropConstraintDefinition {
+					table: table.clone(),
+					constraint: constraint.clone(),
+				}))
+			}
+			Operation::AddConstraintRepair { .. } => Ok(None),
+			Operation::RestoreConstraintOnRollback {
+				table,
+				constraint_sql,
+			} => Ok(Some(Operation::AddConstraint {
+				table: table.clone(),
+				constraint_sql: constraint_sql.clone(),
+			})),
 			Operation::DropConstraint {
 				table,
 				constraint_name,
@@ -3909,12 +6636,24 @@ impl Operation {
 						.find(|c| c.name == *constraint_name)
 				{
 					let constraint = constraint_def.to_constraint();
-					return Ok(Some(Operation::AddConstraint {
-						table: table.clone(),
-						constraint_sql: format!("{}", constraint),
+					return Ok(Some(match constraint {
+						Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
+							table: table.clone(),
+							constraint,
+						},
+						_ => Operation::AddConstraint {
+							table: table.clone(),
+							constraint_sql: constraint.to_string(),
+						},
 					}));
 				}
 				Ok(None)
+			}
+			Operation::DropConstraintDefinition { table, constraint } => {
+				Ok(Some(Operation::AddConstraintDefinition {
+					table: table.clone(),
+					constraint: constraint.clone(),
+				}))
 			}
 			Operation::RenameTable { old_name, new_name } => Ok(Some(Operation::RenameTable {
 				old_name: new_name.clone(),
@@ -3956,7 +6695,8 @@ impl Operation {
 				mysql_options: *mysql_options,
 				operator_class: operator_class.clone(),
 			})),
-			Operation::CreateIndexRepair {
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex {
 				table,
 				name,
 				columns,
@@ -3969,14 +6709,7 @@ impl Operation {
 				operator_class,
 			} => Ok(Some(Operation::DropNamedIndex {
 				table: table.clone(),
-				name: name.clone().unwrap_or_else(|| {
-					generated_index_name(
-						table,
-						columns,
-						expressions.as_deref(),
-						where_clause.as_deref(),
-					)
-				}),
+				name: name.clone(),
 				columns: columns.clone(),
 				unique: *unique,
 				index_type: *index_type,
@@ -3986,21 +6719,43 @@ impl Operation {
 				mysql_options: *mysql_options,
 				operator_class: operator_class.clone(),
 			})),
+			Operation::CreateIndexRepair { .. } | Operation::RestoreIndexOnRollback { .. } => {
+				Ok(None)
+			}
 			Operation::DropIndex { table, columns } => {
-				// Basic index recreation (without advanced properties)
-				// Note: Cannot determine if the original index was unique from DropIndex alone
-				Ok(Some(Operation::CreateIndex {
+				let _ = (table, columns);
+				Ok(None)
+			}
+			#[cfg(feature = "pgvector")]
+			Operation::DropNamedIndex {
+				table,
+				name,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			} => {
+				if !named_index_has_target(columns, expressions.as_deref()) {
+					return Ok(None);
+				}
+				Ok(Some(Operation::CreateNamedIndex {
 					table: table.clone(),
+					name: name.clone(),
 					columns: columns.clone(),
-					unique: false,
-					index_type: None,
-					where_clause: None,
-					concurrently: false,
-					expressions: None,
-					mysql_options: None,
-					operator_class: None,
+					unique: *unique,
+					index_type: *index_type,
+					where_clause: where_clause.clone(),
+					concurrently: *concurrently,
+					expressions: expressions.clone(),
+					mysql_options: *mysql_options,
+					operator_class: operator_class.clone(),
 				}))
 			}
+			#[cfg(not(feature = "pgvector"))]
 			Operation::DropNamedIndex {
 				table,
 				name,
@@ -4013,18 +6768,23 @@ impl Operation {
 				mysql_options,
 				operator_class,
 				..
-			} => Ok(Some(Operation::CreateIndexRepair {
-				table: table.clone(),
-				name: Some(name.clone()),
-				columns: columns.clone(),
-				unique: *unique,
-				index_type: *index_type,
-				where_clause: where_clause.clone(),
-				concurrently: *concurrently,
-				expressions: expressions.clone(),
-				mysql_options: *mysql_options,
-				operator_class: operator_class.clone(),
-			})),
+			} => {
+				if !named_index_has_target(columns, expressions.as_deref()) {
+					return Ok(None);
+				}
+				Ok(Some(Operation::CreateIndexRepair {
+					table: table.clone(),
+					name: Some(name.clone()),
+					columns: columns.clone(),
+					unique: *unique,
+					index_type: *index_type,
+					where_clause: where_clause.clone(),
+					concurrently: *concurrently,
+					expressions: expressions.clone(),
+					mysql_options: *mysql_options,
+					operator_class: operator_class.clone(),
+				}))
+			}
 			// Operations that are not reversible as Operations
 			Operation::RunSQL { .. } | Operation::RunRust { .. } | Operation::BulkLoad { .. } => {
 				Ok(None)
@@ -4054,6 +6814,8 @@ pub enum OperationStatement {
 	IndexDrop(DropIndexStatement),
 	/// Sanitized raw SQL (identifiers escaped with pg_escape::quote_identifier)
 	RawSql(String),
+	/// An operation whose SQL must be rendered after the database dialect is known.
+	DialectOperation(Box<Operation>),
 }
 
 impl OperationStatement {
@@ -4062,40 +6824,90 @@ impl OperationStatement {
 	where
 		E: sqlx::Executor<'c, Database = sqlx::Postgres>,
 	{
-		use crate::backends::sql_build_helpers;
 		use crate::backends::types::DatabaseType;
-		let db_type = DatabaseType::Postgres;
+		let sql = self
+			.try_to_sql_string(DatabaseType::Postgres)
+			.map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+		sqlx::query(&sql).execute(executor).await?;
+		Ok(())
+	}
+
+	/// Converts to SQL while preserving checked backend feature errors.
+	pub fn try_to_sql_string(
+		&self,
+		db_type: crate::backends::types::DatabaseType,
+	) -> super::Result<String> {
+		use crate::backends::sql_build_helpers;
+
+		let map_query_error = |error: reinhardt_query::QueryBuildError| match error {
+			reinhardt_query::QueryBuildError::UnsupportedBackendFeature { feature, .. } => {
+				super::MigrationError::UnsupportedBackendFeature {
+					feature,
+					backend: match db_type {
+						crate::backends::types::DatabaseType::Postgres => "postgres",
+						crate::backends::types::DatabaseType::Mysql => "mysql",
+						crate::backends::types::DatabaseType::Sqlite => "sqlite",
+					},
+				}
+			}
+			_ => super::MigrationError::InvalidMigration(error.to_string()),
+		};
+
 		match self {
-			OperationStatement::TableCreate(stmt) => {
-				let sql = sql_build_helpers::build_create_table_sql(db_type, stmt);
-				sqlx::query(&sql).execute(executor).await?;
-			}
-			OperationStatement::TableDrop(stmt) => {
-				let sql = sql_build_helpers::build_drop_table_sql(db_type, stmt);
-				sqlx::query(&sql).execute(executor).await?;
-			}
-			OperationStatement::TableAlter(stmt) => {
-				let sql = sql_build_helpers::build_alter_table_sql(db_type, stmt);
-				sqlx::query(&sql).execute(executor).await?;
-			}
-			OperationStatement::TableRename(stmt) => {
-				let sql = sql_build_helpers::build_alter_table_sql(db_type, stmt);
-				sqlx::query(&sql).execute(executor).await?;
-			}
-			OperationStatement::IndexCreate(stmt) => {
-				let sql = sql_build_helpers::build_create_index_sql(db_type, stmt);
-				sqlx::query(&sql).execute(executor).await?;
-			}
-			OperationStatement::IndexDrop(stmt) => {
-				let sql = sql_build_helpers::build_drop_index_sql(db_type, stmt);
-				sqlx::query(&sql).execute(executor).await?;
-			}
-			OperationStatement::RawSql(sql) => {
-				// Already sanitized with pg_escape::quote_identifier
-				sqlx::query(sql).execute(executor).await?;
+			Self::TableCreate(stmt) => match db_type {
+				crate::backends::types::DatabaseType::Postgres => PostgresQueryBuilder
+					.build_create_table_checked(stmt)
+					.map(|(sql, _)| sql)
+					.map_err(map_query_error),
+				crate::backends::types::DatabaseType::Mysql => MySqlQueryBuilder
+					.build_create_table_checked(stmt)
+					.map(|(sql, _)| sql)
+					.map_err(map_query_error),
+				crate::backends::types::DatabaseType::Sqlite => SqliteQueryBuilder
+					.build_create_table_checked(stmt)
+					.map(|(sql, _)| sql)
+					.map_err(map_query_error),
+			},
+			Self::TableDrop(stmt) => Ok(sql_build_helpers::build_drop_table_sql(db_type, stmt)),
+			Self::TableAlter(stmt) | Self::TableRename(stmt) => match db_type {
+				crate::backends::types::DatabaseType::Postgres => PostgresQueryBuilder
+					.build_alter_table_checked(stmt)
+					.map(|(sql, _)| sql)
+					.map_err(map_query_error),
+				crate::backends::types::DatabaseType::Mysql => MySqlQueryBuilder
+					.build_alter_table_checked(stmt)
+					.map(|(sql, _)| sql)
+					.map_err(map_query_error),
+				crate::backends::types::DatabaseType::Sqlite => SqliteQueryBuilder
+					.build_alter_table_checked(stmt)
+					.map(|(sql, _)| sql)
+					.map_err(map_query_error),
+			},
+			Self::IndexCreate(stmt) => match db_type {
+				crate::backends::types::DatabaseType::Postgres => PostgresQueryBuilder
+					.build_create_index_checked(stmt)
+					.map(|(sql, _)| sql)
+					.map_err(map_query_error),
+				crate::backends::types::DatabaseType::Mysql => MySqlQueryBuilder
+					.build_create_index_checked(stmt)
+					.map(|(sql, _)| sql)
+					.map_err(map_query_error),
+				crate::backends::types::DatabaseType::Sqlite => SqliteQueryBuilder
+					.build_create_index_checked(stmt)
+					.map(|(sql, _)| sql)
+					.map_err(map_query_error),
+			},
+			Self::IndexDrop(stmt) => Ok(sql_build_helpers::build_drop_index_sql(db_type, stmt)),
+			Self::RawSql(sql) => Ok(sql.clone()),
+			Self::DialectOperation(operation) => {
+				let dialect = match db_type {
+					crate::backends::types::DatabaseType::Postgres => SqlDialect::Postgres,
+					crate::backends::types::DatabaseType::Mysql => SqlDialect::Mysql,
+					crate::backends::types::DatabaseType::Sqlite => SqlDialect::Sqlite,
+				};
+				operation.try_to_sql(&dialect)
 			}
 		}
-		Ok(())
 	}
 
 	/// Convert to SQL string for logging/debugging
@@ -4104,33 +6916,21 @@ impl OperationStatement {
 	///
 	/// * `db_type` - Database type to generate SQL for (PostgreSQL, MySQL, SQLite)
 	pub fn to_sql_string(&self, db_type: crate::backends::types::DatabaseType) -> String {
-		use crate::backends::sql_build_helpers;
-
-		match self {
-			OperationStatement::TableCreate(stmt) => {
-				sql_build_helpers::build_create_table_sql(db_type, stmt)
-			}
-			OperationStatement::TableDrop(stmt) => {
-				sql_build_helpers::build_drop_table_sql(db_type, stmt)
-			}
-			OperationStatement::TableAlter(stmt) => {
-				sql_build_helpers::build_alter_table_sql(db_type, stmt)
-			}
-			OperationStatement::TableRename(stmt) => {
-				sql_build_helpers::build_alter_table_sql(db_type, stmt)
-			}
-			OperationStatement::IndexCreate(stmt) => {
-				sql_build_helpers::build_create_index_sql(db_type, stmt)
-			}
-			OperationStatement::IndexDrop(stmt) => {
-				sql_build_helpers::build_drop_index_sql(db_type, stmt)
-			}
-			OperationStatement::RawSql(sql) => sql.clone(),
-		}
+		self.try_to_sql_string(db_type).unwrap_or_else(|error| {
+			panic!(
+				"operation statement requires checked SQL rendering; use try_to_sql_string: {error}"
+			)
+		})
 	}
 }
 
 impl Operation {
+	/// Converts to a query statement after validating the selected dialect.
+	pub fn try_to_statement(&self, dialect: &SqlDialect) -> super::Result<OperationStatement> {
+		self.validate_for_dialect(dialect)?;
+		Ok(self.to_statement())
+	}
+
 	/// Convert Operation to reinhardt-query statement or sanitized raw SQL
 	pub fn to_statement(&self) -> OperationStatement {
 		match self {
@@ -4140,7 +6940,18 @@ impl Operation {
 				constraints,
 				..
 			} => {
-				OperationStatement::TableCreate(self.build_create_table(name, columns, constraints))
+				if constraints
+					.iter()
+					.any(|constraint| matches!(constraint, Constraint::EnumDomain { .. }))
+				{
+					OperationStatement::DialectOperation(Box::new(self.clone()))
+				} else {
+					OperationStatement::TableCreate(self.build_create_table(
+						name,
+						columns,
+						constraints,
+					))
+				}
 			}
 			Operation::DropTable { name } => {
 				OperationStatement::TableDrop(self.build_drop_table(name))
@@ -4148,7 +6959,7 @@ impl Operation {
 			Operation::AddColumn { table, column, .. } => {
 				OperationStatement::TableAlter(self.build_add_column(table, column))
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				OperationStatement::TableAlter(self.build_drop_column(table, column))
 			}
 			Operation::AlterColumn {
@@ -4175,7 +6986,14 @@ impl Operation {
 				quote_identifier(old_name),
 				quote_identifier(new_name)
 			)),
+			Operation::DropConstraintDefinition { .. } => {
+				OperationStatement::DialectOperation(Box::new(self.clone()))
+			}
 			Operation::AddConstraint {
+				table,
+				constraint_sql,
+			}
+			| Operation::AddConstraintRepair {
 				table,
 				constraint_sql,
 			} => {
@@ -4186,9 +7004,16 @@ impl Operation {
 					constraint_sql
 				))
 			}
+			Operation::AddConstraintDefinition { .. } => {
+				OperationStatement::DialectOperation(Box::new(self.clone()))
+			}
+			Operation::RestoreConstraintOnRollback { .. } => OperationStatement::RawSql(
+				"-- rollback-only generated-column constraint restore".to_string(),
+			),
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				..
 			} => OperationStatement::RawSql(format!(
 				"ALTER TABLE {} DROP CONSTRAINT {}",
 				quote_identifier(table),
@@ -4198,47 +7023,67 @@ impl Operation {
 				table,
 				columns,
 				unique,
-				expressions,
+				index_type,
 				where_clause,
+				expressions,
 				..
-			} => {
-				let idx_name = generated_index_name(
-					table,
-					columns,
-					expressions.as_deref(),
-					where_clause.as_deref(),
-				);
-				OperationStatement::IndexCreate(
-					self.build_create_index(&idx_name, table, columns, *unique),
-				)
 			}
-			Operation::CreateIndexRepair {
+			| Operation::CreateIndexRepair {
 				table,
-				name,
+				name: _,
 				columns,
 				unique,
-				expressions,
+				index_type,
 				where_clause,
+				expressions,
 				..
 			} => {
-				let generated_name;
-				let idx_name = if let Some(name) = name.as_deref() {
-					name
-				} else {
-					generated_name = generated_index_name(
+				if where_clause.is_some() {
+					return OperationStatement::DialectOperation(Box::new(self.clone()));
+				}
+				if index_type.is_some_and(IndexType::is_approximate_vector) {
+					return OperationStatement::DialectOperation(Box::new(self.clone()));
+				}
+				let idx_name = match self {
+					Operation::CreateIndexRepair {
+						name: Some(name), ..
+					} => name.clone(),
+					_ => generated_index_name(
 						table,
 						columns,
 						expressions.as_deref(),
 						where_clause.as_deref(),
-					);
-					&generated_name
+					),
 				};
 				OperationStatement::IndexCreate(
-					self.build_create_index(idx_name, table, columns, *unique),
+					self.build_create_index(&idx_name, table, columns, *unique),
 				)
 			}
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex {
+				table,
+				name,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				..
+			} => {
+				if where_clause.is_some() {
+					return OperationStatement::DialectOperation(Box::new(self.clone()));
+				}
+				if index_type.is_some_and(IndexType::is_approximate_vector) {
+					return OperationStatement::DialectOperation(Box::new(self.clone()));
+				}
+				OperationStatement::IndexCreate(
+					self.build_create_index(name, table, columns, *unique),
+				)
+			}
+			Operation::RestoreIndexOnRollback { .. } => OperationStatement::RawSql(
+				"-- rollback-only generated-column index restore".to_string(),
+			),
 			Operation::DropIndex { table, columns } => {
-				let idx_name = format!("idx_{}_{}", table, columns.join("_"));
+				let idx_name = super::operations::default_index_name(table, &columns.join("_"));
 				OperationStatement::IndexDrop(self.build_drop_index(&idx_name))
 			}
 			Operation::DropNamedIndex { name, .. } => {
@@ -4466,8 +7311,11 @@ impl Operation {
 			if col.auto_increment {
 				column = column.auto_increment(true);
 			}
-			if let Some(default) = &col.default {
-				column = column.default(SimpleExpr::from(self.convert_default_value(default)));
+			if let Some(default) = effective_column_default(col.default.as_ref()) {
+				column = column.default(SimpleExpr::from(self.convert_default_value(&default)));
+			}
+			if let Some(generated) = &col.generated {
+				column = self.apply_generated_column(column, generated);
 			}
 
 			stmt.col(column);
@@ -4516,6 +7364,9 @@ impl Operation {
 					// Note: reinhardt-query doesn't have direct CHECK constraint support
 					// This would need to be handled with raw SQL if needed
 					let _ = (name, expression); // Suppress unused warnings
+				}
+				Constraint::EnumDomain { .. } => {
+					// Typed CHECK constraints are emitted through the operation SQL path.
 				}
 				Constraint::OneToOne {
 					name,
@@ -4575,8 +7426,11 @@ impl Operation {
 		if column.not_null {
 			col_def = col_def.not_null(true);
 		}
-		if let Some(default) = &column.default {
-			col_def = col_def.default(SimpleExpr::from(self.convert_default_value(default)));
+		if let Some(default) = effective_column_default(column.default.as_ref()) {
+			col_def = col_def.default(SimpleExpr::from(self.convert_default_value(&default)));
+		}
+		if let Some(generated) = &column.generated {
+			col_def = self.apply_generated_column(col_def, generated);
 		}
 
 		stmt.add_column(col_def);
@@ -4606,6 +7460,9 @@ impl Operation {
 
 		if new_definition.not_null {
 			col_def = col_def.not_null(true);
+		}
+		if let Some(generated) = &new_definition.generated {
+			col_def = self.apply_generated_column(col_def, generated);
 		}
 
 		stmt.modify_column(col_def);
@@ -4674,7 +7531,7 @@ impl Operation {
 			FieldType::Float => col_def.float(),
 			FieldType::Double | FieldType::Real => col_def.double(),
 			FieldType::Json => col_def.json(),
-			FieldType::JsonBinary => col_def.json_binary(),
+			FieldType::Jsonb => col_def.jsonb(),
 			FieldType::Uuid => col_def.uuid(),
 			FieldType::Binary | FieldType::Bytea => col_def.binary(0),
 			FieldType::Blob | FieldType::TinyBlob | FieldType::MediumBlob | FieldType::LongBlob => {
@@ -4718,7 +7575,38 @@ impl Operation {
 			FieldType::TsTzRange => col_def.custom(Alias::new("TSTZRANGE")),
 			FieldType::TsVector => col_def.custom(Alias::new("TSVECTOR")),
 			FieldType::TsQuery => col_def.custom(Alias::new("TSQUERY")),
+			#[cfg(feature = "pgvector")]
+			FieldType::Vector { dimensions } => {
+				if !(1..=2_000).contains(dimensions) {
+					panic!(
+						"vector fields require checked statement construction; use try_to_statement"
+					);
+				}
+				let dimensions = u32::try_from(*dimensions).unwrap_or_else(|_| {
+					panic!(
+						"vector fields require checked statement construction; use try_to_statement"
+					)
+				});
+				col_def.vector(dimensions)
+			}
 			FieldType::Custom(custom_type) => col_def.custom(Alias::new(custom_type)),
+		}
+	}
+
+	/// Apply generated-column metadata to a query column definition.
+	fn apply_generated_column(
+		&self,
+		col_def: ColumnDef,
+		generated: &GeneratedColumnDefinition,
+	) -> ColumnDef {
+		if let Some(query_generated) = generated.to_query_generated() {
+			match (query_generated.expr, query_generated.raw_sql) {
+				(Some(expr), None) => col_def.generated(expr, query_generated.storage),
+				(None, Some(raw_sql)) => col_def.generated_sql(raw_sql, query_generated.storage),
+				_ => col_def,
+			}
+		} else {
+			col_def
 		}
 	}
 
@@ -4829,7 +7717,7 @@ impl MigrationOperation for Operation {
 				table.to_lowercase(),
 				column.name.to_lowercase()
 			)),
-			Operation::DropColumn { table, column } => Some(format!(
+			Operation::DropColumn { table, column, .. } => Some(format!(
 				"remove_{}_{}",
 				table.to_lowercase(),
 				column.to_lowercase()
@@ -4851,24 +7739,35 @@ impl MigrationOperation for Operation {
 				table.to_lowercase(),
 				new_name.to_lowercase()
 			)),
-			Operation::AddConstraint { table, .. } => {
+			Operation::DropConstraintDefinition { constraint, .. } => Some(format!(
+				"drop_constraint_{}",
+				constraint.name().to_lowercase()
+			)),
+			Operation::AddConstraint { table, .. }
+			| Operation::AddConstraintDefinition { table, .. }
+			| Operation::AddConstraintRepair { table, .. }
+			| Operation::RestoreConstraintOnRollback { table, .. } => {
 				Some(format!("add_constraint_{}", table.to_lowercase()))
 			}
 			Operation::DropConstraint {
 				table: _,
 				constraint_name,
+				..
 			} => Some(format!(
 				"drop_constraint_{}",
 				constraint_name.to_lowercase()
 			)),
-			Operation::CreateIndex { table, unique, .. } => {
+			Operation::CreateIndex { table, unique, .. }
+			| Operation::CreateIndexRepair { table, unique, .. }
+			| Operation::RestoreIndexOnRollback { table, unique, .. } => {
 				if *unique {
 					Some(format!("create_unique_index_{}", table.to_lowercase()))
 				} else {
 					Some(format!("create_index_{}", table.to_lowercase()))
 				}
 			}
-			Operation::CreateIndexRepair { table, unique, .. } => {
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex { table, unique, .. } => {
 				if *unique {
 					Some(format!("create_unique_index_{}", table.to_lowercase()))
 				} else {
@@ -4878,8 +7777,8 @@ impl MigrationOperation for Operation {
 			Operation::DropIndex { table, .. } => {
 				Some(format!("drop_index_{}", table.to_lowercase()))
 			}
-			Operation::DropNamedIndex { table, .. } => {
-				Some(format!("drop_index_{}", table.to_lowercase()))
+			Operation::DropNamedIndex { name, .. } => {
+				Some(format!("drop_index_{}", name.to_lowercase()))
 			}
 			Operation::RunSQL { .. } => None,  // Triggers auto-naming
 			Operation::RunRust { .. } => None, // Triggers auto-naming
@@ -4940,7 +7839,7 @@ impl MigrationOperation for Operation {
 			Operation::AddColumn { table, column, .. } => {
 				format!("Add column {} to {}", column.name, table)
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn { table, column, .. } => {
 				format!("Drop column {} from {}", column, table)
 			}
 			Operation::AlterColumn { table, column, .. } => {
@@ -4954,19 +7853,31 @@ impl MigrationOperation for Operation {
 				old_name,
 				new_name,
 			} => format!("Rename column {} to {} on {}", old_name, new_name, table),
-			Operation::AddConstraint { table, .. } => format!("Add constraint on {}", table),
+			Operation::AddConstraint { table, .. }
+			| Operation::AddConstraintDefinition { table, .. }
+			| Operation::AddConstraintRepair { table, .. }
+			| Operation::RestoreConstraintOnRollback { table, .. } => {
+				format!("Add constraint on {}", table)
+			}
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				..
 			} => format!("Drop constraint {} from {}", constraint_name, table),
-			Operation::CreateIndex { table, unique, .. } => {
+			Operation::DropConstraintDefinition { table, constraint } => {
+				format!("Drop constraint {} from {}", constraint.name(), table)
+			}
+			Operation::CreateIndex { table, unique, .. }
+			| Operation::CreateIndexRepair { table, unique, .. }
+			| Operation::RestoreIndexOnRollback { table, unique, .. } => {
 				if *unique {
 					format!("Create unique index on {}", table)
 				} else {
 					format!("Create index on {}", table)
 				}
 			}
-			Operation::CreateIndexRepair { table, unique, .. } => {
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex { table, unique, .. } => {
 				if *unique {
 					format!("Create unique index on {}", table)
 				} else {
@@ -4974,7 +7885,9 @@ impl MigrationOperation for Operation {
 				}
 			}
 			Operation::DropIndex { table, .. } => format!("Drop index on {}", table),
-			Operation::DropNamedIndex { table, .. } => format!("Drop index on {}", table),
+			Operation::DropNamedIndex { table, name, .. } => {
+				format!("Drop index {} on {}", name, table)
+			}
 			Operation::RunSQL { sql, .. } => {
 				let preview = if sql.len() > 50 {
 					format!("{}...", &sql[..50])
@@ -5099,6 +8012,35 @@ impl MigrationOperation for Operation {
 					operator_class: operator_class.clone(),
 				}
 			}
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex {
+				table,
+				name,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			} => {
+				let mut sorted_columns = columns.clone();
+				sorted_columns.sort();
+
+				Operation::CreateNamedIndex {
+					table: table.clone(),
+					name: name.clone(),
+					columns: sorted_columns,
+					unique: *unique,
+					index_type: *index_type,
+					where_clause: where_clause.clone(),
+					concurrently: *concurrently,
+					expressions: expressions.clone(),
+					mysql_options: *mysql_options,
+					operator_class: operator_class.clone(),
+				}
+			}
 			Operation::CreateIndexRepair {
 				table,
 				name,
@@ -5201,8 +8143,50 @@ impl MigrationOperation for Operation {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::migrations::autodetector::{ForeignKeyAction, ForeignKeyInfo};
 	use FieldType;
+	use reinhardt_query::prelude::SchemaBinOper;
 	use rstest::rstest;
+
+	#[test]
+	fn sqlite_table_recreation_quotes_fallback_index_identifiers() {
+		let recreation = SqliteTableRecreation::for_drop_column(
+			"order\"items",
+			vec![
+				ColumnDefinition::new("id", FieldType::Integer),
+				ColumnDefinition::new("select\"value", FieldType::Text),
+				ColumnDefinition::new("obsolete", FieldType::Text),
+			],
+			"obsolete",
+			vec![],
+		)
+		.with_indexes(vec![SqliteRecreatedIndex {
+			name: "idx\"quoted".to_string(),
+			columns: vec!["select\"value".to_string()],
+			unique: false,
+			sql: None,
+		}]);
+
+		let statements = recreation.to_sql_statements();
+
+		assert_eq!(
+			statements[0],
+			"CREATE TABLE \"order\"\"items_new\" (\n  id INTEGER,\n  \"select\"\"value\" TEXT\n);"
+		);
+		assert_eq!(
+			statements[1],
+			"INSERT INTO \"order\"\"items_new\" (\"id\", \"select\"\"value\") SELECT \"id\", \"select\"\"value\" FROM \"order\"\"items\";"
+		);
+		assert_eq!(statements[2], "DROP TABLE \"order\"\"items\";");
+		assert_eq!(
+			statements[3],
+			"ALTER TABLE \"order\"\"items_new\" RENAME TO \"order\"\"items\";"
+		);
+		assert_eq!(
+			statements[4],
+			"CREATE INDEX \"idx\"\"quoted\" ON \"order\"\"items\" (\"select\"\"value\");"
+		);
+	}
 
 	#[test]
 	fn test_create_table_to_statement() {
@@ -5217,6 +8201,8 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -5226,6 +8212,8 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -5290,6 +8278,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("''".to_string()),
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -5323,6 +8313,7 @@ mod tests {
 		let op = Operation::DropColumn {
 			table: "users".to_string(),
 			column: "email".to_string(),
+			old_definition: None,
 		};
 
 		let stmt = op.to_statement();
@@ -5363,6 +8354,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -5476,6 +8469,662 @@ mod tests {
 	}
 
 	#[test]
+	fn enum_domain_constraint_escapes_string_literals() {
+		let constraint = Constraint::EnumDomain {
+			name: "jobs_status_model_enum_check".to_string(),
+			column: "job_status".to_string(),
+			domain: crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::String,
+				values: vec![
+					crate::field_domain::ModelEnumValue::String("queued".to_string()),
+					crate::field_domain::ModelEnumValue::String("owner's".to_string()),
+				],
+			},
+		};
+
+		assert_eq!(
+			constraint.to_string(),
+			"CONSTRAINT \"jobs_status_model_enum_check\" CHECK (\"job_status\" IN ('owner''s', 'queued'))"
+		);
+	}
+
+	#[test]
+	fn enum_domain_constraint_renders_integer_literals() {
+		let constraint = Constraint::EnumDomain {
+			name: "jobs_status_model_enum_check".to_string(),
+			column: "status_code".to_string(),
+			domain: crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::I32,
+				values: vec![
+					crate::field_domain::ModelEnumValue::I32(10),
+					crate::field_domain::ModelEnumValue::I32(2),
+				],
+			},
+		};
+
+		assert_eq!(
+			constraint.to_string(),
+			"CONSTRAINT \"jobs_status_model_enum_check\" CHECK (\"status_code\" IN (2, 10))"
+		);
+	}
+
+	#[test]
+	fn enum_domain_constraint_names_are_deterministic_and_bounded() {
+		let logical = format!(
+			"{}_{}_model_enum_check",
+			"very_long_model_enum_table_name".repeat(2),
+			"very_long_resolved_database_column".repeat(2)
+		);
+		let first = truncate_identifier_with_hash(&logical);
+		let second = truncate_identifier_with_hash(&logical);
+
+		assert_eq!(first, second);
+		assert_eq!(first.len(), 63);
+		assert_ne!(
+			first,
+			truncate_identifier_with_hash(&format!("{logical}_different"))
+		);
+	}
+
+	#[test]
+	fn enum_domain_constraint_name_has_a_stable_known_hash_suffix() {
+		let logical = "model_enum_jobs_with_a_name_that_exceeds_postgres_identifier_limits_job_status_model_enum_check";
+
+		assert_eq!(
+			truncate_identifier_with_hash(logical),
+			"model_enum_jobs_with_a_name_that_exceeds_postg_cb8793507fca29f1"
+		);
+	}
+
+	#[test]
+	fn generated_index_names_are_bounded_and_used_by_sql_rendering() {
+		let table = "very_long_index_table_name_".repeat(4);
+		let name = default_index_name(&table, "status");
+		assert!(name.len() <= 63);
+
+		let operation = Operation::CreateIndex {
+			table: table.clone(),
+			columns: vec!["status".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		assert!(operation.to_sql(&SqlDialect::Postgres).contains(&name));
+	}
+
+	#[test]
+	fn enum_domain_constraint_uses_mysql_identifier_quoting_in_create_table() {
+		let operation = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			}],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		let sql = operation.to_sql(&SqlDialect::Mysql);
+
+		assert!(
+			sql.contains("CHECK (BINARY `job_status` IN ('queued'))"),
+			"{sql}"
+		);
+	}
+
+	#[test]
+	fn create_table_state_restores_enum_domain_constraints() {
+		let operation = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![ColumnDefinition::new("job_status", FieldType::VarChar(32))],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			}],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let mut state = ProjectState::new();
+
+		operation.state_forwards("tasks", &mut state);
+
+		let model = state.find_model_by_table("jobs").expect("jobs model");
+		assert_eq!(model.constraints.len(), 1);
+		assert_eq!(
+			model.constraints[0].to_constraint().name(),
+			"jobs_status_model_enum_check"
+		);
+	}
+
+	#[test]
+	fn drop_table_reverse_sql_uses_mysql_enum_identifier_quoting() {
+		let operation = Operation::DropTable {
+			name: "jobs".to_string(),
+		};
+		let mut state = ProjectState::new();
+		let create_table = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![ColumnDefinition::new("job_status", FieldType::VarChar(32))],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			}],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		create_table.state_forwards("tasks", &mut state);
+
+		let sql = operation
+			.to_reverse_sql(&SqlDialect::Mysql, &state)
+			.expect("reverse SQL should be generated")
+			.expect("drop table should be reversible")
+			.join("\n");
+
+		assert!(
+			sql.contains("CHECK (BINARY `job_status` IN ('queued'))"),
+			"{sql}"
+		);
+	}
+
+	#[test]
+	fn enum_domain_constraint_uses_mysql_identifier_quoting_when_added() {
+		let constraint = Constraint::EnumDomain {
+			name: "jobs_status_model_enum_check".to_string(),
+			column: "job_status".to_string(),
+			domain: crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::String,
+				values: vec![crate::field_domain::ModelEnumValue::String(
+					"queued".to_string(),
+				)],
+			},
+		};
+		let operation = Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint,
+		};
+
+		let sql = operation.to_sql(&SqlDialect::Mysql);
+
+		assert!(
+			sql.contains("CHECK (BINARY `job_status` IN ('queued'))"),
+			"{sql}"
+		);
+	}
+
+	#[test]
+	fn enum_domain_constraint_statement_preserves_mysql_dialect() {
+		let operation = Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			},
+		};
+
+		let sql = operation
+			.to_statement()
+			.to_sql_string(crate::backends::types::DatabaseType::Mysql);
+
+		assert!(
+			sql.contains("ALTER TABLE `jobs` ADD CONSTRAINT `jobs_status_model_enum_check`"),
+			"{sql}"
+		);
+		assert!(
+			sql.contains("CHECK (BINARY `job_status` IN ('queued'))"),
+			"{sql}"
+		);
+	}
+
+	#[test]
+	fn create_table_statement_preserves_enum_domain_check_for_mysql() {
+		let operation = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![ColumnDefinition::new("job_status", FieldType::VarChar(32))],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			}],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		let sql = operation
+			.to_statement()
+			.to_sql_string(crate::backends::types::DatabaseType::Mysql);
+
+		assert!(sql.starts_with("CREATE TABLE `jobs`"), "{sql}");
+		assert!(sql.contains("`job_status` VARCHAR(32)"), "{sql}");
+		assert!(
+			sql.contains("CHECK (BINARY `job_status` IN ('queued'))"),
+			"{sql}"
+		);
+	}
+
+	#[test]
+	fn enum_bearing_create_table_quotes_mixed_constraints_for_mysql() {
+		let operation = Operation::CreateTable {
+			name: "order-items".to_string(),
+			columns: vec![
+				ColumnDefinition::new("select", FieldType::VarChar(32)),
+				ColumnDefinition::new("owner-id", FieldType::Integer),
+				ColumnDefinition::new("profile-id", FieldType::Integer),
+			],
+			constraints: vec![
+				Constraint::EnumDomain {
+					name: "order-status-check".to_string(),
+					column: "select".to_string(),
+					domain: crate::field_domain::FieldDomain::Enum {
+						repr: crate::field_domain::ModelEnumRepr::String,
+						values: vec![crate::field_domain::ModelEnumValue::String(
+							"queued".to_string(),
+						)],
+					},
+				},
+				Constraint::ForeignKey {
+					name: "fk-order-owner".to_string(),
+					columns: vec!["owner-id".to_string()],
+					referenced_table: "user-table".to_string(),
+					referenced_columns: vec!["primary-id".to_string()],
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::NoAction,
+					deferrable: None,
+				},
+				Constraint::Unique {
+					name: "uq-order-select".to_string(),
+					columns: vec!["select".to_string()],
+				},
+				Constraint::OneToOne {
+					name: "oto-order-profile".to_string(),
+					column: "profile-id".to_string(),
+					referenced_table: "profile-table".to_string(),
+					referenced_column: "primary-id".to_string(),
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::NoAction,
+					deferrable: None,
+				},
+			],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		let sql = operation.to_sql(&SqlDialect::Mysql);
+
+		assert!(
+			sql.contains(
+				"CONSTRAINT `fk-order-owner` FOREIGN KEY (`owner-id`) REFERENCES `user-table`(`primary-id`)"
+			),
+			"{sql}"
+		);
+		assert!(
+			sql.contains("CONSTRAINT `uq-order-select` UNIQUE (`select`)"),
+			"{sql}"
+		);
+		assert!(
+			sql.contains("CONSTRAINT `oto-order-profile` FOREIGN KEY (`profile-id`) REFERENCES `profile-table`(`primary-id`)"),
+			"{sql}"
+		);
+		assert!(
+			sql.contains("CONSTRAINT `oto-order-profile_unique` UNIQUE (`profile-id`)"),
+			"{sql}"
+		);
+	}
+
+	#[test]
+	fn drop_constraint_deserializes_legacy_shape_without_typed_snapshot() {
+		let operation: Operation = serde_json::from_str(
+			r#"{
+				"type": "DropConstraint",
+				"table": "jobs",
+				"constraint_name": "jobs_status_check"
+			}"#,
+		)
+		.expect("legacy DropConstraint JSON should remain readable");
+
+		assert_eq!(
+			operation,
+			Operation::DropConstraint {
+				table: "jobs".to_string(),
+				constraint_name: "jobs_status_check".to_string(),
+			}
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn drop_named_index_deserializes_legacy_shape_without_false_reverse_definition() {
+		let operation: Operation = serde_json::from_str(
+			r#"{
+				"type": "DropNamedIndex",
+				"table": "documents",
+				"name": "documents_embedding_ann"
+			}"#,
+		)
+		.expect("legacy DropNamedIndex JSON should remain readable");
+
+		assert!(matches!(
+			&operation,
+			Operation::DropNamedIndex {
+				table,
+				name,
+				columns,
+				index_type: None,
+				expressions: None,
+				..
+			} if table == "documents"
+				&& name == "documents_embedding_ann"
+				&& columns.is_empty()
+		));
+		assert_eq!(
+			operation
+				.to_reverse_sql(&SqlDialect::Postgres, &ProjectState::new())
+				.expect("legacy reverse SQL decision"),
+			None
+		);
+		assert_eq!(
+			operation
+				.to_reverse_operation(&ProjectState::new())
+				.expect("legacy reverse operation decision"),
+			None
+		);
+	}
+
+	#[test]
+	fn legacy_drop_constraint_rust_source_shape_still_typechecks() {
+		let operation = Operation::DropConstraint {
+			table: "users".to_string(),
+			constraint_name: "users_status_check".to_string(),
+		};
+
+		assert!(matches!(operation, Operation::DropConstraint { .. }));
+	}
+
+	#[test]
+	fn add_constraint_definition_state_transitions_are_symmetric() {
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::String,
+			values: vec![crate::field_domain::ModelEnumValue::String(
+				"queued".to_string(),
+			)],
+		};
+		let constraint = Constraint::EnumDomain {
+			name: "jobs_status_model_enum_check".to_string(),
+			column: "job_status".to_string(),
+			domain: domain.clone(),
+		};
+		let operation = Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: constraint.clone(),
+		};
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("tasks", "jobs");
+		model.table_name = "jobs".to_string();
+		state.add_model(model);
+
+		operation.state_forwards("tasks", &mut state);
+
+		let model = state.get_model("tasks", "jobs").expect("jobs model");
+		assert_eq!(model.constraints.len(), 1);
+		assert_eq!(model.constraints[0].name, "jobs_status_model_enum_check");
+		assert_eq!(model.constraints[0].constraint_type, "enum_domain");
+		assert_eq!(model.constraints[0].to_constraint(), constraint);
+
+		operation.state_backwards("tasks", &mut state);
+
+		assert!(
+			state
+				.get_model("tasks", "jobs")
+				.expect("jobs model")
+				.constraints
+				.is_empty()
+		);
+	}
+
+	#[test]
+	fn add_constraint_definition_reverse_sql_uses_mysql_quoting() {
+		let operation = Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			},
+		};
+
+		let sql = operation
+			.to_reverse_sql(&SqlDialect::Mysql, &ProjectState::new())
+			.expect("reverse SQL")
+			.expect("reversible operation");
+
+		assert_eq!(
+			sql,
+			vec!["ALTER TABLE `jobs` DROP CONSTRAINT `jobs_status_model_enum_check`;".to_string()]
+		);
+	}
+
+	#[test]
+	fn hashed_enum_domain_constraint_uses_mysql_identifier_quoting_when_added() {
+		let table = "model_enum_jobs_with_a_name_that_exceeds_postgres_identifier_limits";
+		let column = "job_status_with_a_name_that_exceeds_postgres_identifier_limits";
+		let name = truncate_identifier_with_hash(&format!("{table}_{column}_model_enum_check"));
+		let constraint = Constraint::EnumDomain {
+			name,
+			column: column.to_string(),
+			domain: crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::String,
+				values: vec![crate::field_domain::ModelEnumValue::String(
+					"queued".to_string(),
+				)],
+			},
+		};
+		let operation = Operation::AddConstraintDefinition {
+			table: table.to_string(),
+			constraint,
+		};
+
+		let sql = operation.to_sql(&SqlDialect::Mysql);
+
+		assert!(
+			sql.contains(&format!("CHECK (BINARY `{column}` IN ('queued'))")),
+			"{sql}"
+		);
+	}
+
+	#[test]
+	fn create_table_state_forwards_preserves_column_domain() {
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::I32,
+			values: vec![crate::field_domain::ModelEnumValue::I32(1)],
+		};
+		let operation = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![
+				ColumnDefinition::new("status", FieldType::Integer).with_domain(domain.clone()),
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let mut state = ProjectState::new();
+
+		operation.state_forwards("tasks", &mut state);
+
+		assert_eq!(
+			state.get_model("tasks", "jobs").unwrap().fields["status"].domain,
+			Some(domain)
+		);
+	}
+
+	#[test]
+	fn create_table_state_forwards_preserves_without_rowid() {
+		// Arrange
+		let operation = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
+			constraints: vec![],
+			without_rowid: Some(true),
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let mut state = ProjectState::new();
+
+		// Act
+		operation.state_forwards("tasks", &mut state);
+
+		// Assert
+		assert_eq!(
+			state
+				.get_model("tasks", "jobs")
+				.unwrap()
+				.options
+				.get("without_rowid"),
+			Some(&"true".to_string())
+		);
+	}
+
+	#[test]
+	fn state_forwards_preserves_column_attributes() {
+		let column = ColumnDefinition {
+			name: "id".to_string(),
+			type_definition: FieldType::Integer,
+			not_null: true,
+			unique: true,
+			primary_key: true,
+			auto_increment: true,
+			default: Some("42".to_string()),
+			generated: None,
+			domain: None,
+		};
+		let mut state = ProjectState::new();
+		let create_table = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![column.clone()],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		create_table.state_forwards("tasks", &mut state);
+		let field = &state.get_model("tasks", "jobs").unwrap().fields["id"];
+		assert!(!field.nullable);
+		assert_eq!(ColumnDefinition::from_field_state("id", field), column);
+
+		let additional_column = ColumnDefinition {
+			name: "sequence".to_string(),
+			..column.clone()
+		};
+		let add_column = Operation::AddColumn {
+			table: "jobs".to_string(),
+			column: additional_column.clone(),
+			mysql_options: None,
+		};
+		add_column.state_forwards("tasks", &mut state);
+		let field = &state.get_model("tasks", "jobs").unwrap().fields["sequence"];
+		assert_eq!(
+			ColumnDefinition::from_field_state("sequence", field),
+			additional_column
+		);
+	}
+
+	#[test]
+	fn add_column_state_forwards_preserves_column_domain() {
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::I32,
+			values: vec![crate::field_domain::ModelEnumValue::I32(1)],
+		};
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("tasks", "jobs");
+		model.table_name = "jobs".to_string();
+		state.add_model(model);
+		let operation = Operation::AddColumn {
+			table: "jobs".to_string(),
+			column: ColumnDefinition::new("status", FieldType::Integer).with_domain(domain.clone()),
+			mysql_options: None,
+		};
+
+		operation.state_forwards("tasks", &mut state);
+
+		assert_eq!(
+			state.get_model("tasks", "jobs").unwrap().fields["status"].domain,
+			Some(domain)
+		);
+	}
+
+	#[test]
+	fn alter_column_state_forwards_preserves_column_domain() {
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::I32,
+			values: vec![crate::field_domain::ModelEnumValue::I32(1)],
+		};
+		let mut model = ModelState::new("tasks", "jobs");
+		model.table_name = "jobs".to_string();
+		model.add_field(FieldState::new("status", FieldType::Integer, false));
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		let operation = Operation::AlterColumn {
+			table: "jobs".to_string(),
+			column: "status".to_string(),
+			new_definition: ColumnDefinition::new("status", FieldType::Integer)
+				.with_domain(domain.clone()),
+			old_definition: None,
+			mysql_options: None,
+		};
+
+		operation.state_forwards("tasks", &mut state);
+
+		assert_eq!(
+			state.get_model("tasks", "jobs").unwrap().fields["status"].domain,
+			Some(domain)
+		);
+	}
+
+	#[test]
 	fn test_add_unique_constraint_to_sql_uses_mysql_identifier_quotes() {
 		// Arrange
 		let op = Operation::AddConstraint {
@@ -5490,7 +9139,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			mysql_sql,
-			"ALTER TABLE users ADD CONSTRAINT users_group_uniq UNIQUE (`group`);"
+			"ALTER TABLE `users` ADD CONSTRAINT users_group_uniq UNIQUE (`group`);"
 		);
 		assert_eq!(
 			postgres_sql,
@@ -5559,6 +9208,34 @@ mod tests {
 			sql.contains("email"),
 			"SQL should reference 'email' column, got: {}",
 			sql
+		);
+	}
+
+	#[test]
+	fn test_partial_create_index_to_statement_preserves_predicate() {
+		// Arrange
+		let operation = Operation::CreateIndex {
+			table: "users".to_string(),
+			columns: vec!["email".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: Some("deleted_at IS NULL".to_string()),
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+
+		// Act
+		let statement = operation
+			.try_to_statement(&SqlDialect::Postgres)
+			.expect("partial index statement should be supported");
+		let sql = statement.to_sql_string(crate::backends::types::DatabaseType::Postgres);
+
+		// Assert
+		assert_eq!(
+			sql,
+			"CREATE INDEX idx_users_email_e64fe6668f8f0a78 ON users (email) WHERE deleted_at IS NULL;"
 		);
 	}
 
@@ -5767,6 +9444,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("1".to_string()),
+				generated: None,
+				domain: None,
 			}],
 			base_table: "users".to_string(),
 			join_column: "user_id".to_string(),
@@ -5837,6 +9516,8 @@ mod tests {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -5846,6 +9527,8 @@ mod tests {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -5858,6 +9541,7 @@ mod tests {
 		let model = state.get_model("myapp", "users");
 		assert!(model.is_some(), "Model 'users' should exist in state");
 		let model = model.unwrap();
+		assert_eq!(model.table_name, "users");
 		assert_eq!(
 			model.fields.len(),
 			2,
@@ -5874,6 +9558,238 @@ mod tests {
 		);
 	}
 
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_vector_create_and_alter_sql_preserve_dimensions() {
+		let vector_column = ColumnDefinition::new("embedding", FieldType::Vector { dimensions: 3 });
+		let create = Operation::CreateTable {
+			name: "documents".to_owned(),
+			columns: vec![vector_column.clone()],
+			constraints: vec![],
+			without_rowid: None,
+			partition: None,
+			interleave_in_parent: None,
+		};
+		let alter = Operation::AlterColumn {
+			table: "documents".to_owned(),
+			column: "embedding".to_owned(),
+			old_definition: None,
+			new_definition: vector_column,
+			mysql_options: None,
+		};
+
+		assert!(
+			create
+				.try_to_sql(&SqlDialect::Postgres)
+				.unwrap()
+				.contains("VECTOR(3)")
+		);
+		assert!(
+			alter
+				.try_to_sql(&SqlDialect::Postgres)
+				.unwrap()
+				.contains("TYPE VECTOR(3)")
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_vector_ddl_rejects_unsupported_backends() {
+		let operation = Operation::AddColumn {
+			table: "documents".to_owned(),
+			column: ColumnDefinition::new("embedding", FieldType::Vector { dimensions: 3 }),
+			mysql_options: None,
+		};
+
+		for (dialect, backend) in [
+			(SqlDialect::Mysql, "mysql"),
+			(SqlDialect::Sqlite, "sqlite"),
+			(SqlDialect::Cockroachdb, "cockroachdb"),
+		] {
+			assert!(matches!(
+				operation.try_to_sql(&dialect),
+				Err(crate::migrations::MigrationError::UnsupportedBackendFeature {
+					feature: "vector field",
+					backend: actual_backend,
+				}) if actual_backend == backend
+			));
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn legacy_vector_operation_sql_fails_fast_on_unsupported_backends() {
+		let operation = Operation::AddColumn {
+			table: "documents".to_owned(),
+			column: ColumnDefinition::new("embedding", FieldType::Vector { dimensions: 3 }),
+			mysql_options: None,
+		};
+
+		for dialect in [SqlDialect::Mysql, SqlDialect::Sqlite] {
+			let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+				operation.to_sql(&dialect)
+			}));
+
+			let payload = result.expect_err("legacy rendering must not return vector SQL");
+			let message = payload
+				.downcast_ref::<String>()
+				.map(String::as_str)
+				.or_else(|| payload.downcast_ref::<&str>().copied())
+				.unwrap();
+			assert!(message.contains("try_to_sql"));
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_inherited_table_vector_ddl_rejects_unsupported_backends() {
+		let operation = Operation::CreateInheritedTable {
+			name: "child_documents".to_owned(),
+			columns: vec![ColumnDefinition::new(
+				"embedding",
+				FieldType::Vector { dimensions: 3 },
+			)],
+			base_table: "documents".to_owned(),
+			join_column: "document_id".to_owned(),
+		};
+
+		for (dialect, backend) in [
+			(SqlDialect::Mysql, "mysql"),
+			(SqlDialect::Sqlite, "sqlite"),
+			(SqlDialect::Cockroachdb, "cockroachdb"),
+		] {
+			assert!(matches!(
+				operation.try_to_sql(&dialect),
+				Err(crate::migrations::MigrationError::UnsupportedBackendFeature {
+					feature: "vector field",
+					backend: actual_backend,
+				}) if actual_backend == backend
+			));
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_vector_statement_rendering_rejects_unsupported_backends() {
+		let operation = Operation::CreateTable {
+			name: "documents".to_owned(),
+			columns: vec![ColumnDefinition::new(
+				"embedding",
+				FieldType::Vector { dimensions: 3 },
+			)],
+			constraints: vec![],
+			without_rowid: None,
+			partition: None,
+			interleave_in_parent: None,
+		};
+		let statement = operation.try_to_statement(&SqlDialect::Postgres).unwrap();
+
+		for (database_type, backend) in [
+			(crate::backends::types::DatabaseType::Mysql, "mysql"),
+			(crate::backends::types::DatabaseType::Sqlite, "sqlite"),
+		] {
+			assert!(matches!(
+				statement.try_to_sql_string(database_type),
+				Err(crate::migrations::MigrationError::UnsupportedBackendFeature {
+					feature: "pgvector column types",
+					backend: actual_backend,
+				}) if actual_backend == backend
+			));
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn legacy_vector_statement_rendering_fails_fast_on_unsupported_backends() {
+		let operation = Operation::CreateTable {
+			name: "documents".to_owned(),
+			columns: vec![ColumnDefinition::new(
+				"embedding",
+				FieldType::Vector { dimensions: 3 },
+			)],
+			constraints: vec![],
+			without_rowid: None,
+			partition: None,
+			interleave_in_parent: None,
+		};
+		let statement = operation.to_statement();
+
+		for database_type in [
+			crate::backends::types::DatabaseType::Mysql,
+			crate::backends::types::DatabaseType::Sqlite,
+		] {
+			let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+				statement.to_sql_string(database_type)
+			}));
+
+			let payload =
+				result.expect_err("legacy statement rendering must not return vector SQL");
+			let message = payload
+				.downcast_ref::<String>()
+				.map(String::as_str)
+				.or_else(|| payload.downcast_ref::<&str>().copied())
+				.unwrap();
+			assert!(message.contains("try_to_sql_string"));
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_vector_statement_construction_rejects_invalid_dimensions() {
+		for dimensions in [0, 2_001, usize::MAX] {
+			let operation = Operation::CreateTable {
+				name: "documents".to_owned(),
+				columns: vec![ColumnDefinition::new(
+					"embedding",
+					FieldType::Vector { dimensions },
+				)],
+				constraints: vec![],
+				without_rowid: None,
+				partition: None,
+				interleave_in_parent: None,
+			};
+
+			assert!(matches!(
+				operation.try_to_statement(&SqlDialect::Postgres),
+				Err(crate::migrations::MigrationError::InvalidMigration(message))
+					if message == format!(
+						"vector dimensions must be between 1 and 2000, got {dimensions}"
+					)
+			));
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn legacy_vector_statement_construction_rejects_invalid_dimensions_before_conversion() {
+		for dimensions in [0, 2_001, usize::MAX] {
+			let operation = Operation::CreateTable {
+				name: "documents".to_owned(),
+				columns: vec![ColumnDefinition::new(
+					"embedding",
+					FieldType::Vector { dimensions },
+				)],
+				constraints: vec![],
+				without_rowid: None,
+				partition: None,
+				interleave_in_parent: None,
+			};
+			let result =
+				std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| operation.to_statement()));
+
+			let payload = match result {
+				Err(payload) => payload,
+				Ok(_) => panic!("legacy statement construction must reject invalid dimensions"),
+			};
+			let message = payload
+				.downcast_ref::<String>()
+				.map(String::as_str)
+				.or_else(|| payload.downcast_ref::<&str>().copied())
+				.unwrap();
+			assert!(message.contains("try_to_statement"));
+		}
+	}
+
 	#[test]
 	fn test_state_forwards_drop_table() {
 		let mut state = ProjectState::new();
@@ -5882,7 +9798,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::DropTable {
-			name: "users".to_string(),
+			name: "myapp_users".to_string(),
 		};
 
 		op.state_forwards("myapp", &mut state);
@@ -5893,6 +9809,29 @@ mod tests {
 	}
 
 	#[test]
+	fn state_forwards_drops_a_table_after_it_was_renamed() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("auth", "User");
+		model.table_name = "users".to_string();
+		state.add_model(model);
+
+		// Act
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "auth_user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+		Operation::DropTable {
+			name: "auth_user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+
+		// Assert
+		assert!(state.get_model("auth", "User").is_none());
+	}
+
+	#[test]
 	fn test_state_forwards_add_column() {
 		let mut state = ProjectState::new();
 		let mut model = ModelState::new("myapp", "users");
@@ -5900,7 +9839,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AddColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column: ColumnDefinition {
 				name: "email".to_string(),
 				type_definition: FieldType::VarChar(255),
@@ -5909,6 +9848,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -5940,8 +9881,9 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::DropColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column: "email".to_string(),
+			old_definition: None,
 		};
 
 		op.state_forwards("myapp", &mut state);
@@ -5961,7 +9903,8 @@ mod tests {
 	#[test]
 	fn test_state_forwards_rename_table() {
 		let mut state = ProjectState::new();
-		let mut model = ModelState::new("myapp", "users");
+		let mut model = ModelState::new("myapp", "User");
+		model.table_name = "users".to_string();
 		model.add_field(FieldState::new("id".to_string(), FieldType::Integer, false));
 		state.add_model(model);
 
@@ -5972,12 +9915,214 @@ mod tests {
 
 		op.state_forwards("myapp", &mut state);
 		assert!(
-			state.get_model("myapp", "users").is_none(),
-			"Old model name 'users' should not exist after rename"
+			state.get_model("myapp", "User").is_some(),
+			"Model identity should remain unchanged after a table rename"
 		);
-		assert!(
-			state.get_model("myapp", "accounts").is_some(),
-			"New model name 'accounts' should exist after rename"
+		assert_eq!(
+			state.get_model("myapp", "User").unwrap().table_name,
+			"accounts"
+		);
+	}
+
+	#[test]
+	fn state_forwards_rename_table_scopes_the_lookup_to_the_app() {
+		let mut state = ProjectState::new();
+		let mut accounts_model = ModelState::new("accounts", "User");
+		accounts_model.table_name = "users".to_string();
+		state.add_model(accounts_model);
+		let mut audit_model = ModelState::new("audit", "User");
+		audit_model.table_name = "users".to_string();
+		state.add_model(audit_model);
+
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "accounts_user".to_string(),
+		}
+		.state_forwards("accounts", &mut state);
+
+		assert_eq!(
+			state.get_model("accounts", "User").unwrap().table_name,
+			"accounts_user"
+		);
+		assert_eq!(
+			state.get_model("audit", "User").unwrap().table_name,
+			"users"
+		);
+	}
+
+	#[test]
+	fn state_forwards_uses_the_renamed_table_for_column_operations() {
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("myapp", "User");
+		model.table_name = "users".to_string();
+		state.add_model(model);
+		Operation::RenameTable {
+			old_name: "users".into(),
+			new_name: "user".into(),
+		}
+		.state_forwards("myapp", &mut state);
+		Operation::AddColumn {
+			table: "user".into(),
+			column: ColumnDefinition::new("email", FieldType::VarChar(255)),
+			mysql_options: None,
+		}
+		.state_forwards("myapp", &mut state);
+		assert!(state.get_model("myapp", "User").unwrap().has_field("email"));
+	}
+
+	#[test]
+	fn test_state_forwards_rename_table_updates_table_and_foreign_key_metadata() {
+		let mut state = ProjectState::new();
+		let mut user = ModelState::new("myapp", "User");
+		user.table_name = "users".to_string();
+		state.add_model(user);
+
+		let mut post = ModelState::new("myapp", "Post");
+		post.table_name = "posts".to_string();
+		post.add_field(FieldState::with_foreign_key(
+			"user_id",
+			FieldType::Integer,
+			false,
+			ForeignKeyInfo {
+				referenced_table: "users".to_string(),
+				referenced_column: "id".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Cascade,
+			},
+		));
+		post.add_foreign_key_constraint_from_field("user_id");
+		state.add_model(post);
+
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "user".to_string(),
+		}
+		.state_forwards("myapp", &mut state);
+
+		assert_eq!(state.get_model("myapp", "User").unwrap().table_name, "user");
+		let post = state.get_model("myapp", "Post").unwrap();
+		assert_eq!(
+			post.fields["user_id"]
+				.foreign_key
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"user"
+		);
+		assert_eq!(
+			post.constraints[0]
+				.foreign_key_info
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"user"
+		);
+	}
+
+	#[test]
+	fn state_forwards_move_model_renames_foreign_key_references() {
+		let mut state = ProjectState::new();
+		let mut user = ModelState::new("accounts", "User");
+		user.table_name = "users".to_string();
+		state.add_model(user);
+		let mut post = ModelState::new("blog", "Post");
+		post.table_name = "posts".to_string();
+		post.add_field(FieldState::with_foreign_key(
+			"user_id",
+			FieldType::Integer,
+			false,
+			ForeignKeyInfo {
+				referenced_table: "users".to_string(),
+				referenced_column: "id".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Cascade,
+			},
+		));
+		post.fields
+			.get_mut("user_id")
+			.unwrap()
+			.params
+			.insert("fk_target_app".to_string(), "accounts".to_string());
+		post.fields
+			.get_mut("user_id")
+			.unwrap()
+			.params
+			.insert("fk_target_model".to_string(), "User".to_string());
+		post.add_foreign_key_constraint_from_field("user_id");
+		state.add_model(post);
+
+		Operation::MoveModel {
+			model_name: "User".to_string(),
+			from_app: "accounts".to_string(),
+			to_app: "auth".to_string(),
+			rename_table: true,
+			old_table_name: Some("users".to_string()),
+			new_table_name: Some("auth_user".to_string()),
+		}
+		.state_forwards("auth", &mut state);
+
+		assert_eq!(
+			state.get_model("auth", "User").unwrap().table_name,
+			"auth_user"
+		);
+		let post = state.get_model("blog", "Post").unwrap();
+		assert_eq!(
+			post.fields["user_id"]
+				.foreign_key
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"auth_user"
+		);
+		assert_eq!(
+			post.constraints[0]
+				.foreign_key_info
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"auth_user"
+		);
+		assert_eq!(
+			post.fields["user_id"].params.get("fk_target_app"),
+			Some(&"auth".to_string())
+		);
+		assert_eq!(
+			post.fields["user_id"].params.get("fk_target_model"),
+			Some(&"User".to_string())
+		);
+	}
+
+	#[test]
+	fn state_forwards_move_model_updates_foreign_key_field_target_app() {
+		let mut state = ProjectState::new();
+		state.add_model(ModelState::new("accounts", "User"));
+
+		let mut post = ModelState::new("blog", "Post");
+		let mut field = FieldState::new("user_id", FieldType::Uuid, false);
+		field
+			.params
+			.insert("fk_target_app".to_string(), "accounts".to_string());
+		field
+			.params
+			.insert("fk_target".to_string(), "User".to_string());
+		post.add_field(field);
+		state.add_model(post);
+
+		Operation::MoveModel {
+			model_name: "User".to_string(),
+			from_app: "accounts".to_string(),
+			to_app: "auth".to_string(),
+			rename_table: false,
+			old_table_name: None,
+			new_table_name: None,
+		}
+		.state_forwards("auth", &mut state);
+
+		assert_eq!(
+			state.get_model("blog", "Post").unwrap().fields["user_id"]
+				.params
+				.get("fk_target_app"),
+			Some(&"auth".to_string())
 		);
 	}
 
@@ -5993,7 +10138,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::RenameColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			old_name: "name".to_string(),
 			new_name: "full_name".to_string(),
 		};
@@ -6041,6 +10186,207 @@ mod tests {
 	}
 
 	#[test]
+	fn mysql_planned_operations_quote_identifiers_with_backticks() {
+		let add_column = Operation::AddColumn {
+			table: "order-items".to_string(),
+			column: ColumnDefinition::new("select", FieldType::Text),
+			mysql_options: None,
+		};
+		let rename_table = Operation::RenameTable {
+			old_name: "order-items".to_string(),
+			new_name: "group-items".to_string(),
+		};
+		let index = Operation::CreateIndex {
+			table: "order-items".to_string(),
+			columns: vec!["select".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+
+		assert_eq!(
+			add_column.to_sql(&SqlDialect::Mysql),
+			"ALTER TABLE `order-items` ADD COLUMN `select` TEXT;"
+		);
+		assert_eq!(
+			rename_table.to_sql(&SqlDialect::Mysql),
+			"ALTER TABLE `order-items` RENAME TO `group-items`;"
+		);
+		assert_eq!(
+			index.to_sql(&SqlDialect::Mysql),
+			"CREATE INDEX `idx_order-items_select` ON `order-items` (`select`);"
+		);
+	}
+
+	#[test]
+	fn mysql_partial_indexes_are_rejected_by_checked_sql_generation() {
+		let operation = Operation::CreateIndex {
+			table: "users".to_string(),
+			columns: vec!["email".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: Some("deleted_at IS NULL".to_string()),
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+
+		let error = operation
+			.try_to_sql(&SqlDialect::Mysql)
+			.expect_err("MySQL must reject partial indexes instead of dropping the predicate");
+
+		assert!(matches!(
+			error,
+			crate::migrations::MigrationError::UnsupportedBackendFeature {
+				feature: "partial indexes",
+				backend: "mysql",
+			}
+		));
+	}
+
+	#[test]
+	fn drop_table_reverse_sql_restores_regular_and_unique_indexes() {
+		let create = Operation::CreateTable {
+			name: "books".to_string(),
+			columns: vec![ColumnDefinition::new("title", FieldType::Text)],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let regular_index = Operation::CreateIndex {
+			table: "books".to_string(),
+			columns: vec!["title".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let unique_index = Operation::CreateIndexRepair {
+			table: "books".to_string(),
+			name: Some("books_title_unique".to_string()),
+			columns: vec!["title".to_string()],
+			unique: true,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let mut state = ProjectState::new();
+		create.state_forwards("library", &mut state);
+		regular_index.state_forwards("library", &mut state);
+		unique_index.state_forwards("library", &mut state);
+
+		let reverse = Operation::DropTable {
+			name: "books".to_string(),
+		}
+		.to_reverse_sql(&SqlDialect::Postgres, &state)
+		.expect("reverse SQL")
+		.expect("drop table is reversible with historical state")
+		.join("\n");
+
+		assert!(
+			reverse.contains("CREATE INDEX idx_books_title ON books (title);"),
+			"{reverse}"
+		);
+		assert!(
+			reverse.contains("CREATE UNIQUE INDEX books_title_unique ON books (title);"),
+			"{reverse}"
+		);
+	}
+
+	#[test]
+	fn drop_index_reverse_preserves_partial_index_definition() {
+		let mut model = ModelState::new("catalog", "Article");
+		model.table_name = "articles".to_string();
+		let mut index = IndexDefinition::new("idx_articles_title", vec!["title".to_string()], true);
+		index.where_clause = Some("deleted_at IS NULL".to_string());
+		model.indexes.push(index);
+		let mut state = ProjectState::new();
+		state.add_model(model);
+
+		let reverse = Operation::DropIndex {
+			table: "articles".to_string(),
+			columns: vec!["title".to_string()],
+		}
+		.to_reverse_sql(&SqlDialect::Postgres, &state)
+		.expect("drop index reverse SQL should be generated")
+		.expect("drop index should be reversible")
+		.join("\n");
+
+		assert_eq!(
+			reverse,
+			"CREATE UNIQUE INDEX idx_articles_title ON articles (title) WHERE deleted_at IS NULL;"
+		);
+	}
+
+	#[cfg(not(feature = "pgvector"))]
+	#[test]
+	fn named_legacy_drop_index_reverse_preserves_definition_without_state() {
+		let operation = Operation::DropNamedIndex {
+			table: "articles".to_string(),
+			name: "idx_articles_title".to_string(),
+			columns: vec!["title".to_string()],
+			unique: true,
+			index_type: None,
+			where_clause: Some("deleted_at IS NULL".to_string()),
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+
+		let reverse = operation
+			.to_reverse_sql(&SqlDialect::Postgres, &ProjectState::default())
+			.expect("named drop reverse SQL should be generated")
+			.expect("named drop should be reversible")
+			.join("\n");
+
+		assert_eq!(
+			reverse,
+			"CREATE UNIQUE INDEX idx_articles_title ON articles (title) WHERE deleted_at IS NULL;"
+		);
+	}
+
+	#[cfg(not(feature = "pgvector"))]
+	#[test]
+	fn named_legacy_drop_index_reverse_omits_mysql_predicate() {
+		let operation = Operation::DropNamedIndex {
+			table: "articles".to_string(),
+			name: "idx_articles_title".to_string(),
+			columns: vec!["title".to_string()],
+			unique: true,
+			index_type: None,
+			where_clause: Some("deleted_at IS NULL".to_string()),
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+
+		let reverse = operation
+			.to_reverse_sql(&SqlDialect::Mysql, &ProjectState::default())
+			.expect("MySQL named drop reverse SQL should be generated")
+			.expect("MySQL named drop should be reversible")
+			.join("\n");
+
+		assert_eq!(
+			reverse,
+			"CREATE UNIQUE INDEX `idx_articles_title` ON `articles` (`title`);"
+		);
+	}
+
+	#[test]
 	fn test_to_reverse_sql_drop_table() {
 		let op = Operation::DropTable {
 			name: "users".to_string(),
@@ -6066,6 +10412,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -6105,6 +10453,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "name".to_string(),
@@ -6114,6 +10464,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		}
@@ -6227,6 +10579,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "is_active".to_string(),
@@ -6236,6 +10590,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("true".to_string()),
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -6267,6 +10623,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("true".to_string()),
+				generated: None,
+				domain: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "is_active".to_string(),
@@ -6276,6 +10634,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -6306,6 +10666,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: Some("true".to_string()),
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -6315,7 +10677,7 @@ mod tests {
 
 		// Assert
 		assert!(
-			sql.contains("MODIFY COLUMN is_active TINYINT(1) NOT NULL DEFAULT true"),
+			sql.contains("MODIFY COLUMN `is_active` TINYINT(1) NOT NULL DEFAULT true"),
 			"MySQL AlterColumn must include type, nullability, and default, got: {}",
 			sql
 		);
@@ -6470,6 +10832,212 @@ mod tests {
 		}
 	}
 
+	/// `DropColumn` operations emitted for generated-column replacements carry
+	/// the dropped definition so rollback can recreate the original generated
+	/// column without relying on an external ProjectState snapshot.
+	#[test]
+	fn test_to_reverse_operation_drop_column_uses_old_definition() {
+		// Arrange
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			GeneratedStorage::Stored,
+		);
+		let op = Operation::DropColumn {
+			table: "users".to_string(),
+			column: "full_name".to_string(),
+			old_definition: Some(ColumnDefinition {
+				name: "full_name".to_string(),
+				type_definition: FieldType::VarChar(201),
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				generated: Some(generated.clone()),
+				domain: None,
+			}),
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let reverse = op
+			.to_reverse_operation(&state)
+			.expect("reverse operation should succeed")
+			.expect("reverse operation should be present (old_definition is supplied)");
+
+		// Assert
+		match reverse {
+			Operation::AddColumn { column, .. } => {
+				assert_eq!(column.name, "full_name");
+				assert_eq!(column.generated, Some(generated));
+			}
+			other => panic!("reverse operation should be AddColumn, got: {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_to_reverse_operation_drop_table_orders_generated_dependencies() {
+		// Arrange
+		let mut source = FieldState::new("source", FieldType::Integer, false);
+		source.generated = None;
+		let mut z = FieldState::new("z", FieldType::Integer, false);
+		z.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("source"),
+			"SchemaExpr::col(\"source\")",
+			GeneratedStorage::Stored,
+		));
+		let mut a = FieldState::new("a", FieldType::Integer, false);
+		a.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("z"),
+			"SchemaExpr::col(\"z\")",
+			GeneratedStorage::Stored,
+		));
+		let mut model = ModelState::new("metrics", "Metric");
+		model.add_field(a);
+		model.add_field(source);
+		model.add_field(z);
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		let op = Operation::DropTable {
+			name: "metrics_metric".to_string(),
+		};
+
+		// Act
+		let reverse = op
+			.to_reverse_operation(&state)
+			.expect("reverse operation should succeed")
+			.expect("reverse operation should be present");
+
+		// Assert
+		let Operation::CreateTable { columns, .. } = reverse else {
+			panic!("reverse operation should be CreateTable, got: {reverse:?}");
+		};
+		let column_names: Vec<_> = columns.iter().map(|column| column.name.as_str()).collect();
+		assert_eq!(column_names, vec!["source", "z", "a"]);
+	}
+
+	#[test]
+	#[should_panic(expected = "generated-column dependency cycle detected among columns")]
+	fn test_to_reverse_operation_drop_table_rejects_generated_dependency_cycles() {
+		let mut a = FieldState::new("a", FieldType::Integer, false);
+		a.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("b"),
+			"SchemaExpr::col(\"b\")",
+			GeneratedStorage::Stored,
+		));
+		let mut b = FieldState::new("b", FieldType::Integer, false);
+		b.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("a"),
+			"SchemaExpr::col(\"a\")",
+			GeneratedStorage::Stored,
+		));
+		let mut model = ModelState::new("metrics", "Metric");
+		model.add_field(a);
+		model.add_field(b);
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		let op = Operation::DropTable {
+			name: "metrics_metric".to_string(),
+		};
+
+		let _ = op.to_reverse_operation(&state);
+	}
+
+	#[test]
+	fn generated_dependency_repair_operations_are_rollback_neutral() {
+		let state = ProjectState::default();
+		let create_repair = Operation::CreateIndexRepair {
+			table: "users".to_string(),
+			name: None,
+			columns: vec!["full_name".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let restore_index = Operation::RestoreIndexOnRollback {
+			table: "users".to_string(),
+			name: None,
+			columns: vec!["full_name".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+		let add_repair = Operation::AddConstraintRepair {
+			table: "users".to_string(),
+			constraint_sql: "CONSTRAINT uq_users_full_name UNIQUE (full_name)".to_string(),
+		};
+		let restore_constraint = Operation::RestoreConstraintOnRollback {
+			table: "users".to_string(),
+			constraint_sql: "CONSTRAINT uq_users_full_name UNIQUE (full_name)".to_string(),
+		};
+
+		assert_eq!(
+			create_repair
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("repair reverse should not fail"),
+			None
+		);
+		assert_eq!(
+			add_repair
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("repair reverse should not fail"),
+			None
+		);
+		assert_eq!(
+			restore_index
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("restore reverse should render"),
+			Some(vec![
+				"CREATE INDEX idx_users_full_name ON users (full_name);".to_string()
+			])
+		);
+		assert_eq!(
+			restore_constraint
+				.to_reverse_sql(&SqlDialect::Postgres, &state)
+				.expect("restore reverse should render"),
+			Some(vec![
+				"ALTER TABLE users ADD CONSTRAINT uq_users_full_name UNIQUE (full_name);"
+					.to_string()
+			])
+		);
+		assert!(restore_constraint.reverse_requires_sqlite_recreation());
+	}
+
+	#[test]
+	fn stored_generated_drop_column_reverse_uses_sqlite_recreation() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("name"),
+			"SchemaExpr::col(\"name\")",
+			GeneratedStorage::Stored,
+		);
+		let op = Operation::DropColumn {
+			table: "users".to_string(),
+			column: "full_name".to_string(),
+			old_definition: Some(ColumnDefinition {
+				name: "full_name".to_string(),
+				type_definition: FieldType::VarChar(201),
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				generated: Some(generated),
+				domain: None,
+			}),
+		};
+
+		assert!(op.reverse_requires_sqlite_recreation());
+	}
+
 	#[test]
 	fn test_to_reverse_sql_run_sql_with_reverse() {
 		let op = Operation::RunSQL {
@@ -6523,6 +11091,178 @@ mod tests {
 			"auto_increment should default to false"
 		);
 		assert!(col.default.is_none(), "default should be None");
+	}
+
+	#[test]
+	fn malformed_file_field_envelopes_preserve_default_for_decode_and_sql() {
+		let malformed = [
+			format!(
+				"{FILE_FIELD_METADATA_PREFIX}{{\"params\":{{\"model_field_type\":\"file\"}},\"default\":123}}"
+			),
+			format!("{FILE_FIELD_METADATA_PREFIX}{{\"params\":{{\"model_field_type\":\"file\"}}}}"),
+			format!(
+				"{FILE_FIELD_METADATA_PREFIX}{{\"params\":{{\"model_field_type\":\"file\",\"upload_to\":\"avatars\",\"file_storage\":\"public\"}},\"default\":\"CURRENT_TIMESTAMP\"}}"
+			),
+		];
+
+		for raw in malformed {
+			let (params, default) = decode_file_field_metadata(Some(&raw));
+			assert!(
+				params.is_empty(),
+				"malformed envelope must not restore params"
+			);
+			assert_eq!(
+				default.as_deref(),
+				Some(raw.as_str()),
+				"malformed envelope must remain an ordinary default"
+			);
+
+			let operation = Operation::CreateTable {
+				name: "assets".to_string(),
+				columns: vec![ColumnDefinition {
+					name: "avatar".to_string(),
+					type_definition: FieldType::VarChar(255),
+					not_null: false,
+					unique: false,
+					primary_key: false,
+					auto_increment: false,
+					default: Some(raw.clone()),
+					generated: None,
+					domain: None,
+				}],
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			};
+			let sql = operation.to_sql(&SqlDialect::Postgres);
+			assert!(
+				sql.contains(&format!("DEFAULT {raw}")),
+				"malformed envelope must not drop the original SQL default: {sql}"
+			);
+		}
+	}
+
+	#[test]
+	fn valid_file_field_envelope_accepts_null_default() {
+		let raw = format!(
+			"{FILE_FIELD_METADATA_PREFIX}{{\"params\":{{\"model_field_type\":\"file\",\"upload_to\":\"avatars\",\"file_storage\":\"private_uploads\",\"max_length\":\"255\",\"storage\":\"external\"}},\"default\":null}}"
+		);
+		let (params, default) = decode_file_field_metadata(Some(&raw));
+		assert_eq!(
+			params.get("model_field_type").map(String::as_str),
+			Some("file")
+		);
+		assert_eq!(
+			params.get("file_storage").map(String::as_str),
+			Some("private_uploads")
+		);
+		assert_eq!(params.get("upload_to").map(String::as_str), Some("avatars"));
+		assert_eq!(params.get("max_length").map(String::as_str), Some("255"));
+		assert!(default.is_none());
+
+		let operation = Operation::CreateTable {
+			name: "assets".to_string(),
+			columns: vec![ColumnDefinition {
+				name: "avatar".to_string(),
+				type_definition: FieldType::VarChar(255),
+				not_null: false,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: Some(raw),
+				generated: None,
+				domain: None,
+			}],
+			constraints: Vec::new(),
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let sql = operation.to_sql(&SqlDialect::Postgres);
+		assert!(
+			sql.contains("avatar VARCHAR(255) STORAGE EXTERNAL"),
+			"{sql}"
+		);
+	}
+
+	#[test]
+	fn image_field_operation_round_trip_preserves_policy_not_physical_sql() {
+		let mut field = FieldState::new("image", FieldType::VarChar(255), false);
+		for (key, value) in [
+			("model_field_type", "image"),
+			("upload_to", "images/%Y/%m/%d"),
+			("file_storage", "media"),
+			("max_length", "255"),
+			("cleanup", "false"),
+			("max_width", "800"),
+			("max_height", "600"),
+		] {
+			field.params.insert(key.to_owned(), value.to_owned());
+		}
+		let column = ColumnDefinition::from_field_state("image", &field);
+		let operation = Operation::AddColumn {
+			table: "media_asset".to_owned(),
+			column,
+			mysql_options: None,
+		};
+
+		let serialized = serde_json::to_string(&operation).unwrap();
+		let replayed: Operation = serde_json::from_str(&serialized).unwrap();
+		let Operation::AddColumn { column, .. } = replayed else {
+			panic!("serialized image field must remain AddColumn");
+		};
+		assert_eq!(column.type_definition, FieldType::VarChar(255));
+		assert_eq!(
+			Operation::column_to_sql(&column, &SqlDialect::Postgres),
+			"image VARCHAR(255) NOT NULL"
+		);
+		let restored = field_state_from_column(&column);
+		for (key, value) in [
+			("model_field_type", "image"),
+			("upload_to", "images/%Y/%m/%d"),
+			("file_storage", "media"),
+			("max_length", "255"),
+			("cleanup", "false"),
+			("max_width", "800"),
+			("max_height", "600"),
+		] {
+			assert_eq!(restored.params.get(key).map(String::as_str), Some(value));
+		}
+	}
+
+	#[test]
+	fn postgres_file_storage_precedes_constraints_for_both_column_renderers() {
+		let raw = format!(
+			"{FILE_FIELD_METADATA_PREFIX}{{\"params\":{{\"model_field_type\":\"file\",\"upload_to\":\"avatars\",\"file_storage\":\"private_uploads\",\"max_length\":\"255\",\"storage\":\"external\"}},\"default\":\"'fallback'\"}}"
+		);
+		let column = ColumnDefinition {
+			name: "avatar".to_string(),
+			type_definition: FieldType::VarChar(255),
+			not_null: true,
+			unique: true,
+			primary_key: false,
+			auto_increment: false,
+			default: Some(raw),
+			generated: None,
+			domain: None,
+		};
+
+		for sql in [
+			Operation::column_to_sql(&column, &SqlDialect::Postgres),
+			Operation::column_to_sql_without_pk(&column, &SqlDialect::Postgres),
+		] {
+			assert!(
+				sql.contains(
+					"avatar VARCHAR(255) STORAGE EXTERNAL NOT NULL UNIQUE DEFAULT 'fallback'"
+				),
+				"storage must precede constraints: {sql}"
+			);
+			assert!(
+				!sql.contains("DEFAULT 'fallback' STORAGE"),
+				"storage is trailing: {sql}"
+			);
+		}
 	}
 
 	// -----------------------------------------------------------------------
@@ -6925,7 +11665,782 @@ mod tests {
 		// Internal state cannot be easily asserted with reinhardt_query's ColumnDef API
 	}
 
+	#[cfg(feature = "pgvector")]
+	fn vector_index_operation(index_type: IndexType) -> Operation {
+		Operation::CreateIndex {
+			table: "source".to_string(),
+			columns: vec!["embedding".to_string()],
+			unique: false,
+			index_type: Some(index_type),
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: Some("vector_cosine_ops".to_string()),
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	fn vector_index_project_state(field_type: FieldType) -> ProjectState {
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("search", "Source");
+		model.table_name = "source".to_string();
+		model.add_field(FieldState::new("embedding", field_type, false));
+		state.add_model(model);
+		state
+	}
+
+	#[cfg(feature = "pgvector")]
 	#[test]
+	fn explicit_vector_index_rejects_scalar_column_in_project_state() {
+		// Arrange
+		let operation = vector_index_operation(IndexType::Hnsw {
+			m: Some(16),
+			ef_construction: Some(64),
+		});
+		let state = vector_index_project_state(FieldType::Text);
+
+		// Act
+		let result = operation.validate_for_state(&state);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::InvalidMigration(message))
+				if message == "approximate vector index on table `source` targets non-vector column `embedding`"
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn explicit_named_vector_index_rejects_scalar_column_in_project_state() {
+		// Arrange
+		let operation = Operation::CreateNamedIndex {
+			table: "source".to_string(),
+			name: "source_embedding_ann".to_string(),
+			columns: vec!["embedding".to_string()],
+			unique: false,
+			index_type: Some(IndexType::Ivfflat { lists: Some(100) }),
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: Some("vector_l2_ops".to_string()),
+		};
+		let state = vector_index_project_state(FieldType::Integer);
+
+		// Act
+		let result = operation.validate_for_state(&state);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::InvalidMigration(message))
+				if message == "approximate vector index on table `source` targets non-vector column `embedding`"
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn explicit_vector_index_accepts_vector_column_in_project_state() {
+		// Arrange
+		let operation = vector_index_operation(IndexType::Hnsw {
+			m: Some(16),
+			ef_construction: Some(64),
+		});
+		let state = vector_index_project_state(FieldType::Vector { dimensions: 1536 });
+
+		// Act
+		let result = operation.validate_for_state(&state);
+
+		// Assert
+		result.unwrap();
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn explicit_vector_index_rejects_unknown_column_in_project_state() {
+		// Arrange
+		let operation = vector_index_operation(IndexType::Ivfflat { lists: Some(100) });
+		let mut state = vector_index_project_state(FieldType::Vector { dimensions: 1536 });
+		state
+			.find_model_by_table_mut("source")
+			.unwrap()
+			.fields
+			.remove("embedding");
+
+		// Act
+		let result = operation.validate_for_state(&state);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::InvalidMigration(message))
+				if message == "approximate vector index on table `source` targets unknown column `embedding`"
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn explicit_vector_expression_index_defers_result_type_validation_to_postgres() {
+		// Arrange
+		let operation = Operation::CreateIndex {
+			table: "source".to_string(),
+			columns: Vec::new(),
+			unique: false,
+			index_type: Some(IndexType::Hnsw {
+				m: Some(16),
+				ef_construction: Some(64),
+			}),
+			where_clause: None,
+			concurrently: false,
+			expressions: Some(vec!["normalize(embedding)".to_string()]),
+			mysql_options: None,
+			operator_class: Some("vector_cosine_ops".to_string()),
+		};
+		let state = vector_index_project_state(FieldType::Text);
+
+		// Act
+		let result = operation.validate_for_state(&state);
+
+		// Assert
+		result.unwrap();
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	#[case(IndexType::BTree)]
+	#[case(IndexType::Hnsw {
+		m: Some(16),
+		ef_construction: Some(64),
+	})]
+	#[case(IndexType::Ivfflat { lists: Some(100) })]
+	fn vector_index_type_serde_roundtrip_preserves_legacy_and_data_bearing_variants(
+		#[case] index_type: IndexType,
+	) {
+		// Act
+		let serialized = serde_json::to_string(&index_type).unwrap();
+		let reparsed: IndexType = serde_json::from_str(&serialized).unwrap();
+
+		// Assert
+		assert_eq!(reparsed, index_type);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	fn vector_index_hnsw_migration_renders_forward_and_backward_sql() {
+		// Arrange
+		let operation = vector_index_operation(IndexType::Hnsw {
+			m: Some(16),
+			ef_construction: Some(64),
+		});
+		let state = ProjectState::default();
+
+		// Act
+		let forward_sql = operation.try_to_sql(&SqlDialect::Postgres).unwrap();
+		let statement_sql = operation
+			.try_to_statement(&SqlDialect::Postgres)
+			.unwrap()
+			.try_to_sql_string(crate::backends::types::DatabaseType::Postgres)
+			.unwrap();
+		let backward_sql = operation
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			forward_sql,
+			"CREATE INDEX idx_source_embedding ON source USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);"
+		);
+		assert_eq!(statement_sql, forward_sql);
+		assert_eq!(backward_sql, vec!["DROP INDEX \"idx_source_embedding\";"]);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn pgvector_error_hint_derives_context_from_migration_operations() {
+		let vector_column = Operation::CreateTable {
+			name: "source".to_string(),
+			columns: vec![ColumnDefinition::new(
+				"embedding",
+				FieldType::Vector { dimensions: 3 },
+			)],
+			constraints: Vec::new(),
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let vector_index = vector_index_operation(IndexType::Hnsw {
+			m: Some(16),
+			ef_construction: Some(64),
+		});
+		let restore_vector_column = Operation::AlterColumn {
+			table: "source".to_string(),
+			column: "embedding".to_string(),
+			old_definition: Some(ColumnDefinition::new(
+				"embedding",
+				FieldType::Vector { dimensions: 3 },
+			)),
+			new_definition: ColumnDefinition::new("embedding", FieldType::Text),
+			mysql_options: None,
+		};
+		let restore_vector_index =
+			named_vector_index_drop(Some(IndexType::Ivfflat { lists: Some(100) }));
+		let rollback_restore_vector_index = Operation::RestoreIndexOnRollback {
+			table: "source".to_string(),
+			name: Some("source_embedding_hnsw".to_string()),
+			columns: vec!["embedding".to_string()],
+			unique: false,
+			index_type: Some(IndexType::Hnsw {
+				m: Some(16),
+				ef_construction: Some(64),
+			}),
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: Some("vector_cosine_ops".to_string()),
+		};
+
+		assert_eq!(
+			vector_column.pgvector_operation_kind(),
+			Some(crate::backends::error::PgvectorOperationKind::ColumnType)
+		);
+		assert_eq!(
+			vector_index.pgvector_operation_kind(),
+			Some(crate::backends::error::PgvectorOperationKind::ApproximateIndex)
+		);
+		assert_eq!(vector_index.pgvector_reverse_operation_kind(), None);
+		assert_eq!(restore_vector_column.pgvector_operation_kind(), None);
+		assert_eq!(
+			restore_vector_column.pgvector_reverse_operation_kind(),
+			Some(crate::backends::error::PgvectorOperationKind::ColumnType)
+		);
+		assert_eq!(restore_vector_index.pgvector_operation_kind(), None);
+		assert_eq!(
+			restore_vector_index.pgvector_reverse_operation_kind(),
+			Some(crate::backends::error::PgvectorOperationKind::ApproximateIndex)
+		);
+		assert_eq!(
+			rollback_restore_vector_index.pgvector_operation_kind(),
+			None
+		);
+		assert_eq!(
+			rollback_restore_vector_index.pgvector_reverse_operation_kind(),
+			Some(crate::backends::error::PgvectorOperationKind::ApproximateIndex)
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	fn vector_index_ivfflat_migration_renders_exact_sql() {
+		// Arrange
+		let mut operation = vector_index_operation(IndexType::Ivfflat { lists: Some(100) });
+		if let Operation::CreateIndex { operator_class, .. } = &mut operation {
+			*operator_class = Some("vector_l2_ops".to_string());
+		}
+
+		// Act
+		let sql = operation.try_to_sql(&SqlDialect::Postgres).unwrap();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"CREATE INDEX idx_source_embedding ON source USING ivfflat (embedding vector_l2_ops) WITH (lists = 100);"
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	fn vector_index_restore_preserves_hnsw_metadata() {
+		// Arrange
+		let operation = Operation::RestoreIndexOnRollback {
+			table: "source".to_string(),
+			name: Some("source_embedding_cosine_hnsw".to_string()),
+			columns: vec!["embedding".to_string()],
+			unique: false,
+			index_type: Some(IndexType::Hnsw {
+				m: Some(16),
+				ef_construction: Some(64),
+			}),
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: Some("vector_cosine_ops".to_string()),
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let sql = operation
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			sql,
+			vec![
+				"CREATE INDEX source_embedding_cosine_hnsw ON source USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);"
+			]
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	#[case(SqlDialect::Mysql, "mysql")]
+	#[case(SqlDialect::Sqlite, "sqlite")]
+	fn vector_index_migration_rejects_non_postgres_backends(
+		#[case] dialect: SqlDialect,
+		#[case] backend: &'static str,
+	) {
+		// Arrange
+		let operation = vector_index_operation(IndexType::Hnsw {
+			m: None,
+			ef_construction: None,
+		});
+
+		// Act
+		let result = operation.try_to_sql(&dialect);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::UnsupportedBackendFeature {
+				feature: "approximate vector indexes",
+				backend: actual_backend,
+			}) if actual_backend == backend
+		));
+	}
+
+	#[rstest]
+	#[case(SqlDialect::Mysql, "mysql")]
+	#[case(SqlDialect::Sqlite, "sqlite")]
+	#[case(SqlDialect::Cockroachdb, "cockroachdb")]
+	fn create_extension_migration_rejects_non_postgres_backends(
+		#[case] dialect: SqlDialect,
+		#[case] backend: &'static str,
+	) {
+		let operation = Operation::CreateExtension {
+			name: "vector".to_string(),
+			if_not_exists: true,
+			schema: None,
+		};
+
+		let result = operation.try_to_sql(&dialect);
+
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::UnsupportedBackendFeature {
+				feature: "PostgreSQL extensions",
+				backend: actual_backend,
+			}) if actual_backend == backend
+		));
+	}
+
+	#[test]
+	fn create_extension_migration_quotes_identifiers_and_does_not_auto_drop_on_reverse() {
+		let operation = Operation::CreateExtension {
+			name: "vector\"; DROP TABLE documents; --".to_string(),
+			if_not_exists: true,
+			schema: Some("extension\"schema".to_string()),
+		};
+
+		assert_eq!(
+			operation
+				.try_to_sql(&SqlDialect::Postgres)
+				.expect("PostgreSQL supports extension migrations"),
+			"CREATE EXTENSION IF NOT EXISTS \"vector\"\"; DROP TABLE documents; --\" SCHEMA \"extension\"\"schema\";"
+		);
+		assert_eq!(
+			operation
+				.to_reverse_sql(&SqlDialect::Postgres, &ProjectState::new())
+				.expect("reverse SQL generation should succeed"),
+			None
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	#[case("", "must not be empty")]
+	#[case("documents\0embedding", "must not contain NUL")]
+	fn named_vector_index_migration_rejects_unsafe_physical_name(
+		#[case] name: &str,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let operation = Operation::CreateNamedIndex {
+			table: "source".to_string(),
+			name: name.to_string(),
+			columns: vec!["embedding".to_string()],
+			unique: false,
+			index_type: Some(IndexType::Hnsw {
+				m: Some(16),
+				ef_construction: Some(64),
+			}),
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: Some("vector_cosine_ops".to_string()),
+		};
+
+		// Act
+		let result = operation.try_to_sql(&SqlDialect::Postgres);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::InvalidMigration(message))
+				if message.contains(expected)
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn named_vector_index_migration_quotes_unusual_physical_name() {
+		let operation = Operation::CreateNamedIndex {
+			table: "source".to_string(),
+			name: "select embedding-ann".to_string(),
+			columns: vec!["embedding".to_string()],
+			unique: false,
+			index_type: Some(IndexType::Ivfflat { lists: Some(100) }),
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: Some("vector_l2_ops".to_string()),
+		};
+
+		assert_eq!(
+			operation
+				.try_to_sql(&SqlDialect::Postgres)
+				.expect("unusual names must be identifier-quoted"),
+			"CREATE INDEX \"select embedding-ann\" ON source USING ivfflat (embedding vector_l2_ops) WITH (lists = 100);"
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	fn named_vector_index_drop(index_type: Option<IndexType>) -> Operation {
+		Operation::DropNamedIndex {
+			table: "source".to_string(),
+			name: "source_embedding_ann".to_string(),
+			columns: vec!["embedding".to_string()],
+			unique: false,
+			index_type,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: Some("vector_cosine_ops".to_string()),
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	#[case(SqlDialect::Mysql, "mysql")]
+	#[case(SqlDialect::Sqlite, "sqlite")]
+	fn named_vector_index_drop_rejects_unsupported_backends(
+		#[case] dialect: SqlDialect,
+		#[case] backend: &'static str,
+	) {
+		// Arrange
+		let operation = named_vector_index_drop(Some(IndexType::Hnsw {
+			m: Some(16),
+			ef_construction: Some(64),
+		}));
+
+		// Act
+		let result = operation.try_to_sql(&dialect);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::UnsupportedBackendFeature {
+				feature: "approximate vector indexes",
+				backend: actual_backend,
+			}) if actual_backend == backend
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn named_vector_index_drop_renders_exact_postgres_sql() {
+		let operation = named_vector_index_drop(Some(IndexType::Ivfflat { lists: Some(100) }));
+
+		assert_eq!(
+			operation
+				.try_to_sql(&SqlDialect::Postgres)
+				.expect("PostgreSQL supports approximate vector indexes"),
+			"DROP INDEX source_embedding_ann;"
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	#[case(SqlDialect::Mysql, "DROP INDEX `source_embedding_ann` ON `source`;")]
+	#[case(SqlDialect::Sqlite, "DROP INDEX source_embedding_ann;")]
+	fn legacy_named_index_drop_without_type_remains_backend_agnostic(
+		#[case] dialect: SqlDialect,
+		#[case] expected: &str,
+	) {
+		let operation = named_vector_index_drop(None);
+
+		assert_eq!(
+			operation
+				.try_to_sql(&dialect)
+				.expect("legacy named index drops do not identify a vector index"),
+			expected
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	#[case(
+		IndexType::Hnsw {
+			m: Some(1),
+			ef_construction: Some(64),
+		},
+		"m must be in the range 2..=100"
+	)]
+	#[case(
+		IndexType::Hnsw {
+			m: Some(16),
+			ef_construction: Some(1),
+		},
+		"ef_construction must be in the range 4..=1000"
+	)]
+	#[case(
+		IndexType::Ivfflat { lists: Some(32769) },
+		"lists must be in the range 1..=32768"
+	)]
+	#[case(
+		IndexType::Hnsw {
+			m: Some(16),
+			ef_construction: Some(31),
+		},
+		"ef_construction must be at least twice m"
+	)]
+	#[case(
+		IndexType::Hnsw {
+			m: Some(100),
+			ef_construction: None,
+		},
+		"ef_construction must be at least twice m"
+	)]
+	#[case(
+		IndexType::Hnsw {
+			m: None,
+			ef_construction: Some(4),
+		},
+		"ef_construction must be at least twice m"
+	)]
+	fn vector_index_migration_rejects_invalid_options(
+		#[case] index_type: IndexType,
+		#[case] option: &str,
+	) {
+		// Arrange
+		let operation = vector_index_operation(index_type);
+
+		// Act
+		let result = operation.try_to_sql(&SqlDialect::Postgres);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::InvalidMigration(message))
+				if message == format!("{option} for approximate vector indexes")
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	#[case(true, vec!["embedding".to_string()], None, Some("vector_l2_ops".to_string()), "approximate vector indexes cannot be unique")]
+	#[case(false, vec!["embedding".to_string(), "tenant_id".to_string()], None, Some("vector_l2_ops".to_string()), "approximate vector indexes require exactly one column or expression")]
+	#[case(false, vec!["embedding".to_string()], None, None, "approximate vector indexes require a supported vector operator class")]
+	#[case(false, vec!["embedding".to_string()], None, Some("gin_trgm_ops".to_string()), "approximate vector indexes require a supported vector operator class")]
+	#[case(false, vec![], Some(vec!["embedding".to_string(), "tenant_id".to_string()]), Some("vector_l2_ops".to_string()), "approximate vector indexes require exactly one column or expression")]
+	fn vector_index_migration_rejects_invalid_structure(
+		#[case] unique: bool,
+		#[case] columns: Vec<String>,
+		#[case] expressions: Option<Vec<String>>,
+		#[case] operator_class: Option<String>,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let operation = Operation::CreateIndex {
+			table: "source".to_string(),
+			columns,
+			unique,
+			index_type: Some(IndexType::Ivfflat { lists: None }),
+			where_clause: None,
+			concurrently: false,
+			expressions,
+			mysql_options: None,
+			operator_class,
+		};
+
+		// Act
+		let result = operation.try_to_sql(&SqlDialect::Postgres);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::InvalidMigration(message))
+				if message == expected
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	fn vector_index_migration_rejects_column_and_expression_together() {
+		// Arrange
+		let operation = Operation::CreateIndex {
+			table: "source".to_string(),
+			columns: vec!["embedding".to_string()],
+			unique: false,
+			index_type: Some(IndexType::Hnsw {
+				m: None,
+				ef_construction: None,
+			}),
+			where_clause: None,
+			concurrently: false,
+			expressions: Some(vec!["normalize(embedding)".to_string()]),
+			mysql_options: None,
+			operator_class: Some("vector_cosine_ops".to_string()),
+		};
+
+		// Act
+		let result = operation.try_to_sql(&SqlDialect::Postgres);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::InvalidMigration(message))
+				if message == "approximate vector indexes require exactly one column or expression"
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	fn vector_index_migration_rejects_empty_target() {
+		// Arrange
+		let operation = Operation::CreateIndex {
+			table: "source".to_string(),
+			columns: vec![],
+			unique: false,
+			index_type: Some(IndexType::Ivfflat { lists: None }),
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: Some("vector_l2_ops".to_string()),
+		};
+
+		// Act
+		let result = operation.try_to_sql(&SqlDialect::Postgres);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::InvalidMigration(message))
+				if message == "approximate vector indexes require exactly one column or expression"
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	fn vector_index_migration_rejects_multiple_columns_individually() {
+		// Arrange
+		let mut operation = vector_index_operation(IndexType::Ivfflat { lists: None });
+		if let Operation::CreateIndex { columns, .. } = &mut operation {
+			columns.push("tenant_id".to_string());
+		}
+
+		// Act
+		let result = operation.try_to_sql(&SqlDialect::Postgres);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::InvalidMigration(message))
+				if message == "approximate vector indexes require exactly one column or expression"
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	fn vector_index_migration_rejects_multiple_expressions_individually() {
+		// Arrange
+		let operation = Operation::CreateIndex {
+			table: "source".to_string(),
+			columns: vec![],
+			unique: false,
+			index_type: Some(IndexType::Hnsw {
+				m: None,
+				ef_construction: None,
+			}),
+			where_clause: None,
+			concurrently: false,
+			expressions: Some(vec![
+				"normalize(embedding)".to_string(),
+				"tenant_id".to_string(),
+			]),
+			mysql_options: None,
+			operator_class: Some("vector_cosine_ops".to_string()),
+		};
+
+		// Act
+		let result = operation.try_to_sql(&SqlDialect::Postgres);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(crate::migrations::MigrationError::InvalidMigration(message))
+				if message == "approximate vector indexes require exactly one column or expression"
+		));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	fn vector_index_expression_migration_renders_operator_class() {
+		// Arrange
+		let operation = Operation::CreateIndex {
+			table: "source".to_string(),
+			columns: vec![],
+			unique: false,
+			index_type: Some(IndexType::Hnsw {
+				m: None,
+				ef_construction: None,
+			}),
+			where_clause: None,
+			concurrently: false,
+			expressions: Some(vec!["normalize(embedding)".to_string()]),
+			mysql_options: None,
+			operator_class: Some("vector_ip_ops".to_string()),
+		};
+		let state = ProjectState::default();
+
+		// Act
+		let forward_sql = operation.try_to_sql(&SqlDialect::Postgres).unwrap();
+		let backward_sql = operation
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			forward_sql,
+			"CREATE INDEX idx_source_expr_0887263130f7b374 ON source USING hnsw (normalize(embedding) vector_ip_ops);"
+		);
+		assert_eq!(
+			backward_sql,
+			vec!["DROP INDEX \"idx_source_expr_0887263130f7b374\";"]
+		);
+	}
+
+	#[rstest]
 	fn test_create_index_composite() {
 		let op = Operation::CreateIndex {
 			table: "users".to_string(),
@@ -6990,7 +12505,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AlterColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column: "age".to_string(),
 			old_definition: None,
 			new_definition: ColumnDefinition {
@@ -7001,6 +12516,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -7016,7 +12533,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_state_forwards_create_inherited_table() {
 		let mut state = ProjectState::new();
 		let op = Operation::CreateInheritedTable {
@@ -7028,7 +12545,9 @@ mod tests {
 				unique: false,
 				primary_key: false,
 				auto_increment: false,
-				default: None,
+				default: Some("1".to_string()),
+				generated: None,
+				domain: None,
 			}],
 			base_table: "users".to_string(),
 			join_column: "user_id".to_string(),
@@ -7051,6 +12570,48 @@ mod tests {
 			Some("joined_table".to_string()),
 			"inheritance_type should be 'joined_table'"
 		);
+		let field = model
+			.fields
+			.get("admin_level")
+			.expect("inherited field should be present");
+		assert!(!field.nullable);
+		assert_eq!(field.params.get("default"), Some(&"1".to_string()));
+		assert_eq!(field.params.get("unique"), Some(&"false".to_string()));
+	}
+
+	#[rstest]
+	fn state_forwards_alter_unique_together_replaces_previous_generated_constraints() {
+		// Arrange
+		let mut state = ProjectState::new();
+		Operation::CreateTable {
+			name: "users".to_string(),
+			columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		}
+		.state_forwards("myapp", &mut state);
+		Operation::AlterUniqueTogether {
+			table: "users".to_string(),
+			unique_together: vec![vec!["email".to_string(), "username".to_string()]],
+		}
+		.state_forwards("myapp", &mut state);
+
+		// Act
+		Operation::AlterUniqueTogether {
+			table: "users".to_string(),
+			unique_together: vec![vec!["email".to_string()]],
+		}
+		.state_forwards("myapp", &mut state);
+
+		// Assert
+		let model = state
+			.find_model_by_table("users")
+			.expect("users model should be present");
+		assert_eq!(model.constraints.len(), 1);
+		assert_eq!(model.constraints[0].name, "users_0_uniq");
+		assert_eq!(model.constraints[0].fields, vec!["email"]);
 	}
 
 	#[test]
@@ -7061,7 +12622,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AddDiscriminatorColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column_name: "user_type".to_string(),
 			default_value: "regular".to_string(),
 		};
@@ -7078,6 +12639,35 @@ mod tests {
 			Some("single_table".to_string()),
 			"inheritance_type should be 'single_table'"
 		);
+	}
+
+	#[test]
+	fn state_forwards_adds_a_discriminator_after_a_table_rename() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("auth", "User");
+		model.table_name = "users".to_string();
+		state.add_model(model);
+
+		// Act
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "auth_user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+		Operation::AddDiscriminatorColumn {
+			table: "auth_user".to_string(),
+			column_name: "kind".to_string(),
+			default_value: "user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+
+		// Assert
+		let model = state
+			.get_model("auth", "User")
+			.expect("renamed model should remain in state");
+		assert_eq!(model.discriminator_column.as_deref(), Some("kind"));
+		assert!(model.has_field("kind"));
 	}
 
 	#[rstest]
@@ -7120,6 +12710,8 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -7246,12 +12838,9 @@ mod tests {
 			.unwrap()
 			.join("\n");
 
-		// Assert: `quote_identifier` is `pg_escape::quote_identifier`, which only
-		// adds quotes when the identifier contains reserved or non-lowercase
-		// characters. For plain ASCII names, the output is unquoted. What matters
-		// for regression is the presence of the `ON <table>` suffix.
+		// Assert
 		assert_eq!(
-			sql, "DROP INDEX idx_users_email ON users;",
+			sql, "DROP INDEX `idx_users_email` ON `users`;",
 			"MySQL reverse SQL must include `ON <table>` clause"
 		);
 	}
@@ -7259,9 +12848,9 @@ mod tests {
 	/// Verify Postgres / SQLite / CockroachDB continue to emit the bare
 	/// `DROP INDEX <name>;` form without an `ON <table>` clause.
 	#[rstest]
-	#[case(SqlDialect::Postgres, "DROP INDEX idx_users_email;")]
-	#[case(SqlDialect::Sqlite, "DROP INDEX idx_users_email;")]
-	#[case(SqlDialect::Cockroachdb, "DROP INDEX idx_users_email;")]
+	#[case(SqlDialect::Postgres, "DROP INDEX \"idx_users_email\";")]
+	#[case(SqlDialect::Sqlite, "DROP INDEX \"idx_users_email\";")]
+	#[case(SqlDialect::Cockroachdb, "DROP INDEX \"idx_users_email\";")]
 	fn test_to_reverse_sql_create_index_omits_on_table_for_non_mysql(
 		#[case] dialect: SqlDialect,
 		#[case] expected: &str,
@@ -7322,6 +12911,157 @@ mod tests {
 			"Should contain DROP CONSTRAINT, got: {}",
 			sql
 		);
+	}
+
+	fn project_state_with_long_enum_constraint() -> (ProjectState, String, String, String) {
+		let table = "model_enum_jobs_with_a_name_that_exceeds_postgres_identifier_limits";
+		let column = "job_status_with_a_name_that_exceeds_postgres_identifier_limits";
+		let name = truncate_identifier_with_hash(&format!("{table}_{column}_model_enum_check"));
+		let mut model = ModelState::new("tasks", "Job");
+		model.table_name = table.to_string();
+		model.constraints.push(
+			crate::migrations::autodetector::ConstraintDefinition::enum_domain(
+				name.clone(),
+				column,
+				crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			),
+		);
+		let mut state = ProjectState::new();
+		state.add_model(model);
+
+		(state, table.to_string(), column.to_string(), name)
+	}
+
+	#[test]
+	fn drop_enum_constraint_reverses_to_typed_constraint_operation() {
+		let (state, table, _column, name) = project_state_with_long_enum_constraint();
+		let operation = Operation::DropConstraint {
+			table: table.clone(),
+			constraint_name: name.clone(),
+		};
+
+		let reverse = operation
+			.to_reverse_operation(&state)
+			.expect("reverse operation should resolve")
+			.expect("enum constraint should be reversible");
+
+		assert!(matches!(
+			reverse,
+			Operation::AddConstraintDefinition {
+				table: reverse_table,
+				constraint: Constraint::EnumDomain {
+					name: reverse_name,
+					..
+				},
+			} if reverse_table == table && reverse_name == name
+		));
+	}
+
+	#[test]
+	fn drop_enum_constraint_reverse_sql_uses_mysql_identifier_quoting() {
+		let (state, table, column, name) = project_state_with_long_enum_constraint();
+		let operation = Operation::DropConstraint {
+			table,
+			constraint_name: name,
+		};
+
+		let sql = operation
+			.to_reverse_sql(&SqlDialect::Mysql, &state)
+			.expect("reverse SQL should resolve")
+			.expect("enum constraint should be reversible")
+			.join("\n");
+
+		assert!(
+			sql.contains(&format!("CHECK (BINARY `{column}` IN ('queued'))")),
+			"{sql}"
+		);
+	}
+
+	fn typed_constraints_with_reserved_mysql_identifiers() -> Vec<Constraint> {
+		vec![
+			Constraint::PrimaryKey {
+				name: "primary-key".to_string(),
+				columns: vec!["select".to_string()],
+			},
+			Constraint::Unique {
+				name: "unique-key".to_string(),
+				columns: vec!["group".to_string()],
+			},
+			Constraint::ForeignKey {
+				name: "foreign-key".to_string(),
+				columns: vec!["order".to_string()],
+				referenced_table: "user-table".to_string(),
+				referenced_columns: vec!["primary".to_string()],
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::NoAction,
+				deferrable: None,
+			},
+			Constraint::OneToOne {
+				name: "one-key".to_string(),
+				column: "match".to_string(),
+				referenced_table: "profile-table".to_string(),
+				referenced_column: "primary".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::NoAction,
+				deferrable: None,
+			},
+		]
+	}
+
+	#[test]
+	fn drop_typed_constraints_reverse_to_typed_add_operations() {
+		for constraint in typed_constraints_with_reserved_mysql_identifiers() {
+			let operation = Operation::DropConstraintDefinition {
+				table: "order-items".to_string(),
+				constraint: constraint.clone(),
+			};
+
+			let reverse = operation
+				.to_reverse_operation(&ProjectState::default())
+				.expect("typed reverse operation should resolve")
+				.expect("typed constraint should be reversible");
+
+			assert_eq!(
+				reverse,
+				Operation::AddConstraintDefinition {
+					table: "order-items".to_string(),
+					constraint,
+				}
+			);
+		}
+	}
+
+	#[test]
+	fn drop_typed_constraints_reverse_sql_uses_mysql_identifier_quoting() {
+		let expected_fragments = [
+			"CONSTRAINT `primary-key` PRIMARY KEY (`select`)",
+			"CONSTRAINT `unique-key` UNIQUE (`group`)",
+			"CONSTRAINT `foreign-key` FOREIGN KEY (`order`) REFERENCES `user-table`(`primary`)",
+			"CONSTRAINT `one-key` FOREIGN KEY (`match`) REFERENCES `profile-table`(`primary`)",
+		];
+
+		for (constraint, expected) in typed_constraints_with_reserved_mysql_identifiers()
+			.into_iter()
+			.zip(expected_fragments)
+		{
+			let operation = Operation::DropConstraintDefinition {
+				table: "order-items".to_string(),
+				constraint,
+			};
+			let sql = operation
+				.to_reverse_sql(&SqlDialect::Mysql, &ProjectState::default())
+				.expect("typed reverse SQL should resolve")
+				.expect("typed constraint should be reversible")
+				.join("\n");
+
+			assert!(sql.starts_with("ALTER TABLE `order-items` ADD "), "{sql}");
+			assert!(sql.contains(expected), "missing {expected} in {sql}");
+		}
 	}
 
 	#[rstest]
@@ -7685,6 +13425,622 @@ mod tests {
 			"SQLite auto_increment must not emit BIGINT in composite PK path: {}",
 			sql
 		);
+	}
+
+	#[test]
+	fn test_column_to_sql_postgres_typed_generated_column() {
+		let mut col = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Postgres);
+
+		assert_eq!(
+			sql,
+			"full_name VARCHAR(201) GENERATED ALWAYS AS (first_name || ' ' || last_name) STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_mysql_typed_generated_column() {
+		let mut col = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"full_name VARCHAR(201) GENERATED ALWAYS AS (CONCAT(`first_name`, ' ', `last_name`)) STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_mysql_empty_concat_generated_column() {
+		let mut col = ColumnDefinition::new("empty_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([]),
+			"SchemaExpr::concat([])",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"empty_name VARCHAR(201) GENERATED ALWAYS AS ('') STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_sqlite_virtual_generated_column() {
+		let mut col = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Virtual,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Sqlite);
+
+		assert_eq!(
+			sql,
+			"full_name VARCHAR(201) GENERATED ALWAYS AS (first_name || ' ' || last_name) VIRTUAL"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_postgres_cast_generated_column_uses_sql_type() {
+		let mut col = ColumnDefinition::new("amount_text", FieldType::VarChar(64));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("amount").cast(QueryColumnType::Decimal(Some((10, 2)))),
+			"SchemaExpr::col(\"amount\").cast(ColumnType::Decimal(Some((10, 2))))",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Postgres);
+
+		assert_eq!(
+			sql,
+			"amount_text VARCHAR(64) GENERATED ALWAYS AS (CAST(amount AS NUMERIC(10, 2))) STORED"
+		);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "PostgreSQL-compatible generated column `search_name` cannot reference generated column `full_name`"
+	)]
+	fn test_create_table_postgres_rejects_generated_column_chain() {
+		let mut full_name = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		full_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("first_name"),
+			"SchemaExpr::col(\"first_name\")",
+			GeneratedStorage::Stored,
+		));
+		let mut search_name = ColumnDefinition::new("search_name", FieldType::VarChar(201));
+		search_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"SchemaExpr::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		));
+		let op = Operation::CreateTable {
+			name: "users".to_string(),
+			columns: vec![full_name, search_name],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		let _ = op.to_sql(&SqlDialect::Postgres);
+	}
+
+	#[test]
+	fn test_column_to_sql_mysql_cast_generated_string_uses_char_type() {
+		let mut col = ColumnDefinition::new("amount_text", FieldType::VarChar(64));
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("amount").cast(QueryColumnType::String(Some(64))),
+			"SchemaExpr::col(\"amount\").cast(ColumnType::String(Some(64)))",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"amount_text VARCHAR(64) GENERATED ALWAYS AS (CAST(`amount` AS CHAR(64))) STORED"
+		);
+	}
+
+	#[test]
+	fn test_column_to_sql_mysql_cast_generated_integer_uses_signed_type() {
+		let mut col = ColumnDefinition::new("age_int", FieldType::Integer);
+		col.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::col("age").cast(QueryColumnType::Integer),
+			"SchemaExpr::col(\"age\").cast(ColumnType::Integer)",
+			GeneratedStorage::Stored,
+		));
+
+		let sql = Operation::column_to_sql(&col, &SqlDialect::Mysql);
+
+		assert_eq!(
+			sql,
+			"age_int INTEGER GENERATED ALWAYS AS (CAST(`age` AS SIGNED)) STORED"
+		);
+	}
+
+	#[test]
+	fn generated_column_serde_rehydrates_typed_expr() {
+		let source = r#"{
+			"expr_tokens": "SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			"raw_sql": null,
+			"storage": "stored"
+		}"#;
+
+		let generated: GeneratedColumnDefinition =
+			serde_json::from_str(source).expect("generated column metadata should deserialize");
+
+		assert_eq!(
+			generated.expr.as_deref(),
+			Some(&SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]))
+		);
+		assert!(generated.to_query_generated().is_some());
+	}
+
+	#[test]
+	fn generated_column_tokens_canonicalize_schema_expr_aliases() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"S::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+
+		let tokens = quote::quote! { #generated }.to_string();
+
+		assert!(tokens.contains("SchemaExpr :: col"));
+		assert!(!tokens.contains("S :: col"));
+	}
+
+	#[test]
+	fn generated_column_equality_prefers_typed_expr_over_token_spelling() {
+		let alias_spelled = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"S::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+		let canonical_spelled = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("full_name"),
+			"SchemaExpr::col(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+
+		assert_eq!(alias_spelled, canonical_spelled);
+	}
+
+	#[test]
+	fn generated_column_equality_matches_typed_expr_to_sqlite_raw_sql() {
+		let typed = GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Virtual,
+		);
+		let introspected = GeneratedColumnDefinition::raw_sql(
+			r#""first_name" || ' ' || "last_name""#,
+			GeneratedStorage::Virtual,
+		);
+
+		assert_eq!(typed, introspected);
+	}
+
+	#[test]
+	fn generated_column_equality_matches_typed_binary_expr_to_parenthesized_raw_sql() {
+		let typed = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("subtotal").binary(SchemaBinOper::Add, SchemaExpr::col("tax")),
+			"SchemaExpr::col(\"subtotal\").binary(SchemaBinOper::Add, SchemaExpr::col(\"tax\"))",
+			GeneratedStorage::Stored,
+		);
+		let introspected =
+			GeneratedColumnDefinition::raw_sql("(subtotal + tax)", GeneratedStorage::Stored);
+
+		assert_eq!(typed, introspected);
+	}
+
+	#[test]
+	fn generated_column_raw_sql_equality_preserves_bracket_operators() {
+		let array_access = GeneratedColumnDefinition::raw_sql("items[1]", GeneratedStorage::Stored);
+		let flattened = GeneratedColumnDefinition::raw_sql("items1", GeneratedStorage::Stored);
+
+		assert_ne!(array_access, flattened);
+	}
+
+	#[test]
+	fn generated_column_dependency_uses_rehydrated_expr_before_tokens() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::val("full_name"),
+			"SchemaExpr::val(\"full_name\")",
+			GeneratedStorage::Stored,
+		);
+
+		assert!(!Operation::generated_column_references_column(
+			&generated,
+			"full_name"
+		));
+	}
+
+	#[test]
+	#[should_panic(expected = "SQLite ADD COLUMN does not support stored generated columns")]
+	fn test_add_column_sqlite_rejects_stored_generated_column() {
+		let mut column = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		column.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+		let op = Operation::AddColumn {
+			table: "users".to_string(),
+			column,
+			mysql_options: None,
+		};
+
+		let _ = op.to_sql(&SqlDialect::Sqlite);
+	}
+
+	fn generated_full_name_column() -> ColumnDefinition {
+		let mut full_name = ColumnDefinition::new("full_name", FieldType::VarChar(201));
+		full_name.generated = Some(GeneratedColumnDefinition::typed(
+			SchemaExpr::concat([
+				SchemaExpr::col("first_name"),
+				SchemaExpr::val(" "),
+				SchemaExpr::col("last_name"),
+			]),
+			"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
+			GeneratedStorage::Stored,
+		));
+		full_name
+	}
+
+	#[test]
+	fn test_sqlite_recreation_for_stored_generated_add_column_omits_generated_copy() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let first_name = ColumnDefinition::new("first_name", FieldType::VarChar(100));
+		let last_name = ColumnDefinition::new("last_name", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation = SqliteTableRecreation::for_add_column(
+			"users",
+			vec![id, first_name, last_name],
+			full_name,
+			vec![],
+		);
+		let sql = recreation.to_sql_statements();
+
+		assert!(
+			sql[0].contains("full_name VARCHAR(201) GENERATED ALWAYS AS"),
+			"new schema must include the stored generated column: {}",
+			sql[0]
+		);
+		assert_eq!(
+			sql[1],
+			"INSERT INTO \"users_new\" (\"id\", \"first_name\", \"last_name\") SELECT \"id\", \"first_name\", \"last_name\" FROM \"users\";"
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_places_column_collation_before_default() {
+		let mut code = ColumnDefinition::new("code", FieldType::Text);
+		code.default = Some("'alpha'".to_string());
+		let recreation = SqliteTableRecreation::for_add_constraint(
+			"jobs",
+			vec![code],
+			vec![],
+			"CHECK (1 = 1)".to_string(),
+		)
+		.with_column_collations(vec![("code".to_string(), "NOCASE".to_string())]);
+
+		let create_sql = &recreation.to_sql_statements()[0];
+
+		assert!(
+			create_sql.contains("code TEXT COLLATE \"NOCASE\" DEFAULT 'alpha'"),
+			"{create_sql}"
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_recreates_indexes_after_rename() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation =
+			SqliteTableRecreation::for_add_column("users", vec![id, title], full_name, vec![])
+				.with_indexes(vec![SqliteRecreatedIndex {
+					name: "idx_users_title".to_string(),
+					columns: vec!["title".to_string()],
+					unique: false,
+					sql: None,
+				}]);
+		let sql = recreation.to_sql_statements();
+
+		assert_eq!(
+			sql.last().map(String::as_str),
+			Some("CREATE INDEX \"idx_users_title\" ON \"users\" (\"title\");")
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_preserves_expression_index_sql() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation =
+			SqliteTableRecreation::for_add_column("users", vec![id, title], full_name, vec![])
+				.with_indexes(vec![SqliteRecreatedIndex {
+					name: "idx_users_lower_title".to_string(),
+					columns: Vec::new(),
+					unique: false,
+					sql: Some(
+						"CREATE INDEX idx_users_lower_title ON users(lower(title))".to_string(),
+					),
+				}]);
+		let sql = recreation.to_sql_statements();
+
+		assert_eq!(
+			sql.last().map(String::as_str),
+			Some("CREATE INDEX idx_users_lower_title ON users(lower(title));")
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_preserves_partial_index_predicates() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation =
+			SqliteTableRecreation::for_add_column("users", vec![id, title], full_name, vec![])
+				.with_indexes(vec![SqliteRecreatedIndex {
+					name: "idx_users_active_title".to_string(),
+					columns: vec!["title".to_string()],
+					unique: false,
+					sql: Some(
+						"CREATE INDEX \"idx_users_active_title\" ON \"users\" (\"title\") WHERE deleted_at IS NULL"
+							.to_string(),
+					),
+				}]);
+		let sql = recreation.to_sql_statements();
+
+		assert_eq!(
+			sql.last().map(String::as_str),
+			Some(
+				"CREATE INDEX \"idx_users_active_title\" ON \"users\" (\"title\") WHERE deleted_at IS NULL;"
+			)
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_filters_indexes_referencing_dropped_column() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+
+		let recreation = SqliteTableRecreation::for_drop_column(
+			"users",
+			vec![id, title, full_name],
+			"full_name",
+			vec![],
+		)
+		.with_indexes(vec![
+			SqliteRecreatedIndex {
+				name: "idx_users_title".to_string(),
+				columns: vec!["title".to_string()],
+				unique: false,
+				sql: None,
+			},
+			SqliteRecreatedIndex {
+				name: "idx_users_full_name".to_string(),
+				columns: vec!["full_name".to_string()],
+				unique: false,
+				sql: None,
+			},
+			SqliteRecreatedIndex {
+				name: "idx_users_title_partial".to_string(),
+				columns: vec!["title".to_string()],
+				unique: false,
+				sql: Some(
+					"CREATE INDEX \"idx_users_title_partial\" ON \"users\" (\"title\") WHERE \"full_name\" IS NOT NULL"
+						.to_string(),
+				),
+			},
+		])
+		.without_indexes_referencing("full_name");
+		let sql = recreation.to_sql_statements();
+
+		assert!(
+			sql.iter()
+				.any(|statement| statement.contains("idx_users_title"))
+		);
+		assert!(
+			sql.iter()
+				.all(|statement| !statement.contains("idx_users_full_name"))
+		);
+		assert!(
+			sql.iter()
+				.all(|statement| !statement.contains("idx_users_title_partial"))
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_filters_raw_constraints_by_dropped_column() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let slug = ColumnDefinition::new("slug", FieldType::VarChar(100));
+		let recreation = SqliteTableRecreation::for_drop_column(
+			"articles",
+			vec![id, title, slug],
+			"slug",
+			vec![],
+		)
+		.with_raw_constraints(vec![
+			SqliteRecreatedConstraint {
+				name: Some("uq_articles_title".to_string()),
+				physical_name: None,
+				columns: vec!["title".to_string()],
+				sql: "CONSTRAINT uq_articles_title UNIQUE (title)".to_string(),
+			},
+			SqliteRecreatedConstraint {
+				name: Some("uq_articles_slug".to_string()),
+				physical_name: None,
+				columns: vec!["slug".to_string()],
+				sql: "CONSTRAINT uq_articles_slug UNIQUE (slug)".to_string(),
+			},
+		])
+		.without_raw_constraints_referencing("slug");
+
+		let create_sql = &recreation.to_sql_statements()[0];
+		assert!(create_sql.contains("uq_articles_title"), "{create_sql}");
+		assert!(!create_sql.contains("uq_articles_slug"), "{create_sql}");
+	}
+
+	#[test]
+	fn test_sqlite_recreation_filters_raw_constraints_by_name() {
+		let recreation = SqliteTableRecreation::for_drop_constraint(
+			"jobs",
+			vec![ColumnDefinition::new("code", FieldType::Text)],
+			vec![],
+			"uq_jobs_nocase",
+		)
+		.with_raw_constraints(vec![
+			SqliteRecreatedConstraint {
+				name: Some("uq_jobs_nocase".to_string()),
+				physical_name: None,
+				columns: vec!["code".to_string()],
+				sql: "CONSTRAINT uq_jobs_nocase UNIQUE (code COLLATE NOCASE)".to_string(),
+			},
+			SqliteRecreatedConstraint {
+				name: Some("uq_jobs_binary".to_string()),
+				physical_name: None,
+				columns: vec!["code".to_string()],
+				sql: "CONSTRAINT uq_jobs_binary UNIQUE (code COLLATE BINARY)".to_string(),
+			},
+		])
+		.without_raw_constraint_named("uq_jobs_nocase");
+
+		let create_sql = &recreation.to_sql_statements()[0];
+		assert!(!create_sql.contains("uq_jobs_nocase"), "{create_sql}");
+		assert!(create_sql.contains("uq_jobs_binary"), "{create_sql}");
+	}
+
+	#[test]
+	fn test_sqlite_recreation_filters_unnamed_raw_constraint_by_physical_name() {
+		let recreation = SqliteTableRecreation::for_drop_constraint(
+			"jobs",
+			vec![ColumnDefinition::new("code", FieldType::Text)],
+			vec![],
+			"sqlite_autoindex_jobs_1",
+		)
+		.with_raw_constraints(vec![SqliteRecreatedConstraint {
+			name: None,
+			physical_name: Some("sqlite_autoindex_jobs_1".to_string()),
+			columns: vec!["code".to_string()],
+			sql: "UNIQUE (code)".to_string(),
+		}])
+		.without_raw_constraint_named("sqlite_autoindex_jobs_1");
+
+		let create_sql = &recreation.to_sql_statements()[0];
+		assert!(!create_sql.contains("UNIQUE (code)"), "{create_sql}");
+	}
+
+	#[test]
+	fn test_sqlite_recreation_copy_lists_omit_existing_generated_columns() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let first_name = ColumnDefinition::new("first_name", FieldType::VarChar(100));
+		let last_name = ColumnDefinition::new("last_name", FieldType::VarChar(100));
+		let full_name = generated_full_name_column();
+		let current_columns = vec![id, first_name, last_name, full_name];
+
+		let drop_column = SqliteTableRecreation::for_drop_column(
+			"users",
+			current_columns.clone(),
+			"last_name",
+			vec![],
+		);
+		assert_eq!(drop_column.columns_to_copy, vec!["id", "first_name"]);
+
+		let alter_column = SqliteTableRecreation::for_alter_column(
+			"users",
+			current_columns.clone(),
+			"first_name",
+			ColumnDefinition::new("first_name", FieldType::VarChar(150)),
+			vec![],
+		);
+		assert_eq!(
+			alter_column.columns_to_copy,
+			vec!["id", "first_name", "last_name"]
+		);
+
+		let add_constraint = SqliteTableRecreation::for_add_constraint(
+			"users",
+			current_columns.clone(),
+			vec![],
+			"CONSTRAINT users_name_unique UNIQUE (first_name, last_name)".to_string(),
+		);
+		assert_eq!(
+			add_constraint.columns_to_copy,
+			vec!["id", "first_name", "last_name"]
+		);
+
+		let drop_constraint =
+			SqliteTableRecreation::for_drop_constraint("users", current_columns, vec![], "old");
+		assert_eq!(
+			drop_constraint.columns_to_copy,
+			vec!["id", "first_name", "last_name"]
+		);
+	}
+
+	#[test]
+	fn test_from_field_state_preserves_generated_metadata() {
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("source_name"),
+			"SchemaExpr::col(\"source_name\")",
+			GeneratedStorage::Stored,
+		);
+		let mut field_state = FieldState::new("display_name", FieldType::VarChar(255), false);
+		field_state.generated = Some(generated.clone());
+
+		let col = ColumnDefinition::from_field_state("display_name", &field_state);
+
+		assert_eq!(col.generated, Some(generated));
 	}
 
 	mod resolve_foreign_key_column_type_tests {

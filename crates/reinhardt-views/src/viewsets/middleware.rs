@@ -5,19 +5,39 @@
 
 use async_trait::async_trait;
 use reinhardt_http::{Request, Response, Result};
+use std::future::Future;
 use std::sync::Arc;
 use tracing;
 
 use super::ViewSet;
 
-/// Run a ViewSet's pre-dispatch policy and return any early response.
-pub async fn process_viewset_request<V: ViewSet + ?Sized>(
+/// Run a ViewSet's middleware around a request handler.
+pub async fn process_viewset_request<V, F, Fut>(
 	viewset: &V,
-	request: &mut Request,
-) -> Result<Option<Response>> {
-	match viewset.get_middleware() {
-		Some(middleware) => middleware.process_request(request).await,
-		None => Ok(None),
+	mut request: Request,
+	handler: F,
+) -> Result<Response>
+where
+	V: ViewSet + ?Sized,
+	F: FnOnce(Request) -> Fut,
+	Fut: Future<Output = Result<Response>>,
+{
+	let middleware = viewset.get_middleware();
+	if let Some(middleware) = &middleware
+		&& let Some(response) = middleware.process_request(&mut request).await?
+	{
+		return middleware.process_response(&request, response).await;
+	}
+
+	let request_for_response = middleware
+		.as_ref()
+		.map(|_| request.clone_for_response())
+		.transpose()?;
+	let response = handler(request).await?;
+	match (middleware, request_for_response) {
+		(Some(middleware), Some(request)) => middleware.process_response(&request, response).await,
+		(None, None) => Ok(response),
+		_ => unreachable!("middleware and response request snapshot must be paired"),
 	}
 }
 
@@ -27,6 +47,14 @@ pub async fn process_viewset_request<V: ViewSet + ?Sized>(
 /// for authentication, authorization, logging, and other cross-cutting concerns.
 #[async_trait]
 pub trait ViewSetMiddleware: Send + Sync {
+	/// Return whether this middleware enforces authentication.
+	///
+	/// Middleware that only performs authorization, logging, or response
+	/// decoration must leave the default as `false`.
+	fn enforces_authentication(&self) -> bool {
+		false
+	}
+
 	/// Process the request before it reaches the ViewSet
 	///
 	/// This method is called before the ViewSet's dispatch method.
@@ -100,6 +128,10 @@ impl AuthenticationMiddleware {
 
 #[async_trait]
 impl ViewSetMiddleware for AuthenticationMiddleware {
+	fn enforces_authentication(&self) -> bool {
+		self.login_required
+	}
+
 	async fn process_request(&self, request: &mut Request) -> Result<Option<Response>> {
 		if self.login_required && !self.is_authenticated(request) {
 			// Return 401 Unauthorized or redirect to login page
@@ -241,6 +273,12 @@ impl std::fmt::Debug for CompositeMiddleware {
 
 #[async_trait]
 impl ViewSetMiddleware for CompositeMiddleware {
+	fn enforces_authentication(&self) -> bool {
+		self.middlewares
+			.iter()
+			.any(|middleware| middleware.enforces_authentication())
+	}
+
 	async fn process_request(&self, request: &mut Request) -> Result<Option<Response>> {
 		for middleware in &self.middlewares {
 			if let Some(response) = middleware.process_request(request).await? {
@@ -287,6 +325,19 @@ mod tests {
 		let result = middleware.process_request(&mut request).await;
 		assert!(result.is_ok());
 		assert!(result.unwrap().is_none());
+	}
+
+	#[test]
+	fn test_authentication_capability_is_explicit() {
+		assert!(!AuthenticationMiddleware::new(false).enforces_authentication());
+		assert!(AuthenticationMiddleware::new(true).enforces_authentication());
+		assert!(!PermissionMiddleware::new(vec!["read".to_string()]).enforces_authentication());
+		assert!(
+			CompositeMiddleware::new()
+				.with_permissions(vec!["read".to_string()])
+				.with_authentication(true)
+				.enforces_authentication()
+		);
 	}
 
 	#[tokio::test]

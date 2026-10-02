@@ -5,6 +5,8 @@
 //! and window.fetch override is a global state.
 
 #![cfg(all(target_arch = "wasm32", feature = "msw"))]
+// Macro input bodies remain intentionally inert after WASM client generation.
+#![allow(dead_code)]
 
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -12,6 +14,8 @@ use wasm_bindgen_futures::JsFuture;
 use wasm_bindgen_test::*;
 use web_sys::{RequestInit, Response};
 
+#[cfg(feature = "model-server-fnset-msw")]
+use reinhardt_pages::server_fn::ServerFnSetError;
 use reinhardt_pages::server_fn::{ServerFnError, ServerFnMetadata, server_fn};
 use reinhardt_test::msw::MockResponse;
 use reinhardt_test::msw::MockServiceWorker;
@@ -23,6 +27,102 @@ wasm_bindgen_test_configure!(run_in_browser);
 #[server_fn]
 async fn msw_echo(value: String) -> Result<String, ServerFnError> {
 	Ok(value)
+}
+
+#[cfg(feature = "model-server-fnset-msw")]
+use std::marker::PhantomData;
+
+#[cfg(feature = "model-server-fnset-msw")]
+use reinhardt_pages::server_fn::{PageRequest, ServerFnListQuery, ServerFnResource, server_fnset};
+
+#[cfg(feature = "model-server-fnset-msw")]
+pub struct ModelServerFnSet<R>(PhantomData<R>);
+
+#[cfg(feature = "model-server-fnset-msw")]
+impl<R> ModelServerFnSet<R> {
+	fn new() -> Self {
+		Self(PhantomData)
+	}
+}
+
+#[cfg(feature = "model-server-fnset-msw")]
+pub struct DetailReadActionContext<'a, R>(PhantomData<&'a R>);
+
+#[cfg(feature = "model-server-fnset-msw")]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+pub struct ArticleListQuery;
+
+#[cfg(feature = "model-server-fnset-msw")]
+impl ServerFnListQuery for ArticleListQuery {
+	fn page_request(&self) -> PageRequest {
+		PageRequest::default()
+	}
+}
+
+#[cfg(feature = "model-server-fnset-msw")]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct ArticleDto {
+	pub id: i64,
+}
+
+#[cfg(feature = "model-server-fnset-msw")]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+pub struct CreateArticle;
+
+#[cfg(feature = "model-server-fnset-msw")]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+pub struct UpdateArticle;
+
+#[cfg(feature = "model-server-fnset-msw")]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+pub struct PatchArticle;
+
+#[cfg(feature = "model-server-fnset-msw")]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+pub struct PublishArticle {
+	pub revision: u32,
+}
+
+#[cfg(feature = "model-server-fnset-msw")]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct PublishResponse {
+	pub revision: u32,
+}
+
+#[cfg(feature = "model-server-fnset-msw")]
+pub struct ArticleResource;
+
+#[cfg(feature = "model-server-fnset-msw")]
+impl ServerFnResource for ArticleResource {
+	type Lookup = i64;
+	type Read = ArticleDto;
+	type Create = CreateArticle;
+	type Update = UpdateArticle;
+	type Patch = PatchArticle;
+	type ListQuery = ArticleListQuery;
+}
+
+#[cfg(feature = "model-server-fnset-msw")]
+pub struct ArticleActions;
+
+#[cfg(feature = "model-server-fnset-msw")]
+#[server_fnset(name = "article-msw", actions = ArticleActions)]
+pub fn article_fns() -> ModelServerFnSet<ArticleResource> {
+	ModelServerFnSet::new()
+}
+
+#[cfg(feature = "model-server-fnset-msw")]
+#[server_fnset(for = article_fns)]
+impl ArticleActions {
+	#[action(detail = true)]
+	async fn publish(
+		lookup: i64,
+		input: PublishArticle,
+		#[inject] context: DetailReadActionContext<ArticleResource>,
+	) -> Result<PublishResponse, ServerFnSetError> {
+		let _ = (lookup, input, context);
+		Ok(PublishResponse { revision: 0 })
+	}
 }
 
 async fn do_fetch(url: &str, method: &str, body: Option<&str>) -> (u16, String) {
@@ -224,22 +324,13 @@ async fn msw_integration_tests() {
 			"resolved server_fn endpoint should include browser HTTP origin: {endpoint}"
 		);
 
-		let manual_response = reinhardt_pages::__private::reqwest::Client::new()
-			.post(&endpoint)
-			.header("Content-Type", "application/json")
-			.body(r#"{"value":"manual"}"#)
-			.send()
-			.await
-			.expect("manual reqwest POST should accept resolved endpoint");
-		assert!(manual_response.status().is_success());
-
 		let response = msw_echo("pong".to_string())
 			.await
 			.expect("server_fn should be handled by MSW");
 		assert_eq!(response, "pong");
 
 		let calls = worker.all_calls();
-		assert_eq!(calls.len(), 2);
+		assert_eq!(calls.len(), 1);
 		assert!(
 			calls[0]
 				.url
@@ -250,6 +341,106 @@ async fn msw_integration_tests() {
 			"recorded server_fn URL should be absolute: {}",
 			calls[0].url
 		);
+		worker.stop().await;
+	}
+
+	// === Scenario 12: Model clients decode structured, legacy, and raw errors in order ===
+	#[cfg(feature = "model-server-fnset-msw")]
+	{
+		let conflict = ServerFnSetError::Conflict {
+			code: "stale".to_string(),
+			message: "stale article".to_string(),
+		};
+		let worker = MockServiceWorker::new();
+		worker.handle(
+			rest::post(<article_fns::retrieve::marker as ServerFnMetadata>::PATH)
+				.respond(MockResponse::json(&conflict).with_status(409)),
+		);
+		worker.start().await;
+
+		let error = article_fns::retrieve(1).await.unwrap_err();
+		assert_eq!(error, conflict);
+		worker.stop().await;
+	}
+	#[cfg(feature = "model-server-fnset-msw")]
+	{
+		let legacy = ServerFnError::server(401, "authentication required");
+		let worker = MockServiceWorker::new();
+		worker.handle(
+			rest::post(<article_fns::retrieve::marker as ServerFnMetadata>::PATH)
+				.respond(MockResponse::json(&legacy).with_status(401)),
+		);
+		worker.start().await;
+
+		let error = article_fns::retrieve(1).await.unwrap_err();
+		assert_eq!(error, ServerFnSetError::Transport(legacy));
+		worker.stop().await;
+	}
+	#[cfg(feature = "model-server-fnset-msw")]
+	{
+		let worker = MockServiceWorker::new();
+		worker.handle(
+			rest::post(<article_fns::retrieve::marker as ServerFnMetadata>::PATH)
+				.respond(MockResponse::text("upstream unavailable").with_status(502)),
+		);
+		worker.start().await;
+
+		let error = article_fns::retrieve(1).await.unwrap_err();
+		assert_eq!(
+			error,
+			ServerFnSetError::Transport(ServerFnError::server(502, "upstream unavailable")),
+		);
+		worker.stop().await;
+	}
+
+	// === Scenario 13: Generated model action mocks remain marker-specific ===
+	#[cfg(feature = "model-server-fnset-msw")]
+	{
+		let worker = MockServiceWorker::new();
+		worker.handle_server_fn::<article_fns::retrieve::marker>(|args| {
+			Ok(ArticleDto { id: args.lookup })
+		});
+		worker.handle_server_fn::<article_fns::publish::marker>(|args| {
+			Ok(PublishResponse {
+				revision: args.input.revision,
+			})
+		});
+		worker.start().await;
+
+		assert_eq!(
+			article_fns::retrieve(7).await.unwrap(),
+			ArticleDto { id: 7 }
+		);
+		assert_eq!(
+			article_fns::publish(7, PublishArticle { revision: 3 })
+				.await
+				.unwrap(),
+			PublishResponse { revision: 3 },
+		);
+		worker
+			.calls_to_server_fn::<article_fns::retrieve::marker>()
+			.assert_count(1);
+		worker
+			.calls_to_server_fn::<article_fns::publish::marker>()
+			.assert_count(1);
+		worker.stop().await;
+	}
+	#[cfg(feature = "model-server-fnset-msw")]
+	{
+		let worker = MockServiceWorker::new();
+		worker.handle_server_fn::<article_fns::retrieve::marker>(|args| {
+			Ok(ArticleDto { id: args.lookup })
+		});
+		worker.start().await;
+
+		assert!(
+			article_fns::publish(9, PublishArticle { revision: 4 })
+				.await
+				.is_err()
+		);
+		worker
+			.calls_to_server_fn::<article_fns::retrieve::marker>()
+			.assert_count(0);
 		worker.stop().await;
 	}
 }

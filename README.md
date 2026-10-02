@@ -48,7 +48,7 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 ```bash
 # Pin the documented Reinhardt release for reproducibility.
 # Omit --version to let Cargo choose the latest stable release.
-cargo install reinhardt-admin-cli --version "0.3.20"
+cargo install reinhardt-admin-cli --version "0.4.0-alpha.18"
 
 reinhardt-admin startproject my-api && cd my-api
 cargo run --bin manage runserver  # Visit http://127.0.0.1:8000
@@ -103,7 +103,7 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current release line:** Reinhardt documentation tracks `0.3.20`. From
+**Current release line:** Reinhardt documentation tracks `0.4.0-alpha.18`. From
 `0.1.0` onward, all public APIs follow SemVer 2.0; future breaking changes
 move through the documented alpha and RC lifecycle before stable publication.
 
@@ -114,6 +114,14 @@ For 0.2.x applications moving to 0.3.0, use the
 The full lifecycle policy lives in
 [Stability Policy](instructions/STABILITY_POLICY.md).
 
+### Generated migration source provenance
+
+| Layer | Responsibility | Source of truth |
+| --- | --- | --- |
+| `reinhardt-db` | Marker, parser, span-preserving conversion, and builder output | Migration AST and semantic metadata |
+| `reinhardt-admin` | Offline directory traversal, preflight, and atomic writes | Requested `migrations/` path |
+| `makemigrations --check` | Detect model drift without writing migration files | Current model and migration state |
+
 ## Installation
 
 Reinhardt is a modular framework. Choose your starting point:
@@ -121,13 +129,6 @@ Reinhardt is a modular framework. Choose your starting point:
 > **New here?** Start with the default standard setup. Use `minimal` plus explicit opt-in features for lightweight APIs. `full` remains available as the exhaustive flagship preset, but it is not the recommended starting point for normal applications.
 
 Feature presets are layered. `full`, `standard`, and `minimal` are top-level presets; each preset enables lower-level feature groups, and those groups enable atom feature flags such as `viewset-routing`, `signals`, `image-validation`, `compressed-parsers`, `commands-autoreload`, `browsable-api`, and `openapi-swagger-ui`. External dependencies are attached at the atom feature boundary wherever possible, so choosing `minimal` or `standard` does not implicitly import every dependency carried by `full`.
-
-The optional AWS integrations (Secrets Manager, DynamoDB, provider credentials,
-SQS, and S3) temporarily constrain `aws-smithy-types` to `1.6.3`. This keeps fresh
-dependency resolution compatible with the JSON implementation used by
-`aws-config 1.12.0`, including for independent consumers of each integration.
-See [the upstream compatibility report](https://github.com/smithy-lang/smithy-rs/issues/4853)
-and [the removal tracking issue](https://github.com/kent8192/reinhardt-web/issues/6318).
 
 ### Default: Standard Setup (Balanced) ⚠️ Default Preset
 
@@ -138,7 +139,7 @@ Get a well-balanced feature set with zero configuration:
 [dependencies]
 # Import as 'reinhardt', published as 'reinhardt-web'
 # Default enables the "standard" preset (balanced feature set)
-reinhardt = { version = "0.3.20", package = "reinhardt-web" }
+reinhardt = { version = "0.4.0-alpha.18", package = "reinhardt-web" }
 ```
 
 **Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
@@ -160,7 +161,7 @@ For compatibility checks, framework development, and projects that intentionally
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", package = "reinhardt-web", default-features = false, features = ["full"] }
+reinhardt = { version = "0.4.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["full"] }
 ```
 
 **Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
@@ -174,7 +175,7 @@ Lightweight and fast, perfect for simple APIs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.4.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
@@ -185,31 +186,31 @@ reinhardt = { version = "0.3.20", package = "reinhardt-web", default-features = 
 
 Install only the components you need:
 
-<!-- reinhardt-version-sync:8 -->
+<!-- reinhardt-version-sync:9 -->
 ```toml
 [dependencies]
 # Core components
-reinhardt-http = "0.3.20"
-reinhardt-urls = "0.3.20"
+reinhardt-http = "0.4.0-alpha.18"
+reinhardt-urls = "0.4.0-alpha.18"
 
 # Optional: Database
-reinhardt-db = "0.3.20"
+reinhardt-db = "0.4.0-alpha.18"
 
 # Optional: Authentication
-reinhardt-auth = "0.3.20"
+reinhardt-auth = "0.4.0-alpha.18"
 
 # Optional: browser-bound social OAuth state (add `session-redis` for Redis)
-reinhardt = { version = "0.3.20", package = "reinhardt-web", default-features = false, features = ["social-auth"] }
+reinhardt = { version = "0.4.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["social-auth"] }
 
 # Optional: REST API features
-reinhardt-rest = "0.3.20"
+reinhardt-rest = "0.4.0-alpha.18"
 
 # Optional: Admin panel
-reinhardt-admin = "0.3.20"
+reinhardt-admin = "0.4.0-alpha.18"
 
 # Optional: Advanced features
-reinhardt-graphql = "0.3.20"
-reinhardt-websockets = "0.3.13"
+reinhardt-graphql = "0.4.0-alpha.18"
+reinhardt-websockets = "0.4.0-alpha.18"
 ```
 
 **Note on Crate Naming:**
@@ -227,7 +228,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.3.20"
+cargo install reinhardt-admin-cli --version "0.4.0-alpha.18"
 ```
 
 ### 2. Create a New Project
@@ -244,7 +245,7 @@ during project creation. Scripts can pass them explicitly:
 <!-- reinhardt-version-sync -->
 ```bash
 reinhardt-admin startproject my-api \
-  --reinhardt-version "0.3.20" \
+  --reinhardt-version "0.4.0-alpha.18" \
   --features standard,admin \
   --no-interactive
 ```
@@ -303,6 +304,39 @@ cargo run --bin manage runserver
 
 # Server will start at http://127.0.0.1:8000
 ```
+
+### Rust Management Shell
+
+Generated projects provide an opt-in, stateful Rust shell backed by `evcxr`.
+Enable the project-local feature when invoking it:
+
+```bash
+cargo run --bin manage --features commands-shell -- shell
+cargo run --bin manage --features commands-shell -- shell -c \
+  'println!("{}", settings.core.debug)'
+```
+
+The shell bootstraps the project's settings, ORM database handle, dependency
+injection context, installed models, and optional project prelude. It binds
+`settings`, `db`, and `di`; uniquely named installed models are imported by
+their short names, while collisions produce a deterministic warning listing
+the concrete registered crate paths. The evaluator's stable `project_crate`
+alias can reference those same types. Interactive Rust is stateful, supports
+top-level `.await`, and uses `>>> ` / `... ` prompts for single-line /
+multiline input.
+The first cold start may compile the project and evaluator support; warm starts
+reuse unchanged Cargo artifacts.
+
+`commands-shell` is deliberately absent from generated default features. A
+project that opts in must provide `config::shell::get_shell_config()`, call
+`shell_runtime_hook()` at the outer native `main` before Tokio starts, and
+dispatch through `execute_from_command_line_with_settings_and_shell`. Generated
+REST and Pages projects include this gated wiring. See the
+[management commands guide](crates/reinhardt-commands/README.md#rust-management-shell)
+for the complete startup contract, bindings, recovery behavior, history
+location, and migration notes. The former `shell-rhai` feature was removed:
+`shell` now means the Rust evaluator, while existing settings-only entry points
+remain compatible with non-shell commands.
 
 **Auto-Reload Support:**
 
@@ -383,18 +417,32 @@ src/
 ├── apps/
 │   ├── polls.rs                  # per-app entry (sibling of polls/)
 │   └── polls/
-│       ├── client.rs             # #[cfg(client)] aggregator: pub mod components;
+│       ├── client.rs             # #[cfg(client)] aggregator: components, hooks, and styles
 │       ├── client/
-│       │   └── components.rs     # per-app UI (placeholder() returning Page)
-│       ├── pages.rs              # target-neutral page entry points
+│       │   ├── components.rs     # per-app component aggregator
+│       │   ├── components/
+│       │   │   └── placeholder.rs # route-backed placeholder component
+│       │   ├── hooks.rs          # custom hook aggregator
+│       │   ├── hooks/            # (.gitkeep — one custom hook per .rs file)
+│       │   └── style.rs          # component-scoped style definitions
+│       ├── models.rs             # shared models and wire-safe info types
+│       ├── serializers.rs        # serializer aggregator
+│       ├── serializers/          # (.gitkeep — user adds submodules here)
 │       ├── server.rs             # #[cfg(server)] aggregator
 │       ├── server/
 │       │   ├── admin.rs          # admin registration
-│       │   ├── models.rs         # models
-│       │   ├── serializers.rs    # serializers
-│       │   ├── models/           # (.gitkeep — user adds submodules here)
-│       │   └── serializers/      # (.gitkeep)
-│       ├── server_fn.rs          # bi-target #[server_fn] handlers (placeholder)
+│       │   ├── forms.rs          # form aggregator
+│       │   ├── forms/            # (.gitkeep — user adds submodules here)
+│       │   └── views.rs          # server-side views
+│       ├── server_fn.rs          # bi-target server-function aggregator
+│       ├── server_fn/
+│       │   └── placeholder.rs    # placeholder #[server_fn] handler
+│       ├── services.rs           # cfg-gated service aggregator
+│       ├── services/
+│       │   ├── client.rs         # client service aggregator
+│       │   ├── client/           # (.gitkeep — user adds submodules here)
+│       │   ├── server.rs         # server service aggregator
+│       │   └── server/           # (.gitkeep — user adds submodules here)
 │       ├── tests/                # (.gitkeep)
 │       ├── urls.rs               # target-neutral server/client router aggregate
 │       └── urls/
@@ -412,7 +460,7 @@ src/
 ├── config/
 │   ├── apps.rs                   # installed_apps! { polls: "polls" }
 │   ├── settings.rs               # #[cfg(server)] settings
-│   ├── urls.rs                   # #[routes(standalone)] entry
+│   ├── urls.rs                   # #[routes] entry
 │   └── wasm.rs                   # #[cfg(server)] wasm tooling config
 ├── lib.rs                        # crate root (`pub mod apps;` is un-gated)
 ├── shared.rs                     # bi-target shared module
@@ -423,56 +471,70 @@ src/
 
 ### 5. Register Routes
 
-Edit your app's `urls.rs`. **`urls.rs` plays two roles**: it **declares the URL
-submodules** of the app (via `pub mod ...;`) and **aggregates** them into a
-single `url_patterns` (or `server_url_patterns` / `unified_url_patterns`) entry
-point that `src/config/urls.rs` mounts:
+Edit your app's `urls.rs` to return a shared `UnifiedRouter`. Apply
+`#[url_patterns]` when its server handlers live in cfg-gated modules:
 
 ```rust
-// users/urls.rs
-//
-// 1. Module declarations for sub-URL files (optional, for larger apps):
-pub mod api;
-pub mod views;
-
-// 2. Aggregator — the single entry point mounted from src/config/urls.rs.
+// src/apps/users/urls.rs
 use reinhardt::url_patterns;
-use reinhardt::ServerRouter;
+use reinhardt::urls::prelude::UnifiedRouter;
 
-use crate::config::apps::InstalledApp;
-
-#[url_patterns(InstalledApp::users, mode = server)]
-pub fn server_url_patterns() -> ServerRouter {
-	ServerRouter::new()
-		.endpoint(views::list_users)
-		.endpoint(views::get_user)
-		.endpoint(views::create_user)
-		.mount("/api/v1/", api::routes())
+#[url_patterns]
+pub fn url_patterns() -> UnifiedRouter {
+	UnifiedRouter::new()
+		.server(|server| {
+			server
+				.endpoint(crate::apps::users::server::views::list_users)
+				.endpoint(crate::apps::users::server::views::get_user)
+				.endpoint(crate::apps::users::server::views::create_user)
+		})
+		.with_namespace("users")
 }
 ```
 
-The `#[url_patterns]` attribute registers this router with the framework for
-automatic discovery. For Pages apps, keep the app-level `urls.rs` as the
-target-neutral aggregate and put route implementations in
-`urls/client_router.rs` and `urls/server_router.rs`; the project-level
-`src/config/urls.rs` mounts the aggregate functions.
+The argumentless `#[url_patterns]` attribute keeps server configuration only
+when the calling crate enables `cfg(server)` on a non-browser-WASM target.
+Other builds erase the complete `.server(...)` argument before resolving
+handler names. Keep native imports and handler modules cfg-gated, and enable
+`client-router` for browser routing. The attribute adds no inventory entry.
 
-Include in `src/config/urls.rs`:
+Declare and activate the application's custom cfg in `build.rs`, for example
+using an application Cargo feature named `server` (`server = []`):
+
+```rust
+fn main() {
+	println!("cargo::rustc-check-cfg=cfg(server)");
+	if std::env::var_os("CARGO_FEATURE_SERVER").is_some() {
+		println!("cargo::rustc-cfg=server");
+	}
+}
+```
+
+Mount app-level functions in the single project-level entry point:
 
 ```rust
 // src/config/urls.rs
-use reinhardt::prelude::*;
 use reinhardt::routes;
+use reinhardt::urls::prelude::UnifiedRouter;
+use crate::apps::users;
 
 #[routes]
-pub fn routes() -> ServerRouter {
-	ServerRouter::new()
-		.mount("/api/", users::urls::url_patterns())
+pub fn routes() -> UnifiedRouter {
+	UnifiedRouter::new()
+		.mount_unified("/api/", users::urls::url_patterns())
 }
 ```
 
-The `#[routes]` attribute macro automatically registers this function with the
-framework for discovery via the `inventory` crate.
+`#[routes]` registers the root factory with the framework through `inventory`.
+If the root also contains native handler references, stack `#[url_patterns]`
+and `#[routes]` in either order. For larger apps, compose separately annotated
+functions with `mount_unified` or `merge`; avoid inline nested server builders.
+The Pages app scaffold follows the same boundary: its private
+`http_url_patterns()` helper is the direct `UnifiedRouter` chain annotated with
+`#[url_patterns]`, while the public `url_patterns()` aggregate calls that
+helper and then adds the cfg-gated WebSocket, gRPC, and client routes. Keep
+protocol or client aggregation in the unannotated aggregate so those routes
+are not lost when native server handlers are erased for browser builds.
 
 **Note:** The `reinhardt::prelude` includes commonly used types. Key exports include:
 
@@ -483,8 +545,8 @@ framework for discovery via the `inventory` crate.
 - **`core` feature**: `Request`, `Response`, `Handler`, `Middleware`, Signals (`post_save`, `pre_save`, etc.)
 - **`routing` feature**: `Router`, `DefaultRouter`, `ServerRouter`
 - **`api`, `standard`, or `api-only` features**: `View`, `ListView`, `DetailView`, `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
-- **`database` feature**: `Model`, `DatabaseConnection`, `F`, `Q`, `Transaction`, `atomic`, Database functions (`Concat`, `Upper`, `Lower`, `Now`, `CurrentDate`), Window functions (`Window`, `RowNumber`, `Rank`, `DenseRank`), Constraints (`UniqueConstraint`, `CheckConstraint`, `ForeignKeyConstraint`)
-- **`auth` feature**: `BaseUser`, `FullUser`, `PermissionsMixin`, `BaseUserManager`, `Argon2Hasher`, `GroupManager`, `CreateGroupData`, `Permission`, `ObjectPermission`, `ObjectPermissionManager`
+- **`database` feature**: `Model`, `DatabaseConnection`, `AtomicTransaction`, `OrmExecutor`, `F`, `Q`, `Transaction`, Database functions (`Concat`, `Upper`, `Lower`, `Now`, `CurrentDate`), Window functions (`Window`, `RowNumber`, `Rank`, `DenseRank`), Constraints (`UniqueConstraint`, `CheckConstraint`, `ForeignKeyConstraint`)
+- **`auth` feature**: `BaseUser`, `FullUser`, `PermissionsMixin`, `BaseUserManager`, `Argon2Hasher`, `PasswordHasher`, `PasswordHashPolicy`, `PasswordVerification`, `PasswordCheck`, optional `BcryptHasher`, `GroupManager`, `CreateGroupData`, `Permission`, `ObjectPermission`, `ObjectPermissionManager`
 - **`minimal`, `standard`, or `di` features**: `Body`, `Cookie`, `Header`, `Json`, `Path`, `Query`
 - **`rest` feature**: Serializers, Parsers, Pagination, Throttling, Versioning
 - **`admin` feature**: Admin panel components
@@ -615,6 +677,13 @@ The `#[model(...)]` attribute automatically generates:
 - Global model registry registration
 - Support for composite primary keys
 
+Every model must declare an `app_label` so migrations and registry entries are
+assigned to an explicit application. `table_name` is optional: when omitted,
+Reinhardt prefixes the app label to the Rust struct name converted to snake_case
+without pluralizing it (`network::HTTPRoute` becomes `network_http_route`). Keep
+`table_name = "..."` when a model must continue using an existing database table,
+as the `User` example above does.
+
 **Note:** When using `#[model(...)]`, you do NOT need to add `#[derive(Model)]` separately,
 as it is automatically applied by the `#[model(...)]` attribute.
 
@@ -626,75 +695,145 @@ as it is automatically applied by the `#[model(...)]` attribute.
 - `#[field(auto_now = true)]` - Auto-update timestamp on save
 - `#[field(null = true)]` - Allow NULL values
 - `#[field(unique = true)]` - Enforce uniqueness constraint
+- `#[field(generated = SchemaExpr::..., generated_stored = true)]` - Define a typed generated column
+- `#[field(generated_sql = "...", generated_stored = true)]` - Use backend-specific raw SQL for a generated column
+
+Typed generated columns accept the portable `SchemaExpr::col`, `SchemaExpr::val`,
+`SchemaExpr::concat`, and `SchemaExpr::coalesce` constructors, plus chained
+`binary` and `cast` calls. Use `generated_sql` for backend-specific functions or
+other expression forms.
 
 For a complete list of field attributes, see the [Field Attributes Guide](https://reinhardt-web.dev/docs/field-attributes/).
 
 The generated field accessors enable type-safe field references in queries:
 
 ```rust
-// Generated by #[model(...)] for the User struct above:
-impl User {
-	pub const fn field_id() -> FieldRef<User, Uuid> { FieldRef::new("id") }
-	pub const fn field_username() -> FieldRef<User, String> { FieldRef::new("username") }
-	pub const fn field_email() -> FieldRef<User, String> { FieldRef::new("email") }
-	pub const fn field_is_active() -> FieldRef<User, bool> { FieldRef::new("is_active") }
-	pub const fn field_is_staff() -> FieldRef<User, bool> { FieldRef::new("is_staff") }
-	pub const fn field_date_joined() -> FieldRef<User, DateTime<Utc>> { FieldRef::new("date_joined") }
-	// ... other fields
-}
+let id_field = User::field_id();
+let username_field = User::field_username();
+let email_field = User::field_email();
+let active_field = User::field_is_active();
+let staff_field = User::field_is_staff();
+let joined_field = User::field_date_joined();
 ```
+
+These `field_*()` methods are generated by `#[model]` and produce the
+field-origin proof required by typed ordering and upsert builders. Dynamic
+filters may use `FieldRef::new`, which produces an unverified reference that
+cannot be used for those proof-requiring APIs. Validate dynamic field names
+against model metadata before constructing an unverified reference.
 
 **Advanced Query Examples:**
 
 ```rust
 use reinhardt::prelude::*;
+use reinhardt::db::orm::AggregateResult;
 use crate::models::User;
 
 // Django-style lookup helpers with type-safe field references
-async fn complex_user_query() -> Result<Vec<User>, Box<dyn std::error::Error>> {
-	// Database functions with type-safe field references
-	let email_lower = Lower::new(User::field_email().into());
-	let username_upper = Upper::new(User::field_username().into());
-
-	// Aggregations using field accessors
-	let user_count = Aggregate::count(User::field_id().into());
-	let latest_joined = Aggregate::max(User::field_date_joined().into());
-
-	// Window functions for ranking
-	let rank_by_join_date = Window::new()
-		.partition_by(vec![User::field_is_active().into()])
-		.order_by(vec![(User::field_date_joined().into(), "DESC")])
-		.function(RowNumber::new());
-
-	// Build and execute the query using QuerySet
-	let users = User::objects()
+async fn complex_user_query() -> Result<(Vec<User>, AggregateResult), Box<dyn std::error::Error>> {
+	let filtered = User::objects()
+		.all()
 		.filter(User::field_is_active().exact(true))
 		.filter(User::field_email().icontains("example.com"))
-		.filter(User::field_id().is_in([1_i64, 2, 3]))
-		.filter(User::field_date_joined().year().gte(2026))
-		.annotate("email_lower", email_lower)
-		.annotate("username_upper", username_upper)
-		.annotate("rank", rank_by_join_date)
-		.order_by(vec![("-date_joined",)])
+		.filter(User::field_date_joined().year().gte(2026));
+
+	// `aggregate` is terminal and asynchronous. `func` is the standard typed
+	// vocabulary, and labels are fallible because they are validated identifiers.
+	let user_count = func::count_all::<User>().label("user_count")?;
+	let latest_joined = func::max(User::field_date_joined()).label("latest_joined")?;
+	let summary = filtered.aggregate([user_count, latest_joined]).await?;
+
+	// `annotate` is a fallible, chainable builder. `all()` still deserializes
+	// `User`; computed annotation columns are intentionally ignored by `all()`.
+	let users = filtered
+		.annotate(User::field_email().into_expression().label("email_copy")?)?
 		.all()
 		.await?;
 
-	Ok(users)
+	Ok((users, summary))
 }
 
 // Transaction support
 async fn create_user_with_transaction(
 	conn: &DatabaseConnection,
-	user_data: CreateUserRequest
-) -> Result<User, Box<dyn std::error::Error>> {
-	// Transaction with automatic rollback on error
-	transaction(conn, |_tx| async move {
-		let user = User::create(user_data).await?;
-		log_user_creation(&user).await?;
-		Ok(user)
+	user: &User,
+) -> reinhardt::core::exception::Result<User> {
+	conn.atomic(async |transaction| {
+		User::objects().create_with_conn(transaction, user).await
 	}).await
 }
 ```
+
+Typed date projections use generated date or UTC datetime field references.
+`dates` and `datetimes` perform truncation, null exclusion, distinctness, and
+ordering in the database; ISO weeks begin on Monday. Datetime projections
+default to UTC and PostgreSQL additionally supports IANA named zones. MySQL and
+SQLite report an explicit capability error for named-zone requests instead of
+falling back to UTC or server-local time.
+
+### Storage-backed `FileField` and admin uploads (opt-in)
+
+Storage-backed model files are deliberately outside the default presets. Select
+one provider feature for the application rather than enabling every provider:
+
+```toml
+[dependencies]
+# Local filesystem deployment
+reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.6", default-features = false, features = ["file-storage-local"] }
+
+# Or use S3 instead (choose one line for a deployment)
+# reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.6", default-features = false, features = ["file-storage-s3"] }
+```
+
+The preserved `[storage]` section is the `default` alias. Named aliases have
+their own backend and URL expiry (3,600 seconds when omitted):
+
+```toml
+[storage]
+backend = "local"
+url_expiry_secs = 3600
+
+[storage.local]
+base_path = "media"
+
+[storage.named.private_uploads]
+backend = "local"
+url_expiry_secs = 900
+
+[storage.named.private_uploads.local]
+base_path = "private-media"
+```
+
+Initialize `reinhardt::file_storage` during startup and retain its returned
+RAII guard. Initialization validates that every model alias exists and that
+each referenced backend supports atomic exclusive creation. The model macro
+then provides an explicit descriptor and a typed value:
+
+```rust,ignore
+let avatar = Profile::file_avatar().store(upload).await?;
+let mut profile = Profile::build().avatar(avatar).finish();
+profile.save().await?;
+
+let bytes = profile.avatar.open().await?;
+let size = profile.avatar.size().await?;
+let url = profile.avatar.url().await?;
+```
+
+Only the logical path is stored in the database; hydration restores the alias
+from `file_storage` field metadata. For model mutations, the lifecycle
+coordinator validates and stages uploads before the database operation,
+compensates staged objects when persistence fails, and can remove replaced,
+cleared, or deleted objects after database success. Old-file cleanup is disabled
+by default because storage paths may be shared. Set `cleanup = true` only when
+the field exclusively owns its objects; cleanup is then best effort.
+
+When the `admin` feature is enabled, forms containing `FileField` or
+`ImageField` use the multipart create/update endpoints automatically. Create
+requires non-nullable file fields, edit forms preserve omitted files, nullable
+fields support Clear, and image validation runs before persistence. Storage
+cleanup failures are logged without rolling back the committed database row.
+For source and data migration guidance, see
+[`instructions/MIGRATION_0.4.md`](instructions/MIGRATION_0.4.md).
 
 **Note**: Reinhardt uses reinhardt-query for SQL operations. The `#[model(...)]` attribute automatically generates Model trait implementations, type-safe field accessors, and global model registry registration.
 
@@ -736,6 +875,9 @@ Reinhardt provides Django-style user models and permission primitives. You
 bring your own user struct (defined with `#[user(...)]` + `#[model(...)]` as
 shown in the previous section); the framework layers auth traits, a
 password-management workflow, groups, and object-level permissions on top.
+
+**Password Hash Policy Upgrades:** verify legacy hashes and rehash successful
+logins with the preferred algorithm or cost parameters.
 
 **Two entry points for user data:**
 
@@ -843,8 +985,8 @@ use reinhardt::auth::CurrentUser;
 use crate::models::User;
 
 // AuthenticationMiddleware validates the current account and populates AuthState.
-// JwtAuthMiddleware validates token claims; add a current-account validator when
-// deactivation or permission changes must take effect before token expiry.
+// JwtAuthMiddleware validates token claims and populates AuthState; add a current-account
+// validator when deactivation or permission changes must take effect before token expiry.
 #[get("/profile", name = "get_profile")]
 pub async fn get_profile(
 	#[inject] CurrentUser(user): CurrentUser<User>,
@@ -870,10 +1012,10 @@ Three primitives drive everyday use:
 
 1. **`Injectable`** — implemented by framework-owned or application-owned
    types that can be injected directly.
-2. **`#[injectable]` provider functions** — register async factories whose
-   return type is `FactoryOutput<K, T>`.
-3. **`#[inject]` with `Depends<K, T>`** — receive a keyed provider output in a
-   handler or another provider.
+2. **`#[injectable]` provider functions** — register async factories returning
+   either a direct `T` or a keyed `KeyedFactoryOutput<K, T>`.
+3. **`#[inject]` with `Depends<T>` / `KeyedDepends<K, T>`** — receive provider
+   output in a handler or another provider.
 
 #### 1. Direct `Injectable` types
 
@@ -905,12 +1047,12 @@ one obvious meaning in the application.
 
 Use a keyed provider when the same value type can have multiple meanings, or
 when a foreign type should not be made globally injectable by its own `TypeId`.
-The provider returns `FactoryOutput<K, T>`, and consumers request
-`Depends<K, T>`:
+The provider returns `KeyedFactoryOutput<K, T>`, and consumers request
+`KeyedDepends<K, T>`:
 
 ```rust
 use reinhardt::db::DatabaseConnection;
-use reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key};
+use reinhardt::di::{KeyedDepends, KeyedFactoryOutput, injectable, injectable_key};
 
 #[injectable_key]
 struct PrimaryDatabase;
@@ -918,12 +1060,12 @@ struct PrimaryDatabase;
 #[injectable(scope = "singleton")]
 async fn database_connection(
     #[inject] config: Config,
-) -> FactoryOutput<PrimaryDatabase, DatabaseConnection> {
+) -> KeyedFactoryOutput<PrimaryDatabase, DatabaseConnection> {
     let connection = DatabaseConnection::connect(&config.database_url)
         .await
         .expect("failed to open database connection");
 
-    FactoryOutput::new(connection)
+    KeyedFactoryOutput::new(connection)
 }
 ```
 
@@ -937,7 +1079,7 @@ the provider key as the unique identity:
 ```rust
 use reinhardt::db::DatabaseConnection;
 use reinhardt::{Response, StatusCode, ViewResult, get};
-use reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key};
+use reinhardt::di::{KeyedDepends, KeyedFactoryOutput, injectable, injectable_key};
 
 #[derive(Debug)]
 struct DatabaseConnectionError;
@@ -948,8 +1090,8 @@ struct DatabaseHealth;
 #[injectable(scope = "singleton")]
 async fn database_connection_result(
     #[inject] config: Config,
-) -> FactoryOutput<DatabaseHealth, Result<DatabaseConnection, DatabaseConnectionError>> {
-    FactoryOutput::new(
+) -> KeyedFactoryOutput<DatabaseHealth, Result<DatabaseConnection, DatabaseConnectionError>> {
+    KeyedFactoryOutput::new(
         DatabaseConnection::connect(&config.database_url)
             .await
             .map_err(|_| DatabaseConnectionError),
@@ -958,7 +1100,7 @@ async fn database_connection_result(
 
 #[get("/database/health", name = "database_health")]
 async fn database_health(
-    #[inject] db: Depends<DatabaseHealth, Result<DatabaseConnection, DatabaseConnectionError>>,
+    #[inject] db: KeyedDepends<DatabaseHealth, Result<DatabaseConnection, DatabaseConnectionError>>,
 ) -> ViewResult<Response> {
     match db.as_ref() {
         Ok(_) => Ok(Response::new(StatusCode::OK)),
@@ -969,6 +1111,14 @@ async fn database_health(
 
 `#[injectable_factory]` remains as a deprecated compatibility alias for
 provider functions. New code should use `#[injectable]`.
+`FactoryOutput<K, T>` remains as a deprecated compatibility alias for
+`KeyedFactoryOutput<K, T>`. New code should return `T` directly for self-keyed
+providers, or use `KeyedFactoryOutput<K, T>` only when an explicit key is
+needed.
+Explicit-key provider return types must be written as `KeyedFactoryOutput<K, T>`
+or the deprecated `FactoryOutput<K, T>` compatibility name. User-defined aliases
+for those wrappers are treated as ordinary direct provider return types by the
+attribute macro.
 
 **The pseudo orphan rule.** To prevent user factories from silently shadowing
 framework-owned types (e.g., `reinhardt_di::InjectionContext`, routers,
@@ -981,15 +1131,16 @@ types are fair game, framework types are not. The validator lives in
 [`crates/reinhardt-di/src/validation.rs`](crates/reinhardt-di/src/validation.rs)
 (`check_framework_type_override`, lines 51–129).
 
-#### 3. `#[inject]` + `Depends<K, T>` in handlers
+#### 3. `#[inject]` + `Depends<T>` / `KeyedDepends<K, T>` in handlers
 
 Use `#[inject]` on a handler parameter to have the DI container resolve it
 before the handler runs. Use direct types for ordinary `Injectable`
-dependencies, and `Depends<K, T>` for keyed provider output:
+dependencies, `Depends<T>` for self-keyed provider output, and
+`KeyedDepends<K, T>` for explicitly keyed provider output:
 
 ```rust
 use reinhardt::{get, Response, StatusCode, ViewResult};
-use reinhardt::di::{Depends, injectable_key};
+use reinhardt::di::{KeyedDepends, injectable_key};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::extractors::Path;
 use crate::models::User;
@@ -1000,7 +1151,7 @@ struct PrimaryDatabase;
 #[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(
     Path(id): Path<i64>,
-    #[inject] db: Depends<PrimaryDatabase, DatabaseConnection>,
+    #[inject] db: KeyedDepends<PrimaryDatabase, DatabaseConnection>,
 ) -> ViewResult<Response> {
     let user = User::objects().filter(User::field_id().eq(id)).get().await?;
     let body = serde_json::to_string(&user)?;
@@ -1013,19 +1164,19 @@ returns the *same* instance. Opt out per-call with `#[inject(cache = false)]`:
 
 ```rust
 pub async fn uncached_handler(
-    #[inject(cache = false)] db: Depends<PrimaryDatabase, DatabaseConnection>,
+    #[inject(cache = false)] db: KeyedDepends<PrimaryDatabase, DatabaseConnection>,
 ) -> ViewResult<Response> { /* always a fresh resolution within the scope */ }
 ```
 
 `#[inject]` wrapper resolution is trait-based rather than name-based. Renamed
-imports and aliases of `Depends<K, T>` work, and custom wrappers can implement
-`InjectableType` to resolve a registry key while exposing a domain-specific
-parameter type:
+imports and aliases of `Depends<T>` / `KeyedDepends<K, T>` work, and custom
+wrappers can implement `InjectableType` to resolve a registry key while
+exposing a domain-specific parameter type:
 
 ```rust
-use reinhardt::di::{Depends, FactoryOutput, InjectableKey, InjectableType};
+use reinhardt::di::{InjectableKey, InjectableType, KeyedDepends, KeyedFactoryOutput};
 
-struct Lazy<K, T>(Depends<K, T>)
+struct Lazy<K, T>(KeyedDepends<K, T>)
 where
     K: InjectableKey,
     T: Send + Sync + 'static;
@@ -1035,13 +1186,13 @@ where
     K: InjectableKey,
     T: Send + Sync + 'static,
 {
-    type Inner = FactoryOutput<K, T>;
+    type Inner = KeyedFactoryOutput<K, T>;
 
     fn from_resolved(
         inner: std::sync::Arc<Self::Inner>,
         use_cache: bool,
     ) -> Self {
-        let depends = Depends::from_output(inner, use_cache);
+        let depends = KeyedDepends::from_output(inner, use_cache);
         Self(depends)
     }
 }

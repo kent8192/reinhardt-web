@@ -25,13 +25,17 @@ async function measureOnce(
     await page.goto(target.url, { timeout: timeoutMs });
     const navigationStart = await page.evaluate(() => performance.timeOrigin);
     await page.locator("[data-benchmark-ready='true']").waitFor({ timeout: timeoutMs });
+    const hydrated = page.locator("[data-benchmark-hydrated='true']");
     if (scenario === "hydration") {
       const metric = target.mode === "ssr" ? "hydration_ready_ms" : "boot_ready_ms";
       if (target.mode === "ssr") {
-        await page.locator("[data-benchmark-hydrated='true']").waitFor({ timeout: timeoutMs });
+        await hydrated.waitFor({ timeout: timeoutMs });
       }
       const valueMs = await page.evaluate((start) => Date.now() - start, navigationStart);
       return { metric, valueMs };
+    }
+    if (target.mode === "ssr") {
+      await hydrated.waitFor({ timeout: timeoutMs });
     }
     if (scenario === "counter") {
       return { metric: "click_update_ms", valueMs: await measureClick(page, "counter-increment", "counter", /Counter: 1/, timeoutMs) };
@@ -87,7 +91,7 @@ async function measureKeyedListUpdate(page: Page, timeoutMs: number): Promise<nu
 }
 
 export async function measureDevUpdate(
-  url: string,
+  target: TargetConfig,
   patch: () => string | Promise<string>,
   timeoutMs: number
 ): Promise<number> {
@@ -96,8 +100,11 @@ export async function measureDevUpdate(
   const page = await context.newPage();
   page.setDefaultTimeout(timeoutMs);
   try {
-    await page.goto(url, { timeout: timeoutMs });
+    await page.goto(target.dev_url, { timeout: timeoutMs });
     await page.locator("[data-benchmark-ready='true']").waitFor({ timeout: timeoutMs });
+    if (target.mode === "ssr") {
+      await page.locator("[data-benchmark-hydrated='true']").waitFor({ timeout: timeoutMs });
+    }
     const version = page.locator("[data-benchmark-value='version']");
     await version.filter({ hasText: "baseline-version" }).waitFor({ timeout: timeoutMs });
     const start = performance.now();

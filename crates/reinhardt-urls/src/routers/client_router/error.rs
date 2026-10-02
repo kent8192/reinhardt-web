@@ -62,6 +62,85 @@ impl std::fmt::Display for PathError {
 
 impl std::error::Error for PathError {}
 
+/// Error returned when building a client route tree fails validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RouteRegistrationError {
+	/// A route declared in the root scope used a relative path.
+	RootPathMustBeAbsolute {
+		/// The invalid route path.
+		path: String,
+	},
+	/// A route declared in a child layout scope used an absolute path.
+	AbsolutePathInChildScope {
+		/// The invalid route path.
+		path: String,
+		/// The parent route pattern that owns the child scope.
+		parent: String,
+	},
+	/// A route name was registered more than once.
+	DuplicateRouteName {
+		/// The duplicate route name.
+		name: String,
+	},
+	/// A path parameter name appears more than once in one route chain.
+	DuplicatePathParam {
+		/// The duplicate parameter name.
+		name: String,
+		/// The pattern that introduced the duplicate.
+		pattern: String,
+	},
+	/// A scope already has an index route.
+	DuplicateIndexRoute {
+		/// The scope's full route pattern.
+		scope: String,
+	},
+	/// Two leaf routes resolve to the same full path pattern.
+	PathConflict {
+		/// The conflicting full path pattern.
+		path: String,
+	},
+	/// A path pattern failed to compile.
+	InvalidPattern {
+		/// The invalid path pattern.
+		pattern: String,
+		/// The underlying validation error.
+		source: String,
+	},
+}
+
+impl std::fmt::Display for RouteRegistrationError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::RootPathMustBeAbsolute { path } => {
+				write!(f, "Root route path must be absolute: `{path}`")
+			}
+			Self::AbsolutePathInChildScope { path, parent } => write!(
+				f,
+				"Child route path `{path}` under `{parent}` must be relative"
+			),
+			Self::DuplicateRouteName { name } => {
+				write!(f, "Duplicate client route name: `{name}`")
+			}
+			Self::DuplicatePathParam { name, pattern } => write!(
+				f,
+				"Duplicate path parameter `{name}` in route chain ending at `{pattern}`"
+			),
+			Self::DuplicateIndexRoute { scope } => {
+				write!(f, "Duplicate index route in scope `{scope}`")
+			}
+			Self::PathConflict { path } => {
+				write!(f, "Client route path conflict for `{path}`")
+			}
+			Self::InvalidPattern { pattern, source } => {
+				write!(f, "Invalid client route pattern `{pattern}`: {source}")
+			}
+		}
+	}
+}
+
+impl std::error::Error for RouteRegistrationError {}
+
 /// Error type for router operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RouterError {
@@ -75,6 +154,8 @@ pub enum RouterError {
 	NavigationFailed(String),
 	/// Path parameter extraction failed.
 	PathExtraction(PathError),
+	/// Route registration failed.
+	Registration(RouteRegistrationError),
 }
 
 impl std::fmt::Display for RouterError {
@@ -85,11 +166,18 @@ impl std::fmt::Display for RouterError {
 			Self::MissingParameter(param) => write!(f, "Missing parameter: {}", param),
 			Self::NavigationFailed(msg) => write!(f, "Navigation failed: {}", msg),
 			Self::PathExtraction(err) => write!(f, "Path extraction error: {}", err),
+			Self::Registration(err) => write!(f, "Route registration error: {}", err),
 		}
 	}
 }
 
 impl std::error::Error for RouterError {}
+
+impl From<RouteRegistrationError> for RouterError {
+	fn from(value: RouteRegistrationError) -> Self {
+		Self::Registration(value)
+	}
+}
 
 /// Error returned by [`ClientRouter::try_merge`] when two routers cannot be
 /// combined without silently shadowing a named route.

@@ -49,7 +49,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false
           docker-images: true
           swap-storage: true
 
@@ -121,7 +121,8 @@ jobs:
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
           #!/bin/sh
-          exec clang -fuse-ld=mold "$@"
+          # rustc may append -fuse-ld=lld for host links; keep mold last.
+          exec clang "$@" -fuse-ld=mold
           WRAPPER
           chmod +x /tmp/clang-mold-wrapper
           ARCH=$(uname -m)
@@ -225,7 +226,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false
           docker-images: true
           swap-storage: true
 
@@ -286,10 +287,20 @@ jobs:
       # (runserver_hot_reload.rs::detect_wasm_bindgen_cli_version) which
       # shell out to `wasm-bindgen --version` to pin the fixture's
       # wasm-bindgen dep to the installed CLI version. Tracked in #4180.
+      #
+      # Build from source instead of using the prebuilt release artifact:
+      # the latter requires GLIBC_2.38+ and cannot start on the Ubuntu 22.04
+      # ARM self-hosted runners. A job-local root also prevents stale runner
+      # state from masking an incompatible CLI. See #5644.
       - name: Install wasm-bindgen-cli
-        uses: taiki-e/install-action@v2
-        with:
-          tool: wasm-bindgen-cli
+        run: |
+          install_root="$RUNNER_TEMP/wasm-bindgen-cli"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/wasm-bindgen-cli-target" \
+            cargo install --locked --root "$install_root" wasm-bindgen-cli
+          export PATH="$install_root/bin:$PATH"
+          echo "$install_root/bin" >> "$GITHUB_PATH"
+          wasm-bindgen --version
+          wasm-bindgen-test-runner -V
 
       # wasm32-unknown-unknown supports Pages and command fixtures;
       # wasm32-wasip1 supports the Dentdelion Component fixture. Tracked in #5933.
@@ -332,7 +343,8 @@ jobs:
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
           #!/bin/sh
-          exec clang -fuse-ld=mold "$@"
+          # rustc may append -fuse-ld=lld for host links; keep mold last.
+          exec clang "$@" -fuse-ld=mold
           WRAPPER
           chmod +x /tmp/clang-mold-wrapper
           ARCH=$(uname -m)
@@ -440,7 +452,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false
           docker-images: true
           swap-storage: true
 
@@ -462,6 +474,9 @@ jobs:
           # only the main-branch authoritative cache is updated.
           rust-save-if: ${{ github.ref == 'refs/heads/main' }}
           protoc-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install browser WASM target for macro-parity fixtures
+        run: rustup target add wasm32-unknown-unknown
 
       - name: Install mold linker and build dependencies
         run: |
@@ -515,7 +530,8 @@ jobs:
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
           #!/bin/sh
-          exec clang -fuse-ld=mold "$@"
+          # rustc may append -fuse-ld=lld for host links; keep mold last.
+          exec clang "$@" -fuse-ld=mold
           WRAPPER
           chmod +x /tmp/clang-mold-wrapper
           ARCH=$(uname -m)
@@ -539,17 +555,17 @@ jobs:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
           RUN_ALL: ${{ inputs.run-all }}
         run: |
-          FILTER_ARGS=()
+          FILTER_EXPR="not binary(/ui/)"
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
-            FILTER_ARGS+=(-E "$NEXTEST_FILTER_EXPR")
+            FILTER_EXPR="($FILTER_EXPR) & ($NEXTEST_FILTER_EXPR)"
           fi
           set +e
           cargo llvm-cov nextest \
             --no-report \
             --package reinhardt-integration-tests \
             --all-features \
-            --no-fail-fast \
-            "${FILTER_ARGS[@]}"
+            -E "$FILTER_EXPR" \
+            --no-fail-fast
           EXIT_CODE=$?
           set -e
           if [[ $EXIT_CODE -eq 4 ]]; then

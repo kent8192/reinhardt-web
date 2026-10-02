@@ -20,6 +20,8 @@
 //! - **[`APITestCase`]**: Base test case with common assertions
 //! - **Response Assertions**: Status, header, and body assertions
 //! - **[`Factory`]**: Model factory for generating test data
+//! - **[`fixtures::TestDatabase`]**: Model-derived and migration-backed
+//!   database fixture for application tests
 //! - **[`DebugToolbar`]**: Debug panel for inspecting queries and timing
 //! - **[`WebSocketTestClient`]**: WebSocket connection testing
 //! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) integration
@@ -114,8 +116,9 @@ pub use client::{APIClient, APIClientBuilder, ClientError, HttpVersion};
 pub use debug::{DebugEntry, DebugPanel, DebugToolbar, SqlQuery, TimingInfo};
 pub use factory::{APIRequestFactory, RequestBuilder};
 pub use fixtures::{
-	Factory, FactoryBuilder, FixtureError, FixtureLoader, FixtureResult, api_client_from_url,
-	random_test_key, test_config_value, test_server_guard,
+	Factory, FactoryBuilder, FixtureError, FixtureLoader, FixtureResult, TestDatabaseBackend,
+	TestDatabaseBuilder, TestDatabaseError, api_client_from_url, random_test_key,
+	test_config_value, test_server_guard,
 };
 
 // Re-export commonly used types for testing

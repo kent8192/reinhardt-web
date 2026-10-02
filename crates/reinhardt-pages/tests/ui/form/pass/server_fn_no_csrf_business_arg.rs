@@ -3,16 +3,18 @@
 use reinhardt_pages::form;
 
 fn main() {
-	let _form = form! {
-		name: NoCsrfBusinessArgForm,
-		server_fn: submit,
-		method: Post,
-		fields: {
-			payload: CharField {
-				required,
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _form = form! {
+			name: NoCsrfBusinessArgForm,
+			server_fn: submit,
+			method: Post,
+			fields: {
+				payload: CharField {
+					required,
+				}
 			}
-		}
-	};
+		};
+	});
 }
 
 fn submit() {}

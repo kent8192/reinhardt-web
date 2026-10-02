@@ -31,7 +31,7 @@
 
 pub mod activity;
 pub mod error_boundary;
-mod into_page;
+pub(crate) mod into_page;
 mod props;
 pub(crate) mod reactive_if;
 pub mod suspense;
@@ -42,17 +42,27 @@ pub mod view_transition;
 pub use activity::{ActivityBoundary, ActivityMode};
 pub use error_boundary::{BoundaryError, ErrorBoundary, ErrorTracker};
 #[cfg(native)]
-pub use into_page::DummyEvent;
+pub use into_page::NativeEvent;
 pub use into_page::PageExt;
 pub use into_page::{
-	Head, IntoPage, LinkTag, MetaTag, MountError, Page, PageElement, PageEventHandler, Reactive,
-	ReactiveIf, ScriptTag, StyleTag,
+	Head, IntoPage, LinkTag, MetaTag, MountError, Outlet, Page, PageElement, PageEventHandler,
+	Reactive, ReactiveIf, ScriptTag, StyleTag,
 };
 pub use props::Props;
+pub use reactive_if::cleanup_reactive_nodes;
 #[cfg(wasm)]
-pub use reactive_if::{ReactiveIfNode, ReactiveNode, cleanup_reactive_nodes, store_reactive_node};
-#[doc(hidden)]
-pub use reinhardt_core::types::page::{ControlBinding, ControlKind, ControlValue};
+pub(crate) use reactive_if::{
+	ReactiveAttributeEffects, new_reactive_node_store, store_reactive_scope,
+	with_reactive_node_store,
+};
+#[cfg(wasm)]
+pub use reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
+#[cfg(native)]
+pub(crate) use reactive_if::{scope_reactive_node_store, scope_reactive_node_transaction};
+pub use reinhardt_core::types::page::{
+	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome,
+	NumberParseError, NumberParseErrorKind, NumberValue,
+};
 pub use suspense::{ResourceTracker, SuspenseBoundary};
 pub use r#trait::Component;
 pub use view_transition::{

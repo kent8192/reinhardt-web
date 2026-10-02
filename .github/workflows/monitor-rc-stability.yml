@@ -92,18 +92,24 @@ jobs:
 
           # Determine readiness
           if [ "${BLOCKING_COUNT}" -gt 0 ]; then
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "reason=blocking_issues" >> "$GITHUB_OUTPUT"
+            {
+              echo "ready=false"
+              echo "reason=blocking_issues"
+            } >> "$GITHUB_OUTPUT"
             echo "Status: NOT READY - ${BLOCKING_COUNT} blocking issue(s) found"
           elif [ "${DAYS_ELAPSED}" -lt "${STABILITY_DAYS}" ]; then
             REMAINING=$((STABILITY_DAYS - DAYS_ELAPSED))
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "reason=timer_pending" >> "$GITHUB_OUTPUT"
-            echo "remaining_days=${REMAINING}" >> "$GITHUB_OUTPUT"
+            {
+              echo "ready=false"
+              echo "reason=timer_pending"
+              echo "remaining_days=${REMAINING}"
+            } >> "$GITHUB_OUTPUT"
             echo "Status: NOT READY - ${REMAINING} days remaining in stability period"
           else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-            echo "reason=all_clear" >> "$GITHUB_OUTPUT"
+            {
+              echo "ready=true"
+              echo "reason=all_clear"
+            } >> "$GITHUB_OUTPUT"
             echo "Status: READY for stable release"
           fi
 

@@ -113,6 +113,8 @@ fn rewrites_multiple_files_and_reports_changed_count() {
 	write(
 		&page_file,
 		r#"
+use reinhardt_pages::reactive::hooks::use_effect;
+
 fn view(name: String, count: usize) {
     page! {
         div {
@@ -122,8 +124,11 @@ fn view(name: String, count: usize) {
             }
         }
     };
-    use_effect(move || {
-        let _ = count;
+    use_effect({
+        let count = count.clone();
+        move || {
+            let _ = count.get();
+        }
     });
 }
 "#,
@@ -154,8 +159,12 @@ pub struct CardProps {
 		"watch wrapper should be removed:\n{page}"
 	);
 	assert!(
-		page.contains("compile_error!"),
-		"use_effect placeholder deps were not inserted:\n{page}"
+		compact_ws(&page).contains("deps![count]"),
+		"use_effect dependency list was not inserted:\n{page}"
+	);
+	assert!(
+		page.contains("use reinhardt_pages::deps;"),
+		"deps macro import was not inserted:\n{page}"
 	);
 	assert!(
 		props.contains("bon::Builder"),

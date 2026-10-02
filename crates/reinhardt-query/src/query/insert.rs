@@ -3,6 +3,7 @@
 //! This module provides the `InsertStatement` type for building SQL INSERT queries.
 
 use crate::{
+	expr::SimpleExpr,
 	types::{DynIden, IntoIden, IntoTableRef, TableRef},
 	value::{IntoValue, Value, Values},
 };
@@ -52,7 +53,10 @@ pub struct InsertStatement {
 	pub(crate) columns: Vec<DynIden>,
 	pub(crate) source: InsertSource,
 	pub(crate) returning: Option<ReturningClause>,
+	pub(crate) returning_exprs: Option<Vec<SimpleExpr>>,
 	pub(crate) on_conflict: Option<super::on_conflict::OnConflict>,
+	pub(crate) overriding_system_value: bool,
+	pub(crate) default_values: bool,
 }
 
 impl InsertStatement {
@@ -63,7 +67,10 @@ impl InsertStatement {
 			columns: Vec::new(),
 			source: InsertSource::Values(Vec::new()),
 			returning: None,
+			returning_exprs: None,
 			on_conflict: None,
+			overriding_system_value: false,
+			default_values: false,
 		}
 	}
 
@@ -74,7 +81,10 @@ impl InsertStatement {
 			columns: std::mem::take(&mut self.columns),
 			source: std::mem::replace(&mut self.source, InsertSource::Values(Vec::new())),
 			returning: self.returning.take(),
+			returning_exprs: self.returning_exprs.take(),
 			on_conflict: self.on_conflict.take(),
+			overriding_system_value: std::mem::take(&mut self.overriding_system_value),
+			default_values: std::mem::take(&mut self.default_values),
 		}
 	}
 
@@ -112,6 +122,7 @@ impl InsertStatement {
 	where
 		C: IntoIden,
 	{
+		self.default_values = false;
 		self.columns.push(col.into_iden());
 		self
 	}
@@ -160,6 +171,7 @@ impl InsertStatement {
 				self.columns.len()
 			));
 		}
+		self.default_values = false;
 		match &mut self.source {
 			InsertSource::Values(vals) => vals.push(values),
 			InsertSource::Subquery(_) => {
@@ -199,6 +211,7 @@ impl InsertStatement {
 				self.columns.len()
 			);
 		}
+		self.default_values = false;
 		match &mut self.source {
 			InsertSource::Values(vals) => vals.push(values),
 			InsertSource::Subquery(_) => {
@@ -227,6 +240,7 @@ impl InsertStatement {
 		C: crate::types::IntoColumnRef,
 	{
 		self.returning = Some(ReturningClause::columns(cols));
+		self.returning_exprs = None;
 		self
 	}
 
@@ -248,6 +262,20 @@ impl InsertStatement {
 		C: crate::types::IntoColumnRef,
 	{
 		self.returning = Some(ReturningClause::columns([col]));
+		self.returning_exprs = None;
+		self
+	}
+
+	/// Add a RETURNING clause with expressions.
+	///
+	/// Expressions can alias physical database columns to caller-visible names.
+	pub fn returning_exprs<I, E>(&mut self, expressions: I) -> &mut Self
+	where
+		I: IntoIterator<Item = E>,
+		E: Into<SimpleExpr>,
+	{
+		self.returning = None;
+		self.returning_exprs = Some(expressions.into_iter().map(Into::into).collect());
 		self
 	}
 
@@ -270,6 +298,15 @@ impl InsertStatement {
 		self
 	}
 
+	/// Add PostgreSQL's `OVERRIDING SYSTEM VALUE` clause.
+	///
+	/// This permits explicit values for columns declared as `GENERATED ALWAYS AS IDENTITY`.
+	/// Non-PostgreSQL query builders ignore the clause.
+	pub fn overriding_system_value(&mut self) -> &mut Self {
+		self.overriding_system_value = true;
+		self
+	}
+
 	/// Add a RETURNING * clause
 	///
 	/// # Examples
@@ -285,6 +322,7 @@ impl InsertStatement {
 	/// ```
 	pub fn returning_all(&mut self) -> &mut Self {
 		self.returning = Some(ReturningClause::all());
+		self.returning_exprs = None;
 		self
 	}
 
@@ -306,7 +344,29 @@ impl InsertStatement {
 	///     .from_subquery(select);
 	/// ```
 	pub fn from_subquery(&mut self, select: SelectStatement) -> &mut Self {
+		self.default_values = false;
 		self.source = InsertSource::Subquery(Box::new(select));
+		self
+	}
+
+	/// Insert one row using the table's column defaults.
+	///
+	/// SQLite does not support combining `DEFAULT VALUES` with `ON CONFLICT`,
+	/// so the SQLite query builder rejects that combination.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt_query::prelude::*;
+	///
+	/// let query = Query::insert()
+	///     .into_table("settings")
+	///     .default_values();
+	/// ```
+	pub fn default_values(&mut self) -> &mut Self {
+		self.columns.clear();
+		self.source = InsertSource::Values(Vec::new());
+		self.default_values = true;
 		self
 	}
 
@@ -360,8 +420,9 @@ impl QueryStatementWriter for InsertStatement {}
 mod tests {
 	use super::*;
 	use crate::Query;
+	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_insert_basic() {
 		let mut query = InsertStatement::new();
 		query
@@ -376,7 +437,7 @@ mod tests {
 		assert_eq!(values[0].len(), 2);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_insert_multiple_rows() {
 		let mut query = InsertStatement::new();
 		query
@@ -387,6 +448,79 @@ mod tests {
 
 		let values = query.get_values().expect("should have values");
 		assert_eq!(values.len(), 2);
+	}
+
+	#[rstest]
+	fn test_insert_default_values_builds_for_each_backend() {
+		use crate::backend::{MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+
+		// Arrange
+		let mut query = InsertStatement::new();
+		query.into_table("users").default_values();
+		let query = query.take();
+
+		// Act / Assert
+		assert_eq!(
+			query.build(PostgresQueryBuilder).0,
+			"INSERT INTO \"users\" DEFAULT VALUES"
+		);
+		assert_eq!(
+			query.build(SqliteQueryBuilder).0,
+			"INSERT INTO \"users\" DEFAULT VALUES"
+		);
+		assert_eq!(
+			query.build(MySqlQueryBuilder).0,
+			"INSERT INTO `users` () VALUES ()"
+		);
+	}
+
+	#[rstest]
+	fn test_mysql_default_values_preserves_do_nothing_conflict_handling() {
+		use crate::backend::MySqlQueryBuilder;
+		use crate::query::OnConflict;
+
+		// Arrange
+		let mut query = InsertStatement::new();
+		query
+			.into_table("settings")
+			.default_values()
+			.on_conflict(OnConflict::column("key").do_nothing());
+
+		// Act
+		let sql = query.build(MySqlQueryBuilder).0;
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO `settings` () VALUES () ON DUPLICATE KEY UPDATE `key` = `key`"
+		);
+	}
+
+	#[rstest]
+	#[should_panic(expected = "SQLite does not support ON CONFLICT with DEFAULT VALUES")]
+	fn test_sqlite_default_values_rejects_conflict_handling() {
+		use crate::backend::SqliteQueryBuilder;
+		use crate::query::OnConflict;
+
+		let mut query = InsertStatement::new();
+		query
+			.into_table("settings")
+			.default_values()
+			.on_conflict(OnConflict::column("key").do_nothing());
+
+		query.build(SqliteQueryBuilder);
+	}
+
+	#[rstest]
+	fn test_insert_without_source_does_not_default_values() {
+		use crate::backend::PostgresQueryBuilder;
+
+		// Arrange
+		let mut query = InsertStatement::new();
+		query.into_table("users");
+
+		// Act / Assert
+		assert_eq!(query.build(PostgresQueryBuilder).0, "INSERT INTO \"users\"");
 	}
 
 	#[test]

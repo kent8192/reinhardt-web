@@ -9,10 +9,13 @@
 #![cfg(wasm)]
 
 use std::cell::{Cell, RefCell};
+use std::num::NonZeroUsize;
 use std::rc::{Rc, Weak};
 
+use reinhardt_pages::reactive::ReactiveScope;
 use reinhardt_pages::reactive::hooks::{
-	ConnectionState, UseWebSocketOptions, WebSocketHandle, WebSocketMessage, use_websocket,
+	ConnectionState, UseWebSocketOptions, WebSocketHandle, WebSocketMessage,
+	WebSocketSubscriptionOptions, use_websocket,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::*;
@@ -131,8 +134,9 @@ export function sent_text(index, message) { return sockets[index].sent[message];
 export function close_calls(index) { return sockets[index].closeCalls; }
 export function handlers_detached(index) {
     const socket = sockets[index];
-    return socket.onopen === null && socket.onmessage === null
-        && socket.onclose === null && socket.onerror === null;
+    // web-sys clears optional handlers to `undefined`; native WebSocket uses `null`.
+    return socket.onopen == null && socket.onmessage == null
+        && socket.onclose == null && socket.onerror == null;
 }
 "#)]
 extern "C" {
@@ -155,17 +159,26 @@ extern "C" {
 }
 
 /// Restore browser globals after all handles in the test have been dropped.
-struct BrowserFixture;
+struct BrowserFixture {
+	scope: ReactiveScope,
+}
 
 impl BrowserFixture {
 	fn new() -> Self {
 		install_browser();
-		Self
+		Self {
+			scope: ReactiveScope::new(),
+		}
+	}
+
+	fn use_websocket(&self, options: UseWebSocketOptions) -> WebSocketHandle {
+		self.scope.enter(|| use_websocket(URL, options))
 	}
 }
 
 impl Drop for BrowserFixture {
 	fn drop(&mut self) {
+		self.scope.dispose();
 		restore_browser();
 	}
 }
@@ -176,13 +189,10 @@ const URL: &str = "wss://example.invalid/notifications";
 fn reconnect_honors_delay_and_reuses_the_public_handle() {
 	// Arrange
 	let _browser = BrowserFixture::new();
-	let handle = use_websocket(
-		URL,
-		UseWebSocketOptions {
-			reconnect_delay: 37,
-			..Default::default()
-		},
-	);
+	let handle = _browser.use_websocket(UseWebSocketOptions {
+		reconnect_delay: 37,
+		..Default::default()
+	});
 	open_socket(0);
 	handle.send_text("first".into()).unwrap();
 
@@ -200,6 +210,10 @@ fn reconnect_honors_delay_and_reuses_the_public_handle() {
 	assert_eq!(handle.connection_state().get(), ConnectionState::Connecting);
 	open_socket(1);
 	assert!(handle.is_open());
+	disconnect_socket(0);
+	error_socket(0);
+	assert!(handle.is_open());
+	assert_eq!(timer_count(), 0);
 	handle.send_text("second".into()).unwrap();
 	assert_eq!(sent_text(0, 0), "first");
 	assert_eq!(sent_text(1, 0), "second");
@@ -222,13 +236,10 @@ fn reconnect_honors_delay_and_reuses_the_public_handle() {
 fn retries_stop_at_the_configured_budget() {
 	// Arrange
 	let _browser = BrowserFixture::new();
-	let _handle = use_websocket(
-		URL,
-		UseWebSocketOptions {
-			max_reconnect_attempts: 2,
-			..Default::default()
-		},
-	);
+	let handle = _browser.use_websocket(UseWebSocketOptions {
+		max_reconnect_attempts: 2,
+		..Default::default()
+	});
 
 	// Act
 	for socket in 0..2 {
@@ -240,6 +251,7 @@ fn retries_stop_at_the_configured_budget() {
 	// Assert: the initial connection is not counted as a retry.
 	assert_eq!(constructor_attempts(), 3);
 	assert_eq!(timer_count(), 0);
+	assert_eq!(handle.current_connection_state(), ConnectionState::Closed);
 	assert!(!fire_timer());
 }
 
@@ -247,13 +259,10 @@ fn retries_stop_at_the_configured_budget() {
 fn successful_open_resets_the_retry_budget() {
 	// Arrange
 	let _browser = BrowserFixture::new();
-	let _handle = use_websocket(
-		URL,
-		UseWebSocketOptions {
-			max_reconnect_attempts: 1,
-			..Default::default()
-		},
-	);
+	let _handle = _browser.use_websocket(UseWebSocketOptions {
+		max_reconnect_attempts: 1,
+		..Default::default()
+	});
 	disconnect_socket(0);
 	assert!(fire_timer());
 	open_socket(1);
@@ -272,14 +281,11 @@ fn disabled_reconnection_and_zero_budget_do_not_schedule_timers() {
 	for (enabled, budget) in [(false, 5), (true, 0)] {
 		// Arrange
 		let _browser = BrowserFixture::new();
-		let _handle = use_websocket(
-			URL,
-			UseWebSocketOptions {
-				auto_reconnect: enabled,
-				max_reconnect_attempts: budget,
-				..Default::default()
-			},
-		);
+		let _handle = _browser.use_websocket(UseWebSocketOptions {
+			auto_reconnect: enabled,
+			max_reconnect_attempts: budget,
+			..Default::default()
+		});
 
 		// Act
 		disconnect_socket(0);
@@ -294,7 +300,7 @@ fn disabled_reconnection_and_zero_budget_do_not_schedule_timers() {
 fn explicit_close_cancels_a_pending_retry() {
 	// Arrange
 	let _browser = BrowserFixture::new();
-	let handle = use_websocket(URL, UseWebSocketOptions::default());
+	let handle = _browser.use_websocket(UseWebSocketOptions::default());
 	disconnect_socket(0);
 	assert_eq!(timer_count(), 1);
 
@@ -311,20 +317,17 @@ fn explicit_close_cancels_a_pending_retry() {
 }
 
 #[wasm_bindgen_test]
-fn explicit_close_of_a_live_socket_is_terminal_and_notifies_once() {
+fn explicit_close_of_a_live_socket_is_terminal_and_silent() {
 	// Arrange
 	let _browser = BrowserFixture::new();
 	let closed = Rc::new(Cell::new(0));
 	let closed_callback = Rc::clone(&closed);
-	let handle = use_websocket(
-		URL,
-		UseWebSocketOptions {
-			on_close: Some(Rc::new(move || {
-				closed_callback.set(closed_callback.get() + 1)
-			})),
-			..Default::default()
-		},
-	);
+	let handle = _browser.use_websocket(UseWebSocketOptions {
+		on_close: Some(Rc::new(move || {
+			closed_callback.set(closed_callback.get() + 1)
+		})),
+		..Default::default()
+	});
 	open_socket(0);
 
 	// Act
@@ -333,9 +336,9 @@ fn explicit_close_of_a_live_socket_is_terminal_and_notifies_once() {
 
 	// Assert
 	assert_eq!(close_calls(0), 1);
-	assert_eq!(handle.connection_state().get(), ConnectionState::Closing);
+	assert_eq!(handle.connection_state().get(), ConnectionState::Closed);
 	disconnect_socket(0);
-	assert_eq!(closed.get(), 1);
+	assert_eq!(closed.get(), 0);
 	assert_eq!(handle.connection_state().get(), ConnectionState::Closed);
 	assert_eq!(timer_count(), 0);
 	assert!(handlers_detached(0));
@@ -346,10 +349,114 @@ fn explicit_close_of_a_live_socket_is_terminal_and_notifies_once() {
 }
 
 #[wasm_bindgen_test]
+fn owner_disposal_cancels_retry_even_when_handle_clones_survive() {
+	let browser = BrowserFixture::new();
+	let handle = browser.use_websocket(UseWebSocketOptions::default());
+	let clone = handle.clone();
+	open_socket(0);
+	disconnect_socket(0);
+	assert_eq!(timer_count(), 1);
+
+	browser.scope.dispose();
+
+	assert_eq!(timer_count(), 0);
+	assert!(!fire_timer());
+	assert_eq!(constructor_attempts(), 1);
+	assert_eq!(clone.current_connection_state(), ConnectionState::Closed);
+	assert!(clone.send_text("late".into()).is_err());
+	drop(handle);
+	drop(clone);
+}
+
+#[wasm_bindgen_test]
+fn authenticated_scope_reconnects_and_resubscribes_without_inheriting_logout_state() {
+	let browser = BrowserFixture::new();
+	let refetches = Rc::new(Cell::new(0));
+	let refetches_on_open = Rc::clone(&refetches);
+	let handle_slot: Rc<RefCell<Option<Weak<WebSocketHandle>>>> = Rc::new(RefCell::new(None));
+	let slot_on_open = Rc::clone(&handle_slot);
+	let handle = Rc::new(browser.use_websocket(UseWebSocketOptions {
+		on_open: Some(Rc::new(move || {
+			if let Some(handle) = slot_on_open.borrow().as_ref().and_then(Weak::upgrade) {
+				handle.send_text("subscribe:deployment-7".into()).unwrap();
+				refetches_on_open.set(refetches_on_open.get() + 1);
+			}
+		})),
+		..Default::default()
+	}));
+	*handle_slot.borrow_mut() = Some(Rc::downgrade(&handle));
+	let events = Rc::new(RefCell::new(Vec::new()));
+	let events_callback = Rc::clone(&events);
+	let _subscription = handle.subscribe_json(
+		WebSocketSubscriptionOptions::new(NonZeroUsize::new(128).unwrap()),
+		move |event: String| events_callback.borrow_mut().push(event),
+		|error| panic!("unexpected event error: {error:?}"),
+	);
+
+	open_socket(0);
+	assert_eq!(sent_text(0, 0), "subscribe:deployment-7");
+	assert_eq!(refetches.get(), 1);
+	receive_text(0, "\"running\"");
+	disconnect_socket(0);
+	assert!(fire_timer());
+	open_socket(1);
+	assert_eq!(sent_text(1, 0), "subscribe:deployment-7");
+	assert_eq!(refetches.get(), 2);
+	receive_text(1, "\"complete\"");
+	assert_eq!(*events.borrow(), vec!["running", "complete"]);
+
+	browser.scope.dispose();
+	assert!(handlers_detached(1));
+	assert_eq!(timer_count(), 0);
+	receive_text(1, "\"late\"");
+	assert_eq!(events.borrow().len(), 2);
+	assert!(handle.send_text("old session".into()).is_err());
+
+	let next_scope = ReactiveScope::new();
+	let next_handle = next_scope.enter(|| use_websocket(URL, UseWebSocketOptions::default()));
+	open_socket(2);
+	receive_text(2, "\"new session\"");
+	assert_eq!(events.borrow().len(), 2);
+	assert_eq!(
+		next_handle.current_message(),
+		Some(WebSocketMessage::Text("\"new session\"".into()))
+	);
+	next_scope.dispose();
+	assert!(handlers_detached(2));
+}
+
+#[wasm_bindgen_test]
+fn closing_from_a_subscription_callback_does_not_write_a_late_snapshot() {
+	let browser = BrowserFixture::new();
+	let handle = Rc::new(browser.use_websocket(UseWebSocketOptions::default()));
+	let weak = Rc::downgrade(&handle);
+	let deliveries = Rc::new(Cell::new(0));
+	let callback_deliveries = Rc::clone(&deliveries);
+	let _subscription = handle.subscribe_json(
+		WebSocketSubscriptionOptions::new(NonZeroUsize::new(128).unwrap()),
+		move |_: String| {
+			callback_deliveries.set(callback_deliveries.get() + 1);
+			weak.upgrade().unwrap().close();
+		},
+		|error| panic!("unexpected event error: {error:?}"),
+	);
+	open_socket(0);
+
+	receive_text(0, "\"stop\"");
+	receive_text(0, "\"late\"");
+
+	assert_eq!(deliveries.get(), 1);
+	assert_eq!(handle.current_connection_state(), ConnectionState::Closed);
+	assert_eq!(handle.current_message(), None);
+	assert!(handlers_detached(0));
+	assert_eq!(timer_count(), 0);
+}
+
+#[wasm_bindgen_test]
 fn last_handle_drop_cancels_pending_reconnection() {
 	// Arrange
 	let _browser = BrowserFixture::new();
-	let handle = use_websocket(URL, UseWebSocketOptions::default());
+	let handle = _browser.use_websocket(UseWebSocketOptions::default());
 	let last_handle = handle.clone();
 	open_socket(0);
 
@@ -371,7 +478,7 @@ fn last_handle_drop_cancels_pending_reconnection() {
 fn last_handle_drop_closes_the_socket_and_detaches_callbacks() {
 	// Arrange
 	let _browser = BrowserFixture::new();
-	let handle = use_websocket(URL, UseWebSocketOptions::default());
+	let handle = _browser.use_websocket(UseWebSocketOptions::default());
 	open_socket(0);
 
 	// Act
@@ -390,16 +497,13 @@ fn constructor_failures_are_reported_and_have_bounded_retries() {
 	fail_constructors(2);
 	let errors = Rc::new(Cell::new(0));
 	let errors_callback = Rc::clone(&errors);
-	let handle = use_websocket(
-		URL,
-		UseWebSocketOptions {
-			max_reconnect_attempts: 1,
-			on_error: Some(Rc::new(move |_| {
-				errors_callback.set(errors_callback.get() + 1)
-			})),
-			..Default::default()
-		},
-	);
+	let handle = _browser.use_websocket(UseWebSocketOptions {
+		max_reconnect_attempts: 1,
+		on_error: Some(Rc::new(move |_| {
+			errors_callback.set(errors_callback.get() + 1)
+		})),
+		..Default::default()
+	});
 
 	// Act
 	assert!(fire_timer());
@@ -421,18 +525,15 @@ fn on_close_can_stop_reconnection_without_a_refcell_panic() {
 	let _browser = BrowserFixture::new();
 	let slot: Rc<RefCell<Option<Weak<WebSocketHandle>>>> = Rc::new(RefCell::new(None));
 	let callback_slot = Rc::clone(&slot);
-	let handle = Rc::new(use_websocket(
-		URL,
-		UseWebSocketOptions {
-			on_close: Some(Rc::new(move || {
-				let handle = callback_slot.borrow().as_ref().and_then(Weak::upgrade);
-				if let Some(handle) = handle {
-					handle.close();
-				}
-			})),
-			..Default::default()
-		},
-	));
+	let handle = Rc::new(_browser.use_websocket(UseWebSocketOptions {
+		on_close: Some(Rc::new(move || {
+			let handle = callback_slot.borrow().as_ref().and_then(Weak::upgrade);
+			if let Some(handle) = handle {
+				handle.close();
+			}
+		})),
+		..Default::default()
+	}));
 	*slot.borrow_mut() = Some(Rc::downgrade(&handle));
 
 	// Act
@@ -447,7 +548,7 @@ fn on_close_can_stop_reconnection_without_a_refcell_panic() {
 fn error_followed_by_close_schedules_only_one_retry() {
 	// Arrange
 	let _browser = BrowserFixture::new();
-	let handle = use_websocket(URL, UseWebSocketOptions::default());
+	let handle = _browser.use_websocket(UseWebSocketOptions::default());
 
 	// Act
 	error_socket(0);
@@ -456,6 +557,8 @@ fn error_followed_by_close_schedules_only_one_retry() {
 		ConnectionState::Error(_)
 	));
 	assert_eq!(timer_count(), 0);
+	disconnect_socket(0);
+	error_socket(0);
 	disconnect_socket(0);
 
 	// Assert
@@ -469,13 +572,10 @@ fn error_followed_by_close_schedules_only_one_retry() {
 fn reconnect_delay_is_clamped_to_the_browser_timer_range() {
 	// Arrange
 	let _browser = BrowserFixture::new();
-	let _handle = use_websocket(
-		URL,
-		UseWebSocketOptions {
-			reconnect_delay: u32::MAX,
-			..Default::default()
-		},
-	);
+	let _handle = _browser.use_websocket(UseWebSocketOptions {
+		reconnect_delay: u32::MAX,
+		..Default::default()
+	});
 
 	// Act
 	disconnect_socket(0);

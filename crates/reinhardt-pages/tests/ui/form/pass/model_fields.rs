@@ -1,0 +1,232 @@
+//! Model-backed form with an explicit field selection.
+
+use std::marker::PhantomData;
+
+use reinhardt_core::model_form::{
+	ModelFormCleanedPayload, ModelFormFieldDescriptor, ModelFormFieldKind, ModelFormPayload,
+	ModelFormPayloadError, ModelFormPolicy, ModelFormSchema, ModelFormValidatingPayload,
+	NativeModelFormPayload,
+};
+use reinhardt_pages::{form, page, use_form};
+
+struct Question;
+
+struct QuestionFields;
+
+impl ModelFormPolicy for QuestionFields {
+	fn allows(field: &str) -> bool {
+		matches!(field, "title" | "owner_id")
+	}
+}
+
+struct QuestionFormSchema;
+
+const QUESTION_FIELDS: [ModelFormFieldDescriptor; 2] = [
+	ModelFormFieldDescriptor {
+		name: "title",
+		kind: ModelFormFieldKind::Text {
+			min_length: None,
+			max_length: Some(200),
+			multiline: false,
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "owner_id",
+		kind: ModelFormFieldKind::Integer {
+			min: None,
+			max: None,
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: true,
+		trim: false,
+	},
+];
+
+impl ModelFormSchema for QuestionFormSchema {
+	type Model = Question;
+
+	fn fields() -> &'static [ModelFormFieldDescriptor] {
+		&QUESTION_FIELDS
+	}
+}
+
+impl QuestionFormSchema {
+	const fn title() -> &'static ModelFormFieldDescriptor {
+		&QUESTION_FIELDS[0]
+	}
+
+	const fn owner_id() -> &'static ModelFormFieldDescriptor {
+		&QUESTION_FIELDS[1]
+	}
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(bound = "")]
+struct QuestionModelFormData<P: ModelFormPolicy> {
+	title: Option<String>,
+	owner_id: Option<i64>,
+	#[serde(skip)]
+	_policy: PhantomData<P>,
+}
+
+impl<P: ModelFormPolicy> QuestionModelFormData<P> {
+	fn empty() -> Self {
+		Self {
+			title: None,
+			owner_id: None,
+			_policy: PhantomData,
+		}
+	}
+}
+
+impl<P: ModelFormPolicy> Default for QuestionModelFormData<P> {
+	fn default() -> Self {
+		Self::empty()
+	}
+}
+
+impl<P: ModelFormPolicy> ModelFormPayload<P> for QuestionModelFormData<P> {
+	fn supplied_fields(&self) -> Vec<&'static str> {
+		let mut fields = Vec::new();
+		if self.title.is_some() {
+			fields.push("title");
+		}
+		if self.owner_id.is_some() {
+			fields.push("owner_id");
+		}
+		fields
+	}
+
+	fn forbidden_fields(&self) -> &[&'static str] {
+		&[]
+	}
+
+	fn get_json(&self, field: &str) -> Option<serde_json::Value> {
+		match field {
+			"title" => self.title.clone().map(serde_json::Value::String),
+			"owner_id" => self.owner_id.map(serde_json::Value::from),
+			_ => None,
+		}
+	}
+
+	fn set_json(
+		&mut self,
+		field: &str,
+		value: serde_json::Value,
+	) -> Result<(), ModelFormPayloadError> {
+		if !P::allows(field) {
+			return Err(ModelFormPayloadError::ForbiddenField {
+				field: field.to_owned(),
+			});
+		}
+		match field {
+			"title" => {
+				self.title = serde_json::from_value(value).map_err(|error| {
+					ModelFormPayloadError::InvalidValue {
+						field: field.to_owned(),
+						message: error.to_string(),
+					}
+				})?;
+			}
+			"owner_id" => {
+				self.owner_id = serde_json::from_value(value).map_err(|error| {
+					ModelFormPayloadError::InvalidValue {
+						field: field.to_owned(),
+						message: error.to_string(),
+					}
+				})?;
+			}
+			_ => {
+				return Err(ModelFormPayloadError::UnknownField {
+					field: field.to_owned(),
+				});
+			}
+		}
+		Ok(())
+	}
+}
+
+struct CleanedQuestionModelFormData<P: ModelFormPolicy>(QuestionModelFormData<P>);
+
+impl<P: ModelFormPolicy> ModelFormCleanedPayload for CleanedQuestionModelFormData<P> {
+	type Raw = QuestionModelFormData<P>;
+
+	fn into_raw(self) -> Self::Raw {
+		self.0
+	}
+}
+
+impl<P: ModelFormPolicy> ModelFormValidatingPayload for QuestionModelFormData<P> {
+	type Cleaned = CleanedQuestionModelFormData<P>;
+
+	fn clean_and_validate(
+		mut self,
+	) -> Result<Self::Cleaned, reinhardt_core::validators::ValidationErrors> {
+		reinhardt_forms::model_form::clean_generated_payload::<QuestionFormSchema, P, _>(
+			&mut self,
+		)?;
+		Ok(CleanedQuestionModelFormData(self))
+	}
+}
+
+impl<P: ModelFormPolicy> NativeModelFormPayload for QuestionModelFormData<P> {
+	fn from_native_form_value(_value: serde_json::Value) -> Result<Self, serde_json::Error> {
+		Ok(Self::empty())
+	}
+}
+
+#[reinhardt_pages::server_fn::server_fn(model_form = true)]
+async fn save_question(
+	_payload: QuestionModelFormData<QuestionFields>,
+) -> Result<(), reinhardt_pages::ServerFnError> {
+	Ok(())
+}
+
+fn main() {
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = form! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title],
+			server_fn: save_question,
+			overrides: {
+				title: {
+					widget: TextArea,
+					label: "Question",
+					help_text: "Enter the question",
+				},
+			},
+		};
+		let _: QuestionModelFormData<QuestionFields> = form
+			.data()
+			.expect("selected fields produce the endpoint payload type");
+		assert_eq!(form.title_field().name(), "title");
+		let runtime = use_form(&form).build();
+		let _ = page!({
+			input {
+				a11y: off,
+				bind: runtime.field(form.title_field())
+			}
+			input {
+				a11y: off,
+				type: "radio",
+				value: "published",
+				bind: runtime.field(form.title_field())
+			}
+			select {
+				a11y: off,
+				bind: runtime.field(form.title_field())
+			}
+		});
+	});
+}

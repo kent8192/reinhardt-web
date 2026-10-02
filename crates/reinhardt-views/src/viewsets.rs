@@ -43,9 +43,9 @@
 //!
 //! ### Request-scoped database ModelViewSet
 //!
-//! `with_queryset_fn` has no built-in tenant identity: applications define an
+//! `with_queryset_provider` has no built-in tenant identity: applications define an
 //! extension type and middleware resolves asynchronous identity data before
-//! dispatch. The hook itself is synchronous and fallible, requires
+//! dispatch. The provider itself is synchronous and fallible, requires
 //! `with_pool`, and scopes list, retrieve, update, and destroy. Create is
 //! excluded, so serializers, permissions, or database constraints must assign
 //! ownership. Scoped-out objects and malformed detail lookup values are 404.
@@ -56,9 +56,10 @@
 //! use std::sync::Arc;
 //!
 //! use reinhardt_core::macros::model;
-//! use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
+//! use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, QuerySet};
+//! use reinhardt_http::Request;
 //! use reinhardt_rest::serializers::JsonSerializer;
-//! use reinhardt_views::viewsets::{ModelViewSet, ViewError};
+//! use reinhardt_views::viewsets::{ModelViewSet, QuerySetProvider, ViewError};
 //! use serde::{Deserialize, Serialize};
 //! use sqlx::AnyPool;
 //!
@@ -77,24 +78,33 @@
 //! #[derive(Clone, Copy)]
 //! struct OrganizationId(i64);
 //!
+//! struct OrganizationScope;
+//!
+//! impl QuerySetProvider<Item> for OrganizationScope {
+//!     fn get_queryset(
+//!         &self,
+//!         request: &Request,
+//!         base: QuerySet<Item>,
+//!     ) -> Result<QuerySet<Item>, ViewError> {
+//!         let organization = request
+//!             .extensions
+//!             .get::<OrganizationId>()
+//!             .ok_or_else(|| {
+//!                 ViewError::Permission(
+//!                     "organization scope is missing".to_owned(),
+//!                 )
+//!             })?;
+//!         Ok(base.filter(Filter::new(
+//!             "organization_id",
+//!             FilterOperator::Eq,
+//!             FilterValue::Integer(organization.0),
+//!         )))
+//!     }
+//! }
+//!
 //! fn item_viewset(pool: Arc<AnyPool>) -> ModelViewSet<Item, ItemSerializer> {
 //!     ModelViewSet::new("items")
-//!         .with_queryset_fn(|request| {
-//!             let organization = request
-//!                 .extensions
-//!                 .get::<OrganizationId>()
-//!                 .ok_or_else(|| {
-//!                     ViewError::Permission(
-//!                         "organization scope is missing".to_owned(),
-//!                     )
-//!                 })?;
-//!             Ok(Filter::new(
-//!                 "organization_id",
-//!                 FilterOperator::Eq,
-//!                 FilterValue::Integer(organization.0),
-//!             )
-//!             .into())
-//!         })
+//!         .with_queryset_provider(OrganizationScope)
 //!         .with_pool(pool)
 //! }
 //! ```
@@ -286,7 +296,7 @@ pub use batch_operations::{
 pub use builder::{RegisterViewSet, ViewSetBuilder};
 pub use cached::{CacheConfig, CachedResponse, CachedViewSet, CachedViewSetTrait};
 pub use filtering_support::{FilterConfig, FilterableViewSet, InMemoryFilter, OrderingConfig};
-pub use handler::{ModelViewSetHandler, ViewError, ViewSetHandler};
+pub use handler::{ModelViewSetHandler, QuerySetProvider, ViewError, ViewSetHandler};
 pub use injectable::InjectableViewSet;
 pub use metadata::{ActionHandler, ActionMetadata, ActionRegistryEntry, FunctionActionHandler};
 pub use middleware::{

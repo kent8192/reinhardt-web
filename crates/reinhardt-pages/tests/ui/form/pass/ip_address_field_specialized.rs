@@ -3,11 +3,13 @@
 use reinhardt_pages::form;
 
 fn main() {
-	let _ = form! {
-		name: NetForm,
-		action: "/api/net",
-		fields: {
-			client_ip: IpAddressField,
-		}
-	};
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _ = form! {
+			name: NetForm,
+			action: "/api/net",
+			fields: {
+				client_ip: IpAddressField,
+			}
+		};
+	});
 }

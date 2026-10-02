@@ -34,6 +34,30 @@ pub struct SourceRoots {
 }
 
 impl SourceRoots {
+	/// Resolve a supplied Cargo package name to its workspace member manifest.
+	///
+	/// `cargo metadata` represents virtual workspace roots without a package, so
+	/// callers that accept `--package` must use the selected member manifest as
+	/// the traversal anchor rather than the current directory's `Cargo.toml`.
+	pub fn selected_package_manifest(
+		metadata: &cargo_metadata::Metadata,
+		requested_package: &str,
+	) -> Result<PathBuf, String> {
+		let matches: Vec<_> = metadata
+			.workspace_packages()
+			.into_iter()
+			.filter(|package| package.name.as_str() == requested_package)
+			.collect();
+
+		match matches.as_slice() {
+			[package] => Ok(PathBuf::from(package.manifest_path.as_str())),
+			[] => Err(format!("Cargo package `{requested_package}` was not found")),
+			_ => Err(format!(
+				"Cargo package name `{requested_package}` is ambiguous; select a unique package"
+			)),
+		}
+	}
+
 	/// Compute watch targets by BFS from the package whose manifest matches
 	/// `cwd_manifest`, traversing only path-based dependencies.
 	///
@@ -88,12 +112,24 @@ impl SourceRoots {
 				}
 			}
 		}
+		manifest_files.insert(PathBuf::from(metadata.workspace_root.as_str()).join("Cargo.toml"));
 
 		SourceRoots {
 			src_dirs: src_dirs.into_iter().collect(),
 			manifest_files: manifest_files.into_iter().collect(),
 			lockfile: Some(PathBuf::from(metadata.workspace_root.as_str()).join("Cargo.lock")),
 		}
+	}
+
+	/// Add another package graph's watch targets while keeping a deterministic set.
+	pub fn merge(&mut self, other: Self) {
+		self.src_dirs.extend(other.src_dirs);
+		self.src_dirs.sort_unstable();
+		self.src_dirs.dedup();
+		self.manifest_files.extend(other.manifest_files);
+		self.manifest_files.sort_unstable();
+		self.manifest_files.dedup();
+		self.lockfile = self.lockfile.take().or(other.lockfile);
 	}
 }
 
@@ -157,6 +193,7 @@ mod tests {
 		assert_eq!(
 			roots.manifest_files,
 			vec![
+				PathBuf::from("/fixtures/ws/Cargo.toml"),
 				PathBuf::from("/fixtures/ws/app/Cargo.toml"),
 				PathBuf::from("/fixtures/ws/shared/Cargo.toml"),
 			]
@@ -165,6 +202,29 @@ mod tests {
 			roots.lockfile,
 			Some(PathBuf::from("/fixtures/ws/Cargo.lock"))
 		);
+	}
+
+	#[rstest]
+	fn selected_workspace_package_provides_the_watch_anchor() {
+		// Arrange
+		let metadata = parse_metadata(WORKSPACE_JSON);
+		let workspace_manifest = PathBuf::from("/fixtures/ws/Cargo.toml");
+
+		// Act
+		let anchor = SourceRoots::selected_package_manifest(&metadata, "app")
+			.expect("select the requested workspace package");
+		let roots = SourceRoots::from_metadata(&metadata, &anchor);
+
+		// Assert
+		assert_eq!(anchor, PathBuf::from("/fixtures/ws/app/Cargo.toml"));
+		assert_eq!(
+			roots.src_dirs,
+			vec![
+				PathBuf::from("/fixtures/ws/app/src"),
+				PathBuf::from("/fixtures/ws/shared/src"),
+			]
+		);
+		assert_ne!(anchor, workspace_manifest);
 	}
 
 	#[rstest]
@@ -207,5 +267,43 @@ mod tests {
 		assert!(roots.src_dirs.is_empty());
 		assert!(roots.manifest_files.is_empty());
 		assert_eq!(roots.lockfile, None);
+	}
+
+	#[rstest]
+	fn merging_roots_keeps_server_and_pages_packages() {
+		// Arrange
+		let mut roots = SourceRoots {
+			src_dirs: vec![PathBuf::from("/fixtures/ws/server/src")],
+			manifest_files: vec![PathBuf::from("/fixtures/ws/server/Cargo.toml")],
+			lockfile: Some(PathBuf::from("/fixtures/ws/Cargo.lock")),
+		};
+		let pages_roots = SourceRoots {
+			src_dirs: vec![PathBuf::from("/fixtures/ws/frontend/src")],
+			manifest_files: vec![PathBuf::from("/fixtures/ws/frontend/Cargo.toml")],
+			lockfile: Some(PathBuf::from("/fixtures/ws/Cargo.lock")),
+		};
+
+		// Act
+		roots.merge(pages_roots);
+
+		// Assert
+		assert_eq!(
+			roots.src_dirs,
+			vec![
+				PathBuf::from("/fixtures/ws/frontend/src"),
+				PathBuf::from("/fixtures/ws/server/src"),
+			]
+		);
+		assert_eq!(
+			roots.manifest_files,
+			vec![
+				PathBuf::from("/fixtures/ws/frontend/Cargo.toml"),
+				PathBuf::from("/fixtures/ws/server/Cargo.toml"),
+			]
+		);
+		assert_eq!(
+			roots.lockfile,
+			Some(PathBuf::from("/fixtures/ws/Cargo.lock"))
+		);
 	}
 }

@@ -49,6 +49,7 @@ fn authorization_headers_match_fixed_get_vector() {
 			payload_hash: EMPTY_SHA256,
 			credentials: static_credentials(&client),
 			region: "us-east-1",
+			additional_headers: &HeaderMap::new(),
 		})
 		.expect("valid signing headers");
 
@@ -74,6 +75,7 @@ fn authorization_headers_include_session_token_in_the_signature() {
 			payload_hash: EMPTY_SHA256,
 			credentials: static_credentials(&client),
 			region: "us-east-1",
+			additional_headers: &HeaderMap::new(),
 		})
 		.expect("valid signing headers");
 

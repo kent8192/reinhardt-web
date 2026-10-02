@@ -1,6 +1,6 @@
-error: `count` is read inside this hook closure but is not listed in its deps tuple.
+error: `count` is read inside this hook closure but is not listed in its dependency list.
 
-       help: add `count.clone()` to the deps tuple, e.g. `(count.clone(),)`
+       help: add `count.clone()` to the dependency list, e.g. `deps![count.clone()]`
        note: if this read is intentional and should NOT trigger re-runs, use `count.get_untracked()` (or `with_untracked`) to opt out of dependency tracking.
   --> tests/ui/hooks/fail/missing_deps_inside_page.rs:20:14
    |

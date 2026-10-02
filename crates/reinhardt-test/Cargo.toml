@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-test"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -17,6 +17,7 @@ graphql = ["reinhardt-testkit/graphql"]
 property-based = ["reinhardt-testkit/property-based"]
 viewsets = ["reinhardt-testkit/viewsets"]
 messages = ["reinhardt-testkit/messages"]
+pgvector = ["reinhardt-testkit/pgvector"]
 tasks = ["dep:reinhardt-tasks"]
 admin = [
   "dep:reinhardt-admin",
@@ -50,6 +51,7 @@ msw = [
   "dep:hyper-util",
   "dep:http-body-util",
 ]
+model-server-fnset-msw = ["msw", "reinhardt-pages/model-server-fnset"]
 # Server function testing utilities
 server-fn-test = ["reinhardt-pages/testing"]
 # E2E browser testing via WebDriver (fantoccini)

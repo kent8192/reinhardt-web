@@ -8,28 +8,48 @@ This file defines the policy for using Reinhardt's macros (notably `#[model(...)
 
 ## `#[model(...)]` Macro
 
+### Model Identity Contract
+
+Every model MUST set `app_label` explicitly. The label determines how model
+metadata is grouped for migrations, application discovery, and registry
+lookups, so there is no implicit `"default"` application.
+
+`table_name` is optional. When omitted, it is derived from the application
+label plus the Rust struct name using snake_case without pluralization or
+language-specific inflection:
+
+| Struct | Derived table name (`app_label = "app"`) |
+|---|---|
+| `User` | `app_user` |
+| `BlogPost` | `app_blog_post` |
+| `HTTPRoute` | `app_http_route` |
+| `Person` | `app_person` |
+
+Set `table_name` explicitly when mapping a model to an existing table or when
+the database contract requires a different name.
+
 ### MU-1 (SHOULD): Do Not Combine with `#[derive(Model)]`
 
-The `#[model(...)]` attribute macro automatically applies `#[derive(Model)]` internally. If `#[derive(Model)]` is *also* written on the same struct, the attribute macro detects this and returns the input unchanged (the existing derive then handles the macro logic). Compilation succeeds today, but the explicit `Model` derive becomes redundant noise that obscures intent.
+The `#[model(...)]` attribute macro automatically applies `#[derive(Model)]` internally. If `#[derive(Model)]` is *also* written on the same struct, the attribute macro preserves the existing derive and forwards its configuration through a helper attribute. Compilation succeeds today, but the explicit `Model` derive becomes redundant noise that obscures intent.
 
 **Rule:**
 - When using `#[model(...)]`, **prefer not** to also write `#[derive(Model)]` on the same struct — the attribute applies it for you.
 - Add other derives that `#[model(...)]` does not provide via a separate `#[derive(...)]` (e.g., `Debug`, `Clone`, `serde::Serialize`).
-- Existing code that combines both is supported and does not need an immediate fix; new code should follow the canonical form.
+- Existing code that combines both is supported and does not need an immediate fix; use a fully qualified path for the active attribute when retaining the explicit derive, and follow the canonical form in new code.
 
 **Examples:**
 
 ```rust
 // ✅ Canonical — let #[model(...)] add the Model derive
-#[model(table = "people")]
+#[model(app_label = "people")]
 #[derive(Debug, Clone)]
 pub struct Person {
     pub id: i64,
     pub name: String,
 }
 
-// ⚠️ Redundant but supported — Model derive duplicates what #[model(...)] applies
-#[model(table = "people")]
+// ⚠️ Redundant but supported — qualify the active attribute macro
+#[reinhardt::model(app_label = "people", table_name = "people")]
 #[derive(Debug, Clone, Model)]
 pub struct Person {
     pub id: i64,
@@ -146,7 +166,164 @@ let choice = Choice::build()
 
 ---
 
+### Storage-backed model `FileField`
+
+The storage-backed ORM value is opt-in. Enable the `file-storage` feature and
+one provider feature (`file-storage-local`, `file-storage-s3`,
+`file-storage-gcs`, or `file-storage-azure`) in the application. Do not use the
+storage provider matrix as an application default.
+
+`FileField` declarations require a relative UTC `upload_to` template. The
+`file_storage` attribute selects a lowercase storage alias and defaults to
+`default`; aliases must be present in `[storage]` settings and support atomic
+exclusive creation. The macro emits `Model::file_<field>()` as an explicit
+upload descriptor:
+
+```rust
+#[model(app_label = "profiles", table_name = "profiles")]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+struct Profile {
+    #[field(primary_key = true)]
+    id: Option<i64>,
+    #[field(
+        upload_to = "avatars/%Y/%m/%d",
+        file_storage = "private_uploads",
+        max_length = 255
+    )]
+    avatar: db::orm::FileField,
+}
+
+let avatar = Profile::file_avatar().store(upload).await?;
+let mut profile = Profile::build().avatar(avatar).finish();
+profile.save().await?;
+
+let bytes = profile.avatar.open().await?;
+let size = profile.avatar.size().await?;
+let url = profile.avatar.url().await?;
+```
+
+The upload is eager and returns a typed logical reference. The database stores
+only the logical path; hydration restores `private_uploads` from generated
+field metadata, so the alias is not inferred from a provider-prefixed row.
+`url()` uses the alias's configured expiry and `url_with_expiry` accepts an
+explicit duration. Initialize `reinhardt::file_storage` before storing or
+opening a value and retain its RAII activation guard.
+
+The lower-level `store` operation is eager. For model mutations, use the
+coordinator APIs described in the ORM documentation: staged objects are
+compensated when persistence fails. Old-object cleanup is disabled by default;
+set `cleanup = true` only when the field exclusively owns its storage objects.
+Compensation remains enabled. With the admin `file-uploads` feature,
+FileField and ImageField form submissions use multipart mutations with the same
+validation and cleanup policy.
+
 ## Quick Reference
+
+### Partial indexes
+
+Declare a non-unique partial index on a field with `index = true` and a SQL
+predicate in `condition`. Relationship fields resolve to their generated
+database column, such as `user_id`.
+
+```rust
+#[field(index = true, condition = "consumed_at IS NULL")]
+#[rel(foreign_key, related_name = "tokens", db_index = false)]
+user: ForeignKeyField<User>,
+```
+
+Set `db_index = false` when replacing a relationship's default full index with
+a partial index.
+
+## `#[admin(model, ...)]` Form Customization
+
+`#[admin(model, ...)]` configures registered model fields only. It does not
+create virtual fields or a separate form ordering mechanism: use `fields` or
+`fieldsets` for inclusion and order.
+
+The complete form-customization grammar is:
+
+```rust,no_run
+use reinhardt::admin::AdminForm;
+use reinhardt::{admin, model};
+use serde::{Deserialize, Serialize};
+
+#[model(app_label = "blog", table_name = "articles")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct Article {
+    #[field(primary_key = true)]
+    id: i64,
+    #[field(max_length = 255)]
+    title: String,
+    #[field(max_length = 255)]
+    body: String,
+    #[field(max_length = 255)]
+    status: String,
+    #[field(max_length = 255)]
+    category: String,
+    #[field(max_length = 255)]
+    slug: String,
+}
+
+#[derive(Debug, Default)]
+struct ArticleForm;
+
+impl AdminForm for ArticleForm {}
+
+#[admin(model,
+    for = Article,
+    name = "Article",
+    form = ArticleForm,
+    formfield_overrides = [
+        (body, widget = textarea, rows = 8),
+        (status, widget = select, choices = [
+            ("draft", "Draft"),
+            ("published", "Published"),
+        ]),
+        (title, label = "Headline", help_text = "Shown above the article", placeholder = "A clear title", required = true),
+    ],
+    prepopulated_fields = [
+        (slug, sources = [title, category]),
+    ],
+)]
+struct ArticleAdmin;
+```
+
+`form` names a type implementing `AdminForm + Default + 'static`. The generated
+admin uses a single lazily initialized default instance. Its `normalize` and
+`validate` hooks are synchronous and pure; `normalize` receives owned JSON data
+and `validate` borrows the normalized data. Field errors become HTTP 422 field entries and global errors
+become `_all` entries.
+
+Each `formfield_overrides` entry begins with a registered field identifier and
+may set `widget`, `label`, `help_text`, `placeholder`, and `required`. Widget
+values are `text_input`, `email_input`, `number_input`, `checkbox`,
+`date_input`, `datetime_input`, `textarea`, `select`, `multiselect`,
+`autocomplete`, `raw_id`, `many_to_many`, `file_input`, and `hidden_input`.
+The shorthand aliases `text`, `email`, `number`, `date`, `datetime`,
+`multi_select`, `file`, and `hidden` are also accepted.
+`rows` is valid only with `textarea`; `choices` is valid only with `select` or
+`multiselect`. Overrides merge property-wise after inferred and configured
+relation widgets; `AdminForm::schema()` merges last. Requiredness may be
+strengthened, never weakened, and readonly, nullability, relation authorization,
+and save-time relation validation remain mandatory.
+
+Each `prepopulated_fields` entry has `(target, sources = [source, ...])`.
+Targets and sources must be registered resolved-form fields. Targets must be
+editable text fields; sources cannot be file, foreign-key, or many-to-many
+fields. Targets and sources must be unique where required by configuration and
+cannot form cycles. Prepopulation is client-side, sticky per mount, and never
+recomputed by the server. A non-empty edit target remains locked, and editing
+or clearing a target prevents future automatic replacement during that mount.
+
+Foreign-key and many-to-many fields accept only compatible relation widgets and
+retain existing permission-aware lookup and save-time validation. The macro does
+not support arbitrary components or attributes, asynchronous validation, virtual
+fields, configurable transliteration, or server-side prepopulation.
+
+Configured textarea rows use additive `TextAreaWithRows` variants in the public
+field and rendering specifications. Exhaustive downstream matches must handle
+those variants; the legacy unit `TextArea` variants and JSON wire shapes remain
+available.
 
 ### MU-4 (SHOULD): Use Info Companion Type for Cross-Layer Data Transfer
 
@@ -184,6 +361,7 @@ struct Post {
 - `ForeignKeyField<T>` and `OneToOneField<T>`: included as `RelationInfo<T>`
 - `ManyToManyField<Source, Target>`: included as `ManyToManyInfo<Source, Target>`
 - FK `_id` fields (auto-generated): not exposed directly; use `info.author.id`
+- Generated FK/OneToOne `*_id()` accessors return the related primary-key value, so shared native/WASM model code can use the same method call.
 - Relationship marker types are not exposed directly because they do not carry values
 - `#[field(skip = true)]` or `#[field(skip_info = true)]` fields: excluded;
   `#[field(skip_getter = true)]` only suppresses accessor and setter generation
@@ -312,6 +490,7 @@ the label is rendered as a `<legend>` inside the fieldset.
 ---
 
 ### ✅ MUST DO
+- Declare `app_label` explicitly on every model
 - Initialize `#[model(...)]` structs via the macro-generated `build()` builder or zero-argument `new()` alias
 - Add unrelated derives (e.g., `Debug`, `Clone`) via a separate `#[derive(...)]`
 - Keep stable `form!` widget coverage aligned with the documented native HTML output and value state
@@ -320,6 +499,7 @@ the label is rendered as a `<legend>` inside the fieldset.
 - Render `FieldGroup` as semantic `<fieldset>` output with `label` mapped to `<legend>`
 
 ### ✅ SHOULD DO
+- Omit `table_name` when the singular snake_case convention is the intended database name; keep it explicit for existing schemas
 - Use `#[model(...)]` alone (do not also write `#[derive(Model)]`) — the attribute applies the derive for you
 - Prefer `Model::build()` over the zero-argument `Model::new()` alias in tutorials, examples, and call sites where the model schema is expected to evolve (MU-3)
 - Pass FK values via `.<related>(&model)` in `build()` setters when the related instance is already in scope (composes with #4398)

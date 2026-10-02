@@ -1,10 +1,13 @@
 //! Database backend abstraction
 
 use async_trait::async_trait;
+use futures::StreamExt;
 
 use super::{
 	error::Result,
-	types::{DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, TransactionExecutor},
+	types::{
+		DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, RowStream, TransactionExecutor,
+	},
 };
 
 /// Core database backend trait
@@ -12,6 +15,16 @@ use super::{
 pub trait DatabaseBackend: Send + Sync {
 	/// Returns the database type
 	fn database_type(&self) -> DatabaseType;
+
+	/// Returns whether contextual pgvector error hints are supported.
+	fn supports_pgvector_error_hints(&self) -> bool {
+		false
+	}
+
+	/// Returns whether this backend can stream rows without eager materialization.
+	fn supports_row_streaming(&self) -> bool {
+		false
+	}
 
 	/// Generates a placeholder for the given parameter index (1-based)
 	fn placeholder(&self, index: usize) -> String;
@@ -37,14 +50,117 @@ pub trait DatabaseBackend: Send + Sync {
 	/// Executes a query that modifies the database
 	async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult>;
 
+	/// Executes a query with structural pgvector operation context.
+	async fn execute_with_context(
+		&self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let result = self.execute(sql, params).await;
+		if self.database_type() == DatabaseType::Postgres && self.supports_pgvector_error_hints() {
+			result
+				.map_err(|error| super::error::decorate_error_with_pgvector_context(error, context))
+		} else {
+			result
+		}
+	}
+
 	/// Fetches a single row from the database
 	async fn fetch_one(&self, sql: &str, params: Vec<QueryValue>) -> Result<Row>;
+
+	/// Fetches one row with structural pgvector operation context.
+	async fn fetch_one_with_context(
+		&self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let result = self.fetch_one(sql, params).await;
+		if self.database_type() == DatabaseType::Postgres && self.supports_pgvector_error_hints() {
+			result
+				.map_err(|error| super::error::decorate_error_with_pgvector_context(error, context))
+		} else {
+			result
+		}
+	}
 
 	/// Fetches all matching rows from the database
 	async fn fetch_all(&self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>>;
 
+	/// Fetches rows with structural pgvector operation context.
+	async fn fetch_all_with_context(
+		&self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let result = self.fetch_all(sql, params).await;
+		if self.database_type() == DatabaseType::Postgres && self.supports_pgvector_error_hints() {
+			result
+				.map_err(|error| super::error::decorate_error_with_pgvector_context(error, context))
+		} else {
+			result
+		}
+	}
+
+	/// Streams matching rows without eager materialization.
+	///
+	/// `chunk_size` is a driver fetch or bounded-buffer hint. Implementations
+	/// must not emulate streaming with repeated `LIMIT` and `OFFSET` queries.
+	fn fetch_stream<'a>(
+		&'a self,
+		_sql: String,
+		_params: Vec<QueryValue>,
+		_chunk_size: usize,
+	) -> Result<RowStream<'a>> {
+		Err(super::error::DatabaseError::new(
+			super::error::DatabaseErrorKind::Unsupported,
+			"Row streaming is not supported by this database backend",
+		)
+		.into())
+	}
+
+	/// Streams rows with structural pgvector operation context.
+	fn fetch_stream_with_context<'a>(
+		&'a self,
+		sql: String,
+		params: Vec<QueryValue>,
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		let decorate =
+			self.database_type() == DatabaseType::Postgres && self.supports_pgvector_error_hints();
+		let stream = self.fetch_stream(sql, params, chunk_size)?;
+		if decorate {
+			Ok(Box::pin(stream.map(move |result| {
+				result.map_err(|error| {
+					super::error::decorate_error_with_pgvector_context(error, context)
+				})
+			})))
+		} else {
+			Ok(stream)
+		}
+	}
+
 	/// Fetches an optional single row from the database
 	async fn fetch_optional(&self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>>;
+
+	/// Fetches an optional row with structural pgvector operation context.
+	async fn fetch_optional_with_context(
+		&self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		let result = self.fetch_optional(sql, params).await;
+		if self.database_type() == DatabaseType::Postgres && self.supports_pgvector_error_hints() {
+			result
+				.map_err(|error| super::error::decorate_error_with_pgvector_context(error, context))
+		} else {
+			result
+		}
+	}
 
 	/// Begin a database transaction and return a dedicated executor
 	///
@@ -58,6 +174,14 @@ pub trait DatabaseBackend: Send + Sync {
 	/// A boxed `TransactionExecutor` that holds the dedicated connection
 	/// and provides methods for executing queries within the transaction.
 	async fn begin(&self) -> Result<Box<dyn TransactionExecutor>>;
+
+	/// Begins a transaction that acquires write intent before reading.
+	///
+	/// Backends whose ordinary transaction already provides the required
+	/// locking semantics may use the default implementation.
+	async fn begin_write(&self) -> Result<Box<dyn TransactionExecutor>> {
+		self.begin().await
+	}
 
 	/// Begin a database transaction with a specific isolation level
 	///
@@ -89,4 +213,127 @@ pub trait DatabaseBackend: Send + Sync {
 
 	/// Returns self as &dyn std::any::Any for downcasting
 	fn as_any(&self) -> &dyn std::any::Any;
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	struct ContextErrorBackendWithoutCapability {
+		database_type: DatabaseType,
+		supports_pgvector_error_hints: bool,
+	}
+
+	#[async_trait]
+	impl DatabaseBackend for ContextErrorBackendWithoutCapability {
+		fn database_type(&self) -> DatabaseType {
+			self.database_type
+		}
+
+		fn supports_pgvector_error_hints(&self) -> bool {
+			self.supports_pgvector_error_hints
+		}
+
+		fn placeholder(&self, _index: usize) -> String {
+			"?".to_owned()
+		}
+
+		fn supports_returning(&self) -> bool {
+			false
+		}
+
+		fn supports_on_conflict(&self) -> bool {
+			false
+		}
+
+		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
+			Err(super::super::error::DatabaseError::new(
+				super::super::error::DatabaseErrorKind::Query,
+				"operator does not exist: vector <=> vector",
+			)
+			.with_code("42883")
+			.into())
+		}
+
+		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
+			panic!("context default backend test does not fetch rows")
+		}
+
+		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
+			panic!("context default backend test does not fetch rows")
+		}
+
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Option<Row>> {
+			panic!("context default backend test does not fetch rows")
+		}
+
+		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
+			panic!("context default backend test does not begin transactions")
+		}
+
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+	}
+
+	#[rstest::rstest]
+	#[case(DatabaseType::Mysql)]
+	#[case(DatabaseType::Sqlite)]
+	#[case(DatabaseType::Postgres)]
+	#[tokio::test]
+	async fn backend_default_without_capability_does_not_decorate_pgvector_shaped_error(
+		#[case] database_type: DatabaseType,
+	) {
+		let backend = ContextErrorBackendWithoutCapability {
+			database_type,
+			supports_pgvector_error_hints: false,
+		};
+
+		let error = backend
+			.execute_with_context(
+				"SELECT embedding <=> ? FROM users",
+				Vec::new(),
+				Some(super::super::error::PgvectorOperationKind::DistanceOperator),
+			)
+			.await
+			.unwrap_err();
+
+		assert_eq!(
+			error.database_error().and_then(|error| error.code()),
+			Some("42883")
+		);
+		assert!(!error.to_string().contains("CreateExtension::new"));
+	}
+
+	#[rstest::rstest]
+	#[case(DatabaseType::Mysql)]
+	#[case(DatabaseType::Sqlite)]
+	#[tokio::test]
+	async fn backend_default_requires_postgres_even_when_capability_is_enabled(
+		#[case] database_type: DatabaseType,
+	) {
+		let backend = ContextErrorBackendWithoutCapability {
+			database_type,
+			supports_pgvector_error_hints: true,
+		};
+
+		let error = backend
+			.execute_with_context(
+				"SELECT embedding <=> ? FROM users",
+				Vec::new(),
+				Some(super::super::error::PgvectorOperationKind::DistanceOperator),
+			)
+			.await
+			.unwrap_err();
+
+		assert_eq!(
+			error.database_error().and_then(|error| error.code()),
+			Some("42883")
+		);
+		assert!(!error.to_string().contains("CreateExtension::new"));
+	}
 }

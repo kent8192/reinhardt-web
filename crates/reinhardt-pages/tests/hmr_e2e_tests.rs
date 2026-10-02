@@ -21,8 +21,11 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use futures_util::StreamExt;
-use reinhardt_pages::hmr::{ChangeKind, HmrConfig, HmrMessage, HmrServer, hmr_script_tag};
+use futures_util::{SinkExt, StreamExt};
+use reinhardt_pages::hmr::{
+	ChangeKind, CompiledBuildId, DynamicAbiHash, HmrConfig, HmrMessage, HmrServer, PatchGeneration,
+	SourceId, StaticTemplateNode, TemplateKey, TemplatePatch, TemplatePatchBatch, hmr_script_tag,
+};
 use rstest::rstest;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
@@ -130,6 +133,74 @@ async fn test_e2e_hmr_full_reload_message_json_structure() {
 	);
 	// No `path` field on full_reload
 	assert!(value.get("path").is_none());
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_e2e_hmr_abi_handshake_replays_or_reloads() {
+	// Arrange
+	let (server, addr) = start_enabled_server().await;
+	let key = TemplateKey {
+		source_id: SourceId("src/client.rs".to_owned()),
+		line: 12,
+		column: 5,
+		nested_template_index: 0,
+	};
+	let abi_hash = DynamicAbiHash([6; 32]);
+	let batch = TemplatePatchBatch {
+		build_id: CompiledBuildId([4; 32]),
+		manifest_digest: [5; 32],
+		generation: PatchGeneration(2),
+		patches: vec![TemplatePatch {
+			key: key.clone(),
+			abi_hash,
+			static_tree: StaticTemplateNode::Text("patched".to_owned()),
+			placements: Vec::new(),
+		}],
+	};
+	server.notify_template_patch(batch);
+
+	let (mut matching_ws, _) = connect_async(loopback_ws_url(addr)).await.unwrap();
+	let _ = recv_text(&mut matching_ws).await;
+	let matching_hello = HmrMessage::ClientHello {
+		build_id: CompiledBuildId([4; 32]),
+		manifest_digest: [5; 32],
+		abi_hashes: vec![(key.clone(), abi_hash)],
+	}
+	.to_json()
+	.unwrap();
+	matching_ws
+		.send(Message::Text(matching_hello.into()))
+		.await
+		.unwrap();
+
+	// Act
+	let replayed: HmrMessage = serde_json::from_str(&recv_text(&mut matching_ws).await).unwrap();
+
+	// Assert
+	assert!(matches!(
+		replayed,
+		HmrMessage::TemplatePatchBatch {
+			generation: PatchGeneration(2),
+			..
+		}
+	));
+
+	let (mut stale_ws, _) = connect_async(loopback_ws_url(addr)).await.unwrap();
+	let _ = recv_text(&mut stale_ws).await;
+	let stale_hello = HmrMessage::ClientHello {
+		build_id: CompiledBuildId([9; 32]),
+		manifest_digest: [9; 32],
+		abi_hashes: vec![(key, DynamicAbiHash([9; 32]))],
+	}
+	.to_json()
+	.unwrap();
+	stale_ws
+		.send(Message::Text(stale_hello.into()))
+		.await
+		.unwrap();
+	let reload: HmrMessage = serde_json::from_str(&recv_text(&mut stale_ws).await).unwrap();
+	assert!(matches!(reload, HmrMessage::FullReload { .. }));
 }
 
 // ---------------------------------------------------------------------------

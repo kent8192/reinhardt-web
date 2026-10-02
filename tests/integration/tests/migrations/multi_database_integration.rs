@@ -41,19 +41,19 @@ fn create_test_migration(
 	name: &'static str,
 	operations: Vec<Operation>,
 ) -> Migration {
-	Migration {
-		app_label: app.to_string(),
-		name: name.to_string(),
+	Migration::from_parts(
+		name.to_string(),
+		app.to_string(),
 		operations,
-		dependencies: vec![],
-		replaces: vec![],
-		atomic: true,
-		initial: None,
-		state_only: false,
-		database_only: false,
-		swappable_dependencies: vec![],
-		optional_dependencies: vec![],
-	}
+		vec![],
+		vec![],
+		true,
+		None,
+		false,
+		false,
+		vec![],
+		vec![],
+	)
 }
 
 /// Create a migration with explicit dependencies for ordering
@@ -63,45 +63,49 @@ fn create_test_migration_with_deps(
 	operations: Vec<Operation>,
 	dependencies: Vec<(String, String)>,
 ) -> Migration {
-	Migration {
-		app_label: app.to_string(),
-		name: name.to_string(),
+	Migration::from_parts(
+		name.to_string(),
+		app.to_string(),
 		operations,
 		dependencies,
-		replaces: vec![],
-		atomic: true,
-		initial: None,
-		state_only: false,
-		database_only: false,
-		swappable_dependencies: vec![],
-		optional_dependencies: vec![],
-	}
+		vec![],
+		true,
+		None,
+		false,
+		false,
+		vec![],
+		vec![],
+	)
 }
 
 /// Create a basic column definition
 fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
-	ColumnDefinition {
-		name: name.to_string(),
-		type_definition: type_def,
-		not_null: false,
-		unique: false,
-		primary_key: false,
-		auto_increment: false,
-		default: None,
-	}
+	ColumnDefinition::from_parts(
+		name.to_string(),
+		type_def,
+		false,
+		false,
+		false,
+		false,
+		None,
+		None,
+		None,
+	)
 }
 
 /// Create an auto-increment primary key column
 fn create_auto_pk_column(name: &str) -> ColumnDefinition {
-	ColumnDefinition {
-		name: name.to_string(),
-		type_definition: FieldType::Integer,
-		not_null: true,
-		unique: false,
-		primary_key: true,
-		auto_increment: true,
-		default: None,
-	}
+	ColumnDefinition::from_parts(
+		name.to_string(),
+		FieldType::Integer,
+		true,
+		false,
+		true,
+		true,
+		None,
+		None,
+		None,
+	)
 }
 
 // ============================================================================
@@ -201,15 +205,17 @@ async fn test_json_jsonb_types(
 		vec![Operation::CreateTable {
 			name: leak_str("json_table").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: false,
-					default: None,
-				},
+				ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Custom("SERIAL".to_string()),
+					true,
+					false,
+					true,
+					false,
+					None,
+					None,
+					None,
+				),
 				create_basic_column("json_data", FieldType::Custom("JSON".to_string())),
 				create_basic_column("jsonb_data", FieldType::Custom("JSONB".to_string())),
 			],
@@ -276,15 +282,17 @@ async fn test_postgres_array_type(
 		vec![Operation::CreateTable {
 			name: leak_str("array_table").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: false,
-					default: None,
-				},
+				ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Custom("SERIAL".to_string()),
+					true,
+					false,
+					true,
+					false,
+					None,
+					None,
+					None,
+				),
 				create_basic_column("tags", FieldType::Custom("TEXT[]".to_string())),
 				create_basic_column("scores", FieldType::Custom("INTEGER[]".to_string())),
 			],
@@ -350,15 +358,17 @@ async fn test_transaction_isolation_levels(
 		vec![Operation::CreateTable {
 			name: leak_str("isolation_table").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: false,
-					default: None,
-				},
+				ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Custom("SERIAL".to_string()),
+					true,
+					false,
+					true,
+					false,
+					None,
+					None,
+					None,
+				),
 				create_basic_column("value", FieldType::Integer),
 			],
 			constraints: vec![],
@@ -439,15 +449,17 @@ async fn test_cascade_delete(
 		vec![Operation::CreateTable {
 			name: leak_str("cascade_parent").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: false,
-					default: None,
-				},
+				ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Custom("SERIAL".to_string()),
+					true,
+					false,
+					true,
+					false,
+					None,
+					None,
+					None,
+				),
 				create_basic_column("name", FieldType::VarChar(100)),
 			],
 			constraints: vec![],
@@ -465,24 +477,28 @@ async fn test_cascade_delete(
 		vec![Operation::CreateTable {
 			name: leak_str("cascade_child").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: false,
-					default: None,
-				},
-				ColumnDefinition {
-					name: "parent_id".to_string(),
-					type_definition: FieldType::Integer,
-					not_null: true,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: None,
-				},
+				ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Custom("SERIAL".to_string()),
+					true,
+					false,
+					true,
+					false,
+					None,
+					None,
+					None,
+				),
+				ColumnDefinition::from_parts(
+					"parent_id".to_string(),
+					FieldType::Integer,
+					true,
+					false,
+					false,
+					false,
+					None,
+					None,
+					None,
+				),
 				create_basic_column("data", FieldType::Text),
 			],
 			constraints: vec![Constraint::ForeignKey {
@@ -631,15 +647,17 @@ async fn test_lock_contention(
 		vec![Operation::CreateTable {
 			name: leak_str("lock_table").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: false,
-					default: None,
-				},
+				ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Custom("SERIAL".to_string()),
+					true,
+					false,
+					true,
+					false,
+					None,
+					None,
+					None,
+				),
 				create_basic_column("value", FieldType::Integer),
 			],
 			constraints: vec![],
@@ -714,15 +732,17 @@ async fn test_common_type_compatibility(
 		vec![Operation::CreateTable {
 			name: leak_str("common_types_table").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: false,
-					default: None,
-				},
+				ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Custom("SERIAL".to_string()),
+					true,
+					false,
+					true,
+					false,
+					None,
+					None,
+					None,
+				),
 				create_basic_column("int_col", FieldType::Integer),
 				create_basic_column("bigint_col", FieldType::BigInteger),
 				create_basic_column("text_col", FieldType::Text),

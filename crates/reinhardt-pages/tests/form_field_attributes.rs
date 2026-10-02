@@ -1,5 +1,8 @@
 //! Regression coverage for native form attributes and accessible help text.
 
+#[path = "fixtures/form_scope.rs"]
+mod form_scope;
+
 use reinhardt_pages::{Page, form, use_form};
 
 #[cfg(target_arch = "wasm32")]
@@ -71,7 +74,9 @@ fn assert_rendered_fields(
 		let _portal = mount_portal(PortalTarget::body(), page).expect("mount form");
 		let document = web_sys::window().unwrap().document().unwrap();
 		for (id, attributes) in expected {
-			let element = document.get_element_by_id(id).expect("mounted control");
+			let element = document
+				.get_element_by_id(id)
+				.unwrap_or_else(|| panic!("mounted control #{id}"));
 			for (name, value) in *attributes {
 				assert_eq!(
 					element.get_attribute(name).as_deref(),
@@ -122,560 +127,567 @@ fn assert_rendered_fields(
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 #[cfg_attr(not(target_arch = "wasm32"), test)]
 fn built_in_and_grouped_fields_preserve_applicable_metadata() {
-	// Arrange
-	let form = form! {
-		name: AttributeForm,
-		action: "/attributes",
-		fields: {
-			name: CharField {
-				label: "Name",
-				required,
-				min_length: 2,
-				max_length: 40,
-				pattern: "[A-Za-z ]+",
-				autofocus,
-				disabled: false,
-				readonly: false,
-				placeholder: "Full name",
-				autocomplete: "name",
-				help_text: "<strong>Use \"full\" name & details.</strong>",
-				attrs: {
-					aria_describedby: "external-description",
-					data_testid: "name-control"
-				},
-			}
-			name_help: CharField {}
-			paragraph: CharField {
-				wrapper: p {
-					id: "paragraph-wrapper"
-				},
-				help_text: "<strong>Use \"full\" name & details.</strong>",
-			}
-			bio: TextField {
-				required: true,
-				disabled: true,
-				readonly: true,
-				autofocus: false,
-				min_length: 3,
-				max_length: 120,
-				pattern: "[A-Z]+",
-				placeholder: "Biography",
-				autocomplete: "off",
-				help_text: "<strong>Use \"full\" name & details.</strong>",
-			}
-			locked: CharField { disabled }
-			reference: CharField { readonly }
-			enabled: CharField {
-				required: false,
-				disabled: false,
-				readonly: false,
-				autofocus: false,
-				attrs: {
-					aria_describedby: "existing-description"
-				},
-			}
-			count: IntegerField {
-				min_value: 1,
-				max_value: 100,
-				readonly: true,
-				min_length: 2,
-				max_length: 3,
-				pattern: "[0-9]+",
-			}
-			min_override: IntegerField {
-				min_value: 1,
-				max_value: 10,
-				min: 3,
-				step: 2
-			}
-			max_override: FloatField {
-				min_value: 1,
-				max_value: 10,
-				max: 8,
-				step: "0.5"
-			}
-			range: IntegerField {
-				widget: RangeInput,
-				min_value: 1,
-				max_value: 10,
-				readonly
-			}
-			check: BooleanField {
-				required,
-				disabled,
-				readonly,
-				min_length: 2,
-				pattern: "true",
-				help_text: "<strong>Use \"full\" name & details.</strong>",
-			}
-			radio: ChoiceField<i64> {
-				widget: RadioSelect,
-				required: true,
-				disabled: true,
-				readonly: true,
-				choices_from: "choices",
-				choice_value: "value",
-				choice_label: "label",
-				help_text: "<strong>Use \"full\" name & details.</strong>",
-				attrs: {
-					aria_describedby: "radio-instructions"
-				},
-			}
-			select: ChoiceField<String> {
-				widget: Select,
-				required,
-				disabled,
-				readonly,
-				choices: [("a", "First"), ("b", "Second")],
-				autocomplete: "off",
-				help_text: "<strong>Use \"full\" name & details.</strong>",
-			}
-			multi: MultipleChoiceField<String> {
-				widget: SelectMultiple,
-				bind: false,
-				disabled: false,
-				readonly: true,
-				choices: [("a", "First"), ("b", "Second")],
-			}
-			avatar: FileField {
-				accept: "image/png",
-				capture: "environment",
-				disabled: true,
-				readonly: true
-			}
-			address: FieldGroup {
-				label: "Address",
-				fields: {
-					street: CharField {
-						min_length: 4,
-						max_length: 80,
-						readonly,
-						disabled: true,
-						help_text: "<strong>Use \"full\" name & details.</strong>",
+	reinhardt_pages::reactive::ReactiveScope::run(|| {
+		// Arrange
+		let form = form! {
+			name: AttributeForm,
+			action: "/attributes",
+			fields: {
+				name: CharField {
+					label: "Name",
+					required,
+					min_length: 2,
+					max_length: 40,
+					pattern: "[A-Za-z ]+",
+					autofocus,
+					disabled: false,
+					readonly: false,
+					placeholder: "Full name",
+					autocomplete: "name",
+					help_text: "<strong>Use \"full\" name & details.</strong>",
+					attrs: {
+						aria_describedby: "external-description",
+						data_testid: "name-control"
+					},
+				}
+				name_help: CharField {}
+				paragraph: CharField {
+					wrapper: p {
+						id: "paragraph-wrapper"
+					},
+					help_text: "<strong>Use \"full\" name & details.</strong>",
+				}
+				bio: TextField {
+					required: true,
+					disabled: true,
+					readonly: true,
+					autofocus: false,
+					min_length: 3,
+					max_length: 120,
+					pattern: "[A-Z]+",
+					placeholder: "Biography",
+					autocomplete: "off",
+					help_text: "<strong>Use \"full\" name & details.</strong>",
+				}
+				locked: CharField { disabled }
+				reference: CharField { readonly }
+				enabled: CharField {
+					required: false,
+					disabled: false,
+					readonly: false,
+					autofocus: false,
+					attrs: {
+						aria_describedby: "existing-description"
+					},
+				}
+				count: IntegerField {
+					min_value: 1,
+					max_value: 100,
+					readonly: true,
+					min_length: 2,
+					max_length: 3,
+					pattern: "[0-9]+",
+				}
+				min_override: IntegerField {
+					min_value: 1,
+					max_value: 10,
+					min: 3,
+					step: 2
+				}
+				max_override: FloatField {
+					min_value: 1,
+					max_value: 10,
+					max: 8,
+					step: "0.5"
+				}
+				range: IntegerField {
+					widget: RangeInput,
+					min_value: 1,
+					max_value: 10,
+					readonly
+				}
+				check: BooleanField {
+					required,
+					disabled,
+					readonly,
+					min_length: 2,
+					pattern: "true",
+					help_text: "<strong>Use \"full\" name & details.</strong>",
+				}
+				radio: ChoiceField<i64> {
+					widget: RadioSelect,
+					required: true,
+					disabled: true,
+					readonly: true,
+					choices_from: "choices",
+					choice_value: "value",
+					choice_label: "label",
+					help_text: "<strong>Use \"full\" name & details.</strong>",
+					attrs: {
+						aria_describedby: "radio-instructions"
+					},
+				}
+				select: ChoiceField<String> {
+					widget: Select,
+					required,
+					disabled,
+					readonly,
+					choices: [("a", "First"), ("b", "Second")],
+					autocomplete: "off",
+					help_text: "<strong>Use \"full\" name & details.</strong>",
+				}
+				multi: MultipleChoiceField<String> {
+					widget: SelectMultiple,
+					bind: false,
+					disabled: false,
+					readonly: true,
+					choices: [("a", "First"), ("b", "Second")],
+				}
+				avatar: FileField {
+					accept: "image/png",
+					capture: "environment",
+					disabled: true,
+					readonly: true
+				}
+				address: FieldGroup {
+					label: "Address",
+					fields: {
+						street: CharField {
+							min_length: 4,
+							max_length: 80,
+							readonly,
+							disabled: true,
+							help_text: "<strong>Use \"full\" name & details.</strong>",
+						}
 					}
 				}
 			}
-		}
-	};
-	form.radio_choices()
-		.set(vec![(1, "First".into()), (2, "Second".into())]);
+		};
+		form.radio_choices()
+			.set(vec![(1, "First".into()), (2, "Second".into())]);
 
-	// Act / Assert
-	assert_rendered_fields(
-		form.into_page(),
-		&[
-			(
-				"name",
-				&[
-					("minlength", Some("2")),
-					("maxlength", Some("40")),
-					("pattern", Some("[A-Za-z ]+")),
-					("autofocus", Some("autofocus")),
-					("required", Some("required")),
-					("disabled", None),
-					("readonly", None),
-					("placeholder", Some("Full name")),
-					("autocomplete", Some("name")),
-					("data-testid", Some("name-control")),
-					("aria-describedby", Some("external-description name--help")),
-				],
-			),
-			(
-				"name_help",
-				&[
-					("name", Some("name_help")),
-					("type", Some("text")),
-					("aria-describedby", None),
-				],
-			),
-			(
-				"paragraph",
-				&[("aria-describedby", Some("paragraph--help"))],
-			),
-			(
-				"bio",
-				&[
-					("minlength", Some("3")),
-					("maxlength", Some("120")),
-					("pattern", None),
-					("required", Some("required")),
-					("disabled", Some("disabled")),
-					("readonly", Some("readonly")),
-					("autofocus", None),
-					("placeholder", Some("Biography")),
-					("autocomplete", Some("off")),
-					("aria-describedby", Some("bio--help")),
-				],
-			),
-			(
-				"locked",
-				&[("disabled", Some("disabled")), ("aria-describedby", None)],
-			),
-			("reference", &[("readonly", Some("readonly"))]),
-			(
-				"enabled",
-				&[
-					("required", None),
-					("disabled", None),
-					("readonly", None),
-					("autofocus", None),
-					("aria-describedby", Some("existing-description")),
-				],
-			),
-			(
-				"count",
-				&[
-					("min", Some("1")),
-					("max", Some("100")),
-					("readonly", Some("readonly")),
-					("minlength", None),
-					("maxlength", None),
-					("pattern", None),
-				],
-			),
-			(
-				"min_override",
-				&[("min", Some("3")), ("max", Some("10")), ("step", Some("2"))],
-			),
-			(
-				"max_override",
-				&[
-					("min", Some("1")),
-					("max", Some("8")),
-					("step", Some("0.5")),
-				],
-			),
-			(
-				"range",
-				&[("min", Some("1")), ("max", Some("10")), ("readonly", None)],
-			),
-			(
-				"check",
-				&[
-					("required", Some("required")),
-					("disabled", Some("disabled")),
-					("readonly", None),
-					("minlength", None),
-					("pattern", None),
-					("aria-describedby", Some("check--help")),
-				],
-			),
-			(
-				"radio_0",
-				&[
-					("disabled", Some("disabled")),
-					("readonly", None),
-					("required", Some("required")),
-					("aria-describedby", Some("radio-instructions radio--help")),
-				],
-			),
-			(
-				"radio_1",
-				&[
-					("disabled", Some("disabled")),
-					("readonly", None),
-					("aria-describedby", Some("radio-instructions radio--help")),
-				],
-			),
-			(
-				"select",
-				&[
-					("required", Some("required")),
-					("disabled", Some("disabled")),
-					("readonly", None),
-					("autocomplete", Some("off")),
-					("aria-describedby", Some("select--help")),
-				],
-			),
-			(
-				"multi",
-				&[
-					("multiple", Some("multiple")),
-					("disabled", None),
-					("readonly", None),
-				],
-			),
-			(
-				"avatar",
-				&[
-					("accept", Some("image/png")),
-					("capture", Some("environment")),
-					("disabled", Some("disabled")),
-					("readonly", None),
-				],
-			),
-			(
-				"street",
-				&[
-					("minlength", Some("4")),
-					("maxlength", Some("80")),
-					("readonly", Some("readonly")),
-					("disabled", Some("disabled")),
-					("aria-describedby", Some("street--help")),
-				],
-			),
-		],
-		&[
-			("name--help", "p", None),
-			("paragraph--help", "span", Some("paragraph-wrapper")),
-			("bio--help", "p", None),
-			("check--help", "p", None),
-			("radio--help", "p", None),
-			("select--help", "p", None),
-			("street--help", "p", None),
-		],
-	);
+		// Act / Assert
+		assert_rendered_fields(
+			form.clone().into_page(),
+			&[
+				(
+					"name",
+					&[
+						("minlength", Some("2")),
+						("maxlength", Some("40")),
+						("pattern", Some("[A-Za-z ]+")),
+						("autofocus", Some("autofocus")),
+						("required", Some("required")),
+						("disabled", None),
+						("readonly", None),
+						("placeholder", Some("Full name")),
+						("autocomplete", Some("name")),
+						("data-testid", Some("name-control")),
+						("aria-describedby", Some("external-description name--help")),
+					],
+				),
+				(
+					"name_help",
+					&[
+						("name", Some("name_help")),
+						("type", Some("text")),
+						("aria-describedby", None),
+					],
+				),
+				(
+					"paragraph",
+					&[("aria-describedby", Some("paragraph--help"))],
+				),
+				(
+					"bio",
+					&[
+						("minlength", Some("3")),
+						("maxlength", Some("120")),
+						("pattern", None),
+						("required", Some("required")),
+						("disabled", Some("disabled")),
+						("readonly", Some("readonly")),
+						("autofocus", None),
+						("placeholder", Some("Biography")),
+						("autocomplete", Some("off")),
+						("aria-describedby", Some("bio--help")),
+					],
+				),
+				(
+					"locked",
+					&[("disabled", Some("disabled")), ("aria-describedby", None)],
+				),
+				("reference", &[("readonly", Some("readonly"))]),
+				(
+					"enabled",
+					&[
+						("required", None),
+						("disabled", None),
+						("readonly", None),
+						("autofocus", None),
+						("aria-describedby", Some("existing-description")),
+					],
+				),
+				(
+					"count",
+					&[
+						("min", Some("1")),
+						("max", Some("100")),
+						("readonly", Some("readonly")),
+						("minlength", None),
+						("maxlength", None),
+						("pattern", None),
+					],
+				),
+				(
+					"min_override",
+					&[("min", Some("3")), ("max", Some("10")), ("step", Some("2"))],
+				),
+				(
+					"max_override",
+					&[
+						("min", Some("1")),
+						("max", Some("8")),
+						("step", Some("0.5")),
+					],
+				),
+				(
+					"range",
+					&[("min", Some("1")), ("max", Some("10")), ("readonly", None)],
+				),
+				(
+					"check",
+					&[
+						("required", Some("required")),
+						("disabled", Some("disabled")),
+						("readonly", None),
+						("minlength", None),
+						("pattern", None),
+						("aria-describedby", Some("check--help")),
+					],
+				),
+				(
+					"radio_0",
+					&[
+						("disabled", Some("disabled")),
+						("readonly", None),
+						("required", Some("required")),
+						("aria-describedby", Some("radio-instructions radio--help")),
+					],
+				),
+				(
+					"radio_1",
+					&[
+						("disabled", Some("disabled")),
+						("readonly", None),
+						("aria-describedby", Some("radio-instructions radio--help")),
+					],
+				),
+				(
+					"select",
+					&[
+						("required", Some("required")),
+						("disabled", Some("disabled")),
+						("readonly", None),
+						("autocomplete", Some("off")),
+						("aria-describedby", Some("select--help")),
+					],
+				),
+				(
+					"multi",
+					&[
+						("multiple", Some("multiple")),
+						("disabled", None),
+						("readonly", None),
+					],
+				),
+				(
+					"avatar",
+					&[
+						("accept", Some("image/png")),
+						("capture", Some("environment")),
+						("disabled", Some("disabled")),
+						("readonly", None),
+					],
+				),
+				(
+					"street",
+					&[
+						("minlength", Some("4")),
+						("maxlength", Some("80")),
+						("readonly", Some("readonly")),
+						("disabled", Some("disabled")),
+						("aria-describedby", Some("street--help")),
+					],
+				),
+			],
+			&[
+				("name--help", "p", None),
+				("paragraph--help", "span", Some("paragraph-wrapper")),
+				("bio--help", "p", None),
+				("check--help", "p", None),
+				("radio--help", "p", None),
+				("select--help", "p", None),
+				("street--help", "p", None),
+			],
+		);
+	})
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 #[cfg_attr(not(target_arch = "wasm32"), tokio::test)]
 async fn dynamic_radio_autofocus_is_single_and_choice_disabled_is_preserved() {
-	#[cfg(target_arch = "wasm32")]
-	struct Choices {
-		items: Vec<Choice>,
-	}
-	#[cfg(target_arch = "wasm32")]
-	struct Choice {
-		value: i64,
-		label: String,
-		disabled: bool,
-	}
-	#[cfg(target_arch = "wasm32")]
-	async fn load_choices() -> Result<Choices, reinhardt_pages::ServerFnError> {
-		Ok(Choices {
-			items: vec![
-				Choice {
-					value: 1,
-					label: "First".into(),
-					disabled: false,
-				},
-				Choice {
-					value: 2,
-					label: "Second".into(),
-					disabled: true,
-				},
-			],
-		})
-	}
-
-	// Arrange
-	let form = form! {
-		name: RadioAutofocusForm,
-		action: "/radio-autofocus",
-		choices_loader: load_choices,
-		fields: {
-			focused: ChoiceField<i64> {
-				widget: RadioSelect,
-				autofocus: true,
-				disabled: false,
-				choices_from: "items",
-				choice_value: "value",
-				choice_label: "label",
-				choice_disabled: "disabled",
-			}
+	crate::form_scope::run(async {
+		#[cfg(target_arch = "wasm32")]
+		struct Choices {
+			items: Vec<Choice>,
 		}
-	};
-	form.focused_choices()
-		.set(vec![(1, "First".into()), (2, "Second".into())]);
-
-	// Act: native SSR uses its supplied choices; the WASM loader adds choice metadata.
-	#[cfg(target_arch = "wasm32")]
-	form.load_choices().await.expect("load choice metadata");
-
-	// Assert
-	assert_rendered_fields(
-		form.into_page(),
-		&[
-			(
-				"focused_0",
-				&[("autofocus", Some("autofocus")), ("disabled", None)],
-			),
-			(
-				"focused_1",
-				&[
-					("autofocus", None),
-					(
-						"disabled",
-						cfg!(target_arch = "wasm32").then_some("disabled"),
-					),
+		#[cfg(target_arch = "wasm32")]
+		struct Choice {
+			value: i64,
+			label: String,
+			disabled: bool,
+		}
+		#[cfg(target_arch = "wasm32")]
+		async fn load_choices() -> Result<Choices, reinhardt_pages::ServerFnError> {
+			Ok(Choices {
+				items: vec![
+					Choice {
+						value: 1,
+						label: "First".into(),
+						disabled: false,
+					},
+					Choice {
+						value: 2,
+						label: "Second".into(),
+						disabled: true,
+					},
 				],
-			),
-		],
-		&[],
-	);
+			})
+		}
+
+		// Arrange
+		let form = form! {
+			name: RadioAutofocusForm,
+			action: "/radio-autofocus",
+			choices_loader: load_choices,
+			fields: {
+				focused: ChoiceField<i64> {
+					widget: RadioSelect,
+					autofocus: true,
+					disabled: false,
+					choices_from: "items",
+					choice_value: "value",
+					choice_label: "label",
+					choice_disabled: "disabled",
+				}
+			}
+		};
+		form.focused_choices()
+			.set(vec![(1, "First".into()), (2, "Second".into())]);
+
+		// Act: native SSR uses its supplied choices; the WASM loader adds choice metadata.
+		#[cfg(target_arch = "wasm32")]
+		form.load_choices().await.expect("load choice metadata");
+
+		// Assert
+		assert_rendered_fields(
+			form.clone().into_page(),
+			&[
+				(
+					"focused_0",
+					&[("autofocus", Some("autofocus")), ("disabled", None)],
+				),
+				(
+					"focused_1",
+					&[
+						("autofocus", None),
+						(
+							"disabled",
+							cfg!(target_arch = "wasm32").then_some("disabled"),
+						),
+					],
+				),
+			],
+			&[],
+		);
+	})
+	.await
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 #[cfg_attr(not(target_arch = "wasm32"), test)]
 fn collection_fields_preserve_metadata_and_indexed_help_links_after_reordering() {
-	// Arrange
-	let form = form! {
-		name: CollectionAttributeForm,
-		action: "/collection-attributes",
-		fields: {
-			items: FieldArray {
-				fields: {
-					name: CharField {
-						required: true,
-						min_length: 2,
-						max_length: 40,
-						pattern: "[A-Za-z ]+",
-						disabled: true,
-						readonly: true,
-						autofocus: false,
-						placeholder: "Item name",
-						autocomplete: "off",
-						help_text: "<strong>Use \"full\" name & details.</strong>",
-						attrs: {
-							aria_describedby: "collection-instructions",
-							data_testid: "item-name"
-						},
-					}
-					notes: TextField {
-						min_length: 3,
-						max_length: 120,
-						pattern: "[A-Z]+",
-						readonly,
-						disabled: false,
-						required: false,
-						help_text: "<strong>Use \"full\" name & details.</strong>",
-					}
-					quantity: IntegerField {
-						min_value: 1,
-						max_value: 10,
-						min: 3,
-						step: 2,
-						readonly
-					}
-					ratio: FloatField {
-						min_value: 1,
-						max_value: 10,
-						max: 8,
-						step: "0.5"
-					}
-					check: BooleanField {
-						disabled,
-						readonly
-					}
-					radio: ChoiceField<String> {
-						widget: RadioSelect,
-						disabled,
-						readonly
-					}
-					select: ChoiceField<String> {
-						widget: Select,
-						disabled,
-						readonly
+	reinhardt_pages::reactive::ReactiveScope::run(|| {
+		// Arrange
+		let form = form! {
+			name: CollectionAttributeForm,
+			action: "/collection-attributes",
+			fields: {
+				items: FieldArray {
+					fields: {
+						name: CharField {
+							required: true,
+							min_length: 2,
+							max_length: 40,
+							pattern: "[A-Za-z ]+",
+							disabled: true,
+							readonly: true,
+							autofocus: false,
+							placeholder: "Item name",
+							autocomplete: "off",
+							help_text: "<strong>Use \"full\" name & details.</strong>",
+							attrs: {
+								aria_describedby: "collection-instructions",
+								data_testid: "item-name"
+							},
+						}
+						notes: TextField {
+							min_length: 3,
+							max_length: 120,
+							pattern: "[A-Z]+",
+							readonly,
+							disabled: false,
+							required: false,
+							help_text: "<strong>Use \"full\" name & details.</strong>",
+						}
+						quantity: IntegerField {
+							min_value: 1,
+							max_value: 10,
+							min: 3,
+							step: 2,
+							readonly
+						}
+						ratio: FloatField {
+							min_value: 1,
+							max_value: 10,
+							max: 8,
+							step: "0.5"
+						}
+						check: BooleanField {
+							disabled,
+							readonly
+						}
+						radio: ChoiceField<String> {
+							widget: RadioSelect,
+							disabled,
+							readonly
+						}
+						select: ChoiceField<String> {
+							widget: Select,
+							disabled,
+							readonly
+						}
 					}
 				}
 			}
-		}
-	};
-	let runtime = use_form(&form).build();
-	let collection = form.items_collection();
-	let mut first = form.new_items_item();
-	first.name = "First".into();
-	let mut second = form.new_items_item();
-	second.name = "Second".into();
-	runtime.push_item(collection, first);
-	let second_key = runtime.push_item(collection, second);
+		};
+		let runtime = use_form(&form).build();
+		let collection = form.items_collection();
+		let mut first = form.new_items_item();
+		first.name = "First".into();
+		let mut second = form.new_items_item();
+		second.name = "Second".into();
+		runtime.push_item(collection, first);
+		let second_key = runtime.push_item(collection, second);
 
-	// Act: reordering must keep each description associated with the rendered index.
-	assert_eq!(runtime.move_item(collection, second_key, 0), Some((1, 0)));
+		// Act: reordering must keep each description associated with the rendered index.
+		assert_eq!(runtime.move_item(collection, second_key, 0), Some((1, 0)));
 
-	// Assert
-	assert_rendered_fields(
-		form.into_page(),
-		&[
-			(
-				"items_0_name",
-				&[
-					("name", Some("items[0][name]")),
-					("value", Some("Second")),
-					("minlength", Some("2")),
-					("maxlength", Some("40")),
-					("pattern", Some("[A-Za-z ]+")),
-					("required", Some("required")),
-					("disabled", Some("disabled")),
-					("readonly", Some("readonly")),
-					("autofocus", None),
-					("placeholder", Some("Item name")),
-					("autocomplete", Some("off")),
-					("data-testid", Some("item-name")),
-					(
-						"aria-describedby",
-						Some("collection-instructions items_0_name--help"),
-					),
-				],
-			),
-			(
-				"items_1_name",
-				&[
-					("name", Some("items[1][name]")),
-					("value", Some("First")),
-					("minlength", Some("2")),
-					("disabled", Some("disabled")),
-					(
-						"aria-describedby",
-						Some("collection-instructions items_1_name--help"),
-					),
-				],
-			),
-			(
-				"items_0_notes",
-				&[
-					("minlength", Some("3")),
-					("maxlength", Some("120")),
-					("pattern", None),
-					("readonly", Some("readonly")),
-					("disabled", None),
-					("required", None),
-					("aria-describedby", Some("items_0_notes--help")),
-				],
-			),
-			(
-				"items_0_quantity",
-				&[
-					("min", Some("3")),
-					("max", Some("10")),
-					("step", Some("2")),
-					("readonly", Some("readonly")),
-				],
-			),
-			(
-				"items_0_ratio",
-				&[
-					("min", Some("1")),
-					("max", Some("8")),
-					("step", Some("0.5")),
-				],
-			),
-			(
-				"items_0_check",
-				&[
-					("type", Some("checkbox")),
-					("disabled", Some("disabled")),
-					("readonly", None),
-				],
-			),
-			(
-				"items_0_radio",
-				&[
-					("type", Some("radio")),
-					("disabled", Some("disabled")),
-					("readonly", None),
-				],
-			),
-			(
-				"items_0_select",
-				&[("disabled", Some("disabled")), ("readonly", None)],
-			),
-		],
-		&[
-			("items_0_name--help", "p", None),
-			("items_1_name--help", "p", None),
-			("items_0_notes--help", "p", None),
-			("items_1_notes--help", "p", None),
-		],
-	);
+		// Assert
+		assert_rendered_fields(
+			form.clone().into_page(),
+			&[
+				(
+					"items_0_name",
+					&[
+						("name", Some("items[0][name]")),
+						("value", Some("Second")),
+						("minlength", Some("2")),
+						("maxlength", Some("40")),
+						("pattern", Some("[A-Za-z ]+")),
+						("required", Some("required")),
+						("disabled", Some("disabled")),
+						("readonly", Some("readonly")),
+						("autofocus", None),
+						("placeholder", Some("Item name")),
+						("autocomplete", Some("off")),
+						("data-testid", Some("item-name")),
+						(
+							"aria-describedby",
+							Some("collection-instructions items_0_name--help"),
+						),
+					],
+				),
+				(
+					"items_1_name",
+					&[
+						("name", Some("items[1][name]")),
+						("value", Some("First")),
+						("minlength", Some("2")),
+						("disabled", Some("disabled")),
+						(
+							"aria-describedby",
+							Some("collection-instructions items_1_name--help"),
+						),
+					],
+				),
+				(
+					"items_0_notes",
+					&[
+						("minlength", Some("3")),
+						("maxlength", Some("120")),
+						("pattern", None),
+						("readonly", Some("readonly")),
+						("disabled", None),
+						("required", None),
+						("aria-describedby", Some("items_0_notes--help")),
+					],
+				),
+				(
+					"items_0_quantity",
+					&[
+						("min", Some("3")),
+						("max", Some("10")),
+						("step", Some("2")),
+						("readonly", Some("readonly")),
+					],
+				),
+				(
+					"items_0_ratio",
+					&[
+						("min", Some("1")),
+						("max", Some("8")),
+						("step", Some("0.5")),
+					],
+				),
+				(
+					"items_0_check",
+					&[
+						("type", Some("checkbox")),
+						("disabled", Some("disabled")),
+						("readonly", None),
+					],
+				),
+				(
+					"items_0_radio",
+					&[
+						("type", Some("radio")),
+						("disabled", Some("disabled")),
+						("readonly", None),
+					],
+				),
+				(
+					"items_0_select",
+					&[("disabled", Some("disabled")), ("readonly", None)],
+				),
+			],
+			&[
+				("items_0_name--help", "p", None),
+				("items_1_name--help", "p", None),
+				("items_0_notes--help", "p", None),
+				("items_1_notes--help", "p", None),
+			],
+		);
+	})
 }

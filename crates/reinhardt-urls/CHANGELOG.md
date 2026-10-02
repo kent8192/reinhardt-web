@@ -7,6 +7,235 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.17...reinhardt-urls@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+
+### Fixed
+
+- *(urls)* match typed path converters in server endpoints
+- *(urls)* validate typed path captures before dispatch
+- *(urls)* classify rejected path captures as not found
+- *(urls)* validate route compilation in descendant routers
+- *(urls)* reject windows drive prefixes in typed paths
+- *(urls)* reverse nested path converter values safely
+- *(urls)* reject mixed path separator traversal
+- *(urls)* reject encoded windows drive prefixes
+- *(urls)* retain route compilation failures
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.16...reinhardt-urls@v0.4.0-alpha.17) - 2026-09-25
+
+### Added
+
+- *(auth)* expose OAuth HTTP protocol handlers
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.15...reinhardt-urls@v0.4.0-alpha.16) - 2026-09-23
+
+### Fixed
+
+- *(urls)* install the exception handler on the router
+- *(urls)* route 404/405 middleware failures through the handler
+- *(urls)* defer unmatched route errors through middleware
+- *(http)* inherit exception handlers in nested dispatch
+- *(commands)* preserve configured exception responses on routing misses
+- *(urls)* expose the exception handler builder on WASM
+- track exception handler invocation
+- *(http)* unify exception handler dispatch
+- *(http)* preserve routing context for exception handlers
+- *(http)* preserve routing context through middleware
+- *(http)* narrow routing context snapshots
+
+### Maintenance
+
+- auto-fix fmt and clippy
+- *(sync)* merge main into develop/0.4.0
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.14...reinhardt-urls@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+### Testing
+
+- *(urls)* enforce inactive WASM server routing
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.13...reinhardt-urls@v0.4.0-alpha.14) - 2026-09-07
+
+### Maintenance
+
+- merge develop/0.4.0 into navigation guard branch
+
+## [0.4.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.9...reinhardt-urls@v0.4.0-alpha.10) - 2026-08-25
+
+### Added
+
+- *(urls)* add optional query extractor
+
+### Documentation
+
+- *(pages)* document optional query extraction
+
+### Added
+
+- *(urls)* support optional typed query extraction for manual request props
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.8...reinhardt-urls@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define request surface boundaries
+- *(security)* qualify remaining boundary assumptions
+- update version references to v0.3.10
+- *(security)* document stable advisory fixes
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+- *(urls)* enforce ViewSet routing policies
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.6...reinhardt-urls@v0.4.0-alpha.7) - 2026-08-19
+
+### Added
+
+- *(urls)* expose mounted route contracts
+- *(core)* collect mounted endpoint security contracts
+- *(urls)* declare class view authentication
+
+### Fixed
+
+- *(urls)* align mounted contracts with dispatch
+- *(urls)* gate viewset contract metadata import
+- *(commands)* retain one-to-one contract references
+- *(urls)* satisfy route introspection lint
+- *(contract)* close export review findings
+- *(contract)* close follow-up export review findings
+- *(contract)* close mounted route follow-up findings
+- *(contract)* resolve review findings
+- *(contract)* resolve application contract review findings
+- resolve native protocol review findings
+- *(contract)* preserve mounted route metadata during export
+- *(commands)* make contract verification fail closed
+- close contract verification review gaps
+- *(contract)* close verification review gaps
+
+### Other
+
+- sync develop/0.4.0 into CI repair
+- sync latest develop/0.4.0 into CI repair
+
+### Testing
+
+- *(ci)* align remaining release train fixtures
+
+### Breaking Changes
+
+- `ClientPathPattern::reverse` and `ClientRouter::reverse` now reject route
+  parameters that can change URL meaning across browser normalization. Ordinary
+  parameters must be non-empty, values must use URL-stable ASCII characters or
+  valid percent-encoded triplets, and completed path segments must not be `.`
+  or `..` (including percent-encoded variants). Wildcard parameters may still
+  be empty and contain `/`.
+
+### Migration Notes
+
+- Audit client route reversal callers for values containing spaces, non-ASCII
+  characters, malformed percent escapes, or standalone dot segments. Normalize
+  those values before reversal and handle the `None` result from `reverse` as a
+  route-resolution failure.
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.5...reinhardt-urls@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.3.2...reinhardt-urls@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(urls)* [**breaking**] match nested client layout routes
+- *(urls)* [**breaking**] compose client layout guards and metadata
+- *(pages)* [**breaking**] preserve client layout shells
+- *(pages)* [**breaking**] add layout component macro
+- *(urls)* expose matched route loader metadata
+- *(urls)* split navigation match from commit
+- *(pages)* hydrate server-prepared route loaders
+- *(pages)* add lifecycle-aware document head management
+
+### Documentation
+
+- *(pages)* document route-level data loaders
+
+### Fixed
+
+- preserve route body and path param semantics
+- address 0.4 fast-path review comments
+- preserve custom method router dispatch
+- *(urls)* harden client layout route matching
+- *(urls)* reduce client route registration arguments
+- *(routers)* align consumers with scoped Copy signals
+- *(tests)* scope wasm router diagnostics
+- *(urls)* defer native client router construction
+- *(reactive)* retain scoped callback lifetimes
+- *(reactive)* preserve deferred handle ownership
+- *(reactive)* dispose retained lifecycle state
+- *(reactive)* retain standalone owner scopes
+- *(reactive)* close PR [[#5640](https://github.com/kent8192/reinhardt-web/issues/5640)](https://github.com/kent8192/reinhardt-web/issues/5640) CI and review gaps
+- *(pages)* retain copy handle owners
+- *(pages)* retain owner scopes for deferred work
+- *(pages)* merge deferred owner scope fixes
+- *(ci)* terminate cfg aliases macro invocations
+- *(reactive)* enforce explicit dependencies and memo invalidation
+- *(urls)* retain popstate subscription closure
+- *(pages)* normalize initial loader history state
+- *(urls)* satisfy route metadata clippy
+- *(pages)* resolve route loader review findings
+- *(urls)* preserve prepared route state
+- *(pages)* address route loader review feedback
+- *(release)* restore develop prerelease lifecycle
+
+### Performance
+
+- [**breaking**] inline path parameter dispatch values
+- freeze compiled route tables
+- skip empty router dispatch work
+- borrow matched route handlers
+- add concrete router dispatch fast path
+- bypass router handler arc wrapper
+- add synchronous handler fast path
+- flatten server router backend dispatch
+- add static server route fast path
+- expose synchronous router dispatch
+- use compact exact route tables
+- revert compact exact route table experiment
+- add requestless sync route path
+- bypass exact route match materialization
+
+### Testing
+
+- tighten review regression assertions
+- *(urls)* unwrap route metadata in tests
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.3.17...reinhardt-urls@v0.3.18) - 2026-09-16
 
 ### Fixed

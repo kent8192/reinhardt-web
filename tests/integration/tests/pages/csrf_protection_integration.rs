@@ -26,6 +26,7 @@
 //! - Decision Table: 8 tests
 //! **Total: 35 tests**
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::csrf::{CSRF_COOKIE_NAME, CSRF_HEADER_NAME, CsrfManager, parse_cookie_value};
 use rstest::*;
 
@@ -85,20 +86,22 @@ async fn test_csrf_get_token_from_cookie(cookie_with_csrf: String, csrf_token: S
 #[rstest]
 #[tokio::test]
 async fn test_csrf_manager_set_and_get(csrf_token: String) {
-	let manager = CsrfManager::new();
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
 
-	// Initially no token
-	assert!(manager.cached_token().is_none());
+		// Initially no token
+		assert!(manager.cached_token().is_none());
 
-	// Set token
-	manager.set_token(csrf_token.clone());
+		// Set token
+		manager.set_token(csrf_token.clone());
 
-	// Verify token is cached
-	assert_eq!(manager.cached_token(), Some(csrf_token.clone()));
+		// Verify token is cached
+		assert_eq!(manager.cached_token(), Some(csrf_token.clone()));
 
-	// Verify token signal is updated
-	let signal = manager.token_signal();
-	assert_eq!(signal.get(), Some(csrf_token));
+		// Verify token signal is updated
+		let signal = manager.token_signal();
+		assert_eq!(signal.get(), Some(csrf_token));
+	});
 }
 
 /// Tests HTTP header generation
@@ -142,8 +145,10 @@ async fn test_csrf_token_missing() {
 	// Verify None is returned when token is missing
 	assert!(token.is_none());
 
-	let manager = CsrfManager::new();
-	assert!(manager.cached_token().is_none());
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
+		assert!(manager.cached_token().is_none());
+	});
 
 	// WASM-specific behavior tested in:
 	// crates/reinhardt-pages/tests/wasm/csrf_wasm_test.rs
@@ -191,19 +196,21 @@ async fn test_csrf_multiple_sources_priority() {
 #[rstest]
 #[tokio::test]
 async fn test_csrf_token_refresh() {
-	let manager = CsrfManager::new();
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
 
-	// Set initial token
-	manager.set_token("old_token");
-	assert_eq!(manager.cached_token(), Some("old_token".to_string()));
+		// Set initial token
+		manager.set_token("old_token");
+		assert_eq!(manager.cached_token(), Some("old_token".to_string()));
 
-	// Clear cache
-	manager.clear();
-	assert!(manager.cached_token().is_none());
+		// Clear cache
+		manager.clear();
+		assert!(manager.cached_token().is_none());
 
-	// Set new token
-	manager.set_token("new_token");
-	assert_eq!(manager.cached_token(), Some("new_token".to_string()));
+		// Set new token
+		manager.set_token("new_token");
+		assert_eq!(manager.cached_token(), Some("new_token".to_string()));
+	});
 
 	// Refresh behavior tested in WASM tests:
 	// crates/reinhardt-pages/tests/wasm/csrf_wasm_test.rs
@@ -235,26 +242,28 @@ async fn test_csrf_empty_cookie(empty_cookie: String) {
 #[rstest]
 #[tokio::test]
 async fn test_csrf_state_transition() {
-	let manager = CsrfManager::new();
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
 
-	// State 1: Empty
-	assert!(manager.cached_token().is_none());
+		// State 1: Empty
+		assert!(manager.cached_token().is_none());
 
-	// State 2: Cached
-	manager.set_token("token1");
-	assert_eq!(manager.cached_token(), Some("token1".to_string()));
+		// State 2: Cached
+		manager.set_token("token1");
+		assert_eq!(manager.cached_token(), Some("token1".to_string()));
 
-	// State 3: Cleared
-	manager.clear();
-	assert!(manager.cached_token().is_none());
+		// State 3: Cleared
+		manager.clear();
+		assert!(manager.cached_token().is_none());
 
-	// State 4: Re-cached with different token
-	manager.set_token("token2");
-	assert_eq!(manager.cached_token(), Some("token2".to_string()));
+		// State 4: Re-cached with different token
+		manager.set_token("token2");
+		assert_eq!(manager.cached_token(), Some("token2".to_string()));
 
-	// Verify signal updates
-	let signal = manager.token_signal();
-	assert_eq!(signal.get(), Some("token2".to_string()));
+		// Verify signal updates
+		let signal = manager.token_signal();
+		assert_eq!(signal.get(), Some("token2".to_string()));
+	});
 
 	// State transitions with browser integration tested in WASM tests:
 	// crates/reinhardt-pages/tests/wasm/csrf_wasm_test.rs
@@ -268,16 +277,18 @@ async fn test_csrf_state_transition() {
 #[rstest]
 #[tokio::test]
 async fn test_csrf_form_submission_use_case() {
-	let manager = CsrfManager::new();
-	manager.set_token("form_submit_token");
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
+		manager.set_token("form_submit_token");
 
-	// Simulate form submission preparation
-	let token = manager.cached_token();
-	assert!(token.is_some());
+		// Simulate form submission preparation
+		let token = manager.cached_token();
+		assert!(token.is_some());
 
-	let token_value = token.unwrap();
-	assert!(!token_value.is_empty());
-	assert_eq!(token_value, "form_submit_token");
+		let token_value = token.unwrap();
+		assert!(!token_value.is_empty());
+		assert_eq!(token_value, "form_submit_token");
+	});
 
 	// Form submission with CSRF tested in WASM tests:
 	// crates/reinhardt-pages/tests/wasm/server_fn_wasm_test.rs
@@ -287,19 +298,21 @@ async fn test_csrf_form_submission_use_case() {
 #[rstest]
 #[tokio::test]
 async fn test_csrf_ajax_call_use_case() {
-	let manager = CsrfManager::new();
-	manager.set_token("ajax_call_token");
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
+		manager.set_token("ajax_call_token");
 
-	// Simulate AJAX request preparation
-	let token = manager.cached_token();
-	assert!(token.is_some());
+		// Simulate AJAX request preparation
+		let token = manager.cached_token();
+		assert!(token.is_some());
 
-	// Verify header would be set correctly
-	let header_name = CSRF_HEADER_NAME;
-	let header_value = token.unwrap();
+		// Verify header would be set correctly
+		let header_name = CSRF_HEADER_NAME;
+		let header_value = token.unwrap();
 
-	assert_eq!(header_name, "X-CSRFToken");
-	assert_eq!(header_value, "ajax_call_token");
+		assert_eq!(header_name, "X-CSRFToken");
+		assert_eq!(header_value, "ajax_call_token");
+	});
 
 	// AJAX header generation tested in WASM tests:
 	// crates/reinhardt-pages/tests/wasm/server_fn_wasm_test.rs
@@ -309,12 +322,14 @@ async fn test_csrf_ajax_call_use_case() {
 #[rstest]
 #[tokio::test]
 async fn test_csrf_server_function_injection() {
-	let manager = CsrfManager::new();
-	manager.set_token("server_fn_token");
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
+		manager.set_token("server_fn_token");
 
-	// Verify token is available for Server Function
-	let token = manager.cached_token();
-	assert_eq!(token, Some("server_fn_token".to_string()));
+		// Verify token is available for Server Function
+		let token = manager.cached_token();
+		assert_eq!(token, Some("server_fn_token".to_string()));
+	});
 
 	// Automatic CSRF injection in server_fn is now implemented:
 	// crates/reinhardt-pages/crates/macros/src/server_fn.rs
@@ -335,10 +350,12 @@ fn test_csrf_token_invariance() {
 	use proptest::proptest;
 
 	proptest!(|(token: String)| {
-		let manager = CsrfManager::new();
-		manager.set_token(token.clone());
-		let retrieved = manager.cached_token();
-		assert_eq!(retrieved, Some(token));
+		ReactiveScope::run(|| {
+			let manager = CsrfManager::new();
+			manager.set_token(token.clone());
+			let retrieved = manager.cached_token();
+			assert_eq!(retrieved, Some(token));
+		});
 	});
 }
 
@@ -350,12 +367,14 @@ fn test_csrf_token_invariance() {
 #[rstest]
 #[tokio::test]
 async fn test_csrf_with_server_fn_json_codec() {
-	let manager = CsrfManager::new();
-	manager.set_token("csrf_json_token");
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
+		manager.set_token("csrf_json_token");
 
-	// Simulate Server Function call with JSON codec
-	let token = manager.cached_token();
-	assert_eq!(token, Some("csrf_json_token".to_string()));
+		// Simulate Server Function call with JSON codec
+		let token = manager.cached_token();
+		assert_eq!(token, Some("csrf_json_token".to_string()));
+	});
 
 	// Server Function CSRF injection is implemented and tested in:
 	// crates/reinhardt-pages/tests/wasm/server_fn_wasm_test.rs
@@ -365,12 +384,14 @@ async fn test_csrf_with_server_fn_json_codec() {
 #[rstest]
 #[tokio::test]
 async fn test_csrf_with_server_fn_url_codec() {
-	let manager = CsrfManager::new();
-	manager.set_token("csrf_url_token");
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
+		manager.set_token("csrf_url_token");
 
-	// Simulate Server Function call with URL codec
-	let token = manager.cached_token();
-	assert_eq!(token, Some("csrf_url_token".to_string()));
+		// Simulate Server Function call with URL codec
+		let token = manager.cached_token();
+		assert_eq!(token, Some("csrf_url_token".to_string()));
+	});
 
 	// Server Function CSRF injection is implemented and tested in:
 	// crates/reinhardt-pages/tests/wasm/server_fn_wasm_test.rs
@@ -384,14 +405,16 @@ async fn test_csrf_with_server_fn_url_codec() {
 #[rstest]
 #[tokio::test]
 async fn test_csrf_manager_sanity() {
-	let manager = CsrfManager::new();
-	assert!(manager.cached_token().is_none());
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
+		assert!(manager.cached_token().is_none());
 
-	let manager2 = CsrfManager::default();
-	assert!(manager2.cached_token().is_none());
+		let manager2 = CsrfManager::default();
+		assert!(manager2.cached_token().is_none());
 
-	// Verify both constructors create equivalent state
-	assert_eq!(manager.cached_token(), manager2.cached_token());
+		// Verify both constructors create equivalent state
+		assert_eq!(manager.cached_token(), manager2.cached_token());
+	});
 }
 
 // ============================================================================
@@ -427,12 +450,14 @@ async fn test_csrf_source_partitioning(#[case] cookie_str: &str, #[case] expecte
 #[case::extremely_long("t".repeat(4096))]
 #[tokio::test]
 async fn test_csrf_token_length_boundaries(#[case] token: String) {
-	let manager = CsrfManager::new();
-	manager.set_token(token.clone());
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
+		manager.set_token(token.clone());
 
-	let retrieved = manager.cached_token();
-	assert_eq!(retrieved, Some(token.clone()));
-	assert_eq!(retrieved.unwrap().len(), token.len());
+		let retrieved = manager.cached_token();
+		assert_eq!(retrieved, Some(token.clone()));
+		assert_eq!(retrieved.unwrap().len(), token.len());
+	});
 }
 
 /// Tests complex cookie string boundaries
@@ -474,14 +499,16 @@ async fn test_csrf_decision_table(
 	#[case] is_cached: bool,
 	#[case] expected: Option<String>,
 ) {
-	let manager = CsrfManager::new();
+	ReactiveScope::run(|| {
+		let manager = CsrfManager::new();
 
-	if is_cached {
-		manager.set_token("cached_token");
-	}
+		if is_cached {
+			manager.set_token("cached_token");
+		}
 
-	let result = manager.cached_token();
-	assert_eq!(result, expected);
+		let result = manager.cached_token();
+		assert_eq!(result, expected);
+	});
 
 	// Full decision table tested in WASM tests:
 	// crates/reinhardt-pages/tests/wasm/csrf_wasm_test.rs

@@ -7,9 +7,11 @@ fn main() {
 		div {
 			input {
 				r#type: "text",
+				aria_label: "Limited input",
 				maxlength: 100,
 			}
 			textarea {
+				aria_label: "Sized textarea",
 				rows: 10,
 				cols: 80,
 			}

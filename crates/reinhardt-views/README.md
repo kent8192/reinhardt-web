@@ -17,11 +17,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["views"] }
+reinhardt = { version = "0.4.0-alpha.18", features = ["views"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.20", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.18", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.18", features = ["full"] }      # All features
 ```
 
 Then import view features:
@@ -266,7 +266,7 @@ use reinhardt::views::{OpenAPISpec, Info, PathItem, Operation};
 
 let spec = OpenAPISpec::new(Info::new(
     "My API".into(),
-    "0.3.20".into()
+    "0.4.0-alpha.18".into()
 ));
 ```
 
@@ -303,6 +303,13 @@ The crate includes comprehensive unit tests covering:
 - **GenericViewSet** - Generic ViewSet implementation with composable handler pattern
 - **ModelViewSet** - Full CRUD operations (list, retrieve, create, update, destroy) for model-based APIs
 - **ReadOnlyModelViewSet** - Read-only operations (list, retrieve) for immutable resources
+
+Database-backed model viewsets can scope every read or mutation to the current
+request by implementing `QuerySetProvider<M>` and passing it to
+`with_queryset_provider`. The provider receives `Model::objects().all()` so
+custom manager predicates are retained; the handler adds the typed route-PK
+predicate for detail actions. A configured database pool is required, and
+create does not invoke the provider.
 
 #### Action System
 
@@ -367,7 +374,7 @@ The crate includes comprehensive unit tests covering:
   2. **Method-Level Injection** - Use `#[endpoint]` with `#[inject]` attributes on method parameters
   3. **Dispatch-Level Injection** - Override `dispatch_with_context()` with `#[inject]` parameters
 - **DiViewSet** - ViewSet wrapper with full DI support
-  - Automatic dependency resolution via direct `Injectable` values or `Depends<K, V>`
+  - Automatic dependency resolution via direct `Injectable` values, `Depends<T>`, or `KeyedDepends<K, V>`
   - Integration with reinhardt-di framework
 - **ViewSetFactory Trait** - Factory pattern for ViewSet creation with DI
 - **Injectable Dependencies** - Example implementations (DatabaseConnection)
@@ -393,17 +400,3 @@ The crate includes comprehensive unit tests covering:
 - **Caching Support** - Response caching for read-only operations
 - **Rate Limiting** - Per-ViewSet or per-action rate limiting
 - **WebSocket ViewSets** - Real-time action support via WebSockets
-
-#### Request-scoped database querysets
-
-`ModelViewSet::with_queryset_fn` and
-`ReadOnlyModelViewSet::with_queryset_fn` accept a synchronous, fallible
-request hook that returns a database filter. Applications define their own
-tenant or ownership identity in request extensions; middleware resolves any
-asynchronous identity before dispatch. The hook requires `with_pool` and scopes
-list, retrieve, update, and destroy (list and retrieve for read-only viewsets).
-Create is intentionally excluded: assign ownership in a serializer, permission
-layer, or database constraint. Static `Vec` querysets are separate and are not
-filtered. Scoped-out objects and malformed detail primary keys return 404.
-Custom lookup fields are tracked separately by #6091; see the canonical
-request-extension example in the `reinhardt_views::viewsets` API docs.

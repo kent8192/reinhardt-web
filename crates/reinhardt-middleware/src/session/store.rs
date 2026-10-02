@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use super::data::SessionData;
 
 /// DI key for resolving the middleware-owned session store through
-/// `Depends<SessionStoreKey, Arc<SessionStore>>`.
+/// `KeyedDepends<SessionStoreKey, Arc<SessionStore>>`.
 #[derive(Debug, Clone, Copy)]
 pub struct SessionStoreKey;
 

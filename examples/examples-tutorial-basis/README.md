@@ -27,6 +27,7 @@ This example corresponds to the basis tutorial parts 1-7:
 The example exposes its dynamic business logic through the pages stack:
 
 - **Typed RPC server functions** in `src/apps/<app>/server_fn.rs` — `#[server_fn]` functions (`get_questions`, `get_question_detail`, `vote`, `create_question`, …, plus `login` / `logout` / `register` / `current_user` for the `users` app). The macro generates a typed client stub for WASM and a server-side handler for native; dependencies are resolved positionally with `#[inject]` (`DatabaseConnection`, `SessionData`, `CurrentUser<User>`, …).
+- **Copyable ORM access** — injected `DatabaseConnection` values are lightweight `Copy` handles. Server bootstrap retains the owning lease, so server functions pass handles by value without cloning or managing connection lifetime.
 - **Per-app URL modules** in `src/apps/<app>/urls.rs` — each app exposes target-specific router functions from one aggregate; server-function markers stay in `src/apps/<app>/urls/server_router.rs`, client component route tables stay in `src/apps/<app>/urls/client_router.rs`, and `src/config/urls.rs` only aggregates the app-level router functions for the active target.
 - **Route-backed components** in `src/apps/<app>/client/components/` — component macros own route metadata for pages such as login/logout/signup.
 - **Dynamic WASM forms** in `src/apps/polls/client/components.rs` — the poll detail route builds its `RadioSelect` voting form from the choices returned by `get_question_detail`, so each loaded choice becomes a submitted `choice_id` option.
@@ -49,7 +50,7 @@ The project router mounts per-app server routers on native and merges per-app cl
 
 ### Prerequisites
 
-- Rust 1.96 or later (2024 edition, matches the workspace MSRV)
+- Rust 1.96.0 or later (2024 edition, matches the workspace MSRV)
 - `cargo-make` (`cargo install cargo-make`)
 - `wasm-pack` for the WASM client build
 - Docker (optional, for TestContainers in integration tests)
@@ -84,6 +85,40 @@ cargo make dev-release
 ```
 
 The server listens at `http://127.0.0.1:8000/`.
+
+### Explore Models in the Rust Shell
+
+The tutorial exposes the shell through an opt-in `commands-shell` feature that
+is absent from its defaults:
+
+```bash
+cargo run --bin manage --features commands-shell -- shell
+cargo run --bin manage --features commands-shell -- shell -c \
+  'println!("{:?}", db.backend())'
+```
+
+The feature-gated `config::shell::get_shell_config()` and outer process hook
+load the concrete settings, ORM `db` handle, application `di` context,
+`framework` alias, and uniquely named installed models such as `Question` and
+`Choice`. Ambiguous short model names are skipped with a deterministic warning
+that lists their concrete registered crate paths; the evaluator's
+`project_crate` alias can reference those same types. A project can extend the
+last prelude layer with `ShellConfig::with_prelude(...)`.
+
+Interactive Rust preserves successful definitions, supports top-level
+`.await`, and uses `>>> ` / `... ` prompts for complete / multiline input.
+Ctrl+C during evaluation, a panic, or evaluator process exit clears user state
+and reloads settings, database/DI bindings, model imports, and the project
+prelude. `shell -c` evaluates exactly once, exits zero only on success, returns
+non-zero on failure, and Reinhardt's own diagnostics do not repeat the raw
+source. Arbitrary Rust, compiler output, panics, and user code can still print
+literals; the shell is not a sandbox.
+
+History is loaded and saved best-effort at
+`<platform local data directory>/reinhardt/shell/examples-tutorial-basis.history`;
+a missing file is a silent first run, while directory-resolution, read, or
+write failures warn without blocking the prompt. `shell-rhai` was removed, so
+`shell` now means the Rust evaluator and does not accept old Rhai syntax.
 
 ### Inspect Registered Routes
 
@@ -195,6 +230,7 @@ examples-tutorial-basis/
 │   ├── config/
 │   │   ├── admin.rs
 │   │   ├── apps.rs
+│   │   ├── shell.rs
 │   │   ├── settings.rs
 │   │   ├── urls.rs
 │   │   └── wasm.rs

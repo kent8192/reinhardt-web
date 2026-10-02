@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-testkit"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -27,6 +27,7 @@ property-based = ["dep:proptest"]
 viewsets = []
 admin = ["dep:reinhardt-conf"]
 messages = ["reinhardt-core/messages"]
+pgvector = ["reinhardt-db/pgvector"]
 full = ["testcontainers", "static", "websockets", "graphql", "property-based", "viewsets", "admin", "messages"]
 
 [dependencies]

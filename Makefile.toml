@@ -116,6 +116,11 @@ args = [
   "-D", "clippy::dbg_macro",
 ]
 
+[tasks.anyhow-check]
+description = "Reject direct anyhow dependencies and owned-source usage"
+command = "bash"
+args = ["scripts/check-anyhow.sh"]
+
 [tasks.semver-check]
 description = "Run cargo-semver-checks locally (mirrors the shared semver-check workflow). Override baseline via BASELINE_REV; set SEMVER_PACKAGE=<name> to check a single crate (mirrors the workflow's per-crate matrix shard); override release-type via SEMVER_RELEASE_TYPE (e.g. SEMVER_RELEASE_TYPE=major for SP-3 breaking-change PRs, SEMVER_RELEASE_TYPE= [empty] to omit --release-type and let cargo-semver-checks auto-detect from Cargo.toml version bumps as on release-plz PRs). Defaults to --release-type minor when unset."
 script_runner = "sh"
@@ -428,8 +433,8 @@ args = [
   "run",
   "--package",
   "reinhardt-integration-tests",
-  "--all-features",
   "-E", "not binary(/ui/)",
+  "--all-features",
   "--no-fail-fast",
   "--status-level=none",
   "--final-status-level=none"
@@ -548,7 +553,7 @@ args = ["llvm-cov", "nextest", "--workspace", "--lib", "--all-features", "--no-f
 # ============================================================================
 
 [tasks.feature-check]
-description = "Check representative feature combinations (32 patterns)"
+description = "Check representative feature combinations (34 patterns)"
 dependencies = ["feature-check-facade", "feature-check-subcrate"]
 
 [tasks.dependency-feature-audit]
@@ -561,7 +566,7 @@ scripts/dependency-feature-audit.sh "${label}"
 '''
 
 [tasks.feature-check-facade]
-description = "Check facade crate feature combinations (20 patterns)"
+description = "Check facade crate feature combinations (22 patterns)"
 script_runner = "bash"
 script = '''
 set -e
@@ -576,6 +581,7 @@ combos=(
 	"graphql-server|reinhardt-web|--no-default-features -F graphql-server"
 	"websocket-server|reinhardt-web|--no-default-features -F websocket-server"
 	"cli-tools|reinhardt-web|--no-default-features -F cli-tools"
+	"commands-shell+sqlite|reinhardt-web|--no-default-features -F commands-shell,db-sqlite --test commands_shell_facade"
 	"standard+mysql|reinhardt-web|--no-default-features -F standard,db-mysql"
 	"standard+sqlite|reinhardt-web|--no-default-features -F standard,db-sqlite"
 	"db-cockroachdb|reinhardt-web|--no-default-features -F minimal,db-cockroachdb"
@@ -586,6 +592,7 @@ combos=(
 	"shortcuts-db|reinhardt-web|--no-default-features -F minimal,database,db-postgres,shortcuts"
 	"admin-forms|reinhardt-web|--no-default-features -F minimal,admin,database,db-postgres,auth"
 	"plugins|reinhardt-web|--no-default-features -F minimal,dentdelion,deeplink,dispatch,grpc"
+	"native-protocol-runserver|reinhardt-web|--no-default-features -F minimal,pages,commands,commands-server,commands-autoreload,grpc,websockets"
 	"openapi-router|reinhardt-web|--no-default-features -F minimal,openapi-router,database,db-postgres"
 	"social-auth-redis|reinhardt-web|--no-default-features -F minimal,social-auth,session-redis"
 )

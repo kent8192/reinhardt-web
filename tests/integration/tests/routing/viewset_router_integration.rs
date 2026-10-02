@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 #[allow(dead_code)]
-#[model(table_name = "test_models")]
+#[model(app_label = "default", table_name = "test_models")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TestModel {
 	#[field(primary_key = true)]

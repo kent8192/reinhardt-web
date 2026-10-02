@@ -1,12 +1,12 @@
 //! Regression tests for kent8192/reinhardt-web#4937.
 //!
-//! `Depends<K, Result<T, E>>` / `Depends<K, Option<T>>` fields keep result and
+//! `KeyedDepends<K, Result<T, E>>` / `KeyedDepends<K, Option<T>>` fields keep result and
 //! optional provider outputs distinct from `T` while preserving `T`'s trait
 //! impls.
 //!
 //! Those inner types (`Result<T, E>` / `Option<T>`) are produced by
 //! `#[injectable]` providers and never implement `Injectable`. Therefore wrapper
-//! injection MUST resolve them via `Depends::resolve_from_registry` (no
+//! injection MUST resolve them via `KeyedDepends::resolve_from_registry` (no
 //! `T: Injectable` bound).
 //!
 //! These tests are both a compile-time guard (the wrapper fields below must not
@@ -20,13 +20,13 @@ use serial_test::serial;
 use std::sync::Arc;
 
 use reinhardt_di::{
-	DependencyScope, Depends, FactoryOutput, Injectable, InjectableKey, InjectableType,
-	InjectionContext, SingletonScope, global_registry,
+	DependencyScope, Injectable, InjectableKey, InjectableType, InjectionContext, KeyedDepends,
+	KeyedFactoryOutput, SingletonScope, global_registry,
 };
 
 /// Factory-produced user type. No `impl Injectable` on purpose — it is only
 /// ever produced wrapped in a `Result` by a factory and read back through a
-/// keyed `Depends` field.
+/// keyed `KeyedDepends` field.
 #[derive(Clone, Debug, PartialEq)]
 struct SessionUser {
 	id: i64,
@@ -45,14 +45,14 @@ impl InjectableKey for SessionUserResultKey {}
 /// If wrapper injection required `Result<..>: Injectable`, this struct would
 /// not compile.
 struct AuthService {
-	user: Depends<SessionUserResultKey, Result<SessionUser, SessionError>>,
+	user: KeyedDepends<SessionUserResultKey, Result<SessionUser, SessionError>>,
 }
 
 #[async_trait::async_trait]
 impl Injectable for AuthService {
 	async fn inject(ctx: &InjectionContext) -> reinhardt_di::DiResult<Self> {
 		Ok(Self {
-			user: Depends::<SessionUserResultKey, Result<SessionUser, SessionError>>::resolve_from_registry(
+			user: KeyedDepends::<SessionUserResultKey, Result<SessionUser, SessionError>>::resolve_from_registry(
 				ctx, true,
 			)
 			.await?,
@@ -68,14 +68,12 @@ async fn injectable_field_depends_result_resolves_from_registry() {
 	// `Result<SessionUser, SessionError>`. This is the only DI surface
 	// available for the inner type.
 	let registry = global_registry();
-	let _guard = registry
-		.register_override::<
-			FactoryOutput<SessionUserResultKey, Result<SessionUser, SessionError>>,
-			_,
-			_,
-		>(DependencyScope::Transient, |_ctx| async {
-			Ok(FactoryOutput::new(Ok(SessionUser { id: 42 })))
-		});
+	let _guard = registry.register_override::<KeyedFactoryOutput<
+		SessionUserResultKey,
+		Result<SessionUser, SessionError>,
+	>, _, _>(DependencyScope::Transient, |_ctx| async {
+		Ok(KeyedFactoryOutput::new(Ok(SessionUser { id: 42 })))
+	});
 	let scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(scope).build();
 
@@ -84,7 +82,7 @@ async fn injectable_field_depends_result_resolves_from_registry() {
 		.await
 		.expect("AuthService keyed result field must resolve from the registry");
 
-	// Assert — the keyed `Depends` field derefs to `Result<SessionUser, SessionError>`.
+	// Assert — the keyed `KeyedDepends` field derefs to `Result<SessionUser, SessionError>`.
 	assert_eq!(*service.user, Ok(SessionUser { id: 42 }));
 }
 
@@ -94,16 +92,14 @@ async fn injectable_field_depends_result_resolves_from_registry() {
 async fn injectable_field_depends_result_preserves_err_variant() {
 	// Arrange — the registered factory yields the Err variant.
 	let registry = global_registry();
-	let _guard = registry
-		.register_override::<
-			FactoryOutput<SessionUserResultKey, Result<SessionUser, SessionError>>,
-			_,
-			_,
-		>(DependencyScope::Transient, |_ctx| async {
-			Ok(FactoryOutput::new(Err(SessionError {
-				reason: "anonymous".to_string(),
-			})))
-		});
+	let _guard = registry.register_override::<KeyedFactoryOutput<
+		SessionUserResultKey,
+		Result<SessionUser, SessionError>,
+	>, _, _>(DependencyScope::Transient, |_ctx| async {
+		Ok(KeyedFactoryOutput::new(Err(SessionError {
+			reason: "anonymous".to_string(),
+		})))
+	});
 	let scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(scope).build();
 
@@ -131,20 +127,21 @@ struct CacheBackendOptionKey;
 
 impl InjectableKey for CacheBackendOptionKey {}
 
-/// Service with a keyed `Depends` field over a factory-produced `Option`.
+/// Service with a keyed `KeyedDepends` field over a factory-produced `Option`.
 /// Same compile-time + runtime guard as `AuthService`.
 struct CacheConsumer {
-	cache: Depends<CacheBackendOptionKey, Option<CacheBackend>>,
+	cache: KeyedDepends<CacheBackendOptionKey, Option<CacheBackend>>,
 }
 
 #[async_trait::async_trait]
 impl Injectable for CacheConsumer {
 	async fn inject(ctx: &InjectionContext) -> reinhardt_di::DiResult<Self> {
 		Ok(Self {
-			cache: Depends::<CacheBackendOptionKey, Option<CacheBackend>>::resolve_from_registry(
-				ctx, true,
-			)
-			.await?,
+			cache:
+				KeyedDepends::<CacheBackendOptionKey, Option<CacheBackend>>::resolve_from_registry(
+					ctx, true,
+				)
+				.await?,
 		})
 	}
 }
@@ -156,10 +153,10 @@ async fn injectable_field_depends_option_resolves_from_registry() {
 	// Arrange — register the factory-produced `Option<CacheBackend>`.
 	let registry = global_registry();
 	let _guard = registry
-		.register_override::<FactoryOutput<CacheBackendOptionKey, Option<CacheBackend>>, _, _>(
+		.register_override::<KeyedFactoryOutput<CacheBackendOptionKey, Option<CacheBackend>>, _, _>(
 			DependencyScope::Transient,
 			|_ctx| async {
-				Ok(FactoryOutput::new(Some(CacheBackend {
+				Ok(KeyedFactoryOutput::new(Some(CacheBackend {
 					url: "redis://localhost".to_string(),
 				})))
 			},
@@ -172,7 +169,7 @@ async fn injectable_field_depends_option_resolves_from_registry() {
 		.await
 		.expect("CacheConsumer keyed option field must resolve from the registry");
 
-	// Assert — the keyed `Depends` field derefs to `Option<CacheBackend>`.
+	// Assert — the keyed `KeyedDepends` field derefs to `Option<CacheBackend>`.
 	assert_eq!(
 		*consumer.cache,
 		Some(CacheBackend {

@@ -11,11 +11,14 @@
 //!
 //! See [`ModelMetadata`] for the architecture comparison diagram.
 
-use super::ConstraintDefinition;
 use super::autodetector::{
 	FieldState, IndexDefinition, ModelState, default_index_name, index_definitions_equivalent,
+	to_snake_case,
 };
-use std::collections::{HashMap, HashSet};
+use super::{ConstraintDefinition, GeneratedColumnDefinition};
+use crate::field_domain::FieldDomain;
+use crate::naming::{enum_domain_constraint_name, generated_unique_constraint_names};
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
@@ -76,8 +79,6 @@ pub struct ModelMetadata {
 }
 
 impl ModelMetadata {
-	const MAX_CONSTRAINT_IDENTIFIER_BYTES: usize = 63;
-
 	/// Creates a new instance.
 	pub fn new(
 		app_label: impl Into<String>,
@@ -117,48 +118,11 @@ impl ModelMetadata {
 		self.constraints.push(constraint);
 	}
 
-	fn synthesized_unique_constraint_name(
-		&self,
-		field_name: &str,
-		generated_names: &HashSet<String>,
-		existing_constraints: &[ConstraintDefinition],
-	) -> String {
-		// The raw tuple digest is required because concatenated safe fragments do
-		// not preserve table/field boundaries and normalized field names can
-		// collide. It also makes the name independent of field iteration order.
-		let tuple_digest =
-			stable_constraint_name_hash(&format!("{}\0{}", self.table_name, field_name));
-		let base_name = bounded_constraint_identifier(&format!(
-			"{}_{}_uniq_{tuple_digest:08x}",
-			safe_constraint_table_fragment(&self.table_name),
-			safe_constraint_name_fragment(field_name)
-		));
-		let is_taken = |candidate: &str| {
-			self.constraints
-				.iter()
-				.any(|constraint| constraint.name.eq_ignore_ascii_case(candidate))
-				|| existing_constraints
-					.iter()
-					.any(|constraint| constraint.name.eq_ignore_ascii_case(candidate))
-				|| generated_names
-					.iter()
-					.any(|name| name.eq_ignore_ascii_case(candidate))
-		};
-		if !is_taken(&base_name) {
-			return base_name;
-		}
-
-		let field_digest = stable_constraint_name_hash(field_name);
-		let mut candidate =
-			bounded_constraint_identifier(&format!("{base_name}_field_{field_digest:08x}"));
-		let mut suffix = 2;
-		while is_taken(&candidate) {
-			candidate = bounded_constraint_identifier(&format!(
-				"{base_name}_field_{field_digest:08x}_{suffix}"
-			));
-			suffix += 1;
-		}
-		candidate
+	/// Adds the typed enum-domain constraint for a database column.
+	pub fn add_enum_domain_constraint(&mut self, column: &str, domain: FieldDomain) {
+		let name = enum_domain_constraint_name(&self.table_name, column);
+		self.constraints
+			.push(ConstraintDefinition::enum_domain(name, column, domain));
 	}
 
 	/// Returns constraints registered by the `#[model(...)]` macro, such as
@@ -200,6 +164,10 @@ impl ModelMetadata {
 	/// assert!(model_state.has_field("email"));
 	/// ```
 	pub fn to_model_state(&self) -> ModelState {
+		self.to_model_state_with_registry(global_registry())
+	}
+
+	fn to_model_state_with_registry(&self, registry: &ModelRegistry) -> ModelState {
 		let mut model_state = ModelState::new(&self.app_label, &self.model_name);
 
 		// Set the correct table name from metadata
@@ -208,9 +176,14 @@ impl ModelMetadata {
 
 		// Convert fields
 		for (name, field_meta) in &self.fields {
+			let column_name = field_meta
+				.params
+				.get("db_column")
+				.cloned()
+				.unwrap_or_else(|| name.clone());
 			let is_unique = field_meta.params.get("unique").map(String::as_str) == Some("true");
 			let mut field_state = FieldState::new(
-				name.clone(),
+				column_name,
 				field_meta.field_type.clone(),
 				field_meta.nullable,
 			);
@@ -220,10 +193,22 @@ impl ModelMetadata {
 				}
 				field_state.params.insert(key.clone(), value.clone());
 			}
-			// Set ForeignKey information if present
-			if let Some(ref fk_info) = field_meta.foreign_key {
-				field_state.foreign_key = Some(fk_info.clone());
+			field_state.generated = field_meta.generated.clone();
+			field_state.domain = field_meta.domain.clone();
+			// Resolve qualified string FK targets after all model metadata has been
+			// registered so explicit table-name overrides are preserved (#5673).
+			let mut foreign_key = field_meta.foreign_key.clone();
+			if let Some(fk_info) = &mut foreign_key
+				&& let (Some(target_app), Some(target_model)) = (
+					field_meta.params.get("fk_target_app"),
+					field_meta.params.get("fk_target_model"),
+				) {
+				fk_info.referenced_table = registry
+					.get_model(target_app, target_model)
+					.map(|metadata| metadata.table_name)
+					.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(target_model)));
 			}
+			field_state.foreign_key = foreign_key;
 			model_state.add_field(field_state);
 		}
 
@@ -233,7 +218,11 @@ impl ModelMetadata {
 		// Generate ForeignKey constraints from fields
 		for (field_name, field_meta) in &self.fields {
 			if field_meta.foreign_key.is_some() {
-				model_state.add_foreign_key_constraint_from_field(field_name);
+				let column_name = field_meta
+					.params
+					.get("db_column")
+					.map_or(field_name, |name| name);
+				model_state.add_foreign_key_constraint_from_field(column_name);
 			}
 		}
 
@@ -258,15 +247,17 @@ impl ModelMetadata {
 					return None;
 				}
 
+				let column_name = field_meta.params.get("db_column").unwrap_or(field_name);
 				Some(IndexDefinition {
-					name: default_index_name(&self.table_name, std::slice::from_ref(field_name)),
-					fields: vec![field_name.clone()],
+					name: default_index_name(&self.table_name, std::slice::from_ref(column_name)),
+					fields: vec![column_name.clone()],
 					unique: false,
 					where_clause: None,
+					#[cfg(feature = "pgvector")]
 					index_type: None,
+					#[cfg(feature = "pgvector")]
 					expressions: None,
-					concurrently: false,
-					mysql_options: None,
+					#[cfg(feature = "pgvector")]
 					operator_class: None,
 				})
 			})
@@ -285,41 +276,48 @@ impl ModelMetadata {
 		// Generate named Unique constraints from field params. The field-level
 		// `unique` flag is consumed above so the same declaration cannot be
 		// emitted both inline and as a table constraint.
-		let mut generated_unique_constraint_names = HashSet::new();
-		let mut unique_fields = self
+		let unique_columns = self
 			.fields
 			.iter()
-			.filter(|(_, field_meta)| {
+			.filter(|&(_, field_meta)| {
 				field_meta.params.get("unique").map(String::as_str) == Some("true")
 			})
-			.collect::<Vec<_>>();
-		unique_fields.sort_unstable_by_key(|(left, _)| *left);
-		for (field_name, field_meta) in unique_fields {
-			if field_meta.params.get("unique").map(String::as_str) == Some("true") {
-				// Prefer a model-level declaration when it explicitly names the
-				// single-column constraint. This keeps one physical constraint and
-				// preserves the declared name.
-				if self.constraints.iter().any(|constraint| {
+			.map(|(field_name, field_meta)| {
+				field_meta
+					.params
+					.get("db_column")
+					.cloned()
+					.unwrap_or_else(|| field_name.clone())
+			})
+			.filter(|column_name| {
+				!self.constraints.iter().any(|constraint| {
 					constraint.constraint_type.eq_ignore_ascii_case("unique")
 						&& constraint.fields.len() == 1
-						&& constraint.fields[0] == *field_name
-				}) {
-					continue;
-				}
-				let constraint = ConstraintDefinition {
-					name: self.synthesized_unique_constraint_name(
-						field_name,
-						&generated_unique_constraint_names,
-						&model_state.constraints,
-					),
-					constraint_type: "unique".to_string(),
-					fields: vec![field_name.clone()],
-					expression: None,
-					foreign_key_info: None,
-				};
-				generated_unique_constraint_names.insert(constraint.name.clone());
-				model_state.constraints.push(constraint);
-			}
+						&& constraint.fields[0] == *column_name
+				})
+			})
+			.collect::<Vec<_>>();
+		let reserved = self
+			.constraints
+			.iter()
+			.map(|constraint| constraint.name.clone())
+			.chain(
+				model_state
+					.constraints
+					.iter()
+					.map(|constraint| constraint.name.clone()),
+			)
+			.collect::<Vec<_>>();
+		for (name, column_name) in
+			generated_unique_constraint_names(&self.table_name, &unique_columns, &reserved)
+		{
+			model_state.constraints.push(ConstraintDefinition {
+				name,
+				constraint_type: "unique".to_string(),
+				fields: vec![column_name],
+				expression: None,
+				foreign_key_info: None,
+			});
 		}
 
 		// Copy model-level constraints declared via #[model(unique_together = ...)]
@@ -329,61 +327,33 @@ impl ModelMetadata {
 			.constraints
 			.extend(self.constraints.iter().cloned());
 
+		for (name, field_meta) in &self.fields {
+			let Some(domain) = &field_meta.domain else {
+				continue;
+			};
+			let column = field_meta
+				.params
+				.get("db_column")
+				.map(String::as_str)
+				.unwrap_or(name);
+			let constraint_name = enum_domain_constraint_name(&self.table_name, column);
+			if !model_state
+				.constraints
+				.iter()
+				.any(|constraint| constraint.name == constraint_name)
+			{
+				model_state
+					.constraints
+					.push(ConstraintDefinition::enum_domain(
+						constraint_name,
+						column,
+						domain.clone(),
+					));
+			}
+		}
+
 		model_state
 	}
-}
-
-fn safe_constraint_name_fragment(value: &str) -> String {
-	let mut fragment = String::with_capacity(value.len());
-	for character in value.chars() {
-		if character.is_ascii_alphanumeric() || character == '_' {
-			fragment.push(character.to_ascii_lowercase());
-		} else {
-			fragment.push('_');
-		}
-	}
-
-	if fragment.is_empty() {
-		fragment.push_str("table");
-	} else if fragment
-		.as_bytes()
-		.first()
-		.is_some_and(|character| character.is_ascii_digit())
-	{
-		fragment.insert_str(0, "table_");
-	}
-	fragment
-}
-
-fn safe_constraint_table_fragment(value: &str) -> String {
-	let fragment = safe_constraint_name_fragment(value);
-	if fragment == value {
-		return fragment;
-	}
-	format!("{fragment}_{:08x}", stable_constraint_name_hash(value))
-}
-
-fn stable_constraint_name_hash(value: &str) -> u32 {
-	let mut hash = 0x811c9dc5_u32;
-	for byte in value.bytes() {
-		hash ^= u32::from(byte);
-		hash = hash.wrapping_mul(0x01000193);
-	}
-	hash
-}
-
-fn bounded_constraint_identifier(value: &str) -> String {
-	if value.len() <= ModelMetadata::MAX_CONSTRAINT_IDENTIFIER_BYTES {
-		return value.to_owned();
-	}
-
-	let suffix = format!("_{:08x}", stable_constraint_name_hash(value));
-	let prefix_len = ModelMetadata::MAX_CONSTRAINT_IDENTIFIER_BYTES - suffix.len();
-	let mut end = prefix_len;
-	while !value.is_char_boundary(end) {
-		end -= 1;
-	}
-	format!("{}{}", &value[..end], suffix)
 }
 
 /// Field metadata for registration
@@ -399,6 +369,10 @@ pub struct FieldMetadata {
 	pub nullable: bool,
 	/// Field parameters (max_length, blank, default, etc.)
 	pub params: HashMap<String, String>,
+	/// Generated-column metadata.
+	pub generated: Option<GeneratedColumnDefinition>,
+	/// Structured database value domain.
+	pub domain: Option<FieldDomain>,
 	/// ForeignKey information if this field is a foreign key
 	pub foreign_key: Option<super::autodetector::ForeignKeyInfo>,
 }
@@ -410,6 +384,8 @@ impl FieldMetadata {
 			field_type,
 			nullable: false,
 			params: HashMap::new(),
+			generated: None,
+			domain: None,
 			foreign_key: None,
 		}
 	}
@@ -430,6 +406,24 @@ impl FieldMetadata {
 			return self;
 		}
 		self.params.insert(key_s, value_s);
+		self
+	}
+
+	/// Sets generated-column metadata and returns self for chaining.
+	pub fn with_generated(mut self, generated: GeneratedColumnDefinition) -> Self {
+		self.generated = Some(generated);
+		self
+	}
+
+	/// Sets optional structured field-domain metadata and returns self for chaining.
+	pub fn with_domain_opt(mut self, domain: Option<FieldDomain>) -> Self {
+		self.domain = domain.map(FieldDomain::canonicalized);
+		self
+	}
+
+	/// Sets structured database value domain metadata.
+	pub fn with_domain(mut self, domain: FieldDomain) -> Self {
+		self.domain = Some(domain.canonicalized());
 		self
 	}
 
@@ -657,6 +651,53 @@ impl ModelRegistry {
 		}
 	}
 
+	/// Validates physical index names across all registered models.
+	///
+	/// PostgreSQL index names share a schema-level namespace, so two models
+	/// cannot safely declare the same physical name even when their tables
+	/// differ.
+	pub fn validate_physical_index_names(&self) -> super::Result<()> {
+		let models = self.models.read().map_err(|_| {
+			super::MigrationError::InvalidMigration("model registry lock is poisoned".to_string())
+		})?;
+		let mut owners = HashMap::new();
+		for metadata in models.values() {
+			if let Some(previous_table) =
+				owners.insert(metadata.table_name.clone(), metadata.table_name.clone())
+			{
+				return Err(super::MigrationError::InvalidMigration(format!(
+					"physical table name `{}` is registered by both `{}` and `{}`",
+					metadata.table_name, previous_table, metadata.table_name
+				)));
+			}
+		}
+		for metadata in models.values() {
+			for index in metadata.indexes() {
+				if index.name.is_empty() {
+					return Err(super::MigrationError::InvalidMigration(format!(
+						"physical index name on table `{}` must not be empty",
+						metadata.table_name
+					)));
+				}
+				if index.name.contains('\0') {
+					return Err(super::MigrationError::InvalidMigration(format!(
+						"physical index name on table `{}` must not contain NUL",
+						metadata.table_name
+					)));
+				}
+				if let Some(previous_table) =
+					owners.insert(index.name.clone(), metadata.table_name.clone())
+				{
+					return Err(super::MigrationError::InvalidMigration(format!(
+						"physical index name `{}` on table `{}` conflicts with relation name owned by table `{}`",
+						index.name, metadata.table_name, previous_table
+					)));
+				}
+			}
+		}
+		Ok(())
+	}
+
 	/// Get all registered models
 	///
 	/// Returns a freshly-cloned `Vec<ModelMetadata>`. For hot paths that
@@ -680,6 +721,45 @@ impl ModelRegistry {
 		} else {
 			Vec::new()
 		}
+	}
+
+	/// Get all registered models or report a poisoned registry lock.
+	pub fn try_get_models(&self) -> super::Result<Vec<ModelMetadata>> {
+		self.models
+			.read()
+			.map(|models| models.values().cloned().collect())
+			.map_err(|_| {
+				super::MigrationError::InvalidMigration(
+					"model registry lock is poisoned".to_string(),
+				)
+			})
+	}
+
+	/// Collect storage aliases referenced by semantic file fields.
+	///
+	/// Migration metadata records the semantic field type and storage alias in
+	/// [`FieldMetadata::params`]. Keeping this collector in the database crate
+	/// avoids introducing a dependency from storage construction back into the
+	/// model registry.
+	pub fn file_storage_aliases(&self) -> BTreeSet<String> {
+		self.get_models()
+			.into_iter()
+			.flat_map(|model| model.fields.into_values())
+			.filter(|field| {
+				field
+					.params
+					.get("model_field_type")
+					.map(String::as_str)
+					.is_some_and(|value| matches!(value, "file" | "image"))
+			})
+			.map(|field| {
+				field
+					.params
+					.get("file_storage")
+					.cloned()
+					.unwrap_or_else(|| "default".to_string())
+			})
+			.collect()
 	}
 
 	/// Get a specific model by app_label and model_name
@@ -835,9 +915,10 @@ pub fn global_registry() -> &'static ModelRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::migrations::FieldType;
 	use crate::migrations::autodetector::{ForeignKeyInfo, MigrationAutodetector, ProjectState};
 	use crate::migrations::operations::{Constraint, Operation, SqlDialect};
+	use crate::migrations::{FieldType, GeneratedStorage, SchemaExpr};
+	use crate::naming::stable_constraint_name_hash;
 	use rstest::rstest;
 
 	#[test]
@@ -852,6 +933,84 @@ mod tests {
 		let metadata = ModelMetadata::new("blog", "Post", "blog_post");
 		registry.register_model(metadata);
 		assert_eq!(registry.count(), 1);
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn duplicate_physical_index_names_are_rejected_by_registry_validation() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		let mut document = ModelMetadata::new("search", "Document", "search_document");
+		document.add_index(IndexDefinition {
+			name: "shared_embedding_ann".to_string(),
+			fields: vec!["embedding".to_string()],
+			unique: false,
+			where_clause: None,
+			index_type: Some(super::super::operations::IndexType::Hnsw {
+				m: Some(16),
+				ef_construction: Some(64),
+			}),
+			operator_class: Some("vector_cosine_ops".to_string()),
+			expressions: None,
+		});
+		let mut invoice = ModelMetadata::new("billing", "Invoice", "billing_invoice");
+		invoice.add_index(IndexDefinition {
+			name: "shared_embedding_ann".to_string(),
+			fields: vec!["embedding".to_string()],
+			unique: false,
+			where_clause: None,
+			index_type: Some(super::super::operations::IndexType::Ivfflat { lists: Some(100) }),
+			operator_class: Some("vector_l2_ops".to_string()),
+			expressions: None,
+		});
+		registry.register_model(document);
+		registry.register_model(invoice);
+
+		// Act
+		let error = registry
+			.validate_physical_index_names()
+			.expect_err("duplicate physical index names must fail validation");
+
+		// Assert
+		assert!(matches!(
+			error,
+			super::super::MigrationError::InvalidMigration(message)
+				if message.contains("shared_embedding_ann")
+					&& message.contains("search_document")
+					&& message.contains("billing_invoice")
+		));
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn physical_index_names_colliding_with_table_names_are_rejected() {
+		let registry = ModelRegistry::new();
+		let document = ModelMetadata::new("search", "Document", "search_document");
+		let mut invoice = ModelMetadata::new("billing", "Invoice", "billing_invoice");
+		invoice.add_index(IndexDefinition {
+			name: "search_document".to_string(),
+			fields: vec!["embedding".to_string()],
+			unique: false,
+			where_clause: None,
+			index_type: Some(super::super::operations::IndexType::Hnsw {
+				m: Some(16),
+				ef_construction: Some(64),
+			}),
+			operator_class: Some("vector_cosine_ops".to_string()),
+			expressions: None,
+		});
+		registry.register_model(document);
+		registry.register_model(invoice);
+
+		let error = registry
+			.validate_physical_index_names()
+			.expect_err("an index may not reuse a physical table relation name");
+
+		assert!(matches!(
+			error,
+			super::super::MigrationError::InvalidMigration(message)
+				if message.contains("search_document") && message.contains("billing_invoice")
+		));
 	}
 
 	#[test]
@@ -873,6 +1032,66 @@ mod tests {
 
 		let models = registry.get_models();
 		assert_eq!(models.len(), 2);
+	}
+
+	#[test]
+	fn try_get_models_reports_a_poisoned_lock() {
+		let registry = ModelRegistry::new();
+		let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let _guard = registry.models.write().unwrap();
+			panic!("poison the registry lock");
+		}));
+		assert!(result.is_err());
+
+		let error = registry.try_get_models().unwrap_err();
+		assert!(matches!(
+			error,
+			super::super::MigrationError::InvalidMigration(message)
+				if message == "model registry lock is poisoned"
+		));
+	}
+
+	#[test]
+	fn file_storage_aliases_collect_file_and_image_fields() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		let mut metadata = ModelMetadata::new("media", "Asset", "media_asset");
+		metadata.add_field(
+			"title".to_string(),
+			FieldMetadata::new(FieldType::VarChar(255)).with_param("model_field_type", "string"),
+		);
+		metadata.add_field(
+			"private_file".to_string(),
+			FieldMetadata::new(FieldType::VarChar(255))
+				.with_param("model_field_type", "file")
+				.with_param("file_storage", "private_uploads"),
+		);
+		metadata.add_field(
+			"public_file".to_string(),
+			FieldMetadata::new(FieldType::VarChar(255)).with_param("model_field_type", "file"),
+		);
+		metadata.add_field(
+			"image".to_string(),
+			FieldMetadata::new(FieldType::VarChar(255))
+				.with_param("model_field_type", "image")
+				.with_param("file_storage", "images"),
+		);
+		registry.register_model(metadata);
+
+		// Act
+		let aliases = registry.file_storage_aliases();
+
+		// Assert
+		assert_eq!(
+			aliases,
+			[
+				"default".to_string(),
+				"images".to_string(),
+				"private_uploads".to_string(),
+			]
+			.into_iter()
+			.collect()
+		);
 	}
 
 	#[test]
@@ -992,6 +1211,175 @@ mod tests {
 		assert_eq!(model_state.name, "Post");
 		assert_eq!(model_state.fields.len(), 1);
 		assert!(model_state.fields.contains_key("title"));
+	}
+
+	#[test]
+	fn file_field_model_state_preserves_semantic_and_physical_storage_metadata() {
+		let mut metadata = ModelMetadata::new("media", "Asset", "media_asset");
+		let file_field = FieldMetadata::new(FieldType::VarChar(255))
+			.with_param("model_field_type", "file")
+			.with_param("upload_to", "avatars/%Y/%m/%d")
+			.with_param("file_storage", "private_uploads")
+			.with_param("max_length", "255")
+			.with_param("storage", "external");
+		metadata.add_field("avatar".to_string(), file_field);
+
+		let model_state = metadata.to_model_state();
+		let field_state = model_state
+			.fields
+			.get("avatar")
+			.expect("file field should be present in migration state");
+
+		assert_eq!(field_state.field_type, FieldType::VarChar(255));
+		for (key, value) in [
+			("model_field_type", "file"),
+			("upload_to", "avatars/%Y/%m/%d"),
+			("file_storage", "private_uploads"),
+			("max_length", "255"),
+		] {
+			assert_eq!(
+				field_state.params.get(key).map(String::as_str),
+				Some(value),
+				"migration state must preserve `{key}`"
+			);
+		}
+		assert_eq!(
+			field_state.params.get("storage").map(String::as_str),
+			Some("external"),
+			"PostgreSQL physical storage must remain separate from file_storage"
+		);
+	}
+
+	#[test]
+	fn image_field_model_state_preserves_all_semantic_policy() {
+		let mut metadata = ModelMetadata::new("media", "Asset", "media_asset");
+		let mut image = FieldMetadata::new(FieldType::VarChar(255));
+		for (key, value) in [
+			("model_field_type", "image"),
+			("upload_to", "images/%Y/%m/%d"),
+			("file_storage", "media"),
+			("max_length", "255"),
+			("cleanup", "false"),
+			("max_width", "800"),
+			("max_height", "600"),
+		] {
+			image = image.with_param(key, value);
+		}
+		metadata.add_field("image".to_owned(), image);
+
+		let state = metadata.to_model_state();
+		let image = state.fields.get("image").unwrap();
+
+		assert_eq!(image.field_type, FieldType::VarChar(255));
+		for (key, value) in [
+			("model_field_type", "image"),
+			("upload_to", "images/%Y/%m/%d"),
+			("file_storage", "media"),
+			("max_length", "255"),
+			("cleanup", "false"),
+			("max_width", "800"),
+			("max_height", "600"),
+		] {
+			assert_eq!(image.params.get(key).map(String::as_str), Some(value));
+		}
+	}
+
+	#[test]
+	fn test_to_model_state_resolves_qualified_fk_target_table() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("blog", "Post", "articles"));
+
+		let mut metadata = ModelMetadata::new("comments", "Comment", "comments");
+		let foreign_key = crate::migrations::autodetector::ForeignKeyInfo {
+			referenced_table: "post".to_string(),
+			referenced_column: "id".to_string(),
+			on_delete: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+			on_update: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+		};
+		let field = FieldMetadata::new(FieldType::Uuid)
+			.with_param("fk_target_app", "blog")
+			.with_param("fk_target_model", "Post")
+			.with_foreign_key(foreign_key);
+		metadata.add_field("post".to_string(), field);
+
+		// Act
+		let model_state = metadata.to_model_state_with_registry(&registry);
+
+		// Assert
+		let field_state = model_state
+			.fields
+			.get("post")
+			.expect("qualified FK field should be present");
+		assert_eq!(
+			field_state
+				.foreign_key
+				.as_ref()
+				.expect("FK metadata should be preserved")
+				.referenced_table,
+			"articles"
+		);
+		let constraint = model_state
+			.constraints
+			.iter()
+			.find(|constraint| constraint.constraint_type == "foreign_key")
+			.expect("FK constraint should be generated");
+		assert_eq!(
+			constraint
+				.foreign_key_info
+				.as_ref()
+				.expect("FK constraint metadata should be present")
+				.referenced_table,
+			"articles"
+		);
+	}
+
+	#[test]
+	fn test_to_model_state_uses_app_prefixed_fallback_for_unregistered_qualified_fk() {
+		let registry = ModelRegistry::new();
+		let mut metadata = ModelMetadata::new("comments", "Comment", "comments_comment");
+		let foreign_key = crate::migrations::autodetector::ForeignKeyInfo {
+			referenced_table: "user".to_string(),
+			referenced_column: "id".to_string(),
+			on_delete: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+			on_update: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+		};
+		let field = FieldMetadata::new(FieldType::Uuid)
+			.with_param("fk_target_app", "auth")
+			.with_param("fk_target_model", "User")
+			.with_foreign_key(foreign_key);
+		metadata.add_field("user".to_string(), field);
+
+		let model_state = metadata.to_model_state_with_registry(&registry);
+
+		assert_eq!(
+			model_state.fields["user"]
+				.foreign_key
+				.as_ref()
+				.expect("foreign key metadata should be preserved")
+				.referenced_table,
+			"auth_user"
+		);
+	}
+
+	#[test]
+	fn test_model_metadata_to_model_state_preserves_generated_metadata() {
+		let mut metadata = ModelMetadata::new("blog", "Post", "blog_post");
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("title"),
+			"SchemaExpr::col(\"title\")",
+			GeneratedStorage::Stored,
+		);
+		let field = FieldMetadata::new(FieldType::VarChar(255)).with_generated(generated.clone());
+		metadata.add_field("title_slug".to_string(), field);
+
+		let model_state = metadata.to_model_state();
+
+		let field_state = model_state
+			.fields
+			.get("title_slug")
+			.expect("generated field should be present");
+		assert_eq!(field_state.generated, Some(generated));
 	}
 
 	#[test]
@@ -1269,7 +1657,7 @@ mod tests {
 		assert_eq!(
 			sql,
 			format!(
-				"CREATE TABLE \"User-Events\" (\n  token VARCHAR(255) NOT NULL,\n  CONSTRAINT {expected_constraint_name} UNIQUE (token)\n);"
+				"CREATE TABLE \"User-Events\" (\n  token VARCHAR(255) NOT NULL,\n  CONSTRAINT \"{expected_constraint_name}\" UNIQUE (\"token\")\n);"
 			)
 		);
 	}
@@ -1317,9 +1705,11 @@ mod tests {
 
 		// Assert
 		assert_eq!(constraints.len(), 2);
-		assert!(constraints.iter().all(|constraint| {
-			constraint.name.len() <= ModelMetadata::MAX_CONSTRAINT_IDENTIFIER_BYTES
-		}));
+		assert!(
+			constraints
+				.iter()
+				.all(|constraint| constraint.name.len() <= 63)
+		);
 		assert_ne!(constraints[0].name, constraints[1].name);
 	}
 
@@ -1472,17 +1862,11 @@ mod tests {
 			"author_id".to_string(),
 			FieldMetadata::new(FieldType::Uuid).with_param("db_index", "true"),
 		);
-		metadata.add_index(IndexDefinition {
-			name: "posts_author_explicit".to_string(),
-			fields: vec!["author_id".to_string()],
-			unique: false,
-			where_clause: None,
-			index_type: None,
-			expressions: None,
-			concurrently: false,
-			mysql_options: None,
-			operator_class: None,
-		});
+		metadata.add_index(IndexDefinition::new(
+			"posts_author_explicit",
+			vec!["author_id".to_string()],
+			false,
+		));
 
 		// Act
 		let model_state = metadata.to_model_state();

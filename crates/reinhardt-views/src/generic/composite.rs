@@ -133,7 +133,7 @@ where
 					let filter = Filter::new(
 						field.clone(),
 						FilterOperator::Eq,
-						FilterValue::String(value.clone()),
+						FilterValue::String(value.to_owned()),
 					);
 					queryset = queryset.filter(filter);
 				}
@@ -305,7 +305,7 @@ where
 						.await
 						.map_err(|e| Error::Internal(format!("Failed to resolve DB: {:?}", e)))?;
 
-					validators.validate_async(conn.inner(), &data, None).await?;
+					validators.validate_async(&conn, &data, None).await?;
 				}
 
 				let queryset = self.get_queryset();
@@ -421,7 +421,7 @@ where
 		let filter_value = if let Ok(int_value) = lookup_value.parse::<i64>() {
 			FilterValue::Integer(int_value)
 		} else {
-			FilterValue::String(lookup_value.clone())
+			FilterValue::String(lookup_value.to_string())
 		};
 
 		let filter = Filter::new(self.lookup_field.clone(), FilterOperator::Eq, filter_value);
@@ -622,7 +622,7 @@ where
 		let filter_value = if let Ok(int_value) = lookup_value.parse::<i64>() {
 			FilterValue::Integer(int_value)
 		} else {
-			FilterValue::String(lookup_value.clone())
+			FilterValue::String(lookup_value.to_string())
 		};
 
 		let filter = Filter::new(self.lookup_field.clone(), FilterOperator::Eq, filter_value);
@@ -765,7 +765,7 @@ where
 		let filter_value = if let Ok(int_value) = lookup_value.parse::<i64>() {
 			FilterValue::Integer(int_value)
 		} else {
-			FilterValue::String(lookup_value.clone())
+			FilterValue::String(lookup_value.to_string())
 		};
 
 		let filter = Filter::new(self.lookup_field.clone(), FilterOperator::Eq, filter_value);

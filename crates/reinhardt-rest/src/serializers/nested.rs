@@ -480,13 +480,13 @@ impl<M: Model> Serializer for ListSerializer<M> {
 ///
 /// # Usage Patterns
 ///
-/// ## Basic Usage with Manual ORM Integration
+/// ## Basic Usage with Closure-Scoped ORM Integration
 ///
 /// ```rust,ignore
 /// # #[tokio::main]
-/// # async fn main() {
-/// use reinhardt_rest::serializers::WritableNestedSerializer;
-/// use reinhardt_db::orm::{Model, Transaction};
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// use reinhardt_db::orm::{manager::get_connection, Model};
+/// use reinhardt_rest::serializers::{Serializer, WritableNestedSerializer};
 ///
 /// // Define serializer with permissions
 /// let serializer = WritableNestedSerializer::<Post, Author>::new("author")
@@ -503,24 +503,23 @@ impl<M: Model> Serializer for ListSerializer<M> {
 /// }"#;
 ///
 /// // Validate and deserialize
-/// let post: Post = serializer.deserialize(&json.to_string())?;
+/// let mut post: Post = serializer.deserialize(json)?;
 ///
 /// // Extract nested data for manual processing
 /// if let Some(author_data) = serializer.extract_nested_data(json)? {
-///     // Create author within transaction
-///     let mut tx = Transaction::new();
-///     tx.begin()?;
-///
 ///     let author: Author = serde_json::from_value(author_data)?;
-///     let saved_author = Author::objects().create(&author).await?;
+///     let connection = get_connection().await?;
 ///
-///     // Set foreign key and save parent
-///     post.author_id = saved_author.id;
-///     let saved_post = Post::objects().create(&post).await?;
-///
-///     tx.commit()?;
+///     // The callback owns the executor for every write in this operation.
+///     let _saved_post = connection.atomic(async |transaction| {
+///         let saved_author = Author::objects()
+///             .create_with_conn(transaction, &author)
+///             .await?;
+///         post.author_id = saved_author.id;
+///         Post::objects().create_with_conn(transaction, &post).await
+///     }).await?;
 /// }
-/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// # Ok(())
 /// # }
 /// ```
 ///
@@ -529,44 +528,28 @@ impl<M: Model> Serializer for ListSerializer<M> {
 /// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// # use serde_json::json;
-/// # use reinhardt_db::orm::{Model, Transaction};
-/// # use reinhardt_rest::serializers::WritableNestedSerializer;
-/// # #[derive(serde::Serialize, serde::Deserialize)]
-/// # struct Author { id: Option<i64>, name: String }
-/// # impl Model for Author {
-/// #     type PrimaryKey = i64;
-/// #     fn table_name() -> &'static str { "authors" }
-/// #     fn primary_key(&self) -> Option<&i64> { self.id.as_ref() }
-/// #     fn set_primary_key(&mut self, value: i64) { self.id = Some(value); }
-/// # }
-/// # #[derive(serde::Serialize, serde::Deserialize)]
-/// # struct Post { id: i64, title: String, author_id: i64 }
-/// # impl Model for Post {
-/// #     type PrimaryKey = i64;
-/// #     fn table_name() -> &'static str { "posts" }
-/// #     fn primary_key(&self) -> Option<&i64> { Some(&self.id) }
-/// #     fn set_primary_key(&mut self, value: i64) { self.id = value; }
-/// # }
-/// # let serializer = WritableNestedSerializer::<Post, Author>::new();
-/// # let json = json!({});
+/// use reinhardt_db::orm::{manager::get_connection, Model};
+/// use reinhardt_rest::serializers::{Serializer, WritableNestedSerializer};
+///
+/// let serializer = WritableNestedSerializer::<Post, Author>::new("author")
+///     .allow_create(true)
+///     .allow_update(true);
+/// let mut post: Post = serializer.deserialize(json)?;
+///
 /// if let Some(author_data) = serializer.extract_nested_data(json)? {
-///     let mut tx = Transaction::new();
-///     tx.begin()?;
-///
 ///     let author: Author = serde_json::from_value(author_data)?;
-///     let saved_author = if WritableNestedSerializer::<Post, Author>::is_create_operation(&author_data) {
-///         // Create new author
-///         Author::objects().create(&author).await?
-///     } else {
-///         // Update existing author
-///         Author::objects().update(&author).await?
-///     };
+///     let connection = get_connection().await?;
 ///
-///     post.author_id = saved_author.id;
-///     Post::objects().create(&post).await?;
+///     let _saved_post = connection.atomic(async |transaction| {
+///         let saved_author = if WritableNestedSerializer::<Post, Author>::is_create_operation(&author_data) {
+///             Author::objects().create_with_conn(transaction, &author).await?
+///         } else {
+///             Author::objects().update_with_conn(transaction, &author).await?
+///         };
 ///
-///     tx.commit()?;
+///         post.author_id = saved_author.id;
+///         Post::objects().create_with_conn(transaction, &post).await
+///     }).await?;
 /// }
 /// # Ok(())
 /// # }

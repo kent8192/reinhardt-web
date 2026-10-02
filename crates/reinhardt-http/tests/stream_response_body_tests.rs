@@ -78,7 +78,9 @@ async fn clones_transfer_one_producer_and_cannot_replay_it() {
 
 #[rstest]
 #[case("bytes")]
+#[case("static")]
 #[case("json")]
+#[case("file")]
 fn replacing_streaming_bodies_releases_the_producer(#[case] replacement: &str) {
 	// Arrange
 	let drops = Arc::new(AtomicUsize::new(0));
@@ -89,35 +91,39 @@ fn replacing_streaming_bodies_releases_the_producer(#[case] replacement: &str) {
 	// Act
 	let mut response = match replacement {
 		"bytes" => response.with_body("replacement"),
+		"static" => response.with_static_body(b"replacement"),
 		"json" => response.with_json(&"replacement").unwrap(),
+		"file" => response
+			.with_file_body(tempfile::tempfile().unwrap(), 0, 0)
+			.unwrap(),
 		_ => unreachable!(),
 	};
 	// Assert
 	assert_eq!(drops.load(Ordering::SeqCst), 1);
 	assert!(response.take_stream_body().is_none());
 	assert!(!response.headers.contains_key(header::TRANSFER_ENCODING));
-	assert!(!response.is_streaming());
+	assert_eq!(response.is_streaming(), replacement == "file");
 	assert_eq!(
 		response
 			.headers
 			.get(header::CONTENT_LENGTH)
 			.map(|v| v.to_str().unwrap()),
-		None
+		(replacement == "file").then_some("0")
 	);
 }
 
 #[rstest]
-fn streams_replace_buffered_bodies_and_keep_response_send_sync() {
+fn streams_replace_file_ranges_and_keep_response_send_sync() {
 	// Arrange
 	fn assert_send_sync<T: Send + Sync>() {}
 	assert_send_sync::<Response>();
 	let response = Response::ok()
-		.with_body("previous")
-		.with_header("content-length", "8");
+		.with_file_body(tempfile::tempfile().unwrap(), 0, 0)
+		.unwrap();
 	// Act
 	let response = response.with_stream(stream::pending());
 	// Assert
 	assert!(response.is_streaming());
-	assert!(response.body.is_empty());
+	assert!(response.file_body().is_none());
 	assert!(!response.headers.contains_key(header::CONTENT_LENGTH));
 }

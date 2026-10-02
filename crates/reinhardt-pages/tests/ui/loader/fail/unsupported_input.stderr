@@ -1,0 +1,5 @@
+error: #[loader] inputs must use Path(name): Path<T> or Query(name): Query<T>
+ --> tests/ui/loader/fail/unsupported_input.rs:4:22
+  |
+4 | async fn unsupported(value: i64) -> Result<i64, String> {
+  |                      ^^^^^

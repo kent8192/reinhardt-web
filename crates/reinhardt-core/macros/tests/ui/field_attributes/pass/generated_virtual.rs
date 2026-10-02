@@ -12,7 +12,7 @@ struct Product {
 
 	price: i32,
 
-	#[field(generated = "price * 1.1", generated_virtual = true)]
+	#[field(generated_sql = "price * 1.1", generated_virtual = true)]
 	price_with_tax: i32,
 }
 

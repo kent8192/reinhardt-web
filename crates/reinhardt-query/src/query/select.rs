@@ -32,7 +32,6 @@ use super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWrit
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct SelectStatement {
-	pub(crate) raw_sql: Option<String>,
 	pub(crate) ctes: Vec<CommonTableExpr>,
 	pub(crate) distinct: Option<SelectDistinct>,
 	pub(crate) selects: Vec<SelectExpr>,
@@ -109,9 +108,7 @@ pub enum LockBehavior {
 	SkipLocked,
 }
 
-/// Lock clause for SELECT ... FOR UPDATE/SHARE
-// NOTE: Fields are currently unused because FOR UPDATE/SHARE is not yet implemented
-#[allow(dead_code)]
+/// Lock clause for `SELECT ... FOR UPDATE/SHARE`.
 #[derive(Debug, Clone)]
 pub struct LockClause {
 	pub(crate) r#type: LockType,
@@ -151,18 +148,9 @@ impl SelectStatement {
 		Self::default()
 	}
 
-	/// Create a statement backed by an already-rendered SQL query.
-	pub fn raw(sql: impl Into<String>) -> Self {
-		Self {
-			raw_sql: Some(sql.into()),
-			..Self::default()
-		}
-	}
-
 	/// Take the ownership of data in the current [`SelectStatement`]
 	pub fn take(&mut self) -> Self {
 		Self {
-			raw_sql: self.raw_sql.take(),
 			ctes: std::mem::take(&mut self.ctes),
 			distinct: self.distinct.take(),
 			selects: std::mem::take(&mut self.selects),
@@ -178,12 +166,6 @@ impl SelectStatement {
 			lock: self.lock.take(),
 			windows: std::mem::take(&mut self.windows),
 		}
-	}
-
-	/// Remove all FROM sources from the statement.
-	pub fn clear_from(&mut self) -> &mut Self {
-		self.from.clear();
-		self
 	}
 
 	// Column selection methods
@@ -475,6 +457,12 @@ impl SelectStatement {
 		C: IntoColumnRef,
 	{
 		self.group_by(col)
+	}
+
+	/// Add an arbitrary expression to the GROUP BY clause.
+	pub fn group_by_expr(&mut self, expression: SimpleExpr) -> &mut Self {
+		self.groups.push(expression);
+		self
 	}
 
 	/// Add multiple GROUP BY columns
@@ -777,7 +765,14 @@ impl SelectStatement {
 
 	// LOCK methods
 
-	/// Set FOR UPDATE lock
+	/// Set the row lock strength.
+	///
+	/// Calling this method replaces the complete existing lock clause, including
+	/// its behavior and table targets.
+	///
+	/// Backend support for locking query shapes differs. Use a checked backend
+	/// builder to receive a [`QueryBuildError`](crate::QueryBuildError) before
+	/// emitting unsupported SQL.
 	pub fn lock(&mut self, lock_type: LockType) -> &mut Self {
 		self.lock = Some(LockClause {
 			r#type: lock_type,
@@ -787,12 +782,50 @@ impl SelectStatement {
 		self
 	}
 
-	/// Set FOR UPDATE lock
+	/// Set the row lock wait behavior.
+	///
+	/// `NOWAIT` and `SKIP LOCKED` are mutually exclusive because a lock clause
+	/// stores only one behavior. If no lock strength has been configured, this
+	/// method creates a `FOR UPDATE` lock.
+	pub fn lock_behavior(&mut self, behavior: LockBehavior) -> &mut Self {
+		self.lock
+			.get_or_insert_with(|| LockClause {
+				r#type: LockType::Update,
+				tables: Vec::new(),
+				behavior: None,
+			})
+			.behavior = Some(behavior);
+		self
+	}
+
+	/// Restrict the row lock to typed table references.
+	///
+	/// If no lock strength has been configured, this method creates a
+	/// `FOR UPDATE` lock.
+	pub fn lock_tables<I, T>(&mut self, tables: I) -> &mut Self
+	where
+		I: IntoIterator<Item = T>,
+		T: IntoTableRef,
+	{
+		self.lock
+			.get_or_insert_with(|| LockClause {
+				r#type: LockType::Update,
+				tables: Vec::new(),
+				behavior: None,
+			})
+			.tables = tables
+			.into_iter()
+			.map(IntoTableRef::into_table_ref)
+			.collect();
+		self
+	}
+
+	/// Set a `FOR UPDATE` lock.
 	pub fn lock_exclusive(&mut self) -> &mut Self {
 		self.lock(LockType::Update)
 	}
 
-	/// Set FOR SHARE lock
+	/// Set a `FOR SHARE` lock.
 	pub fn lock_shared(&mut self) -> &mut Self {
 		self.lock(LockType::Share)
 	}

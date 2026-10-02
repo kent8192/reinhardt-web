@@ -6,6 +6,7 @@
 //! - Creates rollback scripts
 
 use super::operations::Operation;
+use super::operations::named_index_has_target;
 use super::repository::MigrationRepository;
 use super::schema_diff::{DatabaseSchema, SchemaDiff};
 use std::path::PathBuf;
@@ -230,6 +231,7 @@ impl AutoMigrationGenerator {
 				Operation::AddColumn { table, column, .. } => Some(Operation::DropColumn {
 					table: table.clone(),
 					column: column.name.clone(),
+					old_definition: None,
 				}),
 				Operation::DropColumn { .. } => None, // Cannot rollback - data is lost
 				Operation::RenameColumn {
@@ -245,7 +247,27 @@ impl AutoMigrationGenerator {
 
 				// Constraint operations
 				Operation::AddConstraint { .. } => None, // Cannot rollback without constraint name
+				Operation::AddConstraintDefinition { table, constraint } => {
+					Some(Operation::DropConstraintDefinition {
+						table: table.clone(),
+						constraint: constraint.clone(),
+					})
+				}
+				Operation::AddConstraintRepair { .. } => None,
+				Operation::RestoreConstraintOnRollback {
+					table,
+					constraint_sql,
+				} => Some(Operation::AddConstraint {
+					table: table.clone(),
+					constraint_sql: constraint_sql.clone(),
+				}),
 				Operation::DropConstraint { .. } => None, // Cannot rollback without constraint SQL
+				Operation::DropConstraintDefinition { table, constraint } => {
+					Some(Operation::AddConstraintDefinition {
+						table: table.clone(),
+						constraint: constraint.clone(),
+					})
+				}
 
 				// Index operations
 				Operation::CreateIndex {
@@ -275,7 +297,8 @@ impl AutoMigrationGenerator {
 					mysql_options: *mysql_options,
 					operator_class: operator_class.clone(),
 				}),
-				Operation::CreateIndexRepair {
+				#[cfg(feature = "pgvector")]
+				Operation::CreateNamedIndex {
 					table,
 					name,
 					columns,
@@ -288,14 +311,31 @@ impl AutoMigrationGenerator {
 					operator_class,
 				} => Some(Operation::DropNamedIndex {
 					table: table.clone(),
-					name: name.clone().unwrap_or_else(|| {
-						super::operations::generated_index_name(
-							table,
-							columns,
-							expressions.as_deref(),
-							where_clause.as_deref(),
-						)
-					}),
+					name: name.clone(),
+					columns: columns.clone(),
+					unique: *unique,
+					index_type: *index_type,
+					where_clause: where_clause.clone(),
+					concurrently: *concurrently,
+					expressions: expressions.clone(),
+					mysql_options: *mysql_options,
+					operator_class: operator_class.clone(),
+				}),
+				Operation::CreateIndexRepair { .. } => None,
+				Operation::RestoreIndexOnRollback {
+					table,
+					name,
+					columns,
+					unique,
+					index_type,
+					where_clause,
+					concurrently,
+					expressions,
+					mysql_options,
+					operator_class,
+				} => Some(Operation::CreateIndexRepair {
+					table: table.clone(),
+					name: name.clone(),
 					columns: columns.clone(),
 					unique: *unique,
 					index_type: *index_type,
@@ -306,6 +346,7 @@ impl AutoMigrationGenerator {
 					operator_class: operator_class.clone(),
 				}),
 				Operation::DropIndex { .. } => None, // Cannot rollback without index definition
+				#[cfg(feature = "pgvector")]
 				Operation::DropNamedIndex {
 					table,
 					name,
@@ -317,18 +358,45 @@ impl AutoMigrationGenerator {
 					expressions,
 					mysql_options,
 					operator_class,
-					..
-				} => Some(Operation::CreateIndexRepair {
-					table: table.clone(),
-					name: Some(name.clone()),
-					columns: columns.clone(),
-					unique: *unique,
-					index_type: *index_type,
-					where_clause: where_clause.clone(),
-					concurrently: *concurrently,
-					expressions: expressions.clone(),
-					mysql_options: *mysql_options,
-					operator_class: operator_class.clone(),
+				} => named_index_has_target(columns, expressions.as_deref()).then(|| {
+					Operation::CreateNamedIndex {
+						table: table.clone(),
+						name: name.clone(),
+						columns: columns.clone(),
+						unique: *unique,
+						index_type: *index_type,
+						where_clause: where_clause.clone(),
+						concurrently: *concurrently,
+						expressions: expressions.clone(),
+						mysql_options: *mysql_options,
+						operator_class: operator_class.clone(),
+					}
+				}),
+				#[cfg(not(feature = "pgvector"))]
+				Operation::DropNamedIndex {
+					table,
+					name,
+					columns,
+					unique,
+					index_type,
+					where_clause,
+					concurrently,
+					expressions,
+					mysql_options,
+					operator_class,
+				} => named_index_has_target(columns, expressions.as_deref()).then(|| {
+					Operation::CreateIndexRepair {
+						table: table.clone(),
+						name: Some(name.clone()),
+						columns: columns.clone(),
+						unique: *unique,
+						index_type: *index_type,
+						where_clause: where_clause.clone(),
+						concurrently: *concurrently,
+						expressions: expressions.clone(),
+						mysql_options: *mysql_options,
+						operator_class: operator_class.clone(),
+					}
 				}),
 
 				// Special operations
@@ -465,7 +533,10 @@ impl From<std::io::Error> for AutoMigrationError {
 mod tests {
 	use super::*;
 	use crate::migrations::repository::MigrationRepository;
-	use crate::migrations::{FieldType, Migration, MigrationError, Result};
+	use crate::migrations::{
+		FieldState, FieldType, IndexDefinition, IndexType, Migration, MigrationAutodetector,
+		MigrationError, ModelState, ProjectState, Result, SqlDialect,
+	};
 	use async_trait::async_trait;
 	use std::collections::{BTreeMap, HashMap};
 	use tokio::sync::Mutex;
@@ -481,6 +552,40 @@ mod tests {
 				migrations: HashMap::new(),
 			}
 		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	fn vector_index(index_type: IndexType, operator_class: &str) -> IndexDefinition {
+		IndexDefinition {
+			name: "documents_embedding_ann".to_string(),
+			fields: vec!["embedding".to_string()],
+			unique: false,
+			where_clause: None,
+			index_type: Some(index_type),
+			operator_class: Some(operator_class.to_string()),
+			expressions: None,
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	fn vector_state(dimensions: usize, indexes: Vec<IndexDefinition>) -> ProjectState {
+		let mut model = ModelState::new("search", "Document");
+		model.table_name = "search_document".to_string();
+		model.fields.insert(
+			"embedding".to_string(),
+			FieldState::new("embedding", FieldType::Vector { dimensions }, false),
+		);
+		model.indexes = indexes;
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		state
+	}
+
+	fn rollback_generator() -> AutoMigrationGenerator {
+		AutoMigrationGenerator::new(
+			DatabaseSchema::default(),
+			Arc::new(Mutex::new(TestRepository::new())),
+		)
 	}
 
 	#[async_trait]
@@ -537,10 +642,259 @@ mod tests {
 		assert!(matches!(rollback[0], Operation::DropTable { .. }));
 	}
 
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn vector_index_column_rollback_retains_column_identity() {
+		// Arrange
+		let generator = AutoMigrationGenerator::new(
+			DatabaseSchema::default(),
+			Arc::new(Mutex::new(TestRepository::new())),
+		);
+		let operation = Operation::CreateIndex {
+			table: "source".to_string(),
+			columns: vec!["embedding".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		};
+
+		// Act
+		let rollback = generator.generate_rollback(&[operation]);
+
+		// Assert
+		assert_eq!(
+			rollback[0].to_sql(&SqlDialect::Postgres),
+			"DROP INDEX idx_source_embedding;"
+		);
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn vector_index_expression_rollback_retains_expression_identity() {
+		// Arrange
+		let generator = AutoMigrationGenerator::new(
+			DatabaseSchema::default(),
+			Arc::new(Mutex::new(TestRepository::new())),
+		);
+		let operation = Operation::CreateIndex {
+			table: "source".to_string(),
+			columns: vec![],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: Some(vec!["normalize(embedding)".to_string()]),
+			mysql_options: None,
+			operator_class: None,
+		};
+
+		// Act
+		let rollback = generator.generate_rollback(&[operation]);
+
+		// Assert
+		assert_eq!(
+			rollback[0].to_sql(&SqlDialect::Postgres),
+			"DROP INDEX idx_source_expr_0887263130f7b374;"
+		);
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn named_vector_index_removal_rollback_restores_old_definition() {
+		// Arrange
+		let old_index = vector_index(
+			IndexType::Hnsw {
+				m: Some(16),
+				ef_construction: Some(64),
+			},
+			"vector_cosine_ops",
+		);
+		let from_state = vector_state(1536, vec![old_index.clone()]);
+		let mut to_state = vector_state(1536, Vec::new());
+		let operations =
+			MigrationAutodetector::new(from_state, to_state.clone()).generate_operations();
+
+		// Act
+		let reverse_sql = operations[0]
+			.to_reverse_sql(&SqlDialect::Postgres, &to_state)
+			.expect("reverse SQL");
+		let rollback = rollback_generator().generate_rollback(&operations);
+		operations[0].state_backwards("search", &mut to_state);
+
+		// Assert
+		assert_eq!(
+			reverse_sql,
+			Some(vec![
+				"CREATE INDEX documents_embedding_ann ON search_document USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);".to_string()
+			])
+		);
+		assert!(matches!(
+			&rollback[..],
+			[Operation::CreateNamedIndex {
+				name,
+				index_type: Some(IndexType::Hnsw {
+					m: Some(16),
+					ef_construction: Some(64),
+				}),
+				operator_class: Some(operator_class),
+				..
+			}] if name == "documents_embedding_ann"
+				&& operator_class == "vector_cosine_ops"
+		));
+		assert_eq!(
+			to_state
+				.get_model("search", "Document")
+				.expect("replayed model")
+				.indexes,
+			vec![old_index]
+		);
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn named_vector_index_property_change_rollback_restores_old_definition() {
+		// Arrange
+		let old_index = vector_index(
+			IndexType::Hnsw {
+				m: Some(16),
+				ef_construction: Some(64),
+			},
+			"vector_cosine_ops",
+		);
+		let new_index = vector_index(IndexType::Ivfflat { lists: Some(100) }, "vector_l2_ops");
+		let from_state = vector_state(1536, vec![old_index.clone()]);
+		let mut to_state = vector_state(1536, vec![new_index]);
+		let operations =
+			MigrationAutodetector::new(from_state, to_state.clone()).generate_operations();
+
+		// Act
+		let reverse_sql = operations[0]
+			.to_reverse_sql(&SqlDialect::Postgres, &to_state)
+			.expect("reverse SQL");
+		let rollback = rollback_generator().generate_rollback(&operations);
+		for operation in operations.iter().rev() {
+			operation.state_backwards("search", &mut to_state);
+		}
+
+		// Assert
+		assert_eq!(
+			reverse_sql,
+			Some(vec![
+				"CREATE INDEX documents_embedding_ann ON search_document USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);".to_string()
+			])
+		);
+		assert!(matches!(
+			&rollback[..],
+			[
+				Operation::DropNamedIndex { name: dropped, .. },
+				Operation::CreateNamedIndex {
+					name: created,
+					index_type: Some(IndexType::Hnsw {
+						m: Some(16),
+						ef_construction: Some(64),
+					}),
+					operator_class: Some(operator_class),
+					..
+				}
+			] if dropped == "documents_embedding_ann"
+				&& created == "documents_embedding_ann"
+				&& operator_class == "vector_cosine_ops"
+		));
+		assert_eq!(
+			to_state
+				.get_model("search", "Document")
+				.expect("replayed model")
+				.indexes,
+			vec![old_index]
+		);
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn named_vector_index_dimension_change_rollback_restores_old_definition() {
+		// Arrange
+		let old_index = vector_index(
+			IndexType::Hnsw {
+				m: Some(24),
+				ef_construction: Some(96),
+			},
+			"vector_ip_ops",
+		);
+		let from_state = vector_state(768, vec![old_index.clone()]);
+		let mut to_state = vector_state(1536, vec![old_index.clone()]);
+		let operations =
+			MigrationAutodetector::new(from_state, to_state.clone()).generate_operations();
+
+		// Act
+		let reverse_sql = operations[0]
+			.to_reverse_sql(&SqlDialect::Postgres, &to_state)
+			.expect("reverse SQL");
+		let rollback = rollback_generator().generate_rollback(&operations);
+		for operation in operations.iter().rev() {
+			operation.state_backwards("search", &mut to_state);
+		}
+
+		// Assert
+		assert_eq!(
+			reverse_sql,
+			Some(vec![
+				"CREATE INDEX documents_embedding_ann ON search_document USING hnsw (embedding vector_ip_ops) WITH (m = 24, ef_construction = 96);".to_string()
+			])
+		);
+		assert!(matches!(
+			&rollback[..],
+			[
+				Operation::DropNamedIndex { name: dropped, .. },
+				Operation::CreateNamedIndex {
+					name: created,
+					index_type: Some(IndexType::Hnsw {
+						m: Some(24),
+						ef_construction: Some(96),
+					}),
+					operator_class: Some(operator_class),
+					..
+				}
+			] if dropped == "documents_embedding_ann"
+				&& created == "documents_embedding_ann"
+				&& operator_class == "vector_ip_ops"
+		));
+		assert_eq!(
+			to_state
+				.get_model("search", "Document")
+				.expect("replayed model")
+				.indexes,
+			vec![old_index]
+		);
+	}
+
+	#[test]
+	fn legacy_named_index_drop_without_definition_does_not_fabricate_rollback() {
+		// Arrange
+		let generator = rollback_generator();
+		let operation: Operation = serde_json::from_str(
+			r#"{
+				"type": "DropNamedIndex",
+				"table": "search_document",
+				"name": "documents_embedding_ann"
+			}"#,
+		)
+		.expect("legacy DropNamedIndex JSON");
+
+		// Act
+		let rollback = generator.generate_rollback(&[operation]);
+
+		// Assert
+		assert!(rollback.is_empty());
+	}
+
 	#[rstest::rstest]
 	#[case(None)]
 	#[case(Some("sequence > 0"))]
-	fn rollback_indexes_use_the_same_physical_name(
+	fn rollback_indexes_preserve_generated_names_and_repair_semantics(
 		#[case] predicate: Option<&str>,
 		#[values(false, true)] repair: bool,
 	) {
@@ -562,21 +916,45 @@ mod tests {
 			operator_class: None,
 		};
 		if repair {
-			let drop = operation.to_reverse_operation(&state).unwrap().unwrap();
-			operation = drop.to_reverse_operation(&state).unwrap().unwrap();
-			if let Operation::CreateIndexRepair { name, .. } = &mut operation {
-				*name = None;
-			}
+			let Operation::CreateIndex {
+				table,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			} = operation
+			else {
+				panic!("expected CreateIndex");
+			};
+			operation = Operation::CreateIndexRepair {
+				table,
+				name: None,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			};
 		}
-		let dialect = super::super::SqlDialect::Postgres;
-		let expected = operation.to_reverse_sql(&dialect, &state).unwrap().unwrap();
+		let expected = operation.to_reverse_operation(&state).unwrap();
 
 		// Act
 		let rollback = generator.generate_rollback(&[operation]);
 
 		// Assert
-		assert_eq!(rollback.len(), 1);
-		assert_eq!(rollback[0].to_sql(&dialect), expected[0]);
+		if repair {
+			assert!(expected.is_none());
+			assert!(rollback.is_empty());
+		} else {
+			assert_eq!(rollback, vec![expected.unwrap()]);
+		}
 	}
 
 	#[test]
@@ -599,6 +977,7 @@ mod tests {
 				default: None,
 				primary_key: false,
 				auto_increment: false,
+				generated: None,
 			},
 		);
 		current.tables.insert("users".to_string(), current_table);
@@ -619,6 +998,7 @@ mod tests {
 				default: None,
 				primary_key: false,
 				auto_increment: false,
+				generated: None,
 			},
 		);
 		target.tables.insert("users".to_string(), target_table);

@@ -17,9 +17,11 @@ mod utils;
 
 /// Register an injectable provider function.
 ///
-/// Provider functions must be async and return `FactoryOutput<K, T>`, where
-/// `K` is an `InjectableKey` and `T` is the value consumed through
-/// `Depends<K, T>`.
+/// Provider functions must be async and return the produced value directly for
+/// self-keyed injection. Return `KeyedFactoryOutput<K, T>` only when the value
+/// type has multiple explicit bindings. The deprecated `FactoryOutput<K, T>`
+/// compatibility name is also accepted. User-defined explicit-key aliases are
+/// treated as ordinary self-keyed return values.
 ///
 /// On `wasm32-unknown-unknown` the generated provider becomes an inert
 /// same-name async stub and skips DI registration. This lets downstream crates

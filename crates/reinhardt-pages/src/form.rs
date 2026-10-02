@@ -27,6 +27,17 @@
 //!
 //! - **FormComponent**: Renders `FormMetadata` to DOM with CSRF protection
 //! - **FormBinding**: Two-way data binding between Form and Signals
+//! - **ModelFormState**: Converts schema-backed controls into one policy-safe payload and keeps
+//!   wasm browser file selections outside that JSON payload
+//!
+//! ## Model-backed forms
+//!
+//! A `form!` declaration with `model`, `policy`, and exactly one of `fields` or
+//! `exclude` uses the target-neutral schema emitted by `#[model(form = true)]`.
+//! The named policy must implement [`ModelFormPolicy`] and be the same policy
+//! used by the explicit `server_fn` payload; it is the authoritative
+//! server-side field allowlist. The `fields` or `exclude` clause controls
+//! rendered controls, while field overrides affect presentation only.
 //!
 //! ## Example
 //!
@@ -48,9 +59,13 @@
 //! }
 //! ```
 
+#[cfg(native)]
 pub mod binding;
+#[cfg(native)]
 pub mod component;
 pub mod generated;
+pub mod model;
+pub mod page;
 pub mod validators;
 
 // Server-side only modules for HTML rendering and asset management
@@ -59,13 +74,27 @@ pub mod media;
 #[cfg(native)]
 pub mod rendering;
 
+#[cfg(native)]
 pub use binding::FormBinding;
+#[cfg(native)]
 pub use component::FormComponent;
 pub use generated::{StaticFieldMetadata, StaticFormMetadata};
+pub use model::{
+	ModelFormPayloadSelection, ModelFormSelectionArgument, ModelFormSelectionArgumentNameCheck,
+	ModelFormSelectionCount, ModelFormSelectionPayload, ModelFormServerFn, ModelFormState,
+	assert_model_form_argument_compatibility, assert_model_form_error_compatibility,
+};
+pub use reinhardt_core::model_form::{
+	AllEditableModelFields, ModelFormContract, ModelFormContractField, ModelFormContractSchema,
+	ModelFormFieldDescriptor, ModelFormFieldKind, ModelFormPatchPayload, ModelFormPayload,
+	ModelFormPayloadError, ModelFormPolicy, ModelFormPrimaryKey, ModelFormSchema,
+	NativeModelFormPayload, PatchValidationError,
+};
 pub use validators::{ClientValidator, ValidatorRegistry};
 
 // Re-export form metadata types for macro-generated code
 // These are needed in both WASM and server environments
+#[cfg(native)]
 pub use reinhardt_forms::wasm_compat::{FieldMetadata, FormMetadata};
 
 // Server-side only exports

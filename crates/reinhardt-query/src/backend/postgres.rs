@@ -44,7 +44,7 @@ use std::fmt::Write as FmtWrite;
 
 use super::{QueryBuilder, SqlWriter};
 use crate::{
-	expr::{Condition, SimpleExpr},
+	expr::{Condition, SimpleExpr, TemporalTimeZone, TemporalTruncKind, TemporalTruncOutput},
 	query::{
 		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CheckTableStatement,
 		CreateIndexStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
@@ -52,7 +52,10 @@ use crate::{
 		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
 		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
-	types::{BinOper, ColumnRef, TableRef, TriggerBody},
+	types::{
+		BinOper, ColumnDef, ColumnRef, GeneratedColumn, GeneratedStorage, SchemaBinOper,
+		SchemaExpr, SchemaFunc, TableRef, TriggerBody,
+	},
 	value::Values,
 };
 
@@ -83,6 +86,186 @@ impl PostgresQueryBuilder {
 	/// Create a new PostgreSQL query builder
 	pub fn new() -> Self {
 		Self
+	}
+
+	fn write_temporal_zone(&self, writer: &mut SqlWriter, zone: String, unquoted: bool) {
+		if unquoted {
+			writer.push("'");
+			writer.push(&zone.replace('\'', "''"));
+			writer.push("'");
+		} else {
+			writer.push_value(crate::value::Value::String(Some(Box::new(zone))), |index| {
+				self.placeholder(index)
+			});
+		}
+	}
+
+	fn write_temporal_trunc(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		kind: TemporalTruncKind,
+		time_zone: Option<&TemporalTimeZone>,
+		output: TemporalTruncOutput,
+		unquoted: bool,
+	) {
+		writer.push("DATE_TRUNC('");
+		writer.push(kind.as_str());
+		writer.push("', ");
+		if unquoted {
+			self.write_simple_expr_unquoted(writer, expr);
+		} else {
+			self.write_simple_expr(writer, expr);
+		}
+		if output == TemporalTruncOutput::DateTime {
+			writer.push(" AT TIME ZONE ");
+			let zone = match time_zone {
+				Some(TemporalTimeZone::Named(zone)) => zone.clone(),
+				Some(TemporalTimeZone::Utc) | None => "UTC".to_string(),
+			};
+			self.write_temporal_zone(writer, zone, unquoted);
+		}
+		writer.push(")");
+		match output {
+			TemporalTruncOutput::Date => writer.push("::date"),
+			TemporalTruncOutput::DateTime => {
+				writer.push(" AT TIME ZONE ");
+				let zone = match time_zone {
+					Some(TemporalTimeZone::Named(zone)) => zone.clone(),
+					Some(TemporalTimeZone::Utc) | None => "UTC".to_string(),
+				};
+				self.write_temporal_zone(writer, zone, unquoted);
+			}
+		}
+	}
+
+	/// Build a SELECT statement through the checked query-building API.
+	pub fn build_select_checked(
+		&self,
+		stmt: &SelectStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_select_lock_for_backend(stmt, "PostgreSQL")?;
+		crate::error::validate_select_for_backend(stmt, "PostgreSQL")?;
+		Ok(self.build_select(stmt))
+	}
+
+	/// Build a CREATE TABLE statement through the checked query-building API.
+	pub fn build_create_table_checked(
+		&self,
+		stmt: &CreateTableStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_create_table_for_backend(stmt, "PostgreSQL")?;
+		#[cfg(feature = "pgvector")]
+		crate::error::validate_postgres_create_table_dimensions(stmt)?;
+		Ok(self.build_create_table(stmt))
+	}
+
+	/// Build an INSERT statement through the checked query-building API.
+	pub fn build_insert_checked(
+		&self,
+		stmt: &InsertStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_insert_lock_for_backend(stmt, "PostgreSQL")?;
+		crate::error::validate_insert_for_backend(stmt, "PostgreSQL")?;
+		Ok(self.build_insert(stmt))
+	}
+
+	/// Build an UPDATE statement through the checked query-building API.
+	pub fn build_update_checked(
+		&self,
+		stmt: &UpdateStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_update_lock_for_backend(stmt, "PostgreSQL")?;
+		crate::error::validate_update_for_backend(stmt, "PostgreSQL")?;
+		Ok(self.build_update(stmt))
+	}
+
+	/// Build a DELETE statement through the checked query-building API.
+	pub fn build_delete_checked(
+		&self,
+		stmt: &DeleteStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_delete_lock_for_backend(stmt, "PostgreSQL")?;
+		crate::error::validate_delete_for_backend(stmt, "PostgreSQL")?;
+		Ok(self.build_delete(stmt))
+	}
+
+	/// Build an ALTER TABLE statement through the checked query-building API.
+	pub fn build_alter_table_checked(
+		&self,
+		stmt: &AlterTableStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_alter_table_for_backend(stmt, "PostgreSQL")?;
+		#[cfg(feature = "pgvector")]
+		crate::error::validate_postgres_alter_table_dimensions(stmt)?;
+		Ok(self.build_alter_table(stmt))
+	}
+
+	/// Build a CREATE INDEX statement through the checked query-building API.
+	pub fn build_create_index_checked(
+		&self,
+		stmt: &CreateIndexStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		stmt.validate_for_backend("PostgreSQL", true)?;
+		Ok(self.build_create_index(stmt))
+	}
+
+	pub(crate) fn column_def_to_sql(&self, column: &ColumnDef) -> String {
+		let mut writer = SqlWriter::new();
+		self.write_column_definition(&mut writer, column);
+		writer.finish().0
+	}
+
+	fn write_column_definition(&self, writer: &mut SqlWriter, column: &ColumnDef) {
+		writer.push_identifier(&column.name.to_string(), |identifier| {
+			self.escape_iden(identifier)
+		});
+		writer.push_space();
+
+		if let Some(column_type) = &column.column_type {
+			if column.auto_increment {
+				use crate::types::ColumnType;
+				let serial_type = match column_type {
+					ColumnType::SmallInteger => "SMALLSERIAL",
+					ColumnType::Integer => "SERIAL",
+					ColumnType::BigInteger => "BIGSERIAL",
+					_ => &self.column_type_to_sql(column_type),
+				};
+				writer.push(serial_type);
+			} else {
+				writer.push(&self.column_type_to_sql(column_type));
+			}
+		}
+
+		if let Some(generated) = &column.generated {
+			self.write_generated_column(writer, generated);
+		}
+		if column.not_null {
+			writer.push_space();
+			writer.push_keyword("NOT NULL");
+		}
+		if column.unique {
+			writer.push_space();
+			writer.push_keyword("UNIQUE");
+		}
+		if column.primary_key {
+			writer.push_space();
+			writer.push_keyword("PRIMARY KEY");
+		}
+		if let Some(default_expr) = &column.default {
+			writer.push_space();
+			writer.push_keyword("DEFAULT");
+			writer.push_space();
+			self.write_simple_expr(writer, default_expr);
+		}
+		if let Some(check_expr) = &column.check {
+			writer.push_space();
+			writer.push_keyword("CHECK");
+			writer.push_space();
+			writer.push("(");
+			self.write_simple_expr_unquoted(writer, check_expr);
+			writer.push(")");
+		}
 	}
 
 	/// Escape an identifier for PostgreSQL
@@ -311,20 +494,31 @@ impl PostgresQueryBuilder {
 				// Merge the values from the subquery
 				writer.append_values(&subquery_values);
 			}
-			TableRef::LateralSubQuery(query, alias) => {
-				let (subquery_sql, subquery_values) = self.build_select(query);
-				let offset = writer.param_index() - 1;
-				let adjusted_sql =
-					Self::adjust_placeholder_offsets(&subquery_sql, subquery_values.len(), offset);
-				writer.push_keyword("LATERAL");
-				writer.push_space();
-				writer.push("(");
-				writer.push(&adjusted_sql);
-				writer.push(")");
-				writer.push_keyword("AS");
-				writer.push_space();
+		}
+	}
+
+	/// Write a table target in a row-lock `OF` clause.
+	fn write_lock_table_target(&self, writer: &mut SqlWriter, table_ref: &TableRef) {
+		match table_ref {
+			TableRef::TableAlias(_, alias)
+			| TableRef::SchemaTableAlias(_, _, alias)
+			| TableRef::SubQuery(_, alias) => {
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
-				writer.append_values(&subquery_values);
+			}
+			TableRef::Table(iden) => {
+				writer.push_identifier(&iden.to_string(), |s| self.escape_iden(s));
+			}
+			TableRef::SchemaTable(schema, table) => {
+				writer.push_identifier(&schema.to_string(), |s| self.escape_iden(s));
+				writer.push(".");
+				writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+			}
+			TableRef::DatabaseSchemaTable(db, schema, table) => {
+				writer.push_identifier(&db.to_string(), |s| self.escape_iden(s));
+				writer.push(".");
+				writer.push_identifier(&schema.to_string(), |s| self.escape_iden(s));
+				writer.push(".");
+				writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
 			}
 		}
 	}
@@ -355,6 +549,132 @@ impl PostgresQueryBuilder {
 				writer.push(".*");
 			}
 		}
+	}
+
+	/// Write a DDL-safe schema expression with inline literals.
+	fn write_schema_expr(&self, writer: &mut SqlWriter, expr: &SchemaExpr) {
+		match expr {
+			SchemaExpr::Column(iden) => {
+				writer.push_identifier(&iden.to_string(), |s| self.escape_iden(s));
+			}
+			SchemaExpr::Value(value) => {
+				writer.push(&value.to_sql_literal());
+			}
+			SchemaExpr::Binary { left, op, right } => {
+				writer.push("(");
+				self.write_schema_expr(writer, left);
+				writer.push_space();
+				writer.push(match op {
+					SchemaBinOper::Add => "+",
+					SchemaBinOper::Sub => "-",
+					SchemaBinOper::Mul => "*",
+					SchemaBinOper::Div => "/",
+				});
+				writer.push_space();
+				self.write_schema_expr(writer, right);
+				writer.push(")");
+			}
+			SchemaExpr::Function { func, args } => match func {
+				SchemaFunc::Concat => {
+					if args.is_empty() {
+						writer.push("''");
+					} else {
+						writer.push_list(args, " || ", |w, arg| {
+							self.write_schema_expr(w, arg);
+						});
+					}
+				}
+				SchemaFunc::Coalesce => {
+					writer.push("COALESCE(");
+					writer.push_list(args, ", ", |w, arg| {
+						self.write_schema_expr(w, arg);
+					});
+					writer.push(")");
+				}
+			},
+			SchemaExpr::Cast { expr, ty } => {
+				writer.push("CAST(");
+				self.write_schema_expr(writer, expr);
+				writer.push(" AS ");
+				writer.push(&self.column_type_to_sql(ty));
+				writer.push(")");
+			}
+		}
+	}
+
+	/// Write generated-column DDL.
+	fn write_generated_column(&self, writer: &mut SqlWriter, generated: &GeneratedColumn) {
+		generated
+			.validate()
+			.expect("invalid generated-column metadata");
+		if generated.storage == GeneratedStorage::Virtual {
+			panic!("PostgreSQL generated columns require STORED storage");
+		}
+
+		writer.push(" GENERATED ALWAYS AS (");
+		if let Some(expr) = &generated.expr {
+			self.write_schema_expr(writer, expr);
+		} else if let Some(raw_sql) = &generated.raw_sql {
+			writer.push(raw_sql);
+		}
+		writer.push(") ");
+		writer.push(generated.storage.as_str());
+	}
+
+	fn validate_generated_column_dependencies(&self, columns: &[ColumnDef]) {
+		let generated_columns = columns
+			.iter()
+			.filter(|column| column.generated.is_some())
+			.map(|column| column.name.to_string())
+			.collect::<Vec<_>>();
+
+		for column in columns {
+			let Some(generated) = column.generated.as_ref() else {
+				continue;
+			};
+			let column_name = column.name.to_string();
+			for generated_column in &generated_columns {
+				if generated_column == &column_name {
+					continue;
+				}
+				if Self::generated_column_references_column(generated, generated_column) {
+					panic!(
+						"PostgreSQL generated column `{}` cannot reference generated column `{}`",
+						column_name, generated_column
+					);
+				}
+			}
+		}
+	}
+
+	fn generated_column_references_column(generated: &GeneratedColumn, column: &str) -> bool {
+		if let Some(expr) = &generated.expr {
+			return Self::schema_expr_references_column(expr, column);
+		}
+		generated
+			.raw_sql
+			.as_deref()
+			.is_some_and(|raw_sql| Self::expression_text_references_column(raw_sql, column))
+	}
+
+	fn schema_expr_references_column(expr: &SchemaExpr, column: &str) -> bool {
+		match expr {
+			SchemaExpr::Column(identifier) => identifier.to_string() == column,
+			SchemaExpr::Value(_) => false,
+			SchemaExpr::Binary { left, right, .. } => {
+				Self::schema_expr_references_column(left, column)
+					|| Self::schema_expr_references_column(right, column)
+			}
+			SchemaExpr::Function { args, .. } => args
+				.iter()
+				.any(|arg| Self::schema_expr_references_column(arg, column)),
+			SchemaExpr::Cast { expr, .. } => Self::schema_expr_references_column(expr, column),
+		}
+	}
+
+	fn expression_text_references_column(text: &str, column: &str) -> bool {
+		text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+			.any(|token| token.eq_ignore_ascii_case(column))
 	}
 
 	/// Write a simple expression
@@ -550,6 +870,12 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
+			SimpleExpr::TemporalTrunc {
+				expr,
+				kind,
+				time_zone,
+				output,
+			} => self.write_temporal_trunc(writer, expr, *kind, time_zone.as_ref(), *output, false),
 		}
 	}
 
@@ -789,6 +1115,12 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
+			SimpleExpr::TemporalTrunc {
+				expr,
+				kind,
+				time_zone,
+				output,
+			} => self.write_temporal_trunc(writer, expr, *kind, time_zone.as_ref(), *output, true),
 		}
 	}
 
@@ -994,9 +1326,6 @@ impl PostgresQueryBuilder {
 
 impl QueryBuilder for PostgresQueryBuilder {
 	fn build_select(&self, stmt: &SelectStatement) -> (String, Values) {
-		if let Some(raw_sql) = &stmt.raw_sql {
-			return (raw_sql.clone(), Values::new());
-		}
 		let mut writer = SqlWriter::new();
 
 		// WITH clause (Common Table Expressions)
@@ -1231,6 +1560,30 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.append_values(&union_values);
 		}
 
+		if let Some(lock) = &stmt.lock {
+			use crate::query::{LockBehavior, LockType};
+
+			writer.push_keyword(match lock.r#type {
+				LockType::Update => "FOR UPDATE",
+				LockType::NoKeyUpdate => "FOR NO KEY UPDATE",
+				LockType::Share => "FOR SHARE",
+				LockType::KeyShare => "FOR KEY SHARE",
+			});
+			if !lock.tables.is_empty() {
+				writer.push_keyword("OF");
+				writer.push_space();
+				writer.push_list(&lock.tables, ", ", |w, table| {
+					self.write_lock_table_target(w, table);
+				});
+			}
+			if let Some(behavior) = lock.behavior {
+				writer.push_keyword(match behavior {
+					LockBehavior::Nowait => "NOWAIT",
+					LockBehavior::SkipLocked => "SKIP LOCKED",
+				});
+			}
+		}
+
 		writer.finish()
 	}
 
@@ -1260,28 +1613,34 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push(")");
 		}
 
+		if stmt.overriding_system_value {
+			writer.push_keyword("OVERRIDING SYSTEM VALUE");
+		}
+
 		// VALUES clause or SELECT subquery
 		match &stmt.source {
-			InsertSource::Values(values) if !values.is_empty() => {
-				writer.push_keyword("VALUES");
-				writer.push_space();
+			InsertSource::Values(_) if stmt.default_values => {
+				writer.push_keyword("DEFAULT VALUES");
+			}
+			InsertSource::Values(values) => {
+				if !values.is_empty() {
+					writer.push_keyword("VALUES");
+					writer.push_space();
 
-				writer.push_list(values, ", ", |w, row| {
-					w.push("(");
-					w.push_list(row, ", ", |w2, value| {
-						w2.push_value(value.clone(), |i| self.placeholder(i));
+					writer.push_list(values, ", ", |w, row| {
+						w.push("(");
+						w.push_list(row, ", ", |w2, value| {
+							w2.push_value(value.clone(), |i| self.placeholder(i));
+						});
+						w.push(")");
 					});
-					w.push(")");
-				});
+				}
 			}
 			InsertSource::Subquery(select) => {
 				writer.push_space();
 				let (select_sql, select_values) = self.build_select(select);
 				writer.push(&select_sql);
 				writer.append_values(&select_values);
-			}
-			_ => {
-				// Empty values - this is valid SQL in some contexts
 			}
 		}
 
@@ -1324,7 +1683,13 @@ impl QueryBuilder for PostgresQueryBuilder {
 		}
 
 		// RETURNING clause (PostgreSQL specific)
-		if let Some(returning) = &stmt.returning {
+		if let Some(expressions) = &stmt.returning_exprs {
+			writer.push_keyword("RETURNING");
+			writer.push_space();
+			writer.push_list(expressions, ", ", |w, expression| {
+				self.write_simple_expr(w, expression);
+			});
+		} else if let Some(returning) = &stmt.returning {
 			writer.push_keyword("RETURNING");
 			writer.push_space();
 
@@ -1379,7 +1744,13 @@ impl QueryBuilder for PostgresQueryBuilder {
 		}
 
 		// RETURNING clause (PostgreSQL specific)
-		if let Some(returning) = &stmt.returning {
+		if let Some(expressions) = &stmt.returning_exprs {
+			writer.push_keyword("RETURNING");
+			writer.push_space();
+			writer.push_list(expressions, ", ", |w, expression| {
+				self.write_simple_expr(w, expression);
+			});
+		} else if let Some(returning) = &stmt.returning {
 			writer.push_keyword("RETURNING");
 			writer.push_space();
 
@@ -1422,7 +1793,13 @@ impl QueryBuilder for PostgresQueryBuilder {
 		}
 
 		// RETURNING clause (PostgreSQL specific)
-		if let Some(returning) = &stmt.returning {
+		if let Some(expressions) = &stmt.returning_exprs {
+			writer.push_keyword("RETURNING");
+			writer.push_space();
+			writer.push_list(expressions, ", ", |w, expression| {
+				self.write_simple_expr(w, expression);
+			});
+		} else if let Some(returning) = &stmt.returning {
 			writer.push_keyword("RETURNING");
 			writer.push_space();
 
@@ -1443,6 +1820,8 @@ impl QueryBuilder for PostgresQueryBuilder {
 	}
 
 	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values) {
+		self.validate_generated_column_dependencies(&stmt.columns);
+
 		let mut writer = SqlWriter::new();
 
 		writer.push("CREATE TABLE");
@@ -1468,62 +1847,7 @@ impl QueryBuilder for PostgresQueryBuilder {
 			}
 			first = false;
 
-			// Column name
-			writer.push_identifier(&column.name.to_string(), |s| self.escape_iden(s));
-			writer.push_space();
-
-			// Column type
-			if let Some(col_type) = &column.column_type {
-				// For auto_increment columns, use SERIAL types instead of INTEGER/BIGINT
-				if column.auto_increment {
-					use crate::types::ColumnType;
-					let serial_type = match col_type {
-						ColumnType::SmallInteger => "SMALLSERIAL",
-						ColumnType::Integer => "SERIAL",
-						ColumnType::BigInteger => "BIGSERIAL",
-						_ => &self.column_type_to_sql(col_type),
-					};
-					writer.push(serial_type);
-				} else {
-					writer.push(&self.column_type_to_sql(col_type));
-				}
-			}
-
-			// NOT NULL
-			if column.not_null {
-				writer.push_space();
-				writer.push_keyword("NOT NULL");
-			}
-
-			// UNIQUE
-			if column.unique {
-				writer.push_space();
-				writer.push_keyword("UNIQUE");
-			}
-
-			// PRIMARY KEY
-			if column.primary_key {
-				writer.push_space();
-				writer.push_keyword("PRIMARY KEY");
-			}
-
-			// DEFAULT
-			if let Some(default_expr) = &column.default {
-				writer.push_space();
-				writer.push_keyword("DEFAULT");
-				writer.push_space();
-				self.write_simple_expr(&mut writer, default_expr);
-			}
-
-			// CHECK
-			if let Some(check_expr) = &column.check {
-				writer.push_space();
-				writer.push_keyword("CHECK");
-				writer.push_space();
-				writer.push("(");
-				self.write_simple_expr_unquoted(&mut writer, check_expr);
-				writer.push(")");
-			}
+			self.write_column_definition(&mut writer, column);
 		}
 
 		// Table constraints
@@ -1564,6 +1888,9 @@ impl QueryBuilder for PostgresQueryBuilder {
 					writer.push_space();
 					if let Some(col_type) = &column_def.column_type {
 						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if let Some(generated) = &column_def.generated {
+						self.write_generated_column(&mut writer, generated);
 					}
 					if column_def.not_null {
 						writer.push(" NOT NULL");
@@ -1732,6 +2059,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 			}
 			first = false;
 			writer.push_identifier(&col.name.to_string(), |s| self.escape_iden(s));
+			if let Some(operator_class) = &col.operator_class {
+				writer.push_space();
+				writer.push(operator_class);
+			}
 			if let Some(order) = &col.order {
 				writer.push_space();
 				match order {
@@ -1741,6 +2072,34 @@ impl QueryBuilder for PostgresQueryBuilder {
 			}
 		}
 		writer.push(")");
+
+		if let Some(options) = &stmt.options {
+			match options {
+				crate::query::IndexOptions::Hnsw { m, ef_construction } => {
+					let mut rendered = Vec::new();
+					if let Some(m) = m {
+						rendered.push(format!("m = {m}"));
+					}
+					if let Some(ef_construction) = ef_construction {
+						rendered.push(format!("ef_construction = {ef_construction}"));
+					}
+					if !rendered.is_empty() {
+						writer.push_space();
+						writer.push("WITH (");
+						writer.push(&rendered.join(", "));
+						writer.push(")");
+					}
+				}
+				crate::query::IndexOptions::Ivfflat { lists } => {
+					if let Some(lists) = lists {
+						writer.push_space();
+						writer.push("WITH (lists = ");
+						writer.push(&lists.to_string());
+						writer.push(")");
+					}
+				}
+			}
+		}
 
 		// WHERE clause (partial index)
 		if let Some(where_expr) = &stmt.r#where {
@@ -1821,8 +2180,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 		if let Some(select) = &stmt.select {
 			let (select_sql, select_values) = self.build_select(select);
 			writer.push_space();
-			writer.push(&select_sql);
-			writer.append_values(&select_values);
+			writer.push(&crate::query::traits::inline_params(
+				&select_sql,
+				&select_values,
+			));
 		}
 
 		writer.finish()
@@ -4308,11 +4669,13 @@ impl PostgresQueryBuilder {
 			ColumnType::Blob => "BYTEA".to_string(),
 			ColumnType::Boolean => "BOOLEAN".to_string(),
 			ColumnType::Json => "JSON".to_string(),
-			ColumnType::JsonBinary => "JSONB".to_string(),
+			ColumnType::Jsonb => "JSONB".to_string(),
 			ColumnType::Uuid => "UUID".to_string(),
 			ColumnType::Array(inner_type) => {
 				format!("{}[]", self.column_type_to_sql(inner_type))
 			}
+			#[cfg(feature = "pgvector")]
+			ColumnType::Vector(dimensions) => format!("vector({dimensions})"),
 			ColumnType::Custom(name) => name.clone(),
 		}
 	}
@@ -4435,6 +4798,8 @@ impl PostgresQueryBuilder {
 			IndexMethod::Brin => "BRIN",
 			IndexMethod::FullText => "GIN", // PostgreSQL uses GIN for full-text search
 			IndexMethod::Spatial => "GIST", // PostgreSQL uses GIST for spatial indexes
+			IndexMethod::Hnsw => "HNSW",
+			IndexMethod::Ivfflat => "IVFFLAT",
 		}
 	}
 }
@@ -4573,12 +4938,184 @@ impl crate::query::QueryBuilderTrait for PostgresQueryBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[cfg(feature = "pgvector")]
+	use crate::types::{BinOper, PgBinOper};
 	use crate::{
-		expr::{Expr, ExprTrait},
-		query::Query,
-		types::{Alias, IntoIden},
+		expr::{Expr, ExprTrait, Func, SimpleExpr, TemporalTruncKind, TemporalTruncOutput},
+		query::{LockType, Query},
+		types::{Alias, ColumnDef, IntoIden},
+		value::Value,
 	};
 	use rstest::rstest;
+
+	#[test]
+	fn checked_select_rejects_row_locking_with_group_by_or_having() {
+		let builder = PostgresQueryBuilder::new();
+		let mut grouped = Query::select();
+		grouped
+			.column("account_id")
+			.from("ledger_entries")
+			.group_by_col("account_id")
+			.lock(LockType::Update);
+		assert_eq!(
+			builder.build_select_checked(&grouped),
+			Err(crate::QueryBuildError::UnsupportedBackendFeature {
+				feature: "row locking with GROUP BY or HAVING queries",
+				backend: "PostgreSQL",
+			})
+		);
+
+		let mut having = Query::select();
+		having
+			.column("account_id")
+			.from("ledger_entries")
+			.and_having(Expr::col("account_id").gt(0))
+			.lock(LockType::Update);
+		assert_eq!(
+			builder.build_select_checked(&having),
+			Err(crate::QueryBuildError::UnsupportedBackendFeature {
+				feature: "row locking with GROUP BY or HAVING queries",
+				backend: "PostgreSQL",
+			})
+		);
+	}
+
+	#[test]
+	fn checked_select_rejects_row_locking_with_aggregate_projection() {
+		let builder = PostgresQueryBuilder::new();
+		let mut statement = Query::select();
+		statement
+			.expr(Func::count(Expr::col("id").into_simple_expr()))
+			.from("accounts")
+			.lock(LockType::Update);
+
+		assert_eq!(
+			builder.build_select_checked(&statement),
+			Err(crate::QueryBuildError::UnsupportedBackendFeature {
+				feature: "row locking with aggregate queries",
+				backend: "PostgreSQL",
+			})
+		);
+	}
+
+	#[test]
+	fn checked_select_rejects_row_locking_with_window_projection() {
+		let builder = PostgresQueryBuilder::new();
+		let mut statement = Query::select();
+		statement
+			.expr(Expr::row_number().over(crate::types::WindowStatement::default()))
+			.from("accounts")
+			.lock(LockType::Update);
+
+		assert_eq!(
+			builder.build_select_checked(&statement),
+			Err(crate::QueryBuildError::UnsupportedBackendFeature {
+				feature: "row locking with window-function queries",
+				backend: "PostgreSQL",
+			})
+		);
+	}
+
+	#[test]
+	fn checked_select_rejects_lock_targets_on_nullable_outer_join_sides() {
+		let builder = PostgresQueryBuilder::new();
+		let mut statement = Query::select();
+		statement
+			.column(("parents", "id"))
+			.from("parents")
+			.left_join(
+				"children",
+				Expr::col(("parents", "id")).equals(("children", "parent_id")),
+			)
+			.lock_tables(["children"]);
+
+		assert_eq!(
+			builder.build_select_checked(&statement),
+			Err(crate::QueryBuildError::UnsupportedBackendFeature {
+				feature: "row lock target on nullable outer-join side",
+				backend: "PostgreSQL",
+			})
+		);
+	}
+
+	#[test]
+	fn checked_select_rejects_targetless_locking_across_outer_joins() {
+		let builder = PostgresQueryBuilder::new();
+		let mut statement = Query::select();
+		statement
+			.column(("parents", "id"))
+			.from("parents")
+			.left_join(
+				"children",
+				Expr::col(("parents", "id")).equals(("children", "parent_id")),
+			)
+			.lock(LockType::Update);
+
+		assert_eq!(
+			builder.build_select_checked(&statement),
+			Err(crate::QueryBuildError::UnsupportedBackendFeature {
+				feature: "row locking across outer joins without explicit targets",
+				backend: "PostgreSQL",
+			})
+		);
+	}
+
+	#[test]
+	fn checked_dml_rejects_nested_locked_selects() {
+		let builder = PostgresQueryBuilder::new();
+		let mut source = Query::select();
+		source.column("id").from("accounts").lock(LockType::Update);
+		let insert = Query::insert()
+			.into_table("archive")
+			.columns(["account_id"])
+			.from_subquery(source.to_owned())
+			.to_owned();
+
+		assert!(builder.build_insert_checked(&insert).is_ok());
+
+		let mut invalid_source = Query::select();
+		invalid_source
+			.expr(Func::count(Expr::col("id").into_simple_expr()))
+			.from("accounts")
+			.lock(LockType::Update);
+		let invalid_insert = Query::insert()
+			.into_table("archive")
+			.columns(["account_id"])
+			.from_subquery(invalid_source.to_owned())
+			.to_owned();
+
+		assert_eq!(
+			builder.build_insert_checked(&invalid_insert),
+			Err(crate::QueryBuildError::UnsupportedBackendFeature {
+				feature: "row locking with aggregate queries",
+				backend: "PostgreSQL",
+			})
+		);
+
+		let update = Query::update()
+			.table("archive")
+			.value_expr("account_id", Expr::subquery(invalid_source.clone()))
+			.to_owned();
+		assert_eq!(
+			builder.build_update_checked(&update),
+			Err(crate::QueryBuildError::UnsupportedBackendFeature {
+				feature: "row locking with aggregate queries",
+				backend: "PostgreSQL",
+			})
+		);
+
+		let delete = Query::delete()
+			.from_table("archive")
+			.and_where(Expr::exists(invalid_source))
+			.to_owned();
+		assert_eq!(
+			builder.build_delete_checked(&delete),
+			Err(crate::QueryBuildError::UnsupportedBackendFeature {
+				feature: "row locking with aggregate queries",
+				backend: "PostgreSQL",
+			})
+		);
+	}
 
 	#[test]
 	fn test_escape_identifier() {
@@ -4610,6 +5147,63 @@ mod tests {
 		let (sql, values) = builder.build_select(&stmt);
 		assert_eq!(sql, "SELECT \"id\", \"name\" FROM \"users\"");
 		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_checked_select_rejects_direct_invalid_temporal_date_truncation() {
+		let mut stmt = Query::select();
+		stmt.expr(SimpleExpr::TemporalTrunc {
+			expr: Box::new(Expr::col("occurred_on").into_simple_expr()),
+			kind: TemporalTruncKind::Hour,
+			time_zone: None,
+			output: TemporalTruncOutput::Date,
+		})
+		.from("events");
+
+		let error = PostgresQueryBuilder
+			.build_select_checked(&stmt.to_owned())
+			.expect_err("PostgreSQL must reject hourly date truncation");
+
+		assert!(matches!(
+			error,
+			crate::QueryBuildError::InvalidTemporalTruncation {
+				kind: "hour",
+				output: "date"
+			}
+		));
+	}
+
+	#[rstest]
+	fn checked_ddl_builders_reject_direct_invalid_temporal_date_truncation() {
+		let invalid_projection = SimpleExpr::TemporalTrunc {
+			expr: Box::new(Expr::col("occurred_on").into_simple_expr()),
+			kind: TemporalTruncKind::Hour,
+			time_zone: None,
+			output: TemporalTruncOutput::Date,
+		};
+		let mut create = Query::create_table();
+		create.table("events").col(
+			ColumnDef::new("bucket")
+				.date()
+				.default(invalid_projection.clone()),
+		);
+		let mut alter = Query::alter_table();
+		alter
+			.table("events")
+			.add_column(ColumnDef::new("bucket").date().default(invalid_projection));
+
+		let expected_error = crate::QueryBuildError::InvalidTemporalTruncation {
+			kind: "hour",
+			output: "date",
+		};
+		assert_eq!(
+			PostgresQueryBuilder.build_create_table_checked(&create),
+			Err(expected_error.clone())
+		);
+		assert_eq!(
+			PostgresQueryBuilder.build_alter_table_checked(&alter),
+			Err(expected_error)
+		);
 	}
 
 	#[test]
@@ -4669,6 +5263,23 @@ mod tests {
 	}
 
 	#[test]
+	fn test_insert_overriding_system_value() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["id", "name"])
+			.values_panic(vec![Value::from(1), Value::from("Alice")])
+			.overriding_system_value();
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"id\", \"name\") OVERRIDING SYSTEM VALUE VALUES ($1, $2)"
+		);
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
 	fn test_insert_multiple_rows() {
 		let builder = PostgresQueryBuilder::new();
 		let mut stmt = Query::insert();
@@ -4700,6 +5311,23 @@ mod tests {
 		assert!(sql.contains("RETURNING"));
 		assert!(sql.contains("\"id\""));
 		assert!(sql.contains("\"created_at\""));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_insert_with_returning_expressions() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["display_name"])
+			.values_panic(["Alice"])
+			.returning_exprs([Expr::col("display_name").expr_as("name")]);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"display_name\") VALUES ($1) RETURNING \"display_name\" AS \"name\""
+		);
 		assert_eq!(values.len(), 1);
 	}
 
@@ -7130,6 +7758,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -7141,6 +7770,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7167,6 +7797,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7192,6 +7823,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7217,6 +7849,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7241,6 +7874,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7265,6 +7899,7 @@ mod tests {
 			auto_increment: false,
 			default: Some(Expr::value(true).into_simple_expr()),
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7289,6 +7924,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: Some(Expr::col("age").gte(0).into_simple_expr()),
+			generated: None,
 			comment: None,
 		});
 
@@ -7297,6 +7933,58 @@ mod tests {
 		assert!(sql.contains("\"age\" INTEGER CHECK"));
 		assert!(sql.contains(">= 0"));
 		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_stored_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains(
+			r#""full_name" VARCHAR(201) GENERATED ALWAYS AS ("first_name" || ' ' || "last_name") STORED"#
+		));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "PostgreSQL generated column `search_name` cannot reference generated column `full_name`"
+	)]
+	fn test_create_table_rejects_generated_column_chains() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+		stmt.col(
+			ColumnDef::new("search_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::col("full_name")),
+		);
+
+		let _ = builder.build_create_table(&stmt);
 	}
 
 	#[test]
@@ -7315,6 +8003,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -7326,6 +8015,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::PrimaryKey {
@@ -7356,6 +8046,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -7367,6 +8058,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::ForeignKey {
@@ -7397,6 +8089,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7419,6 +8112,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "username".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7441,6 +8135,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7463,6 +8158,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "created_at".into_iden(),
 			order: Some(Order::Desc),
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7485,10 +8181,12 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "last_name".into_iden(),
 			order: Some(Order::Asc),
+			operator_class: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
 			order: Some(Order::Asc),
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7511,6 +8209,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "id".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7533,6 +8232,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "tags".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7554,6 +8254,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 		stmt.r#where = Some(Expr::col("active").eq(true).into_simple_expr());
 
@@ -7583,11 +8284,37 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				check: None,
+				generated: None,
 				comment: None,
 			}));
 
 		let (sql, values) = builder.build_alter_table(&stmt);
 		assert_eq!(sql, r#"ALTER TABLE "users" ADD COLUMN "age" INTEGER"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_add_stored_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.add_column(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER TABLE "users" ADD COLUMN "full_name" VARCHAR(201) GENERATED ALWAYS AS ("first_name" || ' ' || "last_name") STORED"#
+		);
 		assert_eq!(values.len(), 0);
 	}
 
@@ -7663,6 +8390,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				check: None,
+				generated: None,
 				comment: None,
 			}));
 
@@ -9906,6 +10634,76 @@ mod tests {
 			!sql.contains("::\"display_name\""),
 			"Should NOT contain type cast syntax, got: {}",
 			sql
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn vector_columns_and_distance_values_render_for_postgres() {
+		// A missing pgvector SQL representation or an inlined value would make this fail.
+		let column_sql = ColumnDef::new("embedding")
+			.vector(1536)
+			.not_null(true)
+			.unique(true)
+			.to_string(PostgresQueryBuilder);
+		let mut statement = Query::select();
+		statement
+			.expr(crate::expr::SimpleExpr::Binary(
+				Box::new(Expr::col("embedding").into()),
+				BinOper::PgOperator(PgBinOper::CosineDistance),
+				Box::new(crate::expr::SimpleExpr::Value(Value::Vector(Some(
+					Box::new(vec![1.0, 2.0, 3.0]),
+				)))),
+			))
+			.from("documents");
+
+		let (sql, values) = PostgresQueryBuilder::new().build_select(&statement);
+
+		assert_eq!(column_sql, "\"embedding\" vector(1536) NOT NULL UNIQUE");
+		assert_eq!(sql, "SELECT \"embedding\" <=> $1 FROM \"documents\"");
+		assert_eq!(
+			values,
+			vec![Value::Vector(Some(Box::new(vec![1.0, 2.0, 3.0])))].into()
+		);
+	}
+
+	#[test]
+	fn column_definition_renders_constraints_and_expressions() {
+		let column_sql = ColumnDef::new("score")
+			.integer()
+			.not_null(true)
+			.unique(true)
+			.primary_key(true)
+			.default(Expr::val(0).into())
+			.check(Expr::col("score").gte(Expr::val(0)))
+			.to_string(PostgresQueryBuilder);
+
+		assert_eq!(
+			column_sql,
+			"\"score\" INTEGER NOT NULL UNIQUE PRIMARY KEY DEFAULT $1 CHECK (\"score\" >= 0)"
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_postgres_ddl_rejects_invalid_vector_dimensions() {
+		let builder = PostgresQueryBuilder::new();
+		let mut create = Query::create_table();
+		create
+			.table("documents")
+			.col(ColumnDef::new("embedding").vector(0));
+		let mut alter = Query::alter_table();
+		alter
+			.table("documents")
+			.add_column(ColumnDef::new("embedding").vector(2001));
+
+		assert_eq!(
+			builder.build_create_table_checked(&create),
+			Err(crate::QueryBuildError::InvalidPgvectorDimensions { dimensions: 0 })
+		);
+		assert_eq!(
+			builder.build_alter_table_checked(&alter),
+			Err(crate::QueryBuildError::InvalidPgvectorDimensions { dimensions: 2001 })
 		);
 	}
 }

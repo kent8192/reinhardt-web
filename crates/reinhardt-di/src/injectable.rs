@@ -12,7 +12,8 @@ use crate::{DiResult, InjectableKey, context::InjectionContext};
 /// The following blanket implementations are provided:
 ///
 /// - **`Arc<T>`** where `T: Injectable` — injects the inner `T` and wraps it in `Arc`
-/// - **`Depends<K, T>`** — resolves `FactoryOutput<K, T>` via the global registry
+/// - **`Depends<T>`** — resolves `KeyedFactoryOutput<SelfKey<T>, T>` via the global registry
+/// - **`KeyedDepends<K, T>`** — resolves `KeyedFactoryOutput<K, T>` via the global registry
 /// - **`Option<T>`** where `T: Injectable` — returns `None` on injection failure
 ///   instead of propagating the error
 ///
@@ -21,7 +22,7 @@ use crate::{DiResult, InjectableKey, context::InjectionContext};
 /// To make a type injectable, use one of these approaches:
 ///
 /// 1. **`#[injectable]` attribute macro** — generates an `Injectable` impl from
-///    a keyed provider function returning `FactoryOutput<K, T>`
+///    a keyed provider function returning `KeyedFactoryOutput<K, T>`
 /// 2. **`#[injectable_factory]` attribute macro** — deprecated compatibility
 ///    alias for `#[injectable]` provider functions
 /// 3. **Manual `impl Injectable`** — implement the trait directly with
@@ -101,41 +102,58 @@ where
 	}
 }
 
-/// Blanket implementation of Injectable for `Depends<K, T>`
+/// Blanket implementation of Injectable for `KeyedDepends<K, T>`
 ///
-/// This allows using `Depends<K, T>` directly in endpoint handlers with `#[inject]`:
+/// Endpoint macros can resolve `KeyedDepends<K, T>` parameters marked with
+/// `#[inject]`. The parameter type itself can be documented directly:
 ///
-/// ```ignore
-/// # use reinhardt_di::{Depends, Injectable, InjectableKey};
+/// ```rust,no_run
+/// # use reinhardt_di::{InjectableKey, KeyedDepends};
 /// # struct DatabaseConnectionKey;
 /// # impl InjectableKey for DatabaseConnectionKey {}
 /// # struct DatabaseConnection;
 /// # struct Response;
 /// # type ViewResult<T> = Result<T, Box<dyn std::error::Error>>;
-/// # use reinhardt_core::endpoint;
-/// #[endpoint]
 /// async fn handler(
-///     #[inject] db: Depends<DatabaseConnectionKey, DatabaseConnection>,
+///     db: KeyedDepends<DatabaseConnectionKey, DatabaseConnection>,
 /// ) -> ViewResult<Response> {
-///     // ...
+///     let _ = db;
 /// #   Ok(Response)
 /// }
 /// ```
 ///
-/// The implementation delegates to `Depends::resolve_from_registry()`, which
-/// resolves `FactoryOutput<K, T>` from the global registry.
+/// The implementation delegates to `KeyedDepends::resolve_from_registry()`, which
+/// resolves `KeyedFactoryOutput<K, T>` from the global registry.
 #[async_trait::async_trait]
-impl<K, T> Injectable for crate::depends::Depends<K, T>
+impl<K, T> Injectable for crate::depends::KeyedDepends<K, T>
 where
 	K: InjectableKey,
 	T: Send + Sync + 'static,
 {
 	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-		crate::depends::Depends::<K, T>::resolve_from_registry(ctx, true).await
+		crate::depends::KeyedDepends::<K, T>::resolve_from_registry(ctx, true).await
 	}
 
 	async fn inject_uncached(ctx: &InjectionContext) -> DiResult<Self> {
-		crate::depends::Depends::<K, T>::resolve_from_registry(ctx, false).await
+		crate::depends::KeyedDepends::<K, T>::resolve_from_registry(ctx, false).await
+	}
+}
+
+/// Blanket implementation of Injectable for `Depends<T>`.
+///
+/// The implementation delegates to `Depends::resolve_from_registry()`, which
+/// resolves `KeyedFactoryOutput<SelfKey<T>, T>` from the global registry.
+#[async_trait::async_trait]
+impl<T> Injectable for crate::depends::Depends<T>
+where
+	T: Send + Sync + 'static,
+{
+	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
+		crate::depends::Depends::<T>::resolve_from_registry(ctx, true).await
+	}
+
+	async fn inject_uncached(ctx: &InjectionContext) -> DiResult<Self> {
+		crate::depends::Depends::<T>::resolve_from_registry(ctx, false).await
 	}
 }
 

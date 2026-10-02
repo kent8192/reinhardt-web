@@ -17,3 +17,6 @@
 
 #[cfg(feature = "page")]
 pub mod page;
+
+/// Generation-bound static asset URLs shared by native and WASM consumers.
+pub mod static_assets;

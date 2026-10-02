@@ -1,0 +1,5 @@
+error: missing required `name` option
+ --> tests/ui/server_fnset/fail/missing_name.rs:4:4
+  |
+4 | fn unnamed_set() {}
+  |    ^^^^^^^^^^^

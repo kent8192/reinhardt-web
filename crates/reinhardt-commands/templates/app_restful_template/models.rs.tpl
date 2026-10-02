@@ -12,7 +12,7 @@
 //! use reinhardt::prelude::*;
 //! use reinhardt::{Deserialize, Serialize};
 //!
-//! #[model(app_label = "{{ app_name }}", table_name = "{{ app_name }}_items")]
+//! #[model(app_label = "{{ app_name }}", table_name = "{{ app_name }}_item")]
 //! #[derive(Serialize, Deserialize)]
 //! pub struct {{ camel_case_app_name }}Item {
 //!     #[field(primary_key = true)]

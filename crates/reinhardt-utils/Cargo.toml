@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-utils"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 description = "Utility functions aggregator for Reinhardt"
 edition.workspace = true
 rust-version.workspace = true
@@ -33,7 +33,7 @@ deadpool-redis = { version = "0.23.0", optional = true }
 memcache-async = { version = "0.9.0", optional = true }
 tokio-util = { version = "0.7", features = ["compat"], optional = true }
 rand = { workspace = true }
-anyhow = { workspace = true }
+hmac = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = false }
 http = "1.0"
 mime_guess = "2.0"
@@ -56,12 +56,13 @@ oxc_span = { version = "0.96.0", optional = true }
 oxc_minifier = { version = "0.96.0", optional = true }
 oxc_mangler = { version = "0.96.0", optional = true }
 oxc_codegen = { version = "0.96.0", optional = true }
+oxc_ast = { version = "0.96.0", optional = true }
+oxc_ast_visit = { version = "0.96.0", optional = true }
+cssparser = { version = "0.34.0", optional = true }
+html5ever = { version = "0.29.1", optional = true }
 aws-config = { version = "1.0", optional = true }
 aws-sdk-s3 = { version = "1.0", optional = true }
-# Activate the workspace AWS compatibility constraint (reinhardt-web#6318).
-aws-smithy-types = { workspace = true, optional = true }
 time = { workspace = true, optional = true }
-hmac = { workspace = true, optional = true }
 percent-encoding = { version = "2.3", optional = true }
 google-cloud-storage = { version = "1.12.0", optional = true }
 google-cloud-auth = { version = "1.10.0", optional = true }
@@ -85,6 +86,8 @@ logging = []
 cache = []
 storage = []
 staticfiles = []
+# Native deterministic packaging; readers and serving do not require these tools.
+asset-publication = ["staticfiles", "compression", "dep:percent-encoding", "dep:oxc_allocator", "dep:oxc_parser", "dep:oxc_span", "dep:oxc_ast", "dep:oxc_ast_visit", "dep:cssparser", "dep:html5ever"]
 utils-core = []
 all = ["logging", "cache", "storage", "staticfiles", "utils-core"]
 utils-full = ["logging", "cache", "storage", "staticfiles", "utils-core"]
@@ -96,8 +99,8 @@ all-backends = [
   "redis-sentinel",
   "memcached-backend",
 ]
-full = ["advanced-minification", "all-backends", "azure", "compression", "dev-server", "gcs", "image-optimization", "processing", "s3", "source-maps"]
-s3 = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-smithy-types", "time"]
+full = ["advanced-minification", "all-backends", "asset-publication", "azure", "compression", "dev-server", "gcs", "image-optimization", "processing", "s3", "source-maps"]
+s3 = ["dep:aws-config", "dep:aws-sdk-s3", "time"]
 azure = ["dep:hmac", "dep:percent-encoding"]
 gcs = ["dep:google-cloud-storage", "dep:google-cloud-auth"]
 processing = []

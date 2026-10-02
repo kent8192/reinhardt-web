@@ -7,6 +7,289 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.15...reinhardt-pages-macros@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(pages)* generate runtime-bound ModelForm controls
+
+### Fixed
+
+- *(pages)* stabilize model mutation form resets
+- *(pages)* preserve JSON editor representation in binding snapshots
+- *(pages)* retain server actions on multipart mutation forms
+- *(pages)* preserve model form control snapshots
+- *(pages)* preserve model form editor defaults
+- *(pages)* notify model form editor marker changes
+- *(pages)* preserve model form editor representations
+- *(pages)* preserve native model form sentinels
+- *(pages)* preserve reset state metadata
+- *(pages)* preserve null runtime sentinels
+- *(pages)* preserve native model form defaults
+- *(pages)* harden model form default metadata
+- *(pages)* preserve native model form edits before hydration
+- *(pages)* normalize native model form multipart fields
+- *(pages)* preserve JSON types in multipart model forms
+- *(pages)* preserve native model form intent across startup and reset
+
+### Maintenance
+
+- merge develop/0.4.0 into model form mutation pages
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.14...reinhardt-pages-macros@v0.4.0-alpha.15) - 2026-09-10
+
+### Fixed
+
+- *(pages)* render form field attributes and help text
+- *(pages)* preserve form ownership across hydration and reset
+- *(pages)* evaluate static select choice expressions once
+- *(pages)* preserve reconciled defaults during hydration
+- *(pages)* reject unsupported RadioInput form overrides
+- *(pages)* complete native radio reset synchronization
+- *(pages)* validate required radios and synchronize saved defaults
+- *(pages)* preserve reset ownership and hydrated radio state
+
+### Maintenance
+
+- merge main into radio group accessibility
+- *(pages)* merge main field metadata and radio groups
+- chore!(sync): merge main into develop/0.4.0
+- merge develop/0.4.0 into RadioInput support
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.13...reinhardt-pages-macros@v0.4.0-alpha.14) - 2026-09-07
+
+### Fixed
+
+- *(forms)* reconcile validation with named form contracts
+- *(pages)* validate multipart model payloads on the server
+- *(pages)* scope multipart validation to endpoint fields
+
+### Maintenance
+
+- merge develop/0.4.0 into navigation guard branch
+- merge develop/0.4.0 form mutation changes
+- merge develop/0.4.0 into model form validation
+- merge develop/0.4.0 into semantic input bindings
+
+## [0.4.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.11...reinhardt-pages-macros@v0.4.0-alpha.12) - 2026-08-30
+
+### Added
+
+- *(pages)* add client_form attribute macro
+
+### Fixed
+
+- *(pages)* preserve client form serde metadata
+- *(pages)* make client_form expansion alias-safe
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.10...reinhardt-pages-macros@v0.4.0-alpha.11) - 2026-08-27
+
+### Added
+
+- *(pages)* generate target-neutral ClientForm submits
+
+## [0.4.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.9...reinhardt-pages-macros@v0.4.0-alpha.10) - 2026-08-25
+
+### Added
+
+- *(pages)* lower optional query extractors
+
+### Documentation
+
+- *(pages)* document optional query extraction
+- *(pages)* clarify optional query aliases
+
+### Fixed
+
+- *(pages)* retain model-form responses and map structured errors
+- *(pages)* complete model form runtime contract
+- *(pages)* synchronize model form runtime values
+- *(pages)* repair WASM form and hydration builds
+
+### Added
+
+- *(pages-macros)* support optional typed query extraction across route components, layouts, loaders, and page props
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.6...reinhardt-pages-macros@v0.4.0-alpha.7) - 2026-08-19
+
+### Added
+
+- *(pages)* infer multipart server function arguments
+- *(pages)* decode typed multipart server functions
+- *(pages)* call multipart server functions with FormData
+
+### Documentation
+
+- *(pages-macros)* clarify native form navigation
+
+### Fixed
+
+- *(pages-macros)* centralize form navigation fallback
+- *(pages)* preserve named navigation semantics
+- close named navigation review feedback
+- close follow-up navigation review feedback
+- *(pages)* reject file trait-bound arguments
+- *(pages)* reject file callback arguments
+- *(pages)* enforce ordered multipart decoding
+- *(pages)* preserve multipart File identity
+- harden typed multipart file lifecycle
+- *(pages)* harden typed multipart requests
+- *(pages)* address multipart form review feedback
+- *(pages)* close follow-up review findings
+- *(pages)* close model form review findings
+- *(pages)* close remaining model form review findings
+- *(pages)* close final model form review findings
+- *(pages)* scope model form DOM lookup per instance
+- preserve multipart omission and cleanup scheduling
+- preserve delete cleanup ownership boundaries
+
+### Fixed
+
+- *(pages)* preserve rejected SPA navigation and external HTTPS destinations in generated form redirects
+
+## [0.4.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.3...reinhardt-pages-macros@v0.4.0-alpha.4) - 2026-08-04
+
+### Added
+
+- *(pages)* generate model-backed forms
+- *(pages)* lower typed custom event handlers
+
+### Documentation
+
+- *(pages)* document typed custom event payloads
+
+### Fixed
+
+- *(forms)* harden generated form persistence semantics
+- *(pages)* preserve valid boolean and fractional controls
+- *(pages)* render stored model form values
+- *(pages)* reject unsupported model form widgets
+- *(forms)* enforce generated model constraints
+- *(forms)* handle temporal and assigned model inputs
+- *(forms)* preserve model form field contracts
+- *(pages)* retain native model form submission
+- *(pages)* validate model widget overrides
+- *(forms)* complete model-backed form submission
+- *(forms)* enforce model form submission policies
+- *(forms)* harden native model form decoding
+- *(forms)* preserve model form defaults
+- *(forms)* harden model form input handling
+- *(forms)* preserve secure model form defaults
+- *(forms)* preserve untouched model controls
+- *(forms)* synchronize hydrated model submits
+- *(forms)* complete model form submission contracts
+- *(forms)* validate model form submission boundaries
+- *(forms)* reject unsupported model reactivity
+- *(forms)* preserve native model form semantics
+- *(forms)* validate inline and runtime model form state
+- *(forms)* preserve native defaults and control values
+- *(forms)* preserve model-backed form state
+- *(forms)* reset omitted model form fields
+- *(forms)* retain untouched boolean defaults
+- *(pages)* reject unsupported model form callbacks
+- *(forms)* harden generated model form boundaries
+- *(forms)* preserve optional model form state
+- *(forms)* enforce model form overrides
+- *(forms)* reserve generated form namespaces
+- *(pages)* keep model form controls in sync
+- *(forms)* preserve native range defaults
+- *(forms)* synchronize defaults and persistence state
+- *(forms)* preserve transactional retry semantics
+- *(forms)* preserve model form control semantics
+- *(forms)* validate inline formset retries
+- *(forms)* align native form validation
+- *(pages)* preserve server function fallback syntax
+- *(forms)* restore model form CI coverage
+- *(forms)* address model form review feedback
+- *(pages)* preserve typed custom handler spans
+- *(pages)* assert typed custom event parameter path
+- *(pages)* address typed custom event review
+- *(pages)* match custom event token spacing in tests
+- *(pages)* retain query key wrapper types
+- *(ci)* repair all-feature unit regressions
+
+### Maintenance
+
+- auto-fix fmt and clippy
+
+### Other
+
+- sync develop/0.4.0 into query client v2
+
+### Styling
+
+- *(pages)* format typed custom event codegen
+
+### Testing
+
+- *(forms)* align generated model form expectations
+- *(pages)* verify async custom event lowering
+- *(pages)* compare zero-argument custom event lowering
+- *(pages)* relax typed custom-event lowering assertion
+- *(pages)* harden typed custom event coverage
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.1...reinhardt-pages-macros@v0.4.0-alpha.2) - 2026-07-23
+
+### Fixed
+
+- *(pages)* ignore named interpolation keys in captures
+- *(pages)* scope named macro argument capture skipping
+- *(pages)* preserve captures for shadowable macros
+- *(pages)* resolve named macro paths safely
+
+### Fixed
+
+- Preserve mutable and destructuring `#[inject]` bindings in `#[server_fn]`
+  implementation signatures while forwarding resolved values by hygienic
+  identifiers that cannot collide with user parameter bindings.
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.3.2...reinhardt-pages-macros@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(pages)* apply transactional template hot patches
+
+### Fixed
+
+- *(pages)* preserve controlled binding state
+- *(pages)* preserve controlled select projection
+- resolve server function set review findings
+- *(pages)* resolve server function set review findings
+- *(pages)* envelope server function failures
+- *(pages)* envelope server function request failures
+- *(pages)* classify server function failures
+- *(pages)* preserve structured server form errors
+- *(pages)* retain custom error status
+- *(release)* restore develop prerelease lifecycle
+- *(pages)* prevent invalid head macro doc link
+
+### Maintenance
+
+- merge main into develop/0.4.0
+- refresh main forward merge from develop/0.4.0
+- merge develop/0.4.0 into server function set branch
+
+### Other
+
+- resolve develop/0.4.0 conflicts for [[#5676](https://github.com/kent8192/reinhardt-web/issues/5676)](https://github.com/kent8192/reinhardt-web/issues/5676)
+- sync develop/0.4.0 into server function set
+- sync develop/0.4.0 into structured server errors
+
+### Added
+
+- Add fn-form `#[server_fnset]` generation for named low-level marker sets and
+  model-backed CRUD namespaces.
+- Add impl-form checked standard overrides and custom actions with detail and
+  transaction metadata, normalized endpoints, and compile-time diagnostics for
+  invalid names, links, lookups, signatures, collisions, and REST-only options.
+- Generate all six checked standard override paths, including the dedicated
+  transaction-only create context.
+
+### Changed
+
+- **BREAKING**: `#[component]` now requires `name = "..."` for route names and
+  rejects positional string or bare identifier route names.
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.3.15...reinhardt-pages-macros@v0.3.16) - 2026-09-08
 
 ### Fixed
@@ -37,7 +320,7 @@ stable release section.
 - *(pages)* add route-backed component macros
 - *(forms)* add dynamic FieldArray runtime support
 - Added `#[derive(FromRequest)]`, `#[page_props]`, and
-  `#[component("/path", "name")]` macro codegen for route-backed page
+  `#[component("/path", name = "name")]` macro codegen for route-backed page
   components.
 
 ### Fixed

@@ -14,7 +14,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.3.20"
+cargo install reinhardt-admin-cli --version "0.4.0-alpha.18"
 ```
 
 This installs the `reinhardt-admin` command.
@@ -40,7 +40,7 @@ reinhardt-admin startproject myproject --with-rest /path/to/directory
 
 # Pin the generated Reinhardt dependency
 reinhardt-admin startproject myproject --with-rest \
-  --reinhardt-version 0.3.20 \
+  --reinhardt-version 0.4.0-alpha.18 \
   --features standard,admin \
   --no-interactive
 ```
@@ -58,7 +58,7 @@ reinhardt-admin configure
 
 # Update a project without prompts
 reinhardt-admin configure /path/to/project \
-  --reinhardt-version 0.3.20 \
+  --reinhardt-version 0.4.0-alpha.18 \
   --features minimal,db-sqlite \
   --no-interactive
 ```
@@ -90,6 +90,35 @@ reinhardt-admin --help
 reinhardt-admin --version
 ```
 
+### Upgrade Generated Migration Sources
+
+Generated migration files use a version marker and stable constructors. Upgrade
+older generated files without connecting to a database:
+
+```bash
+# Check only; exits unsuccessfully when a file needs upgrading
+reinhardt-admin migrations upgrade-source --check migrations
+
+reinhardt-admin migrations upgrade-source migrations
+```
+
+The optional positional path may name one migration directory or one `.rs`
+file. The command updates only recognized generated spans and preserves custom
+code and comments. Install a version of `reinhardt-admin` that includes the
+source upgrader before updating the application's framework dependency. Run
+the check before write mode and review the diff.
+
+After updating the dependency, compile the application, apply the complete
+history to an empty validation database, and run `makemigrations --check` with
+unchanged models.
+
+The upgrader completes legacy `DropColumn` operations with `old_definition:
+None` and preserves explicit definitions. Conversion and validation errors
+abort the entire preflight without writes. Successful preflight is followed by
+guarded per-file replacement; the command does not promise a multi-file
+transaction for later filesystem I/O failures. Repeating a successful upgrade
+leaves source bytes unchanged.
+
 ### Manage Plugins
 
 Manage Reinhardt plugins (Dentdelion):
@@ -108,7 +137,7 @@ reinhardt-admin plugin info auth-delion --remote
 
 # Install a plugin
 reinhardt-admin plugin install auth-delion
-reinhardt-admin plugin install auth-delion --version 0.3.20
+reinhardt-admin plugin install auth-delion --version 0.4.0-alpha.18
 
 # Remove a plugin
 reinhardt-admin plugin remove auth-delion
@@ -149,7 +178,9 @@ does not rewrite DSL bodies it cannot classify confidently.
 
 ### Format Reinhardt Macro DSLs
 
-Format `page!`, `form!`, and `head!` macro DSLs in your source files:
+Format `page!`, `form!`, `head!`, and `style!` macro DSLs in your source files. The
+admin command delegates all DSL formatting, including component styles, to the
+`reinhardt-formatter` binary:
 
 ```bash
 # Format all Rust files in the current directory

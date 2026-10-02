@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.4.0-alpha.15...reinhardt-manouche@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(manouche)* parse named ClientForm view declarations
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.4.0-alpha.14...reinhardt-manouche@v0.4.0-alpha.15) - 2026-09-10
+
+### Fixed
+
+- *(manouche)* reject RadioInput model form overrides
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+- merge develop/0.4.0 into RadioInput support
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.4.0-alpha.13...reinhardt-manouche@v0.4.0-alpha.14) - 2026-09-07
+
+### Maintenance
+
+- merge develop/0.4.0 into PR [[#6226](https://github.com/kent8192/reinhardt-web/issues/6226)](https://github.com/kent8192/reinhardt-web/issues/6226) branch
+- merge develop/0.4.0 into semantic input bindings
+
+### Other
+
+- Apply remaining changes
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.4.0-alpha.10...reinhardt-manouche@v0.4.0-alpha.11) - 2026-08-27
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.4.0-alpha.8...reinhardt-manouche@v0.4.0-alpha.9) - 2026-08-23
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.3.15...reinhardt-manouche@v0.3.16) - 2026-09-08
 
 ### Maintenance
@@ -43,6 +83,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.4.0-alpha.6...reinhardt-manouche@v0.4.0-alpha.7) - 2026-08-19
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.4.0-alpha.3...reinhardt-manouche@v0.4.0-alpha.4) - 2026-08-04
+
+### Added
+
+- *(manouche)* parse model-backed forms
+- *(pages)* parse typed custom event syntax
+
+### Documentation
+
+- *(forms)* document generated model forms
+
+### Fixed
+
+- *(forms)* enforce model form submission policies
+- *(forms)* harden model form input handling
+- *(forms)* preserve secure model form defaults
+- *(forms)* align shared model form validation
+- *(forms)* preserve native model form semantics
+- *(forms)* address model form review feedback
+- *(manouche)* distinguish typed custom event ABI
+
+### Testing
+
+- *(pages)* harden typed custom event coverage
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.3.2...reinhardt-manouche@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(manouche)* [**breaking**] add compile-time accessibility validation
+- *(manouche,pages)* lower typed intrinsic event handlers
+- *(pages)* validate controlled binding syntax
+- *(pages)* add lifecycle-aware document head management
+
+### Fixed
+
+- *(manouche)* address accessibility validation review feedback
+- *(manouche)* handle composed accessibility labels
+- *(pages)* reject duplicate binding classifiers
+- *(pages)* clear controlled input quality gates
+- *(pages)* align inferred option and IME semantics
+- *(pages)* close bound option validation gaps
+- *(pages)* reset nested select validation context
+- *(pages)* reject duplicate bound choice values
+- *(pages)* box controlled binding expressions
+- *(pages)* preserve controlled binding hydration state
+- *(pages)* close PR 5676 controlled input review gaps
+- *(pages)* preserve controlled select projection
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge develop/0.4.0 into accessibility pr
+- merge latest main into develop forward-merge
+
+### Other
+
+- resolve develop/0.4.0 conflicts for [[#5676](https://github.com/kent8192/reinhardt-web/issues/5676)](https://github.com/kent8192/reinhardt-web/issues/5676)
+- sync develop/0.4.0 into document head management
+- sync latest develop/0.4.0
+
+### Testing
+
+- *(pages)* strengthen select sibling context coverage
+
+### Added
+
+- Add the shared component-style compiler boundary with deterministic scoping,
+  stable diagnostics, structured CSS IR, and CSS serialization.
+- Add canonical static-template lowering and dynamic-ABI hashing for Pages
+  development hot reload.
+
+### Fixed
+
+- *(style)* validate angle units, grid area and line syntax, zero-valued
+  shorthand components, and media-query token semantics consistently with CSS.
+- *(style)* enforce dimension-specific media-query units and resolve CSS units
+  without ASCII case sensitivity.
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.3.9...reinhardt-manouche@v0.3.10) - 2026-08-22
 
 ### Maintenance

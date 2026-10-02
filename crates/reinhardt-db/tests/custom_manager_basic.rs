@@ -17,11 +17,13 @@
 //! type-level wiring and on the SQL builder paths that do not require a live
 //! connection, so it can run in any environment.
 
-use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 use reinhardt_db::orm::connection::DatabaseBackend;
 use reinhardt_db::orm::custom_manager::CustomManager;
 use reinhardt_db::orm::manager::Manager;
@@ -112,9 +114,9 @@ impl CustomManager for GuardedArticleManager {
 
 	fn before_save(&self, model: &mut Article) -> reinhardt_core::exception::Result<()> {
 		if model.title.trim().is_empty() {
-			return Err(reinhardt_core::exception::Error::Database(
-				"title must not be empty".into(),
-			));
+			return Err(
+				DatabaseError::new(DatabaseErrorKind::Query, "title must not be empty").into(),
+			);
 		}
 		Ok(())
 	}
@@ -132,21 +134,38 @@ impl CustomManager for DenyAllArticleManager {
 	}
 
 	fn before_save(&self, _model: &mut Article) -> reinhardt_core::exception::Result<()> {
-		Err(reinhardt_core::exception::Error::Database(
-			"save vetoed by custom manager".into(),
-		))
+		Err(DatabaseError::new(DatabaseErrorKind::Query, "save vetoed by custom manager").into())
 	}
 
 	fn before_delete(&self, _model: &Article) -> reinhardt_core::exception::Result<()> {
-		Err(reinhardt_core::exception::Error::Database(
-			"delete vetoed by custom manager".into(),
-		))
+		Err(DatabaseError::new(DatabaseErrorKind::Query, "delete vetoed by custom manager").into())
 	}
 
 	fn before_bulk_update(&self, _models: &mut [Article]) -> reinhardt_core::exception::Result<()> {
-		Err(reinhardt_core::exception::Error::Database(
-			"bulk update vetoed by custom manager".into(),
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Query,
+			"bulk update vetoed by custom manager",
+		)
+		.into())
+	}
+}
+
+struct CountingBulkUpdateVetoManager {
+	calls: Arc<AtomicUsize>,
+}
+
+impl CustomManager for CountingBulkUpdateVetoManager {
+	type Model = Article;
+
+	fn new() -> Self {
+		Self {
+			calls: Arc::new(AtomicUsize::new(0)),
+		}
+	}
+
+	fn before_bulk_update(&self, _models: &mut [Article]) -> reinhardt_core::exception::Result<()> {
+		self.calls.fetch_add(1, Ordering::SeqCst);
+		Err(DatabaseError::new(DatabaseErrorKind::Query, "bulk update vetoed exactly once").into())
 	}
 }
 
@@ -422,6 +441,29 @@ async fn default_bulk_update_invokes_before_bulk_update_veto_before_database_acc
 }
 
 #[tokio::test]
+async fn default_bulk_update_runs_before_bulk_update_once_before_database_access() {
+	// Arrange
+	let manager = CountingBulkUpdateVetoManager::new();
+	let articles = vec![Article {
+		id: Some(1),
+		title: "blocked-once".into(),
+		is_archived: false,
+	}];
+
+	// Act
+	let result = manager
+		.bulk_update(articles, vec!["title".to_string()], None)
+		.await;
+
+	// Assert
+	assert_eq!(
+		format!("{}", result.unwrap_err()),
+		"Database error: bulk update vetoed exactly once"
+	);
+	assert_eq!(manager.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn default_bulk_update_skips_hook_for_empty_models() {
 	// Arrange
 	let manager = DenyAllArticleManager;
@@ -450,6 +492,18 @@ async fn default_bulk_update_skips_hook_for_empty_fields() {
 
 	// Assert
 	assert_eq!(result.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn default_bulk_create_skips_database_for_empty_models() {
+	// Arrange
+	let manager = ActiveArticleManager::new();
+
+	// Act
+	let result = manager.bulk_create(Vec::new(), None, false, false).await;
+
+	// Assert
+	assert_eq!(result.unwrap(), Vec::<Article>::new());
 }
 
 // -----------------------------------------------------------------------------
@@ -484,25 +538,6 @@ fn bulk_create_sql_via_trait_matches_inherent_method() {
 }
 
 #[rstest]
-fn get_or_create_sql_via_trait_matches_inherent_method() {
-	// Arrange
-	let manager = Manager::<Article>::new();
-	let mut lookup = HashMap::new();
-	lookup.insert("title".into(), "Reinhardt Custom Managers".into());
-	let defaults = HashMap::new();
-
-	// Act
-	let (inherent_select, inherent_insert) =
-		manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
-	let (trait_select, trait_insert) =
-		CustomManager::get_or_create_sql(&manager, &lookup, &defaults, DatabaseBackend::Postgres);
-
-	// Assert: trait dispatch produces identical SQL to the inherent path.
-	assert_eq!(inherent_select, trait_select);
-	assert_eq!(inherent_insert, trait_insert);
-}
-
-#[rstest]
 #[case::postgres(DatabaseBackend::Postgres)]
 #[case::mysql(DatabaseBackend::MySql)]
 #[case::sqlite(DatabaseBackend::Sqlite)]
@@ -524,26 +559,6 @@ fn bulk_create_sql_parity_across_backends(#[case] backend: DatabaseBackend) {
 }
 
 #[rstest]
-fn get_or_create_sql_parity_with_defaults() {
-	// Arrange
-	let manager = Manager::<Article>::new();
-	let mut lookup = HashMap::new();
-	lookup.insert("title".into(), "Reinhardt Custom Managers".into());
-	let mut defaults = HashMap::new();
-	defaults.insert("is_archived".into(), "false".into());
-
-	// Act
-	let (inherent_select, inherent_insert) =
-		manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
-	let (trait_select, trait_insert) =
-		CustomManager::get_or_create_sql(&manager, &lookup, &defaults, DatabaseBackend::Postgres);
-
-	// Assert: defaults map is preserved through trait dispatch.
-	assert_eq!(inherent_select, trait_select);
-	assert_eq!(inherent_insert, trait_insert);
-}
-
-#[rstest]
 fn delete_queryset_sql_via_trait_matches_inherent_method() {
 	// Arrange
 	let manager = Manager::<Article>::new();
@@ -554,8 +569,11 @@ fn delete_queryset_sql_via_trait_matches_inherent_method() {
 	));
 
 	// Act
-	let (inherent_sql, inherent_params) = manager.delete_queryset(&qs);
-	let (trait_sql, trait_params) = CustomManager::delete_queryset(&manager, &qs);
+	let (inherent_sql, inherent_params) = manager
+		.delete_queryset(&qs)
+		.expect("delete SQL should compile");
+	let (trait_sql, trait_params) =
+		CustomManager::delete_queryset(&manager, &qs).expect("delete SQL should compile");
 
 	// Assert
 	assert_eq!(inherent_sql, trait_sql);
@@ -574,8 +592,11 @@ fn update_queryset_sql_via_trait_matches_inherent_method() {
 	let updates: &[(&str, &str)] = &[("title", "renamed")];
 
 	// Act
-	let (inherent_sql, inherent_params) = manager.update_queryset(&qs, updates);
-	let (trait_sql, trait_params) = CustomManager::update_queryset(&manager, &qs, updates);
+	let (inherent_sql, inherent_params) = manager
+		.update_queryset(&qs, updates)
+		.expect("manager update SQL should compile");
+	let (trait_sql, trait_params) = CustomManager::update_queryset(&manager, &qs, updates)
+		.expect("custom manager update SQL should compile");
 
 	// Assert
 	assert_eq!(inherent_sql, trait_sql);

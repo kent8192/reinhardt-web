@@ -7,7 +7,7 @@ use reinhardt_views::viewsets::{ModelViewSet, NestedResource, NestedViewSet, nes
 use serde::{Deserialize, Serialize};
 
 #[allow(dead_code)]
-#[model(table_name = "users")]
+#[model(app_label = "default", table_name = "users")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct User {
 	#[field(primary_key = true)]
@@ -17,7 +17,7 @@ struct User {
 }
 
 #[allow(dead_code)]
-#[model(table_name = "posts")]
+#[model(app_label = "default", table_name = "posts")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Post {
 	#[field(primary_key = true)]

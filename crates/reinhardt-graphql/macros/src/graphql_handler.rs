@@ -6,10 +6,7 @@
 use crate::crate_paths::{get_reinhardt_di_crate, get_reinhardt_graphql_crate};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{
-	Error, FnArg, GenericArgument, ItemFn, Pat, PatType, PathArguments, Result, Token, Type,
-	punctuated::Punctuated,
-};
+use syn::{Error, FnArg, ItemFn, Pat, PatType, Result, Token, Type, punctuated::Punctuated};
 
 /// Information about parameter extractors
 #[derive(Clone)]
@@ -21,7 +18,6 @@ struct ParamInfo {
 /// Information about `#[inject]` parameters
 #[derive(Clone)]
 struct InjectInfo {
-	pat: Box<Pat>,
 	ty: Box<Type>,
 	use_cache: bool,
 }
@@ -30,30 +26,6 @@ struct InjectInfo {
 #[derive(Clone, Default)]
 struct InjectOptions {
 	use_cache: bool,
-}
-
-fn depends_key_value_types(ty: &Type) -> Option<(&Type, &Type)> {
-	let Type::Path(type_path) = ty else {
-		return None;
-	};
-	let segment = type_path.path.segments.last()?;
-	if segment.ident != "Depends" {
-		return None;
-	}
-	let PathArguments::AngleBracketed(args) = &segment.arguments else {
-		return None;
-	};
-	if args.args.len() != 2 {
-		return None;
-	}
-	let mut generic_args = args.args.iter();
-	let GenericArgument::Type(key_ty) = generic_args.next()? else {
-		return None;
-	};
-	let GenericArgument::Type(value_ty) = generic_args.next()? else {
-		return None;
-	};
-	Some((key_ty, value_ty))
 }
 
 /// Check if an attribute is `#[inject]`
@@ -99,13 +71,12 @@ fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<InjectInfo
 	let mut inject_params = Vec::new();
 
 	for input in inputs {
-		if let FnArg::Typed(PatType { attrs, pat, ty, .. }) = input {
+		if let FnArg::Typed(PatType { attrs, ty, .. }) = input {
 			let has_inject = attrs.iter().any(is_inject_attr);
 
 			if has_inject {
 				let options = parse_inject_options(attrs);
 				inject_params.push(InjectInfo {
-					pat: pat.clone(),
 					ty: ty.clone(),
 					use_cache: options.use_cache,
 				});
@@ -237,43 +208,52 @@ pub(crate) fn expand_graphql_handler(input: ItemFn) -> Result<TokenStream> {
 	};
 
 	// Generate injection calls
+	let inject_bindings: Vec<_> = (0..inject_params.len())
+		.map(|index| syn::Ident::new(&format!("__reinhardt_injected_{index}"), Span::mixed_site()))
+		.collect();
 	let injection_calls: Vec<_> = inject_params
 		.iter()
-		.map(|param| {
-			let pat = &param.pat;
+		.zip(&inject_bindings)
+		.map(|(param, binding)| {
 			let ty = &param.ty;
 			let use_cache = param.use_cache;
 
-			if let Some((key_ty, value_ty)) = depends_key_value_types(ty) {
-				quote! {
-					let #pat: #ty = #di_crate::Depends::<#key_ty, #value_ty>::resolve_from_registry(&__di_ctx, #use_cache)
-						.await
-						.map_err(|e| ::async_graphql::Error::new(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?;
+			quote! {
+				let #binding: #ty = {
+					use #di_crate::{
+						__InjectFallbackResolver as _,
+						__InjectWrapperResolver as _,
+					};
+					#di_crate::__InjectResolver::<#ty>::new()
+						.__resolve_inject_parameter(&__di_ctx, #use_cache)
 				}
-			} else {
-				quote! {
-					let #pat: #ty = {
-						use #di_crate::{
-							__InjectFallbackResolver as _,
-							__InjectWrapperResolver as _,
-						};
-						#di_crate::__InjectResolver::<#ty>::new()
-							.__resolve_inject_parameter(&__di_ctx, #use_cache)
-					}
-						.await
-						.map_err(|e| ::async_graphql::Error::new(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?;
-				}
+					.await
+					.map_err(|e| ::async_graphql::Error::new(
+						format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
+					))?;
 			}
 		})
 		.collect();
 
-	// Collect parameter names for the original function call
-	let regular_args: Vec<_> = regular_params.iter().map(|p| &p.pat).collect();
-	let inject_args: Vec<_> = inject_params.iter().map(|param| &param.pat).collect();
+	// Preserve source parameter order while replacing injected patterns with values.
+	let mut inject_index = 0;
+	let call_args: Vec<_> = input
+		.sig
+		.inputs
+		.iter()
+		.filter_map(|arg| match arg {
+			FnArg::Receiver(_) => None,
+			FnArg::Typed(pat_type) if pat_type.attrs.iter().any(is_inject_attr) => {
+				let binding = &inject_bindings[inject_index];
+				inject_index += 1;
+				Some(quote! { #binding })
+			}
+			FnArg::Typed(pat_type) => {
+				let pat = &pat_type.pat;
+				Some(quote! { #pat })
+			}
+		})
+		.collect();
 
 	// Wrapper function inputs (only regular parameters, without #[inject])
 	let wrapper_inputs: Vec<_> = regular_params
@@ -310,7 +290,7 @@ pub(crate) fn expand_graphql_handler(input: ItemFn) -> Result<TokenStream> {
 			#(#injection_calls)*
 
 			// Call original function
-			#impl_fn_name(#(#regular_args,)* #(#inject_args),*).await
+			#impl_fn_name(#(#call_args),*).await
 		}
 	};
 

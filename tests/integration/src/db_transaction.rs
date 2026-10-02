@@ -3,9 +3,11 @@
 //! Provides automatic transaction rollback for tests to ensure clean state
 //! between test runs, even when tests fail midway through execution.
 
-use reinhardt_db::orm::connection::DatabaseConnection;
+use reinhardt_db::{
+	backends::DatabaseConnection as BackendsConnection,
+	orm::{DatabaseConnection, DatabaseConnectionLease},
+};
 use rstest::*;
-use std::sync::Arc;
 use testcontainers::{
 	GenericImage, ImageExt,
 	core::{ContainerPort, WaitFor},
@@ -30,18 +32,18 @@ use testcontainers::{
 /// ```rust,no_run,ignore
 /// # use rstest::*;
 /// # use reinhardt_test_support::db_transaction::db_transaction_fixture;
-/// # use reinhardt_db::orm::connection::DatabaseConnection;
+/// # use reinhardt_db::orm::{DatabaseConnection, DatabaseConnectionLease};
 /// # use testcontainers::GenericImage;
-/// # use std::sync::Arc;
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_with_transaction(
 ///     #[future] db_transaction_fixture: (
 ///         testcontainers::ContainerAsync<GenericImage>,
-///         Arc<DatabaseConnection>,
+///         DatabaseConnectionLease,
+///         DatabaseConnection,
 ///     ),
 /// ) {
-///     let (_container, conn) = db_transaction_fixture.await;
+///     let (_container, _lease, conn) = db_transaction_fixture.await;
 ///
 ///     // Perform database operations
 ///     conn.execute("INSERT INTO users (name) VALUES ('test')", vec![]).await.unwrap();
@@ -53,7 +55,8 @@ pub struct DbTransactionFixture {
 	/// PostgreSQL container - automatically cleaned up on drop
 	pub container: testcontainers::ContainerAsync<GenericImage>,
 	/// Database connection
-	pub connection: Arc<DatabaseConnection>,
+	pub lease: DatabaseConnectionLease,
+	pub connection: DatabaseConnection,
 }
 
 impl DbTransactionFixture {
@@ -81,19 +84,23 @@ impl DbTransactionFixture {
 		let database_url = format!("postgres://postgres:test@localhost:{}/test_db", port);
 
 		// Create connection
-		let conn = DatabaseConnection::connect(&database_url)
+		let owner = BackendsConnection::connect(&database_url)
 			.await
 			.expect("Failed to connect to database");
+		let lease = DatabaseConnectionLease::register(owner)
+			.expect("Failed to register database connection");
+		let connection = lease.handle();
 
 		Self {
 			container: postgres,
-			connection: Arc::new(conn),
+			lease,
+			connection,
 		}
 	}
 
 	/// Get database connection
-	pub fn connection(&self) -> Arc<DatabaseConnection> {
-		Arc::clone(&self.connection)
+	pub fn connection(&self) -> DatabaseConnection {
+		self.connection
 	}
 }
 
@@ -114,16 +121,18 @@ impl DbTransactionFixture {
 ///
 /// ```rust,no_run
 /// use rstest::*;
+/// use reinhardt_db::orm::{DatabaseConnection, DatabaseConnectionLease};
 ///
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_user_creation(
 ///     #[future] db_transaction_fixture: (
 ///         testcontainers::ContainerAsync<GenericImage>,
-///         Arc<DatabaseConnection>,
+///         DatabaseConnectionLease,
+///         DatabaseConnection,
 ///     ),
 /// ) {
-///     let (_container, conn) = db_transaction_fixture.await;
+///     let (_container, _lease, conn) = db_transaction_fixture.await;
 ///
 ///     // Create test data
 ///     conn.execute(
@@ -145,10 +154,11 @@ impl DbTransactionFixture {
 #[fixture]
 pub async fn db_transaction_fixture() -> (
 	testcontainers::ContainerAsync<GenericImage>,
-	Arc<DatabaseConnection>,
+	DatabaseConnectionLease,
+	DatabaseConnection,
 ) {
 	let fixture = DbTransactionFixture::new().await;
-	(fixture.container, fixture.connection)
+	(fixture.container, fixture.lease, fixture.connection)
 }
 
 /// Shared database fixture for tests that need multiple connections
@@ -160,6 +170,10 @@ pub async fn db_transaction_fixture() -> (
 ///
 /// ```rust,no_run
 /// use rstest::*;
+/// use reinhardt_db::{
+///     backends::DatabaseConnection as BackendsConnection,
+///     orm::DatabaseConnectionLease,
+/// };
 ///
 /// #[rstest]
 /// #[tokio::test]
@@ -172,8 +186,12 @@ pub async fn db_transaction_fixture() -> (
 ///     let (_container, db_url) = shared_db_fixture.await;
 ///
 ///     // Create multiple connections
-///     let conn1 = DatabaseConnection::connect(&db_url).await.unwrap();
-///     let conn2 = DatabaseConnection::connect(&db_url).await.unwrap();
+///     let owner1 = BackendsConnection::connect(&db_url).await.unwrap();
+///     let owner2 = BackendsConnection::connect(&db_url).await.unwrap();
+///     let lease1 = DatabaseConnectionLease::register(owner1).unwrap();
+///     let lease2 = DatabaseConnectionLease::register(owner2).unwrap();
+///     let conn1 = lease1.handle();
+///     let conn2 = lease2.handle();
 ///
 ///     // Both connections share same database
 ///     // All data cleaned up when container drops
@@ -213,10 +231,11 @@ mod tests {
 	async fn test_fixture_provides_connection(
 		#[future] db_transaction_fixture: (
 			testcontainers::ContainerAsync<GenericImage>,
-			Arc<DatabaseConnection>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
 		),
 	) {
-		let (_container, conn) = db_transaction_fixture.await;
+		let (_container, _lease, conn) = db_transaction_fixture.await;
 
 		// Verify connection works
 		let result = conn.execute("SELECT 1", vec![]).await;
@@ -232,10 +251,11 @@ mod tests {
 	async fn test_cleanup_part1_create_data(
 		#[future] db_transaction_fixture: (
 			testcontainers::ContainerAsync<GenericImage>,
-			Arc<DatabaseConnection>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
 		),
 	) {
-		let (_container, conn) = db_transaction_fixture.await;
+		let (_container, _lease, conn) = db_transaction_fixture.await;
 
 		// Create table and insert data
 		conn.execute(
@@ -265,10 +285,11 @@ mod tests {
 	async fn test_cleanup_part2_verify_clean(
 		#[future] db_transaction_fixture: (
 			testcontainers::ContainerAsync<GenericImage>,
-			Arc<DatabaseConnection>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
 		),
 	) {
-		let (_container, conn) = db_transaction_fixture.await;
+		let (_container, _lease, conn) = db_transaction_fixture.await;
 
 		// Verify table doesn't exist (cleanup worked)
 		let result = conn.execute("SELECT * FROM test_cleanup", vec![]).await;
@@ -287,8 +308,12 @@ mod tests {
 		let (_container, db_url) = shared_db_fixture.await;
 
 		// Create two connections
-		let conn1 = DatabaseConnection::connect(&db_url).await.unwrap();
-		let conn2 = DatabaseConnection::connect(&db_url).await.unwrap();
+		let owner1 = BackendsConnection::connect(&db_url).await.unwrap();
+		let lease1 = DatabaseConnectionLease::register(owner1).unwrap();
+		let conn1 = lease1.handle();
+		let owner2 = BackendsConnection::connect(&db_url).await.unwrap();
+		let lease2 = DatabaseConnectionLease::register(owner2).unwrap();
+		let conn2 = lease2.handle();
 
 		// Create table with first connection
 		conn1
@@ -311,10 +336,11 @@ mod tests {
 	async fn test_cleanup_on_panic(
 		#[future] db_transaction_fixture: (
 			testcontainers::ContainerAsync<GenericImage>,
-			Arc<DatabaseConnection>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
 		),
 	) {
-		let (_container, conn) = db_transaction_fixture.await;
+		let (_container, _lease, conn) = db_transaction_fixture.await;
 
 		// Create data
 		conn.execute("CREATE TABLE panic_test (id SERIAL PRIMARY KEY)", vec![])

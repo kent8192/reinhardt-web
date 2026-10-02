@@ -7,6 +7,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Preserve `i32` native query parameters as `QueryValue::Int32(i32)` so
+  PostgreSQL resolves `integer` function overloads. Exhaustive `QueryValue`
+  matches must handle the new variant. `QueryValue::from(i32)` and the Query
+  value conversion paths now return `Int32`; use an `i64` or explicit
+  `QueryValue::Int(i64)` to retain `bigint` binding. Result-row integer
+  normalization is unchanged.
+
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.17...reinhardt-db@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+- *(db)* update Django composite key comparison
+
+### Fixed
+
+- *(db)* bound generated foreign-key constraint names
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.16...reinhardt-db@v0.4.0-alpha.17) - 2026-09-25
+
+### Fixed
+
+- *(ci)* refresh standalone example dependencies
+- *(commands)* address capability review findings
+- *(commands)* resolve follow-up capability review
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.15...reinhardt-db@v0.4.0-alpha.16) - 2026-09-23
+
+### Fixed
+
+- *(db)* reload get-or-create winners after alternate unique races
+- *(deps)* constrain incompatible AWS Smithy releases
+
+### Testing
+
+- *(db)* standardize race recovery tests
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.14...reinhardt-db@v0.4.0-alpha.15) - 2026-09-10
+
+### Added
+
+- *(db)* upgrade legacy migration sources
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+### Testing
+
+- *(migrations)* enforce exact source upgrade assertions
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.13...reinhardt-db@v0.4.0-alpha.14) - 2026-09-07
+
+### Fixed
+
+- *(ci)* use spaces in database error doc example
+- *(deps)* remove resolved tinyvec compatibility pins
+
+### Maintenance
+
+- merge develop/0.4.0 into constraint violation design
+- merge develop/0.4.0 into ModelForm contract branch
+
+### Testing
+
+- pin tinyvec 1.12.0 in isolated consumer fixtures
+
+### Testing
+
+- *(db)* remove obsolete tinyvec version pins from isolated consumer fixtures
+
+### Changed
+
+- Version generated migration sources with `// reinhardt-migration-source: 1`
+  and emit constructors/builders for framework-owned migration values.
+- Validate marked source syntax, reject cfg-gated entrypoints with differing
+  semantics, and preserve UTF-8 BOM prefixes during source upgrades.
+- Mark `Migration`, `PartitionDef`, `InterleaveSpec`, `ColumnDefinition`,
+  `GeneratedColumnDefinition`, and `BulkLoadOptions` as non-exhaustive. Replace
+  direct struct literals with their constructors/builders.
+
+### Migration guide
+
+Run `reinhardt-admin migrations upgrade-source migrations` before updating the
+framework dependency. Use `--check` in CI to reject unconverted sources; the
+command is offline and preserves custom spans. Legacy struct fields with
+attributes are rejected instead of being rewritten without their conditional
+semantics. The generated-source builder APIs remain supported through the next
+breaking boundary.
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.10...reinhardt-db@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.13
+
+### Fixed
+
+- *(db)* remove redundant rustdoc link target
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.9...reinhardt-db@v0.4.0-alpha.10) - 2026-08-25
+
+### Fixed
+
+- *(migrations)* preserve declarative partial indexes
+- *(migrations)* preserve partial index metadata
+- *(migrations)* preserve partial index definitions
+- *(migrations)* preserve index rollback metadata
+- *(db)* preserve legacy index replay semantics
+- *(db)* preserve vector index replacement rollback
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Testing
+
+- *(db)* align migration compatibility contracts
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.17...reinhardt-db@v0.3.18) - 2026-09-16
 
 ### Fixed
@@ -58,6 +189,425 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(db)* stabilize unique constraint replay
 - *(db)* close post-merge migration review findings
 
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.8...reinhardt-db@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(views)* explain request-scoped model viewsets
+- update version references to v0.3.9
+- update version references to v0.3.10
+- *(security)* document stable advisory fixes
+
+### Fixed
+
+- *(db)* parse viewset primary keys into typed filters
+- *(db)* preserve typed aliases in route filters
+- *(db)* reject lossy Any query bindings
+- *(db)* execute querysets through Session
+- *(db)* decode auto fields with field context
+- *(db)* preserve temporal precision in session lists
+- *(orm)* close request-scoping review gaps
+- *(orm)* bind scoped mutations atomically
+- *(orm)* bind scoped mutations atomically
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve safe query boundaries
+- *(orm)* track new objects and decimal keys
+- *(orm)* reject incomplete primary-key updates
+- *(orm)* preserve insert and float semantics
+- *(views)* normalize custom manager filter columns
+- *(orm)* preserve typed insert values
+- *(orm)* retain assigned natural primary keys
+- *(views)* normalize scoped manager querysets
+- *(query)* preserve empty scope negation
+- *(orm)* preserve mapped array values
+- *(orm)* preserve scoped field types and hstore writes
+- *(orm)* preserve scoped and declared field types
+- *(orm)* preserve generated keys and type bindings
+- *(views)* preserve scoped annotation fields
+- *(orm)* preserve declared array element types
+- *(views)* preserve subquery scope fields
+- *(views)* preserve correlated scope fields
+- *(db)* rewrite correlated arrays and scopes
+- *(views)* harden scoped field mapping
+- *(views)* preserve model-shaped scoped querysets
+- *(orm)* preserve typed array and foreign-key values
+- *(orm)* preserve model session query state
+- *(orm)* close request scoping review edge cases
+- *(orm)* simplify generated primary-key skip condition
+- *(orm)* compile test-only filter helpers under cfg(test)
+- *(orm)* reject tautological WHERE on delete and update
+- *(orm)* treat empty NOT IN as tautological WHERE
+- *(security)* parameterize legacy Q filters
+- fix!(security): document Q filter migration
+- *(orm)* preserve scoped queryset constraints
+
+### Maintenance
+
+- auto-fix fmt and clippy
+- auto-fix fmt and clippy
+- merge main into develop/0.4.0
+
+### Testing
+
+- *(ci)* align request-scoping regression expectations
+- *(orm)* expect quoted identifiers in Q::to_sql assertions
+
+## [0.4.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.7...reinhardt-db@v0.4.0-alpha.8) - 2026-08-22
+
+### Documentation
+
+- *(db)* remove redundant rustdoc link targets
+- *(db)* restore rustdoc targets that do not resolve locally
+
+### Fixed
+
+- *(db)* execute scoped querysets through sessions
+- *(db)* preserve typed temporal query values
+- *(orm)* close request-scoping review gaps
+- *(orm)* lock scoped mutation rows
+- *(orm)* lock scoped mutation rows
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve scoped primary-key types
+- *(orm)* parse displayed timestamp keys
+- *(orm)* secure session-backed scoped reads
+- *(orm)* use backend-safe mutation rechecks
+- *(orm)* preserve typed manual primary keys
+- *(orm)* avoid unsupported MySQL lock targets
+- *(db)* avoid MySQL nullable relation locks
+- *(db)* decode offset-free ISO timestamps
+- *(db)* preserve mysql recheck locks
+- *(orm)* lock scoped subqueries and classify datetime keys
+- *(views)* serialize scoped subquery mutations
+- *(orm)* serialize scoped join mutations
+- *(orm)* reject unsafe mutation scopes
+- *(orm)* render scope subqueries per backend
+- *(orm)* preserve backend derived sources and lock guards
+- *(orm)* support derived sources in session queries
+- *(orm)* harden scoped model query locks
+- *(orm)* allow prefetch-only model querysets
+- *(orm)* close scoped query edge cases
+- *(orm)* close request scoping review edge cases
+- *(orm)* gate unused model select helper behind tests
+
+### Styling
+
+- *(orm)* format join alias collection
+
+### Testing
+
+- *(db)* use rstest for timestamp regression
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.6...reinhardt-db@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Fixed
+
+- *(orm)* bind explicit queryset parameters
+- *(orm)* reject oversized queryset bind values
+- *(orm)* keep UUID-looking filters as text
+- *(orm)* bind typed temporal filter values
+- *(orm)* retain UUID filter bindings
+- *(orm)* preserve UUID primary key bindings
+- *(db)* preserve primary key binding types
+- *(db)* preserve composite model primary keys
+- *(db)* support scalar primary key filters
+- *(db)* preserve custom primary key lookups
+- *(db)* retain numeric custom primary key filters
+- *(db)* retain primary key fallback for aliases
+- *(model)* preserve string primary key bindings
+- *(orm)* preserve manual numeric primary key bindings
+- *(orm)* retain primary key newtype compatibility
+- *(orm)* bind many-to-many query values
+- *(orm)* preserve many-to-many key types
+- *(db)* update stale Jsonb test references
+
+### Maintenance
+
+- merge main into primary key binding fix
+- merge main into develop/0.4.0
+
+### Security
+
+- *(orm)* preserve exact custom primary key bindings
+
+### Testing
+
+- *(db)* use rstest for numeric primary key fallback
+- *(migrations)* cover operation token generation
+- *(migrations)* cover remaining token branches
+- *(orm)* cover typed query compilation
+- *(orm)* cover custom manager contracts
+- *(orm)* make custom manager defer observable
+- *(db)* cover backend boundaries
+- *(orm)* cover field deconstruction
+- *(orm)* preserve related field case
+- *(orm)* gate SQLite custom manager tests
+- *(db)* cover pool contracts
+- *(db)* assert connection timeout builder
+- *(orm)* make pagination assertion deterministic
+- *(db)* cover Codecov-reported ORM lines
+- *(db)* cover aggregate expression branches
+- *(db)* exercise pool event logger
+- *(db)* cover migration AST parser
+- *(db)* cover field migration operation paths
+- *(db)* cover introspection parser branches
+- *(db)* cover AST parser fallback
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.5...reinhardt-db@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.4...reinhardt-db@v0.4.0-alpha.5) - 2026-08-05
+
+### Fixed
+
+- *(db)* align relationship imports with generated fields
+
+### Other
+
+- sync develop/0.4.0 and resolve review feedback
+
+## [0.4.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.3...reinhardt-db@v0.4.0-alpha.4) - 2026-08-04
+
+### Added
+
+- *(migrations)* add strict squash catalog
+- *(migrations)* make squash optimization barrier-aware
+- *(migrations)* render and safely write squash sources
+
+### Changed
+
+- *(db)* accept dynamic ORM executors
+
+### Documentation
+
+- *(db)* document atomic transaction outcomes
+- *(migrations)* document squash app validation
+- *(commands)* document safe migration squashing
+- *(commands)* clarify squash cleanup failures
+- *(inspectdb)* describe unique target relationships
+
+### Fixed
+
+- *(forms)* harden generated form persistence semantics
+- *(db)* preserve naive timestamp wall-clock values
+- *(forms)* complete model-backed form submission
+- *(forms)* harden native model form decoding
+- *(db)* preserve naive datetime query parameters
+- *(forms)* prevent duplicate MySQL form inserts
+- *(forms)* prevent duplicate create retries
+- *(forms)* defer uncertain generated keys
+- *(forms)* synchronize defaults and persistence state
+- *(forms)* synchronize transaction-backed form state
+- *(forms)* preserve transactional retry semantics
+- *(forms)* preserve inline uncertain create state
+- *(db)* scope atomic outcomes to savepoints
+- *(db)* decode MySQL UTC fields with model metadata
+- *(forms)* preserve nested form retries
+- *(forms)* align native form validation
+- *(db)* read PostgreSQL naive migration timestamps
+- *(forms)* address model form review feedback
+- *(pgvector)* preserve vector index metadata
+- *(orm)* preserve typed vector NULL bindings
+- *(ci)* repair pgvector test coverage
+- *(pgvector)* close migration and binding gaps
+- *(migrations)* harden squash catalog validation
+- *(migrations)* refine squash range boundaries
+- *(migrations)* preserve squash alter boundaries
+- *(migrations)* harden squash source persistence
+- *(migrations)* validate rendered source payloads
+- *(migrations)* reject root identity changes
+- *(migrations)* verify root snapshot identity
+- *(migrations)* reject lossy strict parsing
+- *(migrations)* validate squash root before writes
+- *(migrations)* strictly parse nested column payloads
+- *(db)* make squash operation parsing lossless
+- *(db)* validate nested squash domain metadata
+- *(migrations)* reject duplicate strict fields
+- *(db)* parse legacy migration metadata and serial fields
+- *(db)* use explicit empty segment check
+- *(db)* mark standard alter-column rendering as supported
+- *(migrations)* harden squash range resolution
+- *(migrations)* validate squash execution contracts
+- *(migrations)* ignore Rust module files
+- *(migrations)* preserve RunRust source operations
+- *(migrations)* validate migration directory identity
+- *(migrations)* omit selected swappable dependencies
+- *(migrations)* preserve public source operations
+- *(migrations)* validate squash dependency context
+- *(migrations)* preserve squash dependency semantics
+- *(migrations)* harden squash generation
+- *(migrations)* preserve squash dependency semantics
+- *(migrations)* honor replacement execution
+- *(migrations)* normalize squash dependencies
+- *(migrations)* preserve squash reduction barriers
+- *(migrations)* resolve replacement state history
+- *(migrations)* normalize replacement histories
+- *(migrations)* preserve replacement history semantics
+- *(migrations)* resolve nested replacement histories
+- *(migrations)* retain replacement rollback order
+- *(migrations)* reconcile nested replacement histories
+- *(migrations)* preserve replacement ancestry
+- *(migrations)* preserve CreateTable backend options
+- *(migrations)* complete squash history reconciliation
+- *(migrations)* handle squash review edge cases
+- *(migrations)* cover squash review edge cases
+- *(migrations)* preserve partial squash ordering
+- *(ci)* restore test fixture and lint compliance
+- *(migrations)* restore public squash range construction
+- *(migrations)* cover nested replacement histories
+- *(migrations)* preserve squash source semantics
+- *(migrations)* reject non-portable swappable squashes
+- *(migrations)* address visibility review feedback
+- *(orm)* reload composite MySQL upserts by lookup
+- *(orm)* gate MySQL reload on generated primary key
+- *(migrations)* validate replacement sets before adoption
+- *(inspectdb)* preserve unique target relationships
+
+### Maintenance
+
+- *(pgvector)* propagate native vector feature flags
+
+### Other
+
+- sync develop/0.4.0 into pgvector branch
+- sync develop/0.4.0 into pgvector branch
+- integrate develop migration updates
+
+### Styling
+
+- *(migrations)* format squash execution tests
+- *(migrations)* simplify dependency collection
+
+### Testing
+
+- *(migrations)* align strict parser diagnostic
+- *(migrations)* verify backend option rendering
+- *(migrations)* correct optional dependency assertions
+- *(orm)* mark upsert fixture fields as generated
+- *(migrations)* align SQL fixtures with safe rendering
+- *(inspectdb)* cover unique relationship variants
+- *(migrations)* assert complete MySQL table comment SQL
+
+### Breaking Changes
+
+- Replace the string-map `Manager::get_or_create` API and remove
+  `get_or_create_with_conn`, `get_or_create_queries`, and `get_or_create_sql`.
+  Use the typed `get_or_create` and `update_or_create` builders with generated
+  model field accessors; caller-owned update/create execution requires a
+  write-intent `AtomicTransaction`.
+- Typed upsert builders now require model-generated `field_*()` accessors.
+  The safe `FieldRef::new` constructor remains available for validated,
+  lower-level dynamic filtering, but its unverified result cannot be supplied
+  to proof-requiring APIs.
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.1...reinhardt-db@v0.4.0-alpha.2) - 2026-07-23
+
+### Added
+
+- *(db)* [**breaking**] add Copy-safe injected connection handles
+
+### Documentation
+
+- *(db)* update database engine examples
+
+### Fixed
+
+- *(db)* restore URL-based backend owner connection
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.2...reinhardt-db@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(db)* add typed JSON model fields
+
+### Fixed
+
+- *(db)* normalize gb freephone numbers
+- *(db)* normalize phone dialing variants
+- *(db)* bind typed JSON scalars as JSON
+- *(db)* address typed JSON review feedback
+- *(db)* preserve typed JSON values across ORM paths
+- *(db)* preserve JSON provenance across backend paths
+- *(testkit)* preserve model schema metadata
+- *(db)* avoid reconnecting initialized global database
+- *(db)* harden typed relation traversal
+- *(orm)* close typed relation traversal gaps
+- *(orm)* support manual relation targets
+- *(orm)* harden typed relation query SQL
+- *(orm)* map typed relation columns
+- *(orm)* align typed relation join aliases
+- *(db)* qualify annotations after relation joins
+- *(db)* qualify typed relation query clauses
+- *(db)* harden typed relation query rendering
+- *(db)* rebase typed relation query aliases
+- *(db)* validate typed relation load paths
+- *(db)* preserve typed eager load query semantics
+- *(orm)* rebase aliases after manual joins
+- *(db)* make aggregate field mapping explicit
+- *(db)* preserve count wildcard with relation joins
+- *(orm)* reserve typed relation aliases
+- *(orm)* guard composite typed relation paths
+- *(migrations)* preserve model table identity
+- *(build)* remove cfg alias macro semicolons
+- *(migrations)* preserve renamed table identity
+- *(migrations)* retain FK creates after table renames
+- *(migrations)* preserve create model table names
+- *(commands)* scope global migration validation
+- *(migrations)* preserve physical model state
+- *(migrations)* handle moved model table ownership in PR 5673
+- *(ci)* restore merged ORM compatibility
+- *(db)* preserve typed ORM values
+- preserve structured database errors
+- *(pages)* resolve server function set review findings
+- *(db)* update legacy executor test errors
+- restore atomic ORM release compatibility
+- *(orm)* decode string decimals as floating values
+- *(release)* restore develop prerelease lifecycle
+- *(ci)* stabilize release test failures
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+- *(auth)* merge develop into password policy branch
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into typed traversal branch
+- refresh main forward merge from develop/0.4.0
+- merge develop/0.4.0 into table-name branch
+
+### Other
+
+- resolve develop/0.4.0 into model enum fields
+- integrate latest enum field branch updates
+- sync develop/0.4.0 into server function set
+
+### Styling
+
+- *(db)* format query annotation rendering
+
+### Testing
+
+- *(db)* preserve migration model identity on table rename
+- *(migrations)* retain unrelated m2m constraints
+
+### Added
+
+- Add typed `UniqueFieldRef` descriptors for compile-time model and lookup-value
+  matching, sealed against arbitrary downstream field-name construction by
+  model-owned indexed proofs.
+- Add executor-aware queryset and model operations plus backend-aware
+  transaction executor behavior, including MySQL mutation paths that do not
+  depend on `RETURNING`.
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.9...reinhardt-db@v0.3.10) - 2026-08-22
 
 ### Security

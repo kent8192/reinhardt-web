@@ -24,7 +24,7 @@ async fn test_full_crud_lifecycle_usecase(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let user = make_auth_user();
 	let request = make_staff_request();
 
@@ -61,6 +61,7 @@ async fn test_full_crud_lifecycle_usecase(
 		list_params,
 		site.clone(),
 		db.clone(),
+		request.clone(),
 		user.clone(),
 	)
 	.await
@@ -124,6 +125,7 @@ async fn test_full_crud_lifecycle_usecase(
 		ListQueryParams::default(),
 		site.clone(),
 		db.clone(),
+		request.clone(),
 		user.clone(),
 	)
 	.await
@@ -167,6 +169,7 @@ async fn test_full_crud_lifecycle_usecase(
 		ListQueryParams::default(),
 		site.clone(),
 		db.clone(),
+		request.clone(),
 		user.clone(),
 	)
 	.await
@@ -185,7 +188,7 @@ async fn test_admin_dashboard_shows_registered_models(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, _db) = server_fn_context.await;
+	let (site, _db, _connection_lease) = server_fn_context.await;
 	let request = make_staff_request();
 
 	// Act
@@ -214,7 +217,7 @@ async fn test_search_then_export_matching_records(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange: Create records with distinct names
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let user = make_auth_user();
 	let request = make_staff_request();
 
@@ -249,6 +252,7 @@ async fn test_search_then_export_matching_records(
 		search_params,
 		site.clone(),
 		db.clone(),
+		request.clone(),
 		user.clone(),
 	)
 	.await
@@ -286,7 +290,7 @@ async fn test_import_csv_then_verify_list(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let user = make_auth_user();
 	let request = make_staff_request();
 
@@ -318,6 +322,7 @@ async fn test_import_csv_then_verify_list(
 		ListQueryParams::default(),
 		site.clone(),
 		db.clone(),
+		request.clone(),
 		user.clone(),
 	)
 	.await
@@ -336,7 +341,7 @@ async fn test_bulk_delete_then_verify_count(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange: Create 5 records
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let user = make_auth_user();
 	let request = make_staff_request();
 
@@ -385,6 +390,7 @@ async fn test_bulk_delete_then_verify_count(
 		ListQueryParams::default(),
 		site.clone(),
 		db.clone(),
+		request.clone(),
 		user.clone(),
 	)
 	.await
@@ -400,7 +406,7 @@ async fn test_get_fields_then_create_with_valid_data(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let user = make_auth_user();
 	let request = make_staff_request();
 

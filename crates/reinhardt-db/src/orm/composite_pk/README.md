@@ -46,6 +46,7 @@ let pk = CompositePrimaryKey::with_name(
 use reinhardt_orm::{Model, composite_pk::CompositePrimaryKey};
 
 #[model(
+    app_label = "accounts",
     table_name = "user_roles",
     composite_pk = ["user_id", "role_id"]
 )]
@@ -161,6 +162,7 @@ assert_eq!(value.to_sql_string(), "'O''Brien'");  // Single quotes escaped
 
 ```rust
 #[model(
+    app_label = "accounts",
     table_name = "user_groups",
     composite_pk = ["user_id", "group_id"]
 )]
@@ -175,6 +177,7 @@ pub struct UserGroup {
 
 ```rust
 #[model(
+    app_label = "tenants",
     table_name = "tenant_resources",
     composite_pk = ["tenant_id", "resource_id"]
 )]
@@ -190,6 +193,7 @@ pub struct TenantResource {
 ```rust
 
 #[model(
+    app_label = "metrics",
     table_name = "metrics",
     composite_pk = ["device_id", "timestamp"]
 )]
@@ -205,6 +209,7 @@ pub struct Metric {
 ```rust
 
 #[model(
+    app_label = "locations",
     table_name = "locations",
     composite_pk = ["country_code", "city_code", "postal_code"]
 )]

@@ -5,6 +5,7 @@
 //! ## Macros
 //!
 //! - `#[routes]` - Register URL pattern function for automatic discovery
+//! - `#[url_patterns]` - Share URL declarations by erasing native-only HTTP builders
 //! - `#[api_view]` - Convert function to API view
 //! - `#[action]` - Define custom ViewSet action
 //! - `#[get]`, `#[post]`, etc. - HTTP method decorators
@@ -29,6 +30,7 @@ mod dto;
 mod flatten_imports;
 mod hook;
 mod http_error_derive;
+mod identifier_case;
 mod injectable_common;
 mod injectable_fn;
 mod injectable_struct;
@@ -36,6 +38,7 @@ mod installed_apps;
 mod macro_state;
 mod model_attribute;
 mod model_derive;
+mod model_enum_derive;
 mod orm_reflectable_derive;
 mod pascal_case;
 mod path_macro;
@@ -54,6 +57,7 @@ pub(crate) mod settings_parser;
 mod settings_schema;
 mod streaming;
 mod streaming_patterns;
+mod url_patterns;
 mod use_inject;
 mod user_attribute;
 mod user_field_mapping;
@@ -81,8 +85,92 @@ use routes_registration::routes_impl;
 mod viewset_macro;
 mod websocket;
 use schema::derive_schema_impl;
+use url_patterns::url_patterns_impl;
 use use_inject::use_inject_impl;
 use user_attribute::user_attribute_impl;
+
+/// Declares shared URL patterns with native-only HTTP registration.
+///
+/// **Parity: P1 (symbol parity).** The attribute is available on native and
+/// browser-WASM builds. Native builds retain the `.server(...)` configuration;
+/// browser-WASM builds erase it before resolving native-only handler paths.
+///
+/// The complete `.server(...)` argument is retained only when the caller has
+/// `cfg(server)` enabled and the target is not browser WASM
+/// (`all(target_family = "wasm", target_os = "unknown")`). Other builds erase
+/// that argument before resolving handler paths or checking their types.
+/// Prefixes, namespaces, client configuration, mounts, and merges keep their
+/// existing target-specific behavior.
+///
+/// Unlike [`routes`](macro@routes), this attribute does not register a router in inventory.
+/// Multiple app functions can use it; keep one project-level `#[routes]` entry
+/// point. Both attributes can be stacked in either order on that root function.
+///
+/// # Supported syntax
+///
+/// The attribute accepts no arguments. Apply it to a safe, synchronous,
+/// parameterless, non-generic function returning `UnifiedRouter` (qualified
+/// paths are supported), without `const` or `extern` qualifiers.
+/// Its body must be one tail expression starting with
+/// `UnifiedRouter::new()` or `UnifiedRouter::default()`, followed by `server`,
+/// `client`, `with_prefix`, `with_namespace`, `mount_unified`, or `merge` calls.
+/// Parentheses are supported. A server call takes exactly one expression and
+/// no explicit generic arguments. Inline nested server builders in preserved
+/// arguments must be extracted into separately annotated functions.
+/// This includes explicitly typed router locals, closure parameters, and nested
+/// function parameters, as well as aliases in destructuring assignments and
+/// `if`/`while` let-chain conditions. Helper
+/// call results are conservatively treated as potential routers; an explicit
+/// unrelated local type disambiguates a different type's `server` method and
+/// remains effective across assignments.
+///
+/// Native imports and capture construction belong inside the server argument
+/// or a cfg-gated module. The attribute cannot erase external imports or
+/// target-independent Cargo dependencies.
+///
+/// # Example
+///
+/// This facade example is exercised by the `url_patterns_target_parity`
+/// consumer fixture in the integration test suite.
+///
+/// ```rust,ignore
+/// use reinhardt::url_patterns;
+/// use reinhardt::urls::prelude::UnifiedRouter;
+///
+/// #[url_patterns]
+/// pub fn url_patterns() -> UnifiedRouter {
+///     UnifiedRouter::new()
+///         .server(|server| {
+///             server
+///                 .endpoint(crate::native_handlers::health)
+///                 .endpoint(crate::native_handlers::protected)
+///         })
+///         .with_namespace("demo")
+/// }
+/// ```
+///
+/// # Caller configuration
+///
+/// Declare `server` in the application's `build.rs`, even when unset, and
+/// enable it for server builds. For a local `server = []` Cargo feature, place
+/// the following inside the build script's `main` function:
+///
+/// ```rust,no_run
+/// println!("cargo::rustc-check-cfg=cfg(server)");
+/// if std::env::var_os("CARGO_FEATURE_SERVER").is_some() {
+///     println!("cargo::rustc-cfg=server");
+/// }
+/// ```
+///
+/// Browser consumers need the facade's `client-router` feature. Setting
+/// `cfg(server)` on browser WASM still leaves native references erased.
+#[proc_macro_attribute]
+pub fn url_patterns(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ItemFn);
+	url_patterns_impl(args.into(), input)
+		.unwrap_or_else(|error| error.to_compile_error())
+		.into()
+}
 
 /// Decorator for function-based API views
 #[proc_macro_attribute]
@@ -118,6 +206,12 @@ pub fn action(args: TokenStream, input: TokenStream) -> TokenStream {
 /// the route name defaults to the function name and is exempt from the warning.
 /// The same convention applies to `#[post]`, `#[put]`, `#[patch]`, and
 /// `#[delete]`. Refs Issue #4901.
+///
+/// Authentication metadata is opt-in and must be declared explicitly with
+/// `auth = "protected"`, `auth = "optional"`, `auth = "public"`, or
+/// `auth = "none"`. Use `guard = "..."` to attach a guard description.
+/// Parameter type names are not inspected because they do not prove that
+/// runtime authentication is enforced.
 #[proc_macro_attribute]
 pub fn get(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);
@@ -409,7 +503,9 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 ///
 /// When `#[inject]` parameters are present, the macro automatically creates
 /// a DI context (`SingletonScope` + `InjectionContext`) and resolves each
-/// injected dependency before calling the function.
+/// injected dependency before calling the function. Native expansions preserve
+/// the same context in the complete HTTP, WebSocket, gRPC, DI, and streaming
+/// route aggregate returned to server startup.
 ///
 /// # Arguments
 ///
@@ -424,7 +520,7 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 ///
 /// - The function can have any name (e.g., `routes`, `app_routes`, `url_patterns`)
 /// - The return type must be `UnifiedRouter` (not `Arc<UnifiedRouter>`)
-/// - The framework automatically wraps the router in `Arc`
+/// - Native registration preserves the complete protocol aggregate
 /// - Sync functions cannot use `#[inject]` (DI resolution is inherently async)
 #[proc_macro_attribute]
 pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -710,15 +806,27 @@ pub fn injectable(args: TokenStream, input: TokenStream) -> TokenStream {
 /// This provides a cleaner syntax by eliminating the need to explicitly write
 /// `#[derive(Model)]` on every model struct.
 ///
+/// # Relationship ID Fields
+///
+/// `#[rel(foreign_key)]` and `#[rel(one_to_one)]` generate a `{field}_id` field
+/// using the related model's primary-key type. With `null = true`, its type is
+/// `Option<PrimaryKey>`; otherwise it is `PrimaryKey`. This applies independently
+/// of model-form generation. Nullable IDs accept `None` for SQL NULL and
+/// `Some(id)` for an existing relationship, including on models without `form`.
+/// Code that previously assigned a bare ID to a nullable relation must wrap it
+/// in `Some(...)`.
+///
 /// # Info Companion Type (Issues #4194, #5272)
 ///
 /// By default, generates a `{Model}Info` companion struct with `pub` fields,
 /// bidirectional `From` conversions, and a typestate builder. Relationship
 /// fields use lightweight `RelationInfo<T>` and `ManyToManyInfo<Source, Target>`
 /// payloads instead of ORM marker fields or flattened `*_id` fields. FK and
-/// OneToOne builder setters accept `impl IntoPrimaryKey<T>`. Validation
-/// attributes are derived from `#[field(...)]` config. Opt out with
-/// `#[model(info = false)]`. Exclude individual fields with
+/// OneToOne builder setters accept `impl IntoPrimaryKey<T>`, and generated
+/// `*_id()` accessors return the related primary-key value rather than a
+/// reference so shared native/WASM model code can call the same method.
+/// Validation attributes are derived from `#[field(...)]` config. Opt out
+/// with `#[model(info = false)]`. Exclude individual fields with
 /// `#[field(skip_info = true)]`.
 ///
 /// # Model Attributes
@@ -784,8 +892,10 @@ pub fn user(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Model Attributes
 ///
-/// - `app_label`: Application label (default: "default")
-/// - `table_name`: Database table name (default: struct name in snake_case)
+/// - `app_label`: Application label (required)
+/// - `table_name`: Database table name (optional; defaults to the app label and
+///   struct name converted to snake_case without pluralization, such as
+///   `network::HTTPRoute` to `network_http_route`)
 /// - `constraints`: List of unique constraints (e.g., `unique(fields = ["field1", "field2"], name = "name")`)
 ///
 /// # Field Attributes
@@ -798,6 +908,10 @@ pub fn user(args: TokenStream, input: TokenStream) -> TokenStream {
 /// - `default`: Default value
 /// - `db_column`: Custom database column name
 /// - `editable`: Whether field is editable (default: true)
+/// - `index`: Create a non-unique database index
+/// - `condition`: SQL predicate for a partial index; requires `index = true`
+/// - `upload_to`: UTC directory template required by `FileField`
+/// - `file_storage`: Named storage alias for `FileField` (default: `default`)
 ///
 /// # Supported Types
 ///
@@ -810,6 +924,7 @@ pub fn user(args: TokenStream, input: TokenStream) -> TokenStream {
 /// - `Time` → TimeField
 /// - `f32`, `f64` → FloatField
 /// - `Option<T>` → Sets null=true automatically
+/// - `FileField` and `Option<FileField>` → Storage-backed logical file keys
 ///
 /// # Requirements
 ///
@@ -818,12 +933,52 @@ pub fn user(args: TokenStream, input: TokenStream) -> TokenStream {
 /// - Exactly one field must be marked with `primary_key = true`
 /// - String fields must specify `max_length`
 ///
+/// # Storage-backed `FileField`
+///
+/// `FileField` is a typed model value when the database `file-storage` feature
+/// is enabled. Its declaration must include `upload_to`, a relative UTC
+/// directory template. Supported tokens are `%Y`, `%m`, `%d`, `%H`, `%M`, and
+/// `%S`; rooted paths, parent components, backslashes, and unsafe components
+/// are rejected. `file_storage` names a lowercase ASCII storage alias and
+/// defaults to `default`. The generated `file_<field>()` descriptor exposes
+/// `store(upload).await`, while `field_<field>()` carries the alias policy for
+/// typed queries and assignments.
+///
+/// ```rust,ignore
+/// #[model(app_label = "profiles", table_name = "profiles")]
+/// #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+/// struct Profile {
+///     #[field(primary_key = true)]
+///     id: Option<i64>,
+///     #[field(
+///         upload_to = "avatars/%Y/%m/%d",
+///         file_storage = "private_uploads",
+///         max_length = 255
+///     )]
+///     avatar: db::orm::FileField,
+/// }
+///
+/// // The generated descriptor is selected explicitly for an upload.
+/// let avatar = Profile::file_avatar().store(upload).await?;
+/// let mut profile = Profile::build().avatar(avatar).finish();
+/// profile.save().await?;
+/// ```
+///
+/// The database migration metadata records `model_field_type = file`,
+/// `upload_to`, `file_storage`, and `max_length` independently from a
+/// PostgreSQL physical `storage` parameter. The value persists only its
+/// logical path; hydration restores the alias from this field metadata.
+/// `ImageField` is intentionally reserved for the Phase B image API. The
+/// former synchronous descriptors are exposed as deprecated `LegacyFileField`
+/// and `LegacyImageField` types instead.
+///
 #[proc_macro_derive(
 	Model,
 	attributes(
 		model,
 		model_config,
 		field,
+		form,
 		rel,
 		fk_id_field,
 		reinhardt_internal_relation_serde_skip
@@ -960,17 +1115,38 @@ pub fn collect_migrations(input: TokenStream) -> TokenStream {
 /// ## Optional
 ///
 /// - `list_display = [field1, field2, ...]` - Fields to display in list view (default: `[id]`)
+/// - `list_select_related = [relation1, relation2, ...]` - One-level forward foreign keys to
+///   eager-load in list view (default: `[]`)
+/// - `date_hierarchy = field` - Date or datetime field for changelist drill-down (default: none)
+/// - `list_editable = [field1, field2, ...]` - Fields editable in list view (default: `[]`)
 /// - `list_filter = [field1, field2, ...]` - Fields for filtering (default: `[]`)
 /// - `search_fields = [field1, field2, ...]` - Fields for search (default: `[]`)
+/// - `filter_horizontal = [field1, field2, ...]` - Many-to-many fields using a horizontal selector (default: `[]`)
+/// - `filter_vertical = [field1, field2, ...]` - Many-to-many fields using a vertical selector (default: `[]`)
 /// - `fields = [field1, field2, ...]` - Fields to display in forms (default: all)
+/// - `fieldsets = [(title = "Main", fields = [field1]), (fields = [field2], collapsed = true)]`
+///   - Grouped form fields; `title` and `collapsed` are optional
+///   - Cannot be combined with `fields`
 /// - `readonly_fields = [field1, field2, ...]` - Read-only fields (default: `[]`)
+/// - `autocomplete_fields = [field1, field2, ...]` - Foreign keys rendered as searchable controls (default: `[]`)
+/// - `raw_id_fields = [field1, field2, ...]` - Foreign keys rendered as direct primary-key inputs (default: `[]`)
 /// - `ordering = [(field1, asc/desc), ...]` - Default ordering (default: `[(id, desc)]`)
 /// - `list_per_page = N` - Items per page (default: site default)
 ///
+/// Relation names may be the logical model field or the persisted ID column.
+/// They are normalized before form rendering and mutation. Autocomplete
+/// targets must have a related `ModelAdmin::search_fields` configuration;
+/// related view permission is checked before any option is returned. Option
+/// labels come from `ModelAdmin::object_label`, with the target primary key as
+/// the fallback. The server revalidates the target, permission, scalar ID,
+/// existence, and nullability before every create or update.
+///
 /// # Compile-time Field Validation
 ///
-/// All field names are validated at compile time against the model's `field_xxx()` methods.
-/// If a field doesn't exist, compilation will fail with an error.
+/// Field names are validated at compile time against the model's `field_xxx()` methods.
+/// Entries in `list_select_related` are validated against the model's generated
+/// `ForeignKeyField` accessors. Scalar, one-to-one, reverse, many-to-many, and unknown
+/// fields are rejected at compile time.
 ///
 /// # Generated Code
 ///
@@ -1049,21 +1225,73 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 		.into()
 }
 
-/// Attribute macro that absorbs the `cfg_attr(native, ...)` boilerplate for
-/// DTOs shared between the server (`native` cfg) and client (`wasm`) builds.
+/// Derives explicit database codecs for a unit enum.
+///
+/// The enum must declare its physical representation and every unit variant
+/// must declare an explicit persistent value. String and `i32` representations
+/// are supported:
+///
+/// ```rust,ignore
+/// use reinhardt::ModelEnum;
+/// use reinhardt::core::serde::{Deserialize, Serialize};
+///
+/// #[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// #[model_enum(repr = "string")]
+/// enum Status {
+///     #[model_enum(value = "queued")]
+///     Queued,
+///     #[model_enum(value = "in_progress")]
+///     Running,
+/// }
+///
+/// #[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// #[model_enum(repr = "i32")]
+/// enum Priority {
+///     #[model_enum(value = 10)]
+///     Low,
+///     #[model_enum(value = 20)]
+///     High,
+/// }
+/// ```
+///
+/// The derive implements the ORM's database codec and model-enum metadata
+/// contracts. Model fields may use the enum directly or as `Option<Enum>`.
+/// Generated migrations use a character column for `"string"`, an integer
+/// column for `"i32"`, and a named check constraint containing the declared
+/// values.
+///
+/// Rust variant names, serde names, and database values are independent
+/// contracts. For example, `#[serde(rename = "RUNNING")]` changes serialized
+/// data but does not change `#[model_enum(value = "in_progress")]`.
+///
+/// Duplicate values, missing values, data-carrying variants, explicit Rust
+/// discriminants, and values that do not match the selected representation are
+/// rejected at compile time. An unknown scalar read from the database returns
+/// a contextual ORM hydration error instead of selecting a fallback variant.
+#[proc_macro_derive(ModelEnum, attributes(model_enum))]
+pub fn derive_model_enum(input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as syn::DeriveInput);
+
+	model_enum_derive::model_enum_derive_impl(input)
+		.unwrap_or_else(|error| error.to_compile_error())
+		.into()
+}
+
+/// Attribute macro for DTOs shared between the server (`native` cfg) and
+/// client (`wasm`) builds.
 ///
 /// The macro:
 ///
-/// 1. Emits `#[cfg_attr(native, derive(::reinhardt::Validate))]`
-///    on the struct so the server build gets validation while the wasm build
-///    sees a plain serializable type. With the explicit `schema` option, it
-///    also emits `::reinhardt::rest::openapi::Schema` on native builds.
-/// 2. Wraps every `#[validate(...)]` and `#[schema(...)]` attribute in
-///    `#[cfg_attr(native, ...)]` so the same source compiles unchanged for
-///    `wasm32-unknown-unknown`.
-/// 3. Is idempotent: if the user already wrote
-///    `#[cfg_attr(native, derive(Validate))]` on the struct, that derive is
-///    not duplicated.
+/// 1. Emits shared `#[derive(::reinhardt::Validate)]` support for DTO checks
+///    that run in both client and server builds.
+/// 2. Leaves every `#[validate(...)]` field attribute unconditional instead of
+///    wrapping validation attributes in native-only `cfg_attr` gates. With the
+///    explicit `schema` option, it also emits a native-only
+///    `::reinhardt::rest::openapi::Schema` derive and gates `#[schema(...)]`
+///    attributes to native builds.
+/// 3. Is idempotent: legacy `#[cfg_attr(native, derive(Validate))]` forms that
+///    appear below `#[dto]` are normalized to the shared derive instead of
+///    duplicated.
 ///
 /// # `#[dto]` vs [`macro@model`]
 ///
@@ -1075,7 +1303,7 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 /// | What | A persistent record | A wire-level data shape |
 /// | Where it lives | `apps/<app>/models/*.rs` | `apps/<app>/shared/types.rs` |
 /// | Where it runs | Server only (`native`) | Both server (`native`) and client (`wasm`) |
-/// | What it adds | Table mapping, primary key, FK fields, migrations | `Validate` derive (native-only), optional `Schema` derive, wraps `#[validate(...)]` |
+/// | What it adds | Table mapping, primary key, FK fields, migrations | Shared `Validate` derive and optional native-only `Schema` derive |
 /// | Boundary it crosses | Rust ↔ database | Server ↔ client (via `#[server_fn]`, REST handlers, WebSocket payloads) |
 ///
 /// "DTO" is the industry-standard term for the second row — a data-transfer
@@ -1102,47 +1330,41 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 /// Expands (conceptually) to:
 ///
 /// ```rust,ignore
-/// #[cfg_attr(native, derive(::reinhardt::Validate, ::reinhardt::rest::openapi::Schema))]
+/// #[derive(::reinhardt::Validate)]
+/// #[cfg_attr(native, derive(::reinhardt::rest::openapi::Schema))]
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub struct LoginRequest {
-///     #[cfg_attr(native, validate(email(message = "Invalid email address")))]
+///     #[validate(email(message = "Invalid email address"))]
 ///     pub email: String,
 ///
-///     #[cfg_attr(native, validate(length(min = 1, message = "Password is required")))]
+///     #[validate(length(min = 1, message = "Password is required"))]
 ///     pub password: String,
 /// }
 /// ```
 ///
 /// # Requirements
 ///
-/// - OpenAPI schema generation is not implicit. Add `schema` as an explicit
-///   option (`#[dto(schema)]`) for a DTO that should be part of generated
-///   OpenAPI documentation. The consumer's native build must enable the
-///   `openapi` feature.
-/// - Applies only to `struct` items (named, tuple, or unit). Enums and unions
-///   produce a compile error. The `schema` option additionally requires named
-///   fields because the OpenAPI `Schema` derive does not support tuple or unit
-///   structs.
-/// - The only supported argument is the bare `schema` option. Other arguments
-///   produce a compile error.
-/// - Unconditional `#[derive(Validate)]` is a compile error. `Validate` lives
-///   behind the `native` cfg, so an unconditional derive cannot resolve on wasm
-///   and would duplicate the macro's emission on native. Either delete the
-///   derive (and let `#[dto]` emit it) or wrap it in
-///   `#[cfg_attr(native, derive(Validate))]` yourself. When using
-///   `#[dto(schema)]`, do not add a separate `Schema` derive because the
-///   option emits it for native builds.
+/// - OpenAPI schema generation is not implicit. Add the bare `schema` option
+///   (`#[dto(schema)]`) for a DTO that should be part of generated OpenAPI
+///   documentation. The consumer's native build must enable the `openapi`
+///   feature.
+/// - Applies only to named-field `struct` items. Tuple structs, unit structs,
+///   enums, and unions produce a compile error.
+/// - The only supported argument is `schema`; all other arguments produce a
+///   compile error.
+/// - Unconditional `#[derive(Validate)]` on the same struct is supported when
+///   it is written *below* `#[dto]`. `#[dto]` treats it as the shared validation
+///   derive and does not emit a duplicate.
+/// - Legacy `#[cfg_attr(native, derive(Validate))]` forms are accepted and
+///   normalized to the shared validation derive for client and server builds
+///   when they are written *below* `#[dto]`. Attribute proc macros only observe
+///   attributes that appear under them in source order.
 /// - Existing `Validate` derives may use a qualified path; the final path
 ///   segment is used when checking for an existing derive.
-/// - Existing `Schema` derives may use the facade path or a directly referenced
-///   `reinhardt_rest::openapi::Schema` path.
-/// - Any pre-existing `#[cfg_attr(native, derive(Validate))]` MUST be written
-///   *below* `#[dto]`,
-///   not above it. Attribute proc macros only observe attributes that appear
-///   under them in source order, so a `cfg_attr` placed above `#[dto]` is
-///   invisible to the macro and would cause `#[dto]` to emit a duplicate
-///   `cfg_attr(native, derive(...))` on native. Example of the supported
-///   ordering:
+/// - With `#[dto(schema)]`, a bare separate `#[derive(Schema)]` is rejected.
+///   Qualified facade and directly referenced
+///   `reinhardt_rest::openapi::Schema` derives are normalized to native-only
+///   `cfg_attr` derives.
 ///
 /// ```rust,ignore
 /// #[dto(schema)]
@@ -1170,6 +1392,9 @@ pub fn dto(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     pub backend: String,
 /// }
 /// ```
+///
+/// Mark a terminal field as secret with `#[setting(secret)]`. Resolved settings
+/// metadata records only its classification and key presence, never its value.
 ///
 /// Omitting `section = "..."` creates an embedded settings node instead of a
 /// root fragment. Embedded nodes participate in recursive schema metadata and
@@ -1246,7 +1471,8 @@ pub fn settings(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// Annotates an `async fn` that handles WebSocket messages (`on_message`).
 /// Generates a `{FnName}Consumer` struct implementing `WebSocketConsumer`,
-/// a factory function, inventory metadata, and URL resolver extension traits.
+/// a route selector, fallible executable registration, inventory metadata,
+/// and URL resolver extension traits.
 ///
 /// # Example
 ///

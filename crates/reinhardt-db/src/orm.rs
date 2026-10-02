@@ -2,95 +2,139 @@
 //!
 //! Object-Relational Mapping for Reinhardt framework.
 //!
-//! ## Documentation
+//! [`DatabaseConnection`] is a copyable ORM capability. Standalone setup owns a
+//! backend connection through [`DatabaseConnectionLease`], and the lease must
+//! outlive all operations performed by its handles. Framework handlers receive
+//! the handle through `#[inject]` while server bootstrap retains the lease.
 //!
-//! - [README.md](../README.md) - Feature list and API reference
-//! - [USAGE_GUIDE.md](../USAGE_GUIDE.md) - Comprehensive usage guide with examples and best practices
+//! Typed relation traversal lets `QuerySet` filters and relation loading cross
+//! model relations with generated `rel_<name>()` accessors. The typed path
+//! records the SQL joins required by the filter, so application code does not
+//! need raw join builders for common FK, reverse, or M2M lookups.
+//!
+//! [`QuerySet::explain`](crate::orm::QuerySet::explain) wraps the existing
+//! typed SELECT in a backend-aware, plan-only diagnostic statement. Its typed
+//! options intentionally exclude `ANALYZE`, arbitrary strings, and every
+//! option that could execute the data-producing query.
+//!
+//! QuerySet retrieval keeps the same generated-field guarantees:
+//! `latest_by`/`earliest_by` accept [`OrderingField`] values, while
+//! unique-field bulk retrieval accepts [`UniqueFieldRef`]. Bulk results use a
+//! deterministically ordered `BTreeMap`; [`query::QuerySet::none`] and empty
+//! bulk inputs remain lazy and do not resolve or call an executor.
+//!
+//! [`QuerySet::dates`] and [`QuerySet::datetimes`] accept generated typed field
+//! references. They exclude nulls and perform truncation, distinct projection,
+//! and ordering in the database. Named-zone conversion is supported by
+//! PostgreSQL; MySQL and SQLite return an explicit capability error.
+//!
+//! ## Typed aggregates and annotations
+//!
+//! Use [`func`] as the standard typed vocabulary for `count`, `sum`, `avg`,
+//! `min`, and `max`. Generated field accessors and typed relation paths provide
+//! the aggregate operand, while `.label("name")` validates the result alias and
+//! returns a `Result`. A terminal [`QuerySet::aggregate`] call is asynchronous
+//! and returns an [`AggregateResult`]; it does not hydrate model rows.
+//!
+//! [`QuerySet::annotate`] is a fallible, chainable builder for model-rooted
+//! computed columns. [`QuerySet::all`] intentionally ignores those computed
+//! columns when deserializing the model. For a multi-valued relation,
+//! `func::count(path)` retains duplicate joined rows; call `.distinct()` on the
+//! operand aggregate to count unique related values instead.
+//!
+//! `reinhardt-query` is the dynamic SQL-builder boundary for callers that need
+//! raw expressions or statements. PostgreSQL-only projections are kept
+//! explicit through [`BackendAnnotation`] and [`QuerySet::annotate_backend`],
+//! while raw scalar subqueries use the separate fallible
+//! [`QuerySet::annotate_subquery`] boundary.
+//!
+//! ## Streaming QuerySets
+//!
+//! [`QuerySet::iterator_with_db`] and [`QuerySet::iterator_with_executor`]
+//! return lifetime-bound streams that decode one model per item. The borrowed
+//! executor remains in use until the stream completes or is dropped, and each
+//! item retains backend or model-decoding failures in its `Result`.
+//!
+//! PostgreSQL, MySQL, and SQLite use driver streams. Custom executors without
+//! that capability return `DatabaseErrorKind::Unsupported`; the ORM never
+//! substitutes `fetch_all` or repeated `LIMIT`/`OFFSET` queries. `chunk_size`
+//! is a driver fetch or bounded-buffer hint, and dropping or cancelling the
+//! stream releases driver resources through RAII.
 //!
 //! ## Transaction Management
 //!
-//! Reinhardt ORM provides a closure-based API for automatic transaction management:
+//! ORM writes run inside closure-scoped transactions. Start an outer operation
+//! with [`DatabaseConnection::atomic`], then use the supplied mutable
+//! [`AtomicTransaction`] for every `*_with_conn` or `*_with_db` operation.
+//! Nested [`AtomicTransaction::atomic`] callbacks use savepoints on the same
+//! dedicated connection.
 //!
-//! ### Basic Usage
+//! ```no_run
+//! use reinhardt_core::exception::Error;
+//! use reinhardt_db::{backends::DatabaseConnection as BackendsConnection, orm::DatabaseConnectionLease};
 //!
-//! ```rust
-//! use reinhardt_db::orm::connection::DatabaseConnection;
-//! use reinhardt_db::orm::transaction::transaction;
-//!
-//! # async fn example() -> Result<(), anyhow::Error> {
-//! let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-//!
-//! // Automatic commit on success, rollback on error
-//! let user_id = transaction(&conn, |_tx| async move {
-//!     // Your database operations here
-//!     // let id = insert_user("Alice").await?;
-//!     Ok(42)
+//! # #[cfg(feature = "sqlite")]
+//! # async fn example() -> Result<(), Error> {
+//! let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await?;
+//! let lease = DatabaseConnectionLease::register(owner)?;
+//! let connection = lease.handle();
+//! let result = connection.atomic(async |transaction| {
+//!     transaction.atomic(async |_savepoint| {
+//!         Ok::<_, Error>(())
+//!     }).await?;
+//!     Ok::<_, Error>(42)
 //! }).await?;
-//!
-//! assert_eq!(user_id, 42);
+//! assert_eq!(result, 42);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! ### With Isolation Level
+//! Callback errors roll back the relevant scope. If rollback or savepoint
+//! cleanup fails, that framework error takes precedence. Callback panics are
+//! rethrown after best-effort cleanup; cancellation cannot guarantee completion.
+//! MySQL DDL may implicitly commit and is outside this atomicity guarantee.
 //!
-//! ```rust
-//! use reinhardt_db::orm::transaction::{transaction_with_isolation, IsolationLevel};
-//! # use reinhardt_db::orm::connection::DatabaseConnection;
+//! [`Transaction`], [`Savepoint`], and [`IsolationLevel`] remain SQL-builder
+//! values only. They may generate SQL but cannot control a live ORM transaction.
+//! [`AtomicTransaction`] is also intentionally non-`Copy` and stays bound to
+//! the callback and dedicated connection created by
+//! [`DatabaseConnection::atomic`] or the public write-intent variant
+//! [`DatabaseConnection::atomic_write`]. Caller-owned `update_or_create`
+//! execution specifically requires the latter.
 //!
-//! # async fn example() -> Result<(), anyhow::Error> {
-//! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-//! transaction_with_isolation(&conn, IsolationLevel::Serializable, |_tx| async move {
-//!     // Critical operations requiring serializable isolation
-//!     Ok(())
-//! }).await?;
-//! # Ok(())
-//! # }
-//! ```
+//! ## Typed Manager Upserts
 //!
-//! ### Error Handling
+//! [`CustomManager::get_or_create`] and [`CustomManager::update_or_create`]
+//! start builders whose generated [`FieldRef`] values check the model and
+//! assignment value types during compilation. A lookup must cover a primary
+//! key, a `unique = true` field, or an immediate, unconditional unique
+//! constraint. Defaults and updates cannot replace lookup fields.
 //!
-//! ```rust
-//! use reinhardt_db::orm::transaction::transaction;
-//! # use reinhardt_db::orm::connection::DatabaseConnection;
+//! `get_or_create().execute_with(...)` accepts a [`DatabaseConnection`] or an
+//! [`AtomicTransaction`] created by [`DatabaseConnection::atomic_write`].
+//! `update_or_create().execute_with(...)` also requires an [`AtomicTransaction`]
+//! created by [`DatabaseConnection::atomic_write`]; a transaction from
+//! [`DatabaseConnection::atomic`] is rejected before SQL execution.
 //!
-//! # async fn example() -> Result<(), anyhow::Error> {
-//! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-//! # let some_condition = true;
-//! let result = transaction(&conn, |_tx| async move {
-//!     // Simulate an error
-//!     if some_condition {
-//!         return Err(anyhow::anyhow!("Operation failed"));
-//!     }
-//!     Ok(42)
-//! }).await;
+//! ## Row Locking
 //!
-//! match result {
-//!     Ok(value) => println!("Transaction committed: {}", value),
-//!     Err(e) => println!("Transaction rolled back: {}", e),
-//! }
-//! # Ok(())
-//! # }
-//! ```
+//! [`QuerySet::select_for_update`](query::QuerySet::select_for_update) returns a
+//! typed builder whose `nowait` and `skip_locked` states are mutually exclusive.
+//! Evaluate it through a caller-owned [`TransactionExecutor`] so the same
+//! physical connection retains locks through commit or rollback. Root targets
+//! use `of_model`; relation targets require a generated [`RelationPathLike`]
+//! rooted at the queryset model. Unlike Django, ordinary connection evaluation
+//! and SQLite return explicit errors instead of silently degrading to an
+//! unlocked query. CTE-backed querysets, derived `FROM` sources, LATERAL joins,
+//! raw aggregate projections, and aggregate annotations are rejected before
+//! execution so the lock scope remains unambiguous.
 //!
-//! **Key Features:**
-//! - ✅ **Automatic commit** on successful closure completion
-//! - ✅ **Automatic rollback** on error or panic
-//! - ✅ **RAII-style cleanup** with Drop implementation
-//! - ✅ **Nested transactions** support via savepoints (TransactionScope API)
-//! - ✅ **Isolation level** control with `transaction_with_isolation()`
-//!
-//! See [`transaction`] module for detailed documentation.
-//!
-//! ## Migration System
-//!
-//! The reinhardt-migrations crate provides comprehensive migration support:
-//! - **Migration generation from model changes** (✅ Implemented)
-//! - **Migration dependency resolution with DAG** (✅ Implemented)
-//! - **Forward and backward migration execution** (✅ Implemented)
-//! - **Schema introspection and diffing** (✅ Implemented)
-//!
-//! See `reinhardt-migrations` crate for detailed documentation.
+//! PostgreSQL 9.3 adds `no_key`, PostgreSQL 9.5 adds `skip_locked`, and the
+//! built-in MySQL profile requires 8.0.1 or newer. Older/custom servers report
+//! their exact feature set through [`TransactionExecutor::row_lock_capabilities`].
+
+#[doc(hidden)]
+pub use crate::naming;
 
 // Core modules - always available
 pub mod aggregation;
@@ -99,12 +143,18 @@ pub mod annotation;
 pub mod bulk_update;
 pub mod connection;
 pub mod connection_ext; // reinhardt-query connection support
+mod connection_registry;
 /// Constraints module.
 pub mod constraints;
 /// Expressions module.
 pub mod expressions;
+pub mod field_codec;
 /// Fields module.
 pub mod fields;
+/// Fixture loading and dumping module.
+pub mod fixtures;
+/// Static typed expression and aggregate constructors.
+pub mod func;
 /// Functions module.
 pub mod functions;
 pub mod hybrid_dml;
@@ -113,6 +163,8 @@ pub mod indexes;
 pub mod inspection;
 /// Into primary key module.
 pub mod into_primary_key;
+/// Typed JSON field wrapper.
+pub mod json;
 /// Model module.
 pub mod model;
 pub mod query_fields;
@@ -123,8 +175,13 @@ pub mod set_operations;
 pub mod sql_condition_parser;
 pub mod transaction;
 pub mod typed_join;
+/// Typed get-or-create and update-or-create support.
+pub mod upsert;
 /// Validators module.
 pub mod validators;
+/// Validated pgvector value types.
+#[cfg(feature = "pgvector")]
+pub mod vector;
 /// Window module.
 pub mod window;
 
@@ -134,7 +191,8 @@ pub mod composite_pk;
 pub mod composite_synonym;
 pub mod cross_db_constraints;
 pub mod cte;
-/// File fields module.
+/// Storage-backed file field values and generated descriptors.
+#[cfg(feature = "file-storage")]
 pub mod file_fields;
 pub mod filtered_relation;
 pub mod generated_field;
@@ -144,6 +202,8 @@ pub mod gis;
 pub mod lambda_stmt;
 /// Lateral join module.
 pub mod lateral_join;
+/// Deprecated synchronous file and image field descriptors.
+pub mod legacy_file_fields;
 pub mod order_with_respect_to;
 /// Pool types module.
 pub mod pool_types;
@@ -190,26 +250,32 @@ pub mod custom_manager;
 // Unified query interface facade
 pub mod query;
 
-pub use custom_manager::CustomManager;
+pub use custom_manager::{CreateWithConnOutcome, CustomManager};
+#[cfg(feature = "di")]
+pub use engine::register_request_database;
 pub use manager::{
-	get_connection, init_database, init_database_with_pool_size, reinitialize_database,
+	ScopedDatabaseRegistration, get_connection, get_connection_lease, get_connection_registration,
+	init_database, init_database_with_pool_size, install_scoped_database, reinitialize_database,
 };
+#[cfg(feature = "pgvector")]
+pub use vector::{MAX_DENSE_VECTOR_DIMENSIONS, Vector, VectorError};
 
 // Re-export paste for macro usage
 #[doc(hidden)]
 pub use paste;
 
 // Core exports - always available
-pub use aggregation::{Aggregate, AggregateFunc, AggregateResult, AggregateValue};
-pub use annotation::{Annotation, AnnotationValue, Expression, Value, When};
+pub use aggregation::{AggregateDateTime, AggregateResult, AggregateValue};
 pub use connection::{
-	DatabaseBackend, DatabaseConnection, DatabaseExecutor, QueryRow, QueryValue, Row,
-	TransactionExecutor,
+	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, OrmExecutor, QueryResult,
+	QueryRow, QueryValue, Row, RowLockCapabilities, RowStream, TransactionExecutor,
 };
 pub use constraints::{
 	CheckConstraint, Constraint, ForeignKeyConstraint, OnDelete, OnUpdate, UniqueConstraint,
 };
-pub use expressions::{Exists, F, FieldRef, OuterRef, Q, QOperator, Subquery};
+pub use expressions::{
+	Exists, F, FieldRef, OrderingField, OuterRef, Q, QOperator, Subquery, UniqueFieldRef,
+};
 pub use functions::{
 	Abs, Cast, Ceil, Concat, CurrentDate, CurrentTime, Extract, ExtractComponent, Floor, Greatest,
 	Least, Length, Lower, Mod, Now, NullIf, Power, Round, SqlType, Sqrt, Substr, Trim, TrimType,
@@ -217,15 +283,21 @@ pub use functions::{
 };
 pub use indexes::{BTreeIndex, GinIndex, GistIndex, HashIndex, Index};
 pub use into_primary_key::IntoPrimaryKey;
-pub use model::{FieldSelector, Model, SoftDeletable, SoftDelete, Timestamped, Timestamps};
-pub use query_fields::{
-	Comparable, DateTimeType, Field, GroupByFields, Lookup, LookupType, LookupValue, NumericType,
-	QueryFieldCompiler, StringType,
+pub use json::Json;
+pub use model::{
+	FieldSelector, FixtureFields, FixtureValue, Model, SoftDeletable, SoftDelete, Timestamped,
+	Timestamps,
 };
+pub use query_fields::{
+	AggregateKind, AggregateOutputKind, Comparable, DateTimeType, Field, GroupByFields,
+	HavingPredicate, Lookup, LookupType, LookupValue, NumericType, OrderedExpression,
+	QueryFieldCompiler, StringType, TypedExpression, TypedPredicate, case_when, coalesce, literal,
+};
+#[doc(hidden)]
+pub use serde;
 pub use set_operations::{CombinedQuery, SetOperation, SetOperationBuilder};
 pub use transaction::{
-	Atomic, IsolationLevel, Savepoint, Transaction, TransactionScope, TransactionState, atomic,
-	atomic_with_isolation,
+	AtomicTransaction, IsolationLevel, Savepoint, Transaction, TransactionState,
 };
 pub use two_phase_commit::{
 	Participant, ParticipantStatus, TransactionState as TwoPhaseTransactionState, TwoPhaseCommit,
@@ -255,11 +327,21 @@ pub use postgres_fields::{
 
 // PostgreSQL-specific advanced features
 pub use postgres_features::{
-	ArrayAgg, ArrayOverlap, FullTextSearch, JsonbAgg, JsonbBuildObject, StringAgg, TsRank,
+	ArrayAgg, ArrayOverlap, BackendAnnotation, BackendAnnotationValue, FullTextSearch, JsonbAgg,
+	JsonbBuildObject, StringAgg, TsRank,
 };
 
 // File field types
-pub use file_fields::{FileField, FileFieldError, ImageField};
+#[cfg(feature = "file-storage")]
+pub use file_fields::{
+	FileCleanupOperation, FileCommit, FileField, FileFieldError, FileFieldPolicy,
+	FileMutationError, FileValidationPolicy, FileWriteOperation, ModelFileField, PendingFileUpload,
+	coordinate_file_mutations,
+};
+#[cfg(all(feature = "file-storage", feature = "image-fields"))]
+pub use file_fields::{ImageField, ModelImageField};
+#[allow(deprecated)]
+pub use legacy_file_fields::{LegacyFileField, LegacyFileFieldError, LegacyImageField};
 
 pub use database_routing::DatabaseRouter;
 pub use events::{
@@ -267,7 +349,8 @@ pub use events::{
 	InstanceEvents, MapperEvents, SessionEvents, get_active_registry, set_active_registry,
 	with_event_registry,
 };
-pub use execution::{ExecutionResult, QueryExecution, SelectExecution};
+pub use execution::{ExecutionResult, InsertExecution, QueryExecution, SelectExecution};
+pub use field_codec::*;
 // Re-export from reinhardt-hybrid
 pub use crate::hybrid::{
 	Comparator as HybridComparator, HybridMethod, HybridProperty, UpperCaseComparator,
@@ -285,7 +368,12 @@ pub use query_options::{
 	QueryOptions, QueryOptionsBuilder,
 };
 pub use registry::{ColumnInfo, Mapper, MapperRegistry, TableInfo, registry};
-pub use relations::{GenericRelationConfig, GenericRelationSet};
+pub use relations::{
+	GeneratedRelatedField, GeneratedRelationPath, GenericRelationConfig, GenericRelationSet,
+	PlannedRelationJoin, RelatedFieldRef, RelationDescriptor, RelationFieldOrigin,
+	RelationJoinGraph, RelationJoinKind, RelationMultiplicity, RelationPath, RelationPathLike,
+	RelationStep, RelationTarget, UnverifiedRelatedField, UnverifiedRelationPath,
+};
 pub use relationship::{CascadeOption, Relationship, RelationshipDirection, RelationshipType};
 pub use session::{Session, SessionError};
 pub use sqlalchemy_query::{Column as SqlColumn, JoinType, SelectQuery, column, select};
@@ -311,7 +399,10 @@ pub use reverse_accessor::ReverseAccessor;
 pub use manager::Manager;
 // Query types are always available
 pub use query::{
-	FieldAssignment, Filter, FilterCondition, FilterOperator, FilterValue, OrmQuery, QuerySet,
+	AggregateInput, Blocking, DateProjectionField, DateProjectionOrder, DateTimeProjectionField,
+	DateTimeTruncKind, DateTruncKind, ExplainBackend, ExplainBody, ExplainFormat, ExplainOptions,
+	ExplainOutput, FieldAssignment, Filter, FilterCondition, FilterOperator, FilterValue,
+	IntoOrderBy, Nowait, OrmQuery, QuerySet, QuerySetStream, SelectForUpdate, SkipLocked,
 	UpdateValue,
 };
 

@@ -32,8 +32,8 @@ fn create_request_with_query(query: &str) -> Request {
 fn test_basic_query_parameter_parsing() {
 	let request = create_request_with_query("name=Alice&age=30");
 
-	assert_eq!(request.query_params.get("name"), Some(&"Alice".to_string()));
-	assert_eq!(request.query_params.get("age"), Some(&"30".to_string()));
+	assert_eq!(request.query_params.get("name"), Some("Alice"));
+	assert_eq!(request.query_params.get("age"), Some("30"));
 }
 
 #[test]
@@ -42,10 +42,7 @@ fn test_encoded_space_in_query_params() {
 	let request = create_request_with_query("greeting=hello%20world");
 
 	// query_params returns the raw (encoded) value
-	assert_eq!(
-		request.query_params.get("greeting"),
-		Some(&"hello%20world".to_string())
-	);
+	assert_eq!(request.query_params.get("greeting"), Some("hello%20world"));
 
 	// decoded_query_params returns the decoded value
 	let decoded = request.decoded_query_params();
@@ -126,9 +123,9 @@ fn test_multiple_query_parameters() {
 	let request = create_request_with_query("a=1&b=2&c=3");
 
 	assert_eq!(request.query_params.len(), 3);
-	assert_eq!(request.query_params.get("a"), Some(&"1".to_string()));
-	assert_eq!(request.query_params.get("b"), Some(&"2".to_string()));
-	assert_eq!(request.query_params.get("c"), Some(&"3".to_string()));
+	assert_eq!(request.query_params.get("a"), Some("1"));
+	assert_eq!(request.query_params.get("b"), Some("2"));
+	assert_eq!(request.query_params.get("c"), Some("3"));
 }
 
 #[test]
@@ -157,7 +154,7 @@ fn test_query_params_with_encoded_equals_in_value() {
 fn test_empty_query_value() {
 	let request = create_request_with_query("key=");
 
-	assert_eq!(request.query_params.get("key"), Some(&"".to_string()));
+	assert_eq!(request.query_params.get("key"), Some(""));
 }
 
 #[test]
@@ -199,26 +196,17 @@ fn test_plus_sign_in_query() {
 fn test_numeric_query_values() {
 	let request = create_request_with_query("int=42&float=3.14&negative=-10");
 
-	assert_eq!(request.query_params.get("int"), Some(&"42".to_string()));
-	assert_eq!(request.query_params.get("float"), Some(&"3.14".to_string()));
-	assert_eq!(
-		request.query_params.get("negative"),
-		Some(&"-10".to_string())
-	);
+	assert_eq!(request.query_params.get("int"), Some("42"));
+	assert_eq!(request.query_params.get("float"), Some("3.14"));
+	assert_eq!(request.query_params.get("negative"), Some("-10"));
 }
 
 #[test]
 fn test_boolean_query_values() {
 	let request = create_request_with_query("active=true&deleted=false");
 
-	assert_eq!(
-		request.query_params.get("active"),
-		Some(&"true".to_string())
-	);
-	assert_eq!(
-		request.query_params.get("deleted"),
-		Some(&"false".to_string())
-	);
+	assert_eq!(request.query_params.get("active"), Some("true"));
+	assert_eq!(request.query_params.get("deleted"), Some("false"));
 }
 
 // ============================================================================
@@ -278,7 +266,7 @@ fn test_request_path_separate_from_query() {
 	let request = create_request_with_query("key=value");
 
 	assert_eq!(request.path(), "/test");
-	assert_eq!(request.query_params.get("key"), Some(&"value".to_string()));
+	assert_eq!(request.query_params.get("key"), Some("value"));
 }
 
 #[test]
@@ -301,14 +289,11 @@ fn test_request_with_unicode_path_and_query() {
 
 #[test]
 fn test_duplicate_query_keys() {
-	// When duplicate keys exist, the current implementation keeps one
-	// (behavior depends on HashMap insertion order)
+	// Duplicate keys keep the last raw value, matching `HashMap` collection.
 	let request = create_request_with_query("tag=first&tag=second");
 
-	// HashMap will contain one of the values
 	assert!(request.query_params.contains_key("tag"));
-	let tag_value = request.query_params.get("tag").unwrap();
-	assert!(tag_value == "first" || tag_value == "second");
+	assert_eq!(request.query_params.get("tag"), Some("second"));
 }
 
 // ============================================================================
@@ -323,14 +308,8 @@ fn test_many_query_parameters() {
 	let request = create_request_with_query(&query_string);
 
 	assert_eq!(request.query_params.len(), 50);
-	assert_eq!(
-		request.query_params.get("key0"),
-		Some(&"value0".to_string())
-	);
-	assert_eq!(
-		request.query_params.get("key49"),
-		Some(&"value49".to_string())
-	);
+	assert_eq!(request.query_params.get("key0"), Some("value0"));
+	assert_eq!(request.query_params.get("key49"), Some("value49"));
 }
 
 #[test]
@@ -340,7 +319,7 @@ fn test_long_query_value() {
 
 	let request = create_request_with_query(&query);
 
-	assert_eq!(request.query_params.get("data"), Some(&long_value));
+	assert_eq!(request.query_params.get("data"), Some(long_value.as_str()));
 }
 
 // ============================================================================

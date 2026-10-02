@@ -97,6 +97,8 @@ pub struct FormMacro {
 	pub slots: Option<FormSlots>,
 	/// Field definitions (can include field groups)
 	pub fields: Vec<FormFieldEntry>,
+	/// Model-backed form source and its selected fields.
+	pub model_source: Option<ModelFormSource>,
 	/// Unified validators. Each rule carries an optional scope annotation
 	/// (`#[server]` / `#[client(on = ...)]`) that controls where it executes.
 	pub validators: Vec<FormValidator>,
@@ -113,6 +115,68 @@ pub struct FormMacro {
 	pub ambient_arguments_source: Option<AmbientArgumentsSource>,
 	/// Span for error reporting
 	pub span: Span,
+}
+
+/// Source configuration for a model-backed form.
+///
+/// Named target-neutral contracts use [`ModelFormSource::contract`] and can be
+/// identified with [`ModelFormSource::contract_path`]. The four public fields
+/// remain unchanged for compatibility with existing AST consumers.
+#[derive(Debug, Clone)]
+pub struct ModelFormSource {
+	/// Model type used to generate form fields.
+	pub model: Path,
+	/// Nameable policy enforced by the server-function payload.
+	pub policy: Path,
+	/// Fields selected from the model.
+	pub selection: ModelFieldSelection,
+	/// Presentation overrides for selected model fields.
+	pub overrides: Vec<ModelFieldOverride>,
+}
+
+impl ModelFormSource {
+	/// Creates a source backed by a named target-neutral model-form contract.
+	pub fn contract(contract: Path, overrides: Vec<ModelFieldOverride>) -> Self {
+		Self {
+			model: contract,
+			// An empty policy path is not a valid user-authored Rust path and is
+			// reserved as the internal marker for a contract source. Keeping the
+			// legacy four fields intact preserves struct-literal compatibility.
+			policy: Path {
+				leading_colon: None,
+				segments: Default::default(),
+			},
+			selection: ModelFieldSelection::Fields(Vec::new()),
+			overrides,
+		}
+	}
+
+	/// Returns the contract path when this source is backed by a named contract.
+	pub fn contract_path(&self) -> Option<&Path> {
+		self.policy.segments.is_empty().then_some(&self.model)
+	}
+}
+
+/// Selection policy for a model-backed form.
+#[derive(Debug, Clone)]
+pub enum ModelFieldSelection {
+	/// Include only the listed model fields.
+	Fields(Vec<Ident>),
+	/// Include every model field except the listed identifiers.
+	Exclude(Vec<Ident>),
+}
+
+/// Presentation override for one model-backed form field.
+#[derive(Debug, Clone)]
+pub struct ModelFieldOverride {
+	/// Model field receiving the override.
+	pub field: Ident,
+	/// Optional widget identifier.
+	pub widget: Option<Ident>,
+	/// Optional display label.
+	pub label: Option<LitStr>,
+	/// Optional help text.
+	pub help_text: Option<LitStr>,
 }
 
 /// Form action configuration.
@@ -1311,6 +1375,7 @@ impl FormMacro {
 			choices_loader: None,
 			slots: None,
 			fields: Vec::new(),
+			model_source: None,
 			validators: Vec::new(),
 			strip_arguments: Vec::new(),
 			ambient_arguments_source: None,

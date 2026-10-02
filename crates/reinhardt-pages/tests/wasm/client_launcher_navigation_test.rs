@@ -20,14 +20,36 @@
 
 #![cfg(wasm)]
 
+use reinhardt_core::page::Outlet;
+use reinhardt_core::reactive::{Effect, ReactiveScope};
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
-use reinhardt_pages::component::{IntoPage, Page, PageElement};
-use reinhardt_pages::reactive::{Signal, with_runtime};
-use reinhardt_urls::routers::ClientRouter;
+use reinhardt_pages::component::{Head, IntoPage, Page, PageElement};
+use reinhardt_pages::deps;
+use reinhardt_pages::deps_auto;
+use reinhardt_pages::dom::{Element, EventHandle};
+use reinhardt_pages::reactive::hooks::{use_effect, use_retained_effect};
+use reinhardt_pages::reactive::{
+	QueryFamily, QueryOptions, Signal, queries, use_query, with_runtime,
+};
+use reinhardt_urls::routers::{ClientRouter, RouteMetadata};
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
+
+thread_local! {
+	static RETAINED_ROUTE_TICK: RefCell<Option<Signal<i32>>> = const { RefCell::new(None) };
+	static RETAINED_ROUTE_LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+	static RETAINED_REACTIVE_RENDER_TICK: RefCell<Option<Signal<i32>>> = const { RefCell::new(None) };
+	static RETAINED_REACTIVE_EFFECT_TICK: RefCell<Option<Signal<i32>>> = const { RefCell::new(None) };
+	static RETAINED_REACTIVE_LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+	static QUERY_OWNER_EVENT_HANDLES: RefCell<Vec<EventHandle>> = const { RefCell::new(Vec::new()) };
+	static QUERY_OWNER_EFFECTS: RefCell<Vec<Effect>> = const { RefCell::new(Vec::new()) };
+}
+
+const LAUNCHER_OWNER_QUERY: QueryFamily<(), u32, String> = QueryFamily::new("tests.launcher-owner");
 
 // Each route renders a div with a stable id and a unique text marker so the
 // assertions can be tight regardless of how `Page::Text` serialises into
@@ -66,13 +88,157 @@ fn page_b() -> Page {
 		.into_page()
 }
 
+fn reactive_page_b() -> Page {
+	let content = Signal::new("ROUTE-B-CONTENT");
+	Page::reactive(move || {
+		PageElement::new("div")
+			.attr("id", "route-b")
+			.child(content.get())
+			.into_page()
+	})
+}
+
+fn layout_shell(outlet: Outlet) -> Page {
+	PageElement::new("div")
+		.attr("id", "layout-shell")
+		.child("LAYOUT-SHELL")
+		.child(outlet)
+		.into_page()
+}
+
+fn managed_head_node(document: &web_sys::Document, selector: &str) -> web_sys::Element {
+	document
+		.query_selector(selector)
+		.expect("head selector should be valid")
+		.expect("managed head node should exist")
+}
+
+fn assert_single_managed_head_node(document: &web_sys::Document, selector: &str) {
+	assert_eq!(
+		document.query_selector_all(selector).unwrap().length(),
+		1,
+		"expected exactly one managed node for selector {selector}"
+	);
+}
+
+fn reset_retained_route_state() -> Signal<i32> {
+	let tick = Signal::new(0_i32);
+	RETAINED_ROUTE_TICK.with(|slot| {
+		*slot.borrow_mut() = Some(tick.clone());
+	});
+	RETAINED_ROUTE_LOG.with(|log| log.borrow_mut().clear());
+	tick
+}
+
+fn retained_route_log() -> Vec<String> {
+	RETAINED_ROUTE_LOG.with(|log| log.borrow().clone())
+}
+
+fn retained_route_page(label: &'static str) -> Page {
+	let tick = RETAINED_ROUTE_TICK.with(|slot| {
+		slot.borrow()
+			.as_ref()
+			.expect("retained route tick should be initialized")
+			.clone()
+	});
+
+	use_retained_effect(
+		{
+			let tick = tick.clone();
+			move || {
+				let value = tick.get();
+				RETAINED_ROUTE_LOG.with(|log| {
+					log.borrow_mut().push(format!("run:{label}:{value}"));
+				});
+				Some(move || {
+					RETAINED_ROUTE_LOG.with(|log| {
+						log.borrow_mut().push(format!("cleanup:{label}"));
+					});
+				})
+			}
+		},
+		deps![tick],
+	);
+
+	PageElement::new("div")
+		.attr("id", format!("route-{label}"))
+		.child(format!("ROUTE-{label}-CONTENT"))
+		.into_page()
+}
+
+fn retained_route_a() -> Page {
+	retained_route_page("a")
+}
+
+fn retained_route_b() -> Page {
+	retained_route_page("b")
+}
+
+fn reset_retained_reactive_state() -> (Signal<i32>, Signal<i32>) {
+	let render_tick = Signal::new(0_i32);
+	let effect_tick = Signal::new(0_i32);
+	RETAINED_REACTIVE_RENDER_TICK.with(|slot| {
+		*slot.borrow_mut() = Some(render_tick.clone());
+	});
+	RETAINED_REACTIVE_EFFECT_TICK.with(|slot| {
+		*slot.borrow_mut() = Some(effect_tick.clone());
+	});
+	RETAINED_REACTIVE_LOG.with(|log| log.borrow_mut().clear());
+	(render_tick, effect_tick)
+}
+
+fn retained_reactive_log() -> Vec<String> {
+	RETAINED_REACTIVE_LOG.with(|log| log.borrow().clone())
+}
+
+fn page_with_retained_effect_in_reactive_body() -> Page {
+	Page::reactive(|| {
+		let render_tick = RETAINED_REACTIVE_RENDER_TICK.with(|slot| {
+			slot.borrow()
+				.as_ref()
+				.expect("retained reactive render tick should be initialized")
+				.clone()
+		});
+		let effect_tick = RETAINED_REACTIVE_EFFECT_TICK.with(|slot| {
+			slot.borrow()
+				.as_ref()
+				.expect("retained reactive effect tick should be initialized")
+				.clone()
+		});
+		let render_value = render_tick.get();
+
+		use_retained_effect(
+			{
+				let effect_tick = effect_tick.clone();
+				move || {
+					let value = effect_tick.get();
+					RETAINED_REACTIVE_LOG.with(|log| {
+						log.borrow_mut().push(format!("run:{value}"));
+					});
+					Some(move || {
+						RETAINED_REACTIVE_LOG.with(|log| {
+							log.borrow_mut().push("cleanup".to_string());
+						});
+					})
+				}
+			},
+			deps![effect_tick],
+		);
+
+		PageElement::new("div")
+			.attr("id", "retained-reactive")
+			.child(format!("RETAINED-REACTIVE-{render_value}"))
+			.into_page()
+	})
+}
+
 fn page_with_reentrant_nested_reactive() -> Page {
 	let trigger = Signal::new(0_i32);
-	let trigger_for_outer = trigger.clone();
+	let trigger_for_outer = trigger;
 
 	Page::reactive(move || {
 		let _ = trigger_for_outer.get();
-		let trigger_for_inner = trigger_for_outer.clone();
+		let trigger_for_inner = trigger_for_outer;
 
 		Page::reactive(move || {
 			if trigger_for_inner.get_untracked() == 0 {
@@ -89,6 +255,7 @@ fn page_with_reentrant_nested_reactive() -> Page {
 
 fn install_app_root() -> web_sys::Element {
 	let document = web_sys::window().unwrap().document().unwrap();
+	replace_history_path("/");
 	if let Some(prev) = document.get_element_by_id("app") {
 		prev.remove();
 	}
@@ -98,10 +265,135 @@ fn install_app_root() -> web_sys::Element {
 	root
 }
 
+fn install_named_app_root(id: &str) -> web_sys::Element {
+	let document = web_sys::window().unwrap().document().unwrap();
+	if let Some(previous) = document.get_element_by_id(id) {
+		previous.remove();
+	}
+	let root = document.create_element("div").unwrap();
+	root.set_id(id);
+	document.body().unwrap().append_child(&root).unwrap();
+	root
+}
+
+fn replace_history_path(path: &str) {
+	let history = web_sys::window().unwrap().history().unwrap();
+	history
+		.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(path))
+		.expect("replace history path");
+}
+
 /// Yields control so the reactive scheduler (which uses
 /// `wasm_bindgen_futures::spawn_local`) can drain queued work.
 async fn yield_to_microtasks() {
 	gloo_timers::future::TimeoutFuture::new(0).await;
+}
+
+fn install_launcher_query_owner_probe(
+	root: &web_sys::Element,
+	event_type: &'static str,
+	fetch_count: Rc<Cell<u32>>,
+) {
+	let query = use_query(
+		LAUNCHER_OWNER_QUERY.query((), move || {
+			let fetch_count = Rc::clone(&fetch_count);
+			async move {
+				let call = fetch_count.get() + 1;
+				fetch_count.set(call);
+				Ok(call)
+			}
+		}),
+		QueryOptions::default(),
+	);
+	let render_root = root.clone();
+	let effect = use_effect(
+		move || {
+			let _owning_client = queries();
+			if let Some(value) = query.data() {
+				render_root
+					.set_attribute("data-query-value", &value.to_string())
+					.expect("query probe render attribute");
+			}
+			None::<fn()>
+		},
+		deps_auto!(),
+	);
+	let event = Element::new(root.clone()).add_event_listener(event_type, move || {
+		queries().invalidate_family(LAUNCHER_OWNER_QUERY);
+	});
+	QUERY_OWNER_EFFECTS.with(|effects| effects.borrow_mut().push(effect));
+	QUERY_OWNER_EVENT_HANDLES.with(|events| events.borrow_mut().push(event));
+}
+
+#[wasm_bindgen_test]
+async fn late_event_and_render_reenter_the_first_launcher_query_client() {
+	replace_history_path("/");
+	QUERY_OWNER_EVENT_HANDLES.with(|events| events.borrow_mut().clear());
+	QUERY_OWNER_EFFECTS.with(|effects| effects.borrow_mut().clear());
+	let first_root = install_named_app_root("query-owner-app-a");
+	let second_root = install_named_app_root("query-owner-app-b");
+	let first_fetches = Rc::new(Cell::new(0_u32));
+	let second_fetches = Rc::new(Cell::new(0_u32));
+
+	ClientLauncher::new("#query-owner-app-a")
+		.router_client(|| ClientRouter::new().route("root-a", "/", page_root))
+		.after_launch({
+			let first_fetches = Rc::clone(&first_fetches);
+			move |ctx| {
+				install_launcher_query_owner_probe(
+					ctx.root_element(),
+					"reinhardt-query-owner-a",
+					first_fetches,
+				);
+			}
+		})
+		.launch()
+		.expect("launch first app");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	assert_eq!(first_fetches.get(), 1);
+	assert_eq!(
+		first_root.get_attribute("data-query-value").as_deref(),
+		Some("1")
+	);
+
+	ClientLauncher::new("#query-owner-app-b")
+		.router_client(|| ClientRouter::new().route("root-b", "/", page_root))
+		.after_launch({
+			let second_fetches = Rc::clone(&second_fetches);
+			move |ctx| {
+				install_launcher_query_owner_probe(
+					ctx.root_element(),
+					"reinhardt-query-owner-b",
+					second_fetches,
+				);
+			}
+		})
+		.launch()
+		.expect("launch second app");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	assert_eq!(first_fetches.get(), 1);
+	assert_eq!(second_fetches.get(), 1);
+
+	first_root
+		.dispatch_event(&web_sys::Event::new("reinhardt-query-owner-a").expect("owner event"))
+		.expect("dispatch owner event");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	assert_eq!(first_fetches.get(), 2);
+	assert_eq!(second_fetches.get(), 1);
+	assert_eq!(
+		first_root.get_attribute("data-query-value").as_deref(),
+		Some("2"),
+		"the first launcher's late render must use its original query client"
+	);
+
+	QUERY_OWNER_EVENT_HANDLES.with(|events| events.borrow_mut().clear());
+	QUERY_OWNER_EFFECTS.with(|effects| effects.borrow_mut().clear());
+	first_root.remove();
+	second_root.remove();
 }
 
 #[wasm_bindgen_test]
@@ -209,6 +501,341 @@ async fn client_launcher_re_renders_after_intercepted_anchor_click() {
 		!html_after_click.contains("ROUTE-A-CONTENT"),
 		"Refs #5104: previous /a view should be gone after anchor navigation, got: {html_after_click}"
 	);
+}
+
+#[wasm_bindgen_test]
+async fn client_launcher_preserves_layout_shell_between_sibling_routes() {
+	let root = install_app_root();
+	replace_history_path("/a");
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new().routes(|routes| {
+				routes.layout_route("shell", "/", layout_shell, |children| {
+					children
+						.route("a", "a", page_a)
+						.route("b", "b", reactive_page_b)
+				})
+			})
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+
+	let document = web_sys::window().unwrap().document().unwrap();
+	let shell = document
+		.get_element_by_id("layout-shell")
+		.expect("layout shell should mount");
+	shell
+		.set_attribute("data-preserved", "yes")
+		.expect("mark shell");
+	assert!(
+		root.inner_html().contains("ROUTE-A-CONTENT"),
+		"setup precondition: expected /a outlet content, got: {}",
+		root.inner_html()
+	);
+
+	with_spa_router(|r| r.push("/b")).expect("push /b");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	let shell_after = document
+		.get_element_by_id("layout-shell")
+		.expect("layout shell should persist");
+	assert_eq!(
+		shell_after.get_attribute("data-preserved").as_deref(),
+		Some("yes"),
+		"layout shell DOM was remounted instead of being preserved"
+	);
+	let html = root.inner_html();
+	assert!(
+		html.contains("ROUTE-B-CONTENT"),
+		"expected /b content, got: {html}"
+	);
+	assert!(
+		!html.contains("ROUTE-A-CONTENT"),
+		"/a outlet content should be replaced, got: {html}"
+	);
+	replace_history_path("/");
+}
+
+#[wasm_bindgen_test]
+async fn client_launcher_preserves_layout_head_across_sibling_navigation_and_history() {
+	let root = install_app_root();
+	replace_history_path("/a");
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new()
+				.routes(|routes| {
+					routes.layout_route("shell", "/", layout_shell, |children| {
+						children.route("a", "a", page_a).route("b", "b", page_b)
+					})
+				})
+				.with_route_metadata(
+					"shell",
+					RouteMetadata::new()
+						.with_head(Head::new().meta_description("layout-description")),
+				)
+				.with_route_metadata(
+					"a",
+					RouteMetadata::new().with_head(Head::new().title("Route A").canonical("/a")),
+				)
+				.with_route_metadata(
+					"b",
+					RouteMetadata::new().with_head(Head::new().title("Route B").canonical("/b")),
+				)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+	let document = web_sys::window().unwrap().document().unwrap();
+	assert_eq!(document.title(), "Route A");
+	let layout_description = managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	);
+	assert_single_managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	);
+	managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/a'][data-reinhardt-head]",
+	);
+	assert_single_managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/a'][data-reinhardt-head]",
+	);
+
+	with_spa_router(|r| r.push("/b")).expect("push /b");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	assert_eq!(document.title(), "Route B");
+	assert!(layout_description.is_same_node(Some(&managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	))));
+	assert_single_managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	);
+	assert!(
+		document
+			.query_selector("link[rel='canonical'][href='/a'][data-reinhardt-head]")
+			.unwrap()
+			.is_none()
+	);
+	managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/b'][data-reinhardt-head]",
+	);
+	assert_single_managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/b'][data-reinhardt-head]",
+	);
+
+	web_sys::window()
+		.unwrap()
+		.history()
+		.unwrap()
+		.back()
+		.unwrap();
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	assert_eq!(document.title(), "Route A");
+	assert!(layout_description.is_same_node(Some(&managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	))));
+	assert_single_managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	);
+	managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/a'][data-reinhardt-head]",
+	);
+	assert!(root.inner_html().contains("ROUTE-A-CONTENT"));
+	replace_history_path("/");
+}
+
+#[wasm_bindgen_test]
+async fn client_launcher_clears_route_head_when_next_route_has_no_metadata() {
+	let root = install_app_root();
+	replace_history_path("/metadata");
+	let document = web_sys::window().unwrap().document().unwrap();
+	let original_title = document.title();
+	document.set_title("Route head fallback");
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new()
+				.route("metadata", "/metadata", page_a)
+				.route("plain", "/plain", page_b)
+				.with_route_metadata(
+					"metadata",
+					RouteMetadata::new().with_head(
+						Head::new()
+							.title("Metadata route")
+							.meta_description("metadata-description")
+							.canonical("/metadata"),
+					),
+				)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+	assert_eq!(document.title(), "Metadata route");
+	assert_single_managed_head_node(
+		&document,
+		"meta[name='description'][content='metadata-description'][data-reinhardt-head]",
+	);
+	assert_single_managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/metadata'][data-reinhardt-head]",
+	);
+
+	with_spa_router(|router| router.push("/plain")).expect("push /plain");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	assert_eq!(document.title(), "Route head fallback");
+	assert!(
+		document
+			.query_selector(
+				"meta[name='description'][content='metadata-description'][data-reinhardt-head]"
+			)
+			.unwrap()
+			.is_none(),
+		"route metadata must not leak into a route without metadata"
+	);
+	assert!(
+		document
+			.query_selector("link[rel='canonical'][href='/metadata'][data-reinhardt-head]")
+			.unwrap()
+			.is_none(),
+		"route canonical metadata must not leak into a route without metadata"
+	);
+	assert!(root.inner_html().contains("ROUTE-B-CONTENT"));
+
+	document.set_title(&original_title);
+	replace_history_path("/");
+}
+
+#[wasm_bindgen_test]
+async fn retained_route_effects_are_disposed_on_sibling_navigation() {
+	let root = install_app_root();
+	replace_history_path("/a");
+	let scope = ReactiveScope::new();
+	let tick = scope.enter(reset_retained_route_state);
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new().routes(|routes| {
+				routes.layout_route("shell", "/", layout_shell, |children| {
+					children
+						.route("a", "a", retained_route_a)
+						.route("b", "b", retained_route_b)
+				})
+			})
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+	assert!(
+		root.inner_html().contains("ROUTE-a-CONTENT"),
+		"setup precondition: expected retained /a content, got: {}",
+		root.inner_html()
+	);
+
+	with_spa_router(|r| r.push("/b")).expect("push /b");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	tick.set(1);
+	with_runtime(|rt| rt.flush_updates());
+
+	let log = retained_route_log();
+	assert_eq!(
+		log.iter()
+			.filter(|entry| entry.starts_with("run:a:"))
+			.count(),
+		1,
+		"previous leaf route retained effect must not re-run after sibling navigation: {log:?}"
+	);
+	assert!(
+		log.iter().any(|entry| entry == "cleanup:a"),
+		"previous leaf route retained effect cleanup should run on sibling navigation: {log:?}"
+	);
+	assert_eq!(
+		log.iter()
+			.filter(|entry| entry.starts_with("run:b:"))
+			.count(),
+		2,
+		"current leaf route retained effect should run initially and after tick update: {log:?}"
+	);
+	replace_history_path("/");
+}
+
+#[wasm_bindgen_test]
+async fn retained_effects_in_reactive_body_are_replaced_on_rerender() {
+	let root = install_app_root();
+	let scope = ReactiveScope::new();
+	let (render_tick, effect_tick) = scope.enter(reset_retained_reactive_state);
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new().route(
+				"retained-reactive",
+				"/",
+				page_with_retained_effect_in_reactive_body,
+			)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+	assert!(
+		root.inner_html().contains("RETAINED-REACTIVE-0"),
+		"setup precondition: expected retained reactive view, got: {}",
+		root.inner_html()
+	);
+
+	render_tick.set(1);
+	with_runtime(|rt| rt.flush_updates());
+	yield_to_microtasks().await;
+	assert!(
+		root.inner_html().contains("RETAINED-REACTIVE-1"),
+		"reactive body should rerender after render tick, got: {}",
+		root.inner_html()
+	);
+
+	effect_tick.set(1);
+	with_runtime(|rt| rt.flush_updates());
+
+	let log = retained_reactive_log();
+	assert_eq!(
+		log.iter().filter(|entry| entry.as_str() == "run:0").count(),
+		2,
+		"initial effect and replacement effect should each run once before dep update: {log:?}"
+	);
+	assert_eq!(
+		log.iter().filter(|entry| entry.as_str() == "run:1").count(),
+		1,
+		"only the current retained effect should re-run after dep update: {log:?}"
+	);
+	assert_eq!(
+		log.iter()
+			.filter(|entry| entry.as_str() == "cleanup")
+			.count(),
+		2,
+		"retained effects should clean up on reactive rerender and before the dependency-driven rerun: {log:?}"
+	);
+	replace_history_path("/");
 }
 
 /// Direct reproduction of Issue #4088: simulates the reinhardt-cloud dashboard
@@ -443,21 +1070,26 @@ async fn nested_reactive_content_is_removed_with_outer_owner() {
 	use reinhardt_pages::dom::Element;
 
 	let root = install_app_root();
-	let authorized = Signal::new(true);
-	let secret = Signal::new("SECRET-42".to_owned());
-	let authorized_for_outer = authorized.clone();
-	let secret_for_inner = secret.clone();
+	let scope = ReactiveScope::new();
+	let (authorized, secret) = scope.enter(|| {
+		let authorized = Signal::new(true);
+		let secret = Signal::new("SECRET-42".to_owned());
+		let authorized_for_outer = authorized.clone();
+		let secret_for_inner = secret.clone();
 
-	Page::reactive(move || {
-		if authorized_for_outer.get() {
-			let secret_for_render = secret_for_inner.clone();
-			Page::reactive(move || Page::text(secret_for_render.get()))
-		} else {
-			Page::Empty
-		}
-	})
-	.mount(&Element::new(root.clone()))
-	.expect("mount nested reactive page");
+		Page::reactive(move || {
+			if authorized_for_outer.get() {
+				let secret_for_render = secret_for_inner.clone();
+				Page::reactive(move || Page::text(secret_for_render.get()))
+			} else {
+				Page::Empty
+			}
+		})
+		.mount(&Element::new(root.clone()))
+		.expect("mount nested reactive page");
+
+		(authorized, secret)
+	});
 
 	yield_to_microtasks().await;
 	assert!(

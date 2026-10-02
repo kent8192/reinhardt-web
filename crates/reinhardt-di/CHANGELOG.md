@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.4.0-alpha.13...reinhardt-di@v0.4.0-alpha.14) - 2026-09-07
+
+### Fixed
+
+- *(deps)* remove resolved tinyvec compatibility pins
+
+### Testing
+
+- pin tinyvec 1.12.0 in isolated consumer fixtures
+
+### Testing
+
+- *(di)* remove obsolete tinyvec version pins from isolated consumer fixtures
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.4.0-alpha.8...reinhardt-di@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define data and identity boundaries
+- *(security)* document secret and csrf boundaries
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.4.0-alpha.6...reinhardt-di@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Fixed
+
+- *(di)* gate multipart extraction tests by feature
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Testing
+
+- *(di)* cover request parameter extraction
+- *(di)* make parameter extraction tests feature-safe
+- *(di)* harden multipart extraction coverage
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.4.0-alpha.5...reinhardt-di@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.4.0-alpha.1...reinhardt-di@v0.4.0-alpha.2) - 2026-07-23
+
+### Documentation
+
+- *(di)* document mutable injection patterns
+
+### Fixed
+
+- *(di)* forward provider injection patterns
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.3.2...reinhardt-di@v0.4.0-alpha.1) - 2026-07-21
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge main into develop/0.4.0
 ## [0.3.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.3.8...reinhardt-di@v0.3.9) - 2026-08-21
 
 ### Documentation

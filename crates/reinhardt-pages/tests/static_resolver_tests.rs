@@ -13,7 +13,7 @@
 //!
 //! Total: 4 tests
 
-use reinhardt_pages::static_resolver::{is_initialized, resolve_static};
+use reinhardt_pages::static_resolver::{component_stylesheet_url, is_initialized, resolve_static};
 use rstest::*;
 
 // ============================================================================
@@ -68,4 +68,12 @@ fn test_resolve_multiple_files() {
 	assert!(css.contains("main.css"));
 	assert!(js.contains("bundle.js"));
 	assert!(img.contains("logo.png"));
+}
+
+#[rstest]
+fn component_stylesheet_uses_the_static_resolver() {
+	assert_eq!(
+		component_stylesheet_url(),
+		resolve_static("__reinhardt__/components.css")
+	);
 }

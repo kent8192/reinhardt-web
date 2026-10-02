@@ -7,31 +7,63 @@
 //! - `/admin/{model}/{id}/` - Detail view
 //! - `/admin/{model}/add/` - Create form
 //! - `/admin/{model}/{id}/change/` - Edit form
+//! - `/admin/{model}/{id}/history/` - Per-object change history
 
 // (Refs #4234) Migration to reinhardt_urls::routers::ClientRouter pending separate follow-up issue.
 // `reinhardt_urls::routers::ClientRouter` is the canonical SPA router; this module
 // references it pervasively (struct, `Router::new()`, `Arc<Router>`, closure params),
 // so file-scope suppression is preferred over per-usage `#[allow(deprecated)]` attribute spam.
+#[cfg(any(client, test))]
+use crate::pages::components::features::json_value_to_display_string;
+#[cfg(server)]
+use crate::pages::components::features::list_view;
+#[cfg(client)]
+use crate::pages::components::features::list_view_with_actions;
+#[cfg(client)]
+use crate::pages::components::features::list_view_with_date_hierarchy;
 use crate::pages::components::features::{
-	Column, FormField, ListViewData, dashboard, detail_view, list_view, model_form,
+	Column, FormField, ListViewData, dashboard, decode_admin_path_segment, detail_view,
+	history_view_with_route_model_name, model_form,
+};
+#[cfg(client)]
+use crate::pages::components::features::{
+	Column, FormField, ListViewData, dashboard, detail_view, list_view_with_actions_and_edit,
+	model_form, model_form_with_field_info, model_form_with_fieldsets, model_form_with_inlines,
 };
 pub use crate::pages::components::login;
 #[cfg(client)]
-use crate::server::{get_dashboard, get_detail, get_fields, get_list};
+use crate::server::{
+	execute_admin_action, get_dashboard, get_detail, get_fields, get_history,
+	get_list_action_metadata, get_list_with_date_hierarchy, update_inline_edits,
+};
 #[cfg(client)]
-use crate::types::ListQueryParams;
-#[cfg(server)]
-use crate::types::ModelInfo;
+use crate::types::DateHierarchyListResponse;
+#[cfg(any(client, test))]
+use crate::types::ListResponse;
+#[cfg(client)]
+use crate::types::{AdminActionRequest, DateHierarchyListQueryParams, InlineEditRequest};
+use crate::types::{HistoryResponse, ModelInfo};
+#[cfg(any(client, test))]
+use reinhardt_pages::ResourceState;
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::{Component, Page};
+#[cfg(client)]
+use reinhardt_pages::component::{MountError, PageExt};
 use reinhardt_pages::page;
+use reinhardt_pages::reactive::ReactiveScope;
 use reinhardt_pages::router::Link;
 #[cfg(client)]
-use reinhardt_pages::{ResourceState, use_resource};
+use reinhardt_pages::use_resource;
 use reinhardt_urls::routers::ClientRouter;
 use reinhardt_urls::routers::client_router::Path;
+#[cfg(any(client, test))]
+use std::cell::Cell;
 use std::cell::RefCell;
+#[cfg(client)]
+use std::collections::BTreeSet;
 use std::collections::HashMap;
+#[cfg(client)]
+use std::rc::Rc;
 
 /// Admin route enum
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +78,13 @@ pub enum AdminRoute {
 	},
 	/// Detail view route for a specific record.
 	Detail {
+		/// The name of the model.
+		model_name: String,
+		/// The record identifier.
+		id: String,
+	},
+	/// Change-history route for a specific record.
+	History {
 		/// The name of the model.
 		model_name: String,
 		/// The record identifier.
@@ -71,23 +110,123 @@ pub enum AdminRoute {
 
 // Global Router instance
 // Initialized by init_global_router() and accessed via with_router()
+struct GlobalRouter {
+	scope: ReactiveScope,
+	router: ClientRouter,
+	render_scope: RefCell<Option<ReactiveScope>>,
+}
+
 thread_local! {
-	static ROUTER: RefCell<Option<ClientRouter>> = const { RefCell::new(None) };
+	static ROUTER: RefCell<Option<GlobalRouter>> = const { RefCell::new(None) };
 }
 
 #[cfg(any(client, test))]
-fn json_value_to_display_string(value: &serde_json::Value) -> String {
-	match value {
-		serde_json::Value::String(value) => value.clone(),
-		serde_json::Value::Number(value) => value.to_string(),
-		serde_json::Value::Bool(value) => value.to_string(),
-		serde_json::Value::Null => String::new(),
-		serde_json::Value::Array(values) => values
-			.iter()
-			.map(json_value_to_display_string)
-			.collect::<Vec<_>>()
-			.join(", "),
-		serde_json::Value::Object(_) => value.to_string(),
+fn list_response_to_view_data(mut response: ListResponse) -> ListViewData {
+	let pk_field = response.pk_field;
+	for (record, object_id) in response
+		.results
+		.iter_mut()
+		.zip(response.object_ids.into_iter())
+	{
+		record.insert(pk_field.clone(), object_id);
+	}
+	ListViewData {
+		model_name: response.model_name,
+		columns: response
+			.columns
+			.map(|columns| {
+				columns
+					.into_iter()
+					.map(|column| Column {
+						field: column.field,
+						label: column.label,
+						sortable: column.sortable,
+						editable: column.editable,
+						linked: column.linked,
+						required: column.required,
+						nullable: column.nullable,
+						step: column.step,
+						form_spec: column.form_spec,
+					})
+					.collect()
+			})
+			.unwrap_or_else(|| {
+				vec![Column {
+					field: pk_field.clone(),
+					label: pk_field.clone(),
+					sortable: true,
+					editable: false,
+					linked: true,
+					required: true,
+					nullable: false,
+					step: None,
+					form_spec: None,
+				}]
+			}),
+		pk_field,
+		records: response.results,
+		current_page: response.page,
+		total_pages: response.total_pages,
+		total_count: response.count,
+		filters: response.available_filters.unwrap_or_default(),
+	}
+}
+
+#[cfg(any(client, test))]
+fn begin_list_request(latest_generation: &Cell<u64>) -> u64 {
+	let generation = latest_generation.get().wrapping_add(1);
+	latest_generation.set(generation);
+	generation
+}
+
+#[cfg(client)]
+fn invalidate_list_request(latest_generation: &Cell<u64>) {
+	latest_generation.set(latest_generation.get().wrapping_add(1));
+}
+
+#[cfg(any(client, test))]
+fn commit_list_request(
+	latest_generation: &Cell<u64>,
+	generation: u64,
+	result: Result<ListResponse, String>,
+	rendered_state: Signal<ResourceState<ListResponse, String>>,
+	page_signal: Signal<u64>,
+) {
+	if generation != latest_generation.get() {
+		return;
+	}
+
+	match result {
+		Ok(response) => {
+			if page_signal.get_untracked() != response.page {
+				page_signal.set(response.page);
+			}
+			rendered_state.set(ResourceState::Success(response));
+		}
+		Err(error) => rendered_state.set(ResourceState::Error(error)),
+	}
+}
+
+#[cfg(client)]
+fn commit_date_hierarchy_list_request(
+	latest_generation: &Cell<u64>,
+	generation: u64,
+	result: Result<DateHierarchyListResponse, String>,
+	rendered_state: Signal<ResourceState<DateHierarchyListResponse, String>>,
+	page_signal: Signal<u64>,
+) {
+	if generation != latest_generation.get() {
+		return;
+	}
+
+	match result {
+		Ok(response) => {
+			if page_signal.get_untracked() != response.response.page {
+				page_signal.set(response.response.page);
+			}
+			rendered_state.set(ResourceState::Success(response));
+		}
+		Err(error) => rendered_state.set(ResourceState::Error(error)),
 	}
 }
 
@@ -136,9 +275,16 @@ pub(crate) fn get_login_url() -> String {
 /// init_global_router();
 /// ```
 pub fn init_global_router() {
-	ROUTER.with(|r| {
-		*r.borrow_mut() = Some(init_router());
+	let scope = ReactiveScope::new();
+	let router = scope.enter(init_router);
+	let previous = ROUTER.with(|stored| {
+		stored.borrow_mut().replace(GlobalRouter {
+			scope,
+			router,
+			render_scope: RefCell::new(None),
+		})
 	});
+	drop(previous);
 }
 
 /// Provides access to the global router instance
@@ -158,7 +304,12 @@ pub fn try_with_router<F, R>(f: F) -> Option<R>
 where
 	F: FnOnce(&ClientRouter) -> R,
 {
-	ROUTER.with(|r| r.borrow().as_ref().map(f))
+	ROUTER.with(|stored| {
+		let stored = stored.borrow();
+		stored
+			.as_ref()
+			.map(|stored| stored.scope.enter(|| f(&stored.router)))
+	})
 }
 
 /// Provides access to the global router instance
@@ -185,12 +336,51 @@ where
 	try_with_router(f).expect("Router not initialized. Call init_global_router() first.")
 }
 
+/// Renders the current route in a scope owned by the mounted admin page.
+///
+/// Router navigation signals remain in the router scope, while route-local
+/// signals, resources, and page arena nodes are disposed before the next mount.
+pub fn render_current_route() -> Page {
+	ROUTER.with(|stored| {
+		let stored = stored.borrow();
+		let stored = stored
+			.as_ref()
+			.expect("Router not initialized. Call init_global_router() first.");
+		let render_scope = ReactiveScope::new();
+		let page = render_scope.enter(|| stored.router.render_current());
+		let previous = stored.render_scope.borrow_mut().replace(render_scope);
+		drop(previous);
+		page
+	})
+}
+
+/// Renders and mounts the current route while its route scope is active.
+///
+/// Reactive pages create effects during mounting, so building the page under
+/// the route scope alone is insufficient for client-side mounts.
+#[cfg(client)]
+pub fn mount_current_route(parent: &Element) -> Result<(), MountError> {
+	ROUTER.with(|stored| {
+		let stored = stored.borrow();
+		let stored = stored
+			.as_ref()
+			.expect("Router not initialized. Call init_global_router() first.");
+		let render_scope = ReactiveScope::new();
+		let result = render_scope.enter(|| stored.router.render_current().mount(parent));
+		if result.is_ok() {
+			let previous = stored.render_scope.borrow_mut().replace(render_scope);
+			drop(previous);
+		}
+		result
+	})
+}
+
 /// Dashboard view component for router
 #[cfg(client)]
 fn dashboard_view() -> Page {
 	let dashboard_resource = use_resource(
 		|| async { get_dashboard().await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -239,97 +429,118 @@ fn dashboard_view() -> Page {
 /// List view component for router
 #[cfg(client)]
 fn list_view_component(model_name: String) -> Page {
-	use reinhardt_pages::use_effect;
+	use reinhardt_pages::use_action;
+	use reinhardt_pages::use_retained_effect;
 
+	let list_model_name = model_name.clone();
+	let model_name_for_save = model_name.clone();
+	let query_params = Signal::new(DateHierarchyListQueryParams::default());
+	let query_generation = Rc::new(Cell::new(0_u64));
 	let list_resource = use_resource(
 		move || {
-			let model_name = model_name.clone();
+			let model_name = list_model_name.clone();
+			let params = query_params.get();
 			async move {
-				let params = ListQueryParams::default();
-				get_list(model_name, params)
+				let response = get_list_with_date_hierarchy(model_name.clone(), params)
 					.await
-					.map_err(|e| e.to_string())
+					.map_err(|e| e.to_string())?;
+				let metadata = get_list_action_metadata(model_name)
+					.await
+					.map_err(|e| e.to_string())?;
+				Ok::<_, String>((response, metadata))
 			}
 		},
-		(),
+		deps![query_params],
 	);
+	let save_action = use_action(move |request: InlineEditRequest| {
+		let model_name = model_name_for_save.clone();
+		async move {
+			update_inline_edits(model_name, request)
+				.await
+				.map_err(|_| "Save failed".to_string())
+		}
+	})
+	.on_success({
+		let resource = list_resource.clone();
+		move |response| {
+			if response.errors.is_empty() {
+				resource.refetch();
+			} else {
+				crate::pages::components::features::set_inline_edit_controls_disabled(false);
+			}
+		}
+	})
+	.on_error(|_| {
+		crate::pages::components::features::set_inline_edit_controls_disabled(false);
+	});
 
 	// Create signals outside the reactive closure so they persist across re-renders
 	let page_signal = Signal::new(1u64);
 	let filters_signal = Signal::new(HashMap::new());
+	let selected_ids = Signal::new(BTreeSet::new());
+	let selected_action = Signal::new(String::new());
+	let action_model_name = model_name;
+	let list_resource_for_success = list_resource.clone();
+	let action = use_action(move |request: AdminActionRequest| {
+		let model_name = action_model_name.clone();
+		async move {
+			execute_admin_action(model_name, request)
+				.await
+				.map_err(|error| error.to_string())
+		}
+	})
+	.on_success(move |_| {
+		selected_ids.set(BTreeSet::new());
+		list_resource_for_success.refetch();
+	});
+
+	use_retained_effect(
+		move || {
+			let page = page_signal.get_untracked();
+			let mut params = query_params.get_untracked();
+			if params.page != Some(page) {
+				params.page = Some(page);
+				query_params.set(params);
+			}
+			None::<fn()>
+		},
+		deps![page_signal],
+	);
 
 	// Sync page_signal from the completed resource outside the rendering closure.
-	// Updating signals inside a rendering closure is an anti-pattern: it causes
-	// a state change during render and could create an infinite loop if the
-	// resource ever reads page_signal. Using use_effect keeps side-effects
-	// separate from the render path.
 	{
 		let resource = list_resource.clone();
-		let page_signal = page_signal.clone();
 		let resource_for_deps = list_resource.clone();
-		use_effect(
+		use_retained_effect(
 			move || {
-				if let ResourceState::Success(ref response) = resource.get() {
-					page_signal.set(response.page);
+				if let ResourceState::Success((ref response, _)) = resource.get() {
+					page_signal.set(response.response.page);
+					selected_ids.set(BTreeSet::new());
 				}
 				None::<fn()>
 			},
-			(resource_for_deps,),
+			deps![resource_for_deps],
 		);
 	}
 
 	let reactive_content = Page::reactive({
 		let resource = list_resource.clone();
-		let page_signal = page_signal.clone();
-		let filters_signal = filters_signal.clone();
 		move || match resource.get() {
 			ResourceState::Loading => loading_view(),
-			ResourceState::Success(mut response) => {
-				let pk_field = response.pk_field.clone();
-				for (record, object_id) in response
-					.results
-					.iter_mut()
-					.zip(response.object_ids.into_iter())
-				{
-					record.insert(pk_field.clone(), object_id);
-				}
-				let data = ListViewData {
-					model_name: response.model_name.clone(),
-					pk_field,
-					columns: response
-						.columns
-						.map(|cols| {
-							cols.into_iter()
-								.map(|c| Column {
-									field: c.field,
-									label: c.label,
-									sortable: c.sortable,
-								})
-								.collect()
-						})
-						.unwrap_or_else(|| {
-							vec![Column {
-								field: "id".to_string(),
-								label: "ID".to_string(),
-								sortable: true,
-							}]
-						}),
-					records: response
-						.results
-						.into_iter()
-						.map(|record| {
-							record
-								.into_iter()
-								.map(|(k, v)| (k, json_value_to_display_string(&v)))
-								.collect()
-						})
-						.collect(),
-					current_page: response.page,
-					total_pages: response.total_pages,
-					total_count: response.count,
-					filters: response.available_filters.unwrap_or_default(),
-				};
-				list_view(&data, page_signal.clone(), filters_signal.clone())
+			ResourceState::Success((response, metadata)) => {
+				let data = list_response_to_view_data(response.response);
+				list_view_with_actions_and_edit(
+					&data,
+					&metadata.pk_field,
+					&metadata.actions,
+					page_signal,
+					filters_signal,
+					response.date_hierarchy.as_ref(),
+					query_params,
+					query_generation.clone(),
+					(selected_ids, selected_action, action),
+					save_action,
+				)
 			}
 			ResourceState::Error(err) => error_view(&err),
 		}
@@ -351,19 +562,31 @@ fn list_view_component(model_name: String) -> Page {
 	// Dummy data for non-WASM environments (tests, etc.)
 	let data = ListViewData {
 		model_name: model_name.clone(),
-		pk_field: "id".to_string(),
 		columns: vec![
 			Column {
 				field: "id".to_string(),
 				label: "ID".to_string(),
 				sortable: true,
+				editable: false,
+				linked: true,
+				required: true,
+				nullable: false,
+				step: None,
+				form_spec: None,
 			},
 			Column {
 				field: "name".to_string(),
 				label: "Name".to_string(),
 				sortable: true,
+				editable: false,
+				linked: false,
+				required: false,
+				nullable: false,
+				step: None,
+				form_spec: None,
 			},
 		],
+		pk_field: "id".to_string(),
 		records: vec![],
 		current_page: 1,
 		total_pages: 1,
@@ -371,7 +594,7 @@ fn list_view_component(model_name: String) -> Page {
 		filters: vec![],
 	};
 
-	let page_signal = Signal::new(1u64);
+	let page_signal = Signal::new(1_u64);
 	let filters_signal = Signal::new(HashMap::new());
 	list_view(&data, page_signal, filters_signal)
 }
@@ -391,7 +614,7 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -431,6 +654,59 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 	detail_view(&model_name, &record_id, &record)
 }
 
+/// Object history view component for router
+#[cfg(client)]
+fn history_view_component(model_name: String, record_id: String) -> Page {
+	let page_signal = Signal::new(1_u64);
+	let route_model_name = model_name.clone();
+	let history_resource = use_resource(
+		move || {
+			let model_name = model_name.clone();
+			let record_id = record_id.clone();
+			let page = page_signal.get();
+			async move {
+				get_history(model_name, record_id, page)
+					.await
+					.map_err(|error| error.to_string())
+			}
+		},
+		deps![page_signal],
+	);
+
+	let reactive_content = Page::reactive({
+		let resource = history_resource.clone();
+		move || match resource.get() {
+			ResourceState::Loading => loading_view(),
+			ResourceState::Success(response) => {
+				history_view_with_route_model_name(&response, page_signal, &route_model_name)
+			}
+			ResourceState::Error(error) => error_view(&error),
+		}
+	});
+
+	page!(|reactive_content: Page| {
+		div {
+			class: "history-container p-6 md:p-8 max-w-7xl mx-auto",
+			{ reactive_content }
+		}
+	})(reactive_content)
+}
+
+/// Object history view component for router (non-WASM fallback)
+#[cfg(server)]
+fn history_view_component(model_name: String, record_id: String) -> Page {
+	let response = HistoryResponse {
+		model_name: model_name.clone(),
+		object_id: record_id,
+		count: 0,
+		page: 1,
+		page_size: 25,
+		total_pages: 1,
+		results: Vec::new(),
+	};
+	history_view_with_route_model_name(&response, Signal::new(1), &model_name)
+}
+
 /// Create form view component for router
 #[cfg(client)]
 fn create_view_component(model_name: String) -> Page {
@@ -444,7 +720,7 @@ fn create_view_component(model_name: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -453,18 +729,28 @@ fn create_view_component(model_name: String) -> Page {
 		move || match resource.get() {
 			ResourceState::Loading => loading_view(),
 			ResourceState::Success(response) => {
-				let fields: Vec<FormField> = response
-					.fields
-					.into_iter()
+				let field_infos = response.fields;
+				let fields: Vec<FormField> = field_infos
+					.iter()
 					.map(|field_info| FormField {
 						spec: crate::types::FormFieldSpec::from(&field_info.field_type),
-						name: field_info.name,
-						label: field_info.label,
+						name: field_info.name.clone(),
+						label: field_info.label.clone(),
 						required: field_info.required,
+						nullable: field_info.nullable,
 						value: String::new(),
 					})
 					.collect();
-				model_form(&model_name, &fields, None)
+				let fieldsets = response.fieldsets.unwrap_or_default();
+				model_form_with_field_info(
+					&model_name,
+					&fields,
+					&fieldsets,
+					&response.inlines,
+					None,
+					&response.prepopulated_fields,
+					&field_infos,
+				)
 			}
 			ResourceState::Error(err) => error_view(&err),
 		}
@@ -490,6 +776,7 @@ fn create_view_component(model_name: String) -> Page {
 				html_type: "text".to_string(),
 			},
 			required: true,
+			nullable: false,
 			value: String::new(),
 		},
 		FormField {
@@ -499,6 +786,7 @@ fn create_view_component(model_name: String) -> Page {
 				html_type: "email".to_string(),
 			},
 			required: true,
+			nullable: false,
 			value: String::new(),
 		},
 	];
@@ -521,7 +809,7 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -531,9 +819,9 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 		move || match resource.get() {
 			ResourceState::Loading => loading_view(),
 			ResourceState::Success(response) => {
-				let fields: Vec<FormField> = response
-					.fields
-					.into_iter()
+				let field_infos = response.fields;
+				let fields: Vec<FormField> = field_infos
+					.iter()
 					.map(|field_info| {
 						let value = if let Some(ref vals) = response.values {
 							match vals.get(&field_info.name) {
@@ -557,14 +845,24 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 
 						FormField {
 							spec: crate::types::FormFieldSpec::from(&field_info.field_type),
-							name: field_info.name,
-							label: field_info.label,
+							name: field_info.name.clone(),
+							label: field_info.label.clone(),
 							required: field_info.required,
+							nullable: field_info.nullable,
 							value,
 						}
 					})
 					.collect();
-				model_form(&model_name, &fields, Some(&record_id))
+				let fieldsets = response.fieldsets.unwrap_or_default();
+				model_form_with_field_info(
+					&model_name,
+					&fields,
+					&fieldsets,
+					&response.inlines,
+					Some(&record_id),
+					&response.prepopulated_fields,
+					&field_infos,
+				)
 			}
 			ResourceState::Error(err) => error_view(&err),
 		}
@@ -590,6 +888,7 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 				html_type: "text".to_string(),
 			},
 			required: true,
+			nullable: false,
 			value: "Existing Value".to_string(),
 		},
 		FormField {
@@ -599,6 +898,7 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 				html_type: "email".to_string(),
 			},
 			required: true,
+			nullable: false,
 			value: "user@example.com".to_string(),
 		},
 	];
@@ -704,8 +1004,9 @@ fn error_view(message: &str) -> Page {
 /// 1. `/admin/` - dashboard (exact match)
 /// 2. `/admin/{model}/add/` - create (literal `add` segment)
 /// 3. `/admin/{model}/{id}/change/` - edit (literal `change` segment)
-/// 4. `/admin/{model}/{id}/` - detail (all dynamic segments)
-/// 5. `/admin/{model}/` - list (all dynamic segments)
+/// 4. `/admin/{model}/{id}/history/` - history (literal `history` segment)
+/// 5. `/admin/{model}/{id}/` - detail (all dynamic segments)
+/// 6. `/admin/{model}/` - list (all dynamic segments)
 ///
 /// If `detail` were registered before `create`, a request to
 /// `/admin/users/add/` would incorrectly match the detail route
@@ -734,14 +1035,21 @@ pub fn init_router() -> ClientRouter {
 			"edit",
 			"/admin/{model}/{id}/change/",
 			|Path(model_name): Path<String>, Path(record_id): Path<String>| {
-				edit_view_component(model_name, record_id)
+				edit_view_component(model_name, decode_admin_path_segment(&record_id))
+			},
+		)
+		.route_path(
+			"history",
+			"/admin/{model}/{id}/history/",
+			|Path(model_name): Path<String>, Path(record_id): Path<String>| {
+				history_view_component(model_name, decode_admin_path_segment(&record_id))
 			},
 		)
 		.route_path(
 			"detail",
 			"/admin/{model}/{id}/",
 			|Path(model_name): Path<String>, Path(record_id): Path<String>| {
-				detail_view_component(model_name, record_id)
+				detail_view_component(model_name, decode_admin_path_segment(&record_id))
 			},
 		)
 		.route_path(
@@ -755,6 +1063,29 @@ pub fn init_router() -> ClientRouter {
 #[cfg(all(test, server))]
 mod tests {
 	use super::*;
+	use reinhardt_core::reactive::ReactiveScope;
+	use rstest::{fixture, rstest};
+	use serial_test::serial;
+
+	fn clear_global_router() {
+		let previous = ROUTER.with(|router| router.borrow_mut().take());
+		drop(previous);
+	}
+
+	struct InitializedGlobalRouter;
+
+	impl Drop for InitializedGlobalRouter {
+		fn drop(&mut self) {
+			clear_global_router();
+		}
+	}
+
+	#[fixture]
+	fn initialized_global_router() -> InitializedGlobalRouter {
+		clear_global_router();
+		ReactiveScope::run(init_global_router);
+		InitializedGlobalRouter
+	}
 
 	#[test]
 	fn test_admin_route_enum() {
@@ -769,132 +1100,201 @@ mod tests {
 
 	#[test]
 	fn test_init_router_creates_routes() {
-		let router = init_router();
-		assert_eq!(router.route_count(), 6); // login + dashboard + list + detail + create + edit
-		assert!(router.has_route("login"));
-		assert!(router.has_route("dashboard"));
-		assert!(router.has_route("list"));
-		assert!(router.has_route("detail"));
-		assert!(router.has_route("create"));
-		assert!(router.has_route("edit"));
-	}
-
-	#[test]
-	fn test_dashboard_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("dashboard"));
-	}
-
-	#[test]
-	fn test_list_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("list"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
-	}
-
-	#[test]
-	fn test_detail_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/42/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("detail"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
-		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
-	}
-
-	#[test]
-	fn test_create_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/add/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("create"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
-	}
-
-	#[test]
-	fn test_edit_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/42/change/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("edit"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
-		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
-	}
-
-	#[test]
-	fn test_reverse_url_dashboard() {
-		let router = init_router();
-		let url = router.reverse("dashboard", &[]).unwrap();
-		assert_eq!(url, "/admin/");
-	}
-
-	#[test]
-	fn test_reverse_url_list() {
-		let router = init_router();
-		let url = router.reverse("list", &[("model", "users")]).unwrap();
-		assert_eq!(url, "/admin/users/");
-	}
-
-	#[test]
-	fn test_reverse_url_detail() {
-		let router = init_router();
-		let url = router
-			.reverse("detail", &[("model", "users"), ("id", "42")])
-			.unwrap();
-		assert_eq!(url, "/admin/users/42/");
-	}
-
-	#[test]
-	fn test_reverse_url_create() {
-		let router = init_router();
-		let url = router.reverse("create", &[("model", "users")]).unwrap();
-		assert_eq!(url, "/admin/users/add/");
-	}
-
-	#[test]
-	fn test_reverse_url_edit() {
-		let router = init_router();
-		let url = router
-			.reverse("edit", &[("model", "users"), ("id", "42")])
-			.unwrap();
-		assert_eq!(url, "/admin/users/42/change/");
-	}
-
-	#[test]
-	fn test_init_global_router() {
-		init_global_router();
-
-		with_router(|router| {
-			assert_eq!(router.route_count(), 6);
+		ReactiveScope::run(|| {
+			let router = init_router();
+			assert_eq!(router.route_count(), 7);
 			assert!(router.has_route("login"));
 			assert!(router.has_route("dashboard"));
 			assert!(router.has_route("list"));
 			assert!(router.has_route("detail"));
 			assert!(router.has_route("create"));
 			assert!(router.has_route("edit"));
+			assert!(router.has_route("history"));
 		});
 	}
 
 	#[test]
-	fn test_with_router_access() {
-		init_global_router();
+	fn test_dashboard_route_match() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/");
+			assert!(route_match.is_some());
 
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("dashboard"));
+		});
+	}
+
+	#[test]
+	fn test_list_route_match() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/");
+			assert!(route_match.is_some());
+
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("list"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+		});
+	}
+
+	#[test]
+	fn test_detail_route_match() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/42/");
+			assert!(route_match.is_some());
+
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("detail"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+			assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
+		});
+	}
+
+	#[rstest]
+	fn history_route_matches_before_detail_and_reverses() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = init_router();
+
+			// Act
+			let route_match = router
+				.match_path("/admin/users/42/history/")
+				.expect("history route must match");
+			let reversed = router
+				.reverse("history", &[("model", "users"), ("id", "42")])
+				.expect("history route must reverse");
+
+			// Assert
+			assert_eq!(route_match.route.name(), Some("history"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+			assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
+			assert_eq!(reversed, "/admin/users/42/history/");
+		});
+	}
+
+	#[test]
+	fn test_create_route_match() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/add/");
+			assert!(route_match.is_some());
+
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("create"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+		});
+	}
+
+	#[test]
+	fn test_edit_route_match() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/42/change/");
+			assert!(route_match.is_some());
+
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("edit"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+			assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
+		});
+	}
+
+	#[test]
+	fn test_reverse_url_dashboard() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router.reverse("dashboard", &[]).unwrap();
+			assert_eq!(url, "/admin/");
+		});
+	}
+
+	#[test]
+	fn test_reverse_url_list() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router.reverse("list", &[("model", "users")]).unwrap();
+			assert_eq!(url, "/admin/users/");
+		});
+	}
+
+	#[test]
+	fn test_reverse_url_detail() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router
+				.reverse("detail", &[("model", "users"), ("id", "42")])
+				.unwrap();
+			assert_eq!(url, "/admin/users/42/");
+		});
+	}
+
+	#[test]
+	fn test_reverse_url_create() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router.reverse("create", &[("model", "users")]).unwrap();
+			assert_eq!(url, "/admin/users/add/");
+		});
+	}
+
+	#[test]
+	fn test_reverse_url_edit() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router
+				.reverse("edit", &[("model", "users"), ("id", "42")])
+				.unwrap();
+			assert_eq!(url, "/admin/users/42/change/");
+		});
+	}
+
+	#[rstest]
+	#[serial(global_router)]
+	fn test_init_global_router(_initialized_global_router: InitializedGlobalRouter) {
+		with_router(|router| {
+			assert_eq!(router.route_count(), 7);
+			assert!(router.has_route("login"));
+			assert!(router.has_route("dashboard"));
+			assert!(router.has_route("list"));
+			assert!(router.has_route("detail"));
+			assert!(router.has_route("create"));
+			assert!(router.has_route("edit"));
+			assert!(router.has_route("history"));
+		});
+	}
+
+	#[rstest]
+	#[serial(global_router)]
+	fn global_router_scope_outlives_initializer_scope(
+		_initialized_global_router: InitializedGlobalRouter,
+	) {
+		with_router(|router| {
+			assert_eq!(router.current_path().get(), "/");
+		});
+	}
+
+	#[rstest]
+	#[serial(global_router)]
+	fn test_with_router_access(_initialized_global_router: InitializedGlobalRouter) {
 		let route_count = with_router(|router| router.route_count());
-		assert_eq!(route_count, 6);
+		assert_eq!(route_count, 7);
 
 		let has_dashboard = with_router(|router| router.has_route("dashboard"));
 		assert!(has_dashboard);
@@ -903,16 +1303,14 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "Router not initialized")]
 	fn test_with_router_panics_when_not_initialized() {
-		// Clear ROUTER (this operation is actually dangerous, but for test purposes)
-		ROUTER.with(|r| *r.borrow_mut() = None);
+		clear_global_router();
 
 		with_router(|_| {});
 	}
 
 	#[test]
 	fn test_try_with_router_returns_none_when_not_initialized() {
-		// Clear ROUTER to simulate uninitialized state
-		ROUTER.with(|r| *r.borrow_mut() = None);
+		clear_global_router();
 
 		let result = try_with_router(|router| router.route_count());
 		assert!(result.is_none());
@@ -920,26 +1318,81 @@ mod tests {
 
 	#[test]
 	fn test_try_with_router_returns_some_when_initialized() {
-		init_global_router();
+		ReactiveScope::run(|| {
+			init_global_router();
 
-		let result = try_with_router(|router| router.route_count());
-		assert_eq!(result, Some(6));
+			let result = try_with_router(|router| router.route_count());
+			assert_eq!(result, Some(7));
+		});
 	}
 
 	#[test]
 	fn test_list_view_with_model_name() {
-		let view = list_view_component("users".to_string());
-		// Verify basic rendering succeeds
-		let html = view.render_to_string();
+		let html = ReactiveScope::run(|| {
+			let view = list_view_component("users".to_string());
+			view.render_to_string()
+		});
 		assert!(html.contains("users") || html.contains("List"));
+	}
+
+	#[rstest]
+	fn newer_list_response_wins_when_requests_complete_in_reverse_order() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let latest_generation = std::cell::Cell::new(0_u64);
+			let older_generation = begin_list_request(&latest_generation);
+			let newer_generation = begin_list_request(&latest_generation);
+			let rendered_state = Signal::new(ResourceState::Loading);
+			let page_signal = Signal::new(8_u64);
+			let response = |model_name: &str, page| crate::types::ListResponse {
+				model_name: model_name.to_string(),
+				pk_field: "id".to_string(),
+				count: 1,
+				page,
+				page_size: 1,
+				total_pages: 8,
+				results: vec![],
+				object_ids: vec![],
+				available_filters: None,
+				columns: None,
+			};
+
+			// Act
+			commit_list_request(
+				&latest_generation,
+				newer_generation,
+				Ok(response("newer", 1)),
+				rendered_state,
+				page_signal,
+			);
+			commit_list_request(
+				&latest_generation,
+				older_generation,
+				Ok(response("older", 8)),
+				rendered_state,
+				page_signal,
+			);
+
+			// Assert
+			assert_eq!(page_signal.get(), 1);
+			match rendered_state.get() {
+				ResourceState::Success(response) => {
+					assert_eq!(response.model_name, "newer");
+					assert_eq!(response.page, 1);
+				}
+				state => panic!("expected the newer success state, got {state:?}"),
+			}
+		});
 	}
 
 	#[test]
 	fn test_direct_list_route_extracts_model_name() {
-		let router = init_router();
+		let html = ReactiveScope::run(|| {
+			let router = init_router();
 
-		router.push("/admin/question/").unwrap();
-		let html = router.render_current().render_to_string();
+			router.push("/admin/question/").unwrap();
+			router.render_current().render_to_string()
+		});
 
 		assert!(
 			html.contains("question"),
@@ -961,11 +1414,57 @@ mod tests {
 		);
 	}
 
+	#[rstest]
+	fn list_response_mapping_preserves_edit_metadata_and_typed_values() {
+		// Arrange
+		let response = crate::types::ListResponse {
+			model_name: "User".to_string(),
+			pk_field: "slug".to_string(),
+			count: 1,
+			page: 1,
+			page_size: 100,
+			total_pages: 1,
+			results: vec![HashMap::from([
+				("slug".to_string(), serde_json::json!("alice")),
+				("score".to_string(), serde_json::json!(42)),
+				("active".to_string(), serde_json::json!(true)),
+				("nickname".to_string(), serde_json::Value::Null),
+			])],
+			object_ids: vec![serde_json::json!("alice")],
+			available_filters: None,
+			columns: Some(vec![crate::types::ColumnInfo {
+				field: "score".to_string(),
+				label: "Score".to_string(),
+				sortable: true,
+				editable: true,
+				linked: false,
+				required: true,
+				nullable: false,
+				step: None,
+				form_spec: Some(crate::types::FormFieldSpec::Input {
+					html_type: "number".to_string(),
+				}),
+			}]),
+		};
+
+		// Act
+		let data = list_response_to_view_data(response);
+
+		// Assert
+		assert_eq!(data.pk_field, "slug");
+		assert!(data.columns[0].editable);
+		assert!(data.columns[0].required);
+		assert_eq!(data.records[0]["score"], serde_json::json!(42));
+		assert_eq!(data.records[0]["active"], serde_json::json!(true));
+		assert_eq!(data.records[0]["nickname"], serde_json::Value::Null);
+	}
+
 	#[test]
 	fn test_detail_view_with_params() {
-		let view = detail_view_component("users".to_string(), "42".to_string());
-		// Verify basic rendering succeeds
-		let html = view.render_to_string();
+		let html = ReactiveScope::run(|| {
+			let view = detail_view_component("users".to_string(), "42".to_string());
+			view.render_to_string()
+		});
 		assert!(!html.is_empty());
 	}
 
@@ -976,12 +1475,12 @@ mod tests {
 	/// when the user is unauthenticated (#3114).
 	#[test]
 	fn test_admin_router_has_login_route() {
-		// Arrange & Act
-		let router = init_router();
+		// Act
+		let has_login_route = ReactiveScope::run(|| init_router().has_route("login"));
 
-		// Assert - a login route must exist for the auth flow
+		// Assert
 		assert!(
-			router.has_route("login"),
+			has_login_route,
 			"Admin router must have a 'login' route for authentication flow. \
 			 The SPA needs a login form to obtain JWT tokens (#3114)."
 		);
@@ -990,18 +1489,19 @@ mod tests {
 	/// Verify the /admin/login/ path matches the login route (#3114).
 	#[test]
 	fn test_login_route_match() {
-		// Arrange
-		let router = init_router();
-
 		// Act
-		let route_match = router.match_path("/admin/login/");
+		let route_name = ReactiveScope::run(|| {
+			let router = init_router();
+			router
+				.match_path("/admin/login/")
+				.and_then(|route_match| route_match.route.name().map(str::to_owned))
+		});
 
 		// Assert
 		assert!(
-			route_match.is_some(),
+			route_name.is_some(),
 			"Path /admin/login/ should match the login route (#3114)"
 		);
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("login"));
+		assert_eq!(route_name.as_deref(), Some("login"));
 	}
 }

@@ -1,0 +1,5 @@
+error: string model enum values must be string literals
+ --> tests/ui/model_enum/fail/wrong_literal_type.rs:6:23
+  |
+6 |     #[model_enum(value = 1)]
+  |                          ^

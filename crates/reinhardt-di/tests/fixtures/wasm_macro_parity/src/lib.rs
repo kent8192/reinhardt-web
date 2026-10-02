@@ -26,10 +26,15 @@ impl reinhardt_di::Injectable for NativeDependency {
 }
 
 #[injectable(scope = "transient")]
-pub async fn native_config_provider(
+pub async fn native_config_provider() -> NativeConfig {
+	NativeConfig { value: "native" }
+}
+
+#[injectable(scope = "transient")]
+pub async fn keyed_native_config_provider(
 	#[inject] dependency: NativeDependency,
-) -> reinhardt_di::FactoryOutput<NativeConfigKey, NativeConfig> {
-	reinhardt_di::FactoryOutput::new(NativeConfig {
+) -> reinhardt_di::KeyedFactoryOutput<NativeConfigKey, NativeConfig> {
+	reinhardt_di::KeyedFactoryOutput::new(NativeConfig {
 		value: dependency.value,
 	})
 }
@@ -37,6 +42,7 @@ pub async fn native_config_provider(
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 pub async fn references_generated_stub() {
 	native_config_provider().await;
+	keyed_native_config_provider().await;
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]

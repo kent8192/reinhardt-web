@@ -43,19 +43,19 @@ fn create_test_migration(
 	name: &'static str,
 	operations: Vec<Operation>,
 ) -> Migration {
-	Migration {
-		app_label: app.to_string(),
-		name: name.to_string(),
+	Migration::from_parts(
+		name.to_string(),
+		app.to_string(),
 		operations,
-		dependencies: vec![],
-		replaces: vec![],
-		atomic: true,
-		initial: None,
-		state_only: false,
-		database_only: false,
-		swappable_dependencies: vec![],
-		optional_dependencies: vec![],
-	}
+		vec![],
+		vec![],
+		true,
+		None,
+		false,
+		false,
+		vec![],
+		vec![],
+	)
 }
 
 /// Create a migration with explicit dependencies for ordering tests
@@ -65,32 +65,34 @@ fn create_test_migration_with_deps(
 	operations: Vec<Operation>,
 	dependencies: Vec<(String, String)>,
 ) -> Migration {
-	Migration {
-		app_label: app.to_string(),
-		name: name.to_string(),
+	Migration::from_parts(
+		name.to_string(),
+		app.to_string(),
 		operations,
 		dependencies,
-		replaces: vec![],
-		atomic: true,
-		initial: None,
-		state_only: false,
-		database_only: false,
-		swappable_dependencies: vec![],
-		optional_dependencies: vec![],
-	}
+		vec![],
+		true,
+		None,
+		false,
+		false,
+		vec![],
+		vec![],
+	)
 }
 
 /// Create a basic column definition
 fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
-	ColumnDefinition {
-		name: name.to_string(),
-		type_definition: type_def,
-		not_null: false,
-		unique: false,
-		primary_key: false,
-		auto_increment: false,
-		default: None,
-	}
+	ColumnDefinition::from_parts(
+		name.to_string(),
+		type_def,
+		false,
+		false,
+		false,
+		false,
+		None,
+		None,
+		None,
+	)
 }
 
 // ============================================================================
@@ -119,15 +121,17 @@ async fn test_simultaneous_migrate(
 		"0001_concurrent",
 		vec![Operation::CreateTable {
 			name: table_name.to_string(),
-			columns: vec![ColumnDefinition {
-				name: "id".to_string(),
-				type_definition: FieldType::Custom("SERIAL".to_string()),
-				not_null: true,
-				unique: false,
-				primary_key: true,
-				auto_increment: false,
-				default: None,
-			}],
+			columns: vec![ColumnDefinition::from_parts(
+				"id".to_string(),
+				FieldType::Custom("SERIAL".to_string()),
+				true,
+				false,
+				true,
+				false,
+				None,
+				None,
+				None,
+			)],
 			constraints: vec![],
 			without_rowid: None,
 			interleave_in_parent: None,
@@ -358,7 +362,7 @@ async fn test_deadlock_detection(
 
 		conn.execute("COMMIT", vec![]).await?;
 
-		Ok::<_, reinhardt_db::backends::DatabaseError>(result.is_ok())
+		Ok::<_, reinhardt_core::exception::Error>(result.is_ok())
 	});
 
 	// Task 2: Lock B then try to lock A
@@ -387,7 +391,7 @@ async fn test_deadlock_detection(
 
 		conn.execute("COMMIT", vec![]).await?;
 
-		Ok::<_, reinhardt_db::backends::DatabaseError>(result.is_ok())
+		Ok::<_, reinhardt_core::exception::Error>(result.is_ok())
 	});
 
 	// Wait for both tasks
@@ -445,15 +449,17 @@ async fn test_migration_timeout(
 			},
 			Operation::CreateTable {
 				name: leak_str("timeout_table").to_string(),
-				columns: vec![ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: false,
-					default: None,
-				}],
+				columns: vec![ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Custom("SERIAL".to_string()),
+					true,
+					false,
+					true,
+					false,
+					None,
+					None,
+					None,
+				)],
 				constraints: vec![],
 				without_rowid: None,
 				interleave_in_parent: None,
@@ -518,15 +524,17 @@ async fn test_crash_recovery(
 		vec![Operation::CreateTable {
 			name: leak_str("crash_test_table").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: false,
-					default: None,
-				},
+				ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Custom("SERIAL".to_string()),
+					true,
+					false,
+					true,
+					false,
+					None,
+					None,
+					None,
+				),
 				create_basic_column("data", FieldType::Text),
 			],
 			constraints: vec![],

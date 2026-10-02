@@ -409,7 +409,9 @@ impl CacheMiddleware {
 
 	/// Check if a response is safe to store in a shared cache.
 	fn is_shareable_response(&self, response: &Response) -> bool {
-		// A streaming producer cannot be replayed from the empty compatibility buffer.
+		// File and streaming sources stay outside the legacy buffered cache.
+		// Caching `response.body` here would store an empty body and silently
+		// replace the source with invalid content on the next hit.
 		if response.is_streaming() {
 			return false;
 		}

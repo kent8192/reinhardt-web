@@ -7,6 +7,136 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.17...reinhardt-middleware@v0.4.0-alpha.18) - 2026-09-27
+
+### Fixed
+
+- *(http)* serve streaming bodies through native endpoints
+- *(middleware)* honor existence wildcards for streams
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.15...reinhardt-middleware@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(staticfiles)* unify pages and collected asset publication
+
+### Fixed
+
+- *(middleware)* preserve existing representation etags
+- *(middleware)* log owned file response lengths
+- *(middleware)* retain representation metadata on conditional responses
+- *(staticfiles)* address publication and browser review findings
+
+### Maintenance
+
+- auto-fix fmt and clippy
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.14...reinhardt-middleware@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+### Security
+
+- *(middleware)* prevent private cache replay
+
+### Testing
+
+- *(middleware)* cover authenticated cache bypass order
+
+## [0.4.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.12...reinhardt-middleware@v0.4.0-alpha.13) - 2026-09-02
+
+### Security
+
+- *(middleware)* prevent private cache replay
+
+### Testing
+
+- *(middleware)* cover authenticated cache bypass order
+
+## [0.4.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.11...reinhardt-middleware@v0.4.0-alpha.12) - 2026-08-30
+
+### Added
+
+- *(middleware)* bridge atomic sessions to OAuth state
+- *(middleware)* consume Redis OAuth state atomically
+
+### Documentation
+
+- document contextual OAuth state features
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.8...reinhardt-middleware@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define request surface boundaries
+- *(security)* qualify remaining policy boundaries
+- *(security)* qualify remaining policy boundaries
+- *(security)* document remaining trust boundaries
+- *(security)* document secret and csrf boundaries
+- *(security)* qualify remaining policy boundaries
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.6...reinhardt-middleware@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Fixed
+
+- fix!(auth): require validated account state for sessions
+- *(auth)* validate tutorial session accounts
+- *(auth)* resolve tutorial sessions from shared store
+- *(auth)* validate session accounts before authorization
+- *(auth)* complete validated tutorial session setup
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Reverted
+
+- *(auth)* revert session authentication changes from [[#5905](https://github.com/kent8192/reinhardt-web/issues/5905)](https://github.com/kent8192/reinhardt-web/issues/5905)
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.5...reinhardt-middleware@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.3.2...reinhardt-middleware@v0.4.0-alpha.1) - 2026-07-21
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge main into develop/0.4.0
 ## [0.3.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.3.14...reinhardt-middleware@v0.3.15) - 2026-09-01
 
 ### Security

@@ -173,7 +173,7 @@ where
 				.await
 				.map_err(|e| Error::Internal(format!("Failed to resolve DB: {:?}", e)))?;
 
-			validators.validate_async(conn.inner(), &data, None).await?;
+			validators.validate_async(&conn, &data, None).await?;
 		}
 
 		// Create via QuerySet

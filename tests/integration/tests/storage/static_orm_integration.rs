@@ -37,9 +37,12 @@
 //! ❌ Static file serving (covered by HTTP server tests)
 //! ❌ Multi-CDN failover (requires external CDN infrastructure)
 
-use reinhardt_db::orm::DatabaseConnection;
-use reinhardt_utils::storage::{LocalStorage, Storage};
+use reinhardt_db::{
+	backends::DatabaseConnection as BackendsConnection,
+	orm::{DatabaseConnection, DatabaseConnectionLease},
+};
 use reinhardt_test::fixtures::testcontainers::postgres_container;
+use reinhardt_utils::storage::{LocalStorage, Storage};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -103,14 +106,14 @@ fn compute_hash(content: &[u8]) -> String {
 /// Static file manager with database tracking
 struct StaticFileManager {
 	storage: LocalStorage,
-	connection: Arc<DatabaseConnection>,
+	connection: DatabaseConnection,
 	cdn_base_url: Option<String>,
 }
 
 impl StaticFileManager {
 	fn new(
 		storage: LocalStorage,
-		connection: Arc<DatabaseConnection>,
+		connection: DatabaseConnection,
 		cdn_base_url: Option<String>,
 	) -> Self {
 		Self {
@@ -407,13 +410,19 @@ fn temp_dir() -> TempDir {
 #[fixture]
 async fn postgres_fixture(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
-) -> (ContainerAsync<GenericImage>, Arc<DatabaseConnection>) {
+) -> (
+	ContainerAsync<GenericImage>,
+	DatabaseConnectionLease,
+	DatabaseConnection,
+) {
 	let (container, _pool, _port, database_url) = postgres_container.await;
 
 	// Create connection
-	let conn = DatabaseConnection::connect(&database_url)
+	let owner = BackendsConnection::connect(&database_url)
 		.await
 		.expect("Failed to connect to database");
+	let lease = DatabaseConnectionLease::register(owner).expect("Failed to register database");
+	let conn = lease.handle();
 
 	// Create static_file_metadata table
 	conn.execute(
@@ -432,22 +441,31 @@ async fn postgres_fixture(
 	.await
 	.expect("Failed to create static_file_metadata table");
 
-	(container, Arc::new(conn))
+	(container, lease, conn)
 }
 
 #[fixture]
 async fn static_manager(
 	temp_dir: TempDir,
-	#[future] postgres_fixture: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
-) -> (TempDir, ContainerAsync<GenericImage>, StaticFileManager) {
-	let (_container, conn) = postgres_fixture.await;
+	#[future] postgres_fixture: (
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	),
+) -> (
+	TempDir,
+	ContainerAsync<GenericImage>,
+	DatabaseConnectionLease,
+	StaticFileManager,
+) {
+	let (_container, lease, conn) = postgres_fixture.await;
 
 	let storage = LocalStorage::new(temp_dir.path(), "http://localhost/static");
 	storage.ensure_base_dir().await.unwrap();
 
 	let manager = StaticFileManager::new(storage, conn, None);
 
-	(temp_dir, _container, manager)
+	(temp_dir, _container, lease, manager)
 }
 
 // ============ Metadata Storage Tests ============
@@ -456,9 +474,14 @@ async fn static_manager(
 #[rstest]
 #[tokio::test]
 async fn test_static_file_metadata_storage(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let path = "css/main.css";
 	let content = b"body { margin: 0; }";
@@ -477,9 +500,14 @@ async fn test_static_file_metadata_storage(
 #[rstest]
 #[tokio::test]
 async fn test_static_file_metadata_retrieval(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let path = "js/app.js";
 	let content = b"console.log('Hello');";
@@ -500,9 +528,14 @@ async fn test_static_file_metadata_retrieval(
 #[rstest]
 #[tokio::test]
 async fn test_static_file_versioning(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let path = "css/style.css";
 	let version1_content = b"body { color: red; }";
@@ -525,9 +558,14 @@ async fn test_static_file_versioning(
 #[rstest]
 #[tokio::test]
 async fn test_static_file_hash_updates(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let path = "data.json";
 	let original = b"{\"key\": \"value1\"}";
@@ -549,9 +587,14 @@ async fn test_static_file_hash_updates(
 #[rstest]
 #[tokio::test]
 async fn test_static_file_size_tracking(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let files = vec![
 		("small.txt", b"A" as &[u8]),
@@ -572,9 +615,13 @@ async fn test_static_file_size_tracking(
 #[tokio::test]
 async fn test_cdn_url_generation(
 	temp_dir: TempDir,
-	#[future] postgres_fixture: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+	#[future] postgres_fixture: (
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	),
 ) {
-	let (_container, conn) = postgres_fixture.await;
+	let (_container, _lease, conn) = postgres_fixture.await;
 
 	let storage = LocalStorage::new(temp_dir.path(), "http://localhost/static");
 	storage.ensure_base_dir().await.unwrap();
@@ -600,9 +647,13 @@ async fn test_cdn_url_generation(
 #[tokio::test]
 async fn test_cdn_url_persistence(
 	temp_dir: TempDir,
-	#[future] postgres_fixture: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+	#[future] postgres_fixture: (
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	),
 ) {
-	let (_container, conn) = postgres_fixture.await;
+	let (_container, _lease, conn) = postgres_fixture.await;
 
 	let storage = LocalStorage::new(temp_dir.path(), "http://localhost/static");
 	storage.ensure_base_dir().await.unwrap();
@@ -629,9 +680,13 @@ async fn test_cdn_url_persistence(
 #[tokio::test]
 async fn test_multiple_cdn_configurations(
 	temp_dir: TempDir,
-	#[future] postgres_fixture: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+	#[future] postgres_fixture: (
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	),
 ) {
-	let (_container, conn) = postgres_fixture.await;
+	let (_container, _lease, conn) = postgres_fixture.await;
 
 	let storage = LocalStorage::new(temp_dir.path(), "http://localhost/static");
 	storage.ensure_base_dir().await.unwrap();
@@ -667,9 +722,14 @@ async fn test_multiple_cdn_configurations(
 #[rstest]
 #[tokio::test]
 async fn test_static_file_integrity_check(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let path = "verify/data.bin";
 	let content = b"Important data that must not be corrupted";
@@ -686,9 +746,14 @@ async fn test_static_file_integrity_check(
 #[rstest]
 #[tokio::test]
 async fn test_static_file_integrity_corruption_detection(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let path = "corrupt/file.txt";
 	let original_content = b"Original content";
@@ -729,9 +794,14 @@ async fn test_hash_computation_consistency() {
 #[rstest]
 #[tokio::test]
 async fn test_orphaned_file_detection(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	// Save a file
 	let path = "orphan/test.txt";
@@ -750,9 +820,14 @@ async fn test_orphaned_file_detection(
 #[rstest]
 #[tokio::test]
 async fn test_orphaned_file_cleanup(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	// Save files
 	let files = vec!["cleanup/file1.txt", "cleanup/file2.txt"];
@@ -778,9 +853,14 @@ async fn test_orphaned_file_cleanup(
 #[rstest]
 #[tokio::test]
 async fn test_complete_file_deletion(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let path = "delete/complete.txt";
 	let content = b"Delete me completely";
@@ -804,9 +884,14 @@ async fn test_complete_file_deletion(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_file_tracking(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	// Save multiple files
 	let file_count = 10;
@@ -828,9 +913,14 @@ async fn test_bulk_file_tracking(
 #[rstest]
 #[tokio::test]
 async fn test_timestamp_tracking(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let path = "timestamp/test.txt";
 
@@ -858,9 +948,14 @@ async fn test_timestamp_tracking(
 #[rstest]
 #[tokio::test]
 async fn test_nested_path_handling(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let nested_path = "assets/images/icons/user-avatar.png";
 	let content = b"PNG avatar image";
@@ -880,9 +975,14 @@ async fn test_nested_path_handling(
 #[rstest]
 #[tokio::test]
 async fn test_version_history_tracking(
-	#[future] static_manager: (TempDir, ContainerAsync<GenericImage>, StaticFileManager),
+	#[future] static_manager: (
+		TempDir,
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		StaticFileManager,
+	),
 ) {
-	let (_temp_dir, _container, manager) = static_manager.await;
+	let (_temp_dir, _container, _lease, manager) = static_manager.await;
 
 	let path = "versioned/changelog.md";
 	let versions = vec![

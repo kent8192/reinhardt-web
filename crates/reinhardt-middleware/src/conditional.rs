@@ -181,6 +181,16 @@ impl Middleware for ConditionalGetMiddleware {
 			return Ok(response);
 		}
 
+		// The existence wildcard does not require a representation ETag.
+		if response.is_streaming()
+			&& if_none_match
+				.as_ref()
+				.and_then(|value| value.to_str().ok())
+				.is_some_and(|value| value.trim() == "*")
+		{
+			return Ok(not_modified_response(response));
+		}
+
 		// Generate ETag if not present and configured to do so
 		let etag = if self.generate_etag
 			&& !response.is_streaming()
@@ -216,20 +226,7 @@ impl Middleware for ConditionalGetMiddleware {
 		{
 			let inm_list = self.parse_if_none_match(inm_str);
 			if self.etag_matches(etag_value, &inm_list) {
-				// Return 304 Not Modified
-				let mut not_modified = Response::new(StatusCode::NOT_MODIFIED);
-
-				// Copy relevant headers
-				if let Some(etag_header) = response.headers.get(ETAG) {
-					not_modified.headers.insert(ETAG, etag_header.clone());
-				}
-				if let Some(lm_header) = response.headers.get(LAST_MODIFIED) {
-					not_modified
-						.headers
-						.insert(LAST_MODIFIED, lm_header.clone());
-				}
-
-				return Ok(not_modified);
+				return Ok(not_modified_response(response));
 			}
 		}
 
@@ -240,20 +237,7 @@ impl Middleware for ConditionalGetMiddleware {
 		{
 			// If resource hasn't been modified since the given date
 			if lm <= ims {
-				// Return 304 Not Modified
-				let mut not_modified = Response::new(StatusCode::NOT_MODIFIED);
-
-				// Copy relevant headers
-				if let Some(etag_header) = response.headers.get(ETAG) {
-					not_modified.headers.insert(ETAG, etag_header.clone());
-				}
-				if let Some(lm_header) = response.headers.get(LAST_MODIFIED) {
-					not_modified
-						.headers
-						.insert(LAST_MODIFIED, lm_header.clone());
-				}
-
-				return Ok(not_modified);
+				return Ok(not_modified_response(response));
 			}
 		}
 
@@ -284,6 +268,15 @@ impl Middleware for ConditionalGetMiddleware {
 
 		Ok(response)
 	}
+}
+
+fn not_modified_response(response: Response) -> Response {
+	// Preserve cache and representation metadata, but release both body backends.
+	let mut response = response.with_body(Bytes::new());
+	response.status = StatusCode::NOT_MODIFIED;
+	response.headers.remove(hyper::header::CONTENT_LENGTH);
+	response.headers.remove(hyper::header::CONTENT_RANGE);
+	response
 }
 
 #[cfg(test)]
@@ -552,5 +545,181 @@ mod tests {
 
 		// ETag should not be generated when disabled
 		assert!(!response.headers.contains_key(ETAG));
+	}
+
+	struct RepresentationHandler {
+		file: Option<std::fs::File>,
+	}
+
+	#[async_trait]
+	impl Handler for RepresentationHandler {
+		async fn handle(&self, request: Request) -> Result<Response> {
+			let response = Response::ok()
+				.with_header("etag", "\"published\"")
+				.with_header("last-modified", "Wed, 21 Oct 2015 07:28:00 GMT")
+				.with_header("cache-control", "public, max-age=31536000, immutable")
+				.with_header("vary", "Accept-Encoding")
+				.with_header("content-encoding", "gzip")
+				.with_header("content-length", "8")
+				.with_header("content-range", "bytes 0-7/8");
+			if request.method == Method::HEAD {
+				Ok(response)
+			} else if let Some(file) = &self.file {
+				Ok(response
+					.with_file_body(file.try_clone().unwrap(), 0, 8)
+					.unwrap())
+			} else {
+				Ok(response.with_body(Bytes::from_static(b"asset-v2")))
+			}
+		}
+	}
+
+	#[rstest::rstest]
+	#[case(IF_NONE_MATCH, "\"published\"", Method::GET, true)]
+	#[case(IF_MODIFIED_SINCE, "Wed, 21 Oct 2015 07:28:00 GMT", Method::GET, true)]
+	#[case(IF_NONE_MATCH, "\"published\"", Method::GET, false)]
+	#[case(IF_MODIFIED_SINCE, "Wed, 21 Oct 2015 07:28:00 GMT", Method::GET, false)]
+	#[case(IF_NONE_MATCH, "\"published\"", Method::HEAD, false)]
+	#[case(
+		IF_MODIFIED_SINCE,
+		"Wed, 21 Oct 2015 07:28:00 GMT",
+		Method::HEAD,
+		false
+	)]
+	#[tokio::test]
+	async fn conditional_responses_preserve_representation_headers(
+		#[case] condition: hyper::header::HeaderName,
+		#[case] value: &str,
+		#[case] method: Method,
+		#[case] file_backed: bool,
+	) {
+		// Arrange
+		let file = tempfile::NamedTempFile::new().unwrap();
+		std::fs::write(file.path(), b"asset-v2").unwrap();
+		let handler = Arc::new(RepresentationHandler {
+			file: file_backed.then(|| file.reopen().unwrap()),
+		});
+		let request = Request::builder()
+			.uri("/asset")
+			.method(method)
+			.header(condition, value)
+			.build()
+			.unwrap();
+
+		// Act
+		let response = ConditionalGetMiddleware::new()
+			.process(request, handler)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::NOT_MODIFIED);
+		assert!(response.body.is_empty());
+		assert!(response.file_body().is_none());
+		assert_eq!(response.headers[ETAG], "\"published\"");
+		assert_eq!(
+			response.headers[LAST_MODIFIED],
+			"Wed, 21 Oct 2015 07:28:00 GMT"
+		);
+		assert_eq!(response.headers[hyper::header::VARY], "Accept-Encoding");
+		assert_eq!(response.headers[hyper::header::CONTENT_ENCODING], "gzip");
+		assert_eq!(
+			response.headers[hyper::header::CACHE_CONTROL],
+			"public, max-age=31536000, immutable"
+		);
+		assert!(!response.headers.contains_key(hyper::header::CONTENT_LENGTH));
+		assert!(!response.headers.contains_key(hyper::header::CONTENT_RANGE));
+	}
+
+	#[rstest::rstest]
+	#[case(true)]
+	#[case(false)]
+	#[tokio::test]
+	async fn nonmatching_condition_preserves_the_response_body(#[case] file_backed: bool) {
+		// Arrange
+		let file = tempfile::NamedTempFile::new().unwrap();
+		std::fs::write(file.path(), b"asset-v2").unwrap();
+		let handler = Arc::new(RepresentationHandler {
+			file: file_backed.then(|| file.reopen().unwrap()),
+		});
+		let request = Request::builder()
+			.uri("/asset")
+			.header(IF_NONE_MATCH, "\"different\"")
+			.build()
+			.unwrap();
+
+		// Act
+		let response = ConditionalGetMiddleware::new()
+			.process(request, handler)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.headers[hyper::header::CONTENT_LENGTH], "8");
+		assert_eq!(response.file_body().is_some(), file_backed);
+		if !file_backed {
+			assert_eq!(response.body.as_ref(), b"asset-v2");
+		}
+	}
+	struct StreamingHandler {
+		polls: Arc<std::sync::atomic::AtomicUsize>,
+	}
+
+	#[async_trait]
+	impl Handler for StreamingHandler {
+		async fn handle(&self, _: Request) -> Result<Response> {
+			let polls = self.polls.clone();
+			Ok(Response::ok()
+				.with_stream(futures::stream::poll_fn(move |_| {
+					polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+					std::task::Poll::Ready(Some(Ok(Bytes::from_static(b"chunk"))))
+				}))
+				.with_header("cache-control", "public, max-age=60")
+				.with_header("content-range", "bytes 0-4/5"))
+		}
+	}
+
+	#[rstest::rstest]
+	#[case(Method::GET, "*", StatusCode::NOT_MODIFIED, false)]
+	#[case(Method::HEAD, " * ", StatusCode::NOT_MODIFIED, false)]
+	#[case(Method::GET, "\"other\"", StatusCode::OK, true)]
+	#[case(Method::POST, "*", StatusCode::OK, true)]
+	#[tokio::test]
+	async fn streaming_conditionals_do_not_require_a_generated_etag(
+		#[case] method: Method,
+		#[case] if_none_match: &str,
+		#[case] expected_status: StatusCode,
+		#[case] expected_streaming: bool,
+	) {
+		// Arrange
+		let polls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+		let handler = Arc::new(StreamingHandler {
+			polls: polls.clone(),
+		});
+		let request = Request::builder()
+			.method(method)
+			.uri("/stream")
+			.header("if-none-match", if_none_match)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = ConditionalGetMiddleware::new()
+			.process(request, handler)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, expected_status);
+		assert_eq!(response.is_streaming(), expected_streaming);
+		assert_eq!(response.headers["cache-control"], "public, max-age=60");
+		assert!(!response.headers.contains_key("etag"));
+		assert_eq!(
+			response.headers.contains_key("content-range"),
+			expected_streaming
+		);
+		assert_eq!(polls.load(std::sync::atomic::Ordering::SeqCst), 0);
 	}
 }

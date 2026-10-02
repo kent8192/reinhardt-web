@@ -15,6 +15,9 @@
 //!   - Required for server-side event handlers
 //!   - Slightly higher overhead due to mutex locking
 
+use std::any::Any;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -23,8 +26,105 @@ use crate::reactive::runtime::{NodeId, with_runtime};
 
 /// A setter function for updating state.
 ///
-/// This is a cloneable function wrapper that updates the associated Signal.
+/// This is a reference-counted, cloneable function wrapper that updates the associated Signal.
+/// Import [`SetStateExt`] to use previous-value updates with `set.update(...)`.
 pub type SetState<T> = Rc<dyn Fn(T)>;
+
+thread_local! {
+	static SET_STATE_SIGNALS: RefCell<HashMap<usize, Box<dyn Any>>> = RefCell::new(HashMap::new());
+}
+
+struct SetStateRegistration {
+	key: usize,
+}
+
+impl Drop for SetStateRegistration {
+	fn drop(&mut self) {
+		let _ = SET_STATE_SIGNALS.try_with(|signals| {
+			signals.borrow_mut().remove(&self.key);
+		});
+	}
+}
+
+struct RegisteredSetState<T: 'static> {
+	signal: Signal<T>,
+	_registration: Rc<RefCell<Option<SetStateRegistration>>>,
+}
+
+impl<T: 'static> RegisteredSetState<T> {
+	fn set(&self, value: T) {
+		let _ = self.signal.try_set(value);
+	}
+}
+
+/// Extension methods for setters returned by [`use_state`].
+pub trait SetStateExt<T: Clone + 'static> {
+	/// Replace the state value.
+	///
+	/// This is equivalent to calling the setter as a function.
+	fn set(&self, value: T);
+
+	/// Derive and store the next state value from the current value.
+	///
+	/// The updater receives the current value by shared reference and returns
+	/// the replacement value. The underlying signal notifies dependents once.
+	///
+	/// # Example
+	///
+	/// ```no_run
+	/// use reinhardt_pages::reactive::hooks::{SetStateExt, use_state};
+	///
+	/// let (count, set_count) = use_state(0);
+	/// set_count.update(|current| current + 1);
+	/// ```
+	fn update<F>(&self, f: F)
+	where
+		F: FnOnce(&T) -> T;
+}
+
+impl<T: Clone + 'static> SetStateExt<T> for SetState<T> {
+	fn set(&self, value: T) {
+		self.as_ref()(value);
+	}
+
+	fn update<F>(&self, f: F)
+	where
+		F: FnOnce(&T) -> T,
+	{
+		let signal = registered_set_state_signal(self).unwrap_or_else(|| {
+			panic!("SetStateExt::update is only available on setters returned by use_state")
+		});
+		let Ok(current) = signal.try_get_untracked() else {
+			return;
+		};
+		let _ = signal.try_set(f(&current));
+	}
+}
+
+fn set_state_key<T>(setter: &SetState<T>) -> usize {
+	Rc::as_ptr(setter) as *const () as usize
+}
+
+fn register_set_state_signal<T: Clone + 'static>(
+	setter: &SetState<T>,
+	signal: Signal<T>,
+) -> SetStateRegistration {
+	let key = set_state_key(setter);
+	SET_STATE_SIGNALS.with(|signals| {
+		signals.borrow_mut().insert(key, Box::new(signal));
+	});
+	SetStateRegistration { key }
+}
+
+fn registered_set_state_signal<T: Clone + 'static>(setter: &SetState<T>) -> Option<Signal<T>> {
+	SET_STATE_SIGNALS.with(|signals| {
+		signals
+			.borrow()
+			.get(&set_state_key(setter))
+			.and_then(|signal| signal.downcast_ref::<Signal<T>>())
+			.copied()
+	})
+}
 
 /// A dispatch function for reducer actions.
 ///
@@ -49,7 +149,7 @@ pub type Dispatch<A> = Rc<dyn Fn(A)>;
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_pages::reactive::hooks::use_state;
+/// use reinhardt_pages::reactive::hooks::{SetStateExt, use_state};
 ///
 /// let (count, set_count) = use_state(0);
 ///
@@ -58,13 +158,21 @@ pub type Dispatch<A> = Rc<dyn Fn(A)>;
 ///
 /// // Update the value
 /// set_count(current + 1);
+///
+/// // Or derive the next value from the current one
+/// set_count.update(|current| current + 1);
 /// ```
 pub fn use_state<T: Clone + 'static>(initial: T) -> (Signal<T>, SetState<T>) {
 	let signal = Signal::new(initial);
+	let registration = Rc::new(RefCell::new(None));
 	let setter: SetState<T> = {
-		let signal = signal.clone();
-		Rc::new(move |value: T| signal.set(value))
+		let state = RegisteredSetState {
+			signal,
+			_registration: Rc::clone(&registration),
+		};
+		Rc::new(move |value| state.set(value))
 	};
+	*registration.borrow_mut() = Some(register_set_state_signal(&setter, signal));
 	(signal, setter)
 }
 
@@ -132,12 +240,13 @@ where
 {
 	let state = Signal::new(initial);
 	let dispatch: Dispatch<A> = {
-		let state = state.clone();
 		let reducer = Rc::new(reducer);
 		Rc::new(move |action: A| {
-			let current = state.get();
+			let Ok(current) = state.try_get_untracked() else {
+				return;
+			};
 			let new_state = reducer(&current, action);
-			state.set(new_state);
+			let _ = state.try_set(new_state);
 		})
 	};
 	(state, dispatch)
@@ -352,7 +461,7 @@ impl<T: 'static> SharedSignal<T> {
 /// // Update the value
 /// set_count(current + 1);
 ///
-/// // Clone and use in event handler
+/// // The setter is reference-counted rather than Copy, so clone it for the handler.
 /// let handler = {
 ///     let set_count = set_count.clone();
 ///     move |_: ()| set_count(42)
@@ -376,132 +485,218 @@ mod tests {
 
 	#[test]
 	fn test_use_state_basic() {
-		let (count, set_count) = use_state(0);
-		assert_eq!(count.get(), 0);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (count, set_count) = use_state(0);
+			assert_eq!(count.get(), 0);
 
-		set_count(5);
-		assert_eq!(count.get(), 5);
+			set_count(5);
+			assert_eq!(count.get(), 5);
 
-		set_count(10);
-		assert_eq!(count.get(), 10);
+			set_count(10);
+			assert_eq!(count.get(), 10);
+		});
 	}
 
 	#[test]
 	fn test_use_state_with_string() {
-		let (name, set_name) = use_state("Alice".to_string());
-		assert_eq!(name.get(), "Alice");
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (name, set_name) = use_state("Alice".to_string());
+			assert_eq!(name.get(), "Alice");
 
-		set_name("Bob".to_string());
-		assert_eq!(name.get(), "Bob");
+			set_name("Bob".to_string());
+			assert_eq!(name.get(), "Bob");
+		});
 	}
 
 	#[test]
 	fn test_use_state_setter_cloneable() {
-		let (count, set_count) = use_state(0);
-		let set_count2 = set_count.clone();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (count, set_count) = use_state(0);
+			let set_count2 = set_count.clone();
 
-		set_count(1);
-		assert_eq!(count.get(), 1);
+			set_count(1);
+			assert_eq!(count.get(), 1);
 
-		set_count2(2);
-		assert_eq!(count.get(), 2);
+			set_count2(2);
+			assert_eq!(count.get(), 2);
+		});
+	}
+
+	#[test]
+	fn test_use_state_setter_set_method() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (count, set_count) = use_state(0);
+
+			set_count.set(7);
+
+			assert_eq!(count.get(), 7);
+		});
+	}
+
+	#[test]
+	fn test_use_state_setter_functional_update() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (count, set_count) = use_state(0);
+
+			set_count.update(|current| current + 1);
+			set_count.update(|current| current * 2);
+
+			assert_eq!(count.get(), 2);
+		});
+	}
+
+	#[test]
+	fn test_use_state_setter_functional_update_uses_latest_value() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (name, set_name) = use_state("Alice".to_string());
+			let set_name2 = set_name.clone();
+
+			set_name("Bob".to_string());
+			set_name2.update(|current| format!("{current} Smith"));
+
+			assert_eq!(name.get(), "Bob Smith");
+		});
+	}
+
+	#[test]
+	fn test_use_state_setter_functional_update_allows_reading_state() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (count, set_count) = use_state(1);
+			let count_for_update = count;
+
+			set_count.update(|current| current + count_for_update.get());
+
+			assert_eq!(count.get(), 2);
+		});
+	}
+
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn stale_set_state_update_is_a_no_op() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let setter = scope.enter(|| {
+			let (_, setter) = use_state(1_i32);
+			setter
+		});
+
+		scope.dispose();
+
+		setter.update(|value| value + 1);
 	}
 
 	#[test]
 	fn test_use_reducer_basic() {
-		#[derive(Clone, Debug, PartialEq)]
-		struct State {
-			count: i32,
-		}
-
-		enum Action {
-			Increment,
-			Decrement,
-		}
-
-		fn reducer(state: &State, action: Action) -> State {
-			match action {
-				Action::Increment => State {
-					count: state.count + 1,
-				},
-				Action::Decrement => State {
-					count: state.count - 1,
-				},
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			#[derive(Clone, Debug, PartialEq)]
+			struct State {
+				count: i32,
 			}
-		}
 
-		let (state, dispatch) = use_reducer(reducer, State { count: 0 });
-		assert_eq!(state.get().count, 0);
+			enum Action {
+				Increment,
+				Decrement,
+			}
 
-		dispatch(Action::Increment);
-		assert_eq!(state.get().count, 1);
+			fn reducer(state: &State, action: Action) -> State {
+				match action {
+					Action::Increment => State {
+						count: state.count + 1,
+					},
+					Action::Decrement => State {
+						count: state.count - 1,
+					},
+				}
+			}
 
-		dispatch(Action::Increment);
-		assert_eq!(state.get().count, 2);
+			let (state, dispatch) = use_reducer(reducer, State { count: 0 });
+			assert_eq!(state.get().count, 0);
 
-		dispatch(Action::Decrement);
-		assert_eq!(state.get().count, 1);
+			dispatch(Action::Increment);
+			assert_eq!(state.get().count, 1);
+
+			dispatch(Action::Increment);
+			assert_eq!(state.get().count, 2);
+
+			dispatch(Action::Decrement);
+			assert_eq!(state.get().count, 1);
+		});
+	}
+
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn stale_reducer_dispatch_is_a_no_op() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let dispatch = scope.enter(|| {
+			let (_, dispatch) = use_reducer(|value: &i32, action: i32| value + action, 1_i32);
+			dispatch
+		});
+
+		scope.dispose();
+
+		dispatch(1);
 	}
 
 	#[test]
 	fn test_use_reducer_complex_state() {
-		#[derive(Clone, Debug, PartialEq)]
-		struct TodoState {
-			items: Vec<String>,
-			filter: String,
-		}
-
-		enum TodoAction {
-			Add(String),
-			Remove(usize),
-			SetFilter(String),
-		}
-
-		fn reducer(state: &TodoState, action: TodoAction) -> TodoState {
-			match action {
-				TodoAction::Add(item) => {
-					let mut items = state.items.clone();
-					items.push(item);
-					TodoState {
-						items,
-						filter: state.filter.clone(),
-					}
-				}
-				TodoAction::Remove(index) => {
-					let mut items = state.items.clone();
-					if index < items.len() {
-						items.remove(index);
-					}
-					TodoState {
-						items,
-						filter: state.filter.clone(),
-					}
-				}
-				TodoAction::SetFilter(filter) => TodoState {
-					items: state.items.clone(),
-					filter,
-				},
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			#[derive(Clone, Debug, PartialEq)]
+			struct TodoState {
+				items: Vec<String>,
+				filter: String,
 			}
-		}
 
-		let (state, dispatch) = use_reducer(
-			reducer,
-			TodoState {
-				items: vec![],
-				filter: "all".to_string(),
-			},
-		);
+			enum TodoAction {
+				Add(String),
+				Remove(usize),
+				SetFilter(String),
+			}
 
-		dispatch(TodoAction::Add("Task 1".to_string()));
-		dispatch(TodoAction::Add("Task 2".to_string()));
-		assert_eq!(state.get().items.len(), 2);
+			fn reducer(state: &TodoState, action: TodoAction) -> TodoState {
+				match action {
+					TodoAction::Add(item) => {
+						let mut items = state.items.clone();
+						items.push(item);
+						TodoState {
+							items,
+							filter: state.filter.clone(),
+						}
+					}
+					TodoAction::Remove(index) => {
+						let mut items = state.items.clone();
+						if index < items.len() {
+							items.remove(index);
+						}
+						TodoState {
+							items,
+							filter: state.filter.clone(),
+						}
+					}
+					TodoAction::SetFilter(filter) => TodoState {
+						items: state.items.clone(),
+						filter,
+					},
+				}
+			}
 
-		dispatch(TodoAction::Remove(0));
-		assert_eq!(state.get().items.len(), 1);
-		assert_eq!(state.get().items[0], "Task 2");
+			let (state, dispatch) = use_reducer(
+				reducer,
+				TodoState {
+					items: vec![],
+					filter: "all".to_string(),
+				},
+			);
 
-		dispatch(TodoAction::SetFilter("completed".to_string()));
-		assert_eq!(state.get().filter, "completed");
+			dispatch(TodoAction::Add("Task 1".to_string()));
+			dispatch(TodoAction::Add("Task 2".to_string()));
+			assert_eq!(state.get().items.len(), 2);
+
+			dispatch(TodoAction::Remove(0));
+			assert_eq!(state.get().items.len(), 1);
+			assert_eq!(state.get().items[0], "Task 2");
+
+			dispatch(TodoAction::SetFilter("completed".to_string()));
+			assert_eq!(state.get().filter, "completed");
+		});
 	}
 
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

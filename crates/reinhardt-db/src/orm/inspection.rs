@@ -4,6 +4,7 @@
 //! field definitions, relationships, indexes, and constraints at runtime.
 
 use super::constraints::{CheckConstraint, Constraint, ForeignKeyConstraint, UniqueConstraint};
+use super::field_codec::{DatabaseStorageKind, FieldDomain};
 use super::fields::{Field, FieldKwarg};
 use super::indexes::Index;
 use super::relationship::RelationshipType;
@@ -18,6 +19,10 @@ pub struct FieldInfo {
 	pub name: String,
 	/// Field type path (e.g., "reinhardt.orm.models.CharField")
 	pub field_type: String,
+	/// Physical database storage used by this field, when known.
+	pub storage_kind: Option<DatabaseStorageKind>,
+	/// Structured value constraints associated with this field.
+	pub domain: Option<FieldDomain>,
 	/// Is this field nullable?
 	pub nullable: bool,
 	/// Is this field the primary key?
@@ -38,35 +43,6 @@ pub struct FieldInfo {
 	pub choices: Option<Vec<(String, String)>>,
 	/// Additional field-specific attributes
 	pub attributes: HashMap<String, FieldKwarg>,
-}
-
-/// Return the generated field metadata path for a relationship primary-key type.
-#[doc(hidden)]
-pub fn database_field_type_path_for<T>() -> &'static str {
-	let type_name = std::any::type_name::<T>();
-	match type_name {
-		"i8" | "i16" | "i32" | "isize" | "u8" | "u16" | "u32" | "usize" => {
-			"reinhardt.orm.models.IntegerField"
-		}
-		"i64" | "i128" | "u64" | "u128" => "reinhardt.orm.models.BigIntegerField",
-		"f32" | "f64" => "reinhardt.orm.models.FloatField",
-		"bool" => "reinhardt.orm.models.BooleanField",
-		"uuid::Uuid" | "uuid::uuid::Uuid" => "reinhardt.orm.models.UuidField",
-		name if name.contains("chrono::DateTime")
-			|| name.contains("chrono::datetime::DateTime") =>
-		{
-			"reinhardt.orm.models.DateTimeField"
-		}
-		name if name.contains("NaiveDateTime") => "reinhardt.orm.models.DateTimeField",
-		name if name.contains("NaiveDate") => "reinhardt.orm.models.DateField",
-		name if name.contains("NaiveTime") => "reinhardt.orm.models.TimeField",
-		name if name.contains("rust_decimal::Decimal")
-			|| name.contains("rust_decimal::decimal::Decimal") =>
-		{
-			"reinhardt.orm.models.DecimalField"
-		}
-		_ => "reinhardt.orm.models.CharField",
-	}
 }
 
 impl FieldInfo {
@@ -106,6 +82,8 @@ impl FieldInfo {
 		Self {
 			name: deconstruction.name.unwrap_or_else(|| "unknown".to_string()),
 			field_type: deconstruction.path,
+			storage_kind: None,
+			domain: None,
 			nullable: deconstruction
 				.kwargs
 				.get("null")
@@ -193,6 +171,62 @@ impl FieldInfo {
 	/// ```
 	pub fn has_choices(&self) -> bool {
 		self.choices.is_some()
+	}
+}
+
+/// Returns the inspection field path for a typed database storage kind.
+#[doc(hidden)]
+pub fn database_field_type_path(storage_kind: DatabaseStorageKind) -> &'static str {
+	match storage_kind {
+		DatabaseStorageKind::Bool => "reinhardt.orm.models.BooleanField",
+		DatabaseStorageKind::I32 => "reinhardt.orm.models.IntegerField",
+		DatabaseStorageKind::I64 => "reinhardt.orm.models.BigIntegerField",
+		DatabaseStorageKind::F32 | DatabaseStorageKind::F64 => "reinhardt.orm.models.FloatField",
+		DatabaseStorageKind::Decimal => "reinhardt.orm.models.DecimalField",
+		DatabaseStorageKind::String => "reinhardt.orm.models.CharField",
+		DatabaseStorageKind::Bytes => "reinhardt.orm.models.BinaryField",
+		DatabaseStorageKind::Json => "reinhardt.orm.models.JsonField",
+		#[cfg(feature = "pgvector")]
+		DatabaseStorageKind::Vector(_) => "reinhardt.orm.models.VectorField",
+		DatabaseStorageKind::Uuid => "reinhardt.orm.models.UuidField",
+		DatabaseStorageKind::Date => "reinhardt.orm.models.DateField",
+		DatabaseStorageKind::Time => "reinhardt.orm.models.TimeField",
+		DatabaseStorageKind::DateTime => "reinhardt.orm.models.DateTimeField",
+		DatabaseStorageKind::NaiveDateTime => "reinhardt.orm.models.DateTimeField",
+	}
+}
+
+/// Maps typed database storage metadata into migration field metadata.
+#[cfg(feature = "migrations")]
+#[doc(hidden)]
+pub fn database_storage_field_type(
+	storage_kind: DatabaseStorageKind,
+	max_length: Option<u32>,
+) -> crate::migrations::FieldType {
+	use crate::migrations::FieldType;
+
+	match storage_kind {
+		DatabaseStorageKind::Bool => FieldType::Boolean,
+		DatabaseStorageKind::I32 => FieldType::Integer,
+		DatabaseStorageKind::I64 => FieldType::BigInteger,
+		DatabaseStorageKind::F32 => FieldType::Float,
+		DatabaseStorageKind::F64 => FieldType::Double,
+		DatabaseStorageKind::Decimal => FieldType::Decimal {
+			precision: 38,
+			scale: 10,
+		},
+		DatabaseStorageKind::String => FieldType::VarChar(
+			max_length.expect("string database fields require max_length attribute"),
+		),
+		DatabaseStorageKind::Bytes => FieldType::Binary,
+		DatabaseStorageKind::Json => FieldType::Jsonb,
+		#[cfg(feature = "pgvector")]
+		DatabaseStorageKind::Vector(dimensions) => FieldType::Vector { dimensions },
+		DatabaseStorageKind::Uuid => FieldType::Uuid,
+		DatabaseStorageKind::Date => FieldType::Date,
+		DatabaseStorageKind::Time => FieldType::Time,
+		DatabaseStorageKind::DateTime => FieldType::TimestampTz,
+		DatabaseStorageKind::NaiveDateTime => FieldType::DateTime,
 	}
 }
 
@@ -284,6 +318,24 @@ impl RelationInfo {
 }
 
 /// Index information extracted from inspection
+#[cfg(feature = "pgvector")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexMetadataType {
+	/// HNSW approximate vector index.
+	Hnsw {
+		/// Maximum number of connections per layer.
+		m: Option<u16>,
+		/// Candidate list size used while constructing the index.
+		ef_construction: Option<u16>,
+	},
+	/// IVFFlat approximate vector index.
+	Ivfflat {
+		/// Number of inverted lists.
+		lists: Option<u32>,
+	},
+}
+
+/// Index information extracted from inspection
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexInfo {
 	/// Index name
@@ -294,9 +346,39 @@ pub struct IndexInfo {
 	pub unique: bool,
 	/// Partial index condition
 	pub condition: Option<String>,
+	/// Typed index method and options.
+	#[cfg(feature = "pgvector")]
+	pub index_type: Option<IndexMetadataType>,
+	/// PostgreSQL operator class.
+	#[cfg(feature = "pgvector")]
+	pub operator_class: Option<String>,
+	/// Index expressions.
+	#[cfg(feature = "pgvector")]
+	pub expressions: Option<Vec<String>>,
 }
 
 impl IndexInfo {
+	/// Creates index metadata from its feature-independent fields.
+	pub fn new(
+		name: impl Into<String>,
+		fields: Vec<String>,
+		unique: bool,
+		condition: Option<String>,
+	) -> Self {
+		Self {
+			name: name.into(),
+			fields,
+			unique,
+			condition,
+			#[cfg(feature = "pgvector")]
+			index_type: None,
+			#[cfg(feature = "pgvector")]
+			operator_class: None,
+			#[cfg(feature = "pgvector")]
+			expressions: None,
+		}
+	}
+
 	/// Create IndexInfo from an Index
 	///
 	/// # Examples
@@ -313,12 +395,12 @@ impl IndexInfo {
 	/// assert!(!info.unique);
 	/// ```
 	pub fn from_index(index: &Index) -> Self {
-		Self {
-			name: index.name.clone(),
-			fields: index.fields.clone(),
-			unique: index.unique,
-			condition: index.condition.clone(),
-		}
+		Self::new(
+			index.name.clone(),
+			index.fields.clone(),
+			index.unique,
+			index.condition.clone(),
+		)
 	}
 }
 
@@ -331,6 +413,14 @@ pub struct ConstraintInfo {
 	pub constraint_type: ConstraintType,
 	/// SQL definition
 	pub definition: String,
+	/// Logical model fields that participate in the constraint
+	pub fields: Vec<String>,
+	/// Optional predicate for a partial constraint
+	pub condition: Option<String>,
+	/// Whether constraint enforcement can be deferred
+	pub deferrable: bool,
+	/// Whether multiple NULL values are considered distinct
+	pub nulls_distinct: Option<bool>,
 }
 
 /// Type of database constraint
@@ -364,6 +454,10 @@ impl ConstraintInfo {
 			name: constraint.name.clone(),
 			constraint_type: ConstraintType::Check,
 			definition: constraint.to_sql(),
+			fields: Vec::new(),
+			condition: None,
+			deferrable: false,
+			nulls_distinct: None,
 		}
 	}
 
@@ -373,19 +467,39 @@ impl ConstraintInfo {
 	///
 	/// ```
 	/// use reinhardt_db::orm::constraints::UniqueConstraint;
-	/// use reinhardt_db::orm::inspection::{ConstraintInfo, ConstraintType};
+	/// use reinhardt_db::orm::fields::{CharField, Field};
+	/// use reinhardt_db::orm::inspection::{ConstraintInfo, ConstraintType, FieldInfo};
 	///
-	/// let constraint = UniqueConstraint::new("email_unique", vec!["email".to_string()]);
-	/// let info = ConstraintInfo::from_unique(&constraint);
+	/// let mut email = CharField::new(255);
+	/// email.base.db_column = Some("email_addr".to_string());
+	/// email.set_attributes_from_name("email");
+	/// let model_fields = vec![FieldInfo::from_field(&email)];
+	/// let constraint = UniqueConstraint::new("email_unique", vec!["email_addr".to_string()]);
+	/// let info = ConstraintInfo::from_unique(&constraint, &model_fields);
 	///
 	/// assert_eq!(info.name, "email_unique");
 	/// assert_eq!(info.constraint_type, ConstraintType::Unique);
+	/// assert_eq!(info.fields, vec!["email"]);
 	/// ```
-	pub fn from_unique(constraint: &UniqueConstraint) -> Self {
+	pub fn from_unique(constraint: &UniqueConstraint, model_fields: &[FieldInfo]) -> Self {
+		let fields = constraint
+			.fields
+			.iter()
+			.map(|column| {
+				model_fields
+					.iter()
+					.find(|field| field.db_column_name() == column)
+					.map_or_else(|| column.clone(), |field| field.name.clone())
+			})
+			.collect();
 		Self {
 			name: constraint.name.clone(),
 			constraint_type: ConstraintType::Unique,
 			definition: constraint.to_sql(),
+			fields,
+			condition: constraint.condition.clone(),
+			deferrable: false,
+			nulls_distinct: None,
 		}
 	}
 
@@ -415,6 +529,10 @@ impl ConstraintInfo {
 			name: constraint.name.clone(),
 			constraint_type: ConstraintType::ForeignKey,
 			definition: constraint.to_sql(),
+			fields: Vec::new(),
+			condition: None,
+			deferrable: false,
+			nulls_distinct: None,
 		}
 	}
 }
@@ -1155,6 +1273,55 @@ mod tests {
 	use crate::orm::fields::{
 		AutoField, BooleanField, CharField, DecimalField, EmailField, IntegerField,
 	};
+	use crate::orm::model::FieldSelector;
+	use rstest::rstest;
+	use serde::{Deserialize, Serialize};
+
+	#[derive(Clone, Debug, Deserialize, Serialize)]
+	struct ConstraintModel {
+		id: i64,
+		email: String,
+	}
+
+	#[derive(Clone)]
+	struct ConstraintModelFields;
+
+	impl FieldSelector for ConstraintModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for ConstraintModel {
+		type PrimaryKey = i64;
+		type Fields = ConstraintModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"constraint_models"
+		}
+
+		fn new_fields() -> Self::Fields {
+			ConstraintModelFields
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut id = AutoField::new();
+			id.set_attributes_from_name("id");
+			let mut email = CharField::new(255);
+			email.base.db_column = Some("email_addr".to_string());
+			email.set_attributes_from_name("email");
+			vec![FieldInfo::from_field(&id), FieldInfo::from_field(&email)]
+		}
+	}
 
 	#[test]
 	fn test_field_info_from_char_field() {
@@ -1167,18 +1334,6 @@ mod tests {
 		assert!(!info.nullable);
 		assert!(!info.primary_key);
 		assert!(info.editable);
-	}
-
-	#[rstest::rstest]
-	fn database_field_type_path_recognizes_canonical_type_paths() {
-		assert_eq!(
-			database_field_type_path_for::<chrono::DateTime<chrono::FixedOffset>>(),
-			"reinhardt.orm.models.DateTimeField"
-		);
-		assert_eq!(
-			database_field_type_path_for::<rust_decimal::Decimal>(),
-			"reinhardt.orm.models.DecimalField"
-		);
 	}
 
 	#[test]
@@ -1414,14 +1569,18 @@ mod tests {
 		assert!(info.definition.contains("CHECK"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_constraint_info_from_unique() {
-		let constraint = UniqueConstraint::new("email_unique", vec!["email".to_string()]);
-		let info = ConstraintInfo::from_unique(&constraint);
+		let constraint = UniqueConstraint::new("email_unique", vec!["email_addr".to_string()]);
+		let info = ConstraintInfo::from_unique(&constraint, &ConstraintModel::field_metadata());
 
 		assert_eq!(info.name, "email_unique");
 		assert_eq!(info.constraint_type, ConstraintType::Unique);
 		assert!(info.definition.contains("UNIQUE"));
+		assert_eq!(info.fields, vec!["email"]);
+		assert_eq!(info.condition, None);
+		assert!(!info.deferrable);
+		assert_eq!(info.nulls_distinct, None);
 	}
 
 	#[test]

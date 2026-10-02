@@ -7,8 +7,8 @@
 //!
 //! ```no_run
 //! use reinhardt_rest::serializers::validators::{UniqueValidator, UniqueTogetherValidator};
-//! use reinhardt_db::orm::Model;
-//! use reinhardt_db::backends::DatabaseConnection;
+//! use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+//! use reinhardt_db::orm::{DatabaseConnectionLease, Model};
 //! use serde::{Serialize, Deserialize};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,12 +33,11 @@
 //!     fn with_alias(self, _alias: &str) -> Self { self }
 //! }
 //!
-//! # fn configured_database_connection() -> DatabaseConnection {
-//! #     panic!("provide a configured database connection")
-//! # }
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Use the database connection configured for your application.
-//! # let connection = configured_database_connection();
+//! # let owner = BackendsConnection::connect("sqlite::memory:").await?;
+//! # let lease = DatabaseConnectionLease::register(owner)?;
+//! # let connection = lease.handle();
 //!
 //! // Validate that username is unique
 //! let validator = UniqueValidator::<User>::new("username");
@@ -56,8 +55,10 @@
 //! ```
 
 use super::{SerializerError, ValidatorError};
-use reinhardt_db::backends::DatabaseConnection;
-use reinhardt_db::orm::{CustomManager, Filter, FilterOperator, FilterValue, Model};
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
+use reinhardt_db::orm::{
+	CustomManager, DatabaseConnection, Filter, FilterOperator, FilterValue, Model,
+};
 use std::marker::PhantomData;
 use thiserror::Error;
 
@@ -69,6 +70,20 @@ pub enum DatabaseValidatorError {
 	ValidationError {
 		/// The validator error that rejected the model instance
 		source: ValidatorError,
+	},
+
+	/// Model serialization failed before database-backed validation.
+	#[error("Failed to serialize model for validation: {message}")]
+	SerializationError {
+		/// The serialization failure message.
+		message: String,
+	},
+
+	/// The serialized model did not have the object shape required for validation.
+	#[error("Invalid model shape for validation: {message}")]
+	InvalidModelShape {
+		/// The model shape failure message.
+		message: String,
 	},
 
 	/// A unique constraint was violated for a single field
@@ -104,6 +119,8 @@ pub enum DatabaseValidatorError {
 	DatabaseError {
 		/// The error message from the database
 		message: String,
+		/// The structured database error classification.
+		kind: DatabaseErrorKind,
 		/// The SQL query that failed (optional, for debugging)
 		query: Option<String>,
 	},
@@ -122,6 +139,12 @@ impl From<DatabaseValidatorError> for SerializerError {
 			DatabaseValidatorError::ValidationError { source } => {
 				SerializerError::Validation(source)
 			}
+			DatabaseValidatorError::SerializationError { message } => {
+				SerializerError::Serde { message }
+			}
+			DatabaseValidatorError::InvalidModelShape { message } => {
+				SerializerError::Validation(ValidatorError::Custom { message })
+			}
 			other => SerializerError::Other {
 				message: other.to_string(),
 			},
@@ -135,11 +158,31 @@ impl From<ValidatorError> for DatabaseValidatorError {
 	}
 }
 
+impl From<reinhardt_core::exception::Error> for DatabaseValidatorError {
+	fn from(error: reinhardt_core::exception::Error) -> Self {
+		let kind = error
+			.database_error()
+			.map(DatabaseError::kind)
+			.unwrap_or(DatabaseErrorKind::Query);
+		Self::DatabaseError {
+			message: error.to_string(),
+			kind,
+			query: None,
+		}
+	}
+}
+
 impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 	fn from(err: DatabaseValidatorError) -> Self {
 		match err {
 			DatabaseValidatorError::ValidationError { source } => {
 				reinhardt_core::exception::Error::Validation(source.to_string())
+			}
+			DatabaseValidatorError::SerializationError { message } => {
+				DatabaseError::new(DatabaseErrorKind::Query, message).into()
+			}
+			DatabaseValidatorError::InvalidModelShape { message } => {
+				DatabaseError::new(DatabaseErrorKind::Query, message).into()
 			}
 			DatabaseValidatorError::UniqueConstraintViolation {
 				field,
@@ -175,8 +218,8 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 					field
 				))
 			}
-			DatabaseValidatorError::DatabaseError { message, .. } => {
-				reinhardt_core::exception::Error::Database(message)
+			DatabaseValidatorError::DatabaseError { message, kind, .. } => {
+				DatabaseError::new(kind, message).into()
 			}
 		}
 	}
@@ -193,7 +236,8 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 /// ```no_run
 /// # use reinhardt_rest::serializers::validators::UniqueValidator;
 /// # use reinhardt_db::orm::Model;
-/// # use reinhardt_db::backends::DatabaseConnection;
+/// # use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+/// # use reinhardt_db::orm::DatabaseConnectionLease;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -217,12 +261,11 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// #
-/// # fn configured_database_connection() -> DatabaseConnection {
-/// #     panic!("provide a configured database connection")
-/// # }
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Use the database connection configured for your application.
-/// # let connection = configured_database_connection();
+/// # let owner = BackendsConnection::connect("sqlite::memory:").await?;
+/// # let lease = DatabaseConnectionLease::register(owner)?;
+/// # let connection = lease.handle();
 /// let validator = UniqueValidator::<User>::new("username");
 ///
 /// // Check if "alice" is unique
@@ -351,13 +394,7 @@ impl<M: Model> UniqueValidator<M> {
 		}
 
 		// Execute count query
-		let count = qs
-			.count()
-			.await
-			.map_err(|e| DatabaseValidatorError::DatabaseError {
-				message: e.to_string(),
-				query: None,
-			})?;
+		let count = qs.count().await.map_err(DatabaseValidatorError::from)?;
 
 		if count > 0 {
 			Err(DatabaseValidatorError::UniqueConstraintViolation {
@@ -383,7 +420,8 @@ impl<M: Model> UniqueValidator<M> {
 /// ```no_run
 /// # use reinhardt_rest::serializers::validators::UniqueTogetherValidator;
 /// # use reinhardt_db::orm::Model;
-/// # use reinhardt_db::backends::DatabaseConnection;
+/// # use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+/// # use reinhardt_db::orm::DatabaseConnectionLease;
 /// # use serde::{Serialize, Deserialize};
 /// # use std::collections::HashMap;
 /// #
@@ -409,12 +447,11 @@ impl<M: Model> UniqueValidator<M> {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// #
-/// # fn configured_database_connection() -> DatabaseConnection {
-/// #     panic!("provide a configured database connection")
-/// # }
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Use the database connection configured for your application.
-/// # let connection = configured_database_connection();
+/// # let owner = BackendsConnection::connect("sqlite::memory:").await?;
+/// # let lease = DatabaseConnectionLease::register(owner)?;
+/// # let connection = lease.handle();
 /// let validator = UniqueTogetherValidator::<User>::new(vec!["username", "email"]);
 ///
 /// let mut values = HashMap::new();
@@ -554,13 +591,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 		}
 
 		// Execute count query
-		let count = qs
-			.count()
-			.await
-			.map_err(|e| DatabaseValidatorError::DatabaseError {
-				message: e.to_string(),
-				query: None,
-			})?;
+		let count = qs.count().await.map_err(DatabaseValidatorError::from)?;
 
 		if count > 0 {
 			Err(DatabaseValidatorError::UniqueTogetherViolation {
@@ -579,6 +610,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 mod tests {
 	use super::*;
 	use reinhardt_db::orm::FieldSelector;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestUser {
@@ -646,5 +678,81 @@ mod tests {
 			.with_message("Custom combination message");
 		assert_eq!(validator.field_names().len(), 2);
 		assert!(validator.message.is_some());
+	}
+
+	#[rstest]
+	fn serialization_failure_converts_to_framework_database_error() {
+		let error = DatabaseValidatorError::SerializationError {
+			message: "failed to serialize model".to_string(),
+		};
+
+		let framework_error: reinhardt_core::exception::Error = error.into();
+
+		match framework_error {
+			reinhardt_core::exception::Error::Database(error) => {
+				assert_eq!(error.kind(), DatabaseErrorKind::Query);
+				assert_eq!(error.message(), "failed to serialize model");
+			}
+			other => panic!("unexpected framework error variant: {other:?}"),
+		}
+	}
+
+	#[rstest]
+	fn invalid_model_shape_converts_to_framework_database_error() {
+		let error = DatabaseValidatorError::InvalidModelShape {
+			message: "model must serialize to an object".to_string(),
+		};
+
+		let framework_error: reinhardt_core::exception::Error = error.into();
+
+		match framework_error {
+			reinhardt_core::exception::Error::Database(error) => {
+				assert_eq!(error.kind(), DatabaseErrorKind::Query);
+				assert_eq!(error.message(), "model must serialize to an object");
+			}
+			other => panic!("unexpected framework error variant: {other:?}"),
+		}
+	}
+
+	#[rstest]
+	fn database_failure_converts_to_structured_query_error() {
+		let error = DatabaseValidatorError::DatabaseError {
+			message: "count query failed".to_string(),
+			kind: DatabaseErrorKind::Query,
+			query: Some("SELECT COUNT(*) FROM test_users".to_string()),
+		};
+
+		let framework_error: reinhardt_core::exception::Error = error.into();
+
+		match framework_error {
+			reinhardt_core::exception::Error::Database(error) => {
+				assert_eq!(error.kind(), DatabaseErrorKind::Query);
+				assert_eq!(error.message(), "count query failed");
+			}
+			other => panic!("unexpected framework error variant: {other:?}"),
+		}
+	}
+
+	#[rstest]
+	fn framework_database_failure_preserves_its_kind() {
+		// Arrange
+		let framework_error: reinhardt_core::exception::Error =
+			DatabaseError::new(DatabaseErrorKind::Timeout, "validation query timed out").into();
+
+		// Act
+		let validator_error = DatabaseValidatorError::from(framework_error);
+		let framework_error: reinhardt_core::exception::Error = validator_error.into();
+
+		// Assert
+		match framework_error {
+			reinhardt_core::exception::Error::Database(error) => {
+				assert_eq!(error.kind(), DatabaseErrorKind::Timeout);
+				assert_eq!(
+					error.message(),
+					"Database error: validation query timed out"
+				);
+			}
+			other => panic!("unexpected framework error variant: {other:?}"),
+		}
 	}
 }

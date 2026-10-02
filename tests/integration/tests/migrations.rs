@@ -87,6 +87,10 @@ mod migration_overwrite_prevention_test;
 #[path = "migrations/macro_unique_together_integration.rs"]
 mod macro_unique_together_integration;
 
+// Native model-enum migration metadata (issue #5593)
+#[path = "migrations/model_enum_migration_integration.rs"]
+mod model_enum_migration_integration;
+
 // SQLite AddColumn atomic-history regression tests (reinhardt-web#4447)
 #[path = "migrations/sqlite_add_column_atomic.rs"]
 mod sqlite_add_column_atomic;
@@ -94,6 +98,11 @@ mod sqlite_add_column_atomic;
 // #[field(default = ...)] propagation regression tests (reinhardt-web#4447)
 #[path = "migrations/field_default_propagation.rs"]
 mod field_default_propagation;
+
+// Storage-backed FileField metadata must survive inspection and migration
+// registration as independent logical and physical parameters.
+#[path = "migrations/file_field_metadata_integration.rs"]
+mod file_field_metadata_integration;
 
 // SQLite string-default preservation regression tests (reinhardt-web#4454)
 #[path = "migrations/sqlite_default_value_preservation.rs"]

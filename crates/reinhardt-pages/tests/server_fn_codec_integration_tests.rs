@@ -12,7 +12,14 @@
 //! - Test error handling for malformed data
 //! - Validate Content-Type headers
 
-use reinhardt_pages::server_fn::codec::{Codec, JsonCodec, UrlCodec};
+use bytes::Bytes;
+use hyper::Method;
+use reinhardt_http::Request;
+use reinhardt_pages::server_fn::{
+	ServerFnError, ServerFnErrorKind, ServerFnRegistration,
+	codec::{Codec, JsonCodec, UrlCodec},
+	server_fn,
+};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "msgpack")]
@@ -33,6 +40,120 @@ struct UserSettings {
 	theme: String,
 	language: String,
 	notifications: bool,
+}
+
+#[server_fn(codec = "url")]
+async fn url_choice(choice_id: String) -> Result<String, ServerFnError> {
+	if choice_id.is_empty() {
+		return Err(ServerFnError::validation_with_message(
+			"Validation failed",
+			[("choice_id", "Select a choice")],
+		));
+	}
+
+	Ok(choice_id)
+}
+
+#[cfg(feature = "msgpack")]
+#[server_fn(codec = "msgpack")]
+async fn msgpack_choice(choice_id: String) -> Result<String, ServerFnError> {
+	if choice_id.is_empty() {
+		return Err(ServerFnError::validation_with_message(
+			"Validation failed",
+			[("choice_id", "Select a choice")],
+		));
+	}
+
+	Ok(choice_id)
+}
+
+#[tokio::test]
+async fn url_server_function_preserves_success_and_uses_json_error_envelope() {
+	// Arrange
+	let successful_request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/url_choice")
+		.body(Bytes::from_static(b"choice_id=blue"))
+		.build()
+		.expect("request should build");
+	let failing_request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/url_choice")
+		.body(Bytes::from_static(b"choice_id="))
+		.build()
+		.expect("request should build");
+
+	// Act
+	let success = url_choice::marker::handle(successful_request)
+		.await
+		.expect("URL server function should preserve JSON success responses");
+	let failure = url_choice::marker::handle(failing_request)
+		.await
+		.expect_err("validation error should reject the request");
+	let error: ServerFnError = serde_json::from_slice(&failure).expect("error should be JSON");
+
+	// Assert
+	assert_eq!(serde_json::from_slice::<String>(&success).unwrap(), "blue");
+	assert_eq!(url_choice::marker::error_status(&failure), 422);
+	assert_eq!(error.kind(), ServerFnErrorKind::Validation);
+	assert_eq!(error.status(), Some(422));
+	assert_eq!(
+		serde_json::from_slice::<serde_json::Value>(&failure).unwrap()["version"],
+		1
+	);
+}
+
+#[cfg(feature = "msgpack")]
+#[tokio::test]
+async fn msgpack_server_function_preserves_success_and_uses_json_error_envelope() {
+	// Arrange
+	let successful_body = rmp_serde::to_vec(&serde_json::json!({ "choice_id": "green" }))
+		.expect("messagepack request should serialize");
+	let failing_body = rmp_serde::to_vec(&serde_json::json!({ "choice_id": "" }))
+		.expect("messagepack request should serialize");
+	let successful_request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/msgpack_choice")
+		.body(Bytes::from(base64::Engine::encode(
+			&base64::engine::general_purpose::STANDARD,
+			successful_body,
+		)))
+		.build()
+		.expect("request should build");
+	let failing_request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/msgpack_choice")
+		.body(Bytes::from(base64::Engine::encode(
+			&base64::engine::general_purpose::STANDARD,
+			failing_body,
+		)))
+		.build()
+		.expect("request should build");
+
+	// Act
+	let success = msgpack_choice::marker::handle(successful_request)
+		.await
+		.expect("MessagePack server function should preserve encoded success responses");
+	let failure = msgpack_choice::marker::handle(failing_request)
+		.await
+		.expect_err("validation error should reject the request");
+	let error: ServerFnError = serde_json::from_slice(&failure).expect("error should be JSON");
+
+	// Assert
+	let success_bytes =
+		base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &success)
+			.expect("success should remain base64-encoded MessagePack");
+	assert_eq!(
+		rmp_serde::from_slice::<String>(&success_bytes).unwrap(),
+		"green"
+	);
+	assert_eq!(msgpack_choice::marker::error_status(&failure), 422);
+	assert_eq!(error.kind(), ServerFnErrorKind::Validation);
+	assert_eq!(error.status(), Some(422));
+	assert_eq!(
+		serde_json::from_slice::<serde_json::Value>(&failure).unwrap()["version"],
+		1
+	);
 }
 
 /// Success Criterion 1: JSON codec with complex nested structures

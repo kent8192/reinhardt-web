@@ -1,4 +1,4 @@
-error: unexpected end of input, expected #[component("/path/", "name")]
+error: unexpected end of input, expected #[component("/path/", name = "name")]
  --> tests/ui/component/fail/missing_name.rs:5:1
   |
 5 | #[component("/users/{id}/")]

@@ -1,7 +1,8 @@
 //! Attribute macro implementation for `#[dto]`
 //!
-//! Absorbs the `cfg_attr(native, ...)` boilerplate required for DTOs shared
-//! between native (server) and wasm (client) builds. See the public-facing
+//! Emits shared `Validate` derives for DTOs used by native/server and wasm/client
+//! builds while normalizing legacy native-only `Validate` derives. The optional
+//! `schema` argument adds native-only OpenAPI schema support. See the public-facing
 //! rustdoc on `crate::dto` in `lib.rs` for the user-facing contract.
 
 use crate::crate_paths::{get_reinhardt_crate, get_reinhardt_rest_crate};
@@ -35,22 +36,24 @@ pub(crate) fn dto_impl(args: TokenStream, mut input: DeriveInput) -> Result<Toke
 	} else {
 		None
 	};
-	let first_schema_attr = input
-		.attrs
-		.iter()
-		.position(|attr| attr.path().is_ident("schema"));
 
-	for attr in &mut input.attrs {
-		if attr.path().is_ident("schema") {
-			*attr = wrap_in_cfg_attr_native(attr);
-		}
-	}
-
-	let fields = match &mut input.data {
-		Data::Struct(s) => match &mut s.fields {
-			Fields::Named(f) => Some(&mut f.named),
-			Fields::Unnamed(f) => Some(&mut f.unnamed),
-			Fields::Unit => None,
+	match &mut input.data {
+		Data::Struct(struct_data) => match &mut struct_data.fields {
+			Fields::Named(fields) => {
+				for field in &mut fields.named {
+					for attr in &mut field.attrs {
+						if with_schema && attr.path().is_ident("schema") {
+							*attr = wrap_in_cfg_attr_native(attr);
+						}
+					}
+				}
+			}
+			Fields::Unnamed(_) | Fields::Unit => {
+				return Err(syn::Error::new_spanned(
+					&input.ident,
+					"#[dto] requires a struct with named fields",
+				));
+			}
 		},
 		Data::Enum(_) | Data::Union(_) => {
 			return Err(syn::Error::new_spanned(
@@ -58,40 +61,20 @@ pub(crate) fn dto_impl(args: TokenStream, mut input: DeriveInput) -> Result<Toke
 				"#[dto] can only be applied to structs",
 			));
 		}
-	};
-
-	if let Some(fields) = fields {
-		for field in fields.iter_mut() {
-			for attr in field.attrs.iter_mut() {
-				if attr.path().is_ident("validate") || attr.path().is_ident("schema") {
-					*attr = wrap_in_cfg_attr_native(attr);
-				}
-			}
-		}
 	}
 
-	// Reject unconditional `#[derive(Validate)]` upfront. `Validate` lives
-	// behind the `native` cfg, so an unconditional derive cannot resolve on wasm
-	// builds and would duplicate the macro's `cfg_attr(native, derive(...))` on
-	// native builds.
-	if let Some(attr) = find_unconditional_derive(&input.attrs, is_validate_derive)? {
-		return Err(syn::Error::new_spanned(
-			attr,
-			"#[dto] cannot be combined with unconditional `#[derive(Validate)]`. \
-			 Remove the derive so #[dto] can emit it as `cfg_attr(native, ...)` for you, \
-			 or replace it with `#[cfg_attr(native, derive(Validate))]`.",
-		));
+	let has_unconditional_validate =
+		find_unconditional_derive(&input.attrs, is_validate_derive)?.is_some();
+	remove_native_validate_derives(&mut input.attrs, "Validate")?;
+	if !has_unconditional_validate {
+		let new_attr: Attribute = parse_quote!(#[derive(#reinhardt::Validate)]);
+		input.attrs.push(new_attr);
 	}
-	// Native `cfg_attr` derives can reach this macro as ordinary derives after
-	// the compiler evaluates the `native` predicate. Recognized qualified paths
-	// must suppress the generated Schema derive in that form as well.
-	let has_unconditional_schema = if with_schema {
-		find_unconditional_derive(&input.attrs, |path| {
-			is_schema_derive(path, &schema_path, direct_rest_schema_path.as_ref())
-		})?
-	} else {
-		None
-	};
+
+	let first_schema_attr = input
+		.attrs
+		.iter()
+		.position(|attr| attr.path().is_ident("schema"));
 	if with_schema
 		&& let Some(attr) = find_unconditional_derive(&input.attrs, |path| path.is_ident("Schema"))?
 	{
@@ -101,28 +84,30 @@ pub(crate) fn dto_impl(args: TokenStream, mut input: DeriveInput) -> Result<Toke
 			 Remove the derive because #[dto(schema)] emits it for native builds.",
 		));
 	}
+	if with_schema {
+		gate_unconditional_derives(&mut input.attrs, |path| {
+			!path.is_ident("Schema")
+				&& is_schema_derive(path, &schema_path, direct_rest_schema_path.as_ref())
+		})?;
+	}
 
-	let needs_validate = !has_native_derive(&input.attrs, is_validate_derive)?;
 	let needs_schema = with_schema
-		&& has_unconditional_schema.is_none()
 		&& !has_native_derive(&input.attrs, |path| {
 			is_schema_derive(path, &schema_path, direct_rest_schema_path.as_ref())
 		})?;
-
-	let mut derives: Punctuated<Path, Token![,]> = Punctuated::new();
-	if needs_validate {
-		derives.push(parse_quote!(#reinhardt::Validate));
-	}
 	if needs_schema {
-		derives.push(parse_quote!(#reinhardt::rest::openapi::Schema));
-	}
-
-	if !derives.is_empty() {
-		let new_attr: Attribute = parse_quote!(#[cfg_attr(native, derive(#derives))]);
+		let new_attr: Attribute =
+			parse_quote!(#[cfg_attr(native, derive(#reinhardt::rest::openapi::Schema))]);
 		if let Some(index) = first_schema_attr {
 			input.attrs.insert(index, new_attr);
 		} else {
 			input.attrs.push(new_attr);
+		}
+	}
+
+	for attr in &mut input.attrs {
+		if with_schema && attr.path().is_ident("schema") {
+			*attr = wrap_in_cfg_attr_native(attr);
 		}
 	}
 
@@ -149,8 +134,6 @@ fn wrap_in_cfg_attr_native(attr: &Attribute) -> Attribute {
 }
 
 /// Returns the first unconditional derive matching `matches` on `attrs`, if any.
-/// Used to detect derives that would clash with the macro-emitted
-/// `cfg_attr(native, derive(...))`.
 fn find_unconditional_derive<F>(attrs: &[Attribute], matches: F) -> Result<Option<&Attribute>>
 where
 	F: Fn(&Path) -> bool,
@@ -172,9 +155,6 @@ where
 }
 
 /// Returns true if `attrs` already contains a matching native derive.
-///
-/// Only inspects the `native` cfg branch — unconditional `#[derive(TraitName)]`
-/// is handled separately by `find_unconditional_derive` and reported as an error.
 fn has_native_derive<F>(attrs: &[Attribute], matches: F) -> Result<bool>
 where
 	F: Fn(&Path) -> bool,
@@ -191,8 +171,7 @@ where
 		let Some(first) = iter.next() else {
 			continue;
 		};
-		// First arg must be the `native` predicate (bare `native` Path).
-		if !matches!(first, Meta::Path(p) if p.is_ident("native")) {
+		if !matches!(first, Meta::Path(path) if path.is_ident("native")) {
 			continue;
 		}
 		for inner in iter {
@@ -210,6 +189,110 @@ where
 		}
 	}
 	Ok(false)
+}
+
+fn gate_unconditional_derives<F>(attrs: &mut Vec<Attribute>, matches: F) -> Result<()>
+where
+	F: Fn(&Path) -> bool,
+{
+	let mut normalized = Vec::with_capacity(attrs.len());
+
+	for attr in attrs.drain(..) {
+		if !attr.path().is_ident("derive") {
+			normalized.push(attr);
+			continue;
+		}
+		let Meta::List(list) = &attr.meta else {
+			normalized.push(attr);
+			continue;
+		};
+		let derives =
+			Punctuated::<Path, Token![,]>::parse_terminated.parse2(list.tokens.clone())?;
+		let mut shared = Punctuated::<Path, Token![,]>::new();
+		let mut native = Punctuated::<Path, Token![,]>::new();
+		for derive in derives {
+			if matches(&derive) {
+				native.push(derive);
+			} else {
+				shared.push(derive);
+			}
+		}
+		if native.is_empty() {
+			normalized.push(attr);
+			continue;
+		}
+		if !shared.is_empty() {
+			normalized.push(parse_quote!(#[derive(#shared)]));
+		}
+		normalized.push(parse_quote!(#[cfg_attr(native, derive(#native))]));
+	}
+
+	*attrs = normalized;
+	Ok(())
+}
+
+fn remove_native_validate_derives(attrs: &mut Vec<Attribute>, trait_name: &str) -> Result<()> {
+	let mut normalized = Vec::with_capacity(attrs.len());
+
+	for attr in attrs.drain(..) {
+		if !attr.path().is_ident("cfg_attr") {
+			normalized.push(attr);
+			continue;
+		}
+		let Meta::List(list) = &attr.meta else {
+			normalized.push(attr);
+			continue;
+		};
+		let nested = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(list.tokens.clone())?;
+		let mut iter = nested.into_iter();
+		let Some(first) = iter.next() else {
+			normalized.push(attr);
+			continue;
+		};
+		if !matches!(&first, Meta::Path(path) if path.is_ident("native")) {
+			normalized.push(attr);
+			continue;
+		}
+
+		let mut rebuilt = Punctuated::<Meta, Token![,]>::new();
+		rebuilt.push(first);
+		for inner in iter {
+			let Meta::List(inner_list) = inner else {
+				rebuilt.push(inner);
+				continue;
+			};
+			if !inner_list.path.is_ident("derive") {
+				rebuilt.push(Meta::List(inner_list));
+				continue;
+			}
+
+			let derives = Punctuated::<Path, Token![,]>::parse_terminated
+				.parse2(inner_list.tokens.clone())?;
+			let mut filtered = Punctuated::<Path, Token![,]>::new();
+			for derive in derives {
+				if derive
+					.segments
+					.last()
+					.is_some_and(|segment| segment.ident == trait_name)
+				{
+					continue;
+				}
+				filtered.push(derive);
+			}
+			if !filtered.is_empty() {
+				let derive_meta: Meta = parse_quote!(derive(#filtered));
+				rebuilt.push(derive_meta);
+			}
+		}
+
+		if rebuilt.len() > 1 {
+			let new_attr: Attribute = parse_quote!(#[cfg_attr(#rebuilt)]);
+			normalized.push(new_attr);
+		}
+	}
+
+	*attrs = normalized;
+	Ok(())
 }
 
 fn is_schema_derive(
@@ -264,5 +347,73 @@ mod tests {
 		assert!(is_validate_derive(&unqualified));
 		assert!(is_validate_derive(&qualified));
 		assert!(!is_validate_derive(&unrelated));
+	}
+
+	#[test]
+	fn plain_dto_keeps_schema_attributes_unconditional() {
+		let input: DeriveInput = parse_quote! {
+			#[schema(title = "Request")]
+			struct Request {
+				#[schema(description = "Name")]
+				name: String,
+			}
+		};
+
+		let output: DeriveInput =
+			syn::parse2(dto_impl(TokenStream::new(), input).unwrap()).unwrap();
+		assert_eq!(
+			output
+				.attrs
+				.iter()
+				.filter(|attr| attr.path().is_ident("schema"))
+				.count(),
+			1
+		);
+		let Data::Struct(data) = output.data else {
+			panic!("DTO output should remain a struct");
+		};
+		let Fields::Named(fields) = data.fields else {
+			panic!("DTO output should retain named fields");
+		};
+		assert_eq!(
+			fields.named[0]
+				.attrs
+				.iter()
+				.filter(|attr| attr.path().is_ident("schema"))
+				.count(),
+			1
+		);
+	}
+
+	#[test]
+	fn schema_dto_gates_qualified_unconditional_schema_derive() {
+		let input: DeriveInput = parse_quote! {
+			#[derive(Clone, reinhardt_core::rest::openapi::Schema)]
+			struct Request {
+				name: String,
+			}
+		};
+
+		let output: syn::File =
+			syn::parse2(dto_impl(parse_quote!(schema), input).unwrap()).unwrap();
+		let syn::Item::Struct(item) = &output.items[0] else {
+			panic!("DTO output should remain a struct");
+		};
+		let expected: Path = parse_quote!(::reinhardt_core::rest::openapi::Schema);
+		assert_eq!(
+			find_unconditional_derive(&item.attrs, |path| {
+				is_schema_derive(path, &expected, None)
+			})
+			.unwrap()
+			.is_none(),
+			true
+		);
+		assert_eq!(
+			has_native_derive(&item.attrs, |path| {
+				is_schema_derive(path, &expected, None)
+			})
+			.unwrap(),
+			true
+		);
 	}
 }

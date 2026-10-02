@@ -308,6 +308,9 @@ pub struct LateralJoins {
 }
 
 impl LateralJoins {
+	pub(crate) fn aliases(&self) -> impl Iterator<Item = String> + '_ {
+		self.joins.iter().map(|join| join.alias.clone())
+	}
 	/// Create a new collection of LATERAL JOINs
 	///
 	/// # Examples
@@ -336,10 +339,6 @@ impl LateralJoins {
 	///
 	pub fn len(&self) -> usize {
 		self.joins.len()
-	}
-	/// Iterate over the configured LATERAL joins.
-	pub fn iter(&self) -> impl Iterator<Item = &LateralJoin> {
-		self.joins.iter()
 	}
 	/// Documentation for `to_sql`
 	///

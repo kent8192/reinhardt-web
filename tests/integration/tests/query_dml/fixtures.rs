@@ -11,7 +11,7 @@ use sqlx::{PgPool, Row};
 // Model structs are used by the `#[model]` macro to generate SQL-related code.
 // They appear unused because the macro expansion happens at compile time.
 #[allow(dead_code)]
-#[model(table_name = "users")]
+#[model(app_label = "default", table_name = "users")]
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct Users {
 	#[field(primary_key = true)]
@@ -32,7 +32,7 @@ pub(crate) struct Users {
 // Model structs are used by the `#[model]` macro to generate SQL-related code.
 // They appear unused because the macro expansion happens at compile time.
 #[allow(dead_code)]
-#[model(table_name = "products")]
+#[model(app_label = "default", table_name = "products")]
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct Products {
 	#[field(primary_key = true)]
@@ -55,7 +55,7 @@ pub(crate) struct Products {
 // Model structs are used by the `#[model]` macro to generate SQL-related code.
 // They appear unused because the macro expansion happens at compile time.
 #[allow(dead_code)]
-#[model(table_name = "orders")]
+#[model(app_label = "default", table_name = "orders")]
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct Orders {
 	#[field(primary_key = true)]

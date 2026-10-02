@@ -1,15 +1,15 @@
-//! Compile-pass test: `Depends<K, FactoryType>` in `#[server_fn]`.
+//! Compile-pass test: `KeyedDepends<K, ProviderType>` in `#[server_fn]`.
 //!
 //! Regression guard for issue #3723 (fixed in PR #3725); test coverage
-//! added via issue #3727. The `#[server_fn]` macro routes `Depends<K, T>`
+//! added via issue #3727. The `#[server_fn]` macro routes `KeyedDepends<K, T>`
 //! parameters through `resolve_from_registry()`, which has no
-//! `T: Injectable` bound. This allows factory-produced types registered
+//! `T: Injectable` bound. This allows keyed provider-produced types registered
 //! via `#[injectable]` to be injected without a manual
 //! `Injectable` implementation. A regression that reintroduces the
-//! `Injectable` bound on the `Depends<K, T>` codegen path would cause this
-//! test to fail to compile.
+//! `Injectable` bound on the `KeyedDepends<K, T>` codegen path would cause
+//! this test to fail to compile.
 
-use reinhardt_di::{Depends, FactoryOutput, InjectableKey, injectable};
+use reinhardt_di::{InjectableKey, KeyedDepends, KeyedFactoryOutput, injectable};
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 
 #[derive(Clone, Debug)]
@@ -21,16 +21,18 @@ struct AppConfigKey;
 
 impl InjectableKey for AppConfigKey {}
 
-// Factory-registered type: deliberately no `impl Injectable`.
+// Keyed provider-registered type: deliberately no `impl Injectable`.
 #[injectable(scope = "transient")]
-async fn make_app_config() -> FactoryOutput<AppConfigKey, AppConfig> {
-	FactoryOutput::new(AppConfig {
+async fn make_app_config() -> KeyedFactoryOutput<AppConfigKey, AppConfig> {
+	KeyedFactoryOutput::new(AppConfig {
 		host: "localhost".into(),
 	})
 }
 
 #[server_fn]
-async fn get_host(#[inject] cfg: Depends<AppConfigKey, AppConfig>) -> Result<String, ServerFnError> {
+async fn get_host(
+	#[inject] cfg: KeyedDepends<AppConfigKey, AppConfig>,
+) -> Result<String, ServerFnError> {
 	Ok(cfg.host.clone())
 }
 

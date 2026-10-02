@@ -1,9 +1,17 @@
 //! Common type definitions for database abstraction
 
-use super::error::DatabaseError;
+use super::error::{DatabaseError, DatabaseErrorKind};
+use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::pin::Pin;
 use uuid::Uuid;
+
+/// A lifetime-bound stream of database rows.
+///
+/// Dropping the stream releases any driver cursor, transaction borrow, or pool
+/// connection retained by the backend.
+pub type RowStream<'a> = Pin<Box<dyn Stream<Item = super::error::Result<Row>> + Send + 'a>>;
 
 /// Database type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,14 +49,18 @@ impl DatabaseType {
 	}
 }
 
-/// Query value types
+/// Query value types.
+///
+/// Integer parameters retain their binding width: `Int32` binds as PostgreSQL
+/// `integer`, while `Int` binds as `bigint`. Use `QueryValue::from(3_i32)` for
+/// functions requiring an `integer` argument, such as `right(text, integer)`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum QueryValue {
 	/// Null variant.
 	Null,
 	/// Bool variant.
 	Bool(bool),
-	/// Int variant.
+	/// Signed 64-bit integer parameter.
 	Int(i64),
 	/// Float variant.
 	Float(f64),
@@ -58,10 +70,33 @@ pub enum QueryValue {
 	Bytes(Vec<u8>),
 	/// Timestamp variant.
 	Timestamp(chrono::DateTime<chrono::Utc>),
+	/// Timezone-naive timestamp variant.
+	NaiveTimestamp(chrono::NaiveDateTime),
 	/// UUID value for PostgreSQL uuid columns
 	Uuid(Uuid),
+	/// JSON value, preserving the distinction between JSON null and SQL NULL.
+	Json(Option<Box<serde_json::Value>>),
+	/// Native PostgreSQL dense-vector parameter, including a type-preserving SQL NULL.
+	#[cfg(feature = "pgvector")]
+	Vector(Option<Vec<f32>>),
+	/// PostgreSQL-compatible string array parameter.
+	StringArray(Vec<String>),
+	/// PostgreSQL-compatible 32-bit integer array parameter.
+	IntArray(Vec<i32>),
+	/// PostgreSQL-compatible 64-bit integer array parameter.
+	BigIntArray(Vec<i64>),
+	/// PostgreSQL-compatible boolean array parameter.
+	BoolArray(Vec<bool>),
+	/// PostgreSQL-compatible 32-bit floating-point array parameter.
+	FloatArray(Vec<f32>),
+	/// PostgreSQL-compatible 64-bit floating-point array parameter.
+	DoubleArray(Vec<f64>),
+	/// PostgreSQL-compatible UUID array parameter.
+	UuidArray(Vec<Uuid>),
 	/// Represents SQL NOW() function
 	Now,
+	/// Signed 32-bit integer parameter.
+	Int32(i32),
 }
 
 impl From<&str> for QueryValue {
@@ -84,7 +119,7 @@ impl From<i64> for QueryValue {
 
 impl From<i32> for QueryValue {
 	fn from(i: i32) -> Self {
-		QueryValue::Int(i as i64)
+		QueryValue::Int32(i)
 	}
 }
 
@@ -106,6 +141,12 @@ impl From<chrono::DateTime<chrono::Utc>> for QueryValue {
 	}
 }
 
+impl From<chrono::NaiveDateTime> for QueryValue {
+	fn from(dt: chrono::NaiveDateTime) -> Self {
+		QueryValue::NaiveTimestamp(dt)
+	}
+}
+
 impl From<Uuid> for QueryValue {
 	fn from(u: Uuid) -> Self {
 		QueryValue::Uuid(u)
@@ -117,6 +158,8 @@ impl From<Uuid> for QueryValue {
 pub struct QueryResult {
 	/// The rows affected.
 	pub rows_affected: u64,
+	/// The generated ID returned by this exact insert operation, if available.
+	pub last_insert_id: Option<u64>,
 }
 
 /// Row from query result
@@ -147,7 +190,7 @@ impl Row {
 		self.data
 			.get(key)
 			.cloned()
-			.ok_or_else(|| DatabaseError::ColumnNotFound(key.to_string()))
+			.ok_or_else(|| DatabaseError::new(DatabaseErrorKind::ColumnNotFound, key.to_string()))
 			.and_then(|v| v.try_into().map_err(Into::into))
 	}
 }
@@ -164,11 +207,12 @@ impl TryFrom<QueryValue> for i64 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
+			QueryValue::Int32(i) => Ok(i64::from(i)),
 			QueryValue::Int(i) => Ok(i),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to i64",
-				value
-			))),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to i64", value),
+			)),
 		}
 	}
 }
@@ -178,12 +222,17 @@ impl TryFrom<QueryValue> for i32 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
-			QueryValue::Int(i) => i32::try_from(i)
-				.map_err(|_| DatabaseError::TypeError(format!("Value {} out of range for i32", i))),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to i32",
-				value
-			))),
+			QueryValue::Int32(i) => Ok(i),
+			QueryValue::Int(i) => i32::try_from(i).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					format!("Value {} out of range for i32", i),
+				)
+			}),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to i32", value),
+			)),
 		}
 	}
 }
@@ -193,12 +242,17 @@ impl TryFrom<QueryValue> for u64 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
-			QueryValue::Int(i) => u64::try_from(i)
-				.map_err(|_| DatabaseError::TypeError(format!("Value {} out of range for u64", i))),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to u64",
-				value
-			))),
+			QueryValue::Int32(i) => Self::try_from(QueryValue::Int(i64::from(i))),
+			QueryValue::Int(i) => u64::try_from(i).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					format!("Value {} out of range for u64", i),
+				)
+			}),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to u64", value),
+			)),
 		}
 	}
 }
@@ -208,12 +262,17 @@ impl TryFrom<QueryValue> for u32 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
-			QueryValue::Int(i) => u32::try_from(i)
-				.map_err(|_| DatabaseError::TypeError(format!("Value {} out of range for u32", i))),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to u32",
-				value
-			))),
+			QueryValue::Int32(i) => Self::try_from(QueryValue::Int(i64::from(i))),
+			QueryValue::Int(i) => u32::try_from(i).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					format!("Value {} out of range for u32", i),
+				)
+			}),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to u32", value),
+			)),
 		}
 	}
 }
@@ -224,10 +283,10 @@ impl TryFrom<QueryValue> for String {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::String(s) => Ok(s),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to String",
-				value
-			))),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to String", value),
+			)),
 		}
 	}
 }
@@ -238,10 +297,10 @@ impl TryFrom<QueryValue> for bool {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Bool(b) => Ok(b),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to bool",
-				value
-			))),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to bool", value),
+			)),
 		}
 	}
 }
@@ -252,10 +311,10 @@ impl TryFrom<QueryValue> for f64 {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Float(f) => Ok(f),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to f64",
-				value
-			))),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to f64", value),
+			)),
 		}
 	}
 }
@@ -266,10 +325,24 @@ impl TryFrom<QueryValue> for chrono::DateTime<chrono::Utc> {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Timestamp(dt) => Ok(dt),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to DateTime<Utc>",
-				value
-			))),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to DateTime<Utc>", value),
+			)),
+		}
+	}
+}
+
+impl TryFrom<QueryValue> for chrono::NaiveDateTime {
+	type Error = DatabaseError;
+
+	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
+		match value {
+			QueryValue::NaiveTimestamp(dt) => Ok(dt),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to NaiveDateTime", value),
+			)),
 		}
 	}
 }
@@ -280,12 +353,16 @@ impl TryFrom<QueryValue> for Uuid {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Uuid(u) => Ok(u),
-			QueryValue::String(s) => Uuid::parse_str(&s)
-				.map_err(|_| DatabaseError::TypeError(format!("Invalid UUID string: {}", s))),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to Uuid",
-				value
-			))),
+			QueryValue::String(s) => Uuid::parse_str(&s).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					format!("Invalid UUID string: {}", s),
+				)
+			}),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to Uuid", value),
+			)),
 		}
 	}
 }
@@ -474,6 +551,38 @@ fn validate_savepoint_name(name: &str) -> Result<(), String> {
 /// maintains connection affinity.
 #[async_trait::async_trait]
 pub trait TransactionExecutor: Send + Sync {
+	/// Return the database backend used by this transaction executor.
+	///
+	/// PostgreSQL is retained as the compatibility default for executors that
+	/// predate backend reporting.
+	fn backend(&self) -> DatabaseType {
+		DatabaseType::Postgres
+	}
+
+	/// Returns whether this PostgreSQL-protocol executor targets CockroachDB.
+	fn is_cockroachdb(&self) -> bool {
+		false
+	}
+
+	/// Reports the row-locking features supported by this server.
+	///
+	/// Executors connected to older server versions should override this method.
+	/// PostgreSQL gained `NO KEY UPDATE` in 9.3 and `SKIP LOCKED` in 9.5.
+	/// MySQL row-lock options require 8.0.1 or newer.
+	fn row_lock_capabilities(&self) -> RowLockCapabilities {
+		match self.backend() {
+			DatabaseType::Postgres if self.is_cockroachdb() => RowLockCapabilities::cockroachdb(),
+			DatabaseType::Postgres => RowLockCapabilities::postgres(),
+			DatabaseType::Mysql => RowLockCapabilities::mysql(),
+			DatabaseType::Sqlite => RowLockCapabilities::unsupported(),
+		}
+	}
+
+	/// Returns whether contextual pgvector error hints are supported.
+	fn supports_pgvector_error_hints(&self) -> bool {
+		false
+	}
+
 	/// Execute a query that modifies the database within the transaction
 	async fn execute(
 		&mut self,
@@ -481,8 +590,40 @@ pub trait TransactionExecutor: Send + Sync {
 		params: Vec<QueryValue>,
 	) -> super::error::Result<QueryResult>;
 
+	/// Execute with structural pgvector operation context.
+	async fn execute_with_context(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<QueryResult> {
+		let result = self.execute(sql, params).await;
+		if self.backend() == DatabaseType::Postgres && self.supports_pgvector_error_hints() {
+			result
+				.map_err(|error| super::error::decorate_error_with_pgvector_context(error, context))
+		} else {
+			result
+		}
+	}
+
 	/// Fetch a single row within the transaction
 	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> super::error::Result<Row>;
+
+	/// Fetch one row with structural pgvector operation context.
+	async fn fetch_one_with_context(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Row> {
+		let result = self.fetch_one(sql, params).await;
+		if self.backend() == DatabaseType::Postgres && self.supports_pgvector_error_hints() {
+			result
+				.map_err(|error| super::error::decorate_error_with_pgvector_context(error, context))
+		} else {
+			result
+		}
+	}
 
 	/// Fetch all matching rows within the transaction
 	async fn fetch_all(
@@ -491,12 +632,83 @@ pub trait TransactionExecutor: Send + Sync {
 		params: Vec<QueryValue>,
 	) -> super::error::Result<Vec<Row>>;
 
+	/// Fetch rows with structural pgvector operation context.
+	async fn fetch_all_with_context(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Vec<Row>> {
+		let result = self.fetch_all(sql, params).await;
+		if self.backend() == DatabaseType::Postgres && self.supports_pgvector_error_hints() {
+			result
+				.map_err(|error| super::error::decorate_error_with_pgvector_context(error, context))
+		} else {
+			result
+		}
+	}
+
+	/// Streams matching rows without eager materialization.
+	///
+	/// `chunk_size` is a driver fetch or bounded-buffer hint. Implementations
+	/// must not emulate streaming with repeated `LIMIT` and `OFFSET` queries.
+	fn fetch_stream<'a>(
+		&'a mut self,
+		_sql: String,
+		_params: Vec<QueryValue>,
+		_chunk_size: usize,
+	) -> super::error::Result<RowStream<'a>> {
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			"Row streaming is not supported by this transaction executor",
+		)
+		.into())
+	}
+
+	/// Streams rows with structural pgvector operation context.
+	fn fetch_stream_with_context<'a>(
+		&'a mut self,
+		sql: String,
+		params: Vec<QueryValue>,
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<RowStream<'a>> {
+		let decorate =
+			self.backend() == DatabaseType::Postgres && self.supports_pgvector_error_hints();
+		let stream = self.fetch_stream(sql, params, chunk_size)?;
+		if decorate {
+			Ok(Box::pin(stream.map(move |result| {
+				result.map_err(|error| {
+					super::error::decorate_error_with_pgvector_context(error, context)
+				})
+			})))
+		} else {
+			Ok(stream)
+		}
+	}
+
 	/// Fetch an optional single row within the transaction
 	async fn fetch_optional(
 		&mut self,
 		sql: &str,
 		params: Vec<QueryValue>,
 	) -> super::error::Result<Option<Row>>;
+
+	/// Fetch an optional row with structural pgvector operation context.
+	async fn fetch_optional_with_context(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Option<Row>> {
+		let result = self.fetch_optional(sql, params).await;
+		if self.backend() == DatabaseType::Postgres && self.supports_pgvector_error_hints() {
+			result
+				.map_err(|error| super::error::decorate_error_with_pgvector_context(error, context))
+		} else {
+			result
+		}
+	}
 
 	/// Commit the transaction
 	async fn commit(self: Box<Self>) -> super::error::Result<()>;
@@ -519,9 +731,11 @@ pub trait TransactionExecutor: Send + Sync {
 	/// support savepoints should override this method.
 	async fn savepoint(&mut self, name: &str) -> super::error::Result<()> {
 		let _ = name;
-		Err(super::error::DatabaseError::NotSupported(
-			"Savepoints are not supported by this backend".to_string(),
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			"Savepoints are not supported by this backend",
+		)
+		.into())
 	}
 
 	/// Release (commit) a savepoint
@@ -538,9 +752,11 @@ pub trait TransactionExecutor: Send + Sync {
 	/// Returns an error indicating savepoints are not supported.
 	async fn release_savepoint(&mut self, name: &str) -> super::error::Result<()> {
 		let _ = name;
-		Err(super::error::DatabaseError::NotSupported(
-			"Savepoints are not supported by this backend".to_string(),
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			"Savepoints are not supported by this backend",
+		)
+		.into())
 	}
 
 	/// Rollback to a savepoint
@@ -557,9 +773,101 @@ pub trait TransactionExecutor: Send + Sync {
 	/// Returns an error indicating savepoints are not supported.
 	async fn rollback_to_savepoint(&mut self, name: &str) -> super::error::Result<()> {
 		let _ = name;
-		Err(super::error::DatabaseError::NotSupported(
-			"Savepoints are not supported by this backend".to_string(),
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			"Savepoints are not supported by this backend",
+		)
+		.into())
+	}
+}
+
+/// Server capabilities used to validate `QuerySet` row-lock clauses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowLockCapabilities {
+	/// Whether blocking `FOR UPDATE` is supported.
+	pub update: bool,
+	/// Whether `FOR NO KEY UPDATE` is supported as a distinct lock strength.
+	pub no_key_update: bool,
+	/// Whether `NOWAIT` is supported.
+	pub nowait: bool,
+	/// Whether `SKIP LOCKED` is supported.
+	pub skip_locked: bool,
+	/// Whether an explicit lock target list is supported.
+	pub targets: bool,
+}
+
+impl RowLockCapabilities {
+	/// Capabilities for a PostgreSQL server with the supplied major and minor version.
+	pub const fn postgres_for_version(major: u16, minor: u16) -> Self {
+		let version = major * 100 + minor;
+		Self {
+			update: true,
+			no_key_update: version >= 903,
+			nowait: version >= 801,
+			skip_locked: version >= 905,
+			targets: true,
+		}
+	}
+
+	/// Capabilities for a MySQL server with the supplied semantic version.
+	pub const fn mysql_for_version(major: u16, minor: u16, patch: u16) -> Self {
+		let supports_wait_options = major > 8 || (major == 8 && (minor > 0 || patch >= 1));
+		Self {
+			update: true,
+			no_key_update: false,
+			nowait: supports_wait_options,
+			skip_locked: supports_wait_options,
+			targets: supports_wait_options,
+		}
+	}
+
+	/// Capabilities for a MariaDB server with the supplied semantic version.
+	pub const fn mariadb_for_version(major: u16, minor: u16, _patch: u16) -> Self {
+		let version = major * 100 + minor;
+		Self {
+			update: true,
+			no_key_update: false,
+			nowait: version >= 1003,
+			skip_locked: version >= 1006,
+			targets: false,
+		}
+	}
+
+	/// Capabilities for PostgreSQL 9.5 and newer.
+	pub const fn postgres() -> Self {
+		Self::postgres_for_version(9, 5)
+	}
+
+	/// Capabilities for MySQL 8.0.1 and newer.
+	pub const fn mysql() -> Self {
+		Self::mysql_for_version(8, 0, 1)
+	}
+
+	/// Capabilities for the built-in CockroachDB v23.1 lock profile.
+	///
+	/// CockroachDB v23.1 supports `FOR UPDATE` and `NOWAIT`, but not
+	/// `SKIP LOCKED` or explicit lock targets. Custom transaction executors for
+	/// servers with different capabilities should override
+	/// [`TransactionExecutor::row_lock_capabilities`].
+	pub const fn cockroachdb() -> Self {
+		Self {
+			update: true,
+			no_key_update: false,
+			nowait: true,
+			skip_locked: false,
+			targets: false,
+		}
+	}
+
+	/// Capabilities for a backend or server version without row locking.
+	pub const fn unsupported() -> Self {
+		Self {
+			update: false,
+			no_key_update: false,
+			nowait: false,
+			skip_locked: false,
+			targets: false,
+		}
 	}
 }
 
@@ -567,6 +875,220 @@ pub trait TransactionExecutor: Send + Sync {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case::min(i32::MIN)]
+	#[case::negative(-1)]
+	#[case::zero(0)]
+	#[case::max(i32::MAX)]
+	fn int32_values_support_numeric_row_conversions(#[case] value: i32) {
+		// Arrange
+		let mut row = Row::new();
+		row.insert("value".to_owned(), QueryValue::from(value));
+
+		// Act & Assert
+		assert_eq!(row.get::<i32>("value").unwrap(), value);
+		assert_eq!(row.get::<i64>("value").unwrap(), i64::from(value));
+		if value >= 0 {
+			assert_eq!(row.get::<u32>("value").unwrap(), value as u32);
+			assert_eq!(row.get::<u64>("value").unwrap(), value as u64);
+		} else {
+			assert_eq!(
+				row.get::<u32>("value").unwrap_err().kind(),
+				DatabaseErrorKind::Type
+			);
+			assert_eq!(
+				row.get::<u64>("value").unwrap_err().kind(),
+				DatabaseErrorKind::Type
+			);
+		}
+	}
+
+	struct LegacyExecutor;
+
+	struct ContextErrorTransactionWithoutCapability {
+		backend: DatabaseType,
+		supports_pgvector_error_hints: bool,
+	}
+
+	#[async_trait::async_trait]
+	impl TransactionExecutor for ContextErrorTransactionWithoutCapability {
+		fn backend(&self) -> DatabaseType {
+			self.backend
+		}
+
+		fn supports_pgvector_error_hints(&self) -> bool {
+			self.supports_pgvector_error_hints
+		}
+
+		async fn execute(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<QueryResult> {
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"operator does not exist: vector <=> vector",
+			)
+			.with_code("42883")
+			.into())
+		}
+
+		async fn fetch_one(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<Row> {
+			panic!("context default transaction test does not fetch rows")
+		}
+
+		async fn fetch_all(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<Vec<Row>> {
+			panic!("context default transaction test does not fetch rows")
+		}
+
+		async fn fetch_optional(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<Option<Row>> {
+			panic!("context default transaction test does not fetch rows")
+		}
+
+		async fn commit(self: Box<Self>) -> super::super::error::Result<()> {
+			Ok(())
+		}
+
+		async fn rollback(self: Box<Self>) -> super::super::error::Result<()> {
+			Ok(())
+		}
+	}
+
+	#[async_trait::async_trait]
+	impl TransactionExecutor for LegacyExecutor {
+		async fn execute(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<QueryResult> {
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not execute test queries",
+			)
+			.into())
+		}
+
+		async fn fetch_one(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<Row> {
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not fetch test rows",
+			)
+			.into())
+		}
+
+		async fn fetch_all(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<Vec<Row>> {
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not fetch test rows",
+			)
+			.into())
+		}
+
+		async fn fetch_optional(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<Option<Row>> {
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not fetch test rows",
+			)
+			.into())
+		}
+
+		async fn commit(self: Box<Self>) -> super::super::error::Result<()> {
+			Ok(())
+		}
+
+		async fn rollback(self: Box<Self>) -> super::super::error::Result<()> {
+			Ok(())
+		}
+	}
+
+	#[rstest]
+	fn transaction_executor_defaults_to_postgres_for_legacy_implementations() {
+		let executor = LegacyExecutor;
+
+		assert_eq!(executor.backend(), DatabaseType::Postgres);
+	}
+
+	#[rstest]
+	#[case(DatabaseType::Mysql)]
+	#[case(DatabaseType::Sqlite)]
+	#[case(DatabaseType::Postgres)]
+	#[tokio::test]
+	async fn transaction_default_without_capability_does_not_decorate_pgvector_shaped_error(
+		#[case] backend: DatabaseType,
+	) {
+		let mut executor = ContextErrorTransactionWithoutCapability {
+			backend,
+			supports_pgvector_error_hints: false,
+		};
+
+		let error = executor
+			.execute_with_context(
+				"SELECT embedding <=> ? FROM users",
+				Vec::new(),
+				Some(super::super::error::PgvectorOperationKind::DistanceOperator),
+			)
+			.await
+			.unwrap_err();
+
+		assert_eq!(
+			error.database_error().and_then(|error| error.code()),
+			Some("42883")
+		);
+		assert!(!error.to_string().contains("CreateExtension::new"));
+	}
+
+	#[rstest]
+	#[case(DatabaseType::Mysql)]
+	#[case(DatabaseType::Sqlite)]
+	#[tokio::test]
+	async fn transaction_default_requires_postgres_even_when_capability_is_enabled(
+		#[case] backend: DatabaseType,
+	) {
+		let mut executor = ContextErrorTransactionWithoutCapability {
+			backend,
+			supports_pgvector_error_hints: true,
+		};
+
+		let error = executor
+			.execute_with_context(
+				"SELECT embedding <=> ? FROM users",
+				Vec::new(),
+				Some(super::super::error::PgvectorOperationKind::DistanceOperator),
+			)
+			.await
+			.unwrap_err();
+
+		assert_eq!(
+			error.database_error().and_then(|error| error.code()),
+			Some("42883")
+		);
+		assert!(!error.to_string().contains("CreateExtension::new"));
+	}
 
 	// ==================== Savepoint name validation tests ====================
 

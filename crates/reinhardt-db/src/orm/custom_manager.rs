@@ -23,10 +23,11 @@
 //!
 //! # Hooks
 //!
-//! [`CustomManager`] also exposes three hook methods that default to a no-op
+//! [`CustomManager`] also exposes hook methods that default to a no-op
 //! and that custom implementations can override:
 //!
 //! - [`CustomManager::before_save`] — invoked before `create`/`update`
+//! - [`CustomManager::before_upsert_write`] — invoked before a typed upsert write
 //! - [`CustomManager::before_delete`] — invoked before `delete`
 //! - [`CustomManager::before_bulk_update`] — invoked before `bulk_update`
 //!
@@ -52,9 +53,11 @@
 //!
 //!     fn before_save(&self, user: &mut User) -> Result<()> {
 //!         if user.username.is_empty() {
-//!             return Err(reinhardt_core::exception::Error::Database(
-//!                 "username must not be empty".into(),
-//!             ));
+//!             return Err(reinhardt_core::exception::DatabaseError::new(
+//!                 reinhardt_core::exception::DatabaseErrorKind::Query,
+//!                 "username must not be empty",
+//!             )
+//!             .into());
 //!         }
 //!         Ok(())
 //!     }
@@ -66,6 +69,75 @@
 //! // objects() now returns ActiveUserManager directly
 //! let manager = User::objects();
 //! ```
+//!
+//! ## Upsert Hook
+//!
+//! [`CustomManager::before_upsert_write`] is separate from
+//! [`CustomManager::before_save`]. It can mutate pending typed create values or
+//! the locked model that will be updated:
+//!
+//! ```no_run
+//! # // The isolated doctest crate does not declare the model macro's `native` cfg.
+//! # #![allow(unexpected_cfgs)]
+//! # mod migrations { pub use reinhardt_db::migrations::*; }
+//! # mod orm { pub use reinhardt_db::orm::*; }
+//! use reinhardt_core::exception::Result;
+//! use reinhardt_core::macros::model;
+//! use reinhardt_db::orm::custom_manager::CustomManager;
+//! use reinhardt_db::orm::upsert::UpsertWrite;
+//! use serde::{Deserialize, Serialize};
+//!
+//! #[derive(Default)]
+//! struct AccountManager;
+//!
+//! impl CustomManager for AccountManager {
+//!     type Model = Account;
+//!
+//!     fn new() -> Self {
+//!         Self
+//!     }
+//!
+//!     fn before_upsert_write(
+//!         &self,
+//!         write: &mut UpsertWrite<'_, Account>,
+//!     ) -> Result<()> {
+//!         match write {
+//!             UpsertWrite::Create(create) => {
+//!                 create.set(Account::field_normalized_name(), "normalized")?;
+//!             }
+//!             UpsertWrite::Update(account) => {
+//!                 account.normalized_name.make_ascii_lowercase();
+//!             }
+//!         }
+//!         Ok(())
+//!     }
+//! }
+//!
+//! #[model(
+//!     app_label = "custom_manager_docs",
+//!     table_name = "custom_manager_accounts",
+//!     manager = AccountManager
+//! )]
+//! #[derive(Serialize, Deserialize)]
+//! struct Account {
+//!     #[field(primary_key = true)]
+//!     id: Option<i64>,
+//!     #[field(max_length = 64, unique = true)]
+//!     name: String,
+//!     #[field(max_length = 64)]
+//!     normalized_name: String,
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! [`crate::orm::upsert::UpsertCreate::set`] cannot replace lookup fields. The
+//! update view is a normal mutable model and may change writable lookup fields;
+//! persistence still identifies the locked row with its old primary key. A
+//! call to [`crate::orm::upsert::UpsertCreate::get`] returns `None` when a
+//! pending value is absent, even if the database will later supply a default.
+//! Hooks must not perform external side effects: a create hook may run before
+//! a concurrent insert race is lost, and either branch may later be rolled
+//! back.
 //!
 //! # Blanket Implementation
 //!
@@ -112,15 +184,30 @@
 use std::collections::HashMap;
 use std::future::Future;
 
-use reinhardt_query::{InsertStatement, SelectStatement};
+use reinhardt_query::InsertStatement;
 
-use super::annotation::Annotation;
 use super::composite_pk::PkValue;
-use super::connection::{DatabaseBackend, DatabaseConnection};
+use super::connection::{DatabaseBackend, OrmExecutor};
 use super::cte::CTE;
 use super::manager::Manager;
 use super::model::Model;
-use super::query::{FilterCondition, QuerySet};
+use super::query::{QueryFilterInput, QuerySet, RelationLoadInput};
+use super::query_fields::{AnnotationExpressionKind, LabeledExpression};
+use super::upsert::{GetOrCreateBuilder, UpdateOrCreateBuilder, UpsertWrite};
+
+/// The result of an insert whose database write and model hydration are separate.
+///
+/// MySQL does not support `RETURNING`, so an insert succeeds before Reinhardt
+/// reloads the stored row. Consumers that need retry-safe semantics can use
+/// this outcome to avoid repeating an insert after that reload fails.
+pub enum CreateWithConnOutcome<M> {
+	/// The row was inserted and hydrated successfully.
+	Created(M),
+	/// The insert did not complete.
+	FailedBeforeInsert(reinhardt_core::exception::Error),
+	/// The insert completed, but reloading the stored row failed.
+	FailedAfterInsert(reinhardt_core::exception::Error),
+}
 
 /// Trait that exposes the full surface area of an object manager and provides
 /// extension hooks for custom behavior.
@@ -133,10 +220,9 @@ use super::query::{FilterCondition, QuerySet};
 ///
 /// # Hooks
 ///
-/// Three hook methods (`before_save`, `before_delete`, `before_bulk_update`)
-/// allow custom implementations to validate or veto operations before they
-/// reach the database. The default implementations are no-ops returning
-/// `Ok(())`.
+/// Hook methods allow custom implementations to validate, mutate, or veto
+/// operations before they reach the database. The default implementations are
+/// no-ops returning `Ok(())`.
 ///
 /// # Bounds
 ///
@@ -164,10 +250,10 @@ pub trait CustomManager: Sized + Send + Sync {
 
 	/// Filter records by a typed filter expression.
 	///
-	/// Accepts any value convertible into [`FilterCondition`]. See
-	/// [`Manager::filter`] for the recommended fluent builder form
-	/// (`Model::field_x().eq(value)`) and composite conditions.
-	fn filter(&self, filter: impl Into<FilterCondition>) -> QuerySet<Self::Model> {
+	/// Accepts typed and untyped filter inputs. See [`Manager::filter`] for the
+	/// recommended fluent builder form (`Model::field_x().eq(value)`) and
+	/// composite conditions.
+	fn filter(&self, filter: impl QueryFilterInput<Self::Model>) -> QuerySet<Self::Model> {
 		Manager::<Self::Model>::new().filter(filter)
 	}
 
@@ -187,7 +273,13 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Add an annotation (computed field) to the query.
-	fn annotate(&self, annotation: Annotation) -> QuerySet<Self::Model> {
+	fn annotate<K>(
+		&self,
+		annotation: LabeledExpression<Self::Model, K>,
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
+	where
+		K: AnnotationExpressionKind,
+	{
 		Manager::<Self::Model>::new().annotate(annotation)
 	}
 
@@ -207,7 +299,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Eager-load related objects via SQL `JOIN`.
-	fn select_related(&self, fields: &[&str]) -> QuerySet<Self::Model> {
+	fn select_related<I>(&self, fields: I) -> QuerySet<Self::Model>
+	where
+		I: RelationLoadInput<Self::Model>,
+	{
 		Manager::<Self::Model>::new().select_related(fields)
 	}
 
@@ -222,7 +317,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Pre-fetch related objects in separate queries.
-	fn prefetch_related(&self, fields: &[&str]) -> QuerySet<Self::Model> {
+	fn prefetch_related<I>(&self, fields: I) -> QuerySet<Self::Model>
+	where
+		I: RelationLoadInput<Self::Model>,
+	{
 		Manager::<Self::Model>::new().prefetch_related(fields)
 	}
 
@@ -257,7 +355,11 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Filter where a field is `IN` the result of a sub-query.
-	fn filter_in_subquery<R: Model, F>(&self, field: &str, subquery_fn: F) -> QuerySet<Self::Model>
+	fn filter_in_subquery<R: Model, F>(
+		&self,
+		field: &str,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -269,7 +371,7 @@ pub trait CustomManager: Sized + Send + Sync {
 		&self,
 		field: &str,
 		subquery_fn: F,
-	) -> QuerySet<Self::Model>
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -277,7 +379,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Filter using a correlated `EXISTS (...)` sub-query.
-	fn filter_exists<R: Model, F>(&self, subquery_fn: F) -> QuerySet<Self::Model>
+	fn filter_exists<R: Model, F>(
+		&self,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -285,7 +390,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Filter using a correlated `NOT EXISTS (...)` sub-query.
-	fn filter_not_exists<R: Model, F>(&self, subquery_fn: F) -> QuerySet<Self::Model>
+	fn filter_not_exists<R: Model, F>(
+		&self,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -303,7 +411,11 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Annotate using a sub-query expression.
-	fn annotate_subquery<R, F>(&self, name: &str, builder: F) -> QuerySet<Self::Model>
+	fn annotate_subquery<R, F>(
+		&self,
+		name: &str,
+		builder: F,
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
 	where
 		R: Model + 'static,
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
@@ -339,16 +451,42 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Insert a new record using an explicit connection (for transactions).
-	fn create_with_conn<'a>(
+	fn create_with_conn<'a, E>(
 		&'a self,
-		conn: &'a DatabaseConnection,
+		conn: &'a mut E,
 		model: &'a Self::Model,
-	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a {
+	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a
+	where
+		E: OrmExecutor + ?Sized + 'a,
+	{
 		async move {
 			let mut model = model.clone();
 			self.before_save(&mut model)?;
 			Manager::<Self::Model>::new()
 				.create_with_conn(conn, &model)
+				.await
+		}
+	}
+
+	/// Inserts a new record and reports whether a failure occurred after the write.
+	///
+	/// Custom managers that perform a multi-step insert should override this
+	/// method when they can distinguish a failed write from a failed hydration.
+	fn create_with_conn_outcome<'a, E>(
+		&'a self,
+		conn: &'a mut E,
+		model: &'a Self::Model,
+	) -> impl Future<Output = CreateWithConnOutcome<Self::Model>> + Send + 'a
+	where
+		E: OrmExecutor + ?Sized + 'a,
+	{
+		async move {
+			let mut model = model.clone();
+			if let Err(error) = self.before_save(&mut model) {
+				return CreateWithConnOutcome::FailedBeforeInsert(error);
+			}
+			Manager::<Self::Model>::new()
+				.create_with_conn_outcome(conn, &model)
 				.await
 		}
 	}
@@ -366,11 +504,14 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Update an existing record using an explicit connection.
-	fn update_with_conn<'a>(
+	fn update_with_conn<'a, E>(
 		&'a self,
-		conn: &'a DatabaseConnection,
+		conn: &'a mut E,
 		model: &'a Self::Model,
-	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a {
+	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a
+	where
+		E: OrmExecutor + ?Sized + 'a,
+	{
 		async move {
 			let mut model = model.clone();
 			self.before_save(&mut model)?;
@@ -386,17 +527,20 @@ pub trait CustomManager: Sized + Send + Sync {
 		pk: <Self::Model as Model>::PrimaryKey,
 	) -> impl Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a {
 		async move {
-			let conn = super::manager::get_connection().await?;
-			self.delete_with_conn(&conn, pk).await
+			let mut conn = super::manager::get_connection().await?;
+			self.delete_with_conn(&mut conn, pk).await
 		}
 	}
 
 	/// Delete a record by primary key using an explicit connection.
-	fn delete_with_conn<'a>(
+	fn delete_with_conn<'a, E>(
 		&'a self,
-		conn: &'a DatabaseConnection,
+		conn: &'a mut E,
 		pk: <Self::Model as Model>::PrimaryKey,
-	) -> impl Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a {
+	) -> impl Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+	{
 		async move {
 			let manager = Manager::<Self::Model>::new();
 			if let Some(model) = manager.get(pk.clone()).first_with_db(conn).await? {
@@ -414,27 +558,38 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Count records using an explicit connection.
-	fn count_with_conn<'a>(
+	fn count_with_conn<'a, E>(
 		&'a self,
-		conn: &'a DatabaseConnection,
-	) -> impl Future<Output = reinhardt_core::exception::Result<i64>> + Send + 'a {
+		conn: &'a mut E,
+	) -> impl Future<Output = reinhardt_core::exception::Result<i64>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+	{
 		async move { Manager::<Self::Model>::new().count_with_conn(conn).await }
 	}
 
-	/// Retrieve a record matching `lookup_fields`, or insert with `defaults`.
-	fn get_or_create<'a>(
-		&'a self,
-		lookup_fields: HashMap<String, String>,
-		defaults: Option<HashMap<String, String>>,
-	) -> impl Future<Output = reinhardt_core::exception::Result<(Self::Model, bool)>> + Send + 'a {
-		async move {
-			Manager::<Self::Model>::new()
-				.get_or_create(lookup_fields, defaults)
-				.await
-		}
+	/// Starts a typed get-or-create operation.
+	///
+	/// The lookup must cover supported immediate uniqueness. Call
+	/// [`GetOrCreateBuilder::execute_with`] to use a caller-owned
+	/// [`OrmExecutor`].
+	fn get_or_create(self) -> GetOrCreateBuilder<Self> {
+		GetOrCreateBuilder::new(self)
+	}
+
+	/// Starts a typed update-or-create operation.
+	///
+	/// Caller-owned execution requires a
+	/// [`super::transaction::AtomicTransaction`] created by
+	/// [`super::connection::DatabaseConnection::atomic_write`].
+	fn update_or_create(self) -> UpdateOrCreateBuilder<Self> {
+		UpdateOrCreateBuilder::new(self)
 	}
 
 	/// Bulk-insert multiple records (Django: `bulk_create`).
+	///
+	/// The default implementation returns an empty result before acquiring the
+	/// global connection when `models` is empty.
 	fn bulk_create<'a>(
 		&'a self,
 		models: Vec<Self::Model>,
@@ -446,13 +601,48 @@ pub trait CustomManager: Sized + Send + Sync {
 		Self::Model: 'a,
 	{
 		async move {
+			if models.is_empty() {
+				return Ok(Vec::new());
+			}
+
+			let mut conn = super::manager::get_connection().await?;
+			self.bulk_create_with_conn(
+				&mut conn,
+				models,
+				batch_size,
+				ignore_conflicts,
+				update_conflicts,
+			)
+			.await
+		}
+	}
+
+	/// Bulk-insert multiple records through a caller-owned executor.
+	fn bulk_create_with_conn<'a, E>(
+		&'a self,
+		conn: &'a mut E,
+		models: Vec<Self::Model>,
+		batch_size: Option<usize>,
+		ignore_conflicts: bool,
+		update_conflicts: bool,
+	) -> impl Future<Output = reinhardt_core::exception::Result<Vec<Self::Model>>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+		Self::Model: 'a,
+	{
+		async move {
 			Manager::<Self::Model>::new()
-				.bulk_create(models, batch_size, ignore_conflicts, update_conflicts)
+				.bulk_create_with_conn(conn, models, batch_size, ignore_conflicts, update_conflicts)
 				.await
 		}
 	}
 
 	/// Bulk-update multiple records (Django: `bulk_update`).
+	///
+	/// The default implementation skips empty input and runs [`Self::before_bulk_update`] before
+	/// acquiring the global connection. It then executes through [`Manager::bulk_update_with_conn`]
+	/// with that connection, so a veto never opens a database connection and the hook runs exactly
+	/// once.
 	fn bulk_update<'a>(
 		&'a self,
 		models: Vec<Self::Model>,
@@ -469,8 +659,37 @@ pub trait CustomManager: Sized + Send + Sync {
 
 			let mut models = models;
 			self.before_bulk_update(&mut models)?;
+			let mut conn = super::manager::get_connection().await?;
 			Manager::<Self::Model>::new()
-				.bulk_update(models, fields, batch_size)
+				.bulk_update_with_conn(&mut conn, models, fields, batch_size)
+				.await
+		}
+	}
+
+	/// Bulk-update multiple records through a caller-owned executor.
+	///
+	/// The default implementation skips empty input and runs [`Self::before_bulk_update`] exactly
+	/// once before it executes through the supplied executor.
+	fn bulk_update_with_conn<'a, E>(
+		&'a self,
+		conn: &'a mut E,
+		models: Vec<Self::Model>,
+		fields: Vec<String>,
+		batch_size: Option<usize>,
+	) -> impl Future<Output = reinhardt_core::exception::Result<usize>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+		Self::Model: 'a,
+	{
+		async move {
+			if models.is_empty() || fields.is_empty() {
+				return Ok(0);
+			}
+
+			let mut models = models;
+			self.before_bulk_update(&mut models)?;
+			Manager::<Self::Model>::new()
+				.bulk_update_with_conn(conn, models, fields, batch_size)
 				.await
 		}
 	}
@@ -494,32 +713,16 @@ pub trait CustomManager: Sized + Send + Sync {
 		&self,
 		queryset: &QuerySet<Self::Model>,
 		updates: &[(&str, &str)],
-	) -> (String, Vec<String>) {
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
 		Manager::<Self::Model>::new().update_queryset(queryset, updates)
 	}
 
 	/// Build the `DELETE` SQL for a `QuerySet`.
-	fn delete_queryset(&self, queryset: &QuerySet<Self::Model>) -> (String, Vec<String>) {
+	fn delete_queryset(
+		&self,
+		queryset: &QuerySet<Self::Model>,
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
 		Manager::<Self::Model>::new().delete_queryset(queryset)
-	}
-
-	/// Build the `(SELECT, INSERT)` statement pair used by `get_or_create`.
-	fn get_or_create_queries(
-		&self,
-		lookup_fields: &HashMap<String, String>,
-		defaults: &HashMap<String, String>,
-	) -> (SelectStatement, InsertStatement) {
-		Manager::<Self::Model>::new().get_or_create_queries(lookup_fields, defaults)
-	}
-
-	/// Build the SQL strings used by `get_or_create`.
-	fn get_or_create_sql(
-		&self,
-		lookup_fields: &HashMap<String, String>,
-		defaults: &HashMap<String, String>,
-		backend: DatabaseBackend,
-	) -> (String, String) {
-		Manager::<Self::Model>::new().get_or_create_sql(lookup_fields, defaults, backend)
 	}
 
 	/// Build the bulk-create SQL given pre-extracted `field_names` and rows.
@@ -560,12 +763,32 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	// =========================================================================
-	// Hooks (3 methods) — default to no-op
+	// Hooks — default to no-op
 	// =========================================================================
 
 	/// Hook invoked before a `create` or `update`. Returning `Err(_)` vetoes
 	/// the write.
 	fn before_save(&self, _model: &mut Self::Model) -> reinhardt_core::exception::Result<()> {
+		Ok(())
+	}
+
+	/// Hook invoked immediately before an upsert write.
+	///
+	/// The hook can mutate typed create values, mutate an existing model, or
+	/// veto the write. [`crate::orm::upsert::UpsertCreate::set`] cannot replace
+	/// lookup fields. By contrast, the update view is a normal mutable model
+	/// and may change any writable field, including lookup fields; the update
+	/// predicate uses the locked model's old primary key. A missing pending
+	/// create value reads as `None`, including a value that a database default
+	/// would later supply.
+	///
+	/// The hook may run for an insert attempt that loses a concurrent race or
+	/// for a transaction that later rolls back, so external side effects are
+	/// unsupported. This hook is separate from [`Self::before_save`].
+	fn before_upsert_write(
+		&self,
+		_write: &mut UpsertWrite<'_, Self::Model>,
+	) -> reinhardt_core::exception::Result<()> {
 		Ok(())
 	}
 
@@ -598,17 +821,29 @@ impl<M: Model> CustomManager for Manager<M> {
 	fn new() -> Self {
 		Manager::new()
 	}
+
+	fn create_with_conn_outcome<'a, E>(
+		&'a self,
+		conn: &'a mut E,
+		model: &'a Self::Model,
+	) -> impl Future<Output = CreateWithConnOutcome<Self::Model>> + Send + 'a
+	where
+		E: OrmExecutor + ?Sized + 'a,
+	{
+		Manager::create_with_conn_outcome(self, conn, model)
+	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::connection::{BackendsConnection, DatabaseConnectionLease};
 	use crate::orm::fields::{CharField, Field};
 	use crate::orm::inspection::FieldInfo;
 	use crate::orm::model::FieldSelector;
 	use crate::orm::query::{Filter, FilterOperator, FilterValue};
+	use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 	use serde::{Deserialize, Serialize};
-	use std::collections::HashMap;
 
 	#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 	struct Article {
@@ -677,35 +912,29 @@ mod tests {
 		}
 
 		fn before_save(&self, _model: &mut Article) -> reinhardt_core::exception::Result<()> {
-			Err(reinhardt_core::exception::Error::Database(
-				"save vetoed".to_string(),
-			))
+			Err(DatabaseError::new(DatabaseErrorKind::Query, "save vetoed").into())
 		}
 
 		fn before_delete(&self, _model: &Article) -> reinhardt_core::exception::Result<()> {
-			Err(reinhardt_core::exception::Error::Database(
-				"delete vetoed".to_string(),
-			))
+			Err(DatabaseError::new(DatabaseErrorKind::Query, "delete vetoed").into())
 		}
 
 		fn before_bulk_update(
 			&self,
 			_models: &mut [Article],
 		) -> reinhardt_core::exception::Result<()> {
-			Err(reinhardt_core::exception::Error::Database(
-				"bulk update vetoed".to_string(),
-			))
+			Err(DatabaseError::new(DatabaseErrorKind::Query, "bulk update vetoed").into())
 		}
 	}
 
-	#[test]
+	#[rstest::rstest]
 	fn custom_manager_get_preserves_the_primary_key_filter() {
 		let query = ArticleManager::new().get(42);
 		assert_eq!(query.filters().len(), 1);
 		assert!(matches!(query.filters()[0].value, FilterValue::Integer(42)));
 	}
 
-	#[test]
+	#[rstest::rstest]
 	fn custom_manager_builder_delegation_preserves_query_output() {
 		let manager = ArticleManager::new();
 		let filter = manager.filter(Filter::new(
@@ -713,120 +942,121 @@ mod tests {
 			FilterOperator::Eq,
 			FilterValue::String("Rust".to_string()),
 		));
+		let render = |query: QuerySet<Article>| query.to_sql().expect("query should render");
 
-		assert_eq!(manager.all().to_sql(), "SELECT * FROM \"articles\"");
+		assert_eq!(render(manager.all()), "SELECT * FROM \"articles\"");
 		assert_eq!(filter.filters().len(), 1);
 		assert_eq!(
-			filter.to_sql(),
+			render(filter),
 			"SELECT * FROM \"articles\" WHERE \"title\" = 'Rust'"
 		);
 		assert_eq!(
-			manager.limit(3).to_sql(),
+			render(manager.limit(3)),
 			"SELECT * FROM \"articles\" LIMIT 3"
 		);
 		assert_eq!(
-			manager.offset(2).to_sql(),
+			render(manager.offset(2)),
 			"SELECT * FROM \"articles\" OFFSET 2"
 		);
 		assert_eq!(
-			manager.paginate(2, 5).to_sql(),
+			render(manager.paginate(2, 5)),
 			"SELECT * FROM \"articles\" LIMIT 5 OFFSET 5"
 		);
 		assert_eq!(
-			manager.order_by(&["-title", "id"]).to_sql(),
+			render(manager.order_by(&["-title", "id"])),
 			"SELECT * FROM \"articles\" ORDER BY \"title\" DESC, \"id\" ASC"
 		);
 		assert_eq!(
-			manager.defer(&["title"]).to_sql(),
+			render(manager.defer(&["title"])),
 			"SELECT \"id\" FROM \"articles\""
 		);
 		assert_eq!(
-			manager.only(&["id", "title"]).to_sql(),
+			render(manager.only(&["id", "title"])),
 			"SELECT \"id\", \"title\" FROM \"articles\""
 		);
 		assert_eq!(
-			manager.values(&["title"]).to_sql(),
+			render(manager.values(&["title"])),
 			"SELECT \"title\" FROM \"articles\""
 		);
 		assert_eq!(
-			manager.values_list(&["id", "title"]).to_sql(),
+			render(manager.values_list(&["id", "title"])),
 			"SELECT \"id\", \"title\" FROM \"articles\""
 		);
 		assert_eq!(
-			manager
-				.filter_array_overlap("tags", &["rust", "orm"])
-				.to_sql(),
+			render(manager.filter_array_overlap("tags", &["rust", "orm"])),
 			"SELECT * FROM \"articles\" WHERE \"tags\" && ARRAY['rust', 'orm']"
 		);
 		assert_eq!(
-			manager
-				.filter_array_contains("tags", &["rust", "orm"])
-				.to_sql(),
+			render(manager.filter_array_contains("tags", &["rust", "orm"])),
 			"SELECT * FROM \"articles\" WHERE \"tags\" @> ARRAY['rust', 'orm']"
 		);
 		assert_eq!(
-			manager
-				.filter_jsonb_contains("metadata", r#"{"published":true}"#)
-				.to_sql(),
+			render(manager.filter_jsonb_contains("metadata", r#"{"published":true}"#)),
 			"SELECT * FROM \"articles\" WHERE \"metadata\" @> '{\"published\":true}'::jsonb"
 		);
 		assert_eq!(
-			manager
-				.filter_jsonb_key_exists("metadata", "published")
-				.to_sql(),
+			render(manager.filter_jsonb_key_exists("metadata", "published")),
 			"SELECT * FROM \"articles\" WHERE \"metadata\" ? 'published'"
 		);
 		assert_eq!(
-			manager
-				.filter_range_contains("published_range", "2026-08-06")
-				.to_sql(),
+			render(manager.filter_range_contains("published_range", "2026-08-06")),
 			"SELECT * FROM \"articles\" WHERE \"published_range\" @> '2026-08-06'"
 		);
 		assert_eq!(
-			manager
-				.filter_in_subquery::<Article, _>("id", |query| query.only(&["id"]))
-				.to_sql(),
+			render(
+				manager
+					.filter_in_subquery::<Article, _>("id", |query| query.only(&["id"]))
+					.expect("IN subquery should build"),
+			),
 			"SELECT * FROM \"articles\" WHERE \"id\" IN (SELECT \"id\" FROM \"articles\")"
 		);
 		assert_eq!(
-			manager
-				.filter_not_in_subquery::<Article, _>("id", |query| query.only(&["id"]))
-				.to_sql(),
+			render(
+				manager
+					.filter_not_in_subquery::<Article, _>("id", |query| query.only(&["id"]))
+					.expect("NOT IN subquery should build"),
+			),
 			"SELECT * FROM \"articles\" WHERE \"id\" NOT IN (SELECT \"id\" FROM \"articles\")"
 		);
 		assert_eq!(
-			manager
-				.filter_exists::<Article, _>(|query| query.filter(Filter::new(
-					"title",
-					FilterOperator::Eq,
-					FilterValue::String("Rust".to_string()),
-				)))
-				.to_sql(),
+			render(
+				manager
+					.filter_exists::<Article, _>(|query| {
+						query.filter(Filter::new(
+							"title",
+							FilterOperator::Eq,
+							FilterValue::String("Rust".to_string()),
+						))
+					})
+					.expect("EXISTS subquery should build"),
+			),
 			"SELECT * FROM \"articles\" WHERE EXISTS (SELECT * FROM \"articles\" WHERE \"title\" = 'Rust')"
 		);
 		assert_eq!(
-			manager
-				.filter_not_exists::<Article, _>(|query| query.filter(Filter::new(
-					"title",
-					FilterOperator::Eq,
-					FilterValue::String("Rust".to_string()),
-				)))
-				.to_sql(),
+			render(
+				manager
+					.filter_not_exists::<Article, _>(|query| {
+						query.filter(Filter::new(
+							"title",
+							FilterOperator::Eq,
+							FilterValue::String("Rust".to_string()),
+						))
+					})
+					.expect("NOT EXISTS subquery should build"),
+			),
 			"SELECT * FROM \"articles\" WHERE NOT EXISTS (SELECT * FROM \"articles\" WHERE \"title\" = 'Rust')"
 		);
 		assert_eq!(
-			manager
-				.with_cte(CTE::new("published_articles", "SELECT id FROM articles"))
-				.to_sql(),
+			render(manager.with_cte(CTE::new("published_articles", "SELECT id FROM articles",))),
 			"WITH published_articles AS (SELECT id FROM articles) SELECT * FROM \"articles\""
 		);
 		assert_eq!(
-			manager.full_text_search("title", "rust orm").to_sql(),
+			render(manager.full_text_search("title", "rust orm")),
 			"SELECT * FROM \"articles\" WHERE \"title\" @@ plainto_tsquery('english', 'rust orm')"
 		);
 	}
 
-	#[test]
+	#[rstest::rstest]
 	fn custom_manager_sql_utilities_preserve_complete_statements() {
 		let manager = ArticleManager::new();
 		let queryset = manager.filter(Filter::new(
@@ -834,35 +1064,28 @@ mod tests {
 			FilterOperator::Eq,
 			FilterValue::String("Rust".to_string()),
 		));
-		let mut lookup_fields = HashMap::new();
-		lookup_fields.insert("title".to_string(), "Rust".to_string());
-		let mut defaults = HashMap::new();
-		defaults.insert("title".to_string(), "Rust ORM".to_string());
 
 		assert_eq!(
-			manager.update_queryset(&queryset, &[("title", "Rust ORM")]),
+			manager
+				.update_queryset(&queryset, &[("title", "Rust ORM")])
+				.expect("update statement should build"),
 			(
 				"UPDATE \"articles\" SET \"title\" = $1 WHERE \"title\" = $2".to_string(),
 				vec!["Rust ORM".to_string(), "Rust".to_string()],
 			)
 		);
 		assert_eq!(
-			manager.delete_queryset(&queryset),
+			manager
+				.delete_queryset(&queryset)
+				.expect("delete statement should build"),
 			(
 				"DELETE FROM \"articles\" WHERE \"title\" = $1".to_string(),
 				vec!["Rust".to_string()],
 			)
 		);
-		assert_eq!(
-			manager.get_or_create_sql(&lookup_fields, &defaults, DatabaseBackend::Sqlite),
-			(
-				"SELECT * FROM \"articles\" WHERE \"title\" = ?".to_string(),
-				"INSERT INTO \"articles\" (\"title\") VALUES (?)".to_string(),
-			)
-		);
 	}
 
-	#[test]
+	#[rstest::rstest]
 	fn custom_manager_default_hooks_are_noops() {
 		let manager = ArticleManager::new();
 		let mut article = Article {
@@ -884,11 +1107,15 @@ mod tests {
 	}
 
 	#[cfg(feature = "sqlite")]
+	#[rstest::rstest]
 	#[tokio::test]
 	async fn custom_manager_vetoes_create_before_writing_to_sqlite() {
-		let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		let owner = BackendsConnection::connect_sqlite("sqlite::memory:")
 			.await
 			.expect("in-memory SQLite connection should be available");
+		let lease = DatabaseConnectionLease::register(owner)
+			.expect("in-memory SQLite connection should be registered");
+		let mut connection = lease.handle();
 		connection
 			.execute(
 				"CREATE TABLE articles (id INTEGER PRIMARY KEY, title TEXT NOT NULL)",
@@ -902,12 +1129,13 @@ mod tests {
 		};
 
 		let result = VetoArticleManager::new()
-			.create_with_conn(&connection, &article)
+			.create_with_conn(&mut connection, &article)
 			.await;
 
 		assert!(matches!(
 			result,
-			Err(reinhardt_core::exception::Error::Database(message)) if message == "save vetoed"
+			Err(reinhardt_core::exception::Error::Database(error))
+				if error.kind() == DatabaseErrorKind::Query && error.message() == "save vetoed"
 		));
 		let row = connection
 			.query_one("SELECT COUNT(*) AS count FROM articles", Vec::new())
@@ -917,11 +1145,15 @@ mod tests {
 	}
 
 	#[cfg(feature = "sqlite")]
+	#[rstest::rstest]
 	#[tokio::test]
 	async fn custom_manager_vetoes_delete_without_removing_the_sqlite_row() {
-		let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		let owner = BackendsConnection::connect_sqlite("sqlite::memory:")
 			.await
 			.expect("in-memory SQLite connection should be available");
+		let lease = DatabaseConnectionLease::register(owner)
+			.expect("in-memory SQLite connection should be registered");
+		let mut connection = lease.handle();
 		connection
 			.execute(
 				"CREATE TABLE articles (id INTEGER PRIMARY KEY, title TEXT NOT NULL)",
@@ -938,12 +1170,13 @@ mod tests {
 			.expect("article should be inserted");
 
 		let result = VetoArticleManager::new()
-			.delete_with_conn(&connection, 1)
+			.delete_with_conn(&mut connection, 1)
 			.await;
 
 		assert!(matches!(
 			result,
-			Err(reinhardt_core::exception::Error::Database(message)) if message == "delete vetoed"
+			Err(reinhardt_core::exception::Error::Database(error))
+				if error.kind() == DatabaseErrorKind::Query && error.message() == "delete vetoed"
 		));
 		let row = connection
 			.query_one("SELECT COUNT(*) AS count FROM articles", Vec::new())
@@ -952,6 +1185,7 @@ mod tests {
 		assert_eq!(row.get::<i64>("count"), Some(1));
 	}
 
+	#[rstest::rstest]
 	#[tokio::test]
 	async fn custom_manager_vetoes_bulk_update_before_global_database_lookup() {
 		let articles = vec![Article {
@@ -965,7 +1199,9 @@ mod tests {
 
 		assert!(matches!(
 			result,
-			Err(reinhardt_core::exception::Error::Database(message)) if message == "bulk update vetoed"
+			Err(reinhardt_core::exception::Error::Database(error))
+				if error.kind() == DatabaseErrorKind::Query
+					&& error.message() == "bulk update vetoed"
 		));
 	}
 }

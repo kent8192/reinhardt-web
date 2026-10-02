@@ -3,13 +3,16 @@
 //! Django-style static file collection for production deployment
 
 use crate::CommandResult;
-use crate::{BaseCommand, CommandContext};
+use crate::{
+	BaseCommand, COMPONENT_STYLES_PATH, CommandContext, StyleExtractor, StylePackageContext,
+};
 use async_trait::async_trait;
+use reinhardt_utils::staticfiles::publication::{DecodedAssetManifest, decode_manifest};
 use reinhardt_utils::staticfiles::{StaticFilesConfig, StaticFilesFinder};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// Options for the `collectstatic` management command.
 #[derive(Debug, Clone)]
@@ -85,14 +88,27 @@ impl Default for CollectStaticStats {
 ///
 /// Discovers static files from configured directories and installed apps,
 /// then copies them to the `STATIC_ROOT` directory for production serving.
+/// Generated in-memory static file collected through the normal hashing pipeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VirtualStaticAsset {
+	/// Stable logical path used by templates and manifests.
+	pub logical_path: String,
+	/// Complete asset bytes.
+	pub bytes: Vec<u8>,
+}
+
+/// Collects physical and generated static assets into one production directory.
 #[derive(Default)]
 pub struct CollectStaticCommand {
 	config: StaticFilesConfig,
 	options: CollectStaticOptions,
-	manifest: HashMap<String, String>,
+	manifest: BTreeMap<String, String>,
 	/// Source path for index.html (copies to static_root with template processing).
 	/// Refs #2869
 	index_source: Option<PathBuf>,
+	style_context: Option<StylePackageContext>,
+	virtual_assets: Vec<VirtualStaticAsset>,
+	source_base: Option<PathBuf>,
 }
 
 impl CollectStaticCommand {
@@ -101,8 +117,11 @@ impl CollectStaticCommand {
 		Self {
 			config,
 			options,
-			manifest: HashMap::new(),
+			manifest: BTreeMap::new(),
 			index_source: None,
+			style_context: None,
+			virtual_assets: Vec::new(),
+			source_base: None,
 		}
 	}
 
@@ -114,14 +133,167 @@ impl CollectStaticCommand {
 		self.index_source = path;
 	}
 
+	/// Use one resolved package context to compile component styles before mutation.
+	pub fn set_style_context(&mut self, context: Option<StylePackageContext>) {
+		self.style_context = context;
+	}
+
+	/// Add an in-memory framework asset to the collection pipeline.
+	pub fn add_virtual_asset(&mut self, asset: VirtualStaticAsset) {
+		self.virtual_assets.push(asset);
+	}
+
+	/// Resolve application-registered relative static directories against a project base.
+	pub fn set_source_base(&mut self, base: PathBuf) {
+		self.source_base = Some(base);
+	}
+
+	/// Discover ordinary/vendor inputs and generated styles without writing a public manifest.
+	///
+	/// A dry run performs no download or style compilation. Publication captures the
+	/// returned physical sources before activating a new generation. Unlike legacy
+	/// copying, duplicate logical inputs are retained so publication can reject them.
+	pub fn collect_inputs(&mut self) -> io::Result<crate::buildstatic::CollectedStaticInputs> {
+		use reinhardt_utils::staticfiles::publication::AssetInput;
+		self.validate_config()?;
+		let mut result = crate::buildstatic::CollectedStaticInputs::default();
+		let all_dirs = self.static_source_dirs();
+		self.validate_reserved_sources(&all_dirs)?;
+		let mut virtual_assets = self.virtual_assets.clone();
+		if let Some(context) = &self.style_context {
+			if self.options.dry_run {
+				result
+					.pending_checks
+					.push("component style extraction".into());
+			} else {
+				let bundle = StyleExtractor::new(context.clone())
+					.extract()
+					.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+				virtual_assets.retain(|a| a.logical_path != COMPONENT_STYLES_PATH);
+				virtual_assets.push(VirtualStaticAsset {
+					logical_path: COMPONENT_STYLES_PATH.into(),
+					bytes: bundle.css,
+				});
+			}
+		}
+		#[cfg(feature = "server")]
+		if self.options.dry_run {
+			result
+				.pending_checks
+				.push("registered vendor downloads and integrity validation".into());
+		} else {
+			self.download_publication_vendors()?;
+		}
+		// Publication names are reserved only within the actual output root.
+		// Independent sources may contain a PWA manifest or a builds/ directory.
+		let publication_root = &self.config.static_root;
+		let mut excluded = Vec::new();
+		for name in [
+			"builds",
+			"manifest.json",
+			"staticfiles.json",
+			".publication.lock",
+		] {
+			excluded.push(publication_root.join(name));
+		}
+		if publication_root.is_dir() {
+			for entry in fs::read_dir(publication_root)? {
+				let entry = entry?;
+				if entry.file_name().to_string_lossy().starts_with(".asset-")
+					|| entry
+						.file_name()
+						.to_string_lossy()
+						.starts_with(".manifest-")
+				{
+					excluded.push(entry.path());
+				}
+			}
+		}
+		for root in &all_dirs {
+			if publication_root != root && publication_root.starts_with(root) {
+				excluded.push(publication_root.clone());
+			}
+		}
+		for (root, logical) in StaticFilesFinder::new(all_dirs).find_all_checked(&excluded)? {
+			if !self.should_ignore(&logical) {
+				result
+					.inputs
+					.push(AssetInput::from_directory(root, &logical, &logical));
+			}
+		}
+		self.register_virtual_assets(&virtual_assets)?;
+		for asset in virtual_assets {
+			result
+				.inputs
+				.push(AssetInput::bytes(&asset.logical_path, asset.bytes));
+		}
+		Ok(result)
+	}
+
+	#[cfg(feature = "server")]
+	fn download_publication_vendors(&self) -> io::Result<()> {
+		use reinhardt_utils::staticfiles::vendor::{Verbosity, download_all_vendor_assets};
+		let roots: std::collections::HashMap<_, _> = ::reinhardt_apps::get_app_static_files()
+			.iter()
+			.map(|app| {
+				let path = PathBuf::from(app.static_dir);
+				let path = self
+					.source_base
+					.as_ref()
+					.filter(|_| path.is_relative())
+					.map_or_else(|| path.clone(), |base| base.join(&path));
+				(app.app_label, path)
+			})
+			.collect();
+		if roots.is_empty() {
+			return Ok(());
+		}
+		for root in roots.values() {
+			fs::create_dir_all(root)?;
+		}
+		// An owned scoped thread also works when called from a current-thread async runtime.
+		std::thread::scope(|scope| {
+			scope
+				.spawn(move || {
+					let runtime = tokio::runtime::Builder::new_current_thread()
+						.enable_all()
+						.build()?;
+					runtime
+						.block_on(download_all_vendor_assets(
+							|label| roots.get(label).cloned(),
+							Verbosity::Silent,
+						))
+						.map_err(io::Error::other)
+				})
+				.join()
+				.map_err(|_| io::Error::other("vendor download worker panicked"))?
+		})
+	}
+
 	/// Execute the collectstatic command
 	pub fn execute(&mut self) -> Result<CollectStaticStats, io::Error> {
+		self.refuse_generation_overwrite()?;
 		let mut stats = CollectStaticStats::new();
+		self.manifest.clear();
 
 		// Validate configuration
 		self.validate_config()?;
 		self.validate_index_source()?;
 		self.validate_manifest_destination()?;
+		let mut virtual_assets = self.virtual_assets.clone();
+		if let Some(context) = &self.style_context {
+			let bundle = StyleExtractor::new(context.clone())
+				.extract()
+				.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+			virtual_assets.retain(|asset| asset.logical_path != COMPONENT_STYLES_PATH);
+			virtual_assets.push(VirtualStaticAsset {
+				logical_path: COMPONENT_STYLES_PATH.to_string(),
+				bytes: bundle.css,
+			});
+		}
+		let all_dirs = self.static_source_dirs();
+		self.validate_reserved_sources(&all_dirs)?;
+		self.register_virtual_assets(&virtual_assets)?;
 
 		// Clear destination if requested
 		if self.options.clear {
@@ -131,6 +303,12 @@ impl CollectStaticCommand {
 		// Create destination directory if it doesn't exist
 		if !self.options.dry_run {
 			fs::create_dir_all(&self.config.static_root)?;
+			if !self.options.enable_hashing {
+				let manifest_path = self.config.static_root.join("manifest.json");
+				if manifest_path.is_file() {
+					fs::remove_file(manifest_path)?;
+				}
+			}
 		}
 
 		// Download vendor assets across all registered apps before collecting
@@ -199,30 +377,6 @@ impl CollectStaticCommand {
 			}
 		}
 
-		// Collect files from all source directories
-		// Start with manually configured directories
-		let mut all_dirs = self.config.staticfiles_dirs.clone();
-
-		// Auto-discover static files from installed apps via inventory
-		let app_static_configs = ::reinhardt_apps::get_app_static_files();
-
-		for config in app_static_configs {
-			// Convert &'static str to PathBuf
-			let static_dir = std::path::PathBuf::from(config.static_dir);
-
-			// Skip if already in staticfiles_dirs (manual config takes precedence)
-			if !all_dirs.contains(&static_dir) {
-				if self.options.verbosity > 1 {
-					println!(
-						"Auto-discovered static files from app '{}': {}",
-						config.app_label,
-						static_dir.display()
-					);
-				}
-				all_dirs.push(static_dir);
-			}
-		}
-
 		let finder = StaticFilesFinder::new(all_dirs.clone());
 		let all_files = finder.find_all();
 
@@ -237,6 +391,12 @@ impl CollectStaticCommand {
 
 		// Process each file (reversed so later sources are processed first)
 		for file_path in &files_to_process {
+			if file_path.starts_with("__reinhardt__/") {
+				return Err(io::Error::new(
+					io::ErrorKind::AlreadyExists,
+					format!("static source claims reserved framework path `{file_path}`"),
+				));
+			}
 			// Skip if already processed (handles duplicates from multiple source dirs)
 			if !processed_files.insert(file_path.clone()) {
 				continue;
@@ -256,6 +416,13 @@ impl CollectStaticCommand {
 			}
 		}
 
+		for asset in &virtual_assets {
+			match self.write_virtual_asset(asset)? {
+				CopyResult::Copied => stats.copied += 1,
+				CopyResult::Unmodified => stats.unmodified += 1,
+			}
+		}
+
 		// Save manifest if hashing is enabled
 		if self.options.enable_hashing && !self.options.dry_run {
 			self.save_manifest()?;
@@ -270,7 +437,9 @@ impl CollectStaticCommand {
 					if let Some(parent) = dest_path.parent() {
 						fs::create_dir_all(parent)?;
 					}
-					if self.options.link {
+					let requires_rendering = fs::read_to_string(index_source)
+						.is_ok_and(|content| content.contains("{{ static_url("));
+					if self.options.link && !requires_rendering {
 						self.create_symlink(index_source, &dest_path)?;
 					} else {
 						self.process_html_template(index_source, &dest_path)?;
@@ -308,6 +477,153 @@ impl CollectStaticCommand {
 			));
 		}
 
+		Ok(())
+	}
+
+	fn static_source_dirs(&self) -> Vec<PathBuf> {
+		let mut directories = self.config.staticfiles_dirs.clone();
+		for config in ::reinhardt_apps::get_app_static_files() {
+			let static_dir = PathBuf::from(config.static_dir);
+			if !directories.contains(&static_dir) {
+				if self.options.verbosity > 1 {
+					println!(
+						"Auto-discovered static files from app '{}': {}",
+						config.app_label,
+						static_dir.display()
+					);
+				}
+				directories.push(static_dir);
+			}
+		}
+		normalize_static_source_dirs(directories, self.source_base.as_deref())
+	}
+
+	fn refuse_generation_overwrite(&self) -> io::Result<()> {
+		for name in ["manifest.json", "staticfiles.json"] {
+			let path = self.config.static_root.join(name);
+			if path.is_file() {
+				let bytes = fs::read(&path)?;
+				let decoded = decode_manifest(&bytes).map_err(|error| {
+					io::Error::new(
+						io::ErrorKind::InvalidData,
+						format!(
+							"invalid existing manifest {}: {error}; select a separate static root",
+							path.display()
+						),
+					)
+				})?;
+				if matches!(decoded, DecodedAssetManifest::V2(_)) {
+					return Err(io::Error::new(
+						io::ErrorKind::InvalidInput,
+						"collectstatic cannot overwrite a generation publication; use buildstatic or a separate legacy static root",
+					));
+				}
+			}
+		}
+		Ok(())
+	}
+
+	fn validate_reserved_sources(&self, sources: &[PathBuf]) -> Result<(), io::Error> {
+		for source in sources {
+			let reserved = source.join("__reinhardt__");
+			if reserved.exists() {
+				return Err(io::Error::new(
+					io::ErrorKind::AlreadyExists,
+					format!(
+						"static source `{}` claims the reserved `__reinhardt__/` namespace",
+						reserved.display()
+					),
+				));
+			}
+		}
+		Ok(())
+	}
+
+	fn register_virtual_assets(&mut self, assets: &[VirtualStaticAsset]) -> Result<(), io::Error> {
+		for asset in assets {
+			self.virtual_asset_output_path(asset)?;
+		}
+		Ok(())
+	}
+
+	fn virtual_asset_output_path(
+		&mut self,
+		asset: &VirtualStaticAsset,
+	) -> Result<String, io::Error> {
+		if !asset.logical_path.starts_with("__reinhardt__/") {
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				format!(
+					"virtual framework asset must use the reserved namespace: {}",
+					asset.logical_path
+				),
+			));
+		}
+		if Path::new(&asset.logical_path)
+			.components()
+			.any(|component| !matches!(component, Component::Normal(_)))
+		{
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				format!(
+					"virtual framework asset has an invalid logical path: {}",
+					asset.logical_path
+				),
+			));
+		}
+		if self.options.enable_hashing {
+			let hash = Self::calculate_bytes_hash(&asset.bytes);
+			let hashed = self.get_hashed_filename(&asset.logical_path, &hash);
+			self.manifest
+				.insert(asset.logical_path.clone(), hashed.clone());
+			Ok(hashed)
+		} else {
+			Ok(asset.logical_path.clone())
+		}
+	}
+
+	fn write_virtual_asset(&mut self, asset: &VirtualStaticAsset) -> Result<CopyResult, io::Error> {
+		let output_path = self.virtual_asset_output_path(asset)?;
+		let destination = self.config.static_root.join(&output_path);
+		if destination.exists() && !self.options.clear && fs::read(&destination)? == asset.bytes {
+			return Ok(CopyResult::Unmodified);
+		}
+		if self.options.dry_run {
+			return Ok(CopyResult::Copied);
+		}
+		if let Some(parent) = destination.parent() {
+			fs::create_dir_all(parent)?;
+		}
+		fs::write(&destination, &asset.bytes)?;
+		if asset.logical_path == COMPONENT_STYLES_PATH {
+			self.prune_obsolete_component_styles(&destination)?;
+		}
+		Ok(CopyResult::Copied)
+	}
+
+	fn calculate_bytes_hash(bytes: &[u8]) -> String {
+		use sha2::{Digest, Sha256};
+		let hash = format!("{:x}", Sha256::digest(bytes));
+		hash[..8].to_string()
+	}
+
+	fn prune_obsolete_component_styles(&self, retained: &Path) -> Result<(), io::Error> {
+		let Some(parent) = retained.parent() else {
+			return Ok(());
+		};
+		for entry in fs::read_dir(parent)? {
+			let path = entry?.path();
+			let is_component_css =
+				path.file_name()
+					.and_then(|name| name.to_str())
+					.is_some_and(|name| {
+						name == "components.css"
+							|| (name.starts_with("components.") && name.ends_with(".css"))
+					});
+			if is_component_css && path != retained {
+				fs::remove_file(path)?;
+			}
+		}
 		Ok(())
 	}
 
@@ -655,6 +971,25 @@ impl CollectStaticCommand {
 	}
 }
 
+fn normalize_static_source_dirs(
+	mut directories: Vec<PathBuf>,
+	base: Option<&Path>,
+) -> Vec<PathBuf> {
+	if let Some(base) = base {
+		for path in &mut directories {
+			if path.is_relative() {
+				*path = base.join(&*path);
+			}
+		}
+	}
+	let mut seen = HashSet::new();
+	directories.retain(|path| {
+		let normalized = fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+		seen.insert(normalized)
+	});
+	directories
+}
+
 #[derive(Debug, PartialEq)]
 enum CopyResult {
 	Copied,
@@ -679,8 +1014,59 @@ impl Clone for CollectStaticCommand {
 		Self {
 			config: self.config.clone(),
 			options: self.options.clone(),
-			manifest: HashMap::new(),
+			manifest: BTreeMap::new(),
 			index_source: self.index_source.clone(),
+			style_context: self.style_context.clone(),
+			virtual_assets: self.virtual_assets.clone(),
+			source_base: self.source_base.clone(),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn flat_legacy_manifest_with_version_asset_can_be_overwritten() {
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let static_root = root.path().join("static");
+		fs::create_dir_all(&static_root).unwrap();
+		fs::write(
+			static_root.join("manifest.json"),
+			br#"{"version":"version.abc","app.js":"app.abc.js"}"#,
+		)
+		.unwrap();
+		let command = CollectStaticCommand::new(
+			StaticFilesConfig {
+				static_root,
+				..StaticFilesConfig::default()
+			},
+			CollectStaticOptions::default(),
+		);
+
+		// Act
+		let result = command.refuse_generation_overwrite();
+
+		// Assert
+		assert!(result.is_ok(), "{result:?}");
+	}
+
+	#[rstest]
+	fn static_source_directories_are_resolved_before_deduplication() {
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let base = root.path().join("project");
+		let dist = base.join("dist-wasm");
+		fs::create_dir_all(&dist).unwrap();
+		let directories = vec![dist.clone(), PathBuf::from("dist-wasm")];
+
+		// Act
+		let normalized = normalize_static_source_dirs(directories, Some(&base));
+
+		// Assert
+		assert_eq!(normalized, vec![dist]);
 	}
 }

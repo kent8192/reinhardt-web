@@ -41,7 +41,7 @@ fn test_application() -> OAuth2Application {
 			"https://example.com/callback".to_string(),
 			"https://example.com/oauth/callback".to_string(),
 		],
-		grant_types: vec![GrantType::AuthorizationCode, GrantType::RefreshToken],
+		grant_types: vec![GrantType::AuthorizationCode],
 	}
 }
 
@@ -126,8 +126,8 @@ async fn test_complete_authorization_code_flow(oauth2_with_app: OAuth2Authentica
 	);
 	assert_eq!(token.expires_in, 3600, "Token should expire in 1 hour");
 	assert!(
-		token.refresh_token.is_some(),
-		"Refresh token should be present"
+		token.refresh_token.is_none(),
+		"No refresh flow exists, so no refresh token is issued"
 	);
 	assert_eq!(
 		token.scope,
@@ -463,7 +463,7 @@ async fn test_token_lifecycle_states(oauth2_with_app: OAuth2Authentication) {
 
 	// State 4: Token is valid (has proper format and fields)
 	assert!(token.token.starts_with("access_"));
-	assert!(token.refresh_token.is_some());
+	assert!(token.refresh_token.is_none());
 }
 
 #[rstest]
@@ -569,7 +569,7 @@ async fn test_multiple_applications(oauth2_auth: OAuth2Authentication) {
 			client_id: "app_3".to_string(),
 			client_secret: "secret_3".to_string(),
 			redirect_uris: vec!["https://app3.example.com/callback".to_string()],
-			grant_types: vec![GrantType::RefreshToken],
+			grant_types: vec![GrantType::AuthorizationCode],
 		},
 	];
 
@@ -811,8 +811,8 @@ async fn test_use_case_sso_login_flow(oauth2_with_app: OAuth2Authentication) {
 	// Step 3: App uses token to get user info
 	assert!(token.token.starts_with("access_"), "Valid access token");
 	assert!(
-		token.refresh_token.is_some(),
-		"Refresh token for session maintenance"
+		token.refresh_token.is_none(),
+		"Refresh tokens are unavailable"
 	);
 	assert_eq!(
 		token.scope,
@@ -894,7 +894,11 @@ async fn test_use_case_multiple_concurrent_authorizations() {
 
 #[rstest]
 #[tokio::test]
-async fn test_use_case_refresh_token_presence() {
+#[expect(
+	deprecated,
+	reason = "verify legacy grant registration does not issue refresh tokens"
+)]
+async fn test_use_case_refresh_token_not_issued() {
 	let auth = OAuth2Authentication::new();
 	let app = OAuth2Application {
 		client_id: "refresh_test_client".to_string(),
@@ -924,16 +928,10 @@ async fn test_use_case_refresh_token_presence() {
 		.await
 		.unwrap();
 
-	// Refresh token should be provided
+	// The legacy grant variant cannot enable an unimplemented refresh flow.
 	assert!(
-		token.refresh_token.is_some(),
-		"Refresh token should be provided for auth code flow"
-	);
-
-	let refresh_token = token.refresh_token.unwrap();
-	assert!(
-		refresh_token.starts_with("refresh_"),
-		"Refresh token should have proper prefix"
+		token.refresh_token.is_none(),
+		"No refresh flow exists, so no refresh token is issued"
 	);
 }
 
@@ -942,6 +940,10 @@ async fn test_use_case_refresh_token_presence() {
 // =============================================================================
 
 #[rstest]
+#[expect(
+	deprecated,
+	reason = "verify source-compatible legacy grant variants serialize"
+)]
 fn test_grant_type_variants() {
 	// Verify all grant types are serializable/deserializable
 	let grant_types = vec![
@@ -979,6 +981,7 @@ fn test_access_token_serialization() {
 }
 
 #[rstest]
+#[expect(deprecated, reason = "verify legacy registrations remain serializable")]
 fn test_oauth2_application_serialization() {
 	let app = OAuth2Application {
 		client_id: "app_client".to_string(),

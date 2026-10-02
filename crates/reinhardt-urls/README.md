@@ -19,6 +19,7 @@ This crate provides the following modules:
   - URL reversal capabilities
   - PathPattern for URL pattern matching
   - DefaultRouter with automatic endpoint generation
+  - ServerRouter synchronous endpoint and handler fast paths
   - Custom action support (list and detail-level)
   - ViewSet middleware and custom-action HTTP method enforcement on generated routes
 
@@ -54,14 +55,14 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:4 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["urls"] }
+reinhardt = { version = "0.4.0-alpha.18", features = ["urls"] }
 
 # For specific sub-features:
-# reinhardt = { version = "0.3.20", features = ["urls-routers", "urls-proxy"] }
+# reinhardt = { version = "0.4.0-alpha.18", features = ["urls-routers", "urls-proxy"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.20", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.18", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.18", features = ["full"] }      # All features
 ```
 
 Then import URLs features:
@@ -94,6 +95,93 @@ router.add_route(Route::new("/custom/", custom_handler));
 if let Some((handler, params)) = router.match_request(&request) {
     handler.handle(request, params).await?;
 }
+```
+
+### UnifiedRouter across native and WASM
+
+With the `client-router` feature, shared route modules return the same
+non-generic `UnifiedRouter` type on native and WASM:
+
+```rust
+use reinhardt_urls::routers::{ClientRouter, ServerRouter, UnifiedRouter};
+
+fn configure_server_routes(router: ServerRouter) -> ServerRouter {
+	router
+}
+
+fn configure_client_routes(router: ClientRouter) -> ClientRouter {
+	router
+}
+
+pub fn url_patterns() -> UnifiedRouter {
+	UnifiedRouter::new()
+		.server(configure_server_routes)
+		.client(configure_client_routes)
+}
+```
+
+Only the target-appropriate closure runs. Native stores and configures server
+routes, so `.client(...)` type-checks but is inert. WASM stores and configures
+client routes, so `.server(...)` type-checks but is inert. Do not rely on an
+inactive closure for required side effects; test client route behavior by
+constructing `ClientRouter` directly inside a reactive scope on native.
+
+When server handlers live in cfg-gated modules, use the facade's
+`#[reinhardt::url_patterns]` attribute to remove their complete `.server(...)`
+arguments before name resolution on inactive targets:
+
+```rust
+use reinhardt::urls::prelude::UnifiedRouter;
+
+#[reinhardt::url_patterns]
+pub fn url_patterns() -> UnifiedRouter {
+	UnifiedRouter::new()
+		.server(|server| server.endpoint(crate::native_handlers::health))
+		.with_namespace("demo")
+}
+```
+
+The attribute preserves server calls only when the **calling crate** enables
+`cfg(server)` and the target is not browser WASM
+(`all(target_family = "wasm", target_os = "unknown")`). For example, a caller
+can declare a `server = []` Cargo feature and use this `build.rs`:
+
+```rust
+fn main() {
+	println!("cargo::rustc-check-cfg=cfg(server)");
+	if std::env::var_os("CARGO_FEATURE_SERVER").is_some() {
+		println!("cargo::rustc-cfg=server");
+	}
+}
+```
+
+Keep native handler modules and native Cargo dependencies target-gated.
+The attribute supports one builder expression starting at
+`UnifiedRouter::new()` or `default()`, followed by `server`, `client`,
+`with_prefix`, `with_namespace`, `mount_unified`, or `merge`. Use separate
+annotated functions for nested server builders. It adds no inventory entry;
+retain a single root `#[routes]`, which can be stacked in either order with
+`#[url_patterns]`. Existing builder calls without the attribute retain their
+original type-checking behavior.
+
+### Synchronous Server Routes
+
+Use `endpoint_sync` or `handler_sync` for routes that can build a response
+without awaiting I/O:
+
+```rust
+use reinhardt::http::{Request, Response, Result, SyncHandler};
+use reinhardt::urls::routers::ServerRouter;
+
+struct HealthHandler;
+
+impl SyncHandler for HealthHandler {
+    fn handle_sync(&self, _request: Request) -> Result<Response> {
+        Ok(Response::ok().with_static_body(b"ok"))
+    }
+}
+
+let router = ServerRouter::new().handler_sync("/health", HealthHandler);
 ```
 
 ### Catch-All Endpoint Paths
@@ -146,6 +234,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+With an exception handler installed, synchronous and requestless routes use
+async dispatch so their failures reach the same hook. The synchronous
+`try_dispatch_*` entry points decline requests that require that conversion.
+
 The hook runs only for errors that reach the configured router or middleware
 chain. Custom responses must set their own safe body and security headers; the
 default conversion hides internal details and returns a JSON
@@ -166,6 +258,20 @@ let url = reverse("user-detail", &[("id", "123")]);
 let url = reverse("api:v1:user-list", &[]);
 // Returns: /api/v1/users/
 ```
+
+#### Migration notes
+
+Client route reversal accepts only values that remain stable when serialized
+and parsed by a browser. Ordinary parameters must be non-empty. Values may use
+URL-stable ASCII characters and valid percent-encoded triplets; wildcard
+parameters may additionally contain `/` and may be empty. A completed path
+segment must not be `.` or `..`, including percent-encoded variants such as
+`%2e` and `%2e%2e`.
+
+Values that do not meet these rules cause `ClientPathPattern::reverse` and
+`ClientRouter::reverse` to return `None`. Update callers to normalize or
+validate user-controlled values before reversal and handle the failed reversal
+as a route-resolution error.
 
 ### Lazy Loading Proxy
 

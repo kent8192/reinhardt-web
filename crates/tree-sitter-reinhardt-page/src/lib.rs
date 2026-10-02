@@ -280,6 +280,11 @@ mod tests {
 	}
 
 	#[test]
+	fn page_dsl_parses_direct_body_form() {
+		assert_has_node(r#"{ div { "hello" } }"#, "element");
+	}
+
+	#[test]
 	fn page_dsl_parses_typed_closure_args_with_nested_type_syntax() {
 		let source = r#"|items: Vec<(usize, String)>| { div { "x" } }"#;
 

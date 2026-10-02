@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["grpc"] }
+reinhardt = { version = "0.4.0-alpha.18", features = ["grpc"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.20", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.18", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.18", features = ["full"] }      # All features
 ```
 
 Then import gRPC features:
@@ -122,6 +122,18 @@ pub enum GrpcError {
 
 ## Usage
 
+### Registering Generated Services
+
+Configure generated Tonic services before registering them with `GrpcRouter`:
+
+```rust,ignore
+use reinhardt_grpc::GrpcRouter;
+
+pub fn grpc_services() -> GrpcRouter {
+    GrpcRouter::new().service(ChatServiceServer::new(ChatService::default()))
+}
+```
+
 ### Using Your Own .proto Files
 
 1. Create a `proto/` directory in your project
@@ -160,7 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-grpc = "0.3.20"
+reinhardt-grpc = "0.4.0-alpha.18"
 tonic = "0.12"
 prost = "0.13"
 
@@ -193,16 +205,17 @@ Facade consumers can enable `grpc` alongside a preset that includes DI:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", package = "reinhardt-web", default-features = false, features = ["minimal", "grpc"] }
+reinhardt = { version = "0.4.0-alpha.18", package = "reinhardt-web", default-features = false, features = ["minimal", "grpc"] }
 ```
 
 Direct `reinhardt-grpc` consumers can instead enable this crate's `di`
 feature explicitly and depend on `reinhardt-di` for DI types:
 
+<!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt-grpc = { version = "0.3.4", features = ["di"] }
-reinhardt-di = "0.3.4"
+reinhardt-grpc = { version = "0.4.0-alpha.18", features = ["di"] }
+reinhardt-di = "0.4.0-alpha.18"
 ```
 
 The basic example below uses the facade configuration. Direct consumers should
@@ -267,6 +280,18 @@ async fn handler(
     // ...
 }
 ```
+
+Injected parameters may use normal Rust binding patterns, including mutable
+bindings and newtype destructuring. The generated wrapper preserves the pattern
+on the handler implementation while forwarding the resolved dependency value.
+
+```rust,ignore
+#[inject] mut db: DatabaseConnection
+#[inject] Wrapper(mut value): Wrapper<Data>
+```
+
+Mutability applies only to the handler function's internal binding; it does not
+change resolver ownership or caching.
 
 ### Integration with GraphQL
 

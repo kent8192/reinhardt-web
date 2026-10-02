@@ -4,9 +4,35 @@ Django-inspired form handling and validation for Rust
 
 ## Overview
 
-`reinhardt-forms` provides a comprehensive form system for form handling and validation. Inspired by Django's forms framework, it offers both automatic form generation from models and manual form definitions with extensive validation capabilities.
+`reinhardt-forms` provides a comprehensive form system for form handling and
+validation. Inspired by Django's forms framework, it offers generated
+model-backed forms and manual form definitions with extensive validation
+capabilities.
 
-This crate is designed to be **WASM-compatible**, providing a pure form processing layer without HTML generation or platform-specific features. For HTML rendering, see `reinhardt-pages`.
+Target-neutral model schemas and payloads can be shared with WASM code. Native
+candidate construction and persistence use the caller's asynchronous ORM
+executor. For HTML rendering and WASM form submission, see `reinhardt-pages`.
+
+## Scoped partial updates
+
+Generated named model-form contracts expose native `validate_patch(data)` and
+`validate_patch_with_existing(data, &model)` adapters. The resulting opaque
+`ValidatedFormPatch` consumes itself through
+`apply_to(scoped_queryset, target, &mut executor)`, reusing the ORM conditional
+update primitive. `target` accepts existing `IntoPrimaryKey` conversions.
+
+Only submitted, allowlisted fields are written. Omission preserves existing
+values; explicit null clears nullable columns; false, zero, and permitted empty
+strings remain assignments. Empty patches return `PatchError::EmptyPatch`.
+Explicit null is rejected before field cleaning when `null = false`, including
+`Option<T>` fields with a create default or `blank = true`. For a non-nullable
+non-optional JSON field, a submitted JSON `null` is a JSON value, not a SQL
+NULL clear. An `Option<serde_json::Value>` field with `null = false` still
+rejects an explicit null.
+Authorization and same-field concurrency predicates belong to the caller.
+
+See the [model-form update guide](../reinhardt-pages/docs/model_forms.md#validated-patches-on-scoped-querysets)
+for a complete path, snapshot validation, counts, and transaction semantics.
 
 ## Installation
 
@@ -15,11 +41,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["forms"] }
+reinhardt = { version = "0.4.0-alpha.18", features = ["forms"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.20", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.18", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.18", features = ["full"] }      # All features
 
 # Forms is included in the standard preset
 ```
@@ -101,24 +127,37 @@ use reinhardt::forms::{Form, Field, CharField, IntegerField};
 
 #### Implemented ✓
 
-- **ModelForm (`ModelForm<T>`)**: Automatic form generation from models
-  - `FormModel` trait for model integration
-  - Field type inference from model metadata
-  - Field inclusion/exclusion configuration
-  - Custom field override support
-  - Model instance population from form data
-  - Save functionality with validation
+- **Generated model forms (`ModelForm<T, P>`)**: Descriptor-driven model
+  validation and persistence
+  - Explicit `#[model(form = true)]` opt-in
+  - Generated `{Model}FormSchema` metadata and
+    `{Model}ModelFormData<P>` typed payload
+  - Generated `Cleaned{Model}ModelFormData<P>` after consuming strict create
+    validation with `clean_and_validate()` or post-merge update validation with
+    `clean_and_validate_for_update(&existing)`
+  - `#[form(trim)]` opt-in normalization for generated text, email, and URL
+    fields
+  - `#[form(validate = path)]` synchronous cross-field validation
+  - `ModelFormPolicy`-controlled public field selection
+  - Typed trusted setters for excluded editable values
+  - Typed server context for required server-owned values during creation
+  - `from_payload` for explicit create intent
+  - `from_payload_and_instance` for explicit update intent
+  - Database-free, cached `build_instance()` candidate construction
+  - Caller-owned asynchronous `save(executor)` persistence
+  - Structured `ModelFormError`, including retained database errors
+- **Named target-neutral contracts**: `#[model(form(name = Contract,
+  fields(field, ...)))]` emits a concrete selected-field payload and schema on
+  native and WASM, plus a native-only `Contract::model_form(data)` adapter to
+  `ModelForm<T, ContractPolicy>`. Selected fields are limited to `String`,
+  `bool`, `i32`, `i64`, `f32`, `f64`, `rust_decimal::Decimal`, `uuid::Uuid`,
+  the supported `chrono` date/time types, `serde_json::Value`, and one
+  `Option<T>` layer.
 
-- **ModelFormBuilder**: Fluent API for ModelForm configuration
-  - Field selection (include/exclude)
-  - Widget customization
-  - Label customization
-  - Help text customization
-
-- **ModelFormConfig**: Configuration structure for ModelForm behavior
-  - Field mapping configuration
-  - Validation rules
-  - Save behavior customization
+Public JSON fields denied by the active policy are recorded during
+deserialization and rejected by native candidate construction. Hiding a field
+in HTML is not the security boundary. Server code may use the generated typed
+setter to supply an excluded editable value from a trusted source.
 
 ### Formsets
 
@@ -134,11 +173,28 @@ use reinhardt::forms::{Form, Field, CharField, IntegerField};
   - Non-form error tracking
 
 - **ModelFormSet**: Formset for model instances
-  - Queryset integration
-  - Instance creation, update, and deletion
+  - Generated payload and policy integration
+  - Candidate-based `min_num` and `max_num` validation
+  - Asynchronous ordered persistence through a caller-owned executor
+  - Full candidate preflight before the first write
+  - Untouched create-mode extra forms are excluded from cardinality, preflight,
+    and persistence
+  - Mutable extra-form access through `forms_mut` for submitted payloads
+  - Persistence stops at the first error
   - Inline formset support
   - Configuration via `ModelFormSetConfig`
   - Builder pattern API via `ModelFormSetBuilder`
+
+- **AdvancedModelFormSet**: Cardinality-aware model formset
+  - `min_num` and `max_num` validation before candidate preflight
+  - Incremental form insertion through `add_form`
+  - Asynchronous ordered persistence through a caller-owned executor
+  - Untouched create-mode extra forms are excluded from cardinality, preflight,
+    and persistence; supplied or forbidden input marks an extra as submitted
+  - Inline parent persistence uses explicit `InlineFormSet::for_create` or
+    `InlineFormSet::for_update` intent
+  - Child preflight defers the generated parent key while decoding and applying
+    every trusted server-owned field already registered on the child form
 
 ### Advanced Features
 
@@ -281,13 +337,179 @@ assert!(form.is_valid());
 
 ### ModelForm
 
-```rust
-use reinhardt::forms::{ModelForm, ModelFormBuilder};
+```rust,no_run
+use reinhardt::core::model_form::{ModelFormPolicy, ModelFormSchema};
+use reinhardt::db::associations::ForeignKeyField;
+use reinhardt::db::orm::OrmExecutor;
+use reinhardt::forms::{FormModel, ModelForm, ModelFormError};
+use reinhardt::model;
+use serde::{Deserialize, Serialize};
 
-let form = ModelFormBuilder::<User>::new()
-    .include_fields(vec!["name", "email"])
-    .build();
+#[model(app_label = "users", form = true)]
+#[derive(Clone, Deserialize, Serialize)]
+struct User {
+    #[field(primary_key = true)]
+    id: i64,
+}
+
+#[model(app_label = "polls", form = true)]
+#[derive(Clone, Deserialize, Serialize)]
+struct Question {
+    #[field(primary_key = true)]
+    id: Option<i64>,
+    #[field(max_length = 200)]
+    text: String,
+    #[rel(foreign_key, related_name = "questions")]
+    owner: ForeignKeyField<User>,
+}
+
+struct PublicQuestionFields;
+
+impl ModelFormPolicy for PublicQuestionFields {
+    fn allows(field: &str) -> bool {
+        field == "text"
+    }
+}
+
+async fn create_question(
+    executor: &mut dyn OrmExecutor,
+    owner_id: i64,
+) -> Result<Question, ModelFormError> {
+    let mut payload = QuestionModelFormData::<PublicQuestionFields>::empty();
+    payload.set_text("Which framework should we use?".to_owned());
+
+    // This typed setter is trusted server-side construction. The same field is
+    // still rejected if it arrives in the public JSON payload.
+    payload.set_trusted_owner_id(owner_id);
+
+    let mut form = ModelForm::<Question, PublicQuestionFields>::from_payload(payload);
+    let candidate = form.build_instance()?;
+    assert_eq!(candidate.owner_id, owner_id);
+
+    form.save(executor).await
+}
+
+fn check_generated_contract<T, P>()
+where
+    T: FormModel,
+    P: ModelFormPolicy,
+    T::Schema: ModelFormSchema<Model = T>,
+{
+}
 ```
+
+Use `from_payload_and_instance(payload, instance)` for an update. Create and
+update intent is selected by the constructor, not by a database existence
+query or a primary-key guess.
+
+Generated payloads also provide a direct server trust boundary. The raw
+payload is deserializable; its cleaned counterpart is not. Repeat validation
+on the server, run application-owned async checks on normalized values, and
+then construct or update the model:
+
+```rust,ignore
+use reinhardt_core::model_form::{
+    ModelFormUpdatingPayload,
+    ModelFormValidatingPayload,
+};
+
+let cleaned = payload.clean_and_validate()?;
+ensure_cluster_name_available(&cleaned).await?;
+let cluster = cleaned.into_model(
+    ClusterModelFormServerContext::new().organization_id(organization_id),
+)?;
+
+let cleaned = update_payload.clean_and_validate_for_update(&existing)?;
+ensure_cluster_name_available(&cleaned).await?;
+let updated = cleaned.apply_to(existing)?;
+```
+
+Required server-owned create values enter through the generated typed context,
+so an incomplete context cannot call `into_model`. Async validation remains an
+explicit application step after cleaning. Database failures remain structured
+persistence errors; they are not validation errors.
+
+Create validation requires every public field needed to construct the model.
+Update validation instead merges omitted fields from `existing` while running
+generated field and synchronous `#[form(validate = path)]` checks. The returned
+cleaned payload stays partial, so `apply_to(existing)` changes only fields that
+were supplied. Explicit nullable `null` values remain clears rather than being
+replaced from the existing model.
+
+Generated string-like fields preserve surrounding whitespace unless their
+model field has `#[form(trim)]`. Whitespace-only optional input then follows the
+same empty-control rules: nullable fields are cleared, while defaulted fields
+use their declared default on create and preserve omission on update. This does
+not change the defaults of manually constructed `CharField`, `EmailField`, or
+`URLField` values.
+
+Declared model defaults may provide trusted storage references. Submitted
+File/Image references must match the existing Rust model field, independent
+of model serialization attributes.
+
+`build_instance()` is the equivalent of Django's `commit=False`: it validates
+and caches a model candidate without database access. Repeated calls and a
+failed `save()` reuse that candidate, which makes persistence retryable.
+Retrying model validation replaces earlier errors without rerunning field
+cleaners for an unchanged payload.
+Inline formsets also retain prevalidated child candidates when the trusted
+parent key is unchanged, so saving the parent does not rerun child validation.
+When a generated key becomes available, public relationship values are installed
+in the cleaned child payload and generated validation runs again before the
+child is persisted. Custom field cleaners retain their normalized snapshot.
+Other trusted child values are type-checked before the parent is persisted.
+Mutations made directly to the returned clone after `build_instance()` are the
+caller's validation responsibility.
+
+An excluded required value must have a declared model default, an automatic
+model construction path, or a value supplied by a trusted typed setter before
+construction. Otherwise `build_instance()` returns
+`ModelFormError::MissingModelField`. `ModelFormError::Persistence` means the
+write failed, while `ModelFormError::PersistenceAfterCreate` means the insert
+succeeded but hydration failed. Do not retry the latter as another create;
+reload the persisted record before updating it. `database_error()` returns the
+structured `DatabaseError` from either variant.
+
+### Named target-neutral ModelForm contract
+
+Use a nested `form(...)` declaration when a browser and native server should
+share one selected create payload without compiling the ORM model on WASM:
+
+```rust,ignore
+#[model(
+    app_label = "polls",
+    form(name = QuestionCreateForm, fields(text))
+)]
+struct Question {
+    #[field(primary_key = true)]
+    id: Option<i64>,
+    #[field(max_length = 200)]
+    text: String,
+    #[rel(foreign_key, related_name = "questions")]
+    owner: ForeignKeyField<User>,
+}
+
+let mut data = QuestionCreateFormData::default();
+data.set_text("Which framework should we use?".to_owned());
+
+let mut form = QuestionCreateForm::model_form(data);
+form.set_trusted_field_value("owner_id", serde_json::json!(owner_id))?;
+let candidate = form.build_instance()?;
+```
+
+The macro emits `QuestionCreateForm`, `QuestionCreateFormData`,
+`QuestionCreateFormSchema`, and `QuestionCreateFormField` on both targets.
+The data type has infallible typed setters and serializes only selected fields;
+its JSON deserializer rejects unknown keys, duplicate keys, and wrong value
+types. For a nullable selected field, an explicit JSON `null` is preserved
+separately from an omitted field.
+
+`model_form(data)` and `ModelForm::set_trusted_field_value` are native-only
+bridges. Use them only after server-side authentication or authorization has
+selected a tenant, relationship identifier, or other server-owned value. The
+trusted bridge does not add a field to the public payload, and it cannot change
+a primary key when updating an existing instance. `form = true` and the legacy
+generic `ModelForm` API remain supported.
 
 ### Custom Validation
 

@@ -1,0 +1,5 @@
+error: direct `calc(...)` is unsupported; write arithmetic with style operators
+ --> tests/ui/style/fail/direct_calc.rs:6:10
+  |
+6 |         width: calc(100% - 1rem);
+  |                ^^^^

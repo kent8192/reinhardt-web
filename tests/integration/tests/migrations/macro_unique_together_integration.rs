@@ -194,6 +194,7 @@ fn field_index_propagates_into_migration_metadata() {
 }
 
 #[rstest]
+#[serial(global_registry)]
 fn field_check_reaches_initial_migration_and_stabilizes() {
 	// Arrange
 	let registry = global_registry();

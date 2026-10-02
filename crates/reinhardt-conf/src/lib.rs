@@ -9,6 +9,7 @@
 //!
 //! - **Multiple configuration sources**: Files, environment variables, command-line arguments
 //! - **Type-safe settings**: Strong type validation with custom validators
+//! - **Scoped settings**: Resolve only selected effective paths for command-aware bootstrap
 //! - **Secrets management**: Integration with HashiCorp Vault, AWS Secrets Manager, Azure Key Vault
 //! - **Encryption**: Built-in encryption for sensitive settings
 //! - **Dynamic backends**: Redis and database-backed dynamic settings
@@ -89,13 +90,15 @@ pub use serde_json;
 // Re-export fragment system types at the crate root
 #[cfg(feature = "settings")]
 pub use settings::{
-	cache::CacheSettings, cache::HasCacheSettings, contacts::ContactSettings,
-	contacts::HasContactSettings, core_settings::CoreSettings, core_settings::HasCoreSettings,
-	cors::CorsSettings, cors::HasCorsSettings, email::EmailSettings, email::HasEmailSettings,
+	ResolvedSettings, ResolvedSettingsField, SettingsResolutionMetadata, cache::CacheSettings,
+	cache::HasCacheSettings, contacts::ContactSettings, contacts::HasContactSettings,
+	core_settings::CoreSettings, core_settings::HasCoreSettings, cors::CorsSettings,
+	cors::HasCorsSettings, email::EmailSettings, email::HasEmailSettings,
 	fragment::HasCommonSettings, fragment::HasSettings, fragment::SettingsFragment,
 	i18n::HasI18nSettings, i18n::I18nSettings, logging::HasLoggingSettings,
 	logging::LoggingSettings, media::HasMediaSettings, media::MediaSettings,
-	security::HasSecuritySettings, security::SecuritySettings, session::HasSessionSettings,
-	session::SessionSettings, static_files::HasStaticSettings, static_files::StaticSettings,
+	migrations::HasMigrationSettings, migrations::MigrationSettings, security::HasSecuritySettings,
+	security::SecuritySettings, session::HasSessionSettings, session::SessionSettings,
+	static_files::HasStaticSettings, static_files::StaticSettings,
 	template_settings::HasTemplateSettings, template_settings::TemplateSettings,
 };

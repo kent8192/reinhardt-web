@@ -3,13 +3,16 @@
 use reinhardt_pages::form;
 
 fn main() {
-	let _ = form! {
-		name: ToggleForm,
-		action: "/api/toggle",
-		fields: {
-			enabled: BooleanField {
-				initial: false,
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _ = form! {
+			name: ToggleForm,
+			action: "/api/toggle",
+			fields: {
+				enabled: BooleanField {
+					bind: true,
+					initial: false,
+				}
 			}
-		}
-	};
+		};
+	});
 }

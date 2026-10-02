@@ -38,7 +38,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! reinhardt = { version = "0.3.4", package = "reinhardt-web", default-features = false, features = ["minimal", "grpc"] }
+//! reinhardt = { version = "0.4.0-alpha.6", package = "reinhardt-web", default-features = false, features = ["minimal", "grpc"] }
 //! ```
 //!
 //! Direct `reinhardt-grpc` consumers can instead enable this crate's `di`
@@ -70,6 +70,7 @@
 pub mod adapter;
 pub mod depth_limit;
 pub mod error;
+pub mod router;
 pub mod server;
 pub mod settings;
 pub mod validation;
@@ -97,6 +98,7 @@ pub mod proto {
 pub use adapter::{GrpcServiceAdapter, GrpcSubscriptionAdapter};
 pub use depth_limit::{DepthLimitError, DepthLimitedDecoder};
 pub use error::{ErrorSanitizer, GrpcError, GrpcResult};
+pub use router::{GrpcRouteError, GrpcRouter};
 #[allow(deprecated)] // Re-export keeps the compatibility API discoverable during the 0.2 line.
 pub use server::GrpcServerConfig;
 pub use server::{GrpcServerConfigBuilder, MessageSizeLimiter};

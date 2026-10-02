@@ -8,9 +8,10 @@ use reinhardt_admin::core::{AdminSite, admin_routes_with_di};
 use reinhardt_admin::server::AdminDefaultUser;
 use reinhardt_admin::server::security::{CSRF_COOKIE_NAME, generate_csrf_token};
 use reinhardt_auth::BaseUser;
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
-use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
+use reinhardt_db::orm::connection::DatabaseConnectionLease;
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_http::Handler;
 use reinhardt_query::prelude::{
@@ -234,8 +235,11 @@ async fn build_login_router(pool: sqlx::PgPool, with_jwt_secret: bool) -> Server
 	// Build DatabaseConnection
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db_conn = Arc::new(connection);
+	let connection_lease = Arc::new(
+		DatabaseConnectionLease::register(backends_conn)
+			.expect("Failed to register database connection"),
+	);
+	let db_conn = Arc::new(connection_lease.handle());
 
 	// Build AdminSite
 	let mut site = AdminSite::new("Login Test Admin");
@@ -250,13 +254,16 @@ async fn build_login_router(pool: sqlx::PgPool, with_jwt_secret: bool) -> Server
 	// Build complete router with DI
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set_arc(db_conn);
+	singleton.set_arc(connection_lease);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	reinhardt_urls::routers::UnifiedRouter::new()
-		.with_di_context(di_ctx)
-		.mount("/admin/", admin_router)
-		.with_di_registrations(admin_di)
-		.into_server()
+	ReactiveScope::run(|| {
+		reinhardt_urls::routers::UnifiedRouter::new()
+			.with_di_context(di_ctx)
+			.mount("/admin/", admin_router)
+			.with_di_registrations(admin_di)
+			.into_server()
+	})
 }
 
 /// Builds an HTTP POST request for the login endpoint.
@@ -455,8 +462,11 @@ async fn test_admin_login_authenticator_returns_error(
 	// Build DatabaseConnection
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db_conn = Arc::new(connection);
+	let connection_lease = Arc::new(
+		DatabaseConnectionLease::register(backends_conn)
+			.expect("Failed to register database connection"),
+	);
+	let db_conn = Arc::new(connection_lease.handle());
 
 	let mut site = AdminSite::new("Error Test Admin");
 	site.set_jwt_secret(TEST_JWT_SECRET);
@@ -466,13 +476,16 @@ async fn test_admin_login_authenticator_returns_error(
 
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set_arc(db_conn);
+	singleton.set_arc(connection_lease);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	let router = reinhardt_urls::routers::UnifiedRouter::new()
-		.with_di_context(di_ctx)
-		.mount("/admin/", admin_router)
-		.with_di_registrations(admin_di)
-		.into_server();
+	let router = ReactiveScope::run(|| {
+		reinhardt_urls::routers::UnifiedRouter::new()
+			.with_di_context(di_ctx)
+			.mount("/admin/", admin_router)
+			.with_di_registrations(admin_di)
+			.into_server()
+	});
 
 	let csrf_token = generate_csrf_token();
 	let request = make_login_request(

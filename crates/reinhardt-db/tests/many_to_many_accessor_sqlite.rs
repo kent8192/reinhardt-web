@@ -1,6 +1,8 @@
 #![cfg(all(feature = "orm", feature = "sqlite"))]
 
-use reinhardt_db::orm::connection::DatabaseConnection;
+use reinhardt_db::orm::connection::{
+	BackendsConnection, DatabaseConnection, DatabaseConnectionLease,
+};
 use reinhardt_db::orm::inspection::RelationInfo;
 use reinhardt_db::orm::model::FieldSelector;
 use reinhardt_db::orm::relationship::RelationshipType;
@@ -81,10 +83,18 @@ impl Model for Group {
 	}
 }
 
-async fn sqlite_fixture() -> (DatabaseConnection, User, [Group; 3]) {
-	let db = DatabaseConnection::connect("sqlite::memory:")
+async fn sqlite_fixture() -> (
+	DatabaseConnectionLease,
+	DatabaseConnection,
+	User,
+	[Group; 3],
+) {
+	let owner = BackendsConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.expect("in-memory SQLite connection should be available");
+	let lease = DatabaseConnectionLease::register(owner)
+		.expect("in-memory SQLite connection should register");
+	let db = lease.handle();
 	for statement in [
 		"CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
 		"CREATE TABLE groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
@@ -98,6 +108,7 @@ async fn sqlite_fixture() -> (DatabaseConnection, User, [Group; 3]) {
 	}
 
 	(
+		lease,
 		db,
 		User {
 			id: Some(1),
@@ -131,89 +142,105 @@ fn sorted_group_ids(groups: &[Group]) -> Vec<i64> {
 
 #[tokio::test]
 async fn lifecycle_binds_values_and_preserves_exact_relationship_state() {
-	let (db, user, [readers, writers, editors]) = sqlite_fixture().await;
-	let accessor = ManyToManyAccessor::<User, Group>::new(&user, "groups", db.clone());
+	let (_lease, mut db, user, [readers, writers, editors]) = sqlite_fixture().await;
+	let accessor = ManyToManyAccessor::<User, Group>::new(&user, "groups");
 
 	accessor
-		.add(&readers)
+		.add_with_conn(&mut db, &readers)
 		.await
 		.expect("first relationship should be added");
-	assert_eq!(accessor.count().await.unwrap(), 1);
-	assert_eq!(sorted_group_ids(&accessor.all().await.unwrap()), vec![1]);
+	assert_eq!(accessor.count_with_conn(&mut db).await.unwrap(), 1);
+	assert_eq!(
+		sorted_group_ids(&accessor.all_with_conn(&mut db).await.unwrap()),
+		vec![1]
+	);
 
 	accessor
-		.add(&writers)
+		.add_with_conn(&mut db, &writers)
 		.await
 		.expect("second relationship should be added");
-	assert_eq!(accessor.count().await.unwrap(), 2);
-	assert_eq!(sorted_group_ids(&accessor.all().await.unwrap()), vec![1, 2]);
+	assert_eq!(accessor.count_with_conn(&mut db).await.unwrap(), 2);
+	assert_eq!(
+		sorted_group_ids(&accessor.all_with_conn(&mut db).await.unwrap()),
+		vec![1, 2]
+	);
 
 	accessor
-		.remove(&readers)
+		.remove_with_conn(&mut db, &readers)
 		.await
 		.expect("selected relationship should be removed");
-	assert_eq!(accessor.count().await.unwrap(), 1);
-	assert_eq!(sorted_group_ids(&accessor.all().await.unwrap()), vec![2]);
+	assert_eq!(accessor.count_with_conn(&mut db).await.unwrap(), 1);
+	assert_eq!(
+		sorted_group_ids(&accessor.all_with_conn(&mut db).await.unwrap()),
+		vec![2]
+	);
 
 	accessor
-		.set(&[readers.clone(), writers.clone(), editors.clone()])
+		.set_with_conn(
+			&mut db,
+			&[readers.clone(), writers.clone(), editors.clone()],
+		)
 		.await
-		.expect("relationship set should be replaced atomically");
-	assert_eq!(accessor.count().await.unwrap(), 3);
+		.expect("relationship set should be replaced");
+	assert_eq!(accessor.count_with_conn(&mut db).await.unwrap(), 3);
 	assert_eq!(
-		sorted_group_ids(&accessor.all().await.unwrap()),
+		sorted_group_ids(&accessor.all_with_conn(&mut db).await.unwrap()),
 		vec![1, 2, 3]
 	);
 
 	let seeded_ids = [1, 2, 3];
-	let limited = ManyToManyAccessor::<User, Group>::new(&user, "groups", db.clone()).limit(2);
-	let limited_ids = sorted_group_ids(&limited.all().await.unwrap());
+	let limited = ManyToManyAccessor::<User, Group>::new(&user, "groups").limit(2);
+	let limited_ids = sorted_group_ids(&limited.all_with_conn(&mut db).await.unwrap());
 	assert_eq!(limited_ids.len(), 2);
 	assert!(limited_ids.len() < seeded_ids.len());
 	assert!(limited_ids.iter().all(|id| seeded_ids.contains(id)));
 	assert_ne!(limited_ids[0], limited_ids[1]);
 
-	let second_page =
-		ManyToManyAccessor::<User, Group>::new(&user, "groups", db.clone()).paginate(2, 2);
-	let second_page_ids = sorted_group_ids(&second_page.all().await.unwrap());
+	let second_page = ManyToManyAccessor::<User, Group>::new(&user, "groups").paginate(2, 2);
+	let second_page_ids = sorted_group_ids(&second_page.all_with_conn(&mut db).await.unwrap());
 	assert_eq!(second_page_ids.len(), 1);
 	assert!(seeded_ids.contains(&second_page_ids[0]));
 
 	accessor
-		.clear()
+		.clear_with_conn(&mut db)
 		.await
 		.expect("all relationships should be cleared");
-	assert_eq!(accessor.count().await.unwrap(), 0);
+	assert_eq!(accessor.count_with_conn(&mut db).await.unwrap(), 0);
 	assert_eq!(
-		sorted_group_ids(&accessor.all().await.unwrap()),
+		sorted_group_ids(&accessor.all_with_conn(&mut db).await.unwrap()),
 		Vec::<i64>::new()
 	);
 }
 
 #[tokio::test]
 async fn add_rejects_a_target_without_a_primary_key() {
-	let (db, user, _) = sqlite_fixture().await;
-	let accessor = ManyToManyAccessor::<User, Group>::new(&user, "groups", db);
+	let (_lease, mut db, user, _) = sqlite_fixture().await;
+	let accessor = ManyToManyAccessor::<User, Group>::new(&user, "groups");
 	let unpersisted = Group {
 		id: None,
 		name: "unpersisted".to_string(),
 	};
 
-	let error = accessor.add(&unpersisted).await.unwrap_err();
+	let error = accessor
+		.add_with_conn(&mut db, &unpersisted)
+		.await
+		.unwrap_err();
 
-	assert_eq!(error, "Target model has no primary key");
+	assert_eq!(
+		error.to_string(),
+		"Database error: Target model has no primary key"
+	);
 }
 
 #[tokio::test]
 async fn construction_panics_with_the_exact_message_for_a_missing_source_key() {
-	let (db, _, _) = sqlite_fixture().await;
 	let unpersisted = User {
 		id: None,
 		name: "unpersisted".to_string(),
 	};
 
 	let panic = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-		ManyToManyAccessor::<User, Group>::new(&unpersisted, "groups", db)
+		ManyToManyAccessor::<User, Group>::new(&unpersisted, "groups")
 	})) {
 		Ok(_) => panic!("an unpersisted source should panic"),
 		Err(panic) => panic,
@@ -231,32 +258,45 @@ async fn construction_panics_with_the_exact_message_for_a_missing_source_key() {
 
 #[tokio::test]
 async fn set_rolls_back_when_a_later_target_has_no_primary_key() {
-	let (db, user, [readers, writers, editors]) = sqlite_fixture().await;
-	let accessor = ManyToManyAccessor::<User, Group>::new(&user, "groups", db);
-	accessor.add(&readers).await.unwrap();
-	accessor.add(&writers).await.unwrap();
+	let (_lease, mut db, user, [readers, writers, editors]) = sqlite_fixture().await;
+	let accessor = ManyToManyAccessor::<User, Group>::new(&user, "groups");
+	accessor.add_with_conn(&mut db, &readers).await.unwrap();
+	accessor.add_with_conn(&mut db, &writers).await.unwrap();
 	let unpersisted = Group {
 		id: None,
 		name: "unpersisted".to_string(),
 	};
 
-	let error = accessor.set(&[editors, unpersisted]).await.unwrap_err();
+	let error = db
+		.atomic(async |transaction| {
+			accessor
+				.set_with_conn(transaction, &[editors, unpersisted])
+				.await
+		})
+		.await
+		.unwrap_err();
 
-	assert_eq!(error, "Target model has no primary key");
-	assert_eq!(sorted_group_ids(&accessor.all().await.unwrap()), vec![1, 2]);
+	assert_eq!(
+		error.to_string(),
+		"Database error: Target model has no primary key"
+	);
+	assert_eq!(
+		sorted_group_ids(&accessor.all_with_conn(&mut db).await.unwrap()),
+		vec![1, 2]
+	);
 }
 
 #[tokio::test]
 async fn filter_by_target_returns_the_exact_related_source() {
-	let (db, user, [_, writers, _]) = sqlite_fixture().await;
-	let accessor = ManyToManyAccessor::<User, Group>::new(&user, "groups", db.clone());
-	accessor.add(&writers).await.unwrap();
+	let (_lease, mut db, user, [_, writers, _]) = sqlite_fixture().await;
+	let accessor = ManyToManyAccessor::<User, Group>::new(&user, "groups");
+	accessor.add_with_conn(&mut db, &writers).await.unwrap();
 
-	let related_users = ManyToManyAccessor::<User, Group>::filter_by_target(
+	let related_users = ManyToManyAccessor::<User, Group>::filter_by_target_with_conn(
 		&User::objects(),
 		"groups",
 		&writers,
-		db,
+		&mut db,
 	)
 	.await
 	.unwrap();

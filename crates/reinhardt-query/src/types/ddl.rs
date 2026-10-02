@@ -10,7 +10,7 @@
 
 use crate::{
 	expr::SimpleExpr,
-	types::{DynIden, IntoIden, TableRef},
+	types::{DynIden, GeneratedColumn, GeneratedStorage, IntoIden, SchemaExpr, TableRef},
 };
 
 /// SQL column types
@@ -63,9 +63,12 @@ pub enum ColumnType {
 	/// JSON - JSON data
 	Json,
 	/// JSONB - Binary JSON (PostgreSQL)
-	JsonBinary,
+	Jsonb,
 	/// ARRAY - Array type (PostgreSQL)
 	Array(Box<ColumnType>),
+	/// VECTOR(n) - pgvector dense vector type (PostgreSQL)
+	#[cfg(feature = "pgvector")]
+	Vector(u32),
 	/// Custom type - for database-specific types
 	///
 	/// # Security Note
@@ -105,6 +108,7 @@ pub struct ColumnDef {
 	pub(crate) auto_increment: bool,
 	pub(crate) default: Option<SimpleExpr>,
 	pub(crate) check: Option<SimpleExpr>,
+	pub(crate) generated: Option<GeneratedColumn>,
 	pub(crate) comment: Option<String>,
 }
 
@@ -123,6 +127,7 @@ impl ColumnDef {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		}
 	}
@@ -153,12 +158,18 @@ impl ColumnDef {
 
 	/// Set AUTO_INCREMENT attribute
 	pub fn auto_increment(mut self, auto_increment: bool) -> Self {
+		if auto_increment && self.generated.is_some() {
+			panic!("generated columns cannot use AUTO_INCREMENT");
+		}
 		self.auto_increment = auto_increment;
 		self
 	}
 
 	/// Set DEFAULT value
 	pub fn default(mut self, value: SimpleExpr) -> Self {
+		if self.generated.is_some() {
+			panic!("generated columns cannot use DEFAULT");
+		}
 		self.default = Some(value);
 		self
 	}
@@ -167,6 +178,42 @@ impl ColumnDef {
 	pub fn check(mut self, expr: SimpleExpr) -> Self {
 		self.check = Some(expr);
 		self
+	}
+
+	/// Set generated-column metadata from a typed schema expression.
+	pub fn generated(mut self, expr: SchemaExpr, storage: GeneratedStorage) -> Self {
+		self.validate_generated_modifiers();
+		self.generated = Some(GeneratedColumn::typed(expr, storage));
+		self
+	}
+
+	/// Set a stored generated-column expression.
+	pub fn generated_stored(self, expr: SchemaExpr) -> Self {
+		self.generated(expr, GeneratedStorage::Stored)
+	}
+
+	/// Set a virtual generated-column expression.
+	pub fn generated_virtual(self, expr: SchemaExpr) -> Self {
+		self.generated(expr, GeneratedStorage::Virtual)
+	}
+
+	/// Set explicit raw SQL generated-column metadata.
+	///
+	/// Prefer [`Self::generated`] for backend-aware typed expressions. This
+	/// escape hatch is intended for trusted backend-specific SQL fragments.
+	pub fn generated_sql(mut self, sql: impl Into<String>, storage: GeneratedStorage) -> Self {
+		self.validate_generated_modifiers();
+		self.generated = Some(GeneratedColumn::raw_sql(sql, storage));
+		self
+	}
+
+	fn validate_generated_modifiers(&self) {
+		if self.default.is_some() {
+			panic!("generated columns cannot use DEFAULT");
+		}
+		if self.auto_increment {
+			panic!("generated columns cannot use AUTO_INCREMENT");
+		}
 	}
 
 	/// Set column comment
@@ -278,8 +325,8 @@ impl ColumnDef {
 	}
 
 	/// Set column type to JSONB
-	pub fn json_binary(self) -> Self {
-		self.column_type(ColumnType::JsonBinary)
+	pub fn jsonb(self) -> Self {
+		self.column_type(ColumnType::Jsonb)
 	}
 
 	/// Set column type to BLOB
@@ -312,6 +359,18 @@ impl ColumnDef {
 	/// Set column type to ARRAY of given element type
 	pub fn array(self, element_type: ColumnType) -> Self {
 		self.column_type(ColumnType::Array(Box::new(element_type)))
+	}
+
+	/// Set column type to a pgvector dense vector with the given dimensions.
+	#[cfg(feature = "pgvector")]
+	pub fn vector(self, dimensions: u32) -> Self {
+		self.column_type(ColumnType::Vector(dimensions))
+	}
+
+	/// Render this column definition for PostgreSQL.
+	#[must_use]
+	pub fn to_string(&self, query_builder: crate::backend::PostgresQueryBuilder) -> String {
+		query_builder.column_def_to_sql(self)
 	}
 }
 
@@ -533,12 +592,12 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_column_def_json_binary() {
+	fn test_column_def_jsonb() {
 		// Arrange & Act
-		let col = ColumnDef::new("data").json_binary();
+		let col = ColumnDef::new("data").jsonb();
 
 		// Assert
-		assert_eq!(col.column_type, Some(ColumnType::JsonBinary));
+		assert_eq!(col.column_type, Some(ColumnType::Jsonb));
 	}
 
 	#[rstest]
@@ -560,5 +619,45 @@ mod tests {
 			col.column_type,
 			Some(ColumnType::Custom("CITEXT".to_string()))
 		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	fn vector_column_preserves_its_dimension() {
+		// A missing vector type or an incorrect convenience builder would make this fail.
+		let column = ColumnDef::new("embedding").vector(1536);
+
+		assert_eq!(column.column_type, Some(ColumnType::Vector(1536)));
+	}
+
+	#[test]
+	#[should_panic(expected = "generated columns cannot use DEFAULT")]
+	fn generated_column_rejects_existing_default() {
+		let _ = ColumnDef::new("full_name")
+			.string()
+			.default(SimpleExpr::Value(crate::Value::String(Some(Box::new(
+				"fallback".to_string(),
+			)))))
+			.generated_stored(SchemaExpr::col("name"));
+	}
+
+	#[test]
+	#[should_panic(expected = "generated columns cannot use DEFAULT")]
+	fn generated_column_rejects_later_default() {
+		let _ = ColumnDef::new("full_name")
+			.string()
+			.generated_stored(SchemaExpr::col("name"))
+			.default(SimpleExpr::Value(crate::Value::String(Some(Box::new(
+				"fallback".to_string(),
+			)))));
+	}
+
+	#[test]
+	#[should_panic(expected = "generated columns cannot use AUTO_INCREMENT")]
+	fn generated_column_rejects_auto_increment() {
+		let _ = ColumnDef::new("full_name")
+			.string()
+			.generated_stored(SchemaExpr::col("name"))
+			.auto_increment(true);
 	}
 }

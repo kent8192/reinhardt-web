@@ -613,12 +613,12 @@ impl QueryOptimizer {
 	{
 		if !self.select_related.is_empty() {
 			let fields: Vec<&str> = self.select_related.iter().map(|s| s.as_str()).collect();
-			queryset = queryset.select_related(&fields);
+			queryset = queryset.select_related(fields.as_slice());
 		}
 
 		if !self.prefetch_related.is_empty() {
 			let fields: Vec<&str> = self.prefetch_related.iter().map(|s| s.as_str()).collect();
-			queryset = queryset.prefetch_related(&fields);
+			queryset = queryset.prefetch_related(fields.as_slice());
 		}
 
 		queryset
@@ -668,6 +668,18 @@ mod tests {
 
 		fn new_fields() -> Self::Fields {
 			TestUserFields
+		}
+
+		fn relationship_metadata() -> Vec<reinhardt_db::orm::inspection::RelationInfo> {
+			use reinhardt_db::orm::inspection::RelationInfo;
+			use reinhardt_db::orm::relationship::RelationshipType;
+
+			vec![
+				RelationInfo::new("author", RelationshipType::ManyToOne, "Author")
+					.with_foreign_key("author_id"),
+				RelationInfo::new("comments", RelationshipType::OneToMany, "Comment")
+					.with_foreign_key("test_user_id"),
+			]
 		}
 
 		fn primary_key(&self) -> Option<Self::PrimaryKey> {

@@ -9,7 +9,7 @@ This example corresponds to the REST tutorial Parts 1-6:
 - **Part 1: Project Setup** - Project structure, settings, the `manage` CLI, the development server
 - **Part 2: Your First Endpoints** - `#[get]` / `#[post]` / `#[put]` / `#[delete]`, route `name = "..."`, `Path` / `Query` / `Json` extractors, `ViewResult`
 - **Part 3: Models and the Database** - `#[model]` `Snippet`, migrations, `migrate`, the builder API
-- **Part 4: Dependency Injection** - direct `#[inject] DatabaseConnection`, keyed `#[injectable]` provider functions, scopes, `FactoryOutput<K, T>` registration, and `Depends<K, Result<T, E>>`. This is where the CRUD handlers are wired to the real ORM
+- **Part 4: Dependency Injection** - direct `#[inject] DatabaseConnection`, self-keyed `#[injectable]` provider functions, scopes, `KeyedFactoryOutput<K, T>` registration, and `KeyedDepends<K, Result<T, E>>`. This is where the CRUD handlers are wired to the real ORM
 - **Part 5: Serializers and Validation** - `Validate` derive, `pre_validate = true`, error responses and status codes
 - **Part 6: Bonus — ViewSets and Routers** - the same CRUD compressed to ~15 lines with `ModelViewSet`; pagination, filtering, ordering
 
@@ -38,7 +38,11 @@ DELETE /api/snippets/<id>/    - Delete a snippet
 All handlers receive a database connection through direct dependency injection
 (`#[inject] db: DatabaseConnection`) and query the real ORM. The
 `/api/snippets/config/` endpoint is a teaching aid for
-`Depends<K, Result<T, E>>`; see `src/apps/snippets/di.rs`.
+`KeyedDepends<K, Result<T, E>>`; see `src/apps/snippets/di.rs`.
+
+`DatabaseConnection` is a copyable ORM handle whose lease is retained by server
+bootstrap. Handlers pass it by value without `clone()` and never construct or
+own the underlying backend connection.
 
 ## Setup
 
@@ -78,6 +82,39 @@ cargo make runserver
 ```
 
 The server will start at `http://127.0.0.1:8000/`.
+
+### Explore the ORM in the Rust Shell
+
+This example declares `commands-shell` as an opt-in feature, not a default:
+
+```bash
+cargo run --bin manage --features commands-shell -- shell
+cargo run --bin manage --features commands-shell -- shell -c \
+  'println!("{:?}", db.backend())'
+```
+
+The feature-gated `config::shell::get_shell_config()` and generated-style
+`manage` wiring load the concrete settings, ORM `db` handle, application `di`
+context, `framework` alias, and `Snippet` short import. If installed apps
+declare the same model name, the short import is skipped and a deterministic
+warning lists the concrete registered crate paths; the evaluator's
+`project_crate` alias can reference those same types. Projects can add a final
+Rust prelude through `ShellConfig::with_prelude(...)`.
+
+Interactive input preserves successful definitions, supports top-level
+`.await`, and continues unmatched brackets from `>>> ` at `... `. Ctrl+C
+during evaluation, a panic, or evaluator exit clears user state and reloads
+settings, database/DI bindings, model imports, and the project prelude.
+`shell -c` evaluates once, exits zero only on success, returns non-zero on
+failure, and Reinhardt's own diagnostics do not repeat the raw source.
+Arbitrary Rust, compiler output, panics, and user code can still print literals;
+the shell is not a sandbox.
+
+History is best-effort at
+`<platform local data directory>/reinhardt/shell/examples-tutorial-rest.history`;
+a missing file is a silent first run, while directory-resolution, read, or
+write failures warn without preventing startup. `shell-rhai` was removed, and
+the `shell` feature now selects Rust rather than the old Rhai syntax.
 
 ### API Examples
 
@@ -178,6 +215,7 @@ examples-tutorial-rest/
 │   │   └── manage.rs
 │   ├── config/
 │   │   ├── apps.rs
+│   │   ├── shell.rs
 │   │   ├── settings.rs
 │   │   └── urls.rs
 │   ├── config.rs
@@ -199,8 +237,9 @@ This example is designed to be studied alongside the REST tutorial:
 
 - `src/apps/snippets/models.rs` defines the `Snippet` model with `#[model(app_label = "snippets", table_name = "snippets")]`, typed fields, `created_at`, and the `highlighted()` helper.
 - `src/apps/snippets/serializers.rs` defines `SnippetSerializer` with `Validate` length rules and `SnippetResponse::from_model()`.
-- `src/apps/snippets/di.rs` registers keyed singleton config providers with `FactoryOutput<K, T>`, including a fallible `Result<SnippetListConfig, ConfigError>` output.
+- `src/apps/snippets/di.rs` registers a self-keyed singleton config provider and a keyed fallible config provider with `KeyedFactoryOutput<K, T>`.
 - `src/apps/snippets/views.rs` exposes function-based CRUD handlers with `#[get]`, `#[post(pre_validate = true)]`, `#[put]`, and `#[delete]`, resolving `DatabaseConnection` through direct injection.
+- The injected ORM handle is `Copy`, while framework bootstrap retains its owning lease for the server lifetime.
 - `src/apps/snippets/views.rs` also exposes a `#[reinhardt::viewset(basename = "snippet")]` `ModelViewSet` with pagination, filtering, and ordering.
 - `src/apps/snippets/urls.rs` registers both function-based endpoints and ViewSet endpoints on one `ServerRouter`.
 - `src/config/urls.rs` uses `#[routes]` and mounts the snippets router under the literal `/api/` prefix.

@@ -1,0 +1,20 @@
+error[E0277]: the trait bound `NotClone: Clone` is not satisfied
+  --> tests/ui/page/fail/implicit_body_non_clone_capture.rs:13:10
+   |
+13 |       let _ = page!({
+   |  _____________^
+14 | |         div { { handle.label() } }
+15 | |     });
+   | |______^ the trait `Clone` is not implemented for `NotClone`
+   |
+note: required by a bound in `reinhardt_pages::__private::capture`
+  --> src/lib.rs
+   |
+   |     pub fn capture<T: Clone>(value: &T) -> T {
+   |                       ^^^^^ required by this bound in `capture`
+   = note: this error originates in the macro `page` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `NotClone` with `#[derive(Clone)]`
+   |
+ 3 + #[derive(Clone)]
+ 4 | struct NotClone(String);
+   |

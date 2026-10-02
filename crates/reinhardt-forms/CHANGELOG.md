@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.4.0-alpha.15...reinhardt-forms@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(forms)* add scoped validated form patches
+
+### Fixed
+
+- *(forms)* reject non-nullable null patch values before cleaning
+- *(forms)* reject SQL null in optional JSON form patches
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.4.0-alpha.14...reinhardt-forms@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.4.0-alpha.13...reinhardt-forms@v0.4.0-alpha.14) - 2026-09-07
+
+### Fixed
+
+- *(forms)* restrict singular validation deferral to required relations
+- *(forms)* preserve inline candidates for unchanged parent keys
+- *(forms)* enforce validation deferral field eligibility
+- *(forms)* clear stale errors before cached model revalidation
+- *(forms)* reconcile validation with named form contracts
+
+### Maintenance
+
+- merge develop/0.4.0 into model form validation
+
+### Testing
+
+- *(forms)* align assertions with canonical required errors
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.4.0-alpha.10...reinhardt-forms@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.4.0-alpha.9...reinhardt-forms@v0.4.0-alpha.10) - 2026-08-25
+
+### Fixed
+
+- *(forms)* handle hidden required foreign keys in model forms
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.3.15...reinhardt-forms@v0.3.16) - 2026-09-08
 
 ### Maintenance
@@ -43,6 +101,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.4.0-alpha.8...reinhardt-forms@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.4.0-alpha.6...reinhardt-forms@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Fixed
+
+- *(forms)* repair password and string key validation
+- *(forms)* ignore ordering for multiple choices
+- *(forms)* isolate prefixed form submissions
+- *(forms)* preserve prefixed bound data
+- *(forms)* preserve cleaned field semantics
+- *(forms)* preserve cleaned field state after validation
+- *(forms)* preserve choice value type distinctions
+- *(forms)* redact sensitive bound values independently of widget
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Testing
+
+- *(forms)* raise coverage to 80%
+- *(forms)* split coverage by component
+- *(forms)* cover prefixed model choice submissions
+- *(forms)* split advanced field metadata coverage
+- *(forms)* cover redaction with custom widgets and later errors
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.4.0-alpha.3...reinhardt-forms@v0.4.0-alpha.6) - 2026-08-06
+
+### Added
+
+- *(forms)* [**breaking**] make generated model forms async
+
+### Documentation
+
+- *(forms)* document generated model forms
+- *(forms)* correct facade and formset guidance
+- update version references to v0.4.0-alpha.4
+- update version references to v0.4.0-alpha.5
+- *(release)* restore coherent alpha.3 references
+
+### Fixed
+
+- *(forms)* enforce model form persistence invariants
+- *(forms)* align model form automatic defaults
+- *(forms)* harden generated form persistence semantics
+- *(forms)* close residual model form review gaps
+- *(forms)* expose model validation errors
+- *(forms)* retain fractional time precision
+- *(forms)* synchronize replacement field values
+- *(forms)* defer inline parent key validation
+- *(forms)* make direct model saves insert explicitly
+- *(forms)* preserve native model field values
+- *(forms)* enforce generated model constraints
+- *(forms)* preserve model form field contracts
+- *(forms)* preserve specialized field constraints
+- *(forms)* preserve exact generated constraints
+- *(forms)* complete model-backed form submission
+- *(forms)* harden native model form decoding
+- *(forms)* preserve model form defaults
+- *(forms)* harden model form input handling
+- *(forms)* preserve untouched model controls
+- *(forms)* validate model form submission boundaries
+- *(forms)* validate inline and runtime model form state
+- *(forms)* prevalidate inline foreign keys
+- *(forms)* preserve model-backed form state
+- *(forms)* preflight deferred child validators
+- *(forms)* prevent duplicate MySQL form inserts
+- *(forms)* preserve native range defaults
+- *(forms)* prevent duplicate create retries
+- *(forms)* defer uncertain generated keys
+- *(forms)* synchronize defaults and persistence state
+- *(forms)* synchronize transaction-backed form state
+- *(forms)* preserve transactional retry semantics
+- *(forms)* support trusted inline foreign keys
+- *(forms)* preserve inline uncertain create state
+- *(forms)* preserve model form control semantics
+- *(forms)* preserve nested form retries
+- *(forms)* validate inline formset retries
+- *(forms)* align native form validation
+- *(forms)* use serde-json for trusted fields
+- *(forms)* preserve trusted non-editable model values
+- *(forms)* address model form review feedback
+- *(release)* break forms facade publish cycle
+- *(release)* restore unpublished crates after partial release
+
+### Testing
+
+- *(forms)* cover uncertain insert persistence state
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.3.2...reinhardt-forms@v0.4.0-alpha.1) - 2026-07-21
+
+### Changed
+
+- [**breaking**] remove remaining dynamic error dependencies
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- migrate dependency policy checks to cargo-deny
+- merge develop/0.4.0 into remove-anyhow branch
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.3.9...reinhardt-forms@v0.3.10) - 2026-08-22
 
 ### Maintenance

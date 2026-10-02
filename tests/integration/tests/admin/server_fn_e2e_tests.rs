@@ -709,18 +709,25 @@ async fn test_e2e_get_list_fails_without_database_connection(
 	let body = String::from_utf8_lossy(&response.body);
 	let parsed: serde_json::Value = serde_json::from_str(&body)
 		.unwrap_or_else(|e| panic!("Body is not valid JSON ({e}): {body}"));
-	let server = parsed
-		.get("Server")
-		.unwrap_or_else(|| panic!("Expected top-level `Server` envelope, got: {body}"));
 	assert_eq!(
-		server.get("status").and_then(serde_json::Value::as_u64),
-		Some(500),
-		"Expected `Server.status` == 500, got: {body}"
+		parsed.get("version").and_then(serde_json::Value::as_u64),
+		Some(1),
+		"Expected versioned error envelope, got: {body}"
 	);
 	assert_eq!(
-		server.get("message").and_then(serde_json::Value::as_str),
+		parsed.get("kind").and_then(serde_json::Value::as_str),
+		Some("server"),
+		"Expected `kind` == `server`, got: {body}"
+	);
+	assert_eq!(
+		parsed.get("status").and_then(serde_json::Value::as_u64),
+		Some(500),
+		"Expected `status` == 500, got: {body}"
+	);
+	assert_eq!(
+		parsed.get("message").and_then(serde_json::Value::as_str),
 		Some("Internal server error"),
-		"Expected redacted `Server.message`, got: {body}"
+		"Expected redacted `message`, got: {body}"
 	);
 	assert!(
 		!body.contains("DatabaseConnection"),

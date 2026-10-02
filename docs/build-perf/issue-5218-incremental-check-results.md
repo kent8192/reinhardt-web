@@ -83,10 +83,12 @@ ownership boundary for WASM-only client source.
 | Fixture WASM build | 0.564s | 31.6% faster |
 | Legacy fixture WASM + server build | 0.825s | baseline |
 
-Raw command shapes:
+The static `page!` row was measured with an earlier standalone probe. That
+probe was removed when Issue #5581 switched the measurement boundary to the
+compiler-derived manifest/descriptor path; the historical number is retained
+only for comparison. The remaining fixture build command shapes were:
 
 ```bash
-touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && ./target/debug/examples/page_hot_patch_probe crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs >/dev/null
 touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && cargo build --manifest-path crates/reinhardt-pages/tests/fixtures/spa_navigation_app/Cargo.toml --target wasm32-unknown-unknown
 touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && cargo build --manifest-path crates/reinhardt-pages/tests/fixtures/spa_navigation_app/Cargo.toml --target wasm32-unknown-unknown && cargo build -p reinhardt-server
 ```

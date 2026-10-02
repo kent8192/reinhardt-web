@@ -29,14 +29,14 @@ use super::store::SessionStore;
 /// coupling.
 ///
 /// The `store` parameter is a `&SessionStore`. Callers that have
-/// `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>` can pass
-/// `&**store`, dereferencing first through [`Depends`][reinhardt_di::Depends]
+/// `#[inject] store: KeyedDepends<SessionStoreKey, Arc<SessionStore>>` can pass
+/// `&**store`, dereferencing first through [`KeyedDepends`][reinhardt_di::KeyedDepends]
 /// to the shared `Arc<SessionStore>` and then through `Arc` to `SessionStore`.
 ///
 /// # Usage
 ///
 /// ```rust,ignore
-/// use reinhardt::di::Depends;
+/// use reinhardt::di::KeyedDepends;
 /// use reinhardt::middleware::session::{
 ///     SessionAuthExt, SessionData, SessionStore, SessionStoreKey,
 /// };
@@ -47,7 +47,7 @@ use super::store::SessionStore;
 ///     username: String,
 ///     password: String,
 ///     #[inject] mut session: SessionData,
-///     #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
+///     #[inject] store: KeyedDepends<SessionStoreKey, Arc<SessionStore>>,
 /// ) -> Result<(), ServerFnError> {
 ///     // … authenticate `user` …
 ///     session.login(&**store, user.id())

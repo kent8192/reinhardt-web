@@ -18,6 +18,7 @@ Scenarios:
   incremental-pages-wasm-build
   incremental-pages-fixture-wasm-build
   incremental-pages-fixture-hot-patch
+  incremental-pages-template-hot-patch
   incremental-pages-fixture-hot-reload-legacy-both-build
   incremental-server-build
   incremental-hot-reload-client-legacy-both-build
@@ -90,7 +91,7 @@ if [ "${#requested[@]}" -eq 0 ]; then
     incremental-pages-wasm-check
     incremental-pages-wasm-build
     incremental-pages-fixture-wasm-build
-    incremental-pages-fixture-hot-patch
+    incremental-pages-template-hot-patch
     incremental-pages-fixture-hot-reload-legacy-both-build
     incremental-server-build
     incremental-hot-reload-client-legacy-both-build
@@ -136,8 +137,8 @@ scenario_command() {
     incremental-pages-fixture-wasm-build)
       printf '%s\n' 'touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && cargo build --manifest-path crates/reinhardt-pages/tests/fixtures/spa_navigation_app/Cargo.toml --target wasm32-unknown-unknown'
       ;;
-    incremental-pages-fixture-hot-patch)
-      printf '%s\n' 'test -x ./target/debug/examples/page_hot_patch_probe || cargo build -q -p reinhardt-commands --features pages,autoreload --example page_hot_patch_probe; touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && ./target/debug/examples/page_hot_patch_probe crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs >/dev/null'
+    incremental-pages-template-hot-patch)
+      printf '%s\n' 'test -x ./target/debug/examples/page_hot_patch_bench || cargo build -q -p reinhardt-commands --features pages,autoreload,reinhardt-db --example page_hot_patch_bench; ./target/debug/examples/page_hot_patch_bench crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/hot_patch.rs --iterations 30'
       ;;
     incremental-pages-fixture-hot-reload-legacy-both-build)
       printf '%s\n' 'touch crates/reinhardt-pages/tests/fixtures/spa_navigation_app/src/client.rs && cargo build --manifest-path crates/reinhardt-pages/tests/fixtures/spa_navigation_app/Cargo.toml --target wasm32-unknown-unknown && cargo build -p reinhardt-server'

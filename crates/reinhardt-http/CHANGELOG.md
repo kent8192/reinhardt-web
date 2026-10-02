@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.4.0-alpha.17...reinhardt-http@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+
+### Fixed
+
+- *(http)* serve streaming bodies through native endpoints
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.4.0-alpha.15...reinhardt-http@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(staticfiles)* unify pages and collected asset publication
+
+### Fixed
+
+- *(http)* add an installable exception handler hook
+- *(http)* resolve imports and clippy findings in the exception hook
+- *(urls)* defer unmatched route errors through middleware
+- *(http)* inherit exception handlers in nested dispatch
+- track exception handler invocation
+- *(http)* preserve routing context for exception handlers
+- *(http)* preserve routing context through middleware
+- *(http)* refresh routing context across middleware paths
+- *(http)* narrow routing context snapshots
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.4.0-alpha.8...reinhardt-http@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define request surface boundaries
+- *(security)* qualify caller-enforced boundaries
+- *(security)* document remaining trust boundaries
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.4.0-alpha.6...reinhardt-http@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Fixed
+
+- *(auth)* deny bare legacy extension authentication
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.4.0-alpha.5...reinhardt-http@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.3.2...reinhardt-http@v0.4.0-alpha.1) - 2026-07-21
+
+### Fixed
+
+- restore merged runtime integrations
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge main into develop/0.4.0
+- merge develop/0.4.0 into remove-anyhow branch
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.3.17...reinhardt-http@v0.3.18) - 2026-09-16
 
 ### Fixed

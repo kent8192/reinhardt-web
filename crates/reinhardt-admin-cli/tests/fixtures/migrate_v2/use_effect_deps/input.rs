@@ -1,5 +1,5 @@
 #![rustfmt::skip]
-use reinhardt_pages::reactive::hooks::use_effect;
+use reinhardt_pages::reactive::hooks::{use_callback, use_effect, use_memo};
 use reinhardt_pages::reactive::Signal;
 
 fn r(count: Signal<i32>) {
@@ -9,4 +9,8 @@ fn r(count: Signal<i32>) {
 			let _ = count.get();
 		}
 	});
+	let _ = use_effect(move || {});
+	let _ = use_effect(build_callback());
+	let _ = use_memo(move || count.get(), (count.clone(),));
+	let _ = use_callback(move |_| {}, ());
 }

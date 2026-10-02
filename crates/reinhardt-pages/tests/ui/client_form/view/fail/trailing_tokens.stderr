@@ -1,0 +1,5 @@
+error: expected `,`
+  --> tests/ui/client_form/view/fail/trailing_tokens.rs:10:20
+   |
+10 |             label: "Submit" trailing
+   |                             ^^^^^^^^

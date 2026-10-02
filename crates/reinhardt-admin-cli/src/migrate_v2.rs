@@ -7,9 +7,12 @@ use std::path::PathBuf;
 
 use clap::Args;
 
+pub mod error;
 pub mod rewriter;
 pub mod rules;
 pub mod walker;
+
+pub use error::{MigrateV2Error, Result};
 
 /// Arguments for the `migrate-manouche-v2` subcommand.
 #[derive(Args, Debug)]
@@ -36,18 +39,19 @@ pub struct MigrateV2Args {
 /// "path-traversal" pattern flags any `std::fs` call whose path argument is
 /// not a string literal, but the only "untrusted" surface here is the
 /// developer's own CLI invocation, which is an intentional capability.
-pub fn run(args: MigrateV2Args) -> anyhow::Result<()> {
+pub fn run(args: MigrateV2Args) -> Result<()> {
 	let all_rules = rules::all();
 	let known_rule_names: std::collections::BTreeSet<&'static str> =
 		all_rules.iter().map(|r| r.name()).collect();
-	let unknown: Vec<&str> = args
+	let mut unknown: Vec<&str> = args
 		.skip
 		.iter()
 		.map(String::as_str)
 		.filter(|name| !known_rule_names.contains(name))
 		.collect();
 	if !unknown.is_empty() {
-		anyhow::bail!("unknown --skip rule(s): {}", unknown.join(", "));
+		unknown.sort_unstable();
+		return Err(MigrateV2Error::UnknownSkipRules(unknown.join(", ")));
 	}
 	let rules: Vec<_> = all_rules
 		.into_iter()
@@ -379,7 +383,7 @@ fn find_item_end_offset(src: &str) -> usize {
 /// The path argument is bounded by the CLI-supplied `--path` root; this is a
 /// developer-run codemod, not a network-facing service. We canonicalize the
 /// path before any IO to make the bounds explicit.
-fn read_developer_file(path: &std::path::Path) -> anyhow::Result<String> {
+fn read_developer_file(path: &std::path::Path) -> Result<String> {
 	let canonical = path.canonicalize()?;
 	let mut file = std::fs::File::open(canonical)?; // nosemgrep: path-traversal false positive — developer CLI bounded by --path root
 	let mut buf = String::new();
@@ -393,11 +397,11 @@ fn read_developer_file(path: &std::path::Path) -> anyhow::Result<String> {
 /// Uses a unique temp file in the target's parent directory so that the
 /// final `rename` is atomic (same filesystem). Process ID and a random
 /// suffix prevent collisions under concurrent invocations.
-fn write_developer_file(path: &std::path::Path, content: &str) -> anyhow::Result<()> {
+fn write_developer_file(path: &std::path::Path, content: &str) -> Result<()> {
 	let canonical = path.canonicalize()?;
 	let parent = canonical
 		.parent()
-		.ok_or_else(|| anyhow::anyhow!("no parent directory for {}", canonical.display()))?;
+		.ok_or_else(|| MigrateV2Error::MissingParent(path.to_path_buf()))?;
 	let file_name = canonical
 		.file_name()
 		.and_then(|n| n.to_str())
@@ -426,6 +430,35 @@ fn write_developer_file(path: &std::path::Path, content: &str) -> anyhow::Result
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	use std::path::{Path, PathBuf};
+
+	#[rstest]
+	fn read_developer_file_classifies_missing_file_as_io_error() {
+		// Arrange
+		let directory = tempfile::tempdir().unwrap();
+		let missing_file = directory.path().join("missing.rs");
+
+		// Act
+		let error = read_developer_file(&missing_file).unwrap_err();
+
+		// Assert
+		assert!(matches!(error, MigrateV2Error::Io(_)));
+	}
+
+	#[rstest]
+	fn write_developer_file_rejects_a_path_without_a_parent() {
+		// Arrange
+		let path = Path::new("/");
+
+		// Act
+		let error = write_developer_file(path, "content").unwrap_err();
+
+		// Assert
+		match error {
+			MigrateV2Error::MissingParent(actual) => assert_eq!(actual, PathBuf::from("/")),
+			other => panic!("expected missing parent, got {other:?}"),
+		}
+	}
 
 	/// Verify that when no AST items change, the output is identical to input.
 	#[rstest]

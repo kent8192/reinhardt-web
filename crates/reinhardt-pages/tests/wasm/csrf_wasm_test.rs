@@ -12,6 +12,7 @@ use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::csrf::{
 	CsrfManager, get_csrf_token, get_csrf_token_from_cookie, get_csrf_token_from_input,
 	get_csrf_token_from_meta,
@@ -108,6 +109,15 @@ fn test_csrf_token_from_hidden_input_missing() {
 // Token Source Priority Tests
 // ============================================================================
 
+#[wasm_bindgen_test]
+fn csrf_manager_created_outside_scope_retains_token_state() {
+	let manager = CsrfManager::new();
+
+	manager.set_token("retained-token");
+
+	assert_eq!(manager.cached_token(), Some("retained-token".to_string()));
+}
+
 /// Test that get_csrf_token() retrieves from cookie first (highest priority)
 #[wasm_bindgen_test]
 fn test_csrf_token_priority_cookie_first() {
@@ -168,68 +178,74 @@ fn test_csrf_token_none_when_no_sources() {
 /// Test CsrfManager caches token after first fetch
 #[wasm_bindgen_test]
 fn test_csrf_manager_caching() {
-	cleanup_csrf_fixtures();
+	ReactiveScope::run(|| {
+		cleanup_csrf_fixtures();
 
-	let manager = CsrfManager::new();
+		let manager = CsrfManager::new();
 
-	// Initially no cached token
-	assert!(manager.cached_token().is_none());
+		// Initially no cached token
+		assert!(manager.cached_token().is_none());
 
-	// Set up cookie and fetch
-	setup_csrf_cookie("manager_token");
-	let token = manager.get_or_fetch_token();
-	assert_eq!(token, Some("manager_token".to_string()));
+		// Set up cookie and fetch
+		setup_csrf_cookie("manager_token");
+		let token = manager.get_or_fetch_token();
+		assert_eq!(token, Some("manager_token".to_string()));
 
-	// Should be cached
-	assert_eq!(manager.cached_token(), Some("manager_token".to_string()));
+		// Should be cached
+		assert_eq!(manager.cached_token(), Some("manager_token".to_string()));
 
-	// Remove cookie, but cached value should persist
-	cleanup_csrf_fixtures();
-	assert_eq!(manager.cached_token(), Some("manager_token".to_string()));
+		// Remove cookie, but cached value should persist
+		cleanup_csrf_fixtures();
+		assert_eq!(manager.cached_token(), Some("manager_token".to_string()));
 
-	// Clear manager cache
-	manager.clear();
-	assert!(manager.cached_token().is_none());
+		// Clear manager cache
+		manager.clear();
+		assert!(manager.cached_token().is_none());
+	});
 }
 
 /// Test CsrfManager refresh updates cache
 #[wasm_bindgen_test]
 fn test_csrf_manager_refresh() {
-	cleanup_csrf_fixtures();
+	ReactiveScope::run(|| {
+		cleanup_csrf_fixtures();
 
-	let manager = CsrfManager::new();
+		let manager = CsrfManager::new();
 
-	// Initial fetch
-	setup_csrf_cookie("initial_token");
-	let _ = manager.get_or_fetch_token();
-	assert_eq!(manager.cached_token(), Some("initial_token".to_string()));
+		// Initial fetch
+		setup_csrf_cookie("initial_token");
+		let _ = manager.get_or_fetch_token();
+		assert_eq!(manager.cached_token(), Some("initial_token".to_string()));
 
-	// Update cookie
-	setup_csrf_cookie("refreshed_token");
+		// Update cookie
+		setup_csrf_cookie("refreshed_token");
 
-	// Refresh should update cache
-	let refreshed = manager.refresh();
-	assert_eq!(refreshed, Some("refreshed_token".to_string()));
-	assert_eq!(manager.cached_token(), Some("refreshed_token".to_string()));
+		// Refresh should update cache
+		let refreshed = manager.refresh();
+		assert_eq!(refreshed, Some("refreshed_token".to_string()));
+		assert_eq!(manager.cached_token(), Some("refreshed_token".to_string()));
 
-	cleanup_csrf_fixtures();
+		cleanup_csrf_fixtures();
+	});
 }
 
 /// Test CsrfManager manual token setting
 #[wasm_bindgen_test]
 fn test_csrf_manager_manual_set() {
-	cleanup_csrf_fixtures();
+	ReactiveScope::run(|| {
+		cleanup_csrf_fixtures();
 
-	let manager = CsrfManager::new();
+		let manager = CsrfManager::new();
 
-	manager.set_token("manual_token");
-	assert_eq!(manager.cached_token(), Some("manual_token".to_string()));
+		manager.set_token("manual_token");
+		assert_eq!(manager.cached_token(), Some("manual_token".to_string()));
 
-	// get_or_fetch should return cached manual token
-	let token = manager.get_or_fetch_token();
-	assert_eq!(token, Some("manual_token".to_string()));
+		// get_or_fetch should return cached manual token
+		let token = manager.get_or_fetch_token();
+		assert_eq!(token, Some("manual_token".to_string()));
 
-	cleanup_csrf_fixtures();
+		cleanup_csrf_fixtures();
+	});
 }
 
 // ============================================================================

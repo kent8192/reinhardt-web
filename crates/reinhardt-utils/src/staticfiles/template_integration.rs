@@ -6,6 +6,28 @@ use super::{ManifestStaticFilesStorage, StaticFilesConfig};
 use std::collections::HashMap;
 use std::io;
 
+/// A fallible template resolver pinned to a single publication generation (P0).
+/// Unlike legacy configuration, this never guesses an unpublished URL.
+#[derive(Debug, Clone)]
+pub struct ManifestTemplateResolver {
+	snapshot: super::publication::AssetUrlSnapshot,
+}
+
+impl ManifestTemplateResolver {
+	/// Own the validated projection selected for the current rendered document.
+	pub fn new(snapshot: super::publication::AssetUrlSnapshot) -> Self {
+		Self { snapshot }
+	}
+	/// Resolve a logical name using the projection's URL prefix and generation.
+	pub fn resolve(&self, logical: &str) -> Result<String, super::publication::AssetUrlError> {
+		self.snapshot.resolve(logical)
+	}
+	/// Borrow the pinned projection for application-specific template integration.
+	pub fn snapshot(&self) -> &super::publication::AssetUrlSnapshot {
+		&self.snapshot
+	}
+}
+
 /// Configuration for static files in templates
 ///
 /// This configuration can be used with template systems to generate URLs for static files.
@@ -75,6 +97,9 @@ impl TemplateStaticConfig {
 
 	/// Load manifest from ManifestStaticFilesStorage
 	///
+	/// Version 2 filesystem paths are percent-encoded for use in template URLs.
+	/// Legacy manifest values retain their existing URL encoding.
+	///
 	/// # Examples
 	///
 	/// ```rust,no_run
@@ -106,31 +131,22 @@ impl TemplateStaticConfig {
 
 		let manifest_content = tokio::fs::read_to_string(&manifest_path).await?;
 
-		// Try parsing as structured format first: {"version": "...", "paths": {...}} or {"paths": {...}}
-		let manifest =
-			if let Ok(structured) = serde_json::from_str::<serde_json::Value>(&manifest_content) {
-				if let Some(paths) = structured.get("paths").and_then(|v| v.as_object()) {
-					paths
-						.iter()
-						.filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-						.collect()
-				} else if let Some(files) = structured.get("files").and_then(|v| v.as_object()) {
-					// Legacy format with "files" key
-					files
-						.iter()
-						.filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-						.collect()
+		let decoded = super::publication::decode_manifest(manifest_content.as_bytes())
+			.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+		let encode_paths = matches!(&decoded, super::publication::DecodedAssetManifest::V2(_));
+		let manifest = decoded
+			.paths()
+			.iter()
+			.map(|(logical, published)| {
+				let published = if encode_paths {
+					reinhardt_core::types::static_assets::encode_asset_path(published)
+						.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
 				} else {
-					// Try as simple HashMap (legacy flat format)
-					serde_json::from_str::<HashMap<String, String>>(&manifest_content)
-						.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
-				}
-			} else {
-				return Err(io::Error::new(
-					io::ErrorKind::InvalidData,
-					"Invalid manifest JSON",
-				));
-			};
+					published.clone()
+				};
+				Ok((logical.clone(), published))
+			})
+			.collect::<io::Result<HashMap<_, _>>>()?;
 
 		Ok(Self {
 			static_url: storage.base_url.clone(),

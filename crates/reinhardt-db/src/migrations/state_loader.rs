@@ -9,8 +9,8 @@
 
 use super::recorder::MigrationRecord;
 use super::{
-	DatabaseMigrationRecorder, Migration, MigrationGraph, MigrationKey, MigrationSource,
-	ProjectState, Result,
+	DatabaseMigrationRecorder, DependencyResolutionContext, Migration, MigrationGraph,
+	MigrationKey, MigrationSource, ProjectState, Result,
 };
 
 /// Loader for building ProjectState from migration history.
@@ -37,6 +37,7 @@ use super::{
 pub struct MigrationStateLoader<S: MigrationSource> {
 	recorder: DatabaseMigrationRecorder,
 	source: S,
+	dependency_context: Option<DependencyResolutionContext>,
 }
 
 impl<S: MigrationSource> MigrationStateLoader<S> {
@@ -47,7 +48,17 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 	/// * `recorder` - The migration recorder to get applied migrations from
 	/// * `source` - The migration source to load migration definitions from
 	pub fn new(recorder: DatabaseMigrationRecorder, source: S) -> Self {
-		Self { recorder, source }
+		Self {
+			recorder,
+			source,
+			dependency_context: None,
+		}
+	}
+
+	/// Resolve conditional and swappable dependencies while replaying applied migrations.
+	pub fn with_dependency_context(mut self, context: DependencyResolutionContext) -> Self {
+		self.dependency_context = Some(context);
+		self
 	}
 
 	/// Build the current ProjectState by replaying all applied migrations.
@@ -97,19 +108,19 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 				.iter()
 				.find(|m| m.app_label == key.app_label && m.name == key.name)
 			{
-				eprintln!(
-					"[DEBUG] Applying migration: {}/{}",
-					migration.app_label, migration.name
+				tracing::debug!(
+					app_label = %migration.app_label,
+					migration_name = %migration.name,
+					operation_count = migration.operations.len(),
+					"Applying migration operations to project state"
 				);
-				eprintln!("[DEBUG]   Operations count: {}", migration.operations.len());
 				state.apply_migration_operations(&migration.operations, &migration.app_label);
-				eprintln!(
-					"[DEBUG]   State after applying - models count: {}",
-					state.models.len()
+				tracing::debug!(
+					app_label = %migration.app_label,
+					migration_name = %migration.name,
+					model_count = state.models.len(),
+					"Applied migration operations to project state"
 				);
-				for (app, model_name) in state.models.keys() {
-					eprintln!("[DEBUG]     - {}/{}", app, model_name);
-				}
 			}
 		}
 
@@ -139,23 +150,22 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 				continue;
 			}
 
-			let key = MigrationKey::new(migration.app_label.clone(), migration.name.clone());
-
-			// Convert dependencies to MigrationKey
-			let dependencies: Vec<MigrationKey> = migration
-				.dependencies
-				.iter()
-				.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-				.collect();
-
-			// Convert replaces to MigrationKey
-			let replaces: Vec<MigrationKey> = migration
-				.replaces
-				.iter()
-				.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-				.collect();
-
-			graph.add_migration_with_replaces(key, dependencies, replaces);
+			if let Some(context) = &self.dependency_context {
+				graph.add_migration_with_context(migration, context);
+			} else {
+				let key = MigrationKey::new(migration.app_label.clone(), migration.name.clone());
+				let dependencies = migration
+					.dependencies
+					.iter()
+					.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
+					.collect();
+				let replaces = migration
+					.replaces
+					.iter()
+					.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
+					.collect();
+				graph.add_migration_with_replaces(key, dependencies, replaces);
+			}
 		}
 
 		Ok(graph)
@@ -267,6 +277,16 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 /// - Failed to load migrations from the source
 /// - Circular dependency is detected in the migration graph
 pub async fn build_state_from_files<S: MigrationSource>(source: &S) -> Result<ProjectState> {
+	build_state_from_files_with_context(source, &super::DependencyResolutionContext::default())
+		.await
+}
+
+/// Reconstruct file-backed migration state using the project's conditional
+/// and swappable dependency settings.
+pub async fn build_state_from_files_with_context<S: MigrationSource>(
+	source: &S,
+	context: &super::DependencyResolutionContext,
+) -> Result<ProjectState> {
 	// 1. Load all available migrations from source
 	let all_migrations = source.all_migrations().await?;
 
@@ -278,25 +298,11 @@ pub async fn build_state_from_files<S: MigrationSource>(source: &S) -> Result<Pr
 	// 2. Build a graph from ALL migrations (not filtered by applied status)
 	let mut graph = MigrationGraph::new();
 	for migration in &all_migrations {
-		let key = MigrationKey::new(migration.app_label.clone(), migration.name.clone());
-
-		let dependencies: Vec<MigrationKey> = migration
-			.dependencies
-			.iter()
-			.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-			.collect();
-
-		let replaces: Vec<MigrationKey> = migration
-			.replaces
-			.iter()
-			.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-			.collect();
-
-		graph.add_migration_with_replaces(key, dependencies, replaces);
+		graph.add_migration_with_context(migration, context);
 	}
 
-	// 3. Get topologically sorted order
-	let sorted_keys = graph.topological_sort()?;
+	// 3. Select one valid replacement history before ordering migrations.
+	let sorted_keys = graph.resolve_execution_order_with_replaces()?;
 
 	// 4. Build ProjectState by replaying all migrations in order
 	let mut state = ProjectState::default();
@@ -369,6 +375,8 @@ mod tests {
 					unique: false,
 					auto_increment: col_name == "id",
 					default: None,
+					generated: None,
+					domain: None,
 				})
 				.collect(),
 			constraints: vec![],
@@ -390,6 +398,8 @@ mod tests {
 				unique: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		}
@@ -640,6 +650,45 @@ mod tests {
 				"users should come before posts in topological order"
 			);
 		}
+
+		#[tokio::test]
+		async fn applied_state_graph_orders_active_optional_dependencies() {
+			use crate::migrations::dependency::{DependencyCondition, OptionalDependency};
+
+			let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+				.await
+				.unwrap();
+			let recorder = DatabaseMigrationRecorder::new(connection);
+			let mut dependent = create_migration("a", "0001_extra", vec![], vec![]);
+			dependent
+				.optional_dependencies
+				.push(OptionalDependency::new(
+					"z",
+					"0001_base",
+					DependencyCondition::FeatureEnabled("extra".to_owned()),
+				));
+			let base = create_migration("z", "0001_base", vec![], vec![]);
+			let migrations = vec![dependent, base];
+			let records = vec![
+				create_migration_record("a", "0001_extra"),
+				create_migration_record("z", "0001_base"),
+			];
+			let context = DependencyResolutionContext::new().with_feature("extra");
+			let loader = MigrationStateLoader::new(
+				recorder,
+				MockMigrationSource {
+					migrations: migrations.clone(),
+				},
+			)
+			.with_dependency_context(context);
+
+			let graph = loader
+				.build_applied_migration_graph(&records, &migrations)
+				.unwrap();
+			let order = graph.topological_sort().unwrap();
+			assert_eq!(order[0], MigrationKey::new("z", "0001_base"));
+			assert_eq!(order[1], MigrationKey::new("a", "0001_extra"));
+		}
 	}
 
 	mod project_state_replay {
@@ -695,6 +744,7 @@ mod tests {
 			let drop_ops = vec![Operation::DropColumn {
 				table: "users".to_string(),
 				column: "email".to_string(),
+				old_definition: None,
 			}];
 			state.apply_migration_operations(&drop_ops, "testapp");
 
@@ -799,6 +849,7 @@ mod tests {
 mod build_state_from_files_tests {
 	use super::*;
 	use crate::migrations::FieldType;
+	use crate::migrations::dependency::{DependencyCondition, OptionalDependency};
 	use crate::migrations::operations::{ColumnDefinition, Operation};
 	use rstest::rstest;
 
@@ -854,6 +905,8 @@ mod build_state_from_files_tests {
 					unique: false,
 					auto_increment: col_name == "id",
 					default: None,
+					generated: None,
+					domain: None,
 				})
 				.collect(),
 			constraints: vec![],
@@ -875,6 +928,8 @@ mod build_state_from_files_tests {
 				unique: false,
 				auto_increment: false,
 				default: None,
+				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		}
@@ -985,6 +1040,46 @@ mod build_state_from_files_tests {
 		assert_eq!(state.models.len(), 2);
 		assert!(state.find_model_by_table("auth_users").is_some());
 		assert!(state.find_model_by_table("posts_post").is_some());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn file_state_orders_active_optional_dependencies() {
+		let mut dependent = create_migration(
+			"a",
+			"0001_extra",
+			vec![add_column_operation("shared_table", "extra")],
+			vec![],
+		);
+		dependent
+			.optional_dependencies
+			.push(OptionalDependency::new(
+				"z",
+				"0001_base",
+				DependencyCondition::FeatureEnabled("extra".to_owned()),
+			));
+		let source = MockMigrationSource {
+			migrations: vec![
+				dependent,
+				create_migration(
+					"z",
+					"0001_base",
+					vec![create_table_operation("shared_table", vec!["id"])],
+					vec![],
+				),
+			],
+		};
+		let context = super::super::DependencyResolutionContext::new().with_feature("extra");
+		let state = build_state_from_files_with_context(&source, &context)
+			.await
+			.unwrap();
+		assert!(
+			state
+				.find_model_by_table("shared_table")
+				.unwrap()
+				.fields
+				.contains_key("extra")
+		);
 	}
 
 	/// CreateTable followed by DropTable results in empty state
@@ -1159,6 +1254,7 @@ mod build_state_from_files_tests {
 					vec![Operation::DropColumn {
 						table: "auth_users".to_string(),
 						column: "legacy_field".to_string(),
+						old_definition: None,
 					}],
 					vec![("auth", "0001_initial")],
 				),
@@ -1203,6 +1299,8 @@ mod build_state_from_files_tests {
 							unique: false,
 							auto_increment: false,
 							default: None,
+							generated: None,
+							domain: None,
 						}),
 						new_definition: ColumnDefinition {
 							name: "email".to_string(),
@@ -1212,6 +1310,8 @@ mod build_state_from_files_tests {
 							unique: true,
 							auto_increment: false,
 							default: None,
+							generated: None,
+							domain: None,
 						},
 						mysql_options: None,
 					}],
@@ -1603,6 +1703,8 @@ pub fn migration() -> Migration {
 						unique: false,
 						auto_increment: true,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "title".to_string(),
@@ -1612,6 +1714,8 @@ pub fn migration() -> Migration {
 						unique: false,
 						auto_increment: false,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 				],
 				constraints: vec![],
@@ -1688,6 +1792,8 @@ pub fn migration() -> Migration {
 						unique: false,
 						auto_increment: true,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "username".to_string(),
@@ -1697,6 +1803,8 @@ pub fn migration() -> Migration {
 						unique: true,
 						auto_increment: false,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 				],
 				constraints: vec![],
@@ -1754,6 +1862,8 @@ pub fn migration() -> Migration {
 						unique: false,
 						auto_increment: true,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "title".to_string(),
@@ -1763,6 +1873,8 @@ pub fn migration() -> Migration {
 						unique: false,
 						auto_increment: false,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "author_id".to_string(),
@@ -1772,6 +1884,8 @@ pub fn migration() -> Migration {
 						unique: false,
 						auto_increment: false,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 				],
 				constraints: vec![],
@@ -1853,6 +1967,8 @@ pub fn migration() -> Migration {
 						unique: false,
 						auto_increment: true,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "username".to_string(),
@@ -1862,6 +1978,8 @@ pub fn migration() -> Migration {
 						unique: true,
 						auto_increment: false,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 				],
 				constraints: vec![],
@@ -1918,6 +2036,8 @@ pub fn migration() -> Migration {
 					unique: false,
 					auto_increment: false,
 					default: None,
+				generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -1931,6 +2051,8 @@ pub fn migration() -> Migration {
 					unique: false,
 					auto_increment: false,
 					default: None,
+				generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -2032,6 +2154,8 @@ pub fn migration() -> Migration {
 						unique: false,
 						auto_increment: true,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "username".to_string(),
@@ -2041,6 +2165,8 @@ pub fn migration() -> Migration {
 						unique: true,
 						auto_increment: false,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 				],
 				constraints: vec![],
@@ -2097,6 +2223,8 @@ pub fn migration() -> Migration {
 					unique: false,
 					auto_increment: false,
 					default: None,
+				generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -2153,6 +2281,8 @@ pub fn migration() -> Migration {
 					unique: false,
 					auto_increment: false,
 					default: None,
+				generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -2277,6 +2407,8 @@ pub fn migration() -> Migration {
 						unique: false,
 						auto_increment: true,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "username".to_string(),
@@ -2286,6 +2418,8 @@ pub fn migration() -> Migration {
 						unique: true,
 						auto_increment: false,
 						default: None,
+					generated: None,
+						domain: None,
 					},
 				],
 				constraints: vec![],
@@ -2342,6 +2476,8 @@ pub fn migration() -> Migration {
 					unique: false,
 					auto_increment: false,
 					default: None,
+				generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -2396,6 +2532,8 @@ pub fn migration() -> Migration {
 					unique: false,
 					auto_increment: false,
 					default: None,
+				generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -2494,6 +2632,8 @@ pub fn migration() -> Migration {
 					unique: false,
 					auto_increment: false,
 					default: None,
+				generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -2539,5 +2679,71 @@ pub fn replaces() -> Vec<(String, String)> {
 		assert!(model.fields.contains_key("email"));
 		assert!(model.fields.contains_key("avatar_url"));
 		assert!(model.fields.contains_key("bio"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn model_enum_domain_constraint_survives_migration_file_state_roundtrip() {
+		let tmp = TempDir::new().unwrap();
+		write_migration_file(
+			tmp.path(),
+			"jobs",
+			"0001_initial",
+			r#"
+use reinhardt_db::migrations::prelude::*;
+
+pub fn migration() -> Migration {
+	Migration {
+		name: "0001_initial".to_string(), app_label: "jobs".to_string(),
+		operations: vec![Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![ColumnDefinition {
+				name: "status".to_string(), type_definition: FieldType::Integer,
+				not_null: true, primary_key: false, unique: false, auto_increment: false,
+				default: None, generated: None,
+				domain: Some(FieldDomain::Enum {
+					repr: ModelEnumRepr::I32,
+					values: vec![ModelEnumValue::I32(-2147483648i32), ModelEnumValue::I32(1)],
+				}),
+			}],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::I32,
+					values: vec![ModelEnumValue::I32(-2147483648i32), ModelEnumValue::I32(1)],
+				},
+			}],
+			without_rowid: None, interleave_in_parent: None, partition: None,
+		}],
+		dependencies: vec![], replaces: vec![], atomic: true, initial: Some(true),
+		state_only: false, database_only: false,
+		swappable_dependencies: vec![], optional_dependencies: vec![],
+	}
+}
+"#,
+		);
+
+		let state = build_state_from_files(&FilesystemSource::new(tmp.path()))
+			.await
+			.unwrap();
+		let model = state.find_model_by_table("jobs").unwrap();
+
+		assert_eq!(
+			model.fields["status"].domain,
+			Some(crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::I32,
+				values: vec![
+					crate::field_domain::ModelEnumValue::I32(i32::MIN),
+					crate::field_domain::ModelEnumValue::I32(1),
+				],
+			})
+		);
+		let constraint = model
+			.constraints
+			.iter()
+			.find(|constraint| constraint.name == "jobs_status_model_enum_check")
+			.expect("enum-domain constraint should survive state reconstruction");
+		assert_eq!(constraint.constraint_type, "enum_domain");
 	}
 }

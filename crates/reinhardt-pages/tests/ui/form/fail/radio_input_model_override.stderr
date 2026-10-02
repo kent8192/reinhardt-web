@@ -1,0 +1,5 @@
+error: this widget is not supported by model-backed forms; use a supported scalar widget or an explicit non-model form
+  --> tests/ui/form/fail/radio_input_model_override.rs:10:22
+   |
+10 |             answer: { widget: RadioInput },
+   |                               ^^^^^^^^^^

@@ -13,6 +13,52 @@
 //! - **Zero-Cost Abstractions**: High-level ergonomics without runtime overhead
 //! - **Async-First**: Built on tokio and async/await from the ground up
 //!
+//! ## Shared URL Declarations
+//!
+//! Apply [`macro@url_patterns`] to a synchronous function returning
+//! `UnifiedRouter` to share a builder chain containing native-only handlers.
+//! The attribute removes `.server(...)` calls unless the caller enables
+//! `cfg(server)` on a non-browser-WASM target. Client configuration, prefixes,
+//! namespaces, mounts, and merges retain their existing behavior. The macro
+//! is available on both targets; browser routing requires `client-router`.
+//! Keep [`macro@routes`] on the single project-level entry point for inventory
+//! registration. The attributes can be stacked in either order.
+//!
+//! ## Generated Model Form Facade
+//!
+//! Enable the `forms` feature to use generated model-backed forms through the
+//! facade and its prelude exports:
+//!
+//! ```rust,no_run
+//! # #[cfg(feature = "forms")]
+//! # mod generated_model_form_facade {
+//! use reinhardt::forms::{
+//!     FormModel,
+//!     ModelForm,
+//!     ModelFormError,
+//! };
+//! use reinhardt::core::model_form::{
+//!     ModelFormPolicy,
+//!     ModelFormSchema,
+//! };
+//!
+//! fn accepts_generated_model_form<T, P>()
+//! where
+//!     T: FormModel,
+//!     P: ModelFormPolicy,
+//!     T::Schema: ModelFormSchema<Model = T>,
+//! {
+//!     let _ = std::any::type_name::<ModelForm<T, P>>();
+//!     let _ = std::any::type_name::<ModelFormError>();
+//! }
+//! # }
+//! # fn main() {}
+//! ```
+//!
+//! WASM clients can use named model-form contracts and their generated validation
+//! with only the `pages` feature. No `core` feature or direct `reinhardt-core`
+//! dependency is required.
+//!
 //! ## Feature Flags
 //!
 //! Reinhardt provides flexible feature flags to control compilation and reduce binary size.
@@ -42,6 +88,7 @@
 //!
 //! #### Database Backends ✅
 //! - `db-postgres` - PostgreSQL support
+//! - `db-pgvector` - pgvector support, including serializable vector markers for shared WASM models
 //! - `db-mysql` - MySQL support
 //! - `db-sqlite` - SQLite support
 //! - `db-cockroachdb` - CockroachDB support (distributed transactions)
@@ -201,6 +248,16 @@ pub mod reinhardt_core {
 	pub use reinhardt_core::*;
 }
 
+#[cfg(not(native))]
+#[doc(hidden)]
+pub mod reinhardt_core {
+	pub use reinhardt_core::model_form;
+	pub use reinhardt_core::model_info;
+	// Pages enables validators for generated model-form payloads independently of core.
+	#[cfg(any(feature = "core", feature = "pages"))]
+	pub use reinhardt_core::validators;
+}
+
 #[cfg(all(feature = "core", native))]
 #[doc(hidden)]
 pub mod reinhardt_http {
@@ -266,6 +323,8 @@ pub mod dentdelion;
 pub mod di;
 #[cfg(all(feature = "dispatch", native))]
 pub mod dispatch;
+#[cfg(all(feature = "file-storage", native))]
+pub mod file_storage;
 #[cfg(all(feature = "forms", native))]
 pub mod forms;
 #[cfg(all(feature = "graphql", native))]
@@ -306,16 +365,19 @@ pub mod urls;
 ///
 /// When the `client-router` feature is enabled (the realistic configuration
 /// for wasm consumers that use `#[routes]`), this re-exports the real
-/// wasm-side `UnifiedRouter` from `reinhardt_urls::routers`. That type
-/// provides the correct closure signatures
+/// wasm-side `UnifiedRouter` from `reinhardt_urls::routers`. `UnifiedRouter`
+/// is a non-generic public type on both native and WASM; its private stored
+/// routing representation is target-specific. The WASM value stores client
+/// routing state, while the native value stores server and protocol state.
+/// The real WASM type provides the correct closure signatures
 /// (`server: FnOnce(ServerRouter) -> ServerRouter`,
 /// `client: FnOnce(ClientRouter) -> ClientRouter`) so user-supplied bodies
 /// such as `.client(|c| c.route(...))` type-check on wasm. On wasm the
 /// `ServerRouter` is a no-op builder whose result is discarded (issue #4569).
 ///
-/// Without `client-router`, an inert stub is exposed so that the path
-/// resolves; user bodies that invoke `.server`/`.client` on the stub are
-/// expected to be no-ops in that minimal configuration.
+/// Without `client-router`, the existing minimal inert stub is exposed so that
+/// the path resolves. It is not the real target-neutral router contract;
+/// enable `client-router` for active client routing.
 #[cfg(all(feature = "routing", not(native)))]
 pub mod urls {
 	/// Wasm-side stub mirroring `reinhardt_urls::prelude`.
@@ -438,6 +500,10 @@ pub use reinhardt_urls::inventory;
 #[doc(hidden)]
 pub use ::reinhardt_urls;
 
+#[cfg(all(feature = "websockets", native))]
+#[doc(hidden)]
+pub use reinhardt_websockets;
+
 // ============================================================================
 // Prelude
 // ============================================================================
@@ -471,6 +537,23 @@ pub mod query;
 pub mod db {
 	pub use reinhardt_db::DatabaseConnection;
 	pub use reinhardt_db::DatabaseError as Error;
+	pub use reinhardt_db::Json;
+
+	/// Validated pgvector value types.
+	#[cfg(feature = "db-pgvector")]
+	pub mod pgvector {
+		pub use reinhardt_db::orm::{MAX_DENSE_VECTOR_DIMENSIONS, Vector, VectorError};
+	}
+
+	/// Low-level backend connections used to register ORM connection leases.
+	pub mod backends {
+		pub use reinhardt_db::backends::*;
+	}
+
+	/// Canonical many-to-many default naming helpers used by generated models.
+	pub mod m2m_naming {
+		pub use reinhardt_db::m2m_naming::*;
+	}
 
 	/// Database migration types and utilities.
 	pub mod migrations {
@@ -480,6 +563,12 @@ pub mod db {
 	/// ORM query building and model operations.
 	pub mod orm {
 		pub use reinhardt_db::orm::*;
+
+		/// Compatibility path for model-macro generated executor bounds.
+		pub mod connection {
+			pub use reinhardt_db::orm::OrmExecutor;
+			pub use reinhardt_db::orm::connection::*;
+		}
 	}
 
 	/// Model relationship (association) definitions.
@@ -491,6 +580,25 @@ pub mod db {
 	pub mod prelude {
 		pub use reinhardt_db::prelude::*;
 	}
+
+	#[cfg(test)]
+	mod tests {
+		#[cfg(feature = "db-pgvector")]
+		#[test]
+		fn pgvector_types_are_available_through_the_facade() {
+			let vector = super::pgvector::Vector::<2>::try_from(vec![1.0, 2.0]).unwrap();
+
+			assert_eq!(vector.as_slice(), &[1.0, 2.0]);
+		}
+
+		#[test]
+		fn m2m_naming_helpers_are_available_through_facade() {
+			assert_eq!(
+				super::m2m_naming::default_through_table("posts", "tags"),
+				"posts_tags"
+			);
+		}
+	}
 }
 
 /// WASM-compatible database marker namespace.
@@ -500,6 +608,183 @@ pub mod db {
 /// not expose ORM, connection, query, or migration APIs.
 #[cfg(not(native))]
 pub mod db {
+	use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
+	use std::ops::{Deref, DerefMut};
+
+	/// WASM-compatible pgvector marker types.
+	#[cfg(feature = "db-pgvector")]
+	pub mod pgvector {
+		use serde::{Deserialize, Serialize};
+
+		/// Largest dense-vector dimension accepted by PostgreSQL pgvector.
+		pub const MAX_DENSE_VECTOR_DIMENSIONS: usize = 2000;
+
+		/// Dimension or element validation error for a dense vector marker.
+		#[derive(Debug, Clone, PartialEq, Eq)]
+		pub enum VectorError {
+			/// The const-generic dimension is outside pgvector's supported range.
+			InvalidDimensions {
+				/// Requested dimension.
+				dimensions: usize,
+			},
+			/// The supplied value length does not match the declared dimension.
+			DimensionMismatch {
+				/// Declared dimension.
+				expected: usize,
+				/// Supplied value length.
+				actual: usize,
+			},
+			/// A vector element is NaN or infinite.
+			NonFiniteElement {
+				/// Invalid element position.
+				index: usize,
+			},
+		}
+
+		impl std::fmt::Display for VectorError {
+			fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+				match self {
+					Self::InvalidDimensions { dimensions } => write!(
+						formatter,
+						"vector dimensions must be between 1 and {MAX_DENSE_VECTOR_DIMENSIONS}, got {dimensions}"
+					),
+					Self::DimensionMismatch { expected, actual } => write!(
+						formatter,
+						"vector dimension mismatch: expected {expected}, got {actual}"
+					),
+					Self::NonFiniteElement { index } => {
+						write!(formatter, "vector element at index {index} must be finite")
+					}
+				}
+			}
+		}
+
+		impl std::error::Error for VectorError {}
+
+		/// Serializable dense-vector marker used by shared WASM model definitions.
+		#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+		pub struct Vector<const N: usize>(Vec<f32>);
+
+		impl<const N: usize> Vector<N> {
+			/// Returns the vector elements.
+			pub fn as_slice(&self) -> &[f32] {
+				&self.0
+			}
+
+			/// Consumes the marker and returns its elements.
+			pub fn into_vec(self) -> Vec<f32> {
+				self.0
+			}
+		}
+
+		impl<const N: usize> TryFrom<Vec<f32>> for Vector<N> {
+			type Error = VectorError;
+
+			fn try_from(values: Vec<f32>) -> Result<Self, Self::Error> {
+				if !(1..=MAX_DENSE_VECTOR_DIMENSIONS).contains(&N) {
+					return Err(VectorError::InvalidDimensions { dimensions: N });
+				}
+				if values.len() != N {
+					return Err(VectorError::DimensionMismatch {
+						expected: N,
+						actual: values.len(),
+					});
+				}
+				if let Some(index) = values.iter().position(|value| !value.is_finite()) {
+					return Err(VectorError::NonFiniteElement { index });
+				}
+				Ok(Self(values))
+			}
+		}
+	}
+
+	/// WASM-compatible typed JSON field wrapper.
+	#[repr(transparent)]
+	#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+	pub struct Json<T>(pub T);
+
+	impl<T> Json<T> {
+		/// Creates a typed JSON wrapper.
+		pub const fn new(value: T) -> Self {
+			Self(value)
+		}
+
+		/// Returns the wrapped value.
+		pub fn into_inner(self) -> T {
+			self.0
+		}
+
+		/// Borrows the wrapped value.
+		pub const fn as_inner(&self) -> &T {
+			&self.0
+		}
+
+		/// Mutably borrows the wrapped value.
+		pub fn as_inner_mut(&mut self) -> &mut T {
+			&mut self.0
+		}
+
+		/// Converts the wrapped value into a JSON value.
+		pub fn to_json_value(&self) -> Result<serde_json::Value, serde_json::Error>
+		where
+			T: Serialize,
+		{
+			serde_json::to_value(&self.0)
+		}
+
+		/// Builds a typed JSON wrapper from a JSON value.
+		pub fn from_json_value(value: serde_json::Value) -> Result<Self, serde_json::Error>
+		where
+			T: DeserializeOwned,
+		{
+			serde_json::from_value(value).map(Self)
+		}
+	}
+
+	impl<T> Deref for Json<T> {
+		type Target = T;
+
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl<T> DerefMut for Json<T> {
+		fn deref_mut(&mut self) -> &mut Self::Target {
+			&mut self.0
+		}
+	}
+
+	impl<T> From<T> for Json<T> {
+		fn from(value: T) -> Self {
+			Self(value)
+		}
+	}
+
+	impl<T> Serialize for Json<T>
+	where
+		T: Serialize,
+	{
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: Serializer,
+		{
+			self.0.serialize(serializer)
+		}
+	}
+
+	impl<'de, T> Deserialize<'de> for Json<T>
+	where
+		T: Deserialize<'de>,
+	{
+		fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where
+			D: Deserializer<'de>,
+		{
+			T::deserialize(deserializer).map(Self)
+		}
+	}
+
 	/// Relationship marker types accepted by `#[model]` on WASM.
 	pub mod associations {
 		use std::marker::PhantomData;

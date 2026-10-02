@@ -4,7 +4,7 @@
 
 use super::{QueryBuilder, SqlWriter};
 use crate::{
-	expr::{Condition, SimpleExpr},
+	expr::{Condition, SimpleExpr, TemporalTimeZone, TemporalTruncKind, TemporalTruncOutput},
 	query::{
 		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CheckTableStatement,
 		CreateIndexStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
@@ -12,7 +12,7 @@ use crate::{
 		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
 		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
-	types::{BinOper, ColumnRef, TableRef},
+	types::{BinOper, ColumnRef, GeneratedColumn, SchemaBinOper, SchemaExpr, SchemaFunc, TableRef},
 	value::Values,
 };
 
@@ -90,6 +90,152 @@ impl MySqlQueryBuilder {
 	/// Create a new MySQL query builder
 	pub fn new() -> Self {
 		Self
+	}
+
+	fn write_datetime_in_zone(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		time_zone: Option<&TemporalTimeZone>,
+	) {
+		writer.push("CONVERT_TZ(");
+		self.write_simple_expr(writer, expr);
+		writer.push(", '+00:00', ");
+		let zone = match time_zone {
+			Some(TemporalTimeZone::Named(zone)) => zone.clone(),
+			Some(TemporalTimeZone::Utc) | None => "+00:00".to_string(),
+		};
+		writer.push_value(
+			crate::value::Value::String(Some(Box::new(zone))),
+			|_index| self.placeholder(0),
+		);
+		writer.push(")");
+	}
+
+	fn write_week_start(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		time_zone: Option<&TemporalTimeZone>,
+		output: TemporalTruncOutput,
+	) {
+		writer.push("STR_TO_DATE(DATE_FORMAT(");
+		if output == TemporalTruncOutput::DateTime {
+			self.write_datetime_in_zone(writer, expr, time_zone);
+		} else {
+			self.write_simple_expr(writer, expr);
+		}
+		writer.push(", '%x-%v Monday'), '%x-%v %W')");
+	}
+
+	fn write_temporal_trunc(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		kind: TemporalTruncKind,
+		time_zone: Option<&TemporalTimeZone>,
+		output: TemporalTruncOutput,
+	) {
+		if kind == TemporalTruncKind::Week {
+			writer.push("CAST(");
+			self.write_week_start(writer, expr, time_zone, output);
+			writer.push(match output {
+				TemporalTruncOutput::Date => " AS DATE)",
+				TemporalTruncOutput::DateTime => " AS DATETIME)",
+			});
+			return;
+		}
+
+		let format = match (kind, output) {
+			(TemporalTruncKind::Year, TemporalTruncOutput::Date) => "%Y-01-01",
+			(TemporalTruncKind::Month, TemporalTruncOutput::Date) => "%Y-%m-01",
+			(TemporalTruncKind::Day, TemporalTruncOutput::Date) => "%Y-%m-%d",
+			(TemporalTruncKind::Year, TemporalTruncOutput::DateTime) => "%Y-01-01 00:00:00",
+			(TemporalTruncKind::Month, TemporalTruncOutput::DateTime) => "%Y-%m-01 00:00:00",
+			(TemporalTruncKind::Day, TemporalTruncOutput::DateTime) => "%Y-%m-%d 00:00:00",
+			(TemporalTruncKind::Hour, TemporalTruncOutput::DateTime) => "%Y-%m-%d %H:00:00",
+			(TemporalTruncKind::Minute, TemporalTruncOutput::DateTime) => "%Y-%m-%d %H:%i:00",
+			(TemporalTruncKind::Second, TemporalTruncOutput::DateTime) => "%Y-%m-%d %H:%i:%s",
+			_ => unreachable!("invalid temporal truncation kind and output"),
+		};
+		writer.push("CAST(DATE_FORMAT(");
+		if output == TemporalTruncOutput::DateTime {
+			self.write_datetime_in_zone(writer, expr, time_zone);
+		} else {
+			self.write_simple_expr(writer, expr);
+		}
+		writer.push(", '");
+		writer.push(format);
+		writer.push("') AS ");
+		writer.push(match output {
+			TemporalTruncOutput::Date => "DATE)",
+			TemporalTruncOutput::DateTime => "DATETIME)",
+		});
+	}
+
+	/// Build a SELECT statement after rejecting PostgreSQL-only vector features.
+	pub fn build_select_checked(
+		&self,
+		stmt: &SelectStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_select_lock_for_backend(stmt, "MySQL")?;
+		crate::error::validate_select_for_backend(stmt, "MySQL")?;
+		Ok(self.build_select(stmt))
+	}
+
+	/// Build a CREATE TABLE statement after rejecting PostgreSQL-only vector features.
+	pub fn build_create_table_checked(
+		&self,
+		stmt: &CreateTableStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_create_table_for_backend(stmt, "MySQL")?;
+		Ok(self.build_create_table(stmt))
+	}
+
+	/// Build a CREATE INDEX statement after rejecting PostgreSQL-only vector features.
+	pub fn build_create_index_checked(
+		&self,
+		stmt: &CreateIndexStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_create_index_for_backend(stmt, "MySQL")?;
+		stmt.validate_for_backend("MySQL", false)?;
+		Ok(self.build_create_index(stmt))
+	}
+
+	/// Build an INSERT statement after rejecting PostgreSQL-only vector features.
+	pub fn build_insert_checked(
+		&self,
+		stmt: &InsertStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_insert_for_backend(stmt, "MySQL")?;
+		Ok(self.build_insert(stmt))
+	}
+
+	/// Build an UPDATE statement after rejecting PostgreSQL-only vector features.
+	pub fn build_update_checked(
+		&self,
+		stmt: &UpdateStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_update_for_backend(stmt, "MySQL")?;
+		Ok(self.build_update(stmt))
+	}
+
+	/// Build a DELETE statement after rejecting PostgreSQL-only vector features.
+	pub fn build_delete_checked(
+		&self,
+		stmt: &DeleteStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_delete_for_backend(stmt, "MySQL")?;
+		Ok(self.build_delete(stmt))
+	}
+
+	/// Build an ALTER TABLE statement after rejecting PostgreSQL-only vector features.
+	pub fn build_alter_table_checked(
+		&self,
+		stmt: &AlterTableStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_alter_table_for_backend(stmt, "MySQL")?;
+		Ok(self.build_alter_table(stmt))
 	}
 
 	/// Escape an identifier for MySQL
@@ -171,17 +317,31 @@ impl MySqlQueryBuilder {
 				// Merge the values from the subquery
 				writer.append_values(&subquery_values);
 			}
-			TableRef::LateralSubQuery(query, alias) => {
-				let (subquery_sql, subquery_values) = self.build_select(query);
-				writer.push_keyword("LATERAL");
-				writer.push_space();
-				writer.push("(");
-				writer.push(&subquery_sql);
-				writer.push(")");
-				writer.push_keyword("AS");
-				writer.push_space();
+		}
+	}
+
+	/// Write a table target in a row-lock `OF` clause.
+	fn write_lock_table_target(&self, writer: &mut SqlWriter, table_ref: &TableRef) {
+		match table_ref {
+			TableRef::TableAlias(_, alias)
+			| TableRef::SchemaTableAlias(_, _, alias)
+			| TableRef::SubQuery(_, alias) => {
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
-				writer.append_values(&subquery_values);
+			}
+			TableRef::Table(iden) => {
+				writer.push_identifier(&iden.to_string(), |s| self.escape_iden(s));
+			}
+			TableRef::SchemaTable(schema, table) => {
+				writer.push_identifier(&schema.to_string(), |s| self.escape_iden(s));
+				writer.push(".");
+				writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
+			}
+			TableRef::DatabaseSchemaTable(db, schema, table) => {
+				writer.push_identifier(&db.to_string(), |s| self.escape_iden(s));
+				writer.push(".");
+				writer.push_identifier(&schema.to_string(), |s| self.escape_iden(s));
+				writer.push(".");
+				writer.push_identifier(&table.to_string(), |s| self.escape_iden(s));
 			}
 		}
 	}
@@ -212,6 +372,69 @@ impl MySqlQueryBuilder {
 				writer.push(".*");
 			}
 		}
+	}
+
+	/// Write a DDL-safe schema expression with inline literals.
+	fn write_schema_expr(&self, writer: &mut SqlWriter, expr: &SchemaExpr) {
+		match expr {
+			SchemaExpr::Column(iden) => {
+				writer.push_identifier(&iden.to_string(), |s| self.escape_iden(s));
+			}
+			SchemaExpr::Value(value) => {
+				writer.push(&value.to_sql_literal());
+			}
+			SchemaExpr::Binary { left, op, right } => {
+				writer.push("(");
+				self.write_schema_expr(writer, left);
+				writer.push_space();
+				writer.push(match op {
+					SchemaBinOper::Add => "+",
+					SchemaBinOper::Sub => "-",
+					SchemaBinOper::Mul => "*",
+					SchemaBinOper::Div => "/",
+				});
+				writer.push_space();
+				self.write_schema_expr(writer, right);
+				writer.push(")");
+			}
+			SchemaExpr::Function { func, args } => match func {
+				SchemaFunc::Concat if args.is_empty() => writer.push("''"),
+				SchemaFunc::Concat | SchemaFunc::Coalesce => {
+					let func_name = match func {
+						SchemaFunc::Concat => "CONCAT",
+						SchemaFunc::Coalesce => "COALESCE",
+					};
+					writer.push(func_name);
+					writer.push("(");
+					writer.push_list(args, ", ", |w, arg| {
+						self.write_schema_expr(w, arg);
+					});
+					writer.push(")");
+				}
+			},
+			SchemaExpr::Cast { expr, ty } => {
+				writer.push("CAST(");
+				self.write_schema_expr(writer, expr);
+				writer.push(" AS ");
+				writer.push(&self.column_type_to_cast_sql(ty));
+				writer.push(")");
+			}
+		}
+	}
+
+	/// Write generated-column DDL.
+	fn write_generated_column(&self, writer: &mut SqlWriter, generated: &GeneratedColumn) {
+		generated
+			.validate()
+			.expect("invalid generated-column metadata");
+		writer.push(" GENERATED ALWAYS AS (");
+		if let Some(expr) = &generated.expr {
+			self.write_schema_expr(writer, expr);
+		} else if let Some(raw_sql) = &generated.raw_sql {
+			writer.push(raw_sql);
+		}
+		writer.push(") ");
+		writer.push(generated.storage.as_str());
 	}
 
 	/// Write a simple expression
@@ -364,6 +587,11 @@ impl MySqlQueryBuilder {
 				writer.push(sql);
 			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
+				let template = if template == "? LIKE ? ESCAPE '\\'" {
+					"? LIKE ? ESCAPE 0x5C"
+				} else {
+					template
+				};
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');
 				if let Some(first) = parts.next() {
@@ -403,6 +631,12 @@ impl MySqlQueryBuilder {
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
+			SimpleExpr::TemporalTrunc {
+				expr,
+				kind,
+				time_zone,
+				output,
+			} => self.write_temporal_trunc(writer, expr, *kind, time_zone.as_ref(), *output),
 		}
 	}
 
@@ -617,9 +851,6 @@ impl MySqlQueryBuilder {
 
 impl QueryBuilder for MySqlQueryBuilder {
 	fn build_select(&self, stmt: &SelectStatement) -> (String, Values) {
-		if let Some(raw_sql) = &stmt.raw_sql {
-			return (raw_sql.clone(), Values::new());
-		}
 		let mut writer = SqlWriter::new();
 
 		// WITH clause (Common Table Expressions)
@@ -839,6 +1070,30 @@ impl QueryBuilder for MySqlQueryBuilder {
 			writer.append_values(&union_values);
 		}
 
+		if let Some(lock) = &stmt.lock {
+			use crate::query::{LockBehavior, LockType};
+
+			writer.push_keyword(match lock.r#type {
+				LockType::Update => "FOR UPDATE",
+				LockType::NoKeyUpdate => "FOR NO KEY UPDATE",
+				LockType::Share => "FOR SHARE",
+				LockType::KeyShare => "FOR KEY SHARE",
+			});
+			if !lock.tables.is_empty() {
+				writer.push_keyword("OF");
+				writer.push_space();
+				writer.push_list(&lock.tables, ", ", |w, table| {
+					self.write_lock_table_target(w, table);
+				});
+			}
+			if let Some(behavior) = lock.behavior {
+				writer.push_keyword(match behavior {
+					LockBehavior::Nowait => "NOWAIT",
+					LockBehavior::SkipLocked => "SKIP LOCKED",
+				});
+			}
+		}
+
 		writer.finish()
 	}
 
@@ -870,17 +1125,22 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 		// VALUES clause or SELECT subquery
 		match &stmt.source {
-			InsertSource::Values(values) if !values.is_empty() => {
-				writer.push_keyword("VALUES");
-				writer.push_space();
+			InsertSource::Values(_) if stmt.default_values => {
+				writer.push_keyword("() VALUES ()");
+			}
+			InsertSource::Values(values) => {
+				if !values.is_empty() {
+					writer.push_keyword("VALUES");
+					writer.push_space();
 
-				writer.push_list(values, ", ", |w, row| {
-					w.push("(");
-					w.push_list(row, ", ", |w2, value| {
-						w2.push_value(value.clone(), |_i| self.placeholder(0));
+					writer.push_list(values, ", ", |w, row| {
+						w.push("(");
+						w.push_list(row, ", ", |w2, value| {
+							w2.push_value(value.clone(), |_i| self.placeholder(0));
+						});
+						w.push(")");
 					});
-					w.push(")");
-				});
+				}
 			}
 			InsertSource::Subquery(select) => {
 				writer.push_space();
@@ -888,20 +1148,21 @@ impl QueryBuilder for MySqlQueryBuilder {
 				writer.push(&select_sql);
 				writer.append_values(&select_values);
 			}
-			_ => {
-				// Empty values - this is valid SQL in some contexts
-			}
 		}
 
 		// ON DUPLICATE KEY UPDATE clause (MySQL equivalent of ON CONFLICT)
 		if let Some(on_conflict) = &stmt.on_conflict {
-			use crate::query::OnConflictAction;
+			use crate::query::{OnConflictAction, OnConflictTarget};
 			match &on_conflict.action {
 				OnConflictAction::DoNothing => {
 					// MySQL doesn't have DO NOTHING directly;
 					// use ON DUPLICATE KEY UPDATE with no-op pattern
-					if !stmt.columns.is_empty() {
-						let col_str = stmt.columns[0].to_string();
+					let no_op_column = stmt.columns.first().or_else(|| match &on_conflict.target {
+						OnConflictTarget::Column(column) => Some(column),
+						OnConflictTarget::Columns(columns) => columns.first(),
+					});
+					if let Some(column) = no_op_column {
+						let col_str = column.to_string();
 						writer.push_keyword("ON DUPLICATE KEY UPDATE");
 						writer.push_space();
 						writer.push_identifier(&col_str, |s| self.escape_iden(s));
@@ -924,7 +1185,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 		}
 
 		// RETURNING clause - NOT SUPPORTED in MySQL
-		if stmt.returning.is_some() {
+		if stmt.returning.is_some() || stmt.returning_exprs.is_some() {
 			panic!("MySQL does not support RETURNING clause. Use LAST_INSERT_ID() instead.");
 		}
 
@@ -966,7 +1227,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 		}
 
 		// RETURNING clause - NOT SUPPORTED in MySQL
-		if stmt.returning.is_some() {
+		if stmt.returning.is_some() || stmt.returning_exprs.is_some() {
 			panic!("MySQL does not support RETURNING clause.");
 		}
 
@@ -996,7 +1257,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 		}
 
 		// RETURNING clause - NOT SUPPORTED in MySQL
-		if stmt.returning.is_some() {
+		if stmt.returning.is_some() || stmt.returning_exprs.is_some() {
 			panic!("MySQL does not support RETURNING clause.");
 		}
 
@@ -1111,6 +1372,10 @@ impl QueryBuilder for MySqlQueryBuilder {
 				writer.push(&self.column_type_to_sql(col_type));
 			}
 
+			if let Some(generated) = &column.generated {
+				self.write_generated_column(&mut writer, generated);
+			}
+
 			// NOT NULL
 			if column.not_null {
 				writer.push(" NOT NULL");
@@ -1189,6 +1454,9 @@ impl QueryBuilder for MySqlQueryBuilder {
 					writer.push_space();
 					if let Some(col_type) = &column_def.column_type {
 						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if let Some(generated) = &column_def.generated {
+						self.write_generated_column(&mut writer, generated);
 					}
 					if column_def.not_null {
 						writer.push(" NOT NULL");
@@ -1421,8 +1689,10 @@ impl QueryBuilder for MySqlQueryBuilder {
 		if let Some(select) = &stmt.select {
 			let (select_sql, select_values) = self.build_select(select);
 			writer.push_space();
-			writer.push(&select_sql);
-			writer.append_values(&select_values);
+			writer.push(&crate::query::traits::inline_params(
+				&select_sql,
+				&select_values,
+			));
 		}
 
 		writer.finish()
@@ -3191,8 +3461,38 @@ impl MySqlQueryBuilder {
 			Blob => "BLOB".to_string(),
 			Uuid => "CHAR(36)".to_string(), // UUID as CHAR(36) in MySQL
 			Json => "JSON".to_string(),
-			JsonBinary => "JSON".to_string(), // MySQL JSON is binary
-			Array(_) => "JSON".to_string(),   // MySQL doesn't have ARRAY, use JSON
+			Jsonb => "JSON".to_string(),    // MySQL JSON is binary
+			Array(_) => "JSON".to_string(), // MySQL doesn't have ARRAY, use JSON
+			#[cfg(feature = "pgvector")]
+			Vector(_) => "JSON".to_string(),
+			Custom(name) => name.clone(),
+		}
+	}
+
+	fn column_type_to_cast_sql(&self, col_type: &crate::types::ColumnType) -> String {
+		use crate::types::ColumnType;
+		use ColumnType::*;
+
+		match col_type {
+			Char(len) => format!("CHAR({})", len.unwrap_or(1)),
+			String(Some(len)) => format!("CHAR({len})"),
+			String(None) | Text => "CHAR".to_string(),
+			TinyInteger | SmallInteger | Integer | BigInteger => "SIGNED".to_string(),
+			Float => "FLOAT".to_string(),
+			Double => "DOUBLE".to_string(),
+			Decimal(Some((precision, scale))) => format!("DECIMAL({precision}, {scale})"),
+			Decimal(None) => "DECIMAL".to_string(),
+			Boolean => "UNSIGNED".to_string(),
+			Date => "DATE".to_string(),
+			Time => "TIME".to_string(),
+			DateTime | Timestamp | TimestampWithTimeZone => "DATETIME".to_string(),
+			Binary(Some(len)) => format!("BINARY({len})"),
+			Binary(None) | Blob => "BINARY".to_string(),
+			VarBinary(len) => format!("BINARY({len})"),
+			Uuid => "CHAR(36)".to_string(),
+			Json | Jsonb | Array(_) => "JSON".to_string(),
+			#[cfg(feature = "pgvector")]
+			Vector(_) => "JSON".to_string(),
 			Custom(name) => name.clone(),
 		}
 	}
@@ -3318,6 +3618,7 @@ impl MySqlQueryBuilder {
 			IndexMethod::Gist | IndexMethod::Gin | IndexMethod::Brin | IndexMethod::Spatial => {
 				"BTREE"
 			}
+			IndexMethod::Hnsw | IndexMethod::Ivfflat => "BTREE",
 		}
 	}
 }
@@ -3375,12 +3676,49 @@ impl crate::query::QueryBuilderTrait for MySqlQueryBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::Value;
+	#[cfg(feature = "pgvector")]
+	use crate::{
+		QueryBuildError,
+		types::{BinOper, PgBinOper, TableRef, WindowStatement},
+		value::ArrayType,
+	};
 	use crate::{
 		expr::{Expr, ExprTrait},
 		query::Query,
 		types::{Alias, IntoIden},
 	};
 	use rstest::rstest;
+
+	#[cfg(feature = "pgvector")]
+	fn vector_value() -> Value {
+		Value::Vector(Some(Box::new(vec![1.0, 2.0, 3.0])))
+	}
+
+	#[cfg(feature = "pgvector")]
+	fn vector_subquery_table() -> TableRef {
+		let mut vector_select = Query::select();
+		vector_select
+			.expr(crate::expr::SimpleExpr::Value(vector_value()))
+			.from("vector_source");
+		TableRef::SubQuery(
+			Box::new(vector_select),
+			Alias::new("vector_source").into_iden(),
+		)
+	}
+
+	#[cfg(feature = "pgvector")]
+	fn assert_mysql_vector_value_rejection(
+		result: Result<(String, crate::value::Values), QueryBuildError>,
+	) {
+		assert_eq!(
+			result,
+			Err(QueryBuildError::UnsupportedBackendFeature {
+				feature: "pgvector values",
+				backend: "MySQL",
+			})
+		);
+	}
 
 	#[test]
 	fn test_escape_identifier() {
@@ -3498,6 +3836,19 @@ mod tests {
 	}
 
 	#[test]
+	#[should_panic(expected = "MySQL does not support RETURNING clause")]
+	fn test_insert_with_returning_expressions_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["name"])
+			.values_panic(["Alice"])
+			.returning_exprs([Expr::col("name").expr_as("display_name")]);
+
+		let _ = builder.build_insert(&stmt);
+	}
+
+	#[test]
 	fn test_insert_from_subquery() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -3590,6 +3941,18 @@ mod tests {
 	}
 
 	#[test]
+	#[should_panic(expected = "MySQL does not support RETURNING clause")]
+	fn test_update_with_returning_expressions_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::update();
+		stmt.table("users")
+			.value("active", false)
+			.returning_exprs([Expr::col("id").expr_as("user_id")]);
+
+		let _ = builder.build_update(&stmt);
+	}
+
+	#[test]
 	fn test_delete_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -3622,6 +3985,17 @@ mod tests {
 		stmt.from_table("users")
 			.and_where(Expr::col("id").eq(1))
 			.returning(["id", "name"]);
+
+		let _ = builder.build_delete(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support RETURNING clause")]
+	fn test_delete_with_returning_expressions_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::delete();
+		stmt.from_table("users")
+			.returning_exprs([Expr::col("id").expr_as("user_id")]);
 
 		let _ = builder.build_delete(&stmt);
 	}
@@ -4246,6 +4620,44 @@ mod tests {
 		let (sql, values) = builder.build_select(&stmt);
 		assert!(sql.contains("`email` LIKE ?"));
 		assert_eq!(values.len(), 1);
+	}
+
+	#[rstest]
+	fn test_where_contains_uses_mysql_escape_literal() {
+		// Arrange
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.column("name")
+			.from("users")
+			.and_where(Expr::col("name").contains(r"50%_off\sale"));
+
+		// Act
+		let (sql, values) = builder.build_select(&stmt);
+
+		// Assert
+		assert_eq!(
+			sql,
+			"SELECT `name` FROM `users` WHERE `name` LIKE ? ESCAPE 0x5C"
+		);
+		assert_eq!(
+			values.into_inner(),
+			vec![Value::from("%50\\%\\_off\\\\sale%")]
+		);
+	}
+
+	#[rstest]
+	fn test_custom_expression_template_is_preserved() {
+		// Arrange
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::select();
+		stmt.expr(Expr::cust_with_values("CONCAT(?, '\\')", ["value"]));
+
+		// Act
+		let (sql, values) = builder.build_select(&stmt);
+
+		// Assert
+		assert_eq!(sql, "SELECT CONCAT(?, '\\')");
+		assert_eq!(values.into_inner(), vec![Value::from("value")]);
 	}
 
 	#[test]
@@ -5642,6 +6054,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -5653,6 +6066,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -5679,11 +6093,82 @@ mod tests {
 			auto_increment: true,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
 		let (sql, values) = builder.build_create_table(&stmt);
 		assert!(sql.contains("`id` INT AUTO_INCREMENT PRIMARY KEY"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_stored_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains(
+			"`full_name` VARCHAR(201) GENERATED ALWAYS AS (CONCAT(`first_name`, ' ', `last_name`)) STORED"
+		));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_mysql_cast_targets_in_generated_column() {
+		use crate::types::{ColumnDef, ColumnType, SchemaExpr};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("age_text")
+				.string_len(64)
+				.generated_stored(SchemaExpr::col("age").cast(ColumnType::String(Some(64)))),
+		);
+		stmt.col(
+			ColumnDef::new("age_int")
+				.integer()
+				.generated_stored(SchemaExpr::col("age").cast(ColumnType::Integer)),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+
+		assert!(sql.contains(
+			"`age_text` VARCHAR(64) GENERATED ALWAYS AS (CAST(`age` AS CHAR(64))) STORED"
+		));
+		assert!(sql.contains("`age_int` INT GENERATED ALWAYS AS (CAST(`age` AS SIGNED)) STORED"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_empty_concat_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("empty_name")
+				.string_len(1)
+				.generated_stored(SchemaExpr::concat([])),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains("`empty_name` VARCHAR(1) GENERATED ALWAYS AS ('') STORED"));
+		assert!(!sql.contains("CONCAT()"));
 		assert_eq!(values.len(), 0);
 	}
 
@@ -5705,6 +6190,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -5716,6 +6202,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::ForeignKey {
@@ -5746,6 +6233,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5765,6 +6253,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "username".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5787,6 +6276,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5807,6 +6297,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "created_at".into_iden(),
 			order: Some(Order::Desc),
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5829,10 +6320,12 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "last_name".into_iden(),
 			order: Some(Order::Asc),
+			operator_class: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
 			order: Some(Order::Asc),
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5855,6 +6348,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "id".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5877,6 +6371,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "content".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5905,11 +6400,37 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				check: None,
+				generated: None,
 				comment: None,
 			}));
 
 		let (sql, values) = builder.build_alter_table(&stmt);
 		assert_eq!(sql, "ALTER TABLE `users` ADD COLUMN `age` INT");
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_add_stored_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.add_column(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			"ALTER TABLE `users` ADD COLUMN `full_name` VARCHAR(201) GENERATED ALWAYS AS (CONCAT(`first_name`, ' ', `last_name`)) STORED"
+		);
 		assert_eq!(values.len(), 0);
 	}
 
@@ -5968,6 +6489,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				check: None,
+				generated: None,
 				comment: None,
 			}));
 
@@ -7693,5 +8215,136 @@ mod tests {
 
 		// Assert - single quotes in host must be escaped by doubling
 		assert_eq!(result, "'admin'@'host''; DROP USER root; --'");
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_build_rejects_pgvector_distance_expressions() {
+		// Rendering a pgvector operator on MySQL is invalid, so checked building must stop first.
+		let mut statement = Query::select();
+		statement
+			.expr(crate::expr::SimpleExpr::Binary(
+				Box::new(Expr::col("embedding").into()),
+				BinOper::PgOperator(PgBinOper::CosineDistance),
+				Box::new(crate::expr::SimpleExpr::Value(Value::Vector(Some(
+					Box::new(vec![1.0, 2.0, 3.0]),
+				)))),
+			))
+			.from("documents");
+
+		let result = MySqlQueryBuilder::new().build_select_checked(&statement);
+
+		assert_eq!(
+			result,
+			Err(QueryBuildError::UnsupportedBackendFeature {
+				feature: "pgvector distance operators",
+				backend: "MySQL",
+			})
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_build_rejects_pgvector_values() {
+		let mut statement = Query::select();
+		statement
+			.expr(crate::expr::SimpleExpr::Value(vector_value()))
+			.from("documents");
+
+		assert_mysql_vector_value_rejection(
+			MySqlQueryBuilder::new().build_select_checked(&statement),
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_dml_builds_reject_vector_subquery_tables() {
+		let mut insert = Query::insert();
+		insert
+			.into_table(vector_subquery_table())
+			.column("embedding")
+			.values_panic([1_i32]);
+		let mut update = Query::update();
+		update
+			.table(vector_subquery_table())
+			.value("embedding", 1_i32);
+		let mut delete = Query::delete();
+		delete.from_table(vector_subquery_table());
+
+		let builder = MySqlQueryBuilder::new();
+		let results = [
+			builder.build_insert_checked(&insert),
+			builder.build_update_checked(&update),
+			builder.build_delete_checked(&delete),
+		];
+
+		for result in results {
+			assert_mysql_vector_value_rejection(result);
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_create_index_rejects_vector_subquery_table() {
+		let mut statement = Query::create_index();
+		statement
+			.name("idx_embedding")
+			.table(vector_subquery_table())
+			.col("embedding");
+
+		assert_mysql_vector_value_rejection(
+			MySqlQueryBuilder::new().build_create_index_checked(&statement),
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_select_rejects_vector_values_in_ctes() {
+		let mut cte = Query::select();
+		cte.expr(crate::expr::SimpleExpr::Value(vector_value()))
+			.from("vector_source");
+		let mut statement = Query::select();
+		statement
+			.with_cte("vectors", cte)
+			.column("id")
+			.from("documents");
+
+		assert_mysql_vector_value_rejection(
+			MySqlQueryBuilder::new().build_select_checked(&statement),
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_select_rejects_vector_values_in_windows() {
+		let window = WindowStatement {
+			partition_by: vec![crate::expr::SimpleExpr::Value(vector_value())],
+			order_by: Vec::new(),
+			frame: None,
+		};
+		let mut statement = Query::select();
+		statement
+			.column("id")
+			.from("documents")
+			.window_as("vector_window", window);
+
+		assert_mysql_vector_value_rejection(
+			MySqlQueryBuilder::new().build_select_checked(&statement),
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_select_rejects_vector_values_nested_in_arrays() {
+		let nested_vector_array =
+			Value::Array(ArrayType::Float, Some(Box::new(vec![vector_value()])));
+		let mut statement = Query::select();
+		statement
+			.expr(crate::expr::SimpleExpr::Value(nested_vector_array))
+			.from("documents");
+
+		assert_mysql_vector_value_rejection(
+			MySqlQueryBuilder::new().build_select_checked(&statement),
+		);
 	}
 }

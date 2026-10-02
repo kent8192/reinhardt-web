@@ -19,8 +19,10 @@ pub struct WasmBuildConfig {
 	pub release: bool,
 	/// Enable wasm-opt optimization (release only)
 	pub optimize: bool,
-	/// Target name (crate name, used for output file naming)
+	/// Library target name used for output file naming.
 	pub target_name: Option<String>,
+	/// Cargo package selected from a workspace for the build.
+	pub package: Option<String>,
 	/// Override for the cargo target directory. When `None`, falls back to
 	/// `project_dir/target`. In workspace setups, this should point to the
 	/// workspace root's target directory.
@@ -35,6 +37,7 @@ impl Default for WasmBuildConfig {
 			release: false,
 			optimize: true,
 			target_name: None,
+			package: None,
 			target_dir: None,
 		}
 	}
@@ -73,6 +76,12 @@ impl WasmBuildConfig {
 		self
 	}
 
+	/// Select one Cargo package when the project directory is a workspace root.
+	pub fn package(mut self, package: impl Into<String>) -> Self {
+		self.package = Some(package.into());
+		self
+	}
+
 	/// Set the cargo target directory explicitly.
 	///
 	/// When building inside a Cargo workspace, the target directory is at
@@ -97,6 +106,18 @@ pub struct WasmBuildOutput {
 	pub output_dir: PathBuf,
 }
 
+impl WasmBuildOutput {
+	/// Capture the complete output tree for unified publication, validating the actual WASM import.
+	pub fn publication_inputs(
+		&self,
+		entry: &str,
+	) -> Result<crate::buildstatic::PagesBuildInputs, WasmBuildError> {
+		crate::buildstatic::PagesBuildInputs::from_directory(&self.output_dir, entry).map_err(
+			|error| WasmBuildError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error)),
+		)
+	}
+}
+
 /// Error types for WASM build operations.
 #[derive(Debug, thiserror::Error)]
 pub enum WasmBuildError {
@@ -108,6 +129,9 @@ pub enum WasmBuildError {
 	/// The `wasm-bindgen-cli` tool is not installed.
 	#[error("wasm-bindgen-cli not installed. Run: cargo install wasm-bindgen-cli")]
 	WasmBindgenNotInstalled,
+	/// The selected Pages package could not be resolved from Cargo metadata.
+	#[error("Failed to resolve Pages Cargo package: {0}")]
+	PackageResolutionFailed(String),
 	/// The cargo build step failed.
 	#[error("Cargo build failed: {0}")]
 	CargoBuildFailed(String),
@@ -128,12 +152,60 @@ pub enum WasmBuildError {
 /// WASM build executor.
 pub struct WasmBuilder {
 	config: WasmBuildConfig,
+	features: Vec<String>,
+	all_features: bool,
+	profile: Option<String>,
 }
 
 impl WasmBuilder {
 	/// Create a new builder with the given configuration.
 	pub fn new(config: WasmBuildConfig) -> Self {
-		Self { config }
+		Self {
+			config,
+			features: Vec::new(),
+			all_features: false,
+			profile: None,
+		}
+	}
+
+	/// Compile a named Cargo profile, preserving existing build configuration fields.
+	pub fn profile(mut self, profile: impl Into<String>) -> Self {
+		self.profile = Some(profile.into());
+		self
+	}
+
+	fn artifact_profile(&self) -> &str {
+		match self.profile.as_deref() {
+			Some("dev" | "test") => "debug",
+			Some("bench") => "release",
+			Some(profile) => profile,
+			None if self.config.release => "release",
+			None => "debug",
+		}
+	}
+
+	/// Select the Cargo features used for the frontend build.
+	pub fn features<I, S>(mut self, features: I) -> Self
+	where
+		I: IntoIterator<Item = S>,
+		S: Into<String>,
+	{
+		self.features = features.into_iter().map(Into::into).collect();
+		self.features.sort();
+		self.features.dedup();
+		if !self.features.is_empty() {
+			self.all_features = false;
+		}
+		self
+	}
+
+	/// Select every Cargo feature for the frontend build.
+	pub fn all_features(mut self, enabled: bool) -> Self {
+		self.all_features = enabled;
+		if enabled {
+			self.features.clear();
+		}
+		self
 	}
 
 	/// Detect the cargo target directory by running `cargo metadata`.
@@ -196,11 +268,7 @@ impl WasmBuilder {
 			.as_ref()
 			.cloned()
 			.unwrap_or_else(|| self.detect_target_dir_with_runner(runner));
-		let profile = if self.config.release {
-			"release"
-		} else {
-			"debug"
-		};
+		let profile = self.artifact_profile();
 		let wasm_path = target_base
 			.join("wasm32-unknown-unknown")
 			.join(profile)
@@ -304,12 +372,9 @@ impl WasmBuilder {
 		&self,
 		runner: &R,
 	) -> Result<(), WasmBuildError> {
-		let mut request = ProcessRequest::new("cargo")
-			.args(["build", "--lib", "--target", "wasm32-unknown-unknown"])
+		let request = ProcessRequest::new("cargo")
+			.args(self.cargo_build_arguments())
 			.current_dir(&self.config.project_dir);
-		if self.config.release {
-			request = request.arg("--release");
-		}
 
 		let output = runner.run(&request)?;
 
@@ -319,6 +384,31 @@ impl WasmBuilder {
 			let stderr = String::from_utf8_lossy(&output.stderr);
 			Err(WasmBuildError::CargoBuildFailed(stderr.to_string()))
 		}
+	}
+
+	fn cargo_build_arguments(&self) -> Vec<String> {
+		let mut arguments = vec![
+			"build".to_string(),
+			"--lib".to_string(),
+			"--target".to_string(),
+			"wasm32-unknown-unknown".to_string(),
+		];
+		if let Some(package) = &self.config.package {
+			arguments.push("--package".to_string());
+			arguments.push(package.clone());
+		}
+		if let Some(profile) = &self.profile {
+			arguments.extend(["--profile".into(), profile.clone()]);
+		} else if self.config.release {
+			arguments.push("--release".to_string());
+		}
+		if self.all_features {
+			arguments.push("--all-features".to_string());
+		} else if !self.features.is_empty() {
+			arguments.push("--features".to_string());
+			arguments.push(self.features.join(","));
+		}
+		arguments
 	}
 
 	fn run_wasm_bindgen_with_runner<R: ProcessRunner>(
@@ -493,16 +583,35 @@ pub fn latest_source_mtime(crate_dir: &Path) -> Option<SystemTime> {
 /// to fail safely toward freshness rather than serving a potentially stale
 /// bundle.
 pub fn is_wasm_stale(crate_dir: &Path, artifact: &Path) -> bool {
+	is_wasm_stale_for_roots(std::iter::once(crate_dir), artifact)
+}
+
+/// Returns `true` if the WASM bundle at `artifact` is missing or older than
+/// any tracked source file in the supplied local package roots.
+///
+/// An unreadable root or an empty root set is treated as stale so callers do
+/// not serve a bundle whose dependency graph cannot be verified.
+pub fn is_wasm_stale_for_roots<'a>(
+	crate_dirs: impl IntoIterator<Item = &'a Path>,
+	artifact: &Path,
+) -> bool {
 	let Ok(artifact_meta) = std::fs::metadata(artifact) else {
 		return true;
 	};
 	let Ok(artifact_mtime) = artifact_meta.modified() else {
 		return true;
 	};
-	match latest_source_mtime(crate_dir) {
-		Some(src_mtime) => src_mtime > artifact_mtime,
-		None => true,
+	let mut saw_source_root = false;
+	for crate_dir in crate_dirs {
+		saw_source_root = true;
+		let Some(source_mtime) = latest_source_mtime(crate_dir) else {
+			return true;
+		};
+		if source_mtime > artifact_mtime {
+			return true;
+		}
 	}
+	!saw_source_root
 }
 
 #[cfg(test)]
@@ -512,6 +621,41 @@ mod tests {
 	use std::fs;
 
 	use super::*;
+
+	#[rstest::rstest]
+	#[case("production", "production")]
+	#[case("dev", "debug")]
+	#[case("test", "debug")]
+	#[case("bench", "release")]
+	#[case("release", "release")]
+	fn named_profiles_select_the_matching_bindgen_input(
+		#[case] profile: &str,
+		#[case] artifact: &str,
+	) {
+		// Arrange
+		let project = make_wasm_crate();
+		let target = project.path().join("target");
+		let runner = FakeProcessRunner::new(successful_build_outcomes(&target));
+		let builder = WasmBuilder::new(WasmBuildConfig::new(project.path())).profile(profile);
+		// Act
+		builder.build_with_runner(&runner).unwrap();
+		// Assert
+		let requests = runner.requests();
+		assert!(
+			requests[2]
+				.args
+				.windows(2)
+				.any(|pair| pair == [OsString::from("--profile"), OsString::from(profile)])
+		);
+		assert_eq!(
+			requests[4].args[4],
+			target
+				.join("wasm32-unknown-unknown")
+				.join(artifact)
+				.join("demo_app.wasm")
+				.into_os_string()
+		);
+	}
 
 	fn make_wasm_crate() -> tempfile::TempDir {
 		let temp = tempfile::tempdir().expect("create temporary crate");
@@ -819,13 +963,82 @@ mod tests {
 			.output_dir("build")
 			.release(true)
 			.optimize(false)
-			.target_name("my-app");
+			.target_name("my-app")
+			.package("selected-app");
 
 		assert_eq!(config.project_dir, PathBuf::from("/path/to/project"));
 		assert_eq!(config.output_dir, PathBuf::from("build"));
 		assert!(config.release);
 		assert!(!config.optimize);
 		assert_eq!(config.target_name, Some("my-app".to_string()));
+		assert_eq!(config.package, Some("selected-app".to_string()));
+	}
+
+	#[test]
+	fn cargo_build_arguments_include_selected_features() {
+		// Arrange
+		let builder =
+			WasmBuilder::new(WasmBuildConfig::new("/path/to/project")).features(["theme", "brand"]);
+
+		// Act
+		let arguments = builder.cargo_build_arguments();
+
+		// Assert
+		assert_eq!(
+			arguments,
+			vec![
+				"build".to_string(),
+				"--lib".to_string(),
+				"--target".to_string(),
+				"wasm32-unknown-unknown".to_string(),
+				"--features".to_string(),
+				"brand,theme".to_string(),
+			]
+		);
+	}
+
+	#[test]
+	fn cargo_build_arguments_include_all_features() {
+		// Arrange
+		let builder = WasmBuilder::new(WasmBuildConfig::new("/path/to/project")).all_features(true);
+
+		// Act
+		let arguments = builder.cargo_build_arguments();
+
+		// Assert
+		assert_eq!(
+			arguments,
+			vec![
+				"build".to_string(),
+				"--lib".to_string(),
+				"--target".to_string(),
+				"wasm32-unknown-unknown".to_string(),
+				"--all-features".to_string(),
+			]
+		);
+	}
+
+	#[test]
+	fn cargo_build_arguments_include_selected_package() {
+		// Arrange
+		let builder =
+			WasmBuilder::new(WasmBuildConfig::new("/path/to/workspace").package("style-app"));
+
+		// Act
+		let arguments = builder.cargo_build_arguments();
+
+		// Assert
+		assert_eq!(
+			arguments,
+			vec![
+				"build".to_string(),
+				"--lib".to_string(),
+				"--target".to_string(),
+				"wasm32-unknown-unknown".to_string(),
+				"--package".to_string(),
+				"style-app".to_string(),
+			]
+		);
 	}
 
 	#[test]
@@ -958,6 +1171,31 @@ version = "0.1.0"
 			);
 
 			assert!(is_wasm_stale(&crate_dir, &artifact));
+		}
+
+		#[test]
+		fn treats_newer_path_dependency_source_as_stale() {
+			let tmp = tempfile::tempdir().unwrap();
+			let app = make_crate(&tmp.path().join("app"));
+			let shared = make_crate(&tmp.path().join("shared"));
+			let dist = app.join("dist");
+			fs::create_dir_all(&dist).unwrap();
+			let artifact = dist.join("app_bg.wasm");
+			fs::write(&artifact, b"\0asm").unwrap();
+
+			let base = SystemTime::now() - Duration::from_secs(120);
+			for crate_dir in [&app, &shared] {
+				set_mtime(&crate_dir.join("Cargo.toml"), base);
+				set_mtime(&crate_dir.join("src/lib.rs"), base);
+				set_mtime(&crate_dir.join("src/nested/mod_a.rs"), base);
+			}
+			set_mtime(&artifact, base + Duration::from_secs(60));
+			set_mtime(&shared.join("src/lib.rs"), base + Duration::from_secs(90));
+
+			assert!(is_wasm_stale_for_roots(
+				[app.as_path(), shared.as_path()],
+				&artifact,
+			));
 		}
 	}
 }

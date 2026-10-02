@@ -6,7 +6,7 @@ use reinhardt::model;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-#[model(table_name = "users")]
+#[model(app_label = "default", table_name = "users")]
 struct User {
 	#[field(primary_key = true)]
 	id: i64,
@@ -40,6 +40,7 @@ fn documented_composite_filter_chain() -> String {
 				.or(User::field_email().icontains("example.com").not()),
 		)
 		.to_sql()
+		.expect("documented filter chain should render SQL")
 }
 
 fn main() {}

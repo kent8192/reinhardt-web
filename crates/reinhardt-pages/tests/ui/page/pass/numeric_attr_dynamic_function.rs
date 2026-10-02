@@ -19,10 +19,12 @@ fn main() {
 		div {
 			input {
 				r#type: "text",
+				aria_label: "Maximum length input",
 				maxlength: self::get_max_len(),
 			}
 			input {
 				r#type: "number",
+				aria_label: "Number input",
 				min: 0,
 				max: self::calculate_rows(50),
 			}

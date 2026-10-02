@@ -213,7 +213,8 @@ pub struct PageAttr {
 impl PageAttr {
 	/// Returns the HTML attribute name (converts underscores to hyphens).
 	pub fn html_name(&self) -> String {
-		self.name.to_string().replace('_', "-")
+		let name = self.name.to_string();
+		name.strip_prefix("r#").unwrap_or(&name).replace('_', "-")
 	}
 }
 

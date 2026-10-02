@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-pages-macros"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -15,11 +15,14 @@ proc-macro = true
 
 [features]
 default = []
+hmr = []
 msw = []
+model-server-fnset = []
 
 [dependencies]
 # DSL definitions (new canonical location)
 reinhardt-manouche = { workspace = true }
+reinhardt-event-catalog = { workspace = true }
 
 # Procedural macro essentials
 syn = { workspace = true, features = ["full", "extra-traits", "visit"] }

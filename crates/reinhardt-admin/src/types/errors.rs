@@ -5,6 +5,11 @@ use thiserror::Error;
 /// Admin panel error type
 #[derive(Debug, Error)]
 pub enum AdminError {
+	/// Typed model field encoding failed before SQL compilation.
+	#[cfg(server)]
+	#[error("Field codec error: {0}")]
+	FieldCodec(#[from] reinhardt_db::orm::FieldCodecError),
+
 	/// Model not registered with admin
 	#[error("Model '{0}' is not registered with admin")]
 	ModelNotRegistered(String),
@@ -33,9 +38,17 @@ pub enum AdminError {
 /// Result type for admin panel operations
 pub type AdminResult<T> = Result<T, AdminError>;
 
+#[cfg(server)]
+impl From<reinhardt_core::exception::Error> for AdminError {
+	fn from(error: reinhardt_core::exception::Error) -> Self {
+		Self::DatabaseError(error.to_string())
+	}
+}
+
 #[cfg(all(test, server))]
 mod tests {
 	use super::*;
+	use reinhardt_db::orm::{FieldCodecContext, FieldCodecError};
 	use rstest::rstest;
 
 	#[rstest]
@@ -81,10 +94,7 @@ mod tests {
 		AdminError::PermissionDenied("no access".to_string()),
 		"no access"
 	)]
-	#[case::invalid_action(
-		AdminError::InvalidAction("export".to_string()),
-		"export"
-	)]
+	#[case::invalid_action(AdminError::InvalidAction("export".to_string()), "export")]
 	#[case::database_error(
 		AdminError::DatabaseError("deadlock".to_string()),
 		"deadlock"
@@ -168,23 +178,61 @@ mod tests {
 			"Debug '{debug_output}' and Display '{display_output}' should differ"
 		);
 	}
+
+	#[rstest]
+	#[case::missing_metadata(FieldCodecError::MissingFieldMetadata {
+		context: FieldCodecContext::new("Profile", "avatar", "avatar_path"),
+		key: "file_storage".to_owned(),
+	})]
+	#[case::policy_mismatch(FieldCodecError::FieldPolicyMismatch {
+		context: Box::new(FieldCodecContext::new("Profile", "avatar", "avatar_path")),
+		key: "file_storage".to_owned(),
+		expected: "private_uploads".to_owned(),
+		actual: "default".to_owned(),
+	})]
+	fn test_admin_error_maps_new_field_codec_errors_as_type_errors(
+		#[case] field_error: FieldCodecError,
+	) {
+		let expected_detail = field_error.to_string();
+		let core_error: reinhardt_core::exception::Error =
+			AdminError::FieldCodec(field_error).into();
+
+		assert_eq!(
+			core_error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Type)
+		);
+		assert!(core_error.to_string().contains("admin field codec failed"));
+		assert!(core_error.to_string().contains(&expected_detail));
+	}
 }
 
 /// Convert AdminError to reinhardt_core::exception::Error for seamless error handling
 #[cfg(server)]
 impl From<AdminError> for reinhardt_core::exception::Error {
 	fn from(err: AdminError) -> Self {
+		use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
+
 		match err {
-			AdminError::ModelNotRegistered(msg) => reinhardt_core::exception::Error::NotFound(msg),
-			AdminError::PermissionDenied(msg) => {
-				reinhardt_core::exception::Error::Authorization(msg)
+			AdminError::FieldCodec(error) => {
+				let kind = match error {
+					reinhardt_db::orm::FieldCodecError::TypeMismatch { .. }
+					| reinhardt_db::orm::FieldCodecError::InvalidEnumValue { .. }
+					| reinhardt_db::orm::FieldCodecError::MissingFieldMetadata { .. }
+					| reinhardt_db::orm::FieldCodecError::FieldPolicyMismatch { .. } => DatabaseErrorKind::Type,
+					reinhardt_db::orm::FieldCodecError::Serialization(_) => {
+						DatabaseErrorKind::Serialization
+					}
+				};
+				DatabaseError::new(kind, format!("admin field codec failed: {error}")).into()
 			}
-			AdminError::InvalidAction(msg) => reinhardt_core::exception::Error::Http(msg),
-			AdminError::DatabaseError(msg) => reinhardt_core::exception::Error::Database(msg),
-			AdminError::ValidationError(msg) => reinhardt_core::exception::Error::Validation(msg),
-			AdminError::TemplateError(msg) => {
-				reinhardt_core::exception::Error::Other(anyhow::anyhow!(msg))
+			AdminError::ModelNotRegistered(message) => Error::NotFound(message),
+			AdminError::PermissionDenied(message) => Error::Authorization(message),
+			AdminError::InvalidAction(message) => Error::Validation(message),
+			AdminError::DatabaseError(message) => {
+				DatabaseError::new(DatabaseErrorKind::Query, message).into()
 			}
+			AdminError::ValidationError(message) => Error::Validation(message),
+			AdminError::TemplateError(message) => Error::Internal(message),
 		}
 	}
 }

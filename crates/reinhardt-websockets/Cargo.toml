@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-websockets"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 description = "WebSocket support for real-time bidirectional communication"
 edition.workspace = true
 rust-version.workspace = true
@@ -24,7 +24,6 @@ serde_json = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 
 # Utilities
 bytes = { workspace = true }

@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, Row, pool::PoolConnection};
 use std::sync::Arc;
 
-use crate::backends::error::{DatabaseError, Result};
+use crate::backends::error::{DatabaseError, DatabaseErrorKind, Result, map_sqlx_error};
 
 /// Session for a PostgreSQL two-phase commit transaction
 ///
@@ -136,13 +136,13 @@ impl PostgresTwoPhaseParticipant {
 	/// ```
 	pub async fn begin(&self, xid: &str) -> Result<PgSession> {
 		// Acquire dedicated connection for the transaction
-		let mut connection = self.pool.acquire().await.map_err(DatabaseError::from)?;
+		let mut connection = self.pool.acquire().await.map_err(map_sqlx_error)?;
 
 		// Start transaction on the dedicated connection
 		sqlx::query("BEGIN")
 			.execute(&mut *connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		Ok(PgSession {
 			connection,
@@ -183,7 +183,7 @@ impl PostgresTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		session.state = PgTwoPhaseState::Prepared;
 		Ok(())
@@ -217,7 +217,7 @@ impl PostgresTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		// Session is consumed and connection is dropped
 		Ok(())
@@ -242,13 +242,13 @@ impl PostgresTwoPhaseParticipant {
 	/// # }
 	/// ```
 	pub async fn commit_by_xid(&self, xid: &str) -> Result<()> {
-		let mut conn = self.pool.acquire().await.map_err(DatabaseError::from)?;
+		let mut conn = self.pool.acquire().await.map_err(map_sqlx_error)?;
 		let xid_escaped = pg_escape::quote_literal(xid);
 		let sql = format!("COMMIT PREPARED {}", xid_escaped);
 		sqlx::raw_sql(&sql)
 			.execute(&mut *conn)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
@@ -276,7 +276,7 @@ impl PostgresTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		// Session is consumed and connection is dropped
 		Ok(())
@@ -301,13 +301,13 @@ impl PostgresTwoPhaseParticipant {
 	/// # }
 	/// ```
 	pub async fn rollback_by_xid(&self, xid: &str) -> Result<()> {
-		let mut conn = self.pool.acquire().await.map_err(DatabaseError::from)?;
+		let mut conn = self.pool.acquire().await.map_err(map_sqlx_error)?;
 		let xid_escaped = pg_escape::quote_literal(xid);
 		let sql = format!("ROLLBACK PREPARED {}", xid_escaped);
 		sqlx::raw_sql(&sql)
 			.execute(&mut *conn)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
@@ -337,15 +337,15 @@ impl PostgresTwoPhaseParticipant {
 		)
 		.fetch_all(self.pool.as_ref())
 		.await
-		.map_err(DatabaseError::from)?;
+		.map_err(map_sqlx_error)?;
 
 		let mut transactions = Vec::new();
 		for row in rows {
 			transactions.push(PreparedTransactionInfo {
-				gid: row.try_get("gid").map_err(DatabaseError::from)?,
-				prepared: row.try_get("prepared").map_err(DatabaseError::from)?,
-				owner: row.try_get("owner").map_err(DatabaseError::from)?,
-				database: row.try_get("database").map_err(DatabaseError::from)?,
+				gid: row.try_get("gid").map_err(map_sqlx_error)?,
+				prepared: row.try_get("prepared").map_err(map_sqlx_error)?,
+				owner: row.try_get("owner").map_err(map_sqlx_error)?,
+				database: row.try_get("database").map_err(map_sqlx_error)?,
 			});
 		}
 
@@ -383,14 +383,14 @@ impl PostgresTwoPhaseParticipant {
 		.bind(xid)
 		.fetch_optional(self.pool.as_ref())
 		.await
-		.map_err(DatabaseError::from)?;
+		.map_err(map_sqlx_error)?;
 
 		if let Some(row) = row {
 			Ok(Some(PreparedTransactionInfo {
-				gid: row.try_get("gid").map_err(DatabaseError::from)?,
-				prepared: row.try_get("prepared").map_err(DatabaseError::from)?,
-				owner: row.try_get("owner").map_err(DatabaseError::from)?,
-				database: row.try_get("database").map_err(DatabaseError::from)?,
+				gid: row.try_get("gid").map_err(map_sqlx_error)?,
+				prepared: row.try_get("prepared").map_err(map_sqlx_error)?,
+				owner: row.try_get("owner").map_err(map_sqlx_error)?,
+				database: row.try_get("database").map_err(map_sqlx_error)?,
 			}))
 		} else {
 			Ok(None)
@@ -427,11 +427,11 @@ impl PostgresTwoPhaseParticipant {
 		.bind(max_age_secs)
 		.fetch_all(self.pool.as_ref())
 		.await
-		.map_err(DatabaseError::from)?;
+		.map_err(map_sqlx_error)?;
 
 		let mut cleaned = 0;
 		for row in rows {
-			let gid: String = row.try_get("gid").map_err(DatabaseError::from)?;
+			let gid: String = row.try_get("gid").map_err(map_sqlx_error)?;
 			if self.rollback_by_xid(&gid).await.is_ok() {
 				cleaned += 1;
 			}
@@ -481,7 +481,10 @@ impl PostgresTwoPhaseParticipant {
 		let mut session = {
 			let mut sessions = Self::acquire_sessions_lock(&self.sessions)?;
 			sessions.remove(xid).ok_or_else(|| {
-				DatabaseError::QueryError(format!("No active session for XID: {}", xid))
+				DatabaseError::new(
+					DatabaseErrorKind::Transaction,
+					format!("No active session for XID: {}", xid),
+				)
 			})?
 		};
 
@@ -491,7 +494,7 @@ impl PostgresTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		// Update state and re-insert
 		session.state = PgTwoPhaseState::Prepared;
@@ -508,7 +511,10 @@ impl PostgresTwoPhaseParticipant {
 		let mut session = Self::acquire_sessions_lock(&self.sessions)?
 			.remove(xid)
 			.ok_or_else(|| {
-				DatabaseError::QueryError(format!("No active session for XID: {}", xid))
+				DatabaseError::new(
+					DatabaseErrorKind::Transaction,
+					format!("No active session for XID: {}", xid),
+				)
 			})?;
 
 		// Execute commit directly without calling self.commit()
@@ -517,7 +523,7 @@ impl PostgresTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		// Session is consumed and connection is dropped
 		Ok(())
@@ -530,7 +536,10 @@ impl PostgresTwoPhaseParticipant {
 		let mut session = Self::acquire_sessions_lock(&self.sessions)?
 			.remove(xid)
 			.ok_or_else(|| {
-				DatabaseError::QueryError(format!("No active session for XID: {}", xid))
+				DatabaseError::new(
+					DatabaseErrorKind::Transaction,
+					format!("No active session for XID: {}", xid),
+				)
 			})?;
 
 		// Execute rollback directly without calling self.rollback()
@@ -539,7 +548,7 @@ impl PostgresTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		// Session is consumed and connection is dropped
 		Ok(())

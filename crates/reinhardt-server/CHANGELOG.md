@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.17...reinhardt-server@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+
+### Fixed
+
+- *(http)* serve streaming bodies through native endpoints
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.15...reinhardt-server@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(staticfiles)* unify pages and collected asset publication
+
+### Fixed
+
+- *(server)* install the exception handler on HttpServer
+- *(urls)* defer unmatched route errors through middleware
+- *(http)* inherit exception handlers in nested dispatch
+- track exception handler invocation
+- preserve dispatch errors for exception handlers
+- *(http)* preserve routing context through middleware
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.14...reinhardt-server@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.10...reinhardt-server@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.8...reinhardt-server@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.17...reinhardt-server@v0.3.18) - 2026-09-16
 
 ### Fixed
@@ -54,6 +123,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.6...reinhardt-server@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.5...reinhardt-server@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.2...reinhardt-server@v0.4.0-alpha.1) - 2026-07-21
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge main into develop/0.4.0
+- merge develop/0.4.0 into remove-anyhow branch
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.9...reinhardt-server@v0.3.10) - 2026-08-22
 
 ### Maintenance

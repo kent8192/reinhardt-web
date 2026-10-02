@@ -2,7 +2,7 @@
 
 #![allow(unused_imports)] // Broad imports keep compile-fail diagnostics focused.
 
-use reinhardt_di::{FactoryOutput, injectable};
+use reinhardt_di::{KeyedFactoryOutput, injectable};
 
 struct MyServiceKey;
 
@@ -12,8 +12,8 @@ impl reinhardt_di::InjectableKey for MyServiceKey {}
 struct MyService;
 
 #[injectable(scope = "singleton")]
-fn make_service() -> FactoryOutput<MyServiceKey, MyService> {
-	FactoryOutput::new(MyService)
+fn make_service() -> KeyedFactoryOutput<MyServiceKey, MyService> {
+	KeyedFactoryOutput::new(MyService)
 }
 
 fn main() {}

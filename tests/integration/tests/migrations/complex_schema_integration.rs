@@ -44,43 +44,17 @@ fn create_test_migration(
 	name: &'static str,
 	operations: Vec<Operation>,
 ) -> Migration {
-	Migration {
-		app_label: app.to_string(),
-		name: name.to_string(),
-		operations,
-		dependencies: vec![],
-		replaces: vec![],
-		atomic: true,
-		initial: None,
-		state_only: false,
-		database_only: false,
-	}
+	Migration::from_parts(name.to_string(), app.to_string(), operations, vec![], vec![], true, None, false, false, Vec::new(), Vec::new())
 }
 
 /// Create a basic column definition
 fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
-	ColumnDefinition {
-		name: name.to_string(),
-		type_definition: type_def,
-		not_null: false,
-		unique: false,
-		primary_key: false,
-		auto_increment: false,
-		default: None,
-	}
+	ColumnDefinition::from_parts(name.to_string(), type_def, false, false, false, false, None, None, None)
 }
 
 /// Create a NOT NULL column
 fn create_not_null_column(name: &str, type_def: FieldType) -> ColumnDefinition {
-	ColumnDefinition {
-		name: name.to_string(),
-		type_definition: type_def,
-		not_null: true,
-		unique: false,
-		primary_key: false,
-		auto_increment: false,
-		default: None,
-	}
+	ColumnDefinition::from_parts(name.to_string(), type_def, true, false, false, false, None, None, None)
 }
 
 // ============================================================================
@@ -132,15 +106,7 @@ async fn test_large_scale_schema_changes(
 	for table_idx in 0..num_tables {
 		let table_name = leak_str(format!("table_{}", table_idx));
 
-		let mut columns = vec![ColumnDefinition {
-			name: "id".to_string(),
-			type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-			not_null: true,
-			unique: false,
-			primary_key: true,
-			auto_increment: true,
-			default: None,
-		}];
+		let mut columns = vec![ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None)];
 
 		for field_idx in 0..fields_per_table {
 			columns.push(create_basic_column(
@@ -206,15 +172,7 @@ async fn test_large_scale_schema_changes(
 			)),
 			vec![Operation::AddColumn {
 				table: table_name,
-				column: ColumnDefinition {
-					name: "created_at".to_string(),
-					type_definition: FieldType::Timestamp,
-					not_null: false,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: Some("CURRENT_TIMESTAMP".to_string()),
-				},
+				column: ColumnDefinition::from_parts("created_at".to_string(), FieldType::Timestamp, false, false, false, false, Some("CURRENT_TIMESTAMP".to_string()), None, None),
 				mysql_options: None,
 			}],
 		);
@@ -368,15 +326,7 @@ async fn test_composite_foreign_keys_migration(
 		vec![Operation::CreateTable {
 			name: leak_str("order_items").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-					default: None,
-				},
+				ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 				create_not_null_column("order_id", FieldType::Integer),
 				create_not_null_column("customer_id", FieldType::Integer),
 				create_basic_column("product_name", FieldType::VarChar(Some(200))),
@@ -580,15 +530,7 @@ async fn test_circular_dependencies_with_data(
 		vec![Operation::CreateTable {
 			name: leak_str("users").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-					default: None,
-				},
+				ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 				create_basic_column("name", FieldType::VarChar(Some(100))),
 				create_basic_column("email", FieldType::VarChar(Some(255))),
 				create_basic_column("manager_id", FieldType::Integer), // Self-referential FK (deferred)
@@ -609,15 +551,7 @@ async fn test_circular_dependencies_with_data(
 		vec![Operation::CreateTable {
 			name: leak_str("departments").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-					default: None,
-				},
+				ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 				create_basic_column("name", FieldType::VarChar(Some(100))),
 				create_basic_column("head_user_id", FieldType::Integer), // FK to users (deferred)
 			],
@@ -875,15 +809,7 @@ async fn test_virtual_or_generated_columns(
 		vec![Operation::CreateTable {
 			name: leak_str("products").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-					default: None,
-				},
+				ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 				create_basic_column("name", FieldType::VarChar(Some(200))),
 				create_basic_column("price", FieldType::Custom("DECIMAL(10, 2)".to_string())),
 				create_basic_column("tax_rate", FieldType::Custom("DECIMAL(5, 4)".to_string())),
@@ -1095,15 +1021,7 @@ async fn test_spatial_data_types_migration(
 		vec![Operation::CreateTable {
 			name: leak_str("locations").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-					default: None,
-				},
+				ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 				create_basic_column("name", FieldType::VarChar(Some(200))),
 				create_basic_column(
 					"point",
@@ -1278,25 +1196,9 @@ async fn test_composite_primary_key_creation(
 		vec![Operation::CreateTable {
 			name: leak_str("orders").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-					default: None,
-				},
+				ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 				create_basic_column("customer_name", FieldType::VarChar(Some(200))),
-				ColumnDefinition {
-					name: "created_at".to_string(),
-					type_definition: FieldType::Custom("TIMESTAMP".to_string()),
-					not_null: false,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: Some("CURRENT_TIMESTAMP".to_string()),
-				},
+				ColumnDefinition::from_parts("created_at".to_string(), FieldType::Custom("TIMESTAMP".to_string()), false, false, false, false, Some("CURRENT_TIMESTAMP".to_string()), None, None),
 			],
 		}],
 	);
@@ -1339,43 +1241,11 @@ async fn test_composite_primary_key_creation(
 			Operation::CreateTable {
 				name: leak_str("order_items").to_string(),
 				columns: vec![
-					ColumnDefinition {
-						name: "order_id".to_string(),
-						type_definition: FieldType::Integer,
-						not_null: true,
-						unique: false,
-						primary_key: false,
-						auto_increment: false,
-						default: None,
-					},
-					ColumnDefinition {
-						name: "line_number".to_string(),
-						type_definition: FieldType::Integer,
-						not_null: true,
-						unique: false,
-						primary_key: false,
-						auto_increment: false,
-						default: None,
-					},
+					ColumnDefinition::from_parts("order_id".to_string(), FieldType::Integer, true, false, false, false, None, None, None),
+					ColumnDefinition::from_parts("line_number".to_string(), FieldType::Integer, true, false, false, false, None, None, None),
 					create_basic_column("product_name", FieldType::VarChar(Some(200))),
-					ColumnDefinition {
-						name: "quantity".to_string(),
-						type_definition: FieldType::Integer,
-						not_null: true,
-						unique: false,
-						primary_key: false,
-						auto_increment: false,
-						default: None,
-					},
-					ColumnDefinition {
-						name: "price".to_string(),
-						type_definition: FieldType::Custom("DECIMAL(10, 2)".to_string()),
-						not_null: true,
-						unique: false,
-						primary_key: false,
-						auto_increment: false,
-						default: None,
-					},
+					ColumnDefinition::from_parts("quantity".to_string(), FieldType::Integer, true, false, false, false, None, None, None),
+					ColumnDefinition::from_parts("price".to_string(), FieldType::Custom("DECIMAL(10, 2)".to_string()), true, false, false, false, None, None, None),
 				],
 			},
 			Operation::CreateCompositePrimaryKey {

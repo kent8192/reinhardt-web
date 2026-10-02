@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-providers@v0.4.0-alpha.17...reinhardt-providers@v0.4.0-alpha.18) - 2026-09-27
+
+### Fixed
+
+- *(deps)* remove AWS Smithy compatibility pin
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-providers@v0.4.0-alpha.15...reinhardt-providers@v0.4.0-alpha.16) - 2026-09-23
+
+### Fixed
+
+- *(deps)* constrain incompatible AWS Smithy releases
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-providers@v0.4.0-alpha.6...reinhardt-providers@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- *(providers)* clarify S3 client contracts
+
+### Fixed
+
+- *(providers)* preserve S3 presigned URL ordering
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Testing
+
+- *(providers)* cover AWS credential resolution
+- *(providers)* make S3 signing deterministic
+- *(providers)* cover S3 HTTP operations
+- *(providers)* cover S3 failure responses
+- *(providers)* assert exact S3 validation errors
+- *(providers)* cover HEAD permission failures
+- *(providers)* remove duplicate credential coverage
+- *(providers)* stabilize review coverage fixtures
+- *(providers)* exercise env guard through credential loading
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-providers@v0.3.2...reinhardt-providers@v0.4.0-alpha.1) - 2026-07-21
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-providers@v0.3.17...reinhardt-providers@v0.3.18) - 2026-09-16
 
 ### Fixed

@@ -1,0 +1,29 @@
+error: component-variable dependency cycle: first -> second -> first; break the cycle with an independent typed default
+ --> tests/ui/style/fail/dependency_cycle.rs:7:19
+  |
+7 |         second: Color = vars.first;
+  |                         ^^^^
+
+error: component variable `first` is declared here
+ --> tests/ui/style/fail/dependency_cycle.rs:6:3
+  |
+6 |         first: Color = vars.second;
+  |         ^^^^^
+
+error: `first` depends on `second` here
+ --> tests/ui/style/fail/dependency_cycle.rs:6:18
+  |
+6 |         first: Color = vars.second;
+  |                        ^^^^
+
+error: component variable `second` is declared here
+ --> tests/ui/style/fail/dependency_cycle.rs:7:3
+  |
+7 |         second: Color = vars.first;
+  |         ^^^^^^
+
+error: `second` depends on `first` here
+ --> tests/ui/style/fail/dependency_cycle.rs:7:19
+  |
+7 |         second: Color = vars.first;
+  |                         ^^^^

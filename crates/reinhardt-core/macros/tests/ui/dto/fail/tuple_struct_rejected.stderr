@@ -1,0 +1,5 @@
+error: #[dto] requires a struct with named fields
+ --> tests/ui/dto/fail/tuple_struct_rejected.rs:6:12
+  |
+6 | pub struct TupleDto(pub i32);
+  |            ^^^^^^^^

@@ -8,10 +8,6 @@ use reinhardt::middleware::session::{SessionId, SessionStore, USER_ID_SESSION_KE
 use reinhardt::{BaseUser, DatabaseConnection, Handler, Middleware, Model, Request, Response};
 use std::sync::Arc;
 
-#[cfg(test)]
-#[path = "../../migrations/users/0001_initial.rs"]
-mod users_migration;
-
 /// Resolves the session identity against the current tutorial user record.
 ///
 /// `SessionMiddleware` owns cookie/session storage. This middleware runs after
@@ -49,8 +45,9 @@ impl TutorialSessionAuthMiddleware {
 			tracing::warn!("Tutorial session authentication has no database connection");
 			return AuthState::anonymous();
 		};
+		let mut db = *db;
 
-		match User::objects().get(user_id).first_with_db(&db).await {
+		match User::objects().get(user_id).first_with_db(&mut db).await {
 			Ok(Some(user)) if user.is_active() => {
 				AuthState::authenticated(user.id().to_string(), user.is_superuser, true)
 			}
@@ -87,28 +84,35 @@ impl Middleware for TutorialSessionAuthMiddleware {
 #[cfg(test)]
 mod tests {
 	use super::TutorialSessionAuthMiddleware;
-	use crate::apps::users::models::User;
 	use reinhardt::core::async_trait;
-	use reinhardt::db::migrations::executor::DatabaseMigrationExecutor;
+	use reinhardt::db::backends::DatabaseConnection as BackendsConnection;
+	use reinhardt::db::orm::DatabaseConnectionLease;
 	use reinhardt::di::{InjectionContext, SingletonScope};
 	use reinhardt::http::AuthState;
 	use reinhardt::middleware::session::{
 		SessionData, SessionId, SessionStore, USER_ID_SESSION_KEY,
 	};
-	use reinhardt::{DatabaseConnection, Handler, Middleware, Model, Request, Response};
+	use reinhardt::{Handler, Middleware, Request, Response};
+	use serial_test::serial;
+	use sqlx::SqlitePool;
 	use std::sync::{Arc, Mutex};
 	use std::time::Duration;
 	use tempfile::NamedTempFile;
 
-	struct CaptureAuthState(Arc<Mutex<(Option<AuthState>, Option<String>)>>);
+	#[derive(Default)]
+	struct CapturedAuthState {
+		auth_state: Option<AuthState>,
+		user_id: Option<String>,
+	}
+
+	struct CaptureAuthState(Arc<Mutex<CapturedAuthState>>);
 
 	#[async_trait]
 	impl Handler for CaptureAuthState {
 		async fn handle(&self, request: Request) -> reinhardt::Result<Response> {
-			*self.0.lock().expect("capture lock should remain available") = (
-				request.extensions.get::<AuthState>(),
-				request.extensions.get::<String>(),
-			);
+			let mut captured = self.0.lock().expect("capture lock should remain available");
+			captured.auth_state = request.extensions.get::<AuthState>();
+			captured.user_id = request.extensions.get::<String>();
 			Ok(Response::ok())
 		}
 	}
@@ -116,31 +120,44 @@ mod tests {
 	async fn request_for_user(
 		user_id: i64,
 		is_active: bool,
-	) -> (NamedTempFile, Arc<SessionStore>, Request) {
+	) -> (
+		NamedTempFile,
+		DatabaseConnectionLease,
+		Arc<SessionStore>,
+		Request,
+	) {
 		let database_file = NamedTempFile::new().expect("temporary database should be created");
 		let database_path = database_file
 			.path()
 			.to_str()
 			.expect("temporary database path should be UTF-8");
+		let sqlx_url = format!("sqlite://{database_path}?mode=rwc");
 		let orm_url = format!("sqlite:///{database_path}");
-		let db = DatabaseConnection::connect_sqlite(&orm_url)
+		let pool = SqlitePool::connect(&sqlx_url)
+			.await
+			.expect("SQLite pool should connect");
+		sqlx::query(
+			"CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL, password_hash TEXT, is_active BOOLEAN NOT NULL, is_superuser BOOLEAN NOT NULL, last_login TEXT, created_at TEXT NOT NULL)",
+		)
+		.execute(&pool)
+		.await
+		.expect("users table should be created");
+		sqlx::query(
+			"INSERT INTO users (id, username, password_hash, is_active, is_superuser, last_login, created_at) VALUES (?, ?, NULL, ?, 0, NULL, '2026-08-04T00:00:00Z')",
+		)
+		.bind(user_id)
+		.bind("tutorial-user")
+		.bind(is_active)
+		.execute(&pool)
+		.await
+		.expect("tutorial user should be inserted");
+
+		let owner = BackendsConnection::connect_sqlite(&orm_url)
 			.await
 			.expect("ORM connection should connect");
-		DatabaseMigrationExecutor::new(db.inner().clone())
-			.apply_migrations(&[super::users_migration::migration()])
-			.await
-			.expect("users migration should be applied");
-		let mut user = User::build()
-			.username("tutorial-user".to_string())
-			.password_hash(None)
-			.is_active(is_active)
-			.is_superuser(false)
-			.finish();
-		user.id = user_id;
-		User::objects()
-			.create_with_conn(&db, &user)
-			.await
-			.expect("tutorial user should be inserted");
+		let lease =
+			DatabaseConnectionLease::register(owner).expect("ORM connection should be registered");
+		let db = lease.handle();
 		let singleton = Arc::new(SingletonScope::new());
 		singleton.set(db);
 		let context = InjectionContext::builder(singleton).build();
@@ -161,13 +178,14 @@ mod tests {
 		let mut request = request;
 		request.set_di_context(Arc::new(context));
 
-		(database_file, store, request)
+		(database_file, lease, store, request)
 	}
 
 	#[tokio::test]
+	#[serial(tutorial_session_auth_database)]
 	async fn active_session_user_populates_validated_auth_state() {
-		let (_database_file, store, request) = request_for_user(7, true).await;
-		let captured = Arc::new(Mutex::new((None, None)));
+		let (_database_file, _lease, store, request) = request_for_user(7, true).await;
+		let captured = Arc::new(Mutex::new(CapturedAuthState::default()));
 		let handler = Arc::new(CaptureAuthState(Arc::clone(&captured)));
 
 		TutorialSessionAuthMiddleware::new(store)
@@ -179,19 +197,20 @@ mod tests {
 			.lock()
 			.expect("capture lock should remain available");
 		let auth_state = captured
-			.0
-			.clone()
+			.auth_state
+			.as_ref()
 			.expect("active account should produce AuthState");
 		assert!(auth_state.is_authenticated());
 		assert!(auth_state.is_active());
 		assert_eq!(auth_state.user_id(), "7");
-		assert_eq!(captured.1.as_deref(), Some("7"));
+		assert_eq!(captured.user_id.as_deref(), Some(auth_state.user_id()));
 	}
 
 	#[tokio::test]
+	#[serial(tutorial_session_auth_database)]
 	async fn inactive_session_user_is_anonymous() {
-		let (_database_file, store, request) = request_for_user(8, false).await;
-		let captured = Arc::new(Mutex::new((None, None)));
+		let (_database_file, _lease, store, request) = request_for_user(8, false).await;
+		let captured = Arc::new(Mutex::new(CapturedAuthState::default()));
 		let handler = Arc::new(CaptureAuthState(Arc::clone(&captured)));
 
 		TutorialSessionAuthMiddleware::new(store)
@@ -203,10 +222,10 @@ mod tests {
 			.lock()
 			.expect("capture lock should remain available");
 		let auth_state = captured
-			.0
-			.clone()
+			.auth_state
+			.as_ref()
 			.expect("middleware should always populate AuthState");
 		assert!(auth_state.is_anonymous());
-		assert_eq!(captured.1, None);
+		assert!(captured.user_id.is_none());
 	}
 }

@@ -1,5 +1,7 @@
+mod file_body;
 mod stream_body;
 
+pub use file_body::FileResponseBody;
 use stream_body::StreamResponseBody;
 
 use bytes::Bytes;
@@ -8,6 +10,20 @@ use hyper::{HeaderMap, StatusCode};
 use reinhardt_core::exception::HttpError;
 use serde::Serialize;
 use std::pin::Pin;
+use std::sync::OnceLock;
+
+static JSON_CONTENT_TYPE_HEADERS: OnceLock<HeaderMap> = OnceLock::new();
+
+fn json_content_type_headers() -> &'static HeaderMap {
+	JSON_CONTENT_TYPE_HEADERS.get_or_init(|| {
+		let mut headers = HeaderMap::with_capacity(1);
+		headers.insert(
+			hyper::header::CONTENT_TYPE,
+			hyper::header::HeaderValue::from_static("application/json"),
+		);
+		headers
+	})
+}
 
 /// Returns a safe, client-facing error message based on the HTTP status code.
 ///
@@ -199,23 +215,24 @@ pub fn truncate_for_log(input: &str, max_length: usize) -> String {
 	}
 }
 
-/// HTTP response with a buffered or single-use streaming body.
+/// HTTP response with a buffered, file, or single-use streaming body.
 ///
 /// Clones share a stream's ownership slot, not a replayable copy of its data.
 /// The first transport to call [`Self::take_stream_body`] owns the producer;
 /// attempting to send another clone produces a body error. Stream equality
-/// compares source identity. Buffered response cloning is unchanged.
+/// compares source identity. Buffered and file response cloning is unchanged.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
 	/// The HTTP status code.
 	pub status: StatusCode,
 	/// The response headers.
 	pub headers: HeaderMap,
-	/// Buffered response bytes. Empty for streaming bodies.
+	/// Buffered response bytes. Empty for file and streaming bodies.
 	pub body: Bytes,
 	/// Indicates whether the middleware chain should stop processing
 	/// When true, no further middleware or handlers will be executed
 	stop_chain: bool,
+	file_body: Option<FileResponseBody>,
 	stream_body: Option<StreamResponseBody>,
 }
 
@@ -260,6 +277,64 @@ impl Response {
 			headers: HeaderMap::new(),
 			body: Bytes::new(),
 			stop_chain: false,
+			file_body: None,
+			stream_body: None,
+		}
+	}
+
+	/// Create a response with one typed header and a body.
+	///
+	/// This constructor is useful for hot paths that always set a single
+	/// framework-controlled header, such as RPC codecs.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use bytes::Bytes;
+	/// use hyper::{StatusCode, header};
+	/// use reinhardt_http::Response;
+	///
+	/// let response = Response::from_typed_header_body(
+	///     StatusCode::OK,
+	///     header::CONTENT_TYPE,
+	///     "application/json".parse().unwrap(),
+	///     Bytes::from_static(br#"{"ok":true}"#),
+	/// );
+	///
+	/// assert_eq!(response.status, StatusCode::OK);
+	/// assert_eq!(response.headers.get(header::CONTENT_TYPE).unwrap(), "application/json");
+	/// ```
+	#[inline]
+	pub fn from_typed_header_body(
+		status: StatusCode,
+		key: hyper::header::HeaderName,
+		value: hyper::header::HeaderValue,
+		body: impl Into<Bytes>,
+	) -> Self {
+		let mut headers = HeaderMap::with_capacity(1);
+		headers.insert(key, value);
+		Self {
+			status,
+			headers,
+			body: body.into(),
+			stop_chain: false,
+			file_body: None,
+			stream_body: None,
+		}
+	}
+
+	/// Create a JSON response body with a prebuilt `Content-Type` header map.
+	///
+	/// This is intended for hot paths that already serialized the body and only
+	/// need the standard JSON content type.
+	#[inline]
+	pub fn from_json_body(status: StatusCode, body: impl Into<Bytes>) -> Self {
+		Self {
+			status,
+			headers: json_content_type_headers().clone(),
+			body: body.into(),
+			stop_chain: false,
+			file_body: None,
 			stream_body: None,
 		}
 	}
@@ -498,6 +573,117 @@ impl Response {
 		self.body = body.into();
 		self
 	}
+
+	fn clear_non_buffered_body(&mut self) {
+		if self.is_streaming() {
+			self.headers.remove(hyper::header::CONTENT_LENGTH);
+			self.headers.remove(hyper::header::TRANSFER_ENCODING);
+		}
+		self.file_body = None;
+		self.stream_body = None;
+	}
+
+	/// Set a single-use streaming body without polling or buffering it (native-only, P0).
+	///
+	/// Replaces any buffered or file body and removes framing headers so the native
+	/// transport can frame an unknown-length stream. Body-transforming middleware
+	/// must check [`Self::is_streaming`] before using the legacy `body` field.
+	/// Clones share one producer; see [`Self::take_stream_body`].
+	///
+	/// ```
+	/// use bytes::Bytes;
+	/// use futures::stream;
+	/// use reinhardt_http::Response;
+	///
+	/// let response = Response::ok()
+	///     .with_stream(stream::iter([Ok(Bytes::from_static(b"data: hello\n\n"))]))
+	///     .with_header("content-type", "text/event-stream");
+	/// assert!(response.is_streaming());
+	/// assert!(response.body.is_empty());
+	/// ```
+	pub fn with_stream<S>(mut self, stream: S) -> Self
+	where
+		S: Stream<Item = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
+	{
+		self.file_body = None;
+		self.body = Bytes::new();
+		self.stream_body = Some(StreamResponseBody::new(Box::pin(stream)));
+		self.headers.remove(hyper::header::CONTENT_LENGTH);
+		self.headers.remove(hyper::header::TRANSFER_ENCODING);
+		self
+	}
+
+	/// Whether the representation is a file or stream rather than `body` bytes (P0).
+	pub fn is_streaming(&self) -> bool {
+		self.file_body.is_some() || self.stream_body.is_some()
+	}
+
+	/// Transfer the streaming producer to a transport without polling it (P0).
+	///
+	/// Returns `None` for buffered/file responses or after taking this response's
+	/// stream. A clone whose shared producer was already taken yields an error
+	/// stream instead of silently sending an empty successful response. Once taken,
+	/// the returned stream owns producer cleanup, independently of surviving clones.
+	pub fn take_stream_body(&mut self) -> Option<StreamBody> {
+		self.stream_body.take().map(StreamResponseBody::take)
+	}
+	/// Set an owned file range without allocating its complete body (experimental, P0).
+	///
+	/// Native Reinhardt transports stream this source in bounded chunks. The legacy
+	/// `body` field is empty for a file response; body-transforming middleware must
+	/// check [`Self::file_body`] before treating that field as the representation.
+	/// Replacing the body through a builder method drops the file source.
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	/// use std::io::Write;
+	/// let mut file = tempfile::tempfile()?;
+	/// file.write_all(b"asset")?;
+	/// let response = Response::ok().with_file_body(file, 0, 5)?;
+	/// assert!(response.body.is_empty());
+	/// assert_eq!(response.file_body().unwrap().read_chunk(0, 2)?.as_ref(), b"as");
+	/// # Ok::<(), std::io::Error>(())
+	/// ```
+	pub fn with_file_body(
+		mut self,
+		file: std::fs::File,
+		offset: u64,
+		length: u64,
+	) -> std::io::Result<Self> {
+		let file_body = FileResponseBody::new(file, offset, length)?;
+		self.clear_non_buffered_body();
+		self.file_body = Some(file_body);
+		self.body = Bytes::new();
+		self.headers.insert(
+			hyper::header::CONTENT_LENGTH,
+			hyper::header::HeaderValue::from(length),
+		);
+		Ok(self)
+	}
+
+	/// Borrow the owned source when this response streams a file range.
+	pub fn file_body(&self) -> Option<&FileResponseBody> {
+		self.file_body.as_ref()
+	}
+
+	/// Set the response body from static bytes without allocating.
+	///
+	/// This is useful for small constant responses such as health checks.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	/// use bytes::Bytes;
+	///
+	/// let response = Response::ok().with_static_body(b"ok");
+	/// assert_eq!(response.body, Bytes::from_static(b"ok"));
+	/// ```
+	pub fn with_static_body(mut self, body: &'static [u8]) -> Self {
+		self.clear_non_buffered_body();
+		self.body = Bytes::from_static(body);
+		self
+	}
 	/// Try to add a custom header to the response, returning an error on invalid inputs.
 	///
 	/// # Errors
@@ -724,57 +910,6 @@ impl Response {
 			self.headers.insert(hyper::header::LOCATION, value);
 		}
 		self
-	}
-	fn clear_non_buffered_body(&mut self) {
-		if self.is_streaming() {
-			self.headers.remove(hyper::header::CONTENT_LENGTH);
-			self.headers.remove(hyper::header::TRANSFER_ENCODING);
-		}
-		self.stream_body = None;
-	}
-
-	/// Set a single-use streaming body without polling or buffering it (native-only, P0).
-	///
-	/// Replaces any buffered body and removes framing headers so the native
-	/// transport can frame an unknown-length stream. Body-transforming middleware
-	/// must check [`Self::is_streaming`] before using the legacy `body` field.
-	/// Clones share one producer; see [`Self::take_stream_body`].
-	///
-	/// ```
-	/// use bytes::Bytes;
-	/// use futures::stream;
-	/// use reinhardt_http::Response;
-	///
-	/// let response = Response::ok()
-	///     .with_stream(stream::iter([Ok(Bytes::from_static(b"data: hello\n\n"))]))
-	///     .with_header("content-type", "text/event-stream");
-	/// assert!(response.is_streaming());
-	/// assert!(response.body.is_empty());
-	/// ```
-	pub fn with_stream<S>(mut self, stream: S) -> Self
-	where
-		S: Stream<Item = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
-	{
-		self.body = Bytes::new();
-		self.stream_body = Some(StreamResponseBody::new(Box::pin(stream)));
-		self.headers.remove(hyper::header::CONTENT_LENGTH);
-		self.headers.remove(hyper::header::TRANSFER_ENCODING);
-		self
-	}
-
-	/// Whether the representation is a stream rather than `body` bytes (P0).
-	pub fn is_streaming(&self) -> bool {
-		self.stream_body.is_some()
-	}
-
-	/// Transfer the streaming producer to a transport without polling it (P0).
-	///
-	/// Returns `None` for buffered responses or after taking this response's
-	/// stream. A clone whose shared producer was already taken yields an error
-	/// stream instead of silently sending an empty successful response. Once taken,
-	/// the returned stream owns producer cleanup, independently of surviving clones.
-	pub fn take_stream_body(&mut self) -> Option<StreamBody> {
-		self.stream_body.take().map(StreamResponseBody::take)
 	}
 	/// Set the response body to JSON and add appropriate Content-Type header
 	///
@@ -1075,6 +1210,7 @@ impl<S> StreamingResponse<S> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 	use rstest::rstest;
 
 	#[derive(Debug)]
@@ -1374,24 +1510,45 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_from_error_produces_safe_output_for_5xx() {
+	#[case(
+		DatabaseErrorKind::NotNullViolation,
+		StatusCode::BAD_REQUEST,
+		"Bad Request"
+	)]
+	#[case(DatabaseErrorKind::UniqueViolation, StatusCode::CONFLICT, "Conflict")]
+	#[case(
+		DatabaseErrorKind::Timeout,
+		StatusCode::SERVICE_UNAVAILABLE,
+		"Service Unavailable"
+	)]
+	#[case(
+		DatabaseErrorKind::Query,
+		StatusCode::INTERNAL_SERVER_ERROR,
+		"Internal Server Error"
+	)]
+	fn test_database_error_response_is_safe(
+		#[case] kind: DatabaseErrorKind,
+		#[case] expected_status: StatusCode,
+		#[case] expected_message: &str,
+	) {
 		// Arrange
-		let error = crate::Error::Database(
-			"Connection to postgres://user:pass@db:5432/mydb failed".to_string(),
+		let error = crate::Error::from(
+			DatabaseError::new(kind, "postgres://user:pass@db:5432/private")
+				.with_code("SECRET-CODE"),
 		);
 
 		// Act
 		let response: Response = error.into();
 
 		// Assert
-		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+		assert_eq!(response.status, expected_status);
 		let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
-		assert_eq!(body["error"], "Internal Server Error");
-		// Must NOT contain internal connection details
+		assert_eq!(body["error"], expected_message);
+		assert_eq!(body.get("detail"), None);
 		let body_str = String::from_utf8_lossy(&response.body);
-		assert!(!body_str.contains("postgres://"));
-		assert!(!body_str.contains("user:pass"));
-		assert!(body.get("detail").is_none());
+		for sensitive_value in ["postgres://", "user:pass", "private", "SECRET-CODE"] {
+			assert!(!body_str.contains(sensitive_value));
+		}
 	}
 
 	#[rstest]

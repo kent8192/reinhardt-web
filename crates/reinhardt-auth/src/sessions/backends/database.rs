@@ -45,18 +45,26 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use reinhardt_core::macros::model;
-use reinhardt_db::DatabaseConnection;
-use reinhardt_db::orm::{DatabaseBackend, Filter, FilterOperator, FilterValue, Model};
+use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+use reinhardt_db::orm::{
+	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, Filter, FilterOperator,
+	FilterValue, Model,
+};
 use reinhardt_query::prelude::{
 	Alias, ColumnDef, CreateIndexStatement, Expr, ExprTrait, Func, IntoValue, MySqlQueryBuilder,
 	OnConflict, PostgresQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use crate::sessions::cleanup::{CleanupableBackend, SessionMetadata};
 
 use super::cache::{SessionBackend, SessionError};
+
+async fn connect_backend(database_url: &str) -> Result<BackendsConnection, SessionError> {
+	BackendsConnection::connect(database_url)
+		.await
+		.map_err(|error| SessionError::CacheError(format!("Database connection error: {error}")))
+}
 
 /// Database session model
 ///
@@ -78,7 +86,7 @@ use super::cache::{SessionBackend, SessionError};
 ///     .last_accessed(Some(now_ms))
 ///     .finish();
 /// ```
-#[model(table_name = "sessions")]
+#[model(app_label = "default", table_name = "sessions")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
 	/// Unique session key (primary key)
@@ -125,13 +133,12 @@ pub struct Session {
 /// ```rust,no_run
 /// use reinhardt_auth::sessions::backends::{DatabaseSessionBackend, SessionBackend};
 /// use serde_json::json;
-/// use reinhardt_db::DatabaseConnection;
-/// use std::sync::Arc;
+/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 ///
 /// # async fn example() {
 /// // Initialize backend with database connection
-/// let connection = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
-/// let backend = DatabaseSessionBackend::from_connection(Arc::new(connection));
+/// let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await.unwrap();
+/// let backend = DatabaseSessionBackend::from_connection(owner).unwrap();
 ///
 /// // Note: Table should be created via migrations
 ///
@@ -147,7 +154,8 @@ pub struct Session {
 /// ```
 #[derive(Clone)]
 pub struct DatabaseSessionBackend {
-	connection: Arc<DatabaseConnection>,
+	_lease: DatabaseConnectionLease,
+	connection: DatabaseConnection,
 }
 
 impl DatabaseSessionBackend {
@@ -173,13 +181,9 @@ impl DatabaseSessionBackend {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn new(database_url: &str) -> Result<Self, SessionError> {
-		let connection = DatabaseConnection::connect(database_url)
-			.await
-			.map_err(|e| SessionError::CacheError(format!("Database connection error: {}", e)))?;
+		let owner = connect_backend(database_url).await?;
 
-		Ok(Self {
-			connection: Arc::new(connection),
-		})
+		Self::from_connection(owner)
 	}
 
 	/// Create a new backend from an existing database connection
@@ -192,18 +196,22 @@ impl DatabaseSessionBackend {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_auth::sessions::backends::DatabaseSessionBackend;
-	/// use reinhardt_db::DatabaseConnection;
-	/// use std::sync::Arc;
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 	///
 	/// # async fn example() {
-	/// let connection = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
-	/// let backend = DatabaseSessionBackend::from_connection(Arc::new(connection));
+	/// let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await.unwrap();
+	/// let backend = DatabaseSessionBackend::from_connection(owner).unwrap();
 	/// // Backend created from existing connection
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub fn from_connection(connection: Arc<DatabaseConnection>) -> Self {
-		Self { connection }
+	pub fn from_connection(owner: BackendsConnection) -> Result<Self, SessionError> {
+		let lease = DatabaseConnectionLease::register(owner)
+			.map_err(|e| SessionError::CacheError(format!("Database connection error: {}", e)))?;
+		Ok(Self {
+			connection: lease.handle(),
+			_lease: lease,
+		})
 	}
 
 	/// Build SQL string for the current database backend
@@ -351,6 +359,8 @@ impl SessionBackend for DatabaseSessionBackend {
 	where
 		T: for<'de> Deserialize<'de> + Send,
 	{
+		let mut connection = self.connection;
+
 		// Use ORM to load the session through the backend's injected connection.
 		let session = Session::objects()
 			.filter(Filter::new(
@@ -358,7 +368,7 @@ impl SessionBackend for DatabaseSessionBackend {
 				FilterOperator::Eq,
 				FilterValue::String(session_key.to_string()),
 			))
-			.first_with_db(self.connection.as_ref())
+			.first_with_db(&mut connection)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to load session: {}", e)))?;
 
@@ -461,6 +471,7 @@ impl SessionBackend for DatabaseSessionBackend {
 
 	async fn exists(&self, session_key: &str) -> Result<bool, SessionError> {
 		let now_timestamp = Utc::now().timestamp_millis();
+		let mut connection = self.connection;
 
 		// Use ORM to check the backend's injected connection.
 		let session = Session::objects()
@@ -474,7 +485,7 @@ impl SessionBackend for DatabaseSessionBackend {
 				FilterOperator::Gt,
 				FilterValue::Integer(now_timestamp),
 			))
-			.first_with_db(self.connection.as_ref())
+			.first_with_db(&mut connection)
 			.await
 			.map_err(|e| {
 				SessionError::CacheError(format!("Failed to check session existence: {}", e))
@@ -487,11 +498,13 @@ impl SessionBackend for DatabaseSessionBackend {
 #[async_trait]
 impl CleanupableBackend for DatabaseSessionBackend {
 	async fn get_all_keys(&self) -> Result<Vec<String>, SessionError> {
+		let mut connection = self.connection;
+
 		// Use ORM to get all session keys
 		// Manager::all() returns QuerySet, QuerySet::all() executes and returns Vec<T>
 		let sessions = Session::objects()
 			.all()
-			.all_with_db(self.connection.as_ref())
+			.all_with_db(&mut connection)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to get all keys: {}", e)))?;
 
@@ -504,6 +517,8 @@ impl CleanupableBackend for DatabaseSessionBackend {
 		&self,
 		session_key: &str,
 	) -> Result<Option<SessionMetadata>, SessionError> {
+		let mut connection = self.connection;
+
 		// Use ORM to get session metadata
 		let session = Session::objects()
 			.filter(Filter::new(
@@ -511,7 +526,7 @@ impl CleanupableBackend for DatabaseSessionBackend {
 				FilterOperator::Eq,
 				FilterValue::String(session_key.to_string()),
 			))
-			.first_with_db(self.connection.as_ref())
+			.first_with_db(&mut connection)
 			.await
 			.ok()
 			.flatten();
@@ -535,6 +550,8 @@ impl CleanupableBackend for DatabaseSessionBackend {
 	}
 
 	async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, SessionError> {
+		let mut connection = self.connection;
+
 		// Use ORM to list session keys with prefix
 		let sessions = Session::objects()
 			.filter(Filter::new(
@@ -542,7 +559,7 @@ impl CleanupableBackend for DatabaseSessionBackend {
 				FilterOperator::StartsWith,
 				FilterValue::String(prefix.to_string()),
 			))
-			.all_with_db(self.connection.as_ref())
+			.all_with_db(&mut connection)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to list session keys: {}", e)))?;
 
@@ -738,5 +755,27 @@ mod tests {
 		// We can't test this without a real connection, but we can verify the trait is implemented
 		fn assert_clone<T: Clone>() {}
 		assert_clone::<DatabaseSessionBackend>();
+	}
+
+	#[tokio::test]
+	async fn injected_connection_handles_session_lifecycle_without_global_orm_connection() {
+		let owner = connect_backend("sqlite::memory:").await.unwrap();
+		let backend = DatabaseSessionBackend::from_connection(owner).unwrap();
+		let session_key = "injected-connection";
+		let session_data = serde_json::json!({"user_id": 42});
+
+		backend.create_table().await.unwrap();
+		backend
+			.save(session_key, &session_data, Some(60))
+			.await
+			.unwrap();
+
+		let loaded: Option<serde_json::Value> = backend.load(session_key).await.unwrap();
+		assert_eq!(loaded, Some(session_data));
+		assert!(backend.exists(session_key).await.unwrap());
+
+		backend.delete(session_key).await.unwrap();
+
+		assert!(!backend.exists(session_key).await.unwrap());
 	}
 }

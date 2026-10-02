@@ -6,9 +6,9 @@ use crate::extensions::Extensions;
 use crate::path_params::PathParams;
 use bytes::Bytes;
 use hyper::{HeaderMap, Method, Uri, Version};
+pub use params::QueryParams;
 #[cfg(feature = "parsers")]
 use reinhardt_core::parsers::parser::{ParsedData, Parser};
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::AtomicBool;
@@ -70,8 +70,8 @@ pub struct Request {
 	///
 	/// Stored in URL pattern declaration order (see [`PathParams`]).
 	pub path_params: PathParams,
-	/// Query string parameters parsed from the URI.
-	pub query_params: HashMap<String, String>,
+	/// Query string parameters parsed lazily from the URI.
+	pub query_params: QueryParams,
 	/// Indicates if this request came over HTTPS
 	pub is_secure: bool,
 	/// Remote address of the client (if available)
@@ -109,7 +109,7 @@ pub struct Request {
 ///
 /// assert_eq!(request.method, Method::GET);
 /// assert_eq!(request.path(), "/api/users");
-/// assert_eq!(request.query_params.get("page"), Some(&"1".to_string()));
+/// assert_eq!(request.query_params.get("page"), Some("1"));
 /// ```
 pub struct RequestBuilder {
 	method: Method,
@@ -171,7 +171,7 @@ impl RequestBuilder {
 
 	/// Set the request URI.
 	///
-	/// Accepts either a `&str` or `Uri`. Query parameters will be automatically parsed.
+	/// Accepts either a `&str` or `Uri`. Query parameters are parsed on first access.
 	///
 	/// # Examples
 	///
@@ -186,8 +186,8 @@ impl RequestBuilder {
 	///     .unwrap();
 	///
 	/// assert_eq!(request.path(), "/api/users");
-	/// assert_eq!(request.query_params.get("page"), Some(&"1".to_string()));
-	/// assert_eq!(request.query_params.get("limit"), Some(&"10".to_string()));
+	/// assert_eq!(request.query_params.get("page"), Some("1"));
+	/// assert_eq!(request.query_params.get("limit"), Some("10"));
 	/// ```
 	pub fn uri<T>(mut self, uri: T) -> Self
 	where
@@ -415,7 +415,7 @@ impl RequestBuilder {
 	///     .build()
 	///     .unwrap();
 	///
-	/// assert_eq!(request.path_params.get("id"), Some(&"42".to_string()));
+	/// assert_eq!(request.path_params.get("id"), Some("42"));
 	/// ```
 	pub fn path_params(mut self, params: impl Into<PathParams>) -> Self {
 		self.path_params = params.into();
@@ -450,7 +450,7 @@ impl RequestBuilder {
 			return Err(err);
 		}
 		let uri = self.uri.ok_or_else(|| "URI is required".to_string())?;
-		let query_params = Request::parse_query_params(&uri);
+		let query_params = QueryParams::from_uri(&uri);
 
 		Ok(Request {
 			method: self.method,
@@ -492,6 +492,42 @@ impl Request {
 	/// ```
 	pub fn builder() -> RequestBuilder {
 		RequestBuilder::default()
+	}
+
+	/// Create a request from already-validated HTTP parser parts.
+	///
+	/// This constructor is intended for server adapters that receive typed
+	/// Hyper request parts. Use [`Request::builder()`] when constructing a
+	/// request from user-provided string inputs that still need validation.
+	pub fn from_hyper_parts(
+		method: Method,
+		uri: Uri,
+		version: Version,
+		headers: HeaderMap,
+		body: Bytes,
+		is_secure: bool,
+		remote_addr: Option<SocketAddr>,
+	) -> Self {
+		let query_params = QueryParams::from_uri(&uri);
+
+		Self {
+			method,
+			uri,
+			version,
+			headers,
+			body,
+			path_params: PathParams::new(),
+			query_params,
+			is_secure,
+			remote_addr,
+			#[cfg(feature = "parsers")]
+			parsers: Vec::new(),
+			#[cfg(feature = "parsers")]
+			parsed_data: Mutex::new(None),
+			body_consumed: AtomicBool::new(false),
+			extensions: Extensions::new(),
+			exception_handler_installed: false,
+		}
 	}
 
 	/// Set the DI context for this request (used by routers with dependency injection)
@@ -986,7 +1022,7 @@ impl Request {
 	/// assert!(result.is_err());
 	/// ```
 	pub fn query_as<T: serde::de::DeserializeOwned>(&self) -> crate::Result<T> {
-		// Convert HashMap<String, String> to Vec<(String, String)> for serde_urlencoded
+		// Convert query parameters to pairs for serde_urlencoded.
 		let params: Vec<(String, String)> = self
 			.query_params
 			.iter()
@@ -1001,9 +1037,10 @@ impl Request {
 
 	/// Creates a lightweight copy of this request for dependency injection.
 	///
-	/// The clone shares the same extensions store (via internal `Arc`),
-	/// so `AuthState` and other extensions set on the original request
-	/// are accessible in the clone. Body and parsers are not copied
+	/// The clone shares the same initialized extensions store (via internal
+	/// `Arc`), so `AuthState` and other extensions set on the original request
+	/// are accessible in the clone. Empty extension stores stay uninitialized
+	/// until either request writes an extension. Body and parsers are not copied
 	/// as they are not needed for DI resolution.
 	pub fn clone_for_di(&self) -> Self {
 		Request {
@@ -1021,9 +1058,31 @@ impl Request {
 			#[cfg(feature = "parsers")]
 			parsed_data: Mutex::new(None),
 			body_consumed: AtomicBool::new(false),
-			extensions: self.extensions.clone(),
+			extensions: self.extensions.clone_if_initialized(),
 			exception_handler_installed: self.exception_handler_installed,
 		}
+	}
+
+	/// Clone the request state needed by response middleware.
+	///
+	/// The body and extensions are preserved, while parser state is reset because
+	/// parser implementations are not clonable. The returned request is a
+	/// read-only snapshot for hooks that run after the handler consumes the
+	/// original request.
+	pub fn clone_for_response(&self) -> crate::Result<Self> {
+		let mut snapshot = Self::builder()
+			.method(self.method.clone())
+			.uri(self.uri.clone())
+			.version(self.version)
+			.headers(self.headers.clone())
+			.body(self.body.clone())
+			.secure(self.is_secure)
+			.path_params(self.path_params.clone())
+			.build()
+			.map_err(crate::Error::Http)?;
+		snapshot.remote_addr = self.remote_addr;
+		snapshot.extensions = self.extensions.clone();
+		Ok(snapshot)
 	}
 }
 
@@ -1033,6 +1092,33 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version, header};
 	use rstest::rstest;
+
+	#[test]
+	fn from_hyper_parts_initializes_runtime_request_fields() {
+		let mut headers = HeaderMap::new();
+		headers.insert(header::USER_AGENT, "TestClient/1.0".parse().unwrap());
+		let remote_addr = "127.0.0.1:3000".parse().unwrap();
+
+		let request = Request::from_hyper_parts(
+			Method::POST,
+			"/search?q=rust&page=2".parse().unwrap(),
+			Version::HTTP_11,
+			headers,
+			Bytes::from_static(b"body"),
+			true,
+			Some(remote_addr),
+		);
+
+		assert_eq!(request.method, Method::POST);
+		assert_eq!(request.path(), "/search");
+		assert_eq!(request.query_params.get("q"), Some("rust"));
+		assert_eq!(request.query_params.get("page"), Some("2"));
+		assert_eq!(request.body(), &Bytes::from_static(b"body"));
+		assert!(request.is_secure());
+		assert_eq!(request.scheme(), "https");
+		assert_eq!(request.remote_addr, Some(remote_addr));
+		assert!(request.path_params.is_empty());
+	}
 
 	#[rstest]
 	fn test_extract_bearer_token() {
@@ -1271,14 +1357,14 @@ mod tests {
 		assert_eq!(cloned.uri.path(), "/api/users/42");
 		assert_eq!(cloned.version, Version::HTTP_11);
 		assert!(cloned.headers.contains_key(header::CONTENT_TYPE));
-		assert_eq!(cloned.query_params.get("page"), Some(&"1".to_string()));
+		assert_eq!(cloned.query_params.get("page"), Some("1"));
 
 		// Body should be empty (not needed for DI)
 		assert!(cloned.body().is_empty());
 	}
 
 	#[rstest]
-	fn test_clone_for_di_shares_extensions_bidirectionally() {
+	fn test_clone_for_di_keeps_empty_extensions_independent_until_used() {
 		// Arrange
 		let request = Request::builder()
 			.method(Method::GET)
@@ -1291,9 +1377,10 @@ mod tests {
 		// Act - insert into cloned extensions
 		cloned.extensions.insert("from_clone".to_string());
 
-		// Assert - original also sees it (shared backing store)
+		// Assert - empty stores are not initialized solely by clone_for_di
+		assert_eq!(request.extensions.get::<String>(), None);
 		assert_eq!(
-			request.extensions.get::<String>(),
+			cloned.extensions.get::<String>(),
 			Some("from_clone".to_string())
 		);
 	}
@@ -1312,10 +1399,7 @@ mod tests {
 		request.set_path_params(params);
 
 		// Assert
-		assert_eq!(
-			request.path_params.get("id").map(String::as_str),
-			Some("42")
-		);
+		assert_eq!(request.path_params.get("id"), Some("42"));
 		assert!(request.extensions.get::<ResolvedPathParams>().is_none());
 	}
 }

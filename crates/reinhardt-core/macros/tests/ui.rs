@@ -105,6 +105,15 @@ fn test_routes_registration_macro_fail() {
 	t.compile_fail("tests/ui/routes_registration/fail/*.rs");
 }
 
+#[rstest::rstest]
+fn test_url_patterns_macro_fail() {
+	// Arrange
+	let cases = trybuild::TestCases::new();
+
+	// Act / Assert
+	cases.compile_fail("tests/ui/url_patterns/fail/*.rs");
+}
+
 // ===== Injectable =====
 
 #[test]
@@ -176,9 +185,38 @@ fn test_model_macro_parity_pass() {
 }
 
 #[test]
+fn test_fixture_projection_deserializer_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/model/pass/fixture_projection_preserves_deserializer.rs");
+}
+
+#[test]
 fn test_model_macro_parity_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/model/fail/*.rs");
+}
+
+#[test]
+#[cfg(feature = "pgvector")]
+fn test_field_attributes_vector_index() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/field_attributes/vector_valid.rs");
+	t.compile_fail("tests/ui/field_attributes/vector_dimension_missing.rs");
+	t.compile_fail("tests/ui/field_attributes/vector_dimension_non_literal.rs");
+	t.pass("tests/ui/field_attributes/vector_index_valid.rs");
+	t.compile_fail("tests/ui/field_attributes/vector_index_invalid_*.rs");
+}
+
+#[test]
+fn test_model_enum_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/model_enum/fail/*.rs");
+}
+
+#[test]
+fn test_model_enum_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/model_enum/pass/*.rs");
 }
 
 // ===== DTO (Issue #4478) =====

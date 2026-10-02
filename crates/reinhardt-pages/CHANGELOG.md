@@ -7,6 +7,197 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.17...reinhardt-pages@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- *(pages)* document feature flags accurately
+- *(pages)* clarify the SPA navigation E2E suite
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.16...reinhardt-pages@v0.4.0-alpha.17) - 2026-09-25
+
+### Testing
+
+- *(pages)* refresh consumer lockfile after dependency graph changes
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.15...reinhardt-pages@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(pages)* render pages from the attached form mutation runtime
+- *(pages)* generate runtime-bound ModelForm controls
+- *(forms)* add scoped validated form patches
+
+### Documentation
+
+- *(pages)* explain configured ModelForm mutation rendering
+
+### Fixed
+
+- *(pages)* stabilize model mutation form resets
+- *(pages)* preserve JSON editor representation in binding snapshots
+- *(pages)* retain server actions on multipart mutation forms
+- *(pages)* preserve model form control snapshots
+- *(pages)* preserve model form editor defaults
+- *(pages)* notify model form editor marker changes
+- *(pages)* preserve model form editor representations
+- *(pages)* preserve native model form sentinels
+- *(pages)* preserve reset state metadata
+- *(pages)* preserve null runtime sentinels
+- *(pages)* preserve native model form defaults
+- *(pages)* harden model form default metadata
+- *(pages)* preserve native model form edits before hydration
+- *(pages)* normalize native model form multipart fields
+- *(pages)* preserve JSON string scalars in multipart forms
+- *(pages)* retain native edits when hydrating model forms
+- *(pages)* preserve JSON types in multipart model forms
+- *(pages)* preserve native model form intent across startup and reset
+- *(forms)* enforce patch validation contracts
+- *(forms)* reject SQL null in optional JSON form patches
+- *(pages)* forward-port WebSocket retry lifecycle
+
+### Maintenance
+
+- auto-fix fmt and clippy
+- merge develop/0.4.0 into model form mutation pages
+- merge develop/0.4.0 and preserve form patch parity
+
+### Testing
+
+- *(pages)* cover ModelForm mutation pages in browsers
+- *(pages)* standardize model form test attributes
+- *(pages)* include bootstrap in SSR timeout expectation
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.14...reinhardt-pages@v0.4.0-alpha.15) - 2026-09-10
+
+### Fixed
+
+- *(pages)* reject executable elements in all renderers
+- *(pages)* enforce safe rendering boundaries
+- *(pages)* render form field attributes and help text
+- *(pages)* preserve textarea and select state during hydration
+- *(pages)* preserve form ownership across hydration and reset
+- *(pages)* retain custom widget subscriptions after native reset
+- *(pages)* preserve pristine textarea state through newline normalization
+- *(pages)* evaluate static select choice expressions once
+- *(pages)* preserve reconciled defaults during hydration
+- *(pages)* reconcile unbound textarea snapshots
+- *(pages)* reject unsupported RadioInput form overrides
+- *(pages)* complete native radio reset synchronization
+- *(pages)* validate required radios and synchronize saved defaults
+- *(pages)* preserve reset ownership and hydrated radio state
+
+### Maintenance
+
+- merge main into radio group accessibility
+- *(pages)* merge main field metadata and radio groups
+- chore!(sync): merge main into develop/0.4.0
+- merge develop/0.4.0 into RadioInput support
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.13...reinhardt-pages@v0.4.0-alpha.14) - 2026-09-07
+
+### Documentation
+
+- *(pages)* reverse login path in navigation guard example
+- *(pages)* clarify temporal normalization writeback
+
+### Fixed
+
+- *(ci)* replace tabs in Rustdoc example
+- *(pages)* skip auth revalidation after a newer navigation
+- *(pages)* preserve source history for push-origin redirects
+- *(pages)* sanitize native fallback text input values
+- *(core)* allow reactive temporal input bindings
+- *(pages)* canonicalize native range zero values
+- *(pages)* prevent shared range normalization cycles
+- *(pages)* reconcile surviving range bindings
+- *(core)* mark omitted passwords for hydration
+- *(pages)* use HTML number grammar for native range events
+- *(pages)* tolerate roundoff in aligned range grids
+- *(pages)* update range defaults before signal normalization
+- *(pages)* refresh shared ranges after constraint changes
+- *(pages)* reconcile password bindings after form resets
+
+### Maintenance
+
+- merge develop/0.4.0 into constraint violation design
+- merge develop/0.4.0 into navigation guard branch
+- merge develop/0.4.0 into semantic input bindings
+- merge develop/0.4.0 into semantic input bindings
+- *(pages)* remove deferred listener delegation note
+
+### Testing
+
+- *(pages)* verify fallback text sanitization
+
+### Fixed
+
+- *(model-form)* preserve UTC datetime values and fractional seconds in typed runtime updates
+- *(pages)* keep uuid and chrono available for named model-form contracts
+
+### Testing
+
+- *(pages)* remove obsolete tinyvec version pins from isolated consumer fixtures
+
+## [0.4.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.12...reinhardt-pages@v0.4.0-alpha.13) - 2026-09-02
+
+### Fixed
+
+- *(pages)* reject executable elements in all renderers
+- *(pages)* enforce safe rendering boundaries
+- *(core)* validate batch boolean attributes
+
+### Testing
+
+- *(pages)* align option values with sanitized elements
+
+## [0.4.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.11...reinhardt-pages@v0.4.0-alpha.12) - 2026-08-30
+
+### Added
+
+- *(pages)* add client_form attribute macro
+
+### Fixed
+
+- *(pages)* preserve client form serde metadata
+- *(pages)* make client_form expansion alias-safe
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.10...reinhardt-pages@v0.4.0-alpha.11) - 2026-08-27
+
+### Maintenance
+
+- merge main into develop/0.4.0
+- merge latest develop/0.4.0 into forward-merge branch
+
+## [0.4.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.9...reinhardt-pages@v0.4.0-alpha.10) - 2026-08-25
+
+### Added
+
+- *(pages)* evict query cache at auth boundaries
+- *(urls)* add optional query extractor
+- *(pages)* support optional loader cache inputs
+- *(pages)* lower optional query extractors
+
+### Documentation
+
+- *(pages)* document optional query extraction
+- *(pages)* clarify optional query aliases
+
+### Fixed
+
+- *(pages)* evict query data at auth boundaries
+- *(pages)* propagate query eviction through entity dependents
+- *(pages)* propagate query eviction to mounted state
+- *(pages)* repair WASM form and hydration builds
+
+### Added
+
+- *(pages)* support optional typed query extraction across route components, layouts, loaders, page props, and manual request props; optional loader cache identity distinguishes missing and present values
+
 ## [0.3.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.18...reinhardt-pages@v0.3.19) - 2026-09-20
 
 ### Fixed
@@ -62,6 +253,331 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.8...reinhardt-pages@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define UI and transport boundaries
+- *(security)* qualify websocket and state boundaries
+- *(security)* document remaining trust boundaries
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.6...reinhardt-pages@v0.4.0-alpha.7) - 2026-08-19
+
+### Fixed
+
+- *(pages)* cover configured widget and column rendering
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Testing
+
+- *(pages)* raise coverage to 80%
+- *(pages)* use rstest for table coverage
+- *(pages)* run wasm column coverage through rstest
+
+### Added
+
+- *(pages)* add named-route SPA navigation
+- *(pages)* add framework-owned path fallback and preserve external HTTPS navigation
+
+### Changed
+
+- *(pages)* make navigation errors non-exhaustive and report route-resolution and hard-navigation failures
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.3...reinhardt-pages@v0.4.0-alpha.6) - 2026-08-06
+
+### Added
+
+- *(pages)* generate model-backed forms
+- *(pages)* add native custom event detail transport
+- *(pages)* add lazy typed custom event payloads
+- *(pages)* lower typed custom event handlers
+- *(pages)* [**breaking**] unify typed custom event listeners
+
+### Documentation
+
+- *(forms)* document generated model forms
+- *(forms)* correct facade and formset guidance
+- *(pages)* document typed custom event payloads
+- *(pages)* declare custom event parity
+- *(pages)* complete custom event parity
+- *(pages)* document custom handler parity
+
+### Fixed
+
+- *(pages)* handle unsigned and cleared model inputs
+- *(forms)* harden generated form persistence semantics
+- *(forms)* close residual model form review gaps
+- *(pages)* keep forms dev dependency native-only
+- *(pages)* clear rejected model form values
+- *(pages)* preserve valid boolean and fractional controls
+- *(pages)* render stored model form values
+- *(pages)* reject unsupported model form widgets
+- *(forms)* enforce generated model constraints
+- *(forms)* handle temporal and assigned model inputs
+- *(forms)* preserve model form field contracts
+- *(forms)* preserve specialized field constraints
+- *(forms)* preserve exact generated constraints
+- *(pages)* retain native model form submission
+- *(pages)* validate model widget overrides
+- *(forms)* complete model-backed form submission
+- *(forms)* enforce model form submission policies
+- *(forms)* harden native model form decoding
+- *(forms)* preserve model form defaults
+- *(forms)* harden model form input handling
+- *(forms)* preserve secure model form defaults
+- *(forms)* preserve untouched model controls
+- *(forms)* synchronize hydrated model submits
+- *(forms)* complete model form submission contracts
+- *(forms)* validate model form submission boundaries
+- *(forms)* align shared model form validation
+- *(forms)* reject unsupported model reactivity
+- *(forms)* preserve native model form semantics
+- *(forms)* validate inline and runtime model form state
+- *(forms)* preserve native defaults and control values
+- *(forms)* preserve model-backed form state
+- *(forms)* reset omitted model form fields
+- *(forms)* retain untouched boolean defaults
+- *(pages)* reject unsupported model form callbacks
+- *(forms)* harden generated model form boundaries
+- *(forms)* preserve optional model form state
+- *(forms)* enforce model form overrides
+- *(forms)* reserve generated form namespaces
+- *(pages)* keep model form controls in sync
+- *(forms)* preserve native range defaults
+- *(forms)* defer uncertain generated keys
+- *(forms)* synchronize defaults and persistence state
+- *(forms)* synchronize transaction-backed form state
+- *(forms)* preserve transactional retry semantics
+- *(forms)* preserve model form control semantics
+- *(forms)* preserve nested form retries
+- *(forms)* validate inline formset retries
+- *(forms)* align native form validation
+- *(pages)* preserve server function fallback syntax
+- *(forms)* restore model form CI coverage
+- *(forms)* address model form review feedback
+- *(pages)* preserve typed custom handler spans
+- *(pages)* preserve native typed custom event data
+- *(pages)* assert typed custom event parameter path
+- *(pages)* address typed custom event review
+- *(pages)* match custom event token spacing in tests
+- *(db)* integrate develop/0.4.0 with typed upsert builders
+- *(pages)* align server function field fixture
+- *(ci)* repair all-feature unit regressions
+- *(release)* restore unpublished crates after partial release
+
+### Maintenance
+
+- auto-fix fmt and clippy
+
+### Other
+
+- sync shared CI repairs
+- sync develop/0.4.0 into query client v2
+
+### Styling
+
+- *(pages)* format typed custom event codegen
+
+### Testing
+
+- *(forms)* cover generated model form flows
+- *(forms)* align generated model form expectations
+- *(pages)* cover native typed custom event dispatch
+- *(pages)* verify async custom event lowering
+- *(pages)* compare zero-argument custom event lowering
+- *(pages)* relax typed custom-event lowering assertion
+- *(pages)* harden typed custom event coverage
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.1...reinhardt-pages@v0.4.0-alpha.2) - 2026-07-23
+
+### Fixed
+
+- *(pages)* ignore named interpolation keys in captures
+- *(pages)* scope named macro argument capture skipping
+- *(pages)* preserve captures for shadowable macros
+- *(pages)* resolve named macro paths safely
+
+### Testing
+
+- *(pages)* refresh controlled bind diagnostic
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.2...reinhardt-pages@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(pages)* compose resource values with action results
+- *(pages)* parse page body form
+- *(pages)* collect and generate implicit body captures
+- feat!(pages): resolve SSR resources asynchronously
+- feat!(pages): require explicit hook dependency modes
+- *(pages)* validate deps macro hook arguments
+
+### Changed
+
+- *(pages)* migrate hooks to deps list syntax
+
+### Documentation
+
+- docs!(pages): clarify direct body migration
+- *(pages)* explain hook dependency modes
+- *(pages)* note hook dependency migration
+
+### Fixed
+
+- address 0.4 fast-path review comments
+- [**breaking**] preserve server_fn codec metadata invariants
+- *(pages)* complete implicit body capture analysis
+- *(pages)* validate page body capture scopes
+- *(pages)* harden async SSR resource rendering
+- *(pages)* complete ssr suspense resource replay
+- *(pages)* drain streamed ssr resource replays
+- *(pages)* stabilize suspense resource replay
+- *(pages)* address SSR resource review feedback
+- *(pages)* reuse tracked SSR resources during replay
+- *(pages)* harden streaming suspense resource scopes
+- *(pages)* reuse pending tracked SSR resources
+- *(pages)* scope suspense resource replay caches
+- *(pages)* remove shared suspense head cache
+- *(pages)* preserve SSR resource replay consistency
+- *(pages)* keep buffered suspense head capture request scoped
+- *(pages)* preserve marker render allocators
+- *(pages)* satisfy resource hydration clippy
+- *(pages)* harden suspense hydration state
+- *(pages)* stabilize client form submit UI fixtures
+- *(pages)* drop duplicate component tree arms
+- *(ci)* restore upgraded dependency checks
+- *(pages)* harden hook dependency migration
+- *(pages)* harden dependency migration
+- *(pages)* align dependency mode exports and tests
+- *(pages)* update dynamic dependency test
+- *(pages)* scope native resource dependency import
+- *(pages)* remove duplicate native cfg
+- *(pages)* repair hook dependency migration tests
+- *(pages)* restore explicit deps compatibility
+- *(ci)* terminate cfg aliases macro invocations
+- *(pages)* retain reactive owners through review edge cases
+- *(pages)* guard stale lifecycle handles
+- *(pages)* retain mount scopes for events
+- *(reactive)* enforce explicit dependencies and memo invalidation
+- *(pages)* complete explicit dependency migration
+- *(pages)* restore reactive CI compatibility
+- *(pages)* update legacy hook dependency tests
+- *(pages)* resolve controlled binding review feedback
+- *(pages)* preserve controlled select projection
+- *(pages)* address route loader review feedback
+- *(pages)* resolve server function set review findings
+- restore atomic ORM release compatibility
+- *(pages)* restore WASM hydration compilation
+- *(pages)* envelope server function failures
+- *(pages)* envelope server function request failures
+- *(pages)* skip stale server form errors
+- *(pages)* classify server function failures
+- *(pages)* preserve structured server form errors
+- *(pages)* retain custom error status
+- *(pages)* reconcile reactive attributes
+- *(pages)* preserve reactive control hydration
+- *(pages)* normalize boolean attribute names
+- *(pages)* restore reactive attribute test checks
+- *(pages)* stabilize empty head compile fixture
+- *(pages)* simplify reactive boolean attribute predicates
+- *(release)* restore develop prerelease lifecycle
+- *(ci)* stabilize release test failures
+- *(pages)* align hydration and SSR regression tests
+- *(pages)* retain server DOM after hydration rollback
+- *(pages)* scope document head wasm signals
+- *(pages)* align server function error display test
+
+### Maintenance
+
+- merge develop/0.4.0 into component route branch
+- merge remote async SSR resource branch
+- merge develop/0.4.0 into client form bindings
+- merge develop/0.4.0 into client form bindings
+- merge develop/0.4.0 into typed JSON PR
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into functional state setter
+- migrate dependency policy checks to cargo-deny
+- merge develop/0.4.0 into retained effects
+- merge develop/0.4.0 into issue 5575 branch
+- merge develop/0.4.0 into route loader branch
+
+### Other
+
+- sync develop/0.4.0 into hook dependency modes
+- resolve develop/0.4.0 conflicts for [[#5676](https://github.com/kent8192/reinhardt-web/issues/5676)](https://github.com/kent8192/reinhardt-web/issues/5676)
+- sync develop/0.4.0 into server function set
+- sync develop/0.4.0 into structured server errors
+
+### Performance
+
+- use compact exact route tables
+- revert compact exact route table experiment
+- return server fn bytes directly
+- borrow server fn request bodies
+- avoid boxed server fn futures
+- shrink server fn endpoint futures
+- fast path json server fn content type
+- streamline server fn responses
+- [**breaking**] specialize json server fn hot path
+- specialize server fn codec response path
+
+### Testing
+
+- update path parameter assertions
+- *(pages)* cover ast page body reexports
+- *(pages)* cover implicit page body captures
+- *(pages)* unwrap HMR template metadata in keyed test
+
+### Added
+
+- Add named typed server function sets with mixed-codec marker chains,
+  explicit router registration, and unchanged per-action metadata and mocks.
+- Add opt-in model-backed server function sets with six typed CRUD RPCs,
+  mandatory policies, typed list pagination, unique lookups, DTO mappings,
+  checked overrides, transaction-bound custom actions, structured errors, and
+  action-level component/MSW mock identity.
+- Keep standard create overrides on the create authorization path with an
+  executor-only context, without collection queryset scoping.
+- *(pages)* add `SetStateExt::update` for previous-value state updates from
+  `use_state` setters.
+- Add native component testing utilities under
+  `reinhardt_pages::testing::component`, including in-memory `Page` rendering,
+  role/text/label queries, event helpers, async settling, pretty DOM output,
+  and in-process `server_fn` mocks for `MockableServerFn` markers.
+
+### Changed
+
+- Sanitize authentication and internal extractor failures in generated server
+  function handlers, and keep physical table names out of model not-found
+  errors.
+- **BREAKING**: Route-backed component macros now require the route name as
+  `name = "..."`, for example `#[component("/path", name = "name")]`.
+
+### Removed
+
+- *(hmr)* remove the whole-root `HtmlReplace` message and client-side
+  `innerHTML` replacement path in favor of state-preserving template patches.
+
+### Migration Notes
+
+- **BREAKING**: Dependency-aware hooks now require a named second argument.
+  Use `deps![...]` for explicit dependencies, including `deps![]` for
+  mount-only behavior. `deps_auto!()` is supported only by effects,
+  layout-effects, and memos; callbacks, resources, and retained effects still
+  require `deps![...]`. See the
+  [0.4.0 hook dependency migration guide](../../docs/migration/0.4.0-hook-dependency-modes.md).
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.9...reinhardt-pages@v0.3.10) - 2026-08-22
 
 ### Maintenance

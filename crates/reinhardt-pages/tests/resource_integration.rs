@@ -34,6 +34,8 @@ use rstest::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(wasm)]
+use reinhardt_pages::deps;
+#[cfg(wasm)]
 use reinhardt_pages::reactive::{Resource, Signal, use_resource};
 
 #[cfg(wasm)]
@@ -130,7 +132,7 @@ fn test_resource_state_error_basic() {
 async fn test_resource_fetch_error() {
 	let resource: Resource<User, String> = use_resource(
 		|| async { Err::<User, String>("Network timeout".to_string()) },
-		(),
+		deps![],
 	);
 
 	// Wait for async operation to complete
@@ -218,7 +220,7 @@ async fn test_resource_manual_refetch() {
 				Ok::<u32, String>(*counter.borrow())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	// Wait for initial fetch
@@ -263,7 +265,7 @@ async fn test_resource_use_case_api_call(test_user: User) {
 			let user = user.clone();
 			async move { Ok::<User, String>(user) }
 		},
-		(),
+		deps![],
 	);
 
 	// Wait for fetch
@@ -330,7 +332,7 @@ async fn test_resource_with_signal_dependency() {
 				async move { Ok::<String, String>(format!("User {}", id)) }
 			}
 		},
-		(user_id.clone(),),
+		deps![user_id],
 	);
 
 	// Wait for initial fetch

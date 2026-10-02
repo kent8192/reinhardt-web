@@ -8,12 +8,11 @@
 //! ```ignore
 //! use reinhardt_views::viewsets::{InjectableViewSet, ModelViewSet, ViewSet};
 //! use reinhardt_di::Injectable;
-//! use std::sync::Arc;
 //!
 //! impl MyViewSet {
 //!     async fn handle_list(&self, request: Request) -> Result<Response> {
 //!         // Resolve dependencies from the request's DI context
-//!         let db: Arc<DatabaseConnection> = self.resolve(&request).await?;
+//!         let db: DatabaseConnection = self.resolve(&request).await?;
 //!         let cache: CacheService = self.resolve_uncached(&request).await?;
 //!
 //!         // Use the dependencies
@@ -40,7 +39,6 @@ use std::sync::Arc;
 /// # #[tokio::main]
 /// # async fn main() {
 /// use reinhardt_views::viewsets::{InjectableViewSet, ModelViewSet, ViewSet};
-/// use std::sync::Arc;
 ///
 /// struct UserViewSet {
 ///     basename: String,
@@ -49,7 +47,7 @@ use std::sync::Arc;
 /// impl UserViewSet {
 ///     async fn handle_list(&self, request: Request) -> Result<Response> {
 ///         // Resolve with caching (default)
-///         let db: Arc<DatabaseConnection> = self.resolve(&request).await?;
+///         let db: DatabaseConnection = self.resolve(&request).await?;
 ///
 ///         // Resolve without caching
 ///         let fresh_config: Config = self.resolve_uncached(&request).await?;
@@ -77,7 +75,7 @@ pub trait InjectableViewSet: ViewSet {
 	/// # Examples
 	///
 	/// ```ignore
-	/// let db: Arc<DatabaseConnection> = self.resolve(&request).await?;
+	/// let db: DatabaseConnection = self.resolve(&request).await?;
 	/// ```
 	async fn resolve<T>(&self, request: &Request) -> Result<T>
 	where

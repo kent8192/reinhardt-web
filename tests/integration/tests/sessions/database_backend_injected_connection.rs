@@ -1,17 +1,16 @@
 use reinhardt_auth::sessions::backends::cache::SessionBackend;
 use reinhardt_auth::sessions::backends::database::DatabaseSessionBackend;
 use reinhardt_auth::sessions::cleanup::CleanupableBackend;
-use reinhardt_db::DatabaseConnection;
+use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 use serial_test::serial;
-use std::sync::Arc;
 
 #[tokio::test]
 #[serial(sessions_db)]
 async fn injected_connection_handles_session_lifecycle_without_global_orm_connection() {
-	let connection = DatabaseConnection::connect("sqlite::memory:")
+	let connection = BackendsConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.unwrap();
-	let backend = DatabaseSessionBackend::from_connection(Arc::new(connection));
+	let backend = DatabaseSessionBackend::from_connection(connection).unwrap();
 	let session_key = "injected-connection";
 	let session_data = serde_json::json!({"user_id": 42});
 
@@ -33,10 +32,10 @@ async fn injected_connection_handles_session_lifecycle_without_global_orm_connec
 #[tokio::test]
 #[serial(sessions_db)]
 async fn injected_connection_counts_prefix_in_database() {
-	let connection = DatabaseConnection::connect("sqlite::memory:")
+	let connection = BackendsConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.unwrap();
-	let backend = DatabaseSessionBackend::from_connection(Arc::new(connection));
+	let backend = DatabaseSessionBackend::from_connection(connection).unwrap();
 	backend.create_table().await.unwrap();
 
 	for key in [

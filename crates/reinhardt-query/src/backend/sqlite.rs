@@ -4,7 +4,7 @@
 
 use super::{QueryBuilder, SqlWriter};
 use crate::{
-	expr::{Condition, SimpleExpr},
+	expr::{Condition, SimpleExpr, TemporalTruncKind, TemporalTruncOutput},
 	query::{
 		AlterIndexStatement, AlterTableOperation, AlterTableStatement, CheckTableStatement,
 		CreateIndexStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
@@ -12,7 +12,10 @@ use crate::{
 		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
 		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
-	types::{BinOper, ColumnRef, TableRef},
+	types::{
+		BinOper, ColumnRef, GeneratedColumn, GeneratedStorage, SchemaBinOper, SchemaExpr,
+		SchemaFunc, TableRef,
+	},
 	value::Values,
 };
 
@@ -50,6 +53,150 @@ impl SqliteQueryBuilder {
 	/// Create a new SQLite query builder
 	pub fn new() -> Self {
 		Self
+	}
+
+	fn write_monday_date(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		output: TemporalTruncOutput,
+	) {
+		writer.push(match output {
+			TemporalTruncOutput::Date => "DATE(",
+			TemporalTruncOutput::DateTime => "DATETIME(",
+		});
+		self.write_simple_expr(writer, expr);
+		writer.push(", '-6 days', 'weekday 1'");
+		if output == TemporalTruncOutput::DateTime {
+			writer.push(", 'start of day'");
+		}
+		writer.push(")");
+	}
+
+	fn write_temporal_trunc(
+		&self,
+		writer: &mut SqlWriter,
+		expr: &SimpleExpr,
+		kind: TemporalTruncKind,
+		output: TemporalTruncOutput,
+	) {
+		if kind == TemporalTruncKind::Week {
+			self.write_monday_date(writer, expr, output);
+			return;
+		}
+
+		match (kind, output) {
+			(TemporalTruncKind::Year, _) => {
+				writer.push(match output {
+					TemporalTruncOutput::Date => "DATE(",
+					TemporalTruncOutput::DateTime => "DATETIME(",
+				});
+				self.write_simple_expr(writer, expr);
+				writer.push(", 'start of year')");
+			}
+			(TemporalTruncKind::Month, _) => {
+				writer.push(match output {
+					TemporalTruncOutput::Date => "DATE(",
+					TemporalTruncOutput::DateTime => "DATETIME(",
+				});
+				self.write_simple_expr(writer, expr);
+				writer.push(", 'start of month')");
+			}
+			(TemporalTruncKind::Day, _) => {
+				writer.push(match output {
+					TemporalTruncOutput::Date => "DATE(",
+					TemporalTruncOutput::DateTime => "DATETIME(",
+				});
+				self.write_simple_expr(writer, expr);
+				if output == TemporalTruncOutput::DateTime {
+					writer.push(", 'start of day')");
+				} else {
+					writer.push(")");
+				}
+			}
+			(
+				TemporalTruncKind::Hour | TemporalTruncKind::Minute | TemporalTruncKind::Second,
+				TemporalTruncOutput::DateTime,
+			) => {
+				let format = match kind {
+					TemporalTruncKind::Hour => "%Y-%m-%d %H:00:00",
+					TemporalTruncKind::Minute => "%Y-%m-%d %H:%M:00",
+					TemporalTruncKind::Second => "%Y-%m-%d %H:%M:%S",
+					_ => unreachable!("matched datetime truncation kind"),
+				};
+				writer.push("DATETIME(strftime('");
+				writer.push(format);
+				writer.push("', ");
+				self.write_simple_expr(writer, expr);
+				writer.push("))");
+			}
+			_ => unreachable!("invalid temporal truncation kind and output"),
+		}
+	}
+
+	/// Build a SELECT statement after rejecting PostgreSQL-only vector features.
+	pub fn build_select_checked(
+		&self,
+		stmt: &SelectStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_select_lock_for_backend(stmt, "SQLite")?;
+		crate::error::validate_select_for_backend(stmt, "SQLite")?;
+		Ok(self.build_select(stmt))
+	}
+
+	/// Build a CREATE TABLE statement after rejecting PostgreSQL-only vector features.
+	pub fn build_create_table_checked(
+		&self,
+		stmt: &CreateTableStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_create_table_for_backend(stmt, "SQLite")?;
+		Ok(self.build_create_table(stmt))
+	}
+
+	/// Build a CREATE INDEX statement after rejecting PostgreSQL-only vector features.
+	pub fn build_create_index_checked(
+		&self,
+		stmt: &CreateIndexStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_create_index_for_backend(stmt, "SQLite")?;
+		stmt.validate_for_backend("SQLite", false)?;
+		Ok(self.build_create_index(stmt))
+	}
+
+	/// Build an INSERT statement after rejecting PostgreSQL-only vector features.
+	pub fn build_insert_checked(
+		&self,
+		stmt: &InsertStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_insert_for_backend(stmt, "SQLite")?;
+		Ok(self.build_insert(stmt))
+	}
+
+	/// Build an UPDATE statement after rejecting PostgreSQL-only vector features.
+	pub fn build_update_checked(
+		&self,
+		stmt: &UpdateStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_update_for_backend(stmt, "SQLite")?;
+		Ok(self.build_update(stmt))
+	}
+
+	/// Build a DELETE statement after rejecting PostgreSQL-only vector features.
+	pub fn build_delete_checked(
+		&self,
+		stmt: &DeleteStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_delete_for_backend(stmt, "SQLite")?;
+		Ok(self.build_delete(stmt))
+	}
+
+	/// Build an ALTER TABLE statement after rejecting PostgreSQL-only vector features.
+	pub fn build_alter_table_checked(
+		&self,
+		stmt: &AlterTableStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_alter_table_for_backend(stmt, "SQLite")?;
+		Ok(self.build_alter_table(stmt))
 	}
 
 	/// Escape an identifier for SQLite
@@ -131,18 +278,6 @@ impl SqliteQueryBuilder {
 				// Merge the values from the subquery
 				writer.append_values(&subquery_values);
 			}
-			TableRef::LateralSubQuery(query, alias) => {
-				let (subquery_sql, subquery_values) = self.build_select(query);
-				writer.push_keyword("LATERAL");
-				writer.push_space();
-				writer.push("(");
-				writer.push(&subquery_sql);
-				writer.push(")");
-				writer.push_keyword("AS");
-				writer.push_space();
-				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
-				writer.append_values(&subquery_values);
-			}
 		}
 	}
 
@@ -172,6 +307,81 @@ impl SqliteQueryBuilder {
 				writer.push(".*");
 			}
 		}
+	}
+
+	/// Write a DDL-safe schema expression with inline literals.
+	fn write_schema_expr(&self, writer: &mut SqlWriter, expr: &SchemaExpr) {
+		match expr {
+			SchemaExpr::Column(iden) => {
+				writer.push_identifier(&iden.to_string(), |s| self.escape_iden(s));
+			}
+			SchemaExpr::Value(value) => {
+				writer.push(&value.to_sql_literal());
+			}
+			SchemaExpr::Binary { left, op, right } => {
+				writer.push("(");
+				self.write_schema_expr(writer, left);
+				writer.push_space();
+				writer.push(match op {
+					SchemaBinOper::Add => "+",
+					SchemaBinOper::Sub => "-",
+					SchemaBinOper::Mul => "*",
+					SchemaBinOper::Div => "/",
+				});
+				writer.push_space();
+				self.write_schema_expr(writer, right);
+				writer.push(")");
+			}
+			SchemaExpr::Function { func, args } => match func {
+				SchemaFunc::Concat => {
+					if args.is_empty() {
+						writer.push("''");
+					} else {
+						writer.push_list(args, " || ", |w, arg| {
+							self.write_schema_expr(w, arg);
+						});
+					}
+				}
+				SchemaFunc::Coalesce => {
+					writer.push("COALESCE(");
+					writer.push_list(args, ", ", |w, arg| {
+						self.write_schema_expr(w, arg);
+					});
+					writer.push(")");
+				}
+			},
+			SchemaExpr::Cast { expr, ty } => {
+				writer.push("CAST(");
+				self.write_schema_expr(writer, expr);
+				writer.push(" AS ");
+				writer.push(&self.column_type_to_sql(ty));
+				writer.push(")");
+			}
+		}
+	}
+
+	/// Write generated-column DDL.
+	fn write_generated_column(
+		&self,
+		writer: &mut SqlWriter,
+		generated: &GeneratedColumn,
+		allow_stored: bool,
+	) {
+		generated
+			.validate()
+			.expect("invalid generated-column metadata");
+		if !allow_stored && generated.storage == GeneratedStorage::Stored {
+			panic!("SQLite ADD COLUMN does not support stored generated columns");
+		}
+
+		writer.push(" GENERATED ALWAYS AS (");
+		if let Some(expr) = &generated.expr {
+			self.write_schema_expr(writer, expr);
+		} else if let Some(raw_sql) = &generated.raw_sql {
+			writer.push(raw_sql);
+		}
+		writer.push(") ");
+		writer.push(generated.storage.as_str());
 	}
 
 	/// Write a simple expression
@@ -363,6 +573,9 @@ impl SqliteQueryBuilder {
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
+			SimpleExpr::TemporalTrunc {
+				expr, kind, output, ..
+			} => self.write_temporal_trunc(writer, expr, *kind, *output),
 		}
 	}
 
@@ -570,9 +783,6 @@ impl SqliteQueryBuilder {
 
 impl QueryBuilder for SqliteQueryBuilder {
 	fn build_select(&self, stmt: &SelectStatement) -> (String, Values) {
-		if let Some(raw_sql) = &stmt.raw_sql {
-			return (raw_sql.clone(), Values::new());
-		}
 		let mut writer = SqlWriter::new();
 
 		// WITH clause (Common Table Expressions)
@@ -797,6 +1007,11 @@ impl QueryBuilder for SqliteQueryBuilder {
 	fn build_insert(&self, stmt: &InsertStatement) -> (String, Values) {
 		use crate::query::insert::InsertSource;
 
+		assert!(
+			!(stmt.default_values && stmt.on_conflict.is_some()),
+			"SQLite does not support ON CONFLICT with DEFAULT VALUES"
+		);
+
 		let mut writer = SqlWriter::new();
 
 		// INSERT INTO clause
@@ -822,26 +1037,28 @@ impl QueryBuilder for SqliteQueryBuilder {
 
 		// VALUES clause or SELECT subquery
 		match &stmt.source {
-			InsertSource::Values(values) if !values.is_empty() => {
-				writer.push_keyword("VALUES");
-				writer.push_space();
+			InsertSource::Values(_) if stmt.default_values => {
+				writer.push_keyword("DEFAULT VALUES");
+			}
+			InsertSource::Values(values) => {
+				if !values.is_empty() {
+					writer.push_keyword("VALUES");
+					writer.push_space();
 
-				writer.push_list(values, ", ", |w, row| {
-					w.push("(");
-					w.push_list(row, ", ", |w2, value| {
-						w2.push_value(value.clone(), |_i| self.placeholder(0));
+					writer.push_list(values, ", ", |w, row| {
+						w.push("(");
+						w.push_list(row, ", ", |w2, value| {
+							w2.push_value(value.clone(), |_i| self.placeholder(0));
+						});
+						w.push(")");
 					});
-					w.push(")");
-				});
+				}
 			}
 			InsertSource::Subquery(select) => {
 				writer.push_space();
 				let (select_sql, select_values) = self.build_select(select);
 				writer.push(&select_sql);
 				writer.append_values(&select_values);
-			}
-			_ => {
-				// Empty values - this is valid SQL in some contexts
 			}
 		}
 
@@ -884,7 +1101,13 @@ impl QueryBuilder for SqliteQueryBuilder {
 		}
 
 		// RETURNING clause (SQLite 3.35+)
-		if let Some(returning) = &stmt.returning {
+		if let Some(expressions) = &stmt.returning_exprs {
+			writer.push_keyword("RETURNING");
+			writer.push_space();
+			writer.push_list(expressions, ", ", |w, expression| {
+				self.write_simple_expr(w, expression);
+			});
+		} else if let Some(returning) = &stmt.returning {
 			writer.push_keyword("RETURNING");
 			writer.push_space();
 
@@ -939,7 +1162,13 @@ impl QueryBuilder for SqliteQueryBuilder {
 		}
 
 		// RETURNING clause (SQLite 3.35+)
-		if let Some(returning) = &stmt.returning {
+		if let Some(expressions) = &stmt.returning_exprs {
+			writer.push_keyword("RETURNING");
+			writer.push_space();
+			writer.push_list(expressions, ", ", |w, expression| {
+				self.write_simple_expr(w, expression);
+			});
+		} else if let Some(returning) = &stmt.returning {
 			writer.push_keyword("RETURNING");
 			writer.push_space();
 
@@ -982,7 +1211,13 @@ impl QueryBuilder for SqliteQueryBuilder {
 		}
 
 		// RETURNING clause (SQLite 3.35+)
-		if let Some(returning) = &stmt.returning {
+		if let Some(expressions) = &stmt.returning_exprs {
+			writer.push_keyword("RETURNING");
+			writer.push_space();
+			writer.push_list(expressions, ", ", |w, expression| {
+				self.write_simple_expr(w, expression);
+			});
+		} else if let Some(returning) = &stmt.returning {
 			writer.push_keyword("RETURNING");
 			writer.push_space();
 
@@ -1038,6 +1273,10 @@ impl QueryBuilder for SqliteQueryBuilder {
 			// Column type
 			if let Some(col_type) = &column.column_type {
 				writer.push(&self.column_type_to_sql(col_type));
+			}
+
+			if let Some(generated) = &column.generated {
+				self.write_generated_column(&mut writer, generated, true);
 			}
 
 			// PRIMARY KEY
@@ -1112,6 +1351,9 @@ impl QueryBuilder for SqliteQueryBuilder {
 					writer.push_space();
 					if let Some(col_type) = &column_def.column_type {
 						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if let Some(generated) = &column_def.generated {
+						self.write_generated_column(&mut writer, generated, false);
 					}
 					if column_def.not_null {
 						writer.push(" NOT NULL");
@@ -1306,8 +1548,10 @@ impl QueryBuilder for SqliteQueryBuilder {
 		if let Some(select) = &stmt.select {
 			let (select_sql, select_values) = self.build_select(select);
 			writer.push_space();
-			writer.push(&select_sql);
-			writer.append_values(&select_values);
+			writer.push(&crate::query::traits::inline_params(
+				&select_sql,
+				&select_values,
+			));
 		}
 
 		writer.finish()
@@ -1841,8 +2085,10 @@ impl SqliteQueryBuilder {
 			Blob => "BLOB".to_string(),
 			Uuid => "TEXT".to_string(), // UUID as TEXT (36 chars)
 			Json => "TEXT".to_string(), // SQLite JSON1 extension stores JSON as TEXT
-			JsonBinary => "TEXT".to_string(),
+			Jsonb => "TEXT".to_string(),
 			Array(_) => "TEXT".to_string(), // SQLite doesn't have ARRAY, use TEXT (JSON)
+			#[cfg(feature = "pgvector")]
+			Vector(_) => "TEXT".to_string(),
 			Custom(name) => name.clone(),
 		}
 	}
@@ -1972,12 +2218,47 @@ impl crate::query::QueryBuilderTrait for SqliteQueryBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[cfg(feature = "pgvector")]
+	use crate::{
+		QueryBuildError, Value,
+		types::{ColumnDef, SchemaExpr, TableRef},
+	};
 	use crate::{
 		expr::{Expr, ExprTrait},
 		query::Query,
 		types::{Alias, IntoIden},
 	};
 	use rstest::rstest;
+
+	#[cfg(feature = "pgvector")]
+	fn vector_value() -> Value {
+		Value::Vector(Some(Box::new(vec![1.0, 2.0, 3.0])))
+	}
+
+	#[cfg(feature = "pgvector")]
+	fn vector_subquery_table() -> TableRef {
+		let mut vector_select = Query::select();
+		vector_select
+			.expr(crate::expr::SimpleExpr::Value(vector_value()))
+			.from("vector_source");
+		TableRef::SubQuery(
+			Box::new(vector_select),
+			Alias::new("vector_source").into_iden(),
+		)
+	}
+
+	#[cfg(feature = "pgvector")]
+	fn assert_sqlite_vector_value_rejection(
+		result: Result<(String, crate::value::Values), QueryBuildError>,
+	) {
+		assert_eq!(
+			result,
+			Err(QueryBuildError::UnsupportedBackendFeature {
+				feature: "pgvector values",
+				backend: "SQLite",
+			})
+		);
+	}
 
 	#[test]
 	fn test_escape_identifier() {
@@ -2100,6 +2381,43 @@ mod tests {
 		assert!(sql.contains("\"id\""));
 		assert!(sql.contains("\"created_at\""));
 		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_insert_with_returning_expressions() {
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["display_name"])
+			.values_panic(["Alice"])
+			.returning_exprs([Expr::col("display_name").expr_as("name")]);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"display_name\") VALUES (?) RETURNING \"display_name\" AS \"name\""
+		);
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn checked_insert_rejects_nested_locked_select_in_returning_expression() {
+		let mut locked = Query::select();
+		locked
+			.column("id")
+			.from("accounts")
+			.lock(crate::query::LockType::Update);
+		let insert = Query::insert()
+			.into_table("archive")
+			.column("account_id")
+			.values_panic([1_i32])
+			.returning_exprs([Expr::subquery(locked)])
+			.to_owned();
+
+		let error = SqliteQueryBuilder::new()
+			.build_insert_checked(&insert)
+			.expect_err("SQLite must reject a nested row lock in INSERT RETURNING");
+		assert!(error.to_string().contains("row locking"));
 	}
 
 	#[test]
@@ -4313,6 +4631,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -4324,6 +4643,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -4350,11 +4670,36 @@ mod tests {
 			auto_increment: true,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
 		let (sql, values) = builder.build_create_table(&stmt);
 		assert!(sql.contains("\"id\" INTEGER PRIMARY KEY AUTOINCREMENT"));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_virtual_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_virtual(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains(
+			r#""full_name" VARCHAR(201) GENERATED ALWAYS AS ("first_name" || ' ' || "last_name") VIRTUAL"#
+		));
 		assert_eq!(values.len(), 0);
 	}
 
@@ -4376,6 +4721,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -4387,6 +4733,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::ForeignKey {
@@ -4417,6 +4764,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4439,6 +4787,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "username".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4461,6 +4810,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4483,6 +4833,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "created_at".into_iden(),
 			order: Some(Order::Desc),
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4505,10 +4856,12 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "last_name".into_iden(),
 			order: Some(Order::Asc),
+			operator_class: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
 			order: Some(Order::Asc),
+			operator_class: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4530,6 +4883,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			operator_class: None,
 		});
 		stmt.r#where = Some(Expr::col("active").eq(true).into_simple_expr());
 
@@ -4559,11 +4913,37 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				check: None,
+				generated: None,
 				comment: None,
 			}));
 
 		let (sql, values) = builder.build_alter_table(&stmt);
 		assert_eq!(sql, r#"ALTER TABLE "users" ADD COLUMN "age" INTEGER"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_add_virtual_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = SqliteQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.add_column(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_virtual(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER TABLE "users" ADD COLUMN "full_name" VARCHAR(201) GENERATED ALWAYS AS ("first_name" || ' ' || "last_name") VIRTUAL"#
+		);
 		assert_eq!(values.len(), 0);
 	}
 
@@ -4638,6 +5018,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				check: None,
+				generated: None,
 				comment: None,
 			}));
 
@@ -4679,6 +5060,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -5421,5 +5803,67 @@ mod tests {
 		// Assert
 		assert!(sql.contains("\"orders\".\"status\""));
 		assert!(sql.contains("WHERE"));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_build_rejects_pgvector_columns() {
+		// SQLite has no pgvector column type, so checked building must not fall back to TEXT.
+		let mut statement = Query::create_table();
+		statement
+			.table("documents")
+			.col(ColumnDef::new("embedding").vector(1536));
+
+		let result = SqliteQueryBuilder::new().build_create_table_checked(&statement);
+
+		assert_eq!(
+			result,
+			Err(QueryBuildError::UnsupportedBackendFeature {
+				feature: "pgvector column types",
+				backend: "SQLite",
+			})
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_dml_builds_reject_vector_subquery_tables() {
+		let mut insert = Query::insert();
+		insert
+			.into_table(vector_subquery_table())
+			.column("embedding")
+			.values_panic([1_i32]);
+		let mut update = Query::update();
+		update
+			.table(vector_subquery_table())
+			.value("embedding", 1_i32);
+		let mut delete = Query::delete();
+		delete.from_table(vector_subquery_table());
+
+		let builder = SqliteQueryBuilder::new();
+		let results = [
+			builder.build_insert_checked(&insert),
+			builder.build_update_checked(&update),
+			builder.build_delete_checked(&delete),
+		];
+
+		for result in results {
+			assert_sqlite_vector_value_rejection(result);
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[test]
+	fn checked_alter_table_rejects_vector_generated_expressions() {
+		let mut statement = Query::alter_table();
+		statement.table("documents").add_column(
+			ColumnDef::new("embedding_copy")
+				.integer()
+				.generated_stored(SchemaExpr::val(vector_value())),
+		);
+
+		assert_sqlite_vector_value_rejection(
+			SqliteQueryBuilder::new().build_alter_table_checked(&statement),
+		);
 	}
 }

@@ -8,23 +8,43 @@
 
 use super::{SerializerError, ValidatorError};
 use async_trait::async_trait;
+use reinhardt_core::exception::Error as CoreError;
 use reinhardt_db::orm::{
-	Model,
-	transaction::{Transaction, TransactionScope, transaction},
+	AtomicTransaction, DatabaseBackend, DatabaseConnection, Model, OrmExecutor,
+	execution::convert_values,
+};
+use reinhardt_query::prelude::{
+	Alias, BinOper, DeleteStatement, Expr, ExprTrait, InsertStatement, IntoValue,
+	MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder, SqliteQueryBuilder, Values,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
+/// Builds INSERT SQL for the executor's backend.
+fn build_insert_sql(statement: &InsertStatement, backend: DatabaseBackend) -> (String, Values) {
+	match backend {
+		DatabaseBackend::Postgres => PostgresQueryBuilder.build_insert(statement),
+		DatabaseBackend::MySql => MySqlQueryBuilder.build_insert(statement),
+		DatabaseBackend::Sqlite => SqliteQueryBuilder.build_insert(statement),
+	}
+}
+
+/// Builds DELETE SQL for the executor's backend.
+fn build_delete_sql(statement: &DeleteStatement, backend: DatabaseBackend) -> (String, Values) {
+	match backend {
+		DatabaseBackend::Postgres => PostgresQueryBuilder.build_delete(statement),
+		DatabaseBackend::MySql => MySqlQueryBuilder.build_delete(statement),
+		DatabaseBackend::Sqlite => SqliteQueryBuilder.build_delete(statement),
+	}
+}
+
 /// Context for nested serializer save operations
 ///
-/// Tracks transaction state, parent relationships, and provides
-/// utilities for managing nested instance creation.
+/// Tracks parent relationships and nesting depth for nested instance creation.
 #[derive(Debug)]
 pub struct NestedSaveContext {
-	/// Current transaction (if any)
-	pub transaction: Option<Transaction>,
 	/// Parent instance data for foreign key resolution
 	pub parent_data: HashMap<String, Value>,
 	/// Depth of nesting (for preventing infinite recursion)
@@ -48,17 +68,10 @@ impl NestedSaveContext {
 	/// ```
 	pub fn new() -> Self {
 		Self {
-			transaction: None,
 			parent_data: HashMap::new(),
 			depth: 0,
 			max_depth: 10,
 		}
-	}
-
-	/// Create context with transaction
-	pub fn with_transaction(mut self, transaction: Transaction) -> Self {
-		self.transaction = Some(transaction);
-		self
 	}
 
 	/// Add parent data for foreign key resolution
@@ -87,7 +100,6 @@ impl NestedSaveContext {
 	/// Create a child context with incremented depth
 	pub fn child_context(&self) -> Result<Self, SerializerError> {
 		let child = Self {
-			transaction: None, // Transaction is managed at top level
 			parent_data: self.parent_data.clone(),
 			depth: self.depth + 1,
 			max_depth: self.max_depth,
@@ -105,35 +117,6 @@ impl NestedSaveContext {
 	/// Get parent field value
 	pub fn get_parent_value(&self, key: &str) -> Option<&Value> {
 		self.parent_data.get(key)
-	}
-
-	/// Execute nested operation within transaction scope
-	///
-	/// Automatically chooses between top-level transaction and nested savepoint
-	/// based on current depth.
-	///
-	/// # Examples
-	///
-	/// ```ignore
-	/// let context = NestedSaveContext::new();
-	/// // Verify transaction scope handling
-	/// let result = context.with_scope(|_tx| async move {
-	///     // Perform operations
-	///     Ok(value)
-	/// }).await?;
-	/// ```
-	pub async fn with_scope<F, Fut, T>(&self, f: F) -> Result<T, SerializerError>
-	where
-		F: FnOnce(&mut TransactionScope) -> Fut,
-		Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
-	{
-		if self.depth == 0 {
-			// Top-level transaction
-			TransactionHelper::with_transaction(f).await
-		} else {
-			// Nested transaction (savepoint)
-			TransactionHelper::savepoint(self.depth, f).await
-		}
 	}
 }
 
@@ -288,34 +271,48 @@ where
 		target_ids: Vec<R::PrimaryKey>,
 	) -> Result<(), SerializerError>
 	where
-		T::PrimaryKey: std::fmt::Display,
-		R::PrimaryKey: std::fmt::Display,
+		T::PrimaryKey: IntoValue,
+		R::PrimaryKey: IntoValue,
 	{
-		use reinhardt_db::orm::manager::get_connection;
-
 		if target_ids.is_empty() {
 			return Ok(());
 		}
 
-		// Build bulk INSERT query
-		let values: Vec<String> = target_ids
-			.iter()
-			.map(|target_id| format!("({}, {})", source_id, target_id))
-			.collect();
+		use reinhardt_db::orm::manager::get_connection;
 
-		let query = format!(
-			"INSERT INTO {} ({}, {}) VALUES {}",
-			self.junction_table,
-			self.source_fk,
-			self.target_fk,
-			values.join(", ")
-		);
-
-		let conn = get_connection().await.map_err(|e| SerializerError::Other {
+		let mut conn = get_connection().await.map_err(|e| SerializerError::Other {
 			message: format!("Failed to get connection: {}", e),
 		})?;
+		self.add_bulk_with_conn(&mut conn, source_id, target_ids)
+			.await
+	}
 
-		conn.execute(&query, vec![])
+	/// Add relationships in bulk through a caller-owned ORM executor.
+	pub async fn add_bulk_with_conn<E>(
+		&self,
+		conn: &mut E,
+		source_id: &T::PrimaryKey,
+		target_ids: Vec<R::PrimaryKey>,
+	) -> Result<(), SerializerError>
+	where
+		E: OrmExecutor,
+		T::PrimaryKey: IntoValue,
+		R::PrimaryKey: IntoValue,
+	{
+		if target_ids.is_empty() {
+			return Ok(());
+		}
+
+		let mut statement = Query::insert();
+		statement
+			.into_table(Alias::new(&self.junction_table))
+			.columns([Alias::new(&self.source_fk), Alias::new(&self.target_fk)]);
+		for target_id in target_ids {
+			statement.values_panic([Expr::val((*source_id).clone()), Expr::val(target_id)]);
+		}
+
+		let (query, values) = build_insert_sql(&statement, conn.backend());
+		conn.execute(&query, convert_values(values))
 			.await
 			.map_err(|e| SerializerError::Other {
 				message: format!("Failed to add M2M relationships: {}", e),
@@ -333,32 +330,51 @@ where
 		target_ids: Vec<R::PrimaryKey>,
 	) -> Result<(), SerializerError>
 	where
-		T::PrimaryKey: std::fmt::Display,
-		R::PrimaryKey: std::fmt::Display,
+		T::PrimaryKey: IntoValue,
+		R::PrimaryKey: IntoValue,
 	{
-		use reinhardt_db::orm::manager::get_connection;
-
 		if target_ids.is_empty() {
 			return Ok(());
 		}
 
-		// Build DELETE query with IN clause
-		let target_ids_str: Vec<String> = target_ids.iter().map(|id| id.to_string()).collect();
+		use reinhardt_db::orm::manager::get_connection;
 
-		let query = format!(
-			"DELETE FROM {} WHERE {} = {} AND {} IN ({})",
-			self.junction_table,
-			self.source_fk,
-			source_id,
-			self.target_fk,
-			target_ids_str.join(", ")
-		);
-
-		let conn = get_connection().await.map_err(|e| SerializerError::Other {
+		let mut conn = get_connection().await.map_err(|e| SerializerError::Other {
 			message: format!("Failed to get connection: {}", e),
 		})?;
+		self.remove_bulk_with_conn(&mut conn, source_id, target_ids)
+			.await
+	}
 
-		conn.execute(&query, vec![])
+	/// Remove relationships in bulk through a caller-owned ORM executor.
+	pub async fn remove_bulk_with_conn<E>(
+		&self,
+		conn: &mut E,
+		source_id: &T::PrimaryKey,
+		target_ids: Vec<R::PrimaryKey>,
+	) -> Result<(), SerializerError>
+	where
+		E: OrmExecutor,
+		T::PrimaryKey: IntoValue,
+		R::PrimaryKey: IntoValue,
+	{
+		if target_ids.is_empty() {
+			return Ok(());
+		}
+
+		let mut statement = Query::delete();
+		statement
+			.from_table(Alias::new(&self.junction_table))
+			.and_where(
+				Expr::col(Alias::new(&self.source_fk))
+					.binary(BinOper::Equal, Expr::val((*source_id).clone())),
+			)
+			.and_where(
+				Expr::col(Alias::new(&self.target_fk)).is_in(target_ids.into_iter().map(Expr::val)),
+			);
+
+		let (query, values) = build_delete_sql(&statement, conn.backend());
+		conn.execute(&query, convert_values(values))
 			.await
 			.map_err(|e| SerializerError::Other {
 				message: format!("Failed to remove M2M relationships: {}", e),
@@ -369,13 +385,19 @@ where
 
 	/// Set relationships (replace all existing)
 	///
-	/// Removes all existing relationships and creates new ones in a single operation.
+	/// Removes all existing relationships and creates new ones. Use
+	/// [`Self::set_with_conn`] with a caller-owned [`AtomicTransaction`] when
+	/// the clear and add operations must be atomic. This convenience method does
+	/// not start a transaction across its statements.
 	///
 	/// # Examples
 	///
 	/// ```ignore
-	/// // Verify replacing user's groups atomically
-	/// manager.set(&user_id, vec![group1_id, group2_id]).await?;
+	/// connection.atomic(async |transaction| {
+	///     manager
+	///         .set_with_conn(transaction, &user_id, vec![group1_id, group2_id])
+	///         .await
+	/// }).await?;
 	/// ```
 	pub async fn set(
 		&self,
@@ -383,13 +405,31 @@ where
 		target_ids: Vec<R::PrimaryKey>,
 	) -> Result<(), SerializerError>
 	where
-		T::PrimaryKey: std::fmt::Display,
-		R::PrimaryKey: std::fmt::Display,
+		T::PrimaryKey: IntoValue,
+		R::PrimaryKey: IntoValue,
 	{
-		// Clear existing relationships, then add new ones
-		self.clear(source_id).await?;
-		self.add_bulk(source_id, target_ids).await?;
-		Ok(())
+		use reinhardt_db::orm::manager::get_connection;
+
+		let mut conn = get_connection().await.map_err(|e| SerializerError::Other {
+			message: format!("Failed to get connection: {}", e),
+		})?;
+		self.set_with_conn(&mut conn, source_id, target_ids).await
+	}
+
+	/// Replace relationships through a caller-owned ORM executor.
+	pub async fn set_with_conn<E>(
+		&self,
+		conn: &mut E,
+		source_id: &T::PrimaryKey,
+		target_ids: Vec<R::PrimaryKey>,
+	) -> Result<(), SerializerError>
+	where
+		E: OrmExecutor,
+		T::PrimaryKey: IntoValue,
+		R::PrimaryKey: IntoValue,
+	{
+		self.clear_with_conn(conn, source_id).await?;
+		self.add_bulk_with_conn(conn, source_id, target_ids).await
 	}
 
 	/// Clear all relationships for source instance
@@ -404,20 +444,36 @@ where
 	/// ```
 	pub async fn clear(&self, source_id: &T::PrimaryKey) -> Result<(), SerializerError>
 	where
-		T::PrimaryKey: std::fmt::Display,
+		T::PrimaryKey: IntoValue,
 	{
 		use reinhardt_db::orm::manager::get_connection;
 
-		let query = format!(
-			"DELETE FROM {} WHERE {} = {}",
-			self.junction_table, self.source_fk, source_id
-		);
-
-		let conn = get_connection().await.map_err(|e| SerializerError::Other {
+		let mut conn = get_connection().await.map_err(|e| SerializerError::Other {
 			message: format!("Failed to get connection: {}", e),
 		})?;
+		self.clear_with_conn(&mut conn, source_id).await
+	}
 
-		conn.execute(&query, vec![])
+	/// Clear relationships through a caller-owned ORM executor.
+	pub async fn clear_with_conn<E>(
+		&self,
+		conn: &mut E,
+		source_id: &T::PrimaryKey,
+	) -> Result<(), SerializerError>
+	where
+		E: OrmExecutor,
+		T::PrimaryKey: IntoValue,
+	{
+		let mut statement = Query::delete();
+		statement
+			.from_table(Alias::new(&self.junction_table))
+			.and_where(
+				Expr::col(Alias::new(&self.source_fk))
+					.binary(BinOper::Equal, Expr::val((*source_id).clone())),
+			);
+
+		let (query, values) = build_delete_sql(&statement, conn.backend());
+		conn.execute(&query, convert_values(values))
 			.await
 			.map_err(|e| SerializerError::Other {
 				message: format!("Failed to clear M2M relationships: {}", e),
@@ -427,136 +483,409 @@ where
 	}
 }
 
-/// Transaction helper for nested operations
-///
-/// Provides utilities for managing transactions during nested
-/// instance creation.
+#[derive(Debug)]
+enum SerializerAtomicError {
+	Callback(SerializerError),
+	Core(CoreError),
+}
+
+impl std::fmt::Display for SerializerAtomicError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Callback(error) => error.fmt(f),
+			Self::Core(error) => error.fmt(f),
+		}
+	}
+}
+
+impl std::error::Error for SerializerAtomicError {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			Self::Callback(error) => Some(error),
+			Self::Core(error) => Some(error),
+		}
+	}
+}
+
+impl From<CoreError> for SerializerAtomicError {
+	fn from(error: CoreError) -> Self {
+		Self::Core(error)
+	}
+}
+
+impl SerializerAtomicError {
+	fn into_serializer_error(self) -> SerializerError {
+		match self {
+			Self::Callback(error) => error,
+			Self::Core(error) => SerializerError::from(error),
+		}
+	}
+}
+
+/// Transaction helper for nested serializer operations.
 pub struct TransactionHelper;
 
 impl TransactionHelper {
-	/// Execute operations within a transaction
+	/// Execute a callback inside one outer atomic transaction.
 	///
-	/// Creates a transaction, executes the provided function,
-	/// and commits or rolls back based on the result.
-	///
-	/// # Examples
-	///
-	/// Execute function within a database transaction using RAII pattern
-	///
-	/// This method uses `TransactionScope` which automatically handles:
-	/// - BEGIN on creation
-	/// - COMMIT on explicit commit
-	/// - ROLLBACK on drop (if not committed)
-	///
-	/// # Examples
-	///
-	/// ```ignore
-	/// use reinhardt_rest::serializers::nested_orm_integration::TransactionHelper;
-	///
-	/// // Verify transaction scope with automatic commit/rollback
-	/// let result = TransactionHelper::with_transaction(|_tx| async move {
-	///     // Perform database operations within transaction
-	///     Ok(created_instance)
-	/// }).await?;
-	/// ```
-	pub async fn with_transaction<F, Fut, T>(f: F) -> Result<T, SerializerError>
+	/// The callback receives the only transaction executor it may use for ORM
+	/// work. A successful callback commits; a callback error rolls back.
+	pub async fn with_transaction<F, T>(
+		connection: &DatabaseConnection,
+		f: F,
+	) -> Result<T, SerializerError>
 	where
-		F: FnOnce(&mut TransactionScope) -> Fut,
-		Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
+		F: for<'transaction> std::ops::AsyncFnOnce(
+				&'transaction mut AtomicTransaction,
+			) -> Result<T, SerializerError>,
 	{
-		use reinhardt_db::orm::manager::get_connection;
-
-		// Get database connection
-		let conn = get_connection().await.map_err(|e| SerializerError::Other {
-			message: format!("Failed to get connection: {}", e),
-		})?;
-
-		// Wrap the closure to convert Box<dyn Error> to anyhow::Error
-		let wrapped_f = |tx: &mut TransactionScope| {
-			let fut = f(tx);
-			async move {
-				match fut.await {
-					Ok(value) => Ok(value),
-					Err(e) => Err(anyhow::anyhow!("{}", e)),
-				}
-			}
-		};
-
-		// Use the transaction helper function for automatic commit/rollback
-		transaction(&conn, wrapped_f)
-			.await
-			.map_err(|e| SerializerError::Other {
-				message: format!("Transaction failed: {}", e),
+		connection
+			.atomic(async |transaction| {
+				f(transaction)
+					.await
+					.map_err(SerializerAtomicError::Callback)
 			})
+			.await
+			.map_err(SerializerAtomicError::into_serializer_error)
 	}
 
-	/// Create a savepoint for nested transaction using RAII pattern
+	/// Execute a callback behind a savepoint on the supplied atomic transaction.
 	///
-	/// This method uses `TransactionScope::begin_nested()` which automatically handles:
-	/// - SAVEPOINT creation on begin
-	/// - RELEASE SAVEPOINT on explicit commit
-	/// - ROLLBACK TO SAVEPOINT on drop (if not committed)
-	///
-	/// # Examples
-	///
-	/// ```ignore
-	/// use reinhardt_rest::serializers::nested_orm_integration::TransactionHelper;
-	///
-	/// // Verify nested savepoint creation and rollback handling
-	/// let result = TransactionHelper::savepoint(2, |_tx| async move {
-	///     // Perform nested operations
-	///     Ok(result)
-	/// }).await?;
-	/// ```
-	pub async fn savepoint<F, Fut, T>(depth: usize, f: F) -> Result<T, SerializerError>
+	/// This never acquires another connection. The supplied transaction owns the
+	/// executor, so nested serializer work remains in the caller's transaction.
+	pub async fn savepoint<F, T>(
+		transaction: &mut AtomicTransaction,
+		f: F,
+	) -> Result<T, SerializerError>
 	where
-		F: FnOnce(&mut TransactionScope) -> Fut,
-		Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
+		F: for<'transaction> std::ops::AsyncFnOnce(
+				&'transaction mut AtomicTransaction,
+			) -> Result<T, SerializerError>,
 	{
-		use reinhardt_db::orm::manager::get_connection;
-
-		// Get database connection
-		let conn = get_connection().await.map_err(|e| SerializerError::Other {
-			message: format!("Failed to get connection: {}", e),
-		})?;
-
-		// Create a new transaction scope
-		let mut tx = TransactionScope::begin(&conn)
+		transaction
+			.atomic(async |nested_transaction| {
+				f(nested_transaction)
+					.await
+					.map_err(SerializerAtomicError::Callback)
+			})
 			.await
-			.map_err(|e| SerializerError::Other {
-				message: format!("Failed to begin transaction: {}", e),
-			})?;
+			.map_err(SerializerAtomicError::into_serializer_error)
+	}
+}
 
-		// Create savepoint with unique name based on depth
-		let savepoint_name = format!("nested_save_sp_{}", depth);
-		tx.savepoint(&savepoint_name)
-			.await
-			.map_err(|e| SerializerError::Other {
-				message: format!("Failed to create savepoint: {}", e),
-			})?;
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
+	use reinhardt_db::backends::DatabaseBackend as BackendTrait;
+	use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	use reinhardt_db::backends::Result as BackendResult;
+	use reinhardt_db::backends::types::{
+		DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor,
+	};
+	use reinhardt_db::orm::connection::{DatabaseConnection, DatabaseConnectionLease};
+	use rstest::rstest;
+	use std::sync::{Arc, Mutex};
 
-		// Execute the closure
-		match f(&mut tx).await {
-			Ok(result) => {
-				// Success - release savepoint and commit
-				tx.release_savepoint(&savepoint_name).await.map_err(|e| {
-					SerializerError::Other {
-						message: format!("Failed to release savepoint: {}", e),
-					}
-				})?;
-				tx.commit().await.map_err(|e| SerializerError::Other {
-					message: format!("Failed to commit transaction: {}", e),
-				})?;
-				Ok(result)
-			}
-			Err(e) => {
-				// Error - rollback to savepoint and then rollback transaction
-				let _ = tx.rollback_to_savepoint(&savepoint_name).await;
-				let _ = tx.rollback().await;
-				Err(SerializerError::Other {
-					message: format!("Savepoint operation failed: {}", e),
-				})
+	#[derive(Clone, Copy, Debug, Default)]
+	struct FailurePlan {
+		rollback_to_savepoint: bool,
+		rollback: bool,
+	}
+
+	type TransactionCalls = Arc<Mutex<Vec<String>>>;
+
+	struct RecordingTransactionExecutor {
+		failure_plan: FailurePlan,
+		calls: TransactionCalls,
+	}
+
+	#[async_trait]
+	impl TransactionExecutor for RecordingTransactionExecutor {
+		fn backend(&self) -> DatabaseType {
+			DatabaseType::Postgres
+		}
+
+		async fn execute(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> BackendResult<QueryResult> {
+			Ok(QueryResult {
+				rows_affected: 0,
+				last_insert_id: None,
+			})
+		}
+
+		async fn fetch_one(&mut self, _sql: &str, _params: Vec<QueryValue>) -> BackendResult<Row> {
+			Ok(Row::new())
+		}
+
+		async fn fetch_all(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> BackendResult<Vec<Row>> {
+			Ok(Vec::new())
+		}
+
+		async fn fetch_optional(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> BackendResult<Option<Row>> {
+			Ok(None)
+		}
+
+		async fn commit(self: Box<Self>) -> BackendResult<()> {
+			self.calls.lock().unwrap().push("commit".to_string());
+			Ok(())
+		}
+
+		async fn rollback(self: Box<Self>) -> BackendResult<()> {
+			self.calls.lock().unwrap().push("rollback".to_string());
+			if self.failure_plan.rollback {
+				Err(transaction_failure("transaction rollback failed"))
+			} else {
+				Ok(())
 			}
 		}
+
+		async fn savepoint(&mut self, name: &str) -> BackendResult<()> {
+			self.calls.lock().unwrap().push(format!("savepoint:{name}"));
+			Ok(())
+		}
+
+		async fn release_savepoint(&mut self, name: &str) -> BackendResult<()> {
+			self.calls
+				.lock()
+				.unwrap()
+				.push(format!("release_savepoint:{name}"));
+			Ok(())
+		}
+
+		async fn rollback_to_savepoint(&mut self, name: &str) -> BackendResult<()> {
+			self.calls
+				.lock()
+				.unwrap()
+				.push(format!("rollback_to_savepoint:{name}"));
+			if self.failure_plan.rollback_to_savepoint {
+				Err(transaction_failure("savepoint rollback failed"))
+			} else {
+				Ok(())
+			}
+		}
+	}
+
+	struct RecordingBackend {
+		failure_plan: FailurePlan,
+		calls: TransactionCalls,
+	}
+
+	#[async_trait]
+	impl BackendTrait for RecordingBackend {
+		fn database_type(&self) -> DatabaseType {
+			DatabaseType::Postgres
+		}
+
+		fn placeholder(&self, index: usize) -> String {
+			format!("${index}")
+		}
+
+		fn supports_returning(&self) -> bool {
+			true
+		}
+
+		fn supports_on_conflict(&self) -> bool {
+			true
+		}
+
+		async fn execute(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> BackendResult<QueryResult> {
+			Ok(QueryResult {
+				rows_affected: 0,
+				last_insert_id: None,
+			})
+		}
+
+		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> BackendResult<Row> {
+			Ok(Row::new())
+		}
+
+		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> BackendResult<Vec<Row>> {
+			Ok(Vec::new())
+		}
+
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> BackendResult<Option<Row>> {
+			Ok(None)
+		}
+
+		async fn begin(&self) -> BackendResult<Box<dyn TransactionExecutor>> {
+			self.calls.lock().unwrap().push("begin".to_string());
+			Ok(Box::new(RecordingTransactionExecutor {
+				failure_plan: self.failure_plan,
+				calls: Arc::clone(&self.calls),
+			}))
+		}
+
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+	}
+
+	fn transaction_failure(message: &str) -> reinhardt_core::exception::Error {
+		DatabaseError::new(DatabaseErrorKind::Transaction, message).into()
+	}
+
+	fn recording_connection(
+		failure_plan: FailurePlan,
+	) -> (
+		DatabaseConnection,
+		DatabaseConnectionLease,
+		TransactionCalls,
+	) {
+		let calls = Arc::new(Mutex::new(Vec::new()));
+		let backend = Arc::new(RecordingBackend {
+			failure_plan,
+			calls: Arc::clone(&calls),
+		});
+		let backend_connection = BackendsConnection::new(backend);
+		let lease = DatabaseConnectionLease::register(backend_connection)
+			.expect("Failed to register recording database connection");
+		(lease.handle(), lease, calls)
+	}
+
+	fn operation_error() -> SerializerError {
+		SerializerError::Validation(ValidatorError::Custom {
+			message: "nested operation failed".to_string(),
+		})
+	}
+
+	fn expected_nested_cleanup_calls() -> Vec<String> {
+		vec![
+			"begin".to_string(),
+			"savepoint:reinhardt_atomic_0".to_string(),
+			"operation".to_string(),
+			"rollback_to_savepoint:reinhardt_atomic_0".to_string(),
+			"release_savepoint:reinhardt_atomic_0".to_string(),
+			"commit".to_string(),
+		]
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn nested_savepoint_uses_the_supplied_atomic_transaction() {
+		let (connection, _connection_lease, calls) = recording_connection(FailurePlan::default());
+		let operation_calls = Arc::clone(&calls);
+
+		let result = TransactionHelper::with_transaction(&connection, async |transaction| {
+			let nested_result = TransactionHelper::savepoint(transaction, async move |_nested| {
+				operation_calls
+					.lock()
+					.unwrap()
+					.push("operation".to_string());
+				Err::<(), SerializerError>(operation_error())
+			})
+			.await;
+
+			assert_eq!(nested_result, Err(operation_error()));
+			Ok::<(), SerializerError>(())
+		})
+		.await;
+
+		assert_eq!(result, Ok(()));
+		assert_eq!(*calls.lock().unwrap(), expected_nested_cleanup_calls());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn nested_savepoint_cleanup_error_maps_back_to_serializer_error() {
+		let (connection, _connection_lease, calls) = recording_connection(FailurePlan {
+			rollback_to_savepoint: true,
+			rollback: false,
+		});
+		let operation_calls = Arc::clone(&calls);
+
+		let result = TransactionHelper::with_transaction(&connection, async |transaction| {
+			let nested_result = TransactionHelper::savepoint(transaction, async move |_nested| {
+				operation_calls
+					.lock()
+					.unwrap()
+					.push("operation".to_string());
+				Err::<(), SerializerError>(operation_error())
+			})
+			.await;
+
+			assert_eq!(
+				nested_result,
+				Err(SerializerError::Database(DatabaseError::new(
+					DatabaseErrorKind::Transaction,
+					"savepoint rollback failed",
+				)))
+			);
+			Ok::<(), SerializerError>(())
+		})
+		.await;
+
+		assert_eq!(
+			result,
+			Err(SerializerError::Database(DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Nested atomic operation was cancelled",
+			)))
+		);
+		assert_eq!(
+			*calls.lock().unwrap(),
+			[
+				"begin",
+				"savepoint:reinhardt_atomic_0",
+				"operation",
+				"rollback_to_savepoint:reinhardt_atomic_0",
+				"release_savepoint:reinhardt_atomic_0",
+				"rollback",
+			]
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn outer_transaction_rollback_error_maps_back_to_serializer_error() {
+		let (connection, _connection_lease, calls) = recording_connection(FailurePlan {
+			rollback_to_savepoint: false,
+			rollback: true,
+		});
+		let operation_calls = Arc::clone(&calls);
+
+		let result = TransactionHelper::with_transaction(&connection, async move |_transaction| {
+			operation_calls
+				.lock()
+				.unwrap()
+				.push("operation".to_string());
+			Err::<(), SerializerError>(operation_error())
+		})
+		.await;
+
+		assert_eq!(
+			result,
+			Err(SerializerError::Database(DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"transaction rollback failed",
+			)))
+		);
+		assert_eq!(
+			*calls.lock().unwrap(),
+			vec![
+				"begin".to_string(),
+				"operation".to_string(),
+				"rollback".to_string(),
+			]
+		);
 	}
 }

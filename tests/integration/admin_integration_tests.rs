@@ -25,7 +25,7 @@ use reinhardt_admin::server::{
 };
 use reinhardt_admin::types::errors::AdminError;
 use reinhardt_test::fixtures::admin_panel::{
-	admin_database, admin_site, model_admin_config, server_fn_test_context,
+	AdminDatabaseFixture, admin_database, admin_site, model_admin_config, server_fn_test_context,
 };
 use reinhardt_test::fixtures::shared_postgres::get_test_pool;
 use rstest::*;
@@ -150,7 +150,7 @@ async fn test_model_unregistration(
 #[rstest]
 #[tokio::test]
 async fn test_admin_database_crud_operations(
-	#[future] admin_database: Arc<AdminDatabase>,
+	#[future] admin_database: AdminDatabaseFixture,
 	#[future] admin_site: Arc<AdminSite>,
 	#[future] model_admin_config: ModelAdminConfig,
 ) {
@@ -241,7 +241,7 @@ async fn test_admin_database_crud_operations(
 #[case(2, 3)] // Third page
 #[tokio::test]
 async fn test_list_pagination(
-	#[future] admin_database: Arc<AdminDatabase>,
+	#[future] admin_database: AdminDatabaseFixture,
 	#[case] page: u64,
 	#[case] page_size: u64,
 ) {
@@ -293,7 +293,7 @@ async fn test_list_pagination(
 #[case(0, 0)] // Zero limit (edge case)
 #[tokio::test]
 async fn test_pagination_boundary_values(
-	#[future] admin_database: Arc<AdminDatabase>,
+	#[future] admin_database: AdminDatabaseFixture,
 	#[case] offset: u64,
 	#[case] limit: u64,
 ) {
@@ -322,7 +322,7 @@ async fn test_pagination_boundary_values(
 #[rstest]
 #[tokio::test]
 async fn test_server_function_get_dashboard(
-	#[future] server_fn_test_context: (Arc<AdminSite>, Arc<AdminDatabase>),
+	#[future] server_fn_test_context: (Arc<AdminSite>, AdminDatabaseFixture),
 ) {
 	let (site, _db) = server_fn_test_context.await;
 
@@ -347,7 +347,7 @@ async fn test_server_function_get_dashboard(
 #[rstest]
 #[tokio::test]
 async fn test_crud_server_functions(
-	#[future] server_fn_test_context: (Arc<AdminSite>, Arc<AdminDatabase>),
+	#[future] server_fn_test_context: (Arc<AdminSite>, AdminDatabaseFixture),
 ) {
 	let (site, db) = server_fn_test_context.await;
 	let model_name = "TestModel".to_string();
@@ -441,7 +441,7 @@ async fn test_crud_server_functions(
 #[case::with_search(ListQueryParams { search: Some("test".to_string()), ..Default::default() })]
 #[tokio::test]
 async fn test_list_server_function_variations(
-	#[future] server_fn_test_context: (Arc<AdminSite>, Arc<AdminDatabase>),
+	#[future] server_fn_test_context: (Arc<AdminSite>, AdminDatabaseFixture),
 	#[case] params: ListQueryParams,
 ) {
 	let (site, db) = server_fn_test_context.await;
@@ -472,7 +472,7 @@ async fn test_list_server_function_variations(
 #[rstest]
 #[tokio::test]
 async fn test_server_function_model_not_registered_error(
-	#[future] server_fn_test_context: (Arc<AdminSite>, Arc<AdminDatabase>),
+	#[future] server_fn_test_context: (Arc<AdminSite>, AdminDatabaseFixture),
 ) {
 	let (site, db) = server_fn_test_context.await;
 	let non_existent_model = "NonExistentModel".to_string();
@@ -500,7 +500,7 @@ async fn test_server_function_model_not_registered_error(
 #[rstest]
 #[tokio::test]
 async fn test_export_import_server_functions_structure(
-	#[future] server_fn_test_context: (Arc<AdminSite>, Arc<AdminDatabase>),
+	#[future] server_fn_test_context: (Arc<AdminSite>, AdminDatabaseFixture),
 ) {
 	let (site, db) = server_fn_test_context.await;
 	let model_name = "TestModel".to_string();
@@ -602,7 +602,7 @@ async fn test_permission_decision_table(
 #[case("test\nnewline")] // Search with special characters
 #[tokio::test]
 async fn test_search_equivalence_partitioning(
-	#[future] admin_database: Arc<AdminDatabase>,
+	#[future] admin_database: AdminDatabaseFixture,
 	#[case] search_term: &str,
 ) {
 	use reinhardt_db::Model;
@@ -644,7 +644,7 @@ async fn test_search_equivalence_partitioning(
 /// **Test Classification**: Boundary value analysis
 #[rstest]
 #[tokio::test]
-async fn test_filter_edge_cases(#[future] admin_database: Arc<AdminDatabase>) {
+async fn test_filter_edge_cases(#[future] admin_database: AdminDatabaseFixture) {
 	use reinhardt_admin::core::{Filter, FilterOperator, FilterValue};
 	use reinhardt_db::Model;
 
@@ -717,7 +717,7 @@ async fn test_filter_edge_cases(#[future] admin_database: Arc<AdminDatabase>) {
 #[rstest]
 #[tokio::test]
 async fn test_complete_admin_panel_workflow(
-	#[future] server_fn_test_context: (Arc<AdminSite>, Arc<AdminDatabase>),
+	#[future] server_fn_test_context: (Arc<AdminSite>, AdminDatabaseFixture),
 ) {
 	let (site, db) = server_fn_test_context.await;
 	let model_name = "TestModel".to_string();

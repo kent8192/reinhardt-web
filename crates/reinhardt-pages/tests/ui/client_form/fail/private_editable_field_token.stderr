@@ -1,0 +1,5 @@
+error: ClientForm exported DTOs cannot expose private editable fields; mark the field public or skip it explicitly
+ --> tests/ui/client_form/fail/private_editable_field_token.rs:6:2
+  |
+6 |     secret: String,
+  |     ^^^^^^

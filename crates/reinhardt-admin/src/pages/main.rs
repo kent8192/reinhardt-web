@@ -1,7 +1,6 @@
 //! WASM entry point for Reinhardt Admin Panel
 
 use crate::pages::router;
-use reinhardt_pages::component::PageExt;
 use reinhardt_pages::{Element, cleanup_reactive_nodes};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -9,10 +8,9 @@ use web_sys::{Event, HtmlElement, window};
 
 fn render_current_route(app_element: &web_sys::Element) -> Result<(), JsValue> {
 	cleanup_reactive_nodes();
-	let view = router::with_router(|r| r.render_current());
 	app_element.set_inner_html("");
 	let wrapper = Element::new(app_element.clone());
-	view.mount(&wrapper)
+	router::mount_current_route(&wrapper)
 		.map_err(|e| JsValue::from_str(&format!("Mount failed: {:?}", e)))
 }
 

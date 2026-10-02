@@ -347,7 +347,7 @@ where
 	/// Fetches all matching results (non-WASM stub).
 	#[cfg(native)]
 	pub async fn all(&self) -> Result<Vec<T>, ServerFnError> {
-		Err(ServerFnError::Network(
+		Err(ServerFnError::network(
 			"API calls not supported outside WASM".to_string(),
 		))
 	}
@@ -367,7 +367,7 @@ where
 	/// Fetches the first matching result (non-WASM stub).
 	#[cfg(native)]
 	pub async fn first(&self) -> Result<Option<T>, ServerFnError> {
-		Err(ServerFnError::Network(
+		Err(ServerFnError::network(
 			"API calls not supported outside WASM".to_string(),
 		))
 	}
@@ -382,7 +382,7 @@ where
 	/// Fetches a single result by primary key (non-WASM stub).
 	#[cfg(native)]
 	pub async fn get(&self, _pk: impl std::fmt::Display) -> Result<T, ServerFnError> {
-		Err(ServerFnError::Network(
+		Err(ServerFnError::network(
 			"API calls not supported outside WASM".to_string(),
 		))
 	}
@@ -406,7 +406,7 @@ where
 	/// Returns the count of matching results (non-WASM stub).
 	#[cfg(native)]
 	pub async fn count(&self) -> Result<usize, ServerFnError> {
-		Err(ServerFnError::Network(
+		Err(ServerFnError::network(
 			"API calls not supported outside WASM".to_string(),
 		))
 	}
@@ -424,14 +424,14 @@ where
 	#[cfg(wasm)]
 	pub async fn create(&self, data: &T) -> Result<T, ServerFnError> {
 		let body =
-			serde_json::to_string(data).map_err(|e| ServerFnError::Serialization(e.to_string()))?;
+			serde_json::to_string(data).map_err(|e| ServerFnError::serialization(e.to_string()))?;
 		self.fetch_json("POST", &self.endpoint, Some(&body)).await
 	}
 
 	/// Creates a new record (non-WASM stub).
 	#[cfg(native)]
 	pub async fn create(&self, _data: &T) -> Result<T, ServerFnError> {
-		Err(ServerFnError::Network(
+		Err(ServerFnError::network(
 			"API calls not supported outside WASM".to_string(),
 		))
 	}
@@ -441,14 +441,14 @@ where
 	pub async fn update(&self, pk: impl std::fmt::Display, data: &T) -> Result<T, ServerFnError> {
 		let url = format!("{}{}/", self.endpoint.trim_end_matches('/'), pk);
 		let body =
-			serde_json::to_string(data).map_err(|e| ServerFnError::Serialization(e.to_string()))?;
+			serde_json::to_string(data).map_err(|e| ServerFnError::serialization(e.to_string()))?;
 		self.fetch_json("PUT", &url, Some(&body)).await
 	}
 
 	/// Updates an existing record (non-WASM stub).
 	#[cfg(native)]
 	pub async fn update(&self, _pk: impl std::fmt::Display, _data: &T) -> Result<T, ServerFnError> {
-		Err(ServerFnError::Network(
+		Err(ServerFnError::network(
 			"API calls not supported outside WASM".to_string(),
 		))
 	}
@@ -462,7 +462,7 @@ where
 	) -> Result<T, ServerFnError> {
 		let url = format!("{}{}/", self.endpoint.trim_end_matches('/'), pk);
 		let body =
-			serde_json::to_string(data).map_err(|e| ServerFnError::Serialization(e.to_string()))?;
+			serde_json::to_string(data).map_err(|e| ServerFnError::serialization(e.to_string()))?;
 		self.fetch_json("PATCH", &url, Some(&body)).await
 	}
 
@@ -473,7 +473,7 @@ where
 		_pk: impl std::fmt::Display,
 		_data: &serde_json::Value,
 	) -> Result<T, ServerFnError> {
-		Err(ServerFnError::Network(
+		Err(ServerFnError::network(
 			"API calls not supported outside WASM".to_string(),
 		))
 	}
@@ -489,7 +489,7 @@ where
 	/// Deletes a record by primary key (non-WASM stub).
 	#[cfg(native)]
 	pub async fn delete(&self, _pk: impl std::fmt::Display) -> Result<(), ServerFnError> {
-		Err(ServerFnError::Network(
+		Err(ServerFnError::network(
 			"API calls not supported outside WASM".to_string(),
 		))
 	}

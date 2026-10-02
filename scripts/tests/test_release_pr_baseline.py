@@ -50,6 +50,8 @@ if "--registry-manifest-path" in args:
     manifest = pathlib.Path(args[args.index("--registry-manifest-path") + 1])
     record["baseline"] = str(manifest.parent)
     record["version"] = manifest.read_text()
+    record["dependencies"] = json.loads(subprocess.check_output(
+        ["cargo", "read-manifest", "--manifest-path", str(manifest)], text=True))["dependencies"]
     record["source"] = (manifest.parent / "src/lib.rs").read_text()
     record["sha"] = subprocess.check_output(
         ["git", "-C", str(manifest.parent), "rev-parse", "HEAD"], text=True).strip()
@@ -162,6 +164,40 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         self.assertFalse(self.capture.exists())
         self.assert_no_baseline_left()
 
+    def test_manual_transitions_use_the_last_reachable_phase(self):
+        for previous, current, branch in (
+            ("0.3.16", "0.4.0-alpha.1", "develop/0.4.0"),
+            ("0.4.0-alpha.15", "0.4.0-rc.1", "develop/0.4.0"),
+            ("0.4.0-rc.5", "0.4.0", "main"),
+        ):
+            with self.subTest(previous=previous, current=current):
+                self.run_git("checkout", "-q", "--detach", self.stable_commit)
+                if previous != "0.3.16":
+                    self.write_version(previous)
+                    self.commit("fixture: previous phase")
+                    self.run_git("tag", "-f", f"reinhardt-web@v{previous}")
+                expected = self.run_git("rev-parse", "HEAD")
+                self.write_version(current)
+                self.commit("fixture: manual transition")
+                result = self.invoke(GITHUB_REF_NAME=branch)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                record = json.loads(self.capture.read_text())
+                self.assertEqual(record["sha"], expected)
+                self.assertIn(f'version = "{previous}"', record["version"])
+                self.assert_no_baseline_left()
+
+    def test_manual_transition_cannot_skip_missing_previous_facade_tag(self):
+        self.run_git("checkout", "-q", "develop/0.4.0")
+        self.write_version("0.4.0-alpha.16")
+        self.commit("fixture: incomplete release")
+        self.write_version("0.4.0-rc.1")
+        self.commit("fixture: freeze after incomplete release")
+        result = self.invoke(GITHUB_REF_NAME="develop/0.4.0")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Missing release tag 'reinhardt-web@v0.4.0-alpha.16'", result.stderr)
+        self.assertFalse(self.capture.exists())
+        self.assert_no_baseline_left()
+
     def test_aws_baseline_pin_preserves_source_and_checkout(self):
         manifest = self.repo / "Cargo.toml"
         manifest.write_text(manifest.read_text() +
@@ -201,6 +237,60 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         self.assertEqual(record["version"], manifest.read_text())
         self.assert_no_baseline_left()
 
+    def shell_baseline(self, extra="", version="0.22.0"):
+        manifest = self.repo / "Cargo.toml"
+        self.write_version("0.3.16")
+        manifest.write_text(manifest.read_text() +
+                            f'\n[dependencies]\nevcxr = {{ version = "{version}", optional = true }}\n' + extra)
+        self.commit("test: shell baseline fixture")
+        self.run_git("tag", "-f", "reinhardt-web@v0.3.16")
+        return manifest
+
+    def test_shell_baseline_constraints_preserve_source_and_checkout(self):
+        manifest = self.shell_baseline('aws-config = "1"\n')
+        original = manifest.read_text()
+        result = self.invoke("update")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads(self.capture.read_text())
+        dependencies = {dep["name"]: dep for dep in record["dependencies"]}
+        self.assertEqual(dependencies["unicode-ident"]["req"], "=1.0.24")
+        self.assertEqual(dependencies["salsa"]["req"], "=0.28.2")
+        self.assertFalse(dependencies["salsa"]["uses_default_features"])
+        self.assertEqual(dependencies["salsa-macro-rules"]["req"], "=0.28.2")
+        self.assertEqual(dependencies["aws-smithy-types"]["req"], "=1.6.3")
+        self.assertEqual(record["source"], "pub fn stable_api() { /* fixed */ }\n")
+        self.assertEqual(manifest.read_text(), original)
+        self.assert_no_baseline_left()
+
+    def test_shell_baseline_preparation_is_idempotent(self):
+        manifest = self.shell_baseline()
+        command = ["python3", str(SCRIPT.parent / "prepare-release-baseline.py"), str(self.repo)]
+        subprocess.run(command, check=True, capture_output=True)
+        prepared = manifest.read_text()
+        subprocess.run(command, check=True, capture_output=True)
+        self.assertEqual(manifest.read_text(), prepared)
+
+    def test_conflicting_shell_constraints_stop_and_clean_up(self):
+        for name, version in (("unicode-ident", "1.0.26"), ("salsa", "0.28.4"),
+                              ("salsa-macro-rules", "0.28.4")):
+            with self.subTest(dependency=name):
+                manifest = self.shell_baseline(f'{name} = "={version}"\n')
+                original = manifest.read_text()
+                result = self.invoke()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"Unexpected {name} compatibility constraint", result.stderr)
+                self.assertFalse(self.capture.exists())
+                self.assertEqual(manifest.read_text(), original)
+                self.assert_no_baseline_left()
+
+    def test_unaffected_evcxr_version_is_not_constrained(self):
+        manifest = self.shell_baseline(version="0.23.0")
+        result = self.invoke("update")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads(self.capture.read_text())
+        self.assertEqual(record["version"], manifest.read_text())
+        self.assert_no_baseline_left()
+
     def test_local_update_uses_same_baseline_without_opening_pr(self):
         result = self.invoke("update", "--no-changelog", "--package", "reinhardt-web")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -214,6 +304,7 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         (self.repo / "scripts").mkdir()
         shutil.copyfile(SCRIPT, self.repo / "scripts/run-release-pr.sh")
         shutil.copyfile(SCRIPT.parent / "prepare-release-baseline.py", self.repo / "scripts/prepare-release-baseline.py")
+        shutil.copyfile(SCRIPT.parent / "release_state.py", self.repo / "scripts/release_state.py")
         step = subprocess.check_output([
             "ruby", "-ryaml", "-e",
             'print YAML.load_file(ARGV[0])["jobs"]["release-plz-pr"]["steps"].find { |s| s["id"] == "release-plz-pr" }.fetch("run")',

@@ -30,6 +30,7 @@
 
 use super::fixtures::*;
 use reinhardt_pages::api::{ApiQuerySet, Filter, FilterOp};
+use reinhardt_pages::server_fn::ServerFnErrorKind;
 use rstest::*;
 
 // ============================================================================
@@ -99,10 +100,7 @@ async fn test_api_queryset_all_non_wasm_error() {
 
 	let result = queryset.all().await;
 	assert!(result.is_err());
-	assert!(matches!(
-		result.unwrap_err(),
-		reinhardt_pages::server_fn::ServerFnError::Network(_)
-	));
+	assert_eq!(result.unwrap_err().kind(), ServerFnErrorKind::Transport);
 }
 
 /// Tests that non-WASM environment returns proper error for create() method
@@ -114,10 +112,7 @@ async fn test_api_queryset_create_non_wasm_error(test_model: TestModel) {
 
 	let result = queryset.create(&test_model).await;
 	assert!(result.is_err());
-	assert!(matches!(
-		result.unwrap_err(),
-		reinhardt_pages::server_fn::ServerFnError::Network(_)
-	));
+	assert_eq!(result.unwrap_err().kind(), ServerFnErrorKind::Transport);
 }
 
 /// Tests that non-WASM environment returns proper error for get() method
@@ -129,10 +124,7 @@ async fn test_api_queryset_get_non_wasm_error() {
 
 	let result = queryset.get(1).await;
 	assert!(result.is_err());
-	assert!(matches!(
-		result.unwrap_err(),
-		reinhardt_pages::server_fn::ServerFnError::Network(_)
-	));
+	assert_eq!(result.unwrap_err().kind(), ServerFnErrorKind::Transport);
 }
 
 /// Tests that non-WASM environment returns proper error for delete() method
@@ -144,10 +136,7 @@ async fn test_api_queryset_delete_non_wasm_error() {
 
 	let result = queryset.delete(1).await;
 	assert!(result.is_err());
-	assert!(matches!(
-		result.unwrap_err(),
-		reinhardt_pages::server_fn::ServerFnError::Network(_)
-	));
+	assert_eq!(result.unwrap_err().kind(), ServerFnErrorKind::Transport);
 }
 
 // ============================================================================

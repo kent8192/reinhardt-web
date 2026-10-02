@@ -14,8 +14,8 @@ use reinhardt_db::backends::query_builder::{
 };
 use reinhardt_db::backends::types::{Savepoint, TransactionExecutor};
 use reinhardt_db::backends::{
-	DatabaseBackend, DatabaseError, DatabaseType, InsertBuilder, IsolationLevel, QueryCache,
-	QueryCacheConfig, QueryResult, QueryValue, Row, SelectBuilder, UpdateBuilder,
+	DatabaseBackend, DatabaseError, DatabaseErrorKind, DatabaseType, InsertBuilder, IsolationLevel,
+	QueryCache, QueryCacheConfig, QueryResult, QueryValue, Row, SelectBuilder, UpdateBuilder,
 };
 
 // ==================== Mock backend for testing ====================
@@ -29,6 +29,60 @@ struct MockBackend {
 impl MockBackend {
 	fn new(db_type: DatabaseType) -> Arc<Self> {
 		Arc::new(Self { db_type })
+	}
+}
+
+struct MockTransactionExecutor {
+	backend: DatabaseType,
+}
+
+#[async_trait]
+impl TransactionExecutor for MockTransactionExecutor {
+	fn backend(&self) -> DatabaseType {
+		self.backend
+	}
+
+	async fn execute(
+		&mut self,
+		_sql: &str,
+		_params: Vec<QueryValue>,
+	) -> reinhardt_db::backends::Result<QueryResult> {
+		Ok(QueryResult {
+			rows_affected: 0,
+			last_insert_id: None,
+		})
+	}
+
+	async fn fetch_one(
+		&mut self,
+		_sql: &str,
+		_params: Vec<QueryValue>,
+	) -> reinhardt_db::backends::Result<Row> {
+		Ok(Row::new())
+	}
+
+	async fn fetch_all(
+		&mut self,
+		_sql: &str,
+		_params: Vec<QueryValue>,
+	) -> reinhardt_db::backends::Result<Vec<Row>> {
+		Ok(Vec::new())
+	}
+
+	async fn fetch_optional(
+		&mut self,
+		_sql: &str,
+		_params: Vec<QueryValue>,
+	) -> reinhardt_db::backends::Result<Option<Row>> {
+		Ok(None)
+	}
+
+	async fn commit(self: Box<Self>) -> reinhardt_db::backends::Result<()> {
+		Ok(())
+	}
+
+	async fn rollback(self: Box<Self>) -> reinhardt_db::backends::Result<()> {
+		Ok(())
 	}
 }
 
@@ -58,7 +112,10 @@ impl DatabaseBackend for MockBackend {
 		_sql: &str,
 		_params: Vec<QueryValue>,
 	) -> reinhardt_db::backends::Result<QueryResult> {
-		Ok(QueryResult { rows_affected: 0 })
+		Ok(QueryResult {
+			rows_affected: 0,
+			last_insert_id: None,
+		})
 	}
 
 	async fn fetch_one(
@@ -86,9 +143,11 @@ impl DatabaseBackend for MockBackend {
 	}
 
 	async fn begin(&self) -> reinhardt_db::backends::Result<Box<dyn TransactionExecutor>> {
-		Err(DatabaseError::NotSupported(
-			"Mock backend does not support transactions".to_string(),
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			"Mock backend does not support transactions",
+		)
+		.into())
 	}
 
 	fn as_any(&self) -> &dyn std::any::Any {
@@ -546,7 +605,7 @@ fn test_query_value_from_i32() {
 	let val: QueryValue = 50i32.into();
 
 	// Assert
-	assert_eq!(val, QueryValue::Int(50));
+	assert_eq!(val, QueryValue::Int32(50));
 }
 
 #[rstest]
@@ -598,137 +657,36 @@ fn test_query_value_from_uuid() {
 // ==================== DatabaseError tests ====================
 
 #[rstest]
-fn test_database_error_unsupported_feature() {
+#[case(DatabaseErrorKind::Unsupported, "unsupported feature")]
+#[case(DatabaseErrorKind::Syntax, "unexpected token")]
+#[case(DatabaseErrorKind::Type, "cannot convert")]
+#[case(DatabaseErrorKind::Connection, "connection timed out")]
+#[case(DatabaseErrorKind::Query, "invalid column")]
+#[case(DatabaseErrorKind::Serialization, "invalid json")]
+#[case(DatabaseErrorKind::Configuration, "missing url")]
+#[case(DatabaseErrorKind::ColumnNotFound, "user_id")]
+#[case(DatabaseErrorKind::Transaction, "deadlock detected")]
+fn test_database_error_preserves_kind_and_message(
+	#[case] kind: DatabaseErrorKind,
+	#[case] message: &str,
+) {
 	// Arrange
 
 	// Act
-	let err = DatabaseError::UnsupportedFeature {
-		database: "MySQL".to_string(),
-		feature: "transactional DDL".to_string(),
-	};
+	let error = DatabaseError::new(kind, message);
 
 	// Assert
-	let msg = err.to_string();
-	assert!(msg.contains("transactional DDL"));
-	assert!(msg.contains("MySQL"));
-}
-
-#[rstest]
-fn test_database_error_not_supported() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::NotSupported("savepoints".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("savepoints"));
-}
-
-#[rstest]
-fn test_database_error_syntax_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::SyntaxError("unexpected token".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("unexpected token"));
-}
-
-#[rstest]
-fn test_database_error_type_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::TypeError("cannot convert".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("cannot convert"));
-}
-
-#[rstest]
-fn test_database_error_connection_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::ConnectionError("timeout".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("timeout"));
-}
-
-#[rstest]
-fn test_database_error_query_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::QueryError("invalid column".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("invalid column"));
-}
-
-#[rstest]
-fn test_database_error_serialization_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::SerializationError("invalid json".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("invalid json"));
-}
-
-#[rstest]
-fn test_database_error_config_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::ConfigError("missing url".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("missing url"));
-}
-
-#[rstest]
-fn test_database_error_column_not_found() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::ColumnNotFound("user_id".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("user_id"));
-}
-
-#[rstest]
-fn test_database_error_transaction_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::TransactionError("deadlock detected".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("deadlock detected"));
-}
-
-#[rstest]
-fn test_database_error_other() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::Other("unknown error".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("unknown error"));
+	assert_eq!(error.kind(), kind);
+	assert_eq!(error.message(), message);
+	assert_eq!(error.to_string(), message);
 }
 
 #[rstest]
 fn test_database_error_equality() {
 	// Arrange
-	let err1 = DatabaseError::QueryError("test".to_string());
-	let err2 = DatabaseError::QueryError("test".to_string());
-	let err3 = DatabaseError::QueryError("other".to_string());
+	let err1 = DatabaseError::new(DatabaseErrorKind::Query, "test");
+	let err2 = DatabaseError::new(DatabaseErrorKind::Query, "test");
+	let err3 = DatabaseError::new(DatabaseErrorKind::Query, "other");
 
 	// Act
 
@@ -1228,24 +1186,52 @@ fn test_query_result_rows_affected() {
 	// Arrange
 
 	// Act
-	let result = QueryResult { rows_affected: 5 };
+	let result = QueryResult {
+		rows_affected: 5,
+		last_insert_id: Some(42),
+	};
 
 	// Assert
 	assert_eq!(result.rows_affected, 5);
+	assert_eq!(result.last_insert_id, Some(42));
 }
 
 #[rstest]
 fn test_query_result_equality() {
 	// Arrange
-	let r1 = QueryResult { rows_affected: 3 };
-	let r2 = QueryResult { rows_affected: 3 };
-	let r3 = QueryResult { rows_affected: 7 };
+	let r1 = QueryResult {
+		rows_affected: 3,
+		last_insert_id: None,
+	};
+	let r2 = QueryResult {
+		rows_affected: 3,
+		last_insert_id: None,
+	};
+	let r3 = QueryResult {
+		rows_affected: 3,
+		last_insert_id: Some(7),
+	};
 
 	// Act
 
 	// Assert
 	assert_eq!(r1, r2);
 	assert_ne!(r1, r3);
+}
+
+#[rstest]
+#[case(DatabaseType::Postgres)]
+#[case(DatabaseType::Mysql)]
+#[case(DatabaseType::Sqlite)]
+fn test_transaction_executor_reports_its_backend(#[case] backend: DatabaseType) {
+	// Arrange
+	let executor = MockTransactionExecutor { backend };
+
+	// Act
+	let reported_backend = executor.backend();
+
+	// Assert
+	assert_eq!(reported_backend, backend);
 }
 
 // ==================== Row tests ====================

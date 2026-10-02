@@ -182,7 +182,7 @@ fn benchmark_page(benchmark_version: String) -> Page {
 					{ rows_first.get().first().map(|row| format!("First: {}", row.label)).unwrap_or_else(|| "First: ".to_string()) }
 				}
 				ul {
-					for row in rows_list.get().into_iter().take(25) @key(row.id.to_string()) {
+					for row in rows_list.get() @key(row.id.to_string()) {
 						li {
 							data_benchmark_row: row.id.to_string(),
 							{ row.label.clone() }

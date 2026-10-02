@@ -1,0 +1,11 @@
+error: duplicate component variable `accent`; variable names must be unique
+ --> tests/ui/style/fail/duplicate_variable.rs:7:3
+  |
+7 |         accent: Color = blue;
+  |         ^^^^^^
+
+error: component variable `accent` was first declared here
+ --> tests/ui/style/fail/duplicate_variable.rs:6:3
+  |
+6 |         accent: Color = red;
+  |         ^^^^^^

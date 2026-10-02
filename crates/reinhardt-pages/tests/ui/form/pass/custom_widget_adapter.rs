@@ -24,11 +24,11 @@ impl FormWidgetAdapter<String> for DateRangeAdapter {
 	}
 
 	fn props(ctx: CustomWidgetContext<String>) -> Self::ComponentProps {
-			DateRangeProps {
-				value: ctx.value,
-				disabled: ctx.disabled,
-				touched: ctx.touched,
-			}
+		DateRangeProps {
+			value: ctx.value,
+			disabled: ctx.disabled,
+			touched: ctx.touched,
+		}
 	}
 
 	fn parse(raw: CustomWidgetRawValue) -> Result<String, FormWidgetError> {
@@ -44,19 +44,21 @@ impl FormWidgetAdapter<String> for DateRangeAdapter {
 }
 
 fn main() {
-	let _form = form! {
-		name: CustomWidgetForm,
-		action: "/custom",
-		fields: {
-			date_range: CharField {
-				disabled,
-				widget: CustomWidget(date_range_picker) {
-					experimental,
-					adapter: DateRangeAdapter,
-				},
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _form = form! {
+			name: CustomWidgetForm,
+			action: "/custom",
+			fields: {
+				date_range: CharField {
+					disabled,
+					widget: CustomWidget(date_range_picker) {
+						experimental,
+						adapter: DateRangeAdapter,
+					},
+				}
 			}
-		}
-	};
+		};
 
-	let _field_error = FieldError::new("example");
+		let _field_error = FieldError::new("example");
+	});
 }

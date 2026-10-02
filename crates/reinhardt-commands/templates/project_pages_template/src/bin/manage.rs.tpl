@@ -22,9 +22,35 @@ mod native {
     // Referencing `get_settings` alone does not guarantee the whole crate
     // (and thus every inventory entry) is linked.
     use {{ crate_name }} as _;
-    use {{ crate_name }}::config::settings::get_settings;
-    use reinhardt::commands::execute_from_command_line_with_settings;
+    #[cfg(feature = "commands-shell")]
+    use {{ crate_name }}::config::shell::get_shell_config;
+    use {{ crate_name }}::config::settings::{get_scoped_settings, get_settings, ProjectSettings};
+    use reinhardt::commands::{
+        command_error_exit_code, CapabilityProvider, CargoCheckContext, CommandRegistry,
+    };
+    #[cfg(not(feature = "commands-shell"))]
+    use reinhardt::commands::execute_from_command_line_with_capabilities;
+    #[cfg(feature = "commands-shell")]
+    use reinhardt::commands::execute_from_command_line_with_capabilities_and_shell;
+    use reinhardt::conf::settings::builder::BuildError;
+    use reinhardt::conf::settings::scoped::ScopedSettings;
+    use reinhardt::conf::settings::PendingSettings;
+    use std::path::PathBuf;
     use std::process;
+
+    struct ProjectProvider;
+
+    impl CapabilityProvider for ProjectProvider {
+        type Settings = ProjectSettings;
+
+        fn scoped_settings(&self) -> Result<ScopedSettings, BuildError> {
+            get_scoped_settings()
+        }
+
+        fn full_settings(&self) -> Result<PendingSettings<ProjectSettings>, BuildError> {
+            get_settings()
+        }
+    }
 
     #[tokio::main]
     pub(super) async fn main() {
@@ -34,21 +60,39 @@ mod native {
             std::env::set_var("REINHARDT_SETTINGS_MODULE", "{{ project_name }}.config.settings");
         }
 
-        // Hand the project's composed settings to the runtime so that
-        // database-requiring commands (migrate, makemigrations, runserver,
-        // createsuperuser) resolve the connection from settings/*.toml
-        // (`[core.databases.default]`) without requiring DATABASE_URL.
-        // Router registration still happens automatically inside the runtime
-        // via the #[routes] attribute macro in src/config/urls.rs.
-        if let Err(e) = execute_from_command_line_with_settings(get_settings()).await {
+        // The command is selected before either settings provider runs.
+        // Static commands resolve selected asset inputs; runtime commands
+        // retain the full composed-settings validation path.
+        let cargo_context = CargoCheckContext::from_launcher(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+            Some(env!("CARGO_PKG_NAME").to_owned()),
+            Some("manage".to_owned()),
+        );
+        #[cfg(feature = "commands-shell")]
+        let result =
+            execute_from_command_line_with_capabilities_and_shell(
+                CommandRegistry::new(),
+                ProjectProvider,
+                Some(cargo_context),
+                get_shell_config(),
+            )
+                .await;
+        #[cfg(not(feature = "commands-shell"))]
+        let result = execute_from_command_line_with_capabilities(
+            CommandRegistry::new(), ProjectProvider, Some(cargo_context),
+        ).await;
+
+        if let Err(e) = result {
+            let exit_code = command_error_exit_code(e.as_ref());
             eprintln!("Error: {}", e);
-            process::exit(1);
+            process::exit(exit_code);
         }
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
+    reinhardt::commands::shell_runtime_hook();
     native::main();
 }
 

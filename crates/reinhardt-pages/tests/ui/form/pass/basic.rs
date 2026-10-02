@@ -3,18 +3,20 @@
 use reinhardt_pages::form;
 
 fn main() {
-	// Basic form with required fields
-	let _login_form = form! {
-		name: LoginForm,
-		action: "/api/login",
-		fields: {
-			username: CharField {
-				required,
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		// Basic form with required fields
+		let _login_form = form! {
+			name: LoginForm,
+			action: "/api/login",
+			fields: {
+				username: CharField {
+					required,
+				}
+				password: CharField {
+					required,
+					widget: PasswordInput,
+				}
 			}
-			password: CharField {
-				required,
-				widget: PasswordInput,
-			}
-		}
-	};
+		};
+	});
 }

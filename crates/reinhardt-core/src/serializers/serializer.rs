@@ -202,6 +202,8 @@ impl ValidatorError {
 pub enum SerializerError {
 	/// Validation error
 	Validation(ValidatorError),
+	/// Database error preserved across serializer boundaries.
+	Database(crate::exception::DatabaseError),
 	/// Serde serialization/deserialization error
 	Serde {
 		/// Human-readable error message from serde.
@@ -218,6 +220,7 @@ impl std::fmt::Display for SerializerError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			SerializerError::Validation(e) => write!(f, "{}", e),
+			SerializerError::Database(e) => write!(f, "Database error: {}", e),
 			SerializerError::Serde { message } => write!(f, "Serde error: {}", message),
 			SerializerError::Other { message } => write!(f, "Serialization error: {}", message),
 		}
@@ -228,6 +231,7 @@ impl std::error::Error for SerializerError {
 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
 		match self {
 			SerializerError::Validation(e) => Some(e),
+			SerializerError::Database(e) => Some(e),
 			_ => None,
 		}
 	}
@@ -236,6 +240,21 @@ impl std::error::Error for SerializerError {
 impl From<ValidatorError> for SerializerError {
 	fn from(err: ValidatorError) -> Self {
 		SerializerError::Validation(err)
+	}
+}
+
+/// Converts a framework error into cloneable serializer context.
+///
+/// The source message is retained without storing a dynamic error object so
+/// `SerializerError` remains cloneable and comparable.
+impl From<crate::exception::Error> for SerializerError {
+	fn from(error: crate::exception::Error) -> Self {
+		match error {
+			crate::exception::Error::Database(error) => SerializerError::Database(error),
+			error => SerializerError::Other {
+				message: error.to_string(),
+			},
+		}
 	}
 }
 
@@ -309,6 +328,7 @@ impl SerializerError {
 	pub fn message(&self) -> String {
 		match self {
 			SerializerError::Validation(e) => e.message().to_string(),
+			SerializerError::Database(e) => e.message().to_string(),
 			SerializerError::Serde { message } => message.clone(),
 			SerializerError::Other { message } => message.clone(),
 		}
@@ -322,9 +342,6 @@ impl SerializerError {
 		}
 	}
 }
-
-// Integration with reinhardt_exception is moved to REST layer
-// Base layer remains exception-agnostic
 
 /// JSON serializer implementation
 ///
@@ -496,5 +513,32 @@ mod tests {
 			SerializerError::Validation(_) => {}
 			_ => panic!("Expected Validation error"),
 		}
+	}
+
+	#[test]
+	fn test_serializer_error_from_framework_error() {
+		use crate::exception::{DatabaseError, DatabaseErrorKind, Error};
+
+		// Arrange
+		let framework_error = Error::from(DatabaseError::new(
+			DatabaseErrorKind::Transaction,
+			"rollback failed",
+		));
+
+		// Act
+		let serializer_error = SerializerError::from(framework_error);
+
+		// Assert
+		assert_eq!(
+			serializer_error,
+			SerializerError::Database(DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"rollback failed",
+			))
+		);
+		assert_eq!(
+			serializer_error.to_string(),
+			"Database error: rollback failed"
+		);
 	}
 }

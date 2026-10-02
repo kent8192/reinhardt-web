@@ -16,19 +16,21 @@ use proc_macro2::Span;
 use std::collections::HashSet;
 use syn::{Error, Result};
 
+use reinhardt_manouche::core::attr_utils::ident_to_wire_name;
 use reinhardt_manouche::core::{
 	AmbientArgumentsSource, FormAction, FormCallbacks, FormChoiceItem, FormControlEntryDef,
 	FormControlEntryKind, FormCustomWidgetSpec, FormDatalistDef, FormDerived, FormFieldCollection,
 	FormFieldDef, FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormMethod,
 	FormSlots, FormState, FormSubmitButtonDef, FormValidator, FormWatch, FormWidgetSpec,
-	IconPosition, StripArgument, TypedButtonControlDef, TypedButtonKind, TypedChoiceGroup,
-	TypedChoiceItem, TypedChoiceOption, TypedChoicesConfig, TypedCustomAttr, TypedCustomWidget,
-	TypedDatalistDef, TypedDerivedItem, TypedFieldDisplay, TypedFieldNativeAttrs,
-	TypedFieldStyling, TypedFieldType, TypedFieldValidation, TypedFormAction, TypedFormCallbacks,
-	TypedFormDerived, TypedFormFieldCollection, TypedFormFieldDef, TypedFormFieldEntry,
-	TypedFormFieldGroup, TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormStyling,
-	TypedFormValidator, TypedFormWatch, TypedFormWatchItem, TypedIcon, TypedIconAttr,
-	TypedIconChild, TypedIconPosition, TypedImageInputDef, TypedMeterDef, TypedOutputDef,
+	IconPosition, ModelFieldSelection, ModelFormSource, StripArgument, TypedButtonControlDef,
+	TypedButtonKind, TypedChoiceGroup, TypedChoiceItem, TypedChoiceOption, TypedChoicesConfig,
+	TypedCustomAttr, TypedCustomWidget, TypedDatalistDef, TypedDerivedItem, TypedFieldDisplay,
+	TypedFieldNativeAttrs, TypedFieldStyling, TypedFieldType, TypedFieldValidation,
+	TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldCollection,
+	TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots,
+	TypedFormState, TypedFormStyling, TypedFormValidator, TypedFormWatch, TypedFormWatchItem,
+	TypedIcon, TypedIconAttr, TypedIconChild, TypedIconPosition, TypedImageInputDef, TypedMeterDef,
+	TypedModelFieldOverride, TypedModelFieldSelection, TypedModelFormSource, TypedOutputDef,
 	TypedProgressDef, TypedStripArgument, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget,
 	TypedWrapper, TypedWrapperAttr, ValidatorRule,
 };
@@ -184,6 +186,66 @@ pub(super) fn validate(
 	// Transform fields
 	let fields = transform_fields(&ast.fields)?;
 	validate_list_references(&fields)?;
+	let model_source = transform_model_source(&ast.model_source)?;
+	let model_backed = model_source.is_some();
+
+	if model_backed && !matches!(action, TypedFormAction::ServerFn(_)) {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! requires an explicit `server_fn`",
+		));
+	}
+	if model_backed && !ast.strip_arguments.is_empty() {
+		let keyword = ambient_arguments_keyword(ambient_arguments_source);
+		return Err(Error::new(
+			ast.span,
+			format!(
+				"model-backed form! does not support `{keyword}`; pass every server-function argument through a model field"
+			),
+		));
+	}
+	if model_backed && (redirect_on_success.is_some() || success_url.is_some()) {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support `redirect_on_success` or `success_url`; configure submission lifecycle through `use_form(&form)`",
+		));
+	}
+	if model_backed && initial_loader.is_some() {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support `initial_loader`; initialize values through the generated form state",
+		));
+	}
+	if model_backed && choices_loader.is_some() {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support `choices_loader`; configure static choices through the generated model schema",
+		));
+	}
+	if model_backed && !matches!(method, FormMethod::Post) {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! requires `method: Post` for its server_fn action",
+		));
+	}
+	if model_backed && slots.is_some() {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support `slots`; compose surrounding page content outside the generated form",
+		));
+	}
+	if model_backed && (watch.is_some() || derived.is_some()) {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support `watch` or `derived` clauses",
+		));
+	}
+	if model_backed && callbacks.has_any() {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support callback clauses; configure submission lifecycle through `use_form(&form)`",
+		));
+	}
 
 	// Transform unified validators (scope filtering happens at codegen)
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
@@ -220,10 +282,144 @@ pub(super) fn validate(
 	typed.choices_loader = choices_loader;
 	typed.slots = slots;
 	typed.fields = fields;
+	typed.model_source = model_source;
 	typed.validators = validators;
 	typed.strip_arguments = strip_arguments;
 
 	Ok(typed)
+}
+
+fn transform_model_source(
+	source: &Option<ModelFormSource>,
+) -> Result<Option<TypedModelFormSource>> {
+	let Some(source) = source else {
+		return Ok(None);
+	};
+	if let Some(contract) = source.contract_path() {
+		let mut seen_overrides = HashSet::new();
+		let overrides = source
+			.overrides
+			.iter()
+			.map(|override_| {
+				let field = ident_to_wire_name(&override_.field);
+				if !seen_overrides.insert(field.clone()) {
+					return Err(Error::new(
+						override_.field.span(),
+						format!("duplicate `overrides` entry for field '{field}'"),
+					));
+				}
+				Ok(TypedModelFieldOverride {
+					field: override_.field.clone(),
+					widget: override_
+						.widget
+						.as_ref()
+						.map(parse_model_widget)
+						.transpose()?,
+					label: override_.label.as_ref().map(syn::LitStr::value),
+					help_text: override_.help_text.as_ref().map(syn::LitStr::value),
+				})
+			})
+			.collect::<Result<Vec<_>>>()?;
+		return Ok(Some(TypedModelFormSource::contract(
+			contract.clone(),
+			overrides,
+		)));
+	}
+	let ModelFormSource {
+		model,
+		policy,
+		selection,
+		overrides,
+	} = source;
+
+	let selection = match selection {
+		ModelFieldSelection::Fields(fields) => {
+			validate_unique_model_field_names(fields, "fields")?;
+			TypedModelFieldSelection::Fields(fields.clone())
+		}
+		ModelFieldSelection::Exclude(fields) => {
+			validate_unique_model_field_names(fields, "exclude")?;
+			TypedModelFieldSelection::Exclude(fields.clone())
+		}
+	};
+
+	let selected_names = match &selection {
+		TypedModelFieldSelection::Fields(fields) => Some(
+			fields
+				.iter()
+				.map(ident_to_wire_name)
+				.collect::<HashSet<_>>(),
+		),
+		TypedModelFieldSelection::Exclude(_) => None,
+	};
+	let excluded_names = match &selection {
+		TypedModelFieldSelection::Exclude(fields) => fields
+			.iter()
+			.map(ident_to_wire_name)
+			.collect::<HashSet<_>>(),
+		TypedModelFieldSelection::Fields(_) => HashSet::new(),
+	};
+
+	let mut seen_overrides = HashSet::new();
+	let overrides = overrides
+		.iter()
+		.map(|override_| {
+			let field = ident_to_wire_name(&override_.field);
+			if !seen_overrides.insert(field.clone()) {
+				return Err(Error::new(
+					override_.field.span(),
+					format!("duplicate `overrides` entry for field '{field}'"),
+				));
+			}
+			if excluded_names.contains(&field) {
+				return Err(Error::new(
+					override_.field.span(),
+					format!("override field '{field}' is present in `exclude`"),
+				));
+			}
+			if let Some(selected_names) = &selected_names
+				&& !selected_names.contains(&field)
+			{
+				return Err(Error::new(
+					override_.field.span(),
+					format!("override field '{field}' is not present in `fields`"),
+				));
+			}
+
+			let widget = override_
+				.widget
+				.as_ref()
+				.map(parse_model_widget)
+				.transpose()?;
+			Ok(TypedModelFieldOverride {
+				field: override_.field.clone(),
+				widget,
+				label: override_.label.as_ref().map(syn::LitStr::value),
+				help_text: override_.help_text.as_ref().map(syn::LitStr::value),
+			})
+		})
+		.collect::<Result<Vec<_>>>()?;
+
+	Ok(Some(TypedModelFormSource {
+		model: model.clone(),
+		policy: policy.clone(),
+		selection,
+		overrides,
+	}))
+}
+
+fn validate_unique_model_field_names(fields: &[syn::Ident], clause: &str) -> Result<()> {
+	let mut seen = HashSet::new();
+	for field in fields {
+		let name = ident_to_wire_name(field);
+		if !seen.insert(name.clone()) {
+			return Err(Error::new(
+				field.span(),
+				format!("duplicate `{clause}` identifier: '{name}'"),
+			));
+		}
+	}
+	Ok(())
 }
 
 fn first_field_array_entry(entries: &[FormFieldEntry]) -> Option<&FormFieldCollection> {
@@ -1482,7 +1678,7 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 
 	// Extract properties into categories
 	let validation = extract_validation_properties(&field.properties)?;
-	let display = extract_display_properties(&field.properties)?;
+	let mut display = extract_display_properties(&field.properties)?;
 	let styling = extract_styling_properties(&field.properties)?;
 	let widget = extract_widget(&field.properties, &field_type)?;
 	validate_widget_field_compatibility(&field_type, &widget, field.span)?;
@@ -1495,6 +1691,28 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	let initial_expr = extract_initial_expr(&field.properties);
 	let choices_config = extract_choices_config(&field.properties);
 	let static_choices_source = extract_static_choices(&field.properties)?;
+	if matches!(widget, TypedWidget::RadioInput) {
+		for property in &field.properties {
+			match property {
+				FormFieldProperty::Choices { choices, span } if choices.len() != 1 => {
+					return Err(Error::new(
+						*span,
+						"RadioInput requires exactly one static choice; use RadioSelect for a group",
+					));
+				}
+				FormFieldProperty::ChoicesFrom { span, .. }
+				| FormFieldProperty::ChoiceValue { span, .. }
+				| FormFieldProperty::ChoiceLabel { span, .. }
+				| FormFieldProperty::ChoiceDisabled { span, .. } => {
+					return Err(Error::new(
+						*span,
+						"RadioInput does not support dynamic choices; use RadioSelect for a group",
+					));
+				}
+				_ => {}
+			}
+		}
+	}
 
 	validate_radio_select_choice_group_properties(&field.properties, &widget)?;
 	validate_known_field_properties(&field.properties)?;
@@ -1521,15 +1739,34 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	}
 
 	if !static_choices_source.is_empty()
-		&& !matches!(widget, TypedWidget::Select | TypedWidget::SelectMultiple)
-	{
+		&& !matches!(
+			widget,
+			TypedWidget::Select | TypedWidget::SelectMultiple | TypedWidget::RadioInput
+		) {
 		return Err(Error::new(
 			field.span,
-			"choices require Select or SelectMultiple widget",
+			"choices require Select, SelectMultiple, or RadioInput widget",
 		));
 	}
 
-	let static_choices = transform_static_choices(&static_choices_source, true, false)?;
+	let static_choices = transform_static_choices(
+		&static_choices_source,
+		!matches!(widget, TypedWidget::RadioInput),
+		false,
+	)?;
+	if matches!(widget, TypedWidget::RadioInput)
+		&& let Some(TypedChoiceItem::Option(option)) = static_choices.first()
+	{
+		expect_string_literal(&option.value, option.span, "RadioInput choice value")?;
+		if display.label.is_none() {
+			display.label = Some(expect_string_literal(
+				&option.label,
+				option.span,
+				"RadioInput choice label",
+			)?);
+		}
+		display.disabled |= option.disabled;
+	}
 
 	Ok(TypedFormFieldDef {
 		name: field.name.clone(),
@@ -1562,7 +1799,7 @@ fn validate_radio_select_choice_group_properties(
 	properties: &[FormFieldProperty],
 	widget: &TypedWidget,
 ) -> Result<()> {
-	if !matches!(widget, TypedWidget::RadioSelect) {
+	if !matches!(widget, TypedWidget::RadioSelect | TypedWidget::RadioInput) {
 		return Ok(());
 	}
 
@@ -2114,6 +2351,7 @@ fn parse_widget(ident: &syn::Ident) -> Result<TypedWidget> {
 		"NumberInput" => Ok(TypedWidget::NumberInput),
 		"Textarea" => Ok(TypedWidget::Textarea),
 		"CheckboxInput" => Ok(TypedWidget::CheckboxInput),
+		"RadioInput" => Ok(TypedWidget::RadioInput),
 		"RadioSelect" => Ok(TypedWidget::RadioSelect),
 		"Select" => Ok(TypedWidget::Select),
 		"SelectMultiple" => Ok(TypedWidget::SelectMultiple),
@@ -2133,13 +2371,35 @@ fn parse_widget(ident: &syn::Ident) -> Result<TypedWidget> {
 			ident.span(),
 			format!(
 				"unknown widget type: '{}'. Expected one of: TextInput, PasswordInput, \
-					EmailInput, NumberInput, Textarea, CheckboxInput, RadioSelect, Select, \
+					EmailInput, NumberInput, Textarea, CheckboxInput, RadioInput, RadioSelect, Select, \
 					SelectMultiple, DateInput, MonthInput, WeekInput, TimeInput, DateTimeInput, \
 					FileInput, HiddenInput, ColorInput, RangeInput, UrlInput, TelInput, SearchInput",
 				widget_str
 			),
 		)),
 	}
+}
+
+fn parse_model_widget(ident: &syn::Ident) -> Result<TypedWidget> {
+	if ident == "TextArea" {
+		return Ok(TypedWidget::Textarea);
+	}
+	if matches!(
+		ident.to_string().as_str(),
+		"Select"
+			| "SelectMultiple"
+			| "RadioInput"
+			| "RadioSelect"
+			| "MonthInput"
+			| "WeekInput"
+			| "FileInput"
+	) {
+		return Err(Error::new(
+			ident.span(),
+			"this widget is not supported by model-backed forms; use a supported scalar widget or an explicit non-model form",
+		));
+	}
+	parse_widget(ident)
 }
 
 #[derive(Default)]
@@ -2160,6 +2420,20 @@ fn validate_widget_field_compatibility(
 	span: Span,
 ) -> Result<()> {
 	match widget {
+		TypedWidget::RadioInput
+			if !matches!(field_type,
+				TypedFieldType::ChoiceField { inner: syn::Type::Path(path) }
+					if path.qself.is_none()
+						&& path.path.segments.iter().all(|segment| segment.arguments.is_none())
+						&& matches!(path.path.segments.iter().map(|segment| segment.ident.to_string()).collect::<Vec<_>>().join("::").as_str(),
+							"String" | "std::string::String" | "alloc::string::String")
+			) =>
+		{
+			Err(Error::new(
+				span,
+				"RadioInput is only supported on ChoiceField<String>",
+			))
+		}
 		TypedWidget::MonthInput if !is_string_valued_field(field_type) => Err(Error::new(
 			span,
 			"MonthInput is only supported on string-valued fields",
@@ -6034,6 +6308,61 @@ mod tests {
 			typed.fields[2].as_field().unwrap().field_type,
 			TypedFieldType::FileField
 		));
+	}
+
+	#[rstest::rstest]
+	#[case::multiple_choice(syn::parse_quote!(SelectMultiple))]
+	#[case::scalar_radio(syn::parse_quote!(RadioInput))]
+	fn test_model_form_rejects_widget_without_model_renderer(#[case] widget: syn::Ident) {
+		let error = parse_model_widget(&widget).unwrap_err();
+
+		assert_eq!(
+			error.to_string(),
+			"this widget is not supported by model-backed forms; use a supported scalar widget or an explicit non-model form"
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_model_form_rejects_implicit_redirects() {
+		let input = quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title],
+			server_fn: save_question,
+			redirect_on_success: "/questions",
+		};
+
+		let error = parse_and_validate(input)
+			.expect_err("model forms must reject redirects they cannot execute");
+
+		assert!(
+			error
+				.to_string()
+				.contains("does not support `redirect_on_success`")
+		);
+	}
+
+	#[rstest::rstest]
+	fn test_model_form_rejects_ambient_arguments() {
+		let input = quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title],
+			server_fn: save_question,
+			ambient_arguments: {
+				tenant_id: 42,
+			},
+		};
+
+		let error = parse_and_validate(input)
+			.expect_err("model forms must not silently ignore ambient arguments");
+
+		assert_eq!(
+			error.to_string(),
+			"model-backed form! does not support `ambient_arguments`; pass every server-function argument through a model field"
+		);
 	}
 }
 

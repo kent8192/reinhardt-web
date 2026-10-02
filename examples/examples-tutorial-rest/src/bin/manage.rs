@@ -1,30 +1,68 @@
 //! Reinhardt Project Management CLI for examples-tutorial-rest
+//!
+//! This binary is native-only. The WASM target retains an empty `main`
+//! so workspace target checks can skip the Tokio-based management runtime.
 
-use examples_tutorial_rest::config;
-use reinhardt::commands::execute_from_command_line_with_settings;
-use reinhardt::core::tokio;
-use std::process;
+#[cfg(not(target_arch = "wasm32"))]
+mod native {
+	use examples_tutorial_rest as _;
+	use examples_tutorial_rest::config::settings::get_settings;
+	#[cfg(feature = "commands-shell")]
+	use examples_tutorial_rest::config::shell::get_shell_config;
+	use reinhardt::commands::CargoCheckContext;
+	use reinhardt::commands::command_error_exit_code;
+	#[cfg(not(feature = "commands-shell"))]
+	use reinhardt::commands::execute_from_command_line_with_pending_settings_and_cargo_context;
+	#[cfg(feature = "commands-shell")]
+	use reinhardt::commands::execute_from_command_line_with_pending_settings_and_cargo_context_and_shell;
+	use std::path::PathBuf;
+	use std::process;
 
-#[tokio::main]
-async fn main() {
-	// Set settings module environment variable
-	// SAFETY: This is safe because we're setting it before any other code runs
-	unsafe {
-		std::env::set_var(
-			"REINHARDT_SETTINGS_MODULE",
-			"examples_tutorial_rest.config.settings",
+	#[tokio::main]
+	pub(super) async fn main() {
+		// SAFETY: Called at program start before any spawned tasks.
+		unsafe {
+			std::env::set_var(
+				"REINHARDT_SETTINGS_MODULE",
+				"examples_tutorial_rest.config.settings",
+			);
+		}
+		let cargo_context = CargoCheckContext::from_launcher(
+			PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+			Some(env!("CARGO_PKG_NAME").to_owned()),
+			Some("manage".to_owned()),
 		);
-	}
 
-	// Ensure config module is loaded (triggers #[routes] macro)
-	let _ = &config::urls::routes;
+		#[cfg(feature = "commands-shell")]
+		let result = execute_from_command_line_with_pending_settings_and_cargo_context_and_shell(
+			get_settings,
+			get_shell_config(),
+			cargo_context,
+		)
+		.await;
+		#[cfg(not(feature = "commands-shell"))]
+		let result = execute_from_command_line_with_pending_settings_and_cargo_context(
+			get_settings,
+			cargo_context,
+		)
+		.await;
 
-	// Execute command from command line, handing the project's composed
-	// settings to the runtime so database-requiring commands resolve the
-	// connection from settings/*.toml (`[core.databases.default]`).
-	if let Err(e) = execute_from_command_line_with_settings(config::settings::get_settings()).await
-	{
-		eprintln!("Error: {}", e);
-		process::exit(1);
+		if let Err(e) = result {
+			#[cfg(feature = "commands-shell")]
+			let exit_code = command_error_exit_code(&e);
+			#[cfg(not(feature = "commands-shell"))]
+			let exit_code = command_error_exit_code(e.as_ref());
+			eprintln!("Error: {e}");
+			process::exit(exit_code);
+		}
 	}
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+fn main() {
+	reinhardt::commands::shell_runtime_hook();
+	native::main();
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {}

@@ -1,8 +1,13 @@
 //! Database, ORM, and query builder re-exports.
+//!
+//! [`DatabaseConnection`] is the copyable ORM handle exposed at the Reinhardt
+//! crate root. Its RAII owner, `DatabaseConnectionLease`, remains available
+//! explicitly under `reinhardt_db::orm` for standalone setup and framework
+//! bootstrap code.
 
 pub use reinhardt_db::orm::{
-	DatabaseBackend, DatabaseConnection, FieldAssignment, Model, QuerySet, SoftDeletable,
-	SoftDelete, Timestamped, Timestamps, UpdateValue,
+	AtomicTransaction, DatabaseBackend, DatabaseConnection, FieldAssignment, Model, OrmExecutor,
+	QuerySet, SoftDeletable, SoftDelete, Timestamped, Timestamps, UpdateValue,
 };
 
 // Query expressions (Django-style F/Q objects)
@@ -11,17 +16,15 @@ pub use reinhardt_db::orm::{
 };
 
 // Annotations and aggregations
-pub use reinhardt_db::orm::{
-	Aggregate, AggregateFunc, AggregateValue, Annotation, AnnotationValue,
-};
+pub use reinhardt_db::orm::AggregateValue;
 
 // Transaction management
 pub use reinhardt_db::orm::{
-	IsolationLevel, QueryValue, Savepoint, Transaction, TransactionExecutor, TransactionScope,
-	atomic, atomic_with_isolation,
+	IsolationLevel, QueryValue, Savepoint, Transaction, TransactionExecutor,
 };
 
 // Database functions
+pub use reinhardt_db::orm::func;
 pub use reinhardt_db::orm::{
 	Abs, Cast, Ceil, Concat, CurrentDate, CurrentTime, Extract, ExtractComponent, Floor, Greatest,
 	Least, Length, Lower, Mod, Now, NullIf, Power, Round, SqlType, Sqrt, Substr, Trim, TrimType,

@@ -16,6 +16,7 @@ fn main() {
 				li {
 					input {
 						r#type: "checkbox",
+						aria_label: "Toggle todo completion",
 						checked: todo.completed,
 					}
 					span { { todo.title.clone() } }

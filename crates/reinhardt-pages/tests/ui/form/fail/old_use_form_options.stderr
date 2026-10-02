@@ -7,5 +7,5 @@ error[E0432]: unresolved import `reinhardt_pages::FormOptions`
 help: a similar name exists in the module
   |
 1 - use reinhardt_pages::{FormOptions, use_form};
-1 + use reinhardt_pages::{SsrOptions, use_form};
+1 + use reinhardt_pages::{FormAction, use_form};
   |

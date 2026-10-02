@@ -1,0 +1,5 @@
+error: duplicate `label` property
+  --> tests/ui/client_form/view/fail/duplicate_property.rs:12:5
+   |
+12 |                 label: "b"
+   |                 ^^^^^

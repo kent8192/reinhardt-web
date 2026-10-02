@@ -1,0 +1,5 @@
+error: invalid dimensions for `+`: `Length` and `Time` cannot be combined
+ --> tests/ui/style/fail/arithmetic_mismatch.rs:6:14
+  |
+6 |         width: 1px + 1s;
+  |                    ^

@@ -41,14 +41,81 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use crate::backends::{DatabaseError, DatabaseType, Row as DbRow, connection::DatabaseConnection};
+use crate::backends::error::map_sqlx_error;
+use crate::backends::{DatabaseType, Row as DbRow, connection::DatabaseConnection};
+use reinhardt_core::exception::Result;
 use sqlx::{Any, AnyPool, pool::PoolOptions};
 use std::time::Duration;
+
+pub(crate) async fn connect_backend_with_pool_size(
+	url: &str,
+	pool_size: Option<u32>,
+) -> Result<crate::orm::connection::BackendsConnection> {
+	let postgres = url.starts_with("postgres://") || url.starts_with("postgresql://");
+	let mysql = url.starts_with("mysql://");
+	let sqlite = url.starts_with("sqlite://") || url.starts_with("sqlite:");
+
+	#[cfg(feature = "postgres")]
+	if postgres {
+		return crate::orm::connection::BackendsConnection::connect_postgres_with_pool_size(
+			url, pool_size,
+		)
+		.await;
+	}
+
+	#[cfg(feature = "mysql")]
+	if mysql {
+		return crate::orm::connection::BackendsConnection::connect_mysql(url).await;
+	}
+
+	#[cfg(feature = "sqlite")]
+	if sqlite {
+		return crate::orm::connection::BackendsConnection::connect_sqlite(url).await;
+	}
+
+	#[cfg(not(feature = "postgres"))]
+	let _ = pool_size;
+	let missing_feature = if postgres {
+		Some("postgres")
+	} else if mysql {
+		Some("mysql")
+	} else if sqlite {
+		Some("sqlite")
+	} else {
+		None
+	};
+	if let Some(feature) = missing_feature {
+		return Err(reinhardt_core::exception::DatabaseError::new(
+			reinhardt_core::exception::DatabaseErrorKind::Configuration,
+			format!("Database backend not compiled in. Enable the '{feature}' feature."),
+		)
+		.into());
+	}
+	Err(reinhardt_core::exception::DatabaseError::new(
+		reinhardt_core::exception::DatabaseErrorKind::Configuration,
+		format!("Unsupported database URL scheme: {url}"),
+	)
+	.into())
+}
+
+/// Registers a request-scoped ORM database owner and its copyable handle.
+#[cfg(feature = "di")]
+pub fn register_request_database(
+	context: &reinhardt_di::InjectionContext,
+	owner: crate::orm::connection::BackendsConnection,
+) -> Result<crate::orm::connection::DatabaseConnection> {
+	let lease = crate::orm::connection::DatabaseConnectionLease::register(owner)?;
+	let handle = lease.handle();
+	context.set_request(lease);
+	context.set_request(handle);
+	Ok(handle)
+}
 
 fn bind_query_values<'a>(
 	mut query: sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>,
 	values: &reinhardt_query::value::Values,
-) -> Result<sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>, sqlx::Error> {
+) -> std::result::Result<sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>, sqlx::Error>
+{
 	use reinhardt_query::value::Value;
 
 	for value in &values.0 {
@@ -165,7 +232,7 @@ pub struct Engine {
 impl Engine {
 	/// Create a new engine from config
 	///
-	pub async fn from_config(config: EngineConfig) -> Result<Self, sqlx::Error> {
+	pub async fn from_config(config: EngineConfig) -> Result<Self> {
 		let mut pool_options = PoolOptions::<Any>::new()
 			.min_connections(config.pool_min_size)
 			.max_connections(config.pool_max_size)
@@ -181,7 +248,10 @@ impl Engine {
 			pool_options = pool_options.max_lifetime(Duration::from_secs(max_lifetime));
 		}
 
-		let pool = pool_options.connect(&config.url).await?;
+		let pool = pool_options
+			.connect(&config.url)
+			.await
+			.map_err(map_sqlx_error)?;
 
 		Ok(Self { pool, config })
 	}
@@ -199,81 +269,88 @@ impl Engine {
 	///
 	/// **Note:** This requires the appropriate sqlx driver feature to be enabled.
 	/// For simpler usage, see `DatabaseEngine::from_sqlite` or other database-specific constructors.
-	pub async fn new(url: impl Into<String>) -> Result<Self, sqlx::Error> {
+	pub async fn new(url: impl Into<String>) -> Result<Self> {
 		Self::from_config(EngineConfig::new(url)).await
 	}
 	/// Get a connection from the pool
 	///
-	pub async fn connect(&self) -> Result<sqlx::pool::PoolConnection<Any>, sqlx::Error> {
-		self.pool.acquire().await
+	pub async fn connect(&self) -> Result<sqlx::pool::PoolConnection<Any>> {
+		Ok(self.pool.acquire().await.map_err(map_sqlx_error)?)
 	}
 	/// Execute a SQL statement
-	pub async fn execute(&self, sql: &str) -> Result<u64, sqlx::Error> {
+	pub async fn execute(&self, sql: &str) -> Result<u64> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
 
-		let result = sqlx::query(sql).execute(&self.pool).await?;
+		let result = sqlx::query(sql)
+			.execute(&self.pool)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(result.rows_affected())
 	}
 	/// Execute a query and return results
 	///
-	pub async fn fetch_all(&self, sql: &str) -> Result<Vec<sqlx::any::AnyRow>, sqlx::Error> {
+	pub async fn fetch_all(&self, sql: &str) -> Result<Vec<sqlx::any::AnyRow>> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
 
-		sqlx::query(sql).fetch_all(&self.pool).await
+		Ok(sqlx::query(sql)
+			.fetch_all(&self.pool)
+			.await
+			.map_err(map_sqlx_error)?)
 	}
 	pub(crate) async fn fetch_all_with_values(
 		&self,
 		sql: &str,
 		values: &reinhardt_query::value::Values,
-	) -> Result<Vec<sqlx::any::AnyRow>, sqlx::Error> {
-		let query = bind_query_values(sqlx::query(sql), values)?;
-		query.fetch_all(&self.pool).await
+	) -> Result<Vec<sqlx::any::AnyRow>> {
+		let query = bind_query_values(sqlx::query(sql), values).map_err(map_sqlx_error)?;
+		Ok(query.fetch_all(&self.pool).await.map_err(map_sqlx_error)?)
 	}
 	/// Execute a query and return a single result
 	///
-	pub async fn fetch_one(&self, sql: &str) -> Result<sqlx::any::AnyRow, sqlx::Error> {
+	pub async fn fetch_one(&self, sql: &str) -> Result<sqlx::any::AnyRow> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
 
-		sqlx::query(sql).fetch_one(&self.pool).await
+		Ok(sqlx::query(sql)
+			.fetch_one(&self.pool)
+			.await
+			.map_err(map_sqlx_error)?)
 	}
 	pub(crate) async fn fetch_one_with_values(
 		&self,
 		sql: &str,
 		values: &reinhardt_query::value::Values,
-	) -> Result<sqlx::any::AnyRow, sqlx::Error> {
-		let query = bind_query_values(sqlx::query(sql), values)?;
-		query.fetch_one(&self.pool).await
+	) -> Result<sqlx::any::AnyRow> {
+		let query = bind_query_values(sqlx::query(sql), values).map_err(map_sqlx_error)?;
+		Ok(query.fetch_one(&self.pool).await.map_err(map_sqlx_error)?)
 	}
 	/// Execute a query and return an optional result
 	///
-	pub async fn fetch_optional(
-		&self,
-		sql: &str,
-	) -> Result<Option<sqlx::any::AnyRow>, sqlx::Error> {
+	pub async fn fetch_optional(&self, sql: &str) -> Result<Option<sqlx::any::AnyRow>> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
 
-		sqlx::query(sql).fetch_optional(&self.pool).await
+		Ok(sqlx::query(sql)
+			.fetch_optional(&self.pool)
+			.await
+			.map_err(map_sqlx_error)?)
 	}
 	pub(crate) async fn fetch_optional_with_values(
 		&self,
 		sql: &str,
 		values: &reinhardt_query::value::Values,
-	) -> Result<Option<sqlx::any::AnyRow>, sqlx::Error> {
-		let query = bind_query_values(sqlx::query(sql), values)?;
-		query.fetch_optional(&self.pool).await
-	}
-	/// Begin a transaction
-	///
-	pub async fn begin(&self) -> Result<sqlx::Transaction<'_, Any>, sqlx::Error> {
-		self.pool.begin().await
+	) -> Result<Option<sqlx::any::AnyRow>> {
+		let query = bind_query_values(sqlx::query(sql), values).map_err(map_sqlx_error)?;
+		Ok(query
+			.fetch_optional(&self.pool)
+			.await
+			.map_err(map_sqlx_error)?)
 	}
 	/// Get the engine configuration
 	///
@@ -296,12 +373,12 @@ impl Engine {
 }
 /// Create a new database engine
 ///
-pub async fn create_engine(url: impl Into<String>) -> Result<Engine, sqlx::Error> {
+pub async fn create_engine(url: impl Into<String>) -> Result<Engine> {
 	Engine::new(url).await
 }
 /// Create a new database engine with configuration
 ///
-pub async fn create_engine_with_config(config: EngineConfig) -> Result<Engine, sqlx::Error> {
+pub async fn create_engine_with_config(config: EngineConfig) -> Result<Engine> {
 	Engine::from_config(config).await
 }
 
@@ -355,18 +432,17 @@ impl DatabaseEngine {
 	///
 	/// ```
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseType;
+	/// use reinhardt_db::orm::engine::DatabaseEngine;
 	///
-	/// // For doctest purposes, using mock connection (feature-gated methods not available)
-	/// // In production with 'postgres' feature: DatabaseEngine::from_postgres(url).await
-	/// let connection = DatabaseConnection::connect("postgres://localhost/mydb").await?;
-	/// assert_eq!(connection.backend(), reinhardt_db::orm::connection::DatabaseBackend::Postgres);
+	/// let engine = DatabaseEngine::from_postgres("postgres://localhost/mydb").await?;
+	/// assert_eq!(engine.database_type(), DatabaseType::Postgres);
 	/// # Ok(())
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	#[cfg(feature = "postgres")]
-	pub async fn from_postgres(url: &str) -> Result<Self, DatabaseError> {
+	pub async fn from_postgres(url: &str) -> Result<Self> {
 		let connection = DatabaseConnection::connect_postgres(url).await?;
 		Ok(Self::new(connection, DatabaseType::Postgres))
 	}
@@ -377,25 +453,24 @@ impl DatabaseEngine {
 	///
 	/// ```
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseType;
+	/// use reinhardt_db::orm::engine::DatabaseEngine;
 	///
-	/// // For doctest purposes, using mock connection (feature-gated methods not available)
-	/// // In production with 'sqlite' feature: DatabaseEngine::from_sqlite(":memory:").await
-	/// let connection = DatabaseConnection::connect(":memory:").await?;
-	/// assert_eq!(connection.backend(), reinhardt_db::orm::connection::DatabaseBackend::Postgres);
+	/// let engine = DatabaseEngine::from_sqlite("sqlite::memory:").await?;
+	/// assert_eq!(engine.database_type(), DatabaseType::Sqlite);
 	/// # Ok(())
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	#[cfg(feature = "sqlite")]
-	pub async fn from_sqlite(url: &str) -> Result<Self, DatabaseError> {
+	pub async fn from_sqlite(url: &str) -> Result<Self> {
 		let connection = DatabaseConnection::connect_sqlite(url).await?;
 		Ok(Self::new(connection, DatabaseType::Sqlite))
 	}
 
 	/// Create a new MySQL engine
 	#[cfg(feature = "mysql")]
-	pub async fn from_mysql(url: &str) -> Result<Self, DatabaseError> {
+	pub async fn from_mysql(url: &str) -> Result<Self> {
 		let connection = DatabaseConnection::connect_mysql(url).await?;
 		Ok(Self::new(connection, DatabaseType::Mysql))
 	}
@@ -420,27 +495,23 @@ impl DatabaseEngine {
 	/// # Examples
 	///
 	/// ```no_run
+	/// # #[cfg(feature = "sqlite")]
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::engine::DatabaseEngine;
 	///
-	/// // Create mock connection (URL is ignored in current mock implementation)
-	/// let connection = DatabaseConnection::connect("sqlite::memory:").await?;
-	///
-	/// // Execute SQL statements (mock always returns 0)
-	/// let rows_affected = connection.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)", vec![]).await?;
-	/// assert_eq!(rows_affected, 0);
-	///
-	/// let rows_affected = connection.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')", vec![]).await?;
-	/// assert_eq!(rows_affected, 0);
-	///
-	/// // Query returns empty vec in mock
-	/// let rows = connection.query("SELECT * FROM users", vec![]).await?;
-	/// assert_eq!(rows.len(), 0);
+	/// let engine = DatabaseEngine::from_sqlite("sqlite::memory:").await?;
+	/// engine
+	///     .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+	///     .await?;
+	/// engine
+	///     .execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")
+	///     .await?;
 	/// # Ok(())
 	/// # }
+	/// # #[cfg(feature = "sqlite")]
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub async fn execute(&self, sql: &str) -> Result<u64, DatabaseError> {
+	pub async fn execute(&self, sql: &str) -> Result<u64> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
@@ -450,7 +521,7 @@ impl DatabaseEngine {
 	}
 
 	/// Execute a query and return all results
-	pub async fn fetch_all(&self, sql: &str) -> Result<Vec<DbRow>, DatabaseError> {
+	pub async fn fetch_all(&self, sql: &str) -> Result<Vec<DbRow>> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
@@ -459,7 +530,7 @@ impl DatabaseEngine {
 	}
 
 	/// Execute a query and return a single result
-	pub async fn fetch_one(&self, sql: &str) -> Result<DbRow, DatabaseError> {
+	pub async fn fetch_one(&self, sql: &str) -> Result<DbRow> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
@@ -468,7 +539,7 @@ impl DatabaseEngine {
 	}
 
 	/// Execute a query and return an optional result
-	pub async fn fetch_optional(&self, sql: &str) -> Result<Option<DbRow>, DatabaseError> {
+	pub async fn fetch_optional(&self, sql: &str) -> Result<Option<DbRow>> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
@@ -489,19 +560,19 @@ impl DatabaseEngine {
 
 /// Create a new database engine from PostgreSQL URL
 #[cfg(feature = "postgres")]
-pub async fn create_database_engine_postgres(url: &str) -> Result<DatabaseEngine, DatabaseError> {
+pub async fn create_database_engine_postgres(url: &str) -> Result<DatabaseEngine> {
 	DatabaseEngine::from_postgres(url).await
 }
 
 /// Create a new database engine from SQLite URL
 #[cfg(feature = "sqlite")]
-pub async fn create_database_engine_sqlite(url: &str) -> Result<DatabaseEngine, DatabaseError> {
+pub async fn create_database_engine_sqlite(url: &str) -> Result<DatabaseEngine> {
 	DatabaseEngine::from_sqlite(url).await
 }
 
 /// Create a new database engine from MySQL URL
 #[cfg(feature = "mysql")]
-pub async fn create_database_engine_mysql(url: &str) -> Result<DatabaseEngine, DatabaseError> {
+pub async fn create_database_engine_mysql(url: &str) -> Result<DatabaseEngine> {
 	DatabaseEngine::from_mysql(url).await
 }
 

@@ -1,14 +1,14 @@
-//! Output wrapper for keyed injectable provider functions.
+//! Output wrapper for explicitly keyed injectable provider functions.
 
 use crate::InjectableKey;
 use std::marker::PhantomData;
 use std::ops::Deref;
 
-/// Registered output of a keyed provider function.
+/// Registered output of an explicitly keyed provider function.
 ///
-/// The DI registry keys this type by `TypeId::of::<FactoryOutput<K, T>>()`.
+/// The DI registry keys this type by `TypeId::of::<KeyedFactoryOutput<K, T>>()`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FactoryOutput<K, T>
+pub struct KeyedFactoryOutput<K, T>
 where
 	K: InjectableKey,
 	T: Send + Sync + 'static,
@@ -17,7 +17,7 @@ where
 	_key: PhantomData<fn() -> K>,
 }
 
-impl<K, T> FactoryOutput<K, T>
+impl<K, T> KeyedFactoryOutput<K, T>
 where
 	K: InjectableKey,
 	T: Send + Sync + 'static,
@@ -36,7 +36,7 @@ where
 	}
 }
 
-impl<K, T> Deref for FactoryOutput<K, T>
+impl<K, T> Deref for KeyedFactoryOutput<K, T>
 where
 	K: InjectableKey,
 	T: Send + Sync + 'static,
@@ -48,7 +48,7 @@ where
 	}
 }
 
-impl<K, T> AsRef<T> for FactoryOutput<K, T>
+impl<K, T> AsRef<T> for KeyedFactoryOutput<K, T>
 where
 	K: InjectableKey,
 	T: Send + Sync + 'static,
@@ -57,3 +57,10 @@ where
 		&self.value
 	}
 }
+
+/// Deprecated compatibility alias for the old explicitly keyed provider output.
+#[deprecated(
+	since = "0.4.0",
+	note = "use KeyedFactoryOutput<K, T> for explicit keys, or return T directly from injectable providers for self-keyed providers"
+)]
+pub type FactoryOutput<K, T> = KeyedFactoryOutput<K, T>;

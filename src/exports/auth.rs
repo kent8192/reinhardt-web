@@ -2,12 +2,17 @@
 
 pub use reinhardt_auth::{
 	AllowAny, AuthBackend, AuthIdentity, AuthInfo, BaseUser, CurrentUser, FullUser, IsAdminUser,
-	IsAuthenticated, PasswordHasher, Permission, PermissionsMixin, validate_auth_extractors,
+	IsAuthenticated, PasswordCheck, PasswordHashPolicy, PasswordHasher, PasswordVerification,
+	Permission, PermissionsMixin, validate_auth_extractors,
 };
 
 #[cfg(feature = "argon2-hasher")]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "auth", feature = "argon2-hasher"))))]
 pub use reinhardt_auth::Argon2Hasher;
+
+#[cfg(feature = "bcrypt-hasher")]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "auth", feature = "bcrypt-hasher"))))]
+pub use reinhardt_auth::BcryptHasher;
 
 #[cfg(feature = "auth-jwt")]
 pub use reinhardt_auth::{Claims, JwtAuth, JwtError};

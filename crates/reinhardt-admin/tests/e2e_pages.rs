@@ -21,21 +21,31 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use reinhardt_admin::core::{
-	AdminDatabase, AdminSite, AdminUser, ModelAdmin, admin_routes_with_di, admin_static_routes,
+	AdminActionTransaction, AdminDatabase, AdminRecord, AdminSite, AdminUser, ModelAdmin,
+	admin_routes_with_di, admin_static_routes,
+};
+use reinhardt_admin::types::{
+	AdminAction, AdminActionOutcome, AdminError, Fieldset, ModelPermission,
 };
 use reinhardt_auth::{Argon2Hasher, PasswordHasher};
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
-use reinhardt_db::orm::Filter;
-use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
+use reinhardt_db::migrations::{
+	FieldMetadata, FieldType as DbFieldType, ModelMetadata, global_registry,
+};
+use reinhardt_db::orm::OrmExecutor;
+use reinhardt_db::orm::connection::{DatabaseConnection, DatabaseConnectionLease};
+use reinhardt_db::orm::execution::convert_values;
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_query::prelude::{
-	ColumnDef, Expr, OnConflict, PostgresQueryBuilder, Query, QueryBuilder, QueryStatementBuilder,
-	Value,
+	Alias, ColumnDef, Expr, ExprTrait, OnConflict, PostgresQueryBuilder, Query, QueryBuilder,
+	QueryStatementBuilder, Value,
 };
 use reinhardt_test::fixtures::shared_postgres::shared_db_pool;
 use reinhardt_test::fixtures::wasm::e2e_cdp::*;
+use reinhardt_test::poll_until;
 use rstest::*;
+use serial_test::serial;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -155,7 +165,54 @@ impl ModelAdmin for AllPermissionsModelAdmin {
 		self.search_fields.iter().map(|s| s.as_str()).collect()
 	}
 	fn fields(&self) -> Option<Vec<&str>> {
-		Some(vec!["id", "name", "status", "description", "created_at"])
+		None
+	}
+	fn fieldsets(&self) -> Option<Vec<Fieldset>> {
+		Some(vec![
+			Fieldset::new(Some("Main"), &["name", "status"]),
+			Fieldset::new(Some("Additional"), &["description"]).collapsed(),
+		])
+	}
+	fn actions(&self) -> Vec<AdminAction> {
+		vec![AdminAction::new(
+			"publish",
+			"Publish selected",
+			ModelPermission::Change,
+			false,
+		)]
+	}
+	async fn execute_action(
+		&self,
+		action: &str,
+		ids: &[String],
+		transaction: &mut AdminActionTransaction,
+		_user: &dyn AdminUser,
+	) -> Result<AdminActionOutcome, AdminError> {
+		if action != "publish" {
+			return Err(AdminError::ValidationError(format!(
+				"Invalid action: {action}"
+			)));
+		}
+
+		let mut affected = 0;
+		for id in ids {
+			let id_value = id.parse::<i64>().map_err(|error| {
+				AdminError::ValidationError(format!("invalid test model ID '{id}': {error}"))
+			})?;
+			let mut query = Query::update()
+				.table(Alias::new(&self.table_name))
+				.to_owned();
+			query
+				.value(Alias::new("status"), "published")
+				.and_where(Expr::col(Alias::new(&self.pk_field)).eq(id_value));
+			let (sql, values) = query.build(PostgresQueryBuilder);
+			affected += OrmExecutor::execute(transaction, &sql, convert_values(values))
+				.await
+				.map_err(|error| AdminError::DatabaseError(error.to_string()))?
+				.rows_affected;
+		}
+
+		Ok(AdminActionOutcome::new(ids.to_vec(), affected))
 	}
 	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
 		true
@@ -168,10 +225,6 @@ impl ModelAdmin for AllPermissionsModelAdmin {
 	}
 	async fn has_delete_permission(&self, _user: &dyn AdminUser) -> bool {
 		true
-	}
-
-	fn object_filters(&self, _user: &dyn AdminUser) -> Option<Vec<Filter>> {
-		Some(Vec::new())
 	}
 }
 
@@ -264,6 +317,7 @@ struct E2eContext {
 	pool: sqlx::PgPool,
 	// Hold server and db alive for the test lifetime.
 	_server: TestServer,
+	_db_lease: DatabaseConnectionLease,
 	_admin_db: Arc<AdminDatabase>,
 }
 
@@ -287,6 +341,20 @@ where
 	F: FnOnce(&Arc<AdminSite>),
 {
 	let builder = PostgresQueryBuilder::new();
+	let mut metadata = ModelMetadata::new("admin_e2e", "TestModel", "test_models");
+	metadata.add_field(
+		"name".to_string(),
+		FieldMetadata::new(DbFieldType::VarChar(255)),
+	);
+	metadata.add_field(
+		"status".to_string(),
+		FieldMetadata::new(DbFieldType::VarChar(50)).with_nullable(true),
+	);
+	metadata.add_field(
+		"description".to_string(),
+		FieldMetadata::new(DbFieldType::Text).with_nullable(true),
+	);
+	global_registry().register_model(metadata);
 
 	// ---- Database setup ----
 
@@ -478,9 +546,10 @@ where
 
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db_conn = Arc::new(connection);
-	let admin_db = Arc::new(AdminDatabase::new((*db_conn).clone()));
+	let db_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("PostgreSQL connection should register");
+	let db_conn = db_lease.handle();
+	let admin_db = Arc::new(AdminDatabase::new(db_conn));
 
 	let mut site = AdminSite::new("E2E Test Admin");
 	site.set_jwt_secret(JWT_SECRET);
@@ -490,7 +559,7 @@ where
 	let (admin_router, admin_di) = admin_routes_with_di(site);
 
 	let singleton = Arc::new(SingletonScope::new());
-	singleton.set_arc(db_conn);
+	singleton.set(db_conn);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
 	let router = reinhardt_urls::routers::UnifiedRouter::new()
@@ -511,6 +580,7 @@ where
 		site_header,
 		pool: pool_for_ctx,
 		_server: server,
+		_db_lease: db_lease,
 		_admin_db: admin_db,
 	}
 }
@@ -666,6 +736,12 @@ async fn login_via_form_as(page: &CdpPage, server_url: &str, username: &str, pas
 
 	// Wait for WASM to initialize (downloads ~5.6MB WASM binary in dev mode)
 	wait_for_wasm_init(page).await;
+	page.wait_for("input[name='username']")
+		.await
+		.expect("Username input should be rendered");
+	page.wait_for("input[name='password']")
+		.await
+		.expect("Password input should be rendered");
 
 	page.type_into("input[name='username']", username)
 		.await
@@ -765,6 +841,7 @@ async fn create_non_staff_user(pool: &sqlx::PgPool, username: &str, password: &s
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_admin_html_shell_served(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -788,6 +865,7 @@ async fn test_admin_html_shell_served(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_admin_login_shell_served(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -809,6 +887,7 @@ async fn test_admin_login_shell_served(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_login_page_renders(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -831,6 +910,7 @@ async fn test_login_page_renders(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_login_invalid_credentials_shows_error(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -872,6 +952,7 @@ async fn test_login_invalid_credentials_shows_error(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_login_success_redirects_to_dashboard(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -898,6 +979,7 @@ async fn test_login_success_redirects_to_dashboard(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_dashboard_shows_model_cards(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -928,6 +1010,7 @@ async fn test_dashboard_shows_model_cards(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_dashboard_card_navigates_to_list(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -962,6 +1045,7 @@ async fn test_dashboard_card_navigates_to_list(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_list_view_renders_table(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -990,6 +1074,111 @@ async fn test_list_view_renders_table(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[ignore = "requires a built admin WASM bundle and Docker"]
+async fn test_admin_action_updates_selected_record_status(#[future] e2e: E2eContext) {
+	// Arrange
+	let ctx = e2e.await;
+	let page = ctx
+		.browser
+		.new_page(&format!("{}/admin/login/", ctx.server_url))
+		.await
+		.expect("Failed to open page");
+	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+	let source = page.content().await.expect("Failed to get page source");
+	require_wasm!(&source);
+	inject_auth_token(&page, &ctx.server_url).await;
+	spa_navigate(&page, "/admin/TestModel/").await;
+
+	// Act
+	let configured = page
+		.execute_js(
+			"(() => { \
+			 const checkbox = document.querySelector(\"input[aria-label='Select 1']\"); \
+			 if (!checkbox) return false; \
+			 checkbox.checked = true; \
+			 checkbox.dispatchEvent(new Event('change', { bubbles: true })); \
+			 const select = document.querySelector(\"select[aria-label='Admin action']\"); \
+			 if (!select) return false; \
+			 select.value = 'publish'; \
+			 select.dispatchEvent(new Event('change', { bubbles: true })); \
+			 const liveCheckbox = document.querySelector(\"input[aria-label='Select 1']\"); \
+			 const liveSelect = document.querySelector(\"select[aria-label='Admin action']\"); \
+			 return !!liveCheckbox && liveCheckbox.checked && \
+			   !!liveSelect && liveSelect.value === 'publish'; \
+			 })()",
+		)
+		.await
+		.expect("Failed to configure the admin action controls")
+		.as_bool()
+		.unwrap_or(false);
+	assert!(configured, "Bulk action controls should be available");
+	tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+	let ready = page
+		.execute_js(
+			"(() => { \
+			 const select = document.querySelector(\"select[aria-label='Admin action']\"); \
+			 const button = select?.nextElementSibling; \
+			 return select?.value === 'publish' && \
+			   button?.matches('button.admin-btn-primary') && !button.disabled; \
+			 })()",
+		)
+		.await
+		.expect("Failed to inspect the configured admin action")
+		.as_bool()
+		.unwrap_or(false);
+	assert!(
+		ready,
+		"Run button should be enabled for the configured action"
+	);
+	page.click("select[aria-label='Admin action'] + button.admin-btn-primary")
+		.await
+		.expect("Failed to run the selected admin action");
+
+	// Assert
+	poll_until(
+		std::time::Duration::from_secs(10),
+		std::time::Duration::from_millis(200),
+		|| async {
+			let record = ctx
+				._admin_db
+				.get::<AdminRecord>("test_models", "id", "1")
+				.await
+				.expect("Failed to load the action target")
+				.expect("Action target should exist");
+			let status = record.get("status").cloned();
+			status == Some(serde_json::json!("published"))
+		},
+	)
+	.await
+	.expect("Admin action should update the selected record");
+
+	poll_until(
+		std::time::Duration::from_secs(10),
+		std::time::Duration::from_millis(200),
+		|| async {
+			let refreshed_and_cleared = page
+				.execute_js(
+					"(() => { \
+				 const checkbox = document.querySelector(\"input[aria-label='Select 1']\"); \
+				 const row = checkbox?.closest('tr'); \
+				 return !!checkbox && !checkbox.checked && \
+				   !!row && row.textContent.includes('published'); \
+				 })()",
+				)
+				.await
+				.expect("Failed to inspect refreshed action target")
+				.as_bool()
+				.unwrap_or(false);
+			refreshed_and_cleared
+		},
+	)
+	.await
+	.expect("Admin action success should refetch the row and clear its selection");
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(admin_registry)]
 async fn test_list_view_row_navigates_to_detail(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -1020,6 +1209,7 @@ async fn test_list_view_row_navigates_to_detail(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_detail_view_has_edit_and_back(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -1054,6 +1244,7 @@ async fn test_detail_view_has_edit_and_back(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_create_form_renders(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -1080,10 +1271,54 @@ async fn test_create_form_renders(#[future] e2e: E2eContext) {
 	);
 }
 
+#[rstest]
+#[tokio::test]
+#[serial(admin_registry)]
+async fn fieldset_native_disclosure_supports_mouse_and_keyboard(#[future] e2e: E2eContext) {
+	// Arrange
+	let ctx = e2e.await;
+	let page = ctx
+		.browser
+		.new_page(&format!("{}/admin/login/", ctx.server_url))
+		.await
+		.expect("Failed to open page");
+	let source = page.content().await.expect("Failed to get page source");
+	require_wasm!(&source);
+	inject_auth_token(&page, &ctx.server_url).await;
+	spa_navigate(&page, "/admin/TestModel/add/").await;
+	let details_selector = "details.admin-fieldset:nth-of-type(2)";
+	let summary_selector = "details.admin-fieldset:nth-of-type(2) > summary";
+	page.wait_for(summary_selector)
+		.await
+		.expect("Collapsed fieldset summary should render");
+	assert_eq!(
+		page.get_attribute(details_selector, "open").await.unwrap(),
+		None
+	);
+
+	// Act: open and close the native disclosure with the mouse.
+	page.click(summary_selector).await.unwrap();
+	let opened_by_click = page.get_attribute(details_selector, "open").await.unwrap();
+	page.click(summary_selector).await.unwrap();
+	let closed_by_click = page.get_attribute(details_selector, "open").await.unwrap();
+
+	// Act: focus the native summary and open it with Enter.
+	let summary = page.find(summary_selector).await.unwrap();
+	summary.focus().await.unwrap();
+	summary.press_key("Enter").await.unwrap();
+	let opened_by_keyboard = page.get_attribute(details_selector, "open").await.unwrap();
+
+	// Assert
+	assert_eq!(opened_by_click, Some(String::new()));
+	assert_eq!(closed_by_click, None);
+	assert_eq!(opened_by_keyboard, Some(String::new()));
+}
+
 // --- 7. Auth Redirect Tests (require WASM) ---
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_unauthenticated_redirect_to_login(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -1109,6 +1344,7 @@ async fn test_unauthenticated_redirect_to_login(#[future] e2e: E2eContext) {
 
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_edit_form_renders_with_values(#[future] e2e: E2eContext) {
 	let ctx = e2e.await;
 	let page = ctx
@@ -1146,6 +1382,7 @@ async fn test_edit_form_renders_with_values(#[future] e2e: E2eContext) {
 /// (sourced from `AdminSettings::default()`), not just a hard-coded string.
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_dashboard_renders_site_header(#[future] e2e: E2eContext) {
 	// Arrange
 	let ctx = e2e.await;
@@ -1185,6 +1422,7 @@ async fn test_dashboard_renders_site_header(#[future] e2e: E2eContext) {
 /// models are registered with the AdminSite.
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_dashboard_empty_state_shows_alert(#[future] e2e_no_models: E2eContext) {
 	// Arrange
 	let ctx = e2e_no_models.await;
@@ -1226,6 +1464,7 @@ async fn test_dashboard_empty_state_shows_alert(#[future] e2e_no_models: E2eCont
 /// Verify that each registered model gets its own `.admin-card` on the dashboard.
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_dashboard_renders_card_per_model(#[future] e2e_multi_models: E2eContext) {
 	// Arrange
 	let ctx = e2e_multi_models.await;
@@ -1276,6 +1515,7 @@ async fn test_dashboard_renders_card_per_model(#[future] e2e_multi_models: E2eCo
 /// with the correct `href` to the list view.
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_dashboard_card_structure(#[future] e2e: E2eContext) {
 	// Arrange
 	let ctx = e2e.await;
@@ -1341,6 +1581,7 @@ async fn test_dashboard_card_structure(#[future] e2e: E2eContext) {
 /// the dashboard correctly blocks unauthorized users.
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_dashboard_non_staff_user_blocked(#[future] e2e: E2eContext) {
 	// Arrange
 	let ctx = e2e.await;
@@ -1400,6 +1641,7 @@ async fn test_dashboard_non_staff_user_blocked(#[future] e2e: E2eContext) {
 /// re-renders the model cards. Exercises the SPA router's resource re-fetch path.
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_dashboard_back_navigation_rerenders(#[future] e2e: E2eContext) {
 	// Arrange
 	let ctx = e2e.await;

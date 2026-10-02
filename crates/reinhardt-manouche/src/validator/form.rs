@@ -16,21 +16,24 @@ use proc_macro2::Span;
 use std::collections::HashSet;
 use syn::{Error, Result};
 
+use crate::core::attr_utils::ident_to_wire_name;
 use crate::core::{
 	AmbientArgumentsSource, FormAction, FormCallbacks, FormChoiceItem, FormControlEntryDef,
 	FormControlEntryKind, FormCustomWidgetSpec, FormDatalistDef, FormDerived, FormFieldCollection,
 	FormFieldDef, FormFieldEntry, FormFieldGroup, FormFieldProperty, FormMacro, FormMethod,
 	FormSlots, FormState, FormSubmitButtonDef, FormValidator, FormWatch, FormWidgetSpec, IconAttr,
-	IconChild, IconPosition, StripArgument, TypedButtonControlDef, TypedButtonKind,
-	TypedChoiceGroup, TypedChoiceItem, TypedChoiceOption, TypedChoicesConfig, TypedCustomAttr,
-	TypedCustomWidget, TypedDatalistDef, TypedDerivedItem, TypedFieldDisplay,
-	TypedFieldNativeAttrs, TypedFieldStyling, TypedFieldType, TypedFieldValidation,
-	TypedFormAction, TypedFormCallbacks, TypedFormDerived, TypedFormFieldCollection,
-	TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup, TypedFormMacro, TypedFormSlots,
-	TypedFormState, TypedFormStyling, TypedFormValidator, TypedFormWatch, TypedFormWatchItem,
-	TypedIcon, TypedIconAttr, TypedIconChild, TypedIconPosition, TypedImageInputDef, TypedMeterDef,
-	TypedOutputDef, TypedProgressDef, TypedStripArgument, TypedSubmitButtonDef, TypedValidatorRule,
-	TypedWidget, TypedWrapper, TypedWrapperAttr, ValidatorRule,
+	IconChild, IconPosition, ModelFieldSelection, ModelFormSource, StripArgument,
+	TypedButtonControlDef, TypedButtonKind, TypedChoiceGroup, TypedChoiceItem, TypedChoiceOption,
+	TypedChoicesConfig, TypedCustomAttr, TypedCustomWidget, TypedDatalistDef, TypedDerivedItem,
+	TypedFieldDisplay, TypedFieldNativeAttrs, TypedFieldStyling, TypedFieldType,
+	TypedFieldValidation, TypedFormAction, TypedFormCallbacks, TypedFormDerived,
+	TypedFormFieldCollection, TypedFormFieldDef, TypedFormFieldEntry, TypedFormFieldGroup,
+	TypedFormMacro, TypedFormSlots, TypedFormState, TypedFormStyling, TypedFormValidator,
+	TypedFormWatch, TypedFormWatchItem, TypedIcon, TypedIconAttr, TypedIconChild,
+	TypedIconPosition, TypedImageInputDef, TypedMeterDef, TypedModelFieldOverride,
+	TypedModelFieldSelection, TypedModelFormSource, TypedOutputDef, TypedProgressDef,
+	TypedStripArgument, TypedSubmitButtonDef, TypedValidatorRule, TypedWidget, TypedWrapper,
+	TypedWrapperAttr, ValidatorRule,
 };
 
 /// Validates and transforms the FormMacro AST into a typed AST.
@@ -69,15 +72,6 @@ pub fn validate_form_with_ambient_arguments_source(
 	// Transform state configuration
 	let state = transform_state(&ast.state)?;
 
-	// Transform callbacks
-	let callbacks = transform_callbacks(&ast.callbacks)?;
-
-	// Transform watch block
-	let watch = transform_watch(&ast.watch)?;
-
-	// Transform derived block
-	let derived = transform_derived(&ast.derived)?;
-
 	// Transform redirect configuration
 	let redirect_on_success = transform_redirect(&ast.redirect_on_success)?;
 
@@ -104,6 +98,66 @@ pub fn validate_form_with_ambient_arguments_source(
 	// Transform fields
 	let fields = transform_fields(&ast.fields)?;
 	validate_list_references(&fields)?;
+	let model_source = transform_model_source(&ast.model_source)?;
+	let model_backed = model_source.is_some();
+	if model_backed && !matches!(&action, TypedFormAction::ServerFn(_)) {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! requires an explicit `server_fn`",
+		));
+	}
+	if model_backed && (redirect_on_success.is_some() || success_url.is_some()) {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support `redirect_on_success` or `success_url`; configure submission lifecycle through `use_form(&form)`",
+		));
+	}
+	if model_backed && initial_loader.is_some() {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support `initial_loader`; initialize values through the generated form state",
+		));
+	}
+	if model_backed && choices_loader.is_some() {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support `choices_loader`; configure static choices through the generated model schema",
+		));
+	}
+	if model_backed && !matches!(method, FormMethod::Post) {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! requires `method: Post` for its server_fn action",
+		));
+	}
+	if model_backed && slots.is_some() {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support `slots`; compose surrounding page content outside the generated form",
+		));
+	}
+	if model_backed && (ast.watch.is_some() || ast.derived.is_some()) {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support `watch` or `derived` clauses",
+		));
+	}
+	if model_backed && ast.callbacks.has_any() {
+		return Err(Error::new(
+			ast.span,
+			"model-backed form! does not support callback clauses; configure submission lifecycle through `use_form(&form)`",
+		));
+	}
+
+	// Transform callbacks after model-form restrictions so model submissions
+	// receive the same targeted diagnostics as the Pages macro.
+	let callbacks = transform_callbacks(&ast.callbacks)?;
+
+	// Transform watch block
+	let watch = transform_watch(&ast.watch)?;
+
+	// Transform derived block
+	let derived = transform_derived(&ast.derived)?;
 
 	// Transform unified validators (scope filtering happens at codegen)
 	let validators = transform_validators(&ast.validators, &ast.fields)?;
@@ -133,10 +187,104 @@ pub fn validate_form_with_ambient_arguments_source(
 		choices_loader,
 		slots,
 		fields,
+		model_source,
 		validators,
 		strip_arguments,
 		span: ast.span,
 	})
+}
+
+fn transform_model_source(
+	source: &Option<ModelFormSource>,
+) -> Result<Option<TypedModelFormSource>> {
+	let Some(source) = source else {
+		return Ok(None);
+	};
+
+	if let Some(contract) = source.contract_path() {
+		return Ok(Some(TypedModelFormSource::contract(
+			contract.clone(),
+			transform_model_overrides(&source.overrides, |_| true)?,
+		)));
+	}
+
+	let ModelFormSource {
+		model,
+		policy,
+		selection,
+		overrides,
+	} = source;
+	let selection = match selection {
+		ModelFieldSelection::Fields(fields) => {
+			validate_unique_model_field_names(fields, "fields")?;
+			TypedModelFieldSelection::Fields(fields.clone())
+		}
+		ModelFieldSelection::Exclude(fields) => {
+			validate_unique_model_field_names(fields, "exclude")?;
+			TypedModelFieldSelection::Exclude(fields.clone())
+		}
+	};
+	let overrides = transform_model_overrides(overrides, |field| match &selection {
+		TypedModelFieldSelection::Fields(fields) => fields.iter().any(|name| name == field),
+		TypedModelFieldSelection::Exclude(fields) => !fields.iter().any(|name| name == field),
+	})?;
+
+	Ok(Some(TypedModelFormSource {
+		model: model.clone(),
+		policy: policy.clone(),
+		selection,
+		overrides,
+	}))
+}
+
+fn transform_model_overrides(
+	overrides: &[crate::core::ModelFieldOverride],
+	is_selected: impl Fn(&syn::Ident) -> bool,
+) -> Result<Vec<TypedModelFieldOverride>> {
+	let mut seen_overrides = HashSet::new();
+	overrides
+		.iter()
+		.map(|override_| {
+			let field = ident_to_wire_name(&override_.field);
+			if !is_selected(&override_.field) {
+				return Err(Error::new(
+					override_.field.span(),
+					format!("`overrides` field `{field}` is not selected by the model form"),
+				));
+			}
+			if !seen_overrides.insert(field.clone()) {
+				return Err(Error::new(
+					override_.field.span(),
+					format!("duplicate `overrides` entry for field '{field}'"),
+				));
+			}
+
+			Ok(TypedModelFieldOverride {
+				field: override_.field.clone(),
+				widget: override_
+					.widget
+					.as_ref()
+					.map(parse_model_widget)
+					.transpose()?,
+				label: override_.label.as_ref().map(syn::LitStr::value),
+				help_text: override_.help_text.as_ref().map(syn::LitStr::value),
+			})
+		})
+		.collect()
+}
+
+fn validate_unique_model_field_names(fields: &[syn::Ident], clause: &str) -> Result<()> {
+	let mut seen = HashSet::new();
+	for field in fields {
+		let name = ident_to_wire_name(field);
+		if !seen.insert(name.clone()) {
+			return Err(Error::new(
+				field.span(),
+				format!("duplicate `{clause}` identifier: '{name}'"),
+			));
+		}
+	}
+	Ok(())
 }
 
 /// Validates that all field names are unique.
@@ -1364,7 +1512,7 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 
 	// Extract properties into categories
 	let validation = extract_validation_properties(&field.properties).map_err(&annotate)?;
-	let display = extract_display_properties(&field.properties).map_err(&annotate)?;
+	let mut display = extract_display_properties(&field.properties).map_err(&annotate)?;
 	let styling = extract_styling_properties(&field.properties).map_err(&annotate)?;
 	let widget = extract_widget(&field.properties, &field_type).map_err(&annotate)?;
 	validate_widget_field_compatibility(&field_type, &widget, field.span).map_err(&annotate)?;
@@ -1378,6 +1526,28 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	let initial_expr = extract_initial_expr(&field.properties);
 	let choices_config = extract_choices_config(&field.properties);
 	let static_choices_source = extract_static_choices(&field.properties).map_err(&annotate)?;
+	if matches!(widget, TypedWidget::RadioInput) {
+		for property in &field.properties {
+			match property {
+				FormFieldProperty::Choices { choices, span } if choices.len() != 1 => {
+					return Err(annotate(Error::new(
+						*span,
+						"RadioInput requires exactly one static choice; use RadioSelect for a group",
+					)));
+				}
+				FormFieldProperty::ChoicesFrom { span, .. }
+				| FormFieldProperty::ChoiceValue { span, .. }
+				| FormFieldProperty::ChoiceLabel { span, .. }
+				| FormFieldProperty::ChoiceDisabled { span, .. } => {
+					return Err(annotate(Error::new(
+						*span,
+						"RadioInput does not support dynamic choices; use RadioSelect for a group",
+					)));
+				}
+				_ => {}
+			}
+		}
+	}
 
 	validate_radio_select_choice_group_properties(&field.properties, &widget).map_err(&annotate)?;
 	validate_known_field_properties(&field.properties).map_err(&annotate)?;
@@ -1404,16 +1574,35 @@ fn transform_field(field: &FormFieldDef) -> Result<TypedFormFieldDef> {
 	}
 
 	if !static_choices_source.is_empty()
-		&& !matches!(widget, TypedWidget::Select | TypedWidget::SelectMultiple)
-	{
+		&& !matches!(
+			widget,
+			TypedWidget::Select | TypedWidget::SelectMultiple | TypedWidget::RadioInput
+		) {
 		return Err(annotate(Error::new(
 			field.span,
-			"choices require Select or SelectMultiple widget",
+			"choices require Select, SelectMultiple, or RadioInput widget",
 		)));
 	}
 
-	let static_choices =
-		transform_static_choices(&static_choices_source, true, false).map_err(&annotate)?;
+	let static_choices = transform_static_choices(
+		&static_choices_source,
+		!matches!(widget, TypedWidget::RadioInput),
+		false,
+	)
+	.map_err(&annotate)?;
+	if matches!(widget, TypedWidget::RadioInput)
+		&& let Some(TypedChoiceItem::Option(option)) = static_choices.first()
+	{
+		expect_string_literal(&option.value, option.span, "RadioInput choice value")
+			.map_err(&annotate)?;
+		if display.label.is_none() {
+			display.label = Some(
+				expect_string_literal(&option.label, option.span, "RadioInput choice label")
+					.map_err(&annotate)?,
+			);
+		}
+		display.disabled |= option.disabled;
+	}
 
 	Ok(TypedFormFieldDef {
 		name: field.name.clone(),
@@ -1446,7 +1635,7 @@ fn validate_radio_select_choice_group_properties(
 	properties: &[FormFieldProperty],
 	widget: &TypedWidget,
 ) -> Result<()> {
-	if !matches!(widget, TypedWidget::RadioSelect) {
+	if !matches!(widget, TypedWidget::RadioSelect | TypedWidget::RadioInput) {
 		return Ok(());
 	}
 
@@ -1981,6 +2170,7 @@ fn parse_widget(ident: &syn::Ident) -> Result<TypedWidget> {
 		"NumberInput" => Ok(TypedWidget::NumberInput),
 		"Textarea" => Ok(TypedWidget::Textarea),
 		"CheckboxInput" => Ok(TypedWidget::CheckboxInput),
+		"RadioInput" => Ok(TypedWidget::RadioInput),
 		"RadioSelect" => Ok(TypedWidget::RadioSelect),
 		"Select" => Ok(TypedWidget::Select),
 		"SelectMultiple" => Ok(TypedWidget::SelectMultiple),
@@ -2000,13 +2190,35 @@ fn parse_widget(ident: &syn::Ident) -> Result<TypedWidget> {
 			ident.span(),
 			format!(
 				"unknown widget type: '{}'. Expected one of: TextInput, PasswordInput, \
-					EmailInput, NumberInput, Textarea, CheckboxInput, RadioSelect, Select, \
+					EmailInput, NumberInput, Textarea, CheckboxInput, RadioInput, RadioSelect, Select, \
 					SelectMultiple, DateInput, MonthInput, WeekInput, TimeInput, DateTimeInput, \
 					FileInput, HiddenInput, ColorInput, RangeInput, UrlInput, TelInput, SearchInput",
 				widget_str
 			),
 		)),
 	}
+}
+
+fn parse_model_widget(ident: &syn::Ident) -> Result<TypedWidget> {
+	if ident == "TextArea" {
+		return Ok(TypedWidget::Textarea);
+	}
+	if matches!(
+		ident.to_string().as_str(),
+		"Select"
+			| "SelectMultiple"
+			| "RadioInput"
+			| "RadioSelect"
+			| "MonthInput"
+			| "WeekInput"
+			| "FileInput"
+	) {
+		return Err(Error::new(
+			ident.span(),
+			"this widget is not supported by model-backed forms; use a supported scalar widget or an explicit non-model form",
+		));
+	}
+	parse_widget(ident)
 }
 
 #[derive(Default)]
@@ -2027,6 +2239,20 @@ fn validate_widget_field_compatibility(
 	span: Span,
 ) -> Result<()> {
 	match widget {
+		TypedWidget::RadioInput
+			if !matches!(field_type,
+				TypedFieldType::ChoiceField { inner: syn::Type::Path(path) }
+					if path.qself.is_none()
+						&& path.path.segments.iter().all(|segment| segment.arguments.is_none())
+						&& matches!(path.path.segments.iter().map(|segment| segment.ident.to_string()).collect::<Vec<_>>().join("::").as_str(),
+							"String" | "std::string::String" | "alloc::string::String")
+			) =>
+		{
+			Err(Error::new(
+				span,
+				"RadioInput is only supported on ChoiceField<String>",
+			))
+		}
 		TypedWidget::MonthInput if !is_string_valued_field(field_type) => Err(Error::new(
 			span,
 			"MonthInput is only supported on string-valued fields",
@@ -2972,6 +3198,295 @@ mod tests {
 		assert!(result.is_ok());
 		let typed = result.unwrap();
 		assert!(matches!(typed.action, TypedFormAction::ServerFn(_)));
+	}
+
+	#[rstest]
+	fn test_validate_named_model_form_preserves_contract_source() {
+		// Arrange
+		let input = quote! {
+			name: CreateClusterForm,
+			model_form: ClusterCreateForm,
+			server_fn: create_cluster_for_current_org,
+			overrides: {
+				name: { widget: TextArea, label: "Name" },
+			},
+		};
+
+		// Act
+		let typed = parse_and_validate(input).expect("named model form should validate");
+
+		// Assert
+		let source = typed
+			.model_source
+			.expect("typed contract source should be present");
+		let contract = source
+			.contract_path()
+			.expect("contract path should be present");
+		let overrides = &source.overrides;
+		assert_eq!(contract.segments.last().unwrap().ident, "ClusterCreateForm");
+		assert_eq!(overrides.len(), 1);
+		assert_eq!(overrides[0].widget, Some(TypedWidget::Textarea));
+		assert_eq!(overrides[0].label.as_deref(), Some("Name"));
+	}
+
+	#[test]
+	fn legacy_model_form_source_keeps_its_struct_literal_shape() {
+		let source = ModelFormSource {
+			model: syn::parse_str("Question").expect("model path should parse"),
+			policy: syn::parse_str("QuestionPolicy").expect("policy path should parse"),
+			selection: ModelFieldSelection::Fields(vec![
+				syn::parse_str("title").expect("field identifier should parse"),
+			]),
+			overrides: Vec::new(),
+		};
+		let typed = TypedModelFormSource {
+			model: source.model.clone(),
+			policy: source.policy.clone(),
+			selection: TypedModelFieldSelection::Fields(vec![
+				syn::parse_str("title").expect("field identifier should parse"),
+			]),
+			overrides: Vec::new(),
+		};
+
+		assert_eq!(source.model.segments.last().unwrap().ident, "Question");
+		assert_eq!(
+			typed.policy.segments.last().unwrap().ident,
+			"QuestionPolicy"
+		);
+	}
+
+	#[test]
+	fn public_typed_form_macro_struct_literal_keeps_legacy_shape() {
+		let form = TypedFormMacro {
+			name: syn::parse_str("LegacyForm").expect("form name should parse"),
+			action: TypedFormAction::None,
+			method: FormMethod::Post,
+			styling: TypedFormStyling::default(),
+			state: None,
+			callbacks: TypedFormCallbacks::new(),
+			watch: None,
+			derived: None,
+			redirect_on_success: None,
+			success_url: None,
+			initial_loader: None,
+			choices_loader: None,
+			slots: None,
+			fields: Vec::new(),
+			model_source: None,
+			validators: Vec::new(),
+			strip_arguments: Vec::new(),
+			span: Span::call_site(),
+		};
+
+		assert!(form.model_source.is_none());
+	}
+
+	#[rstest]
+	fn test_validate_model_form_transforms_source() {
+		// Arrange
+		let input = quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title, published_at],
+			server_fn: save_question,
+			overrides: {
+				title: {
+					widget: TextArea,
+					label: "Question",
+					help_text: "Enter the question",
+				},
+			},
+		};
+
+		// Act
+		let typed = parse_and_validate(input).expect("model form should validate");
+
+		// Assert
+		assert!(typed.fields.is_empty());
+		let source = typed
+			.model_source
+			.expect("typed model source should be present");
+		let TypedModelFormSource {
+			model,
+			policy,
+			selection,
+			overrides,
+		} = source;
+		assert_eq!(model.segments.last().unwrap().ident, "Question");
+		assert_eq!(policy.segments.last().unwrap().ident, "QuestionFields");
+		assert!(matches!(selection, TypedModelFieldSelection::Fields(_)));
+		assert_eq!(overrides.len(), 1);
+		assert_eq!(overrides[0].widget, Some(TypedWidget::Textarea));
+		assert_eq!(overrides[0].label.as_deref(), Some("Question"));
+		assert_eq!(
+			overrides[0].help_text.as_deref(),
+			Some("Enter the question")
+		);
+	}
+
+	#[rstest]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+			fields: [title],
+			exclude: [owner_id],
+		},
+		"fields"
+	)]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+		},
+		"model"
+	)]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+			fields: [title, title],
+		},
+		"fields"
+	)]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title],
+			overrides: {
+				title: { label: "Question" },
+				title: { help_text: "Enter the question" },
+			},
+		},
+		"overrides"
+	)]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title],
+			overrides: {
+				title: { placeholder: "Question" },
+			},
+		},
+		"placeholder"
+	)]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+			fields: {
+				title: CharField {},
+			},
+		},
+		"fields"
+	)]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			overrides: {
+				title: { label: "Question" },
+			},
+		},
+		"overrides"
+	)]
+	fn test_validate_model_form_rejects_invalid_clauses(
+		#[case] input: proc_macro2::TokenStream,
+		#[case] expected_clause: &str,
+	) {
+		// Act
+		let error = parse_and_validate(input)
+			.expect_err("invalid model form should be rejected")
+			.to_string();
+
+		// Assert
+		assert!(
+			error.contains(expected_clause),
+			"expected diagnostic to name `{expected_clause}`, got: {error}"
+		);
+	}
+
+	#[rstest]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title],
+			server_fn: save_question,
+			choices_loader: load_choices,
+		},
+		"model-backed form! does not support `choices_loader`; configure static choices through the generated model schema"
+	)]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title],
+			server_fn: save_question,
+			method: Get,
+		},
+		"model-backed form! requires `method: Post` for its server_fn action"
+	)]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title],
+			server_fn: save_question,
+			watch: { preview: |form| { form } },
+		},
+		"model-backed form! does not support `watch` or `derived` clauses"
+	)]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title],
+			server_fn: save_question,
+			derived: { preview: |form| { form } },
+		},
+		"model-backed form! does not support `watch` or `derived` clauses"
+	)]
+	#[case(
+		quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [title],
+			server_fn: save_question,
+			on_success: |result| { result },
+		},
+		"model-backed form! does not support callback clauses; configure submission lifecycle through `use_form(&form)`"
+	)]
+	fn test_validate_model_form_rejects_unsupported_runtime_clauses(
+		#[case] input: proc_macro2::TokenStream,
+		#[case] expected: &str,
+	) {
+		let error = parse_and_validate(input)
+			.expect_err("model form runtime clause should be rejected")
+			.to_string();
+
+		assert_eq!(error, expected);
+	}
+
+	#[test]
+	fn test_model_form_rejects_widget_without_model_renderer() {
+		let widget: syn::Ident = syn::parse_quote!(SelectMultiple);
+
+		let error = parse_model_widget(&widget).unwrap_err();
+
+		assert_eq!(
+			error.to_string(),
+			"this widget is not supported by model-backed forms; use a supported scalar widget or an explicit non-model form"
+		);
 	}
 
 	#[rstest]
@@ -5242,8 +5757,201 @@ mod tests {
 	}
 
 	// =========================================================
-	// Dynamic ChoiceField validation tests
+	// Choice widget validation tests
 	// =========================================================
+
+	#[rstest]
+	fn test_validate_radio_input_string_choices() {
+		// Arrange
+		let expected_value: syn::Expr = syn::parse_quote!("yes");
+		let expected_label: syn::Expr = syn::parse_quote!("Yes");
+		for field_type in [
+			quote!(ChoiceField),
+			quote!(ChoiceField<String>),
+			quote!(ChoiceField<std::string::String>),
+			quote!(ChoiceField<::std::string::String>),
+			quote!(ChoiceField<alloc::string::String>),
+			quote!(ChoiceField<::alloc::string::String>),
+		] {
+			// Act
+			let typed = parse_and_validate(quote! {
+				name: RadioInputForm,
+				action: "/radio-input",
+				fields: {
+					native: #field_type { widget: RadioInput },
+					answer: #field_type {
+						widget: RadioInput,
+						choices: [("yes", "Yes") { disabled }],
+						bind: false,
+					},
+					labeled: #field_type {
+						widget: RadioInput,
+						label: "Answer",
+						disabled,
+						choices: [("yes", "Option")],
+					},
+				},
+			})
+			.unwrap();
+
+			// Assert
+			let native = typed.fields[0].as_field().unwrap();
+			assert_eq!(native.widget, TypedWidget::RadioInput);
+			assert_eq!(native.static_choices.len(), 0);
+			assert_eq!(native.display.label, None);
+			assert!(!native.display.disabled);
+			let answer = typed.fields[1].as_field().unwrap();
+			assert_eq!(answer.widget, TypedWidget::RadioInput);
+			assert!(!answer.bind);
+			assert_eq!(answer.display.label.as_deref(), Some("Yes"));
+			assert!(answer.display.disabled);
+			assert_eq!(answer.static_choices.len(), 1);
+			let TypedChoiceItem::Option(option) = &answer.static_choices[0] else {
+				panic!("expected a single radio option");
+			};
+			assert_eq!(option.value, expected_value);
+			assert_eq!(option.label, expected_label);
+			assert!(option.disabled);
+			let labeled = typed.fields[2].as_field().unwrap();
+			assert_eq!(labeled.display.label.as_deref(), Some("Answer"));
+			assert!(labeled.display.disabled);
+		}
+	}
+
+	#[rstest]
+	fn test_validate_radio_input_rejects_model_override() {
+		// Arrange
+		let input = quote! {
+			name: QuestionForm,
+			model: Question,
+			policy: QuestionFields,
+			fields: [answer],
+			overrides: { answer: { widget: RadioInput } },
+		};
+
+		// Act
+		let error = parse_and_validate(input).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"this widget is not supported by model-backed forms; use a supported scalar widget or an explicit non-model form"
+		);
+	}
+
+	#[rstest]
+	fn test_validate_radio_input_rejects_other_field_types() {
+		// Arrange
+		for field_type in [
+			quote!(BooleanField),
+			quote!(IntegerField),
+			quote!(CharField),
+			quote!(MultipleChoiceField<String>),
+			quote!(ChoiceField<i64>),
+			quote!(ChoiceField<custom::String>),
+			quote!(ChoiceField<String<u8>>),
+			quote!(ChoiceField<<S as Trait>::String>),
+			quote!(ChoiceField<&'static str>),
+		] {
+			// Act
+			let error = parse_and_validate(quote! {
+				name: InvalidRadioInputForm,
+				action: "/invalid",
+				fields: { answer: #field_type { widget: RadioInput } },
+			})
+			.unwrap_err();
+
+			// Assert
+			assert_eq!(
+				error
+					.into_iter()
+					.map(|err| err.to_string())
+					.collect::<Vec<_>>(),
+				vec![
+					"RadioInput is only supported on ChoiceField<String>",
+					"error occurred in field 'answer'",
+				],
+			);
+		}
+	}
+
+	#[rstest]
+	fn test_validate_radio_input_rejects_invalid_choice_properties() {
+		// Arrange
+		for (properties, expected) in [
+			(
+				quote!(choices: []),
+				"RadioInput requires exactly one static choice; use RadioSelect for a group",
+			),
+			(
+				quote!(choices: [("yes", "Yes"), ("no", "No")]),
+				"RadioInput requires exactly one static choice; use RadioSelect for a group",
+			),
+			(
+				quote!(choices_from: "answers"),
+				"RadioInput does not support dynamic choices; use RadioSelect for a group",
+			),
+			(
+				quote!(choice_value: "value"),
+				"RadioInput does not support dynamic choices; use RadioSelect for a group",
+			),
+			(
+				quote!(choice_label: "label"),
+				"RadioInput does not support dynamic choices; use RadioSelect for a group",
+			),
+			(
+				quote!(choice_disabled: "disabled"),
+				"RadioInput does not support dynamic choices; use RadioSelect for a group",
+			),
+			(
+				quote!(choice_group: "group"),
+				"choice_group is only supported on Select and SelectMultiple widgets",
+			),
+			(
+				quote!(choice_group_disabled: "disabled"),
+				"choice_group_disabled is only supported on Select and SelectMultiple widgets",
+			),
+			(
+				quote!(choices: [OptGroup("Answers") { ("yes", "Yes"), }, ]),
+				"OptGroup is only supported by Select and SelectMultiple widgets",
+			),
+			(
+				quote!(choices: [(1, "Yes")]),
+				"RadioInput choice value must be a string literal",
+			),
+			(
+				quote!(choices: [(VALUE, "Yes")]),
+				"RadioInput choice value must be a string literal",
+			),
+			(
+				quote!(choices: [("yes", 1)]),
+				"RadioInput choice label must be a string literal",
+			),
+			(
+				quote!(choices: [("yes", LABEL)]),
+				"RadioInput choice label must be a string literal",
+			),
+		] {
+			// Act
+			let error = parse_and_validate(quote! {
+				name: InvalidRadioInputForm,
+				action: "/invalid",
+				fields: {
+					answer: ChoiceField { widget: RadioInput, #properties },
+				},
+			})
+			.unwrap_err();
+
+			// Assert
+			assert_eq!(
+				error
+					.into_iter()
+					.map(|err| err.to_string())
+					.collect::<Vec<_>>(),
+				vec![expected, "error occurred in field 'answer'"],
+			);
+		}
+	}
 
 	#[rstest]
 	fn test_validate_choices_loader_basic() {

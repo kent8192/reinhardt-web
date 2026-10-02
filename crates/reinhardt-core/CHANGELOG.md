@@ -7,6 +7,172 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.17...reinhardt-core@v0.4.0-alpha.18) - 2026-09-27
+
+### Fixed
+
+- [**breaking**] honor nullable model relation IDs without forms
+- *(macros)* parse nullable relation options structurally
+- *(macros)* make nullable relation builder fields optional
+
+### Testing
+
+- *(macros)* require both nullable wasm round-trip cases
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.15...reinhardt-core@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(forms)* add scoped validated form patches
+
+### Fixed
+
+- *(pages)* preserve null runtime sentinels
+- *(pages)* preserve native model form defaults
+- *(pages)* harden model form default metadata
+- *(pages)* preserve native model form edits before hydration
+- *(pages)* preserve JSON string scalars in multipart forms
+- *(pages)* preserve JSON types in multipart model forms
+- *(pages)* preserve native model form intent across startup and reset
+- *(macros)* limit companion length validators to text fields
+- *(forms)* enforce patch validation contracts
+- *(forms)* reject non-nullable null patch values before cleaning
+- *(forms)* preserve JSON null in validated form patches
+- *(forms)* reject SQL null in optional JSON form patches
+
+### Maintenance
+
+- merge develop/0.4.0 into model form mutation pages
+- *(sync)* merge main into develop/0.4.0
+
+### Testing
+
+- *(core)* use rstest for noscript fallback coverage
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.14...reinhardt-core@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Fixed
+
+- *(core)* validate rendered element contexts
+- *(pages)* reject executable elements in all renderers
+- *(pages)* enforce safe rendering boundaries
+- *(core)* validate batch boolean attributes
+- *(core)* enable security with the page feature
+- *(pages)* retain form control bindings through mount and hydration
+- *(core)* defer layout effects within explicit batches
+- *(pages)* preserve textarea and select state during hydration
+- *(pages)* preserve form ownership across hydration and reset
+- *(core)* flush batched layout work before passive effects
+- *(core)* deduplicate layout callbacks while flushing batches
+- *(pages)* preserve pristine textarea state through newline normalization
+- *(pages)* preserve reset ownership and hydrated radio state
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+- *(test)* allow cold native and wasm model parity builds
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.13...reinhardt-core@v0.4.0-alpha.14) - 2026-09-07
+
+### Fixed
+
+- *(macros)* complete leftover develop merge conflict markers
+- *(macros)* keep Model field_metadata reachable beside metadata fields
+- *(deps)* remove resolved tinyvec compatibility pins
+- *(forms)* reconcile validation with named form contracts
+- *(forms)* normalize raw primary keys before update validation
+- *(pages)* scope multipart validation to endpoint fields
+- *(deps)* align quick-xml with the plist dependency
+- *(forms)* reject nonfinite defaulted floats on WASM
+- *(forms)* expose pending uploads to model validation
+- *(macros)* restore upload metadata in model form test fixtures
+
+### Maintenance
+
+- merge develop/0.4.0 into constraint violation design
+- merge develop/0.4.0 into model form validation
+- merge develop/0.4.0 into semantic input bindings
+
+### Other
+
+- resolve merge conflicts with develop/0.4.0
+
+### Testing
+
+- pin tinyvec 1.12.0 in isolated consumer fixtures
+
+### Fixed
+
+- *(macros)* reject named form fields that generate reserved `Self` variants
+
+## [0.4.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.12...reinhardt-core@v0.4.0-alpha.13) - 2026-09-02
+
+### Fixed
+
+- *(core)* validate rendered element contexts
+- *(pages)* reject executable elements in all renderers
+- *(pages)* enforce safe rendering boundaries
+- *(core)* validate batch boolean attributes
+- *(core)* enable security with page feature
+
+### Testing
+
+- *(core)* align namespace sanitization expectation
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.10...reinhardt-core@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.8...reinhardt-core@v0.4.0-alpha.9) - 2026-08-23
+
+### Added
+
+- *(core)* add structured field error formatters
+- *(core)* format errors across serializer fields
+- *(rest)* expose configurable field errors
+- *(serializers)* store error formatters on serializer fields
+
+### Documentation
+
+- *(serializers)* link FieldErrorMessages from module rustdoc
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(serializers)* alias field error formatter to satisfy type complexity lint
+- *(serializers)* keep field structs constructible with error messages
+- *(serializers)* preserve custom messages for omitted fields
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Other
+
+- bring main into configurable field error messages
+- keep field error formatters with JSON extraction
+
+### Testing
+
+- *(core)* satisfy boolean assertion lint
+- *(serializers)* cover required, fallback, and field-type stability
+- *(macros)* keep server_only Info compile-fail on SecretInfo
+- *(macros)* isolate server_only Info compile-fail from serde bounds
+
 ## [0.3.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.16...reinhardt-core@v0.3.17) - 2026-09-13
 
 ### Fixed
@@ -73,6 +239,210 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(migrations)* preserve foreign-key index state
 - *(db)* preserve advanced index migration state
 
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.6...reinhardt-core@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Fixed
+
+- *(settings)* preserve explicit secret references
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Security
+
+- *(auth)* preserve JWT secret field compatibility
+
+### Testing
+
+- *(settings)* move JWT secret contract integration
+- *(macros)* align model UI support with filter bindings
+- *(core)* cover localized validation messages
+- *(core)* cover i18n fallback formatting
+- *(core)* cover schema draft metadata
+- *(core)* cover URL validator messages
+- *(core)* cover range custom errors
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.5...reinhardt-core@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.3...reinhardt-core@v0.4.0-alpha.4) - 2026-08-04
+
+### Added
+
+- *(core)* add model form schema contracts
+- *(macros)* generate typed model form schemas
+- *(forms)* [**breaking**] make generated model forms async
+- *(db)* add typed queryset retrieval proofs
+
+### Documentation
+
+- *(forms)* document generated model forms
+
+### Fixed
+
+- *(macros)* preserve model form relation schemas
+- *(macros)* reject repeated setter name collisions
+- *(forms)* enforce model form persistence invariants
+- *(forms)* align model form automatic defaults
+- *(forms)* harden generated form persistence semantics
+- *(forms)* close residual model form review gaps
+- *(macros)* omit generated fields from model forms
+- *(forms)* enforce generated model constraints
+- *(forms)* handle temporal and assigned model inputs
+- *(forms)* preserve model form field contracts
+- *(forms)* preserve specialized field constraints
+- *(forms)* preserve exact generated constraints
+- *(forms)* complete model-backed form submission
+- *(forms)* enforce model form submission policies
+- *(forms)* harden native model form decoding
+- *(forms)* preserve model form defaults
+- *(forms)* harden model form input handling
+- *(forms)* preserve secure model form defaults
+- *(forms)* honor relation form editability
+- *(forms)* preserve nullable relation clears
+- *(forms)* complete model form submission contracts
+- *(forms)* validate model form submission boundaries
+- *(forms)* preserve native model form semantics
+- *(forms)* preserve native defaults and control values
+- *(forms)* preserve model-backed form state
+- *(forms)* reserve the native csrf field name
+- *(forms)* enforce policy in typed setters
+- *(forms)* harden generated model form boundaries
+- *(forms)* preserve optional model form state
+- *(forms)* enforce model form overrides
+- *(forms)* reserve generated form namespaces
+- *(forms)* preflight deferred child validators
+- *(forms)* require generated relation ids
+- *(forms)* prevent duplicate MySQL form inserts
+- *(forms)* preserve native range defaults
+- *(forms)* prevent duplicate create retries
+- *(forms)* synchronize defaults and persistence state
+- *(forms)* synchronize transaction-backed form state
+- *(forms)* preserve transactional retry semantics
+- *(forms)* support trusted inline foreign keys
+- *(forms)* preserve model form control semantics
+- *(forms)* preserve nested form retries
+- *(forms)* validate inline formset retries
+- *(forms)* align native form validation
+- *(forms)* use serde-json for trusted fields
+- *(forms)* support nullable model form relations
+- *(forms)* preserve trusted non-editable model values
+- *(forms)* address model form review feedback
+- *(orm)* harden typed retrieval helpers
+- *(orm)* harden queryset retrieval helpers
+- *(db)* validate typed queryset ordering fields
+- *(db)* preserve queryset bulk lookup columns
+- *(db)* retain typed retrieval field provenance
+- *(db)* preserve typed queryset retrieval compatibility
+- *(db)* preserve generated field reference defaults
+- *(db)* resolve typed retrieval review feedback
+- *(db)* integrate develop/0.4.0 with typed upsert builders
+- *(db)* merge concurrent upsert review updates
+- *(commands)* honor managed migration settings
+
+### Maintenance
+
+- merge develop/0.4.0 into issue [[#5845](https://github.com/kent8192/reinhardt-web/issues/5845)](https://github.com/kent8192/reinhardt-web/issues/5845)
+
+### Other
+
+- sync develop/0.4.0 into inspectdb
+- integrate develop migration updates
+
+### Testing
+
+- *(macros)* align model support with field proofs
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.1...reinhardt-core@v0.4.0-alpha.2) - 2026-07-23
+
+### Fixed
+
+- *(pages)* preserve borrowed signal bindings
+- *(pages)* accept mutable signal borrows
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.2...reinhardt-core@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(query,migrations)* [**breaking**] support typed generated column expressions
+
+### Fixed
+
+- *(benchmark,macros)* address develop merge review feedback
+- *(migrations)* address generated column review feedback
+- *(migrations)* handle generated column followups
+- *(db)* preserve generated-column replacement metadata
+- *(db)* address generated column review feedback
+- *(db)* address generated column review follow-up
+- *(db)* complete generated column review repairs
+- *(db)* harden generated column edge cases
+- *(db)* reject invalid generated column definitions
+- *(macros)* gate MySQL generated-column test
+- *(macros)* preserve model schema metadata
+- *(testkit)* harden model-derived schema metadata
+- *(db)* harden typed relation traversal
+- *(orm)* close typed relation traversal gaps
+- *(orm)* support manual relation targets
+- *(macros)* honor reverse relation to_field
+- *(db)* validate typed relation load paths
+- *(macros)* reject ambiguous composite reverse relations
+- *(orm)* guard composite typed relation paths
+- *(pages)* restore explicit deps compatibility
+- *(ci)* terminate cfg aliases macro invocations
+- *(pages)* retain reactive owners through review edge cases
+- *(reactive)* enforce explicit dependencies and memo invalidation
+- *(pages)* complete explicit dependency migration
+- *(reactive)* isolate scope cleanup observers
+- *(core)* restore reactive notification coverage
+- *(pages)* resolve controlled binding review feedback
+- restore atomic ORM release compatibility
+- *(core)* ignore stale reactive subscribers
+- *(pages)* bind action button attributes reactively
+- *(pages)* dispose reactive attribute effects
+- *(pages)* materialize reactive test attributes
+- *(pages)* preserve reactive attribute precedence
+- *(pages)* reconcile reactive attributes
+- *(pages)* normalize boolean attribute names
+- *(core)* satisfy reactive attribute lint requirements
+- *(core)* update PageElement parts regression test
+- *(release)* restore develop prerelease lifecycle
+- *(orm)* resolve to-field physical columns
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into typed traversal branch
+- merge develop/0.4.0 into issue 5575 branch
+
+### Other
+
+- resolve develop/0.4.0 conflicts for [[#5676](https://github.com/kent8192/reinhardt-web/issues/5676)](https://github.com/kent8192/reinhardt-web/issues/5676)
+- resolve develop/0.4.0 into model enum fields
+- sync develop/0.4.0 into server function set
+
+### Testing
+
+- *(reactive)* cover explicit deps macro compatibility
+- *(macros)* repair model UI fixture contracts
+
+### Added
+
+- Generate typed `unique_<field>()` accessors for single-column primary keys,
+  fields declared with `unique = true`, and unconditional single-field unique
+  constraints, backed by model-owned compile-time field proofs.
+- Add development-only `Page` template metadata and dynamic-slot carriers for
+  state-preserving Pages HMR.
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.9...reinhardt-core@v0.3.10) - 2026-08-22
 
 ### Maintenance

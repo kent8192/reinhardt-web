@@ -63,7 +63,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false
           docker-images: true
           swap-storage: true
 
@@ -80,6 +80,9 @@ jobs:
         uses: ./.github/actions/setup-rust
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install wasm32-unknown-unknown target
+        run: rustup target add wasm32-unknown-unknown
 
       - name: Setup protoc
         uses: arduino/setup-protoc@v3
@@ -112,7 +115,8 @@ jobs:
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
           #!/bin/sh
-          exec clang -fuse-ld=mold "$@"
+          # rustc may append -fuse-ld=lld for host links; keep mold last.
+          exec clang "$@" -fuse-ld=mold
           WRAPPER
           chmod +x /tmp/clang-mold-wrapper
           ARCH=$(uname -m)

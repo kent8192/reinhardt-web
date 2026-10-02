@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-query"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -41,6 +41,9 @@ with-bigdecimal = ["dep:bigdecimal"]
 # NoSQL Redis command builder
 nosql-redis = []
 
+# PostgreSQL pgvector primitives
+pgvector = []
+
 # All optional features
 full = [
 	"derive",
@@ -50,6 +53,7 @@ full = [
 	"with-rust_decimal",
 	"with-bigdecimal",
 	"nosql-redis",
+	"pgvector",
 ]
 
 [dev-dependencies]

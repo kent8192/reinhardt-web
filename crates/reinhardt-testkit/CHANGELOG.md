@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.17...reinhardt-testkit@v0.4.0-alpha.18) - 2026-09-27
+
+### Fixed
+
+- *(testkit)* collect in-process streaming response bodies
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.15...reinhardt-testkit@v0.4.0-alpha.16) - 2026-09-23
+
+### Fixed
+
+- *(testkit)* consume owned file response bodies in APIClient
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.13...reinhardt-testkit@v0.4.0-alpha.14) - 2026-09-07
+
+### Maintenance
+
+- merge develop/0.4.0 into migration source PR
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.6...reinhardt-testkit@v0.4.0-alpha.7) - 2026-08-19
+
+### Fixed
+
+- *(testkit)* assert public method and cookie headers
+- *(testkit)* avoid hard-coded credential fixtures
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Testing
+
+- *(testkit)* raise coverage to 75%
+- *(testkit)* decode credential assertions
+- *(testkit)* move integration coverage and assert request state
+- *(testkit)* move client coverage and reject invalid states
+- *(testkit)* move cross-crate scenarios to integration tests
+- *(testkit)* preserve request assertion details
+- *(testkit)* close review coverage gaps
+- *(testkit)* cover authentication and rejection boundaries
+- *(testkit)* reject mismatched assertion inputs
+- *(testkit)* strengthen assertion boundary coverage
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.3...reinhardt-testkit@v0.4.0-alpha.6) - 2026-08-06
+
+### Added
+
+- *(db)* expose structured unique constraint metadata
+
+### Fixed
+
+- *(shell)* preserve test database scopes
+- *(commands)* address shell review findings
+- *(pgvector)* close migration and binding gaps
+- *(testkit)* gate pgvector field type import
+- *(release)* restore unpublished crates after partial release
+
+### Other
+
+- sync develop/0.4.0 into pgvector branch
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.1...reinhardt-testkit@v0.4.0-alpha.2) - 2026-07-23
+
+### Added
+
+- *(db)* [**breaking**] add Copy-safe injected connection handles
+
+### Fixed
+
+- *(db)* retain connection leases in CI consumers
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.2...reinhardt-testkit@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(testkit)* add model-derived test database fixture
+
+### Fixed
+
+- *(testkit)* harden test database fixture startup
+- *(testkit)* preserve model schema metadata
+- *(testkit)* harden model-derived schema metadata
+- *(testkit)* complete model-derived schema fidelity
+- *(ci)* terminate cfg aliases macro invocations
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- migrate dependency policy checks to cargo-deny
 ## [0.3.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.6...reinhardt-testkit@v0.3.7) - 2026-08-12
 
 ### Fixed

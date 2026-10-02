@@ -12,6 +12,7 @@
 #![cfg(all(target_arch = "wasm32", feature = "wasm-diag-test"))]
 
 use reinhardt_core::page::Page;
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_urls::routers::ClientRouter;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -25,30 +26,32 @@ fn page_a() -> Page {
 
 #[wasm_bindgen_test]
 fn reentrant_on_navigate_does_not_panic_inv4() {
-	// Arrange
-	let router = Rc::new(ClientRouter::new().route("a", "/a", page_a));
-	let later_fires = Rc::new(Cell::new(0u64));
-	let router_for_listener = router.clone();
-	let later_fires_clone = later_fires.clone();
+	ReactiveScope::run(|| {
+		// Arrange
+		let router = Rc::new(ClientRouter::new().route("a", "/a", page_a));
+		let later_fires = Rc::new(Cell::new(0u64));
+		let router_for_listener = router.clone();
+		let later_fires_clone = later_fires.clone();
 
-	// Listener that registers a second listener mid-dispatch. The inner
-	// subscription is dropped at the end of the closure, removing the
-	// listener it registered; dispatch must not panic on RefCell
-	// re-entry while this happens.
-	let _sub = router.on_navigate(move |_, _| {
-		let inner = later_fires_clone.clone();
-		let _sub2 = router_for_listener.on_navigate(move |_, _| {
-			inner.set(inner.get() + 1);
+		// Listener that registers a second listener mid-dispatch. The inner
+		// subscription is dropped at the end of the closure, removing the
+		// listener it registered; dispatch must not panic on RefCell
+		// re-entry while this happens.
+		let _sub = router.on_navigate(move |_, _| {
+			let inner = later_fires_clone.clone();
+			let _sub2 = router_for_listener.on_navigate(move |_, _| {
+				inner.set(inner.get() + 1);
+			});
 		});
+
+		// Act
+		router.push("/a").expect("first push must succeed");
+		router
+			.push("/a")
+			.expect("second push must not panic on RefCell");
+
+		// Assert: the second listener (registered mid-dispatch) was dropped
+		// before the second push, so it never fired.
+		assert_eq!(later_fires.get(), 0);
 	});
-
-	// Act
-	router.push("/a").expect("first push must succeed");
-	router
-		.push("/a")
-		.expect("second push must not panic on RefCell");
-
-	// Assert: the second listener (registered mid-dispatch) was dropped
-	// before the second push, so it never fired.
-	assert_eq!(later_fires.get(), 0);
 }

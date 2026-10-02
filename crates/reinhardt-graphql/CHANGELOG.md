@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.4.0-alpha.15...reinhardt-graphql@v0.4.0-alpha.16) - 2026-09-23
+
+### Documentation
+
+- *(security)* document the 0.3.17 GraphQL compatibility exception
+- update version references to v0.3.17
+
+### Fixed
+
+- fix!(graphql): validate operations after request preparation
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
+### Security
+
+- *(graphql)* enforce gRPC operation classes
+
+### Testing
+
+- *(graphql)* initialize DI fixture registrations once
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.4.0-alpha.8...reinhardt-graphql@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define UI and transport boundaries
+- *(security)* qualify remaining raw boundaries
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.4.0-alpha.1...reinhardt-graphql@v0.4.0-alpha.2) - 2026-07-23
+
+### Documentation
+
+- *(di)* document mutable injection patterns
+
+### Fixed
+
+- *(di)* forward GraphQL and gRPC injection patterns
+- *(di)* preserve handler injection argument order
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.3.2...reinhardt-graphql@v0.4.0-alpha.1) - 2026-07-21
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge develop/0.4.0 into remove-anyhow branch
+
 ## [0.3.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.3.16...reinhardt-graphql@v0.3.17) - 2026-09-13
 
 ### Documentation

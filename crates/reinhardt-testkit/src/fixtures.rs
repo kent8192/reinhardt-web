@@ -6,6 +6,7 @@
 //! ## Module Organization
 //!
 //! - `loader` - Fixture data loading from JSON, factory patterns
+//! - `database` - Model-derived and migration-backed test database fixtures
 //! - `mock` - mockall-based mock implementations for database backends
 //! - `testcontainers` - Docker container fixtures (PostgreSQL, Redis, LocalStack)
 //! - `resources` - Suite-wide shared resources with automatic lifecycle management
@@ -29,7 +30,7 @@
 //!     mock_database.expect_execute()
 //!         .withf(|sql, params| sql.contains("INSERT") && params.len() == 2)
 //!         .times(1)
-//!         .returning(|_, _| Ok(QueryResult { rows_affected: 1 }));
+//!         .returning(|_, _| Ok(QueryResult { rows_affected: 1, last_insert_id: None }));
 //!
 //!     // Test code...
 //! }
@@ -55,6 +56,8 @@
 // Module declarations
 /// Fixture-based API client utilities.
 pub mod client;
+/// Model-derived and migration-backed test database fixtures.
+pub mod database;
 /// Fixture file loading from JSON, YAML, and TOML formats.
 pub mod loader;
 /// Mock database backend fixtures using mockall.
@@ -84,8 +87,7 @@ pub mod validator;
 // Migration registry test fixtures
 pub mod migrations;
 
-// Schema creation fixtures for model-based table creation
-#[cfg(feature = "testcontainers")]
+// Schema creation fixtures for model-based table creation.
 pub mod schema;
 
 // Dependency Injection test fixtures
@@ -111,8 +113,13 @@ pub use loader::{
 	fixture_loader, random_test_key, temp_dir, test_config_value,
 };
 
+pub use crate::test_database;
+pub use database::{
+	TestDatabase, TestDatabaseBackend, TestDatabaseBuilder, TestDatabaseError, test_database,
+};
+
 // From mock module
-pub use mock::{MockDatabaseBackend, mock_connection, mock_database};
+pub use mock::{MockConnection, MockDatabaseBackend, mock_connection, mock_database};
 
 // From server module
 pub use server::{
@@ -130,7 +137,7 @@ pub use server::graphql_server;
 // From testcontainers module (conditional on feature)
 #[cfg(feature = "testcontainers")]
 pub use testcontainers::{
-	FileLockGuard, cockroachdb_container, create_test_any_pool, kafka_container,
+	FileLockGuard, MigrationDatabase, cockroachdb_container, create_test_any_pool, kafka_container,
 	localstack_fixture, mongodb_container, mysql_container, mysql_with_migrations_from,
 	postgres_container, postgres_with_migrations_from, postgres_with_migrations_from_dir,
 	rabbitmq_container, redis_container, shared_kafka_container, sqlite_with_migrations_from,
@@ -179,8 +186,6 @@ pub use di::{
 // From di_overrides module
 pub use di_overrides::{DiOverrideBuilder, DiOverrides, injection_context_with_di_overrides};
 
-// From schema module (conditional on feature)
-#[cfg(feature = "testcontainers")]
 pub use schema::{
 	ModelSchemaInfo, SchemaError, create_migration_from_model, create_table_for_model,
 	create_table_operation_from_model, create_table_operations_from_models,

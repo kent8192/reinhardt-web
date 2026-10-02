@@ -30,7 +30,18 @@ use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
 use crate::orm::Model;
+use crate::orm::connection::OrmExecutor;
 use crate::orm::custom_manager::CustomManager;
+
+/// Typed relation traversal descriptors and join planning.
+pub mod traversal;
+
+pub use traversal::{
+	GeneratedRelatedField, GeneratedRelationPath, PlannedRelationJoin, RelatedFieldRef,
+	RelationDescriptor, RelationFieldOrigin, RelationJoinGraph, RelationJoinKind,
+	RelationMultiplicity, RelationPath, RelationPathLike, RelationStep, RelationTarget,
+	UnverifiedRelatedField, UnverifiedRelationPath,
+};
 
 /// A set of objects that have a GenericForeignKey pointing to the owner model
 ///
@@ -241,6 +252,14 @@ impl<T: Model> GenericRelationSet<T> {
 		self.query().all().await
 	}
 
+	/// Gets all related objects through a caller-owned ORM executor.
+	pub async fn all_with_db<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<Vec<T>>
+	where
+		E: OrmExecutor,
+	{
+		self.query().all_with_db(conn).await
+	}
+
 	/// Count related objects
 	///
 	/// Returns the count of related model instances.
@@ -253,6 +272,14 @@ impl<T: Model> GenericRelationSet<T> {
 	/// ```
 	pub async fn count(&self) -> reinhardt_core::exception::Result<usize> {
 		self.query().count().await
+	}
+
+	/// Counts related objects through a caller-owned ORM executor.
+	pub async fn count_with_db<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<usize>
+	where
+		E: OrmExecutor,
+	{
+		self.query().count_with_db(conn).await
 	}
 
 	/// Check if any related objects exist
@@ -268,6 +295,14 @@ impl<T: Model> GenericRelationSet<T> {
 		Ok(self.count().await? > 0)
 	}
 
+	/// Returns whether any related object exists through a caller-owned ORM executor.
+	pub async fn exists_with_db<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<bool>
+	where
+		E: OrmExecutor,
+	{
+		Ok(self.count_with_db(conn).await? > 0)
+	}
+
 	/// Get first related object
 	///
 	/// # Example
@@ -279,6 +314,17 @@ impl<T: Model> GenericRelationSet<T> {
 	/// ```
 	pub async fn first(&self) -> reinhardt_core::exception::Result<Option<T>> {
 		self.query().first().await
+	}
+
+	/// Gets the first related object through a caller-owned ORM executor.
+	pub async fn first_with_db<E>(
+		&self,
+		conn: &mut E,
+	) -> reinhardt_core::exception::Result<Option<T>>
+	where
+		E: OrmExecutor,
+	{
+		self.query().first_with_db(conn).await
 	}
 }
 

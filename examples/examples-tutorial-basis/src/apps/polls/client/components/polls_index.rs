@@ -5,7 +5,7 @@ use reinhardt::pages::component::Page;
 
 use crate::client::components::nav::with_nav;
 
-#[component("/", "index")]
+#[component("/", name = "index")]
 pub fn polls_index() -> Page {
 	with_nav(super::polls_index())
 }

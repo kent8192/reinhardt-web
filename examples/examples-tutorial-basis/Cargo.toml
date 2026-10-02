@@ -53,6 +53,7 @@ reinhardt = { workspace = true, features = [
 	"conf",
 	"commands-server",
 	"commands-autoreload",
+	"commands-contract",
 	"db-sqlite",
 	"forms",
 	"auth-session",
@@ -65,7 +66,7 @@ tokio = { version = "1.48.0", features = ["full"] }
 # Server-specific common dependencies
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.11.0", features = ["serde", "v4", "v7"] }
-anyhow = { workspace = true }
+time = { workspace = true }
 ctor = "0.6.1"
 inventory = "0.3"
 linkme = "0.3"
@@ -84,6 +85,7 @@ serial_test = "3.2"
 tokio = { version = "1.48.0", features = ["rt", "macros"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tempfile = "3.15"
+jsonschema = "0.26"
 
 # WASM-specific dev-dependencies
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
@@ -97,6 +99,7 @@ cfg_aliases = "0.2"
 default = ["with-reinhardt", "client-router"]
 # client-router: Enable client-side routing support (required for #[routes] macro with UnifiedRouter)
 client-router = []
+commands-shell = ["reinhardt/commands-shell"]
 with-reinhardt = []
 # `msw` is forwarded to the facade so `#[server_fn]` generates the
 # `MockableServerFn` markers consumed by the WASM mock test targets.
@@ -104,6 +107,10 @@ msw = ["reinhardt/msw"]
 
 [[test]]
 name = "integration"
+required-features = ["with-reinhardt"]
+
+[[test]]
+name = "contract_export"
 required-features = ["with-reinhardt"]
 
 # WASM-only test target. The file is `#![cfg(client)]`-gated, so it compiles

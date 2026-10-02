@@ -5,6 +5,7 @@ use super::dependency::{OptionalDependency, SwappableDependency};
 use serde::{Deserialize, Serialize};
 
 /// A database migration
+#[non_exhaustive]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Migration {
 	/// Migration name (e.g., "0001_initial")
@@ -98,6 +99,42 @@ impl Migration {
 			optional_dependencies: Vec::new(),
 		}
 	}
+
+	/// Create a migration from every persisted field.
+	///
+	/// This constructor is useful for adapters that already have a complete
+	/// migration record. Generated source uses [`Self::new`] and focused
+	/// builders so future fields do not become positional source syntax.
+	#[doc(hidden)]
+	// Persistence adapters must provide every stored field without silently dropping data.
+	#[allow(clippy::too_many_arguments)]
+	pub fn from_parts(
+		name: impl Into<String>,
+		app_label: impl Into<String>,
+		operations: Vec<Operation>,
+		dependencies: Vec<(String, String)>,
+		replaces: Vec<(String, String)>,
+		atomic: bool,
+		initial: Option<bool>,
+		state_only: bool,
+		database_only: bool,
+		swappable_dependencies: Vec<SwappableDependency>,
+		optional_dependencies: Vec<OptionalDependency>,
+	) -> Self {
+		Self {
+			name: name.into(),
+			app_label: app_label.into(),
+			operations,
+			dependencies,
+			replaces,
+			atomic,
+			initial,
+			state_only,
+			database_only,
+			swappable_dependencies,
+			optional_dependencies,
+		}
+	}
 	/// Add an operation to this migration
 	///
 	/// # Examples
@@ -137,6 +174,16 @@ impl Migration {
 	/// ```
 	pub fn add_dependency(mut self, app_label: impl Into<String>, name: impl Into<String>) -> Self {
 		self.dependencies.push((app_label.into(), name.into()));
+		self
+	}
+
+	/// Add a migration replacement identity.
+	pub fn add_replacement(
+		mut self,
+		app_label: impl Into<String>,
+		name: impl Into<String>,
+	) -> Self {
+		self.replaces.push((app_label.into(), name.into()));
 		self
 	}
 
@@ -235,6 +282,12 @@ impl Migration {
 	/// ```
 	pub fn initial(mut self, initial: bool) -> Self {
 		self.initial = Some(initial);
+		self
+	}
+
+	/// Set the optional initial flag, preserving an explicit `None`.
+	pub fn with_initial(mut self, initial: Option<bool>) -> Self {
+		self.initial = initial;
 		self
 	}
 
@@ -2542,7 +2595,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("testapp", &mut state);
 
-		assert!(state.get_model("testapp", "custom_users").is_some());
+		let model = state
+			.get_model("testapp", "myapp_user")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "custom_users");
 	}
 
 	#[test]
@@ -2572,7 +2628,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("app", &mut state);
 
-		assert!(state.get_model("app", "products_table").is_some());
+		let model = state
+			.get_model("app", "app_product")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "products_table");
 	}
 
 	#[test]
@@ -2604,8 +2663,11 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("testapp", &mut state);
 
-		assert!(state.get_model("testapp", "old_table").is_none());
-		assert!(state.get_model("testapp", "new_table").is_some());
+		let model = state
+			.get_model("testapp", "old_table")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "new_table");
+		assert!(state.get_model("testapp", "new_table").is_none());
 	}
 
 	#[test]
@@ -2635,7 +2697,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("app", &mut state);
 
-		assert!(state.get_model("app", "customers").is_some());
+		let model = state
+			.get_model("app", "users")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "customers");
 	}
 
 	#[test]
@@ -2664,8 +2729,7 @@ mod migrations_extended_tests {
 		};
 
 		let sql = op.to_sql(&SqlDialect::Mysql);
-		assert!(sql.contains("ALTER TABLE products"));
-		assert!(sql.contains("COMMENT='Product catalog'"));
+		assert_eq!(sql, "ALTER TABLE `products` COMMENT='Product catalog';");
 	}
 
 	#[test]
@@ -2694,7 +2758,7 @@ mod migrations_extended_tests {
 		};
 
 		let sql = op.to_sql(&SqlDialect::Mysql);
-		assert!(sql.contains("ALTER TABLE orders"));
+		assert!(sql.contains("ALTER TABLE `orders`"));
 	}
 
 	#[test]
@@ -2846,7 +2910,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("testapp", &mut state);
 
-		assert!(state.get_model("testapp", "myapp_model").is_some());
+		let model = state
+			.get_model("testapp", "custom_table")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "myapp_model");
 	}
 
 	#[test]
@@ -2876,7 +2943,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("app", &mut state);
 
-		assert!(state.get_model("app", "app_default").is_some());
+		let model = state
+			.get_model("app", "old_custom")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "app_default");
 	}
 
 	#[test]
@@ -2914,8 +2984,11 @@ mod migrations_extended_tests {
 		};
 		add_field.state_forwards("testapp", &mut state);
 
-		let model = state.get_model("testapp", "custom_users").unwrap();
+		let model = state
+			.get_model("testapp", "users")
+			.expect("table rename should preserve the model identity");
 		assert!(model.fields.contains_key("email"));
+		assert_eq!(model.table_name, "custom_users");
 	}
 
 	#[test]
@@ -2945,7 +3018,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("app", &mut state);
 
-		assert!(state.get_model("app", "products").is_some());
+		let model = state
+			.get_model("app", "items")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "products");
 	}
 
 	#[test]

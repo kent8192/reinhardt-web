@@ -1,0 +1,5 @@
+error: duplicate `id` property
+  --> tests/ui/client_form/view/fail/duplicate_clause.rs:10:3
+   |
+10 |         id: "b"
+   |         ^^

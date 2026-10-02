@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-forms"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 description = "Form handling and validation"
 edition.workspace = true
 rust-version.workspace = true
@@ -14,6 +14,7 @@ aquamarine = { workspace = true }
 
 # Internal dependencies
 reinhardt-core = { workspace = true, features = ["validators"] }
+reinhardt-db = { workspace = true, features = ["orm"] }
 
 # Serialization
 serde = { workspace = true }
@@ -21,7 +22,6 @@ serde_json = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 
 # Crypto
 subtle = "2"
@@ -32,14 +32,19 @@ regex = "1.10"
 
 # Date/Time
 chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = { workspace = true }
 
 [features]
 full = []
 
 [dev-dependencies]
 insta = { workspace = true }
+linkme = { workspace = true }
+reinhardt-apps = { path = "../reinhardt-apps" }
+reinhardt-db = { path = "../reinhardt-db", features = ["associations"] }
 tokio-test = "0.4"
 rstest = { workspace = true }
+serial_test = { workspace = true }
 proptest = { workspace = true }
 tempfile = "3"
 # Workaround for KI-2 (rust-lang/cargo#4242, rust-lang/cargo#15151):
@@ -47,3 +52,6 @@ tempfile = "3"
 # avoiding dev-dependency version resolution failure during `cargo publish`.
 # When upstream cargo resolves these issues, replace with `workspace = true`.
 reinhardt-test = { path = "../reinhardt-test" }
+reinhardt-macros = { path = "../reinhardt-core/macros" }
+ctor = { workspace = true }
+uuid = { workspace = true }

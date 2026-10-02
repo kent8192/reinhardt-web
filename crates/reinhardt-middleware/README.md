@@ -13,11 +13,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["middleware"] }
+reinhardt = { version = "0.4.0-alpha.18", features = ["middleware"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.20", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.18", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.18", features = ["full"] }      # All features
 ```
 
 Then import middleware features:
@@ -324,7 +324,7 @@ pub async fn current_tenant(
 ### Example: login / logout helper
 
 ```rust,ignore
-use reinhardt::di::Depends;
+use reinhardt::di::KeyedDepends;
 use reinhardt::middleware::session::{
     SessionAuthExt, SessionData, SessionStore, SessionStoreKey,
 };
@@ -335,7 +335,7 @@ pub async fn login(
     username: String,
     password: String,
     #[inject] mut session: SessionData,
-    #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
+    #[inject] store: KeyedDepends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<UserInfo, ServerFnError> {
     let user = authenticate(&username, &password).await?;
     session.login(&**store, user.id())
@@ -346,7 +346,7 @@ pub async fn login(
 #[server_fn]
 pub async fn logout(
     #[inject] mut session: SessionData,
-    #[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
+    #[inject] store: KeyedDepends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<(), ServerFnError> {
     session.logout(&**store);
     Ok(())

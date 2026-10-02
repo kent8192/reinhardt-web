@@ -11,7 +11,9 @@
 //! - **Object-Level Permissions**: Fine-grained access control on individual objects
 //! - **User Management**: CRUD operations for users with password hashing
 //! - **Group Management**: User groups and permission assignment
-//! - **REST API Authentication**: Multiple authentication backends (JWT, Token, Session, OAuth2, social OAuth state)
+//! - **REST API Authentication**: Multiple authentication backends (JWT, Token, Session, legacy OAuth2 helpers, social OAuth state)
+//! - **OAuth 2.0 Server**: Authorization Code with PKCE, Client Credentials, revocation, introspection, and metadata (`oauth` feature)
+//! - **OpenID Provider**: Authorization Code with PKCE, RS256 ID Tokens, Discovery, JWKS, and UserInfo (`oidc-op` feature)
 //! - **Standard Permissions**: Permission classes for common authorization scenarios
 //! - **createsuperuser Command**: CLI tool for creating admin users
 //!
@@ -42,9 +44,11 @@
 //! | `params` | enabled | Parameter extraction via DI |
 //! | `jwt` | disabled | JWT-based authentication backend |
 //! | `sessions` | disabled | Session-based authentication |
-//! | `oauth` | disabled | OAuth2 authorization code flow |
+//! | `oauth` | disabled | OAuth2 authorization server and legacy in-process helpers |
+//! | `oidc-op` | disabled | OpenID Connect provider on the OAuth server |
 //! | `token` | disabled | Token-based authentication |
-//! | `argon2-hasher` | disabled | Argon2 password hashing (alternative to bcrypt) |
+//! | `argon2-hasher` | disabled | Argon2 password hashing |
+//! | `bcrypt-hasher` | disabled | bcrypt password hashing for compatibility |
 //! | `social` | disabled | Social authentication (OAuth2/OIDC providers) |
 //! | `database` | disabled | Database-backed user/group storage via ORM |
 //!
@@ -97,14 +101,18 @@ pub(crate) mod internal_user;
 // `FullUser` + `PermissionsMixin` instead.
 pub use core::{
 	AllowAny, AuthBackend, AuthIdentity, BaseUser, CompositeAuthBackend, FullUser, IsActiveUser,
-	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordHasher, Permission,
-	PermissionContext, PermissionsMixin, SuperuserCreator, SuperuserCreatorRegistration,
-	SuperuserInit, TypedSuperuserCreator, auto_register_superuser_creator, get_superuser_creator,
-	register_superuser_creator, superuser_creator_for,
+	IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly, PasswordCheck, PasswordHashPolicy,
+	PasswordHasher, PasswordVerification, Permission, PermissionContext, PermissionsMixin,
+	SuperuserCreator, SuperuserCreatorRegistration, SuperuserInit, TypedSuperuserCreator,
+	auto_register_superuser_creator, get_superuser_creator, register_superuser_creator,
+	superuser_creator_for,
 };
 
 #[cfg(feature = "argon2-hasher")]
 pub use core::Argon2Hasher;
+
+#[cfg(feature = "bcrypt-hasher")]
+pub use core::BcryptHasher;
 
 // Re-export permission operators from core
 pub use core::permission_operators;
@@ -137,8 +145,14 @@ pub mod model_permissions;
 /// Legacy in-process OAuth2 authorization-code and bearer-token helpers.
 #[cfg(feature = "oauth")]
 pub mod oauth2;
+/// OAuth 2.0 authorization server with PKCE and audience-bound tokens.
+#[cfg(feature = "oauth")]
+pub mod oauth2_server;
 /// Object-level permission checking.
 pub mod object_permissions;
+/// Opt-in OpenID Connect provider for first-party clients.
+#[cfg(feature = "oidc-op")]
+pub mod oidc_op;
 /// Database-backed permission model.
 #[cfg(feature = "database")]
 pub mod permission;

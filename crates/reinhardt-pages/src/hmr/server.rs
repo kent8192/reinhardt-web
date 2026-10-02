@@ -1,7 +1,7 @@
 //! WebSocket-based HMR notification server.
 
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::{BTreeMap, HashSet};
+use std::sync::{Arc, Mutex as StdMutex};
 
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, broadcast};
@@ -9,25 +9,44 @@ use tokio::sync::{Mutex, broadcast};
 use super::change_kind::ChangeKind;
 use super::config::HmrConfig;
 use super::message::HmrMessage;
+use super::protocol::{
+	BuildDiagnostic, BuildTarget, ClientHello, PatchGeneration, TemplatePatch, TemplatePatchBatch,
+};
 use super::watcher::FileWatcher;
 
+const MAX_REPLAYED_PATCHES: usize = 64;
+
+struct ReplayState {
+	patches: BTreeMap<PatchGeneration, HmrMessage>,
+	diagnostics: Option<HmrMessage>,
+}
+
 /// The HMR server that watches files and broadcasts changes to connected browsers.
+#[derive(Clone)]
 pub struct HmrServer {
 	config: Arc<HmrConfig>,
 	/// Broadcast sender for HMR messages to all connected clients.
 	tx: broadcast::Sender<String>,
 	/// Tracks connected client count for diagnostics.
 	client_count: Arc<Mutex<usize>>,
+	replay: Arc<StdMutex<ReplayState>>,
+	client_events: broadcast::Sender<String>,
 }
 
 impl HmrServer {
 	/// Creates a new HMR server with the given configuration.
 	pub fn new(config: HmrConfig) -> Self {
 		let (tx, _) = broadcast::channel(64);
+		let (client_events, _) = broadcast::channel(64);
 		Self {
 			config: Arc::new(config),
 			tx,
 			client_count: Arc::new(Mutex::new(0)),
+			replay: Arc::new(StdMutex::new(ReplayState {
+				patches: BTreeMap::new(),
+				diagnostics: None,
+			})),
+			client_events,
 		}
 	}
 
@@ -41,6 +60,81 @@ impl HmrServer {
 	/// Returns the number of currently connected clients.
 	pub async fn client_count(&self) -> usize {
 		*self.client_count.lock().await
+	}
+
+	/// Returns a receiver for client patch acknowledgements and rejections.
+	pub fn client_events(&self) -> broadcast::Receiver<String> {
+		self.client_events.subscribe()
+	}
+
+	/// Broadcasts and retains a compatible template patch batch for replay.
+	pub fn notify_template_patch(&self, batch: TemplatePatchBatch) {
+		let generation = batch.generation;
+		let message = HmrMessage::TemplatePatchBatch {
+			build_id: batch.build_id,
+			manifest_digest: batch.manifest_digest,
+			generation: batch.generation,
+			patches: batch.patches,
+		};
+		let mut state = self.replay.lock().expect("HMR replay mutex poisoned");
+		state.patches.insert(generation, message.clone());
+		while state.patches.len() > MAX_REPLAYED_PATCHES {
+			let Some(first) = state.patches.keys().next().copied() else {
+				break;
+			};
+			state.patches.remove(&first);
+		}
+		drop(state);
+		self.broadcast(&message);
+	}
+
+	/// Broadcasts a build-start notification.
+	pub fn notify_build_started(&self, generation: PatchGeneration, targets: Vec<BuildTarget>) {
+		self.broadcast(&HmrMessage::BuildStarted {
+			generation,
+			targets,
+		});
+	}
+
+	/// Broadcasts and retains normalized build diagnostics for replay.
+	pub fn notify_build_diagnostics(&self, diagnostics: Vec<BuildDiagnostic>) {
+		let generation = diagnostics
+			.iter()
+			.map(|diagnostic| diagnostic.generation)
+			.max()
+			.unwrap_or(PatchGeneration(0));
+		let message = HmrMessage::BuildDiagnostics {
+			generation,
+			diagnostics,
+		};
+		self.replay
+			.lock()
+			.expect("HMR replay mutex poisoned")
+			.diagnostics = Some(message.clone());
+		self.broadcast(&message);
+	}
+
+	/// Broadcasts a recovered-build notification.
+	pub fn notify_build_recovered(&self, generation: PatchGeneration) {
+		self.replay
+			.lock()
+			.expect("HMR replay mutex poisoned")
+			.diagnostics = None;
+		self.broadcast(&HmrMessage::BuildRecovered { generation });
+	}
+
+	/// Requests a full browser reload without replacing the stored patch replay
+	/// state. This is used only after a successful fallback build is ready.
+	pub fn notify_full_reload(&self, reason: impl Into<String>) {
+		self.broadcast(&HmrMessage::FullReload {
+			reason: reason.into(),
+		});
+	}
+
+	fn broadcast(&self, message: &HmrMessage) {
+		if let Ok(json) = message.to_json() {
+			let _ = self.tx.send(json);
+		}
 	}
 
 	/// Starts the HMR server, binding the WebSocket listener and file watcher.
@@ -64,8 +158,10 @@ impl HmrServer {
 		// Spawn WebSocket acceptor task
 		let tx = self.tx.clone();
 		let client_count = self.client_count.clone();
+		let replay = self.replay.clone();
+		let client_events = self.client_events.clone();
 		tokio::spawn(async move {
-			Self::accept_connections(listener, tx, client_count).await;
+			Self::accept_connections(listener, tx, client_count, replay, client_events).await;
 		});
 
 		// Spawn file watcher task
@@ -94,8 +190,10 @@ impl HmrServer {
 
 		let tx = self.tx.clone();
 		let client_count = self.client_count.clone();
+		let replay = self.replay.clone();
+		let client_events = self.client_events.clone();
 		tokio::spawn(async move {
-			Self::accept_connections(listener, tx, client_count).await;
+			Self::accept_connections(listener, tx, client_count, replay, client_events).await;
 		});
 
 		Ok(bound_addr)
@@ -106,6 +204,8 @@ impl HmrServer {
 		listener: TcpListener,
 		tx: broadcast::Sender<String>,
 		client_count: Arc<Mutex<usize>>,
+		replay: Arc<StdMutex<ReplayState>>,
+		client_events: broadcast::Sender<String>,
 	) {
 		loop {
 			let (stream, _addr) = match listener.accept().await {
@@ -119,6 +219,8 @@ impl HmrServer {
 
 			let mut rx = tx.subscribe();
 			let client_count = client_count.clone();
+			let replay = replay.clone();
+			let client_events = client_events.clone();
 
 			tokio::spawn(async move {
 				// Increment client count
@@ -166,6 +268,21 @@ impl HmrServer {
 						ws_msg = read.next() => {
 							match ws_msg {
 								Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => break,
+								Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
+									if let Ok(message) = HmrMessage::from_json(&text) {
+										if let Some(hello) = message.client_hello() {
+											for replay_message in Self::replay_for_client(&replay, &hello).await {
+												let Ok(json) = replay_message.to_json() else { continue };
+												if write.send(tokio_tungstenite::tungstenite::Message::Text(json.into())).await.is_err() {
+												break;
+												}
+											}
+										} else if matches!(message, HmrMessage::PatchRejected { .. } | HmrMessage::PatchApplied { .. })
+											&& let Ok(json) = message.to_json() {
+											let _ = client_events.send(json);
+										}
+									}
+								}
 								Some(Ok(tokio_tungstenite::tungstenite::Message::Ping(payload))) => {
 									if write.send(tokio_tungstenite::tungstenite::Message::Pong(payload)).await.is_err() {
 										break;
@@ -188,6 +305,39 @@ impl HmrServer {
 				}
 			});
 		}
+	}
+
+	async fn replay_for_client(
+		replay: &Arc<StdMutex<ReplayState>>,
+		hello: &ClientHello,
+	) -> Vec<HmrMessage> {
+		let state = replay.lock().expect("HMR replay mutex poisoned");
+		if state.patches.values().any(|message| {
+			matches!(message, HmrMessage::TemplatePatchBatch { patches, .. } if Self::client_has_incompatible_abi(hello, patches))
+		}) {
+			return vec![HmrMessage::FullReload {
+				reason: "HMR client template ABI is stale".to_owned(),
+			}];
+		}
+		let mut messages = state.patches.values().cloned().collect::<Vec<_>>();
+		if let Some(diagnostics) = &state.diagnostics {
+			messages.push(diagnostics.clone());
+		}
+		messages
+	}
+
+	/// Returns true only when the browser already knows a patched key with a
+	/// different ABI. Absent keys are valid: templates register lazily when a
+	/// route, branch, or keyed iteration first mounts, and the WASM bridge
+	/// retains those patches until it can validate the descriptor.
+	fn client_has_incompatible_abi(hello: &ClientHello, patches: &[TemplatePatch]) -> bool {
+		patches.iter().any(|patch| {
+			hello
+				.abi_hashes
+				.iter()
+				.find(|(key, _)| key == &patch.key)
+				.is_some_and(|(_, abi_hash)| abi_hash != &patch.abi_hash)
+		})
 	}
 
 	/// Watches files and broadcasts change notifications.
@@ -268,9 +418,7 @@ impl HmrServer {
 			},
 		};
 
-		if let Ok(json) = msg.to_json() {
-			let _ = self.tx.send(json);
-		}
+		self.broadcast(&msg);
 	}
 }
 

@@ -177,7 +177,7 @@ pub fn pagination(current_page: Signal<u64>, total_pages: u64) -> Page {
 		"Previous",
 		prev_disabled,
 		false,
-		current_page.clone(),
+		current_page,
 		move |page: Signal<u64>| {
 			let current = page.get();
 			if current > 1 {
@@ -197,7 +197,7 @@ pub fn pagination(current_page: Signal<u64>, total_pages: u64) -> Page {
 			&page_num_str,
 			false,
 			is_current,
-			current_page.clone(),
+			current_page,
 			move |page: Signal<u64>| {
 				page.set(page_num);
 			},
@@ -236,7 +236,7 @@ fn create_page_item<F>(
 	handler: F,
 ) -> Page
 where
-	F: Fn(Signal<u64>) + 'static,
+	F: Fn(Signal<u64>) + Send + Sync + 'static,
 {
 	let text = text.to_string();
 
@@ -258,13 +258,13 @@ where
 			}
 		})(text)
 	} else {
-		let handler: Arc<dyn Fn(Signal<u64>)> = Arc::new(handler);
-		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>)>| {
+		let handler: Arc<dyn Fn(Signal<u64>) + Send + Sync> = Arc::new(handler);
+		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>) + Send + Sync>| {
 			a {
 				class: "admin-page-link",
 				href: "#",
 				@click: move |_| {
-					_handler(_signal.clone());
+					_handler(_signal);
 				},
 				{ text }
 			}
@@ -303,6 +303,7 @@ pub fn search_bar(value: Signal<String>, placeholder: &str) -> Page {
 			input {
 				class: "admin-input rounded-l-none border-l-0",
 				type: "text",
+				aria_label: "Search",
 				placeholder: placeholder,
 				value: current_value,
 			}

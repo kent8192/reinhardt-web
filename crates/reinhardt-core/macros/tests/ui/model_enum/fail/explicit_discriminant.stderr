@@ -1,0 +1,5 @@
+error: ModelEnum variants must not have explicit discriminants; use #[model_enum(value = ...)]
+ --> tests/ui/model_enum/fail/explicit_discriminant.rs:7:2
+  |
+7 |     Queued = 1,
+  |     ^^^^^^

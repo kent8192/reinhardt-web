@@ -379,6 +379,10 @@ impl AzureBlobStorage {
 			))
 		}
 	}
+
+	fn delete_status_is_success(status: StatusCode) -> bool {
+		status.is_success() || status == StatusCode::NOT_FOUND
+	}
 }
 
 #[async_trait]
@@ -437,7 +441,7 @@ impl Storage for AzureBlobStorage {
 			.send(Method::DELETE, self.blob_url(&blob_name), None, None, false)
 			.await?;
 		let status = response.status();
-		if !status.is_success() {
+		if !Self::delete_status_is_success(status) {
 			return Err(Self::map_status(status, &blob_name));
 		}
 		Ok(())
@@ -469,6 +473,13 @@ mod tests {
 			config.base_url,
 			"https://teststorage.blob.core.windows.net/testcontainer"
 		);
+	}
+
+	#[test]
+	fn delete_accepts_missing_blob_status() {
+		assert!(AzureBlobStorage::delete_status_is_success(
+			StatusCode::NOT_FOUND
+		));
 	}
 
 	#[test]

@@ -7,7 +7,7 @@ use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::backends::error::{DatabaseError, Result};
+use crate::backends::error::{Result, map_sqlx_error};
 
 /// CockroachDB connection configuration
 #[non_exhaustive]
@@ -185,7 +185,7 @@ impl CockroachDBConnection {
 	pub async fn connect(config: CockroachDBConnectionConfig) -> Result<Self> {
 		let url = build_connection_url(&config.url, config.application_name.as_deref());
 
-		let pool = PgPool::connect(&url).await.map_err(DatabaseError::from)?;
+		let pool = PgPool::connect(&url).await.map_err(map_sqlx_error)?;
 
 		Ok(Self {
 			pool: Arc::new(pool),
@@ -246,7 +246,7 @@ impl CockroachDBConnection {
 		sqlx::query("SELECT 1")
 			.execute(self.pool.as_ref())
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
@@ -270,9 +270,9 @@ impl CockroachDBConnection {
 		let row = sqlx::query("SELECT version()")
 			.fetch_one(self.pool.as_ref())
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
-		row.try_get(0).map_err(DatabaseError::from)
+		Ok(row.try_get(0).map_err(map_sqlx_error)?)
 	}
 
 	/// Get current database name
@@ -295,9 +295,9 @@ impl CockroachDBConnection {
 		let row = sqlx::query("SELECT current_database()")
 			.fetch_one(self.pool.as_ref())
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
-		row.try_get(0).map_err(DatabaseError::from)
+		Ok(row.try_get(0).map_err(map_sqlx_error)?)
 	}
 
 	/// List all regions in the cluster
@@ -322,11 +322,11 @@ impl CockroachDBConnection {
 		let rows = sqlx::query("SHOW REGIONS")
 			.fetch_all(self.pool.as_ref())
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		let mut regions = Vec::new();
 		for row in rows {
-			let region: String = row.try_get(0).map_err(DatabaseError::from)?;
+			let region: String = row.try_get(0).map_err(map_sqlx_error)?;
 			regions.push(region);
 		}
 
@@ -354,10 +354,10 @@ impl CockroachDBConnection {
 		let row = sqlx::query("SHOW PRIMARY REGION")
 			.fetch_optional(self.pool.as_ref())
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		if let Some(row) = row {
-			Ok(Some(row.try_get(0).map_err(DatabaseError::from)?))
+			Ok(Some(row.try_get(0).map_err(map_sqlx_error)?))
 		} else {
 			Ok(None)
 		}

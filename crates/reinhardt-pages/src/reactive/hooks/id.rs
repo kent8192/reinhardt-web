@@ -2,10 +2,18 @@
 //!
 //! This hook provides unique ID generation for accessibility and hydration.
 
+use std::cell::Cell;
+use std::future::Future;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Global counter for generating unique IDs.
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(native)]
+tokio::task_local! {
+	static SSR_ID_COUNTER: Rc<Cell<usize>>;
+}
 
 /// Generates a unique ID that is stable across server and client.
 ///
@@ -57,7 +65,7 @@ static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// For true hydration stability, consider using a seed-based approach
 /// that takes the component tree position into account.
 pub fn use_id() -> String {
-	let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+	let id = next_id();
 	format!("reinhardt-id-{}", id)
 }
 
@@ -80,7 +88,7 @@ pub fn use_id() -> String {
 /// // Returns something like "modal-42"
 /// ```
 pub fn use_id_with_prefix(prefix: &str) -> String {
-	let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+	let id = next_id();
 	format!("{}-{}", prefix, id)
 }
 
@@ -94,50 +102,109 @@ pub fn use_id_with_prefix(prefix: &str) -> String {
 /// Calling this in production code may cause ID collisions and hydration mismatches.
 #[doc(hidden)]
 pub fn reset_id_counter() {
+	#[cfg(native)]
+	if let Ok(()) = SSR_ID_COUNTER.try_with(|counter| counter.set(0)) {
+		return;
+	}
 	ID_COUNTER.store(0, Ordering::Relaxed);
 }
 
-#[cfg(test)]
+#[doc(hidden)]
+pub async fn scope_id_counter<R>(future: impl Future<Output = R>) -> R {
+	scope_id_counter_with(Rc::new(Cell::new(0)), future).await
+}
+
+#[doc(hidden)]
+pub async fn scope_id_counter_with<R>(
+	counter: Rc<Cell<usize>>,
+	future: impl Future<Output = R>,
+) -> R {
+	#[cfg(native)]
+	{
+		SSR_ID_COUNTER.scope(counter, future).await
+	}
+	#[cfg(not(native))]
+	{
+		let _ = counter;
+		future.await
+	}
+}
+
+#[doc(hidden)]
+pub fn id_counter_snapshot() -> usize {
+	#[cfg(native)]
+	if let Ok(snapshot) = SSR_ID_COUNTER.try_with(|counter| counter.get()) {
+		return snapshot;
+	}
+	ID_COUNTER.load(Ordering::Relaxed)
+}
+
+#[doc(hidden)]
+pub fn restore_id_counter(snapshot: usize) {
+	#[cfg(native)]
+	if let Ok(()) = SSR_ID_COUNTER.try_with(|counter| counter.set(snapshot)) {
+		return;
+	}
+	ID_COUNTER.store(snapshot, Ordering::Relaxed);
+}
+
+fn next_id() -> usize {
+	#[cfg(native)]
+	if let Ok(id) = SSR_ID_COUNTER.try_with(|counter| {
+		let id = counter.get();
+		counter.set(id + 1);
+		id
+	}) {
+		return id;
+	}
+	ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
+
+#[cfg(all(test, native))]
 mod tests {
 	use super::*;
 
-	#[test]
-	fn test_use_id_unique() {
-		reset_id_counter();
+	#[tokio::test]
+	async fn test_use_id_unique() {
+		scope_id_counter(async {
+			let id1 = use_id();
+			let id2 = use_id();
+			let id3 = use_id();
 
-		let id1 = use_id();
-		let id2 = use_id();
-		let id3 = use_id();
-
-		assert_ne!(id1, id2);
-		assert_ne!(id2, id3);
-		assert_ne!(id1, id3);
+			assert_ne!(id1, id2);
+			assert_ne!(id2, id3);
+			assert_ne!(id1, id3);
+		})
+		.await;
 	}
 
-	#[test]
-	fn test_use_id_format() {
-		reset_id_counter();
-
-		let id = use_id();
-		assert!(id.starts_with("reinhardt-id-"));
+	#[tokio::test]
+	async fn test_use_id_format() {
+		scope_id_counter(async {
+			let id = use_id();
+			assert!(id.starts_with("reinhardt-id-"));
+		})
+		.await;
 	}
 
-	#[test]
-	fn test_use_id_with_prefix() {
-		reset_id_counter();
-
-		let id = use_id_with_prefix("custom");
-		assert!(id.starts_with("custom-"));
+	#[tokio::test]
+	async fn test_use_id_with_prefix() {
+		scope_id_counter(async {
+			let id = use_id_with_prefix("custom");
+			assert!(id.starts_with("custom-"));
+		})
+		.await;
 	}
 
-	#[test]
-	fn test_use_id_sequential() {
-		reset_id_counter();
+	#[tokio::test]
+	async fn test_use_id_sequential() {
+		scope_id_counter(async {
+			let id1 = use_id();
+			let id2 = use_id();
 
-		let id1 = use_id();
-		let id2 = use_id();
-
-		assert_eq!(id1, "reinhardt-id-0");
-		assert_eq!(id2, "reinhardt-id-1");
+			assert_eq!(id1, "reinhardt-id-0");
+			assert_eq!(id2, "reinhardt-id-1");
+		})
+		.await;
 	}
 }

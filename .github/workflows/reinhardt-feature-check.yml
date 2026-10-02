@@ -15,7 +15,7 @@ on:
   # GitHub Actions branch scoping: PR branches can only restore caches
   # from the default branch (main). This trigger runs a single
   # --all-features check on main to populate the shared cache that all
-  # 27 feature-check matrix entries restore from.
+  # 28 feature-check matrix entries restore from.
   push:
     branches: [main]
     paths:
@@ -51,7 +51,7 @@ jobs:
   # the shared cache. Uses the same self-hosted runner architecture
   # (aarch64) as release-plz PRs so cache artifacts are compatible.
   # All feature-check jobs share a single cache via shared-key, keeping
-  # total cache usage at ~1-2 GB instead of 25 × ~300 MB = ~7.5 GB.
+  # total cache usage at ~1-2 GB instead of 28 × ~300 MB = ~8.4 GB.
   cache-seed:
     name: Cache Seed (all-features)
     if: github.event_name == 'push'
@@ -120,6 +120,7 @@ jobs:
           - { name: "pages-graphql-ws",  pkg: "reinhardt-web",  features: "minimal,pages,graphql,websockets,database,db-postgres", no_default: "true" }
           - { name: "admin-forms",       pkg: "reinhardt-web",  features: "minimal,admin,database,db-postgres,auth", no_default: "true" }
           - { name: "plugins",           pkg: "reinhardt-web",  features: "minimal,dentdelion,deeplink,dispatch,grpc", no_default: "true" }
+          - { name: "native-protocol-runserver", pkg: "reinhardt-web", features: "minimal,pages,commands,commands-server,commands-autoreload,grpc,websockets", no_default: "true" }
           - { name: "openapi-router",    pkg: "reinhardt-web",  features: "minimal,openapi-router,database,db-postgres", no_default: "true" }
           - { name: "social-auth-redis", pkg: "reinhardt-web",  features: "minimal,social-auth,session-redis", no_default: "true" }
           # --- Key sub-crate extremes (no-default and full) ---
@@ -148,13 +149,13 @@ jobs:
           # shared-key replaces the automatic job-based key so all matrix
           # entries restore from the single cache seeded on main push.
           # This keeps total cache usage at ~1-2 GB (one entry) instead
-          # of 25 × ~300 MB with per-entry keys.
+          # of 28 × ~300 MB with per-entry keys.
           shared-key: "feature-check"
           cache-targets: "false"
           cache-directories: /tmp/cargo_target
           cache-on-failure: "true"
           # Don't save on PR branches - restore from main's cache only.
-          # Avoids 27 matrix entries competing to save the same key.
+          # Avoids 28 matrix entries competing to save the same key.
           save-if: "false"
 
       - name: Run feature check (${{ matrix.combo.name }})
@@ -172,6 +173,16 @@ jobs:
             FLAGS="${FLAGS} -F ${FEATURES}"
           fi
           cargo check ${FLAGS} --quiet
+
+      - name: Verify WASM client dependency edges
+        if: matrix.combo.name == 'native-protocol-runserver'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          tree="$(cargo tree -p reinhardt-web --target wasm32-unknown-unknown --no-default-features --features pages,client-router --edges normal)"
+          if printf '%s\n' "$tree" | grep -Eq '(^|[[:space:]])(tonic|tokio-tungstenite)([[:space:]]|$)'; then
+            echo "native gRPC/WebSocket runtime dependencies leaked into the WASM normal dependency graph"
+            exit 1
+          fi
 
   # Run cargo test for critical feature combinations to catch runtime
   # errors that cargo check alone cannot detect (conditional compilation

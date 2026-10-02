@@ -23,6 +23,11 @@
 //!     hydrate_root::<MyApp>();
 //! }
 //! ```
+//!
+//! `hydrate_root()` initializes the CSP-compatible native model-form
+//! interaction tracker before attaching hydration handlers. Applications that
+//! call `hydrate()` directly should call `init_hydration_state()` before the
+//! browser can dispatch edits to an SSR-rendered model form.
 
 mod events;
 pub use islands::{IslandDetector, IslandNode};

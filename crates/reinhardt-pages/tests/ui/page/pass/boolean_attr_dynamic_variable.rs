@@ -18,10 +18,12 @@ fn main() {
 			}
 			input {
 				r#type: "checkbox",
+				aria_label: "Checked state",
 				checked: is_checked,
 			}
 			input {
 				r#type: "text",
+				aria_label: "Read-only field",
 				readonly: is_readonly,
 			}
 		}

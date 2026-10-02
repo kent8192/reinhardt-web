@@ -2,7 +2,9 @@
 //!
 //! This module provides SSR capabilities for reinhardt-pages, using a component-based
 //! approach instead of traditional template engines. It renders Component trees to
-//! HTML strings on the server side, with support for hydration markers and state serialization.
+//! HTML streams or buffered strings on the server side, with support for
+//! hydration markers, state serialization, async resource resolution, and
+//! Suspense replacement chunks.
 //!
 //! ## Features
 //!
@@ -10,6 +12,7 @@
 //! - **Hydration Markers**: Automatically embed markers for client-side hydration
 //! - **State Serialization**: Serialize reactive state for client restoration
 //! - **Layout Support**: Wrap rendered content in HTML layouts
+//! - **Route Preparation**: Resolve matched route loaders before rendering
 //!
 //! ## Usage
 //!
@@ -17,30 +20,47 @@
 //! use reinhardt_pages::ssr::{SsrRenderer, SsrOptions};
 //! use reinhardt_pages::component::Component;
 //!
-//! // Simple rendering
-//! let html = SsrRenderer::render(&my_component);
+//! // Simple buffered rendering
+//! let mut renderer = SsrRenderer::new();
+//! let html = renderer.render(&my_component).await;
 //!
 //! // With options
-//! let html = SsrRenderer::with_options(SsrOptions::default())
-//!     .render(&my_component);
+//! let mut renderer = SsrRenderer::with_options(SsrOptions::default());
+//! let html = renderer.render(&my_component).await;
 //!
-//! // Full page rendering
-//! let page = SsrRenderer::render_page(
-//!     &my_component,
-//!     "My Page Title",
-//!     Some("<!DOCTYPE html>...")
-//! );
+//! // Full page streaming
+//! let mut renderer = SsrRenderer::new();
+//! let stream = renderer.render_page(&my_component).await;
+//!
+//! // Full page buffered string
+//! let html = renderer.render_page_to_string(&my_component).await;
 //! ```
+//!
+//! For a matched `ClientRouter`, [`SsrRenderer::render_route_to_string`] adds
+//! entry-blocking route-loader preparation and emits the successful values in
+//! the normal [`SsrState`] hydration payload.
 
+#[cfg(native)]
+pub(crate) mod control_binding;
 mod markers;
 #[cfg(native)]
 mod renderer;
+#[cfg(native)]
+pub(crate) mod resource_context;
+#[cfg(native)]
+mod route;
 mod state;
+#[cfg(native)]
+mod stream;
 
 pub use markers::{
 	HYDRATION_ATTR_ID, HYDRATION_ATTR_PROPS, HydrationMarker, HydrationMarkerBuilder,
 	HydrationStrategy,
 };
 #[cfg(native)]
-pub use renderer::{SsrOptions, SsrRenderer};
+pub use renderer::{IntoSsrRendererConfig, SsrOptions, SsrRenderConfig, SsrRenderer};
+#[cfg(native)]
+pub use route::SsrRouteOutput;
 pub use state::{SsrState, StateEntry};
+#[cfg(native)]
+pub use stream::{SsrChunk, SsrStream};

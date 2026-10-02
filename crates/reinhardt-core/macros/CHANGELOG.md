@@ -7,6 +7,370 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.17...reinhardt-macros@v0.4.0-alpha.18) - 2026-09-27
+
+### Fixed
+
+- [**breaking**] honor nullable model relation IDs without forms
+- *(macros)* parse nullable relation options structurally
+- *(macros)* make nullable relation builder fields optional
+
+### Testing
+
+- *(macros)* require both nullable wasm round-trip cases
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.15...reinhardt-macros@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(forms)* add scoped validated form patches
+
+### Fixed
+
+- *(pages)* harden model form default metadata
+- *(pages)* preserve JSON string scalars in multipart forms
+- *(pages)* preserve JSON types in multipart model forms
+- *(macros)* limit companion length validators to text fields
+- *(forms)* enforce patch validation contracts
+- *(forms)* reject non-nullable null patch values before cleaning
+- *(forms)* preserve JSON null in validated form patches
+- *(forms)* reject SQL null in optional JSON form patches
+
+### Maintenance
+
+- merge develop/0.4.0 into model form mutation pages
+- *(sync)* merge main into develop/0.4.0
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.14...reinhardt-macros@v0.4.0-alpha.15) - 2026-09-10
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+- *(test)* allow cold native and wasm model parity builds
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.13...reinhardt-macros@v0.4.0-alpha.14) - 2026-09-07
+
+### Fixed
+
+- *(forms)* restrict singular validation deferral to required relations
+- *(forms)* enforce validation deferral field eligibility
+- *(forms)* reconcile validation with named form contracts
+- *(forms)* normalize raw primary keys before update validation
+- *(pages)* scope multipart validation to endpoint fields
+- *(forms)* reject nonfinite defaulted floats on WASM
+- *(forms)* expose pending uploads to model validation
+- *(macros)* restore upload metadata in model form test fixtures
+
+### Maintenance
+
+- merge develop/0.4.0 into constraint violation design
+- merge develop/0.4.0 into model form validation
+
+### Testing
+
+- *(macros)* initialize form metadata in unsigned registration fixture
+
+### Fixed
+
+- *(macros)* keep Model field_metadata reachable when a field is named metadata
+
+### Testing
+
+- *(macros)* remove obsolete tinyvec version pins from isolated consumer fixtures
+
+## [0.4.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.11...reinhardt-macros@v0.4.0-alpha.12) - 2026-08-30
+
+### Added
+
+- *(macros)* add opt-in DTO schema generation
+
+### Fixed
+
+- *(macros)* address dto schema review feedback
+- *(macros)* complete dto schema facade wiring
+- *(macros)* match qualified validate derives
+- *(macros)* recognize direct rest schema derives
+- *(ci)* retry DTO schema fixture after offline dependency resolution
+- *(macros)* preserve DTO schema target gating
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.9...reinhardt-macros@v0.4.0-alpha.10) - 2026-08-25
+
+### Fixed
+
+- *(migrations)* preserve declarative partial indexes
+- *(migrations)* preserve partial index metadata
+- *(migrations)* preserve partial index definitions
+- *(migrations)* preserve index rollback metadata
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.8...reinhardt-macros@v0.4.0-alpha.9) - 2026-08-23
+
+### Fixed
+
+- *(db)* parse viewset primary keys into typed filters
+- *(db)* preserve typed aliases in route filters
+- *(orm)* close request-scoping review gaps
+- *(orm)* bind scoped mutations atomically
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve safe query boundaries
+- *(core)* format temporal composite keys
+- *(orm)* preserve scoped and declared field types
+- *(orm)* preserve generated keys and type bindings
+- *(orm)* preserve typed array and foreign-key values
+- *(orm)* preserve model session query state
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Testing
+
+- *(ci)* align request-scoping regression expectations
+- *(macros)* assert composite timestamp display
+- *(macros)* keep server_only Info compile-fail on SecretInfo
+- *(macros)* isolate server_only Info compile-fail from serde bounds
+
+## [0.4.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.7...reinhardt-macros@v0.4.0-alpha.8) - 2026-08-22
+
+### Fixed
+
+- *(db)* execute scoped querysets through sessions
+- *(ci)* sync model macro test fixture
+- *(orm)* close request-scoping review gaps
+- *(orm)* preserve typed field metadata
+- *(core)* version composite primary-key displays
+- *(core)* format temporal composite keys
+- *(orm)* lock scoped subqueries and classify datetime keys
+- *(macros)* verify chrono datetime paths
+- *(orm)* close scoped query edge cases
+- *(orm)* close request scoping review edge cases
+
+### Testing
+
+- *(macros)* assert composite key display output
+- *(macros)* compare complete composite display impl
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.6...reinhardt-macros@v0.4.0-alpha.7) - 2026-08-19
+
+### Fixed
+
+- *(settings)* preserve explicit secret references
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Security
+
+- *(auth)* preserve JWT secret field compatibility
+
+### Testing
+
+- *(settings)* move JWT secret contract integration
+- *(macros)* align model UI support with filter bindings
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.5...reinhardt-macros@v0.4.0-alpha.6) - 2026-08-06
+
+### Fixed
+
+- *(release)* break forms facade publish cycle
+
+## [0.4.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.3...reinhardt-macros@v0.4.0-alpha.4) - 2026-08-04
+
+### Added
+
+- *(macros)* generate typed model form schemas
+- *(forms)* [**breaking**] make generated model forms async
+- *(db)* add typed queryset retrieval proofs
+
+### Documentation
+
+- *(forms)* document generated model forms
+
+### Fixed
+
+- *(macros)* preserve model form relation schemas
+- *(macros)* reject repeated setter name collisions
+- *(forms)* enforce model form persistence invariants
+- *(forms)* align model form automatic defaults
+- *(forms)* harden generated form persistence semantics
+- *(forms)* close residual model form review gaps
+- *(macros)* omit generated fields from model forms
+- *(forms)* enforce generated model constraints
+- *(forms)* handle temporal and assigned model inputs
+- *(forms)* preserve model form field contracts
+- *(forms)* preserve specialized field constraints
+- *(forms)* preserve exact generated constraints
+- *(forms)* complete model-backed form submission
+- *(forms)* enforce model form submission policies
+- *(forms)* harden native model form decoding
+- *(forms)* preserve model form defaults
+- *(forms)* harden model form input handling
+- *(forms)* honor relation form editability
+- *(forms)* preserve nullable relation clears
+- *(forms)* reserve the native csrf field name
+- *(forms)* enforce policy in typed setters
+- *(forms)* harden generated model form boundaries
+- *(forms)* preserve optional model form state
+- *(forms)* enforce model form overrides
+- *(forms)* reserve generated form namespaces
+- *(forms)* preflight deferred child validators
+- *(forms)* require generated relation ids
+- *(forms)* prevent duplicate MySQL form inserts
+- *(forms)* preserve native range defaults
+- *(forms)* synchronize defaults and persistence state
+- *(forms)* synchronize transaction-backed form state
+- *(forms)* support trusted inline foreign keys
+- *(forms)* preserve model form control semantics
+- *(forms)* preserve nested form retries
+- *(forms)* validate inline formset retries
+- *(forms)* align native form validation
+- *(forms)* use serde-json for trusted fields
+- *(forms)* support nullable model form relations
+- *(forms)* preserve trusted non-editable model values
+- *(forms)* address model form review feedback
+- *(orm)* harden typed retrieval helpers
+- *(orm)* harden queryset retrieval helpers
+- *(db)* validate typed queryset ordering fields
+- *(db)* preserve queryset bulk lookup columns
+- *(db)* retain typed retrieval field provenance
+- *(db)* preserve typed queryset retrieval compatibility
+- *(db)* preserve generated field reference defaults
+- *(db)* resolve typed retrieval review feedback
+- *(db)* integrate develop/0.4.0 with typed upsert builders
+- *(db)* merge concurrent upsert review updates
+- *(commands)* honor managed migration settings
+
+### Maintenance
+
+- merge develop/0.4.0 into issue [[#5845](https://github.com/kent8192/reinhardt-web/issues/5845)](https://github.com/kent8192/reinhardt-web/issues/5845)
+
+### Other
+
+- sync develop/0.4.0 into inspectdb
+- integrate develop migration updates
+
+### Testing
+
+- *(macros)* align model support with field proofs
+
+## [0.4.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.2...reinhardt-macros@v0.4.0-alpha.3) - 2026-07-27
+
+### Added
+
+- *(macros)* pass raw requests alongside extractors
+
+### Fixed
+
+- *(macros)* support aliased raw request parameters
+- *(macros)* isolate raw request codegen binding
+- *(macros)* hygienically bind raw route requests
+- *(macros)* bind generated route requests hygienically
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.1...reinhardt-macros@v0.4.0-alpha.2) - 2026-07-23
+
+### Documentation
+
+- *(di)* document mutable injection patterns
+
+### Fixed
+
+- *(macros)* add safe injected parameter identifiers
+- *(macros)* preserve injected argument order
+- *(macros)* forward mutable injected patterns safely
+- *(core)* remove obsolete route inject pattern metadata
+- *(di)* preserve interleaved handler argument order
+- *(macros)* remove obsolete inject pattern metadata
+- *(macros)* make injected temporaries hygienic
+- *(macros)* forward named injection arguments safely
+
+### Testing
+
+- *(macros)* compile mutable core inject paths
+
+### Fixed
+
+- Preserve mutable and destructured `#[inject]` parameter patterns across
+  route, WebSocket, and standalone injection macros.
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.2...reinhardt-macros@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(dto)* support shared client validation
+- *(query,migrations)* [**breaking**] support typed generated column expressions
+
+### Fixed
+
+- address develop merge review feedback
+- *(benchmark,macros)* address develop merge review feedback
+- *(migrations)* address generated column review feedback
+- *(migrations)* handle generated column followups
+- *(db)* preserve generated-column replacement metadata
+- *(db)* address generated column review feedback
+- *(db)* address generated column review follow-up
+- *(db)* complete generated column review repairs
+- *(db)* harden generated column edge cases
+- *(db)* reject invalid generated column definitions
+- *(macros)* gate MySQL generated-column test
+- *(macros)* preserve model schema metadata
+- *(testkit)* harden model-derived schema metadata
+- *(macros)* gate fixture registration on serde
+- *(macros)* group model registration input
+- *(macros)* decouple fixture support from serde output
+- *(macros)* allow defaulted fixture omissions
+- *(macros)* preserve fixture deserializer metadata
+- *(fixtures)* harden relation metadata handling
+- *(fixtures)* preserve fixture relation metadata
+- *(fixtures)* honor registered relation metadata
+- *(fixtures)* support default and ORM relation edge cases
+- *(fixtures)* honor nullable and identity fields
+- *(fixtures)* support generated identity columns
+- *(fixtures)* validate generated fixture fields
+- *(fixtures)* validate generated fixture values
+- *(fixtures)* address review feedback
+- *(fixtures)* satisfy clippy for identity fields
+- *(macros)* remove duplicate fixture accessor
+- *(fixtures)* address PR 5630 review follow-ups
+- *(fixtures)* address remaining PR 5630 review threads
+- *(fixtures)* validate nullable foreign key identifiers
+- *(fixtures)* allow omitted nullable foreign keys
+- restore atomic ORM release compatibility
+- *(release)* restore develop prerelease lifecycle
+- *(orm)* resolve to-field physical columns
+
+### Maintenance
+
+- merge develop/0.4.0 into forward-merge branch
+- merge latest main into develop forward-merge
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into model fixture commands
+- merge develop/0.4.0 into issue 5602 branch
+
+### Other
+
+- resolve develop/0.4.0 into model enum fields
+- sync develop/0.4.0 into server function set
+
+### Testing
+
+- *(macros)* declare fixture string length
+- *(macros)* align generated column fixture
+- *(macros)* update model UI fixtures
+- *(macros)* repair model UI fixture contracts
+
+### Fixed
+
+- *(macros)* resolve bare string foreign keys within their source app
+
 ## [0.3.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.16...reinhardt-macros@v0.3.17) - 2026-09-13
 
 ### Fixed

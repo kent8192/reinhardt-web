@@ -21,11 +21,14 @@ fn escape_json_for_html(json: &str) -> String {
 
 /// Represents the serialized SSR state.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SsrState {
 	/// Signal values indexed by their hydration ID.
 	signals: HashMap<String, serde_json::Value>,
 	/// Component props indexed by their hydration ID.
 	props: HashMap<String, serde_json::Value>,
+	/// Resource states indexed by deterministic resource ID.
+	resources: HashMap<String, serde_json::Value>,
 	/// Additional metadata.
 	metadata: HashMap<String, serde_json::Value>,
 }
@@ -57,6 +60,39 @@ impl SsrState {
 		}
 	}
 
+	/// Adds a resource state value to the hydration payload.
+	pub fn add_resource_state(&mut self, id: impl Into<String>, value: impl Serialize) {
+		if let Ok(json) = serde_json::to_value(value) {
+			self.resources.insert(id.into(), json);
+		}
+	}
+
+	/// Adds a successful route-loader value to the hydration payload.
+	///
+	/// Route-loader values use a separate namespace so they cannot collide with
+	/// call-order resource IDs. The value is kept unwrapped for the initial
+	/// typed [`crate::router::loader::LoaderStore`] reconstruction.
+	pub fn add_route_loader_state(&mut self, id: impl AsRef<str>, value: impl Serialize) {
+		self.add_resource_state(format!("route-loader:{}", id.as_ref()), value);
+	}
+
+	/// Adds a successful route-loader query state to the hydration payload.
+	///
+	/// The keyed query cache restores `ResourceState` values by their opaque
+	/// cache key. This helper preserves that existing wire format while keeping
+	/// route-loader identity in the separate namespace above.
+	pub fn add_route_loader_query_state(&mut self, key: impl Into<String>, value: impl Serialize) {
+		self.add_resource_state(
+			key,
+			serde_json::json!({ "Success": serde_json::to_value(value).unwrap_or(serde_json::Value::Null) }),
+		);
+	}
+
+	/// Clears resource states from the hydration payload.
+	pub fn clear_resource_states(&mut self) {
+		self.resources.clear();
+	}
+
 	/// Gets a signal value by ID.
 	pub fn get_signal(&self, id: &str) -> Option<&serde_json::Value> {
 		self.signals.get(id)
@@ -72,6 +108,22 @@ impl SsrState {
 		self.metadata.get(key)
 	}
 
+	/// Gets a resource state by ID.
+	pub fn get_resource_state(&self, id: &str) -> Option<&serde_json::Value> {
+		self.resources.get(id)
+	}
+
+	/// Removes and returns one resource state from the hydration payload.
+	#[cfg(any(wasm, native, test))]
+	pub(crate) fn take_resource_state(&mut self, id: &str) -> Option<serde_json::Value> {
+		self.resources.remove(id)
+	}
+
+	/// Gets a successful route-loader value by stable loader ID.
+	pub fn get_route_loader_state(&self, id: impl AsRef<str>) -> Option<&serde_json::Value> {
+		self.get_resource_state(&format!("route-loader:{}", id.as_ref()))
+	}
+
 	/// Returns the number of signals.
 	pub fn signal_count(&self) -> usize {
 		self.signals.len()
@@ -82,9 +134,17 @@ impl SsrState {
 		self.props.len()
 	}
 
+	/// Returns the number of resource state entries.
+	pub fn resource_count(&self) -> usize {
+		self.resources.len()
+	}
+
 	/// Checks if the state is empty.
 	pub fn is_empty(&self) -> bool {
-		self.signals.is_empty() && self.props.is_empty() && self.metadata.is_empty()
+		self.signals.is_empty()
+			&& self.props.is_empty()
+			&& self.resources.is_empty()
+			&& self.metadata.is_empty()
 	}
 
 	/// Serializes the state to JSON.
@@ -122,6 +182,7 @@ impl SsrState {
 	pub fn merge(&mut self, other: SsrState) {
 		self.signals.extend(other.signals);
 		self.props.extend(other.props);
+		self.resources.extend(other.resources);
 		self.metadata.extend(other.metadata);
 	}
 }
@@ -144,6 +205,8 @@ pub enum StateEntryType {
 	Signal,
 	/// Component props.
 	Props,
+	/// Resource state.
+	Resource,
 	/// Generic metadata.
 	Metadata,
 }
@@ -204,6 +267,33 @@ mod tests {
 	}
 
 	#[test]
+	fn test_ssr_state_add_resource_state() {
+		let mut state = SsrState::new();
+		state.add_resource_state("rh-res-0", serde_json::json!({"Success": "value"}));
+		assert_eq!(state.resource_count(), 1);
+		assert_eq!(
+			state.get_resource_state("rh-res-0"),
+			Some(&serde_json::json!({"Success": "value"}))
+		);
+	}
+
+	#[test]
+	fn test_ssr_state_route_loader_state_uses_stable_namespace() {
+		let mut state = SsrState::new();
+		state.add_route_loader_state("app::loader", serde_json::json!({"name": "Ada"}));
+		state.add_route_loader_query_state("route_loader:app::loader:sha256:key", "Ada");
+
+		assert_eq!(
+			state.get_route_loader_state("app::loader"),
+			Some(&serde_json::json!({"name": "Ada"}))
+		);
+		assert_eq!(
+			state.get_resource_state("route_loader:app::loader:sha256:key"),
+			Some(&serde_json::json!({"Success": "Ada"}))
+		);
+	}
+
+	#[test]
 	fn test_ssr_state_to_json() {
 		let mut state = SsrState::new();
 		state.add_signal("count", 10);
@@ -214,7 +304,7 @@ mod tests {
 
 	#[test]
 	fn test_ssr_state_from_json() {
-		let json = r#"{"signals":{"x":5},"props":{},"metadata":{}}"#;
+		let json = r#"{"signals":{"x":5},"props":{},"resources":{},"metadata":{}}"#;
 		let state = SsrState::from_json(json).unwrap();
 		assert_eq!(state.get_signal("x"), Some(&serde_json::json!(5)));
 	}
@@ -239,6 +329,15 @@ mod tests {
 
 		state1.merge(state2);
 		assert_eq!(state1.signal_count(), 2);
+	}
+
+	#[test]
+	fn test_resource_state_script_escaping() {
+		let mut state = SsrState::new();
+		state.add_resource_state("rh-res-xss", serde_json::json!({"Error": "</script><"}));
+		let script = state.to_script_tag();
+		assert_eq!(script.matches("\\u003c/script\\u003e\\u003c").count(), 1);
+		assert_eq!(script.matches("</script>").count(), 1);
 	}
 
 	#[test]

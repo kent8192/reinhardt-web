@@ -1,0 +1,5 @@
+error[E0433]: cannot find module or crate `plain_loader` in this scope
+ --> tests/ui/component/fail/unmarked_loader.rs:7:59
+  |
+7 | #[component("/projects/{id}/", name = "project", loader = plain_loader)]
+  |                                                           ^^^^^^^^^^^^ function `plain_loader` is not a crate or module

@@ -226,13 +226,34 @@ impl Middleware for ETagMiddleware {
 			Err(e) => Response::from(e),
 		};
 
-		// Streaming bodies expose an empty compatibility buffer, not their content.
-		if response.is_streaming() {
+		// Generate ETag
+		// File and streaming responses own their representation and expose an empty
+		// compatibility buffer. Never hash that buffer as the entity body.
+		if response.is_streaming() && !response.headers.contains_key(hyper::header::ETAG) {
+			if response.status.is_success()
+				&& (method == "GET" || method == "HEAD")
+				&& if_none_match
+					.as_ref()
+					.is_some_and(|value| value.trim() == "*")
+			{
+				let mut not_modified = response.with_body(bytes::Bytes::new());
+				not_modified.status = StatusCode::NOT_MODIFIED;
+				not_modified.headers.remove(hyper::header::CONTENT_LENGTH);
+				not_modified.headers.remove(hyper::header::CONTENT_RANGE);
+				return Ok(not_modified);
+			}
 			return Ok(response);
 		}
-
-		// Generate ETag
-		let etag = self.generate_etag(&response.body);
+		let etag = if response.headers.contains_key(hyper::header::ETAG) {
+			response
+				.headers
+				.get(hyper::header::ETAG)
+				.and_then(|value| value.to_str().ok())
+				.unwrap_or_default()
+				.to_owned()
+		} else {
+			self.generate_etag(&response.body)
+		};
 
 		// Check If-None-Match header (for GET/HEAD requests)
 		// Uses weak comparison per RFC 7232 Section 2.3.2:
@@ -247,8 +268,11 @@ impl Middleware for ETagMiddleware {
 							== strip_etag_for_weak_comparison(&etag)
 					})
 			}) {
-			// Return 304 Not Modified
-			let mut not_modified = Response::new(StatusCode::NOT_MODIFIED);
+			// Keep representation metadata while dropping buffered and owned file bodies.
+			let mut not_modified = response.with_body(bytes::Bytes::new());
+			not_modified.status = StatusCode::NOT_MODIFIED;
+			not_modified.headers.remove(hyper::header::CONTENT_LENGTH);
+			not_modified.headers.remove(hyper::header::CONTENT_RANGE);
 			not_modified.headers.insert(
 				hyper::header::ETAG,
 				hyper::header::HeaderValue::from_str(&etag)
@@ -312,6 +336,115 @@ mod tests {
 		async fn handle(&self, _request: Request) -> Result<Response> {
 			Ok(Response::new(StatusCode::OK).with_body(self.body.clone()))
 		}
+	}
+
+	struct TaggedHandler {
+		status: StatusCode,
+	}
+
+	#[async_trait]
+	impl Handler for TaggedHandler {
+		async fn handle(&self, _: Request) -> Result<Response> {
+			Ok(Response::new(self.status)
+				.with_header("etag", "\"asset-sha256\"")
+				.with_header("cache-control", "public, max-age=31536000, immutable")
+				.with_header("vary", "Accept-Encoding")
+				.with_header("content-encoding", "br"))
+		}
+	}
+
+	#[rstest::rstest]
+	#[case(Method::HEAD, StatusCode::OK, None, StatusCode::OK)]
+	#[case(Method::GET, StatusCode::NOT_MODIFIED, None, StatusCode::NOT_MODIFIED)]
+	#[case(
+		Method::HEAD,
+		StatusCode::OK,
+		Some("\"asset-sha256\""),
+		StatusCode::NOT_MODIFIED
+	)]
+	#[case(
+		Method::GET,
+		StatusCode::NOT_MODIFIED,
+		Some("\"asset-sha256\""),
+		StatusCode::NOT_MODIFIED
+	)]
+	#[tokio::test]
+	async fn preserves_existing_representation_etag(
+		#[case] method: Method,
+		#[case] status: StatusCode,
+		#[case] conditional: Option<&str>,
+		#[case] expected: StatusCode,
+	) {
+		// Arrange
+		let middleware = ETagMiddleware::with_defaults();
+		let mut request = Request::builder().method(method).uri("/asset.css");
+		if let Some(value) = conditional {
+			request = request.header("if-none-match", value);
+		}
+		// Act
+		let response = middleware
+			.process(request.build().unwrap(), Arc::new(TaggedHandler { status }))
+			.await
+			.unwrap();
+		// Assert
+		assert_eq!(response.status, expected);
+		assert_eq!(response.headers[hyper::header::ETAG], "\"asset-sha256\"");
+		assert_eq!(
+			response.headers[hyper::header::CACHE_CONTROL],
+			"public, max-age=31536000, immutable"
+		);
+		assert_eq!(response.headers[hyper::header::VARY], "Accept-Encoding");
+		assert_eq!(response.headers[hyper::header::CONTENT_ENCODING], "br");
+		assert!(response.body.is_empty());
+	}
+
+	struct FileHandler;
+
+	#[async_trait]
+	impl Handler for FileHandler {
+		async fn handle(&self, _: Request) -> Result<Response> {
+			use std::io::Write;
+
+			let mut file = tempfile::tempfile().unwrap();
+			file.write_all(b"asset").unwrap();
+			Ok(Response::ok()
+				.with_file_body(file, 0, 5)
+				.unwrap()
+				.with_header("etag", "\"asset-sha256\"")
+				.with_header("cache-control", "public, max-age=31536000, immutable")
+				.with_header("vary", "Accept-Encoding"))
+		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn conditional_file_response_drops_owned_body_and_keeps_metadata() {
+		// Arrange
+		let middleware = ETagMiddleware::with_defaults();
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/asset.css")
+			.header("if-none-match", "\"asset-sha256\"")
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(FileHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::NOT_MODIFIED);
+		assert!(response.body.is_empty());
+		assert!(response.file_body().is_none());
+		assert!(!response.headers.contains_key(hyper::header::CONTENT_LENGTH));
+		assert_eq!(response.headers[hyper::header::ETAG], "\"asset-sha256\"");
+		assert_eq!(response.headers[hyper::header::VARY], "Accept-Encoding");
+		assert_eq!(
+			response.headers[hyper::header::CACHE_CONTROL],
+			"public, max-age=31536000, immutable"
+		);
 	}
 
 	#[tokio::test]
@@ -660,5 +793,65 @@ mod tests {
 			StatusCode::NOT_MODIFIED,
 			"If-None-Match: * should return 304 for GET requests per RFC 7232"
 		);
+	}
+	struct StreamingHandler {
+		polls: Arc<std::sync::atomic::AtomicUsize>,
+	}
+
+	#[async_trait]
+	impl Handler for StreamingHandler {
+		async fn handle(&self, _: Request) -> Result<Response> {
+			let polls = self.polls.clone();
+			Ok(Response::ok()
+				.with_stream(futures::stream::poll_fn(move |_| {
+					polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+					std::task::Poll::Ready(Some(Ok(Bytes::from_static(b"chunk"))))
+				}))
+				.with_header("cache-control", "public, max-age=60")
+				.with_header("content-range", "bytes 0-4/5"))
+		}
+	}
+
+	#[rstest::rstest]
+	#[case(Method::GET, "*", StatusCode::NOT_MODIFIED, false)]
+	#[case(Method::HEAD, " * ", StatusCode::NOT_MODIFIED, false)]
+	#[case(Method::GET, "\"other\"", StatusCode::OK, true)]
+	#[case(Method::POST, "*", StatusCode::OK, true)]
+	#[tokio::test]
+	async fn streaming_conditionals_do_not_require_a_generated_etag(
+		#[case] method: Method,
+		#[case] if_none_match: &str,
+		#[case] expected_status: StatusCode,
+		#[case] expected_streaming: bool,
+	) {
+		// Arrange
+		let polls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+		let handler = Arc::new(StreamingHandler {
+			polls: polls.clone(),
+		});
+		let request = Request::builder()
+			.method(method)
+			.uri("/stream")
+			.header("if-none-match", if_none_match)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = ETagMiddleware::default()
+			.process(request, handler)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, expected_status);
+		assert_eq!(response.is_streaming(), expected_streaming);
+		assert_eq!(response.headers["cache-control"], "public, max-age=60");
+		assert!(!response.headers.contains_key("etag"));
+		assert_eq!(
+			response.headers.contains_key("content-range"),
+			expected_streaming
+		);
+		assert_eq!(polls.load(std::sync::atomic::Ordering::SeqCst), 0);
 	}
 }

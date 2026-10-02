@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.4.0-alpha.3...reinhardt-test@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- update version references to v0.4.0-alpha.4
+- update version references to v0.4.0-alpha.5
+- *(release)* restore coherent alpha.3 references
+
+### Fixed
+
+- *(pgvector)* close migration and binding gaps
+- *(release)* restore unpublished crates after partial release
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.4.0-alpha.1...reinhardt-test@v0.4.0-alpha.2) - 2026-07-23
+
+### Added
+
+- *(db)* [**breaking**] add Copy-safe injected connection handles
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.3.2...reinhardt-test@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(testkit)* add model-derived test database fixture
+
+### Changed
+
+- *(pages)* migrate model-set error adapters
+
+### Fixed
+
+- *(testkit)* complete model-derived schema fidelity
+- *(ci)* terminate cfg aliases macro invocations
+- *(pages)* envelope server function failures
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge develop/0.4.0 into server function set branch
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.2.0...reinhardt-test@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-test` for the Reinhardt 0.3.0 line. This

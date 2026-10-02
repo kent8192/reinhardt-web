@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.17...reinhardt-conf@v0.4.0-alpha.18) - 2026-09-27
+
+### Fixed
+
+- *(deps)* remove AWS Smithy compatibility pin
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.16...reinhardt-conf@v0.4.0-alpha.17) - 2026-09-25
+
+### Added
+
+- *(conf)* resolve selected settings paths lazily
+- *(commands)* scope built-in command requirements
+
+### Fixed
+
+- *(commands)* address capability review findings
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.15...reinhardt-conf@v0.4.0-alpha.16) - 2026-09-23
+
+### Fixed
+
+- *(deps)* constrain incompatible AWS Smithy releases
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.14...reinhardt-conf@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+### Testing
+
+- *(conf)* isolate in-memory audit databases
+- *(conf)* compose audit backend fixtures with test helpers
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.10...reinhardt-conf@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.8...reinhardt-conf@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define runtime and operations boundaries
+- *(security)* clarify encryption policy
+- *(security)* qualify caller-enforced boundaries
+- *(security)* qualify remaining boundary assumptions
+- *(security)* qualify auth and vault boundaries
+- *(security)* qualify remaining policy boundaries
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.3.17...reinhardt-conf@v0.3.18) - 2026-09-16
 
 ### Fixed
@@ -50,6 +126,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.6...reinhardt-conf@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.5...reinhardt-conf@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.4.0-alpha.3...reinhardt-conf@v0.4.0-alpha.4) - 2026-08-04
+
+### Fixed
+
+- *(migrations)* harden squash generation
+- *(migrations)* cover squash review edge cases
+- *(commands)* honor managed migration settings
+
+### Other
+
+- integrate develop migration updates
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.3.2...reinhardt-conf@v0.4.0-alpha.1) - 2026-07-21
+
+### Changed
+
+- [**breaking**] remove remaining dynamic error dependencies
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge develop/0.4.0 into remove-anyhow branch
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.3.9...reinhardt-conf@v0.3.10) - 2026-08-22
 
 ### Maintenance

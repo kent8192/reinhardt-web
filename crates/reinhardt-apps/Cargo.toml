@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-apps"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 description = "Application registry and management for Reinhardt framework"
 edition.workspace = true
 rust-version.workspace = true
@@ -16,7 +16,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
 sha2 = "0.10"

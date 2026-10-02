@@ -1,0 +1,5 @@
+error: #[url_patterns] does not accept arguments
+ --> tests/ui/url_patterns/fail/attribute_arguments.rs:3:16
+  |
+3 | #[url_patterns(server)]
+  |                ^^^^^^

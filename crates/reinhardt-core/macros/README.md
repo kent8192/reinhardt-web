@@ -116,13 +116,12 @@ Provides compile-time code generation for common patterns.
     use reinhardt::views::{get, post};
     use reinhardt::http::{Response, ViewResult};
     use reinhardt::extractors::{Path, Json};
-    use std::sync::Arc;
     use uuid::Uuid;
 
     #[get("/users/{<uuid:id>}", use_inject = true)]
     async fn get_user(
         Path(id): Path<Uuid>,
-        #[inject] db: Arc<DatabaseConnection>,  // Injected from context
+        #[inject] db: DatabaseConnection,  // Injected from context
     ) -> ViewResult<Response> {
         // ...
     }
@@ -130,7 +129,7 @@ Provides compile-time code generation for common patterns.
     #[post("/users", use_inject = true)]
     async fn create_user(
         Json(data): Json<CreateUserRequest>,
-        #[inject] db: Arc<DatabaseConnection>,
+        #[inject] db: DatabaseConnection,
     ) -> ViewResult<Response> {
         // ...
     }
@@ -153,6 +152,16 @@ Provides compile-time code generation for common patterns.
       Ok(Response::ok())
   }
   ```
+
+  Injected parameters may use mutable bindings and destructuring patterns:
+
+  ```rust,ignore
+  #[inject] mut db: DatabaseConnection
+  #[inject] Wrapper(mut value): Wrapper<Data>
+  ```
+
+  Mutability applies only to the function's internal binding; it does not
+  change resolver ownership or caching.
 
 **Pattern Comparison:**
 - `#[injectable]` - Creates an `Injectable` implementation for the return type (Factory/Provider pattern)
@@ -205,14 +214,75 @@ Provides compile-time code generation for common patterns.
   - Automatically adds `#[derive(Model)]`
   - Cleaner syntax without explicit `#[derive(Model)]`
   - Same attributes as `#[derive(Model)]`
-  - Example: `#[model(table_name = "users", app_label = "auth")]`
+  - Requires an explicit `app_label`
+  - Generated companion length validation applies to `String` and
+    `Option<String>`. String-backed `ModelEnum` values retain their compile-time
+    database length checks; `FileField` and `ImageField` retain their database
+    context and upload policy. Their storage metadata does not generate a string
+    validator on the typed value.
+  - `form = true` preserves the legacy generated model-form schema and generic
+    payload types
+  - `form(name = Contract, fields(field, ...))` generates one named,
+    target-neutral create-form contract from an explicit public field list
+  - Defaults `table_name` to the app label plus struct name in snake_case without pluralization
+  - Example: `#[model(app_label = "polls", form = true)]` generates
+    `QuestionFormSchema`, `QuestionModelFormData<P>`, and
+    `CleanedQuestionModelFormData<P>` for a `Question` model
+  - `#[form(validate = path)]` declares one synchronous validator over the
+    generated cleaned payload
+  - `#[form(trim)]` opts a generated text, email, or URL field into trimming;
+    generated fields otherwise preserve surrounding whitespace
+  - `#[field(...)]` remains database and model metadata; form-only behavior
+    belongs in `#[form(...)]`
+  - Native create code consumes raw payloads with `clean_and_validate()`, then
+    uses cleaned `into_model(context)`; update code uses
+    `clean_and_validate_for_update(&existing)` before `apply_to(existing)` so
+    synchronous cross-field validation observes the post-merge candidate.
+    `apply_to` validates against its actual existing instance, preserving omitted
+    values even when the cleaned payload came from create validation.
+  - Create validation evaluates omitted model defaults once, then normalizes and
+    validates the resulting values before model construction. Cleaned payloads
+    retain these values across snapshots and persistence.
+  - Existing file references are read by Rust field name; model serde renaming
+    or skipped serialization does not change storage-reference validation
+  - Cleaned file/image getters return `Option<ModelFormFileValue<'_, T>>`:
+    `Stored` exposes a validated storage reference and `Uploaded` exposes pending
+    upload metadata during browser and multipart validation. Missing files and
+    nullable clears return `None`; scalar getters retain their typed values.
+    Upload metadata is excluded when converting the candidate into a raw payload.
+  - Example: `#[model(app_label = "polls", form(name = QuestionCreateForm,
+    fields(text)))]` generates `QuestionCreateForm`,
+    `QuestionCreateFormData`, `QuestionCreateFormSchema`, and
+    `QuestionCreateFormField` on native and WASM; its hidden
+    `QuestionCreateFormPolicy` is an implementation detail
+  - Named forms accept selected `String`, numeric primitives, `bool`,
+    `rust_decimal::Decimal`, `uuid::Uuid`, `chrono::NaiveDate`,
+    `chrono::NaiveTime`, `chrono::NaiveDateTime`, `chrono::DateTime<chrono::Utc>`,
+    `serde_json::Value`, and one `Option<T>` layer. Relationships, generated
+    relationship identifiers, file/image fields, collections, and custom types
+    are rejected.
+  - Named payload JSON is strict: unknown or duplicate keys and incompatible
+    values fail deserialization. Only selected fields are serialized.
+  - Named data also implements `ModelFormValidatingPayload`: calling
+    `data.clean_and_validate()` on `QuestionCreateFormData` returns
+    `CleanedQuestionCreateFormData`. Declared defaults, opt-in trimming, field
+    constraints, and the synchronous validator share the same generated
+    pipeline on native and WASM. The callback receives
+    `&CleanedQuestionModelFormData<P>` on both targets; the cleaned named
+    payload exposes normalized getters and preserves default provenance when
+    converted back with `into_raw()`.
+  - Models without either form opt-in generate no model-form symbols
 
 - **`#[derive(Model)]`** - Derive macro for automatic Model implementation
+  - `#[model(...)]` forwards its configuration when paired with an explicit
+    `#[derive(Model)]`, including when the attribute appears first
+  - When the attribute appears first, use its fully qualified path to
+    disambiguate it from the derive helper attribute
   - Implements `Model` trait
   - Registers model with global ModelRegistry for migrations
-  - Model attributes: `app_label`, `table_name`, `constraints`
+  - Model attributes: `app_label`, `table_name`, `constraints`, `form`
   - Field attributes: `primary_key`, `max_length`, `null`, `blank`, `unique`, `default`, `db_column`, `editable`
-  - Supported types: `i32`, `i64`, `String`, `bool`, `DateTime<Utc>`, `Date`, `Time`, `f32`, `f64`, `Option<T>`
+  - Supported types: `i32`, `i64`, `String`, `bool`, `DateTime<Utc>`, `NaiveDateTime`, `Date`, `Time`, `f32`, `f64`, `Option<T>`
   - Requires: Named fields, `Serialize`/`Deserialize`, exactly one `primary_key`, `max_length` for String fields
 
 #### ORM Reflection
@@ -234,11 +304,11 @@ Provides compile-time code generation for common patterns.
 #### Shared DTOs
 
 - **`#[dto]`** - Target-neutral DTO validation boilerplate
-  - Emits the native-only `Validate` derive
-  - Wraps `#[validate(...)]` and `#[schema(...)]` attributes for WASM compatibility
+  - Emits a shared `Validate` derive for native and WASM builds
+  - Leaves `#[validate(...)]` attributes active on both targets
 - **`#[dto(schema)]`** - Opts the DTO into native-only OpenAPI `Schema` generation
   - Requires the consumer's `openapi` feature, which also enables the core validation surface
-  - Supports native-only container and field `#[schema(...)]` customizations
+  - Gates container and field `#[schema(...)]` customizations to native builds
   - Leaves the plain `#[dto]` behavior unchanged
 
 #### Application Configuration
@@ -259,10 +329,51 @@ Provides compile-time code generation for common patterns.
 
 #### URL Pattern Registration
 
+- **`#[url_patterns]`** - Share a `UnifiedRouter` builder with native-only HTTP handlers
+  - **Parity: P1 (symbol parity)** - available on native and browser-WASM builds; the server configuration is inert on browser WASM
+  - Takes no arguments and adds no inventory registration
+  - Keeps each complete `.server(...)` argument only under
+    `all(server, not(all(target_family = "wasm", target_os = "unknown")))`
+    in the calling crate; other builds erase it before name resolution
+  - Accepts safe, synchronous functions without `const` or `extern` qualifiers,
+    with no parameters or generics and an
+    explicit `UnifiedRouter` return type, including qualified paths
+  - Requires one tail expression rooted at `UnifiedRouter::new()` or `default()`;
+    supported methods are `server`, `client`, `with_prefix`, `with_namespace`,
+    `mount_unified`, and `merge`
+  - Put native imports inside the server argument or in cfg-gated modules.
+    Extract nested server builders into separate annotated functions. This also
+    applies to local router bindings, closure parameters, and nested function
+    parameters explicitly typed as
+    `UnifiedRouter`, including qualified types and parenthesized bindings.
+    Call results are conservatively treated as potential routers because helper
+    return types are unavailable to the macro; move their nested `.server(...)`
+    calls into annotated functions. An explicit unrelated local type keeps its
+    own `server` method available, including after assignment. Router aliases
+    are tracked through tuple, array, and struct destructuring assignments and
+    through `if`/`while` let-chain conditions within their binding scopes
+  - Available as `reinhardt::url_patterns`, including on WASM. Declare the
+    caller's custom `server` cfg in `build.rs` and enable it for native server
+    builds; `client-router` is required for browser routing
+  - Example:
+    ```rust
+    use reinhardt::url_patterns;
+    use reinhardt::urls::prelude::UnifiedRouter;
+
+    #[url_patterns]
+    pub fn url_patterns() -> UnifiedRouter {
+        UnifiedRouter::new()
+            .server(|server| server.endpoint(crate::native_handlers::health))
+            .with_namespace("demo")
+    }
+    ```
+
 - **`#[routes]`** - Attribute macro for automatic URL pattern registration
   - Registers URL pattern function for framework discovery (via `inventory` crate)
   - Apply to project-level `routes()` function in `src/config/urls.rs`
   - Return type must be `UnifiedRouter` (framework handles Arc wrapping internally)
+  - Can be stacked with `#[url_patterns]` in either order; only `#[routes]`
+    registers the root factory
   - Example:
     ```rust
     use reinhardt::prelude::*;
@@ -271,7 +382,7 @@ Provides compile-time code generation for common patterns.
     #[routes]
     pub fn routes() -> UnifiedRouter {
         UnifiedRouter::new()
-            .mount("/api/", api_router())
+            .mount_unified("/api/", api_url_patterns())
     }
     ```
 
@@ -305,3 +416,18 @@ reinhardt = { version = "0.1.2", features = ["core"] }
 ```
 
 **Note:** The `core` feature (included in `standard` and `full`) is required to use the macros from this crate.
+
+## Testing
+
+Run the generated model payload parity fixture from the workspace root:
+
+```bash
+cargo nextest run -p reinhardt-macros --test model_wasm_parity --all-features
+```
+
+The fixture requires the `wasm32-unknown-unknown` target, Node.js, and
+`wasm-bindgen-test-runner`. It builds and executes the same model declarations
+on native and WASM in a fresh temporary target directory, then verifies that
+the WASM dependency graph excludes database runtimes. The workspace Nextest
+configuration reserves both default test slots and allows up to 60 minutes
+for the sequential cold builds on CI runners with one Cargo build job.

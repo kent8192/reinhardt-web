@@ -4,11 +4,21 @@
 //! during hydration. SSR cannot serialize JavaScript event handlers,
 //! so they must be reattached on the client side.
 
+#[cfg(any(wasm, test))]
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(wasm)]
-use crate::dom::{Element, EventHandle, EventType};
+use crate::component::ControlBinding;
+#[cfg(wasm)]
+use crate::dom::control_binding::ControlBindingController;
+#[cfg(wasm)]
+use crate::dom::{Element, EventHandle};
+#[cfg(any(wasm, test))]
+use reinhardt_core::types::page::EventName;
+#[cfg(any(wasm, test))]
+use reinhardt_core::types::page::event::event_spec;
 
 /// A binding between an event and its handler.
 #[derive(Debug, Clone)]
@@ -71,6 +81,18 @@ pub struct EventRegistry {
 	/// Event handles indexed by element ID.
 	#[cfg(wasm)]
 	handles: HashMap<String, Vec<EventHandle>>,
+	/// Event handles on elements without hydration IDs.
+	#[cfg(wasm)]
+	anonymous_handles: Vec<EventHandle>,
+	/// Controlled form-element bindings installed during hydration.
+	#[cfg(wasm)]
+	control_bindings: Vec<ControlBindingController>,
+	/// Whether hydration adopted a live control value into a signal.
+	#[cfg(wasm)]
+	control_binding_adopted: bool,
+	/// Whether the owning traversal should hydrate bound controls.
+	#[cfg(wasm)]
+	hydrate_control_bindings: bool,
 	/// Event handles for non-WASM (placeholder).
 	#[cfg(native)]
 	handles: HashMap<String, Vec<String>>,
@@ -82,6 +104,21 @@ impl EventRegistry {
 		Self::default()
 	}
 
+	/// Creates a registry for the automatic Page hydration traversal.
+	#[cfg(wasm)]
+	pub(crate) fn new_for_hydration() -> Self {
+		Self {
+			hydrate_control_bindings: true,
+			..Self::default()
+		}
+	}
+
+	/// Returns whether bound controls should be hydrated during traversal.
+	#[cfg(wasm)]
+	pub(crate) fn should_hydrate_control_bindings(&self) -> bool {
+		self.hydrate_control_bindings
+	}
+
 	/// Registers an event handle for an element.
 	#[cfg(wasm)]
 	pub fn register(&mut self, element_id: impl Into<String>, handle: EventHandle) {
@@ -89,6 +126,35 @@ impl EventRegistry {
 			.entry(element_id.into())
 			.or_default()
 			.push(handle);
+	}
+
+	/// Registers an event handle for an element without a hydration ID.
+	#[cfg(wasm)]
+	pub(crate) fn register_anonymous(&mut self, handle: EventHandle) {
+		self.anonymous_handles.push(handle);
+	}
+
+	/// Retains a controlled form-element binding for the hydration lifetime.
+	#[cfg(wasm)]
+	pub(crate) fn register_control_binding(
+		&mut self,
+		controller: ControlBindingController,
+		adopted: bool,
+	) {
+		self.control_binding_adopted |= adopted;
+		self.control_bindings.push(controller);
+	}
+
+	/// Returns whether this registry adopted a live form-control value.
+	#[cfg(wasm)]
+	pub(crate) fn control_binding_adopted(&self) -> bool {
+		self.control_binding_adopted
+	}
+
+	/// Propagates an adopted control value from a nested hydration branch.
+	#[cfg(wasm)]
+	pub(crate) fn mark_control_binding_adopted(&mut self) {
+		self.control_binding_adopted = true;
 	}
 
 	/// Registers an event handle (non-WASM placeholder).
@@ -108,17 +174,60 @@ impl EventRegistry {
 	/// Removes all registered event handles.
 	pub fn clear(&mut self) {
 		self.handles.clear();
+		#[cfg(wasm)]
+		{
+			self.anonymous_handles.clear();
+			self.control_bindings.clear();
+		}
 	}
 
-	/// Returns the number of registered elements.
+	/// Returns the number of registered keyed elements and anonymous handles.
 	pub fn len(&self) -> usize {
-		self.handles.len()
+		self.handles.len() + {
+			#[cfg(wasm)]
+			{
+				self.anonymous_handles.len()
+			}
+			#[cfg(native)]
+			{
+				0
+			}
+		}
 	}
 
 	/// Returns true if no event handles are registered.
 	pub fn is_empty(&self) -> bool {
-		self.handles.is_empty()
+		self.handles.is_empty() && {
+			#[cfg(wasm)]
+			{
+				self.anonymous_handles.is_empty() && self.control_bindings.is_empty()
+			}
+			#[cfg(native)]
+			{
+				true
+			}
+		}
 	}
+}
+
+/// Hydrates a bound form control and retains its controller in the registry.
+///
+/// Page-based hydration traversals call this helper when they encounter a
+/// controlled element. Keeping the controller in the registry is required for
+/// its listeners, reactive effect, and select-option observer to remain alive.
+#[cfg(wasm)]
+pub(crate) fn hydrate_control_binding(
+	element: &Element,
+	binding: &ControlBinding,
+	registry: &mut EventRegistry,
+) -> Result<(), EventAttachError> {
+	let (controller, adopted) = ControlBindingController::hydrate(element.clone(), binding.clone())
+		.map_err(|error| EventAttachError {
+			event_type: "control-binding".to_owned(),
+			reason: error.to_string(),
+		})?;
+	registry.register_control_binding(controller, adopted);
+	Ok(())
 }
 
 /// Error type for event attachment.
@@ -184,19 +293,30 @@ impl AttachOptions {
 #[cfg(wasm)]
 pub fn attach_event(
 	element: &Element,
-	event_type: &EventType,
+	event_type: &EventName,
 	handler: EventHandler,
 	registry: &mut EventRegistry,
 ) -> Result<(), EventAttachError> {
+	let scope = reinhardt_core::reactive::scope::current_scope_id();
+	#[cfg(feature = "i18n")]
+	let i18n_context = crate::i18n::current_i18n_callback_context();
 	let handle = element.add_event_listener_with_event(event_type.as_str(), move |event| {
-		handler(event);
+		#[cfg(feature = "i18n")]
+		{
+			crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
+				crate::callback::run_event_handler_in_scope(scope, &handler, event);
+			});
+		}
+		#[cfg(not(feature = "i18n"))]
+		crate::callback::run_event_handler_in_scope(scope, &handler, event);
 	});
 
-	// Unmarked generated controls still need to retain their event handles.
-	registry.register(
-		element.get_attribute("data-rh-id").unwrap_or_default(),
-		handle,
-	);
+	// Get element ID for registry
+	if let Some(id) = element.get_attribute("data-rh-id") {
+		registry.register(id, handle);
+	} else {
+		registry.register_anonymous(handle);
+	}
 
 	Ok(())
 }
@@ -262,8 +382,8 @@ pub fn attach_events_recursive(
 			for binding in bindings {
 				if binding.element_id == element_id
 					&& let Some(handler) = handlers.get(&binding.event_type)
-					&& let Some(event_type) = event_type_from_string(&binding.event_type)
 				{
+					let event_type = event_name_from_string(&binding.event_type);
 					attach_event(element, &event_type, handler.clone(), registry)?;
 				}
 			}
@@ -330,68 +450,20 @@ pub(super) fn attach_events(
 	registry: &mut EventRegistry,
 ) -> Result<(), EventAttachError> {
 	for binding in bindings {
-		if let Some(handler) = handlers.get(&binding.event_type)
-			&& let Some(event_type) = event_type_from_string(&binding.event_type)
-		{
+		if let Some(handler) = handlers.get(&binding.event_type) {
+			let event_type = event_name_from_string(&binding.event_type);
 			attach_event(element, &event_type, handler.clone(), registry)?;
 		}
 	}
 	Ok(())
 }
 
-/// Converts a string to an EventType.
-///
-/// Returns `None` if the event type string is not recognized. Unknown event
-/// types are logged as warnings rather than silently falling back to a
-/// default value.
-#[cfg(wasm)]
-fn event_type_from_string(s: &str) -> Option<EventType> {
-	match s {
-		// Mouse events
-		"click" => Some(EventType::Click),
-		"dblclick" => Some(EventType::DblClick),
-		"mousedown" => Some(EventType::MouseDown),
-		"mouseup" => Some(EventType::MouseUp),
-		"mouseenter" => Some(EventType::MouseEnter),
-		"mouseleave" => Some(EventType::MouseLeave),
-		"mousemove" => Some(EventType::MouseMove),
-		"mouseover" => Some(EventType::MouseOver),
-		"mouseout" => Some(EventType::MouseOut),
-		// Keyboard events
-		"keydown" => Some(EventType::KeyDown),
-		"keyup" => Some(EventType::KeyUp),
-		"keypress" => Some(EventType::KeyPress),
-		// Form events
-		"input" => Some(EventType::Input),
-		"change" => Some(EventType::Change),
-		"submit" => Some(EventType::Submit),
-		"focus" => Some(EventType::Focus),
-		"blur" => Some(EventType::Blur),
-		// Touch events
-		"touchstart" => Some(EventType::TouchStart),
-		"touchend" => Some(EventType::TouchEnd),
-		"touchmove" => Some(EventType::TouchMove),
-		"touchcancel" => Some(EventType::TouchCancel),
-		// Drag events
-		"dragstart" => Some(EventType::DragStart),
-		"drag" => Some(EventType::Drag),
-		"drop" => Some(EventType::Drop),
-		"dragenter" => Some(EventType::DragEnter),
-		"dragleave" => Some(EventType::DragLeave),
-		"dragover" => Some(EventType::DragOver),
-		"dragend" => Some(EventType::DragEnd),
-		// Other events
-		"load" => Some(EventType::Load),
-		"error" => Some(EventType::Error),
-		"scroll" => Some(EventType::Scroll),
-		"resize" => Some(EventType::Resize),
-		_unknown => {
-			crate::warn_log!(
-				"Unknown event type '{}' encountered during hydration, skipping",
-				_unknown
-			);
-			None
-		}
+/// Classifies a hydration event name through the authoritative catalog.
+#[cfg(any(wasm, test))]
+fn event_name_from_string(name: &str) -> EventName {
+	match event_spec(name) {
+		Some(spec) => EventName::Known(spec.kind),
+		None => EventName::Custom(Cow::Owned(name.to_owned())),
 	}
 }
 
@@ -457,6 +529,23 @@ fn test_attach_events_recursive_non_wasm() {
 #[cfg(all(test, native))]
 mod tests {
 	use super::*;
+	use reinhardt_core::types::page::{EventName, EventType};
+
+	#[test]
+	fn event_name_classification_preserves_known_and_custom_names() {
+		assert_eq!(
+			event_name_from_string("click"),
+			EventName::Known(EventType::Click)
+		);
+		assert_eq!(
+			event_name_from_string("editor:commit").as_str(),
+			"editor:commit"
+		);
+		assert!(matches!(
+			event_name_from_string("editor:commit"),
+			EventName::Custom(_)
+		));
+	}
 
 	#[test]
 	fn test_event_binding_new() {

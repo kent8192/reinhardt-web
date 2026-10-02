@@ -15,29 +15,40 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_core::reactive::{Signal, Effect, Runtime};
+//! use reinhardt_core::reactive::{Effect, ReactiveScope, Signal};
 //!
-//! // Create a signal
-//! let count = Signal::new(0);
+//! ReactiveScope::run(|| {
+//!     // Create a signal
+//!     let count = Signal::new(0);
 //!
-//! // Create an effect that automatically tracks dependencies
-//! let count_for_effect = count.clone();
-//! Effect::new(move || {
-//!     // This get() call automatically registers the dependency
-//!     println!("Count is: {}", count_for_effect.get());
+//!     // Create an effect that automatically tracks dependencies
+//!     let count_for_effect = count.clone();
+//!     Effect::new(move || {
+//!         // This get() call automatically registers the dependency
+//!         println!("Count is: {}", count_for_effect.get());
+//!     });
+//!
+//!     // Update the signal - the effect will automatically re-run
+//!     count.set(42);
 //! });
-//!
-//! // Update the signal - the effect will automatically re-run
-//! count.set(42);
 //! ```
 
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 extern crate alloc;
 use alloc::boxed::Box;
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NotificationPhase {
+	Idle,
+	Propagating,
+	Consuming,
+}
+
+const MAX_NOTIFICATION_EPOCHS: usize = 32;
 
 /// Unique identifier for reactive nodes (Signals, Effects, Memos)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -120,6 +131,8 @@ pub(crate) struct DependencyNode {
 	pub(crate) subscribers: Vec<NodeId>,
 	/// IDs of nodes this node depends on
 	pub(crate) dependencies: Vec<NodeId>,
+	/// Revisions actually observed while evaluating this consumer.
+	observed_revisions: BTreeMap<NodeId, usize>,
 }
 
 /// Type for async task scheduler function
@@ -168,6 +181,24 @@ pub struct Runtime {
 	pub(crate) update_scheduled: RefCell<bool>,
 	/// Active explicit batch and callback-flush nesting depth.
 	pub(crate) batch_depth: RefCell<usize>,
+	/// Current notification processing phase.
+	notification_phase: Cell<NotificationPhase>,
+	/// Reactive nodes whose subscribers still need propagation.
+	notification_sources: RefCell<Vec<NodeId>>,
+	/// Source notifications raised while consumers execute.
+	notification_next_sources: RefCell<Vec<NodeId>>,
+	/// Consumer-raised sources retained after a consumer panic.
+	notification_recovery_sources: RefCell<Vec<NodeId>>,
+	/// Memos already propagated in the current epoch.
+	notification_memos_seen: RefCell<BTreeSet<NodeId>>,
+	/// Consumers already collected in the current epoch.
+	notification_consumers_seen: RefCell<BTreeSet<NodeId>>,
+	/// Layout effects collected after propagation completes.
+	notification_layout_effects: RefCell<Vec<NodeId>>,
+	/// Passive consumers collected after propagation completes.
+	notification_passive: RefCell<Vec<NodeId>>,
+	/// Number of notifications emitted by each signal.
+	signal_revisions: RefCell<BTreeMap<NodeId, usize>>,
 }
 
 impl Runtime {
@@ -179,6 +210,15 @@ impl Runtime {
 			pending_updates: RefCell::new(Vec::new()),
 			update_scheduled: RefCell::new(false),
 			batch_depth: RefCell::new(0),
+			notification_phase: Cell::new(NotificationPhase::Idle),
+			notification_sources: RefCell::new(Vec::new()),
+			notification_next_sources: RefCell::new(Vec::new()),
+			notification_recovery_sources: RefCell::new(Vec::new()),
+			notification_memos_seen: RefCell::new(BTreeSet::new()),
+			notification_consumers_seen: RefCell::new(BTreeSet::new()),
+			notification_layout_effects: RefCell::new(Vec::new()),
+			notification_passive: RefCell::new(Vec::new()),
+			signal_revisions: RefCell::new(BTreeMap::new()),
 		}
 	}
 
@@ -223,6 +263,9 @@ impl Runtime {
 
 			// Add observer -> signal edge (observer depends on signal)
 			let observer_node = graph.entry(observer_id).or_default();
+			observer_node
+				.observed_revisions
+				.insert(signal_id, self.signal_revision(signal_id));
 			if !observer_node.dependencies.contains(&signal_id) {
 				observer_node.dependencies.push(signal_id);
 			}
@@ -231,49 +274,263 @@ impl Runtime {
 
 	/// Notify that a Signal has changed
 	///
-	/// This schedules all subscribers (Effects/Memos that depend on this Signal) for re-execution.
-	/// Outside explicit batches, layout effects execute synchronously and passive
-	/// effects are scheduled asynchronously. Batches defer both until the outermost exit.
+	/// Each notification epoch first propagates dirty state through every Memo,
+	/// then executes Layout effects and schedules passive consumers. Writes
+	/// raised by a consumer are processed in a new epoch after the current
+	/// consumers finish. Consumers that already read a queued source revision
+	/// are not run again for that same revision.
 	///
 	/// # Arguments
 	///
 	/// * `signal_id` - ID of the Signal that changed
 	pub fn notify_signal_change(&self, signal_id: NodeId) {
-		let graph = self.dependency_graph.borrow();
-		if let Some(node) = graph.get(&signal_id) {
-			// Collect layout effects and passive effects separately
-			let mut layout_effects = Vec::new();
-			let mut passive_effects = Vec::new();
+		self.notify_signal_changes(core::slice::from_ref(&signal_id));
+	}
 
-			for &subscriber_id in &node.subscribers {
-				// Check if this is an effect and get its timing
-				if let Some(timing) = super::effect::get_effect_timing(subscriber_id) {
-					match timing {
-						EffectTiming::Layout => layout_effects.push(subscriber_id),
-						EffectTiming::Passive => passive_effects.push(subscriber_id),
+	/// Notify multiple signals as one propagation wave.
+	///
+	/// All source values must already be updated before this method is called.
+	/// Keeping the source IDs in the same wave prevents a consumer subscribed to
+	/// more than one source from running once per source.
+	pub(crate) fn notify_signal_changes(&self, signal_ids: &[NodeId]) {
+		if signal_ids.is_empty() {
+			return;
+		}
+
+		let mut revisions = self.signal_revisions.borrow_mut();
+		for &signal_id in signal_ids {
+			let revision = revisions.entry(signal_id).or_default();
+			*revision = revision.saturating_add(1);
+		}
+		drop(revisions);
+		match self.notification_phase.get() {
+			NotificationPhase::Idle => {
+				let mut sources = self.notification_sources.borrow_mut();
+				sources.extend(signal_ids.iter().copied());
+				drop(sources);
+				self.notification_phase.set(NotificationPhase::Propagating);
+				self.process_notification_epochs();
+				self.schedule_pending_flush();
+			}
+			NotificationPhase::Propagating => {
+				self.notification_sources
+					.borrow_mut()
+					.extend(signal_ids.iter().copied());
+			}
+			NotificationPhase::Consuming => {
+				self.notification_next_sources
+					.borrow_mut()
+					.extend(signal_ids.iter().copied());
+			}
+		}
+	}
+
+	/// Returns how many times a signal has notified the runtime.
+	#[must_use]
+	pub fn signal_revision(&self, signal_id: NodeId) -> usize {
+		self.signal_revisions
+			.borrow()
+			.get(&signal_id)
+			.copied()
+			.unwrap_or_default()
+	}
+
+	fn process_notification_epochs(&self) {
+		struct NotificationWaveGuard<'a> {
+			runtime: &'a Runtime,
+			completed: bool,
+			discard_pending: bool,
+		}
+
+		impl Drop for NotificationWaveGuard<'_> {
+			fn drop(&mut self) {
+				self.runtime.notification_sources.borrow_mut().clear();
+				if self.discard_pending {
+					self.runtime.notification_next_sources.borrow_mut().clear();
+					self.runtime
+						.notification_recovery_sources
+						.borrow_mut()
+						.clear();
+				} else if self.completed {
+					self.runtime.notification_next_sources.borrow_mut().clear();
+				} else {
+					let pending =
+						core::mem::take(&mut *self.runtime.notification_next_sources.borrow_mut());
+					self.runtime
+						.notification_recovery_sources
+						.borrow_mut()
+						.extend(pending);
+					self.runtime.queue_updates(core::mem::take(
+						&mut *self.runtime.notification_passive.borrow_mut(),
+					));
+				}
+				self.runtime.notification_memos_seen.borrow_mut().clear();
+				self.runtime
+					.notification_consumers_seen
+					.borrow_mut()
+					.clear();
+				self.runtime
+					.notification_layout_effects
+					.borrow_mut()
+					.clear();
+				self.runtime.notification_passive.borrow_mut().clear();
+				self.runtime.notification_phase.set(NotificationPhase::Idle);
+			}
+		}
+
+		let mut wave_guard = NotificationWaveGuard {
+			runtime: self,
+			completed: false,
+			discard_pending: false,
+		};
+		let recovery = core::mem::take(&mut *self.notification_recovery_sources.borrow_mut());
+		self.notification_sources.borrow_mut().extend(recovery);
+		let mut epoch_count = 0_usize;
+		loop {
+			epoch_count += 1;
+			if epoch_count > MAX_NOTIFICATION_EPOCHS {
+				wave_guard.discard_pending = true;
+				panic!(
+					"reactive notification exceeded {MAX_NOTIFICATION_EPOCHS} epochs; possible non-converging layout update loop"
+				);
+			}
+			self.notification_phase.set(NotificationPhase::Propagating);
+			self.notification_memos_seen.borrow_mut().clear();
+			self.notification_consumers_seen.borrow_mut().clear();
+			self.notification_layout_effects.borrow_mut().clear();
+			self.notification_passive.borrow_mut().clear();
+			if *self.batch_depth.borrow() == 0 {
+				// Deferred Layout effects join the same epoch as fresh sources.
+				// Retain passive work so new notifications cannot enqueue it twice.
+				self.pending_updates.borrow_mut().retain(|node_id| {
+					if super::effect::get_effect_timing(*node_id) == Some(EffectTiming::Layout) {
+						self.notification_consumers_seen
+							.borrow_mut()
+							.insert(*node_id);
+						self.notification_layout_effects.borrow_mut().push(*node_id);
+						false
+					} else {
+						true
 					}
-				} else {
-					// Non-effect subscribers (like Memos) are treated as passive
-					passive_effects.push(subscriber_id);
-				}
+				});
 			}
 
-			// Drop the borrow before executing effects
-			drop(graph);
-
-			// Explicit batches must not expose intermediate values to layout effects.
-			let batched = *self.batch_depth.borrow() > 0;
-			for effect_id in layout_effects {
-				if batched {
-					self.schedule_update(effect_id);
-				} else {
-					super::effect::Effect::execute_effect(effect_id);
-				}
+			loop {
+				let source_id = { self.notification_sources.borrow_mut().pop() };
+				let Some(source_id) = source_id else {
+					break;
+				};
+				self.propagate_notification_source(source_id);
 			}
 
-			// Schedule passive effects asynchronously
-			for effect_id in passive_effects {
-				self.schedule_update(effect_id);
+			self.notification_phase.set(NotificationPhase::Consuming);
+			let layout_effects =
+				core::mem::take(&mut *self.notification_layout_effects.borrow_mut());
+			if *self.batch_depth.borrow() > 0 {
+				self.queue_updates(layout_effects);
+			} else {
+				self.execute_pending_effects(layout_effects);
+			}
+			let passive = core::mem::take(&mut *self.notification_passive.borrow_mut());
+			self.queue_updates(passive);
+
+			let next_sources = core::mem::take(&mut *self.notification_next_sources.borrow_mut());
+			let has_pending_layout = *self.batch_depth.borrow() == 0
+				&& self.pending_updates.borrow().iter().any(|&node_id| {
+					super::effect::get_effect_timing(node_id) == Some(EffectTiming::Layout)
+				});
+			if next_sources.is_empty() && !has_pending_layout {
+				break;
+			}
+			self.notification_sources.borrow_mut().extend(next_sources);
+		}
+		wave_guard.completed = true;
+	}
+
+	fn execute_pending_effects(&self, effects: Vec<NodeId>) {
+		struct PendingEffectsGuard<'a> {
+			runtime: &'a Runtime,
+			remaining: alloc::vec::IntoIter<NodeId>,
+		}
+
+		impl Drop for PendingEffectsGuard<'_> {
+			fn drop(&mut self) {
+				// Keep callbacks that did not run when an earlier callback panicked.
+				// Scheduling a flush here could execute user code during unwinding.
+				self.runtime.queue_updates(self.remaining.by_ref());
+			}
+		}
+
+		let mut pending = PendingEffectsGuard {
+			runtime: self,
+			remaining: effects.into_iter(),
+		};
+		for node_id in pending.remaining.by_ref() {
+			super::effect::Effect::execute_effect(node_id);
+		}
+	}
+
+	/// Flush pending Layout effects through notification epochs, then passive effects.
+	///
+	/// Layout writes converge before passive consumers run. A flush inside a batch,
+	/// an active notification, or panic unwinding is deferred. Unexecuted effects
+	/// survive a callback panic for the next normal batch, notification, or flush.
+	pub fn flush_updates(&self) {
+		if *self.batch_depth.borrow() > 0
+			|| self.notification_phase.get() != NotificationPhase::Idle
+			|| std::thread::panicking()
+		{
+			return;
+		}
+		*self.update_scheduled.borrow_mut() = false;
+		self.process_notification_epochs();
+		let pending = core::mem::take(&mut *self.pending_updates.borrow_mut());
+		self.execute_pending_effects(pending);
+	}
+
+	fn propagate_notification_source(&self, node_id: NodeId) {
+		let graph = self.dependency_graph.borrow();
+		let Some(node) = graph.get(&node_id) else {
+			return;
+		};
+		let subscribers = node.subscribers.clone();
+		drop(graph);
+
+		for subscriber_id in subscribers {
+			// A pending consumer may already have read a write from an earlier callback.
+			// Revisit only consumers that have not observed this source revision yet.
+			let already_observed = self
+				.dependency_graph
+				.borrow()
+				.get(&subscriber_id)
+				.and_then(|node| node.observed_revisions.get(&node_id))
+				.is_some_and(|revision| *revision == self.signal_revision(node_id));
+			if already_observed {
+				continue;
+			}
+			if let Some(timing) = super::effect::get_effect_timing(subscriber_id) {
+				if self
+					.notification_consumers_seen
+					.borrow_mut()
+					.insert(subscriber_id)
+				{
+					match timing {
+						EffectTiming::Layout => self
+							.notification_layout_effects
+							.borrow_mut()
+							.push(subscriber_id),
+						EffectTiming::Passive => {
+							self.notification_passive.borrow_mut().push(subscriber_id)
+						}
+					}
+				}
+			} else if super::memo::is_memo_registered(subscriber_id)
+				&& self
+					.notification_memos_seen
+					.borrow_mut()
+					.insert(subscriber_id)
+			{
+				super::memo::mark_memo_dirty_by_id(subscriber_id);
 			}
 		}
 	}
@@ -286,13 +543,24 @@ impl Runtime {
 	///
 	/// * `node_id` - ID of the node to update
 	pub fn schedule_update(&self, node_id: NodeId) {
-		let mut pending = self.pending_updates.borrow_mut();
-		if !pending.contains(&node_id) {
-			pending.push(node_id);
-		}
-		drop(pending);
+		self.queue_updates([node_id]);
+		self.schedule_pending_flush();
+	}
 
-		if *self.batch_depth.borrow() > 0 {
+	fn queue_updates(&self, nodes: impl IntoIterator<Item = NodeId>) {
+		let mut pending = self.pending_updates.borrow_mut();
+		for node_id in nodes {
+			if !pending.contains(&node_id) {
+				pending.push(node_id);
+			}
+		}
+	}
+
+	fn schedule_pending_flush(&self) {
+		if *self.batch_depth.borrow() > 0
+			|| self.notification_phase.get() != NotificationPhase::Idle
+			|| self.pending_updates.borrow().is_empty()
+		{
 			return;
 		}
 
@@ -336,6 +604,7 @@ impl Runtime {
 		// Clear the dependencies list
 		if let Some(node) = graph.get_mut(&node_id) {
 			node.dependencies.clear();
+			node.observed_revisions.clear();
 		}
 	}
 
@@ -351,6 +620,7 @@ impl Runtime {
 	pub fn remove_node(&self, node_id: NodeId) {
 		self.clear_dependencies(node_id);
 		self.dependency_graph.borrow_mut().remove(&node_id);
+		self.signal_revisions.borrow_mut().remove(&node_id);
 		// Remove from pending updates to prevent re-execution of disposed effects
 		self.pending_updates
 			.borrow_mut()
@@ -449,10 +719,14 @@ where
 
 /// Execute multiple reactive writes as a single update cycle.
 ///
-/// Updates scheduled while the batch is active are queued, then flushed once
-/// the outermost batch exits. Layout effects run before passive effects, with
-/// write order preserved within each timing. Nested batches and writes raised by
-/// callbacks share the pending queue until the flush finishes.
+/// Effect re-executions are queued, then flushed once the outermost batch returns
+/// normally, including an `Err` result. Layout effects run before passive effects.
+/// Nested batches share the same queue. All Memos are invalidated immediately so
+/// reads inside the batch observe the current signal values.
+///
+/// During panic unwinding, callbacks remain queued to preserve the original panic.
+/// The next normal batch or flush drains them; a subsequent signal notification
+/// runs pending Layout effects and schedules passive work.
 pub fn batch<R>(f: impl FnOnce() -> R) -> R {
 	struct BatchGuard;
 
@@ -463,10 +737,12 @@ pub fn batch<R>(f: impl FnOnce() -> R) -> R {
 					let mut depth = rt.batch_depth.borrow_mut();
 					debug_assert!(*depth > 0, "reactive batch depth underflow");
 					*depth -= 1;
-					*depth == 0 && !rt.pending_updates.borrow().is_empty()
+					*depth == 0
+						&& (!rt.pending_updates.borrow().is_empty()
+							|| !rt.notification_recovery_sources.borrow().is_empty())
 				};
 
-				if should_flush {
+				if should_flush && !std::thread::panicking() {
 					rt.flush_updates();
 				}
 			});
@@ -522,7 +798,10 @@ pub(crate) fn run_without_observer<R>(f: impl FnOnce() -> R) -> R {
 		}
 	}
 
-	let saved = with_runtime(|rt| core::mem::take(&mut *rt.observer_stack.borrow_mut()));
+	let Some(saved) = try_with_runtime(|rt| core::mem::take(&mut *rt.observer_stack.borrow_mut()))
+	else {
+		return f();
+	};
 	let mut guard = Restore {
 		saved,
 		active: true,
@@ -536,6 +815,14 @@ pub(crate) fn run_without_observer<R>(f: impl FnOnce() -> R) -> R {
 	});
 	guard.active = false;
 	result
+}
+
+/// Executes a closure without subscribing the active reactive observer.
+///
+/// This is useful for imperative initialization that must read signal-backed
+/// state without turning the surrounding render or effect into a subscriber.
+pub fn untracked<R>(f: impl FnOnce() -> R) -> R {
+	run_without_observer(f)
 }
 
 /// Wire an explicit subscription edge from `node` to `observer` in the
@@ -559,6 +846,9 @@ pub(crate) fn subscribe_node_to_observer(node: NodeId, observer: NodeId) {
 
 		// observer -> node: observer now depends on this node
 		let obs_entry = graph.entry(observer).or_default();
+		obs_entry
+			.observed_revisions
+			.insert(node, rt.signal_revision(node));
 		if !obs_entry.dependencies.contains(&node) {
 			obs_entry.dependencies.push(node);
 		}
@@ -568,7 +858,33 @@ pub(crate) fn subscribe_node_to_observer(node: NodeId, observer: NodeId) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::reactive::{Effect, Memo, ReactiveScope, Signal};
+	#[cfg(native)]
+	use reinhardt_test::resource::{TeardownGuard, TestResource};
 	use serial_test::serial;
+	use std::{cell::Cell, rc::Rc};
+
+	#[cfg(native)]
+	impl TestResource for ReactiveScope {
+		fn setup() -> Self {
+			Self::new()
+		}
+
+		fn teardown(&mut self) {
+			self.dispose();
+		}
+	}
+
+	// Keep unit tests on this crate's runtime rather than the facade's compiled core.
+	#[cfg(native)]
+	type ReactiveScopeFixture = TeardownGuard<ReactiveScope>;
+	#[cfg(wasm)]
+	type ReactiveScopeFixture = ReactiveScope;
+
+	#[rstest::fixture]
+	fn reactive_scope() -> ReactiveScopeFixture {
+		ReactiveScopeFixture::default()
+	}
 
 	#[test]
 	#[serial]
@@ -647,29 +963,56 @@ mod tests {
 	}
 
 	#[test]
-	#[serial]
+	#[serial(reactive_runtime)]
 	fn test_notify_signal_change() {
+		crate::reactive::ReactiveScope::run(|| {
+			let signal = crate::reactive::Signal::new(0_i32);
+			let run_count = Rc::new(Cell::new(0));
+			let signal_for_effect = signal;
+			let run_count_for_effect = Rc::clone(&run_count);
+			let effect = crate::reactive::Effect::new(move || {
+				let _ = signal_for_effect.get();
+				run_count_for_effect.set(run_count_for_effect.get() + 1);
+			});
+			assert_eq!(run_count.get(), 1);
+
+			with_runtime(|runtime| {
+				let graph = runtime.dependency_graph.borrow();
+				assert!(graph[&signal.id()].subscribers.contains(&effect.id()));
+				assert!(graph[&effect.id()].dependencies.contains(&signal.id()));
+				drop(graph);
+
+				runtime.notify_signal_change(signal.id());
+				assert!(runtime.pending_updates.borrow().contains(&effect.id()));
+				runtime.flush_updates();
+			});
+			assert_eq!(run_count.get(), 2);
+		});
+	}
+
+	#[test]
+	#[serial]
+	fn test_notify_signal_change_ignores_stale_subscribers() {
 		let runtime = Runtime::new();
-
 		let signal_id = NodeId::new();
-		let effect_id = NodeId::new();
+		let stale_effect_id = NodeId::new();
 
-		// Manually add dependency
+		// Manually add a dependency whose effect node no longer exists.
 		{
 			let mut graph = runtime.dependency_graph.borrow_mut();
 			graph
 				.entry(signal_id)
 				.or_default()
 				.subscribers
-				.push(effect_id);
+				.push(stale_effect_id);
 		}
 
-		// Notify change
+		// Notify change.
 		runtime.notify_signal_change(signal_id);
 
-		// Verify update was scheduled
+		// Stale scope-owned effects must not be scheduled.
 		let pending = runtime.pending_updates.borrow();
-		assert!(pending.contains(&effect_id));
+		assert!(!pending.contains(&stale_effect_id));
 	}
 
 	#[test]
@@ -803,33 +1146,35 @@ mod tests {
 	#[test]
 	#[serial]
 	fn run_without_observer_isolates_inner_signal_reads() {
-		// Arrange
-		let outer = crate::reactive::signal::Signal::new(0_i32);
-		let inner = crate::reactive::signal::Signal::new(0_i32);
-		let counter = std::rc::Rc::new(std::cell::Cell::new(0));
-		let counter_for_effect = counter.clone();
-		let outer_for_effect = outer.clone();
-		let inner_for_effect = inner.clone();
+		ReactiveScope::run(|| {
+			// Arrange
+			let outer = crate::reactive::signal::Signal::new(0_i32);
+			let inner = crate::reactive::signal::Signal::new(0_i32);
+			let counter = std::rc::Rc::new(std::cell::Cell::new(0));
+			let counter_for_effect = counter.clone();
+			let outer_for_effect = outer.clone();
+			let inner_for_effect = inner.clone();
 
-		// Act
-		let _eff = crate::reactive::effect::Effect::new(move || {
-			let _ = outer_for_effect.get();
-			super::run_without_observer(|| {
-				let _ = inner_for_effect.get();
+			// Act
+			let _eff = crate::reactive::effect::Effect::new(move || {
+				let _ = outer_for_effect.get();
+				super::run_without_observer(|| {
+					let _ = inner_for_effect.get();
+				});
+				counter_for_effect.set(counter_for_effect.get() + 1);
 			});
-			counter_for_effect.set(counter_for_effect.get() + 1);
+
+			let initial = counter.get();
+			inner.set(99);
+			super::with_runtime(|rt| rt.flush_updates());
+
+			// Assert
+			assert_eq!(
+				counter.get(),
+				initial,
+				"run_without_observer must isolate Signal reads from outer Observer"
+			);
 		});
-
-		let initial = counter.get();
-		inner.set(99);
-		super::with_runtime(|rt| rt.flush_updates());
-
-		// Assert
-		assert_eq!(
-			counter.get(),
-			initial,
-			"run_without_observer must isolate Signal reads from outer Observer"
-		);
 	}
 
 	#[test]
@@ -859,184 +1204,766 @@ mod tests {
 		assert_eq!(subs2.len(), 1, "subscribe must be idempotent");
 	}
 
-	#[test]
-	#[serial(reactive_batch)]
-	fn batch_flush_deduplicates_layout_notifications_until_callbacks_finish() {
-		use crate::reactive::{Effect, Signal};
-		use std::{cell::Cell, rc::Rc};
+	#[rstest::rstest]
+	#[case::layout(EffectTiming::Layout)]
+	#[case::passive(EffectTiming::Passive)]
+	#[serial(reactive_runtime)]
+	fn nested_batch_defers_effects_but_keeps_memo_reads_current(
+		reactive_scope: ReactiveScopeFixture,
+		#[case] timing: EffectTiming,
+	) {
+		reactive_scope.enter(|| {
+			// Arrange
+			let source = Signal::new(0);
+			let derived = Memo::new(move || source.get() * 2);
+			let observed = Rc::new(RefCell::new(Vec::new()));
+			let effect_observed = Rc::clone(&observed);
+			let _effect = Effect::new_with_timing(
+				move || effect_observed.borrow_mut().push(derived.get()),
+				timing,
+			);
 
-		// Arrange: the first queued layout callback also changes the second's input.
-		let source = Signal::new(0);
-		let trigger = Signal::new(0);
-		let forwarded = Signal::new(0);
-		let producer_finished = Rc::new(Cell::new(false));
-		let observations = Rc::new(RefCell::new(Vec::new()));
-		let producer_source = source.clone();
-		let producer_forwarded = forwarded.clone();
-		let producer_state = Rc::clone(&producer_finished);
-		let _producer = Effect::new_with_timing(
-			move || {
-				producer_forwarded.set(producer_source.get() * 10);
-				producer_state.set(true);
-			},
-			EffectTiming::Layout,
-		);
-		let consumer_trigger = trigger.clone();
-		let consumer_state = Rc::clone(&producer_finished);
-		let consumer_observations = Rc::clone(&observations);
-		let _consumer = Effect::new_with_timing(
-			move || {
-				consumer_observations.borrow_mut().push((
-					consumer_trigger.get(),
-					forwarded.get(),
-					consumer_state.get(),
-				));
-			},
-			EffectTiming::Layout,
-		);
-		observations.borrow_mut().clear();
-		producer_finished.set(false);
+			// Act
+			batch(|| {
+				source.set(1);
+				assert_eq!(derived.get(), 2);
+				batch(|| source.set(2));
+				assert_eq!(derived.get(), 4);
+				with_runtime(|runtime| runtime.flush_updates());
+				assert_eq!(*observed.borrow(), vec![0]);
+			});
 
-		// Act: the consumer is already pending when the producer changes its input.
-		batch(|| {
-			source.set(2);
-			trigger.set(3);
+			// Assert
+			assert_eq!(*observed.borrow(), vec![0, 4]);
+			source.set(3);
+			with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(*observed.borrow(), vec![0, 4, 6]);
 		});
-
-		// Assert: it observes the completed producer once, without synchronous reentry.
-		assert_eq!(*observations.borrow(), [(3, 20, true)]);
 	}
 
-	#[test]
-	#[serial(reactive_batch)]
-	fn batch_flush_drains_new_layout_work_before_pending_passive_consumers() {
-		use crate::reactive::{Effect, Signal};
-		use std::{cell::Cell, rc::Rc};
+	#[rstest::rstest]
+	#[case::layout_next_batch(EffectTiming::Layout, true)]
+	#[case::passive_next_batch(EffectTiming::Passive, true)]
+	#[case::layout_next_notification(EffectTiming::Layout, false)]
+	#[case::passive_next_notification(EffectTiming::Passive, false)]
+	#[serial(reactive_runtime)]
+	fn batch_releases_effects_after_error_and_unwind(
+		reactive_scope: ReactiveScopeFixture,
+		#[case] timing: EffectTiming,
+		#[case] recover_with_batch: bool,
+	) {
+		use std::panic::{AssertUnwindSafe, catch_unwind};
 
-		// Arrange: a layout callback creates more work while passive work is pending.
-		let source = Signal::new(0);
-		let forwarded = Signal::new(0);
-		let completed_value = Rc::new(Cell::new(0));
-		let observed = Rc::new(RefCell::new(Vec::new()));
-		let effect_source = source.clone();
-		let effect_forwarded = forwarded.clone();
-		let _producer = Effect::new_with_timing(
-			move || effect_forwarded.set(effect_source.get() * 10),
-			EffectTiming::Layout,
-		);
-		let layout_value = Rc::clone(&completed_value);
-		let _layout_consumer = Effect::new_with_timing(
-			move || layout_value.set(forwarded.get()),
-			EffectTiming::Layout,
-		);
-		let passive_source = source.clone();
-		let passive_observed = Rc::clone(&observed);
-		let _passive_consumer = Effect::new(move || {
-			let _ = passive_source.get();
-			passive_observed.borrow_mut().push(completed_value.get());
+		reactive_scope.enter(|| {
+			// Arrange
+			let source = Signal::new(0);
+			let unrelated = Signal::new(0);
+			let observed = Rc::new(RefCell::new(Vec::new()));
+			let effect_observed = Rc::clone(&observed);
+			let _effect = Effect::new_with_timing(
+				move || effect_observed.borrow_mut().push(source.get()),
+				timing,
+			);
+
+			// Act
+			let result: Result<(), &str> = batch(|| {
+				source.set(1);
+				assert_eq!(*observed.borrow(), vec![0]);
+				Err("rejected")
+			});
+			assert_eq!(result, Err("rejected"));
+			assert_eq!(*observed.borrow(), vec![0, 1]);
+			let panic = catch_unwind(AssertUnwindSafe(|| {
+				batch(|| {
+					source.set(2);
+					panic!("batch interrupted");
+				});
+			}));
+
+			// Assert
+			assert!(panic.is_err());
+			assert_eq!(*observed.borrow(), vec![0, 1]);
+			if recover_with_batch {
+				batch(|| ());
+			} else {
+				unrelated.set(1);
+				let expected = match timing {
+					EffectTiming::Layout => vec![0, 1, 2],
+					EffectTiming::Passive => vec![0, 1],
+				};
+				assert_eq!(*observed.borrow(), expected);
+				with_runtime(|runtime| runtime.flush_updates());
+			}
+			assert_eq!(*observed.borrow(), vec![0, 1, 2]);
+			source.set(3);
+			with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(*observed.borrow(), vec![0, 1, 2, 3]);
 		});
-		observed.borrow_mut().clear();
-
-		// Act.
-		batch(|| source.set(4));
-
-		// Assert: newly queued layout work is drained before the passive snapshot.
-		assert_eq!(*observed.borrow(), [40]);
-		assert_eq!(with_runtime(Runtime::debug_pending_updates), Vec::new());
 	}
 
-	#[test]
-	#[serial(reactive_batch)]
-	fn batches_flush_layout_effects_before_passive_effects_in_write_order() {
-		use crate::reactive::{Effect, Signal};
-		use std::{cell::Cell, rc::Rc};
-
-		// Arrange: a passive consumer observes the completed layout work.
-		let passive = Signal::new(0);
-		let first_layout = Signal::new(0);
-		let second_layout = Signal::new(0);
-		let layout_total = Rc::new(Cell::new(0));
-		let observed = Rc::new(RefCell::new(Vec::new()));
-		let passive_signal = passive.clone();
-		let passive_total = Rc::clone(&layout_total);
-		let passive_observed = Rc::clone(&observed);
-		let _passive_effect = Effect::new(move || {
-			let _ = passive_signal.get();
-			passive_observed
-				.borrow_mut()
-				.push(("passive", passive_total.get()));
-		});
-		let _layout_effects: Vec<_> = [
-			("first", first_layout.clone()),
-			("second", second_layout.clone()),
-		]
-		.into_iter()
-		.map(|(name, signal)| {
-			let total = Rc::clone(&layout_total);
-			let observed = Rc::clone(&observed);
-			Effect::new_with_timing(
+	#[rstest::rstest]
+	#[case::layout_first(true, false)]
+	#[case::passive_first(false, false)]
+	#[case::passive_already_pending(false, true)]
+	#[serial(reactive_runtime)]
+	fn batch_flushes_layout_before_passive(
+		reactive_scope: ReactiveScopeFixture,
+		#[case] layout_first: bool,
+		#[case] passive_already_pending: bool,
+	) {
+		reactive_scope.enter(|| {
+			// Arrange
+			let layout_source = Signal::new(0);
+			let passive_source = Signal::new(0);
+			let rendered = Rc::new(Cell::new(0));
+			let observed = Rc::new(RefCell::new(Vec::new()));
+			let passive_rendered = Rc::clone(&rendered);
+			let passive_observed = Rc::clone(&observed);
+			let _passive = Effect::new(move || {
+				let _ = passive_source.get();
+				passive_observed
+					.borrow_mut()
+					.push((EffectTiming::Passive, passive_rendered.get()));
+			});
+			let layout_observed = Rc::clone(&observed);
+			let _layout = Effect::new_with_timing(
 				move || {
-					let value = signal.get();
-					total.set(total.get() + value);
-					observed.borrow_mut().push((name, value));
+					let value = layout_source.get();
+					rendered.set(value);
+					layout_observed
+						.borrow_mut()
+						.push((EffectTiming::Layout, value));
 				},
 				EffectTiming::Layout,
-			)
-		})
-		.collect();
-		observed.borrow_mut().clear();
+			);
+			observed.borrow_mut().clear();
+			if passive_already_pending {
+				passive_source.set(1);
+			}
 
-		// Act: passive work is queued first, and layout writes reverse creation order.
-		batch(|| {
-			passive.set(1);
-			second_layout.set(2);
-			first_layout.set(1);
-			assert_eq!(observed.borrow().len(), 0);
+			// Act
+			batch(|| {
+				if layout_first {
+					layout_source.set(1);
+				}
+				if !passive_already_pending {
+					passive_source.set(1);
+				}
+				if !layout_first {
+					layout_source.set(1);
+				}
+				assert_eq!(*observed.borrow(), Vec::new());
+			});
+
+			// Assert
+			assert_eq!(
+				*observed.borrow(),
+				vec![(EffectTiming::Layout, 1), (EffectTiming::Passive, 1)]
+			);
+			with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(observed.borrow().len(), 2);
 		});
-
-		// Assert: layout work keeps its write order and completes before passive work.
-		assert_eq!(
-			*observed.borrow(),
-			[("second", 2), ("first", 1), ("passive", 3)]
-		);
 	}
 
-	#[test]
-	#[serial(reactive_batch)]
-	fn nested_batches_defer_layout_effects_until_all_values_are_ready() {
-		use crate::reactive::{Effect, Signal};
-		use std::{cell::RefCell, rc::Rc};
+	#[rstest::rstest]
+	#[case::constructor(false)]
+	#[case::hook_mode(true)]
+	#[serial(reactive_runtime)]
+	fn batch_keeps_explicit_memo_reads_current(
+		reactive_scope: ReactiveScopeFixture,
+		#[case] use_mode: bool,
+		#[values(EffectTiming::Layout, EffectTiming::Passive)] timing: EffectTiming,
+	) {
+		reactive_scope.enter(|| {
+			// Arrange
+			let source = Signal::new(0);
+			let unlisted = Signal::new(10);
+			let computations = Rc::new(Cell::new(0));
+			let memo_computations = Rc::clone(&computations);
+			let compute = move || {
+				memo_computations.set(memo_computations.get() + 1);
+				source.get() + unlisted.get()
+			};
+			let memo = if use_mode {
+				Memo::new_with_mode(compute, crate::deps![source].into())
+			} else {
+				Memo::new_with_deps(compute, crate::deps![source].into_deps())
+			};
+			let derived = Memo::new(move || memo.get() * 2);
+			let observed = Rc::new(RefCell::new(Vec::new()));
+			let effect_observed = Rc::clone(&observed);
+			let _effect = Effect::new_with_timing(
+				move || effect_observed.borrow_mut().push(derived.get()),
+				timing,
+			);
 
-		// Arrange
-		let first = Signal::new(0);
-		let second = Signal::new(0);
-		let observed = Rc::new(RefCell::new(Vec::new()));
-		let effect_first = first.clone();
-		let effect_second = second.clone();
-		let effect_observed = Rc::clone(&observed);
-		let _effect = Effect::new_with_timing(
-			move || {
-				effect_observed
-					.borrow_mut()
-					.push((effect_first.get(), effect_second.get()))
-			},
-			EffectTiming::Layout,
-		);
-
-		// Act and assert: nested batches expose only the final snapshot at outer exit.
-		batch(|| {
-			first.set(1);
-			with_runtime(Runtime::flush_updates);
+			// Act
 			batch(|| {
-				second.set(2);
-				first.set(3);
+				source.set(1);
+				assert_eq!(derived.get(), 22);
+				unlisted.set(20);
+				assert_eq!(memo.get(), 11);
+				batch(|| source.set(2));
+				assert_eq!(derived.get(), 44);
+				assert_eq!(*observed.borrow(), vec![20]);
 			});
-			assert_eq!(*observed.borrow(), [(0, 0)]);
-		});
-		assert_eq!(*observed.borrow(), [(0, 0), (3, 2)]);
 
-		// Layout effects remain synchronous outside a batch.
-		second.set(4);
-		assert_eq!(*observed.borrow(), [(0, 0), (3, 2), (3, 4)]);
+			// Assert
+			assert_eq!(*observed.borrow(), vec![20, 44]);
+			source.set(3);
+			with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(*observed.borrow(), vec![20, 44, 46]);
+			assert_eq!(computations.get(), 4);
+		});
+	}
+
+	#[rstest::rstest]
+	#[case::dispose_memo(true)]
+	#[case::drop_owner(false)]
+	#[serial(reactive_runtime)]
+	fn explicit_memo_dependencies_remain_owned_after_recomputation(
+		reactive_scope: ReactiveScopeFixture,
+		#[case] dispose_memo: bool,
+	) {
+		reactive_scope.enter(|| {
+			// Arrange
+			let source = Signal::new(1);
+			let owner = ReactiveScope::new();
+			let memo = owner.enter(|| {
+				Memo::new_with_deps(move || source.get() * 2, crate::deps![source].into_deps())
+			});
+
+			// Act
+			for value in [2, 3] {
+				source.set(value);
+				assert_eq!(memo.get(), value * 2);
+				assert_eq!(
+					with_runtime(|runtime| runtime.subscriber_count(source.id())),
+					1
+				);
+			}
+			if dispose_memo {
+				memo.dispose();
+				assert_eq!(
+					with_runtime(|runtime| runtime.subscriber_count(source.id())),
+					0
+				);
+			}
+			drop(owner);
+			source.set(4);
+
+			// Assert
+			assert_eq!(
+				with_runtime(|runtime| runtime.subscriber_count(source.id())),
+				0
+			);
+			assert_eq!(
+				with_runtime(|runtime| runtime.debug_pending_updates()),
+				Vec::new()
+			);
+		});
+	}
+
+	#[cfg(native)]
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn panicking_batch_preserves_body_panic_and_pending_effects(
+		reactive_scope: ReactiveScopeFixture,
+	) {
+		use std::panic::{AssertUnwindSafe, catch_unwind};
+		const CHILD_ENV: &str = "REINHARDT_BATCH_PANIC_TEST_CHILD";
+		const CHILD_DONE: &str = "reinhardt batch panic recovery completed";
+
+		// Isolate the double-panic regression so an abort cannot kill the test suite.
+		if std::env::var_os(CHILD_ENV).is_none() {
+			let output =
+				std::process::Command::new(std::env::current_exe().expect("test executable"))
+					.args([
+						"--exact",
+						"reactive::runtime::tests::panicking_batch_preserves_body_panic_and_pending_effects",
+						"--nocapture",
+					])
+					.env(CHILD_ENV, "1")
+					.env("RUST_BACKTRACE", "0")
+					.output()
+					.expect("run isolated panic test");
+			assert_eq!(
+				output.status.code(),
+				Some(0),
+				"isolated panic test failed:\n{}\n{}",
+				String::from_utf8_lossy(&output.stdout),
+				String::from_utf8_lossy(&output.stderr),
+			);
+			assert_eq!(
+				String::from_utf8_lossy(&output.stdout)
+					.lines()
+					.filter(|line| *line == CHILD_DONE)
+					.count(),
+				1,
+				"the child must execute the recovery assertions"
+			);
+			return;
+		}
+
+		reactive_scope.enter(|| {
+			// Arrange
+			let source = Signal::new(0);
+			let secondary = Signal::new(0);
+			let observed = Rc::new(RefCell::new(Vec::new()));
+			let secondary_observed = Rc::new(RefCell::new(Vec::new()));
+			let panic_next = Rc::new(Cell::new(false));
+			let effect_panic = Rc::clone(&panic_next);
+			let effect_observed = Rc::clone(&observed);
+			let _panicking = Effect::new_with_timing(
+				move || {
+					effect_observed.borrow_mut().push(source.get());
+					assert!(!effect_panic.replace(false), "layout callback panic");
+				},
+				EffectTiming::Layout,
+			);
+			let effect_secondary = Rc::clone(&secondary_observed);
+			let _secondary = Effect::new_with_timing(
+				move || effect_secondary.borrow_mut().push(secondary.get()),
+				EffectTiming::Layout,
+			);
+			panic_next.set(true);
+
+			// Act
+			let panic = catch_unwind(AssertUnwindSafe(|| {
+				batch(|| {
+					source.set(1);
+					secondary.set(1);
+					panic!("batch body panic");
+				});
+			}));
+
+			// Assert
+			let panic = panic.expect_err("the original body panic must escape");
+			assert_eq!(panic.downcast_ref::<&str>(), Some(&"batch body panic"));
+			assert_eq!(*observed.borrow(), vec![0]);
+			assert_eq!(*secondary_observed.borrow(), vec![0]);
+			let callback_panic = catch_unwind(AssertUnwindSafe(|| batch(|| ())));
+			let callback_panic =
+				callback_panic.expect_err("normal flush must surface callback panic");
+			assert_eq!(
+				callback_panic.downcast_ref::<&str>(),
+				Some(&"layout callback panic")
+			);
+			batch(|| ());
+			assert_eq!(*observed.borrow(), vec![0, 1]);
+			assert_eq!(*secondary_observed.borrow(), vec![0, 1]);
+			source.set(2);
+			assert_eq!(*observed.borrow(), vec![0, 1, 2]);
+			with_runtime(|runtime| {
+				assert_eq!(*runtime.batch_depth.borrow(), 0);
+				assert_eq!(runtime.debug_pending_updates(), Vec::new());
+				assert_eq!(runtime.current_observer(), None);
+			});
+		});
+		println!("\n{CHILD_DONE}");
+	}
+
+	#[rstest::rstest]
+	#[case::immediate(false)]
+	#[case::batched(true)]
+	#[serial(reactive_runtime)]
+	fn layout_effect_write_runs_in_next_notification_epoch(
+		reactive_scope: ReactiveScopeFixture,
+		#[case] batched: bool,
+	) {
+		reactive_scope.enter(|| {
+			let source = Signal::new(0_i32);
+			let runs = std::rc::Rc::new(std::cell::Cell::new(0_u8));
+			let observed = std::rc::Rc::new(std::cell::Cell::new(-1_i32));
+			let _effect = Effect::new_with_timing(
+				{
+					let source = source.clone();
+					let runs = std::rc::Rc::clone(&runs);
+					let observed = std::rc::Rc::clone(&observed);
+					move || {
+						let value = source.get();
+						observed.set(value);
+						runs.set(runs.get() + 1);
+						if value == 1 {
+							source.set(2);
+						}
+					}
+				},
+				EffectTiming::Layout,
+			);
+
+			if batched {
+				batch(|| source.set(1));
+			} else {
+				source.set(1);
+			}
+
+			assert_eq!(source.get(), 2);
+			assert_eq!(observed.get(), 2);
+			assert_eq!(runs.get(), 3);
+		});
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn notification_panic_recovers_pending_consumer_on_next_change() {
+		use std::panic::{AssertUnwindSafe, catch_unwind};
+
+		ReactiveScope::run(|| {
+			let source = Signal::new(0_i32);
+			let memo = Memo::new({
+				let source = source.clone();
+				move || source.get() * 2
+			});
+			let panic_next = std::rc::Rc::new(std::cell::Cell::new(false));
+			let _panicking = Effect::new_with_timing(
+				{
+					let memo = memo.clone();
+					let panic_next = std::rc::Rc::clone(&panic_next);
+					move || {
+						assert!(!panic_next.replace(false), "notification consumer panic");
+						let _ = memo.get();
+					}
+				},
+				EffectTiming::Layout,
+			);
+			let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
+			let _observer = Effect::new_with_timing(
+				{
+					let memo = memo.clone();
+					let observed = std::rc::Rc::clone(&observed);
+					move || observed.set(memo.get())
+				},
+				EffectTiming::Layout,
+			);
+			panic_next.set(true);
+
+			let result = catch_unwind(AssertUnwindSafe(|| source.set(1)));
+			assert!(result.is_err());
+			assert_eq!(observed.get(), 0);
+
+			source.set(2);
+
+			assert_eq!(observed.get(), 4);
+		});
+	}
+
+	#[rstest::rstest]
+	#[case::empty_next_batch(true)]
+	#[case::unrelated_notification(false)]
+	#[serial(reactive_runtime)]
+	fn consumer_write_before_panic_recovers_pending_notification(
+		reactive_scope: ReactiveScopeFixture,
+		#[case] recover_with_batch: bool,
+	) {
+		use std::panic::{AssertUnwindSafe, catch_unwind};
+
+		reactive_scope.enter(|| {
+			let secondary = Signal::new(0_i32);
+			let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
+			let _secondary_effect = Effect::new_with_timing(
+				{
+					let secondary = secondary.clone();
+					let observed = std::rc::Rc::clone(&observed);
+					move || observed.set(secondary.get())
+				},
+				EffectTiming::Layout,
+			);
+			let root = Signal::new(0_i32);
+			let _panicking = Effect::new_with_timing(
+				{
+					let root = root.clone();
+					let secondary = secondary.clone();
+					move || {
+						if root.get() == 1 {
+							secondary.set(1);
+							panic!("consumer panic after write");
+						}
+					}
+				},
+				EffectTiming::Layout,
+			);
+			let unrelated = Signal::new(0_i32);
+
+			let result = catch_unwind(AssertUnwindSafe(|| root.set(1)));
+			assert!(result.is_err());
+			assert_eq!(secondary.get(), 1);
+			assert_eq!(observed.get(), 0);
+
+			if recover_with_batch {
+				batch(|| ());
+			} else {
+				unrelated.set(1);
+			}
+
+			assert_eq!(observed.get(), 1);
+		});
+	}
+
+	#[rstest::rstest]
+	#[case::immediate(false)]
+	#[case::batched(true)]
+	#[serial(reactive_runtime)]
+	fn non_converging_layout_updates_panic_and_runtime_remains_reusable(
+		reactive_scope: ReactiveScopeFixture,
+		#[case] batched: bool,
+	) {
+		use std::panic::{AssertUnwindSafe, catch_unwind};
+		const EXPECTED_MAX_NOTIFICATION_EPOCHS: usize = 32;
+
+		reactive_scope.enter(|| {
+			let looping = Signal::new(0_u32);
+			let loop_enabled = std::rc::Rc::new(std::cell::Cell::new(false));
+			let runs = std::rc::Rc::new(std::cell::Cell::new(0_usize));
+			let _looping_effect = Effect::new_with_timing(
+				{
+					let looping = looping.clone();
+					let loop_enabled = std::rc::Rc::clone(&loop_enabled);
+					let runs = std::rc::Rc::clone(&runs);
+					move || {
+						let value = looping.get();
+						runs.set(runs.get() + 1);
+						if loop_enabled.get() {
+							looping.set(value + 1);
+						}
+					}
+				},
+				EffectTiming::Layout,
+			);
+			let unrelated = Signal::new(0_i32);
+			let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
+			let _unrelated_effect = Effect::new_with_timing(
+				{
+					let unrelated = unrelated.clone();
+					let observed = std::rc::Rc::clone(&observed);
+					move || observed.set(unrelated.get())
+				},
+				EffectTiming::Layout,
+			);
+			loop_enabled.set(true);
+
+			let result = catch_unwind(AssertUnwindSafe(|| {
+				if batched {
+					batch(|| looping.set(1));
+				} else {
+					looping.set(1);
+				}
+			}));
+			let panic = result.expect_err("non-converging notification must panic");
+			let message = panic
+				.downcast_ref::<String>()
+				.map(String::as_str)
+				.or_else(|| panic.downcast_ref::<&str>().copied())
+				.expect("notification limit panic must have a string message");
+			assert_eq!(
+				message,
+				format!(
+					"reactive notification exceeded {EXPECTED_MAX_NOTIFICATION_EPOCHS} epochs; possible non-converging layout update loop"
+				)
+			);
+			assert_eq!(runs.get(), EXPECTED_MAX_NOTIFICATION_EPOCHS + 1);
+			loop_enabled.set(false);
+
+			unrelated.set(1);
+
+			assert_eq!(observed.get(), 1);
+		});
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn batch_flush_deduplicates_layout_notifications_until_callbacks_finish(
+		reactive_scope: ReactiveScopeFixture,
+	) {
+		reactive_scope.enter(|| {
+			use crate::reactive::{Effect, Signal};
+			use std::{cell::Cell, rc::Rc};
+
+			// Arrange: the first queued layout callback also changes the second's input.
+			let source = Signal::new(0);
+			let trigger = Signal::new(0);
+			let forwarded = Signal::new(0);
+			let producer_finished = Rc::new(Cell::new(false));
+			let observations = Rc::new(RefCell::new(Vec::new()));
+			let producer_source = source.clone();
+			let producer_forwarded = forwarded.clone();
+			let producer_state = Rc::clone(&producer_finished);
+			let _producer = Effect::new_with_timing(
+				move || {
+					producer_forwarded.set(producer_source.get() * 10);
+					producer_state.set(true);
+				},
+				EffectTiming::Layout,
+			);
+			let consumer_trigger = trigger.clone();
+			let consumer_state = Rc::clone(&producer_finished);
+			let consumer_observations = Rc::clone(&observations);
+			let _consumer = Effect::new_with_timing(
+				move || {
+					consumer_observations.borrow_mut().push((
+						consumer_trigger.get(),
+						forwarded.get(),
+						consumer_state.get(),
+					));
+				},
+				EffectTiming::Layout,
+			);
+			observations.borrow_mut().clear();
+			producer_finished.set(false);
+
+			// Act: the consumer is already pending when the producer changes its input.
+			batch(|| {
+				source.set(2);
+				trigger.set(3);
+			});
+
+			// Assert: it observes the completed producer once, without synchronous reentry.
+			assert_eq!(*observations.borrow(), [(3, 20, true)]);
+		});
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn batch_flush_drains_new_layout_work_before_pending_passive_consumers(
+		reactive_scope: ReactiveScopeFixture,
+	) {
+		reactive_scope.enter(|| {
+			use crate::reactive::{Effect, Signal};
+			use std::{cell::Cell, rc::Rc};
+
+			// Arrange: a layout callback creates more work while passive work is pending.
+			let source = Signal::new(0);
+			let forwarded = Signal::new(0);
+			let completed_value = Rc::new(Cell::new(0));
+			let observed = Rc::new(RefCell::new(Vec::new()));
+			let effect_source = source.clone();
+			let effect_forwarded = forwarded.clone();
+			let _producer = Effect::new_with_timing(
+				move || effect_forwarded.set(effect_source.get() * 10),
+				EffectTiming::Layout,
+			);
+			let layout_value = Rc::clone(&completed_value);
+			let _layout_consumer = Effect::new_with_timing(
+				move || layout_value.set(forwarded.get()),
+				EffectTiming::Layout,
+			);
+			let passive_source = source.clone();
+			let passive_observed = Rc::clone(&observed);
+			let _passive_consumer = Effect::new(move || {
+				let _ = passive_source.get();
+				passive_observed.borrow_mut().push(completed_value.get());
+			});
+			observed.borrow_mut().clear();
+
+			// Act.
+			batch(|| source.set(4));
+
+			// Assert: newly queued layout work is drained before the passive snapshot.
+			assert_eq!(*observed.borrow(), [40]);
+			assert_eq!(with_runtime(Runtime::debug_pending_updates), Vec::new());
+		});
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn batches_flush_layout_effects_before_passive_effects_in_write_order(
+		reactive_scope: ReactiveScopeFixture,
+	) {
+		reactive_scope.enter(|| {
+			use crate::reactive::{Effect, Signal};
+			use std::{cell::Cell, rc::Rc};
+
+			// Arrange: a passive consumer observes the completed layout work.
+			let passive = Signal::new(0);
+			let first_layout = Signal::new(0);
+			let second_layout = Signal::new(0);
+			let layout_total = Rc::new(Cell::new(0));
+			let observed = Rc::new(RefCell::new(Vec::new()));
+			let passive_signal = passive.clone();
+			let passive_total = Rc::clone(&layout_total);
+			let passive_observed = Rc::clone(&observed);
+			let _passive_effect = Effect::new(move || {
+				let _ = passive_signal.get();
+				passive_observed
+					.borrow_mut()
+					.push(("passive", passive_total.get()));
+			});
+			let _layout_effects: Vec<_> = [
+				("first", first_layout.clone()),
+				("second", second_layout.clone()),
+			]
+			.into_iter()
+			.map(|(name, signal)| {
+				let total = Rc::clone(&layout_total);
+				let observed = Rc::clone(&observed);
+				Effect::new_with_timing(
+					move || {
+						let value = signal.get();
+						total.set(total.get() + value);
+						observed.borrow_mut().push((name, value));
+					},
+					EffectTiming::Layout,
+				)
+			})
+			.collect();
+			observed.borrow_mut().clear();
+
+			// Act: passive work is queued first, and layout writes reverse creation order.
+			batch(|| {
+				passive.set(1);
+				second_layout.set(2);
+				first_layout.set(1);
+				assert_eq!(observed.borrow().len(), 0);
+			});
+
+			// Assert: layout work keeps its write order and completes before passive work.
+			assert_eq!(
+				*observed.borrow(),
+				[("second", 2), ("first", 1), ("passive", 3)]
+			);
+		});
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn nested_batches_defer_layout_effects_until_all_values_are_ready(
+		reactive_scope: ReactiveScopeFixture,
+	) {
+		reactive_scope.enter(|| {
+			use crate::reactive::{Effect, Signal};
+			use std::{cell::RefCell, rc::Rc};
+
+			// Arrange
+			let first = Signal::new(0);
+			let second = Signal::new(0);
+			let observed = Rc::new(RefCell::new(Vec::new()));
+			let effect_first = first.clone();
+			let effect_second = second.clone();
+			let effect_observed = Rc::clone(&observed);
+			let _effect = Effect::new_with_timing(
+				move || {
+					effect_observed
+						.borrow_mut()
+						.push((effect_first.get(), effect_second.get()))
+				},
+				EffectTiming::Layout,
+			);
+
+			// Act and assert: nested batches expose only the final snapshot at outer exit.
+			batch(|| {
+				first.set(1);
+				with_runtime(Runtime::flush_updates);
+				batch(|| {
+					second.set(2);
+					first.set(3);
+				});
+				assert_eq!(*observed.borrow(), [(0, 0)]);
+			});
+			assert_eq!(*observed.borrow(), [(0, 0), (3, 2)]);
+
+			// Layout effects remain synchronous outside a batch.
+			second.set(4);
+			assert_eq!(*observed.borrow(), [(0, 0), (3, 2), (3, 4)]);
+		});
 	}
 }

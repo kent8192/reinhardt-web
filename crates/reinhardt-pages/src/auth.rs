@@ -27,9 +27,38 @@
 //! });
 //! ```
 
-use crate::reactive::Signal;
-use std::cell::RefCell;
+use crate::reactive::{ReactiveScope, Signal};
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
+use std::rc::Rc;
+
+thread_local! {
+	static AUTHENTICATION_INVALIDATION_SCHEDULED: Cell<Option<(u64, u64)>> = const { Cell::new(None) };
+	static JWT_IDENTITY_GENERATION: Cell<u64> = const { Cell::new(0) };
+}
+
+struct AuthenticationInvalidationScheduleGuard {
+	generation: (u64, u64),
+}
+
+impl Drop for AuthenticationInvalidationScheduleGuard {
+	fn drop(&mut self) {
+		AUTHENTICATION_INVALIDATION_SCHEDULED.with(|scheduled| {
+			if scheduled.get() == Some(self.generation) {
+				scheduled.set(None);
+			}
+		});
+	}
+}
+
+/// Authentication context captured when a generated server-function request starts.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ServerFnAuthenticationContext {
+	established: bool,
+	generation: u64,
+	jwt_generation: u64,
+}
 
 /// Deserializes a user ID that may be either a JSON string or a JSON number.
 ///
@@ -60,9 +89,123 @@ pub const SESSION_KEY_USERNAME: &str = "_auth_username";
 /// Cookie name for session ID (matches reinhardt-auth).
 pub const SESSION_COOKIE_NAME: &str = "sessionid";
 
+/// Clears authentication-dependent client state and revalidates the active route.
+///
+/// Duplicate notifications are coalesced only while they refer to the current
+/// [`AuthState`] and JWT identity generations. A login, update, state-changing
+/// logout, or JWT identity change advances the corresponding generation and
+/// supersedes any older replacement navigation.
+///
+/// Replacement uses the committed path after a yield so a 401 observed during
+/// a guard cannot recursively start nested navigation. If another navigation
+/// starts after this call and before that replacement runs, the newer attempt
+/// is preserved and the replacement is skipped.
+pub fn invalidate_authentication() {
+	let generation = (
+		auth_state().authentication_generation(),
+		JWT_IDENTITY_GENERATION.with(Cell::get),
+	);
+	invalidate_authentication_generation(generation);
+}
+
+fn invalidate_authentication_generation(generation: (u64, u64)) {
+	let coordinator = crate::app::try_with_navigation_coordinator(Rc::clone);
+	if let Some(coordinator) = coordinator {
+		let already_scheduled = AUTHENTICATION_INVALIDATION_SCHEDULED.with(|scheduled| {
+			if scheduled.get() == Some(generation) {
+				true
+			} else {
+				scheduled.set(Some(generation));
+				false
+			}
+		});
+		if already_scheduled {
+			return;
+		}
+
+		coordinator.clear_for_authentication_change();
+		let navigation_generation = coordinator.generation();
+		let schedule_guard = AuthenticationInvalidationScheduleGuard { generation };
+		crate::platform::spawn_task(async move {
+			crate::platform::defer_yield().await;
+			if coordinator.generation() != navigation_generation {
+				return;
+			}
+			let path = coordinator.current_path();
+			let _ = coordinator.navigate_with_completion_guard(
+				path,
+				crate::app::NavigationIntent::Replace,
+				schedule_guard,
+			);
+		});
+		return;
+	}
+
+	if let Some(client) = crate::reactive::query::current_query_client() {
+		client.clear_for_authentication_change();
+	}
+	AUTHENTICATION_INVALIDATION_SCHEDULED.with(|scheduled| {
+		if scheduled.get() == Some(generation) {
+			scheduled.set(None);
+		}
+	});
+}
+
+/// Reports an HTTP status for a caller that already established authentication.
+///
+/// Generated server-function stubs use [`observe_server_fn_status_for_request`]
+/// with a request-time context so an anonymous endpoint's expected 401 remains
+/// an ordinary application error.
+#[doc(hidden)]
+pub fn observe_server_fn_status(status: u16) {
+	if status == 401 {
+		clear_jwt_token();
+		auth_state().logout();
+		invalidate_authentication();
+	}
+}
+
+/// Captures whether a generated request carries an established authentication context.
+#[doc(hidden)]
+pub fn server_fn_authentication_context() -> ServerFnAuthenticationContext {
+	let state = auth_state();
+	ServerFnAuthenticationContext {
+		established: state.is_authenticated_untracked() || get_jwt_token().is_some(),
+		generation: state.authentication_generation(),
+		jwt_generation: JWT_IDENTITY_GENERATION.with(Cell::get),
+	}
+}
+
+/// Reports a generated server-function response against its request-time auth context.
+#[doc(hidden)]
+pub fn observe_server_fn_status_for_request(status: u16, context: ServerFnAuthenticationContext) {
+	if status != 401 || !context.established {
+		return;
+	}
+
+	let state = auth_state();
+	let current_context_is_established =
+		state.is_authenticated_untracked() || get_jwt_token().is_some();
+	let jwt_generation = JWT_IDENTITY_GENERATION.with(Cell::get);
+	if context.generation != state.authentication_generation()
+		|| context.jwt_generation != jwt_generation
+		|| !current_context_is_established
+	{
+		return;
+	}
+
+	clear_jwt_token();
+	state.logout();
+	invalidate_authentication();
+}
+
+struct AuthStateStore {
+	state: AuthState,
+}
+
 thread_local! {
 	/// Global authentication state instance.
-	static AUTH_STATE: RefCell<Option<AuthState>> = const { RefCell::new(None) };
+	static AUTH_STATE: RefCell<Option<AuthStateStore>> = const { RefCell::new(None) };
 }
 
 /// Returns the global authentication state.
@@ -73,9 +216,15 @@ pub fn auth_state() -> AuthState {
 	AUTH_STATE.with(|state| {
 		let mut state = state.borrow_mut();
 		if state.is_none() {
-			*state = Some(AuthState::new());
+			*state = Some(AuthStateStore {
+				state: AuthState::new(),
+			});
 		}
-		state.clone().unwrap()
+		state
+			.as_ref()
+			.expect("authentication state must be initialized")
+			.state
+			.clone()
 	})
 }
 
@@ -84,8 +233,12 @@ pub fn auth_state() -> AuthState {
 /// This struct provides reactive signals that automatically update
 /// when authentication state changes. It can be used to build
 /// authentication-aware UI components.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AuthState {
+	/// Scope that owns this state's reactive signals.
+	_scope: Rc<ReactiveScope>,
+	/// Monotonic identity for authentication-bound cache and navigation work.
+	authentication_generation: Rc<Cell<u64>>,
 	/// Whether the user is authenticated.
 	is_authenticated: Signal<bool>,
 	/// The authenticated user's ID (string to support both integer and UUID PKs).
@@ -102,6 +255,33 @@ pub struct AuthState {
 	permissions: Signal<HashSet<String>>,
 }
 
+/// A signal exported from [`AuthState`] that retains the state's owner scope.
+#[derive(Clone)]
+pub struct AuthSignal<T: 'static> {
+	_state: AuthState,
+	signal: Signal<T>,
+}
+
+impl<T: 'static> std::ops::Deref for AuthSignal<T> {
+	type Target = Signal<T>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.signal
+	}
+}
+
+impl<T: 'static> reinhardt_core::reactive::Trackable for AuthSignal<T> {
+	fn node_id(&self) -> reinhardt_core::reactive::NodeId {
+		self.signal.id()
+	}
+}
+
+impl std::fmt::Debug for AuthState {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("AuthState").finish_non_exhaustive()
+	}
+}
+
 impl Default for AuthState {
 	fn default() -> Self {
 		Self::new()
@@ -111,15 +291,7 @@ impl Default for AuthState {
 impl AuthState {
 	/// Creates a new authentication state with default (unauthenticated) values.
 	pub fn new() -> Self {
-		Self {
-			is_authenticated: Signal::new(false),
-			user_id: Signal::new(None),
-			username: Signal::new(None),
-			email: Signal::new(None),
-			is_staff: Signal::new(false),
-			is_superuser: Signal::new(false),
-			permissions: Signal::new(HashSet::new()),
-		}
+		Self::from_data(AuthData::anonymous())
 	}
 
 	/// Creates an authentication state from server-provided data.
@@ -127,7 +299,14 @@ impl AuthState {
 	/// This is typically used during hydration when the server
 	/// embeds authentication data in the initial HTML.
 	pub fn from_server_data(data: AuthData) -> Self {
-		Self {
+		Self::from_data(data)
+	}
+
+	fn from_data(data: AuthData) -> Self {
+		let scope = Rc::new(ReactiveScope::new());
+		scope.enter(|| Self {
+			_scope: Rc::clone(&scope),
+			authentication_generation: Rc::new(Cell::new(0)),
 			is_authenticated: Signal::new(data.is_authenticated),
 			user_id: Signal::new(data.user_id),
 			username: Signal::new(data.username),
@@ -135,12 +314,25 @@ impl AuthState {
 			is_staff: Signal::new(data.is_staff),
 			is_superuser: Signal::new(data.is_superuser),
 			permissions: Signal::new(data.permissions.into_iter().collect()),
-		}
+		})
 	}
 
 	/// Returns whether the user is authenticated.
 	pub fn is_authenticated(&self) -> bool {
 		self.is_authenticated.get()
+	}
+
+	fn is_authenticated_untracked(&self) -> bool {
+		self.is_authenticated.get_untracked()
+	}
+
+	fn authentication_generation(&self) -> u64 {
+		self.authentication_generation.get()
+	}
+
+	fn advance_authentication_generation(&self) {
+		self.authentication_generation
+			.set(self.authentication_generation.get().wrapping_add(1));
 	}
 
 	/// Returns the authenticated user's ID.
@@ -171,33 +363,33 @@ impl AuthState {
 	/// Returns the Signal for authentication status.
 	///
 	/// Use this for reactive UI updates.
-	pub fn is_authenticated_signal(&self) -> Signal<bool> {
-		self.is_authenticated.clone()
+	pub fn is_authenticated_signal(&self) -> AuthSignal<bool> {
+		self.signal(self.is_authenticated)
 	}
 
 	/// Returns the Signal for user ID.
-	pub fn user_id_signal(&self) -> Signal<Option<String>> {
-		self.user_id.clone()
+	pub fn user_id_signal(&self) -> AuthSignal<Option<String>> {
+		self.signal(self.user_id)
 	}
 
 	/// Returns the Signal for username.
-	pub fn username_signal(&self) -> Signal<Option<String>> {
-		self.username.clone()
+	pub fn username_signal(&self) -> AuthSignal<Option<String>> {
+		self.signal(self.username)
 	}
 
 	/// Returns the Signal for email.
-	pub fn email_signal(&self) -> Signal<Option<String>> {
-		self.email.clone()
+	pub fn email_signal(&self) -> AuthSignal<Option<String>> {
+		self.signal(self.email)
 	}
 
 	/// Returns the Signal for staff status.
-	pub fn is_staff_signal(&self) -> Signal<bool> {
-		self.is_staff.clone()
+	pub fn is_staff_signal(&self) -> AuthSignal<bool> {
+		self.signal(self.is_staff)
 	}
 
 	/// Returns the Signal for superuser status.
-	pub fn is_superuser_signal(&self) -> Signal<bool> {
-		self.is_superuser.clone()
+	pub fn is_superuser_signal(&self) -> AuthSignal<bool> {
+		self.signal(self.is_superuser)
 	}
 
 	/// Updates the authentication state with new data.
@@ -205,6 +397,7 @@ impl AuthState {
 	/// This is typically called after a successful login or
 	/// when session data is refreshed from the server.
 	pub fn update(&self, data: AuthData) {
+		self.advance_authentication_generation();
 		self.is_authenticated.set(data.is_authenticated);
 		self.user_id.set(data.user_id);
 		self.username.set(data.username);
@@ -219,6 +412,7 @@ impl AuthState {
 	/// Resets `email`, `is_staff`, `is_superuser`, and `permissions` to defaults
 	/// to prevent stale data from a previous session.
 	pub fn login(&self, user_id: impl Into<String>, username: impl Into<String>) {
+		self.advance_authentication_generation();
 		self.is_authenticated.set(true);
 		self.user_id.set(Some(user_id.into()));
 		self.username.set(Some(username.into()));
@@ -237,6 +431,7 @@ impl AuthState {
 		is_staff: bool,
 		is_superuser: bool,
 	) {
+		self.advance_authentication_generation();
 		self.is_authenticated.set(true);
 		self.user_id.set(Some(user_id.into()));
 		self.username.set(Some(username.into()));
@@ -247,6 +442,16 @@ impl AuthState {
 
 	/// Clears the authentication state (logout).
 	pub fn logout(&self) {
+		let changed = self.is_authenticated.get_untracked()
+			|| self.user_id.get_untracked().is_some()
+			|| self.username.get_untracked().is_some()
+			|| self.email.get_untracked().is_some()
+			|| self.is_staff.get_untracked()
+			|| self.is_superuser.get_untracked()
+			|| !self.permissions.get_untracked().is_empty();
+		if changed {
+			self.advance_authentication_generation();
+		}
 		self.is_authenticated.set(false);
 		self.user_id.set(None);
 		self.username.set(None);
@@ -300,8 +505,15 @@ impl AuthState {
 	}
 
 	/// Returns the Signal for permissions (for reactive updates).
-	pub fn permissions_signal(&self) -> Signal<HashSet<String>> {
-		self.permissions.clone()
+	pub fn permissions_signal(&self) -> AuthSignal<HashSet<String>> {
+		self.signal(self.permissions)
+	}
+
+	fn signal<T: 'static>(&self, signal: Signal<T>) -> AuthSignal<T> {
+		AuthSignal {
+			_state: self.clone(),
+			signal,
+		}
 	}
 
 	/// Fetches permissions from the server and updates the cache.
@@ -576,7 +788,12 @@ pub fn set_jwt_token(token: &str) {
 	if let Some(window) = web_sys::window()
 		&& let Ok(Some(storage)) = window.session_storage()
 	{
-		let _ = storage.set_item(JWT_STORAGE_KEY, token);
+		let previous = storage.get_item(JWT_STORAGE_KEY).ok().flatten();
+		if storage.set_item(JWT_STORAGE_KEY, token).is_ok() && previous.as_deref() != Some(token) {
+			JWT_IDENTITY_GENERATION.with(|generation| {
+				generation.set(generation.get().wrapping_add(1));
+			});
+		}
 	}
 }
 
@@ -594,7 +811,12 @@ pub fn clear_jwt_token() {
 	if let Some(window) = web_sys::window()
 		&& let Ok(Some(storage)) = window.session_storage()
 	{
-		let _ = storage.remove_item(JWT_STORAGE_KEY);
+		let had_token = storage.get_item(JWT_STORAGE_KEY).ok().flatten().is_some();
+		if storage.remove_item(JWT_STORAGE_KEY).is_ok() && had_token {
+			JWT_IDENTITY_GENERATION.with(|generation| {
+				generation.set(generation.get().wrapping_add(1));
+			});
+		}
 	}
 }
 
@@ -608,52 +830,88 @@ pub fn clear_jwt_token() {
 mod tests {
 	use super::*;
 
+	fn clear_global_auth_state() {
+		let previous = AUTH_STATE.with(|state| state.borrow_mut().take());
+		drop(previous);
+	}
+
 	#[test]
 	fn test_auth_state_creation() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			assert!(!state.is_authenticated());
+			assert!(state.user_id().is_none());
+			assert!(state.username().is_none());
+		});
+	}
+
+	#[test]
+	fn auth_state_constructors_retain_a_scope_without_an_active_parent_scope() {
 		let state = AuthState::new();
-		assert!(!state.is_authenticated());
-		assert!(state.user_id().is_none());
-		assert!(state.username().is_none());
+		let is_authenticated = state.is_authenticated_signal();
+		state.login("42", "testuser");
+		assert!(is_authenticated.get());
+
+		let default_state = AuthState::default();
+		assert!(!default_state.is_authenticated());
+
+		let server_state = AuthState::from_server_data(AuthData::authenticated("7", "serveruser"));
+		assert!(server_state.is_authenticated());
+		assert_eq!(server_state.username(), Some("serveruser".to_string()));
+	}
+
+	#[rstest::rstest]
+	#[serial_test::serial(reactive_runtime)]
+	fn exported_auth_signal_retains_its_owner() {
+		let is_authenticated = AuthState::new().is_authenticated_signal();
+
+		assert!(!is_authenticated.get());
 	}
 
 	#[test]
 	fn test_auth_state_login() {
-		let state = AuthState::new();
-		state.login("42", "testuser");
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			state.login("42", "testuser");
 
-		assert!(state.is_authenticated());
-		assert_eq!(state.user_id(), Some("42".to_string()));
-		assert_eq!(state.username(), Some("testuser".to_string()));
+			assert!(state.is_authenticated());
+			assert_eq!(state.user_id(), Some("42".to_string()));
+			assert_eq!(state.username(), Some("testuser".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_auth_state_logout() {
-		let state = AuthState::new();
-		state.login("42", "testuser");
-		state.logout();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			state.login("42", "testuser");
+			state.logout();
 
-		assert!(!state.is_authenticated());
-		assert!(state.user_id().is_none());
-		assert!(state.username().is_none());
+			assert!(!state.is_authenticated());
+			assert!(state.user_id().is_none());
+			assert!(state.username().is_none());
+		});
 	}
 
 	#[test]
 	fn test_auth_state_from_server_data() {
-		let data = AuthData::full(
-			"1",
-			"admin",
-			Some("admin@example.com".to_string()),
-			true,
-			true,
-		);
-		let state = AuthState::from_server_data(data);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let data = AuthData::full(
+				"1",
+				"admin",
+				Some("admin@example.com".to_string()),
+				true,
+				true,
+			);
+			let state = AuthState::from_server_data(data);
 
-		assert!(state.is_authenticated());
-		assert_eq!(state.user_id(), Some("1".to_string()));
-		assert_eq!(state.username(), Some("admin".to_string()));
-		assert_eq!(state.email(), Some("admin@example.com".to_string()));
-		assert!(state.is_staff());
-		assert!(state.is_superuser());
+			assert!(state.is_authenticated());
+			assert_eq!(state.user_id(), Some("1".to_string()));
+			assert_eq!(state.username(), Some("admin".to_string()));
+			assert_eq!(state.email(), Some("admin@example.com".to_string()));
+			assert!(state.is_staff());
+			assert!(state.is_superuser());
+		});
 	}
 
 	#[test]
@@ -673,22 +931,43 @@ mod tests {
 
 	#[test]
 	fn test_auth_state_update() {
-		let state = AuthState::new();
-		let data = AuthData::authenticated("99", "updated");
-		state.update(data);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			let data = AuthData::authenticated("99", "updated");
+			state.update(data);
 
-		assert!(state.is_authenticated());
-		assert_eq!(state.user_id(), Some("99".to_string()));
-		assert_eq!(state.username(), Some("updated".to_string()));
+			assert!(state.is_authenticated());
+			assert_eq!(state.user_id(), Some("99".to_string()));
+			assert_eq!(state.username(), Some("updated".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_global_auth_state() {
-		let state1 = auth_state();
-		let state2 = auth_state();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state1 = auth_state();
+			let state2 = auth_state();
 
-		state1.login("1", "test");
-		assert!(state2.is_authenticated());
+			state1.login("1", "test");
+			assert!(state2.is_authenticated());
+		});
+	}
+
+	#[test]
+	fn global_auth_state_outlives_initializer_scope() {
+		clear_global_auth_state();
+
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			auth_state().login("1", "test");
+		});
+
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = auth_state();
+			assert!(state.is_authenticated());
+			assert_eq!(state.username(), Some("test".to_string()));
+		});
+
+		clear_global_auth_state();
 	}
 
 	#[test]
@@ -708,104 +987,209 @@ mod tests {
 
 	#[test]
 	fn test_has_permission_with_cache() {
-		let state = AuthState::new();
-		let mut perms = HashSet::new();
-		perms.insert("blog.add_post".to_string());
-		perms.insert("blog.edit_post".to_string());
-		state.set_permissions(perms);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			let mut perms = HashSet::new();
+			perms.insert("blog.add_post".to_string());
+			perms.insert("blog.edit_post".to_string());
+			state.set_permissions(perms);
 
-		assert!(state.has_permission("blog.add_post"));
-		assert!(!state.has_permission("blog.delete_post"));
+			assert!(state.has_permission("blog.add_post"));
+			assert!(!state.has_permission("blog.delete_post"));
+		});
 	}
 
 	#[test]
 	fn test_superuser_has_all_permissions() {
-		let state = AuthState::new();
-		state.login_full("1", "admin", None, true, true);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			state.login_full("1", "admin", None, true, true);
 
-		assert!(state.has_permission("any.permission"));
-		assert!(state.has_permission("another.permission"));
+			assert!(state.has_permission("any.permission"));
+			assert!(state.has_permission("another.permission"));
+		});
 	}
 
 	#[test]
 	fn test_has_any_permission() {
-		let state = AuthState::new();
-		let mut perms = HashSet::new();
-		perms.insert("blog.view".to_string());
-		state.set_permissions(perms);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			let mut perms = HashSet::new();
+			perms.insert("blog.view".to_string());
+			state.set_permissions(perms);
 
-		assert!(state.has_any_permission(&["blog.view", "blog.edit"]));
-		assert!(!state.has_any_permission(&["blog.delete", "blog.edit"]));
+			assert!(state.has_any_permission(&["blog.view", "blog.edit"]));
+			assert!(!state.has_any_permission(&["blog.delete", "blog.edit"]));
+		});
 	}
 
 	#[test]
 	fn test_has_all_permissions() {
-		let state = AuthState::new();
-		let mut perms = HashSet::new();
-		perms.insert("blog.view".to_string());
-		perms.insert("blog.edit".to_string());
-		state.set_permissions(perms);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			let mut perms = HashSet::new();
+			perms.insert("blog.view".to_string());
+			perms.insert("blog.edit".to_string());
+			state.set_permissions(perms);
 
-		assert!(state.has_all_permissions(&["blog.view", "blog.edit"]));
-		assert!(!state.has_all_permissions(&["blog.view", "blog.delete"]));
+			assert!(state.has_all_permissions(&["blog.view", "blog.edit"]));
+			assert!(!state.has_all_permissions(&["blog.view", "blog.delete"]));
+		});
 	}
 
 	#[test]
 	fn test_permissions_cleared_on_logout() {
-		let state = AuthState::new();
-		let mut perms = HashSet::new();
-		perms.insert("blog.add_post".to_string());
-		state.set_permissions(perms);
-		state.login("1", "user");
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			let mut perms = HashSet::new();
+			perms.insert("blog.add_post".to_string());
+			state.set_permissions(perms);
+			state.login("1", "user");
 
-		state.logout();
+			state.logout();
 
-		assert!(!state.has_permission("blog.add_post"));
-		assert_eq!(state.permissions.get().len(), 0);
+			assert!(!state.has_permission("blog.add_post"));
+			assert_eq!(state.permissions.get().len(), 0);
+		});
 	}
 
 	#[test]
 	fn test_permissions_from_auth_data() {
-		let data = AuthData {
-			is_authenticated: true,
-			user_id: Some("1".to_string()),
-			username: Some("user".to_string()),
-			email: None,
-			is_staff: false,
-			is_superuser: false,
-			permissions: vec!["blog.view".to_string(), "blog.edit".to_string()],
-		};
-		let state = AuthState::from_server_data(data);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let data = AuthData {
+				is_authenticated: true,
+				user_id: Some("1".to_string()),
+				username: Some("user".to_string()),
+				email: None,
+				is_staff: false,
+				is_superuser: false,
+				permissions: vec!["blog.view".to_string(), "blog.edit".to_string()],
+			};
+			let state = AuthState::from_server_data(data);
 
-		assert!(state.has_permission("blog.view"));
-		assert!(state.has_permission("blog.edit"));
-		assert!(!state.has_permission("blog.delete"));
+			assert!(state.has_permission("blog.view"));
+			assert!(state.has_permission("blog.edit"));
+			assert!(!state.has_permission("blog.delete"));
+		});
 	}
 
 	#[test]
 	fn test_permissions_update() {
-		let state = AuthState::new();
-		state.login("1", "user");
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = AuthState::new();
+			state.login("1", "user");
 
-		let data = AuthData {
-			is_authenticated: true,
-			user_id: Some("1".to_string()),
-			username: Some("user".to_string()),
-			email: None,
-			is_staff: false,
-			is_superuser: false,
-			permissions: vec!["blog.view".to_string()],
-		};
-		state.update(data);
+			let data = AuthData {
+				is_authenticated: true,
+				user_id: Some("1".to_string()),
+				username: Some("user".to_string()),
+				email: None,
+				is_staff: false,
+				is_superuser: false,
+				permissions: vec!["blog.view".to_string()],
+			};
+			state.update(data);
 
-		assert!(state.has_permission("blog.view"));
-		assert!(!state.has_permission("blog.edit"));
+			assert!(state.has_permission("blog.view"));
+			assert!(!state.has_permission("blog.edit"));
+		});
 	}
 
 	#[test]
 	fn test_auth_headers_non_wasm() {
 		// On non-WASM targets, auth_headers always returns None
 		assert!(auth_headers().is_none());
+	}
+
+	#[test]
+	#[cfg(not(target_arch = "wasm32"))]
+	fn authentication_invalidation_clears_current_query_client_and_ignores_non_auth_statuses() {
+		use crate::reactive::query::{
+			QueryClient, QueryDefaults, QueryFamily, QueryOptions, TestQueryRuntime,
+			provide_query_client,
+		};
+
+		let runtime = TestQueryRuntime::new();
+		let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
+		let family = QueryFamily::<(), String, String>::new("auth.invalidation-status");
+		let query = client.observe(
+			family.query((), || async { Ok("authenticated".to_owned()) }),
+			QueryOptions::default(),
+		);
+		runtime.run_until_stalled();
+		assert_eq!(query.data(), Some("authenticated".to_owned()));
+
+		let _client_guard = provide_query_client(client);
+		let state = auth_state();
+		state.login("1", "authenticated");
+		observe_server_fn_status(403);
+		assert_eq!(query.data(), Some("authenticated".to_owned()));
+		observe_server_fn_status(500);
+		assert_eq!(query.data(), Some("authenticated".to_owned()));
+		observe_server_fn_status(401);
+		assert_eq!(query.data(), None);
+		assert!(!state.is_authenticated());
+		assert_eq!(state.user_id(), None);
+		assert_eq!(state.username(), None);
+		state.logout();
+	}
+
+	#[rstest::rstest]
+	#[case(false, false)]
+	#[case(true, true)]
+	#[cfg(not(target_arch = "wasm32"))]
+	fn request_scoped_401_requires_the_current_established_authentication(
+		#[case] authenticated: bool,
+		#[case] expect_invalidation: bool,
+	) {
+		use crate::reactive::query::{
+			QueryClient, QueryDefaults, QueryFamily, QueryOptions, TestQueryRuntime,
+			provide_query_client,
+		};
+
+		// Arrange
+		clear_global_auth_state();
+		let runtime = TestQueryRuntime::new();
+		let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
+		let family = QueryFamily::<(), String, String>::new("auth.request-context");
+		let query = client.observe(
+			family.query((), || async { Ok("authenticated".to_owned()) }),
+			QueryOptions::default(),
+		);
+		runtime.run_until_stalled();
+		let _client_guard = provide_query_client(client);
+		let state = auth_state();
+		if authenticated {
+			state.login("1", "authenticated");
+		}
+		let context = server_fn_authentication_context();
+
+		// Act
+		observe_server_fn_status_for_request(401, context);
+
+		// Assert
+		assert_eq!(query.data().is_none(), expect_invalidation);
+		assert_eq!(
+			state.is_authenticated(),
+			authenticated && !expect_invalidation
+		);
+		clear_global_auth_state();
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn authentication_invalidation_resets_coalescing_when_native_scheduler_is_unavailable() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let router = reinhardt_urls::routers::ClientRouter::new()
+				.route("root", "/", || crate::Page::text("root"));
+			crate::app::__install_client_router_for_test(router);
+			AUTHENTICATION_INVALIDATION_SCHEDULED.with(|scheduled| scheduled.set(None));
+
+			invalidate_authentication();
+
+			assert_eq!(AUTHENTICATION_INVALIDATION_SCHEDULED.with(Cell::get), None);
+			crate::app::__clear_spa_router_for_test();
+		});
 	}
 
 	#[test]

@@ -6,7 +6,7 @@
 //! all compile without requiring the inner type to implement `Injectable`.
 
 use reinhardt_di::{
-	Depends as Dep, FactoryOutput, InjectableKey, InjectableType, injectable,
+	InjectableKey, InjectableType, KeyedDepends as KeyedDep, KeyedFactoryOutput, injectable,
 };
 use reinhardt_http::{Response, ViewResult};
 use reinhardt_macros::get;
@@ -23,13 +23,13 @@ struct AppConfigKey;
 impl InjectableKey for AppConfigKey {}
 
 #[injectable(scope = "transient")]
-async fn make_keyed_app_config() -> FactoryOutput<AppConfigKey, AppConfig> {
-	FactoryOutput::new(AppConfig {
+async fn make_keyed_app_config() -> KeyedFactoryOutput<AppConfigKey, AppConfig> {
+	KeyedFactoryOutput::new(AppConfig {
 		host: "localhost".to_string(),
 	})
 }
 
-type Alias<T> = reinhardt_di::Depends<AppConfigKey, T>;
+type Alias<T> = reinhardt_di::KeyedDepends<AppConfigKey, T>;
 
 struct Lazy<T>
 where
@@ -53,7 +53,7 @@ impl<T> InjectableType for Lazy<T>
 where
 	T: Clone + Send + Sync + 'static,
 {
-	type Inner = FactoryOutput<AppConfigKey, T>;
+	type Inner = KeyedFactoryOutput<AppConfigKey, T>;
 
 	fn from_resolved(inner: Arc<Self::Inner>, _use_cache: bool) -> Self {
 		Self {
@@ -64,13 +64,13 @@ where
 
 #[get("/trait/fq", name = "trait-fq-depends")]
 async fn route_fq(
-	#[inject] cfg: reinhardt_di::Depends<AppConfigKey, AppConfig>,
+	#[inject] cfg: reinhardt_di::KeyedDepends<AppConfigKey, AppConfig>,
 ) -> ViewResult<Response> {
 	Ok(Response::ok().with_body(cfg.host.clone()))
 }
 
 #[get("/trait/renamed", name = "trait-renamed-depends")]
-async fn route_renamed(#[inject] cfg: Dep<AppConfigKey, AppConfig>) -> ViewResult<Response> {
+async fn route_renamed(#[inject] cfg: KeyedDep<AppConfigKey, AppConfig>) -> ViewResult<Response> {
 	Ok(Response::ok().with_body(cfg.host.clone()))
 }
 
@@ -86,7 +86,7 @@ async fn route_custom(#[inject] cfg: Lazy<AppConfig>) -> ViewResult<Response> {
 
 #[server_fn]
 async fn server_fq(
-	#[inject] cfg: reinhardt_di::Depends<AppConfigKey, AppConfig>,
+	#[inject] cfg: reinhardt_di::KeyedDepends<AppConfigKey, AppConfig>,
 ) -> Result<String, ServerFnError> {
 	Ok(cfg.host.clone())
 }

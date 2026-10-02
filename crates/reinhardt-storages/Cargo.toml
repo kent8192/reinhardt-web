@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-storages"
-version = "0.3.20"
+version = "0.4.0-alpha.18"
 edition = "2024"
 authors = ["Reinhardt Contributors"]
 license = "MIT OR Apache-2.0"
@@ -13,11 +13,13 @@ categories = ["web-programming", "filesystem"]
 async-trait = "0.1"
 tokio = { version = "1", features = ["fs", "rt-multi-thread", "macros"] }
 chrono = { workspace = true }
+rand = { workspace = true }
 thiserror = { workspace = true }
+unicode-normalization = "0.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 reinhardt-conf = { workspace = true, features = ["settings"] }
-reinhardt-core = { workspace = true }
+reinhardt-core = { workspace = true, features = ["parsers"] }
 reinhardt-providers = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
@@ -25,15 +27,12 @@ bytes = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 percent-encoding = { version = "2.3", optional = true }
+cap-std = { version = "3.4.5", optional = true }
+cap-fs-ext = { version = "3.4.5", optional = true }
 
 # GCS
 google-cloud-storage = { version = "1.12.0", optional = true }
 google-cloud-auth = { version = "1.10.0", optional = true }
-
-# Azure
-azure_storage_blob = { version = "1.0.0", optional = true }
-azure_core = { version = "1.0.0", optional = true }
-azure_identity = { version = "0.29.0", optional = true }
 
 [dev-dependencies]
 wiremock = "0.6"
@@ -41,7 +40,6 @@ tokio = { workspace = true, features = ["full"] }
 tempfile = "3"
 rstest = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
-rand = { workspace = true }
 serial_test = "3"
 testcontainers = { workspace = true }
 reqwest = { workspace = true }
@@ -58,14 +56,11 @@ gcs = [
   "percent-encoding",
 ]
 azure = [
-  "azure_storage_blob",
-  "azure_core",
-  "azure_identity",
   "reqwest",
   "base64",
   "hmac",
   "sha2",
   "percent-encoding",
 ]
-local = ["tokio/fs"]
+local = ["tokio/fs", "dep:cap-std", "dep:cap-fs-ext"]
 all = ["s3", "gcs", "azure", "local"]

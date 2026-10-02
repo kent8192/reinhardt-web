@@ -67,12 +67,13 @@ force-push-only case remains eligible. Both target checks load the shared
 policy from the pull request's base commit, so a pull-request head cannot alter
 the eligibility code that guards the write path.
 
-The fix job checks out the pull-request head branch, installs the same tools
-used by the style gates, runs the matching fix command, and uploads a binary
-patch only when the fix command leaves a worktree diff. Patch export and patch
-application both exclude `.auto-fix-policy/**`, and the write job fails closed if
-that trusted policy checkout path is ever staged. This prevents an untrusted
-auto-fix artifact from replacing the policy code that gates token generation.
+The fix job checks out the pull-request head SHA that triggered the workflow,
+installs the same tools and environment used by the style gates, runs the
+matching fix command, and uploads a binary patch only when the fix command
+leaves a worktree diff. Patch export and patch application both exclude
+`.auto-fix-policy/**`, and the write job fails closed if that trusted policy
+checkout path is ever staged. This prevents an untrusted auto-fix artifact from
+replacing the policy code that gates token generation.
 
 ## 5. Execution Flow
 
@@ -83,7 +84,8 @@ auto-fix artifact from replacing the policy code that gates token generation.
    A `non_fast_forward`-only ruleset remains eligible.
 3. If the pull request is ineligible, the downstream fix and write jobs are
    skipped.
-4. If eligible, `auto-fix-style` checks out the PR head branch.
+4. If eligible, `auto-fix-style` checks out the PR head SHA that triggered the
+   workflow.
 5. The fix job installs Rust, `rustfmt`, `clippy`, `protoc`, and `cargo-make`.
 6. The fix job runs:
    - `cargo make fmt-fix` when only formatting failed;
@@ -93,7 +95,7 @@ auto-fix artifact from replacing the policy code that gates token generation.
    committing.
 8. If there is a diff, the fix job uploads a binary patch artifact excluding
    `.auto-fix-policy/**`.
-9. `commit-auto-fix-style` checks out a clean copy of the PR head branch and
+9. `commit-auto-fix-style` checks out a clean copy of the same PR head SHA and
    applies the patch without executing PR-controlled build or make code. The
    apply step also excludes `.auto-fix-policy/**` and rejects any staged change
    under that trusted checkout path before policy execution.
@@ -101,7 +103,8 @@ auto-fix artifact from replacing the policy code that gates token generation.
     the target branch protection and active rule state before generating a
     write-capable token.
 11. If the branch is still eligible, the write job creates the commit with
-    GitHub GraphQL `createCommitOnBranch`.
+    GitHub GraphQL `createCommitOnBranch`, using the triggering head SHA as the
+    expected branch head.
 
 ## 6. Token and Push Model
 
@@ -111,17 +114,27 @@ the job exports only a patch artifact.
 
 The write job starts from a clean checkout, downloads the patch, and applies it
 with `git apply --index --exclude='.auto-fix-policy/**'`. It does not run
-`cargo make`, build scripts, proc-macros, repository hooks, or policy code from
-the pull-request head before generating the write token. The eligibility policy
-is sparse-checked out from the pull request's base commit into an isolated path,
-and the untrusted patch artifact is not allowed to modify that path.
+`cargo make`, build scripts,
+proc-macros, repository hooks, or policy code from the pull-request head before
+generating the write token. The eligibility policy is sparse-checked out from
+the pull request's base commit into an isolated path, and the untrusted patch
+artifact is not allowed to modify that path.
 
-GraphQL additions are read from staged blobs and streamed through `base64` and
-`jq`, so large auto-fix files never need to be passed through process arguments.
+The write job validates the staged patch before generating the write token.
+Unsupported file statuses and symlink additions are rejected, and GraphQL file
+contents are read from staged blobs instead of following working-tree paths.
+Each blob is streamed through `base64` and `jq`, avoiding process arguments so
+large auto-fix files remain within exec limits.
 
 The GitHub App token is generated only in the write job after the patch is
 applied and the target branch protection and active rules are rechecked. The
-token requests only `permission-contents: write`.
+`permission-contents: write` action input grants only the GitHub App
+`contents: write` repository permission.
+
+The GraphQL commit uses the triggering pull-request head SHA as
+`expectedHeadOid`. If the contributor pushes another commit while the auto-fix
+run is in flight, commit creation fails closed instead of applying a stale
+patch to the newer branch tip.
 
 The write job uses the existing repository pattern based on GraphQL
 `createCommitOnBranch`, instead of local `git commit` plus `git push`. This
@@ -164,7 +177,14 @@ Local validation for the workflow change:
   request's base commit rather than the pull-request head
 - unit coverage that non-fast-forward-only protection remains eligible while
   classic and write-blocking protection remain ineligible
-- inspection that the App token step requests only `permission-contents: write`
+- inspection that the App token step grants only the `contents: write`
+  repository permission
+- inspection that both auto-fix jobs check out the triggering PR head SHA
+- inspection that the GraphQL commit uses that same SHA as `expectedHeadOid`
+- inspection that staged additions are read from the index and symlinks are
+  rejected before token generation
+- inspection that patch export and application exclude `.auto-fix-policy/**`
+  and reject any staged changes under that trusted path
 
 Hosted validation:
 

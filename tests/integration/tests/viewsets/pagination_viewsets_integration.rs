@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
 #[allow(dead_code)]
-#[model(table_name = "products")]
+#[model(app_label = "default", table_name = "products")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Product {
 	#[field(primary_key = true)]
@@ -304,7 +304,7 @@ impl<P: Paginator> PaginatedViewSet<P> {
 		if let Some(category) = request.query_params.get("category") {
 			products
 				.iter()
-				.filter(|p| &p.category == category)
+				.filter(|p| p.category == category)
 				.cloned()
 				.collect()
 		} else {

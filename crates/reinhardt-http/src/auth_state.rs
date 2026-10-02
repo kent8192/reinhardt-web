@@ -111,23 +111,22 @@ impl AuthState {
 	///
 	/// # Returns
 	///
-	/// Returns `Some(AuthState)` if an `AuthState` object is found or if a
-	/// string or UUID user ID exists in the individual entries, `None` otherwise.
-	/// Legacy identity entries deny authentication and active status unless
-	/// the corresponding explicit status wrappers are present.
+	/// Returns `Some(AuthState)` if an `AuthState` object is found or if an
+	/// explicit `IsAuthenticated(true)` marker and a string or UUID user ID exist
+	/// in the individual entries. Plain identity values are not authentication state.
 	pub fn from_extensions(extensions: &Extensions) -> Option<Self> {
 		// Primary: try to get AuthState object directly
 		if let Some(state) = extensions.get::<AuthState>() {
 			return Some(state);
 		}
 		// Fallback: reconstruct from individual extension entries (backward compatibility)
+		let is_authenticated = extensions.get::<IsAuthenticated>().map(|v| v.0)?;
+		if !is_authenticated {
+			return None;
+		}
 		let user_id = extensions
 			.get::<String>()
 			.or_else(|| extensions.get::<uuid::Uuid>().map(|id| id.to_string()))?;
-		let is_authenticated = extensions
-			.get::<IsAuthenticated>()
-			.map(|v| v.0)
-			.unwrap_or(false);
 		let is_admin = extensions.get::<IsAdmin>().map(|v| v.0).unwrap_or(false);
 		let is_active = extensions.get::<IsActive>().map(|v| v.0).unwrap_or(false);
 		Some(Self {
@@ -210,21 +209,16 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_from_extensions_with_legacy_identity_defaults_to_unauthenticated_inactive() {
+	fn test_from_extensions_rejects_bare_string() {
 		// Arrange
 		let extensions = Extensions::new();
-		extensions.insert("user-789".to_string());
+		extensions.insert("rate-limit-key".to_string());
 
 		// Act
 		let result = AuthState::from_extensions(&extensions);
 
 		// Assert
-		assert!(result.is_some());
-		let retrieved = result.unwrap();
-		assert_eq!(retrieved.user_id(), "user-789");
-		assert!(!retrieved.is_authenticated());
-		assert!(!retrieved.is_admin());
-		assert!(!retrieved.is_active());
+		assert_eq!(result, None);
 	}
 
 	#[rstest]

@@ -4,17 +4,21 @@
 
 #[cfg(server)]
 use super::admin_auth::AdminAuthenticatedUser;
-use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, DetailResponse};
+use crate::adapters::{AdminDatabase, AdminSite, DetailResponse};
 #[cfg(server)]
-use crate::core::{AdminDatabaseKey, AdminSiteKey};
+use crate::core::{AdminDatabaseKey, AdminQuery, AdminRequestContext, AdminSiteKey};
 #[cfg(server)]
-use reinhardt_di::Depends;
+use reinhardt_di::KeyedDepends;
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 
 #[cfg(server)]
-use super::error::{AdminAuth, MapServerFnError, ModelPermission, require_object_filters};
+use super::error::{AdminAuth, MapServerFnError, ModelPermission};
+#[cfg(server)]
+use super::form::resolve_admin_form;
+#[cfg(server)]
+use super::type_inference::translate_physical_field_names_to_logical;
 #[cfg(server)]
 use super::validation::retain_allowed_fields;
 
@@ -45,8 +49,8 @@ use super::validation::retain_allowed_fields;
 pub async fn get_detail(
 	model_name: String,
 	id: String,
-	#[inject] site: Depends<AdminSiteKey, AdminSite>,
-	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
+	#[inject] site: KeyedDepends<AdminSiteKey, AdminSite>,
+	#[inject] db: KeyedDepends<AdminDatabaseKey, AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<DetailResponse, ServerFnError> {
@@ -57,18 +61,26 @@ pub async fn get_detail(
 		.await?;
 	let table_name = model_admin.table_name();
 	let pk_field = model_admin.pk_field();
-	let object_filters = require_object_filters(model_admin.as_ref(), user.as_ref())?;
+	let request_context = AdminRequestContext::new(http_request.into_inner());
+	let admin_query = model_admin
+		.get_queryset(user.as_ref(), &request_context, AdminQuery::new(table_name))
+		.await
+		.map_server_fn_error()?;
 
 	let mut data = db
-		.get_with_filters::<AdminRecord>(table_name, pk_field, &id, object_filters)
+		.get_admin_query(&admin_query, pk_field, &id)
 		.await
 		.map_server_fn_error()?
 		.ok_or_else(|| {
 			ServerFnError::server(404, format!("{} with id '{}' not found", model_name, id))
 		})?;
-	let visible_fields = model_admin
-		.fields()
-		.unwrap_or_else(|| model_admin.list_display());
+	translate_physical_field_names_to_logical(table_name, &mut data).map_server_fn_error()?;
+	let form = resolve_admin_form(&site, model_admin.as_ref()).map_server_fn_error()?;
+	let visible_fields = form
+		.fields
+		.iter()
+		.map(|field| field.name.as_str())
+		.collect::<Vec<_>>();
 	retain_allowed_fields(&mut data, &visible_fields);
 
 	Ok(DetailResponse { model_name, data })

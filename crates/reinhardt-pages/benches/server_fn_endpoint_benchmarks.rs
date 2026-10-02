@@ -5,10 +5,14 @@ use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use hyper::{Method, header};
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{Handler, Request, Response, Result};
-use reinhardt_pages::server_fn::{ServerFnError, ServerFnRouterExt, server_fn};
+use reinhardt_pages::server_fn::{
+	ServerFnError, ServerFnRegistration, ServerFnRouterExt, server_fn,
+};
 use reinhardt_urls::routers::ServerRouter;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
 use std::hint::black_box;
+use std::pin::Pin;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EchoResponse {
@@ -66,7 +70,7 @@ impl Handler for PathParamEndpoint {
 		let value = req
 			.path_params
 			.get("id")
-			.cloned()
+			.map(str::to_owned)
 			.unwrap_or_else(|| "missing".to_string());
 		Ok(Response::ok().with_body(value))
 	}
@@ -96,6 +100,20 @@ fn warm_router(router: &ServerRouter, request: Request) {
 		.block_on(router.handle(request))
 		.expect("warmup request should succeed");
 	assert!(response.status.is_success());
+}
+
+fn boxed_direct_server_fn(
+	request: Request,
+) -> Pin<Box<dyn Future<Output = Result<Response>> + Send>> {
+	Box::pin(async move {
+		match bench_echo::marker::handle(request).await {
+			Ok(body) => Ok(Response::from_json_body(hyper::StatusCode::OK, body)),
+			Err(body) => Ok(Response::from_json_body(
+				hyper::StatusCode::INTERNAL_SERVER_ERROR,
+				body,
+			)),
+		}
+	})
 }
 
 fn bench_http_endpoint(c: &mut Criterion) {
@@ -148,6 +166,33 @@ fn bench_server_fn_endpoint(c: &mut Criterion) {
 				let response = rt
 					.block_on(router.handle(request))
 					.expect("server_fn request should succeed");
+				black_box(response)
+			},
+			BatchSize::SmallInput,
+		)
+	});
+
+	c.bench_function("server_fn_direct_json_post", |b| {
+		b.iter_batched(
+			build_server_fn_request,
+			|request| {
+				let body = rt
+					.block_on(bench_echo::marker::handle(request))
+					.expect("direct server_fn request should succeed");
+				let response = Response::from_json_body(hyper::StatusCode::OK, body);
+				black_box(response)
+			},
+			BatchSize::SmallInput,
+		)
+	});
+
+	c.bench_function("server_fn_boxed_direct_json_post", |b| {
+		b.iter_batched(
+			build_server_fn_request,
+			|request| {
+				let response = rt
+					.block_on(boxed_direct_server_fn(request))
+					.expect("boxed direct server_fn request should succeed");
 				black_box(response)
 			},
 			BatchSize::SmallInput,

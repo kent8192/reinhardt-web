@@ -1,0 +1,21 @@
+.card--rs-f69b9cbc74c9 {
+  color: red;
+}
+
+.card--rs-f69b9cbc74c9:hover {
+  color: blue;
+}
+
+.card--rs-f69b9cbc74c9 {
+  background-color: white;
+}
+
+@media (max-width: 640px) {
+  .card--rs-f69b9cbc74c9 {
+    width: 100%;
+  }
+}
+
+.card--rs-f69b9cbc74c9 {
+  opacity: 1;
+}

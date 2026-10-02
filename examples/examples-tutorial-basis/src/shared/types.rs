@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 ///
 /// Sent from the WASM client to the server when submitting the login form.
 ///
-/// The `#[dto]` macro emits `Validate` behind `cfg(native)` so the WASM client
-/// does not pull in the validator-crate machinery — the server is the only
-/// side that runs `request.validate()` before hitting the database.
+/// The `#[dto]` macro emits `Validate` for both native and WASM builds so
+/// clients can run the same field checks before submission, with the server
+/// re-running them on receipt.
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
@@ -33,12 +33,11 @@ pub struct LoginRequest {
 /// fields travel in the clear over HTTPS just like the login form and are
 /// never persisted — only the Argon2 hash of `password` is stored.
 ///
-/// Validation gating is handled by `#[dto]` (same rationale as on
-/// [`LoginRequest`]). Field-level rules (length / non-empty) run through
-/// `request.validate()`; the password-confirmation equality check is
-/// expressed as a dedicated [`RegisterRequest::validate_passwords_match`]
-/// helper because the validator crate's `must_match` is brittle across
-/// versions (mirroring the pattern used across the tutorial examples).
+/// Validation wiring is handled by `#[dto]`. Field-level rules (length /
+/// non-empty) run on the client and server, while the password-confirmation
+/// equality check remains a dedicated
+/// [`RegisterRequest::validate_passwords_match`] helper for server-side
+/// business validation.
 #[dto]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterRequest {

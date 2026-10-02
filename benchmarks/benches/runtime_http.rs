@@ -1,5 +1,4 @@
 use actix_web::{App, HttpResponse, HttpServer as ActixHttpServer, web};
-use async_trait::async_trait;
 use axum::{
 	Json as AxumJson, Router as AxumRouter,
 	extract::{Path as AxumPath, Query as AxumQuery, State as AxumState},
@@ -17,8 +16,8 @@ use loco_rs::{
 };
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{
-	Handler as ReinhardtHandler, Request as ReinhardtRequest, Response as ReinhardtResponse,
-	Result as ReinhardtResult,
+	Request as ReinhardtRequest, Response as ReinhardtResponse, Result as ReinhardtResult,
+	RequestlessSyncHandler as ReinhardtRequestlessSyncHandler, SyncHandler as ReinhardtSyncHandler,
 };
 use reinhardt_server::server::HttpServer as ReinhardtHttpServer;
 use reinhardt_urls::routers::ServerRouter;
@@ -61,6 +60,13 @@ struct PathPayload {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct SearchQuery {
 	q: String,
+	page: u32,
+	limit: u32,
+}
+
+#[derive(Debug, Serialize)]
+struct ReinhardtSearchQuery<'a> {
+	q: &'a str,
 	page: u32,
 	limit: u32,
 }
@@ -119,10 +125,9 @@ impl EndpointInfo for ReinhardtHello {
 	}
 }
 
-#[async_trait]
-impl ReinhardtHandler for ReinhardtHello {
-	async fn handle(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
-		Ok(ReinhardtResponse::ok().with_body("hello"))
+impl ReinhardtRequestlessSyncHandler for ReinhardtHello {
+	fn handle_requestless_sync(&self) -> ReinhardtResult<ReinhardtResponse> {
+		Ok(ReinhardtResponse::ok().with_static_body(b"hello"))
 	}
 }
 
@@ -142,9 +147,8 @@ impl EndpointInfo for ReinhardtEcho {
 	}
 }
 
-#[async_trait]
-impl ReinhardtHandler for ReinhardtEcho {
-	async fn handle(&self, req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+impl ReinhardtSyncHandler for ReinhardtEcho {
+	fn handle_sync(&self, req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
 		let payload: EchoPayload = req.json()?;
 		ReinhardtResponse::ok().with_json(&payload)
 	}
@@ -166,9 +170,8 @@ impl EndpointInfo for ReinhardtPath {
 	}
 }
 
-#[async_trait]
-impl ReinhardtHandler for ReinhardtPath {
-	async fn handle(&self, req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+impl ReinhardtSyncHandler for ReinhardtPath {
+	fn handle_sync(&self, req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
 		let id = req
 			.path_params
 			.get("id")
@@ -199,13 +202,11 @@ impl EndpointInfo for ReinhardtQuery {
 	}
 }
 
-#[async_trait]
-impl ReinhardtHandler for ReinhardtQuery {
-	async fn handle(&self, req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+impl ReinhardtSyncHandler for ReinhardtQuery {
+	fn handle_sync(&self, req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
 		let q = req
 			.query_params
 			.get("q")
-			.cloned()
 			.expect("q query parameter should exist");
 		let page = req
 			.query_params
@@ -217,7 +218,7 @@ impl ReinhardtHandler for ReinhardtQuery {
 			.get("limit")
 			.and_then(|value| value.parse::<u32>().ok())
 			.expect("limit query parameter should parse");
-		ReinhardtResponse::ok().with_json(&SearchQuery { q, page, limit })
+		ReinhardtResponse::ok().with_json(&ReinhardtSearchQuery { q, page, limit })
 	}
 }
 
@@ -237,9 +238,8 @@ impl EndpointInfo for ReinhardtMiddleware {
 	}
 }
 
-#[async_trait]
-impl ReinhardtHandler for ReinhardtMiddleware {
-	async fn handle(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+impl ReinhardtRequestlessSyncHandler for ReinhardtMiddleware {
+	fn handle_requestless_sync(&self) -> ReinhardtResult<ReinhardtResponse> {
 		ReinhardtResponse::ok().with_json(&middleware_payload())
 	}
 }
@@ -260,9 +260,8 @@ impl EndpointInfo for ReinhardtDependency {
 	}
 }
 
-#[async_trait]
-impl ReinhardtHandler for ReinhardtDependency {
-	async fn handle(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+impl ReinhardtRequestlessSyncHandler for ReinhardtDependency {
+	fn handle_requestless_sync(&self) -> ReinhardtResult<ReinhardtResponse> {
 		ReinhardtResponse::ok().with_json(&dependency_payload(&RuntimeState {
 			base: 42,
 			tenant_offset: 7,
@@ -287,22 +286,21 @@ impl EndpointInfo for ReinhardtSettings {
 	}
 }
 
-#[async_trait]
-impl ReinhardtHandler for ReinhardtSettings {
-	async fn handle(&self, _req: ReinhardtRequest) -> ReinhardtResult<ReinhardtResponse> {
+impl ReinhardtRequestlessSyncHandler for ReinhardtSettings {
+	fn handle_requestless_sync(&self) -> ReinhardtResult<ReinhardtResponse> {
 		ReinhardtResponse::ok().with_json(&settings_payload())
 	}
 }
 
 fn reinhardt_router() -> ServerRouter {
 	ServerRouter::new()
-		.endpoint(|| ReinhardtHello)
-		.endpoint(|| ReinhardtEcho)
-		.endpoint(|| ReinhardtPath)
-		.endpoint(|| ReinhardtQuery)
-		.endpoint(|| ReinhardtMiddleware)
-		.endpoint(|| ReinhardtDependency)
-		.endpoint(|| ReinhardtSettings)
+		.endpoint_requestless_sync(|| ReinhardtHello)
+		.endpoint_sync(|| ReinhardtEcho)
+		.endpoint_sync(|| ReinhardtPath)
+		.endpoint_sync(|| ReinhardtQuery)
+		.endpoint_requestless_sync(|| ReinhardtMiddleware)
+		.endpoint_requestless_sync(|| ReinhardtDependency)
+		.endpoint_requestless_sync(|| ReinhardtSettings)
 }
 
 async fn axum_hello() -> &'static str {
@@ -554,7 +552,7 @@ async fn spawn_reinhardt_server(client: &Client) -> LoopbackServer {
 	let addr = listener
 		.local_addr()
 		.expect("Reinhardt listener should expose local address");
-	let handler: Arc<dyn ReinhardtHandler> = Arc::new(reinhardt_router());
+	let router = Arc::new(reinhardt_router());
 	let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
 
 	let join_handle = tokio::spawn(async move {
@@ -564,20 +562,34 @@ async fn spawn_reinhardt_server(client: &Client) -> LoopbackServer {
 				result = listener.accept() => {
 					match result {
 						Ok((stream, socket_addr)) => {
-							let handler = handler.clone();
-								tokio::spawn(async move {
-									if let Err(err) =
-										ReinhardtHttpServer::handle_connection(stream, socket_addr, handler, None).await
-									{
-										eprintln!("Reinhardt benchmark connection failed: {}", err);
-									}
-								});
-							}
-							Err(err) => {
-								eprintln!("Reinhardt benchmark accept failed: {}", err);
-								break;
-							}
+							let router = router.clone();
+							tokio::spawn(async move {
+								let precheck_router = router.clone();
+								if let Err(err) = ReinhardtHttpServer::handle_connection_sync_with_precheck(
+									stream,
+									socket_addr,
+									move |method, uri, _headers| {
+										precheck_router
+											.try_dispatch_requestless_sync(uri.path(), method)
+									},
+									move |request| {
+										router
+											.try_dispatch_sync(request)
+											.expect("runtime benchmark routes should be synchronous")
+									},
+									None,
+								)
+								.await
+								{
+									eprintln!("Reinhardt benchmark connection failed: {}", err);
+								}
+							});
 						}
+						Err(err) => {
+							eprintln!("Reinhardt benchmark accept failed: {}", err);
+							break;
+						}
+					}
 				}
 			}
 		}

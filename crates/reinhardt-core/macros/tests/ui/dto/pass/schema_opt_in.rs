@@ -1,9 +1,17 @@
-//! Verifies that `#[dto(schema)]` is accepted and remains inert on non-native
-//! builds, where the OpenAPI feature graph is intentionally unavailable.
+//! Verifies that `#[dto(schema)]` keeps shared validation active while its
+//! OpenAPI output remains inert on non-native builds.
 
 // This standalone trybuild fixture intentionally exercises macro-generated
 // `cfg(native)` without the facade build script's `check-cfg` declaration.
 #![allow(unexpected_cfgs)]
+
+extern crate self as reinhardt_core;
+
+#[path = "../support.rs"]
+mod support;
+
+pub use reinhardt_macros::Validate;
+pub use support::validators;
 
 use reinhardt_macros::dto;
 
@@ -17,8 +25,9 @@ pub struct LoginRequest {
 }
 
 fn main() {
-	let _ = LoginRequest {
+	let value = LoginRequest {
 		email: String::from("user@example.com"),
 		password: String::from("password"),
 	};
+	assert!(reinhardt_core::validators::Validate::validate(&value).is_ok());
 }

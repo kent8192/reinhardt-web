@@ -41,6 +41,7 @@ env:
   CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  SCCACHE_CACHE_SIZE: 4G
   RUST_MIN_STACK: 8388608  # 8MB - prevent stack overflow in deep async fixture chains
 
 jobs:
@@ -61,7 +62,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false
           docker-images: true
           swap-storage: true
 
@@ -118,10 +119,20 @@ jobs:
       # (runserver_hot_reload.rs::detect_wasm_bindgen_cli_version) which
       # shell out to `wasm-bindgen --version` to pin the fixture's
       # wasm-bindgen dep to the installed CLI version. Tracked in #4180.
+      #
+      # Build from source instead of using the prebuilt release artifact:
+      # the latter requires GLIBC_2.38+ and cannot start on the Ubuntu 22.04
+      # ARM self-hosted runners. A job-local root also prevents stale runner
+      # state from masking an incompatible CLI. See #5644.
       - name: Install wasm-bindgen-cli
-        uses: taiki-e/install-action@v2
-        with:
-          tool: wasm-bindgen-cli
+        run: |
+          install_root="$RUNNER_TEMP/wasm-bindgen-cli"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/wasm-bindgen-cli-target" \
+            cargo install --locked --root "$install_root" wasm-bindgen-cli
+          export PATH="$install_root/bin:$PATH"
+          echo "$install_root/bin" >> "$GITHUB_PATH"
+          wasm-bindgen --version
+          wasm-bindgen-test-runner -V
 
       # wasm32-unknown-unknown supports Pages and command fixtures;
       # wasm32-wasip1 supports the Dentdelion Component fixture. Tracked in #5933.
@@ -140,7 +151,8 @@ jobs:
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
           #!/bin/sh
-          exec clang -fuse-ld=mold "$@"
+          # rustc may append -fuse-ld=lld for host links; keep mold last.
+          exec clang "$@" -fuse-ld=mold
           WRAPPER
           chmod +x /tmp/clang-mold-wrapper
           ARCH=$(uname -m)
@@ -179,6 +191,13 @@ jobs:
           rm -rf ~/.cargo/git/db || true
           echo "Disk usage after additional cleanup:"
           df -h
+
+      # Offline target-parity fixtures need WASM-only dependencies that a native
+      # test build does not download. Fetch after cleanup removes registry caches.
+      # Cargo.lock is intentionally untracked for this library workspace, so
+      # allow Cargo to generate it on a clean checkout instead of using --locked.
+      - name: Fetch WASM fixture dependencies
+        run: cargo fetch --target wasm32-unknown-unknown
 
       - name: Run intra-crate integration tests (partition ${{ matrix.partition }}/${{ inputs.partition-count || '5' }})
         env:

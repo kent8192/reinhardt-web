@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { registerSignalCleanup } from "./signal-cleanup.js";
 
 export interface SourceSnapshot {
   file: string;
@@ -16,6 +17,11 @@ export function snapshotSource(root: string, sourcePatchFile: string): SourceSna
 
 export function restoreSource(snapshot: SourceSnapshot): void {
   fs.writeFileSync(snapshot.file, snapshot.contents);
+}
+
+export function installSourceSignalCleanup(snapshot: SourceSnapshot): () => void {
+  const cleanup = () => restoreSource(snapshot);
+  return registerSignalCleanup(cleanup);
 }
 
 export function patchSource(root: string, sourcePatchFile: string): string {

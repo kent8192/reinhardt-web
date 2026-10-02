@@ -7,6 +7,7 @@ fn main() {
 		div {
 			input {
 				r#type: "text",
+				aria_label: "Required input",
 				required: true,
 			}
 			button {
@@ -14,6 +15,7 @@ fn main() {
 				"Submit"
 			}
 			select {
+				aria_label: "Options",
 				multiple: true,
 				option { "A" }
 				option { "B" }

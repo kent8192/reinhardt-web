@@ -23,8 +23,90 @@ Reinhardt's `#[model(...)]` attribute macro automatically applies
 through field-level attributes. Currently, **49 attributes** are supported (20
 existing + 22 newly implemented + 7 additional implemented attributes).
 
+Every model requires an explicit `app_label`. The model-level `table_name` is
+optional and defaults to the app label plus the struct name in snake_case
+without pluralization; for example, `#[model(app_label = "routing")] struct
+HTTPRoute` maps to `routing_http_route`. Keep an explicit `table_name` when the
+model targets an existing table.
+
 **Note:** When using `#[model(...)]`, you don't need to explicitly add
 `#[derive(Model)]`.
+
+## Native Model Enum Fields
+
+An enum used as a model field derives `ModelEnum`. The enum-level attribute
+selects its physical database representation, and every unit variant declares
+an explicit persistent value:
+
+```rust
+use reinhardt::ModelEnum;
+use reinhardt::core::serde::{Deserialize, Serialize};
+
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "string")]
+enum Status {
+	#[model_enum(value = "queued")]
+	Queued,
+	#[model_enum(value = "in_progress")]
+	Running,
+}
+
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "i32")]
+enum Priority {
+	#[model_enum(value = 10)]
+	Low,
+	#[model_enum(value = 20)]
+	High,
+}
+```
+
+Use the enum directly for a required field or wrap it in `Option` for a
+nullable field. A string representation still uses the normal string field
+attributes, including a `max_length` large enough for the longest declared
+database value:
+
+```rust
+#[model(app_label = "jobs", table_name = "jobs")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Job {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(max_length = 32)]
+	status: Status,
+	priority: Priority,
+	#[field(max_length = 32, null = true)]
+	fallback_status: Option<Status>,
+}
+```
+
+Generated migrations create character storage for `repr = "string"`, integer
+storage for `repr = "i32"`, and a named check constraint that lists every
+declared value. Nullable enum checks continue to allow SQL `NULL`.
+
+The generated field references preserve the enum type for queries and partial
+updates:
+
+```rust,ignore
+Job::objects()
+	.filter(Job::field_status().eq(Status::Queued))
+	.filter(Job::field_priority().is_in([Priority::Low, Priority::High]))
+	.update_fields([
+		Job::field_status().assign(Status::Running),
+		Job::field_fallback_status().assign(Some(Status::Queued)),
+	])
+	.await?;
+```
+
+A raw database scalar is intentionally not accepted. For example,
+`Job::field_status().eq("queued")` does not compile because `&str` is not a
+field value for `Status`. Unknown values already present in the database fail
+model hydration with the model, Rust field, and resolved column in the error.
+
+Rust variant names, serde names, and database values are independent
+contracts. `Running`, `#[serde(rename = "RUNNING")]`, and
+`#[model_enum(value = "in_progress")]` may intentionally differ; changing one
+does not implicitly change either of the others.
 
 ## Attribute Classification
 
@@ -818,7 +900,7 @@ Creates a SQLite STRICT table.
 
 ```rust
 #[cfg(feature = "db-sqlite")]
-#[model(table_name = "users", strict = true)]
+#[model(app_label = "accounts", table_name = "users", strict = true)]
 struct User {
 	// ...
 }
@@ -836,7 +918,7 @@ Creates a SQLite WITHOUT ROWID table.
 
 ```rust
 #[cfg(feature = "db-sqlite")]
-#[model(table_name = "cache", without_rowid = true)]
+#[model(app_label = "cache", table_name = "cache", without_rowid = true)]
 struct CacheEntry {
 	#[field(primary_key = true)]
 	key: String,
@@ -876,7 +958,7 @@ Available feature flags:
 use reinhardt::db::orm::prelude::*;
 use chrono::NaiveDateTime;
 
-#[model(table_name = "articles")]
+#[model(app_label = "publishing", table_name = "articles")]
 #[cfg_attr(feature = "db-sqlite", model(strict = true))]
 struct Article {
 	// PostgreSQL: IDENTITY BY DEFAULT

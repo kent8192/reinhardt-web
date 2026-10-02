@@ -46,7 +46,8 @@
 
 use subtle::ConstantTimeEq;
 
-use crate::reactive::Signal;
+use crate::reactive::{ReactiveScope, Signal};
+use std::rc::Rc;
 
 /// The cookie name used by Django for CSRF tokens.
 pub const CSRF_COOKIE_NAME: &str = "csrftoken";
@@ -64,10 +65,40 @@ pub const CSRF_FORM_FIELD: &str = "csrfmiddlewaretoken";
 ///
 /// This struct provides a reactive interface to CSRF token management,
 /// with automatic caching and multiple retrieval strategies.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CsrfManager {
+	/// Retains the scope for managers constructed outside a page render.
+	_scope: Option<Rc<ReactiveScope>>,
 	/// Cached CSRF token as a reactive Signal.
 	token: Signal<Option<String>>,
+}
+
+/// A CSRF token signal that keeps its manager's reactive scope alive.
+#[derive(Clone)]
+pub struct CsrfTokenSignal {
+	manager: CsrfManager,
+}
+
+impl std::ops::Deref for CsrfTokenSignal {
+	type Target = Signal<Option<String>>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.manager.token
+	}
+}
+
+impl reinhardt_core::reactive::Trackable for CsrfTokenSignal {
+	fn node_id(&self) -> reinhardt_core::reactive::NodeId {
+		self.manager.token.id()
+	}
+}
+
+impl std::fmt::Debug for CsrfManager {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("CsrfManager")
+			.field("token", &self.token)
+			.finish()
+	}
 }
 
 impl Default for CsrfManager {
@@ -81,7 +112,17 @@ impl CsrfManager {
 	///
 	/// The token is not fetched until explicitly requested.
 	pub fn new() -> Self {
+		if reinhardt_core::reactive::scope::current_scope_id().is_some() {
+			return Self::from_scope(None);
+		}
+
+		let scope = Rc::new(ReactiveScope::new());
+		scope.enter(|| Self::from_scope(Some(Rc::clone(&scope))))
+	}
+
+	fn from_scope(scope: Option<Rc<ReactiveScope>>) -> Self {
 		Self {
+			_scope: scope,
 			token: Signal::new(None),
 		}
 	}
@@ -152,8 +193,10 @@ impl CsrfManager {
 	/// Returns a Signal that tracks the current token.
 	///
 	/// This can be used for reactive UI updates when the token changes.
-	pub fn token_signal(&self) -> Signal<Option<String>> {
-		self.token.clone()
+	pub fn token_signal(&self) -> CsrfTokenSignal {
+		CsrfTokenSignal {
+			manager: self.clone(),
+		}
 	}
 }
 
@@ -465,29 +508,55 @@ mod tests {
 
 	#[test]
 	fn test_csrf_manager_creation() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let manager = CsrfManager::new();
+			assert!(manager.cached_token().is_none());
+		});
+	}
+
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn csrf_manager_created_outside_scope_retains_its_token_state() {
 		let manager = CsrfManager::new();
-		assert!(manager.cached_token().is_none());
+
+		manager.set_token("retained-token");
+
+		assert_eq!(manager.cached_token(), Some("retained-token".to_string()));
+	}
+
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn token_signal_retains_a_manager_created_outside_a_scope() {
+		let token = CsrfManager::new().token_signal();
+
+		assert_eq!(token.get(), None);
 	}
 
 	#[test]
 	fn test_csrf_manager_set_token() {
-		let manager = CsrfManager::new();
-		manager.set_token("test-token");
-		assert_eq!(manager.cached_token(), Some("test-token".to_string()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let manager = CsrfManager::new();
+			manager.set_token("test-token");
+			assert_eq!(manager.cached_token(), Some("test-token".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_csrf_manager_clear() {
-		let manager = CsrfManager::new();
-		manager.set_token("test-token");
-		manager.clear();
-		assert!(manager.cached_token().is_none());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let manager = CsrfManager::new();
+			manager.set_token("test-token");
+			manager.clear();
+			assert!(manager.cached_token().is_none());
+		});
 	}
 
 	#[test]
 	fn test_csrf_manager_default() {
-		let manager = CsrfManager::default();
-		assert!(manager.cached_token().is_none());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let manager = CsrfManager::default();
+			assert!(manager.cached_token().is_none());
+		});
 	}
 
 	#[test]

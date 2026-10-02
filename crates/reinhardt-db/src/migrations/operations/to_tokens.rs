@@ -3,11 +3,43 @@ use super::{
 	PartitionType, PartitionValues,
 };
 use crate::migrations::{
-	ColumnDefinition, Constraint, DeferrableOption, FieldType, ForeignKeyAction, IndexType,
-	Operation,
+	ColumnDefinition, Constraint, DeferrableOption, FieldType, ForeignKeyAction,
+	GeneratedColumnDefinition, IndexType, Operation,
 };
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::{ToTokens, format_ident, quote};
+use reinhardt_query::prelude::{
+	ColumnType as QueryColumnType, GeneratedStorage, SchemaBinOper, SchemaExpr, SchemaFunc, Value,
+};
+
+impl ToTokens for crate::field_domain::FieldDomain {
+	fn to_tokens(&self, tokens: &mut TokenStream) {
+		match self {
+			Self::Enum { repr, values } => {
+				let repr = match repr {
+					crate::field_domain::ModelEnumRepr::String => {
+						quote! { ModelEnumRepr::String }
+					}
+					crate::field_domain::ModelEnumRepr::I32 => quote! { ModelEnumRepr::I32 },
+				};
+				let values = values.iter().map(|value| match value {
+					crate::field_domain::ModelEnumValue::String(value) => {
+						quote! { ModelEnumValue::String(#value.to_string()) }
+					}
+					crate::field_domain::ModelEnumValue::I32(value) => {
+						quote! { ModelEnumValue::I32(#value) }
+					}
+				});
+				tokens.extend(quote! {
+					FieldDomain::Enum {
+						repr: #repr,
+						values: vec![#(#values),*],
+					}
+				});
+			}
+		}
+	}
+}
 
 /// Helper function to convert FieldType to TokenStream (for recursive Array handling)
 fn field_type_to_tokens(field_type: &FieldType) -> TokenStream {
@@ -54,7 +86,7 @@ fn field_type_to_tokens(field_type: &FieldType) -> TokenStream {
 
 		// JSON types
 		FieldType::Json => quote! { FieldType::Json },
-		FieldType::JsonBinary => quote! { FieldType::JsonBinary },
+		FieldType::Jsonb => quote! { FieldType::Jsonb },
 
 		// PostgreSQL-specific types
 		FieldType::Array(inner) => {
@@ -71,6 +103,10 @@ fn field_type_to_tokens(field_type: &FieldType) -> TokenStream {
 		FieldType::TsTzRange => quote! { FieldType::TsTzRange },
 		FieldType::TsVector => quote! { FieldType::TsVector },
 		FieldType::TsQuery => quote! { FieldType::TsQuery },
+		#[cfg(feature = "pgvector")]
+		FieldType::Vector { dimensions } => {
+			quote! { FieldType::Vector { dimensions: #dimensions } }
+		}
 
 		// UUID and Year
 		FieldType::Uuid => quote! { FieldType::Uuid },
@@ -170,20 +206,12 @@ impl ToTokens for MySqlLock {
 
 impl ToTokens for AlterTableOptions {
 	fn to_tokens(&self, tokens: &mut TokenStream) {
-		let algorithm_token = match &self.algorithm {
-			Some(algo) => quote! { Some(#algo) },
-			None => quote! { None },
-		};
-		let lock_token = match &self.lock {
-			Some(lock) => quote! { Some(#lock) },
-			None => quote! { None },
-		};
-		tokens.extend(quote! {
-			AlterTableOptions {
-				algorithm: #algorithm_token,
-				lock: #lock_token,
-			}
-		});
+		let algorithm_token = self
+			.algorithm
+			.as_ref()
+			.map(|algorithm| quote! { .with_algorithm(#algorithm) });
+		let lock_token = self.lock.as_ref().map(|lock| quote! { .with_lock(#lock) });
+		tokens.extend(quote! { AlterTableOptions::new() #algorithm_token #lock_token });
 	}
 }
 
@@ -231,10 +259,7 @@ impl ToTokens for PartitionDef {
 		let name = &self.name;
 		let values = &self.values;
 		tokens.extend(quote! {
-			PartitionDef {
-				name: #name.to_string(),
-				values: #values,
-			}
+			PartitionDef::new(#name, #values)
 		});
 	}
 }
@@ -245,11 +270,7 @@ impl ToTokens for PartitionOptions {
 		let column = &self.column;
 		let partitions = &self.partitions;
 		tokens.extend(quote! {
-			PartitionOptions {
-				partition_type: #partition_type,
-				column: #column.to_string(),
-				partitions: vec![#(#partitions),*],
-			}
+			PartitionOptions::new(#partition_type, #column, vec![#(#partitions),*])
 		});
 	}
 }
@@ -259,10 +280,7 @@ impl ToTokens for InterleaveSpec {
 		let parent_table = &self.parent_table;
 		let parent_columns = &self.parent_columns;
 		tokens.extend(quote! {
-			InterleaveSpec {
-				parent_table: #parent_table.to_string(),
-				parent_columns: vec![#(#parent_columns.to_string()),*],
-			}
+			InterleaveSpec::new(#parent_table, vec![#(#parent_columns.to_string()),*])
 		});
 	}
 }
@@ -320,6 +338,19 @@ impl ToTokens for Constraint {
 					Constraint::Check {
 						name: #name.to_string(),
 						expression: #expression.to_string(),
+					}
+				});
+			}
+			Constraint::EnumDomain {
+				name,
+				column,
+				domain,
+			} => {
+				tokens.extend(quote! {
+					Constraint::EnumDomain {
+						name: #name.to_string(),
+						column: #column.to_string(),
+						domain: #domain,
 					}
 				});
 			}
@@ -437,11 +468,20 @@ impl ToTokens for Operation {
 					}
 				});
 			}
-			Operation::DropColumn { table, column } => {
+			Operation::DropColumn {
+				table,
+				column,
+				old_definition,
+			} => {
+				let old_def_token = match old_definition {
+					Some(def) => quote! { Some(#def) },
+					None => quote! { None },
+				};
 				tokens.extend(quote! {
 					Operation::DropColumn {
 						table: #table.to_string(),
 						column: #column.to_string(),
+						old_definition: #old_def_token,
 					}
 				});
 			}
@@ -496,7 +536,37 @@ impl ToTokens for Operation {
 				constraint_sql,
 			} => {
 				tokens.extend(quote! {
-					Operation::AddConstraint {
+				Operation::AddConstraint {
+					table: #table.to_string(),
+					constraint_sql: #constraint_sql.to_string(),
+					}
+				});
+			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				tokens.extend(quote! {
+					Operation::AddConstraintDefinition {
+						table: #table.to_string(),
+						constraint: #constraint,
+					}
+				});
+			}
+			Operation::AddConstraintRepair {
+				table,
+				constraint_sql,
+			} => {
+				tokens.extend(quote! {
+					Operation::AddConstraintRepair {
+						table: #table.to_string(),
+						constraint_sql: #constraint_sql.to_string(),
+					}
+				});
+			}
+			Operation::RestoreConstraintOnRollback {
+				table,
+				constraint_sql,
+			} => {
+				tokens.extend(quote! {
+					Operation::RestoreConstraintOnRollback {
 						table: #table.to_string(),
 						constraint_sql: #constraint_sql.to_string(),
 					}
@@ -513,6 +583,14 @@ impl ToTokens for Operation {
 					}
 				});
 			}
+			Operation::DropConstraintDefinition { table, constraint } => {
+				tokens.extend(quote! {
+					Operation::DropConstraintDefinition {
+						table: #table.to_string(),
+						constraint: #constraint,
+					}
+				});
+			}
 			Operation::CreateIndex {
 				table,
 				columns,
@@ -523,8 +601,49 @@ impl ToTokens for Operation {
 				expressions,
 				mysql_options,
 				operator_class,
+			}
+			| Operation::CreateIndexRepair {
+				table,
+				name: _,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
+			}
+			| Operation::RestoreIndexOnRollback {
+				table,
+				name: _,
+				columns,
+				unique,
+				index_type,
+				where_clause,
+				concurrently,
+				expressions,
+				mysql_options,
+				operator_class,
 			} => {
+				let variant = match self {
+					Operation::CreateIndex { .. } => format_ident!("CreateIndex"),
+					Operation::CreateIndexRepair { .. } => format_ident!("CreateIndexRepair"),
+					Operation::RestoreIndexOnRollback { .. } => {
+						format_ident!("RestoreIndexOnRollback")
+					}
+					_ => unreachable!(),
+				};
 				let columns_iter = columns.iter();
+				let name_field = match self {
+					Operation::CreateIndex { .. } => quote! {},
+					Operation::CreateIndexRepair { name, .. }
+					| Operation::RestoreIndexOnRollback { name, .. } => match name {
+						Some(name) => quote! { name: Some(#name.to_string()), },
+						None => quote! { name: None, },
+					},
+					_ => unreachable!(),
+				};
 				let index_type_token = match index_type {
 					Some(it) => {
 						let variant = match it {
@@ -535,6 +654,22 @@ impl ToTokens for Operation {
 							IndexType::Brin => quote! { IndexType::Brin },
 							IndexType::Fulltext => quote! { IndexType::Fulltext },
 							IndexType::Spatial => quote! { IndexType::Spatial },
+							#[cfg(feature = "pgvector")]
+							IndexType::Hnsw { m, ef_construction } => {
+								let m = optional_u16_to_tokens(*m);
+								let ef_construction = optional_u16_to_tokens(*ef_construction);
+								quote! {
+									IndexType::Hnsw {
+										m: #m,
+										ef_construction: #ef_construction,
+									}
+								}
+							}
+							#[cfg(feature = "pgvector")]
+							IndexType::Ivfflat { lists } => {
+								let lists = optional_u32_to_tokens(*lists);
+								quote! { IndexType::Ivfflat { lists: #lists } }
+							}
 						};
 						quote! { Some(#variant) }
 					}
@@ -560,10 +695,11 @@ impl ToTokens for Operation {
 					None => quote! { None },
 				};
 				tokens.extend(quote! {
-					Operation::CreateIndex {
-						table: #table.to_string(),
-						columns: vec![#(#columns_iter.to_string()),*],
-						unique: #unique,
+						Operation::#variant {
+							table: #table.to_string(),
+							#name_field
+							columns: vec![#(#columns_iter.to_string()),*],
+							unique: #unique,
 						index_type: #index_type_token,
 						where_clause: #where_clause_token,
 						concurrently: #concurrently,
@@ -573,7 +709,8 @@ impl ToTokens for Operation {
 					}
 				});
 			}
-			Operation::CreateIndexRepair {
+			#[cfg(feature = "pgvector")]
+			Operation::CreateNamedIndex {
 				table,
 				name,
 				columns,
@@ -586,23 +723,28 @@ impl ToTokens for Operation {
 				operator_class,
 			} => {
 				let columns_iter = columns.iter();
-				let name_token = match name {
-					Some(value) => quote! { Some(#value.to_string()) },
-					None => quote! { None },
-				};
 				let index_type_token = match index_type {
-					Some(it) => {
-						let variant = match it {
-							IndexType::BTree => quote! { IndexType::BTree },
-							IndexType::Hash => quote! { IndexType::Hash },
-							IndexType::Gin => quote! { IndexType::Gin },
-							IndexType::Gist => quote! { IndexType::Gist },
-							IndexType::Brin => quote! { IndexType::Brin },
-							IndexType::Fulltext => quote! { IndexType::Fulltext },
-							IndexType::Spatial => quote! { IndexType::Spatial },
-						};
-						quote! { Some(#variant) }
+					Some(IndexType::Hnsw { m, ef_construction }) => {
+						let m = optional_u16_to_tokens(*m);
+						let ef_construction = optional_u16_to_tokens(*ef_construction);
+						quote! {
+							Some(IndexType::Hnsw {
+								m: #m,
+								ef_construction: #ef_construction,
+							})
+						}
 					}
+					Some(IndexType::Ivfflat { lists }) => {
+						let lists = optional_u32_to_tokens(*lists);
+						quote! { Some(IndexType::Ivfflat { lists: #lists }) }
+					}
+					Some(IndexType::BTree) => quote! { Some(IndexType::BTree) },
+					Some(IndexType::Hash) => quote! { Some(IndexType::Hash) },
+					Some(IndexType::Gin) => quote! { Some(IndexType::Gin) },
+					Some(IndexType::Gist) => quote! { Some(IndexType::Gist) },
+					Some(IndexType::Brin) => quote! { Some(IndexType::Brin) },
+					Some(IndexType::Fulltext) => quote! { Some(IndexType::Fulltext) },
+					Some(IndexType::Spatial) => quote! { Some(IndexType::Spatial) },
 					None => quote! { None },
 				};
 				let where_clause_token = match where_clause {
@@ -611,13 +753,13 @@ impl ToTokens for Operation {
 				};
 				let expressions_token = match expressions {
 					Some(values) => {
-						let values_iter = values.iter();
-						quote! { Some(vec![#(#values_iter.to_string()),*]) }
+						let values = values.iter();
+						quote! { Some(vec![#(#values.to_string()),*]) }
 					}
 					None => quote! { None },
 				};
 				let mysql_options_token = match mysql_options {
-					Some(options) => quote! { Some(#options) },
+					Some(value) => quote! { Some(#value) },
 					None => quote! { None },
 				};
 				let operator_class_token = match operator_class {
@@ -625,9 +767,9 @@ impl ToTokens for Operation {
 					None => quote! { None },
 				};
 				tokens.extend(quote! {
-					Operation::CreateIndexRepair {
+					Operation::CreateNamedIndex {
 						table: #table.to_string(),
-						name: #name_token,
+						name: #name.to_string(),
 						columns: vec![#(#columns_iter.to_string()),*],
 						unique: #unique,
 						index_type: #index_type_token,
@@ -662,18 +804,29 @@ impl ToTokens for Operation {
 			} => {
 				let columns_iter = columns.iter();
 				let index_type_token = match index_type {
-					Some(it) => {
-						let variant = match it {
-							IndexType::BTree => quote! { IndexType::BTree },
-							IndexType::Hash => quote! { IndexType::Hash },
-							IndexType::Gin => quote! { IndexType::Gin },
-							IndexType::Gist => quote! { IndexType::Gist },
-							IndexType::Brin => quote! { IndexType::Brin },
-							IndexType::Fulltext => quote! { IndexType::Fulltext },
-							IndexType::Spatial => quote! { IndexType::Spatial },
-						};
-						quote! { Some(#variant) }
+					#[cfg(feature = "pgvector")]
+					Some(IndexType::Hnsw { m, ef_construction }) => {
+						let m = optional_u16_to_tokens(*m);
+						let ef_construction = optional_u16_to_tokens(*ef_construction);
+						quote! {
+							Some(IndexType::Hnsw {
+								m: #m,
+								ef_construction: #ef_construction,
+							})
+						}
 					}
+					#[cfg(feature = "pgvector")]
+					Some(IndexType::Ivfflat { lists }) => {
+						let lists = optional_u32_to_tokens(*lists);
+						quote! { Some(IndexType::Ivfflat { lists: #lists }) }
+					}
+					Some(IndexType::BTree) => quote! { Some(IndexType::BTree) },
+					Some(IndexType::Hash) => quote! { Some(IndexType::Hash) },
+					Some(IndexType::Gin) => quote! { Some(IndexType::Gin) },
+					Some(IndexType::Gist) => quote! { Some(IndexType::Gist) },
+					Some(IndexType::Brin) => quote! { Some(IndexType::Brin) },
+					Some(IndexType::Fulltext) => quote! { Some(IndexType::Fulltext) },
+					Some(IndexType::Spatial) => quote! { Some(IndexType::Spatial) },
 					None => quote! { None },
 				};
 				let where_clause_token = match where_clause {
@@ -682,13 +835,13 @@ impl ToTokens for Operation {
 				};
 				let expressions_token = match expressions {
 					Some(values) => {
-						let values_iter = values.iter();
-						quote! { Some(vec![#(#values_iter.to_string()),*]) }
+						let values = values.iter();
+						quote! { Some(vec![#(#values.to_string()),*]) }
 					}
 					None => quote! { None },
 				};
 				let mysql_options_token = match mysql_options {
-					Some(options) => quote! { Some(#options) },
+					Some(value) => quote! { Some(#value) },
 					None => quote! { None },
 				};
 				let operator_class_token = match operator_class {
@@ -762,14 +915,17 @@ impl ToTokens for Operation {
 				});
 			}
 			Operation::AlterModelOptions { table, options } => {
-				let keys = options.keys();
-				let values = options.values();
+				let mut entries: Vec<_> = options.iter().collect();
+				entries.sort_unstable_by_key(|(key, _)| *key);
+				let entries = entries.iter().map(|(key, value)| {
+					quote! { map.insert(#key.to_string(), #value.to_string()); }
+				});
 				tokens.extend(quote! {
 					Operation::AlterModelOptions {
 						table: #table.to_string(),
 						options: {
 							let mut map = std::collections::HashMap::new();
-							#(map.insert(#keys.to_string(), #values.to_string());)*
+							#(#entries)*
 							map
 						},
 					}
@@ -938,17 +1094,16 @@ impl ToTokens for Operation {
 						table: #table.to_string(),
 						source: #source_tokens,
 						format: #format_tokens,
-						options: BulkLoadOptions {
-							delimiter: #delimiter_token,
-							null_string: #null_string_token,
-							header: #header,
-							columns: #columns_token,
-							local: #local,
-							quote: #quote_token,
-							escape: #escape_token,
-							line_terminator: #line_terminator_token,
-							encoding: #encoding_token,
-						},
+						options: BulkLoadOptions::new()
+							.with_delimiter_option(#delimiter_token)
+							.with_null_string_option(#null_string_token)
+							.with_header(#header)
+							.with_columns_option(#columns_token)
+							.with_local(#local)
+							.with_quote_option(#quote_token)
+							.with_escape_option(#escape_token)
+							.with_line_terminator_option(#line_terminator_token)
+							.with_encoding_option(#encoding_token),
 					}
 				});
 			}
@@ -999,6 +1154,14 @@ impl ToTokens for ColumnDefinition {
 			Some(s) => quote! { Some(#s.to_string()) },
 			None => quote! { None },
 		};
+		let generated_token = match &self.generated {
+			Some(generated) => quote! { Some(#generated) },
+			None => quote! { None },
+		};
+		let domain_token = match &self.domain {
+			Some(domain) => quote! { Some(#domain) },
+			None => quote! { None },
+		};
 
 		// Generate FieldType token based on the actual type
 		let field_type_token = match &self.type_definition {
@@ -1044,7 +1207,7 @@ impl ToTokens for ColumnDefinition {
 
 			// JSON types
 			FieldType::Json => quote! { FieldType::Json },
-			FieldType::JsonBinary => quote! { FieldType::JsonBinary },
+			FieldType::Jsonb => quote! { FieldType::Jsonb },
 
 			// PostgreSQL-specific types
 			FieldType::Array(inner) => {
@@ -1062,6 +1225,10 @@ impl ToTokens for ColumnDefinition {
 			FieldType::TsTzRange => quote! { FieldType::TsTzRange },
 			FieldType::TsVector => quote! { FieldType::TsVector },
 			FieldType::TsQuery => quote! { FieldType::TsQuery },
+			#[cfg(feature = "pgvector")]
+			FieldType::Vector { dimensions } => {
+				quote! { FieldType::Vector { dimensions: #dimensions } }
+			}
 
 			// UUID and Year
 			FieldType::Uuid => quote! { FieldType::Uuid },
@@ -1122,16 +1289,188 @@ impl ToTokens for ColumnDefinition {
 		};
 
 		tokens.extend(quote! {
-			ColumnDefinition {
-				name: #name.to_string(),
-				type_definition: #field_type_token,
-				not_null: #not_null,
-				unique: #unique,
-				primary_key: #primary_key,
-				auto_increment: #auto_increment,
-				default: #default_token,
-			}
+			ColumnDefinition::new(#name, #field_type_token)
+				.with_not_null(#not_null)
+				.with_unique(#unique)
+				.with_primary_key(#primary_key)
+				.with_auto_increment(#auto_increment)
+				.with_default(#default_token)
+				.with_generated(#generated_token)
+				.with_domain_option(#domain_token)
 		});
+	}
+}
+
+impl ToTokens for GeneratedColumnDefinition {
+	fn to_tokens(&self, tokens: &mut TokenStream) {
+		let storage_token = match self.storage {
+			GeneratedStorage::Stored => quote! { GeneratedStorage::Stored },
+			GeneratedStorage::Virtual => quote! { GeneratedStorage::Virtual },
+			_ => panic!("unsupported generated-column storage: {:?}", self.storage),
+		};
+
+		let canonical_expr = self.typed_expr();
+		let canonical_expr_tokens = canonical_expr.as_ref().map(schema_expr_to_tokens);
+		if let Some(expr_stream) = canonical_expr_tokens {
+			let expr_tokens = expr_stream.to_string();
+			tokens.extend(quote! {
+				GeneratedColumnDefinition::typed(
+					#expr_stream,
+					#expr_tokens,
+					#storage_token,
+				)
+			});
+		} else if let Some(raw_sql) = &self.raw_sql {
+			tokens.extend(quote! {
+				GeneratedColumnDefinition::raw_sql(#raw_sql, #storage_token)
+			});
+		} else if let Some(expr_tokens) = &self.expr_tokens {
+			tokens.extend(quote! {
+				GeneratedColumnDefinition::tokens(#expr_tokens, #storage_token)
+			});
+		} else {
+			panic!("generated-column definition has no expression or raw SQL");
+		}
+	}
+}
+
+fn schema_expr_to_tokens(expr: &SchemaExpr) -> TokenStream {
+	match expr {
+		SchemaExpr::Column(iden) => {
+			let name = iden.to_string();
+			quote! { SchemaExpr::col(#name) }
+		}
+		SchemaExpr::Value(value) => {
+			let value = schema_value_to_tokens(value);
+			quote! { SchemaExpr::val(#value) }
+		}
+		SchemaExpr::Binary { left, op, right } => {
+			let left = schema_expr_to_tokens(left);
+			let op = schema_bin_oper_to_tokens(*op);
+			let right = schema_expr_to_tokens(right);
+			quote! { #left.binary(#op, #right) }
+		}
+		SchemaExpr::Function { func, args } => {
+			let args = args.iter().map(schema_expr_to_tokens);
+			match func {
+				SchemaFunc::Concat => quote! { SchemaExpr::concat([#(#args),*]) },
+				SchemaFunc::Coalesce => quote! { SchemaExpr::coalesce([#(#args),*]) },
+				_ => panic!("unsupported generated-column schema function: {:?}", func),
+			}
+		}
+		SchemaExpr::Cast { expr, ty } => {
+			let expr = schema_expr_to_tokens(expr);
+			let ty = query_column_type_to_tokens(ty);
+			quote! { #expr.cast(#ty) }
+		}
+		_ => panic!("unsupported generated-column schema expression: {:?}", expr),
+	}
+}
+
+fn schema_bin_oper_to_tokens(op: SchemaBinOper) -> TokenStream {
+	match op {
+		SchemaBinOper::Add => quote! { SchemaBinOper::Add },
+		SchemaBinOper::Sub => quote! { SchemaBinOper::Sub },
+		SchemaBinOper::Mul => quote! { SchemaBinOper::Mul },
+		SchemaBinOper::Div => quote! { SchemaBinOper::Div },
+		_ => panic!("unsupported generated-column binary operator: {:?}", op),
+	}
+}
+
+fn schema_value_to_tokens(value: &Value) -> TokenStream {
+	match value {
+		Value::Bool(Some(value)) => quote! { #value },
+		Value::Bool(None) => quote! { Option::<bool>::None },
+		Value::TinyInt(Some(value)) => quote! { #value },
+		Value::TinyInt(None) => quote! { Option::<i8>::None },
+		Value::SmallInt(Some(value)) => quote! { #value },
+		Value::SmallInt(None) => quote! { Option::<i16>::None },
+		Value::Int(Some(value)) => quote! { #value },
+		Value::Int(None) => quote! { Option::<i32>::None },
+		Value::BigInt(Some(value)) => quote! { #value },
+		Value::BigInt(None) => quote! { Option::<i64>::None },
+		Value::TinyUnsigned(Some(value)) => quote! { #value },
+		Value::TinyUnsigned(None) => quote! { Option::<u8>::None },
+		Value::SmallUnsigned(Some(value)) => quote! { #value },
+		Value::SmallUnsigned(None) => quote! { Option::<u16>::None },
+		Value::Unsigned(Some(value)) => quote! { #value },
+		Value::Unsigned(None) => quote! { Option::<u32>::None },
+		Value::BigUnsigned(Some(value)) => quote! { #value },
+		Value::BigUnsigned(None) => quote! { Option::<u64>::None },
+		Value::Float(Some(value)) => quote! { #value },
+		Value::Float(None) => quote! { Option::<f32>::None },
+		Value::Double(Some(value)) => quote! { #value },
+		Value::Double(None) => quote! { Option::<f64>::None },
+		Value::Char(Some(value)) => quote! { #value },
+		Value::Char(None) => quote! { Option::<char>::None },
+		Value::String(Some(value)) => {
+			let value = value.as_str();
+			quote! { #value }
+		}
+		Value::String(None) => quote! { Option::<String>::None },
+		_ => panic!("unsupported generated-column literal value: {:?}", value),
+	}
+}
+
+fn query_column_type_to_tokens(ty: &QueryColumnType) -> TokenStream {
+	match ty {
+		QueryColumnType::Char(len) => {
+			let len = optional_u32_to_tokens(*len);
+			quote! { ColumnType::Char(#len) }
+		}
+		QueryColumnType::String(len) => {
+			let len = optional_u32_to_tokens(*len);
+			quote! { ColumnType::String(#len) }
+		}
+		QueryColumnType::Text => quote! { ColumnType::Text },
+		QueryColumnType::TinyInteger => quote! { ColumnType::TinyInteger },
+		QueryColumnType::SmallInteger => quote! { ColumnType::SmallInteger },
+		QueryColumnType::Integer => quote! { ColumnType::Integer },
+		QueryColumnType::BigInteger => quote! { ColumnType::BigInteger },
+		QueryColumnType::Float => quote! { ColumnType::Float },
+		QueryColumnType::Double => quote! { ColumnType::Double },
+		QueryColumnType::Decimal(Some((precision, scale))) => {
+			quote! { ColumnType::Decimal(Some((#precision, #scale))) }
+		}
+		QueryColumnType::Decimal(None) => quote! { ColumnType::Decimal(None) },
+		QueryColumnType::Boolean => quote! { ColumnType::Boolean },
+		QueryColumnType::Date => quote! { ColumnType::Date },
+		QueryColumnType::Time => quote! { ColumnType::Time },
+		QueryColumnType::DateTime => quote! { ColumnType::DateTime },
+		QueryColumnType::Timestamp => quote! { ColumnType::Timestamp },
+		QueryColumnType::TimestampWithTimeZone => quote! { ColumnType::TimestampWithTimeZone },
+		QueryColumnType::Binary(len) => {
+			let len = optional_u32_to_tokens(*len);
+			quote! { ColumnType::Binary(#len) }
+		}
+		QueryColumnType::VarBinary(len) => quote! { ColumnType::VarBinary(#len) },
+		QueryColumnType::Blob => quote! { ColumnType::Blob },
+		QueryColumnType::Uuid => quote! { ColumnType::Uuid },
+		QueryColumnType::Json => quote! { ColumnType::Json },
+		QueryColumnType::Jsonb => quote! { ColumnType::Jsonb },
+		QueryColumnType::Array(inner) => {
+			let inner = query_column_type_to_tokens(inner);
+			quote! { ColumnType::Array(Box::new(#inner)) }
+		}
+		#[cfg(feature = "pgvector")]
+		QueryColumnType::Vector(dimensions) => quote! { ColumnType::Vector(#dimensions) },
+		QueryColumnType::Custom(name) => quote! { ColumnType::Custom(#name.to_string()) },
+		_ => panic!("unsupported generated-column cast type: {:?}", ty),
+	}
+}
+
+fn optional_u32_to_tokens(value: Option<u32>) -> TokenStream {
+	match value {
+		Some(value) => quote! { Some(#value) },
+		None => quote! { None },
+	}
+}
+
+#[cfg(feature = "pgvector")]
+fn optional_u16_to_tokens(value: Option<u16>) -> TokenStream {
+	match value {
+		Some(value) => quote! { Some(#value) },
+		None => quote! { None },
 	}
 }
 
@@ -1205,17 +1544,16 @@ impl ToTokens for super::BulkLoadOptions {
 		};
 
 		tokens.extend(quote! {
-			BulkLoadOptions {
-				delimiter: #delimiter,
-				null_string: #null_string,
-				header: #header,
-				columns: #columns,
-				local: #local,
-				quote: #quote_char,
-				escape: #escape,
-				line_terminator: #line_terminator,
-				encoding: #encoding,
-			}
+			BulkLoadOptions::new()
+				.with_delimiter_option(#delimiter)
+				.with_null_string_option(#null_string)
+				.with_header(#header)
+				.with_columns_option(#columns)
+				.with_local(#local)
+				.with_quote_option(#quote_char)
+				.with_escape_option(#escape)
+				.with_line_terminator_option(#line_terminator)
+				.with_encoding_option(#encoding)
 		});
 	}
 }
@@ -1223,8 +1561,165 @@ impl ToTokens for super::BulkLoadOptions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use quote::ToTokens;
+	use rstest::rstest;
+
+	#[test]
+	fn drop_constraint_definition_tokens_preserve_typed_constraint() {
+		let operation = Operation::DropConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "jobs_status_check".to_string(),
+				column: "status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			},
+		};
+
+		let tokens = operation.to_token_stream().to_string();
+
+		assert!(tokens.contains("DropConstraintDefinition"), "{tokens}");
+		assert!(tokens.contains("Constraint :: EnumDomain"), "{tokens}");
+		assert!(tokens.contains("ModelEnumValue :: String"), "{tokens}");
+	}
+
+	#[test]
+	fn column_definition_tokens_preserve_model_enum_domain() {
+		let column = ColumnDefinition::new("job_status", FieldType::VarChar(32)).with_domain(
+			crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::String,
+				values: vec![
+					crate::field_domain::ModelEnumValue::String("queued".to_string()),
+					crate::field_domain::ModelEnumValue::String("running".to_string()),
+				],
+			},
+		);
+
+		let tokens = column.to_token_stream().to_string();
+
+		assert!(tokens.contains("with_domain_option (Some (FieldDomain :: Enum"));
+		assert!(tokens.contains("ModelEnumRepr :: String"));
+		assert!(tokens.contains("ModelEnumValue :: String (\"queued\" . to_string ())"));
+	}
+
+	#[test]
+	fn field_domain_tokens_preserve_i32_min() {
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::I32,
+			values: vec![crate::field_domain::ModelEnumValue::I32(i32::MIN)],
+		};
+
+		let tokens = domain.to_token_stream().to_string();
+
+		assert!(
+			tokens.contains("ModelEnumValue :: I32 (- 2147483648i32)"),
+			"tokens must preserve i32::MIN: {tokens}"
+		);
+	}
+
+	#[test]
+	fn generated_schema_expr_tokens_emit_option_cast_lengths() {
+		let expr = SchemaExpr::col("name").cast(QueryColumnType::String(Some(64)));
+		let tokens = schema_expr_to_tokens(&expr).to_string();
+
+		assert!(
+			tokens.contains("ColumnType :: String (Some (64u32))"),
+			"tokens must preserve optional cast length: {tokens}"
+		);
+		assert_eq!(
+			crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
+			Some(expr)
+		);
+	}
+
+	#[test]
+	fn generated_schema_expr_tokens_reparse_null_literals() {
+		let expressions = [
+			SchemaExpr::Value(Value::Bool(None)),
+			SchemaExpr::Value(Value::Int(None)),
+			SchemaExpr::Value(Value::Unsigned(None)),
+			SchemaExpr::Value(Value::Double(None)),
+			SchemaExpr::Value(Value::String(None)),
+		];
+
+		for expr in expressions {
+			let tokens = schema_expr_to_tokens(&expr).to_string();
+			assert_eq!(
+				crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
+				Some(expr),
+				"tokens must reparse: {tokens}"
+			);
+		}
+	}
+
+	#[test]
+	fn generated_schema_expr_tokens_reparse_suffixed_literals() {
+		let expressions = [
+			SchemaExpr::Value(Value::TinyInt(Some(1))),
+			SchemaExpr::Value(Value::SmallInt(Some(1))),
+			SchemaExpr::Value(Value::Unsigned(Some(1))),
+			SchemaExpr::Value(Value::BigUnsigned(Some(1))),
+			SchemaExpr::Value(Value::Float(Some(1.5))),
+			SchemaExpr::Value(Value::Double(Some(1.5))),
+		];
+
+		for expr in expressions {
+			let tokens = schema_expr_to_tokens(&expr).to_string();
+			assert_eq!(
+				crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
+				Some(expr),
+				"tokens must preserve suffixed literal types: {tokens}"
+			);
+		}
+	}
+
+	#[rstest]
+	#[case::i8(SchemaExpr::Value(Value::TinyInt(Some(i8::MIN))))]
+	#[case::i16(SchemaExpr::Value(Value::SmallInt(Some(i16::MIN))))]
+	#[case::i32(SchemaExpr::Value(Value::Int(Some(i32::MIN))))]
+	#[case::i64(SchemaExpr::Value(Value::BigInt(Some(i64::MIN))))]
+	fn generated_schema_expr_tokens_reparse_minimum_signed_literals(
+		#[case] expression: SchemaExpr,
+	) {
+		let tokens = schema_expr_to_tokens(&expression).to_string();
+
+		assert_eq!(
+			crate::migrations::ast_parser::parse_schema_expr_tokens(&tokens),
+			Some(expression),
+			"tokens must preserve minimum signed literal: {tokens}"
+		);
+	}
+
+	#[test]
+	fn alter_model_options_tokens_are_order_independent() {
+		let mut first_options = std::collections::HashMap::new();
+		first_options.insert("managed".to_string(), "true".to_string());
+		first_options.insert("verbose_name".to_string(), "Job".to_string());
+		let mut second_options = std::collections::HashMap::new();
+		second_options.insert("verbose_name".to_string(), "Job".to_string());
+		second_options.insert("managed".to_string(), "true".to_string());
+
+		let first = Operation::AlterModelOptions {
+			table: "jobs".to_string(),
+			options: first_options,
+		};
+		let second = Operation::AlterModelOptions {
+			table: "jobs".to_string(),
+			options: second_options,
+		};
+
+		assert_eq!(
+			first.to_token_stream().to_string(),
+			second.to_token_stream().to_string()
+		);
+	}
+
 	use crate::migrations::{BulkLoadFormat, BulkLoadOptions, BulkLoadSource};
-	use quote::{ToTokens, quote};
+	use quote::quote;
 	use std::collections::HashMap;
 
 	fn normalized_tokens<T: ToTokens>(value: &T) -> String {
@@ -1359,21 +1854,16 @@ mod tests {
 	#[test]
 	fn table_options_and_partition_specs_preserve_nested_values() {
 		let option_cases = [
-			(
-				AlterTableOptions::new(),
-				quote!(AlterTableOptions {
-					algorithm: None,
-					lock: None,
-				}),
-			),
+			(AlterTableOptions::new(), quote!(AlterTableOptions::new())),
 			(
 				AlterTableOptions::new()
 					.with_algorithm(MySqlAlgorithm::Inplace)
 					.with_lock(MySqlLock::Shared),
-				quote!(AlterTableOptions {
-					algorithm: Some(MySqlAlgorithm::Inplace),
-					lock: Some(MySqlLock::Shared),
-				}),
+				quote!(
+					AlterTableOptions::new()
+						.with_algorithm(MySqlAlgorithm::Inplace)
+						.with_lock(MySqlLock::Shared)
+				),
 			),
 		];
 
@@ -1394,32 +1884,27 @@ mod tests {
 		);
 		assert_tokens(
 			&partition,
-			quote!(PartitionOptions {
-				partition_type: PartitionType::Range,
-				column: "id".to_string(),
-				partitions: vec![
-					PartitionDef {
-						name: "before_100".to_string(),
-						values: PartitionValues::LessThan("100".to_string()),
-					},
-					PartitionDef {
-						name: "after_100".to_string(),
-						values: PartitionValues::LessThan("MAXVALUE".to_string()),
-					}
-				],
-			}),
+			quote!(PartitionOptions::new(
+				PartitionType::Range,
+				"id",
+				vec![
+					PartitionDef::new("before_100", PartitionValues::LessThan("100".to_string())),
+					PartitionDef::new(
+						"after_100",
+						PartitionValues::LessThan("MAXVALUE".to_string())
+					)
+				]
+			)),
 		);
 
-		let interleave = InterleaveSpec {
-			parent_table: "accounts".to_string(),
-			parent_columns: vec!["tenant_id".to_string(), "id".to_string()],
-		};
+		let interleave =
+			InterleaveSpec::new("accounts", vec!["tenant_id".to_string(), "id".to_string()]);
 		assert_tokens(
 			&interleave,
-			quote!(InterleaveSpec {
-				parent_table: "accounts".to_string(),
-				parent_columns: vec!["tenant_id".to_string(), "id".to_string()],
-			}),
+			quote!(InterleaveSpec::new(
+				"accounts",
+				vec!["tenant_id".to_string(), "id".to_string()]
+			)),
 		);
 	}
 
@@ -1430,15 +1915,14 @@ mod tests {
 		let value = column("value", field_type);
 		assert_tokens(
 			&value,
-			quote!(ColumnDefinition {
-				name: "value".to_string(),
-				type_definition: #expected_field_type,
-				not_null: false,
-				unique: false,
-				primary_key: false,
-				auto_increment: false,
-				default: None,
-			}),
+			quote!(ColumnDefinition::new("value", #expected_field_type)
+				.with_not_null(false)
+				.with_unique(false)
+				.with_primary_key(false)
+				.with_auto_increment(false)
+				.with_default(None)
+				.with_generated(None)
+				.with_domain_option(None)),
 		);
 	}
 
@@ -1501,7 +1985,7 @@ mod tests {
 	fn column_definitions_preserve_json_and_postgres_types() {
 		let cases = [
 			(FieldType::Json, quote!(FieldType::Json)),
-			(FieldType::JsonBinary, quote!(FieldType::JsonBinary)),
+			(FieldType::Jsonb, quote!(FieldType::Jsonb)),
 			(
 				FieldType::Array(Box::new(FieldType::Array(Box::new(FieldType::Integer)))),
 				quote!(FieldType::Array(Box::new(FieldType::Array(Box::new(
@@ -1611,32 +2095,36 @@ mod tests {
 			primary_key: true,
 			auto_increment: true,
 			default: Some("42".to_string()),
+			generated: None,
+			domain: None,
 		};
 		assert_tokens(
 			&fully_populated,
-			quote!(ColumnDefinition {
-				name: "id".to_string(),
-				type_definition: FieldType::BigInteger,
-				not_null: true,
-				unique: true,
-				primary_key: true,
-				auto_increment: true,
-				default: Some("42".to_string()),
-			}),
+			quote!(
+				ColumnDefinition::new("id", FieldType::BigInteger)
+					.with_not_null(true)
+					.with_unique(true)
+					.with_primary_key(true)
+					.with_auto_increment(true)
+					.with_default(Some("42".to_string()))
+					.with_generated(None)
+					.with_domain_option(None)
+			),
 		);
 
 		let minimal = column("name", FieldType::VarChar(255));
 		assert_tokens(
 			&minimal,
-			quote!(ColumnDefinition {
-				name: "name".to_string(),
-				type_definition: FieldType::VarChar(255u32),
-				not_null: false,
-				unique: false,
-				primary_key: false,
-				auto_increment: false,
-				default: None,
-			}),
+			quote!(
+				ColumnDefinition::new("name", FieldType::VarChar(255u32))
+					.with_not_null(false)
+					.with_unique(false)
+					.with_primary_key(false)
+					.with_auto_increment(false)
+					.with_default(None)
+					.with_generated(None)
+					.with_domain_option(None)
+			),
 		);
 	}
 
@@ -1797,6 +2285,8 @@ mod tests {
 			primary_key: true,
 			auto_increment: true,
 			default: Some("1".to_string()),
+			generated: None,
+			domain: None,
 		};
 		let create = Operation::CreateTable {
 			name: "bookings".to_string(),
@@ -1823,32 +2313,33 @@ mod tests {
 			&create,
 			quote!(Operation::CreateTable {
 				name: "bookings".to_string(),
-				columns: vec![ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::BigInteger,
-					not_null: true,
-					unique: true,
-					primary_key: true,
-					auto_increment: true,
-					default: Some("1".to_string()),
-				}],
+				columns: vec![
+					ColumnDefinition::new("id", FieldType::BigInteger)
+						.with_not_null(true)
+						.with_unique(true)
+						.with_primary_key(true)
+						.with_auto_increment(true)
+						.with_default(Some("1".to_string()))
+						.with_generated(None)
+						.with_domain_option(None)
+				],
 				constraints: vec![Constraint::PrimaryKey {
 					name: "pk_bookings".to_string(),
 					columns: vec!["id".to_string()],
 				}],
 				without_rowid: Some(true),
-				interleave_in_parent: Some(InterleaveSpec {
-					parent_table: "accounts".to_string(),
-					parent_columns: vec!["tenant_id".to_string(), "id".to_string()],
-				}),
-				partition: Some(PartitionOptions {
-					partition_type: PartitionType::Range,
-					column: "id".to_string(),
-					partitions: vec![PartitionDef {
-						name: "before_100".to_string(),
-						values: PartitionValues::LessThan("100".to_string()),
-					}],
-				}),
+				interleave_in_parent: Some(InterleaveSpec::new(
+					"accounts",
+					vec!["tenant_id".to_string(), "id".to_string()]
+				)),
+				partition: Some(PartitionOptions::new(
+					PartitionType::Range,
+					"id",
+					vec![PartitionDef::new(
+						"before_100",
+						PartitionValues::LessThan("100".to_string())
+					)]
+				)),
 			}),
 		);
 
@@ -1904,19 +2395,19 @@ mod tests {
 			&add_column,
 			quote!(Operation::AddColumn {
 				table: "bookings".to_string(),
-				column: ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::BigInteger,
-					not_null: true,
-					unique: true,
-					primary_key: true,
-					auto_increment: true,
-					default: Some("1".to_string()),
-				},
-				mysql_options: Some(AlterTableOptions {
-					algorithm: Some(MySqlAlgorithm::Instant),
-					lock: Some(MySqlLock::None),
-				}),
+				column: ColumnDefinition::new("id", FieldType::BigInteger)
+					.with_not_null(true)
+					.with_unique(true)
+					.with_primary_key(true)
+					.with_auto_increment(true)
+					.with_default(Some("1".to_string()))
+					.with_generated(None)
+					.with_domain_option(None),
+				mysql_options: Some(
+					AlterTableOptions::new()
+						.with_algorithm(MySqlAlgorithm::Instant)
+						.with_lock(MySqlLock::None)
+				),
 			}),
 		);
 		assert_tokens(
@@ -1927,15 +2418,14 @@ mod tests {
 			},
 			quote!(Operation::AddColumn {
 				table: "bookings".to_string(),
-				column: ColumnDefinition {
-					name: "status".to_string(),
-					type_definition: FieldType::Text,
-					not_null: false,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: None,
-				},
+				column: ColumnDefinition::new("status", FieldType::Text)
+					.with_not_null(false)
+					.with_unique(false)
+					.with_primary_key(false)
+					.with_auto_increment(false)
+					.with_default(None)
+					.with_generated(None)
+					.with_domain_option(None),
 				mysql_options: None,
 			}),
 		);
@@ -1952,10 +2442,12 @@ mod tests {
 			&Operation::DropColumn {
 				table: "bookings".to_string(),
 				column: "status".to_string(),
+				old_definition: None,
 			},
 			quote!(Operation::DropColumn {
 				table: "bookings".to_string(),
 				column: "status".to_string(),
+				old_definition: None,
 			}),
 		);
 		assert_tokens(
@@ -1969,28 +2461,25 @@ mod tests {
 			quote!(Operation::AlterColumn {
 				table: "bookings".to_string(),
 				column: "status".to_string(),
-				old_definition: Some(ColumnDefinition {
-					name: "status".to_string(),
-					type_definition: FieldType::Text,
-					not_null: false,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: None,
-				}),
-				new_definition: ColumnDefinition {
-					name: "status".to_string(),
-					type_definition: FieldType::VarChar(32u32),
-					not_null: false,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: None,
-				},
-				mysql_options: Some(AlterTableOptions {
-					algorithm: Some(MySqlAlgorithm::Copy),
-					lock: None,
-				}),
+				old_definition: Some(
+					ColumnDefinition::new("status", FieldType::Text)
+						.with_not_null(false)
+						.with_unique(false)
+						.with_primary_key(false)
+						.with_auto_increment(false)
+						.with_default(None)
+						.with_generated(None)
+						.with_domain_option(None)
+				),
+				new_definition: ColumnDefinition::new("status", FieldType::VarChar(32u32))
+					.with_not_null(false)
+					.with_unique(false)
+					.with_primary_key(false)
+					.with_auto_increment(false)
+					.with_default(None)
+					.with_generated(None)
+					.with_domain_option(None),
+				mysql_options: Some(AlterTableOptions::new().with_algorithm(MySqlAlgorithm::Copy)),
 			}),
 		);
 		assert_tokens(
@@ -2005,15 +2494,14 @@ mod tests {
 				table: "bookings".to_string(),
 				column: "status".to_string(),
 				old_definition: None,
-				new_definition: ColumnDefinition {
-					name: "status".to_string(),
-					type_definition: FieldType::Text,
-					not_null: false,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: None,
-				},
+				new_definition: ColumnDefinition::new("status", FieldType::Text)
+					.with_not_null(false)
+					.with_unique(false)
+					.with_primary_key(false)
+					.with_auto_increment(false)
+					.with_default(None)
+					.with_generated(None)
+					.with_domain_option(None),
 				mysql_options: None,
 			}),
 		);
@@ -2084,10 +2572,7 @@ mod tests {
 				where_clause: Some("cancelled = false".to_string()),
 				concurrently: true,
 				expressions: Some(vec!["lower(reference)".to_string()]),
-				mysql_options: Some(AlterTableOptions {
-					algorithm: None,
-					lock: Some(MySqlLock::Shared),
-				}),
+				mysql_options: Some(AlterTableOptions::new().with_lock(MySqlLock::Shared)),
 				operator_class: Some("gin_trgm_ops".to_string()),
 			}),
 		);
@@ -2229,15 +2714,16 @@ mod tests {
 			},
 			quote!(Operation::CreateInheritedTable {
 				name: "premium_booking".to_string(),
-				columns: vec![ColumnDefinition {
-					name: "priority".to_string(),
-					type_definition: FieldType::Integer,
-					not_null: false,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: None,
-				}],
+				columns: vec![
+					ColumnDefinition::new("priority", FieldType::Integer)
+						.with_not_null(false)
+						.with_unique(false)
+						.with_primary_key(false)
+						.with_auto_increment(false)
+						.with_default(None)
+						.with_generated(None)
+						.with_domain_option(None)
+				],
 				base_table: "bookings".to_string(),
 				join_column: "booking_id".to_string(),
 			}),
@@ -2364,17 +2850,16 @@ mod tests {
 				table: "events".to_string(),
 				source: BulkLoadSource::File("/tmp/events.csv".to_string()),
 				format: BulkLoadFormat::Csv,
-				options: BulkLoadOptions {
-					delimiter: Some(','),
-					null_string: Some("NULL".to_string()),
-					header: true,
-					columns: Some(vec!["id".to_string(), "name".to_string()]),
-					local: false,
-					quote: Some('"'),
-					escape: Some('\\'),
-					line_terminator: Some("\n".to_string()),
-					encoding: Some("UTF-8".to_string()),
-				},
+				options: BulkLoadOptions::new()
+					.with_delimiter_option(Some(','))
+					.with_null_string_option(Some("NULL".to_string()))
+					.with_header(true)
+					.with_columns_option(Some(vec!["id".to_string(), "name".to_string()]))
+					.with_local(false)
+					.with_quote_option(Some('"'))
+					.with_escape_option(Some('\\'))
+					.with_line_terminator_option(Some("\n".to_string()))
+					.with_encoding_option(Some("UTF-8".to_string())),
 			}),
 		);
 
@@ -2417,17 +2902,18 @@ mod tests {
 		};
 		assert_tokens(
 			&no_option_values,
-			quote!(BulkLoadOptions {
-				delimiter: None,
-				null_string: None,
-				header: false,
-				columns: None,
-				local: true,
-				quote: None,
-				escape: None,
-				line_terminator: None,
-				encoding: None,
-			}),
+			quote!(
+				BulkLoadOptions::new()
+					.with_delimiter_option(None)
+					.with_null_string_option(None)
+					.with_header(false)
+					.with_columns_option(None)
+					.with_local(true)
+					.with_quote_option(None)
+					.with_escape_option(None)
+					.with_line_terminator_option(None)
+					.with_encoding_option(None)
+			),
 		);
 		assert_tokens(
 			&Operation::SetAutoIncrementValue {

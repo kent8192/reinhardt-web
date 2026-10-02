@@ -1,13 +1,13 @@
 use crate::viewsets::actions::Action;
 use crate::viewsets::filtering_support::{FilterConfig, FilterableViewSet, OrderingConfig};
-use crate::viewsets::handler::{ModelViewSetHandler, ViewError};
+use crate::viewsets::handler::{ModelViewSetHandler, QuerySetProvider};
 use crate::viewsets::metadata::{ActionMetadata, get_actions_for_viewset};
 use crate::viewsets::middleware::{CompositeMiddleware, ViewSetMiddleware};
 use crate::viewsets::pagination_support::{PaginatedViewSet, PaginationConfig};
 use async_trait::async_trait;
 use hyper::Method;
 use reinhardt_auth::Permission;
-use reinhardt_db::orm::{FilterCondition, Model, query_types::DbBackend};
+use reinhardt_db::orm::{Model, query_types::DbBackend};
 use reinhardt_http::{Request, Response, Result};
 use reinhardt_rest::filters::FilterBackend;
 use reinhardt_rest::serializers::Serializer;
@@ -23,7 +23,7 @@ fn extract_pk(request: &Request, lookup_field: &str) -> Result<serde_json::Value
 	request
 		.path_params
 		.get(lookup_field)
-		.map(|v| serde_json::Value::String(v.clone()))
+		.map(|v| serde_json::Value::String(v.to_string()))
 		.ok_or_else(|| {
 			reinhardt_core::exception::Error::Http(format!(
 				"Missing path parameter: {}",
@@ -41,6 +41,11 @@ fn method_not_allowed(method: &Method) -> reinhardt_core::exception::Error {
 /// Uses composition of mixins instead of inheritance
 #[async_trait]
 pub trait ViewSet: Send + Sync {
+	/// Returns the concrete ViewSet identity for route contract export.
+	fn type_name(&self) -> &'static str {
+		std::any::type_name::<Self>()
+	}
+
 	/// Get the basename for URL routing
 	fn get_basename(&self) -> &str;
 
@@ -68,6 +73,17 @@ pub trait ViewSet: Send + Sync {
 		actions.extend(manual_actions);
 
 		actions
+	}
+
+	/// Returns whether a built-in action is supported by this ViewSet.
+	///
+	/// Router contract exporters use this capability instead of assuming that
+	/// every ViewSet implements the full CRUD action set.
+	fn supports_contract_action(&self, action: &str) -> bool {
+		matches!(
+			action,
+			"list" | "create" | "retrieve" | "update" | "destroy"
+		)
 	}
 
 	/// Get URL map for extra actions
@@ -504,20 +520,16 @@ where
 		self
 	}
 
-	/// Scope database queries using the current request.
+	/// Set a request-scoped database queryset provider.
 	///
-	/// The synchronous, fallible hook returns one [`FilterCondition`] and requires
-	/// [`Self::with_pool`]. It scopes list, retrieve, update, and destroy, but not
-	/// create; assign ownership during create in the serializer, permission layer,
-	/// or database. Middleware must resolve asynchronous scope data before
-	/// dispatch, and the hook reads application-defined request extensions.
-	/// [`Self::with_queryset`] static `Vec` data is separate and is not filtered.
-	/// Scoped-out objects and malformed detail lookup values produce 404.
-	pub fn with_queryset_fn<F>(mut self, queryset_fn: F) -> Self
+	/// The provider transforms the model manager's base queryset for list,
+	/// retrieve, update, and destroy. Create bypasses it; a database pool is
+	/// required when it is configured.
+	pub fn with_queryset_provider<P>(mut self, provider: P) -> Self
 	where
-		F: Fn(&Request) -> std::result::Result<FilterCondition, ViewError> + Send + Sync + 'static,
+		P: QuerySetProvider<M> + 'static,
 	{
-		self.handler = std::mem::take(&mut self.handler).with_queryset_fn(queryset_fn);
+		self.handler = std::mem::take(&mut self.handler).with_queryset_provider(provider);
 		self
 	}
 
@@ -747,19 +759,15 @@ where
 		self
 	}
 
-	/// Scope database queries using the current request.
+	/// Set a request-scoped database queryset provider.
 	///
-	/// The synchronous, fallible hook returns one [`FilterCondition`] and requires
-	/// [`Self::with_pool`]. It scopes list and retrieve. Middleware must resolve
-	/// asynchronous scope data before dispatch, and the hook reads
-	/// application-defined request extensions. [`Self::with_queryset`] static
-	/// `Vec` data is separate and is not filtered. Scoped-out objects and malformed
-	/// detail lookup values produce 404.
-	pub fn with_queryset_fn<F>(mut self, queryset_fn: F) -> Self
+	/// The provider transforms the model manager's base queryset for list and
+	/// retrieve. Create, update, and destroy are unavailable on this viewset.
+	pub fn with_queryset_provider<P>(mut self, provider: P) -> Self
 	where
-		F: Fn(&Request) -> std::result::Result<FilterCondition, ViewError> + Send + Sync + 'static,
+		P: QuerySetProvider<M> + 'static,
 	{
-		self.handler = std::mem::take(&mut self.handler).with_queryset_fn(queryset_fn);
+		self.handler = std::mem::take(&mut self.handler).with_queryset_provider(provider);
 		self
 	}
 
@@ -794,6 +802,10 @@ where
 
 	fn get_lookup_field(&self) -> &str {
 		&self.lookup_field
+	}
+
+	fn supports_contract_action(&self, action: &str) -> bool {
+		matches!(action, "list" | "retrieve")
 	}
 
 	async fn dispatch(&self, request: Request, action: Action) -> Result<Response> {
@@ -876,7 +888,7 @@ where
 mod tests {
 	use super::*;
 	use hyper::Method;
-	use reinhardt_db::orm::{FieldSelector, Filter, FilterOperator, Model};
+	use reinhardt_db::orm::{FieldSelector, Model};
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 	use std::sync::Arc;
@@ -953,24 +965,6 @@ mod tests {
 				secret: String::new(),
 			})
 		}
-	}
-
-	#[test]
-	fn queryset_fn_builders_preserve_viewset_object_safety() {
-		let model: Arc<dyn ViewSet> = Arc::new(
-			ModelViewSet::<DummyModel, RedactingDummySerializer>::new("test").with_queryset_fn(
-				|_| Ok(Filter::new("organization_id", FilterOperator::Eq, 1_i64.into()).into()),
-			),
-		);
-		let read_only: Arc<dyn ViewSet> = Arc::new(
-			ReadOnlyModelViewSet::<DummyModel, RedactingDummySerializer>::new("test")
-				.with_queryset_fn(|_| {
-					Ok(Filter::new("organization_id", FilterOperator::Eq, 1_i64.into()).into())
-				}),
-		);
-
-		assert_eq!(model.get_basename(), "test");
-		assert_eq!(read_only.get_basename(), "test");
 	}
 
 	#[tokio::test]

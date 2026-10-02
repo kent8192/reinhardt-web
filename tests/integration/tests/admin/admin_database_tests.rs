@@ -9,17 +9,17 @@ use reinhardt_admin::core::database::{
 };
 use reinhardt_db::backends::{
 	connection::DatabaseConnection as BackendsConnection,
-	types::{QueryValue, Row},
+	types::{DatabaseType, QueryValue, Row},
 };
 use reinhardt_db::orm::annotation::Expression;
 use reinhardt_db::orm::expressions::{F, OuterRef};
 use reinhardt_db::orm::{
-	DatabaseBackend, DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue,
+	DatabaseBackend, DatabaseConnectionLease, Filter, FilterCondition, FilterOperator, FilterValue,
 };
 use reinhardt_query::{
 	Alias, ColumnRef, Condition, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
-use reinhardt_test::fixtures::mock::MockDatabaseBackend;
+use reinhardt_test::fixtures::mock::{MockConnection, MockDatabaseBackend};
 use reinhardt_test::fixtures::mock_connection;
 use rstest::*;
 use std::collections::HashMap;
@@ -34,19 +34,38 @@ struct User {
 
 reinhardt_test::impl_test_model!(User, i64, "users");
 
-fn admin_database_from_mock(mock: MockDatabaseBackend) -> AdminDatabase {
+struct TestAdminDatabase {
+	database: AdminDatabase,
+	_connection_lease: DatabaseConnectionLease,
+}
+
+impl std::ops::Deref for TestAdminDatabase {
+	type Target = AdminDatabase;
+
+	fn deref(&self) -> &Self::Target {
+		&self.database
+	}
+}
+
+fn admin_database_from_mock(mut mock: MockDatabaseBackend) -> TestAdminDatabase {
+	mock.expect_database_type()
+		.return_const(DatabaseType::Postgres);
 	let backends_conn = BackendsConnection::new(Arc::new(mock));
-	let conn = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	AdminDatabase::new(conn)
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register mock database connection");
+	TestAdminDatabase {
+		database: AdminDatabase::new(connection_lease.handle()),
+		_connection_lease: connection_lease,
+	}
 }
 
 // ==================== AdminDatabase CRUD tests ====================
 
 #[rstest]
 #[tokio::test]
-async fn test_admin_database_new(mock_connection: DatabaseConnection) {
+async fn test_admin_database_new(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act & Assert
 	assert_eq!(db.connection().backend(), DatabaseBackend::Postgres);
@@ -54,9 +73,9 @@ async fn test_admin_database_new(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_empty(mock_connection: DatabaseConnection) {
+async fn test_bulk_delete_empty(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db.bulk_delete::<User>("users", "id", vec![]).await;
@@ -68,9 +87,9 @@ async fn test_bulk_delete_empty(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_list_with_filters(mock_connection: DatabaseConnection) {
+async fn test_list_with_filters(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filters = vec![Filter::new(
 		"is_active".to_string(),
 		FilterOperator::Eq,
@@ -86,9 +105,9 @@ async fn test_list_with_filters(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_get_by_id(mock_connection: DatabaseConnection) {
+async fn test_get_by_id(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db.get::<User>("users", "id", "1").await;
@@ -99,11 +118,11 @@ async fn test_get_by_id(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_create(mock_connection: DatabaseConnection) {
+async fn test_create(mock_connection: MockConnection) {
 	// Arrange
 	// Default mock returns {"count": 0} without "id" field,
 	// so create() returns Err (missing pk field). Fixes #3029
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Alice"));
 	data.insert("email".to_string(), serde_json::json!("alice@example.com"));
@@ -123,9 +142,9 @@ async fn test_create(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_update(mock_connection: DatabaseConnection) {
+async fn test_update(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Alice Updated"));
 
@@ -138,9 +157,9 @@ async fn test_update(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_delete(mock_connection: DatabaseConnection) {
+async fn test_delete(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db.delete::<User>("users", "id", "1").await;
@@ -151,9 +170,9 @@ async fn test_delete(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_count(mock_connection: DatabaseConnection) {
+async fn test_count(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filters = vec![];
 
 	// Act
@@ -165,9 +184,9 @@ async fn test_count(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_multiple_ids(mock_connection: DatabaseConnection) {
+async fn test_bulk_delete_multiple_ids(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
 
 	// Act
@@ -353,9 +372,9 @@ fn test_build_composite_empty_and() {
 
 #[rstest]
 #[tokio::test]
-async fn test_list_with_condition_or_search(mock_connection: DatabaseConnection) {
+async fn test_list_with_condition_or_search(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filter1 = Filter::new(
 		"name".to_string(),
 		FilterOperator::Contains,
@@ -382,9 +401,9 @@ async fn test_list_with_condition_or_search(mock_connection: DatabaseConnection)
 
 #[rstest]
 #[tokio::test]
-async fn test_list_with_condition_and_additional(mock_connection: DatabaseConnection) {
+async fn test_list_with_condition_and_additional(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filter1 = Filter::new(
 		"name".to_string(),
 		FilterOperator::Contains,
@@ -416,9 +435,9 @@ async fn test_list_with_condition_and_additional(mock_connection: DatabaseConnec
 
 #[rstest]
 #[tokio::test]
-async fn test_count_with_condition_or_search(mock_connection: DatabaseConnection) {
+async fn test_count_with_condition_or_search(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filter1 = Filter::new(
 		"name".to_string(),
 		FilterOperator::Contains,
@@ -445,9 +464,9 @@ async fn test_count_with_condition_or_search(mock_connection: DatabaseConnection
 
 #[rstest]
 #[tokio::test]
-async fn test_list_with_condition_none(mock_connection: DatabaseConnection) {
+async fn test_list_with_condition_none(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db
@@ -460,9 +479,9 @@ async fn test_list_with_condition_none(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_list_with_condition_empty_additional(mock_connection: DatabaseConnection) {
+async fn test_list_with_condition_empty_additional(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filter = Filter::new(
 		"name".to_string(),
 		FilterOperator::Contains,
@@ -481,9 +500,9 @@ async fn test_list_with_condition_empty_additional(mock_connection: DatabaseConn
 
 #[rstest]
 #[tokio::test]
-async fn test_count_with_condition_none(mock_connection: DatabaseConnection) {
+async fn test_count_with_condition_none(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db.count_with_condition::<User>("users", None, vec![]).await;
@@ -494,9 +513,9 @@ async fn test_count_with_condition_none(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_count_with_condition_combined(mock_connection: DatabaseConnection) {
+async fn test_count_with_condition_combined(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filter1 = Filter::new(
 		"name".to_string(),
 		FilterOperator::Contains,
@@ -655,14 +674,16 @@ fn test_build_single_filter_expr_field_ref_eq() {
 	);
 
 	// Act
-	let result = build_single_filter_expr(&filter);
+	let result = build_single_filter_expr(&filter).expect("FieldRef filter should build");
 
 	// Assert
 	assert!(result.is_some());
 	let query = Query::select()
 		.from(Alias::new("products"))
 		.column(ColumnRef::Asterisk)
-		.cond_where(Condition::all().add(result.unwrap()))
+		.cond_where(
+			Condition::all().add(result.expect("FieldRef filter should produce an expression")),
+		)
 		.to_string(PostgresQueryBuilder);
 	assert!(query.contains("\"price\""));
 	assert!(query.contains("\"discount_price\""));
@@ -678,7 +699,7 @@ fn test_build_single_filter_expr_field_ref_gt() {
 	);
 
 	// Act
-	let result = build_single_filter_expr(&filter);
+	let result = build_single_filter_expr(&filter).expect("FieldRef filter should build");
 
 	// Assert
 	assert!(result.is_some());
@@ -703,7 +724,7 @@ fn test_build_single_filter_expr_field_ref_all_operators() {
 			op.clone(),
 			FilterValue::FieldRef(F::new("field_b")),
 		);
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("FieldRef filter should build");
 
 		// Assert
 		assert!(
@@ -724,14 +745,16 @@ fn test_build_single_filter_expr_outer_ref() {
 	);
 
 	// Act
-	let result = build_single_filter_expr(&filter);
+	let result = build_single_filter_expr(&filter).expect("OuterRef filter should build");
 
 	// Assert
 	assert!(result.is_some());
 	let query = Query::select()
 		.from(Alias::new("books"))
 		.column(ColumnRef::Asterisk)
-		.cond_where(Condition::all().add(result.unwrap()))
+		.cond_where(
+			Condition::all().add(result.expect("OuterRef filter should produce an expression")),
+		)
 		.to_string(PostgresQueryBuilder);
 	assert!(query.contains("author_id"));
 	assert!(query.contains("authors.id"));
@@ -756,7 +779,7 @@ fn test_build_single_filter_expr_outer_ref_all_operators() {
 			op.clone(),
 			FilterValue::OuterRef(OuterRef::new("parent.id")),
 		);
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("OuterRef filter should build");
 
 		// Assert
 		assert!(
@@ -783,7 +806,7 @@ fn test_build_single_filter_expr_expression() {
 	);
 
 	// Act
-	let result = build_single_filter_expr(&filter);
+	let result = build_single_filter_expr(&filter).expect("Expression filter should build");
 
 	// Assert
 	assert!(result.is_some());
@@ -815,7 +838,7 @@ fn test_build_single_filter_expr_expression_all_operators() {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("Expression filter should build");
 
 		// Assert
 		assert!(
@@ -835,7 +858,7 @@ fn test_filter_value_to_sea_value_preserves_timestamp() {
 	let value = FilterValue::Timestamp(timestamp);
 
 	// Act
-	let sea_value = filter_value_to_sea_value(&value);
+	let sea_value = filter_value_to_sea_value(&value).expect("timestamp filter should convert");
 
 	// Assert
 	assert_eq!(
@@ -851,7 +874,7 @@ fn test_filter_value_to_sea_value_preserves_uuid() {
 	let value = FilterValue::Uuid(uuid);
 
 	// Act
-	let sea_value = filter_value_to_sea_value(&value);
+	let sea_value = filter_value_to_sea_value(&value).expect("UUID filter should convert");
 
 	// Assert
 	assert_eq!(sea_value, Value::Uuid(Some(Box::new(uuid))));
@@ -863,7 +886,7 @@ fn test_filter_value_to_sea_value_field_ref_fallback() {
 	let value = FilterValue::FieldRef(F::new("test_field"));
 
 	// Act
-	let sea_value = filter_value_to_sea_value(&value);
+	let sea_value = filter_value_to_sea_value(&value).expect("field reference should convert");
 
 	// Assert
 	match sea_value {
@@ -878,7 +901,7 @@ fn test_filter_value_to_sea_value_outer_ref_fallback() {
 	let value = FilterValue::OuterRef(OuterRef::new("outer.field"));
 
 	// Act
-	let sea_value = filter_value_to_sea_value(&value);
+	let sea_value = filter_value_to_sea_value(&value).expect("outer reference should convert");
 
 	// Assert
 	match sea_value {
@@ -899,7 +922,7 @@ fn test_filter_value_to_sea_value_expression_fallback() {
 	let value = FilterValue::Expression(expr);
 
 	// Act
-	let sea_value = filter_value_to_sea_value(&value);
+	let sea_value = filter_value_to_sea_value(&value).expect("expression should convert");
 
 	// Assert
 	match sea_value {
@@ -915,12 +938,10 @@ fn test_filter_value_to_sea_value_expression_fallback() {
 
 #[rstest]
 #[tokio::test]
-async fn test_create_returns_error_when_response_has_no_id_field(
-	mock_connection: DatabaseConnection,
-) {
+async fn test_create_returns_error_when_response_has_no_id_field(mock_connection: MockConnection) {
 	// Arrange
 	// Default mock_connection.fetch_one returns Row with {"count": Int(0)}, no "id" field
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Alice"));
 
@@ -944,7 +965,6 @@ async fn test_create_returns_error_when_response_has_no_id_field(
 async fn test_create_returns_id_when_response_has_id_field() {
 	// Arrange: Create a mock that returns a row with "id" field
 	use reinhardt_db::backends::{
-		backend::DatabaseBackend as BackendTrait,
 		connection::DatabaseConnection as BackendsConnection,
 		types::{DatabaseType, QueryResult, QueryValue, Row},
 	};
@@ -957,8 +977,12 @@ async fn test_create_returns_id_when_response_has_id_field() {
 		.returning(|idx| format!("${}", idx));
 	mock.expect_supports_returning().return_const(true);
 	mock.expect_supports_on_conflict().return_const(true);
-	mock.expect_execute()
-		.returning(|_, _| Ok(QueryResult { rows_affected: 1 }));
+	mock.expect_execute().returning(|_, _| {
+		Ok(QueryResult {
+			rows_affected: 1,
+			last_insert_id: None,
+		})
+	});
 	mock.expect_fetch_all().returning(|_, _| Ok(Vec::new()));
 	mock.expect_fetch_optional().returning(|_, _| Ok(None));
 
@@ -970,8 +994,9 @@ async fn test_create_returns_id_when_response_has_id_field() {
 	});
 
 	let backends_conn = BackendsConnection::new(Arc::new(mock));
-	let conn = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(conn);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register mock database connection");
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Alice"));
@@ -993,7 +1018,6 @@ async fn test_create_returns_id_when_response_has_id_field() {
 async fn test_create_returns_error_when_pk_field_missing() {
 	// Arrange: Create a mock that returns a row without the expected "id" field
 	use reinhardt_db::backends::{
-		backend::DatabaseBackend as BackendTrait,
 		connection::DatabaseConnection as BackendsConnection,
 		types::{DatabaseType, QueryResult, QueryValue, Row},
 	};
@@ -1006,8 +1030,12 @@ async fn test_create_returns_error_when_pk_field_missing() {
 		.returning(|idx| format!("${}", idx));
 	mock.expect_supports_returning().return_const(true);
 	mock.expect_supports_on_conflict().return_const(true);
-	mock.expect_execute()
-		.returning(|_, _| Ok(QueryResult { rows_affected: 1 }));
+	mock.expect_execute().returning(|_, _| {
+		Ok(QueryResult {
+			rows_affected: 1,
+			last_insert_id: None,
+		})
+	});
 	mock.expect_fetch_all().returning(|_, _| Ok(Vec::new()));
 	mock.expect_fetch_optional().returning(|_, _| Ok(None));
 
@@ -1022,8 +1050,9 @@ async fn test_create_returns_error_when_pk_field_missing() {
 	});
 
 	let backends_conn = BackendsConnection::new(Arc::new(mock));
-	let conn = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(conn);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register mock database connection");
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Bob"));
@@ -1046,7 +1075,6 @@ async fn test_create_returns_error_when_pk_field_missing() {
 async fn test_create_returns_one_for_string_pk() {
 	// Arrange: Create a mock that returns "id" as a string (e.g., UUID)
 	use reinhardt_db::backends::{
-		backend::DatabaseBackend as BackendTrait,
 		connection::DatabaseConnection as BackendsConnection,
 		types::{DatabaseType, QueryResult, QueryValue, Row},
 	};
@@ -1059,8 +1087,12 @@ async fn test_create_returns_one_for_string_pk() {
 		.returning(|idx| format!("${}", idx));
 	mock.expect_supports_returning().return_const(true);
 	mock.expect_supports_on_conflict().return_const(true);
-	mock.expect_execute()
-		.returning(|_, _| Ok(QueryResult { rows_affected: 1 }));
+	mock.expect_execute().returning(|_, _| {
+		Ok(QueryResult {
+			rows_affected: 1,
+			last_insert_id: None,
+		})
+	});
 	mock.expect_fetch_all().returning(|_, _| Ok(Vec::new()));
 	mock.expect_fetch_optional().returning(|_, _| Ok(None));
 
@@ -1073,8 +1105,9 @@ async fn test_create_returns_one_for_string_pk() {
 	});
 
 	let backends_conn = BackendsConnection::new(Arc::new(mock));
-	let conn = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(conn);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register mock database connection");
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Bob"));
@@ -1095,10 +1128,10 @@ async fn test_create_returns_one_for_string_pk() {
 
 #[rstest]
 #[tokio::test]
-async fn test_update_returns_affected_count(mock_connection: DatabaseConnection) {
+async fn test_update_returns_affected_count(mock_connection: MockConnection) {
 	// Arrange
 	// Default mock returns rows_affected: 0
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Updated Name"));
 
@@ -1116,10 +1149,10 @@ async fn test_update_returns_affected_count(mock_connection: DatabaseConnection)
 
 #[rstest]
 #[tokio::test]
-async fn test_delete_returns_affected_count(mock_connection: DatabaseConnection) {
+async fn test_delete_returns_affected_count(mock_connection: MockConnection) {
 	// Arrange
 	// Default mock returns rows_affected: 0
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db.delete::<User>("users", "id", "999").await;
@@ -1135,9 +1168,9 @@ async fn test_delete_returns_affected_count(mock_connection: DatabaseConnection)
 
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_with_many_ids(mock_connection: DatabaseConnection) {
+async fn test_bulk_delete_with_many_ids(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let ids: Vec<String> = (1..=10).map(|i| i.to_string()).collect();
 
 	// Act

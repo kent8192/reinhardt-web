@@ -12,6 +12,7 @@ use reinhardt_admin::server::{
 };
 use rstest::*;
 use serde_json::json;
+use serial_test::serial;
 use std::collections::HashMap;
 
 use reinhardt_query::prelude::{Alias, PostgresQueryBuilder, Query, QueryStatementBuilder, Value};
@@ -44,11 +45,12 @@ async fn insert_uuid_record(pool: &sqlx::PgPool, name: &str, status: &str) -> St
 /// Verify get_list works with UUID PK model
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_list_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 	let auth_user = make_auth_user();
 
 	insert_uuid_record(&pool, "UUID List Item 1", "active").await;
@@ -57,7 +59,15 @@ async fn test_list_uuid_pk_model(
 	let params = ListQueryParams::default();
 
 	// Act
-	let result = get_list("UuidModel".to_string(), params, site, db, auth_user).await;
+	let result = get_list(
+		"UuidModel".to_string(),
+		params,
+		site,
+		db,
+		make_staff_request(),
+		auth_user,
+	)
+	.await;
 
 	// Assert
 	assert!(result.is_ok(), "get_list should succeed: {:?}", result);
@@ -87,11 +97,12 @@ async fn test_list_uuid_pk_model(
 /// Verify get_detail returns correct record for UUID PK
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_detail_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -121,11 +132,12 @@ async fn test_detail_uuid_pk_model(
 /// Verify create_record returns success with a UUID id
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_create_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, _pool) = uuid_pk_context.await;
+	let (site, db, _pool, _connection_lease) = uuid_pk_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -168,11 +180,12 @@ async fn test_create_uuid_pk_model(
 /// Verify update_record works with UUID PK
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_update_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 	let uuid_id = insert_uuid_record(&pool, "UUID Before Update", "active").await;
 
 	let http_request = make_staff_request();
@@ -228,11 +241,12 @@ async fn test_update_uuid_pk_model(
 /// Verify delete_record works with UUID PK
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_delete_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 	let uuid_id = insert_uuid_record(&pool, "UUID To Delete", "active").await;
 
 	let http_request = make_staff_request();
@@ -266,11 +280,12 @@ async fn test_delete_uuid_pk_model(
 /// Verify bulk_delete_records works with UUID PKs
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_bulk_delete_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 
 	let id1 = insert_uuid_record(&pool, "UUID Bulk 1", "active").await;
 	let id2 = insert_uuid_record(&pool, "UUID Bulk 2", "draft").await;
@@ -311,11 +326,12 @@ async fn test_bulk_delete_uuid_pk_model(
 /// Verify export_data returns data with UUID ids
 #[rstest]
 #[tokio::test]
+#[serial(admin_registry)]
 async fn test_export_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 

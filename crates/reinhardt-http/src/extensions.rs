@@ -5,7 +5,11 @@
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
+
+type ExtensionValue = Box<dyn Any + Send + Sync>;
+type ExtensionMap = HashMap<TypeId, ExtensionValue>;
+type SharedExtensionMap = Arc<Mutex<ExtensionMap>>;
 
 /// Whether the current user is authenticated.
 /// Newtype wrapper to avoid `TypeId` collision with other bool values in extensions.
@@ -26,13 +30,22 @@ pub struct IsActive(pub bool);
 ///
 /// # Clone semantics
 ///
-/// `Extensions` uses `Arc<Mutex<HashMap>>` internally. Cloning an
-/// `Extensions` creates a **shared** reference to the same backing
-/// store — it does NOT deep-copy the stored values. Mutations through
-/// one clone are visible through all other clones.
-#[derive(Clone, Default)]
+/// `Extensions` lazily initializes an `Arc<Mutex<HashMap>>` backing store.
+/// Cloning an `Extensions` creates a **shared** reference to the same backing
+/// store — it does NOT deep-copy the stored values. Mutations through one
+/// clone are visible through all other clones.
+#[derive(Default)]
 pub struct Extensions {
-	map: Arc<Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>>,
+	map: OnceLock<SharedExtensionMap>,
+}
+
+impl Clone for Extensions {
+	fn clone(&self) -> Self {
+		let map = self.shared_map();
+		let cloned = Self::new();
+		let _ = cloned.map.set(Arc::clone(map));
+		cloned
+	}
 }
 
 impl Extensions {
@@ -48,9 +61,24 @@ impl Extensions {
 	/// ```
 	pub fn new() -> Self {
 		Self {
-			map: Arc::new(Mutex::new(HashMap::new())),
+			map: OnceLock::new(),
 		}
 	}
+
+	fn shared_map(&self) -> &SharedExtensionMap {
+		self.map
+			.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+	}
+
+	/// Clone only the initialized backing store.
+	pub(crate) fn clone_if_initialized(&self) -> Self {
+		let cloned = Self::new();
+		if let Some(map) = self.map.get() {
+			let _ = cloned.map.set(Arc::clone(map));
+		}
+		cloned
+	}
+
 	/// Insert a value into extensions
 	///
 	/// # Examples
@@ -66,7 +94,7 @@ impl Extensions {
 	/// assert!(extensions.contains::<String>());
 	/// ```
 	pub fn insert<T: Send + Sync + 'static>(&self, value: T) {
-		let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+		let mut map = self.shared_map().lock().unwrap_or_else(|e| e.into_inner());
 		map.insert(TypeId::of::<T>(), Box::new(value));
 	}
 	/// Get a cloned value from extensions
@@ -86,7 +114,8 @@ impl Extensions {
 	where
 		T: Clone + Send + Sync + 'static,
 	{
-		let map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+		let map = self.map.get()?;
+		let map = map.lock().unwrap_or_else(|e| e.into_inner());
 		map.get(&TypeId::of::<T>())
 			.and_then(|boxed| boxed.downcast_ref::<T>())
 			.cloned()
@@ -105,7 +134,10 @@ impl Extensions {
 	/// assert!(!extensions.contains::<u32>());
 	/// ```
 	pub fn contains<T: Send + Sync + 'static>(&self) -> bool {
-		let map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+		let Some(map) = self.map.get() else {
+			return false;
+		};
+		let map = map.lock().unwrap_or_else(|e| e.into_inner());
 		map.contains_key(&TypeId::of::<T>())
 	}
 	/// Remove a value from extensions and return it
@@ -126,7 +158,8 @@ impl Extensions {
 	where
 		T: Send + Sync + 'static,
 	{
-		let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+		let map = self.map.get()?;
+		let mut map = map.lock().unwrap_or_else(|e| e.into_inner());
 		let boxed = map.remove(&TypeId::of::<T>())?;
 		match boxed.downcast::<T>() {
 			Ok(val) => Some(*val),
@@ -157,8 +190,10 @@ impl Extensions {
 	/// assert!(!extensions.contains::<String>());
 	/// ```
 	pub fn clear(&self) {
-		let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
-		map.clear();
+		if let Some(map) = self.map.get() {
+			let mut map = map.lock().unwrap_or_else(|e| e.into_inner());
+			map.clear();
+		}
 	}
 }
 
@@ -210,6 +245,18 @@ mod tests {
 		let retrieved = extensions.get::<TestData>();
 
 		assert_eq!(retrieved, None);
+	}
+
+	#[test]
+	fn test_empty_read_methods_do_not_initialize_backing_store() {
+		let extensions = Extensions::new();
+
+		assert!(!extensions.contains::<TestData>());
+		assert_eq!(extensions.get::<TestData>(), None);
+		assert_eq!(extensions.remove::<TestData>(), None);
+		extensions.clear();
+
+		assert!(extensions.map.get().is_none());
 	}
 
 	#[test]
@@ -303,5 +350,24 @@ mod tests {
 		// Assert - clone no longer sees it
 		assert_eq!(removed, Some(42));
 		assert!(!cloned.contains::<u32>());
+	}
+
+	#[test]
+	fn test_clone_initializes_shared_backing_store() {
+		// Arrange
+		let original = Extensions::new();
+
+		// Act
+		let cloned = original.clone();
+
+		// Assert
+		assert!(original.map.get().is_some());
+		assert!(cloned.map.get().is_some());
+
+		// Act - insert via original
+		original.insert(42u32);
+
+		// Assert - clone sees the value
+		assert_eq!(cloned.get::<u32>(), Some(42));
 	}
 }

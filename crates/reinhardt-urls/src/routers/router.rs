@@ -598,13 +598,12 @@ impl<V> ViewSetListHandler<V> {
 #[async_trait]
 #[cfg(feature = "viewsets")]
 impl<V: ViewSet + 'static> Handler for ViewSetListHandler<V> {
-	async fn handle(&self, mut request: Request) -> Result<Response> {
-		if let Some(response) = process_viewset_request(self.viewset.as_ref(), &mut request).await?
-		{
-			return Ok(response);
-		}
-		let action = reinhardt_views::viewsets::Action::list();
-		self.viewset.dispatch(request, action).await
+	async fn handle(&self, request: Request) -> Result<Response> {
+		process_viewset_request(self.viewset.as_ref(), request, |request| {
+			self.viewset
+				.dispatch(request, reinhardt_views::viewsets::Action::list())
+		})
+		.await
 	}
 }
 
@@ -624,24 +623,22 @@ impl<V> ViewSetDetailHandler<V> {
 #[async_trait]
 #[cfg(feature = "viewsets")]
 impl<V: ViewSet + 'static> Handler for ViewSetDetailHandler<V> {
-	async fn handle(&self, mut request: Request) -> Result<Response> {
-		if let Some(response) = process_viewset_request(self.viewset.as_ref(), &mut request).await?
-		{
-			return Ok(response);
-		}
-		// Determine action based on HTTP method
-		let action = match request.method.as_str() {
-			"GET" => reinhardt_views::viewsets::Action::retrieve(),
-			"PUT" | "PATCH" => reinhardt_views::viewsets::Action::update(),
-			"DELETE" => reinhardt_views::viewsets::Action::destroy(),
-			_ => {
-				return Err(reinhardt_core::exception::Error::Http(
+	async fn handle(&self, request: Request) -> Result<Response> {
+		process_viewset_request(self.viewset.as_ref(), request, |request| {
+			let action = match request.method.as_str() {
+				"GET" => Ok(reinhardt_views::viewsets::Action::retrieve()),
+				"PUT" | "PATCH" => Ok(reinhardt_views::viewsets::Action::update()),
+				"DELETE" => Ok(reinhardt_views::viewsets::Action::destroy()),
+				_ => Err(reinhardt_core::exception::Error::Http(
 					"Method not allowed".to_string(),
-				));
+				)),
+			};
+			async move {
+				let action = action?;
+				self.viewset.dispatch(request, action).await
 			}
-		};
-
-		self.viewset.dispatch(request, action).await
+		})
+		.await
 	}
 }
 
@@ -671,28 +668,27 @@ impl<V> ActionHandlerWrapper<V> {
 #[async_trait]
 #[cfg(feature = "viewsets")]
 impl<V: ViewSet + 'static> Handler for ActionHandlerWrapper<V> {
-	async fn handle(&self, mut request: Request) -> Result<Response> {
-		if let Some(response) = process_viewset_request(self.viewset.as_ref(), &mut request).await?
-		{
-			return Ok(response);
-		}
-		if !self.methods.contains(&request.method) {
-			let mut response = Response::new(hyper::StatusCode::METHOD_NOT_ALLOWED);
-			let allow = self
-				.methods
-				.iter()
-				.map(hyper::Method::as_str)
-				.collect::<Vec<_>>()
-				.join(", ");
-			response.headers.insert(
-				hyper::header::ALLOW,
-				allow
-					.parse()
-					.expect("HTTP methods form a valid Allow header"),
-			);
-			return Ok(response);
-		}
-		self.handler.handle(request).await
+	async fn handle(&self, request: Request) -> Result<Response> {
+		process_viewset_request(self.viewset.as_ref(), request, |request| async {
+			if !self.methods.contains(&request.method) {
+				let mut response = Response::new(hyper::StatusCode::METHOD_NOT_ALLOWED);
+				let allow = self
+					.methods
+					.iter()
+					.map(hyper::Method::as_str)
+					.collect::<Vec<_>>()
+					.join(", ");
+				response.headers.insert(
+					hyper::header::ALLOW,
+					allow
+						.parse()
+						.expect("HTTP methods form a valid Allow header"),
+				);
+				return Ok(response);
+			}
+			self.handler.handle(request).await
+		})
+		.await
 	}
 }
 
@@ -708,7 +704,9 @@ mod tests {
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_http::{Request, Response, Result};
 	#[cfg(feature = "viewsets")]
-	use reinhardt_views::viewsets::{Action, ActionMetadata, FunctionActionHandler, ViewSet};
+	use reinhardt_views::viewsets::{
+		Action, ActionMetadata, FunctionActionHandler, ViewSet, ViewSetMiddleware,
+	};
 	#[cfg(feature = "viewsets")]
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -764,6 +762,59 @@ mod tests {
 
 		fn get_required_permissions(&self) -> Vec<String> {
 			self.required_permissions.clone()
+		}
+	}
+
+	#[cfg(feature = "viewsets")]
+	struct ResponseMiddleware;
+
+	#[cfg(feature = "viewsets")]
+	#[async_trait]
+	impl ViewSetMiddleware for ResponseMiddleware {
+		async fn process_request(&self, _request: &mut Request) -> Result<Option<Response>> {
+			Ok(None)
+		}
+
+		async fn process_response(
+			&self,
+			_request: &Request,
+			mut response: Response,
+		) -> Result<Response> {
+			response.headers.insert(
+				"x-viewset-response",
+				hyper::header::HeaderValue::from_static("processed"),
+			);
+			Ok(response)
+		}
+	}
+
+	#[cfg(feature = "viewsets")]
+	struct ResponseMiddlewareViewSet;
+
+	#[cfg(feature = "viewsets")]
+	#[async_trait]
+	impl ViewSet for ResponseMiddlewareViewSet {
+		fn get_basename(&self) -> &str {
+			"middleware"
+		}
+
+		async fn dispatch(&self, _request: Request, _action: Action) -> Result<Response> {
+			Ok(Response::ok())
+		}
+
+		fn get_extra_actions(&self) -> Vec<ActionMetadata> {
+			vec![
+				ActionMetadata::new("extra")
+					.with_detail(true)
+					.with_methods(vec![Method::GET])
+					.with_handler(FunctionActionHandler::new(|_request| {
+						Box::pin(async { Ok(Response::ok()) })
+					})),
+			]
+		}
+
+		fn get_middleware(&self) -> Option<Arc<dyn ViewSetMiddleware>> {
+			Some(Arc::new(ResponseMiddleware))
 		}
 	}
 
@@ -871,6 +922,24 @@ mod tests {
 			.unwrap();
 		assert_eq!(response.status, hyper::StatusCode::OK);
 		assert_eq!(dispatch_calls.load(Ordering::SeqCst), 1);
+	}
+
+	#[cfg(feature = "viewsets")]
+	#[tokio::test]
+	async fn default_router_applies_response_middleware_after_every_sink() {
+		let mut router = DefaultRouter::new();
+		router.register_viewset("middleware", Arc::new(ResponseMiddlewareViewSet));
+
+		for uri in ["/middleware/", "/middleware/1/", "/middleware/1/extra/"] {
+			let response = router
+				.route(viewset_request(Method::GET, uri))
+				.await
+				.unwrap();
+			assert_eq!(
+				response.headers.get("x-viewset-response"),
+				Some(&hyper::header::HeaderValue::from_static("processed"))
+			);
+		}
 	}
 
 	#[cfg(feature = "viewsets")]

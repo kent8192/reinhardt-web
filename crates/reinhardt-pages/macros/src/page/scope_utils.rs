@@ -17,6 +17,9 @@ pub(crate) fn collect_pat_idents(p: &syn::Pat, out: &mut HashSet<String>) {
 	match p {
 		syn::Pat::Ident(pi) => {
 			out.insert(pi.ident.to_string());
+			if let Some((_, subpat)) = &pi.subpat {
+				collect_pat_idents(subpat, out);
+			}
 		}
 		syn::Pat::Tuple(t) => {
 			for el in &t.elems {

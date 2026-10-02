@@ -6,13 +6,12 @@
 use super::ServerRouter;
 use super::types::MiddlewareInfo;
 use crate::routers::UrlReverser;
-use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::{ExceptionHandler, ExcludeMiddleware};
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock};
 
 impl ServerRouter {
 	/// Validate that a prefix for `mount`/`include` follows Django URL conventions.
@@ -95,14 +94,7 @@ impl ServerRouter {
 			middleware_names: Vec::new(),
 			middleware_exclusions: Vec::new(),
 			reverser: UrlReverser::new(),
-			get_router: RwLock::new(MatchitRouter::new()),
-			post_router: RwLock::new(MatchitRouter::new()),
-			put_router: RwLock::new(MatchitRouter::new()),
-			delete_router: RwLock::new(MatchitRouter::new()),
-			patch_router: RwLock::new(MatchitRouter::new()),
-			head_router: RwLock::new(MatchitRouter::new()),
-			options_router: RwLock::new(MatchitRouter::new()),
-			route_compilation: RwLock::new(None),
+			compiled_routes: OnceLock::new(),
 			exception_handler: None,
 		}
 	}
@@ -160,6 +152,7 @@ impl ServerRouter {
 	///     .with_prefix("/api/v1");
 	/// ```
 	pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
+		self.invalidate_compiled_routes();
 		self.prefix = prefix.into();
 		self
 	}
@@ -175,6 +168,7 @@ impl ServerRouter {
 	///     .with_namespace("v1");
 	/// ```
 	pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
+		self.invalidate_compiled_routes();
 		self.namespace = Some(namespace.into());
 		self
 	}
@@ -194,6 +188,7 @@ impl ServerRouter {
 	///     .with_di_context(di_ctx);
 	/// ```
 	pub fn with_di_context(mut self, ctx: Arc<InjectionContext>) -> Self {
+		self.invalidate_compiled_routes();
 		// Drain any middleware-contributed DI registrations that were harvested
 		// before `with_di_context` was called, walking children that have not
 		// already been bound to their own context (e.g., a child mounted
@@ -256,6 +251,7 @@ impl ServerRouter {
 	///     .with_middleware(LoggingMiddleware::new());
 	/// ```
 	pub fn with_middleware<M: Middleware + 'static>(mut self, mw: M) -> Self {
+		self.invalidate_compiled_routes();
 		let full_type_name = std::any::type_name::<M>().to_string();
 		let short_name = full_type_name
 			.rsplit("::")
@@ -321,6 +317,7 @@ impl ServerRouter {
 	///         .exclude("/health");      // exact: skips only /health
 	/// ```
 	pub fn exclude(mut self, pattern: &str) -> Self {
+		self.invalidate_compiled_routes();
 		assert!(
 			!self.middleware_exclusions.is_empty(),
 			"exclude() called with no middleware. Call with_middleware() first."
@@ -393,6 +390,7 @@ impl ServerRouter {
 	/// let router = ServerRouter::new().mount("/", app_router);
 	/// ```
 	pub fn mount(mut self, prefix: &str, mut child: ServerRouter) -> Self {
+		self.invalidate_compiled_routes();
 		// Validate prefix follows Django URL conventions
 		Self::validate_prefix(prefix);
 
@@ -400,6 +398,7 @@ impl ServerRouter {
 		if child.prefix.is_empty() {
 			child.prefix = prefix.to_string();
 		}
+		child.invalidate_compiled_routes();
 
 		// Inherit DI context if child doesn't have one. When inheriting,
 		// recursively drain pending middleware DI from the entire subtree
@@ -427,12 +426,14 @@ impl ServerRouter {
 	/// router.mount_mut("/users/", users_router);
 	/// ```
 	pub fn mount_mut(&mut self, prefix: &str, mut child: ServerRouter) {
+		self.invalidate_compiled_routes();
 		// Validate prefix follows Django URL conventions
 		Self::validate_prefix(prefix);
 
 		if child.prefix.is_empty() {
 			child.prefix = prefix.to_string();
 		}
+		child.invalidate_compiled_routes();
 		// See `mount` for the rationale on recursive subtree adoption.
 		Self::inherit_context_from_parent_if_any(self, &mut child);
 		self.children.push(child);
@@ -456,6 +457,8 @@ impl ServerRouter {
 	/// ```
 	pub fn group(mut self, routers: Vec<ServerRouter>) -> Self {
 		for mut router in routers {
+			self.invalidate_compiled_routes();
+			router.invalidate_compiled_routes();
 			// Mirror `mount`: when this router owns a context, recursively
 			// adopt the grouped subtree into it so any pending middleware DI
 			// staged before grouping is drained. Otherwise the grouped

@@ -7,6 +7,357 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.17...reinhardt-web@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- add release announcement(s)
+- *(agents)* gate external publication by destination policy
+- update version references to v0.3.19
+- add release announcement(s)
+- update version references to v0.3.20
+- *(auth)* clarify legacy OAuth2 helper scope
+- *(auth)* clarify OAuth2 helper scope and validation
+- *(auth)* complete OAuth setup and token docs
+- *(auth)* align OAuth2 module catalog wording
+
+### Fixed
+
+- *(pages)* honor WebSocket retry options with owned cancellation
+- *(ci)* allow compatible rand 0.10 patch releases
+- *(auth)* accept array audiences in OIDC ID tokens
+- *(commands)* honor makemigrations migration directory
+- *(commands)* reject non-utf8 migration directory paths
+
+### Maintenance
+
+- *(deps)* allow the required synstructure 0.13 line
+- avoid workspace lock conflicts in publish checks
+- *(ci)* remove unused cargo-deny policy entries
+- merge main into develop/0.4.0
+
+### Security
+
+- *(auth)* validate azp on multi-audience ID tokens
+
+## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.16...reinhardt-web@v0.4.0-alpha.17) - 2026-09-25
+
+### Added
+
+- *(auth)* add OAuth authorization and token core
+- *(auth)* persist OAuth state in PostgreSQL
+- *(auth)* expose OAuth HTTP protocol handlers
+- *(auth)* isolate OIDC grants in the OAuth server
+- *(auth)* persist OIDC subjects and signing-key state
+- *(auth)* serve OIDC code flow and provider metadata
+
+### Changed
+
+- *(auth)* group code exchange parameters
+
+### Documentation
+
+- *(auth)* record OAuth authorization server contract
+- *(auth)* explain OAuth server setup and migration
+- *(auth)* show OAuth handler routing
+- *(auth)* [**breaking**] document OAuth server migration
+- *(auth)* explain OIDC issuer integration and key operations
+- *(auth)* document atomic code exchange and OIDC state maintenance
+
+### Fixed
+
+- *(auth)* validate legacy OAuth codes and stop refresh issuance
+- *(ci)* run anyhow scan without workspace metadata
+- *(auth)* [**breaking**] bind OAuth continuations and token issuance to validated state
+- *(auth)* [**breaking**] bind OIDC continuations to sessions and retire accounts atomically
+- *(auth)* reject case-variant HTTP resource audiences
+- *(auth)* align OIDC HTTP responses with protocol requirements
+- *(auth)* revoke OIDC tokens on expired code replay
+- *(auth)* reject subsecond OIDC token lifetimes
+- *(auth)* [**breaking**] make authorization lifecycle transitions atomic
+- *(auth)* [**breaking**] resolve resource rotation and OIDC review findings
+- *(auth)* correct OAuth and OIDC endpoint error responses
+- *(auth)* move OIDC RSA signing to blocking workers
+- *(auth)* [**breaking**] reject conflicting OAuth registrations atomically
+
+### Maintenance
+
+- *(auth)* merge updated OAuth server foundation
+- *(auth)* prepare isolated verification for PR 6372 review fixes
+- *(auth)* reproduce PR 6372 review regressions
+- *(auth)* validate the review regression patch checksum
+- *(auth)* verify PR 6372 authorization lifecycle fixes
+- *(auth)* independently verify PR 6372 concurrency fixes
+- *(auth)* reproduce and verify the additional review findings
+- *(auth)* verify all review fixes with strict pipeline failures
+- *(auth)* finish source verification and stage reviewed Git objects
+- *(auth)* stage checksum-verified review source on an available runner
+- *(auth)* reproduce and prepare late review fixes
+
+### Styling
+
+- *(auth)* format OIDC integration test assertion
+
+### Testing
+
+- *(auth)* cover OAuth grants and replay boundaries
+- *(auth)* verify OAuth migration rollback
+- *(auth)* verify OIDC flows with an independent RP and PostgreSQL
+- *(auth)* cover OIDC HTTPS and client IP behind trusted proxies
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.15...reinhardt-web@v0.4.0-alpha.16) - 2026-09-23
+
+### Documentation
+
+- add release announcement(s)
+- remove Tachyon Inc. attribution
+- preserve release announcement history
+- *(agents)* gate external publication by destination policy
+- *(commands)* explain manifest selection and publication validation
+- *(staticfiles)* clarify manifest serving edge cases
+
+### Fixed
+
+- *(macros)* reject aliased nested URL builders
+- *(db)* reload get-or-create winners after alternate unique races
+- *(macros)* track wrapped router binding patterns
+- *(routing)* scope nested URL router analysis
+- *(routing)* harden URL pattern parity checks
+- *(routing)* track nested builder aliases
+- *(routing)* track match arm router aliases
+- *(routing)* track destructured router aliases
+- *(routing)* validate if-let router aliases
+- *(routing)* preserve aliases across nested blocks
+- *(routing)* cover while aliases and opaque builders
+- *(routing)* track loop aliases and preserved macros
+- *(routing)* cover match blocks and function scopes
+- *(routing)* harden URL pattern scope analysis
+- *(routing)* reject typed and opaque nested server builders
+- *(routing)* cover alias flow in URL pattern analysis
+- *(routing)* cover additional URL pattern alias flows
+- *(routing)* cover control-flow router aliases
+- *(ci)* build develop release baselines with compatible Smithy types
+- *(macros)* limit companion length validators to text fields
+- *(commands)* constrain shell parser dependencies to compatible versions
+- *(ci)* fetch WASM dependencies before offline integration fixtures
+- *(ci)* resolve WASM fixture dependencies without a tracked lockfile
+- *(deps)* cover rand 0.10 patch updates in duplicate policy
+- *(staticfiles)* prioritize static mounts over passthrough routes
+- *(staticfiles)* reject templates that reverse stylesheet order
+- *(middleware)* preserve existing representation etags
+- *(testkit)* consume owned file response bodies in APIClient
+- *(staticfiles)* verify retained files before publication activation
+- *(commands)* honor selected and required static asset generations
+- *(commands)* stream owned file ranges in standalone runserver
+- *(staticfiles)* preserve explicit document-relative runtime imports
+- *(middleware)* log owned file response lengths
+- *(staticfiles)* rewrite HTML prefetch dependencies
+- *(staticfiles)* reject competing legacy publication manifests
+- *(staticfiles)* honor HTML fallback quality values
+- *(staticfiles)* ignore unsupported multipart ranges
+- *(commands)* preserve admin routes under manifest serving
+- *(staticfiles)* normalize encoded mounts and encoding quality parameters
+- *(commands)* share manifest selection and admin routing across runservers
+- *(staticfiles)* relocate CSS image-set string candidates
+- *(staticfiles)* encode v2 paths in legacy template integration
+- *(middleware)* retain representation metadata on conditional responses
+- *(commands)* reject static URL aliases that shadow logical inputs
+- *(staticfiles)* address publication and browser review findings
+- *(commands)* expose the management asset entrypoint selector
+- *(staticfiles)* resolve actionable publication review comments
+- *(staticfiles)* address manifest and serving regressions
+- *(ci)* constrain Rust shell dependencies in release baselines
+
+### Maintenance
+
+- *(wasm)* install protoc for the native browser harness
+- *(sync)* merge main into develop/0.4.0
+- *(deps)* allow the required synstructure 0.13 line
+- auto-fix fmt and clippy
+- auto-fix fmt and clippy
+- merge develop/0.4.0 into unified static assets
+
+### Testing
+
+- *(db)* standardize race recovery tests
+- *(pages)* include bootstrap in SSR timeout expectation
+- *(commands)* account for registered assets in rebuild checks
+- *(commands)* account for registered static assets in repeat builds
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.14...reinhardt-web@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(core)* defer layout effects until reactive batches settle
+- *(pages)* preserve specific hydration installation errors
+- *(pages)* retain owners of unchanged reactive branches
+- *(core)* preserve batched notification semantics
+- *(pages)* reject unsupported RadioInput form overrides
+- *(pages)* complete native radio reset synchronization
+- *(manouche)* reject RadioInput model form overrides
+- *(pages)* validate required radios and synchronize saved defaults
+- *(pages)* preserve reset ownership and hydrated radio state
+
+### Maintenance
+
+- *(deps)* allow compatible hashlink 0.12 patch updates
+- chore!(sync): merge main into develop/0.4.0
+- merge develop/0.4.0 into RadioInput support
+- *(test)* allow cold native and wasm model parity builds
+
+### Testing
+
+- *(commands)* restore process state across admin script tests
+- *(macros)* refresh generated relation constructor diagnostics
+- *(pages)* align control assertions with effect timing
+- *(pages)* isolate upload alias diagnostics from MSW metadata
+- *(conf)* isolate audit backend database fixtures
+- compose regression setup from reinhardt fixtures
+- *(migrations)* enforce exact source upgrade assertions
+- *(migrations)* ship portable fixture capture tools
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.13...reinhardt-web@v0.4.0-alpha.14) - 2026-09-07
+
+### Documentation
+
+- add release announcement(s)
+- *(pages)* reverse login path in navigation guard example
+- *(pages)* clarify temporal normalization writeback
+
+### Fixed
+
+- *(ci)* use spaces in database error doc example
+- *(ci)* replace tabs in Rustdoc example
+- *(pages)* skip auth revalidation after a newer navigation
+- *(pages)* preserve source history for push-origin redirects
+- *(pages)* sanitize native fallback text input values
+- *(core)* allow reactive temporal input bindings
+- *(pages)* canonicalize native range zero values
+- *(pages)* prevent shared range normalization cycles
+- *(pages)* reconcile surviving range bindings
+- *(core)* mark omitted passwords for hydration
+- *(pages)* use HTML number grammar for native range events
+- *(pages)* tolerate roundoff in aligned range grids
+- *(pages)* update range defaults before signal normalization
+- *(pages)* refresh shared ranges after constraint changes
+- *(pages)* reconcile password bindings after form resets
+- *(macros)* restore upload metadata in model form test fixtures
+
+### Maintenance
+
+- merge develop/0.4.0 into constraint violation design
+- merge develop/0.4.0 into navigation guard branch
+- merge develop/0.4.0 into semantic input bindings
+- merge develop/0.4.0 into semantic input bindings
+- *(pages)* remove deferred listener delegation note
+
+### Testing
+
+- *(pages)* verify fallback text sanitization
+
+### Maintenance
+
+- remove obsolete tinyvec version pins after the alloc-without-std fix was released
+
+## [0.4.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.12...reinhardt-web@v0.4.0-alpha.13) - 2026-09-02
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(dentdelion)* confine plugin loading to its root
+- *(dentdelion)* close plugin path race
+- *(dentdelion)* retain plugin root capability
+- *(dentdelion)* preserve anchored loader behavior
+- *(admin)* merge current develop into advisory fix
+- *(utils)* gate async filesystem import
+- *(utils)* qualify native filesystem test helper
+- *(admin)* align object-scope regression coverage
+- *(core)* enable security with page feature
+- *(admin)* preserve aliased edit-form values
+
+### Security
+
+- *(middleware)* prevent private cache replay
+
+### Testing
+
+- *(pages)* align option values with sanitized elements
+
+## [0.4.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.11...reinhardt-web@v0.4.0-alpha.12) - 2026-08-30
+
+### Added
+
+- *(macros)* add opt-in DTO schema generation
+
+### Fixed
+
+- *(macros)* address dto schema review feedback
+- *(macros)* complete dto schema facade wiring
+- *(macros)* match qualified validate derives
+- *(macros)* recognize direct rest schema derives
+- *(ci)* retry DTO schema fixture after offline dependency resolution
+- *(macros)* preserve DTO schema target gating
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.10...reinhardt-web@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.13
+
+### Fixed
+
+- *(utils)* confine generated Azure blob URLs
+- *(db)* remove redundant rustdoc link target
+
+### Maintenance
+
+- merge main into develop/0.4.0
+- merge latest develop/0.4.0 into forward-merge branch
+
+### Security
+
+- *(utils)* reject Azure blob dot segments
+
+## [0.4.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.9...reinhardt-web@v0.4.0-alpha.10) - 2026-08-25
+
+### Added
+
+- *(urls)* add optional query extractor
+- *(pages)* support optional loader cache inputs
+- *(pages)* lower optional query extractors
+
+### Documentation
+
+- add release announcement(s)
+- *(pages)* document optional query extraction
+- *(pages)* clarify optional query aliases
+
+### Fixed
+
+- *(migrations)* preserve declarative partial indexes
+- *(migrations)* preserve partial index metadata
+- *(migrations)* preserve partial index definitions
+- *(migrations)* preserve index rollback metadata
+- *(db)* preserve legacy index replay semantics
+- *(pages)* repair WASM form and hydration builds
+- *(ci)* allow current cargo-deny duplicate versions
+
+### Testing
+
+- *(db)* align migration compatibility contracts
+
 ## [0.3.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.19...reinhardt-web@v0.3.20) - 2026-09-25
 
 ### Documentation
@@ -211,6 +562,713 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(db)* stabilize unique constraint replay
 - *(db)* close post-merge migration review findings
 
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.8...reinhardt-web@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define framework security invariants
+- *(security)* clarify policy composition
+- *(security)* define data and identity boundaries
+- *(security)* define request surface boundaries
+- *(security)* define UI and transport boundaries
+- *(security)* define runtime and operations boundaries
+- *(security)* clarify encryption policy
+- *(security)* qualify caller-enforced boundaries
+- *(security)* qualify remaining policy boundaries
+- *(security)* qualify remaining raw boundaries
+- *(security)* qualify remaining boundary assumptions
+- *(security)* document remaining boundary assumptions
+- *(security)* qualify auth and vault boundaries
+- *(security)* qualify remaining policy boundaries
+- *(security)* qualify websocket and state boundaries
+- *(security)* document remaining trust boundaries
+- *(security)* document secret and csrf boundaries
+- *(security)* qualify remaining policy boundaries
+- *(security)* qualify runtime policy boundaries
+- *(security)* qualify graphql grpc transport policy
+- *(serializers)* link FieldErrorMessages from module rustdoc
+- update version references to v0.3.9
+- add release announcement(s)
+- update version references to v0.3.10
+- *(security)* document stable advisory fixes
+
+### Fixed
+
+- *(ci)* allow zerovec-derive patch duplicates
+- *(docs)* sync security policy release version
+- *(security)* qualify optional grpc controls
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+- *(admin)* convert new FilterValue temporal and decimal variants
+- *(orm)* simplify generated primary-key skip condition
+- *(orm)* compile test-only filter helpers under cfg(test)
+- *(views)* import SerializerError in viewset handler tests
+- *(orm)* reject tautological WHERE on delete and update
+- *(orm)* treat empty NOT IN as tautological WHERE
+- *(serializers)* keep field structs constructible with error messages
+- *(security)* parameterize legacy Q filters
+- fix!(security): document Q filter migration
+- *(serializers)* preserve custom messages for omitted fields
+- *(orm)* preserve scoped queryset constraints
+- *(views)* skip refresh for unassigned string keys
+- *(staticfiles)* keep Azure deletion idempotent
+
+### Maintenance
+
+- remove noisy code scanning workflows
+- auto-fix fmt and clippy
+- auto-fix fmt and clippy
+- merge main into develop/0.4.0
+
+### Other
+
+- bring main into configurable field error messages
+- keep field error formatters with JSON extraction
+
+### Security
+
+- *(utils)* replace legacy Azure SDK staticfiles backend
+- *(ci)* drop quick-xml 0.31 cargo-deny exceptions
+
+### Testing
+
+- *(macros)* keep server_only Info compile-fail on SecretInfo
+- *(macros)* isolate server_only Info compile-fail from serde bounds
+
+## [0.4.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.7...reinhardt-web@v0.4.0-alpha.8) - 2026-08-22
+
+### Documentation
+
+- *(views)* clarify queryset provider contract
+- *(db)* remove redundant rustdoc link targets
+- *(db)* restore rustdoc targets that do not resolve locally
+
+### Fixed
+
+- *(ci)* use workflow token for breaking announcements
+- *(ci)* complete workflow token permissions
+- *(db)* execute scoped querysets through sessions
+- *(views)* scope model viewsets per request
+- *(db)* preserve typed temporal query values
+- *(ci)* sync model macro test fixture
+- *(orm)* close request-scoping review gaps
+- *(orm)* lock scoped mutation rows
+- *(orm)* lock scoped mutation rows
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve scoped primary-key types
+- *(orm)* parse displayed timestamp keys
+- *(orm)* secure session-backed scoped reads
+- *(orm)* use backend-safe mutation rechecks
+- *(orm)* preserve typed manual primary keys
+- *(orm)* avoid unsupported MySQL lock targets
+- *(views)* version composite primary-key routes
+- *(core)* version composite primary-key displays
+- *(db)* avoid MySQL nullable relation locks
+- *(db)* decode offset-free ISO timestamps
+- *(db)* preserve mysql recheck locks
+- *(core)* format temporal composite keys
+- *(orm)* lock scoped subqueries and classify datetime keys
+- *(views)* serialize scoped subquery mutations
+- *(orm)* serialize scoped join mutations
+- *(orm)* reject unsafe mutation scopes
+- *(macros)* verify chrono datetime paths
+- *(orm)* render scope subqueries per backend
+- *(orm)* preserve backend derived sources and lock guards
+- *(orm)* support derived sources in session queries
+- *(orm)* harden scoped model query locks
+- *(orm)* allow prefetch-only model querysets
+- *(orm)* close scoped query edge cases
+- *(orm)* close request scoping review edge cases
+- *(ci)* drop unused cargo-deny exceptions
+- *(orm)* gate unused model select helper behind tests
+- *(test)* give interactive shell e2e the evaluator bootstrap budget
+
+### Maintenance
+
+- remove noisy code scanning workflows
+
+### Security
+
+- *(commands)* upgrade evcxr to drop unmaintained json
+
+### Styling
+
+- *(orm)* format join alias collection
+
+### Testing
+
+- *(db)* use rstest for timestamp regression
+- *(macros)* assert composite key display output
+- *(macros)* compare complete composite display impl
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.6...reinhardt-web@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- add release announcement(s)
+- update version references to v0.3.7
+- add release announcement(s)
+- update version references to v0.3.8
+- add release announcement(s)
+
+### Fixed
+
+- *(ci)* allow auto-fix on non-fast-forward-only branches
+- *(ci)* paginate auto-fix branch-rule checks
+- *(ci)* allow syn major-version duplicates
+- *(orm)* reject oversized queryset bind values
+- *(orm)* keep UUID-looking filters as text
+- *(orm)* bind typed temporal filter values
+- *(orm)* retain UUID filter bindings
+- *(admin)* support typed filter values
+- *(ci)* allow base64 0.23 duplicate on main
+- *(ci)* inherit base64 duplicate policy
+- *(orm)* preserve numeric derived primary key bindings
+- *(orm)* preserve manual numeric primary key bindings
+- *(orm)* retain primary key newtype compatibility
+- *(macros)* keep skip_getter fields out of Info DTOs
+- *(macros)* keep skip_getter separate from Info exclusion
+- *(security)* allow unavoidable smartstring advisory
+- *(ci)* allow compatible num-bigint versions
+- *(ci)* align aggregate coverage with Codecov policy
+- *(ci)* allow zerovec-derive patch duplicates
+- *(ci)* use the installed Chrome binary for WASM tests
+- *(security)* track the unpatched h2 0.3 advisory
+- *(ci)* extend nested compilation test timeouts
+- *(db)* update stale Jsonb test references
+- *(ci)* share webdriver config across WASM tests
+
+### Maintenance
+
+- remove standalone SemVer Check workflow
+- merge main into primary key binding fix
+- merge main into develop/0.4.0
+- preserve compiler packages during disk cleanup
+- merge develop/0.4.0 into ci/disable-large-package-cleanup-develop-0.4.0
+
+### Security
+
+- *(orm)* preserve exact custom primary key bindings
+
+### Testing
+
+- *(macros)* align user Info fixture with skip_getter
+- *(db)* cover AST parser fallback
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.3...reinhardt-web@v0.4.0-alpha.6) - 2026-08-06
+
+### Added
+
+- *(core)* add model form schema contracts
+- *(macros)* generate typed model form schemas
+- *(manouche)* parse model-backed forms
+- *(pages)* generate model-backed forms
+- *(forms)* [**breaking**] make generated model forms async
+- *(migrations)* add strict squash catalog
+- *(migrations)* make squash optimization barrier-aware
+- *(migrations)* render and safely write squash sources
+- *(commands)* add squashmigrations CLI
+
+### Changed
+
+- *(db)* accept dynamic ORM executors
+
+### Documentation
+
+- *(forms)* document generated model forms
+- *(forms)* correct facade and formset guidance
+- *(db)* document atomic transaction outcomes
+- *(migrations)* document squash app validation
+- *(commands)* document safe migration squashing
+- *(commands)* clarify squash cleanup failures
+- *(commands)* clarify inactive migration dependencies
+- *(inspectdb)* describe unique target relationships
+- *(release)* restore coherent alpha.3 references
+
+### Fixed
+
+- *(macros)* preserve model form relation schemas
+- *(macros)* reject repeated setter name collisions
+- *(pages)* handle unsigned and cleared model inputs
+- *(forms)* enforce model form persistence invariants
+- *(forms)* align model form automatic defaults
+- *(forms)* harden generated form persistence semantics
+- *(forms)* close residual model form review gaps
+- *(pages)* keep forms dev dependency native-only
+- *(macros)* expose model form core paths on WASM
+- *(pages)* clear rejected model form values
+- *(forms)* expose model validation errors
+- *(pages)* preserve valid boolean and fractional controls
+- *(pages)* render stored model form values
+- *(macros)* omit generated fields from model forms
+- *(pages)* reject unsupported model form widgets
+- *(forms)* retain fractional time precision
+- *(forms)* synchronize replacement field values
+- *(forms)* defer inline parent key validation
+- *(forms)* make direct model saves insert explicitly
+- *(forms)* preserve native model field values
+- *(forms)* enforce generated model constraints
+- *(db)* preserve naive timestamp wall-clock values
+- *(forms)* handle temporal and assigned model inputs
+- *(forms)* preserve model form field contracts
+- *(forms)* preserve specialized field constraints
+- *(forms)* preserve exact generated constraints
+- *(pages)* retain native model form submission
+- *(pages)* validate model widget overrides
+- *(forms)* complete model-backed form submission
+- *(forms)* enforce model form submission policies
+- *(forms)* harden native model form decoding
+- *(forms)* preserve model form defaults
+- *(forms)* harden model form input handling
+- *(forms)* preserve secure model form defaults
+- *(forms)* preserve untouched model controls
+- *(forms)* honor relation form editability
+- *(forms)* preserve nullable relation clears
+- *(forms)* synchronize hydrated model submits
+- *(forms)* complete model form submission contracts
+- *(forms)* validate model form submission boundaries
+- *(forms)* align shared model form validation
+- *(forms)* reject unsupported model reactivity
+- *(db)* preserve naive datetime query parameters
+- *(forms)* preserve native model form semantics
+- *(forms)* validate inline and runtime model form state
+- *(forms)* prevalidate inline foreign keys
+- *(forms)* preserve native defaults and control values
+- *(forms)* preserve model-backed form state
+- *(forms)* reset omitted model form fields
+- *(forms)* reserve the native csrf field name
+- *(forms)* retain untouched boolean defaults
+- *(forms)* enforce policy in typed setters
+- *(pages)* reject unsupported model form callbacks
+- *(forms)* harden generated model form boundaries
+- *(forms)* preserve optional model form state
+- *(forms)* enforce model form overrides
+- *(forms)* reserve generated form namespaces
+- *(forms)* preflight deferred child validators
+- *(forms)* require generated relation ids
+- *(pages)* keep model form controls in sync
+- *(forms)* prevent duplicate MySQL form inserts
+- *(forms)* preserve native range defaults
+- *(forms)* prevent duplicate create retries
+- *(forms)* defer uncertain generated keys
+- *(forms)* synchronize defaults and persistence state
+- *(forms)* synchronize transaction-backed form state
+- *(forms)* preserve transactional retry semantics
+- *(forms)* support trusted inline foreign keys
+- *(forms)* preserve inline uncertain create state
+- *(db)* scope atomic outcomes to savepoints
+- *(forms)* preserve model form control semantics
+- *(db)* decode MySQL UTC fields with model metadata
+- *(forms)* preserve nested form retries
+- *(forms)* validate inline formset retries
+- *(forms)* align native form validation
+- *(pages)* preserve server function fallback syntax
+- *(forms)* use serde-json for trusted fields
+- *(forms)* support nullable model form relations
+- *(db)* read PostgreSQL naive migration timestamps
+- *(forms)* preserve trusted non-editable model values
+- *(forms)* restore model form CI coverage
+- *(forms)* address model form review feedback
+- *(pgvector)* preserve vector index metadata
+- *(orm)* preserve typed vector NULL bindings
+- *(ci)* repair pgvector test coverage
+- *(pgvector)* close migration and binding gaps
+- *(migrations)* harden squash catalog validation
+- *(migrations)* refine squash range boundaries
+- *(migrations)* preserve squash alter boundaries
+- *(migrations)* harden squash source persistence
+- *(migrations)* validate rendered source payloads
+- *(migrations)* reject root identity changes
+- *(migrations)* verify root snapshot identity
+- *(commands)* refine squashmigrations validation
+- *(migrations)* reject lossy strict parsing
+- *(migrations)* validate squash root before writes
+- *(migrations)* strictly parse nested column payloads
+- *(db)* make squash operation parsing lossless
+- *(db)* validate nested squash domain metadata
+- *(migrations)* reject duplicate strict fields
+- *(db)* parse legacy migration metadata and serial fields
+- *(db)* use explicit empty segment check
+- *(db)* mark standard alter-column rendering as supported
+- *(test)* stabilize shell evaluator artifact reuse
+- *(test)* extend shell fixture deadlines
+- *(migrations)* harden squash range resolution
+- *(migrations)* validate squash execution contracts
+- *(migrations)* ignore Rust module files
+- *(migrations)* preserve RunRust source operations
+- *(migrations)* validate migration directory identity
+- *(migrations)* omit selected swappable dependencies
+- *(migrations)* preserve public source operations
+- *(migrations)* validate squash dependency context
+- *(migrations)* preserve squash dependency semantics
+- *(migrations)* harden squash generation
+- *(migrations)* preserve squash dependency semantics
+- *(migrations)* honor replacement execution
+- *(migrations)* normalize squash dependencies
+- *(migrations)* preserve squash reduction barriers
+- *(migrations)* resolve replacement state history
+- *(commands)* plan replacement migrations
+- *(migrations)* normalize replacement histories
+- *(migrations)* preserve replacement history semantics
+- *(migrations)* resolve nested replacement histories
+- *(migrations)* retain replacement rollback order
+- *(migrations)* reconcile nested replacement histories
+- *(migrations)* preserve replacement ancestry
+- *(migrations)* retain partial replacement dependencies
+- *(migrations)* resume fake replacement cleanup
+- *(migrations)* expand fake replacement coverage
+- *(migrations)* preserve CreateTable backend options
+- *(migrations)* complete squash history reconciliation
+- *(migrations)* handle squash review edge cases
+- *(migrations)* cover squash review edge cases
+- *(migrations)* preserve partial squash ordering
+- *(ci)* restore test fixture and lint compliance
+- *(migrations)* order partial squash descendants
+- *(migrations)* retain partial replacement metadata
+- *(commands)* restrict migration ordering helper to tests
+- *(migrations)* restore public squash range construction
+- *(migrations)* cover nested replacement histories
+- *(commands)* reconcile transitive replacement plans
+- *(migrations)* preserve squash source semantics
+- *(pages)* align server function field fixture
+- *(migrations)* reject non-portable swappable squashes
+- *(commands)* honor managed migration settings
+- *(migrations)* address visibility review feedback
+- *(ci)* restore visibility and wasm coverage
+- *(commands)* reject keyless inspectdb objects
+- *(orm)* reload composite MySQL upserts by lookup
+- *(orm)* gate MySQL reload on generated primary key
+- *(migrations)* validate replacement sets before adoption
+- *(inspectdb)* preserve unique target relationships
+- *(query)* satisfy WASM backend validation lint
+- *(ci)* pin generated Reinhardt dependencies to checkout
+- *(ci)* validate fixture dependency pinning
+- *(ci)* align irreversible migration fixture
+- *(commands)* harden dbshell diagnostics and MySQL transport
+- *(db)* align relationship imports with generated fields
+- *(auth)* address session backport review feedback
+- *(release)* break forms facade publish cycle
+- *(release)* restore unpublished crates after partial release
+
+### Maintenance
+
+- *(pgvector)* propagate native vector feature flags
+
+### Other
+
+- sync develop/0.4.0 into pgvector branch
+- sync develop/0.4.0 into pgvector branch
+- integrate develop migration updates
+- sync develop/0.4.0 and resolve review feedback
+
+### Styling
+
+- *(migrations)* format squash execution tests
+- *(migrations)* simplify dependency collection
+
+### Testing
+
+- *(forms)* cover generated model form flows
+- *(forms)* preserve non-default audit values
+- *(forms)* cover uncertain insert persistence state
+- *(forms)* align generated model form expectations
+- *(migrations)* align strict parser diagnostic
+- *(commands)* cover squashmigrations management flow
+- *(commands)* harden squashmigrations process boundaries
+- *(commands)* compile generated squash modules
+- *(commands)* verify strict squash round trips
+- *(commands)* cover index squash roundtrip
+- *(migrations)* verify backend option rendering
+- *(migrations)* correct optional dependency assertions
+- *(orm)* mark upsert fixture fields as generated
+- *(migrations)* align SQL fixtures with safe rendering
+- *(commands)* align generated output expectations
+- *(inspectdb)* cover unique relationship variants
+- *(migrations)* assert complete MySQL table comment SQL
+- *(commands)* align MySQL dbshell integration expectation
+
+## [0.4.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.2...reinhardt-web@v0.4.0-alpha.3) - 2026-07-27
+
+### Added
+
+- *(macros)* pass raw requests alongside extractors
+
+### Fixed
+
+- *(commands)* resolve static manifest aliases
+- *(staticfiles)* harden manifest alias handling
+- *(macros)* support aliased raw request parameters
+- *(macros)* isolate raw request codegen binding
+- *(macros)* hygienically bind raw route requests
+- *(macros)* bind generated route requests hygienically
+- *(ci)* allow base64 0.23 duplicate
+
+### Maintenance
+
+- remove standalone SemVer Check workflow
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.1...reinhardt-web@v0.4.0-alpha.2) - 2026-07-23
+
+### Added
+
+- *(commands)* add hooks module to Pages app template
+- *(commands)* add custom hooks directory to Pages apps
+
+### Documentation
+
+- add release announcement(s)
+- *(db)* update database engine examples
+
+### Fixed
+
+- *(admin)* restore Arc import in database tests
+- *(admin)* configure pagination test backend
+
+### Styling
+
+- *(rest)* format tutorial integration fixtures
+
+### Testing
+
+- *(pages)* refresh controlled bind diagnostic
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.2...reinhardt-web@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(db)* add scoped n+1 query detection
+- feat!(pages): resolve SSR resources asynchronously
+- *(pages)* add typed hook dependency constructors
+- *(pages)* select explicit or automatic memo dependencies
+- feat!(pages): require explicit hook dependency modes
+- *(pages)* validate deps macro hook arguments
+- *(pages)* add structured server function errors
+- *(pages)* connect structured server errors
+- *(pages)* convert validation errors to server errors
+- *(pages)* route structured server errors to form fields
+- *(pages)* add typed server function submits
+
+### Changed
+
+- *(pages)* unify effect dependency modes
+- *(pages)* migrate hooks to deps list syntax
+- *(pages)* migrate model-set error adapters
+
+### Documentation
+
+- document 0.4 performance migration
+- record disposable benchmark workflow
+- record backend benchmark procedure
+- refresh runtime scorecard measurements
+- record sync http follow-up measurements
+- refresh requestless perf measurements
+- record final backend measurements
+- record 2026-06-30 backend measurements
+- record local runtime floor measurement
+- set realistic 0.4 performance gates
+- record 0.4 promotion gate status
+- disambiguate async-trait rustdoc link
+- *(rest)* remove inactive prefetch guidance
+- *(pages)* explain hook dependency modes
+- *(pages)* fix resource migration example
+- *(pages)* note hook dependency migration
+- *(pages)* preserve historical migration examples
+- *(pages)* document structured server function errors
+- *(pages)* align client form metadata contract
+
+### Fixed
+
+- preserve route body and path param semantics
+- address 0.4 fast-path review comments
+- [**breaking**] preserve server_fn codec metadata invariants
+- preserve custom method router dispatch
+- *(db)* avoid listener map guards across awaits
+- *(rest)* keep validator doctests feature neutral
+- *(db)* address n+1 detector review gaps
+- *(db)* harden n+1 detector diagnostics
+- *(db)* address n plus one review feedback
+- *(db)* satisfy n plus one hash clippy
+- *(db)* address n plus one review feedback
+- *(db)* address orm review feedback
+- *(ci)* unblock quick-xml security audit
+- *(ci)* adapt XML parser to quick-xml 0.41
+- *(db)* remove inactive n plus one prefetch guidance
+- *(pages)* harden async SSR resource rendering
+- *(pages)* complete ssr suspense resource replay
+- *(pages)* drain streamed ssr resource replays
+- *(pages)* stabilize suspense resource replay
+- *(pages)* address SSR resource review feedback
+- *(pages)* reuse tracked SSR resources during replay
+- *(pages)* harden streaming suspense resource scopes
+- *(pages)* reuse pending tracked SSR resources
+- *(pages)* scope suspense resource replay caches
+- *(pages)* remove shared suspense head cache
+- *(pages)* preserve SSR resource replay consistency
+- *(pages)* keep buffered suspense head capture request scoped
+- *(pages)* preserve marker render allocators
+- *(pages)* satisfy resource hydration clippy
+- *(pages)* harden suspense hydration state
+- *(pages)* stabilize client form submit UI fixtures
+- *(pages)* drop duplicate component tree arms
+- resolve PR 5615 conflicts and feedback
+- *(macros)* gate MySQL generated-column test
+- *(macros)* preserve model schema metadata
+- *(testkit)* harden model-derived schema metadata
+- *(testkit)* complete model-derived schema fidelity
+- *(ci)* restore upgraded dependency checks
+- *(core)* make effect teardown panic-safe
+- *(core)* remove effects after cleanup panic
+- *(core)* deduplicate memo notification waves
+- *(core)* separate memo propagation from consumers
+- *(core)* recover interrupted notification epochs
+- *(pages)* harden hook dependency migration
+- *(pages)* harden dependency migration
+- *(pages)* harden dependency migration edge cases
+- *(pages)* harden dependency migration edge cases
+- *(pages)* align dependency mode exports and tests
+- *(core)* satisfy memo clippy lints
+- *(pages)* update dynamic dependency test
+- *(pages)* scope native resource dependency import
+- *(admin)* satisfy migration clippy lints
+- *(pages)* remove duplicate native cfg
+- *(admin)* preserve unresolved local hook calls
+- *(core)* tolerate runtime teardown during cleanup
+- *(admin)* preserve unresolved omitted hook calls
+- *(pages)* repair hook dependency migration tests
+- *(pages)* restore explicit deps compatibility
+- *(ci)* terminate cfg aliases macro invocations
+- *(pages)* retain reactive owners through review edge cases
+- *(pages)* guard stale lifecycle handles
+- *(pages)* retain mount scopes for events
+- *(reactive)* enforce explicit dependencies and memo invalidation
+- *(pages)* complete explicit dependency migration
+- *(reactive)* isolate scope cleanup observers
+- *(deeplink)* preserve client router extension
+- *(ci)* allow auto-fix on non-fast-forward-only branches
+- *(ci)* paginate auto-fix branch-rule checks
+- *(core)* restore reactive notification coverage
+- *(pages)* restore reactive CI compatibility
+- *(pages)* update legacy hook dependency tests
+- *(manouche)* close PR 5641 media and extraction review gaps
+- *(pages)* resolve controlled binding review feedback
+- *(pages)* preserve controlled select projection
+- *(pages)* address route loader review feedback
+- preserve structured database errors
+- *(examples)* preserve lookup database errors
+- *(pages)* resolve server function set review findings
+- *(db)* update legacy executor test errors
+- *(pages)* clarify structured error review fixes
+- *(pages)* sanitize server function extractor errors
+- *(pages)* resolve serde-renamed client form errors
+- *(pages)* scope error-kind imports to tests
+- *(pages)* satisfy clippy in model error sanitizer
+- *(pages)* preserve structured pre-validation errors
+- *(examples)* format basis tutorial sources
+- *(pages)* envelope server function failures
+- *(pages)* envelope server function request failures
+- *(pages)* skip stale server form errors
+- *(pages)* classify server function failures
+- *(pages)* preserve structured server form errors
+- *(pages)* retain custom error status
+- *(pages)* reconcile reactive attributes
+- *(pages)* preserve reactive control hydration
+- *(pages)* normalize boolean attribute names
+- *(core)* satisfy reactive attribute lint requirements
+- *(pages)* restore reactive attribute test checks
+- *(examples)* import tutorial database error types
+- *(pages)* stabilize empty head compile fixture
+- *(pages)* simplify reactive boolean attribute predicates
+- *(commands)* restore phase 1 CI gates
+- *(release)* restore develop prerelease lifecycle
+- *(pages)* prevent invalid head macro doc link
+- *(pages)* remove redundant UI doc link targets
+- *(pages)* align hydration and SSR regression tests
+- *(orm)* resolve to-field physical columns
+- *(pages)* retain server DOM after hydration rollback
+- *(pages)* scope document head wasm signals
+- *(pages)* align server function error display test
+
+### Maintenance
+
+- refresh benchmark lockfile
+- merge develop/0.4.0 into component route branch
+- merge remote async SSR resource branch
+- merge develop/0.4.0 into client form bindings
+- merge develop/0.4.0 into client form bindings
+- *(serena)* update project configuration
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into functional state setter
+- migrate dependency policy checks to cargo-deny
+- merge develop/0.4.0 into retained effects
+- merge develop/0.4.0 into issue 5575 branch
+- merge develop/0.4.0 into route loader branch
+- remove task execution reports
+- auto-fix fmt and clippy
+- *(test)* isolate DI UI test target
+- *(test)* isolate macro UI test target
+- *(test)* bound integration cache disk usage
+
+### Other
+
+- sync develop/0.4.0 into hook dependency modes
+- resolve develop/0.4.0 conflicts for [[#5676](https://github.com/kent8192/reinhardt-web/issues/5676)](https://github.com/kent8192/reinhardt-web/issues/5676)
+- sync develop/0.4.0 into server function set
+- sync develop/0.4.0 into structured server errors
+- sync develop/0.4.0 into structured server errors
+
+### Performance
+
+- [**breaking**] lazy-parse request query params
+- [**breaking**] inline path parameter dispatch values
+- avoid warning-path uri allocation
+- freeze compiled route tables
+- [**breaking**] borrow query parameter lookups
+- skip empty router dispatch work
+- bypass request builder in server adapters
+- remove boxed server request futures
+- cache raw query parameter ranges
+- borrow matched route handlers
+- add concrete router dispatch fast path
+- bypass router handler arc wrapper
+- add static response body fast path
+- reuse request body planning
+- bypass handler arc wrappers internally
+- add synchronous handler fast path
+- trim query and response fixed costs
+- flatten server router backend dispatch
+- add static server route fast path
+- expose synchronous router dispatch
+- use compact exact route tables
+- revert compact exact route table experiment
+- add synchronous HTTP connection adapter
+- add requestless sync route path
+- return server fn bytes directly
+- borrow server fn request bodies
+- avoid boxed server fn futures
+- shrink server fn endpoint futures
+- fast path json server fn content type
+- bypass exact route match materialization
+- streamline server fn responses
+- [**breaking**] specialize json server fn hot path
+- specialize server fn codec response path
+
+### Testing
+
+- simplify request config construction
+- update path parameter assertions
+- tighten review regression assertions
+- *(reactive)* cover explicit deps macro compatibility
+- *(pages)* clarify validation conversion phases
+- *(pages)* unwrap HMR template metadata in keyed test
+
+### Breaking Changes
+
+- *(pages)* Route-backed `#[component]` declarations now require explicit
+  `name = "..."` route-name arguments.
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.9...reinhardt-web@v0.3.10) - 2026-08-22
 
 ### Documentation

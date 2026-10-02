@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.17...reinhardt-dentdelion@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+- *(dentdelion)* complete capability matrix
+- *(dentdelion)* correct capability implementation status
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.14...reinhardt-dentdelion@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Fixed
+
+- *(dentdelion)* confine plugin loading to its root
+- *(dentdelion)* close plugin path race
+- *(dentdelion)* retain plugin root capability
+- *(dentdelion)* preserve anchored loader behavior
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+## [0.4.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.12...reinhardt-dentdelion@v0.4.0-alpha.13) - 2026-09-02
+
+### Fixed
+
+- *(dentdelion)* confine plugin loading to its root
+- *(dentdelion)* close plugin path race
+- *(dentdelion)* retain plugin root capability
+- *(dentdelion)* preserve anchored loader behavior
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.10...reinhardt-dentdelion@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.8...reinhardt-dentdelion@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define runtime and operations boundaries
+- *(security)* qualify remaining policy boundaries
+- *(security)* document remaining boundary assumptions
+- *(security)* qualify runtime policy boundaries
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.3.15...reinhardt-dentdelion@v0.3.16) - 2026-09-08
 
 ### Maintenance
@@ -46,6 +120,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.6...reinhardt-dentdelion@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Fixed
+
+- *(dentdelion)* isolate source-built fixture
+
+### Maintenance
+
+- *(dentdelion)* provision source-built fixture tooling
+- merge main into develop/0.4.0
+
+### Styling
+
+- *(dentdelion)* align lifecycle test formatting
+
+### Testing
+
+- *(dentdelion)* cover WASM loader contracts
+- *(dentdelion)* build lifecycle fixture from source
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.3.2...reinhardt-dentdelion@v0.4.0-alpha.1) - 2026-07-21
+
+### Changed
+
+- [**breaking**] remove remaining dynamic error dependencies
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge develop/0.4.0 into remove-anyhow branch
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.3.9...reinhardt-dentdelion@v0.3.10) - 2026-08-22
 
 ### Maintenance

@@ -1,0 +1,5 @@
+error: ClientForm does not support collection, map, or generic fields
+ --> tests/ui/client_form/fail/collection_field.rs:5:9
+  |
+5 |     names: Vec<String>,
+  |            ^^^^^^^^^^^

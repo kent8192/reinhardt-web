@@ -1,0 +1,79 @@
+error[E0277]: the trait bound `__ReinhardtModelFormSelection: reinhardt_pages::form::ModelFormSelectionCount<3>` is not satisfied
+  --> tests/ui/form/fail/model_multipart_count_mismatch.rs:4:14
+   |
+ 4 |       let _form = reinhardt_pages::form! {
+   |  _________________^
+ 5 | |         name: ShortUploadForm,
+ 6 | |         model: Upload,
+ 7 | |         policy: UploadPolicy,
+ 8 | |         fields: [title, document],
+ 9 | |         server_fn: upload,
+10 | |     };
+   | |_____^ unsatisfied trait bound
+   |
+help: the trait `ModelFormSelectionCount<3>` is not implemented for `__ReinhardtModelFormSelection`
+      but trait `ModelFormSelectionCount<2>` is implemented for it
+  --> tests/ui/form/fail/model_multipart_count_mismatch.rs:4:14
+   |
+ 4 |       let _form = reinhardt_pages::form! {
+   |  _________________^
+ 5 | |         name: ShortUploadForm,
+ 6 | |         model: Upload,
+ 7 | |         policy: UploadPolicy,
+ 8 | |         fields: [title, document],
+ 9 | |         server_fn: upload,
+10 | |     };
+   | |_____^
+note: required for `upload::marker` to implement `reinhardt_pages::form::ModelFormServerFn<__ReinhardtModelFormSelection, UploadFormSchema, ShortUploadFormSelectionPolicy>`
+  --> tests/ui/form/fail/../model_multipart_support.rs
+   |
+   | #[server_fn(model_form_payload = "UploadModelFormData<UploadPolicy>")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the macro `reinhardt_pages::form` which comes from the expansion of the attribute macro `server_fn` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `__ReinhardtModelFormSelection: reinhardt_pages::form::ModelFormSelectionArgument<2>` is not satisfied
+  --> tests/ui/form/fail/model_multipart_count_mismatch.rs:4:14
+   |
+ 4 |       let _form = reinhardt_pages::form! {
+   |  _________________^
+ 5 | |         name: ShortUploadForm,
+ 6 | |         model: Upload,
+ 7 | |         policy: UploadPolicy,
+ 8 | |         fields: [title, document],
+ 9 | |         server_fn: upload,
+10 | |     };
+   | |_____^ unsatisfied trait bound
+   |
+help: the trait `reinhardt_pages::form::ModelFormSelectionArgument<2>` is not implemented for `__ReinhardtModelFormSelection`
+  --> tests/ui/form/fail/model_multipart_count_mismatch.rs:4:14
+   |
+ 4 |       let _form = reinhardt_pages::form! {
+   |  _________________^
+ 5 | |         name: ShortUploadForm,
+ 6 | |         model: Upload,
+ 7 | |         policy: UploadPolicy,
+ 8 | |         fields: [title, document],
+ 9 | |         server_fn: upload,
+10 | |     };
+   | |_____^
+help: `__ReinhardtModelFormSelection` implements trait `reinhardt_pages::form::ModelFormSelectionArgument<INDEX>`
+  --> tests/ui/form/fail/model_multipart_count_mismatch.rs:4:14
+   |
+ 4 |       let _form = reinhardt_pages::form! {
+   |  _________________^
+ 5 | |         name: ShortUploadForm,
+ 6 | |         model: Upload,
+ 7 | |         policy: UploadPolicy,
+ 8 | |         fields: [title, document],
+ 9 | |         server_fn: upload,
+10 | |     };
+   | |     ^
+   | |     |
+   | |_____`reinhardt_pages::form::ModelFormSelectionArgument<0>`
+   |       `reinhardt_pages::form::ModelFormSelectionArgument<1>`
+note: required for `upload::marker` to implement `reinhardt_pages::form::ModelFormServerFn<__ReinhardtModelFormSelection, UploadFormSchema, ShortUploadFormSelectionPolicy>`
+  --> tests/ui/form/fail/../model_multipart_support.rs
+   |
+   | #[server_fn(model_form_payload = "UploadModelFormData<UploadPolicy>")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the macro `reinhardt_pages::form` which comes from the expansion of the attribute macro `server_fn` (in Nightly builds, run with -Z macro-backtrace for more info)

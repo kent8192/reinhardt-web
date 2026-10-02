@@ -2,7 +2,7 @@ error: #[injectable] provider functions must have all parameters marked with #[i
   --> tests/di/ui/fail/injectable_factory_mixed_params.rs:25:1
    |
 25 | / async fn make_service(
-26 | |     #[inject] _config: Depends<ConfigKey, Config>,
+26 | |     #[inject] _config: KeyedDepends<ConfigKey, Config>,
 27 | |     extra: String,
-28 | | ) -> FactoryOutput<MyServiceKey, MyService> {
-   | |___________________________________________^
+28 | | ) -> MyService {
+   | |______________^

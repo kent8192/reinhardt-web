@@ -35,7 +35,8 @@
 //! use myapp::models::CustomUser;
 //!
 //! // CustomUser has #[user(hasher = Argon2Hasher, username_field = "username")]
-//! // and #[model(table_name = "auth_user")] — SuperuserInit is auto-generated.
+//! // and #[model(app_label = "auth", table_name = "auth_user")] —
+//! // SuperuserInit is auto-generated.
 //! register_superuser_creator(superuser_creator_for::<CustomUser>());
 //! ```
 //!

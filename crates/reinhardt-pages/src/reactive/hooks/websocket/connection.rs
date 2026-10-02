@@ -7,7 +7,11 @@ use gloo_timers::callback::Timeout;
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use web_sys::{CloseEvent, ErrorEvent, MessageEvent, WebSocket};
 
-use super::{ConnectionState, Signal, UseWebSocketOptions, WebSocketMessage};
+use super::{
+	ConnectionState, EventHub, Signal, UseWebSocketOptions, WebSocketEventError, WebSocketMessage,
+	invoke_in_owner_scope,
+};
+use reinhardt_core::reactive::ScopeId;
 
 /// Detach callbacks before releasing their Rust closures or closing the socket.
 struct ActiveSocket {
@@ -37,6 +41,8 @@ impl Drop for ActiveSocket {
 pub(super) struct Connection {
 	url: String,
 	options: UseWebSocketOptions,
+	owner_scope: ScopeId,
+	event_hub: Rc<EventHub>,
 	connection_state: Signal<ConnectionState>,
 	latest_message: Signal<Option<WebSocketMessage>>,
 	socket: RefCell<Option<ActiveSocket>>,
@@ -50,12 +56,16 @@ impl Connection {
 	pub(super) fn new(
 		url: &str,
 		options: UseWebSocketOptions,
+		owner_scope: ScopeId,
 		connection_state: Signal<ConnectionState>,
 		latest_message: Signal<Option<WebSocketMessage>>,
+		event_hub: Rc<EventHub>,
 	) -> Rc<Self> {
-		let connection = Rc::new(Self {
+		Rc::new(Self {
 			url: url.to_owned(),
 			options,
+			owner_scope,
+			event_hub,
 			connection_state,
 			latest_message,
 			socket: RefCell::new(None),
@@ -63,9 +73,11 @@ impl Connection {
 			retries: Cell::new(0),
 			generation: Cell::new(0),
 			stopped: Cell::new(false),
-		});
-		connection.connect();
-		connection
+		})
+	}
+
+	pub(super) fn start(self: &Rc<Self>) {
+		self.connect();
 	}
 
 	fn is_current(&self, generation: u64) -> bool {
@@ -82,7 +94,7 @@ impl Connection {
 		}
 		self.generation.set(self.generation.get().wrapping_add(1));
 		let generation = self.generation.get();
-		self.connection_state.set(ConnectionState::Connecting);
+		let _ = self.connection_state.try_set(ConnectionState::Connecting);
 		// A reactive observer may call close() while processing the state change.
 		if self.stopped.get() {
 			return;
@@ -106,11 +118,11 @@ impl Connection {
 				return;
 			}
 			connection.retries.set(0);
-			connection.connection_state.set(ConnectionState::Open);
+			let _ = connection.connection_state.try_set(ConnectionState::Open);
 			if connection.accepts_events(generation)
 				&& let Some(callback) = &connection.options.on_open
 			{
-				callback();
+				let _ = invoke_in_owner_scope(connection.owner_scope, || callback());
 			}
 		}) as Box<dyn FnMut(JsValue)>);
 		socket.set_onopen(Some(onopen.as_ref().unchecked_ref()));
@@ -124,15 +136,20 @@ impl Connection {
 				return;
 			}
 			let data = event.data();
-			if let Some(text) = data.as_string() {
-				connection
-					.latest_message
-					.set(Some(WebSocketMessage::Text(text)));
+			let message = if let Some(text) = data.as_string() {
+				Some(WebSocketMessage::Text(text))
 			} else if let Ok(buffer) = data.dyn_into::<js_sys::ArrayBuffer>() {
-				let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
-				connection
-					.latest_message
-					.set(Some(WebSocketMessage::Binary(bytes)));
+				Some(WebSocketMessage::Binary(
+					js_sys::Uint8Array::new(&buffer).to_vec(),
+				))
+			} else {
+				None
+			};
+			if let Some(message) = message {
+				connection.event_hub.dispatch(&message);
+				if connection.accepts_events(generation) {
+					let _ = connection.latest_message.try_set(Some(message));
+				}
 			}
 		}) as Box<dyn FnMut(MessageEvent)>);
 		socket.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
@@ -142,15 +159,16 @@ impl Connection {
 			let Some(connection) = weak.upgrade() else {
 				return;
 			};
-			// A manually closed socket still delivers its final close notification.
-			if !connection.is_current(generation) {
+			if !connection.accepts_events(generation) {
 				return;
 			}
 			let socket = connection.socket.borrow_mut().take();
 			drop(socket);
-			connection.connection_state.set(ConnectionState::Closed);
-			if let Some(callback) = &connection.options.on_close {
-				callback();
+			let _ = connection.connection_state.try_set(ConnectionState::Closed);
+			if !connection.stopped.get()
+				&& let Some(callback) = &connection.options.on_close
+			{
+				let _ = invoke_in_owner_scope(connection.owner_scope, || callback());
 			}
 			// No RefCell borrow crosses the callback, which may stop this connection.
 			connection.schedule_retry();
@@ -179,12 +197,17 @@ impl Connection {
 	}
 
 	fn report_error(&self, message: String) {
-		self.connection_state
-			.set(ConnectionState::Error(message.clone()));
+		let _ = self
+			.connection_state
+			.try_set(ConnectionState::Error(message.clone()));
+		if !self.stopped.get() {
+			self.event_hub
+				.dispatch_error(WebSocketEventError::Transport);
+		}
 		if !self.stopped.get()
 			&& let Some(callback) = &self.options.on_error
 		{
-			callback(message);
+			let _ = invoke_in_owner_scope(self.owner_scope, || callback(message));
 		}
 	}
 
@@ -241,31 +264,11 @@ impl Connection {
 		if self.stopped.replace(true) {
 			return;
 		}
+		self.generation.set(self.generation.get().wrapping_add(1));
 		let timer = self.retry_timer.borrow_mut().take();
 		drop(timer);
-		let socket = self
-			.socket
-			.borrow()
-			.as_ref()
-			.map(|active| active.socket.clone());
-		let Some(socket) = socket else {
-			self.connection_state.set(ConnectionState::Closed);
-			return;
-		};
-		match socket.ready_state() {
-			WebSocket::CONNECTING | WebSocket::OPEN => {
-				self.connection_state.set(ConnectionState::Closing);
-				if let Err(error) = socket.close() {
-					let active = self.socket.borrow_mut().take();
-					drop(active);
-					self.connection_state.set(ConnectionState::Error(format!(
-						"Failed to close WebSocket: {error:?}"
-					)));
-				}
-			}
-			WebSocket::CLOSING => self.connection_state.set(ConnectionState::Closing),
-			_ => self.connection_state.set(ConnectionState::Closed),
-		}
+		drop(self.socket.borrow_mut().take());
+		let _ = self.connection_state.try_set(ConnectionState::Closed);
 	}
 }
 

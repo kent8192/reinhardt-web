@@ -35,8 +35,11 @@ env:
   CARGO_TARGET_DIR: /tmp/cargo_target
   CARGO_INCREMENTAL: 0
   CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
+  CARGO_NET_RETRY: 10
+  CARGO_HTTP_TIMEOUT: 120
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  SCCACHE_CACHE_SIZE: 4G
   RUST_MIN_STACK: 8388608  # 8MB - prevent stack overflow in deep async fixture chains
 
 jobs:
@@ -57,7 +60,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false
           docker-images: true
           swap-storage: true
 
@@ -75,6 +78,9 @@ jobs:
         with:
           rust-save-if: ${{ github.ref == 'refs/heads/main' }}
           protoc-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install browser WASM target for consumer contract tests
+        run: rustup target add wasm32-unknown-unknown
 
       - name: Install mold linker and build dependencies
         run: |
@@ -101,7 +107,8 @@ jobs:
         run: |
           cat > /tmp/clang-mold-wrapper << 'WRAPPER'
           #!/bin/sh
-          exec clang -fuse-ld=mold "$@"
+          # rustc may append -fuse-ld=lld for host links; keep mold last.
+          exec clang "$@" -fuse-ld=mold
           WRAPPER
           chmod +x /tmp/clang-mold-wrapper
           ARCH=$(uname -m)
@@ -141,6 +148,9 @@ jobs:
           echo "Disk usage after additional cleanup:"
           df -h
 
+      - name: Fetch browser dependencies for offline consumer checks
+        run: cargo fetch --target wasm32-unknown-unknown
+
       - name: Run cross-crate integration tests (partition ${{ matrix.partition }}/${{ inputs.partition-count || '5' }})
         env:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
@@ -155,12 +165,12 @@ jobs:
           cargo nextest run \
             --package reinhardt-integration-tests \
             --all-features \
+            -E "$FILTER_EXPR" \
             --partition "hash:${{ matrix.partition }}/$PARTITION_COUNT" \
             --no-fail-fast \
             --no-tests=warn \
             --status-level=none \
-            --final-status-level=none \
-            -E "$FILTER_EXPR"
+            --final-status-level=none
 
       - name: Docker cleanup after tests
         if: always()

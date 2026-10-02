@@ -4,6 +4,8 @@
 //! and authentication/authorization helpers for admin panel endpoints.
 
 use crate::types::AdminError;
+/// Shared model-level permission enum used by server authorization helpers.
+pub use crate::types::ModelPermission;
 use reinhardt_http::AuthState;
 use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest};
 use std::sync::Arc;
@@ -17,6 +19,7 @@ pub trait IntoServerFnError {
 impl IntoServerFnError for AdminError {
 	fn into_server_fn_error(self) -> ServerFnError {
 		match self {
+			AdminError::FieldCodec(_) => ServerFnError::server(500, "Field value encoding failed"),
 			AdminError::ModelNotRegistered(msg) => ServerFnError::server(404, msg),
 			AdminError::PermissionDenied(msg) => ServerFnError::server(403, msg),
 			AdminError::InvalidAction(msg) | AdminError::ValidationError(msg) => {
@@ -44,38 +47,6 @@ impl<T> MapServerFnError<T> for Result<T, AdminError> {
 	fn map_server_fn_error(self) -> Result<T, ServerFnError> {
 		self.map_err(|e| e.into_server_fn_error())
 	}
-}
-
-/// Permission types for model-level access control.
-///
-/// Used with [`AdminAuth::require_model_permission`] to specify which
-/// permission to check against the `ModelAdmin`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModelPermission {
-	/// Permission to view model instances
-	View,
-	/// Permission to add (create) model instances
-	Add,
-	/// Permission to change (update) model instances
-	Change,
-	/// Permission to delete model instances
-	Delete,
-}
-
-/// Resolve the filters that restrict object-level access for an admin request.
-pub fn require_object_filters(
-	model_admin: &dyn crate::core::ModelAdmin,
-	user: &dyn crate::core::AdminUser,
-) -> Result<Vec<reinhardt_db::orm::Filter>, ServerFnError> {
-	if user.is_superuser() {
-		return Ok(Vec::new());
-	}
-	let filters = model_admin
-		.object_filters(user)
-		.ok_or_else(|| ServerFnError::server(403, "Object permission denied"))?;
-	crate::core::database::build_object_scope_condition(&filters)
-		.map_err(|_| ServerFnError::server(403, "Object permission denied"))?;
-	Ok(filters)
 }
 
 /// Authentication and authorization checker for admin panel.
@@ -237,6 +208,7 @@ impl AdminAuth {
 mod tests {
 	use super::*;
 	use async_trait::async_trait;
+	use reinhardt_pages::server_fn::ServerFnErrorKind;
 	use rstest::rstest;
 	use std::sync::Arc;
 
@@ -290,36 +262,6 @@ mod tests {
 		}
 		async fn has_delete_permission(&self, _: &dyn crate::core::AdminUser) -> bool {
 			true
-		}
-	}
-
-	/// Grants all permissions and explicitly allows every object.
-	struct AllowAllScopedAdmin;
-
-	#[async_trait]
-	impl crate::core::ModelAdmin for AllowAllScopedAdmin {
-		fn model_name(&self) -> &str {
-			"AllowScopedModel"
-		}
-
-		async fn has_view_permission(&self, _: &dyn crate::core::AdminUser) -> bool {
-			true
-		}
-		async fn has_add_permission(&self, _: &dyn crate::core::AdminUser) -> bool {
-			true
-		}
-		async fn has_change_permission(&self, _: &dyn crate::core::AdminUser) -> bool {
-			true
-		}
-		async fn has_delete_permission(&self, _: &dyn crate::core::AdminUser) -> bool {
-			true
-		}
-
-		fn object_filters(
-			&self,
-			_: &dyn crate::core::AdminUser,
-		) -> Option<Vec<reinhardt_db::orm::Filter>> {
-			Some(Vec::new())
 		}
 	}
 
@@ -402,13 +344,10 @@ mod tests {
 
 		// Assert
 		assert!(result.is_err());
-		match result.unwrap_err() {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "Permission denied");
-			}
-			other => panic!("Expected Server error with 403, got: {other:?}"),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(403));
+		assert_eq!(error.user_message(), "Permission denied");
 	}
 
 	#[rstest]
@@ -430,13 +369,13 @@ mod tests {
 
 		// Assert
 		assert!(result.is_err());
-		match result.unwrap_err() {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "Staff access required for admin panel");
-			}
-			other => panic!("Expected Server error with 403, got: {other:?}"),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(403));
+		assert_eq!(
+			error.user_message(),
+			"Staff access required for admin panel"
+		);
 	}
 
 	#[rstest]
@@ -458,13 +397,13 @@ mod tests {
 
 		// Assert
 		assert!(result.is_err());
-		match result.unwrap_err() {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 401);
-				assert_eq!(message, "Authentication required to access admin panel");
-			}
-			other => panic!("Expected Server error with 401, got: {other:?}"),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(401));
+		assert_eq!(
+			error.user_message(),
+			"Authentication required to access admin panel"
+		);
 	}
 
 	#[rstest]
@@ -496,40 +435,6 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn object_filters_deny_custom_admin_without_scope() {
-		let result = require_object_filters(&AllowAllAdmin, &TestUser);
-
-		assert!(matches!(
-			result,
-			Err(ServerFnError::Server { status: 403, .. })
-		));
-	}
-
-	#[test]
-	fn object_filters_allow_custom_admin_with_empty_scope() {
-		let filters = require_object_filters(&AllowAllScopedAdmin, &TestUser)
-			.expect("custom admin with Some(vec![]) should allow objects");
-
-		assert_eq!(filters.len(), 0);
-	}
-
-	#[test]
-	fn configured_admin_explicitly_allows_unscoped_objects() {
-		let admin = crate::core::ModelAdminConfig::builder()
-			.model_name("Record")
-			.allow_all(true)
-			.build()
-			.expect("test admin should build");
-
-		assert_eq!(
-			require_object_filters(&admin, &TestUser)
-				.expect("configured admin should allow objects")
-				.len(),
-			0
-		);
-	}
-
 	// --- Error conversion tests ---
 
 	#[rstest]
@@ -538,13 +443,9 @@ mod tests {
 		let admin_err = AdminError::ModelNotRegistered("User".into());
 		let server_err = admin_err.into_server_fn_error();
 
-		match server_err {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 404);
-				assert_eq!(message, "User");
-			}
-			_ => panic!("Expected Server error"),
-		}
+		assert_eq!(server_err.kind(), ServerFnErrorKind::Server);
+		assert_eq!(server_err.status(), Some(404));
+		assert_eq!(server_err.user_message(), "User");
 	}
 
 	#[rstest]
@@ -553,27 +454,20 @@ mod tests {
 		let admin_err = AdminError::PermissionDenied("Access denied".into());
 		let server_err = admin_err.into_server_fn_error();
 
-		match server_err {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "Access denied");
-			}
-			_ => panic!("Expected Server error"),
-		}
+		assert_eq!(server_err.kind(), ServerFnErrorKind::Server);
+		assert_eq!(server_err.status(), Some(403));
+		assert_eq!(server_err.user_message(), "Access denied");
 	}
 
 	#[rstest]
 	#[test]
-	fn test_validation_error_converts_to_application() {
+	fn test_validation_error_converts_to_application_error() {
 		let admin_err = AdminError::ValidationError("Invalid input".into());
 		let server_err = admin_err.into_server_fn_error();
 
-		match server_err {
-			ServerFnError::Application(msg) => {
-				assert_eq!(msg, "Invalid input");
-			}
-			_ => panic!("Expected Application error"),
-		}
+		assert_eq!(server_err.kind(), ServerFnErrorKind::Application);
+		assert_eq!(server_err.status(), None);
+		assert_eq!(server_err.user_message(), "Invalid input");
 	}
 
 	#[rstest]
@@ -582,16 +476,11 @@ mod tests {
 		let admin_err = AdminError::DatabaseError("SQL syntax error at line 42".into());
 		let server_err = admin_err.into_server_fn_error();
 
-		match server_err {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 500);
-				assert_eq!(message, "Database operation failed");
-				// Verify that the original error details are hidden
-				assert!(!message.contains("SQL"));
-				assert!(!message.contains("42"));
-			}
-			_ => panic!("Expected Server error"),
-		}
+		assert_eq!(server_err.kind(), ServerFnErrorKind::Server);
+		assert_eq!(server_err.status(), Some(500));
+		assert_eq!(server_err.user_message(), "Database operation failed");
+		assert!(!server_err.user_message().contains("SQL"));
+		assert!(!server_err.user_message().contains("42"));
 	}
 
 	#[rstest]
@@ -601,9 +490,8 @@ mod tests {
 		let server_result = result.map_server_fn_error();
 
 		assert!(server_result.is_err());
-		match server_result.unwrap_err() {
-			ServerFnError::Server { status, .. } => assert_eq!(status, 404),
-			_ => panic!("Expected Server error"),
-		}
+		let error = server_result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(404));
 	}
 }

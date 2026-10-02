@@ -24,6 +24,7 @@ fn main() {
 			}
 			input {
 				r#type: "checkbox",
+				aria_label: "Calculated checked state",
 				checked: self::calculate_checked(5),
 			}
 		}

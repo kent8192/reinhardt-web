@@ -1,0 +1,5 @@
+error: ClientFormChoices requires externally tagged string enum representation
+ --> tests/ui/client_form/choices/fail/untagged_enum.rs:4:9
+  |
+4 | #[serde(untagged)]
+  |         ^^^^^^^^

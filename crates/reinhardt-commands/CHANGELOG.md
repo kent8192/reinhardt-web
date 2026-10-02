@@ -7,6 +7,139 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.17...reinhardt-commands@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+
+### Fixed
+
+- *(commands)* honor makemigrations migration directory
+- *(commands)* reject non-utf8 migration directory paths
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.16...reinhardt-commands@v0.4.0-alpha.17) - 2026-09-25
+
+### Added
+
+- *(commands)* prepare declared command capabilities
+- *(commands)* adopt scoped bootstrap in project scaffolds
+- *(commands)* scope built-in command requirements
+- *(commands)* propagate CLI verbosity to capability commands
+
+### Fixed
+
+- *(commands)* compile scoped capabilities without database features
+- *(commands)* default migration state to files without TestContainers
+- *(commands)* align lean feature gates and generated launchers
+- *(commands)* address capability review findings
+- *(commands)* resolve follow-up capability review
+
+### Testing
+
+- *(commands)* exercise generated Pages and migration boundaries
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.15...reinhardt-commands@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(commands)* add unified buildstatic packaging
+- *(staticfiles)* unify pages and collected asset publication
+
+### Documentation
+
+- update version references to v0.3.17
+- *(commands)* explain manifest selection and publication validation
+
+### Fixed
+
+- *(commands)* honor selected and required static asset generations
+- *(commands)* stream owned file ranges in standalone runserver
+- *(commands)* preserve admin routes under manifest serving
+- *(commands)* share manifest selection and admin routing across runservers
+- *(commands)* reject static URL aliases that shadow logical inputs
+- *(staticfiles)* address publication and browser review findings
+- *(commands)* expose the management asset entrypoint selector
+- *(staticfiles)* resolve actionable publication review comments
+- *(staticfiles)* address manifest and serving regressions
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+- auto-fix fmt and clippy
+
+### Testing
+
+- *(commands)* account for registered assets in rebuild checks
+- *(commands)* account for registered static assets in repeat builds
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.14...reinhardt-commands@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+### Testing
+
+- *(commands)* restore admin script process state
+- *(commands)* inject shared fixtures into admin suites
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.13...reinhardt-commands@v0.4.0-alpha.14) - 2026-09-07
+
+### Maintenance
+
+- merge develop/0.4.0 into migration source PR
+
+### Testing
+
+- *(migrations)* expect versioned builder-style generated source
+
+### Changed
+
+- Make `makemigrations --check` a no-write drift check that exits unsuccessfully
+  when a migration, merge migration, or empty migration would be created. An
+  all-app check with no registered or persisted models reports no changes
+  successfully; persisted models still produce deletion migrations.
+
+## [0.4.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.11...reinhardt-commands@v0.4.0-alpha.12) - 2026-08-30
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.10...reinhardt-commands@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.9...reinhardt-commands@v0.4.0-alpha.10) - 2026-08-25
+
+### Fixed
+
+- *(commands)* wire makemigrations cross-app foreign-key dependencies
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.15...reinhardt-commands@v0.3.16) - 2026-09-08
 
 ### Testing
@@ -44,6 +177,304 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(commands)* wire makemigrations cross-app foreign-key dependencies
 
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.8...reinhardt-commands@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define runtime and operations boundaries
+- *(security)* qualify remaining policy boundaries
+- *(security)* qualify remaining boundary assumptions
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.7...reinhardt-commands@v0.4.0-alpha.8) - 2026-08-22
+
+### Security
+
+- *(commands)* upgrade evcxr to drop unmaintained json
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.6...reinhardt-commands@v0.4.0-alpha.7) - 2026-08-19
+
+### Added
+
+- *(commands)* export application contracts
+- *(commands)* export application contract
+- *(commands)* add deterministic contract verification
+- *(commands)* define verification report v1
+- *(commands)* add verify output formats
+- *(commands)* render typed verification outcomes
+- *(commands)* propagate verification exit codes
+
+### Changed
+
+- *(commands)* defer contract settings resolution
+
+### Documentation
+
+- *(contract)* publish application schema v0
+- *(commands)* document contract verification
+- *(commands)* document verification JSON protocol
+- *(commands)* reorganize generated project guidance
+- *(commands)* expand generated surface guidance
+- *(commands)* document extractable app boundaries
+- *(commands)* document page macro and target-neutral routes
+- *(commands)* fix page macro guide ending
+- *(commands)* expand generated project guidance
+- *(commands)* add ORM query examples
+- *(commands)* require field attributes in ORM guidance
+
+### Fixed
+
+- *(commands)* retain one-to-one contract references
+- *(commands)* gate contract test metadata import
+- *(commands)* use published varchar contract kind
+- *(commands)* preserve contract feature compatibility
+- *(commands)* resolve foreign key column types
+- *(contract)* close export review findings
+- *(contract)* close follow-up export review findings
+- *(contract)* close mounted route follow-up findings
+- *(contract)* resolve review findings
+- *(contract)* preserve relative sqlite paths
+- *(contract)* resolve application contract review findings
+- resolve native protocol review findings
+- *(commands)* compile deferred contract export
+- *(commands)* harden deterministic contract verification
+- *(commands)* use stable verification finding codes
+- *(contract)* preserve mounted route metadata during export
+- *(commands)* keep verification checks independent
+- *(commands)* replay cargo feature and profile names
+- *(commands)* make contract verification fail closed
+- *(commands)* fail closed on process inspection errors
+- *(commands)* compile shared dispatcher without contract
+- satisfy format and clippy checks
+- address contract verification review feedback
+- close contract verification review gaps
+- close contract verification review gaps
+- refresh contract verification context
+- close contract verification review gaps
+- *(commands)* generate valid contract-aware project scaffolds
+- *(contract)* close verification review gaps
+- *(contract)* preserve resolved configuration semantics
+- *(ci)* satisfy example build script clippy
+- *(contract)* honor defaults and quoted manifest values
+- *(ci)* parse multiline Cargo feature definitions
+- *(contract)* preserve custom migration defaults
+- *(commands)* complete verification report coverage
+- *(commands)* preserve verification error details
+- *(commands)* protect generated settings files
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Other
+
+- sync develop/0.4.0 into CI repair
+
+### Testing
+
+- *(contract)* exercise tutorial export consumer
+- *(commands)* cover contract verification consumers
+- *(commands)* make consumer replay host-portable
+- *(commands)* cover both replay process failures
+- *(commands)* cover both replay inspection stages
+- *(commands)* reuse contract consumer fixture
+- cover continued contract validators
+- *(commands)* preserve report ordering fixture
+- *(commands)* cover verification JSON protocol
+- *(commands)* tighten verification JSON assertions
+- *(commands)* remove generated guidance assertions
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.3...reinhardt-commands@v0.4.0-alpha.6) - 2026-08-06
+
+### Added
+
+- *(commands)* add ORM-aware Rust shell
+- *(commands)* generate shell-enabled project wiring
+- *(commands)* add squashmigrations CLI
+
+### Documentation
+
+- *(commands)* document Rust management shell migration
+- *(commands)* document safe migration squashing
+- *(commands)* clarify squash cleanup failures
+- *(commands)* clarify inactive migration dependencies
+- update version references to v0.4.0-alpha.5
+- *(release)* restore coherent alpha.3 references
+
+### Fixed
+
+- *(commands)* harden shell evaluator lifecycle
+- *(commands)* preserve shell evaluation output
+- release shell and scoped database resources
+- *(commands)* preserve shell bootstrap and interrupt output
+- *(commands)* retain bootstrap evaluator resources
+- *(commands)* close evaluator process trees
+- *(commands)* harden shell evaluation boundaries
+- *(commands)* harden shell bootstrap boundaries
+- *(commands)* make shell startup interruptible
+- *(commands)* await interrupted shell startup cleanup
+- *(commands)* cancel shell startup promptly
+- *(commands)* interrupt shell recovery startup
+- *(commands)* preserve evaluator diagnostics
+- *(commands)* preserve shell source prefixes
+- *(commands)* avoid duplicate boundary diagnostics
+- *(commands)* preserve shell bootstrap output and comments
+- *(commands)* preserve bootstrap output streams
+- *(commands)* preserve failed shell bootstrap output
+- *(commands)* bound shell evaluator startup and output handling
+- *(commands)* preserve shell evaluator boundary output
+- *(commands)* guard evaluator process during startup
+- *(commands)* preserve shell source and native gates
+- *(commands)* preserve shell boundary output
+- *(shell)* harden evaluator lifecycle
+- *(shell)* preserve test database scopes
+- *(commands)* preserve inner attributes after control whitespace
+- *(commands)* preserve inner attributes after Rust whitespace
+- *(commands)* gate shell-only helpers
+- *(commands)* isolate shell evaluators by worker
+- *(commands)* avoid unavailable shell prelude import
+- *(commands)* handle shell evaluator lifecycle edges
+- *(commands)* address shell review findings
+- *(commands)* refine squashmigrations validation
+- *(migrations)* harden squash range resolution
+- *(migrations)* validate squash dependency context
+- *(migrations)* harden squash generation
+- *(commands)* plan replacement migrations
+- *(migrations)* preserve replacement history semantics
+- *(migrations)* resolve nested replacement histories
+- *(migrations)* reconcile nested replacement histories
+- *(migrations)* preserve replacement ancestry
+- *(migrations)* retain partial replacement dependencies
+- *(migrations)* resume fake replacement cleanup
+- *(migrations)* expand fake replacement coverage
+- *(migrations)* complete squash history reconciliation
+- *(migrations)* handle squash review edge cases
+- *(migrations)* cover squash review edge cases
+- *(migrations)* preserve partial squash ordering
+- *(migrations)* order partial squash descendants
+- *(migrations)* retain partial replacement metadata
+- *(commands)* restrict migration ordering helper to tests
+- *(commands)* reconcile transitive replacement plans
+- *(commands)* honor managed migration settings
+- *(migrations)* address visibility review feedback
+- *(ci)* restore visibility and wasm coverage
+- *(commands)* reject keyless inspectdb objects
+- *(commands)* harden dbshell diagnostics and MySQL transport
+- *(release)* restore unpublished crates after partial release
+
+### Maintenance
+
+- auto-fix fmt and clippy
+
+### Other
+
+- sync develop/0.4.0 into pgvector branch
+- integrate develop migration updates
+- sync develop/0.4.0 and resolve review feedback
+
+### Testing
+
+- *(commands)* cover shell feature diagnostic
+- *(commands)* retain shell evaluator failure output
+- *(commands)* minimize real process exit probe
+- *(commands)* align generated output expectations
+
+## [0.4.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.2...reinhardt-commands@v0.4.0-alpha.3) - 2026-07-27
+
+### Fixed
+
+- *(commands)* resolve static manifest aliases
+- *(staticfiles)* harden manifest alias handling
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.1...reinhardt-commands@v0.4.0-alpha.2) - 2026-07-23
+
+### Fixed
+
+- *(i18n)* honor registered app catalogs
+- *(i18n)* complete registered catalog workflow
+- *(i18n)* preserve registered catalog domains
+- *(i18n)* preserve structured PO entries
+- *(i18n)* skip empty extracted messages
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.2...reinhardt-commands@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- feat!(pages): require named component route names
+- feat!(pages): resolve SSR resources asynchronously
+- *(commands)* dispatch static page edits as HMR patches
+
+### Fixed
+
+- *(pages)* harden async SSR resource rendering
+- *(docs)* remove redundant command links
+- *(commands)* harden component style delivery
+- *(commands)* harden component style delivery
+- *(commands)* resolve target-aware style extraction
+- *(commands)* retain metadata-refresh style context
+- *(commands)* align style extraction with build cfgs
+- *(commands)* align style extraction with Cargo build cfgs
+- *(commands)* follow active component style sources
+- *(commands)* allow styleless standalone runserver
+- *(commands)* align component styles with wasm builds
+- *(commands)* align selected Pages package rebuilds
+- *(commands)* honor selected Pages package context
+- *(commands)* preserve hot reload build context
+- *(commands)* keep Pages rebuild artifacts in sync
+- *(commands)* use library target names for Pages WASM
+- *(tests)* align style delivery CI expectations
+- harden component style delivery
+- expose dependency-aware wasm freshness check
+- compile dependency-aware wasm freshness check
+- *(styles)* validate font and style extraction edges
+- *(style)* validate generated component CSS
+- *(style)* preserve pages style runtime boundaries
+- *(commands)* preserve component style reload safety
+- *(styles)* align generated and extracted scopes
+- *(commands)* honor custom Pages static directories
+- *(commands)* preserve component style lifecycle
+- *(styles)* address component style review comments
+- *(commands)* isolate Pages package selection
+- *(commands)* fingerprint variable constraints
+- *(commands)* use metadata for Pages cdylib targets
+- *(manouche)* close PR 5641 media and extraction review gaps
+- *(commands)* restore phase 1 CI gates
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into component style branch
+- merge develop/0.4.0 into component-style branch
+- auto-fix fmt and clippy
+
+### Other
+
+- resolve develop/0.4.0 into model enum fields
+- sync develop/0.4.0 into page template hot patching
+
+### Added
+
+- *(pages)* compile component styles for collectstatic and development serving with stable CSS-only refresh URLs
+
+### Removed
+
+- *(pages)* remove the obsolete whole-root static HTML hot-patch parser and helper
+
+### Fixed
+
+- *(pages)* keep generated component styles aligned with compiled Cargo sources, configured static URLs, and successful rebuilds.
+- *(collectstatic)* register generated assets before template rendering and validate every static source before clearing output.
+- *(commands)* surface invalid migration rename destinations during generation
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.9...reinhardt-commands@v0.3.10) - 2026-08-22
 
 ### Maintenance

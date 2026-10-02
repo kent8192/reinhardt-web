@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.4.0-alpha.14...reinhardt-views@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Fixed
+
+- *(views)* omit unused syntect parser dependencies
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.4.0-alpha.13...reinhardt-views@v0.4.0-alpha.14) - 2026-09-07
+
+### Fixed
+
+- *(deps)* align quick-xml with the plist dependency
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.4.0-alpha.10...reinhardt-views@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Fixed
+
+- *(views)* apply custom lookup fields to detail queries
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.4.0-alpha.8...reinhardt-views@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(views)* explain request-scoped model viewsets
+- update version references to v0.3.10
+- *(security)* document stable advisory fixes
+
+### Fixed
+
+- *(views)* scope model viewset database queries
+- *(views)* preserve scoped update primary keys
+- *(orm)* close request-scoping review gaps
+- *(orm)* bind scoped mutations atomically
+- *(orm)* bind scoped mutations atomically
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve safe query boundaries
+- *(orm)* track new objects and decimal keys
+- *(views)* normalize custom manager filter columns
+- *(views)* normalize scoped manager querysets
+- *(views)* reject scope field mutations
+- *(orm)* preserve scoped field types and hstore writes
+- *(orm)* preserve scoped and declared field types
+- *(orm)* preserve generated keys and type bindings
+- *(views)* preserve scoped annotation fields
+- *(views)* preserve subquery scope fields
+- *(views)* preserve correlated scope fields
+- *(views)* harden scoped field mapping
+- *(views)* preserve model-shaped scoped querysets
+- *(orm)* preserve model session query state
+- *(orm)* close request scoping review edge cases
+- *(views)* import SerializerError in viewset handler tests
+- *(urls)* enforce ViewSet routing policies
+- *(orm)* preserve scoped queryset constraints
+- *(views)* skip refresh for unassigned string keys
+
+### Maintenance
+
+- auto-fix fmt and clippy
+- merge main into develop/0.4.0
+
+### Testing
+
+- *(views)* compile request scope rustdoc
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.15...reinhardt-views@v0.3.16) - 2026-09-08
 
 ### Fixed
@@ -43,6 +126,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.8](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.4.0-alpha.7...reinhardt-views@v0.4.0-alpha.8) - 2026-08-22
+
+### Documentation
+
+- *(views)* clarify queryset provider contract
+
+### Fixed
+
+- *(views)* scope model viewsets per request
+- *(orm)* close request-scoping review gaps
+- *(orm)* lock scoped mutation rows
+- *(orm)* lock scoped mutation rows
+- *(orm)* preserve typed field metadata
+- *(orm)* preserve typed field metadata
+- *(orm)* use backend-safe mutation rechecks
+- *(views)* version composite primary-key routes
+- *(views)* serialize scoped subquery mutations
+- *(orm)* serialize scoped join mutations
+- *(orm)* reject unsafe mutation scopes
+- *(orm)* close scoped query edge cases
+- *(orm)* close request scoping review edge cases
+
+### Maintenance
+
+- auto-fix fmt and clippy
+- auto-fix fmt and clippy
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.4.0-alpha.6...reinhardt-views@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Fixed
+
+- *(auth)* deny bare legacy extension authentication
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.4.0-alpha.5...reinhardt-views@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.4.0-alpha.1...reinhardt-views@v0.4.0-alpha.2) - 2026-07-23
+
+### Added
+
+- *(db)* [**breaking**] add Copy-safe injected connection handles
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.2...reinhardt-views@v0.4.0-alpha.1) - 2026-07-21
+
+### Fixed
+
+- restore facade feature integrations
+- *(errors)* preserve database classifications
+- preserve structured database errors
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge main into develop/0.4.0
+- merge develop/0.4.0 into remove-anyhow branch
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.9...reinhardt-views@v0.3.10) - 2026-08-22
 
 ### Security

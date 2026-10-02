@@ -1,0 +1,5 @@
+error: ClientFormChoices requires matching serde serialize and deserialize names for each choice
+ --> tests/ui/client_form/choices/fail/deserialize_rename_collision.rs:7:2
+  |
+7 |     Fake,
+  |     ^^^^

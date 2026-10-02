@@ -5,7 +5,7 @@ use reinhardt::pages::component::Page;
 
 use crate::client::components::nav::with_nav;
 
-#[component("/logout/", "logout")]
+#[component("/logout/", name = "logout")]
 pub fn logout_page() -> Page {
 	with_nav(super::logout_form())
 }

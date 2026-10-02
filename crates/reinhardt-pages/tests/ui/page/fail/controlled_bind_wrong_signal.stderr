@@ -1,0 +1,21 @@
+error[E0277]: the trait bound `reinhardt_pages::Signal<bool>: reinhardt_pages::control_binding::__private::IntoControlBinding<reinhardt_pages::control_binding::__private::TextBinding>` is not satisfied
+ --> tests/ui/page/fail/controlled_bind_wrong_signal.rs:8:10
+  |
+8 |             bind: wrong,
+  |                   ^^^^^ unsatisfied trait bound
+  |
+help: the trait `IntoControlBinding<reinhardt_pages::control_binding::__private::TextBinding>` is not implemented for `reinhardt_pages::Signal<bool>`
+      but trait `IntoControlBinding<reinhardt_pages::control_binding::__private::CheckboxBinding>` is implemented for it
+ --> src/control_binding.rs
+  |
+  |     impl IntoControlBinding<CheckboxBinding> for Signal<bool> {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: for that trait implementation, expected `reinhardt_pages::control_binding::__private::CheckboxBinding`, found `reinhardt_pages::control_binding::__private::TextBinding`
+note: required by a bound in `reinhardt_pages::control_binding::__private::into_control_binding`
+ --> src/control_binding.rs
+  |
+  |     pub fn into_control_binding<Kind, Source>(
+  |            -------------------- required by a bound in this function
+...
+  |         Source: IntoControlBinding<Kind>,
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `into_control_binding`

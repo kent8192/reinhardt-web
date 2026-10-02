@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 include!("../support.rs");
 
-#[model(table_name = "books")]
+#[model(app_label = "default", table_name = "books")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Book {
 	#[field(primary_key = true)]

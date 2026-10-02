@@ -6,7 +6,7 @@ use reinhardt::pages::component::Page;
 
 use crate::client::components::nav::with_nav;
 
-#[component("/polls/{question_id}/delete/", "question_delete")]
+#[component("/polls/{question_id}/delete/", name = "question_delete")]
 pub fn question_delete(Path(question_id): Path<i64>) -> Page {
 	with_nav(super::question_delete_confirm(question_id))
 }

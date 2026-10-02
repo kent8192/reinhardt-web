@@ -1,0 +1,5 @@
+error: Element <option> in a bound select cannot contain a descendant with a `tabindex` attribute
+  --> tests/ui/page/fail/bound_select_option_tabindex.rs:15:7
+   |
+15 |                         tabindex: dynamic_tabindex,
+   |                         ^^^^^^^^

@@ -24,6 +24,7 @@ pub mod interpolation;
 pub mod logging;
 pub mod media;
 pub(crate) mod merge;
+pub mod migrations;
 /// OpenAPI documentation endpoint configuration.
 pub mod openapi;
 /// Field-level policy types for settings fragments.
@@ -32,6 +33,7 @@ pub mod prelude;
 pub mod profile;
 /// Typed settings schema references and recursive settings metadata.
 pub mod schema;
+pub mod scoped;
 pub mod secret_types;
 pub mod security;
 pub mod session;
@@ -122,7 +124,13 @@ pub use database_config::DatabaseConfig;
 pub use policy::{FieldPolicy, FieldRequirement};
 
 // Re-export ComposedSettings trait
-pub use composed::ComposedSettings;
+pub use composed::{ComposedSettings, PendingSettings, ResolvedSettings, SettingsContractState};
+
+// Re-export value-free resolved settings metadata.
+pub use schema::{
+	JsonKind, ResolvedSettingsField, SettingsResolutionMetadata, SettingsRootSchema,
+	SettingsRootSectionSchema, SettingsViolation, SettingsViolationKind, verify_settings_contract,
+};
 
 // Re-export the merge strategy selector for SettingsBuilder. See issue #4260.
 pub use builder::MergeStrategy;

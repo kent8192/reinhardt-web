@@ -45,6 +45,13 @@ pub struct Snippet {
 
 Keep the attribute order exactly like this: `#[model(...)]` comes before `#[derive(...)]`. Reinhardt's model macro reads the struct, generates schema metadata, and then leaves the derived serialization implementations in place.
 
+`app_label` is required because migrations and the model registry group models
+by application. `table_name` is optional for new schemas and defaults to the
+app label plus the singular snake_case struct name (`HTTPRoute` with
+`app_label = "routing"` becomes `routing_http_route`); this tutorial keeps
+`table_name = "snippets"` because its schema intentionally uses the plural
+table name.
+
 The `app_label = "snippets"` value must match the label registered by `installed_apps!` in `src/config/apps.rs`. The `table_name = "snippets"` value is the database table name the migration will create.
 
 The fields are ordinary Rust fields with database metadata:
@@ -52,6 +59,79 @@ The fields are ordinary Rust fields with database metadata:
 - `id` is the primary key.
 - `title`, `code`, and `language` become required `VARCHAR` columns with the declared lengths.
 - `created_at` is filled when a new model is built because it uses `auto_now_add = true`.
+
+## Use an Enum for a Finite Domain
+
+Keep `language` as `String` for this tutorial because syntax names are
+open-ended. For a field with a fixed domain, use a native model enum instead of
+accepting arbitrary strings. For example, you could add snippet visibility as
+a string-backed enum:
+
+```rust
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "string")]
+pub enum Visibility {
+	#[model_enum(value = "private")]
+	Private,
+	#[model_enum(value = "unlisted")]
+	Unlisted,
+	#[model_enum(value = "public")]
+	Public,
+}
+```
+
+Every variant has an explicit database value. If numeric storage is more
+appropriate, select `repr = "i32"` and use integer values:
+
+```rust
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "i32")]
+pub enum ReviewPriority {
+	#[model_enum(value = 10)]
+	Low,
+	#[model_enum(value = 20)]
+	Normal,
+	#[model_enum(value = 30)]
+	High,
+}
+```
+
+The corresponding required and nullable model fields would be:
+
+```rust,ignore
+#[field(max_length = 16)]
+pub visibility: Visibility,
+
+#[field(null = true)]
+pub review_priority: Option<ReviewPriority>,
+```
+
+Generated migrations use character storage for `Visibility`, integer storage
+for `ReviewPriority`, and named check constraints for their declared values.
+Use enum values in typed filters and updates:
+
+```rust,ignore
+let public_snippets = Snippet::objects()
+	.filter(Snippet::field_visibility().eq(Visibility::Public))
+	.filter(
+		Snippet::field_review_priority()
+			.is_in([ReviewPriority::Normal, ReviewPriority::High]),
+	)
+	.all()
+	.await?;
+
+Snippet::objects()
+	.filter(Snippet::field_id().eq(snippet_id))
+	.update_fields([
+		Snippet::field_visibility().assign(Visibility::Unlisted),
+		Snippet::field_review_priority().assign(Some(ReviewPriority::High)),
+	])
+	.await?;
+```
+
+Rust variant names, serde names, and database values are separate contracts.
+A raw string such as `.eq("public")` does not compile for a `Visibility` field;
+use `Visibility::Public` so queries share the model's database codec.
 
 ## Add a Normal Model Method
 
@@ -119,58 +199,49 @@ migrations/snippets/0001_initial.rs
 The reference migration creates the `snippets` table:
 
 ```rust
+// reinhardt-migration-source: 1
 use reinhardt::db::migrations::FieldType;
 use reinhardt::db::migrations::prelude::*;
 
 pub(super) fn migration() -> Migration {
-	Migration {
-		app_label: "snippets".to_string(),
-		name: "0001_initial".to_string(),
-		operations: vec![Operation::CreateTable {
+	Migration::new("0001_initial".to_string(), "snippets".to_string())
+		.add_operation(Operation::CreateTable {
 			name: "snippets".to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "code".to_string(),
-					type_definition: FieldType::VarChar(10000u32),
-					not_null: true,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: None,
-				},
-				ColumnDefinition {
-					name: "created_at".to_string(),
-					type_definition: FieldType::TimestampTz,
-					not_null: true,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-					default: None,
-				},
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::BigInteger,
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-					default: None,
-				},
+				ColumnDefinition::new("code".to_string(), FieldType::VarChar(10000u32))
+					.with_not_null(true)
+					.with_unique(false)
+					.with_primary_key(false)
+					.with_auto_increment(false)
+					.with_default(None)
+					.with_generated(None)
+					.with_domain_option(None),
+				ColumnDefinition::new("created_at".to_string(), FieldType::TimestampTz)
+					.with_not_null(true)
+					.with_unique(false)
+					.with_primary_key(false)
+					.with_auto_increment(false)
+					.with_default(None)
+					.with_generated(None)
+					.with_domain_option(None),
+				ColumnDefinition::new("id".to_string(), FieldType::BigInteger)
+					.with_not_null(true)
+					.with_unique(false)
+					.with_primary_key(true)
+					.with_auto_increment(true)
+					.with_default(None)
+					.with_generated(None)
+					.with_domain_option(None),
 			],
 			constraints: vec![],
 			without_rowid: None,
 			interleave_in_parent: None,
 			partition: None,
-		}],
-		dependencies: vec![],
-		atomic: true,
-		replaces: vec![],
-		initial: Some(true),
-		state_only: false,
-		database_only: false,
-		swappable_dependencies: vec![],
-		optional_dependencies: vec![],
-	}
+		})
+		.atomic(true)
+		.with_initial(Some(true))
+		.state_only(false)
+		.database_only(false)
 }
 ```
 

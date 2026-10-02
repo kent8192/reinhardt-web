@@ -287,6 +287,12 @@ impl RelAttribute {
 						"#[rel(one_to_many, ...)] requires 'to' parameter",
 					));
 				}
+				if self.foreign_key.is_none() {
+					return Err(syn::Error::new(
+						self.span,
+						"#[rel(one_to_many, ...)] requires 'foreign_key' parameter",
+					));
+				}
 			}
 			RelationType::ManyToMany => {
 				// ManyToMany uses ManyToManyField<Source, Target> type parameters.
@@ -369,6 +375,21 @@ mod tests {
 
 		let ident = Ident::new("unknown", Span::call_site());
 		assert_eq!(RelationType::from_ident(&ident), None);
+	}
+
+	#[test]
+	fn test_one_to_many_requires_foreign_key() {
+		let rel = RelAttribute {
+			rel_type: RelationType::OneToMany,
+			to: Some(syn::parse_quote!(Post)),
+			..Default::default()
+		};
+
+		let error = rel
+			.validate()
+			.expect_err("one_to_many without foreign_key should fail validation");
+
+		assert!(error.to_string().contains("foreign_key"));
 	}
 
 	#[test]

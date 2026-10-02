@@ -141,6 +141,21 @@
   (#match? @leaf "^(=>|==|!=|<=|>=|&&|\\|\\||=|<|>|\\+|-|\\*|/|%|as\\b)")
 )
 
+; Match-arm operators are parsed as semantic elements, not direct siblings.
+(
+  [
+    (paren)
+    (bracket)
+    (string)
+    (char)
+    (raw_string)
+  ] @append_space
+  .
+  (element
+    (fragment) @leaf)
+  (#match? @leaf "^(=>|==|!=|<=|>=|&&|\\|\\||=|<|>|\\+|-|\\*|/|%|as\\b)")
+)
+
 ; Commas in parens/brackets/source get trailing space.
 (paren
   (comma) @append_space)

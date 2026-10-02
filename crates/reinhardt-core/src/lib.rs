@@ -67,9 +67,9 @@
 //! | `pagination` | disabled | Pagination strategies |
 //! | `negotiation` | disabled | HTTP content negotiation |
 //! | `messages` | disabled | Flash message storage |
-//! | `page` | disabled | Server-side page rendering types (enables `security`) |
+//! | `page` | disabled | Page rendering types and URL-attribute safety checks; enables `security` |
 //! | `reactive` | disabled | Reactive state management |
-//! | `serde` | disabled | Serde serialization support |
+//! | `serde` | compatibility | Serde is an unconditional dependency; this feature gates only legacy module exports and derives |
 //! | `json` | disabled | JSON serialization support |
 //! | `xml` | disabled | XML serialization support |
 //! | `yaml` | disabled | YAML serialization support |
@@ -87,6 +87,8 @@ pub mod exception;
 /// Flash message storage framework.
 #[cfg(feature = "messages")]
 pub mod messages;
+/// Target-neutral schema, policy, and payload contracts for model-backed forms.
+pub mod model_form;
 /// Target-neutral metadata traits emitted by model macros.
 pub mod model_info {
 	use std::marker::PhantomData;
@@ -99,6 +101,11 @@ pub mod model_info {
 	pub trait InfoModel {
 		/// Primary-key type used by generated DTO companion fields.
 		type PrimaryKey;
+
+		/// Database table name used by generated relation-aware client metadata.
+		fn table_name() -> &'static str {
+			""
+		}
 	}
 
 	/// Lightweight relationship reference used by generated `{Model}Info` fields (Issue #5272).
@@ -134,6 +141,16 @@ pub mod model_info {
 		/// Converts this relationship reference into its primary key.
 		pub fn into_id(self) -> T::PrimaryKey {
 			self.id
+		}
+	}
+
+	impl<T> Default for RelationInfo<T>
+	where
+		T: InfoModel,
+		T::PrimaryKey: Default,
+	{
+		fn default() -> Self {
+			Self::new(T::PrimaryKey::default())
 		}
 	}
 
@@ -325,6 +342,8 @@ pub use crate::types::page;
 
 #[cfg(feature = "macros")]
 pub use reinhardt_macros as macros;
+#[cfg(feature = "macros")]
+pub use reinhardt_macros::Validate;
 
 // Re-export rate limiting types
 pub use crate::rate_limit::RateLimitStrategy;

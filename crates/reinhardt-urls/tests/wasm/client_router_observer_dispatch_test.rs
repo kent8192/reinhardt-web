@@ -10,6 +10,7 @@
 #![cfg(all(target_arch = "wasm32", feature = "wasm-diag-test"))]
 
 use reinhardt_core::page::Page;
+use reinhardt_core::reactive::{ReactiveScope, Signal};
 use reinhardt_urls::routers::ClientRouter;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -27,25 +28,49 @@ fn page_b() -> Page {
 
 #[wasm_bindgen_test]
 fn push_dispatches_observer_once_inv1_inv5() {
-	// Arrange
-	let router = ClientRouter::new()
-		.route("a", "/a", page_a)
-		.route("b", "/b", page_b);
-	let counter = Rc::new(Cell::new(0u64));
-	let counter_clone = counter.clone();
-	let _sub = router.on_navigate(move |_, _| {
-		counter_clone.set(counter_clone.get() + 1);
+	ReactiveScope::run(|| {
+		// Arrange
+		let router = ClientRouter::new()
+			.route("a", "/a", page_a)
+			.route("b", "/b", page_b);
+		let counter = Rc::new(Cell::new(0u64));
+		let counter_clone = counter.clone();
+		let _sub = router.on_navigate(move |_, _| {
+			counter_clone.set(counter_clone.get() + 1);
+		});
+		let dispatch_before = router.__diag_dispatch_count();
+
+		// Act
+		router.push("/b").expect("push must succeed");
+
+		// Assert
+		assert_eq!(counter.get(), 1, "Inv-1: listener fired exactly once");
+		assert_eq!(
+			router.__diag_dispatch_count(),
+			dispatch_before + 1,
+			"Inv-5: dispatch_count incremented by one"
+		);
 	});
-	let dispatch_before = router.__diag_dispatch_count();
+}
 
-	// Act
-	router.push("/b").expect("push must succeed");
+#[wasm_bindgen_test]
+fn navigation_observer_reenters_its_registration_scope() {
+	let scope = ReactiveScope::new();
+	let router = scope.enter(|| ClientRouter::new().route("a", "/a", page_a));
+	let callback_ran = Rc::new(Cell::new(false));
+	let callback_ran_for_listener = Rc::clone(&callback_ran);
+	let _subscription = scope.enter(|| {
+		router.on_navigate(move |_, _| {
+			let signal = Signal::new(1_i32);
+			assert_eq!(signal.get(), 1);
+			callback_ran_for_listener.set(true);
+		})
+	});
 
-	// Assert
-	assert_eq!(counter.get(), 1, "Inv-1: listener fired exactly once");
-	assert_eq!(
-		router.__diag_dispatch_count(),
-		dispatch_before + 1,
-		"Inv-5: dispatch_count incremented by one"
-	);
+	router
+		.push("/a")
+		.expect("push must succeed outside the render scope");
+
+	assert!(callback_ran.get());
+	scope.dispose();
 }

@@ -91,6 +91,7 @@ pub async fn create(
 	Json(serializer): Json<SnippetSerializer>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
+	let mut db = db;
 	let snippet = Snippet::build()
 		.title(serializer.title.clone())
 		.code(serializer.code.clone())
@@ -98,7 +99,7 @@ pub async fn create(
 		.finish();
 
 	let created = Manager::<Snippet>::new()
-		.create_with_conn(&db, &snippet)
+		.create_with_conn(&mut db, &snippet)
 		.await?;
 
 	let response_data = json!({
@@ -128,10 +129,11 @@ pub async fn update(
 	Json(serializer): Json<SnippetSerializer>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
+	let mut db = db;
 	serializer.validate()?;
 
 	let manager = Manager::<Snippet>::new();
-	let existing = manager.get(snippet_id).all_with_db(&db).await?;
+	let existing = manager.get(snippet_id).all_with_db(&mut db).await?;
 
 	let mut snippet = match existing.into_iter().next() {
 		Some(snippet) => snippet,
@@ -147,7 +149,7 @@ pub async fn update(
 	snippet.code = serializer.code.clone();
 	snippet.language = serializer.language.clone();
 
-	let updated = manager.update_with_conn(&db, &snippet).await?;
+	let updated = manager.update_with_conn(&mut db, &snippet).await?;
 
 	let response_data = json!({
 		"message": "Snippet updated",

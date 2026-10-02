@@ -86,6 +86,9 @@ pub mod backends;
 pub mod chain;
 /// Directed acyclic graph (DAG) based task dependencies.
 pub mod dag;
+/// Database-backed durable job queue.
+#[cfg(feature = "durable")]
+pub mod durable;
 /// Worker load balancing strategies.
 pub mod load_balancer;
 /// Distributed task locking to prevent duplicate execution.
@@ -123,6 +126,15 @@ pub use backends::RedisTaskBackend;
 
 #[cfg(feature = "database-backend")]
 pub use backends::SqliteBackend;
+#[cfg(all(feature = "durable", feature = "di"))]
+pub use durable::DurableQueueKey;
+#[cfg(feature = "durable")]
+pub use durable::{
+	DurableJobRecord, DurableJobStore, DurableQueue, DurableQueueError, JobClaim, JobEvent,
+	JobEventDraft, JobEventKind, JobEventPublisher, JobFailure, JobId, JobLifecycleService,
+	JobSnapshot, JobSpec, JobState, JobTransitionConflict, SharedDurableQueue,
+	SqliteDurableJobStore,
+};
 
 #[cfg(feature = "sqs-backend")]
 pub use backends::SqsBackend;

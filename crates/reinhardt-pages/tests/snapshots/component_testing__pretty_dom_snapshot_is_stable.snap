@@ -1,0 +1,9 @@
+---
+source: crates/reinhardt-pages/tests/component_testing.rs
+expression: screen.pretty()
+---
+<main aria-label="Jobs">
+  <button>
+    Refresh
+  </button>
+</main>

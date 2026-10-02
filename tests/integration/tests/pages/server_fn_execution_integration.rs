@@ -30,7 +30,7 @@
 #[cfg(feature = "msgpack")]
 use reinhardt_pages::server_fn::codec::MessagePackCodec;
 use reinhardt_pages::server_fn::codec::{Codec, JsonCodec, UrlCodec};
-use reinhardt_pages::server_fn::server_fn_trait::ServerFnError;
+use reinhardt_pages::server_fn::server_fn_trait::{ServerFnError, ServerFnErrorKind};
 use rstest::*;
 use serde::{Deserialize, Serialize};
 
@@ -173,23 +173,22 @@ async fn test_server_fn_network_error() {
 	let error = ServerFnError::network("Connection timeout");
 
 	// Verify error type
-	assert!(matches!(error, ServerFnError::Network(_)));
+	assert_eq!(error.kind(), ServerFnErrorKind::Transport);
 
 	// Verify error message formatting
 	let error_msg = error.to_string();
-	assert_eq!(error_msg, "Network error: Connection timeout");
-	assert!(error_msg.contains("Network error"));
+	assert_eq!(error_msg, "Connection timeout");
 	assert!(error_msg.contains("Connection timeout"));
 
 	// Verify error can be cloned and serialized
 	let cloned = error.clone();
-	assert!(matches!(cloned, ServerFnError::Network(_)));
+	assert_eq!(cloned.kind(), ServerFnErrorKind::Transport);
 
 	// Verify serialization roundtrip
 	let serialized = serde_json::to_string(&error).expect("Failed to serialize error");
 	let deserialized: ServerFnError =
 		serde_json::from_str(&serialized).expect("Failed to deserialize error");
-	assert!(matches!(deserialized, ServerFnError::Network(_)));
+	assert_eq!(deserialized.kind(), ServerFnErrorKind::Transport);
 }
 
 /// Tests server function error handling for 500 server errors
@@ -200,26 +199,21 @@ async fn test_server_fn_500_server_error() {
 	let error = ServerFnError::server(500, "Internal server error");
 
 	// Verify error type and status code
-	match &error {
-		ServerFnError::Server { status, message } => {
-			assert_eq!(*status, 500);
-			assert_eq!(message, "Internal server error");
-		}
-		_ => panic!("Expected Server error variant"),
-	}
+	assert_eq!(error.kind(), ServerFnErrorKind::Server);
+	assert_eq!(error.status(), Some(500));
+	assert_eq!(error.user_message(), "Internal server error");
 
 	// Verify error message formatting
 	let error_msg = error.to_string();
-	assert_eq!(error_msg, "Server error (500): Internal server error");
-	assert!(error_msg.contains("500"));
+	assert_eq!(error_msg, "Internal server error");
 	assert!(error_msg.contains("Internal server error"));
 
 	// Test different status codes
 	let error_404 = ServerFnError::server(404, "Not found");
-	assert!(error_404.to_string().contains("404"));
+	assert_eq!(error_404.status(), Some(404));
 
 	let error_503 = ServerFnError::server(503, "Service unavailable");
-	assert!(error_503.to_string().contains("503"));
+	assert_eq!(error_503.status(), Some(503));
 }
 
 /// Tests server function error handling for deserialize errors
@@ -240,11 +234,11 @@ async fn test_server_fn_deserialize_error() {
 
 	// Create ServerFnError for deserialization failure
 	let server_fn_error = ServerFnError::deserialization(error_msg);
-	assert!(matches!(server_fn_error, ServerFnError::Deserialization(_)));
+	assert_eq!(server_fn_error.kind(), ServerFnErrorKind::Deserialization);
 
 	// Verify error message formatting
 	let error_str = server_fn_error.to_string();
-	assert!(error_str.contains("Deserialization error"));
+	assert_eq!(error_str, server_fn_error.user_message());
 
 	// Test URL codec deserialization error
 	let url_codec = UrlCodec;
@@ -447,8 +441,8 @@ async fn test_server_fn_loading_to_error() {
 	// Verify final state
 	match state {
 		ServerFnState::Error(err) => {
-			assert!(matches!(err, ServerFnError::Deserialization(_)));
-			assert!(err.to_string().contains("Deserialization error"));
+			assert_eq!(err.kind(), ServerFnErrorKind::Deserialization);
+			assert_eq!(err.to_string(), err.user_message());
 		}
 		_ => panic!("Expected Error state"),
 	}
@@ -459,7 +453,7 @@ async fn test_server_fn_loading_to_error() {
 
 	match state2 {
 		ServerFnState::Error(err) => {
-			assert!(matches!(err, ServerFnError::Network(_)));
+			assert_eq!(err.kind(), ServerFnErrorKind::Transport);
 		}
 		_ => panic!("Expected Error state"),
 	}
@@ -917,20 +911,20 @@ async fn test_server_fn_decision_table(
 		match error {
 			"network" => {
 				let err = ServerFnError::network("Simulated network error");
-				assert!(matches!(err, ServerFnError::Network(_)));
+				assert_eq!(err.kind(), ServerFnErrorKind::Transport);
 			}
 			"timeout" => {
 				let err = ServerFnError::network("Connection timeout");
-				assert!(matches!(err, ServerFnError::Network(_)));
+				assert_eq!(err.kind(), ServerFnErrorKind::Transport);
 				assert!(err.to_string().contains("timeout"));
 			}
 			"server" => {
 				let err = ServerFnError::server(500, "Server error");
-				assert!(matches!(err, ServerFnError::Server { .. }));
+				assert_eq!(err.kind(), ServerFnErrorKind::Server);
 			}
 			"deserialize" => {
 				let err = ServerFnError::deserialization("Invalid JSON");
-				assert!(matches!(err, ServerFnError::Deserialization(_)));
+				assert_eq!(err.kind(), ServerFnErrorKind::Deserialization);
 			}
 			_ => panic!("Unknown error type: {}", error),
 		}
@@ -1011,7 +1005,8 @@ async fn test_server_fn_decision_table_additional(
 		match error {
 			"server" => {
 				let err = ServerFnError::server(500, "Internal server error");
-				assert!(matches!(err, ServerFnError::Server { status: 500, .. }));
+				assert_eq!(err.kind(), ServerFnErrorKind::Server);
+				assert_eq!(err.status(), Some(500));
 			}
 			"deserialize" => {
 				let codec = JsonCodec;
@@ -1021,7 +1016,7 @@ async fn test_server_fn_decision_table_additional(
 			}
 			"network" | "timeout" => {
 				let err = ServerFnError::network(error);
-				assert!(matches!(err, ServerFnError::Network(_)));
+				assert_eq!(err.kind(), ServerFnErrorKind::Transport);
 			}
 			_ => {}
 		}

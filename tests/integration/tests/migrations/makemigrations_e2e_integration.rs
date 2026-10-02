@@ -59,6 +59,7 @@ fn create_todos_schema() -> DatabaseSchema {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -71,6 +72,7 @@ fn create_todos_schema() -> DatabaseSchema {
 			data_type: FieldType::VarChar(255),
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -83,6 +85,7 @@ fn create_todos_schema() -> DatabaseSchema {
 			data_type: FieldType::Boolean,
 			nullable: false,
 			default: Some("false".to_string()),
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -139,16 +142,19 @@ async fn generate_and_save_migration_with_namer(
 	};
 	let final_name = format!("{}_{}", migration_number, base_name);
 
-	let migration = Migration {
-		app_label: app_label.to_string(),
-		name: final_name.clone(),
-		operations: result.operations.clone(),
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: if is_initial { Some(true) } else { None },
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		final_name.clone(),
+		app_label.to_string(),
+		result.operations.clone(),
+		Vec::new(),
+		Vec::new(),
+		true,
+		if is_initial { Some(true) } else { None },
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&migration)
@@ -184,16 +190,19 @@ async fn generate_and_save_migration(
 	let migration_number = MigrationNumbering::next_number(migrations_dir, app_label);
 	let migration_name = format!("{}_{}", migration_number, name_suffix);
 
-	let migration = Migration {
-		app_label: app_label.to_string(),
-		name: migration_name.clone(),
-		operations: result.operations.clone(),
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: if is_initial { Some(true) } else { None },
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		migration_name.clone(),
+		app_label.to_string(),
+		result.operations.clone(),
+		Vec::new(),
+		Vec::new(),
+		true,
+		if is_initial { Some(true) } else { None },
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&migration)
@@ -272,16 +281,19 @@ async fn nc_01_new_model_creates_create_table_migration() {
 
 	let migration_name = format!("{}_{}", migration_number, "initial");
 
-	let migration = Migration {
-		app_label: app_label.to_string(),
-		name: migration_name.clone(),
-		operations: result.operations.clone(),
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: Some(true),
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		migration_name.clone(),
+		app_label.to_string(),
+		result.operations.clone(),
+		Vec::new(),
+		Vec::new(),
+		true,
+		Some(true),
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&migration)
@@ -310,7 +322,7 @@ async fn nc_01_new_model_creates_create_table_migration() {
 		"Migration file should reference 'todos' table"
 	);
 	assert!(
-		file_content.contains("initial: Some(true)"),
+		file_content.contains(".with_initial(Some(true))"),
 		"Migration file should have initial flag set"
 	);
 }
@@ -339,6 +351,7 @@ async fn nc_02_field_addition_creates_add_column_migration() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -350,6 +363,7 @@ async fn nc_02_field_addition_creates_add_column_migration() {
 			data_type: FieldType::VarChar(255),
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -369,6 +383,7 @@ async fn nc_02_field_addition_creates_add_column_migration() {
 				data_type: FieldType::Text,
 				nullable: true,
 				default: None,
+				generated: None,
 				primary_key: false,
 				auto_increment: false,
 			},
@@ -392,16 +407,19 @@ async fn nc_02_field_addition_creates_add_column_migration() {
 		MigrationNumbering::next_number(&migrations_dir, app_label)
 	);
 
-	let migration = Migration {
-		app_label: app_label.to_string(),
-		name: migration_name.clone(),
-		operations: result.operations.clone(),
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: None,
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		migration_name.clone(),
+		app_label.to_string(),
+		result.operations.clone(),
+		Vec::new(),
+		Vec::new(),
+		true,
+		None,
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&migration)
@@ -451,6 +469,7 @@ async fn nc_03_field_deletion_creates_drop_column_migration() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -462,6 +481,7 @@ async fn nc_03_field_deletion_creates_drop_column_migration() {
 			data_type: FieldType::VarChar(255),
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -486,16 +506,19 @@ async fn nc_03_field_deletion_creates_drop_column_migration() {
 		MigrationNumbering::next_number(&migrations_dir, app_label)
 	);
 
-	let migration = Migration {
-		app_label: app_label.to_string(),
-		name: migration_name.clone(),
-		operations: result.operations.clone(),
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: None,
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		migration_name.clone(),
+		app_label.to_string(),
+		result.operations.clone(),
+		Vec::new(),
+		Vec::new(),
+		true,
+		None,
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&migration)
@@ -612,16 +635,19 @@ async fn nc_05_field_rename_creates_rename_column_migration() {
 		MigrationNumbering::next_number(&migrations_dir, app_label)
 	);
 
-	let migration = Migration {
-		app_label: app_label.to_string(),
-		name: migration_name.clone(),
-		operations: result.operations.clone(),
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: None,
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		migration_name.clone(),
+		app_label.to_string(),
+		result.operations.clone(),
+		Vec::new(),
+		Vec::new(),
+		true,
+		None,
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&migration)
@@ -672,6 +698,10 @@ async fn nc_06_index_addition_creates_create_index_migration() {
 			name: "idx_todos_title".to_string(),
 			columns: vec!["title".to_string()],
 			unique: false,
+			access_method: None,
+			index_type: None,
+			expressions: None,
+			operator_class: None,
 		});
 
 	let (_source, repository, _service) = create_migration_infra(&migrations_dir);
@@ -718,6 +748,7 @@ async fn nc_07_foreign_key_addition_creates_add_column_and_constraint() {
 				data_type: FieldType::Integer,
 				nullable: true,
 				default: None,
+				generated: None,
 				primary_key: false,
 				auto_increment: false,
 			},
@@ -737,16 +768,19 @@ async fn nc_07_foreign_key_addition_creates_add_column_and_constraint() {
 		MigrationNumbering::next_number(&migrations_dir, app_label)
 	);
 
-	let migration = Migration {
-		app_label: app_label.to_string(),
-		name: migration_name.clone(),
-		operations: result.operations.clone(),
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: None,
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		migration_name.clone(),
+		app_label.to_string(),
+		result.operations.clone(),
+		Vec::new(),
+		Vec::new(),
+		true,
+		None,
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&migration)
@@ -799,6 +833,7 @@ async fn nc_08_many_to_many_creates_junction_table() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -810,6 +845,7 @@ async fn nc_08_many_to_many_creates_junction_table() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -821,6 +857,7 @@ async fn nc_08_many_to_many_creates_junction_table() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -843,16 +880,19 @@ async fn nc_08_many_to_many_creates_junction_table() {
 		MigrationNumbering::next_number(&migrations_dir, app_label)
 	);
 
-	let migration = Migration {
-		app_label: app_label.to_string(),
-		name: migration_name.clone(),
-		operations: result.operations.clone(),
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: None,
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		migration_name.clone(),
+		app_label.to_string(),
+		result.operations.clone(),
+		Vec::new(),
+		Vec::new(),
+		true,
+		None,
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&migration)
@@ -911,6 +951,7 @@ async fn nc_09_initial_migration_correctness() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -922,6 +963,7 @@ async fn nc_09_initial_migration_correctness() {
 			data_type: FieldType::VarChar(150),
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -933,6 +975,7 @@ async fn nc_09_initial_migration_correctness() {
 			data_type: FieldType::VarChar(254),
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -978,7 +1021,7 @@ async fn nc_09_initial_migration_correctness() {
 		"Migration file should contain migration function",
 	);
 	assert!(
-		file_content.contains("initial: Some(true)"),
+		file_content.contains(".with_initial(Some(true))"),
 		"Initial migration should have initial flag"
 	);
 }
@@ -1023,6 +1066,7 @@ async fn nc_10_sequential_migrations_dependency_chain() {
 				data_type: FieldType::Text,
 				nullable: true,
 				default: None,
+				generated: None,
 				primary_key: false,
 				auto_increment: false,
 			},
@@ -1129,6 +1173,7 @@ async fn nc_12_one_to_one_creates_unique_foreign_key() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -1140,6 +1185,7 @@ async fn nc_12_one_to_one_creates_unique_foreign_key() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -1149,6 +1195,10 @@ async fn nc_12_one_to_one_creates_unique_foreign_key() {
 		name: "idx_profiles_user_id".to_string(),
 		columns: vec!["user_id".to_string()],
 		unique: true,
+		access_method: None,
+		index_type: None,
+		expressions: None,
+		operator_class: None,
 	});
 	target_schema
 		.tables
@@ -1336,6 +1386,10 @@ async fn nc_16_index_deletion_creates_drop_index() {
 			name: "idx_todos_title".to_string(),
 			columns: vec!["title".to_string()],
 			unique: false,
+			access_method: None,
+			index_type: None,
+			expressions: None,
+			operator_class: None,
 		});
 
 	// Target has no index
@@ -1435,6 +1489,7 @@ async fn nc_18_multiple_changes_in_single_migration() {
 				data_type: FieldType::Integer,
 				nullable: true,
 				default: Some("0".to_string()),
+				generated: None,
 				primary_key: false,
 				auto_increment: false,
 			},
@@ -1454,6 +1509,7 @@ async fn nc_18_multiple_changes_in_single_migration() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -1465,6 +1521,7 @@ async fn nc_18_multiple_changes_in_single_migration() {
 			data_type: FieldType::VarChar(100),
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -1492,16 +1549,19 @@ async fn nc_18_multiple_changes_in_single_migration() {
 		MigrationNumbering::next_number(&migrations_dir, app_label)
 	);
 
-	let migration = Migration {
-		app_label: app_label.to_string(),
-		name: migration_name.clone(),
-		operations: result.operations.clone(),
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: None,
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		migration_name.clone(),
+		app_label.to_string(),
+		result.operations.clone(),
+		Vec::new(),
+		Vec::new(),
+		true,
+		None,
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&migration)
@@ -1563,6 +1623,7 @@ async fn nc_19_multi_app_migrations_generation() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -1574,6 +1635,7 @@ async fn nc_19_multi_app_migrations_generation() {
 			data_type: FieldType::VarChar(254),
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -1657,6 +1719,7 @@ async fn nc_20_data_preservation_verification() {
 				data_type: FieldType::Date,
 				nullable: true,
 				default: None,
+				generated: None,
 				primary_key: false,
 				auto_increment: false,
 			},
@@ -1872,16 +1935,19 @@ async fn ec_05_file_write_permission_error() {
 	let generator = AutoMigrationGenerator::new(target_schema, repository);
 	let result = generator.generate("todos", empty_schema).await.unwrap();
 
-	let migration = Migration {
-		app_label: "todos".to_string(),
-		name: "0001_initial".to_string(),
-		operations: result.operations,
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: Some(true),
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		"0001_initial".to_string(),
+		"todos".to_string(),
+		result.operations,
+		Vec::new(),
+		Vec::new(),
+		true,
+		Some(true),
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	// Try to save migration (should fail with permission error)
 	let save_result = service.save_migration(&migration).await;
@@ -1917,16 +1983,19 @@ async fn edg_01_empty_migration_generation() {
 	let (_source, _repository, service) = create_migration_infra(&migrations_dir);
 
 	// Act: Create an empty migration manually (simulating --empty flag)
-	let migration = Migration {
-		app_label: app_label.to_string(),
-		name: "0001_empty".to_string(),
-		operations: Vec::new(),
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: None,
-		..Default::default()
-	};
+	let migration = Migration::from_parts(
+		"0001_empty".to_string(),
+		app_label.to_string(),
+		Vec::new(),
+		Vec::new(),
+		Vec::new(),
+		true,
+		None,
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&migration)
@@ -2161,6 +2230,7 @@ async fn edg_07_from_db_mode() {
 				data_type: FieldType::TimestampTz,
 				nullable: true,
 				default: None,
+				generated: None,
 				primary_key: false,
 				auto_increment: false,
 			},
@@ -2218,6 +2288,7 @@ async fn edg_08_long_model_field_names() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -2229,6 +2300,7 @@ async fn edg_08_long_model_field_names() {
 			data_type: FieldType::VarChar(255),
 			nullable: true,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -2286,6 +2358,7 @@ async fn edg_09_large_number_of_fields() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -2301,6 +2374,7 @@ async fn edg_09_large_number_of_fields() {
 				data_type: FieldType::VarChar(255),
 				nullable: true,
 				default: None,
+				generated: None,
 				primary_key: false,
 				auto_increment: false,
 			},
@@ -2371,31 +2445,36 @@ async fn edg_10_deep_dependency_chain() {
 			Vec::new()
 		};
 
-		let migration = Migration {
-			app_label: app_label.to_string(),
-			name: name.clone(),
-			operations: vec![Operation::CreateTable {
+		let migration = Migration::from_parts(
+			name.clone(),
+			app_label.to_string(),
+			vec![Operation::CreateTable {
 				name: format!("table_{}", i),
-				columns: vec![ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Integer,
-					not_null: true,
-					default: None,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-				}],
+				columns: vec![ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Integer,
+					true,
+					false,
+					true,
+					true,
+					None,
+					None,
+					None,
+				)],
 				constraints: Vec::new(),
 				without_rowid: None,
 				interleave_in_parent: None,
 				partition: None,
 			}],
-			dependencies: deps,
-			atomic: true,
-			replaces: Vec::new(),
-			initial: if i == 1 { Some(true) } else { None },
-			..Default::default()
-		};
+			deps,
+			Vec::new(),
+			true,
+			if i == 1 { Some(true) } else { None },
+			false,
+			false,
+			Vec::new(),
+			Vec::new(),
+		);
 
 		service
 			.save_migration(&migration)
@@ -2450,6 +2529,7 @@ async fn edg_11_unicode_in_names() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -2461,6 +2541,7 @@ async fn edg_11_unicode_in_names() {
 			data_type: FieldType::VarChar(255),
 			nullable: true,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -2518,6 +2599,7 @@ async fn edg_12_sql_reserved_words() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -2529,6 +2611,7 @@ async fn edg_12_sql_reserved_words() {
 			data_type: FieldType::VarChar(255),
 			nullable: true,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -2540,6 +2623,7 @@ async fn edg_12_sql_reserved_words() {
 			data_type: FieldType::VarChar(100),
 			nullable: true,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -2604,6 +2688,7 @@ async fn edg_13_same_name_different_apps() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -2624,6 +2709,7 @@ async fn edg_13_same_name_different_apps() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -2635,6 +2721,7 @@ async fn edg_13_same_name_different_apps() {
 			data_type: FieldType::VarChar(50),
 			nullable: true,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -2707,31 +2794,36 @@ async fn edg_14_cross_app_dependencies() {
 	let (_source, _repository, service) = create_migration_infra(&migrations_dir);
 
 	// First app: auth
-	let auth_migration = Migration {
-		app_label: "auth".to_string(),
-		name: "0001_initial".to_string(),
-		operations: vec![Operation::CreateTable {
+	let auth_migration = Migration::from_parts(
+		"0001_initial".to_string(),
+		"auth".to_string(),
+		vec![Operation::CreateTable {
 			name: "users".to_string(),
-			columns: vec![ColumnDefinition {
-				name: "id".to_string(),
-				type_definition: FieldType::Integer,
-				not_null: true,
-				default: None,
-				unique: false,
-				primary_key: true,
-				auto_increment: true,
-			}],
+			columns: vec![ColumnDefinition::from_parts(
+				"id".to_string(),
+				FieldType::Integer,
+				true,
+				false,
+				true,
+				true,
+				None,
+				None,
+				None,
+			)],
 			constraints: Vec::new(),
 			without_rowid: None,
 			interleave_in_parent: None,
 			partition: None,
 		}],
-		dependencies: Vec::new(),
-		atomic: true,
-		replaces: Vec::new(),
-		initial: Some(true),
-		..Default::default()
-	};
+		Vec::new(),
+		Vec::new(),
+		true,
+		Some(true),
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&auth_migration)
@@ -2739,42 +2831,49 @@ async fn edg_14_cross_app_dependencies() {
 		.expect("Failed to save auth migration");
 
 	// Second app: todos, depends on auth
-	let todos_migration = Migration {
-		app_label: "todos".to_string(),
-		name: "0001_initial".to_string(),
-		operations: vec![Operation::CreateTable {
+	let todos_migration = Migration::from_parts(
+		"0001_initial".to_string(),
+		"todos".to_string(),
+		vec![Operation::CreateTable {
 			name: "todos".to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Integer,
-					not_null: true,
-					default: None,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-				},
-				ColumnDefinition {
-					name: "user_id".to_string(),
-					type_definition: FieldType::Integer,
-					not_null: true,
-					default: None,
-					unique: false,
-					primary_key: false,
-					auto_increment: false,
-				},
+				ColumnDefinition::from_parts(
+					"id".to_string(),
+					FieldType::Integer,
+					true,
+					false,
+					true,
+					true,
+					None,
+					None,
+					None,
+				),
+				ColumnDefinition::from_parts(
+					"user_id".to_string(),
+					FieldType::Integer,
+					true,
+					false,
+					false,
+					false,
+					None,
+					None,
+					None,
+				),
 			],
 			constraints: Vec::new(),
 			without_rowid: None,
 			interleave_in_parent: None,
 			partition: None,
 		}],
-		dependencies: vec![("auth".to_string(), "0001_initial".to_string())],
-		atomic: true,
-		replaces: Vec::new(),
-		initial: Some(true),
-		..Default::default()
-	};
+		vec![("auth".to_string(), "0001_initial".to_string())],
+		Vec::new(),
+		true,
+		Some(true),
+		false,
+		false,
+		Vec::new(),
+		Vec::new(),
+	);
 
 	service
 		.save_migration(&todos_migration)
@@ -2836,6 +2935,7 @@ async fn mn_01_initial_migration_gets_initial_name() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -2847,6 +2947,7 @@ async fn mn_01_initial_migration_gets_initial_name() {
 			data_type: FieldType::VarChar(200),
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -2870,7 +2971,7 @@ async fn mn_01_initial_migration_gets_initial_name() {
 		migration_name
 	);
 	assert!(
-		file_content.contains("initial: Some(true)"),
+		file_content.contains(".with_initial(Some(true))"),
 		"Initial migration should have initial flag set to Some(true)"
 	);
 	assert!(
@@ -2908,6 +3009,7 @@ async fn mn_02_second_migration_gets_descriptive_name() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -2919,6 +3021,7 @@ async fn mn_02_second_migration_gets_descriptive_name() {
 			data_type: FieldType::VarChar(200),
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -2949,6 +3052,7 @@ async fn mn_02_second_migration_gets_descriptive_name() {
 				data_type: FieldType::VarChar(100),
 				nullable: true,
 				default: None,
+				generated: None,
 				primary_key: false,
 				auto_increment: false,
 			},
@@ -2985,7 +3089,7 @@ async fn mn_02_second_migration_gets_descriptive_name() {
 		"Second migration should contain AddColumn operation"
 	);
 	assert!(
-		!second_content.contains("initial: Some(true)"),
+		!second_content.contains(".with_initial(Some(true))"),
 		"Second migration should NOT have initial flag"
 	);
 }
@@ -3017,6 +3121,7 @@ async fn mn_03_user_specified_name_overrides_auto_naming() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -3069,6 +3174,7 @@ async fn mn_04_third_migration_also_gets_descriptive_name() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -3099,6 +3205,7 @@ async fn mn_04_third_migration_also_gets_descriptive_name() {
 				data_type: FieldType::Text,
 				nullable: false,
 				default: None,
+				generated: None,
 				primary_key: false,
 				auto_increment: false,
 			},
@@ -3132,6 +3239,7 @@ async fn mn_04_third_migration_also_gets_descriptive_name() {
 				data_type: FieldType::Integer,
 				nullable: true,
 				default: None,
+				generated: None,
 				primary_key: false,
 				auto_increment: false,
 			},
@@ -3204,6 +3312,7 @@ async fn mn_05_drop_column_gets_remove_prefix_name() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -3215,6 +3324,7 @@ async fn mn_05_drop_column_gets_remove_prefix_name() {
 			data_type: FieldType::Text,
 			nullable: true,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -3296,6 +3406,7 @@ async fn mn_06_alter_column_type_change_gets_descriptive_name() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -3307,6 +3418,7 @@ async fn mn_06_alter_column_type_change_gets_descriptive_name() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -3332,6 +3444,7 @@ async fn mn_06_alter_column_type_change_gets_descriptive_name() {
 			data_type: FieldType::Float,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -3390,6 +3503,7 @@ async fn mn_07_multiple_add_columns_get_combined_name() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -3416,6 +3530,7 @@ async fn mn_07_multiple_add_columns_get_combined_name() {
 			data_type: FieldType::VarChar(50),
 			nullable: true,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -3427,6 +3542,7 @@ async fn mn_07_multiple_add_columns_get_combined_name() {
 			data_type: FieldType::VarChar(50),
 			nullable: true,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -3489,6 +3605,7 @@ async fn mn_08_index_addition_gets_create_index_name() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},
@@ -3500,6 +3617,7 @@ async fn mn_08_index_addition_gets_create_index_name() {
 			data_type: FieldType::VarChar(200),
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: false,
 			auto_increment: false,
 		},
@@ -3527,6 +3645,10 @@ async fn mn_08_index_addition_gets_create_index_name() {
 			name: "idx_articles_slug".to_string(),
 			columns: vec!["slug".to_string()],
 			unique: true,
+			access_method: None,
+			index_type: None,
+			expressions: None,
+			operator_class: None,
 		});
 
 	// Act
@@ -3582,6 +3704,7 @@ async fn mn_09_drop_table_gets_delete_prefix_name() {
 			data_type: FieldType::Integer,
 			nullable: false,
 			default: None,
+			generated: None,
 			primary_key: true,
 			auto_increment: true,
 		},

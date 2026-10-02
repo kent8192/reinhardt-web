@@ -1,0 +1,5 @@
+error: ClientFormChoices supports fieldless enum variants only
+ --> tests/ui/client_form/choices/fail/tuple_variant.rs:7:2
+  |
+7 |     Live(String),
+  |     ^^^^^^^^^^^^

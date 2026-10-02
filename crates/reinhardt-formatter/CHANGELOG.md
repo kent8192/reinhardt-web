@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-formatter@v0.4.0-alpha.15...reinhardt-formatter@v0.4.0-alpha.16) - 2026-09-23
+
+### Testing
+
+- *(formatter)* preserve named ClientForm view syntax
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-formatter@v0.4.0-alpha.10...reinhardt-formatter@v0.4.0-alpha.11) - 2026-08-27
+
+### Fixed
+
+- *(formatter)* stabilize direct page capture indentation
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-formatter@v0.3.2...reinhardt-formatter@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(formatter)* format component style DSL
+
+### Fixed
+
+- *(formatter)* preserve custom property tokens
+- *(release)* restore develop prerelease lifecycle
+- *(formatter)* preserve match arm spacing
+
+### Maintenance
+
+- merge develop/0.4.0 into forward-merge branch
+- merge latest main into develop forward-merge
+- merge develop/0.4.0 into component-style branch
+
+### Styling
+
+- format component style fixtures
+
+### Testing
+
+- *(pages)* cover implicit page body captures
+- *(formatter)* normalize component style fixtures
+
+### Added
+
+- *(formatter)* format component-scoped `style!` DSL bodies while preserving them across rustfmt
+
 ## [0.3.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-formatter@v0.3.12...reinhardt-formatter@v0.3.13) - 2026-08-27
 
 ### Fixed

@@ -1,0 +1,5 @@
+error: undeclared component variable reference `vars.missing`; declare it in the `vars` block
+ --> tests/ui/style/fail/undeclared_reference.rs:6:10
+  |
+6 |         color: vars.missing;
+  |                ^^^^

@@ -9,6 +9,10 @@ sidebar_weight = 20
 
 # Feature Flags Guide
 
+The `commands-contract` feature enables deterministic application contract
+export. Read the [application contract](@/docs/application-contract.md) guide
+for the versioned JSON schema and command details.
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -473,8 +477,8 @@ The `tasks` feature provides background job processing with multiple backend opt
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { package = "reinhardt-web", version = "0.3.20", features = ["tasks", "streaming"] }
-reinhardt-tasks = { version = "0.3.20", features = ["kafka-backend"] }
+reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.18", features = ["tasks", "streaming"] }
+reinhardt-tasks = { version = "0.4.0-alpha.18", features = ["kafka-backend"] }
 ```
 
 For another backend, replace `kafka-backend` with `redis-backend`, `rabbitmq-backend`, `database-backend`, or `sqs-backend`.

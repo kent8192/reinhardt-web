@@ -267,11 +267,11 @@ Sketch:
 
 ```rust
 // Before — macro inlines ~200 lines per model
-#[model(table = "users")]
+#[model(app_label = "users", table_name = "users")]
 struct User { ... }
 
 // After — macro emits metadata only; logic moves into runtime crate
-#[model(table = "users")]
+#[model(app_label = "users", table_name = "users")]
 struct User { ... }
 // Expansion:
 //   impl Model for User {

@@ -4,17 +4,27 @@
 //! and extract table definitions, column metadata, indexes, and constraints.
 
 use async_trait::async_trait;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-#[cfg(any(feature = "mysql", feature = "postgres", feature = "sqlite"))]
-use super::MigrationError;
-use super::Result;
+use super::{MigrationError, Result};
+use crate::backends::{DatabaseConnection, DatabaseType};
 
 /// Schema information extracted from a database
 #[derive(Debug, Clone, PartialEq)]
 pub struct DatabaseSchema {
 	/// All tables in the schema
 	pub tables: HashMap<String, TableInfo>,
+}
+
+/// Options controlling the schema objects selected for inspectdb output.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InspectDbOptions {
+	/// Exact table names to include. An empty list includes every selected object.
+	pub tables: Vec<String>,
+	/// Whether database views should be included with tables.
+	pub include_views: bool,
+	/// Whether PostgreSQL partitions should be included with tables.
+	pub include_partitions: bool,
 }
 
 /// Table metadata
@@ -49,6 +59,10 @@ pub struct ColumnInfo {
 	pub default: Option<String>,
 	/// Whether this is an auto-increment column
 	pub auto_increment: bool,
+	/// PostgreSQL identity generation mode, when the column is an identity column.
+	pub identity_generation: Option<String>,
+	/// Generated-column metadata, when the backend exposes it.
+	pub generated: Option<super::GeneratedColumnDefinition>,
 }
 
 /// Index metadata
@@ -60,8 +74,159 @@ pub struct IndexInfo {
 	pub columns: Vec<String>,
 	/// Whether the index is unique
 	pub unique: bool,
-	/// Index type (e.g., BTREE, HASH)
+	/// Raw database access method (e.g., btree, hash, hnsw)
+	#[cfg(feature = "pgvector")]
+	pub access_method: Option<String>,
+	/// Typed migration index method and options when representable
+	#[cfg(feature = "pgvector")]
+	pub index_type: Option<super::IndexType>,
+	/// Raw database index method (e.g., BTREE, HASH).
+	#[cfg(not(feature = "pgvector"))]
 	pub index_type: Option<String>,
+	/// Index expressions, when the index does not target plain columns
+	#[cfg(feature = "pgvector")]
+	pub expressions: Option<Vec<String>>,
+	/// PostgreSQL operator class for the indexed target
+	#[cfg(feature = "pgvector")]
+	pub operator_class: Option<String>,
+	/// Whether PostgreSQL reports the operator class as the access method default
+	#[cfg(feature = "pgvector")]
+	pub operator_class_is_default: bool,
+}
+
+#[cfg(feature = "pgvector")]
+fn parse_postgres_index_type(
+	access_method: &str,
+	reloptions: &[String],
+) -> Result<Option<super::IndexType>> {
+	use super::IndexType;
+
+	match access_method {
+		"btree" => Ok(Some(IndexType::BTree)),
+		"hash" => Ok(Some(IndexType::Hash)),
+		"gin" => Ok(Some(IndexType::Gin)),
+		"gist" => Ok(Some(IndexType::Gist)),
+		"brin" => Ok(Some(IndexType::Brin)),
+		"hnsw" => {
+			let mut m = None;
+			let mut ef_construction = None;
+			for option in reloptions {
+				let Some((name, value)) = option.split_once('=') else {
+					return Err(MigrationError::IntrospectionError(format!(
+						"invalid PostgreSQL hnsw reloption {option}"
+					)));
+				};
+				match name {
+					"m" => {
+						m = Some(value.parse::<u16>().map_err(|_| {
+							MigrationError::IntrospectionError(format!(
+								"invalid PostgreSQL hnsw reloption {option}"
+							))
+						})?);
+					}
+					"ef_construction" => {
+						ef_construction = Some(value.parse::<u16>().map_err(|_| {
+							MigrationError::IntrospectionError(format!(
+								"invalid PostgreSQL hnsw reloption {option}"
+							))
+						})?);
+					}
+					_ => {
+						return Err(MigrationError::IntrospectionError(format!(
+							"unsupported PostgreSQL hnsw reloption {option}"
+						)));
+					}
+				}
+			}
+			Ok(Some(IndexType::Hnsw { m, ef_construction }))
+		}
+		"ivfflat" => {
+			let mut lists = None;
+			for option in reloptions {
+				let Some((name, value)) = option.split_once('=') else {
+					return Err(MigrationError::IntrospectionError(format!(
+						"invalid PostgreSQL ivfflat reloption {option}"
+					)));
+				};
+				if name != "lists" {
+					return Err(MigrationError::IntrospectionError(format!(
+						"unsupported PostgreSQL ivfflat reloption {option}"
+					)));
+				}
+				lists = Some(value.parse::<u32>().map_err(|_| {
+					MigrationError::IntrospectionError(format!(
+						"invalid PostgreSQL ivfflat reloption {option}"
+					))
+				})?);
+			}
+			Ok(Some(IndexType::Ivfflat { lists }))
+		}
+		_ => Ok(None),
+	}
+}
+
+#[cfg(feature = "pgvector")]
+fn resolve_postgres_operator_class(
+	index_name: &str,
+	index_type: Option<super::IndexType>,
+	operator_classes: &[String],
+	operator_class_defaults: &[bool],
+) -> Result<(Option<String>, bool)> {
+	if operator_classes.is_empty() || operator_classes.len() != operator_class_defaults.len() {
+		return Err(MigrationError::IntrospectionError(format!(
+			"PostgreSQL index {index_name} returned inconsistent operator class metadata"
+		)));
+	}
+
+	if matches!(
+		index_type,
+		Some(super::IndexType::Hnsw { .. } | super::IndexType::Ivfflat { .. })
+	) && operator_classes.len() != 1
+	{
+		return Err(MigrationError::IntrospectionError(format!(
+			"PostgreSQL approximate index {index_name} must have exactly one key"
+		)));
+	}
+
+	let canonical_operator_classes = operator_classes
+		.iter()
+		.map(|operator_class| {
+			operator_class
+				.rsplit('.')
+				.next()
+				.unwrap_or(operator_class.as_str())
+		})
+		.collect::<Vec<_>>();
+	let first_operator_class = canonical_operator_classes[0];
+	let first_is_default = operator_class_defaults[0];
+	let all_default = operator_class_defaults.iter().all(|is_default| *is_default);
+	let homogeneous = canonical_operator_classes
+		.iter()
+		.all(|operator_class| *operator_class == first_operator_class)
+		&& operator_class_defaults
+			.iter()
+			.all(|is_default| *is_default == first_is_default);
+	if operator_classes.len() > 1 && !all_default && !homogeneous {
+		// The migration schema represents only one operator class per index. Preserve the
+		// otherwise valid index metadata without claiming a lossy representative class.
+		return Ok((None, false));
+	}
+
+	Ok((Some(first_operator_class.to_string()), all_default))
+}
+
+#[cfg(feature = "pgvector")]
+fn validate_postgres_index_key_kinds(
+	index_name: &str,
+	column_key_count: i64,
+	expression_key_count: i64,
+) -> Result<()> {
+	if column_key_count > 0 && expression_key_count > 0 {
+		return Err(MigrationError::IntrospectionError(format!(
+			"PostgreSQL index {index_name} mixes column and expression keys, which cannot be represented"
+		)));
+	}
+	Ok(())
 }
 
 /// Foreign key constraint
@@ -109,6 +274,118 @@ pub trait DatabaseIntrospector: Send + Sync {
 	async fn read_table(&self, table_name: &str) -> Result<Option<TableInfo>>;
 }
 
+/// Read a schema through a connection and select the requested schema objects.
+///
+/// Table names in [`InspectDbOptions::tables`] are exact identifiers. Unknown names are
+/// reported as errors so a misspelled command-line argument cannot silently produce a
+/// partial model module.
+pub async fn inspect_database(
+	connection: &DatabaseConnection,
+	options: &InspectDbOptions,
+) -> Result<DatabaseSchema> {
+	validate_partition_option(connection.database_type(), options.include_partitions)?;
+
+	let mut schema = match connection.database_type() {
+		DatabaseType::Postgres => {
+			#[cfg(feature = "postgres")]
+			{
+				let pool = connection.into_postgres().ok_or_else(|| {
+					MigrationError::UnsupportedDatabase("PostgreSQL connection".to_string())
+				})?;
+				read_postgres_schema(pool, options).await?
+			}
+			#[cfg(not(feature = "postgres"))]
+			{
+				return Err(MigrationError::UnsupportedDatabase(
+					"PostgreSQL".to_string(),
+				));
+			}
+		}
+		DatabaseType::Mysql => {
+			#[cfg(feature = "mysql")]
+			{
+				let pool = connection.into_mysql().ok_or_else(|| {
+					MigrationError::UnsupportedDatabase("MySQL connection".to_string())
+				})?;
+				read_mysql_schema(pool, options).await?
+			}
+			#[cfg(not(feature = "mysql"))]
+			{
+				return Err(MigrationError::UnsupportedDatabase("MySQL".to_string()));
+			}
+		}
+		DatabaseType::Sqlite => {
+			#[cfg(feature = "sqlite")]
+			{
+				let pool = connection.into_sqlite().ok_or_else(|| {
+					MigrationError::UnsupportedDatabase("SQLite connection".to_string())
+				})?;
+				read_sqlite_schema(pool, options).await?
+			}
+			#[cfg(not(feature = "sqlite"))]
+			{
+				return Err(MigrationError::UnsupportedDatabase("SQLite".to_string()));
+			}
+		}
+	};
+
+	if options.tables.is_empty() {
+		return Ok(schema);
+	}
+
+	let mut selected = HashMap::with_capacity(options.tables.len());
+	let mut requested = HashSet::with_capacity(options.tables.len());
+	for table_name in &options.tables {
+		if !requested.insert(table_name) {
+			continue;
+		}
+		let table = schema.tables.remove(table_name).ok_or_else(|| {
+			MigrationError::IntrospectionError(format!("Requested table not found: {table_name}"))
+		})?;
+		selected.insert(table_name.clone(), table);
+	}
+
+	Ok(DatabaseSchema { tables: selected })
+}
+
+fn validate_partition_option(database_type: DatabaseType, include_partitions: bool) -> Result<()> {
+	if include_partitions && database_type != DatabaseType::Postgres {
+		return Err(MigrationError::IntrospectionError(
+			"include_partitions is only supported for PostgreSQL".to_string(),
+		));
+	}
+	Ok(())
+}
+
+fn filter_postgres_partitions(
+	schema: &mut DatabaseSchema,
+	partition_names: &HashSet<String>,
+	include_partitions: bool,
+) {
+	if !include_partitions {
+		schema
+			.tables
+			.retain(|name, _| !partition_names.contains(name));
+	}
+}
+
+#[cfg(feature = "postgres")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PostgresRelation {
+	name: String,
+	is_partition: bool,
+}
+
+#[cfg(feature = "postgres")]
+fn postgres_partition_names(
+	relations: impl IntoIterator<Item = PostgresRelation>,
+) -> HashSet<String> {
+	relations
+		.into_iter()
+		.filter_map(|relation| relation.is_partition.then_some(relation.name))
+		.collect()
+}
+
 /// PostgreSQL schema introspector
 #[cfg(feature = "postgres")]
 pub struct PostgresIntrospector {
@@ -126,12 +403,16 @@ impl PostgresIntrospector {
 	fn parse_pg_type(
 		udt_name: &str,
 		data_type: &str,
+		type_definition: Option<&str>,
 		char_max_length: Option<i32>,
 		numeric_precision: Option<i32>,
 		numeric_scale: Option<i32>,
 		enum_values: Option<Vec<String>>,
 	) -> super::FieldType {
 		use super::FieldType;
+		#[cfg(not(feature = "pgvector"))]
+		let _ = type_definition;
+
 		match udt_name {
 			// Integer types
 			"int4" | "serial" => FieldType::Integer,
@@ -167,7 +448,7 @@ impl PostgresIntrospector {
 
 			// JSON
 			"json" => FieldType::Json,
-			"jsonb" => FieldType::JsonBinary,
+			"jsonb" => FieldType::Jsonb,
 
 			// UUID
 			"uuid" => FieldType::Uuid,
@@ -184,11 +465,28 @@ impl PostgresIntrospector {
 			"tstzrange" => FieldType::TsTzRange,
 			"daterange" => FieldType::DateRange,
 
+			#[cfg(feature = "pgvector")]
+			"vector" => type_definition
+				.and_then(Self::parse_pgvector_dimensions)
+				.map_or_else(
+					|| FieldType::Custom(udt_name.to_string()),
+					|dimensions| FieldType::Vector { dimensions },
+				),
+
 			// Array types (udt_name starts with _)
 			name if name.starts_with('_') => {
+				#[cfg(feature = "pgvector")]
+				let inner_type_definition = if &name[1..] == "vector" {
+					type_definition.and_then(|definition| definition.strip_suffix("[]"))
+				} else {
+					None
+				};
+				#[cfg(not(feature = "pgvector"))]
+				let inner_type_definition = None;
 				let inner = Self::parse_pg_type(
 					&name[1..],
 					data_type,
+					inner_type_definition,
 					char_max_length,
 					numeric_precision,
 					numeric_scale,
@@ -242,6 +540,19 @@ impl PostgresIntrospector {
 		}
 	}
 
+	#[cfg(feature = "pgvector")]
+	fn parse_pgvector_dimensions(type_definition: &str) -> Option<usize> {
+		let unqualified_definition = type_definition
+			.rsplit_once('.')
+			.map_or(type_definition, |(_, definition)| definition);
+		let dimensions = unqualified_definition
+			.strip_prefix("vector(")?
+			.strip_suffix(')')?
+			.parse()
+			.ok()?;
+		(1..=2000).contains(&dimensions).then_some(dimensions)
+	}
+
 	/// Fetches enum label values for a given PostgreSQL enum type name
 	async fn fetch_enum_values(&self, type_name: &str) -> Result<Vec<String>> {
 		use sqlx::Row;
@@ -250,7 +561,7 @@ impl PostgresIntrospector {
 			FROM pg_enum e
 			JOIN pg_type t ON e.enumtypid = t.oid
 			JOIN pg_namespace n ON t.typnamespace = n.oid
-			WHERE t.typname = $1 AND n.nspname = 'public'
+			WHERE t.typname = $1 AND n.nspname = current_schema()
 			ORDER BY e.enumsortorder
 		"#;
 		let rows = sqlx::query(query)
@@ -276,12 +587,26 @@ impl PostgresIntrospector {
 
 		// Fetch columns
 		let col_query = r#"
-			SELECT column_name, udt_name, data_type, is_nullable, column_default,
-			       character_maximum_length, numeric_precision, numeric_scale,
-			       is_identity, identity_generation
-			FROM information_schema.columns
-			WHERE table_schema = 'public' AND table_name = $1
-			ORDER BY ordinal_position
+			SELECT columns.column_name, columns.udt_name, columns.data_type,
+			       columns.is_nullable, columns.column_default,
+			       columns.character_maximum_length, columns.numeric_precision,
+			       columns.numeric_scale, columns.is_identity,
+			       columns.identity_generation, columns.is_generated,
+			       columns.generation_expression,
+			       pg_catalog.format_type(attributes.atttypid, attributes.atttypmod)
+			           AS type_definition
+			FROM information_schema.columns AS columns
+			JOIN pg_catalog.pg_namespace AS schemas
+			    ON schemas.nspname = columns.table_schema
+			JOIN pg_catalog.pg_class AS tables
+			    ON tables.relname = columns.table_name
+			    AND tables.relnamespace = schemas.oid
+			JOIN pg_catalog.pg_attribute AS attributes
+			    ON attributes.attrelid = tables.oid
+			    AND attributes.attname = columns.column_name
+			    AND NOT attributes.attisdropped
+			WHERE columns.table_schema = current_schema() AND columns.table_name = $1
+			ORDER BY columns.ordinal_position
 		"#;
 		let col_rows = sqlx::query(col_query)
 			.bind(table_name)
@@ -304,6 +629,9 @@ impl PostgresIntrospector {
 			})?;
 			let data_type: String = row.try_get("data_type").map_err(|e| {
 				MigrationError::IntrospectionError(format!("Failed to get data_type: {}", e))
+			})?;
+			let type_definition: String = row.try_get("type_definition").map_err(|e| {
+				MigrationError::IntrospectionError(format!("Failed to get type_definition: {}", e))
 			})?;
 			let is_nullable: String = row.try_get("is_nullable").map_err(|e| {
 				MigrationError::IntrospectionError(format!("Failed to get is_nullable: {}", e))
@@ -330,6 +658,23 @@ impl PostgresIntrospector {
 			let is_identity: String = row.try_get("is_identity").map_err(|e| {
 				MigrationError::IntrospectionError(format!("Failed to get is_identity: {}", e))
 			})?;
+			let identity_generation: Option<String> =
+				row.try_get("identity_generation").map_err(|e| {
+					MigrationError::IntrospectionError(format!(
+						"Failed to get identity_generation: {}",
+						e
+					))
+				})?;
+			let is_generated: String = row.try_get("is_generated").map_err(|e| {
+				MigrationError::IntrospectionError(format!("Failed to get is_generated: {}", e))
+			})?;
+			let generation_expression: Option<String> =
+				row.try_get("generation_expression").map_err(|e| {
+					MigrationError::IntrospectionError(format!(
+						"Failed to get generation_expression: {}",
+						e
+					))
+				})?;
 
 			// Detect auto-increment: nextval() in default or identity column
 			let is_auto = column_default
@@ -358,6 +703,7 @@ impl PostgresIntrospector {
 			let field_type = Self::parse_pg_type(
 				&udt_name,
 				&data_type,
+				Some(&type_definition),
 				char_max_length,
 				numeric_precision,
 				numeric_scale,
@@ -372,6 +718,17 @@ impl PostgresIntrospector {
 					nullable: is_nullable == "YES",
 					default: column_default,
 					auto_increment: is_auto || is_serial,
+					identity_generation: (is_identity == "YES")
+						.then_some(identity_generation)
+						.flatten(),
+					generated: generation_expression
+						.filter(|expression| is_generated == "ALWAYS" && !expression.is_empty())
+						.map(|expression| {
+							super::GeneratedColumnDefinition::raw_sql(
+								expression,
+								super::GeneratedStorage::Stored,
+							)
+						}),
 				},
 			);
 		}
@@ -383,7 +740,7 @@ impl PostgresIntrospector {
 			JOIN information_schema.key_column_usage kcu
 			    ON tc.constraint_name = kcu.constraint_name
 			    AND tc.table_schema = kcu.table_schema
-			WHERE tc.table_schema = 'public' AND tc.table_name = $1
+			WHERE tc.table_schema = current_schema() AND tc.table_name = $1
 			    AND tc.constraint_type = 'PRIMARY KEY'
 			ORDER BY kcu.ordinal_position
 		"#;
@@ -417,7 +774,7 @@ impl PostgresIntrospector {
 			JOIN information_schema.referential_constraints rc
 			    ON tc.constraint_name = rc.constraint_name
 			    AND tc.table_schema = rc.constraint_schema
-			WHERE tc.table_schema = 'public' AND tc.table_name = $1
+			WHERE tc.table_schema = current_schema() AND tc.table_name = $1
 			    AND tc.constraint_type = 'FOREIGN KEY'
 			ORDER BY tc.constraint_name, kcu.ordinal_position
 		"#;
@@ -477,7 +834,7 @@ impl PostgresIntrospector {
 			JOIN information_schema.key_column_usage kcu
 			    ON tc.constraint_name = kcu.constraint_name
 			    AND tc.table_schema = kcu.table_schema
-			WHERE tc.table_schema = 'public' AND tc.table_name = $1
+			WHERE tc.table_schema = current_schema() AND tc.table_name = $1
 			    AND tc.constraint_type = 'UNIQUE'
 			ORDER BY tc.constraint_name, kcu.ordinal_position
 		"#;
@@ -529,28 +886,57 @@ impl PostgresIntrospector {
 		let query = r#"
 			SELECT
 				i.relname AS index_name,
-				array_agg(a.attname ORDER BY array_position(ix.indkey, a.attnum)) AS column_names,
+				COALESCE(
+					array_agg(a.attname ORDER BY key.position)
+						FILTER (WHERE a.attname IS NOT NULL),
+					ARRAY[]::name[]
+				) AS column_names,
 				ix.indisunique AS is_unique,
-				am.amname AS index_type
+				ix.indpred IS NOT NULL AS is_partial,
+				am.amname AS access_method,
+				i.reloptions AS index_options,
+				array_agg(
+					pg_get_indexdef(ix.indexrelid, key.position + 1, true)
+					ORDER BY key.position
+				) FILTER (WHERE (ix.indkey::smallint[])[key.position] = 0)
+					AS index_expressions,
+				array_agg(
+					CASE
+						WHEN opn.nspname = 'pg_catalog' THEN opc.opcname
+						ELSE format('%I.%I', opn.nspname, opc.opcname)
+					END
+					ORDER BY key.position
+				) AS operator_classes,
+				array_agg(opc.opcdefault ORDER BY key.position) AS operator_class_defaults,
+				count(*) FILTER (WHERE (ix.indkey::smallint[])[key.position] <> 0)
+					AS column_key_count,
+				count(*) FILTER (WHERE (ix.indkey::smallint[])[key.position] = 0)
+					AS expression_key_count
 			FROM
-				pg_class t,
-				pg_class i,
-				pg_index ix,
-				pg_attribute a,
-				pg_am am,
-				pg_namespace n
+				pg_class t
+				JOIN pg_index ix ON t.oid = ix.indrelid
+				JOIN pg_class i ON i.oid = ix.indexrelid
+				JOIN pg_am am ON i.relam = am.oid
+				JOIN pg_namespace n ON n.oid = t.relnamespace
+				CROSS JOIN LATERAL generate_subscripts(ix.indclass::oid[], 1) AS key(position)
+				LEFT JOIN pg_attribute a
+					ON a.attrelid = t.oid
+					AND a.attnum = (ix.indkey::smallint[])[key.position]
+				LEFT JOIN pg_opclass opc
+					ON opc.oid = (ix.indclass::oid[])[key.position]
+				LEFT JOIN pg_namespace opn ON opn.oid = opc.opcnamespace
 			WHERE
-				t.oid = ix.indrelid
-				AND i.oid = ix.indexrelid
-				AND a.attrelid = t.oid
-				AND a.attnum = ANY(ix.indkey)
-				AND t.relkind = 'r'
+				t.relkind = 'r'
 				AND t.relname = $1
-				AND i.relam = am.oid
 				AND NOT ix.indisprimary
-				AND n.oid = t.relnamespace
-				AND n.nspname = 'public'
-			GROUP BY i.relname, ix.indisunique, am.amname
+				AND n.nspname = current_schema()
+			GROUP BY
+				i.oid,
+				i.relname,
+				i.reloptions,
+				ix.indisunique,
+				ix.indpred,
+				am.amname
 			ORDER BY i.relname
 		"#;
 
@@ -576,9 +962,62 @@ impl PostgresIntrospector {
 			let is_unique: bool = row.try_get("is_unique").map_err(|e| {
 				MigrationError::IntrospectionError(format!("Failed to get is_unique: {}", e))
 			})?;
-			let index_type: String = row.try_get("index_type").map_err(|e| {
-				MigrationError::IntrospectionError(format!("Failed to get index_type: {}", e))
+			let is_partial: bool = row.try_get("is_partial").map_err(|e| {
+				MigrationError::IntrospectionError(format!("Failed to get is_partial: {}", e))
 			})?;
+			if is_partial {
+				return Err(MigrationError::IntrospectionError(format!(
+					"PostgreSQL partial index `{index_name}` cannot be represented by a model field attribute"
+				)));
+			}
+			let access_method: String = row.try_get("access_method").map_err(|e| {
+				MigrationError::IntrospectionError(format!("Failed to get access_method: {}", e))
+			})?;
+			#[cfg(feature = "pgvector")]
+			let index_options: Option<Vec<String>> = row.try_get("index_options").map_err(|e| {
+				MigrationError::IntrospectionError(format!("Failed to get index_options: {}", e))
+			})?;
+			#[cfg(feature = "pgvector")]
+			let index_expressions: Option<Vec<String>> = row.try_get("index_expressions").map_err(|e| {
+				MigrationError::IntrospectionError(format!(
+					"Failed to get index_expressions: {}",
+					e
+				))
+			})?;
+			#[cfg(feature = "pgvector")]
+			let operator_classes: Vec<String> = row.try_get("operator_classes").map_err(|e| {
+				MigrationError::IntrospectionError(format!("Failed to get operator_classes: {}", e))
+			})?;
+			#[cfg(feature = "pgvector")]
+			let operator_class_defaults: Vec<bool> =
+				row.try_get("operator_class_defaults").map_err(|e| {
+					MigrationError::IntrospectionError(format!(
+						"Failed to get operator_class_defaults: {}",
+						e
+					))
+				})?;
+			#[cfg(feature = "pgvector")]
+			let column_key_count: i64 = row.try_get("column_key_count").map_err(|e| {
+				MigrationError::IntrospectionError(format!("Failed to get column_key_count: {e}"))
+			})?;
+			#[cfg(feature = "pgvector")]
+			let expression_key_count: i64 = row.try_get("expression_key_count").map_err(|e| {
+				MigrationError::IntrospectionError(format!(
+					"Failed to get expression_key_count: {e}"
+				))
+			})?;
+			#[cfg(feature = "pgvector")]
+			validate_postgres_index_key_kinds(&index_name, column_key_count, expression_key_count)?;
+			#[cfg(feature = "pgvector")]
+			let index_type =
+				parse_postgres_index_type(&access_method, index_options.as_deref().unwrap_or(&[]))?;
+			#[cfg(feature = "pgvector")]
+			let (operator_class, operator_class_is_default) = resolve_postgres_operator_class(
+				&index_name,
+				index_type,
+				&operator_classes,
+				&operator_class_defaults,
+			)?;
 
 			indexes.insert(
 				index_name.clone(),
@@ -586,7 +1025,18 @@ impl PostgresIntrospector {
 					name: index_name,
 					columns: column_names,
 					unique: is_unique,
-					index_type: Some(index_type),
+					#[cfg(feature = "pgvector")]
+					access_method: Some(access_method),
+					#[cfg(feature = "pgvector")]
+					index_type,
+					#[cfg(not(feature = "pgvector"))]
+					index_type: Some(access_method),
+					#[cfg(feature = "pgvector")]
+					expressions: index_expressions,
+					#[cfg(feature = "pgvector")]
+					operator_class,
+					#[cfg(feature = "pgvector")]
+					operator_class_is_default,
 				},
 			);
 		}
@@ -603,7 +1053,7 @@ impl DatabaseIntrospector for PostgresIntrospector {
 
 		let table_query = r#"
 			SELECT table_name FROM information_schema.tables
-			WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+			WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'
 		"#;
 		let table_rows = sqlx::query(table_query)
 			.fetch_all(&self.pool)
@@ -626,7 +1076,7 @@ impl DatabaseIntrospector for PostgresIntrospector {
 		// Check if table exists
 		let exists_query = r#"
 			SELECT table_name FROM information_schema.tables
-			WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name = $1
+			WHERE table_schema = current_schema() AND table_type = 'BASE TABLE' AND table_name = $1
 		"#;
 		let exists = sqlx::query(exists_query)
 			.bind(table_name)
@@ -654,6 +1104,79 @@ pub struct MySQLIntrospector {
 }
 
 #[cfg(feature = "mysql")]
+fn decode_mysql_text(row: &sqlx::mysql::MySqlRow, index: usize, kind: &str) -> Result<String> {
+	use sqlx::Row;
+
+	let bytes: Vec<u8> = row.try_get(index).map_err(|error| {
+		MigrationError::IntrospectionError(format!("Failed to read MySQL {}: {}", kind, error))
+	})?;
+	String::from_utf8(bytes).map_err(|_| {
+		MigrationError::IntrospectionError(format!("MySQL {} is not valid UTF-8", kind))
+	})
+}
+
+#[cfg(feature = "mysql")]
+fn decode_optional_mysql_text(
+	row: &sqlx::mysql::MySqlRow,
+	index: usize,
+	kind: &str,
+) -> Result<Option<String>> {
+	use sqlx::Row;
+
+	let bytes: Option<Vec<u8>> = row.try_get(index).map_err(|error| {
+		MigrationError::IntrospectionError(format!("Failed to read MySQL {}: {}", kind, error))
+	})?;
+	bytes
+		.map(|bytes| {
+			String::from_utf8(bytes).map_err(|_| {
+				MigrationError::IntrospectionError(format!("MySQL {} is not valid UTF-8", kind))
+			})
+		})
+		.transpose()
+}
+
+#[cfg(feature = "mysql")]
+fn decode_optional_mysql_integer(
+	row: &sqlx::mysql::MySqlRow,
+	index: usize,
+	kind: &str,
+) -> Result<Option<i64>> {
+	use sqlx::{Column, Row, TypeInfo};
+
+	// MySQL information_schema exposes catalog fields as both signed and unsigned BIGINT,
+	// depending on the server version and the selected metadata column.
+	if row.column(index).type_info().name().ends_with("UNSIGNED") {
+		let value: Option<u64> = row.try_get(index).map_err(|error| {
+			MigrationError::IntrospectionError(format!("Failed to read MySQL {}: {}", kind, error))
+		})?;
+		value
+			.map(|value| {
+				i64::try_from(value).map_err(|_| {
+					MigrationError::IntrospectionError(format!(
+						"MySQL {} exceeds the supported range",
+						kind
+					))
+				})
+			})
+			.transpose()
+	} else {
+		row.try_get(index).map_err(|error| {
+			MigrationError::IntrospectionError(format!("Failed to read MySQL {}: {}", kind, error))
+		})
+	}
+}
+
+#[cfg(feature = "mysql")]
+fn mysql_catalog_u32(value: Option<i64>, default: u32, kind: &str) -> Result<u32> {
+	u32::try_from(value.unwrap_or(i64::from(default))).map_err(|_| {
+		MigrationError::IntrospectionError(format!(
+			"MySQL {} is outside the supported u32 range",
+			kind
+		))
+	})
+}
+
+#[cfg(feature = "mysql")]
 impl MySQLIntrospector {
 	/// Creates a new MySQL introspector with the given pool.
 	pub fn new(pool: sqlx::MySqlPool) -> Self {
@@ -666,33 +1189,65 @@ impl MySQLIntrospector {
 		char_max_length: Option<i64>,
 		numeric_precision: Option<i64>,
 		numeric_scale: Option<i64>,
-	) -> super::FieldType {
+	) -> Result<super::FieldType> {
 		use super::FieldType;
 		let data_type_lower = data_type.to_lowercase();
-		match data_type_lower.as_str() {
+		let unsigned = column_type.to_ascii_lowercase().contains("unsigned");
+		let field_type = match data_type_lower.as_str() {
 			"tinyint" => {
 				// MySQL uses tinyint(1) for boolean
 				if column_type.to_lowercase().starts_with("tinyint(1)") {
 					FieldType::Boolean
 				} else {
-					FieldType::TinyInt
+					if unsigned {
+						FieldType::Custom("u8".to_string())
+					} else {
+						FieldType::TinyInt
+					}
 				}
 			}
-			"smallint" => FieldType::SmallInteger,
-			"mediumint" => FieldType::MediumInt,
-			"int" | "integer" => FieldType::Integer,
-			"bigint" => FieldType::BigInteger,
+			"smallint" => {
+				if unsigned {
+					FieldType::Custom("u16".to_string())
+				} else {
+					FieldType::SmallInteger
+				}
+			}
+			"mediumint" | "int" | "integer" => {
+				if unsigned {
+					FieldType::Custom("u32".to_string())
+				} else if data_type_lower == "mediumint" {
+					FieldType::MediumInt
+				} else {
+					FieldType::Integer
+				}
+			}
+			"bigint" => {
+				if unsigned {
+					FieldType::Custom("u64".to_string())
+				} else {
+					FieldType::BigInteger
+				}
+			}
 
-			"varchar" => FieldType::VarChar(char_max_length.unwrap_or(255) as u32),
-			"char" => FieldType::Char(char_max_length.unwrap_or(1) as u32),
+			"varchar" => FieldType::VarChar(mysql_catalog_u32(
+				char_max_length,
+				255,
+				"character maximum length",
+			)?),
+			"char" => FieldType::Char(mysql_catalog_u32(
+				char_max_length,
+				1,
+				"character maximum length",
+			)?),
 			"text" => FieldType::Text,
 			"tinytext" => FieldType::TinyText,
 			"mediumtext" => FieldType::MediumText,
 			"longtext" => FieldType::LongText,
 
 			"decimal" | "numeric" => FieldType::Decimal {
-				precision: numeric_precision.unwrap_or(10) as u32,
-				scale: numeric_scale.unwrap_or(2) as u32,
+				precision: mysql_catalog_u32(numeric_precision, 10, "numeric precision")?,
+				scale: mysql_catalog_u32(numeric_scale, 2, "numeric scale")?,
 			},
 			"float" => FieldType::Float,
 			"double" => FieldType::Double,
@@ -724,7 +1279,8 @@ impl MySQLIntrospector {
 			}
 
 			_ => FieldType::Custom(data_type.to_string()),
-		}
+		};
+		Ok(field_type)
 	}
 
 	/// Parse enum or set values from MySQL column_type string.
@@ -750,7 +1306,8 @@ impl MySQLIntrospector {
 		// Fetch columns from information_schema
 		let col_query = r#"
 			SELECT column_name, data_type, column_type, is_nullable, column_default,
-			       column_key, extra, character_maximum_length, numeric_precision, numeric_scale
+			       column_key, extra, generation_expression, character_maximum_length,
+			       numeric_precision, numeric_scale
 			FROM information_schema.columns
 			WHERE table_schema = DATABASE() AND table_name = ?
 			ORDER BY ordinal_position
@@ -770,43 +1327,19 @@ impl MySQLIntrospector {
 		let mut primary_key = Vec::new();
 
 		for row in &col_rows {
-			let column_name: String = row.try_get("column_name").map_err(|e| {
-				MigrationError::IntrospectionError(format!("Failed to get column_name: {}", e))
-			})?;
-			let data_type: String = row.try_get("data_type").map_err(|e| {
-				MigrationError::IntrospectionError(format!("Failed to get data_type: {}", e))
-			})?;
-			let column_type_str: String = row.try_get("column_type").map_err(|e| {
-				MigrationError::IntrospectionError(format!("Failed to get column_type: {}", e))
-			})?;
-			let is_nullable: String = row.try_get("is_nullable").map_err(|e| {
-				MigrationError::IntrospectionError(format!("Failed to get is_nullable: {}", e))
-			})?;
-			let column_default: Option<String> = row.try_get("column_default").map_err(|e| {
-				MigrationError::IntrospectionError(format!("Failed to get column_default: {}", e))
-			})?;
-			let column_key: String = row.try_get("column_key").map_err(|e| {
-				MigrationError::IntrospectionError(format!("Failed to get column_key: {}", e))
-			})?;
-			let extra: String = row.try_get("extra").map_err(|e| {
-				MigrationError::IntrospectionError(format!("Failed to get extra: {}", e))
-			})?;
-			let char_max_length: Option<i64> =
-				row.try_get("character_maximum_length").map_err(|e| {
-					MigrationError::IntrospectionError(format!(
-						"Failed to get character_maximum_length: {}",
-						e
-					))
-				})?;
-			let numeric_precision: Option<i64> = row.try_get("numeric_precision").map_err(|e| {
-				MigrationError::IntrospectionError(format!(
-					"Failed to get numeric_precision: {}",
-					e
-				))
-			})?;
-			let numeric_scale: Option<i64> = row.try_get("numeric_scale").map_err(|e| {
-				MigrationError::IntrospectionError(format!("Failed to get numeric_scale: {}", e))
-			})?;
+			let column_name = decode_mysql_text(row, 0, "column name")?;
+			let data_type = decode_mysql_text(row, 1, "data type")?;
+			let column_type_str = decode_mysql_text(row, 2, "column type")?;
+			let is_nullable = decode_mysql_text(row, 3, "column nullability")?;
+			let column_default = decode_optional_mysql_text(row, 4, "column default")?;
+			let column_key = decode_mysql_text(row, 5, "column key")?;
+			let extra = decode_mysql_text(row, 6, "column extra metadata")?;
+			let generation_expression =
+				decode_optional_mysql_text(row, 7, "generation expression")?;
+			let char_max_length =
+				decode_optional_mysql_integer(row, 8, "character maximum length")?;
+			let numeric_precision = decode_optional_mysql_integer(row, 9, "numeric precision")?;
+			let numeric_scale = decode_optional_mysql_integer(row, 10, "numeric scale")?;
 
 			// Primary key detection
 			if column_key == "PRI" {
@@ -822,7 +1355,7 @@ impl MySQLIntrospector {
 				char_max_length,
 				numeric_precision,
 				numeric_scale,
-			);
+			)?;
 
 			columns.insert(
 				column_name.clone(),
@@ -832,6 +1365,17 @@ impl MySQLIntrospector {
 					nullable: is_nullable == "YES",
 					default: column_default,
 					auto_increment: is_auto,
+					identity_generation: None,
+					generated: generation_expression
+						.filter(|expression| !expression.is_empty())
+						.map(|expression| {
+							let storage = if extra.to_ascii_lowercase().contains("stored") {
+								super::GeneratedStorage::Stored
+							} else {
+								super::GeneratedStorage::Virtual
+							};
+							super::GeneratedColumnDefinition::raw_sql(expression, storage)
+						}),
 				},
 			);
 		}
@@ -856,10 +1400,14 @@ impl MySQLIntrospector {
 
 		let mut idx_map: HashMap<String, (Vec<String>, bool, String)> = HashMap::new();
 		for row in &idx_rows {
-			let index_name: String = row.try_get("index_name").unwrap_or_default();
-			let column_name: String = row.try_get("column_name").unwrap_or_default();
-			let non_unique: i64 = row.try_get("non_unique").unwrap_or(1);
-			let index_type: String = row.try_get("index_type").unwrap_or_default();
+			let index_name = decode_mysql_text(row, 0, "index name")?;
+			let column_name = decode_mysql_text(row, 1, "indexed column name")?;
+			let non_unique: i64 = row.try_get(2).map_err(|error| {
+				MigrationError::IntrospectionError(format!(
+					"Failed to read MySQL index uniqueness: {error}"
+				))
+			})?;
+			let index_type = decode_mysql_text(row, 3, "index type")?;
 
 			let entry = idx_map
 				.entry(index_name)
@@ -881,7 +1429,18 @@ impl MySQLIntrospector {
 					name: name.clone(),
 					columns: cols.clone(),
 					unique: *is_unique,
+					#[cfg(feature = "pgvector")]
+					access_method: Some(idx_type.clone()),
+					#[cfg(feature = "pgvector")]
+					index_type: None,
+					#[cfg(not(feature = "pgvector"))]
 					index_type: Some(idx_type.clone()),
+					#[cfg(feature = "pgvector")]
+					expressions: None,
+					#[cfg(feature = "pgvector")]
+					operator_class: None,
+					#[cfg(feature = "pgvector")]
+					operator_class_is_default: false,
 				},
 			);
 
@@ -919,12 +1478,12 @@ impl MySQLIntrospector {
 
 		let mut fk_map: HashMap<String, ForeignKeyInfo> = HashMap::new();
 		for row in &fk_rows {
-			let constraint_name: String = row.try_get("constraint_name").unwrap_or_default();
-			let column_name: String = row.try_get("column_name").unwrap_or_default();
-			let ref_table: String = row.try_get("referenced_table_name").unwrap_or_default();
-			let ref_column: String = row.try_get("referenced_column_name").unwrap_or_default();
-			let update_rule: String = row.try_get("update_rule").unwrap_or_default();
-			let delete_rule: String = row.try_get("delete_rule").unwrap_or_default();
+			let constraint_name = decode_mysql_text(row, 0, "constraint name")?;
+			let column_name = decode_mysql_text(row, 1, "foreign-key column name")?;
+			let ref_table = decode_mysql_text(row, 2, "referenced table name")?;
+			let ref_column = decode_mysql_text(row, 3, "referenced column name")?;
+			let update_rule = decode_mysql_text(row, 4, "foreign-key update rule")?;
+			let delete_rule = decode_mysql_text(row, 5, "foreign-key delete rule")?;
 
 			let entry = fk_map
 				.entry(constraint_name.clone())
@@ -965,8 +1524,6 @@ impl MySQLIntrospector {
 #[async_trait]
 impl DatabaseIntrospector for MySQLIntrospector {
 	async fn read_schema(&self) -> Result<DatabaseSchema> {
-		use sqlx::Row;
-
 		let table_query = r#"
 			SELECT table_name FROM information_schema.tables
 			WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
@@ -980,7 +1537,7 @@ impl DatabaseIntrospector for MySQLIntrospector {
 
 		let mut tables = HashMap::new();
 		for row in &table_rows {
-			let table_name: String = row.try_get("table_name").unwrap_or_default();
+			let table_name = decode_mysql_text(row, 0, "table name")?;
 			let table_info = self.introspect_table(&table_name).await?;
 			tables.insert(table_name, table_info);
 		}
@@ -1045,7 +1602,7 @@ impl SQLiteIntrospector {
 			"DATETIME" => FieldType::DateTime,
 			"TIMESTAMP" => FieldType::DateTime,
 			"JSON" => FieldType::Json,
-			"JSONB" => FieldType::JsonBinary,
+			"JSONB" => FieldType::Jsonb,
 			"UUID" => FieldType::Uuid,
 			"NUMERIC" => FieldType::Decimal {
 				precision: 10,
@@ -1108,7 +1665,24 @@ impl SQLiteIntrospector {
 					};
 				}
 				// Default fallback for unknown types
-				FieldType::Custom(type_str.to_string())
+				// SQLite type affinity is determined by substrings in the declared
+				// type, not by an exhaustive list of canonical spellings.
+				if upper.contains("INT") {
+					FieldType::Integer
+				} else if upper.contains("CHAR") || upper.contains("CLOB") || upper.contains("TEXT")
+				{
+					FieldType::Text
+				} else if upper.contains("BLOB") || upper.is_empty() {
+					FieldType::Blob
+				} else if upper.contains("REAL") || upper.contains("FLOA") || upper.contains("DOUB")
+				{
+					FieldType::Real
+				} else {
+					FieldType::Decimal {
+						precision: 10,
+						scale: 2,
+					}
+				}
 			}
 		}
 	}
@@ -1263,6 +1837,12 @@ impl SQLiteIntrospector {
 			.map_err(|e| MigrationError::IntrospectionError(e.to_string()))?;
 
 		for index_row in index_list {
+			if index_row.partial != 0 {
+				return Err(MigrationError::IntrospectionError(format!(
+					"SQLite partial index `{}` on `{table_name}` cannot be represented by a model field attribute",
+					index_row.name
+				)));
+			}
 			// Get columns for this index.
 			// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
 			let info_query = format!(
@@ -1286,7 +1866,15 @@ impl SQLiteIntrospector {
 					name: index_row.name,
 					columns,
 					unique: index_row.unique != 0,
+					#[cfg(feature = "pgvector")]
+					access_method: None,
 					index_type: None,
+					#[cfg(feature = "pgvector")]
+					expressions: None,
+					#[cfg(feature = "pgvector")]
+					operator_class: None,
+					#[cfg(feature = "pgvector")]
+					operator_class_is_default: false,
 				},
 			);
 		}
@@ -1483,104 +2071,11 @@ impl SQLiteIntrospector {
 		result
 	}
 
-	/// Parses named UNIQUE constraint names from a CREATE TABLE SQL statement.
-	///
-	/// SQLite exposes named table UNIQUE constraints through `PRAGMA index_list`
-	/// as `sqlite_autoindex_*`; matching by columns preserves the declared name
-	/// for later `DropConstraint` operations.
-	pub(crate) fn parse_unique_constraint_names(create_sql: &str) -> HashMap<Vec<String>, String> {
-		let mut result = HashMap::new();
-		let Ok(re) = regex::Regex::new(r#"(?i)CONSTRAINT\s+["'`]?([^\s"'`]+)["'`]?\s+UNIQUE\s*\("#)
-		else {
-			return result;
-		};
-
-		for cap in re.captures_iter(create_sql) {
-			let Some(name) = cap.get(1) else {
-				continue;
-			};
-			let opening = cap.get(0).map(|matched| matched.end() - 1);
-			let Some(columns) = opening
-				.and_then(|position| Self::extract_parenthesized_expression(create_sql, position))
-			else {
-				continue;
-			};
-			let columns = Self::split_sql_identifier_list(&columns);
-			if !columns.is_empty() {
-				result.insert(columns, name.as_str().to_owned());
-			}
-		}
-		result
-	}
-
-	fn split_sql_identifier_list(value: &str) -> Vec<String> {
-		let mut identifiers = Vec::new();
-		let mut current = String::new();
-		let mut quote = None;
-		let mut depth: usize = 0;
-		let mut chars = value.chars().peekable();
-
-		while let Some(character) = chars.next() {
-			if let Some(quote_char) = quote {
-				current.push(character);
-				if character == quote_char {
-					if chars.peek() == Some(&quote_char) {
-						current.push(chars.next().expect("peeked quote must exist"));
-					} else {
-						quote = None;
-					}
-				}
-				continue;
-			}
-
-			match character {
-				'\'' | '"' | '`' => {
-					quote = Some(character);
-					current.push(character);
-				}
-				'(' => {
-					depth += 1;
-					current.push(character);
-				}
-				')' => {
-					depth = depth.saturating_sub(1);
-					current.push(character);
-				}
-				',' if depth == 0 => {
-					let identifier = Self::normalize_sql_identifier(&current);
-					if !identifier.is_empty() {
-						identifiers.push(identifier);
-					}
-					current.clear();
-				}
-				_ => current.push(character),
-			}
-		}
-
-		let identifier = Self::normalize_sql_identifier(&current);
-		if !identifier.is_empty() {
-			identifiers.push(identifier);
-		}
-		identifiers
-	}
-
-	fn normalize_sql_identifier(value: &str) -> String {
-		let value = value.trim();
-		let Some(first) = value.chars().next() else {
-			return String::new();
-		};
-		let is_quoted = matches!(first, '\'' | '"' | '`') && value.ends_with(first);
-		if is_quoted {
-			let inner = &value[first.len_utf8()..value.len() - first.len_utf8()];
-			return inner.replace(&format!("{first}{first}"), &first.to_string());
-		}
-		value.to_owned()
-	}
-
 	/// Extracts unique constraints from PRAGMA index_list where origin = 'u'.
 	async fn extract_unique_constraints(
 		&self,
 		table_name: &str,
+		create_sql: Option<&str>,
 	) -> Result<Vec<UniqueConstraintInfo>> {
 		#[derive(sqlx::FromRow)]
 		struct IndexListRow {
@@ -1601,9 +2096,7 @@ impl SQLiteIntrospector {
 		}
 
 		#[derive(sqlx::FromRow)]
-		struct IndexInfoRow {
-			// Allow dead_code: field required for SQLite PRAGMA row deserialization
-			#[allow(dead_code)]
+		struct IndexXInfoRow {
 			// Column sequence number within the index
 			seqno: i64,
 			// Allow dead_code: field required for SQLite PRAGMA row deserialization
@@ -1611,6 +2104,9 @@ impl SQLiteIntrospector {
 			// Column ID in the table
 			cid: i64,
 			name: Option<String>,
+			desc: i64,
+			coll: Option<String>,
+			key: i64,
 		}
 
 		// SQLite PRAGMA: identifier interpolation via shared helper. Inputs
@@ -1624,36 +2120,84 @@ impl SQLiteIntrospector {
 			.fetch_all(&self.pool)
 			.await
 			.map_err(|e| MigrationError::IntrospectionError(e.to_string()))?;
-		let named_unique_constraints = Self::get_create_table_sql(&self.pool, table_name)
-			.await?
-			.map(|sql| Self::parse_unique_constraint_names(&sql))
+		let declared_constraints = create_sql
+			.map(super::executor::parse_sqlite_unique_constraint_metadata)
 			.unwrap_or_default();
 
 		let mut constraints = Vec::new();
+		let mut restored_declared_constraints = HashSet::new();
 		for index_row in index_list {
 			if index_row.origin == "u" {
 				// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
 				let info_query = format!(
-					"PRAGMA index_info({})",
+					"PRAGMA index_xinfo({})",
 					super::sqlite_pragma::quote_pragma_identifier(&index_row.name)
 				);
-				let index_info: Vec<IndexInfoRow> = sqlx::query_as(&info_query)
+				let mut index_info: Vec<IndexXInfoRow> = sqlx::query_as(&info_query)
 					.fetch_all(&self.pool)
 					.await
 					.map_err(|e| MigrationError::IntrospectionError(e.to_string()))?;
-
-				let columns: Vec<String> = index_info
+				index_info.retain(|info| info.key == 1);
+				index_info.sort_by_key(|info| info.seqno);
+				let indexed_columns: Vec<super::executor::SqliteIndexedColumnMetadata> = index_info
 					.into_iter()
-					.filter_map(|info| info.name)
+					.filter_map(|info| {
+						Some(super::executor::SqliteIndexedColumnMetadata {
+							name: info.name?,
+							collation: info.coll,
+							descending: Some(info.desc != 0),
+						})
+					})
 					.collect();
+				let columns = indexed_columns
+					.iter()
+					.map(|column| column.name.clone())
+					.collect::<Vec<_>>();
+				let scored_constraints = declared_constraints
+					.iter()
+					.enumerate()
+					.filter_map(|(index, metadata)| {
+						super::executor::sqlite_unique_index_match_score(
+							&metadata.indexed_columns,
+							&indexed_columns,
+						)
+						.map(|score| (index, metadata, score))
+					})
+					.collect::<Vec<_>>();
+				let Some(max_score) = scored_constraints.iter().map(|(_, _, score)| *score).max()
+				else {
+					constraints.push(UniqueConstraintInfo {
+						name: index_row.name,
+						columns,
+					});
+					continue;
+				};
 
-				constraints.push(UniqueConstraintInfo {
-					name: named_unique_constraints
-						.get(&columns)
-						.cloned()
-						.unwrap_or(index_row.name),
-					columns,
-				});
+				let mut matched_named_constraint = false;
+				let mut matched_anonymous_constraint = false;
+				for (metadata_index, metadata, _) in scored_constraints
+					.into_iter()
+					.filter(|(_, _, score)| *score == max_score)
+				{
+					if let Some(name) = &metadata.name {
+						matched_named_constraint = true;
+						if restored_declared_constraints.insert(metadata_index) {
+							constraints.push(UniqueConstraintInfo {
+								name: name.clone(),
+								columns: metadata.columns.clone(),
+							});
+						}
+					} else {
+						matched_anonymous_constraint = true;
+					}
+				}
+
+				if !matched_named_constraint || matched_anonymous_constraint {
+					constraints.push(UniqueConstraintInfo {
+						name: index_row.name,
+						columns,
+					});
+				}
 			}
 		}
 
@@ -1673,13 +2217,14 @@ impl SQLiteIntrospector {
 			notnull: i64,
 			dflt_value: Option<String>,
 			pk: i64,
+			hidden: i64,
 		}
 
 		// SQLite PRAGMA: identifier interpolation via shared helper. Inputs
 		// originate from internal migration operations; see issue #4454.
 		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
 		let query = format!(
-			"PRAGMA table_info({})",
+			"PRAGMA table_xinfo({})",
 			super::sqlite_pragma::quote_pragma_identifier(table_name)
 		);
 		let rows: Vec<TableInfoRow> = sqlx::query_as(&query)
@@ -1687,12 +2232,18 @@ impl SQLiteIntrospector {
 			.await
 			.map_err(|e| MigrationError::IntrospectionError(e.to_string()))?;
 
-		// Check AUTOINCREMENT by inspecting CREATE TABLE SQL
+		// Check whether the table opts out of SQLite's rowid storage.
 		let create_sql = Self::get_create_table_sql(&self.pool, table_name).await?;
+		let without_rowid = create_sql
+			.as_deref()
+			.is_some_and(sqlite_create_table_is_without_rowid);
 		let has_autoincrement = create_sql
 			.as_ref()
 			.map(|sql| sql.to_uppercase().contains("AUTOINCREMENT"))
 			.unwrap_or(false);
+		let has_descending_primary_key = create_sql
+			.as_deref()
+			.is_some_and(sqlite_create_table_has_descending_primary_key);
 
 		let mut columns = HashMap::new();
 
@@ -1708,8 +2259,14 @@ impl SQLiteIntrospector {
 		for row in &rows {
 			let is_pk = row.pk > 0;
 
-			// AUTOINCREMENT only applies to INTEGER PRIMARY KEY columns
-			let is_auto = is_pk && has_autoincrement;
+			// An INTEGER PRIMARY KEY aliases SQLite's rowid even without the
+			// AUTOINCREMENT keyword. AUTOINCREMENT only changes rowid reuse.
+			let is_rowid_alias = primary_key.len() == 1
+				&& row.pk == 1
+				&& row.r#type.trim().eq_ignore_ascii_case("INTEGER")
+				&& !without_rowid
+				&& !has_descending_primary_key;
+			let is_auto = is_pk && (has_autoincrement || is_rowid_alias);
 
 			// Primary key columns are implicitly NOT NULL in SQLite
 			let nullable = if is_pk { false } else { row.notnull == 0 };
@@ -1737,12 +2294,20 @@ impl SQLiteIntrospector {
 					nullable,
 					default,
 					auto_increment: is_auto,
+					identity_generation: None,
+					generated: super::executor::parse_sqlite_generated_column(
+						create_sql.as_deref(),
+						&row.name,
+						row.hidden,
+					),
 				},
 			);
 		}
 
 		// Extract unique constraints from PRAGMA index_list where origin = 'u'
-		let unique_constraints = self.extract_unique_constraints(table_name).await?;
+		let unique_constraints = self
+			.extract_unique_constraints(table_name, create_sql.as_deref())
+			.await?;
 
 		// Extract indexes using existing method
 		let indexes = Self::extract_indexes(&self.pool, table_name).await?;
@@ -1762,6 +2327,131 @@ impl SQLiteIntrospector {
 			unique_constraints,
 			check_constraints,
 		})
+	}
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_create_table_is_without_rowid(create_sql: &str) -> bool {
+	let statement = create_sql.trim().trim_end_matches(';').trim_end();
+	statement.to_ascii_uppercase().ends_with("WITHOUT ROWID")
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_create_table_has_descending_primary_key(create_sql: &str) -> bool {
+	let mut tokens = Vec::new();
+	let mut token = String::new();
+	let mut chars = create_sql.chars().peekable();
+
+	while let Some(ch) = chars.next() {
+		if ch.is_ascii_alphanumeric() || ch == '_' {
+			token.push(ch.to_ascii_uppercase());
+			continue;
+		}
+
+		if !token.is_empty() {
+			tokens.push(std::mem::take(&mut token));
+		}
+
+		match ch {
+			'-' if chars.peek() == Some(&'-') => {
+				chars.next();
+				for comment_ch in chars.by_ref() {
+					if comment_ch == '\n' || comment_ch == '\r' {
+						break;
+					}
+				}
+			}
+			'/' if chars.peek() == Some(&'*') => {
+				chars.next();
+				while let Some(comment_ch) = chars.next() {
+					if comment_ch == '*' && chars.peek() == Some(&'/') {
+						chars.next();
+						break;
+					}
+				}
+			}
+			quote @ ('\'' | '"' | '`') => {
+				while let Some(quoted_ch) = chars.next() {
+					if quoted_ch == quote {
+						if chars.peek() == Some(&quote) {
+							chars.next();
+						} else {
+							break;
+						}
+					}
+				}
+			}
+			'[' => {
+				for quoted_ch in chars.by_ref() {
+					if quoted_ch == ']' {
+						break;
+					}
+				}
+			}
+			_ => {}
+		}
+	}
+
+	if !token.is_empty() {
+		tokens.push(token);
+	}
+
+	tokens
+		.windows(3)
+		.any(|tokens| tokens == ["PRIMARY", "KEY", "DESC"])
+}
+
+#[cfg(all(test, feature = "sqlite"))]
+mod sqlite_create_table_sql_tests {
+	use super::{
+		sqlite_create_table_has_descending_primary_key, sqlite_create_table_is_without_rowid,
+	};
+
+	#[test]
+	fn detects_only_the_terminal_without_rowid_table_option() {
+		assert!(sqlite_create_table_is_without_rowid(
+			"CREATE TABLE entries (id INTEGER PRIMARY KEY) WITHOUT ROWID"
+		));
+		assert!(!sqlite_create_table_is_without_rowid(
+			"CREATE TABLE entries (id INTEGER PRIMARY KEY, marker TEXT DEFAULT 'WITHOUT ROWID')"
+		));
+	}
+
+	#[rstest::rstest]
+	fn detects_descending_primary_keys_across_sql_comments() {
+		// Arrange
+		let statements = [
+			"CREATE TABLE entries (id INTEGER PRIMARY KEY /* ordering */ DESC)",
+			"CREATE TABLE entries (id INTEGER PRIMARY KEY -- ordering\n DESC)",
+		];
+
+		// Act
+		let detected: Vec<_> = statements
+			.into_iter()
+			.map(sqlite_create_table_has_descending_primary_key)
+			.collect();
+
+		// Assert
+		assert_eq!(detected, vec![true, true]);
+	}
+
+	#[rstest::rstest]
+	fn ignores_primary_key_keywords_inside_sql_comments_and_literals() {
+		// Arrange
+		let statements = [
+			"CREATE TABLE entries (id INTEGER PRIMARY KEY /* PRIMARY KEY DESC */)",
+			"CREATE TABLE entries (id INTEGER PRIMARY KEY -- PRIMARY KEY DESC\n)",
+			"CREATE TABLE entries (id INTEGER PRIMARY KEY, marker TEXT DEFAULT 'PRIMARY KEY DESC')",
+		];
+
+		// Act
+		let detected: Vec<_> = statements
+			.into_iter()
+			.map(sqlite_create_table_has_descending_primary_key)
+			.collect();
+
+		// Assert
+		assert_eq!(detected, vec![false, false, false]);
 	}
 }
 
@@ -1818,13 +2508,563 @@ impl DatabaseIntrospector for SQLiteIntrospector {
 	}
 }
 
+#[cfg(feature = "postgres")]
+async fn read_postgres_schema(
+	pool: sqlx::PgPool,
+	options: &InspectDbOptions,
+) -> Result<DatabaseSchema> {
+	use sqlx::Row;
+
+	let introspector = PostgresIntrospector::new(pool.clone());
+	let mut schema = if options.tables.is_empty() {
+		introspector.read_schema().await?
+	} else {
+		let mut tables = HashMap::new();
+		for name in &options.tables {
+			let table = match introspector.read_table(name).await? {
+				Some(table) => table,
+				None if options.include_views => {
+					let view_exists = sqlx::query(
+						"SELECT table_name FROM information_schema.views \
+						 WHERE table_schema = current_schema() AND table_name = $1",
+					)
+					.bind(name)
+					.fetch_optional(&pool)
+					.await
+					.map_err(|error| MigrationError::IntrospectionError(error.to_string()))?
+					.is_some();
+					if !view_exists {
+						return Err(MigrationError::IntrospectionError(format!(
+							"Table or view `{name}` was not found"
+						)));
+					}
+					introspector.introspect_table(name).await?
+				}
+				None => {
+					return Err(MigrationError::IntrospectionError(format!(
+						"Requested table not found: {name}"
+					)));
+				}
+			};
+			tables.insert(name.clone(), table);
+		}
+		DatabaseSchema { tables }
+	};
+	let partition_names = read_postgres_partition_names(&pool).await?;
+	filter_postgres_partitions(&mut schema, &partition_names, options.include_partitions);
+
+	if options.include_views && options.tables.is_empty() {
+		let rows = sqlx::query(
+			"SELECT table_name FROM information_schema.views WHERE table_schema = current_schema() ORDER BY table_name",
+		)
+		.fetch_all(&pool)
+		.await
+		.map_err(|error| MigrationError::IntrospectionError(error.to_string()))?;
+		for row in rows {
+			let name: String = row.try_get("table_name").map_err(|error| {
+				MigrationError::IntrospectionError(format!("Failed to read view name: {error}"))
+			})?;
+			let table = introspector.introspect_table(&name).await?;
+			schema.tables.insert(name, table);
+		}
+	}
+
+	Ok(schema)
+}
+
+#[cfg(feature = "postgres")]
+async fn read_postgres_partition_names(pool: &sqlx::PgPool) -> Result<HashSet<String>> {
+	use sqlx::Row;
+
+	let rows = sqlx::query(
+		"SELECT relation.relname AS table_name, relation.relispartition AS is_partition \
+		 FROM pg_class relation \
+		 JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace \
+		 WHERE namespace.nspname = current_schema() AND relation.relkind IN ('r', 'p') \
+		 ORDER BY relation.relname",
+	)
+	.fetch_all(pool)
+	.await
+	.map_err(|error| MigrationError::IntrospectionError(error.to_string()))?;
+
+	let relations = rows
+		.into_iter()
+		.map(|row| {
+			let name = row.try_get("table_name").map_err(|error| {
+				MigrationError::IntrospectionError(format!(
+					"Failed to read PostgreSQL relation name: {error}"
+				))
+			})?;
+			let is_partition = row.try_get("is_partition").map_err(|error| {
+				MigrationError::IntrospectionError(format!(
+					"Failed to read PostgreSQL partition flag: {error}"
+				))
+			})?;
+			Ok(PostgresRelation { name, is_partition })
+		})
+		.collect::<Result<Vec<_>>>()?;
+
+	Ok(postgres_partition_names(relations))
+}
+
+#[cfg(feature = "mysql")]
+async fn read_mysql_schema(
+	pool: sqlx::MySqlPool,
+	options: &InspectDbOptions,
+) -> Result<DatabaseSchema> {
+	let introspector = MySQLIntrospector::new(pool.clone());
+	let mut schema = if options.tables.is_empty() {
+		introspector.read_schema().await?
+	} else {
+		let mut tables = HashMap::new();
+		for name in &options.tables {
+			let table = match introspector.read_table(name).await? {
+				Some(table) => table,
+				None if options.include_views => {
+					let view_exists = sqlx::query(
+						"SELECT table_name FROM information_schema.views \
+						 WHERE table_schema = DATABASE() AND table_name = ?",
+					)
+					.bind(name)
+					.fetch_optional(&pool)
+					.await
+					.map_err(|error| MigrationError::IntrospectionError(error.to_string()))?
+					.is_some();
+					if !view_exists {
+						return Err(MigrationError::IntrospectionError(format!(
+							"Table or view `{name}` was not found"
+						)));
+					}
+					introspector.introspect_table(name).await?
+				}
+				None => {
+					return Err(MigrationError::IntrospectionError(format!(
+						"Requested table not found: {name}"
+					)));
+				}
+			};
+			tables.insert(name.clone(), table);
+		}
+		DatabaseSchema { tables }
+	};
+	if !options.include_views || !options.tables.is_empty() {
+		return Ok(schema);
+	}
+
+	let rows = sqlx::query(
+		"SELECT table_name FROM information_schema.views WHERE table_schema = DATABASE() ORDER BY table_name",
+	)
+	.fetch_all(&pool)
+	.await
+	.map_err(|error| MigrationError::IntrospectionError(error.to_string()))?;
+	for row in rows {
+		let name = decode_mysql_text(&row, 0, "view name")?;
+		let table = introspector.introspect_table(&name).await?;
+		schema.tables.insert(name, table);
+	}
+
+	Ok(schema)
+}
+
+#[cfg(feature = "sqlite")]
+async fn read_sqlite_schema(
+	pool: sqlx::SqlitePool,
+	options: &InspectDbOptions,
+) -> Result<DatabaseSchema> {
+	use sqlx::Row;
+
+	let introspector = SQLiteIntrospector::new(pool.clone());
+	let mut schema = if options.tables.is_empty() {
+		introspector.read_schema().await?
+	} else {
+		let mut tables = HashMap::new();
+		for name in &options.tables {
+			let table = match introspector.read_table(name).await? {
+				Some(table) => table,
+				None if options.include_views => {
+					let view_exists = sqlx::query(
+						"SELECT name FROM sqlite_master WHERE type = 'view' AND name = ?",
+					)
+					.bind(name)
+					.fetch_optional(&pool)
+					.await
+					.map_err(|error| MigrationError::IntrospectionError(error.to_string()))?
+					.is_some();
+					if !view_exists {
+						return Err(MigrationError::IntrospectionError(format!(
+							"Table or view `{name}` was not found"
+						)));
+					}
+					introspector.introspect_table(name).await?
+				}
+				None => {
+					return Err(MigrationError::IntrospectionError(format!(
+						"Requested table not found: {name}"
+					)));
+				}
+			};
+			tables.insert(name.clone(), table);
+		}
+		DatabaseSchema { tables }
+	};
+	if !options.include_views || !options.tables.is_empty() {
+		return Ok(schema);
+	}
+
+	let rows = sqlx::query(
+		"SELECT name FROM sqlite_master WHERE type = 'view' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+	)
+	.fetch_all(&pool)
+	.await
+	.map_err(|error| MigrationError::IntrospectionError(error.to_string()))?;
+	for row in rows {
+		let name: String = row.try_get("name").map_err(|error| {
+			MigrationError::IntrospectionError(format!("Failed to read view name: {error}"))
+		})?;
+		let table = introspector.introspect_table(&name).await?;
+		schema.tables.insert(name, table);
+	}
+
+	Ok(schema)
+}
+
+#[cfg(all(test, feature = "pgvector"))]
+mod postgres_index_metadata_tests {
+	use super::*;
+	use crate::migrations::IndexType;
+
+	#[test]
+	fn vector_index_postgres_reloptions_parse_to_typed_methods() {
+		// Act and assert
+		assert_eq!(
+			parse_postgres_index_type(
+				"hnsw",
+				&["ef_construction=64".to_string(), "m=16".to_string()]
+			)
+			.unwrap(),
+			Some(IndexType::Hnsw {
+				m: Some(16),
+				ef_construction: Some(64),
+			})
+		);
+		assert_eq!(
+			parse_postgres_index_type("ivfflat", &["lists=100".to_string()]).unwrap(),
+			Some(IndexType::Ivfflat { lists: Some(100) })
+		);
+	}
+
+	#[test]
+	fn vector_index_postgres_reloptions_reject_malformed_values() {
+		// Act
+		let result = parse_postgres_index_type("hnsw", &["ef_construction=invalid".to_string()]);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(MigrationError::IntrospectionError(message))
+				if message == "invalid PostgreSQL hnsw reloption ef_construction=invalid"
+		));
+	}
+
+	#[test]
+	fn mixed_multi_column_postgres_operator_classes_are_conservatively_represented() {
+		// Arrange
+		let operator_classes = vec!["int4_ops".to_string(), "text_pattern_ops".to_string()];
+		let operator_class_defaults = vec![true, false];
+
+		// Act
+		let result = resolve_postgres_operator_class(
+			"idx_events_sequence_name",
+			Some(IndexType::BTree),
+			&operator_classes,
+			&operator_class_defaults,
+		);
+
+		// Assert
+		assert_eq!(result.unwrap(), (None, false));
+	}
+
+	#[test]
+	fn default_multi_column_postgres_operator_classes_are_representable() {
+		// Arrange
+		let operator_classes = vec!["int4_ops".to_string(), "text_ops".to_string()];
+		let operator_class_defaults = vec![true, true];
+
+		// Act
+		let result = resolve_postgres_operator_class(
+			"idx_events_sequence_name",
+			Some(IndexType::BTree),
+			&operator_classes,
+			&operator_class_defaults,
+		);
+
+		// Assert
+		assert_eq!(result.unwrap(), (Some("int4_ops".to_string()), true));
+	}
+
+	#[test]
+	fn homogeneous_custom_multi_column_postgres_operator_classes_are_representable() {
+		// Arrange
+		let operator_classes = vec!["custom_ops".to_string(), "custom_ops".to_string()];
+		let operator_class_defaults = vec![false, false];
+
+		// Act
+		let result = resolve_postgres_operator_class(
+			"idx_events_sequence_partition",
+			Some(IndexType::BTree),
+			&operator_classes,
+			&operator_class_defaults,
+		);
+
+		// Assert
+		assert_eq!(result.unwrap(), (Some("custom_ops".to_string()), false));
+	}
+
+	#[test]
+	fn multi_key_approximate_postgres_indexes_are_rejected() {
+		// Arrange
+		let operator_classes = vec!["vector_l2_ops".to_string(), "vector_l2_ops".to_string()];
+		let operator_class_defaults = vec![true, true];
+
+		// Act
+		let result = resolve_postgres_operator_class(
+			"idx_source_embeddings",
+			Some(IndexType::Hnsw {
+				m: Some(16),
+				ef_construction: Some(64),
+			}),
+			&operator_classes,
+			&operator_class_defaults,
+		);
+
+		// Assert
+		assert!(matches!(
+			result,
+			Err(MigrationError::IntrospectionError(message))
+				if message
+					== "PostgreSQL approximate index idx_source_embeddings must have exactly one key"
+		));
+	}
+
+	#[test]
+	fn mixed_column_and_expression_indexes_are_rejected() {
+		let error = validate_postgres_index_key_kinds("idx_mixed", 1, 1)
+			.expect_err("mixed index keys must not produce lossy metadata");
+
+		assert!(matches!(
+			error,
+			MigrationError::IntrospectionError(message)
+				if message == "PostgreSQL index idx_mixed mixes column and expression keys, which cannot be represented"
+		));
+	}
+}
+
+#[cfg(all(test, feature = "postgres", feature = "pgvector"))]
+mod postgres_tests {
+	use super::PostgresIntrospector;
+	use crate::migrations::FieldType;
+
+	#[test]
+	fn parses_dimensioned_pgvector_type() {
+		let field_type = PostgresIntrospector::parse_pg_type(
+			"vector",
+			"USER-DEFINED",
+			Some("vector(1536)"),
+			None,
+			None,
+			None,
+			None,
+		);
+
+		assert_eq!(field_type, FieldType::Vector { dimensions: 1536 });
+	}
+
+	#[test]
+	fn parses_schema_qualified_pgvector_type() {
+		let field_type = PostgresIntrospector::parse_pg_type(
+			"vector",
+			"USER-DEFINED",
+			Some("extensions.vector(1536)"),
+			None,
+			None,
+			None,
+			None,
+		);
+
+		assert_eq!(field_type, FieldType::Vector { dimensions: 1536 });
+	}
+
+	#[test]
+	fn parses_dimensioned_pgvector_array_type() {
+		let field_type = PostgresIntrospector::parse_pg_type(
+			"_vector",
+			"ARRAY",
+			Some("vector(3)[]"),
+			None,
+			None,
+			None,
+			None,
+		);
+
+		assert_eq!(
+			field_type,
+			FieldType::Array(Box::new(FieldType::Vector { dimensions: 3 }))
+		);
+	}
+
+	#[test]
+	fn rejects_undimensioned_or_out_of_range_pgvector_types() {
+		for type_definition in ["vector", "vector(0)", "vector(2001)"] {
+			let field_type = PostgresIntrospector::parse_pg_type(
+				"vector",
+				"USER-DEFINED",
+				Some(type_definition),
+				None,
+				None,
+				None,
+				None,
+			);
+
+			assert_eq!(field_type, FieldType::Custom("vector".to_string()));
+		}
+	}
+}
+
 #[cfg(test)]
 #[cfg(feature = "sqlite")]
 mod tests {
 	use super::*;
 	use crate::migrations::FieldType;
+	use std::collections::HashSet;
+
+	#[rstest::rstest]
+	fn partition_validation_rejects_mysql_without_connecting() {
+		let error = validate_partition_option(DatabaseType::Mysql, true)
+			.expect_err("MySQL must reject PostgreSQL-only partitions before database I/O");
+		assert_eq!(
+			error.to_string(),
+			"Introspection error: include_partitions is only supported for PostgreSQL"
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "mysql")]
+	fn mysql_catalog_integer_conversion_rejects_values_outside_u32() {
+		let negative = mysql_catalog_u32(Some(-1), 255, "character maximum length")
+			.expect_err("negative catalog metadata must be rejected");
+		assert_eq!(
+			negative.to_string(),
+			"Introspection error: MySQL character maximum length is outside the supported u32 range",
+		);
+
+		let overflow = mysql_catalog_u32(Some(i64::from(u32::MAX) + 1), 10, "numeric precision")
+			.expect_err("oversized catalog metadata must be rejected");
+		assert_eq!(
+			overflow.to_string(),
+			"Introspection error: MySQL numeric precision is outside the supported u32 range",
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "mysql")]
+	fn mysql_unsigned_integer_columns_map_to_unsigned_rust_types() {
+		assert_eq!(
+			MySQLIntrospector::parse_mysql_type("tinyint", "tinyint unsigned", None, None, None)
+				.expect("type should parse"),
+			FieldType::Custom("u8".to_string())
+		);
+		assert_eq!(
+			MySQLIntrospector::parse_mysql_type("bigint", "bigint unsigned", None, None, None)
+				.expect("type should parse"),
+			FieldType::Custom("u64".to_string())
+		);
+	}
+
+	#[rstest::rstest]
+	fn sqlite_type_affinity_handles_legal_noncanonical_declarations() {
+		assert_eq!(
+			SQLiteIntrospector::parse_sqlite_type("UNSIGNED BIG INT"),
+			FieldType::Integer
+		);
+		assert_eq!(
+			SQLiteIntrospector::parse_sqlite_type("CHARACTER(20)"),
+			FieldType::Text
+		);
+		assert_eq!(
+			SQLiteIntrospector::parse_sqlite_type("DOUBLE UNSIGNED"),
+			FieldType::Real
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "postgres")]
+	fn postgres_partition_filter_excludes_only_partition_children() {
+		let mut tables = HashMap::new();
+		for name in ["orders", "ordinary_inheritance_child", "orders_2026"] {
+			tables.insert(
+				name.to_string(),
+				TableInfo {
+					name: name.to_string(),
+					columns: HashMap::new(),
+					indexes: HashMap::new(),
+					primary_key: Vec::new(),
+					foreign_keys: Vec::new(),
+					unique_constraints: Vec::new(),
+					check_constraints: Vec::new(),
+				},
+			);
+		}
+		let partition_names = postgres_partition_names([
+			PostgresRelation {
+				name: "orders".to_string(),
+				is_partition: false,
+			},
+			PostgresRelation {
+				name: "ordinary_inheritance_child".to_string(),
+				is_partition: false,
+			},
+			PostgresRelation {
+				name: "orders_2026".to_string(),
+				is_partition: true,
+			},
+		]);
+
+		let mut without_partitions = DatabaseSchema {
+			tables: tables.clone(),
+		};
+		filter_postgres_partitions(&mut without_partitions, &partition_names, false);
+		assert_eq!(
+			without_partitions
+				.tables
+				.keys()
+				.cloned()
+				.collect::<HashSet<_>>(),
+			HashSet::from([
+				"orders".to_string(),
+				"ordinary_inheritance_child".to_string(),
+			])
+		);
+
+		let mut with_partitions = DatabaseSchema { tables };
+		filter_postgres_partitions(&mut with_partitions, &partition_names, true);
+		assert_eq!(
+			with_partitions
+				.tables
+				.keys()
+				.cloned()
+				.collect::<HashSet<_>>(),
+			HashSet::from([
+				"orders".to_string(),
+				"ordinary_inheritance_child".to_string(),
+				"orders_2026".to_string(),
+			])
+		);
+	}
+
+	use rstest::rstest;
 
 	#[cfg(feature = "sqlite")]
+	#[rstest]
 	#[tokio::test]
 	async fn test_sqlite_introspector_read_schema() {
 		use sqlx::SqlitePool;
@@ -1871,6 +3111,139 @@ mod tests {
 		assert_eq!(name_col.name, "name");
 		assert_eq!(name_col.column_type, FieldType::Text);
 		assert!(!name_col.nullable);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn sqlite_introspection_preserves_duplicate_collated_named_unique_constraints() {
+		use sqlx::SqlitePool;
+
+		// Arrange
+		let pool = SqlitePool::connect("sqlite::memory:")
+			.await
+			.expect("in-memory SQLite pool should connect");
+		sqlx::query(
+			r#"
+			CREATE TABLE "job queue" (
+				"tenant id" TEXT NOT NULL,
+				"code,value" TEXT NOT NULL,
+				/* UNIQUE ("ignored comment") */
+				CONSTRAINT "uq queue nocase one"
+					UNIQUE ("tenant id", "code,value" COLLATE NOCASE),
+				CONSTRAINT `uq queue nocase two`
+					UNIQUE ("tenant id", "code,value" COLLATE NOCASE),
+				CONSTRAINT "uq queue binary"
+					UNIQUE ("tenant id", "code,value" COLLATE BINARY)
+			)
+			"#,
+		)
+		.execute(&pool)
+		.await
+		.expect("table with named UNIQUE constraints should be created");
+		let introspector = SQLiteIntrospector::new(pool);
+
+		// Act
+		let table = introspector
+			.read_table("job queue")
+			.await
+			.expect("SQLite table introspection should succeed")
+			.expect("created table should be present");
+		let mut constraints = table.unique_constraints;
+		constraints.sort_by(|left, right| left.name.cmp(&right.name));
+
+		// Assert
+		assert_eq!(
+			constraints,
+			vec![
+				UniqueConstraintInfo {
+					name: "uq queue binary".to_string(),
+					columns: vec!["tenant id".to_string(), "code,value".to_string()],
+				},
+				UniqueConstraintInfo {
+					name: "uq queue nocase one".to_string(),
+					columns: vec!["tenant id".to_string(), "code,value".to_string()],
+				},
+				UniqueConstraintInfo {
+					name: "uq queue nocase two".to_string(),
+					columns: vec!["tenant id".to_string(), "code,value".to_string()],
+				},
+			]
+		);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn sqlite_integer_primary_key_without_autoincrement_is_generated() {
+		use sqlx::SqlitePool;
+
+		let pool = SqlitePool::connect("sqlite::memory:")
+			.await
+			.expect("in-memory SQLite pool should connect");
+		sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+			.execute(&pool)
+			.await
+			.expect("test table should be created");
+
+		let schema = SQLiteIntrospector::new(pool)
+			.read_schema()
+			.await
+			.expect("schema should be introspected");
+		assert!(schema.tables["users"].columns["id"].auto_increment);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn sqlite_descending_integer_primary_key_is_not_generated() {
+		use sqlx::SqlitePool;
+
+		// Arrange
+		let pool = SqlitePool::connect("sqlite::memory:")
+			.await
+			.expect("in-memory SQLite pool should connect");
+		sqlx::query(
+			"CREATE TABLE users (id INTEGER PRIMARY KEY /* ordering */ DESC, name TEXT NOT NULL)",
+		)
+		.execute(&pool)
+		.await
+		.expect("test table should be created");
+
+		// Act
+		let schema = SQLiteIntrospector::new(pool)
+			.read_schema()
+			.await
+			.expect("schema should be introspected");
+
+		// Assert
+		assert_eq!(schema.tables["users"].columns["id"].auto_increment, false);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn sqlite_primary_key_keywords_in_comments_do_not_disable_generation() {
+		use sqlx::SqlitePool;
+
+		// Arrange
+		let pool = SqlitePool::connect("sqlite::memory:")
+			.await
+			.expect("in-memory SQLite pool should connect");
+		sqlx::query(
+			"CREATE TABLE users (id INTEGER PRIMARY KEY /* PRIMARY KEY DESC */, name TEXT NOT NULL)",
+		)
+		.execute(&pool)
+		.await
+		.expect("test table should be created");
+
+		// Act
+		let schema = SQLiteIntrospector::new(pool)
+			.read_schema()
+			.await
+			.expect("schema should be introspected");
+
+		// Assert
+		assert_eq!(schema.tables["users"].columns["id"].auto_increment, true);
 	}
 
 	#[cfg(feature = "sqlite")]
@@ -2044,10 +3417,10 @@ mod tests {
 	}
 
 	#[cfg(feature = "postgres")]
-	#[test]
+	#[rstest::rstest]
 	fn test_postgres_type_parser_covers_supported_types() {
 		let parse = |udt_name: &str| {
-			PostgresIntrospector::parse_pg_type(udt_name, "", None, None, None, None)
+			PostgresIntrospector::parse_pg_type(udt_name, "", None, None, None, None, None)
 		};
 
 		assert_eq!(parse("int4"), FieldType::Integer);
@@ -2057,12 +3430,12 @@ mod tests {
 		assert_eq!(parse("int2"), FieldType::SmallInteger);
 		assert_eq!(parse("smallserial"), FieldType::SmallInteger);
 		assert_eq!(
-			PostgresIntrospector::parse_pg_type("varchar", "", Some(40), None, None, None),
+			PostgresIntrospector::parse_pg_type("varchar", "", None, Some(40), None, None, None),
 			FieldType::VarChar(40)
 		);
 		assert_eq!(parse("varchar"), FieldType::VarChar(255));
 		assert_eq!(
-			PostgresIntrospector::parse_pg_type("bpchar", "", Some(8), None, None, None),
+			PostgresIntrospector::parse_pg_type("bpchar", "", None, Some(8), None, None, None),
 			FieldType::Char(8)
 		);
 		assert_eq!(parse("bpchar"), FieldType::Char(1));
@@ -2071,7 +3444,15 @@ mod tests {
 		assert_eq!(parse("float4"), FieldType::Real);
 		assert_eq!(parse("float8"), FieldType::Double);
 		assert_eq!(
-			PostgresIntrospector::parse_pg_type("numeric", "", Some(0), Some(12), Some(4), None),
+			PostgresIntrospector::parse_pg_type(
+				"numeric",
+				"",
+				None,
+				Some(0),
+				Some(12),
+				Some(4),
+				None,
+			),
 			FieldType::Decimal {
 				precision: 12,
 				scale: 4,
@@ -2093,7 +3474,7 @@ mod tests {
 			("timetz", FieldType::Time),
 			("bytea", FieldType::Bytea),
 			("json", FieldType::Json),
-			("jsonb", FieldType::JsonBinary),
+			("jsonb", FieldType::Jsonb),
 			("uuid", FieldType::Uuid),
 			("tsvector", FieldType::TsVector),
 			("tsquery", FieldType::TsQuery),
@@ -2108,7 +3489,7 @@ mod tests {
 		}
 
 		assert_eq!(
-			PostgresIntrospector::parse_pg_type("_int4", "", None, None, None, None),
+			PostgresIntrospector::parse_pg_type("_int4", "", None, None, None, None, None),
 			FieldType::Array(Box::new(FieldType::Integer))
 		);
 		for (udt_name, expected) in [
@@ -2139,6 +3520,7 @@ mod tests {
 				None,
 				None,
 				None,
+				None,
 				Some(vec!["new".to_string(), "done".to_string()]),
 			),
 			FieldType::Enum {
@@ -2146,7 +3528,15 @@ mod tests {
 			}
 		);
 		assert_eq!(
-			PostgresIntrospector::parse_pg_type("status", "USER-DEFINED", None, None, None, None,),
+			PostgresIntrospector::parse_pg_type(
+				"status",
+				"USER-DEFINED",
+				None,
+				None,
+				None,
+				None,
+				None,
+			),
 			FieldType::Custom("status".to_string())
 		);
 		assert_eq!(
@@ -2156,17 +3546,21 @@ mod tests {
 	}
 
 	#[cfg(feature = "mysql")]
-	#[test]
+	#[rstest::rstest]
 	fn test_mysql_type_parser_covers_supported_types() {
-		let parse =
-			|data_type: &str| MySQLIntrospector::parse_mysql_type(data_type, "", None, None, None);
+		let parse = |data_type: &str| {
+			MySQLIntrospector::parse_mysql_type(data_type, "", None, None, None)
+				.expect("type should parse")
+		};
 
 		assert_eq!(
-			MySQLIntrospector::parse_mysql_type("tinyint", "tinyint(1)", None, None, None),
+			MySQLIntrospector::parse_mysql_type("tinyint", "tinyint(1)", None, None, None)
+				.expect("type should parse"),
 			FieldType::Boolean
 		);
 		assert_eq!(
-			MySQLIntrospector::parse_mysql_type("tinyint", "tinyint(2)", None, None, None),
+			MySQLIntrospector::parse_mysql_type("tinyint", "tinyint(2)", None, None, None)
+				.expect("type should parse"),
 			FieldType::TinyInt
 		);
 		for (data_type, expected) in [
@@ -2198,17 +3592,20 @@ mod tests {
 			assert_eq!(parse(data_type), expected);
 		}
 		assert_eq!(
-			MySQLIntrospector::parse_mysql_type("varchar", "", Some(64), None, None),
+			MySQLIntrospector::parse_mysql_type("varchar", "", Some(64), None, None)
+				.expect("type should parse"),
 			FieldType::VarChar(64)
 		);
 		assert_eq!(parse("varchar"), FieldType::VarChar(255));
 		assert_eq!(
-			MySQLIntrospector::parse_mysql_type("char", "", Some(12), None, None),
+			MySQLIntrospector::parse_mysql_type("char", "", Some(12), None, None)
+				.expect("type should parse"),
 			FieldType::Char(12)
 		);
 		assert_eq!(parse("char"), FieldType::Char(1));
 		assert_eq!(
-			MySQLIntrospector::parse_mysql_type("decimal", "", Some(0), Some(12), Some(4)),
+			MySQLIntrospector::parse_mysql_type("decimal", "", Some(0), Some(12), Some(4))
+				.expect("type should parse"),
 			FieldType::Decimal {
 				precision: 12,
 				scale: 4,
@@ -2222,13 +3619,15 @@ mod tests {
 			}
 		);
 		assert_eq!(
-			MySQLIntrospector::parse_mysql_type("enum", "enum('new', 'done')", None, None, None,),
+			MySQLIntrospector::parse_mysql_type("enum", "enum('new', 'done')", None, None, None,)
+				.expect("type should parse"),
 			FieldType::Enum {
 				values: vec!["new".to_string(), "done".to_string()],
 			}
 		);
 		assert_eq!(
-			MySQLIntrospector::parse_mysql_type("set", "set('read','write')", None, None, None,),
+			MySQLIntrospector::parse_mysql_type("set", "set('read','write')", None, None, None,)
+				.expect("type should parse"),
 			FieldType::Set {
 				values: vec!["read".to_string(), "write".to_string()],
 			}
@@ -2243,7 +3642,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest::rstest]
 	fn test_sqlite_type_parser_covers_supported_types() {
 		for (type_name, expected) in [
 			(" INTEGER ", FieldType::Integer),
@@ -2263,7 +3662,7 @@ mod tests {
 			("DATETIME", FieldType::DateTime),
 			("TIMESTAMP", FieldType::DateTime),
 			("JSON", FieldType::Json),
-			("JSONB", FieldType::JsonBinary),
+			("JSONB", FieldType::Jsonb),
 			("UUID", FieldType::Uuid),
 			(
 				"NUMERIC",
@@ -2335,11 +3734,14 @@ mod tests {
 		);
 		assert_eq!(
 			SQLiteIntrospector::parse_sqlite_type("vendor_type"),
-			FieldType::Custom("vendor_type".to_string())
+			FieldType::Decimal {
+				precision: 10,
+				scale: 2,
+			}
 		);
 	}
 
-	#[test]
+	#[rstest::rstest]
 	fn test_sqlite_constraint_parsers_cover_named_and_anonymous_forms() {
 		let checks = SQLiteIntrospector::parse_check_constraints(
 			"CREATE TABLE t (CONSTRAINT ck_age CHECK (age > 0), CHECK (length(name) > 0))",
@@ -2395,26 +3797,21 @@ mod tests {
 			Some(&"fk_owner".to_string())
 		);
 		assert!(SQLiteIntrospector::parse_fk_constraint_names("FOREIGN KEY (owner_id)").is_empty());
+	}
 
-		let unique_names = SQLiteIntrospector::parse_unique_constraint_names(
-			"CREATE TABLE t (CONSTRAINT \"uq_group\" UNIQUE (\"group\", email), UNIQUE (name))",
-		);
-		assert_eq!(
-			unique_names.get(&vec!["group".to_string(), "email".to_string()]),
-			Some(&"uq_group".to_string())
-		);
-		assert!(!unique_names.contains_key(&vec!["name".to_string()]));
+	#[test]
+	fn extract_parenthesized_expression_handles_utf8_and_quoted_parentheses() {
+		// Arrange
+		let sql = r#"préfixe ("profile,id", "name)", "display""name") suffix"#;
+		let start_pos = sql.find('(').expect("opening parenthesis");
 
-		let quoted_names = SQLiteIntrospector::parse_unique_constraint_names(
-			"CREATE TABLE t (CONSTRAINT uq_quoted UNIQUE (\"profile,id\", \"name)\", \"display\"\"name\"))",
-		);
+		// Act
+		let expression = SQLiteIntrospector::extract_parenthesized_expression(sql, start_pos);
+
+		// Assert
 		assert_eq!(
-			quoted_names.get(&vec![
-				"profile,id".to_string(),
-				"name)".to_string(),
-				"display\"name".to_string(),
-			]),
-			Some(&"uq_quoted".to_string())
+			expression.as_deref(),
+			Some(r#""profile,id", "name)", "display""name""#)
 		);
 	}
 }

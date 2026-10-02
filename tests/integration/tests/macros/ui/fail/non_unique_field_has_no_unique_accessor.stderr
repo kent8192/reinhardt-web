@@ -1,0 +1,28 @@
+warning: unexpected `cfg` condition name: `native`
+ --> tests/macros/ui/fail/non_unique_field_has_no_unique_accessor.rs:5:1
+  |
+5 | #[model(app_label = "articles", table_name = "articles")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: expected names are: `docsrs`, `feature`, and `test` and 31 more
+  = note: using a cfg inside a derive macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `::reinhardt::macros::Model` crate for guidance on how handle this unexpected cfg
+  = help: the derive macro `::reinhardt::macros::Model` may come from an old version of the `reinhardt_macros` crate, try updating your dependency with `cargo update -p reinhardt_macros`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+  = note: this warning originates in the derive macro `::reinhardt::macros::Model` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: no associated function or constant named `unique_title` found for struct `Article` in the current scope
+  --> tests/macros/ui/fail/non_unique_field_has_no_unique_accessor.rs:15:22
+   |
+ 6 | struct Article {
+   | -------------- associated function or constant `unique_title` not found for this struct
+...
+15 |     let _ = Article::unique_title();
+   |                      ^^^^^^^^^^^^ associated function or constant not found in `Article`
+   |
+help: there is an associated function `unique_id` with a similar name
+   |
+15 -     let _ = Article::unique_title();
+15 +     let _ = Article::unique_id();
+   |

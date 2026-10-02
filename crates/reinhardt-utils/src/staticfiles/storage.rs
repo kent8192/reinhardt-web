@@ -292,6 +292,65 @@ impl StaticFilesFinder {
 		all_files
 	}
 
+	/// Discover sources without hiding I/O errors or traversing symlinks.
+	///
+	/// Each result retains its source root so duplicate logical names can be
+	/// diagnosed by publication. Excluded paths prune whole directory subtrees.
+	/// Missing optional application static directories are skipped.
+	pub fn find_all_checked(&self, excluded: &[PathBuf]) -> io::Result<Vec<(PathBuf, String)>> {
+		fn walk(
+			root: &std::path::Path,
+			current: &std::path::Path,
+			excluded: &[PathBuf],
+			files: &mut Vec<(PathBuf, String)>,
+		) -> io::Result<()> {
+			let mut entries = fs::read_dir(current)?.collect::<io::Result<Vec<_>>>()?;
+			entries.sort_by_key(|entry| entry.file_name());
+			for entry in entries {
+				let path = entry.path();
+				if excluded.iter().any(|excluded| path.starts_with(excluded)) {
+					continue;
+				}
+				let kind = entry.file_type()?;
+				if kind.is_dir() {
+					walk(root, &path, excluded, files)?;
+				} else if kind.is_file() {
+					let relative = path
+						.strip_prefix(root)
+						.expect("entry belongs to source root");
+					let relative = relative.to_str().ok_or_else(|| {
+						io::Error::new(
+							io::ErrorKind::InvalidData,
+							format!("non-UTF-8 static path: {}", path.display()),
+						)
+					})?;
+					files.push((
+						root.into(),
+						relative.replace(std::path::MAIN_SEPARATOR, "/"),
+					));
+				} else {
+					return Err(io::Error::new(
+						io::ErrorKind::InvalidInput,
+						format!(
+							"static input {} is a symlink or special file; materialize it inside the source root",
+							path.display()
+						),
+					));
+				}
+			}
+			Ok(())
+		}
+		let mut files = Vec::new();
+		for root in &self.directories {
+			match fs::metadata(root) {
+				Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+				Err(error) => return Err(error),
+				Ok(_) => walk(root, root, excluded, &mut files)?,
+			}
+		}
+		Ok(files)
+	}
+
 	/// Recursively walk a directory and collect all file paths
 	#[allow(clippy::only_used_in_recursion)]
 	fn walk_directory(&self, base_dir: &PathBuf, current_dir: &PathBuf) -> io::Result<Vec<String>> {
@@ -501,6 +560,7 @@ pub struct ManifestStaticFilesStorage {
 	/// If true, lookups for unmapped files will fail rather than fall back.
 	pub manifest_strict: bool,
 	hashed_files: Arc<RwLock<HashMap<String, String>>>,
+	v2_manifest_paths: Arc<RwLock<bool>>,
 }
 
 impl ManifestStaticFilesStorage {
@@ -512,6 +572,7 @@ impl ManifestStaticFilesStorage {
 			manifest_name: "staticfiles.json".to_string(),
 			manifest_strict: true,
 			hashed_files: Arc::new(RwLock::new(HashMap::new())),
+			v2_manifest_paths: Arc::new(RwLock::new(false)),
 		}
 	}
 
@@ -554,6 +615,15 @@ impl ManifestStaticFilesStorage {
 		&self,
 		files: HashMap<String, Vec<u8>>,
 	) -> io::Result<usize> {
+		if *read_or_recover(
+			&self.v2_manifest_paths,
+			"ManifestStaticFilesStorage::save_with_dependencies version",
+		) {
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				"version 2 publication manifests are read-only in legacy storage; use AssetPublisher",
+			));
+		}
 		let mut hashed_map = HashMap::new();
 		let mut processed_files = HashMap::new();
 
@@ -640,21 +710,22 @@ impl ManifestStaticFilesStorage {
 		}
 
 		let manifest_content = tokio::fs::read_to_string(manifest_path).await?;
-		let manifest_data: serde_json::Value =
-			serde_json::from_str(&manifest_content).map_err(io::Error::other)?;
-
-		// Extract "paths" object from manifest
-		if let Some(paths) = manifest_data.get("paths").and_then(|p| p.as_object()) {
-			let mut hashed_files = write_or_recover(
-				&self.hashed_files,
-				"ManifestStaticFilesStorage::load_manifest",
-			);
-			for (key, value) in paths {
-				if let Some(hashed_name) = value.as_str() {
-					hashed_files.insert(key.clone(), hashed_name.to_string());
-				}
-			}
-		}
+		let decoded = super::publication::decode_manifest(manifest_content.as_bytes())
+			.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+		let v2_manifest_paths = matches!(&decoded, super::publication::DecodedAssetManifest::V2(_));
+		let mut hashed_files = write_or_recover(
+			&self.hashed_files,
+			"ManifestStaticFilesStorage::load_manifest",
+		);
+		*hashed_files = decoded
+			.paths()
+			.iter()
+			.map(|(logical, published)| (logical.clone(), published.clone()))
+			.collect();
+		*write_or_recover(
+			&self.v2_manifest_paths,
+			"ManifestStaticFilesStorage::load_manifest version",
+		) = v2_manifest_paths;
 
 		Ok(())
 	}
@@ -710,6 +781,18 @@ impl ManifestStaticFilesStorage {
 			.unwrap_or_else(|| name.to_string());
 		drop(hashed_files);
 
-		self.normalize_url(&self.base_url, &actual_name)
+		let v2_manifest_paths = *read_or_recover(
+			&self.v2_manifest_paths,
+			"ManifestStaticFilesStorage::url version",
+		);
+		let url_path = if v2_manifest_paths {
+			reinhardt_core::types::static_assets::encode_asset_path(
+				actual_name.trim_start_matches('/'),
+			)
+			.unwrap_or(actual_name)
+		} else {
+			actual_name
+		};
+		self.normalize_url(&self.base_url, &url_path)
 	}
 }

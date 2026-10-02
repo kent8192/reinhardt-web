@@ -7,8 +7,9 @@
 //!
 //! 1. A project-static middleware mounted at `/static/` with
 //!    `spa_mode = false` and `passthrough_prefixes = ["/static/admin/"]`.
-//! 2. The existing dist middleware mounted at `/` (covers WASM bundle and
-//!    SPA fallback) and excluding `/static/admin/` from SPA fallback.
+//! 2. A collected-dist middleware mounted at `/static/` without SPA fallback.
+//! 3. The existing dist middleware mounted at `/` (covers WASM bundle and
+//!    SPA fallback) and excluding `/static/` from SPA fallback.
 //!
 //! Anything that neither middleware serves falls through to the application
 //! router. The tests fake the application router with a small handler so the
@@ -48,6 +49,12 @@ fn build_runserver_cascade(
 	project_static_dir: std::path::PathBuf,
 	dist_dir: std::path::PathBuf,
 ) -> Arc<dyn Handler> {
+	let manifest_aliases = std::fs::read_to_string(dist_dir.join("manifest.json"))
+		.ok()
+		.and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+		.and_then(|manifest| manifest.get("paths").cloned())
+		.and_then(|paths| serde_json::from_value(paths).ok())
+		.unwrap_or_default();
 	let project_static = Arc::new(StaticFilesMiddleware::new(
 		StaticMiddlewareConfig::new(project_static_dir)
 			.url_prefix("/static/")
@@ -56,13 +63,20 @@ fn build_runserver_cascade(
 			.passthrough_prefixes(vec!["/static/admin/".to_string()]),
 	));
 	let dist_static = Arc::new(StaticFilesMiddleware::new(
+		StaticMiddlewareConfig::new(dist_dir.clone())
+			.url_prefix("/static/")
+			.spa_mode(false)
+			.auto_inject_wasm(false)
+			.manifest_aliases(manifest_aliases),
+	));
+	let dist_spa = Arc::new(StaticFilesMiddleware::new(
 		StaticMiddlewareConfig::new(dist_dir)
 			.url_prefix("/")
 			.spa_mode(true)
 			.excluded_prefixes(vec![
 				"/api/".to_string(),
 				"/admin/".to_string(),
-				"/static/admin/".to_string(),
+				"/static/".to_string(),
 			]),
 	));
 	// MiddlewareChain::handle iterates `.iter().rev()` at request time, so
@@ -72,7 +86,8 @@ fn build_runserver_cascade(
 	// construction.
 	let chain = MiddlewareChain::new(Arc::new(AdminAssetRouter))
 		.with_middleware(project_static)
-		.with_middleware(dist_static);
+		.with_middleware(dist_static)
+		.with_middleware(dist_spa);
 	Arc::new(chain)
 }
 
@@ -195,10 +210,53 @@ async fn test_dist_assets_still_served_alongside_project_static() {
 }
 
 #[tokio::test]
-async fn test_project_static_missing_falls_through_to_dist_spa_fallback() {
+async fn test_collected_dist_assets_are_served_under_static_url() {
+	let project = TempDir::new().unwrap();
+	let project_static = project.path().join("static");
+	std::fs::create_dir_all(&project_static).unwrap();
+	let dist = project.path().join("dist");
+	std::fs::create_dir_all(dist.join("vendor")).unwrap();
+	std::fs::write(
+		dist.join("vendor/unocss-runtime.1234.js"),
+		"export const runtime = true;",
+	)
+	.unwrap();
+	std::fs::write(
+		dist.join("manifest.json"),
+		r#"{"version":"1.0","paths":{"vendor/unocss-runtime.js":"vendor/unocss-runtime.1234.js"}}"#,
+	)
+	.unwrap();
+	std::fs::write(dist.join("index.html"), "<html><body>spa</body></html>").unwrap();
+
+	let handler = build_runserver_cascade(project_static, dist);
+	let (url, server_handle) = spawn_test_server(handler).await;
+	let response = reqwest::get(format!("{}/static/vendor/unocss-runtime.js", url))
+		.await
+		.expect("request failed");
+
+	assert_eq!(response.status(), 200);
+	assert_eq!(
+		response
+			.headers()
+			.get("content-type")
+			.expect("missing Content-Type")
+			.to_str()
+			.unwrap(),
+		"text/javascript"
+	);
+	assert_eq!(
+		response.text().await.unwrap(),
+		"export const runtime = true;"
+	);
+
+	shutdown_test_server(server_handle).await;
+}
+
+#[tokio::test]
+async fn test_project_static_missing_does_not_use_dist_spa_fallback() {
 	// Arrange — request for a file that exists in neither project-static
-	// nor dist. SPA mode is OFF on project-static, so it must fall through;
-	// dist's SPA fallback returns index.html for non-excluded paths.
+	// nor dist. SPA mode is OFF on both static-prefix mounts, and the root
+	// dist middleware excludes the configured static prefix from fallback.
 	let project = TempDir::new().unwrap();
 	let project_static = project.path().join("static");
 	std::fs::create_dir_all(&project_static).unwrap();
@@ -214,31 +272,11 @@ async fn test_project_static_missing_falls_through_to_dist_spa_fallback() {
 		.await
 		.expect("request failed");
 
-	// Assert — Issue #4484: project-static must NOT silently serve missing
-	// `/static/...` files with an empty 200; it must fall through so dist's
-	// SPA fallback (the pre-#4484 behaviour for paths outside
-	// `/static/admin/`) can serve `index.html` as before. The expected
-	// observable response here is therefore the SPA HTML coming from dist.
-	assert_eq!(response.status(), 200);
-	let content_type = response
-		.headers()
-		.get("content-type")
-		.expect("missing Content-Type")
-		.to_str()
-		.unwrap()
-		.to_owned();
-	assert!(
-		content_type.contains("text/html"),
-		"expected SPA fallback HTML, got Content-Type {content_type}"
-	);
-	// Confirm the body is actually dist/index.html (not e.g. an empty 200
-	// from project-static or a wrong fallback). Exact match guards against
-	// future regressions that silently substitute the SPA shell.
+	// Assert — static asset misses must reach the application router instead
+	// of being converted into a successful SPA HTML response.
+	assert_eq!(response.status(), 404);
 	let body = response.text().await.unwrap();
-	assert_eq!(
-		body, "<html><body>spa</body></html>",
-		"SPA fallback should serve dist/index.html verbatim"
-	);
+	assert_eq!(body, "not found");
 
 	shutdown_test_server(server_handle).await;
 }

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.4.0-alpha.14...reinhardt-storages@v0.4.0-alpha.15) - 2026-09-10
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.4.0-alpha.10...reinhardt-storages@v0.4.0-alpha.11) - 2026-08-27
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.4.0-alpha.8...reinhardt-storages@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define runtime and operations boundaries
+- *(security)* qualify caller-enforced boundaries
+- *(security)* qualify remaining policy boundaries
+- *(security)* qualify remaining boundary assumptions
+- *(security)* qualify remaining policy boundaries
+- *(security)* qualify remaining policy boundaries
+- *(security)* qualify runtime policy boundaries
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.3.15...reinhardt-storages@v0.3.16) - 2026-09-08
 
 ### Maintenance
@@ -43,6 +75,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.4.0-alpha.6...reinhardt-storages@v0.4.0-alpha.7) - 2026-08-19
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Testing
+
+- *(storages)* raise coverage above 75%
+- *(storages)* isolate cross-crate coverage tests
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.3.2...reinhardt-storages@v0.4.0-alpha.1) - 2026-07-21
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge main into develop/0.4.0
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.3.9...reinhardt-storages@v0.3.10) - 2026-08-22
 
 ### Maintenance

@@ -19,12 +19,19 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Run mode: release (normal) or backfill (generate announcements for all past releases)"
+        description: "Create announcements, resume an incomplete release, or backfill announcements"
         type: choice
         options:
           - release
+          - resume-release
           - backfill
         default: release
+      release_pr:
+        description: "Merged Release PR number (required for resume-release)"
+        type: string
+      release_sha:
+        description: "Full recovery SHA already integrated into this release branch (required for resume-release)"
+        type: string
   pull_request:
     types: [closed]
     branches:
@@ -131,8 +138,34 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Workaround for release-plz/release-plz#2941 (tracked in reinhardt-web#5713).
+      # Remove this validation when release-plz copies Git-tracked files without
+      # applying ignore rules.
+      #
+      # Ideal implementation (without workaround):
+      #   release-plz release-pr copies every Git-tracked file from its base revision.
+      - name: Verify release-plz copy inputs
+        run: |
+          set -euo pipefail
+          tracked_ignored_files=$(git ls-files -ci --exclude-standard)
+          if [ -n "$tracked_ignored_files" ]; then
+            echo "::error::release-plz omits tracked files that match ignore rules."
+            printf '%s\n' "$tracked_ignored_files"
+            exit 1
+          fi
+
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Require the previous release to be complete
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release_state.py --repository "$GITHUB_REPOSITORY" --require-complete --before-release-pr
 
       - name: Setup protoc
         uses: arduino/setup-protoc@v3
@@ -309,19 +342,25 @@ jobs:
   release-plz-release:
     name: Release
     needs: classify-release-push
-    # Publish only after the classifier verifies the PR metadata. Commit-message
-    # substring checks are intentionally not used for this gate.
+    # Recovery selects an immutable source already integrated into this release
+    # branch. always() permits dispatch when the push classifier is skipped.
     #
     # Accepted Release PR merge shapes:
-    # - merge commit from release-plz-* or develop-release-plz-* branch
+    # - merge commit from release-plz-* on main or develop-release-plz-* on develop/*
     # - squash commit titled "chore: release (#N)"
     if: |
-      github.event_name == 'push' &&
-      needs.classify-release-push.outputs.is_release_merge == 'true'
+      always() && !cancelled() &&
+      (
+        (github.event_name == 'push' &&
+         needs.classify-release-push.result == 'success' &&
+         needs.classify-release-push.outputs.is_release_merge == 'true') ||
+        (github.event_name == 'workflow_dispatch' && inputs.mode == 'resume-release')
+      )
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
     timeout-minutes: 360
     outputs:
       released: ${{ steps.check-release.outputs.released }}
+      release_tag: ${{ steps.publication.outputs.release_tag }}
     concurrency:
       group: release-plz-release-${{ github.ref }}
       cancel-in-progress: false
@@ -337,9 +376,50 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          token: ${{ steps.generate-token.outputs.token }}
+
+      - name: Select publication source
+        id: publication-source
+        env:
+          RELEASE_MODE: ${{ inputs.mode }}
+          INPUT_RELEASE_PR: ${{ inputs.release_pr }}
+          INPUT_RELEASE_SHA: ${{ inputs.release_sha }}
+          CLASSIFIED_RELEASE_PR: ${{ needs.classify-release-push.outputs.release_pr_number }}
+        run: |
+          set -euo pipefail
+          if [ "$RELEASE_MODE" = resume-release ]; then
+            SOURCE_SHA="$INPUT_RELEASE_SHA"
+            PR_NUMBER="$INPUT_RELEASE_PR"
+          else
+            SOURCE_SHA="$GITHUB_SHA"
+            PR_NUMBER="$CLASSIFIED_RELEASE_PR"
+          fi
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::A full 40-character release_sha is required for resume-release."
+            exit 1
+          fi
+          if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::A merged Release PR number is required."
+            exit 1
+          fi
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "release_pr=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout publication source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.publication-source.outputs.source_sha }}
+          path: release-source
+          fetch-depth: 0
+          token: ${{ steps.generate-token.outputs.token }}
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Setup protoc
         uses: arduino/setup-protoc@v3
@@ -359,70 +439,48 @@ jobs:
             sudo apt-get install -y -o DPkg::Lock::Timeout=120 gh
           fi
 
-      - name: Verify release branch name
+      - name: Verify release PR and publication source
         env:
-          BRANCH: ${{ needs.classify-release-push.outputs.release_pr_head_branch }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ inputs.mode }}
+          RELEASE_PR: ${{ steps.publication-source.outputs.release_pr }}
+          RELEASE_SHA: ${{ steps.publication-source.outputs.source_sha }}
         run: |
-          if [ -z "$BRANCH" ]; then
-            echo "::error::Release classifier did not emit a release branch name"
-            exit 1
+          set -euo pipefail
+          args=()
+          if [ "$RELEASE_MODE" = resume-release ]; then
+            args+=(--resume)
           fi
-          echo "Extracted branch name: $BRANCH"
-          case "$BRANCH" in
-            release-plz-*|develop-release-plz-*)
-              echo "Branch '$BRANCH' matches release branch pattern"
-              ;;
-            *)
-              echo "::error::Branch '$BRANCH' does not start with 'release-plz-' or 'develop-release-plz-'"
-              echo "::error::This push does not originate from a release-plz branch. Refusing to publish."
-              exit 1
-              ;;
-          esac
+          python3 scripts/verify_release_source.py \
+            --repo "$GITHUB_WORKSPACE/release-source" \
+            --repository "$GITHUB_REPOSITORY" --base "$GITHUB_REF_NAME" \
+            --workflow-sha "$GITHUB_SHA" --source-sha "$RELEASE_SHA" \
+            --release-pr "$RELEASE_PR" "${args[@]}"
 
-      - name: Verify release PR label
+      - name: Attach publication source to a tracking branch
+        working-directory: release-source
         env:
-          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
-          PR_NUMBER: ${{ needs.classify-release-push.outputs.release_pr_number }}
-          EXPECTED_HEAD_BRANCH: ${{ needs.classify-release-push.outputs.release_pr_head_branch }}
-          EXPECTED_BASE_BRANCH: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ steps.publication-source.outputs.source_sha }}
         run: |
-          if [ -z "$PR_NUMBER" ]; then
-            echo "::error::Release classifier did not emit a release PR number"
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$RELEASE_SHA" ]; then
+            echo "::error::Publication checkout no longer matches the verified source SHA."
             exit 1
           fi
-          echo "Verifying PR #$PR_NUMBER has the 'release' label..."
+          # release-plz reads @{upstream} and rejects a detached HEAD. Attach
+          # the verified commit locally; never check out the remote branch tip.
+          git switch --no-track --create release-publication "$RELEASE_SHA"
+          git branch --set-upstream-to="origin/$GITHUB_REF_NAME" release-publication
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}')" = "origin/$GITHUB_REF_NAME"
 
-          PR_JSON=$(gh pr view "$PR_NUMBER" --json labels,headRefName,baseRefName,mergeCommit)
-          HEAD_BRANCH=$(jq -r '.headRefName // ""' <<< "$PR_JSON")
-          BASE_BRANCH=$(jq -r '.baseRefName // ""' <<< "$PR_JSON")
-          LABELS=$(jq -r '.labels[].name' <<< "$PR_JSON")
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@b874e25ea559687bec77e281e9b271aa1367b624 # v1.23.0
+        env:
+          BINSTALL_VERSION: 1.23.0
 
-          if [ "$HEAD_BRANCH" != "$EXPECTED_HEAD_BRANCH" ]; then
-            echo "::error::PR #$PR_NUMBER head '$HEAD_BRANCH' does not match classifier output '$EXPECTED_HEAD_BRANCH'"
-            exit 1
-          fi
-          if [ "$BASE_BRANCH" != "$EXPECTED_BASE_BRANCH" ]; then
-            echo "::error::PR #$PR_NUMBER base '$BASE_BRANCH' does not match pushed ref '$EXPECTED_BASE_BRANCH'"
-            exit 1
-          fi
-          if ! echo "$LABELS" | grep -qx 'release'; then
-            echo "::error::PR #$PR_NUMBER does not have the 'release' label. Labels found: $LABELS"
-            echo "::error::Only PRs with the 'release' label are allowed to publish. Refusing to publish."
-            exit 1
-          fi
-          echo "PR #$PR_NUMBER has the 'release' label — proceeding with publish"
-
-          MERGE_COMMIT_SHA=$(jq -r '.mergeCommit.oid // ""' <<< "$PR_JSON")
-          if [ -z "$MERGE_COMMIT_SHA" ]; then
-            echo "::error::Could not determine merge commit SHA for PR #$PR_NUMBER"
-            exit 1
-          fi
-          if [ "$MERGE_COMMIT_SHA" != "$GITHUB_SHA" ]; then
-            echo "::error::Pushed SHA $GITHUB_SHA does not match release PR #$PR_NUMBER merge commit $MERGE_COMMIT_SHA"
-            echo "::error::Refusing to publish from an unverified release commit."
-            exit 1
-          fi
-          echo "Pushed SHA matches PR #$PR_NUMBER merge commit — proceeding with publish"
+      - name: Install release-plz
+        run: cargo-binstall release-plz@0.3.165 --force --strategies=crate-meta-data,compile --no-confirm
 
       # Workaround for gix slotmap overflow (GitoxideLabs/gitoxide#1788)
       - name: Clear cargo registry git index cache
@@ -430,6 +488,7 @@ jobs:
 
       - name: Snapshot tags before release
         id: tags-before
+        working-directory: release-source
         run: |
           set -euo pipefail
           TAGS_BEFORE_FILE="${RUNNER_TEMP}/tags-before-${GITHUB_RUN_ID}.txt"
@@ -439,71 +498,25 @@ jobs:
           echo "Tags before release:"
           cat "$TAGS_BEFORE_FILE"
 
-      - name: Publish to crates.io and create releases (attempt 1/3)
-        id: release-attempt-1
-        continue-on-error: true
-        uses: release-plz/action@v0.5
-        with:
-          command: release
+      - name: Publish to crates.io and create releases
         env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          GIT_TOKEN: ${{ steps.generate-token.outputs.token }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Wait for crates.io rate limit reset (attempt 1)
-        if: steps.release-attempt-1.outcome == 'failure'
         run: |
-          # crates.io PublishUpdate: burst 30, 1 token / 60s.
-          # Workspace has 47 publishable crates -> overflow = 47 - 30 = 17 tokens.
-          # Wait 1200s (20min) to refill the overflow with margin before retrying.
-          echo "First publish attempt failed. Waiting 1200s (20min) to refill PublishUpdate overflow (47 - 30 = 17 tokens, with margin)..."
-          sleep 1200
-
-      - name: Clear registry index for retry (attempt 1)
-        if: steps.release-attempt-1.outcome == 'failure'
-        run: rm -rf ~/.cargo/registry/index/github.com-*
-
-      - name: Publish to crates.io and create releases (attempt 2/3)
-        id: release-attempt-2
-        if: steps.release-attempt-1.outcome == 'failure'
-        continue-on-error: true
-        uses: release-plz/action@v0.5
-        with:
-          command: release
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Wait for crates.io rate limit reset (attempt 2)
-        if: steps.release-attempt-1.outcome == 'failure' && steps.release-attempt-2.outcome == 'failure'
-        run: |
-          # crates.io PublishUpdate: burst 30, 1 token / 60s.
-          # Wait 30 * 60 = 1800s (30min) to fully refill the burst (covers all 47 crates).
-          echo "Second publish attempt failed. Waiting 1800s (30min) to fully refill PublishUpdate burst (30 tokens)..."
-          sleep 1800
-
-      - name: Clear registry index for retry (attempt 2)
-        if: steps.release-attempt-1.outcome == 'failure' && steps.release-attempt-2.outcome == 'failure'
-        run: rm -rf ~/.cargo/registry/index/github.com-*
-
-      - name: Publish to crates.io and create releases (attempt 3/3)
-        if: steps.release-attempt-1.outcome == 'failure' && steps.release-attempt-2.outcome == 'failure'
-        uses: release-plz/action@v0.5
-        with:
-          command: release
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          python3 scripts/run_release_publish.py \
+            --repo "$GITHUB_WORKSPACE/release-source" --repository "$GITHUB_REPOSITORY"
 
       - name: Check if release was made
         id: check-release
-        if: always()
+        if: always() && steps.tags-before.outcome == 'success'
+        working-directory: release-source
         env:
           TAGS_BEFORE_FILE: ${{ steps.tags-before.outputs.tags_file }}
         run: |
           set -euo pipefail
           TAGS_AFTER_FILE="${RUNNER_TEMP}/tags-after-${GITHUB_RUN_ID}.txt"
 
-          git fetch --tags --force
+          git fetch origin --tags
           git tag --list 'reinhardt-web@v*' | LC_ALL=C sort > "$TAGS_AFTER_FILE"
           echo "Tags after release:"
           cat "$TAGS_AFTER_FILE"
@@ -527,6 +540,14 @@ jobs:
             echo "released=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify completed publication
+        id: publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/release_state.py --repo "$GITHUB_WORKSPACE/release-source" \
+            --repository "$GITHUB_REPOSITORY" --require-complete --github-output "$GITHUB_OUTPUT"
+
   # --- Release Announcement Automation ---
   # Job 3: Generate announcement content and create PR for human review
   # Job 4: Post approved announcement to GitHub Discussions
@@ -543,14 +564,18 @@ jobs:
       always() &&
       (
         (
-          github.event_name == 'push' &&
-          needs.release-plz-release.outputs.released == 'true' &&
+          needs.release-plz-release.result == 'success' &&
+          needs.release-plz-release.outputs.release_tag != '' &&
+          (
+            github.event_name == 'push' ||
+            (github.event_name == 'workflow_dispatch' && inputs.mode == 'resume-release')
+          ) &&
           (
             github.ref == 'refs/heads/main' ||
             startsWith(github.ref, 'refs/heads/develop/')
           )
         ) ||
-        (github.event_name == 'workflow_dispatch')
+        (github.event_name == 'workflow_dispatch' && inputs.mode != 'resume-release')
       )
     needs: [release-plz-release]
     runs-on: ["self-hosted","linux","arm64","reinhardt-ci"]
@@ -586,6 +611,7 @@ jobs:
         id: tags
         env:
           BACKFILL_MODE: ${{ inputs.mode }}
+          VERIFIED_RELEASE_TAG: ${{ needs.release-plz-release.outputs.release_tag }}
         run: |
           # Scope tag selection to the checked-out HEAD's history via
           # `--merged HEAD`. Tags are a global namespace, so without this
@@ -605,7 +631,12 @@ jobs:
           # Duplicate generation for tags that already have announcements
           # or Discussions is prevented by the file-exists and
           # Discussion-exists checks further down in this job.
-          if [ "$BACKFILL_MODE" = "backfill" ]; then
+          if [ -n "$VERIFIED_RELEASE_TAG" ]; then
+            TAGS="$VERIFIED_RELEASE_TAG"
+          elif [ "$BACKFILL_MODE" = "resume-release" ]; then
+            echo "::error::Recovery did not emit a verified release tag."
+            exit 1
+          elif [ "$BACKFILL_MODE" = "backfill" ]; then
             TAGS=$(git tag --merged HEAD --list 'reinhardt-web@v*' --sort=version:refname | tr '\n' ' ')
           else
             TAGS=$(git tag --merged HEAD --list 'reinhardt-web@v*' --sort=-version:refname | head -1)

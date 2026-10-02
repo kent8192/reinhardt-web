@@ -1,6 +1,6 @@
 use crate::crate_paths::{get_inventory_crate, get_reinhardt_signals_crate};
 use crate::injectable_common::{
-	detect_inject_params, generate_di_context_extraction_from_option,
+	detect_inject_params, generate_di_context_extraction_from_option, generate_injected_call_args,
 	generate_injection_calls_with_error, strip_inject_attrs,
 };
 use proc_macro2::TokenStream;
@@ -98,7 +98,7 @@ pub(crate) fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStr
 	// Validate: error if #[inject] is used when use_inject = false
 	if !use_inject && !inject_params.is_empty() {
 		return Err(syn::Error::new_spanned(
-			&inject_params[0].pat,
+			&inject_params[0].resolved_ident,
 			"#[inject] attribute requires use_inject = true option",
 		));
 	}
@@ -152,17 +152,7 @@ pub(crate) fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStr
 		let injection_calls = generate_injection_calls_with_error(&inject_params, error_mapper);
 
 		// Argument list
-		let inject_args: Vec<_> = inject_params.iter().map(|p| &p.pat).collect();
-		let regular_args: Vec<_> = stripped_inputs
-			.iter()
-			.filter_map(|arg| {
-				if let FnArg::Typed(pat_type) = arg {
-					Some(&pat_type.pat)
-				} else {
-					None
-				}
-			})
-			.collect();
+		let call_args = generate_injected_call_args(fn_sig.inputs.iter().skip(1), &inject_params);
 
 		// Build the receiver factory function with DI support
 		let factory_fn = quote! {
@@ -201,7 +191,7 @@ pub(crate) fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStr
 				#(#injection_calls)*
 
 				// Call original function
-				#original_fn_name(instance, #(#regular_args,)* #(#inject_args),*).await
+				#original_fn_name(instance, #(#call_args),*).await
 			}
 
 			// Generate static registration
@@ -255,5 +245,36 @@ pub(crate) fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStr
 		};
 
 		Ok(expanded)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn mutable_inject_patterns_are_emitted_once_as_safe_receiver_call_arguments() {
+		// Arrange
+		let args = quote! { signal = "updated", use_inject = true };
+		let input: ItemFn = syn::parse_quote! {
+			async fn handle(
+				instance: ::std::sync::Arc<dyn ::std::any::Any + Send + Sync>,
+				#[inject] database: Database,
+				#[inject] mut cache: Cache,
+				#[inject] Wrapper(mut value): Wrapper<Data>,
+			) -> Result<()> {
+				Ok(())
+			}
+		};
+
+		// Act
+		let generated = receiver_impl(args, input).unwrap().to_string();
+
+		// Assert
+		let expected_call = "handle_impl (instance , __reinhardt_injected_0 , __reinhardt_injected_1 , __reinhardt_injected_2)";
+		assert_eq!(generated.matches(expected_call).count(), 1);
+		assert_eq!(generated.matches("database").count(), 1);
+		assert_eq!(generated.matches("mut cache").count(), 1);
+		assert_eq!(generated.matches("Wrapper (mut value)").count(), 1);
 	}
 }

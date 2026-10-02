@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.14...reinhardt-websockets@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.10...reinhardt-websockets@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.8...reinhardt-websockets@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define UI and transport boundaries
+- *(security)* qualify runtime policy boundaries
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.3.15...reinhardt-websockets@v0.3.16) - 2026-09-08
 
 ### Maintenance
@@ -43,6 +85,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.6...reinhardt-websockets@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.4.0-alpha.1...reinhardt-websockets@v0.4.0-alpha.2) - 2026-07-23
+
+### Added
+
+- *(db)* [**breaking**] add Copy-safe injected connection handles
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.3.2...reinhardt-websockets@v0.4.0-alpha.1) - 2026-07-21
+
+### Changed
+
+- [**breaking**] remove remaining dynamic error dependencies
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- migrate dependency policy checks to cargo-deny
+- merge develop/0.4.0 into retained effects
+- merge develop/0.4.0 into fix/issue-5561-remove-anyhow
+- merge develop/0.4.0 into remove-anyhow branch
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-websockets@v0.3.9...reinhardt-websockets@v0.3.10) - 2026-08-22
 
 ### Maintenance

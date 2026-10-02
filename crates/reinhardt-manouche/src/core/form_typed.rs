@@ -121,6 +121,8 @@ pub struct TypedFormMacro {
 	pub slots: Option<TypedFormSlots>,
 	/// Validated field definitions (can include field groups and collections)
 	pub fields: Vec<TypedFormFieldEntry>,
+	/// Validated source for a model-backed form.
+	pub model_source: Option<TypedModelFormSource>,
 	/// Validated unified validators. Each rule carries a `ValidatorScope`
 	/// controlling whether it executes on server, client, or both.
 	pub validators: Vec<TypedFormValidator>,
@@ -132,6 +134,67 @@ pub struct TypedFormMacro {
 	pub strip_arguments: Vec<TypedStripArgument>,
 	/// Span for error reporting
 	pub span: Span,
+}
+
+/// Validated source configuration for a model-backed form.
+///
+/// Named target-neutral contracts use [`TypedModelFormSource::contract`] and
+/// can be identified with [`TypedModelFormSource::contract_path`]. The four
+/// public fields remain unchanged for compatibility with existing AST users.
+#[derive(Debug, Clone)]
+pub struct TypedModelFormSource {
+	/// Model type used to generate form fields.
+	pub model: Path,
+	/// Nameable policy enforced by the server-function payload.
+	pub policy: Path,
+	/// Validated field selection policy.
+	pub selection: TypedModelFieldSelection,
+	/// Validated presentation overrides for selected fields.
+	pub overrides: Vec<TypedModelFieldOverride>,
+}
+
+impl TypedModelFormSource {
+	/// Creates a source backed by a named target-neutral model-form contract.
+	pub fn contract(contract: Path, overrides: Vec<TypedModelFieldOverride>) -> Self {
+		Self {
+			model: contract,
+			// Keep the legacy four-field public shape and reserve an empty policy
+			// path as the internal marker for a contract source.
+			policy: Path {
+				leading_colon: None,
+				segments: Default::default(),
+			},
+			selection: TypedModelFieldSelection::Fields(Vec::new()),
+			overrides,
+		}
+	}
+
+	/// Returns the contract path when this source is backed by a named contract.
+	pub fn contract_path(&self) -> Option<&Path> {
+		self.policy.segments.is_empty().then_some(&self.model)
+	}
+}
+
+/// Validated selection policy for a model-backed form.
+#[derive(Debug, Clone)]
+pub enum TypedModelFieldSelection {
+	/// Include only the listed model fields.
+	Fields(Vec<Ident>),
+	/// Include every model field except the listed identifiers.
+	Exclude(Vec<Ident>),
+}
+
+/// Validated presentation override for one model-backed form field.
+#[derive(Debug, Clone)]
+pub struct TypedModelFieldOverride {
+	/// Model field receiving the override.
+	pub field: Ident,
+	/// Validated widget selection.
+	pub widget: Option<TypedWidget>,
+	/// Display label.
+	pub label: Option<String>,
+	/// Help text shown with the field.
+	pub help_text: Option<String>,
 }
 
 /// Typed form action configuration.
@@ -1133,6 +1196,7 @@ impl TypedFieldType {
 /// | `DateTimeInput` | `<input>` | `datetime-local` |
 /// | `CheckboxInput` | `<input>` | `checkbox` |
 /// | `RadioInput` | `<input>` | `radio` |
+/// | `RadioSelect` | multiple `<input>` | `radio` |
 /// | `FileInput` | `<input>` | `file` |
 /// | `HiddenInput` | `<input>` | `hidden` |
 /// | `Textarea` | `<textarea>` | - |
@@ -1196,9 +1260,13 @@ pub enum TypedWidget {
 	SelectMultiple,
 	/// Checkbox input (`<input type="checkbox">`).
 	CheckboxInput,
-	/// Radio button input (`<input type="radio">`).
+	/// Single radio input for `ChoiceField<String>` (`<input type="radio">`).
+	///
+	/// Uses the native `"on"` value by default, or exactly one static ungrouped
+	/// choice. Checked state compares the field value with the option value;
+	/// checked change events store that value. Use `RadioSelect` for a group.
 	RadioInput,
-	/// Radio button group rendered as a selection list.
+	/// Radio button group rendered from dynamic choice options.
 	RadioSelect,
 	/// File upload input (`<input type="file">`).
 	FileInput,
@@ -1698,6 +1766,7 @@ impl TypedFormMacro {
 			choices_loader: None,
 			slots: None,
 			fields: Vec::new(),
+			model_source: None,
 			validators: Vec::new(),
 			strip_arguments: Vec::new(),
 			span,

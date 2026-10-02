@@ -72,7 +72,7 @@ async fn singleton_resolving_request_returns_scope_error() {
 	let registry = global_registry();
 	let _guard1 = registry
 		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-			Ok(RequestConfig::default())
+			Ok(RequestConfig)
 		});
 	let _guard2 = registry.register_override::<SingletonService, _, _>(
 		DependencyScope::Singleton,
@@ -110,7 +110,7 @@ async fn request_resolving_singleton_succeeds() {
 		DependencyScope::Request,
 		|ctx| async move {
 			let _service = ctx.resolve::<SingletonService>().await?;
-			Ok(RequestConfig::default())
+			Ok(RequestConfig)
 		},
 	);
 
@@ -135,7 +135,7 @@ async fn request_resolving_request_succeeds() {
 	let registry = global_registry();
 	let _guard1 = registry
 		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-			Ok(RequestConfig::default())
+			Ok(RequestConfig)
 		});
 	let _guard2 = registry.register_override::<RequestConfigB, _, _>(
 		DependencyScope::Request,
@@ -167,7 +167,7 @@ async fn root_resolving_any_scope_succeeds() {
 		});
 	let _guard2 = registry
 		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-			Ok(RequestConfig::default())
+			Ok(RequestConfig)
 		});
 	let _guard3 = registry
 		.register_override::<TransientWidget, _, _>(DependencyScope::Transient, |_ctx| async {
@@ -198,7 +198,7 @@ async fn transient_resolving_any_scope_succeeds() {
 		});
 	let _guard2 = registry
 		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-			Ok(RequestConfig::default())
+			Ok(RequestConfig)
 		});
 	let _guard3 = registry.register_override::<TransientConsumer, _, _>(
 		DependencyScope::Transient,
@@ -227,7 +227,7 @@ async fn scope_error_message_contains_type_names() {
 	let registry = global_registry();
 	let _guard1 = registry
 		.register_override::<RequestConfig, _, _>(DependencyScope::Request, |_ctx| async {
-			Ok(RequestConfig::default())
+			Ok(RequestConfig)
 		});
 	let _guard2 = registry.register_override::<SingletonService, _, _>(
 		DependencyScope::Singleton,

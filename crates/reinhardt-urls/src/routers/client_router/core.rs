@@ -3,42 +3,124 @@
 //! This module provides the main ClientRouter struct and routing logic.
 //! The router uses `Page` type for all view rendering.
 
-use super::component::ComponentInfo;
-use super::error::{MergeError, RouterError};
+use super::component::{ComponentInfo, ComponentMetadata, ComponentNavigationGuardMetadata};
+use super::error::{MergeError, RouteRegistrationError, RouterError};
 use super::from_request::FromRequest;
 use super::handler::{
-	Handler, RouteHandler, from_request_handler, no_params_handler, result_handler,
-	with_params_handler,
+	Handler, LayoutRouteHandler, RouteHandler, from_request_handler, no_params_handler,
+	result_handler, with_params_handler,
 };
 #[cfg(wasm)]
+use super::history::current_location_path;
+#[cfg(native)]
+use super::history::current_path;
+#[cfg(wasm)]
 use super::history::setup_popstate_listener;
-use super::history::{HistoryState, NavigationType, current_path, push_state, replace_state};
+use super::history::{HistoryState, NavigationType, push_state, replace_state};
+use super::loader::RouteLoaderId;
+use super::navigation_guard::NavigationGuardId;
 use super::params::{FromPath, ParamContext, Path};
 use super::pattern::ClientPathPattern;
-use reinhardt_core::page::Page;
-use reinhardt_core::reactive::Signal;
-use std::collections::HashMap;
+use super::scope::{RegisteredRouteScope, RouteScope};
+use super::tree::{ClientRouteTreeMatch, ResolvedRouteMetadata, RouteNode};
+use reinhardt_core::page::{Head, Outlet, Page};
+use reinhardt_core::reactive::{
+	Effect, EffectTiming, ReactiveScope, Signal, scope::current_scope_id,
+};
+#[cfg(wasm)]
+use reinhardt_core::reactive::{ScopeId, scope::enter_scope};
+use std::collections::{HashMap, HashSet};
+#[cfg(native)]
+use std::marker::PhantomData;
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// Type alias for route guard functions.
 pub(super) type RouteGuard = Arc<dyn Fn(&ClientRouteMatch) -> bool + Send + Sync>;
 
-// (Refs #4234, Fixes #4258) Mirrors `pages::Router NavigationObservers /
-// NavigationListener`. Gated `#[cfg(wasm)]` so `ClientRouter` stays
-// `Send + Sync` on native targets — `Rc<RefCell<_>>` is `!Send + !Sync`
-// and would otherwise propagate up through `UnifiedRouter` and break
-// multi-threaded DI registration on native.
+const NAVIGATION_GUARD_COORDINATOR_REQUIRED: &str =
+	"navigation guards require navigation through reinhardt-pages";
+const MATCHED_ROUTE_PATH_MISMATCH: &str = "matched route does not correspond to path";
+
+// (Refs #4234) Mirrors `pages::Router NavigationObservers / NavigationListener`.
+// Browser navigation observers are only available on wasm targets.
 //
 // `Rc<RefCell<...>>` because Routers are not `Send` on wasm32 anyway,
 // and the borrow is released before listeners run (see `notify_observers`).
 #[cfg(wasm)]
 type NavigationObservers = std::rc::Rc<std::cell::RefCell<Vec<std::rc::Weak<NavigationListener>>>>;
 
-/// Boxed closure stored behind a `Weak<...>` so a dropped
+#[cfg(wasm)]
+type NavigationCallback = dyn Fn(&str, &HashMap<String, String>) + 'static;
+
+/// Listener stored behind a `Weak<...>` so a dropped
 /// [`NavigationSubscription`] drops its strong `Rc`, after which
 /// [`ClientRouter::notify_observers`] filters out the dead `Weak`.
 #[cfg(wasm)]
-type NavigationListener = dyn Fn(&str, &HashMap<String, String>) + 'static;
+struct NavigationListener {
+	owner_scope: Option<ScopeId>,
+	callback: Box<NavigationCallback>,
+}
+
+type NavigationSignals = (
+	Signal<String>,
+	Signal<HashMap<String, String>>,
+	Signal<Option<String>>,
+	Signal<bool>,
+	Signal<Option<String>>,
+	Option<Rc<ReactiveScope>>,
+);
+
+fn create_navigation_signals(initial_path: String) -> NavigationSignals {
+	if current_scope_id().is_some() {
+		return create_navigation_signals_in_scope(initial_path);
+	}
+
+	let scope = Rc::new(ReactiveScope::new());
+	let (
+		current_path,
+		current_params,
+		current_route_name,
+		current_match_is_unmatched,
+		current_navigation_guard_approval,
+		_,
+	) = scope.enter(|| create_navigation_signals_in_scope(initial_path));
+	(
+		current_path,
+		current_params,
+		current_route_name,
+		current_match_is_unmatched,
+		current_navigation_guard_approval,
+		Some(scope),
+	)
+}
+
+fn create_navigation_signals_in_scope(initial_path: String) -> NavigationSignals {
+	let current_path = Signal::new(initial_path);
+	let current_params = Signal::new(HashMap::new());
+	let current_route_name = Signal::new(None);
+	let current_match_is_unmatched = Signal::new(false);
+	let current_navigation_guard_approval = Signal::new(None);
+	let path_for_invalidation = current_path;
+	let unmatched_for_invalidation = current_match_is_unmatched;
+	let approval_for_invalidation = current_navigation_guard_approval;
+	Effect::new_with_timing(
+		move || {
+			let _ = path_for_invalidation.get();
+			unmatched_for_invalidation.set(false);
+			approval_for_invalidation.set(None);
+		},
+		EffectTiming::Layout,
+	);
+	(
+		current_path,
+		current_params,
+		current_route_name,
+		current_match_is_unmatched,
+		current_navigation_guard_approval,
+		None,
+	)
+}
 
 /// RAII handle returned by [`ClientRouter::on_navigate`].
 ///
@@ -61,7 +143,11 @@ impl NavigationSubscription {
 	where
 		F: Fn(&str, &HashMap<String, String>) + 'static,
 	{
-		let listener: std::rc::Rc<NavigationListener> = std::rc::Rc::new(listener);
+		let listener = std::rc::Rc::new(NavigationListener {
+			owner_scope: current_scope_id()
+				.or_else(|| router._navigation_scope.as_ref().map(|scope| scope.id())),
+			callback: Box::new(listener),
+		});
 		router
 			.navigation_observers
 			.borrow_mut()
@@ -105,10 +191,14 @@ pub struct ClientRouteMatch {
 }
 
 /// Route-level metadata exposed alongside matched client routes.
+///
+/// The head contribution is mounted as an outer structural page wrapper. A
+/// matched layout contributes before its active child route, and the existing
+/// layout/leaf lifetimes determine when each contribution is removed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RouteMetadata {
-	/// Browser/document title associated with the route.
-	title: Option<String>,
+	/// Structural document-head contribution associated with the route.
+	head: Head,
 	/// Human-readable breadcrumb label associated with the route.
 	breadcrumb: Option<String>,
 	/// Whether this route should be treated as authentication-protected.
@@ -121,10 +211,18 @@ impl RouteMetadata {
 		Self::default()
 	}
 
-	/// Sets the route title.
-	pub fn with_title(mut self, title: impl Into<String>) -> Self {
-		self.title = Some(title.into());
+	/// Merges a structural document-head contribution into the route metadata.
+	///
+	/// The contribution participates in SSR, hydration, and browser resolution;
+	/// it is not a separate title-only lookup table.
+	pub fn with_head(mut self, head: Head) -> Self {
+		self.head = self.head.merge(head);
 		self
+	}
+
+	/// Sets the route title.
+	pub fn with_title(self, title: impl Into<String>) -> Self {
+		self.with_head(Head::new().title(title.into()))
 	}
 
 	/// Sets the breadcrumb label.
@@ -141,7 +239,12 @@ impl RouteMetadata {
 
 	/// Returns the route title, if configured.
 	pub fn title(&self) -> Option<&str> {
-		self.title.as_deref()
+		self.head.title.as_deref()
+	}
+
+	/// Returns the structural document-head contribution.
+	pub fn head(&self) -> &Head {
+		&self.head
 	}
 
 	/// Returns the breadcrumb label, if configured.
@@ -163,10 +266,28 @@ pub struct ClientRoute {
 	name: Option<String>,
 	/// Route-level metadata.
 	metadata: RouteMetadata,
+	/// Optional loader metadata for a flat component registration.
+	loader_id: Option<RouteLoaderId>,
+	/// Optional navigation guard metadata for a flat component registration.
+	navigation_guard_id: Option<NavigationGuardId>,
 	/// The route handler.
-	handler: Arc<dyn RouteHandler>,
+	handler: ClientRouteHandler,
 	/// Optional guard function.
 	guard: Option<RouteGuard>,
+}
+
+enum ClientRouteHandler {
+	Leaf(Arc<dyn RouteHandler>),
+	Layout(Arc<dyn LayoutRouteHandler>),
+}
+
+impl Clone for ClientRouteHandler {
+	fn clone(&self) -> Self {
+		match self {
+			Self::Leaf(handler) => Self::Leaf(Arc::clone(handler)),
+			Self::Layout(handler) => Self::Layout(Arc::clone(handler)),
+		}
+	}
 }
 
 impl Clone for ClientRoute {
@@ -175,7 +296,9 @@ impl Clone for ClientRoute {
 			pattern: self.pattern.clone(),
 			name: self.name.clone(),
 			metadata: self.metadata.clone(),
-			handler: Arc::clone(&self.handler),
+			loader_id: self.loader_id,
+			navigation_guard_id: self.navigation_guard_id,
+			handler: self.handler.clone(),
 			guard: self.guard.clone(),
 		}
 	}
@@ -203,14 +326,12 @@ impl ClientRoute {
 	where
 		F: Fn() -> Page + Send + Sync + 'static,
 	{
-		Self {
-			pattern: ClientPathPattern::new(pattern)
+		Self::from_route_handler(
+			None,
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: None,
-			metadata: RouteMetadata::default(),
-			handler: no_params_handler(component),
-			guard: None,
-		}
+			no_params_handler(component),
+		)
 	}
 
 	/// Creates a named route.
@@ -223,12 +344,42 @@ impl ClientRoute {
 	where
 		F: Fn() -> Page + Send + Sync + 'static,
 	{
-		Self {
-			pattern: ClientPathPattern::new(pattern)
+		Self::from_route_handler(
+			Some(name.into()),
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.into()),
+			no_params_handler(component),
+		)
+	}
+
+	pub(crate) fn from_route_handler(
+		name: Option<String>,
+		pattern: ClientPathPattern,
+		handler: Arc<dyn RouteHandler>,
+	) -> Self {
+		Self {
+			pattern,
+			name,
 			metadata: RouteMetadata::default(),
-			handler: no_params_handler(component),
+			loader_id: None,
+			navigation_guard_id: None,
+			handler: ClientRouteHandler::Leaf(handler),
+			guard: None,
+		}
+	}
+
+	pub(crate) fn from_layout_handler(
+		name: Option<String>,
+		pattern: ClientPathPattern,
+		handler: Arc<dyn LayoutRouteHandler>,
+	) -> Self {
+		Self {
+			pattern,
+			name,
+			metadata: RouteMetadata::default(),
+			loader_id: None,
+			navigation_guard_id: None,
+			handler: ClientRouteHandler::Layout(handler),
 			guard: None,
 		}
 	}
@@ -246,6 +397,39 @@ impl ClientRoute {
 	pub fn with_metadata(mut self, metadata: RouteMetadata) -> Self {
 		self.metadata = metadata;
 		self
+	}
+
+	pub(crate) fn set_metadata(&mut self, metadata: RouteMetadata) {
+		self.metadata = metadata;
+	}
+
+	pub(crate) fn set_loader_id(&mut self, loader_id: Option<RouteLoaderId>) {
+		self.loader_id = loader_id;
+	}
+
+	pub(crate) fn set_navigation_guard_id(
+		&mut self,
+		navigation_guard_id: Option<NavigationGuardId>,
+	) {
+		self.navigation_guard_id = navigation_guard_id;
+	}
+
+	pub(crate) fn loader_id(&self) -> Option<RouteLoaderId> {
+		self.loader_id
+	}
+
+	pub(crate) fn navigation_guard_id(&self) -> Option<NavigationGuardId> {
+		self.navigation_guard_id
+	}
+
+	pub(crate) fn set_guard(&mut self, guard: RouteGuard) {
+		self.guard = Some(guard);
+	}
+
+	pub(crate) fn prefix_name(&mut self, namespace: &str) {
+		if let Some(name) = &mut self.name {
+			*name = format!("{namespace}:{name}");
+		}
 	}
 
 	/// Returns the route name.
@@ -266,6 +450,32 @@ impl ClientRoute {
 	/// Checks if the guard allows access.
 	pub fn check_guard(&self, route_match: &ClientRouteMatch) -> bool {
 		self.guard.as_ref().map(|g| g(route_match)).unwrap_or(true)
+	}
+
+	pub(crate) fn handle_leaf(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
+		match &self.handler {
+			ClientRouteHandler::Leaf(handler) => handler.handle(ctx),
+			ClientRouteHandler::Layout(_) => Err(RouterError::NotFound(
+				self.name()
+					.map(str::to_string)
+					.unwrap_or_else(|| self.pattern().pattern().to_string()),
+			)),
+		}
+	}
+
+	pub(crate) fn handle_layout(
+		&self,
+		ctx: &ParamContext,
+		outlet: Outlet,
+	) -> Result<Page, RouterError> {
+		match &self.handler {
+			ClientRouteHandler::Layout(handler) => handler.handle(ctx, outlet),
+			ClientRouteHandler::Leaf(_) => Err(RouterError::NotFound(
+				self.name()
+					.map(str::to_string)
+					.unwrap_or_else(|| self.pattern().pattern().to_string()),
+			)),
+		}
 	}
 }
 
@@ -294,6 +504,10 @@ impl ClientRoute {
 pub struct ClientRouter {
 	/// Registered routes.
 	routes: Vec<ClientRoute>,
+	/// Route table indices registered through the nested route tree API.
+	tree_route_indices: HashSet<usize>,
+	/// Nested route tree for layout-aware rendering.
+	route_tree: RouteNode,
 	/// Named routes for reverse lookups.
 	named_routes: HashMap<String, usize>,
 	/// Current path signal.
@@ -302,6 +516,15 @@ pub struct ClientRouter {
 	current_params: Signal<HashMap<String, String>>,
 	/// Current matched route name signal.
 	current_route_name: Signal<Option<String>>,
+	/// Whether the current committed state intentionally selected the not-found surface.
+	current_match_is_unmatched: Signal<bool>,
+	/// Path whose asynchronous navigation guards were approved by the Pages coordinator.
+	current_navigation_guard_approval: Signal<Option<String>>,
+	/// Owns navigation state created outside an active reactive scope.
+	///
+	/// The final router clone drops this scope and disposes its navigation
+	/// signals instead of retaining them in a process-wide thread-local scope.
+	_navigation_scope: Option<Rc<ReactiveScope>>,
 	/// Not found handler.
 	not_found: Option<Arc<dyn Fn() -> Page + Send + Sync>>,
 	// (Refs #4234, Fixes #4258) Mirrors `pages::Router::navigation_observers`.
@@ -309,11 +532,8 @@ pub struct ClientRouter {
 	// so dropping the returned `NavigationSubscription` deregisters the
 	// listener.
 	//
-	// Gated `#[cfg(wasm)]` because `Rc<RefCell<_>>` is `!Send + !Sync`
-	// and the reactive observation pattern only fires on WASM (the popstate
-	// listener is wasm-only and `notify_observers` is a no-op on native).
-	// Without this gate `ClientRouter` becomes `!Send + !Sync` on native,
-	// breaking `UnifiedRouter` registration in multi-threaded DI containers.
+	// Gated `#[cfg(wasm)]` because the popstate listener and reactive
+	// navigation observers are browser-only.
 	#[cfg(wasm)]
 	navigation_observers: NavigationObservers,
 	// (Refs #4234, Fixes #4258) Mirrors `pages::Router::dispatch_count`.
@@ -330,6 +550,10 @@ pub struct ClientRouter {
 	// across moves of the `ClientRouter` value itself.
 	#[cfg(native)]
 	diag_router_identity: Arc<()>,
+	// Native reactive signals are scope- and thread-affine, so a router must
+	// remain on the thread that created its navigation state.
+	#[cfg(native)]
+	_thread_bound: PhantomData<Rc<()>>,
 }
 
 impl std::fmt::Debug for ClientRouter {
@@ -353,14 +577,30 @@ impl Default for ClientRouter {
 impl ClientRouter {
 	/// Creates a new router.
 	pub fn new() -> Self {
+		#[cfg(wasm)]
+		let initial_path = current_location_path().unwrap_or_else(|_| "/".to_string());
+		#[cfg(native)]
 		let initial_path = current_path().unwrap_or_else(|_| "/".to_string());
+		let (
+			current_path,
+			current_params,
+			current_route_name,
+			current_match_is_unmatched,
+			current_navigation_guard_approval,
+			navigation_scope,
+		) = create_navigation_signals(initial_path);
 
 		Self {
 			routes: Vec::new(),
+			tree_route_indices: HashSet::new(),
+			route_tree: RouteNode::root(),
 			named_routes: HashMap::new(),
-			current_path: Signal::new(initial_path),
-			current_params: Signal::new(HashMap::new()),
-			current_route_name: Signal::new(None),
+			current_path,
+			current_params,
+			current_route_name,
+			current_match_is_unmatched,
+			current_navigation_guard_approval,
+			_navigation_scope: navigation_scope,
 			not_found: None,
 			// (Fixes #4258) Reactive observation state is wasm-only; see field
 			// definitions on `ClientRouter`.
@@ -370,7 +610,60 @@ impl ClientRouter {
 			dispatch_count: std::rc::Rc::new(std::cell::Cell::new(0)),
 			#[cfg(native)]
 			diag_router_identity: Arc::new(()),
+			#[cfg(native)]
+			_thread_bound: PhantomData,
 		}
+	}
+
+	/// Registers a nested route tree.
+	///
+	/// # Errors
+	///
+	/// Returns [`RouteRegistrationError`] when a route name, path, or scoped
+	/// path pattern is invalid.
+	pub fn try_routes<F>(mut self, configure: F) -> Result<Self, RouteRegistrationError>
+	where
+		F: FnOnce(RouteScope) -> RouteScope,
+	{
+		let mut scope =
+			RouteScope::root(self.registered_route_names(), self.registered_leaf_paths());
+		scope = configure(scope);
+		self.append_registered_scope(scope.finish()?);
+		Ok(self)
+	}
+
+	/// Registers a nested route tree and panics if registration fails.
+	pub fn routes<F>(self, configure: F) -> Self
+	where
+		F: FnOnce(RouteScope) -> RouteScope,
+	{
+		self.try_routes(configure)
+			.unwrap_or_else(|err| panic!("Invalid client route tree: {err}"))
+	}
+
+	fn append_registered_scope(&mut self, registered: RegisteredRouteScope) {
+		let offset = self.routes.len();
+		for (idx, route) in registered.routes.iter().enumerate() {
+			if let Some(name) = route.name() {
+				self.insert_named_route(name, offset + idx);
+			}
+			self.tree_route_indices.insert(offset + idx);
+		}
+		self.routes.extend(registered.routes);
+		self.route_tree.extend_children(registered.nodes);
+	}
+
+	fn registered_route_names(&self) -> Vec<String> {
+		let mut names = self.named_routes.keys().cloned().collect::<Vec<_>>();
+		self.route_tree.collect_route_names(&mut names);
+		names
+	}
+
+	fn registered_leaf_paths(&self) -> Vec<String> {
+		self.routes
+			.iter()
+			.map(|route| route.pattern().pattern().to_string())
+			.collect()
 	}
 
 	/// Combine another `ClientRouter` into this one.
@@ -401,10 +694,15 @@ impl ClientRouter {
 	/// ```
 	pub fn merge(mut self, other: ClientRouter) -> Self {
 		let offset = self.routes.len();
+		let other_tree_children = other.route_tree.children().to_vec();
+		for index in other.tree_route_indices {
+			self.tree_route_indices.insert(index + offset);
+		}
 		for (name, idx) in other.named_routes {
 			self.named_routes.insert(name, idx + offset);
 		}
 		self.routes.extend(other.routes);
+		self.route_tree.extend_children(other_tree_children);
 		self
 	}
 
@@ -455,10 +753,9 @@ impl ClientRouter {
 		}
 		// Also update route names stored inside ClientRoute
 		for route in &mut self.routes {
-			if let Some(ref old_name) = route.name {
-				route.name = Some(format!("{namespace}:{old_name}"));
-			}
+			route.prefix_name(namespace);
 		}
+		self.route_tree.prefix_names(namespace);
 		self
 	}
 
@@ -485,19 +782,50 @@ impl ClientRouter {
 		}
 	}
 
-	/// Adds metadata to an already-registered named route.
+	/// Adds metadata to an already-registered named route or layout.
 	///
 	/// # Panics
 	///
 	/// Panics if `name` is not registered.
 	pub fn with_route_metadata(mut self, name: &str, metadata: RouteMetadata) -> Self {
-		let index = *self.named_routes.get(name).unwrap_or_else(|| {
+		let mut updated = false;
+		if let Some(index) = self.named_routes.get(name).copied() {
+			self.routes[index].set_metadata(metadata.clone());
+			updated = true;
+		}
+		updated |= self
+			.route_tree
+			.update_metadata_for_name(name, metadata.clone());
+		if !updated {
 			panic!(
 				"Unknown client route name '{}': cannot attach metadata",
 				name
 			)
-		});
-		self.routes[index] = self.routes[index].clone().with_metadata(metadata);
+		}
+		self
+	}
+
+	/// Adds a guard to an already-registered named route or layout.
+	///
+	/// Layout guards are evaluated for every matched descendant route.
+	///
+	/// # Panics
+	///
+	/// Panics if `name` is not registered.
+	pub fn with_route_guard<G>(mut self, name: &str, guard: G) -> Self
+	where
+		G: Fn(&ClientRouteMatch) -> bool + Send + Sync + 'static,
+	{
+		let guard: RouteGuard = Arc::new(guard);
+		let mut updated = false;
+		if let Some(index) = self.named_routes.get(name).copied() {
+			self.routes[index].set_guard(Arc::clone(&guard));
+			updated = true;
+		}
+		updated |= self.route_tree.update_guard_for_name(name, guard);
+		if !updated {
+			panic!("Unknown client route name '{}': cannot attach guard", name)
+		}
 		self
 	}
 
@@ -530,14 +858,12 @@ impl ClientRouter {
 		T: FromPath + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
+		self.routes.push(ClientRoute::from_route_handler(
+			Some(name.to_string()),
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			metadata: RouteMetadata::default(),
-			handler: with_params_handler(handler),
-			guard: None,
-		});
+			with_params_handler(handler),
+		));
 		self.insert_named_route(name, index);
 		self
 	}
@@ -554,14 +880,12 @@ impl ClientRouter {
 		E: Into<RouterError> + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
+		self.routes.push(ClientRoute::from_route_handler(
+			Some(name.to_string()),
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			metadata: RouteMetadata::default(),
-			handler: result_handler(handler),
-			guard: None,
-		});
+			result_handler(handler),
+		));
 		self.insert_named_route(name, index);
 		self
 	}
@@ -612,14 +936,26 @@ impl ClientRouter {
 		P: FromRequest + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
-				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			metadata: RouteMetadata::default(),
-			handler: from_request_handler(handler, pattern.to_string()),
-			guard: None,
+		let (loader_id, navigation_guard_id) = P::component_route_metadata().unwrap_or_else(|| {
+			let loader_id = inventory::iter::<ComponentMetadata>
+				.into_iter()
+				.find(|metadata| metadata.name == name && metadata.path == pattern)
+				.and_then(|metadata| metadata.loader_id);
+			let navigation_guard_id = inventory::iter::<ComponentNavigationGuardMetadata>
+				.into_iter()
+				.find(|metadata| metadata.name == name && metadata.path == pattern)
+				.map(|metadata| metadata.navigation_guard_id);
+			(loader_id, navigation_guard_id)
 		});
+		let mut route = ClientRoute::from_route_handler(
+			Some(name.to_string()),
+			ClientPathPattern::new(pattern)
+				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
+			from_request_handler(handler, pattern.to_string()),
+		);
+		route.set_loader_id(loader_id);
+		route.set_navigation_guard_id(navigation_guard_id);
+		self.routes.push(route);
 		self.insert_named_route(name, index);
 		self
 	}
@@ -636,7 +972,7 @@ impl ClientRouter {
 	/// use reinhardt_pages::{Page, Path, component, page};
 	/// use reinhardt_urls::routers::ClientRouter;
 	///
-	/// #[component("/users/{id}/", "user-detail")]
+	/// #[component("/users/{id}/", name = "user-detail")]
 	/// fn user_page(Path(id): Path<i64>) -> Page {
 	///     page!(|id: i64| { div { { id.to_string() } } })(id)
 	/// }
@@ -648,7 +984,12 @@ impl ClientRouter {
 		F: Fn(P) -> Page + Send + Sync + 'static,
 		P: FromRequest + ComponentInfo + Send + Sync + 'static,
 	{
-		self.page(P::name(), P::path(), handler)
+		let mut router = self.page(P::name(), P::path(), handler);
+		if let Some(index) = router.named_routes.get(P::name()).copied() {
+			router.routes[index].set_loader_id(P::loader_id());
+			router.routes[index].set_navigation_guard_id(P::navigation_guard_id());
+		}
+		router
 	}
 
 	/// Adds a route with a guard.
@@ -705,14 +1046,12 @@ impl ClientRouter {
 		H: Handler<Args>,
 	{
 		let index = self.routes.len();
-		self.routes.push(ClientRoute {
-			pattern: ClientPathPattern::new(pattern)
+		self.routes.push(ClientRoute::from_route_handler(
+			Some(name.to_string()),
+			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
-			name: Some(name.to_string()),
-			metadata: RouteMetadata::default(),
-			handler: handler.into_route_handler(),
-			guard: None,
-		});
+			handler.into_route_handler(),
+		));
 		self.insert_named_route(name, index);
 		self
 	}
@@ -741,6 +1080,28 @@ impl ClientRouter {
 		&self.current_route_name
 	}
 
+	/// Matches the current path for the persistent renderer when navigation is approved.
+	///
+	/// This hidden cross-crate accessor keeps the persistent layout renderer from
+	/// treating a public `current_path` mutation as a committed navigation. A
+	/// route carrying asynchronous navigation guards is returned only when the
+	/// Pages coordinator recorded approval for the exact current path. Routes
+	/// without asynchronous guards remain available for the initial render.
+	#[doc(hidden)]
+	pub fn __match_current_for_render(&self) -> Option<ClientRouteTreeMatch> {
+		if self.current_match_is_unmatched.get() {
+			return None;
+		}
+		let path = self.current_path.get();
+		let route_match = self.match_tree(&path)?;
+		if !route_match.navigation_guard_ids().is_empty()
+			&& self.current_navigation_guard_approval.get().as_deref() != Some(path.as_str())
+		{
+			return None;
+		}
+		Some(route_match)
+	}
+
 	/// Returns an iterator over registered route patterns and their optional names.
 	///
 	/// Each item is `(pattern_str, name)` where `name` is `Some` for named routes.
@@ -762,11 +1123,51 @@ impl ClientRouter {
 	///
 	/// [`QueryParam`]: super::from_request::QueryParam
 	pub fn match_path(&self, path: &str) -> Option<ClientRouteMatch> {
+		self.match_tree(path)
+			.map(|matched| matched.leaf_match().clone())
+	}
+
+	fn match_legacy_path(&self, path: &str) -> Option<ClientRouteMatch> {
+		self.match_legacy_path_matching(path, true, |_| true)
+	}
+
+	fn match_legacy_path_matching<F>(
+		&self,
+		path: &str,
+		evaluate_guards: bool,
+		predicate: F,
+	) -> Option<ClientRouteMatch>
+	where
+		F: Fn(&ClientRouteMatch) -> bool,
+	{
+		self.match_path_filtered(
+			path,
+			|index, _| !self.tree_route_indices.contains(&index),
+			evaluate_guards,
+			predicate,
+		)
+	}
+
+	fn match_path_filtered<F, P>(
+		&self,
+		path: &str,
+		route_filter: F,
+		evaluate_guards: bool,
+		predicate: P,
+	) -> Option<ClientRouteMatch>
+	where
+		F: Fn(usize, &ClientRoute) -> bool,
+		P: Fn(&ClientRouteMatch) -> bool,
+	{
+		let path = path.split_once('#').map_or(path, |(path, _)| path);
 		let (path_only, query) = match path.split_once('?') {
 			Some((p, q)) => (p, Some(q.to_string())),
 			None => (path, None),
 		};
-		for route in &self.routes {
+		for (index, route) in self.routes.iter().enumerate() {
+			if !route_filter(index, route) {
+				continue;
+			}
 			if let Some((params, param_values)) = route.pattern.matches(path_only) {
 				let route_match = ClientRouteMatch {
 					route: route.clone(),
@@ -776,8 +1177,8 @@ impl ClientRouter {
 					query: query.clone(),
 				};
 
-				// Check guard if present
-				if route.check_guard(&route_match) {
+				if (!evaluate_guards || route.check_guard(&route_match)) && predicate(&route_match)
+				{
 					return Some(route_match);
 				}
 			}
@@ -785,67 +1186,372 @@ impl ClientRouter {
 		None
 	}
 
+	/// Matches a path against the nested route tree.
+	pub fn match_tree(&self, path: &str) -> Option<ClientRouteTreeMatch> {
+		self.match_tree_with_guard_evaluation(path, true, |_| true)
+	}
+
+	fn match_tree_with_guard_evaluation<F>(
+		&self,
+		path: &str,
+		evaluate_guards: bool,
+		predicate: F,
+	) -> Option<ClientRouteTreeMatch>
+	where
+		F: Fn(&ClientRouteTreeMatch) -> bool,
+	{
+		let match_path = path.split_once('#').map_or(path, |(path, _)| path);
+		let (path_only, query) = match match_path.split_once('?') {
+			Some((p, q)) => (p, Some(q.to_string())),
+			None => (match_path, None),
+		};
+		let route_match = if evaluate_guards {
+			self.route_tree.match_path(path_only, query.clone())
+		} else {
+			self.route_tree.match_path_without_guards_matching(
+				path_only,
+				query.clone(),
+				|route_match| predicate(route_match),
+			)
+		};
+		if let Some(route_match) = route_match {
+			return Some(route_match);
+		}
+		let leaf = if evaluate_guards {
+			self.match_legacy_path(match_path)
+		} else {
+			self.match_legacy_path_matching(match_path, false, |leaf| {
+				let route_match = self.legacy_tree_match(leaf.clone());
+				predicate(&route_match)
+			})
+		};
+		leaf.map(|leaf| self.legacy_tree_match(leaf))
+	}
+
+	fn legacy_tree_match(&self, leaf: ClientRouteMatch) -> ClientRouteTreeMatch {
+		let leaf_metadata = ResolvedRouteMetadata::new(
+			leaf.route.name().map(str::to_string),
+			leaf.route.pattern().pattern().to_string(),
+			leaf.route.pattern().pattern().to_string(),
+			None,
+			None,
+			None,
+			leaf.route.loader_id(),
+			leaf.route.navigation_guard_id(),
+			leaf.route.metadata().clone(),
+		);
+		ClientRouteTreeMatch::new(leaf, Vec::new(), leaf_metadata)
+	}
+
+	fn param_context_from_match(route_match: &ClientRouteMatch) -> ParamContext {
+		ParamContext::new(route_match.params.clone(), route_match.param_values.clone())
+			.with_path(route_match.path.clone())
+			.with_query(route_match.query.clone())
+	}
+
+	fn render_tree_match(&self, route_match: &ClientRouteTreeMatch) -> Option<Page> {
+		let mut page = self.render_tree_leaf(route_match)?;
+		for index in (0..route_match.layouts().len()).rev() {
+			page = self.render_tree_layout(route_match, index, Outlet::inline(page))?;
+		}
+		Some(page)
+	}
+
+	fn render_matched_path(&self, route_match: &ClientRouteTreeMatch) -> Page {
+		self.render_tree_match(route_match)
+			.unwrap_or_else(|| self.__render_not_found())
+	}
+
+	fn render_tree_leaf(&self, route_match: &ClientRouteTreeMatch) -> Option<Page> {
+		let ctx = Self::param_context_from_match(route_match.leaf_match());
+		let head = route_match.leaf().metadata().head().clone();
+		route_match
+			.leaf()
+			.handle_leaf(&ctx)
+			.ok()
+			.map(|page| page.with_head(head))
+	}
+
+	fn render_tree_layout(
+		&self,
+		route_match: &ClientRouteTreeMatch,
+		layout_index: usize,
+		outlet: Outlet,
+	) -> Option<Page> {
+		let ctx = Self::param_context_from_match(route_match.leaf_match());
+		let layout = route_match.layouts().get(layout_index)?;
+		let head = layout.metadata().route_metadata().head().clone();
+		layout
+			.route()
+			.handle_layout(&ctx, outlet)
+			.ok()
+			.map(|page| page.with_head(head))
+	}
+
+	/// Renders only the leaf route for a tree match.
+	///
+	/// Hidden cross-crate hook for the WASM layout persistence mount path.
+	///
+	/// # Safety
+	///
+	/// The caller must pass a match produced by this router and must ensure
+	/// that every asynchronous navigation guard for the match has completed
+	/// successfully before rendering a guarded route.
+	#[doc(hidden)]
+	pub unsafe fn __render_tree_leaf(&self, route_match: &ClientRouteTreeMatch) -> Option<Page> {
+		self.render_tree_leaf(route_match)
+	}
+
+	/// Renders one matched layout using the provided outlet.
+	///
+	/// Hidden cross-crate hook for the WASM layout persistence mount path.
+	///
+	/// # Safety
+	///
+	/// The caller must pass a match produced by this router and must ensure
+	/// that every asynchronous navigation guard for the match has completed
+	/// successfully before rendering a guarded route.
+	#[doc(hidden)]
+	pub unsafe fn __render_tree_layout(
+		&self,
+		route_match: &ClientRouteTreeMatch,
+		layout_index: usize,
+		outlet: Outlet,
+	) -> Option<Page> {
+		self.render_tree_layout(route_match, layout_index, outlet)
+	}
+
+	/// Renders a path without mutating router navigation state.
+	///
+	/// Routes with asynchronous navigation guards are not rendered through this
+	/// low-level API. Use the Pages navigation coordinator so those guards can
+	/// run before the protected route is committed and rendered.
+	pub fn render_path(&self, path: &str) -> Page {
+		if let Some(route_match) = self.match_tree(path)
+			&& route_match.navigation_guard_ids().is_empty()
+		{
+			return self.render_matched_path(&route_match);
+		}
+		self.__render_not_found()
+	}
+
 	/// Navigates to a path using pushState.
+	///
+	/// Routes with asynchronous navigation guards or loaders cannot be
+	/// navigated through this low-level API. Such routes return
+	/// [`RouterError::NavigationFailed`] and require the Pages navigation
+	/// coordinator to prepare them before committing.
 	pub fn push(&self, path: &str) -> Result<(), RouterError> {
 		self.navigate(path, NavigationType::Push)
 	}
 
 	/// Navigates to a path using replaceState.
+	///
+	/// Routes with asynchronous navigation guards or loaders cannot be
+	/// navigated through this low-level API. Such routes return
+	/// [`RouterError::NavigationFailed`] and require the Pages navigation
+	/// coordinator to prepare them before committing.
 	pub fn replace(&self, path: &str) -> Result<(), RouterError> {
 		self.navigate(path, NavigationType::Replace)
 	}
 
-	/// Internal navigation implementation.
-	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
-		let route_match = self.match_path(path);
+	/// Commits an already matched route after any asynchronous preparation.
+	///
+	/// Matching and guard evaluation are deliberately separate from this
+	/// operation. The supplied match must be the match produced by this router
+	/// for `path`; mismatched paths or route metadata are rejected before any
+	/// state changes. Matches carrying asynchronous navigation guards are also
+	/// rejected because those guards require the Pages navigation coordinator.
+	/// `Push` and `Replace` update browser history first; `Pop` and the
+	/// signal-only `Initial` path do not create a new entry. Signals and
+	/// observers are updated exactly once after the history operation succeeds.
+	pub fn commit_match(
+		&self,
+		path: &str,
+		matched: &ClientRouteTreeMatch,
+		navigation: NavigationType,
+		entry_index: i64,
+	) -> Result<(), RouterError> {
+		self.validate_match_for_path(path, matched)?;
+		if !matched.navigation_guard_ids().is_empty() {
+			return Err(RouterError::NavigationFailed(
+				NAVIGATION_GUARD_COORDINATOR_REQUIRED.to_owned(),
+			));
+		}
+		self.commit_match_validated(path, matched, navigation, entry_index)
+	}
 
-		let state = HistoryState::new(path)
-			.with_params(
-				route_match
-					.as_ref()
-					.map(|m| m.params.clone())
-					.unwrap_or_default(),
-			)
-			.with_route_name(
-				route_match
-					.as_ref()
-					.and_then(|m| m.route.name())
-					.unwrap_or(""),
-			);
+	/// Commits a guarded route after the Pages coordinator has approved its
+	/// navigation guards.
+	///
+	/// This hidden cross-crate hook keeps asynchronous guard execution in
+	/// `reinhardt-pages` while allowing the low-level router to record the
+	/// approved route for `render_current`. The Pages coordinator uses the
+	/// safe [`ClientRouter::commit_match`] operation for matches without
+	/// asynchronous navigation guards.
+	///
+	/// # Safety
+	///
+	/// The caller must be the Pages navigation coordinator and must call this
+	/// method only after every asynchronous navigation guard for `matched` has
+	/// completed successfully. Call [`ClientRouter::commit_match`] for routes
+	/// without asynchronous navigation guards.
+	#[doc(hidden)]
+	pub unsafe fn __commit_match_after_navigation_guard(
+		&self,
+		path: &str,
+		matched: &ClientRouteTreeMatch,
+		navigation: NavigationType,
+		entry_index: i64,
+	) -> Result<(), RouterError> {
+		self.validate_match_for_path(path, matched)?;
+		self.commit_match_validated(path, matched, navigation, entry_index)
+	}
 
-		let result = match nav_type {
+	fn validate_match_for_path(
+		&self,
+		path: &str,
+		matched: &ClientRouteTreeMatch,
+	) -> Result<(), RouterError> {
+		let Some(actual) = self.match_tree_with_guard_evaluation(path, false, |actual| {
+			Self::same_route_tree_match(actual, matched)
+		}) else {
+			return Err(RouterError::NavigationFailed(
+				MATCHED_ROUTE_PATH_MISMATCH.to_owned(),
+			));
+		};
+		if !Self::same_route_tree_match(&actual, matched) {
+			return Err(RouterError::NavigationFailed(
+				MATCHED_ROUTE_PATH_MISMATCH.to_owned(),
+			));
+		}
+		Ok(())
+	}
+
+	fn same_route_tree_match(
+		actual: &ClientRouteTreeMatch,
+		candidate: &ClientRouteTreeMatch,
+	) -> bool {
+		actual.path() == candidate.path()
+			&& actual.query() == candidate.query()
+			&& actual.params() == candidate.params()
+			&& actual.param_values() == candidate.param_values()
+			&& actual.metadata_chain() == candidate.metadata_chain()
+			&& actual.loader_ids() == candidate.loader_ids()
+			&& actual.navigation_guard_ids() == candidate.navigation_guard_ids()
+			&& Self::same_client_route(actual.leaf(), candidate.leaf())
+			&& actual.layouts().len() == candidate.layouts().len()
+			&& actual
+				.layouts()
+				.iter()
+				.zip(candidate.layouts())
+				.all(|(actual, candidate)| {
+					actual.key() == candidate.key()
+						&& actual.metadata() == candidate.metadata()
+						&& Self::same_client_route(actual.route(), candidate.route())
+				})
+	}
+
+	fn same_client_route(actual: &ClientRoute, candidate: &ClientRoute) -> bool {
+		actual.pattern == candidate.pattern
+			&& actual.name == candidate.name
+			&& actual.metadata == candidate.metadata
+			&& actual.loader_id == candidate.loader_id
+			&& actual.navigation_guard_id == candidate.navigation_guard_id
+			&& match (&actual.handler, &candidate.handler) {
+				(ClientRouteHandler::Leaf(actual), ClientRouteHandler::Leaf(candidate)) => {
+					Arc::ptr_eq(actual, candidate)
+				}
+				(ClientRouteHandler::Layout(actual), ClientRouteHandler::Layout(candidate)) => {
+					Arc::ptr_eq(actual, candidate)
+				}
+				_ => false,
+			} && match (&actual.guard, &candidate.guard) {
+			(Some(actual), Some(candidate)) => Arc::ptr_eq(actual, candidate),
+			(None, None) => true,
+			_ => false,
+		}
+	}
+
+	fn commit_match_validated(
+		&self,
+		path: &str,
+		matched: &ClientRouteTreeMatch,
+		navigation: NavigationType,
+		entry_index: i64,
+	) -> Result<(), RouterError> {
+		let leaf = matched.leaf_match();
+		let mut state = HistoryState::new(path)
+			.with_params(leaf.params.clone())
+			.with_entry_index(entry_index);
+		if let Some(name) = leaf.route.name() {
+			state = state.with_route_name(name);
+		}
+
+		match navigation {
 			NavigationType::Push => push_state(&state),
 			NavigationType::Replace => replace_state(&state),
-			_ => Ok(()),
-		};
+			// The launcher normalizes the first entry before preparation. Keeping
+			// this commit signal-only preserves host state upgraded during launch.
+			NavigationType::Initial => Ok(()),
+			NavigationType::Pop => Ok(()),
+		}
+		.map_err(RouterError::NavigationFailed)?;
 
-		result.map_err(RouterError::NavigationFailed)?;
-
-		// Update reactive signals
 		self.current_path.set(path.to_string());
-		self.current_params.set(
-			route_match
-				.as_ref()
-				.map(|m| m.params.clone())
-				.unwrap_or_default(),
-		);
-		self.current_route_name.set(
-			route_match
-				.as_ref()
-				.and_then(|m| m.route.name().map(|s| s.to_string())),
-		);
-
-		// (Refs #4234, Inv-1, Inv-5) Invoke registered navigation observers
-		// AFTER the history mutation succeeds and AFTER signal updates so
-		// listeners reading `Signal::get` from inside their closure see the
-		// new state. Mirrors `pages::Router::navigate`.
-		let params_for_observers = route_match
-			.as_ref()
-			.map(|m| m.params.clone())
-			.unwrap_or_default();
-		self.notify_observers(path, &params_for_observers);
-
+		self.current_params.set(leaf.params.clone());
+		self.current_route_name
+			.set(leaf.route.name().map(str::to_string));
+		self.current_match_is_unmatched.set(false);
+		self.current_navigation_guard_approval
+			.set(Some(path.to_owned()));
+		self.notify_observers(path, &leaf.params);
 		Ok(())
+	}
+
+	/// Commits a path that has no matching route so the configured not-found
+	/// renderer observes the navigation just like a direct [`Self::push`].
+	pub fn commit_unmatched(
+		&self,
+		path: &str,
+		navigation: NavigationType,
+		entry_index: i64,
+	) -> Result<(), RouterError> {
+		let state = HistoryState::new(path).with_entry_index(entry_index);
+		match navigation {
+			NavigationType::Push => push_state(&state),
+			NavigationType::Replace => replace_state(&state),
+			NavigationType::Initial => Ok(()),
+			NavigationType::Pop => Ok(()),
+		}
+		.map_err(RouterError::NavigationFailed)?;
+
+		self.current_path.set(path.to_string());
+		let params = HashMap::new();
+		self.current_params.set(params.clone());
+		self.current_route_name.set(None);
+		self.current_match_is_unmatched.set(true);
+		self.current_navigation_guard_approval.set(None);
+		self.notify_observers(path, &params);
+		Ok(())
+	}
+
+	/// Internal navigation implementation.
+	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
+		if let Some(matched) = self.match_tree(path) {
+			if !matched.loader_ids().is_empty() {
+				return Err(RouterError::NavigationFailed(
+					"route loaders require navigation through reinhardt-pages".to_string(),
+				));
+			}
+			if !matched.navigation_guard_ids().is_empty() {
+				return Err(RouterError::NavigationFailed(
+					NAVIGATION_GUARD_COORDINATOR_REQUIRED.to_owned(),
+				));
+			}
+			return self.commit_match(path, &matched, nav_type, 0);
+		}
+		self.commit_unmatched(path, nav_type, 0)
 	}
 
 	/// Register a listener for navigation events.
@@ -908,11 +1614,9 @@ impl ClientRouter {
 
 	/// Native no-op stub for `notify_observers` (Fixes #4258).
 	///
-	/// On native targets there is no popstate listener and no reactive
-	/// observation state, so navigation cannot dispatch listeners. This
-	/// stub keeps the call site in `ClientRouter::navigate` cross-target
-	/// without leaking `Rc<...>` reactive state into the native
-	/// `ClientRouter` (which would break `Send + Sync`).
+	/// On native targets there is no popstate listener, so navigation cannot
+	/// dispatch browser listeners. This stub keeps the call site in
+	/// `ClientRouter::navigate` cross-target.
 	#[cfg(native)]
 	fn notify_observers(&self, _path: &str, _params: &HashMap<String, String>) {}
 
@@ -1026,21 +1730,28 @@ impl ClientRouter {
 	/// Returns the registered `not_found` page when no route matches, or a
 	/// default 404 page if no `not_found` handler has been set.
 	pub fn render_current(&self) -> Page {
-		let path = self.current_path.get();
-
-		if let Some(route_match) = self.match_path(&path) {
-			let ctx =
-				ParamContext::new(route_match.params.clone(), route_match.param_values.clone())
-					.with_path(route_match.path.clone())
-					.with_query(route_match.query.clone());
-
-			match route_match.route.handler.handle(&ctx) {
-				Ok(view) => view,
-				Err(_err) => self.not_found.as_ref().map(|f| f()).unwrap_or(Page::Empty),
-			}
-		} else {
-			self.not_found.as_ref().map(|f| f()).unwrap_or(Page::Empty)
+		if self.current_match_is_unmatched.get() {
+			return self.__render_not_found();
 		}
+		let path = self.current_path.get();
+		let Some(route_match) = self.match_tree(&path) else {
+			return self.__render_not_found();
+		};
+		if !route_match.navigation_guard_ids().is_empty()
+			&& self.current_navigation_guard_approval.get().as_deref() != Some(path.as_str())
+		{
+			return self.__render_not_found();
+		}
+		self.render_matched_path(&route_match)
+	}
+
+	/// Renders the configured not-found handler without inspecting the current path.
+	#[doc(hidden)]
+	pub fn __render_not_found(&self) -> Page {
+		self.not_found
+			.as_ref()
+			.map(|render| render())
+			.unwrap_or(Page::Empty)
 	}
 
 	/// Returns the number of registered routes.
@@ -1072,18 +1783,24 @@ impl ClientRouter {
 	/// navigation handling.
 	#[cfg(wasm)]
 	pub fn setup_history_listener(&self) {
-		let path_signal = self.current_path.clone();
-		let params_signal = self.current_params.clone();
-		let route_name_signal = self.current_route_name.clone();
+		let path_signal = self.current_path;
+		let params_signal = self.current_params;
+		let route_name_signal = self.current_route_name;
+		let current_match_is_unmatched = self.current_match_is_unmatched;
+		let current_navigation_guard_approval = self.current_navigation_guard_approval;
+		let navigation_scope = self._navigation_scope.clone();
 		let navigation_observers = self.navigation_observers.clone();
 		let dispatch_count = self.dispatch_count.clone();
 
 		let closure = setup_popstate_listener(move |path, state| {
+			let _ = &navigation_scope;
 			// (Refs #4234, Inv-1, Inv-5) Update Signals first, then notify
 			// observers, so listeners that read `Signal::get` from inside
 			// their closure see the new state. Mirrors
 			// `ClientRouter::navigate`.
 			path_signal.set(path.clone());
+			current_match_is_unmatched.set(false);
+			current_navigation_guard_approval.set(None);
 
 			let params_for_observers = if let Some(hist_state) = state {
 				let params = hist_state.params.clone();
@@ -1122,6 +1839,40 @@ impl ClientRouter {
 	}
 }
 
+#[cfg(all(test, wasm))]
+mod wasm_tests {
+	use super::*;
+	use wasm_bindgen::JsValue;
+	use wasm_bindgen_test::*;
+
+	wasm_bindgen_test_configure!(run_in_browser);
+
+	#[wasm_bindgen_test]
+	fn popstate_clears_forced_unmatched_rendering_for_a_matching_path() {
+		let router = ClientRouter::new()
+			.route("valid", "/valid/", || Page::text("valid"))
+			.not_found(|| Page::text("not found"));
+		router
+			.commit_unmatched("/valid/", NavigationType::Initial, 0)
+			.expect("forced unmatched commit succeeds");
+
+		let window = web_sys::window().expect("browser window exists");
+		window
+			.history()
+			.expect("browser history exists")
+			.replace_state_with_url(&JsValue::NULL, "", Some("/valid/"))
+			.expect("set matching popstate location");
+		router.setup_history_listener();
+		window
+			.dispatch_event(
+				&web_sys::PopStateEvent::new("popstate").expect("create popstate event"),
+			)
+			.expect("dispatch popstate");
+
+		assert_eq!(router.render_current().render_to_string(), "valid");
+	}
+}
+
 /// Snapshot, prune, and invoke navigation observers.
 ///
 /// Bumps `dispatch_count` first so even a no-listener dispatch is
@@ -1132,6 +1883,10 @@ impl ClientRouter {
 /// `ClientRouter::replace` reentrantly, register new listeners via
 /// `on_navigate`, or drop existing `NavigationSubscription` handles
 /// without panicking on `RefCell` reentry.
+///
+/// Each listener is also invoked inside the reactive scope that was active at
+/// registration time. If that owner scope has been disposed, the listener is
+/// skipped along with its scoped reactive work.
 ///
 /// Used by both `ClientRouter::notify_observers` (programmatic
 /// push/replace) and the popstate listener (browser back/forward) so
@@ -1153,25 +1908,298 @@ fn dispatch_navigation_observers(
 		observers.iter().filter_map(|w| w.upgrade()).collect()
 	};
 	for listener in listeners_snapshot {
-		listener(path, params);
+		match listener.owner_scope {
+			Some(scope) => {
+				let _ = enter_scope(scope, || (listener.callback)(path, params));
+			}
+			None => (listener.callback)(path, params),
+		}
 	}
 }
 
-// (Fixes #4258) Compile-time guard: `ClientRouter` MUST be `Send + Sync`
-// on native targets so `UnifiedRouter` (which always contains it) can
-// be registered with multi-threaded DI containers. Regression of #4258
-// — for example, re-introducing an unguarded `Rc<...>` or `RefCell<...>`
-// field — would fail this assertion at native build time.
-#[cfg(all(test, native))]
-const _: fn() = || {
-	fn assert_send_sync<T: Send + Sync>() {}
-	assert_send_sync::<ClientRouter>();
-};
-
 #[cfg(test)]
 mod tests {
+	use super::super::component::{FromLayoutRequest, LayoutInfo};
+	use super::super::from_request::{ExtractError, RouteContext};
 	use super::*;
+	use reinhardt_core::reactive::{Effect, ReactiveScope, with_runtime};
 	use rstest::*;
+
+	struct LoaderBoundPageProps;
+
+	impl FromRequest for LoaderBoundPageProps {
+		fn from_request(_ctx: &RouteContext) -> Result<Self, ExtractError> {
+			Ok(Self)
+		}
+	}
+
+	impl ComponentInfo for LoaderBoundPageProps {
+		fn path() -> &'static str {
+			"/loaded/"
+		}
+
+		fn name() -> &'static str {
+			"loaded-page"
+		}
+
+		fn component_name() -> &'static str {
+			"LoadedPage"
+		}
+
+		fn function_name() -> &'static str {
+			"loaded_page"
+		}
+
+		fn props_type_name() -> &'static str {
+			"LoaderBoundPageProps"
+		}
+
+		fn navigation_guard_id() -> Option<NavigationGuardId> {
+			Some(NavigationGuardId::new("test:loaded-page-guard"))
+		}
+	}
+
+	struct TypedMetadataPageProps;
+
+	impl FromRequest for TypedMetadataPageProps {
+		fn from_request(_ctx: &RouteContext) -> Result<Self, ExtractError> {
+			Ok(Self)
+		}
+
+		fn component_route_metadata() -> Option<(Option<RouteLoaderId>, Option<NavigationGuardId>)>
+		{
+			Some((
+				None,
+				Some(NavigationGuardId::new("test:typed-metadata-guard")),
+			))
+		}
+	}
+
+	inventory::submit! {
+		ComponentNavigationGuardMetadata {
+			path: "/metadata-bound/",
+			name: "metadata-bound-page",
+			navigation_guard_id: NavigationGuardId::new("test:inventory-metadata-guard"),
+		}
+	}
+
+	fn typed_metadata_page(_props: TypedMetadataPageProps) -> Page {
+		Page::Empty
+	}
+
+	struct GuardOnlyPageProps;
+
+	impl FromRequest for GuardOnlyPageProps {
+		fn from_request(_ctx: &RouteContext) -> Result<Self, ExtractError> {
+			Ok(Self)
+		}
+	}
+
+	impl ComponentInfo for GuardOnlyPageProps {
+		fn path() -> &'static str {
+			"/guard-only/"
+		}
+
+		fn name() -> &'static str {
+			"guard-only-page"
+		}
+
+		fn component_name() -> &'static str {
+			"GuardOnlyPage"
+		}
+
+		fn function_name() -> &'static str {
+			"guard_only_page"
+		}
+
+		fn props_type_name() -> &'static str {
+			"GuardOnlyPageProps"
+		}
+
+		fn navigation_guard_id() -> Option<NavigationGuardId> {
+			Some(NavigationGuardId::new("test:guard-only-page"))
+		}
+	}
+
+	inventory::submit! {
+		ComponentMetadata {
+			path: "/loaded/",
+			name: "loaded-page",
+			component_name: "LoadedPage",
+			function_name: "loaded_page",
+			props_type_name: "LoadedPageProps",
+			module_path: module_path!(),
+			loader_id: Some(RouteLoaderId::new("test:loaded-page")),
+		}
+	}
+
+	inventory::submit! {
+		ComponentNavigationGuardMetadata {
+			path: "/loaded/",
+			name: "loaded-page",
+			navigation_guard_id: NavigationGuardId::new("test:loaded-page-guard"),
+		}
+	}
+
+	fn loaded_page(_props: LoaderBoundPageProps) -> Page {
+		Page::Empty
+	}
+
+	fn guard_only_page(_props: GuardOnlyPageProps) -> Page {
+		page_with_text("protected")
+	}
+
+	struct NavigationOuterLayoutProps;
+
+	impl FromLayoutRequest for NavigationOuterLayoutProps {
+		fn from_layout_request(_ctx: &RouteContext, _outlet: Outlet) -> Result<Self, ExtractError> {
+			Ok(Self)
+		}
+	}
+
+	impl LayoutInfo for NavigationOuterLayoutProps {
+		fn path() -> &'static str {
+			"/navigation/"
+		}
+
+		fn name() -> &'static str {
+			"navigation-outer"
+		}
+
+		fn component_name() -> &'static str {
+			"NavigationOuter"
+		}
+
+		fn function_name() -> &'static str {
+			"navigation_outer"
+		}
+
+		fn props_type_name() -> &'static str {
+			"NavigationOuterLayoutProps"
+		}
+
+		fn navigation_guard_id() -> Option<NavigationGuardId> {
+			Some(NavigationGuardId::new("test:navigation-outer"))
+		}
+	}
+
+	struct NavigationMiddleLayoutProps;
+
+	impl FromLayoutRequest for NavigationMiddleLayoutProps {
+		fn from_layout_request(_ctx: &RouteContext, _outlet: Outlet) -> Result<Self, ExtractError> {
+			Ok(Self)
+		}
+	}
+
+	impl LayoutInfo for NavigationMiddleLayoutProps {
+		fn path() -> &'static str {
+			"middle/"
+		}
+
+		fn name() -> &'static str {
+			"navigation-middle"
+		}
+
+		fn component_name() -> &'static str {
+			"NavigationMiddle"
+		}
+
+		fn function_name() -> &'static str {
+			"navigation_middle"
+		}
+
+		fn props_type_name() -> &'static str {
+			"NavigationMiddleLayoutProps"
+		}
+
+		fn navigation_guard_id() -> Option<NavigationGuardId> {
+			Some(NavigationGuardId::new("test:navigation-middle"))
+		}
+	}
+
+	struct NavigationInnerLayoutProps;
+
+	impl FromLayoutRequest for NavigationInnerLayoutProps {
+		fn from_layout_request(_ctx: &RouteContext, _outlet: Outlet) -> Result<Self, ExtractError> {
+			Ok(Self)
+		}
+	}
+
+	impl LayoutInfo for NavigationInnerLayoutProps {
+		fn path() -> &'static str {
+			"inner/"
+		}
+
+		fn name() -> &'static str {
+			"navigation-inner"
+		}
+
+		fn component_name() -> &'static str {
+			"NavigationInner"
+		}
+
+		fn function_name() -> &'static str {
+			"navigation_inner"
+		}
+
+		fn props_type_name() -> &'static str {
+			"NavigationInnerLayoutProps"
+		}
+
+		fn navigation_guard_id() -> Option<NavigationGuardId> {
+			Some(NavigationGuardId::new("test:navigation-outer"))
+		}
+	}
+
+	struct NavigationPageProps;
+
+	impl FromRequest for NavigationPageProps {
+		fn from_request(_ctx: &RouteContext) -> Result<Self, ExtractError> {
+			Ok(Self)
+		}
+	}
+
+	impl super::ComponentInfo for NavigationPageProps {
+		fn path() -> &'static str {
+			"page/"
+		}
+
+		fn name() -> &'static str {
+			"navigation-page"
+		}
+
+		fn component_name() -> &'static str {
+			"NavigationPage"
+		}
+
+		fn function_name() -> &'static str {
+			"navigation_page"
+		}
+
+		fn props_type_name() -> &'static str {
+			"NavigationPageProps"
+		}
+
+		fn navigation_guard_id() -> Option<NavigationGuardId> {
+			Some(NavigationGuardId::new("test:navigation-page"))
+		}
+	}
+
+	fn navigation_layout(_props: NavigationOuterLayoutProps) -> Page {
+		Page::Empty
+	}
+
+	fn navigation_middle_layout(_props: NavigationMiddleLayoutProps) -> Page {
+		Page::Empty
+	}
+
+	fn navigation_inner_layout(_props: NavigationInnerLayoutProps) -> Page {
+		Page::Empty
+	}
+
+	fn navigation_page(_props: NavigationPageProps) -> Page {
+		Page::Empty
+	}
 
 	fn test_page() -> Page {
 		Page::Empty
@@ -1207,103 +2235,269 @@ mod tests {
 
 	#[test]
 	fn test_router_new() {
-		let router = ClientRouter::new();
-		assert_eq!(router.route_count(), 0);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new();
+			assert_eq!(router.route_count(), 0);
+		});
+	}
+
+	#[test]
+	fn with_namespace_rekeys_named_routes() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("login", "/login/", home_page)
+				.with_namespace("auth");
+
+			assert!(router.has_route("auth:login"));
+			assert!(!router.has_route("login"));
+			assert_eq!(router.reverse("auth:login", &[]).unwrap(), "/login/");
+		});
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn router_builds_route_table_without_an_active_reactive_scope() {
+		let router = ClientRouter::new().route("home", "/", home_page);
+
+		assert_eq!(router.route_count(), 1);
+		assert_eq!(router.reverse("home", &[]).unwrap(), "/");
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn unscoped_router_keeps_navigation_state_on_its_owner_thread() {
+		let router = ClientRouter::new().route("home", "/", home_page);
+
+		assert_eq!(router.current_path().get(), "/");
+		router.push("/").expect("native navigation must succeed");
+		assert_eq!(router.current_path().get(), "/");
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn dropping_an_unscoped_router_removes_its_navigation_nodes() {
+		let (path_id, params_id, route_name_id) = {
+			let router = ClientRouter::new();
+			let path = *router.current_path();
+			let params = *router.current_params();
+			let route_name = *router.current_route_name();
+
+			ReactiveScope::run(|| {
+				let _effect = Effect::new(move || {
+					let _ = (path.get(), params.get(), route_name.get());
+				});
+			});
+
+			(path.id(), params.id(), route_name.id())
+		};
+
+		with_runtime(|runtime| {
+			let path_removed = !runtime.has_node(path_id);
+			let params_removed = !runtime.has_node(params_id);
+			let route_name_removed = !runtime.has_node(route_name_id);
+			assert!(
+				path_removed,
+				"dropping an unscoped router must remove its path signal node"
+			);
+			assert!(
+				params_removed,
+				"dropping an unscoped router must remove its params signal node"
+			);
+			assert!(
+				route_name_removed,
+				"dropping an unscoped router must remove its route-name signal node"
+			);
+		});
 	}
 
 	#[test]
 	fn test_router_add_route() {
-		let router = ClientRouter::new()
-			.route("home", "/", home_page)
-			.route("users", "/users/", user_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.route("users", "/users/", user_page);
 
-		assert_eq!(router.route_count(), 2);
+			assert_eq!(router.route_count(), 2);
+		});
 	}
 
 	#[test]
 	fn test_router_route_with_name() {
-		let router = ClientRouter::new()
-			.route("home", "/", home_page)
-			.route("users", "/users/", user_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.route("users", "/users/", user_page);
 
-		assert!(router.has_route("home"));
-		assert!(router.has_route("users"));
-		assert!(!router.has_route("nonexistent"));
+			assert!(router.has_route("home"));
+			assert!(router.has_route("users"));
+			assert!(!router.has_route("nonexistent"));
+		});
 	}
 
 	#[test]
 	fn test_router_match_exact() {
-		let router = ClientRouter::new()
-			.route("home", "/", home_page)
-			.route("users", "/users/", user_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.route("users", "/users/", user_page);
 
-		assert!(router.match_path("/").is_some());
-		assert!(router.match_path("/users/").is_some());
-		assert!(router.match_path("/nonexistent/").is_none());
+			assert!(router.match_path("/").is_some());
+			assert!(router.match_path("/users/").is_some());
+			assert!(router.match_path("/nonexistent/").is_none());
+		});
+	}
+
+	#[rstest]
+	fn test_router_match_ignores_fragment() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route("users", "/users/", user_page);
+
+			let route_match = router
+				.match_path("/users/?tab=active#details")
+				.expect("route should ignore the fragment");
+			assert_eq!(route_match.path, "/users/");
+			assert_eq!(route_match.query.as_deref(), Some("tab=active"));
+		});
+	}
+
+	#[test]
+	fn match_tree_does_not_fall_back_to_flat_copy_for_tree_routes() {
+		ReactiveScope::run(|| {
+			let mut router = ClientRouter::new()
+				.routes(|routes| routes.route("tree", "/tree/", || page_with_text("Tree")));
+			assert!(router.match_tree("/tree/").is_some());
+
+			router.route_tree = RouteNode::root();
+
+			assert!(router.match_tree("/tree/").is_none());
+			assert!(router.match_path("/tree/").is_none());
+		});
 	}
 
 	#[test]
 	fn test_router_match_params() {
-		let router = ClientRouter::new().route("user_detail", "/users/{id}/", user_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route("user_detail", "/users/{id}/", user_page);
 
-		let route_match = router.match_path("/users/42/");
-		assert!(route_match.is_some());
+			let route_match = router.match_path("/users/42/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_router_reverse() {
-		let router = ClientRouter::new().route("home", "/", home_page).route(
-			"user_detail",
-			"/users/{id}/",
-			user_page,
-		);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route("home", "/", home_page).route(
+				"user_detail",
+				"/users/{id}/",
+				user_page,
+			);
 
-		assert_eq!(router.reverse("home", &[]).unwrap(), "/");
-		assert_eq!(
-			router.reverse("user_detail", &[("id", "42")]).unwrap(),
-			"/users/42/"
-		);
+			assert_eq!(router.reverse("home", &[]).unwrap(), "/");
+			assert_eq!(
+				router.reverse("user_detail", &[("id", "42")]).unwrap(),
+				"/users/42/"
+			);
+		});
 	}
 
 	#[test]
 	fn test_router_reverse_invalid_name() {
-		let router = ClientRouter::new();
-		let result = router.reverse("nonexistent", &[]);
-		assert!(matches!(result, Err(RouterError::InvalidRouteName(_))));
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new();
+			let result = router.reverse("nonexistent", &[]);
+			assert!(matches!(result, Err(RouterError::InvalidRouteName(_))));
+		});
 	}
 
 	#[test]
 	fn test_router_not_found() {
-		let router = ClientRouter::new().not_found(not_found_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().not_found(not_found_page);
 
-		let _view = router.render_current();
+			let _view = router.render_current();
+		});
+	}
+
+	#[test]
+	fn commit_unmatched_renders_not_found_even_when_path_matches_a_route() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("item", "/items/{id}/", || page_with_text("item"))
+				.not_found(not_found_page);
+
+			router
+				.commit_unmatched("/items/7/", NavigationType::Push, 1)
+				.expect("unmatched navigation commits");
+
+			assert_eq!(router.render_current().render_to_string(), "NotFound");
+		});
+	}
+
+	#[test]
+	fn public_path_change_recovers_from_forced_unmatched_rendering() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("valid", "/valid/", || page_with_text("valid"))
+				.not_found(not_found_page);
+			router
+				.commit_unmatched("/denied/", NavigationType::Initial, 0)
+				.expect("forced unmatched navigation commits");
+			assert_eq!(router.render_current().render_to_string(), "NotFound");
+
+			router.current_path().set("/valid/".to_owned());
+
+			assert_eq!(router.render_current().render_to_string(), "valid");
+		});
 	}
 
 	#[rstest]
 	fn test_render_current_returns_page_without_not_found() {
-		// Arrange
-		let router = ClientRouter::new().route("home", "/home/", home_page);
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = ClientRouter::new().route("home", "/home/", home_page);
 
-		// Act — path does not match, no not_found registered
-		let page = router.render_current();
+			// Act — path does not match, no not_found registered
+			let page = router.render_current();
 
-		// Assert — returns Page::Empty as default fallback
-		assert!(matches!(page, Page::Empty));
+			// Assert — returns Page::Empty as default fallback
+			assert!(matches!(page, Page::Empty));
+		});
 	}
 
 	#[test]
 	fn test_router_with_guard() {
-		let router = ClientRouter::new()
-			.guarded_route("/admin/", test_page, |_| false)
-			.route("public", "/public/", test_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.guarded_route("/admin/", test_page, |_| false)
+				.route("public", "/public/", test_page);
 
-		// Guard rejects
-		assert!(router.match_path("/admin/").is_none());
-		// No guard
-		assert!(router.match_path("/public/").is_some());
+			// Guard rejects
+			assert!(router.match_path("/admin/").is_none());
+			// No guard
+			assert!(router.match_path("/public/").is_some());
+			assert!(
+				ClientRoute::new("/sync/", test_page)
+					.with_guard(|_| true)
+					.navigation_guard_id()
+					.is_none()
+			);
+		});
+	}
+
+	#[test]
+	fn named_route_guard_rejects_flat_route() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("admin", "/admin/", test_page)
+				.with_route_guard("admin", |_| false);
+
+			assert!(router.match_path("/admin/").is_none());
+		});
 	}
 
 	#[test]
@@ -1320,20 +2514,263 @@ mod tests {
 
 	#[test]
 	fn test_router_push_non_wasm() {
-		let router = ClientRouter::new()
-			.route("home", "/", home_page)
-			.route("users", "/users/", user_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.route("users", "/users/", user_page);
 
-		// Non-WASM push should succeed
-		assert!(router.push("/users/").is_ok());
+			// Non-WASM push should succeed
+			assert!(router.push("/users/").is_ok());
+		});
 	}
 
 	#[test]
 	fn test_router_replace_non_wasm() {
-		let router = ClientRouter::new().route("home", "/", home_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route("home", "/", home_page);
 
-		// Non-WASM replace should succeed
-		assert!(router.replace("/").is_ok());
+			// Non-WASM replace should succeed
+			assert!(router.replace("/").is_ok());
+		});
+	}
+
+	#[test]
+	fn direct_push_rejects_guard_only_routes_without_changing_state() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.component(guard_only_page);
+
+			assert!(matches!(
+				router.push("/guard-only/"),
+				Err(RouterError::NavigationFailed(message))
+					if message == NAVIGATION_GUARD_COORDINATOR_REQUIRED
+			));
+			assert_eq!(router.current_path().get(), "/");
+		});
+	}
+
+	#[test]
+	fn direct_replace_rejects_guard_only_routes_without_changing_state() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.component(guard_only_page);
+
+			assert!(matches!(
+				router.replace("/guard-only/"),
+				Err(RouterError::NavigationFailed(message))
+					if message == NAVIGATION_GUARD_COORDINATOR_REQUIRED
+			));
+			assert_eq!(router.current_path().get(), "/");
+		});
+	}
+
+	#[test]
+	fn commit_match_rejects_guarded_routes_without_coordinator() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.component(guard_only_page);
+			let matched = router
+				.match_tree("/guard-only/")
+				.expect("guarded route should match");
+
+			let result = router.commit_match("/guard-only/", &matched, NavigationType::Push, 1);
+
+			assert!(matches!(
+				result,
+				Err(RouterError::NavigationFailed(message))
+					if message == NAVIGATION_GUARD_COORDINATOR_REQUIRED
+			));
+			assert_eq!(router.current_path().get(), "/");
+		});
+	}
+
+	#[test]
+	fn commit_match_rejects_a_match_for_a_different_path_or_guard_metadata() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.component(guard_only_page);
+			let unguarded_match = router.match_tree("/").expect("home route should match");
+
+			let result =
+				router.commit_match("/guard-only/", &unguarded_match, NavigationType::Push, 1);
+
+			assert!(matches!(
+				result,
+				Err(RouterError::NavigationFailed(message))
+					if message == MATCHED_ROUTE_PATH_MISMATCH
+			));
+			assert_eq!(router.current_path().get(), "/");
+		});
+	}
+
+	#[test]
+	fn commit_match_does_not_re_evaluate_synchronous_route_guards() {
+		ReactiveScope::run(|| {
+			let guard_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+			let guard_calls_for_route = Arc::clone(&guard_calls);
+			let router = ClientRouter::new().guarded_route("/guarded/", test_page, move |_| {
+				guard_calls_for_route.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+				true
+			});
+
+			let matched = router
+				.match_tree("/guarded/")
+				.expect("synchronous guard should allow the route");
+			assert_eq!(guard_calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+
+			router
+				.commit_match("/guarded/", &matched, NavigationType::Push, 1)
+				.expect("the previously matched route should commit");
+
+			assert_eq!(guard_calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+		});
+	}
+
+	#[test]
+	fn raw_rendering_rejects_guard_only_routes_until_pages_approval() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.component(guard_only_page)
+				.not_found(not_found_page);
+
+			assert_eq!(
+				router.render_path("/guard-only/").render_to_string(),
+				"NotFound"
+			);
+			router.current_path().set("/guard-only/".to_owned());
+			assert_eq!(router.render_current().render_to_string(), "NotFound");
+		});
+	}
+
+	#[test]
+	fn persistent_render_match_rejects_public_current_path_mutation_to_guarded_route() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.component(guard_only_page);
+
+			assert!(router.__match_current_for_render().is_some());
+			router.current_path().set("/guard-only/".to_owned());
+
+			assert!(router.__match_current_for_render().is_none());
+		});
+	}
+
+	#[test]
+	fn public_current_path_mutation_cannot_reuse_guard_approval() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.component(guard_only_page)
+				.not_found(not_found_page);
+			let matched = router
+				.match_tree("/guard-only/")
+				.expect("guarded route should match");
+
+			unsafe {
+				router
+					.__commit_match_after_navigation_guard(
+						"/guard-only/",
+						&matched,
+						NavigationType::Push,
+						1,
+					)
+					.expect("approved guarded route should commit");
+			}
+			assert_eq!(router.render_current().render_to_string(), "protected");
+
+			router.current_path().set("/".to_owned());
+			router.current_path().set("/guard-only/".to_owned());
+			assert_eq!(router.render_current().render_to_string(), "NotFound");
+		});
+	}
+
+	#[test]
+	fn page_registration_preserves_component_loader_metadata() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().page("loaded-page", "/loaded/", loaded_page);
+			let matched = router.match_tree("/loaded/").expect("route matches");
+
+			assert_eq!(
+				matched.loader_ids(),
+				&[RouteLoaderId::new("test:loaded-page")]
+			);
+			assert_eq!(
+				matched.navigation_guard_ids(),
+				&[NavigationGuardId::new("test:loaded-page-guard")]
+			);
+			assert!(matches!(
+				router.push("/loaded/"),
+				Err(RouterError::NavigationFailed(message))
+					if message == "route loaders require navigation through reinhardt-pages"
+			));
+		});
+	}
+
+	#[test]
+	fn page_registration_uses_props_type_route_metadata() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().page(
+				"metadata-bound-page",
+				"/metadata-bound/",
+				typed_metadata_page,
+			);
+			let matched = router
+				.match_tree("/metadata-bound/")
+				.expect("route matches");
+
+			assert_eq!(
+				matched.navigation_guard_ids(),
+				&[NavigationGuardId::new("test:typed-metadata-guard")]
+			);
+		});
+	}
+
+	#[test]
+	fn typed_component_registration_preserves_navigation_guard_metadata() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().component(loaded_page);
+			let matched = router.match_tree("/loaded/").expect("route matches");
+
+			assert_eq!(
+				matched.navigation_guard_ids(),
+				&[NavigationGuardId::new("test:loaded-page-guard")]
+			);
+		});
+	}
+
+	#[test]
+	fn navigation_guard_ids_follow_root_to_leaf_order_without_deduplication() {
+		let router = ClientRouter::new()
+			.try_routes(|routes| {
+				routes.layout(navigation_layout, |children| {
+					children.layout(navigation_middle_layout, |children| {
+						children.layout(navigation_inner_layout, |children| {
+							children.component(navigation_page)
+						})
+					})
+				})
+			})
+			.expect("route tree should register");
+
+		let matched = router
+			.match_tree("/navigation/middle/inner/page/")
+			.expect("route should match");
+
+		assert_eq!(
+			matched.navigation_guard_ids(),
+			&[
+				NavigationGuardId::new("test:navigation-outer"),
+				NavigationGuardId::new("test:navigation-middle"),
+				NavigationGuardId::new("test:navigation-outer"),
+				NavigationGuardId::new("test:navigation-page"),
+			]
+		);
 	}
 
 	// ============================================================================
@@ -1342,163 +2779,180 @@ mod tests {
 
 	#[test]
 	fn test_route_path_single() {
-		let router = ClientRouter::new().route_path(
-			"user_detail",
-			"/users/{id}/",
-			|Path(_id): Path<i64>| page_with_text("User"),
-		);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route_path(
+				"user_detail",
+				"/users/{id}/",
+				|Path(_id): Path<i64>| page_with_text("User"),
+			);
 
-		assert_eq!(router.route_count(), 1);
+			assert_eq!(router.route_count(), 1);
 
-		// Match and verify handler works
-		let route_match = router.match_path("/users/42/");
-		assert!(route_match.is_some());
+			// Match and verify handler works
+			let route_match = router.match_path("/users/42/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_route_path_two_params() {
-		// Two path parameters now flow through the unified `route_path`
-		// (Issue #4637). Closure signature is unchanged from the prior
-		// `route_path2`.
-		let router = ClientRouter::new().route_path(
-			"user_post",
-			"/users/{user_id}/posts/{post_id}/",
-			|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
-		);
+		ReactiveScope::run(|| {
+			// Two path parameters now flow through the unified `route_path`
+			// (Issue #4637). Closure signature is unchanged from the prior
+			// `route_path2`.
+			let router = ClientRouter::new().route_path(
+				"user_post",
+				"/users/{user_id}/posts/{post_id}/",
+				|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
+			);
 
-		assert_eq!(router.route_count(), 1);
+			assert_eq!(router.route_count(), 1);
 
-		let route_match = router.match_path("/users/123/posts/456/");
-		assert!(route_match.is_some());
+			let route_match = router.match_path("/users/123/posts/456/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.params.get("user_id"), Some(&"123".to_string()));
-		assert_eq!(route_match.params.get("post_id"), Some(&"456".to_string()));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.params.get("user_id"), Some(&"123".to_string()));
+			assert_eq!(route_match.params.get("post_id"), Some(&"456".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_route_path_three_params() {
-		// Three path parameters via unified `route_path` (Issue #4637).
-		let router = ClientRouter::new().route_path(
-			"member",
-			"/orgs/{org_id}/teams/{team_id}/members/{member_id}/",
-			|Path(_org_id): Path<String>,
-			 Path(_team_id): Path<i64>,
-			 Path(_member_id): Path<i64>| page_with_text("Member"),
-		);
+		ReactiveScope::run(|| {
+			// Three path parameters via unified `route_path` (Issue #4637).
+			let router = ClientRouter::new().route_path(
+				"member",
+				"/orgs/{org_id}/teams/{team_id}/members/{member_id}/",
+				|Path(_org_id): Path<String>,
+				 Path(_team_id): Path<i64>,
+				 Path(_member_id): Path<i64>| page_with_text("Member"),
+			);
 
-		assert_eq!(router.route_count(), 1);
+			assert_eq!(router.route_count(), 1);
 
-		let route_match = router.match_path("/orgs/acme/teams/10/members/100/");
-		assert!(route_match.is_some());
+			let route_match = router.match_path("/orgs/acme/teams/10/members/100/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.params.get("org_id"), Some(&"acme".to_string()));
-		assert_eq!(route_match.params.get("team_id"), Some(&"10".to_string()));
-		assert_eq!(
-			route_match.params.get("member_id"),
-			Some(&"100".to_string())
-		);
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.params.get("org_id"), Some(&"acme".to_string()));
+			assert_eq!(route_match.params.get("team_id"), Some(&"10".to_string()));
+			assert_eq!(
+				route_match.params.get("member_id"),
+				Some(&"100".to_string())
+			);
+		});
 	}
 
 	#[test]
 	fn test_route_path_four_params() {
-		// Guard against regression of the 1..=8 widening (Issue #4637).
-		// Arity-4 is the smallest case beyond the previously supported
-		// arity-3 ceiling, so exercising it proves the `impl_handler!`
-		// macro expansion actually reaches the higher tuples.
-		let router = ClientRouter::new().route_path(
-			"quad",
-			"/a/{a}/b/{b}/c/{c}/d/{d}/",
-			|Path(_a): Path<i64>, Path(_b): Path<i64>, Path(_c): Path<i64>, Path(_d): Path<i64>| {
-				page_with_text("Quad")
-			},
-		);
+		ReactiveScope::run(|| {
+			// Guard against regression of the 1..=8 widening (Issue #4637).
+			// Arity-4 is the smallest case beyond the previously supported
+			// arity-3 ceiling, so exercising it proves the `impl_handler!`
+			// macro expansion actually reaches the higher tuples.
+			let router = ClientRouter::new().route_path(
+				"quad",
+				"/a/{a}/b/{b}/c/{c}/d/{d}/",
+				|Path(_a): Path<i64>,
+				 Path(_b): Path<i64>,
+				 Path(_c): Path<i64>,
+				 Path(_d): Path<i64>| { page_with_text("Quad") },
+			);
 
-		assert_eq!(router.route_count(), 1);
+			assert_eq!(router.route_count(), 1);
 
-		let route_match = router.match_path("/a/1/b/2/c/3/d/4/");
-		assert!(route_match.is_some());
+			let route_match = router.match_path("/a/1/b/2/c/3/d/4/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.params.get("a"), Some(&"1".to_string()));
-		assert_eq!(route_match.params.get("b"), Some(&"2".to_string()));
-		assert_eq!(route_match.params.get("c"), Some(&"3".to_string()));
-		assert_eq!(route_match.params.get("d"), Some(&"4".to_string()));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.params.get("a"), Some(&"1".to_string()));
+			assert_eq!(route_match.params.get("b"), Some(&"2".to_string()));
+			assert_eq!(route_match.params.get("c"), Some(&"3".to_string()));
+			assert_eq!(route_match.params.get("d"), Some(&"4".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_route_path_single_with_reverse() {
-		let router = ClientRouter::new().route_path(
-			"user_detail",
-			"/users/{id}/",
-			|Path(_id): Path<i64>| page_with_text("User"),
-		);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route_path(
+				"user_detail",
+				"/users/{id}/",
+				|Path(_id): Path<i64>| page_with_text("User"),
+			);
 
-		assert!(router.has_route("user_detail"));
-		assert_eq!(
-			router.reverse("user_detail", &[("id", "42")]).unwrap(),
-			"/users/42/"
-		);
+			assert!(router.has_route("user_detail"));
+			assert_eq!(
+				router.reverse("user_detail", &[("id", "42")]).unwrap(),
+				"/users/42/"
+			);
+		});
 	}
 
 	#[test]
 	fn test_route_path_two_params_with_reverse() {
-		// `route_path` now covers every arity (Issue #4637).
-		let router = ClientRouter::new().route_path(
-			"user_post",
-			"/users/{user_id}/posts/{post_id}/",
-			|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
-		);
+		ReactiveScope::run(|| {
+			// `route_path` now covers every arity (Issue #4637).
+			let router = ClientRouter::new().route_path(
+				"user_post",
+				"/users/{user_id}/posts/{post_id}/",
+				|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
+			);
 
-		assert!(router.has_route("user_post"));
-		assert_eq!(
-			router
-				.reverse("user_post", &[("user_id", "10"), ("post_id", "20")])
-				.unwrap(),
-			"/users/10/posts/20/"
-		);
+			assert!(router.has_route("user_post"));
+			assert_eq!(
+				router
+					.reverse("user_post", &[("user_id", "10"), ("post_id", "20")])
+					.unwrap(),
+				"/users/10/posts/20/"
+			);
+		});
 	}
 
 	#[test]
 	fn test_route_path_three_params_with_reverse() {
-		let router = ClientRouter::new().route_path(
-			"org_team_member",
-			"/orgs/{org}/teams/{team}/members/{member}/",
-			|Path(_org): Path<String>, Path(_team): Path<i64>, Path(_member): Path<i64>| {
-				page_with_text("Member")
-			},
-		);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route_path(
+				"org_team_member",
+				"/orgs/{org}/teams/{team}/members/{member}/",
+				|Path(_org): Path<String>, Path(_team): Path<i64>, Path(_member): Path<i64>| {
+					page_with_text("Member")
+				},
+			);
 
-		assert!(router.has_route("org_team_member"));
-		assert_eq!(
-			router
-				.reverse(
-					"org_team_member",
-					&[("org", "acme"), ("team", "5"), ("member", "42")]
-				)
-				.unwrap(),
-			"/orgs/acme/teams/5/members/42/"
-		);
+			assert!(router.has_route("org_team_member"));
+			assert_eq!(
+				router
+					.reverse(
+						"org_team_member",
+						&[("org", "acme"), ("team", "5"), ("member", "42")]
+					)
+					.unwrap(),
+				"/orgs/acme/teams/5/members/42/"
+			);
+		});
 	}
 
 	#[test]
 	fn test_route_path_with_string_param() {
-		let router = ClientRouter::new().route_path(
-			"post_detail",
-			"/posts/{slug}/",
-			|Path(_slug): Path<String>| page_with_text("Post"),
-		);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route_path(
+				"post_detail",
+				"/posts/{slug}/",
+				|Path(_slug): Path<String>| page_with_text("Post"),
+			);
 
-		let route_match = router.match_path("/posts/hello-world/");
-		assert!(route_match.is_some());
-		assert_eq!(
-			route_match.unwrap().params.get("slug"),
-			Some(&"hello-world".to_string())
-		);
+			let route_match = router.match_path("/posts/hello-world/");
+			assert!(route_match.is_some());
+			assert_eq!(
+				route_match.unwrap().params.get("slug"),
+				Some(&"hello-world".to_string())
+			);
+		});
 	}
 
 	// ----- merge / try_merge ---------------------------------------------
@@ -1517,109 +2971,121 @@ mod tests {
 
 	#[test]
 	fn merge_appends_routes_and_named_routes() {
-		let merged = polls_router().merge(users_router());
+		ReactiveScope::run(|| {
+			let merged = polls_router().merge(users_router());
 
-		assert_eq!(merged.route_count(), 4);
-		assert_eq!(merged.reverse("polls:index", &[]).unwrap(), "/polls/");
-		assert_eq!(
-			merged.reverse("polls:detail", &[("id", "1")]).unwrap(),
-			"/polls/1/"
-		);
-		assert_eq!(merged.reverse("users:login", &[]).unwrap(), "/users/login/");
-		assert_eq!(
-			merged.reverse("users:logout", &[]).unwrap(),
-			"/users/logout/"
-		);
+			assert_eq!(merged.route_count(), 4);
+			assert_eq!(merged.reverse("polls:index", &[]).unwrap(), "/polls/");
+			assert_eq!(
+				merged.reverse("polls:detail", &[("id", "1")]).unwrap(),
+				"/polls/1/"
+			);
+			assert_eq!(merged.reverse("users:login", &[]).unwrap(), "/users/login/");
+			assert_eq!(
+				merged.reverse("users:logout", &[]).unwrap(),
+				"/users/logout/"
+			);
+		});
 	}
 
 	#[test]
 	fn merge_last_wins_on_name_collision() {
-		let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
-		let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
+		ReactiveScope::run(|| {
+			let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
+			let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
 
-		let merged = first.merge(second);
+			let merged = first.merge(second);
 
-		// Both physical routes survive — merge appends, never deduplicates.
-		assert_eq!(merged.route_count(), 2);
-		// The named-route key points at the second router's entry, so reverse()
-		// resolves to `/b/`. This is the "last wins" contract documented on
-		// `ClientRouter::merge` and matches the pre-existing
-		// `UnifiedRouter::mount_unified` behavior.
-		assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
+			// Both physical routes survive — merge appends, never deduplicates.
+			assert_eq!(merged.route_count(), 2);
+			// The named-route key points at the second router's entry, so reverse()
+			// resolves to `/b/`. This is the "last wins" contract documented on
+			// `ClientRouter::merge` and matches the pre-existing
+			// `UnifiedRouter::mount_unified` behavior.
+			assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
+		});
 	}
 
 	#[test]
 	fn merge_discards_other_not_found() {
-		let other_not_found_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
-		let flag = Arc::clone(&other_not_found_seen);
-		let other = ClientRouter::new().not_found(move || {
-			flag.store(true, std::sync::atomic::Ordering::SeqCst);
-			page_with_text("other-not-found")
+		ReactiveScope::run(|| {
+			let other_not_found_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
+			let flag = Arc::clone(&other_not_found_seen);
+			let other = ClientRouter::new().not_found(move || {
+				flag.store(true, std::sync::atomic::Ordering::SeqCst);
+				page_with_text("other-not-found")
+			});
+
+			let merged = ClientRouter::new()
+				.route("home", "/home/", home_page)
+				.merge(other);
+
+			// Render against a non-matching path; `other`'s `not_found` must not
+			// fire because `merge` keeps `self`'s observation state and discards
+			// `other`'s. With no `not_found` on `self`, the default is Page::Empty.
+			let page = merged.render_current();
+			assert!(matches!(page, Page::Empty));
+			assert!(!other_not_found_seen.load(std::sync::atomic::Ordering::SeqCst));
 		});
-
-		let merged = ClientRouter::new()
-			.route("home", "/home/", home_page)
-			.merge(other);
-
-		// Render against a non-matching path; `other`'s `not_found` must not
-		// fire because `merge` keeps `self`'s observation state and discards
-		// `other`'s. With no `not_found` on `self`, the default is Page::Empty.
-		let page = merged.render_current();
-		assert!(matches!(page, Page::Empty));
-		assert!(!other_not_found_seen.load(std::sync::atomic::Ordering::SeqCst));
 	}
 
 	#[test]
 	fn try_merge_ok_when_no_collision() {
-		let merged = polls_router()
-			.try_merge(users_router())
-			.expect("disjoint named routes merge cleanly");
+		ReactiveScope::run(|| {
+			let merged = polls_router()
+				.try_merge(users_router())
+				.expect("disjoint named routes merge cleanly");
 
-		assert_eq!(merged.route_count(), 4);
-		assert!(merged.has_route("polls:index"));
-		assert!(merged.has_route("users:login"));
+			assert_eq!(merged.route_count(), 4);
+			assert!(merged.has_route("polls:index"));
+			assert!(merged.has_route("users:login"));
+		});
 	}
 
 	#[test]
 	fn try_merge_err_on_name_collision() {
-		let first = ClientRouter::new().route("polls:index", "/a/", home_page);
-		let second = ClientRouter::new().route("polls:index", "/b/", home_page);
+		ReactiveScope::run(|| {
+			let first = ClientRouter::new().route("polls:index", "/a/", home_page);
+			let second = ClientRouter::new().route("polls:index", "/b/", home_page);
 
-		let err = first
-			.try_merge(second)
-			.expect_err("collision must be reported");
+			let err = first
+				.try_merge(second)
+				.expect_err("collision must be reported");
 
-		assert_eq!(
-			err,
-			MergeError::NameCollision {
-				name: "polls:index".to_string(),
-			},
-		);
+			assert_eq!(
+				err,
+				MergeError::NameCollision {
+					name: "polls:index".to_string(),
+				},
+			);
+		});
 	}
 
 	#[test]
 	fn try_merge_err_leaves_neither_router_partially_merged() {
-		// Build a router whose routes vector would clearly grow if `try_merge`
-		// fell through to `merge` before validating. Then attempt a merge that
-		// must fail. We can only observe `merged`'s state on the Ok path, so
-		// the structural check is: on Err, `merge` was never called (validated
-		// by inspecting the original router we kept aside).
-		let original = polls_router();
-		let baseline_count = original.route_count();
-		let baseline_named = original.has_route("polls:index");
+		ReactiveScope::run(|| {
+			// Build a router whose routes vector would clearly grow if `try_merge`
+			// fell through to `merge` before validating. Then attempt a merge that
+			// must fail. We can only observe `merged`'s state on the Ok path, so
+			// the structural check is: on Err, `merge` was never called (validated
+			// by inspecting the original router we kept aside).
+			let original = polls_router();
+			let baseline_count = original.route_count();
+			let baseline_named = original.has_route("polls:index");
 
-		// Re-build the same router because `try_merge` takes `self` by value.
-		let attempt = polls_router();
-		let collide = ClientRouter::new().route("polls:index", "/x/", home_page);
-		let err = attempt
-			.try_merge(collide)
-			.expect_err("collision must be reported");
-		assert!(matches!(err, MergeError::NameCollision { .. }));
+			// Re-build the same router because `try_merge` takes `self` by value.
+			let attempt = polls_router();
+			let collide = ClientRouter::new().route("polls:index", "/x/", home_page);
+			let err = attempt
+				.try_merge(collide)
+				.expect_err("collision must be reported");
+			assert!(matches!(err, MergeError::NameCollision { .. }));
 
-		// The independent `original` is unchanged (sanity-checks that
-		// `try_merge`'s validation does not depend on hidden global state).
-		assert_eq!(original.route_count(), baseline_count);
-		assert!(baseline_named);
+			// The independent `original` is unchanged (sanity-checks that
+			// `try_merge`'s validation does not depend on hidden global state).
+			assert_eq!(original.route_count(), baseline_count);
+			assert!(baseline_named);
+		});
 	}
 
 	#[test]
@@ -1636,47 +3102,55 @@ mod tests {
 	#[rstest]
 	#[should_panic(expected = "Duplicate client route name 'home'")]
 	fn route_panics_on_duplicate_name() {
-		// Arrange — a router with an existing "home" route
-		let router = ClientRouter::new().route("home", "/", home_page);
+		ReactiveScope::run(|| {
+			// Arrange — a router with an existing "home" route
+			let router = ClientRouter::new().route("home", "/", home_page);
 
-		// Act — registering the same name again must panic
-		let _router = router.route("home", "/other/", user_page);
+			// Act — registering the same name again must panic
+			let _router = router.route("home", "/other/", user_page);
+		});
 	}
 
 	#[rstest]
 	#[should_panic(expected = "Duplicate client route name 'detail'")]
 	fn route_params_panics_on_duplicate_name() {
-		// Arrange
-		let router = ClientRouter::new().route("detail", "/items/{id}/", home_page);
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = ClientRouter::new().route("detail", "/items/{id}/", home_page);
 
-		// Act
-		let _router = router.route_params("detail", "/users/{id}/", |Path(_id): Path<i64>| {
-			page_with_text("User")
+			// Act
+			let _router = router.route_params("detail", "/users/{id}/", |Path(_id): Path<i64>| {
+				page_with_text("User")
+			});
 		});
 	}
 
 	#[rstest]
 	#[should_panic(expected = "Duplicate client route name 'show'")]
 	fn route_path_panics_on_duplicate_name() {
-		// Arrange
-		let router = ClientRouter::new().route("show", "/a/", home_page);
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = ClientRouter::new().route("show", "/a/", home_page);
 
-		// Act
-		let _router = router.route_path("show", "/b/{id}/", |Path(_id): Path<i64>| {
-			page_with_text("B")
+			// Act
+			let _router = router.route_path("show", "/b/{id}/", |Path(_id): Path<i64>| {
+				page_with_text("B")
+			});
 		});
 	}
 
 	#[rstest]
 	fn merge_does_not_panic_on_duplicate_name() {
-		// Arrange — merge intentionally uses last-wins semantics
-		let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
-		let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
+		ReactiveScope::run(|| {
+			// Arrange — merge intentionally uses last-wins semantics
+			let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
+			let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
 
-		// Act — must NOT panic (last-wins is the documented contract)
-		let merged = first.merge(second);
+			// Act — must NOT panic (last-wins is the documented contract)
+			let merged = first.merge(second);
 
-		// Assert — the second route wins
-		assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
+			// Assert — the second route wins
+			assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
+		});
 	}
 }

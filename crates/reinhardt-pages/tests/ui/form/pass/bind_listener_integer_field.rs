@@ -3,13 +3,16 @@
 use reinhardt_pages::form;
 
 fn main() {
-	let _ = form! {
-		name: CounterForm,
-		action: "/api/counter",
-		fields: {
-			count: IntegerField {
-				initial: 0i64,
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _ = form! {
+			name: CounterForm,
+			action: "/api/counter",
+			fields: {
+				count: IntegerField {
+					bind: true,
+					initial: 0i64,
+				}
 			}
-		}
-	};
+		};
+	});
 }

@@ -211,7 +211,7 @@ pub async fn update_question(
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
 
-	if *question.author_id() != user.id() {
+	if question.author_id() != user.id() {
 		return Err(ServerFnError::server(
 			403,
 			"Only the question's author can edit it",
@@ -245,7 +245,7 @@ pub async fn delete_question(
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
 
-	if *question.author_id() != user.id() {
+	if question.author_id() != user.id() {
 		return Err(ServerFnError::server(
 			403,
 			"Only the question's author can delete it",
@@ -288,7 +288,7 @@ async fn require_question_author(question_id: i64, user: &User) -> Result<Questi
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Question not found"))?;
 
-	if *question.author_id() != user.id() {
+	if question.author_id() != user.id() {
 		return Err(ServerFnError::server(
 			403,
 			"Only the question's author can manage its choices",
@@ -357,7 +357,7 @@ pub async fn update_choice(
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Choice not found"))?;
 
-	let _question = require_question_author(*choice.question_id(), &user).await?;
+	let _question = require_question_author(choice.question_id(), &user).await?;
 
 	choice.choice_text = trimmed.to_string();
 	let updated = manager
@@ -384,7 +384,7 @@ pub async fn delete_choice(
 		.map_err(|e| ServerFnError::application(format!("Database error: {}", e)))?
 		.ok_or_else(|| ServerFnError::server(404, "Choice not found"))?;
 
-	let _question = require_question_author(*choice.question_id(), &user).await?;
+	let _question = require_question_author(choice.question_id(), &user).await?;
 
 	manager
 		.delete(choice.id())

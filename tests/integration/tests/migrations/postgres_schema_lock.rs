@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reinhardt_db::backends::{DatabaseConnection, DatabaseError};
+use reinhardt_db::backends::{DatabaseConnection, DatabaseErrorKind};
 use reinhardt_db::migrations::{MigrationError, recorder::DatabaseMigrationRecorder};
 use reinhardt_query::prelude::{
 	Alias, ColumnDef, Expr, ExprTrait, Func, PostgresQueryBuilder, Query, QueryStatementBuilder,
@@ -126,10 +126,11 @@ async fn failed_schema_creation_releases_lock(
 		.expect_err("missing column must reject index creation");
 
 	// Assert
-	let MigrationError::DatabaseError(DatabaseError::QueryError(message)) = error else {
+	let MigrationError::DatabaseError(error) = error else {
 		panic!("expected a database query error, got {error:?}");
 	};
-	assert_eq!(message, "column \"app\" does not exist");
+	assert_eq!(error.kind(), DatabaseErrorKind::Query);
+	assert_eq!(error.message(), "column \"app\" does not exist");
 	assert_eq!(lock_count(&observer, "advisory", true).await, 0);
 
 	let drop_table = Query::drop_table()

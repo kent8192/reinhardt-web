@@ -5,52 +5,54 @@
 use reinhardt_pages::form;
 
 fn main() {
-	// Basic form with SubmitButton
-	let _login_form = form! {
-		name: LoginForm,
-		action: "/api/login",
-		fields: {
-			username: CharField {
-				required,
-				label: "Username",
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		// Basic form with SubmitButton
+		let _login_form = form! {
+			name: LoginForm,
+			action: "/api/login",
+			fields: {
+				username: CharField {
+					required,
+					label: "Username",
+				}
+				password: CharField {
+					required,
+					widget: PasswordInput,
+					label: "Password",
+				}
+				submit: SubmitButton {
+					label: "Sign in",
+					class: "btn-primary",
+				}
 			}
-			password: CharField {
-				required,
-				widget: PasswordInput,
-				label: "Password",
-			}
-			submit: SubmitButton {
-				label: "Sign in",
-				class: "btn-primary",
-			}
-		}
-	};
+		};
 
-	// SubmitButton with minimal properties (defaults to "Submit" label)
-	let _minimal_form = form! {
-		name: MinimalForm,
-		action: "/api/submit",
-		fields: {
-			name: CharField {
-				required,
+		// SubmitButton with minimal properties (defaults to "Submit" label)
+		let _minimal_form = form! {
+			name: MinimalForm,
+			action: "/api/submit",
+			fields: {
+				name: CharField {
+					required,
+				}
+				submit: SubmitButton,
 			}
-			submit: SubmitButton,
-		}
-	};
+		};
 
-	// SubmitButton with id and disabled
-	let _disabled_form = form! {
-		name: DisabledForm,
-		action: "/api/submit",
-		fields: {
-			email: EmailField {
-				required,
+		// SubmitButton with id and disabled
+		let _disabled_form = form! {
+			name: DisabledForm,
+			action: "/api/submit",
+			fields: {
+				email: EmailField {
+					required,
+				}
+				submit: SubmitButton {
+					label: "Send",
+					id: "submit-btn",
+					disabled,
+				}
 			}
-			submit: SubmitButton {
-				label: "Send",
-				id: "submit-btn",
-				disabled,
-			}
-		}
-	};
+		};
+	});
 }

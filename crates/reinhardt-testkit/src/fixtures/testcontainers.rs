@@ -14,6 +14,22 @@ use testcontainers::{
 #[cfg(feature = "testcontainers")]
 pub use testcontainers::{ContainerAsync, GenericImage};
 
+/// RAII guard for an ORM handle backed by a migration test database.
+#[cfg(feature = "testcontainers")]
+pub struct MigrationDatabase {
+	connection: reinhardt_db::orm::DatabaseConnection,
+	_connection_lease: reinhardt_db::orm::DatabaseConnectionLease,
+}
+
+#[cfg(feature = "testcontainers")]
+impl std::ops::Deref for MigrationDatabase {
+	type Target = reinhardt_db::orm::DatabaseConnection;
+
+	fn deref(&self) -> &Self::Target {
+		&self.connection
+	}
+}
+
 /// Check if a port is available (not in use by any process)
 #[cfg(feature = "testcontainers")]
 async fn is_port_available(port: u16) -> bool {
@@ -1331,7 +1347,7 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 /// * `P` - A type implementing `MigrationProvider`
 ///
 /// # Returns
-/// * `(ContainerAsync<GenericImage>, Arc<DatabaseConnection>)` - Container and database connection
+/// * `(ContainerAsync<GenericImage>, MigrationDatabase)` - Container and guarded ORM connection
 ///
 /// # Example
 ///
@@ -1363,22 +1379,16 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 /// ```
 #[cfg(feature = "testcontainers")]
 pub async fn postgres_with_migrations_from<P: reinhardt_db::migrations::MigrationProvider>()
--> Result<
-	(
-		ContainerAsync<GenericImage>,
-		std::sync::Arc<reinhardt_db::DatabaseConnection>,
-	),
-	Box<dyn std::error::Error>,
-> {
-	use reinhardt_db::DatabaseConnection;
+-> Result<(ContainerAsync<GenericImage>, MigrationDatabase), Box<dyn std::error::Error>> {
+	use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
-	use std::sync::Arc;
+	use reinhardt_db::orm::DatabaseConnectionLease;
 
 	// Start PostgreSQL container
 	let (container, _pool, _port, url) = postgres_container().await;
 
 	// Connect to database
-	let connection = DatabaseConnection::connect_postgres(&url)
+	let owner = BackendsConnection::connect_postgres(&url)
 		.await
 		.map_err(|e| format!("Failed to connect to PostgreSQL for migrations: {}", e))?;
 
@@ -1386,14 +1396,21 @@ pub async fn postgres_with_migrations_from<P: reinhardt_db::migrations::Migratio
 	let migrations = P::migrations();
 
 	if !migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
+		let mut executor = DatabaseMigrationExecutor::new(owner.clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
 			.map_err(|e| format!("Failed to apply migrations: {}", e))?;
 	}
 
-	Ok((container, Arc::new(connection)))
+	let connection_lease = DatabaseConnectionLease::register(owner)?;
+	Ok((
+		container,
+		MigrationDatabase {
+			connection: connection_lease.handle(),
+			_connection_lease: connection_lease,
+		},
+	))
 }
 
 /// Fixture: MySQL container (base fixture)
@@ -1539,7 +1556,7 @@ pub async fn mysql_container() -> (
 /// * `P` - A type implementing `MigrationProvider`
 ///
 /// # Returns
-/// * `(ContainerAsync<GenericImage>, Arc<DatabaseConnection>)` - Container and database connection
+/// * `(ContainerAsync<GenericImage>, MigrationDatabase)` - Container and guarded ORM connection
 ///
 /// # Example
 ///
@@ -1566,19 +1583,17 @@ pub async fn mysql_container() -> (
 /// # }
 /// ```
 #[cfg(feature = "testcontainers")]
-pub async fn mysql_with_migrations_from<P: reinhardt_db::migrations::MigrationProvider>() -> (
-	ContainerAsync<GenericImage>,
-	std::sync::Arc<reinhardt_db::DatabaseConnection>,
-) {
-	use reinhardt_db::DatabaseConnection;
+pub async fn mysql_with_migrations_from<P: reinhardt_db::migrations::MigrationProvider>()
+-> (ContainerAsync<GenericImage>, MigrationDatabase) {
+	use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
-	use std::sync::Arc;
+	use reinhardt_db::orm::DatabaseConnectionLease;
 
 	// Start MySQL container
 	let (container, _pool, _port, url) = mysql_container().await;
 
 	// Connect to database
-	let connection = DatabaseConnection::connect_mysql(&url)
+	let owner = BackendsConnection::connect_mysql(&url)
 		.await
 		.expect("Failed to connect to MySQL for migrations");
 
@@ -1586,14 +1601,22 @@ pub async fn mysql_with_migrations_from<P: reinhardt_db::migrations::MigrationPr
 	let migrations = P::migrations();
 
 	if !migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
+		let mut executor = DatabaseMigrationExecutor::new(owner.clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
 			.expect("Failed to apply migrations");
 	}
 
-	(container, Arc::new(connection))
+	let connection_lease =
+		DatabaseConnectionLease::register(owner).expect("Failed to register connection");
+	(
+		container,
+		MigrationDatabase {
+			connection: connection_lease.handle(),
+			_connection_lease: connection_lease,
+		},
+	)
 }
 
 /// SQLite in-memory database with migrations from a MigrationProvider
@@ -1605,7 +1628,7 @@ pub async fn mysql_with_migrations_from<P: reinhardt_db::migrations::MigrationPr
 /// * `P` - A type implementing `MigrationProvider`
 ///
 /// # Returns
-/// * `Arc<DatabaseConnection>` - Database connection (no container needed for SQLite)
+/// * `MigrationDatabase` - Guarded ORM connection (no container needed for SQLite)
 ///
 /// # Example
 ///
@@ -1633,15 +1656,15 @@ pub async fn mysql_with_migrations_from<P: reinhardt_db::migrations::MigrationPr
 /// ```
 #[cfg(feature = "testcontainers")]
 pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationProvider>()
--> std::sync::Arc<reinhardt_db::DatabaseConnection> {
-	use reinhardt_db::DatabaseConnection;
+-> MigrationDatabase {
+	use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
-	use std::sync::Arc;
+	use reinhardt_db::orm::DatabaseConnectionLease;
 
 	let database_url = "sqlite::memory:";
 
 	// Connect to database
-	let connection = DatabaseConnection::connect_sqlite(database_url)
+	let owner = BackendsConnection::connect_sqlite(database_url)
 		.await
 		.expect("Failed to connect to SQLite for migrations");
 
@@ -1649,14 +1672,19 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 	let migrations = P::migrations();
 
 	if !migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
+		let mut executor = DatabaseMigrationExecutor::new(owner.clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
 			.expect("Failed to apply migrations");
 	}
 
-	Arc::new(connection)
+	let connection_lease =
+		DatabaseConnectionLease::register(owner).expect("Failed to register connection");
+	MigrationDatabase {
+		connection: connection_lease.handle(),
+		_connection_lease: connection_lease,
+	}
 }
 
 /// Helper function for creating a PostgreSQL container with migrations
@@ -1691,24 +1719,18 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 #[cfg(feature = "testcontainers")]
 pub async fn postgres_with_migrations_from_dir(
 	migrations_dir: impl AsRef<std::path::Path>,
-) -> Result<
-	(
-		ContainerAsync<GenericImage>,
-		std::sync::Arc<reinhardt_db::DatabaseConnection>,
-	),
-	Box<dyn std::error::Error>,
-> {
-	use reinhardt_db::DatabaseConnection;
+) -> Result<(ContainerAsync<GenericImage>, MigrationDatabase), Box<dyn std::error::Error>> {
+	use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::migrations::FilesystemSource;
 	use reinhardt_db::migrations::MigrationSource;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
-	use std::sync::Arc;
+	use reinhardt_db::orm::DatabaseConnectionLease;
 
 	// Start PostgreSQL container
 	let (container, _pool, _port, url) = postgres_container().await;
 
 	// Connect to database
-	let connection = DatabaseConnection::connect_postgres(&url)
+	let owner = BackendsConnection::connect_postgres(&url)
 		.await
 		.map_err(|e| format!("Failed to connect to PostgreSQL for migrations: {}", e))?;
 
@@ -1720,7 +1742,7 @@ pub async fn postgres_with_migrations_from_dir(
 		.map_err(|e| format!("Failed to load migrations from filesystem: {}", e))?;
 
 	if !migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.inner().clone());
+		let mut executor = DatabaseMigrationExecutor::new(owner.clone());
 		executor
 			.apply_migrations(&migrations)
 			.await
@@ -1733,7 +1755,14 @@ pub async fn postgres_with_migrations_from_dir(
 		.await
 		.map_err(|e| format!("Failed to initialize ORM global state: {}", e))?;
 
-	Ok((container, Arc::new(connection)))
+	let connection_lease = DatabaseConnectionLease::register(owner)?;
+	Ok((
+		container,
+		MigrationDatabase {
+			connection: connection_lease.handle(),
+			_connection_lease: connection_lease,
+		},
+	))
 }
 
 // ============================================================================

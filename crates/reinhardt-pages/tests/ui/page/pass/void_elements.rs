@@ -7,6 +7,7 @@ fn main() {
 	let _input = page!(|| {
 		input {
 			class: "text-input",
+			aria_label: "Text input",
 		}
 	});
 

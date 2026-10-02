@@ -27,6 +27,91 @@
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
+/// A PostgreSQL-only annotation retained outside the portable ORM expression tree.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackendAnnotation {
+	label: String,
+	value: BackendAnnotationValue,
+}
+
+/// PostgreSQL-specific projection values.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BackendAnnotationValue {
+	/// PostgreSQL array aggregation.
+	ArrayAgg(ArrayAgg<serde_json::Value>),
+	/// PostgreSQL string aggregation.
+	StringAgg(StringAgg),
+	/// PostgreSQL JSONB aggregation.
+	JsonbAgg(JsonbAgg),
+	/// PostgreSQL JSONB object construction.
+	JsonbBuildObject(JsonbBuildObject),
+	/// PostgreSQL full-text rank.
+	TsRank(TsRank),
+}
+
+impl BackendAnnotation {
+	/// Creates a PostgreSQL annotation after validating its label.
+	pub fn new(
+		label: impl Into<String>,
+		value: BackendAnnotationValue,
+	) -> reinhardt_core::exception::Result<Self> {
+		let label = label.into();
+		crate::orm::query::validate_annotation_label(&label)?;
+		Ok(Self { label, value })
+	}
+
+	/// Returns the validated projection label.
+	pub(crate) fn label(&self) -> &str {
+		&self.label
+	}
+
+	/// Returns whether this projection changes the cardinality of the query.
+	pub(crate) fn is_aggregate(&self) -> bool {
+		matches!(
+			self.value,
+			BackendAnnotationValue::ArrayAgg(_)
+				| BackendAnnotationValue::StringAgg(_)
+				| BackendAnnotationValue::JsonbAgg(_)
+		)
+	}
+
+	/// Renders this projection with a field mapper for the queryset root alias.
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String + Copy,
+	{
+		let expression = match &self.value {
+			BackendAnnotationValue::ArrayAgg(value) => value.to_sql_with_field_mapper(map_field),
+			BackendAnnotationValue::StringAgg(value) => value.to_sql_with_field_mapper(map_field),
+			BackendAnnotationValue::JsonbAgg(value) => value.to_sql_with_field_mapper(map_field),
+			BackendAnnotationValue::JsonbBuildObject(value) => {
+				value.to_sql_with_field_mapper(map_field)
+			}
+			BackendAnnotationValue::TsRank(value) => value.to_sql_with_field_mapper(map_field),
+		};
+		format!(
+			"{expression} AS {}",
+			crate::orm::query::quote_identifier(&self.label)
+		)
+	}
+}
+
+fn mapped_ordering_sql<F>(ordering: &[String], mapper: F) -> String
+where
+	F: Fn(&str) -> String,
+{
+	let mut mapped_orderings = Vec::with_capacity(ordering.len());
+	for ordering in ordering {
+		let field_end = ordering
+			.char_indices()
+			.find_map(|(index, character)| character.is_whitespace().then_some(index))
+			.unwrap_or(ordering.len());
+		let (field, suffix) = ordering.split_at(field_end);
+		mapped_orderings.push(format!("{}{}", mapper(field), suffix));
+	}
+	mapped_orderings.join(", ")
+}
+
 /// PostgreSQL ARRAY_AGG aggregation function
 ///
 /// Aggregates values into a PostgreSQL array.
@@ -120,14 +205,25 @@ impl<T> ArrayAgg<T> {
 		sql
 	}
 
-	/// Apply a transformation to every field-bearing argument.
-	pub fn map_fields(&mut self, mut map: impl FnMut(&mut String)) {
-		map(&mut self.field);
-		if let Some(ordering) = &mut self.ordering {
-			for field in ordering {
-				map(field);
-			}
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String,
+	{
+		let mut sql = String::from("ARRAY_AGG(");
+
+		if self.distinct {
+			sql.push_str("DISTINCT ");
 		}
+
+		sql.push_str(&map_field(&self.field));
+
+		if let Some(ordering) = &self.ordering {
+			sql.push_str(" ORDER BY ");
+			sql.push_str(&mapped_ordering_sql(ordering, &map_field));
+		}
+
+		sql.push(')');
+		sql
 	}
 }
 
@@ -199,11 +295,16 @@ impl JsonbBuildObject {
 		sql
 	}
 
-	/// Apply a transformation to every value field in the object.
-	pub fn map_fields(&mut self, mut map: impl FnMut(&mut String)) {
-		for (_, field) in &mut self.pairs {
-			map(field);
-		}
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String,
+	{
+		let parts: Vec<_> = self
+			.pairs
+			.iter()
+			.map(|(key, field)| format!("'{}', {}", key, map_field(field)))
+			.collect();
+		format!("jsonb_build_object({})", parts.join(", "))
 	}
 }
 
@@ -389,14 +490,28 @@ impl StringAgg {
 		sql
 	}
 
-	/// Apply a transformation to every field-bearing argument.
-	pub fn map_fields(&mut self, mut map: impl FnMut(&mut String)) {
-		map(&mut self.field);
-		if let Some(ordering) = &mut self.ordering {
-			for field in ordering {
-				map(field);
-			}
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String,
+	{
+		let mut sql = String::from("STRING_AGG(");
+
+		if self.distinct {
+			sql.push_str("DISTINCT ");
 		}
+
+		sql.push_str(&map_field(&self.field));
+		sql.push_str(", '");
+		sql.push_str(&self.separator);
+		sql.push('\'');
+
+		if let Some(ordering) = &self.ordering {
+			sql.push_str(" ORDER BY ");
+			sql.push_str(&mapped_ordering_sql(ordering, &map_field));
+		}
+
+		sql.push(')');
+		sql
 	}
 }
 
@@ -491,14 +606,25 @@ impl JsonbAgg {
 		sql
 	}
 
-	/// Apply a transformation to every field-bearing argument.
-	pub fn map_fields(&mut self, mut map: impl FnMut(&mut String)) {
-		map(&mut self.expression);
-		if let Some(ordering) = &mut self.ordering {
-			for field in ordering {
-				map(field);
-			}
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String,
+	{
+		let mut sql = String::from("JSONB_AGG(");
+
+		if self.distinct {
+			sql.push_str("DISTINCT ");
 		}
+
+		sql.push_str(&map_field(&self.expression));
+
+		if let Some(ordering) = &self.ordering {
+			sql.push_str(" ORDER BY ");
+			sql.push_str(&mapped_ordering_sql(ordering, &map_field));
+		}
+
+		sql.push(')');
+		sql
 	}
 }
 
@@ -614,9 +740,17 @@ impl TsRank {
 		}
 	}
 
-	/// Apply a transformation to the document vector field.
-	pub fn map_fields(&mut self, mut map: impl FnMut(&mut String)) {
-		map(&mut self.vector_field);
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String,
+	{
+		let tsquery = format!("to_tsquery('{}', '{}')", self.config, self.query);
+		let vector_field = map_field(&self.vector_field);
+
+		match self.normalization {
+			Some(norm) => format!("ts_rank({}, {}, {})", vector_field, tsquery, norm),
+			None => format!("ts_rank({}, {})", vector_field, tsquery),
+		}
 	}
 }
 
@@ -673,6 +807,29 @@ impl ArrayOverlap {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt_core::exception::Error;
+
+	#[test]
+	fn backend_annotation_uses_typed_label_validation() {
+		let value = || BackendAnnotationValue::JsonbBuildObject(JsonbBuildObject::new());
+
+		assert!(matches!(
+			BackendAnnotation::new("", value()),
+			Err(Error::Validation(message))
+				if message == "aggregate label must be 1 to 63 ASCII bytes"
+		));
+		assert!(matches!(
+			BackendAnnotation::new("合計", value()),
+			Err(Error::Validation(message))
+				if message == "aggregate label must be 1 to 63 ASCII bytes"
+		));
+		assert!(matches!(
+			BackendAnnotation::new("a".repeat(64), value()),
+			Err(Error::Validation(message))
+				if message == "aggregate label must be 1 to 63 ASCII bytes"
+		));
+		assert!(BackendAnnotation::new("total_1", value()).is_ok());
+	}
 
 	#[test]
 	fn test_array_agg_basic() {

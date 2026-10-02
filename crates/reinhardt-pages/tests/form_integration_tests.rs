@@ -24,6 +24,1149 @@
 use reinhardt_pages::{FieldMetadata, FormComponent, FormMetadata, Widget};
 use std::collections::HashMap;
 
+#[path = "ui/form/model_contract_support.rs"]
+mod model_contract_support;
+
+use model_contract_support::{QuestionCreateForm, QuestionCreateFormField, save_question};
+
+use reinhardt_core::model_form::{
+	ModelFormCleanedPayload, ModelFormFieldDescriptor, ModelFormFieldKind, ModelFormPayload,
+	ModelFormPayloadError, ModelFormPolicy, ModelFormSchema, ModelFormValidatingPayload,
+};
+use reinhardt_core::validators::{ValidationError, ValidationErrors};
+use rstest::rstest;
+
+struct Cluster;
+
+struct ClusterSchema;
+
+const CLUSTER_FIELDS: [ModelFormFieldDescriptor; 2] = [
+	ModelFormFieldDescriptor {
+		name: "name",
+		kind: ModelFormFieldKind::Text {
+			min_length: Some(3),
+			max_length: Some(63),
+			multiline: false,
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: true,
+	},
+	ModelFormFieldDescriptor {
+		name: "api_url",
+		kind: ModelFormFieldKind::Url {
+			min_length: None,
+			max_length: Some(2048),
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: true,
+	},
+];
+
+impl ModelFormSchema for ClusterSchema {
+	type Model = Cluster;
+
+	fn fields() -> &'static [ModelFormFieldDescriptor] {
+		&CLUSTER_FIELDS
+	}
+}
+
+struct ClusterPolicy;
+
+impl ModelFormPolicy for ClusterPolicy {
+	fn allows(field: &str) -> bool {
+		matches!(field, "name" | "api_url")
+	}
+}
+
+#[derive(Debug, Default)]
+struct ClusterPayload {
+	name: Option<String>,
+	api_url: Option<String>,
+}
+
+impl ClusterPayload {
+	fn name(&self) -> Option<&String> {
+		self.name.as_ref()
+	}
+
+	fn api_url(&self) -> Option<&String> {
+		self.api_url.as_ref()
+	}
+}
+
+impl ModelFormPayload<ClusterPolicy> for ClusterPayload {
+	fn supplied_fields(&self) -> Vec<&'static str> {
+		CLUSTER_FIELDS
+			.iter()
+			.filter(|descriptor| self.get_json(descriptor.name).is_some())
+			.map(|descriptor| descriptor.name)
+			.collect()
+	}
+
+	fn forbidden_fields(&self) -> &[&'static str] {
+		&[]
+	}
+
+	fn get_json(&self, field: &str) -> Option<serde_json::Value> {
+		match field {
+			"name" => self.name.clone().map(serde_json::Value::String),
+			"api_url" => self.api_url.clone().map(serde_json::Value::String),
+			_ => None,
+		}
+	}
+
+	fn set_json(
+		&mut self,
+		field: &str,
+		value: serde_json::Value,
+	) -> Result<(), ModelFormPayloadError> {
+		let value =
+			serde_json::from_value(value).map_err(|error| ModelFormPayloadError::InvalidValue {
+				field: field.to_owned(),
+				message: error.to_string(),
+			})?;
+		match field {
+			"name" => self.name = Some(value),
+			"api_url" => self.api_url = Some(value),
+			_ => {
+				return Err(ModelFormPayloadError::UnknownField {
+					field: field.to_owned(),
+				});
+			}
+		}
+		Ok(())
+	}
+}
+
+struct CleanedClusterPayload(ClusterPayload);
+
+impl ModelFormCleanedPayload for CleanedClusterPayload {
+	type Raw = ClusterPayload;
+
+	fn into_raw(self) -> Self::Raw {
+		self.0
+	}
+}
+
+impl ModelFormValidatingPayload for ClusterPayload {
+	type Cleaned = CleanedClusterPayload;
+
+	fn clean_and_validate(self) -> Result<Self::Cleaned, ValidationErrors> {
+		if self.name == self.api_url {
+			let mut errors = ValidationErrors::new();
+			errors.add(
+				"_all",
+				ValidationError::Custom("Name and API URL must differ".to_owned()),
+			);
+			return Err(errors);
+		}
+		Ok(CleanedClusterPayload(self))
+	}
+}
+
+#[rstest]
+fn model_form_validated_snapshot_normalizes_without_mutating_raw_controls() {
+	// Arrange
+	let mut state = ModelFormState::<ClusterSchema, ClusterPolicy>::new();
+	state
+		.set_value("name", serde_json::json!("  cluster  "))
+		.expect("raw name control should be accepted");
+	state
+		.set_value("api_url", serde_json::json!("  https://example.com/api  "))
+		.expect("raw URL control should be accepted");
+
+	// Act
+	let payload = state
+		.build_validated_payload::<ClusterPayload>()
+		.expect("snapshot should validate");
+
+	// Assert
+	assert_eq!(payload.name(), Some(&"cluster".to_owned()));
+	assert_eq!(
+		payload.api_url(),
+		Some(&"https://example.com/api".to_owned())
+	);
+	assert_eq!(state.value("name"), Some(&serde_json::json!("  cluster  ")));
+}
+
+#[rstest]
+fn model_form_validated_snapshot_preserves_invalid_url_for_correction() {
+	// Arrange
+	let mut state = ModelFormState::<ClusterSchema, ClusterPolicy>::new();
+	state
+		.set_value("name", serde_json::json!("cluster"))
+		.expect("name control should be accepted");
+	state
+		.set_value("api_url", serde_json::json!("not a URL"))
+		.expect("raw invalid URL should remain editable");
+
+	// Act
+	let errors = state
+		.build_validated_payload::<ClusterPayload>()
+		.expect_err("invalid URL should reject the submission snapshot");
+
+	// Assert
+	let ordered = errors.ordered_field_errors().collect::<Vec<_>>();
+	assert_eq!(
+		ordered,
+		vec![(
+			"api_url",
+			&[ValidationError::Custom("Enter a valid URL".to_owned())][..],
+		)]
+	);
+	assert_eq!(
+		state.value("api_url"),
+		Some(&serde_json::json!("not a URL"))
+	);
+}
+
+#[rstest]
+fn model_form_validated_snapshot_runs_cross_field_validation_after_normalization() {
+	// Arrange
+	let mut state = ModelFormState::<ClusterSchema, ClusterPolicy>::new();
+	state
+		.set_value("name", serde_json::json!("  https://example.com/api  "))
+		.expect("raw name control should be accepted");
+	state
+		.set_value("api_url", serde_json::json!("https://example.com/api"))
+		.expect("URL control should be accepted");
+
+	// Act
+	let errors = state
+		.build_validated_payload::<ClusterPayload>()
+		.expect_err("equal normalized values should fail cross-field validation");
+
+	// Assert
+	let fields = errors
+		.ordered_field_errors()
+		.map(|(field, _)| field)
+		.collect::<Vec<_>>();
+	assert_eq!(fields, ["_all"]);
+	assert_eq!(
+		state.value("name"),
+		Some(&serde_json::json!("  https://example.com/api  "))
+	);
+}
+
+use reinhardt_pages::{FieldError, form, use_form};
+use reinhardt_pages::{NumberParseErrorKind, form::ModelFormState};
+
+#[test]
+fn named_model_form_routes_contract_and_server_owned_errors() {
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = form! {
+			name: QuestionContractForm,
+			model_form: QuestionCreateForm,
+			server_fn: save_question,
+		};
+		let runtime = use_form(&form).build();
+		let error = reinhardt_pages::ServerFnError::validation_with_message(
+			"Please correct the submitted values",
+			[
+				("title", "Title is already used"),
+				("organization_id", "Organization is required"),
+			],
+		);
+
+		runtime.apply_server_error(&error);
+
+		assert_eq!(
+			runtime
+				.get_field_state(QuestionCreateFormField::Title)
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("Title is already used")
+		);
+		assert_eq!(
+			runtime.form_state().form_error.get(),
+			Some(
+				"Please correct the submitted values\norganization_id: Organization is required"
+					.to_owned()
+			)
+		);
+	});
+}
+
+struct ModelFormQuestion;
+
+struct ModelFormQuestionSchema;
+
+const MODEL_FORM_QUESTION_FIELDS: [ModelFormFieldDescriptor; 2] = [
+	ModelFormFieldDescriptor {
+		name: "title",
+		kind: ModelFormFieldKind::Text {
+			min_length: Some(3),
+			max_length: Some(200),
+			multiline: false,
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "owner_id",
+		kind: ModelFormFieldKind::Integer {
+			min: Some(1),
+			max: None,
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: true,
+		trim: false,
+	},
+];
+
+impl ModelFormSchema for ModelFormQuestionSchema {
+	type Model = ModelFormQuestion;
+
+	fn fields() -> &'static [ModelFormFieldDescriptor] {
+		&MODEL_FORM_QUESTION_FIELDS
+	}
+}
+
+struct ModelFormTitleOnly;
+
+impl ModelFormPolicy for ModelFormTitleOnly {
+	fn allows(field: &str) -> bool {
+		field == "title"
+	}
+}
+
+#[derive(Default)]
+struct ModelFormQuestionData {
+	title: Option<String>,
+}
+
+impl ModelFormPayload<ModelFormTitleOnly> for ModelFormQuestionData {
+	fn supplied_fields(&self) -> Vec<&'static str> {
+		if self.title.is_some() {
+			vec!["title"]
+		} else {
+			Vec::new()
+		}
+	}
+
+	fn forbidden_fields(&self) -> &[&'static str] {
+		&[]
+	}
+
+	fn get_json(&self, field: &str) -> Option<serde_json::Value> {
+		match field {
+			"title" => self.title.clone().map(serde_json::Value::String),
+			_ => None,
+		}
+	}
+
+	fn set_json(
+		&mut self,
+		field: &str,
+		value: serde_json::Value,
+	) -> Result<(), ModelFormPayloadError> {
+		if !ModelFormTitleOnly::allows(field) {
+			return Err(ModelFormPayloadError::ForbiddenField {
+				field: field.to_owned(),
+			});
+		}
+		match field {
+			"title" => {
+				self.title = serde_json::from_value(value).map_err(|error| {
+					ModelFormPayloadError::InvalidValue {
+						field: field.to_owned(),
+						message: error.to_string(),
+					}
+				})?;
+				Ok(())
+			}
+			_ => Err(ModelFormPayloadError::UnknownField {
+				field: field.to_owned(),
+			}),
+		}
+	}
+}
+
+#[test]
+fn model_form_builds_one_policy_safe_payload() {
+	let mut state = ModelFormState::<ModelFormQuestionSchema, ModelFormTitleOnly>::new();
+	state
+		.set_value("title", serde_json::json!("Typed"))
+		.expect("selected title should be accepted");
+
+	let owner_error = state
+		.set_value("owner_id", serde_json::json!("42"))
+		.expect_err("excluded owner identifier must be forbidden");
+	assert_eq!(
+		owner_error,
+		ModelFormPayloadError::ForbiddenField {
+			field: "owner_id".to_owned(),
+		}
+	);
+
+	let payload = state
+		.build_payload::<ModelFormQuestionData>()
+		.expect("selected control values should build one payload");
+	assert_eq!(payload.supplied_fields(), ["title"]);
+	assert_eq!(payload.get_json("title"), Some(serde_json::json!("Typed")));
+	assert_eq!(payload.get_json("owner_id"), None);
+}
+
+#[rstest]
+fn model_form_typed_setter_rejects_a_wrong_supported_primitive_immediately() {
+	// Arrange
+	let mut state = ModelFormState::<ModelFormQuestionSchema, ModelFormTitleOnly>::new();
+
+	// Act
+	let error = state
+		.set_any_value("title", 42_i64)
+		.expect_err("an integer must not be stored for a text descriptor");
+
+	// Assert
+	assert_eq!(
+		error,
+		ModelFormPayloadError::InvalidValue {
+			field: "title".to_owned(),
+			message: "expected a string".to_owned(),
+		}
+	);
+	assert_eq!(state.value("title"), None);
+}
+
+#[rstest]
+fn model_form_payload_conversion_enforces_the_descriptor_minimum_length() {
+	// Arrange
+	let mut state = ModelFormState::<ModelFormQuestionSchema, ModelFormTitleOnly>::new();
+	state
+		.set_value("title", serde_json::json!("no"))
+		.expect("raw short text should remain editable");
+
+	// Act & Assert
+	assert!(matches!(
+		state.build_payload::<ModelFormQuestionData>(),
+		Err(ModelFormPayloadError::InvalidValue { .. })
+	));
+	assert_eq!(state.value("title"), Some(&serde_json::json!("no")));
+	state
+		.set_value("title", serde_json::json!("valid"))
+		.expect("valid raw text should be accepted");
+	state
+		.build_payload::<ModelFormQuestionData>()
+		.expect("text at the inclusive minimum length should build a payload");
+	assert_eq!(state.value("title"), Some(&serde_json::json!("valid")));
+	state
+		.set_value("title", serde_json::json!("  valid  "))
+		.expect("untrimmed raw text should be accepted");
+	let payload = state
+		.build_payload::<ModelFormQuestionData>()
+		.expect("text without declared trimming should build a payload");
+	assert_eq!(
+		payload.get_json("title"),
+		Some(serde_json::json!("  valid  "))
+	);
+}
+
+struct ModelFormNumeric;
+
+struct ModelFormNumericSchema;
+
+const MODEL_FORM_NUMERIC_FIELDS: [ModelFormFieldDescriptor; 3] = [
+	ModelFormFieldDescriptor {
+		name: "bounded",
+		kind: ModelFormFieldKind::Integer {
+			min: Some(-2),
+			max: Some(2),
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "unsigned",
+		kind: ModelFormFieldKind::Integer {
+			min: Some(0),
+			max: None,
+		},
+		required: false,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "ratio",
+		kind: ModelFormFieldKind::Float {
+			min: Some(1.5),
+			max: Some(2.5),
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+];
+
+impl ModelFormSchema for ModelFormNumericSchema {
+	type Model = ModelFormNumeric;
+
+	fn fields() -> &'static [ModelFormFieldDescriptor] {
+		&MODEL_FORM_NUMERIC_FIELDS
+	}
+}
+
+struct ModelFormAllNumericFields;
+
+impl ModelFormPolicy for ModelFormAllNumericFields {
+	fn allows(field: &str) -> bool {
+		matches!(field, "bounded" | "unsigned" | "ratio")
+	}
+}
+
+#[derive(Default)]
+struct ModelFormNumericData {
+	values: HashMap<&'static str, serde_json::Value>,
+}
+
+impl ModelFormPayload<ModelFormAllNumericFields> for ModelFormNumericData {
+	fn supplied_fields(&self) -> Vec<&'static str> {
+		self.values.keys().copied().collect()
+	}
+
+	fn forbidden_fields(&self) -> &[&'static str] {
+		&[]
+	}
+
+	fn get_json(&self, field: &str) -> Option<serde_json::Value> {
+		self.values.get(field).cloned()
+	}
+
+	fn set_json(
+		&mut self,
+		field: &str,
+		value: serde_json::Value,
+	) -> Result<(), ModelFormPayloadError> {
+		let field = match field {
+			"bounded" => "bounded",
+			"unsigned" => "unsigned",
+			"ratio" => "ratio",
+			_ => {
+				return Err(ModelFormPayloadError::UnknownField {
+					field: field.to_owned(),
+				});
+			}
+		};
+		self.values.insert(field, value);
+		Ok(())
+	}
+}
+
+#[rstest]
+fn model_form_integer_conversion_preserves_signed_and_unsigned_boundaries() {
+	// Arrange
+	let mut state = ModelFormState::<ModelFormNumericSchema, ModelFormAllNumericFields>::new();
+
+	// Act & Assert
+	state
+		.set_value("bounded", serde_json::json!(-2))
+		.expect("raw signed minimum should be accepted");
+	state
+		.build_payload::<ModelFormNumericData>()
+		.expect("inclusive signed minimum should build a payload");
+	assert_eq!(state.value("bounded"), Some(&serde_json::json!(-2)));
+	state
+		.set_value("bounded", serde_json::json!(2))
+		.expect("raw signed maximum should be accepted");
+	state
+		.build_payload::<ModelFormNumericData>()
+		.expect("inclusive signed maximum should build a payload");
+	assert_eq!(state.value("bounded"), Some(&serde_json::json!(2)));
+	state
+		.set_value("bounded", serde_json::json!(-3))
+		.expect("raw out-of-range input should remain editable");
+	assert_eq!(
+		state.value("bounded"),
+		Some(&serde_json::json!(-3)),
+		"an invalid edit must remain available for correction"
+	);
+	assert!(matches!(
+		state.build_payload::<ModelFormNumericData>(),
+		Err(ModelFormPayloadError::InvalidValue { .. })
+	));
+	state
+		.set_value("bounded", serde_json::json!(3))
+		.expect("raw out-of-range input should remain editable");
+	assert!(matches!(
+		state.build_payload::<ModelFormNumericData>(),
+		Err(ModelFormPayloadError::InvalidValue { .. })
+	));
+	state
+		.set_value("bounded", serde_json::json!(u64::MAX))
+		.expect("raw unsigned input should remain editable");
+	assert!(matches!(
+		state.build_payload::<ModelFormNumericData>(),
+		Err(ModelFormPayloadError::InvalidValue { .. })
+	));
+	state
+		.set_value("bounded", serde_json::json!(0))
+		.expect("valid signed input should replace the rejected snapshot");
+
+	let above_i64_max = i64::MAX as u64 + 1;
+	state
+		.set_value("unsigned", serde_json::json!(above_i64_max))
+		.expect("an unsigned JSON integer above i64::MAX should be accepted");
+	assert_eq!(
+		state.value("unsigned"),
+		Some(&serde_json::json!(above_i64_max))
+	);
+	state
+		.set_value("unsigned", serde_json::json!(u64::MAX.to_string()))
+		.expect("an unsigned integer string above i64::MAX should be accepted");
+	let payload = state
+		.build_payload::<ModelFormNumericData>()
+		.expect("signed and unsigned integer values should build one payload");
+	assert_eq!(
+		payload.get_json("unsigned"),
+		Some(serde_json::json!(u64::MAX))
+	);
+}
+
+struct ModelFormBindingSchema;
+
+const MODEL_FORM_BINDING_FIELDS: [ModelFormFieldDescriptor; 6] = [
+	ModelFormFieldDescriptor {
+		name: "email",
+		kind: ModelFormFieldKind::Email {
+			min_length: None,
+			max_length: None,
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: true,
+	},
+	ModelFormFieldDescriptor {
+		name: "count",
+		kind: ModelFormFieldKind::Integer {
+			min: Some(0),
+			max: Some(10),
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "ratio",
+		kind: ModelFormFieldKind::Float {
+			min: Some(0.0),
+			max: Some(1.0),
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "private_note",
+		kind: ModelFormFieldKind::Text {
+			min_length: None,
+			max_length: None,
+			multiline: false,
+		},
+		required: false,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "document",
+		kind: ModelFormFieldKind::File,
+		required: false,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "thumbnail",
+		kind: ModelFormFieldKind::Image,
+		required: false,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+];
+
+impl ModelFormSchema for ModelFormBindingSchema {
+	type Model = ();
+
+	fn fields() -> &'static [ModelFormFieldDescriptor] {
+		&MODEL_FORM_BINDING_FIELDS
+	}
+}
+
+struct ModelFormBindingPolicy;
+
+impl ModelFormPolicy for ModelFormBindingPolicy {
+	fn allows(field: &str) -> bool {
+		field != "private_note"
+	}
+}
+
+#[test]
+fn model_form_binding_setters_keep_raw_text_and_reject_invalid_numeric_edits() {
+	let mut state = ModelFormState::<ModelFormBindingSchema, ModelFormBindingPolicy>::new();
+
+	state
+		.set_binding_text("email", "partial@".to_owned())
+		.expect("text bindings must retain incomplete email input for payload validation");
+	assert_eq!(state.value("email"), Some(&serde_json::json!("partial@")));
+	state
+		.set_value("email", serde_json::json!("partial@"))
+		.expect("raw invalid email should remain editable until submission");
+	assert_eq!(
+		state.validate_values(),
+		Err(ModelFormPayloadError::InvalidValue {
+			field: "email".to_owned(),
+			message: "Enter a valid email address".to_owned(),
+		})
+	);
+	assert_eq!(state.value("email"), Some(&serde_json::json!("partial@")));
+
+	state
+		.set_value("count", serde_json::json!(7))
+		.expect("the initial number must be valid");
+	let error = state
+		.set_binding_number("count", "1e")
+		.expect_err("incomplete numeric input must be rejected");
+	assert_eq!(error.kind(), NumberParseErrorKind::Incomplete);
+	assert_eq!(state.value("count"), Some(&serde_json::json!(7)));
+
+	let error = state
+		.set_binding_number("count", "11")
+		.expect_err("out-of-range numeric input must be rejected");
+	assert_eq!(error.kind(), NumberParseErrorKind::OutOfRange);
+	assert_eq!(state.value("count"), Some(&serde_json::json!(7)));
+
+	let error = state
+		.set_binding_number("count", "")
+		.expect_err("clearing a required numeric input must be rejected");
+	assert_eq!(error.kind(), NumberParseErrorKind::Empty);
+	assert_eq!(state.value("count"), Some(&serde_json::json!(7)));
+}
+
+#[test]
+fn model_form_binding_validation_rechecks_raw_text_values() {
+	let mut state = ModelFormState::<ModelFormBindingSchema, ModelFormBindingPolicy>::new();
+	state
+		.set_binding_text("email", " partial@".to_owned())
+		.expect("controlled text should retain the editor value");
+	state
+		.set_value("count", serde_json::json!(7))
+		.expect("the required integer should be valid");
+	state
+		.set_value("ratio", serde_json::json!(0.5))
+		.expect("the required float should be valid");
+
+	assert_eq!(
+		state.validate_values(),
+		Err(ModelFormPayloadError::InvalidValue {
+			field: "email".to_owned(),
+			message: "Enter a valid email address".to_owned(),
+		})
+	);
+
+	state
+		.set_binding_text("email", " user@example.com ".to_owned())
+		.expect("a valid email should replace the raw editor value");
+	assert_eq!(
+		state.value("email"),
+		Some(&serde_json::json!(" user@example.com "))
+	);
+	let submission = state
+		.validated_for_submission()
+		.expect("valid controlled text should produce a submission snapshot");
+	assert_eq!(
+		submission.value("email"),
+		Some(&serde_json::json!("user@example.com"))
+	);
+	state
+		.validate_values()
+		.expect("validated controlled values should pass submission validation");
+}
+
+#[test]
+fn model_form_binding_text_rejects_forbidden_unknown_file_and_image_fields() {
+	let mut state = ModelFormState::<ModelFormBindingSchema, ModelFormBindingPolicy>::new();
+
+	assert_eq!(
+		state.set_binding_text("private_note", "value".to_owned()),
+		Err(ModelFormPayloadError::ForbiddenField {
+			field: "private_note".to_owned(),
+		})
+	);
+	assert_eq!(
+		state.set_binding_text("missing", "value".to_owned()),
+		Err(ModelFormPayloadError::UnknownField {
+			field: "missing".to_owned(),
+		})
+	);
+	for field in ["document", "thumbnail"] {
+		assert_eq!(
+			state.set_binding_text(field, "value".to_owned()),
+			Err(ModelFormPayloadError::InvalidValue {
+				field: field.to_owned(),
+				message: "file fields must be set with set_file".to_owned(),
+			})
+		);
+	}
+}
+
+#[rstest]
+fn model_form_float_conversion_enforces_descriptor_bounds() {
+	// Arrange
+	let mut state = ModelFormState::<ModelFormNumericSchema, ModelFormAllNumericFields>::new();
+
+	// Act & Assert
+	state
+		.set_value("ratio", serde_json::json!(1.4))
+		.expect("raw out-of-range float should remain editable");
+	assert!(matches!(
+		state.build_payload::<ModelFormNumericData>(),
+		Err(ModelFormPayloadError::InvalidValue { .. })
+	));
+	state
+		.set_value("ratio", serde_json::json!(2.5))
+		.expect("raw float maximum should be accepted");
+	state
+		.build_payload::<ModelFormNumericData>()
+		.expect("the inclusive float maximum should build a payload");
+	state
+		.set_value("ratio", serde_json::json!(2.6))
+		.expect("raw out-of-range float should remain editable");
+	assert!(matches!(
+		state.build_payload::<ModelFormNumericData>(),
+		Err(ModelFormPayloadError::InvalidValue { .. })
+	));
+}
+
+#[rstest]
+#[case::raw_control(false)]
+#[case::numeric_binding(true)]
+fn model_form_clearing_optional_control_removes_previous_payload_value(#[case] binding: bool) {
+	// Arrange
+	let mut state = ModelFormState::<ModelFormNumericSchema, ModelFormAllNumericFields>::new();
+	state
+		.set_value("unsigned", serde_json::json!(42_u64))
+		.expect("optional integer should accept a value");
+	if binding {
+		state
+			.set_binding_number("unsigned", "")
+			.expect("empty optional binding should unset the control");
+	} else {
+		state
+			.set_value("unsigned", serde_json::json!(""))
+			.expect("raw empty optional input should remain editable");
+	}
+
+	// Act
+	let payload = state
+		.build_payload::<ModelFormNumericData>()
+		.expect("cleared optional input should build a payload");
+
+	// Assert
+	let expected_value = (!binding).then(|| serde_json::json!(""));
+	assert_eq!(state.value("unsigned"), expected_value.as_ref());
+	assert_eq!(payload.get_json("unsigned"), None);
+	assert!(payload.supplied_fields().is_empty());
+}
+
+struct ModelFormEmptyValues;
+
+struct ModelFormEmptyValuesSchema;
+
+const MODEL_FORM_EMPTY_VALUE_FIELDS: [ModelFormFieldDescriptor; 3] = [
+	ModelFormFieldDescriptor {
+		name: "nullable_note",
+		kind: ModelFormFieldKind::Text {
+			min_length: None,
+			max_length: Some(200),
+			multiline: false,
+		},
+		required: false,
+		has_default: false,
+		nullable: true,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "defaulted_label",
+		kind: ModelFormFieldKind::Text {
+			min_length: None,
+			max_length: Some(200),
+			multiline: false,
+		},
+		required: false,
+		has_default: true,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "blank_label",
+		kind: ModelFormFieldKind::Text {
+			min_length: None,
+			max_length: Some(200),
+			multiline: false,
+		},
+		required: false,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+];
+
+impl ModelFormSchema for ModelFormEmptyValuesSchema {
+	type Model = ModelFormEmptyValues;
+
+	fn fields() -> &'static [ModelFormFieldDescriptor] {
+		&MODEL_FORM_EMPTY_VALUE_FIELDS
+	}
+}
+
+struct ModelFormAllEmptyValueFields;
+
+impl ModelFormPolicy for ModelFormAllEmptyValueFields {
+	fn allows(field: &str) -> bool {
+		matches!(field, "nullable_note" | "defaulted_label" | "blank_label")
+	}
+}
+
+#[derive(Default)]
+struct ModelFormEmptyValueData {
+	values: HashMap<&'static str, serde_json::Value>,
+}
+
+impl ModelFormPayload<ModelFormAllEmptyValueFields> for ModelFormEmptyValueData {
+	fn supplied_fields(&self) -> Vec<&'static str> {
+		MODEL_FORM_EMPTY_VALUE_FIELDS
+			.iter()
+			.filter(|descriptor| self.values.contains_key(descriptor.name))
+			.map(|descriptor| descriptor.name)
+			.collect()
+	}
+
+	fn forbidden_fields(&self) -> &[&'static str] {
+		&[]
+	}
+
+	fn get_json(&self, field: &str) -> Option<serde_json::Value> {
+		self.values.get(field).cloned()
+	}
+
+	fn set_json(
+		&mut self,
+		field: &str,
+		value: serde_json::Value,
+	) -> Result<(), ModelFormPayloadError> {
+		let field = MODEL_FORM_EMPTY_VALUE_FIELDS
+			.iter()
+			.find(|descriptor| descriptor.name == field)
+			.map(|descriptor| descriptor.name)
+			.ok_or_else(|| ModelFormPayloadError::UnknownField {
+				field: field.to_owned(),
+			})?;
+		self.values.insert(field, value);
+		Ok(())
+	}
+}
+
+#[rstest]
+fn model_form_empty_nullable_control_clears_while_other_optional_inputs_are_absent() {
+	// Arrange
+	let mut state =
+		ModelFormState::<ModelFormEmptyValuesSchema, ModelFormAllEmptyValueFields>::new();
+	for field in ["nullable_note", "defaulted_label", "blank_label"] {
+		state
+			.set_value(field, serde_json::json!("present"))
+			.expect("initial text value should be accepted");
+		state
+			.set_value(field, serde_json::json!(""))
+			.expect("empty optional control should be accepted");
+	}
+
+	// Act
+	let payload = state
+		.build_payload::<ModelFormEmptyValueData>()
+		.expect("empty controls should assemble a typed payload");
+
+	// Assert
+	assert_eq!(state.value("nullable_note"), Some(&serde_json::json!("")));
+	assert_eq!(state.value("defaulted_label"), Some(&serde_json::json!("")));
+	assert_eq!(
+		state.value("blank_label"),
+		Some(&serde_json::Value::String(String::new()))
+	);
+	assert_eq!(payload.supplied_fields(), ["nullable_note", "blank_label"]);
+	assert_eq!(
+		payload.get_json("nullable_note"),
+		Some(serde_json::Value::Null)
+	);
+	assert_eq!(
+		payload.get_json("blank_label"),
+		Some(serde_json::Value::String(String::new()))
+	);
+}
+
+struct ModelFormDateTimes;
+
+struct ModelFormDateTimesSchema;
+
+const MODEL_FORM_DATETIME_FIELDS: [ModelFormFieldDescriptor; 2] = [
+	ModelFormFieldDescriptor {
+		name: "aware_at",
+		kind: ModelFormFieldKind::DateTime,
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+	ModelFormFieldDescriptor {
+		name: "naive_at",
+		kind: ModelFormFieldKind::NaiveDateTime,
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	},
+];
+
+impl ModelFormSchema for ModelFormDateTimesSchema {
+	type Model = ModelFormDateTimes;
+
+	fn fields() -> &'static [ModelFormFieldDescriptor] {
+		&MODEL_FORM_DATETIME_FIELDS
+	}
+}
+
+struct ModelFormAllDateTimeFields;
+
+impl ModelFormPolicy for ModelFormAllDateTimeFields {
+	fn allows(field: &str) -> bool {
+		matches!(field, "aware_at" | "naive_at")
+	}
+}
+
+#[derive(Default)]
+struct ModelFormDateTimeData {
+	values: HashMap<&'static str, serde_json::Value>,
+}
+
+impl ModelFormPayload<ModelFormAllDateTimeFields> for ModelFormDateTimeData {
+	fn supplied_fields(&self) -> Vec<&'static str> {
+		MODEL_FORM_DATETIME_FIELDS
+			.iter()
+			.filter(|descriptor| self.values.contains_key(descriptor.name))
+			.map(|descriptor| descriptor.name)
+			.collect()
+	}
+
+	fn forbidden_fields(&self) -> &[&'static str] {
+		&[]
+	}
+
+	fn get_json(&self, field: &str) -> Option<serde_json::Value> {
+		self.values.get(field).cloned()
+	}
+
+	fn set_json(
+		&mut self,
+		field: &str,
+		value: serde_json::Value,
+	) -> Result<(), ModelFormPayloadError> {
+		let field = MODEL_FORM_DATETIME_FIELDS
+			.iter()
+			.find(|descriptor| descriptor.name == field)
+			.map(|descriptor| descriptor.name)
+			.ok_or_else(|| ModelFormPayloadError::UnknownField {
+				field: field.to_owned(),
+			})?;
+		self.values.insert(field, value);
+		Ok(())
+	}
+}
+
+#[rstest]
+fn model_form_datetime_local_values_normalize_for_aware_and_naive_payloads() {
+	// Arrange
+	let mut state = ModelFormState::<ModelFormDateTimesSchema, ModelFormAllDateTimeFields>::new();
+	state
+		.set_value("aware_at", serde_json::json!("2026-07-25T14:30"))
+		.expect("browser local datetime should map to the documented UTC convention");
+	state
+		.set_value("naive_at", serde_json::json!("2026-07-25T14:30"))
+		.expect("browser local datetime should map to a naive ISO value");
+
+	// Act
+	let payload = state
+		.build_payload::<ModelFormDateTimeData>()
+		.expect("normalized datetimes should build a payload");
+
+	// Assert
+	assert_eq!(
+		state.value("aware_at"),
+		Some(&serde_json::json!("2026-07-25T14:30"))
+	);
+	assert_eq!(
+		state.value("naive_at"),
+		Some(&serde_json::json!("2026-07-25T14:30"))
+	);
+	assert_eq!(
+		payload.get_json("aware_at"),
+		Some(serde_json::json!("2026-07-25T14:30:00Z"))
+	);
+	assert_eq!(
+		payload.get_json("naive_at"),
+		Some(serde_json::json!("2026-07-25T14:30:00"))
+	);
+}
+
 // ============================================================================
 // Category 1: Form Creation and Metadata (8 tests)
 // ============================================================================

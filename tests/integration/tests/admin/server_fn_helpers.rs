@@ -4,30 +4,90 @@
 //! and a permission-granting ModelAdmin for testing server functions.
 
 use reinhardt_admin::core::{
-	AdminDatabase, AdminDatabaseKey, AdminSite, AdminSiteKey, AdminUser, ModelAdmin,
+	AdminDatabase, AdminDatabaseKey, AdminError, AdminQuery, AdminRequestContext, AdminSite,
+	AdminSiteKey, AdminUser, ListColumn, ModelAdmin,
 };
 use reinhardt_admin::server::{AdminAuthenticatedUser, AdminDefaultUser};
+use reinhardt_core::reactive::ReactiveScope;
+use reinhardt_db::associations::ForeignKeyField;
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
 use reinhardt_db::orm::Filter;
-use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
-use reinhardt_di::{Depends, InjectionContext, SingletonScope};
+use reinhardt_db::orm::connection::{DatabaseConnection, DatabaseConnectionLease};
+use reinhardt_di::{InjectionContext, KeyedDepends, SingletonScope};
 use reinhardt_http::AuthState;
+use reinhardt_macros::model;
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_query::prelude::{
-	Alias, ColumnDef, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	Alias, ColumnDef, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
 use reinhardt_test::fixtures::shared_postgres::shared_db_pool;
 use reinhardt_urls::routers::ServerRouter;
 use rstest::*;
+use serde::{Deserialize, Serialize};
 use sqlx::Executor;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, PoisonError};
 use uuid::Uuid;
 
-pub(super) type AdminSiteDepends = Depends<AdminSiteKey, AdminSite>;
-pub(super) type AdminDatabaseDepends = Depends<AdminDatabaseKey, AdminDatabase>;
-pub(super) type ServerFnContext = (AdminSiteDepends, AdminDatabaseDepends);
-pub(super) type UuidPkContext = (AdminSiteDepends, AdminDatabaseDepends, sqlx::PgPool);
+pub(super) type AdminSiteDepends = KeyedDepends<AdminSiteKey, AdminSite>;
+pub(super) type AdminDatabaseDepends = KeyedDepends<AdminDatabaseKey, AdminDatabase>;
+pub(super) type ServerFnContext = (
+	AdminSiteDepends,
+	AdminDatabaseDepends,
+	DatabaseConnectionLease,
+);
+pub(super) type UuidPkContext = (
+	AdminSiteDepends,
+	AdminDatabaseDepends,
+	sqlx::PgPool,
+	DatabaseConnectionLease,
+);
+pub(super) type StringPkContext = (
+	AdminSiteDepends,
+	AdminDatabaseDepends,
+	sqlx::PgPool,
+	DatabaseConnectionLease,
+	StringPkModelRegistryGuard,
+);
+
+pub(super) struct StringPkModelRegistryGuard;
+
+impl Drop for StringPkModelRegistryGuard {
+	fn drop(&mut self) {
+		reinhardt_db::migrations::global_registry().remove_model("test", "StringPkModel");
+	}
+}
+
+pub(super) const ADMIN_TO_FIELD_SOURCE_MODEL_NAME: &str = "AdminListSelectRelatedToFieldSource";
+
+#[model(
+	app_label = "admin_list_select_related_to_field_5992",
+	table_name = "admin_list_select_related_to_field_targets_5992"
+)]
+#[derive(Serialize, Deserialize)]
+struct AdminListSelectRelatedToFieldTarget {
+	#[field(primary_key = true)]
+	id: i64,
+	#[field(max_length = 120, unique = true, db_column = "target_slug_column_5992")]
+	slug: String,
+}
+
+#[model(
+	app_label = "admin_list_select_related_to_field_5992",
+	table_name = "admin_list_select_related_to_field_sources_5992"
+)]
+#[derive(Serialize, Deserialize)]
+struct AdminListSelectRelatedToFieldSource {
+	#[field(primary_key = true)]
+	id: i64,
+	#[rel(
+		foreign_key,
+		db_column = "source_target_slug_column_5992",
+		to_field = "slug"
+	)]
+	target: ForeignKeyField<AdminListSelectRelatedToFieldTarget>,
+}
 
 /// Fixed CSRF token value for testing.
 /// Both the request body and the cookie must use this same value.
@@ -48,6 +108,223 @@ pub const TEST_NON_STAFF_USER_UUID: &str = "00000000-0000-0000-0000-000000000003
 /// Test host for E2E requests. Must match across Host and Origin headers
 /// to satisfy AdminOriginGuardMiddleware same-origin validation.
 pub const TEST_HOST: &str = "localhost";
+
+#[model(
+	app_label = "admin_relation_server_fn",
+	table_name = "admin_relation_targets"
+)]
+#[derive(Serialize, Deserialize)]
+struct AdminRelationTargetModel {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 255)]
+	name: String,
+	#[field(max_length = 255)]
+	code: String,
+}
+
+#[model(
+	app_label = "admin_relation_server_fn",
+	table_name = "admin_relation_text_targets"
+)]
+#[derive(Serialize, Deserialize)]
+struct AdminRelationTextTargetModel {
+	#[field(primary_key = true, max_length = 32)]
+	id: String,
+}
+
+#[model(
+	app_label = "admin_relation_server_fn",
+	table_name = "admin_relation_uuid_targets"
+)]
+#[derive(Serialize, Deserialize)]
+struct AdminRelationUuidTargetModel {
+	#[field(primary_key = true)]
+	id: Uuid,
+}
+
+#[model(
+	app_label = "admin_relation_server_fn",
+	table_name = "admin_relation_sources"
+)]
+#[derive(Serialize, Deserialize)]
+struct AdminRelationSourceModel {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 255)]
+	title: String,
+	#[rel(foreign_key, db_column = "target_key")]
+	target: ForeignKeyField<AdminRelationTargetModel>,
+	#[rel(foreign_key, db_column = "reviewer_key")]
+	reviewer: ForeignKeyField<AdminRelationTargetModel>,
+	#[rel(foreign_key, db_column = "text_target_key")]
+	text_target: ForeignKeyField<AdminRelationTextTargetModel>,
+	#[rel(foreign_key, db_column = "uuid_target_key")]
+	uuid_target: ForeignKeyField<AdminRelationUuidTargetModel>,
+	#[rel(foreign_key, db_column = "optional_target_key", null = true)]
+	optional_target: ForeignKeyField<AdminRelationTargetModel>,
+}
+
+struct RelationSourceModelAdmin {
+	allow_view: bool,
+	fields: Vec<&'static str>,
+	readonly_fields: Vec<&'static str>,
+}
+
+impl RelationSourceModelAdmin {
+	fn physical_fields(allow_view: bool) -> Self {
+		Self {
+			allow_view,
+			fields: vec![
+				"id",
+				"title",
+				"target_key",
+				"reviewer_key",
+				"text_target_key",
+				"uuid_target_key",
+				"optional_target_key",
+			],
+			readonly_fields: Vec::new(),
+		}
+	}
+
+	fn logical_fields(readonly_fields: Vec<&'static str>) -> Self {
+		Self {
+			allow_view: true,
+			fields: vec![
+				"id",
+				"title",
+				"target",
+				"reviewer",
+				"text_target",
+				"uuid_target",
+				"optional_target",
+			],
+			readonly_fields,
+		}
+	}
+}
+
+#[async_trait::async_trait]
+impl ModelAdmin for RelationSourceModelAdmin {
+	fn model_name(&self) -> &str {
+		"AdminRelationSourceModel"
+	}
+
+	fn table_name(&self) -> &str {
+		"admin_relation_sources"
+	}
+
+	fn list_display(&self) -> Vec<&str> {
+		vec!["id", "title", "target_key", "reviewer_key"]
+	}
+
+	fn fields(&self) -> Option<Vec<&str>> {
+		Some(self.fields.clone())
+	}
+
+	fn readonly_fields(&self) -> Vec<&str> {
+		self.readonly_fields.clone()
+	}
+
+	fn autocomplete_fields(&self) -> Vec<&str> {
+		vec!["target"]
+	}
+
+	fn raw_id_fields(&self) -> Vec<&str> {
+		vec![
+			"reviewer_key",
+			"text_target",
+			"uuid_target",
+			"optional_target",
+		]
+	}
+
+	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
+		self.allow_view
+	}
+
+	async fn has_add_permission(&self, _user: &dyn AdminUser) -> bool {
+		true
+	}
+
+	async fn has_change_permission(&self, _user: &dyn AdminUser) -> bool {
+		true
+	}
+}
+
+struct RelationExactPkTargetAdmin {
+	model_name: &'static str,
+	table_name: &'static str,
+}
+
+#[async_trait::async_trait]
+impl ModelAdmin for RelationExactPkTargetAdmin {
+	fn model_name(&self) -> &str {
+		self.model_name
+	}
+
+	fn table_name(&self) -> &str {
+		self.table_name
+	}
+
+	fn list_display(&self) -> Vec<&str> {
+		vec!["id"]
+	}
+
+	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
+		true
+	}
+}
+
+struct RelationTargetModelAdmin {
+	allow_view: bool,
+	use_object_label: bool,
+	configure_search_fields: bool,
+}
+
+#[async_trait::async_trait]
+impl ModelAdmin for RelationTargetModelAdmin {
+	fn model_name(&self) -> &str {
+		"AdminRelationTargetModel"
+	}
+
+	fn table_name(&self) -> &str {
+		"admin_relation_targets"
+	}
+
+	fn list_display(&self) -> Vec<&str> {
+		vec!["id", "name", "code"]
+	}
+
+	fn search_fields(&self) -> Vec<&str> {
+		if self.configure_search_fields {
+			vec!["name", "code"]
+		} else {
+			Vec::new()
+		}
+	}
+
+	fn ordering(&self) -> Vec<&str> {
+		vec!["id"]
+	}
+
+	fn object_label(
+		&self,
+		values: &std::collections::HashMap<String, serde_json::Value>,
+	) -> Option<String> {
+		if !self.use_object_label {
+			return None;
+		}
+		let name = values.get("name")?.as_str()?;
+		let code = values.get("code")?.as_str()?;
+		Some(format!("{name} ({code})"))
+	}
+
+	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
+		self.allow_view
+	}
+}
 
 /// Creates a `ServerFnRequest` with staff authentication and CSRF cookie.
 ///
@@ -102,11 +379,11 @@ pub fn make_auth_user() -> AdminAuthenticatedUser {
 }
 
 fn admin_site_dep(site: AdminSite) -> AdminSiteDepends {
-	Depends::from_value(site)
+	KeyedDepends::from_value(site)
 }
 
 fn admin_database_dep(db: AdminDatabase) -> AdminDatabaseDepends {
-	Depends::from_value(db)
+	KeyedDepends::from_value(db)
 }
 
 /// A ModelAdmin implementation that denies all permissions.
@@ -192,8 +469,6 @@ impl ModelAdmin for DenyAllModelAdmin {
 ///
 /// Used for testing that read operations succeed while write operations
 /// (create, update, delete) are denied with 403 Permission denied.
-/// `object_filters` returns `Some(vec![])` so view operations are not
-/// rejected by the object-scope fail-closed check.
 pub struct ViewOnlyModelAdmin {
 	model_name: String,
 	table_name: String,
@@ -267,24 +542,188 @@ impl ModelAdmin for ViewOnlyModelAdmin {
 	async fn has_delete_permission(&self, _user: &dyn AdminUser) -> bool {
 		false
 	}
+}
 
-	fn object_filters(&self, _user: &dyn AdminUser) -> Option<Vec<Filter>> {
-		Some(Vec::new())
+const EDITABLE_METADATA_APP_LABEL: &str = "admin_server_fn_fixture";
+const EDITABLE_METADATA_MODEL_NAME: &str = "TestModel";
+static EDITABLE_METADATA_LEASE_COUNT: Mutex<usize> = Mutex::new(0);
+
+pub(super) struct ModelMetadataGuard;
+
+impl ModelMetadataGuard {
+	pub(super) fn acquire(table_name: &str) -> Self {
+		use reinhardt_db::migrations::FieldType;
+		use reinhardt_db::migrations::model_registry::{
+			FieldMetadata, ModelMetadata, global_registry,
+		};
+
+		let mut lease_count = EDITABLE_METADATA_LEASE_COUNT
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
+		if *lease_count == 0 {
+			let mut metadata = ModelMetadata::new(
+				EDITABLE_METADATA_APP_LABEL,
+				EDITABLE_METADATA_MODEL_NAME,
+				table_name,
+			);
+			metadata.add_field(
+				"id".to_string(),
+				FieldMetadata::new(FieldType::Integer)
+					.with_param("primary_key", "true")
+					.with_param("auto_increment", "true"),
+			);
+			metadata.add_field(
+				"name".to_string(),
+				FieldMetadata::new(FieldType::VarChar(255)),
+			);
+			metadata.add_field(
+				"status".to_string(),
+				FieldMetadata::new(FieldType::VarChar(50)).with_nullable(true),
+			);
+			metadata.add_field(
+				"description".to_string(),
+				FieldMetadata::new(FieldType::Text).with_nullable(true),
+			);
+			metadata.add_field(
+				"created_at".to_string(),
+				FieldMetadata::new(FieldType::TimestampTz).with_nullable(true),
+			);
+			global_registry().register_model(metadata);
+		}
+		*lease_count += 1;
+
+		Self
 	}
 }
 
-/// A ModelAdmin implementation that grants all model and object permissions.
+impl Drop for ModelMetadataGuard {
+	fn drop(&mut self) {
+		let mut lease_count = EDITABLE_METADATA_LEASE_COUNT
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner);
+		if *lease_count == 0 {
+			return;
+		}
+		*lease_count -= 1;
+		if *lease_count == 0 {
+			reinhardt_db::migrations::global_registry()
+				.remove_model(EDITABLE_METADATA_APP_LABEL, EDITABLE_METADATA_MODEL_NAME);
+		}
+	}
+}
+
+#[test]
+fn overlapping_metadata_guards_keep_model_lookup_unambiguous() {
+	// Arrange
+	let first_guard = ModelMetadataGuard::acquire("test_models");
+	let _second_guard = ModelMetadataGuard::acquire("test_models");
+
+	// Act
+	drop(first_guard);
+	let metadata = reinhardt_db::migrations::global_registry()
+		.find_model_by_name(EDITABLE_METADATA_MODEL_NAME)
+		.map(|metadata| (metadata.app_label, metadata.model_name, metadata.table_name));
+
+	// Assert
+	assert_eq!(
+		metadata,
+		Some((
+			EDITABLE_METADATA_APP_LABEL.to_string(),
+			EDITABLE_METADATA_MODEL_NAME.to_string(),
+			"test_models".to_string(),
+		))
+	);
+}
+
+/// A ModelAdmin implementation that grants all permissions.
 ///
-/// Explicitly returns `true` for all permission methods and `Some(vec![])`
-/// from `object_filters` so non-superuser staff can access every record,
-/// matching `ModelAdminConfig` with `allow_all(true)`.
+/// Unlike `ModelAdminConfig` (which inherits the trait's default deny-all behavior),
+/// this implementation explicitly returns `true` for all permission methods.
 pub struct AllPermissionsModelAdmin {
 	model_name: String,
 	table_name: String,
 	pk_field: String,
 	list_display: Vec<String>,
+	list_editable: Vec<String>,
 	list_filter: Vec<String>,
 	search_fields: Vec<String>,
+	list_select_related: Vec<String>,
+	queryset_filters: Vec<Filter>,
+	queryset_error: Option<String>,
+	list_columns: Option<Vec<ListColumn>>,
+	date_hierarchy: Option<String>,
+	computed_values: HashMap<String, serde_json::Value>,
+	computed_errors: HashMap<String, String>,
+	readonly_fields: Vec<String>,
+	_metadata_guard: Option<ModelMetadataGuard>,
+}
+
+/// A ModelAdmin implementation with grouped form fields.
+pub(super) struct FieldsetModelAdmin {
+	include_unknown_field: bool,
+}
+
+impl FieldsetModelAdmin {
+	/// Creates an admin configuration with only registered fieldset fields.
+	pub(super) fn valid() -> Self {
+		Self {
+			include_unknown_field: false,
+		}
+	}
+
+	/// Creates an admin configuration containing an unregistered fieldset field.
+	pub(super) fn with_unknown_field() -> Self {
+		Self {
+			include_unknown_field: true,
+		}
+	}
+}
+
+#[async_trait::async_trait]
+impl ModelAdmin for FieldsetModelAdmin {
+	fn model_name(&self) -> &str {
+		if self.include_unknown_field {
+			"InvalidFieldsetModel"
+		} else {
+			"FieldsetModel"
+		}
+	}
+
+	fn table_name(&self) -> &str {
+		if self.include_unknown_field {
+			"invalid_fieldset_test_models"
+		} else {
+			"fieldset_test_models"
+		}
+	}
+
+	fn fieldsets(&self) -> Option<Vec<reinhardt_admin::core::Fieldset>> {
+		let second_field = if self.include_unknown_field {
+			"unknown_field"
+		} else {
+			"published_at"
+		};
+		Some(vec![
+			reinhardt_admin::core::Fieldset::new(Some("Main"), &["title", "body"]),
+			reinhardt_admin::core::Fieldset::new(Some("Publishing"), &[second_field]).collapsed(),
+		])
+	}
+
+	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
+		true
+	}
+
+	async fn has_add_permission(&self, _user: &dyn AdminUser) -> bool {
+		true
+	}
+
+	async fn has_change_permission(&self, _user: &dyn AdminUser) -> bool {
+		true
+	}
+
+	async fn has_delete_permission(&self, _user: &dyn AdminUser) -> bool {
+		true
+	}
 }
 
 impl AllPermissionsModelAdmin {
@@ -300,21 +739,114 @@ impl AllPermissionsModelAdmin {
 				"status".to_string(),
 				"created_at".to_string(),
 			],
+			list_editable: vec![],
 			list_filter: vec!["status".to_string()],
 			search_fields: vec!["name".to_string(), "description".to_string()],
+			list_select_related: Vec::new(),
+			queryset_filters: Vec::new(),
+			queryset_error: None,
+			list_columns: None,
+			date_hierarchy: None,
+			computed_values: HashMap::new(),
+			computed_errors: HashMap::new(),
+			readonly_fields: vec![],
+			_metadata_guard: None,
 		}
 	}
 
 	/// Creates a new instance configured for a UUID primary key test model.
 	pub fn uuid_pk_model(table_name: &str) -> Self {
-		Self {
-			model_name: "UuidModel".to_string(),
-			table_name: table_name.to_string(),
-			pk_field: "id".to_string(),
-			list_display: vec!["id".to_string(), "name".to_string(), "status".to_string()],
-			list_filter: vec!["status".to_string()],
-			search_fields: vec!["name".to_string()],
-		}
+		let mut admin = Self::test_model(table_name);
+		admin.model_name = "UuidModel".to_string();
+		admin.list_display = vec!["id".to_string(), "name".to_string(), "status".to_string()];
+		admin.search_fields = vec!["name".to_string()];
+		admin
+	}
+
+	/// Creates an admin for the custom `to_field` list relationship test models.
+	pub fn list_select_related_to_field_model() -> Self {
+		let mut admin = Self::test_model("admin_list_select_related_to_field_sources_5992");
+		admin.model_name = ADMIN_TO_FIELD_SOURCE_MODEL_NAME.to_string();
+		admin.list_display = vec!["id".to_string()];
+		admin.list_filter.clear();
+		admin.search_fields.clear();
+		admin.list_select_related = vec!["target".to_string()];
+		admin
+	}
+
+	pub fn list_select_related_to_field_target_model() -> Self {
+		let mut admin = Self::test_model("admin_list_select_related_to_field_targets_5992");
+		admin.model_name = "AdminListSelectRelatedToFieldTarget".to_string();
+		admin.list_display = vec!["id".to_string(), "slug".to_string()];
+		admin.list_filter.clear();
+		admin.search_fields.clear();
+		admin
+	}
+
+	/// Creates a standard model with `name` enabled for inline editing.
+	pub fn editable_test_model(table_name: &str) -> Self {
+		let mut admin = Self::test_model(table_name);
+		admin.list_editable = vec!["name".to_string()];
+		admin._metadata_guard = Some(ModelMetadataGuard::acquire(table_name));
+		admin
+	}
+
+	/// Creates a model with a non-id primary-key field and no inline-editable fields.
+	pub fn custom_pk_readonly_model(table_name: &str) -> Self {
+		let mut admin = Self::test_model(table_name);
+		admin.model_name = "CustomPrimaryKeyModel".to_string();
+		admin.pk_field = "name".to_string();
+		admin.readonly_fields = vec!["status".to_string()];
+		admin
+	}
+
+	/// Creates a new instance configured for a string primary key test model.
+	pub fn string_pk_model(table_name: &str) -> Self {
+		let mut admin = Self::uuid_pk_model(table_name);
+		admin.model_name = "StringPkModel".to_string();
+		admin
+	}
+
+	/// Add an append-only changelist scope for server-function tests.
+	pub fn with_queryset_filter(mut self, filter: Filter) -> Self {
+		self.queryset_filters.push(filter);
+		self
+	}
+
+	/// Configure eager-loaded relationships for server-function tests.
+	pub fn with_list_select_related(mut self, relations: Vec<impl Into<String>>) -> Self {
+		self.list_select_related = relations.into_iter().map(Into::into).collect();
+		self
+	}
+
+	/// Make changelist query customization fail before database access.
+	pub fn with_queryset_error(mut self, error: impl Into<String>) -> Self {
+		self.queryset_error = Some(error.into());
+		self
+	}
+
+	/// Configure owned changelist descriptors for server-function tests.
+	pub fn with_list_columns(mut self, columns: Vec<ListColumn>) -> Self {
+		self.list_columns = Some(columns);
+		self
+	}
+
+	/// Configure date hierarchy metadata for server-function tests.
+	pub fn with_date_hierarchy(mut self, field: impl Into<String>) -> Self {
+		self.date_hierarchy = Some(field.into());
+		self
+	}
+
+	/// Configure a computed changelist value for server-function tests.
+	pub fn with_computed_value(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
+		self.computed_values.insert(key.into(), value);
+		self
+	}
+
+	/// Configure a computed changelist hook failure for server-function tests.
+	pub fn with_computed_error(mut self, key: impl Into<String>, error: impl Into<String>) -> Self {
+		self.computed_errors.insert(key.into(), error.into());
+		self
 	}
 }
 
@@ -336,6 +868,41 @@ impl ModelAdmin for AllPermissionsModelAdmin {
 		self.list_display.iter().map(|s| s.as_str()).collect()
 	}
 
+	fn list_columns(&self) -> Vec<ListColumn> {
+		self.list_columns.clone().unwrap_or_else(|| {
+			self.list_display
+				.iter()
+				.map(|field| ListColumn::Field {
+					field: field.clone(),
+					label: reinhardt_utils::utils_core::text::humanize_field_name(field),
+				})
+				.collect()
+		})
+	}
+
+	fn computed_list_value(
+		&self,
+		key: &str,
+		_row: &HashMap<String, serde_json::Value>,
+	) -> Result<serde_json::Value, AdminError> {
+		if let Some(error) = self.computed_errors.get(key) {
+			return Err(AdminError::TemplateError(error.clone()));
+		}
+
+		self.computed_values
+			.get(key)
+			.cloned()
+			.ok_or_else(|| AdminError::TemplateError(format!("No test computed value for '{key}'")))
+	}
+
+	fn date_hierarchy(&self) -> Option<&str> {
+		self.date_hierarchy.as_deref()
+	}
+
+	fn list_editable(&self) -> Vec<&str> {
+		self.list_editable.iter().map(|s| s.as_str()).collect()
+	}
+
 	fn list_filter(&self) -> Vec<&str> {
 		self.list_filter.iter().map(|s| s.as_str()).collect()
 	}
@@ -347,6 +914,34 @@ impl ModelAdmin for AllPermissionsModelAdmin {
 	fn fields(&self) -> Option<Vec<&str>> {
 		// Return all writable fields (used by validate_mutation_data)
 		Some(vec!["id", "name", "status", "description", "created_at"])
+	}
+
+	fn list_select_related(&self) -> Vec<&str> {
+		self.list_select_related
+			.iter()
+			.map(String::as_str)
+			.collect()
+	}
+
+	async fn get_queryset(
+		&self,
+		_user: &dyn AdminUser,
+		_request: &AdminRequestContext,
+		query: AdminQuery,
+	) -> Result<AdminQuery, AdminError> {
+		if let Some(error) = &self.queryset_error {
+			return Err(AdminError::ValidationError(error.clone()));
+		}
+
+		Ok(self
+			.queryset_filters
+			.iter()
+			.cloned()
+			.fold(query, AdminQuery::filter))
+	}
+
+	fn readonly_fields(&self) -> Vec<&str> {
+		self.readonly_fields.iter().map(|s| s.as_str()).collect()
 	}
 
 	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
@@ -363,10 +958,6 @@ impl ModelAdmin for AllPermissionsModelAdmin {
 
 	async fn has_delete_permission(&self, _user: &dyn AdminUser) -> bool {
 		true
-	}
-
-	fn object_filters(&self, _user: &dyn AdminUser) -> Option<Vec<Filter>> {
-		Some(Vec::new())
 	}
 }
 
@@ -421,6 +1012,12 @@ pub(super) async fn setup_test_models_table(pool: &sqlx::PgPool) {
 		.expect("Failed to truncate test_models table");
 }
 
+pub(super) async fn setup_admin_history_schema(connection: &mut DatabaseConnection) {
+	reinhardt_admin::core::initialize_admin_history_schema(connection)
+		.await
+		.expect("admin history schema must be provisioned before requests");
+}
+
 /// Composite fixture providing AdminSite + AdminDatabase + test table for server function tests.
 ///
 /// Creates a real PostgreSQL table with columns (id, name, status, description, created_at)
@@ -437,16 +1034,439 @@ pub async fn server_fn_context(
 	// Create AdminDatabase from the SAME pool
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(connection);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register database connection");
+	let mut connection = connection_lease.handle();
+	setup_admin_history_schema(&mut connection).await;
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	// Create AdminSite and register with all permissions
 	let site = AdminSite::new("Test Admin Site");
-	let admin = AllPermissionsModelAdmin::test_model("test_models");
+	let admin = AllPermissionsModelAdmin::editable_test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
-	(admin_site_dep(site), admin_database_dep(db))
+	(
+		admin_site_dep(site),
+		admin_database_dep(db),
+		connection_lease,
+	)
+}
+
+/// Composite fixture providing list data with a custom primary-key field.
+///
+/// Reuses `test_models` because get_list only exposes the configured key metadata.
+#[fixture]
+pub async fn custom_pk_readonly_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> ServerFnContext {
+	let (pool, _) = shared_db_pool.await;
+
+	setup_test_models_table(&pool).await;
+
+	let backend = Arc::new(PostgresBackend::new(pool));
+	let backends_conn = BackendsConnection::new(backend);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register database connection");
+	let mut connection = connection_lease.handle();
+	setup_admin_history_schema(&mut connection).await;
+	let db = AdminDatabase::new(connection_lease.handle());
+
+	let site = AdminSite::new("Custom Primary Key Test Admin Site");
+	let admin = AllPermissionsModelAdmin::custom_pk_readonly_model("test_models");
+	site.register("CustomPrimaryKeyModel", admin)
+		.expect("Failed to register CustomPrimaryKeyModel");
+
+	(
+		admin_site_dep(site),
+		admin_database_dep(db),
+		connection_lease,
+	)
+}
+
+async fn setup_relation_tables(pool: &sqlx::PgPool) {
+	let drop_sources_sql = Query::drop_table()
+		.table(Alias::new("admin_relation_sources"))
+		.if_exists()
+		.to_string(PostgresQueryBuilder::new());
+	pool.execute(drop_sources_sql.as_str())
+		.await
+		.expect("Failed to reset admin_relation_sources table");
+
+	let create_targets_sql = Query::create_table()
+		.table(Alias::new("admin_relation_targets"))
+		.if_not_exists()
+		.col(
+			ColumnDef::new(Alias::new("id"))
+				.integer()
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
+		)
+		.col(
+			ColumnDef::new(Alias::new("name"))
+				.string_len(255)
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(Alias::new("code"))
+				.string_len(255)
+				.not_null(true),
+		)
+		.to_string(PostgresQueryBuilder::new());
+	pool.execute(create_targets_sql.as_str())
+		.await
+		.expect("Failed to create admin_relation_targets table");
+
+	let create_text_targets_sql = Query::create_table()
+		.table(Alias::new("admin_relation_text_targets"))
+		.if_not_exists()
+		.col(
+			ColumnDef::new(Alias::new("id"))
+				.string_len(32)
+				.not_null(true)
+				.primary_key(true),
+		)
+		.to_string(PostgresQueryBuilder::new());
+	pool.execute(create_text_targets_sql.as_str())
+		.await
+		.expect("Failed to create admin_relation_text_targets table");
+
+	let create_uuid_targets_sql = Query::create_table()
+		.table(Alias::new("admin_relation_uuid_targets"))
+		.if_not_exists()
+		.col(
+			ColumnDef::new(Alias::new("id"))
+				.uuid()
+				.not_null(true)
+				.primary_key(true),
+		)
+		.to_string(PostgresQueryBuilder::new());
+	pool.execute(create_uuid_targets_sql.as_str())
+		.await
+		.expect("Failed to create admin_relation_uuid_targets table");
+
+	let create_sources_sql = Query::create_table()
+		.table(Alias::new("admin_relation_sources"))
+		.if_not_exists()
+		.col(
+			ColumnDef::new(Alias::new("id"))
+				.integer()
+				.not_null(true)
+				.auto_increment(true)
+				.primary_key(true),
+		)
+		.col(
+			ColumnDef::new(Alias::new("title"))
+				.string_len(255)
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(Alias::new("target_key"))
+				.integer()
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(Alias::new("reviewer_key"))
+				.integer()
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(Alias::new("text_target_key"))
+				.string_len(32)
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(Alias::new("uuid_target_key"))
+				.uuid()
+				.not_null(true),
+		)
+		.col(ColumnDef::new(Alias::new("optional_target_key")).integer())
+		.to_string(PostgresQueryBuilder::new());
+	pool.execute(create_sources_sql.as_str())
+		.await
+		.expect("Failed to create admin_relation_sources table");
+
+	for table_name in [
+		"admin_relation_sources",
+		"admin_relation_targets",
+		"admin_relation_text_targets",
+		"admin_relation_uuid_targets",
+	] {
+		let truncate_sql = Query::truncate_table()
+			.table(Alias::new(table_name))
+			.restart_identity()
+			.cascade()
+			.to_string(PostgresQueryBuilder::new());
+		pool.execute(truncate_sql.as_str())
+			.await
+			.expect("Failed to truncate relation test table");
+	}
+
+	let mut seed_targets = Query::insert();
+	seed_targets
+		.into_table(Alias::new("admin_relation_targets"))
+		.columns([Alias::new("name"), Alias::new("code")]);
+	for index in 1..=105 {
+		let (name, code) = match index {
+			1 => ("Alpha Writer".to_string(), "writer-001".to_string()),
+			2 => ("Beta Editor".to_string(), "special-code".to_string()),
+			_ => (format!("Target {index:03}"), format!("code-{index:03}")),
+		};
+		seed_targets.values_panic([Value::from(name), Value::from(code)]);
+	}
+	let seed_targets_sql = seed_targets.to_string(PostgresQueryBuilder::new());
+	pool.execute(seed_targets_sql.as_str())
+		.await
+		.expect("Failed to seed admin_relation_targets table");
+
+	let mut seed_text_targets = Query::insert();
+	seed_text_targets
+		.into_table(Alias::new("admin_relation_text_targets"))
+		.columns([Alias::new("id")])
+		.values_panic([Value::from("001")])
+		.values_panic([Value::from("raw<&")]);
+	let seed_text_target_sql = seed_text_targets.to_string(PostgresQueryBuilder::new());
+	pool.execute(seed_text_target_sql.as_str())
+		.await
+		.expect("Failed to seed admin_relation_text_targets table");
+
+	let seed_uuid_target_sql = Query::insert()
+		.into_table(Alias::new("admin_relation_uuid_targets"))
+		.columns([Alias::new("id")])
+		.values_panic([Value::Uuid(Some(Box::new(
+			Uuid::parse_str("5f7278bc-9669-4fdf-8492-b57d5fd908ce")
+				.expect("relation target UUID fixture should be valid"),
+		)))])
+		.to_string(PostgresQueryBuilder::new());
+	pool.execute(seed_uuid_target_sql.as_str())
+		.await
+		.expect("Failed to seed admin_relation_uuid_targets table");
+
+	let seed_source_sql = Query::insert()
+		.into_table(Alias::new("admin_relation_sources"))
+		.columns([
+			Alias::new("title"),
+			Alias::new("target_key"),
+			Alias::new("reviewer_key"),
+			Alias::new("text_target_key"),
+			Alias::new("uuid_target_key"),
+		])
+		.values_panic([
+			Value::from("Relation source"),
+			Value::from(1),
+			Value::from(2),
+			Value::from("001"),
+			Value::Uuid(Some(Box::new(
+				Uuid::parse_str("5f7278bc-9669-4fdf-8492-b57d5fd908ce")
+					.expect("relation source UUID fixture should be valid"),
+			))),
+		])
+		.to_string(PostgresQueryBuilder::new());
+	pool.execute(seed_source_sql.as_str())
+		.await
+		.expect("Failed to seed admin_relation_sources table");
+}
+
+async fn relation_server_fn_context_with_permissions(
+	pool: sqlx::PgPool,
+	source_view_allowed: bool,
+	target_view_allowed: bool,
+	use_object_label: bool,
+	configure_search_fields: bool,
+) -> ServerFnContext {
+	relation_server_fn_context_with_source_admin(
+		pool,
+		RelationSourceModelAdmin::physical_fields(source_view_allowed),
+		target_view_allowed,
+		use_object_label,
+		configure_search_fields,
+	)
+	.await
+}
+
+async fn relation_server_fn_context_with_source_admin(
+	pool: sqlx::PgPool,
+	source_admin: RelationSourceModelAdmin,
+	target_view_allowed: bool,
+	use_object_label: bool,
+	configure_search_fields: bool,
+) -> ServerFnContext {
+	setup_relation_tables(&pool).await;
+
+	let backend = Arc::new(PostgresBackend::new(pool));
+	let backends_conn = BackendsConnection::new(backend);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register relation database connection");
+	let mut connection = connection_lease.handle();
+	setup_admin_history_schema(&mut connection).await;
+	let db = AdminDatabase::new(connection_lease.handle());
+
+	let site = AdminSite::new("Relation Server Function Test Admin");
+	site.register("AdminRelationSourceModel", source_admin)
+		.expect("Failed to register AdminRelationSourceModel");
+	site.register(
+		"AdminRelationTargetModel",
+		RelationTargetModelAdmin {
+			allow_view: target_view_allowed,
+			use_object_label,
+			configure_search_fields,
+		},
+	)
+	.expect("Failed to register AdminRelationTargetModel");
+	site.register(
+		"AdminRelationTextTargetModel",
+		RelationExactPkTargetAdmin {
+			model_name: "AdminRelationTextTargetModel",
+			table_name: "admin_relation_text_targets",
+		},
+	)
+	.expect("Failed to register AdminRelationTextTargetModel");
+	site.register(
+		"AdminRelationUuidTargetModel",
+		RelationExactPkTargetAdmin {
+			model_name: "AdminRelationUuidTargetModel",
+			table_name: "admin_relation_uuid_targets",
+		},
+	)
+	.expect("Failed to register AdminRelationUuidTargetModel");
+
+	(
+		admin_site_dep(site),
+		admin_database_dep(db),
+		connection_lease,
+	)
+}
+
+#[fixture]
+pub async fn relation_server_fn_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> ServerFnContext {
+	let (pool, _) = shared_db_pool.await;
+	relation_server_fn_context_with_permissions(pool, true, true, true, true).await
+}
+
+#[fixture]
+pub async fn relation_logical_fields_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> ServerFnContext {
+	let (pool, _) = shared_db_pool.await;
+	relation_server_fn_context_with_source_admin(
+		pool,
+		RelationSourceModelAdmin::logical_fields(Vec::new()),
+		true,
+		true,
+		true,
+	)
+	.await
+}
+
+#[fixture]
+pub async fn relation_logical_readonly_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> ServerFnContext {
+	let (pool, _) = shared_db_pool.await;
+	relation_server_fn_context_with_source_admin(
+		pool,
+		RelationSourceModelAdmin::logical_fields(vec!["target"]),
+		true,
+		true,
+		true,
+	)
+	.await
+}
+
+#[fixture]
+pub async fn relation_physical_readonly_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> ServerFnContext {
+	let (pool, _) = shared_db_pool.await;
+	let mut source_admin = RelationSourceModelAdmin::physical_fields(true);
+	source_admin.readonly_fields = vec!["target_key"];
+	relation_server_fn_context_with_source_admin(pool, source_admin, true, true, true).await
+}
+
+#[fixture]
+pub async fn relation_pk_fallback_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> ServerFnContext {
+	let (pool, _) = shared_db_pool.await;
+	relation_server_fn_context_with_permissions(pool, true, true, false, true).await
+}
+
+#[fixture]
+pub async fn relation_source_denied_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> ServerFnContext {
+	let (pool, _) = shared_db_pool.await;
+	relation_server_fn_context_with_permissions(pool, false, true, true, true).await
+}
+
+#[fixture]
+pub async fn relation_target_denied_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> ServerFnContext {
+	let (pool, _) = shared_db_pool.await;
+	relation_server_fn_context_with_permissions(pool, true, false, true, true).await
+}
+
+#[fixture]
+pub async fn relation_invalid_config_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> ServerFnContext {
+	let (pool, _) = shared_db_pool.await;
+	relation_server_fn_context_with_permissions(pool, true, true, true, false).await
+}
+
+/// Composite fixture registering a grouped fieldset ModelAdmin and field metadata.
+#[fixture]
+pub async fn fieldset_context(#[future] shared_db_pool: (sqlx::PgPool, String)) -> ServerFnContext {
+	use reinhardt_db::migrations::{FieldMetadata, FieldType, ModelMetadata, global_registry};
+
+	let (pool, _) = shared_db_pool.await;
+	let mut model_meta = ModelMetadata::new("test", "FieldsetModel", "fieldset_test_models");
+	model_meta.fields.insert(
+		"title".to_string(),
+		FieldMetadata::new(FieldType::VarChar(255)),
+	);
+	model_meta
+		.fields
+		.insert("body".to_string(), FieldMetadata::new(FieldType::Text));
+	model_meta.fields.insert(
+		"published_at".to_string(),
+		FieldMetadata::new(FieldType::TimestampTz),
+	);
+	let mut invalid_model_meta = ModelMetadata::new(
+		"test",
+		"InvalidFieldsetModel",
+		"invalid_fieldset_test_models",
+	);
+	invalid_model_meta.fields = model_meta.fields.clone();
+	global_registry().register_model(model_meta);
+	global_registry().register_model(invalid_model_meta);
+
+	let backend = Arc::new(PostgresBackend::new(pool));
+	let backends_conn = BackendsConnection::new(backend);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register database connection");
+	let mut connection = connection_lease.handle();
+	setup_admin_history_schema(&mut connection).await;
+	let db = AdminDatabase::new(connection_lease.handle());
+
+	let site = AdminSite::new("Fieldset Test Admin Site");
+	site.register("FieldsetModel", FieldsetModelAdmin::valid())
+		.expect("Failed to register FieldsetModel");
+	site.register(
+		"InvalidFieldsetModel",
+		FieldsetModelAdmin::with_unknown_field(),
+	)
+	.expect("Failed to register InvalidFieldsetModel");
+
+	(
+		admin_site_dep(site),
+		admin_database_dep(db),
+		connection_lease,
+	)
 }
 
 /// Composite fixture providing AdminSite + AdminDatabase with a deny-all ModelAdmin.
@@ -456,7 +1476,7 @@ pub async fn server_fn_context(
 #[fixture]
 pub async fn deny_all_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (AdminSite, AdminDatabase) {
+) -> (AdminSite, AdminDatabase, DatabaseConnectionLease) {
 	let (pool, _) = shared_db_pool.await;
 
 	pool.execute(
@@ -477,15 +1497,18 @@ pub async fn deny_all_context(
 
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(connection);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register database connection");
+	let mut connection = connection_lease.handle();
+	setup_admin_history_schema(&mut connection).await;
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let site = AdminSite::new("Deny All Test Admin");
 	let admin = DenyAllModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
-	(site, db)
+	(site, db, connection_lease)
 }
 
 /// Composite fixture providing AdminSite + AdminDatabase with a view-only ModelAdmin.
@@ -495,7 +1518,7 @@ pub async fn deny_all_context(
 #[fixture]
 pub async fn view_only_context(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (AdminSite, AdminDatabase) {
+) -> (AdminSite, AdminDatabase, DatabaseConnectionLease) {
 	let (pool, _) = shared_db_pool.await;
 
 	pool.execute(
@@ -523,15 +1546,18 @@ pub async fn view_only_context(
 
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(connection);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register database connection");
+	let mut connection = connection_lease.handle();
+	setup_admin_history_schema(&mut connection).await;
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let site = AdminSite::new("View Only Test Admin");
 	let admin = ViewOnlyModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
-	(site, db)
+	(site, db, connection_lease)
 }
 
 // ==================== E2E Test Infrastructure ====================
@@ -692,15 +1718,21 @@ pub async fn e2e_router_context(
 	// Build DatabaseConnection (shared between AdminDatabase and CurrentUser injection)
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db_conn = Arc::new(connection);
+	let connection_lease = Arc::new(
+		DatabaseConnectionLease::register(backends_conn)
+			.expect("Failed to register database connection"),
+	);
+	let db_conn = Arc::new(connection_lease.handle());
+	let mut history_connection = *db_conn;
+	setup_admin_history_schema(&mut history_connection).await;
 
 	// Build AdminDatabase for test data setup
-	let admin_db = AdminDatabase::new((*db_conn).clone());
+	let admin_db = AdminDatabase::new(*db_conn);
 
 	// Build AdminSite and register test model
 	let site = AdminSite::new("E2E Test Admin");
-	let admin = AllPermissionsModelAdmin::test_model("test_models");
+	let mut admin = AllPermissionsModelAdmin::test_model("test_models");
+	admin._metadata_guard = Some(ModelMetadataGuard::acquire("test_models"));
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
@@ -711,13 +1743,16 @@ pub async fn e2e_router_context(
 	// Pre-seed singleton scope with DatabaseConnection so get_singleton() finds it.
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set_arc(db_conn);
+	singleton.set_arc(connection_lease);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	let router = reinhardt_urls::routers::UnifiedRouter::new()
-		.with_di_context(di_ctx)
-		.mount("/admin/", admin_router)
-		.with_di_registrations(admin_di)
-		.into_server();
+	let router = ReactiveScope::run(|| {
+		reinhardt_urls::routers::UnifiedRouter::new()
+			.with_di_context(di_ctx)
+			.mount("/admin/", admin_router)
+			.with_di_registrations(admin_di)
+			.into_server()
+	});
 
 	(router, admin_db)
 }
@@ -749,11 +1784,13 @@ pub async fn e2e_router_context_no_db() -> ServerRouter {
 	let singleton = Arc::new(SingletonScope::new());
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	reinhardt_urls::routers::UnifiedRouter::new()
-		.with_di_context(di_ctx)
-		.mount("/admin/", admin_router)
-		.with_di_registrations(admin_di)
-		.into_server()
+	ReactiveScope::run(|| {
+		reinhardt_urls::routers::UnifiedRouter::new()
+			.with_di_context(di_ctx)
+			.mount("/admin/", admin_router)
+			.with_di_registrations(admin_di)
+			.into_server()
+	})
 }
 
 /// Builds an HTTP POST request suitable for E2E server function tests.
@@ -948,9 +1985,12 @@ pub async fn uuid_pk_context(#[future] shared_db_pool: (sqlx::PgPool, String)) -
 	use reinhardt_db::migrations::FieldType;
 	use reinhardt_db::migrations::model_registry::{FieldMetadata, ModelMetadata, global_registry};
 	let mut model_meta = ModelMetadata::new("test", "UuidModel", "uuid_test_models");
-	model_meta
-		.fields
-		.insert("id".to_string(), FieldMetadata::new(FieldType::Uuid));
+	model_meta.fields.insert(
+		"id".to_string(),
+		FieldMetadata::new(FieldType::Uuid)
+			.with_param("primary_key", "true")
+			.with_param("default", "gen_random_uuid()"),
+	);
 	model_meta.fields.insert(
 		"name".to_string(),
 		FieldMetadata::new(FieldType::VarChar(255)),
@@ -964,15 +2004,77 @@ pub async fn uuid_pk_context(#[future] shared_db_pool: (sqlx::PgPool, String)) -
 	let pool_clone = pool.clone();
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(connection);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register database connection");
+	let mut connection = connection_lease.handle();
+	setup_admin_history_schema(&mut connection).await;
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let site = AdminSite::new("UUID Test Admin Site");
 	let admin = AllPermissionsModelAdmin::uuid_pk_model("uuid_test_models");
 	site.register("UuidModel", admin)
 		.expect("Failed to register UuidModel");
 
-	(admin_site_dep(site), admin_database_dep(db), pool_clone)
+	(
+		admin_site_dep(site),
+		admin_database_dep(db),
+		pool_clone,
+		connection_lease,
+	)
+}
+
+/// Composite fixture providing AdminSite + AdminDatabase + PgPool with a string primary key table.
+#[fixture]
+pub async fn string_pk_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> StringPkContext {
+	let (pool, _) = shared_db_pool.await;
+	let table_name = "string_pk_test_models";
+	pool.execute(
+		"CREATE TABLE IF NOT EXISTS string_pk_test_models (
+			id VARCHAR(255) PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			status VARCHAR(50)
+		)",
+	)
+	.await
+	.expect("Failed to create string_pk_test_models table");
+	pool.execute("TRUNCATE TABLE string_pk_test_models")
+		.await
+		.expect("Failed to truncate string_pk_test_models table");
+
+	use reinhardt_db::migrations::FieldType;
+	use reinhardt_db::migrations::model_registry::{FieldMetadata, ModelMetadata, global_registry};
+	let mut model_meta = ModelMetadata::new("test", "StringPkModel", table_name);
+	model_meta.fields.insert(
+		"id".to_string(),
+		FieldMetadata::new(FieldType::VarChar(255)),
+	);
+	global_registry().register_model(model_meta);
+	let registry_guard = StringPkModelRegistryGuard;
+
+	let pool_clone = pool.clone();
+	let backend = Arc::new(PostgresBackend::new(pool));
+	let backends_conn = BackendsConnection::new(backend);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register database connection");
+	let mut connection = connection_lease.handle();
+	setup_admin_history_schema(&mut connection).await;
+	let db = AdminDatabase::new(connection_lease.handle());
+	let site = AdminSite::new("String PK Test Admin Site");
+	site.register(
+		"StringPkModel",
+		AllPermissionsModelAdmin::string_pk_model(table_name),
+	)
+	.expect("Failed to register StringPkModel");
+
+	(
+		admin_site_dep(site),
+		admin_database_dep(db),
+		pool_clone,
+		connection_lease,
+		registry_guard,
+	)
 }
 
 // ==================== Permission Denial Test Infrastructure ====================
@@ -1070,15 +2172,22 @@ pub async fn server_fn_context_deny_all(
 
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(connection);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register database connection");
+	let mut connection = connection_lease.handle();
+	setup_admin_history_schema(&mut connection).await;
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let site = AdminSite::new("Deny All Test Site");
 	let admin = DenyAllPermissionsModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
-	(admin_site_dep(site), admin_database_dep(db))
+	(
+		admin_site_dep(site),
+		admin_database_dep(db),
+		connection_lease,
+	)
 }
 
 /// Composite fixture providing AdminSite + AdminDatabase with view-only permissions.
@@ -1105,13 +2214,20 @@ pub async fn server_fn_context_view_only(
 
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(connection);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register database connection");
+	let mut connection = connection_lease.handle();
+	setup_admin_history_schema(&mut connection).await;
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let site = AdminSite::new("View Only Test Site");
 	let admin = ViewOnlyModelAdmin::test_model("test_models");
 	site.register("TestModel", admin)
 		.expect("Failed to register TestModel");
 
-	(admin_site_dep(site), admin_database_dep(db))
+	(
+		admin_site_dep(site),
+		admin_database_dep(db),
+		connection_lease,
+	)
 }

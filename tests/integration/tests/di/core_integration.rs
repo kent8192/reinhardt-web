@@ -1,7 +1,8 @@
 //! Integration tests for reinhardt-di
 
 use reinhardt_di::{
-	Depends, DiResult, FactoryOutput, Injectable, InjectableKey, InjectionContext, SingletonScope,
+	DiResult, Injectable, InjectableKey, InjectionContext, KeyedDepends, KeyedFactoryOutput,
+	SingletonScope,
 };
 use std::sync::Arc;
 use std::sync::Once;
@@ -82,7 +83,7 @@ async fn test_depends_wrapper() {
 	let singleton = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton).build();
 
-	let db = Depends::<DatabaseKey, Database>::builder()
+	let db = KeyedDepends::<DatabaseKey, Database>::builder()
 		.resolve(&ctx)
 		.await
 		.unwrap();
@@ -168,7 +169,7 @@ async fn test_di_integration_depends_clone() {
 	let singleton = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton).build();
 
-	let db1 = Depends::<DatabaseKey, Database>::builder()
+	let db1 = KeyedDepends::<DatabaseKey, Database>::builder()
 		.resolve(&ctx)
 		.await
 		.unwrap();
@@ -182,10 +183,10 @@ fn register_database_output() {
 	static REGISTER: Once = Once::new();
 	REGISTER.call_once(|| {
 		reinhardt_di::global_registry()
-			.register_async::<FactoryOutput<DatabaseKey, Database>, _, _>(
+			.register_async::<KeyedFactoryOutput<DatabaseKey, Database>, _, _>(
 				reinhardt_di::DependencyScope::Request,
 				|_ctx| async {
-					Ok(FactoryOutput::new(Database {
+					Ok(KeyedFactoryOutput::new(Database {
 						connection_string: "postgres://localhost/test".to_string(),
 					}))
 				},

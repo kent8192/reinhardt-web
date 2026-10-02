@@ -107,9 +107,11 @@ impl BaseUserManager<User> for AuthUserManager {
     ) -> Result<User, Error> {
         let new_user = self.build_user(username, password, &extra).await?;
         User::objects()
-            .create_with_conn(&self.db, &new_user)
+            .create_with_conn(&mut self.db, &new_user)
             .await
-            .map_err(|e| Error::Database(e.to_string()))
+            .map_err(|error| {
+                DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()
+            })
     }
 }
 ```
@@ -354,7 +356,7 @@ use reinhardt::pages::component::Page;
 
 use crate::client::components::nav::with_nav;
 
-#[component("/login/", "login")]
+#[component("/login/", name = "login")]
 pub fn login_page() -> Page {
     with_nav(super::login_form())
 }
@@ -456,8 +458,9 @@ impl TutorialSessionAuthMiddleware {
             tracing::warn!("Tutorial session authentication has no database connection");
             return AuthState::anonymous();
         };
+        let mut db = *db;
 
-        match User::objects().get(user_id).first_with_db(&db).await {
+        match User::objects().get(user_id).first_with_db(&mut db).await {
             Ok(Some(user)) if user.is_active() => {
                 AuthState::authenticated(user.id().to_string(), user.is_superuser, true)
             }
@@ -553,17 +556,17 @@ use reinhardt::pages::component::Page;
 
 use crate::client::components::nav::with_nav;
 
-#[component("/login/", "login")]
+#[component("/login/", name = "login")]
 pub fn login_page() -> Page {
     with_nav(super::login_form())
 }
 
-#[component("/logout/", "logout")]
+#[component("/logout/", name = "logout")]
 pub fn logout_page() -> Page {
     with_nav(super::logout_form())
 }
 
-#[component("/signup/", "signup")]
+#[component("/signup/", name = "signup")]
 pub fn signup_page() -> Page {
     with_nav(super::signup_form())
 }

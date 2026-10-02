@@ -208,7 +208,7 @@ mod tests {
 				method: request.method.clone(),
 				path: request.uri.path().to_string(),
 				request_id: request.get_header("x-request-id"),
-				item_id: request.path_params.get("id").cloned(),
+				item_id: request.path_params.get("id").map(str::to_owned),
 				di_marker,
 			});
 

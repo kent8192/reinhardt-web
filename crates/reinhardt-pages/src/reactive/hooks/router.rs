@@ -15,6 +15,8 @@
 //! See also the free [`crate::router::navigate`] function for one-shot
 //! navigation calls outside a hook context.
 
+use crate::app::NavigationIntent;
+use crate::app::try_with_navigation_coordinator;
 use crate::app::try_with_spa_router;
 use crate::router::NavigationType;
 
@@ -26,26 +28,40 @@ use crate::router::NavigationType;
 /// stringly-typed message so the public API does not couple to the
 /// concrete error enum.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum NavigateError {
 	/// `ClientLauncher::launch()` has not installed an SPA router on the
 	/// current thread, so SPA navigation is impossible.
 	///
-	/// The form! macro's WASM-side codegen uses this discriminant to
-	/// decide whether to fall back to a hard `location.set_href` —
-	/// callers outside that codegen path SHOULD treat this as a programmer
-	/// error (the hook was called outside a mounted SPA).
+	/// Callers can use this discriminant to choose an appropriate fallback.
 	RouterNotInstalled,
+	/// Route reversal failed before attempting SPA navigation.
+	///
+	/// The string is the inner router's `Display` representation.
+	RouteResolutionFailed(String),
 	/// The underlying SPA router rejected the navigation.
 	///
 	/// The string is the inner router's `Display` representation.
 	RouterRejected(String),
+	/// A browser hard-navigation fallback failed.
+	///
+	/// The string describes the browser API failure.
+	HardNavigationFailed(String),
 }
 
 impl core::fmt::Display for NavigateError {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
 			Self::RouterNotInstalled => write!(f, "SPA router not installed"),
-			Self::RouterRejected(msg) => write!(f, "router rejected navigation: {}", msg),
+			Self::RouteResolutionFailed(message) => {
+				write!(f, "route resolution failed: {message}")
+			}
+			Self::RouterRejected(message) => {
+				write!(f, "router rejected navigation: {message}")
+			}
+			Self::HardNavigationFailed(message) => {
+				write!(f, "hard navigation failed: {message}")
+			}
 		}
 	}
 }
@@ -80,6 +96,11 @@ impl RouterHandle {
 	/// component re-renders — all without a document reload.
 	pub fn push(&self, path: impl Into<String>) -> Result<(), NavigateError> {
 		let path = path.into();
+		if let Some(result) = try_with_navigation_coordinator(|coordinator| {
+			coordinator.navigate(path.clone(), NavigationIntent::Push)
+		}) {
+			return result;
+		}
 		try_with_spa_router(|router| router.push(&path))
 			.ok_or(NavigateError::RouterNotInstalled)?
 			.map_err(|e| NavigateError::RouterRejected(e.to_string()))
@@ -92,6 +113,11 @@ impl RouterHandle {
 	/// the user's back/forward history (e.g. post-login redirect).
 	pub fn replace(&self, path: impl Into<String>) -> Result<(), NavigateError> {
 		let path = path.into();
+		if let Some(result) = try_with_navigation_coordinator(|coordinator| {
+			coordinator.navigate(path.clone(), NavigationIntent::Replace)
+		}) {
+			return result;
+		}
 		try_with_spa_router(|router| router.replace(&path))
 			.ok_or(NavigateError::RouterNotInstalled)?
 			.map_err(|e| NavigateError::RouterRejected(e.to_string()))
@@ -135,19 +161,26 @@ impl RouterHandle {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_effect, use_router, use_state};
+/// use reinhardt_pages::{
+///     deps,
+///     reactive::hooks::{use_retained_effect, use_router, use_state},
+/// };
 ///
 /// // Navigate to `/welcome` once `should_redirect` flips to `true`.
 /// let (should_redirect, _set) = use_state(false);
 /// let router = use_router();
-/// use_effect({
-///     let should_redirect = should_redirect.clone();
-///     move || {
-///         if should_redirect.get() {
-///             let _ = router.push("/welcome");
+/// use_retained_effect(
+///     {
+///         let should_redirect = should_redirect.clone();
+///         move || {
+///             if should_redirect.get() {
+///                 let _ = router.push("/welcome");
+///             }
+///             None::<fn()>
 ///         }
-///     }
-/// });
+///     },
+///     deps![should_redirect.clone()],
+/// );
 /// ```
 pub fn use_router() -> RouterHandle {
 	RouterHandle

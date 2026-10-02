@@ -4,7 +4,9 @@
 //! testing cursor encoding/decoding, forward/backward navigation, and pagination metadata.
 
 use reinhardt_core::pagination::{AsyncPaginator, CursorPagination};
-use reinhardt_db::orm::DatabaseConnection;
+use reinhardt_db::{
+	backends::DatabaseConnection as BackendsConnection, orm::DatabaseConnectionLease,
+};
 use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -51,9 +53,11 @@ async fn setup_test_db(
 	let (container, pool, _port, database_url) = postgres_container.await;
 
 	// Create connection using DatabaseConnection
-	let conn = DatabaseConnection::connect(&database_url)
+	let owner = BackendsConnection::connect(&database_url)
 		.await
 		.expect("Failed to connect to database");
+	let lease = DatabaseConnectionLease::register(owner).expect("Failed to register database");
+	let conn = lease.handle();
 
 	// Create test_articles table
 	conn.execute(

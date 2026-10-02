@@ -89,7 +89,7 @@ impl Handler for HeadEvents {
 
 #[get("/buffered", name = "buffered-response")]
 async fn buffered() -> ViewResult<Response> {
-	Ok(Response::ok().with_body(Bytes::from_static(b"buffered")))
+	Ok(Response::ok().with_static_body(b"buffered"))
 }
 
 #[get("/extracted/{id}", name = "extracted-events")]

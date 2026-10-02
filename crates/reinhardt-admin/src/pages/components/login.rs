@@ -137,13 +137,13 @@ pub fn login_view() -> Page {
 #[cfg(all(test, server))]
 mod tests {
 	use super::*;
+	use reinhardt_core::reactive::ReactiveScope;
 	use rstest::rstest;
 
 	#[rstest]
 	fn test_login_form_renders() {
-		// Arrange & Act
-		let page = login_form(None);
-		let html = page.render_to_string();
+		// Act
+		let html = ReactiveScope::run(|| login_form(None).render_to_string());
 
 		// Assert
 		assert!(html.contains("Admin Login"));
@@ -154,9 +154,9 @@ mod tests {
 
 	#[rstest]
 	fn test_login_form_with_error() {
-		// Arrange & Act
-		let page = login_form(Some("Invalid credentials"));
-		let html = page.render_to_string();
+		// Act
+		let html =
+			ReactiveScope::run(|| login_form(Some("Invalid credentials")).render_to_string());
 
 		// Assert
 		assert!(html.contains("Invalid credentials"));
@@ -165,9 +165,8 @@ mod tests {
 
 	#[rstest]
 	fn test_login_view_renders() {
-		// Arrange & Act
-		let page = login_view();
-		let html = page.render_to_string();
+		// Act
+		let html = ReactiveScope::run(|| login_view().render_to_string());
 
 		// Assert
 		assert!(html.contains("admin-login-form"));

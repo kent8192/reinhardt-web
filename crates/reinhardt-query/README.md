@@ -9,16 +9,20 @@ A type-safe SQL query builder for the Reinhardt framework.
 ## Features
 
 ### DML (Data Manipulation Language)
-- **Type-safe query construction** - SELECT, INSERT, UPDATE, DELETE
+- **Type-safe query construction** - SELECT, INSERT, UPDATE, DELETE, and plan-only EXPLAIN
 - **DCL (Data Control Language) support** - GRANT and REVOKE statements
 - **Expression system** - Arithmetic, comparison, logical, and pattern matching operators
 - **Advanced SQL** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
+- **Typed row locking** - Lock strengths, wait behavior, and table targets without raw SQL
 - **Parameterized queries** - `$1` for PostgreSQL/CockroachDB, `?` for MySQL/SQLite
 - **CASE WHEN expressions** - Conditional expressions in queries
 - **Subqueries** - EXISTS, IN, ALL, ANY, SOME operators
+- **Temporal projections** - Typed date/datetime truncation with backend-specific
+  time-zone lowering
 
 ### DDL (Data Definition Language)
 - **Table operations** - CREATE TABLE, ALTER TABLE, DROP TABLE
+- **Typed generated columns** - DDL-safe `SchemaExpr` builders with backend-specific rendering
 - **Index operations** - CREATE INDEX, ALTER INDEX, DROP INDEX, REINDEX
 - **View operations** - CREATE VIEW, DROP VIEW
 - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
@@ -44,7 +48,7 @@ Add to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-query = { version = "0.3.20" }
+reinhardt-query = { version = "0.4.0-alpha.18" }
 ```
 
 ## Quick Start
@@ -65,6 +69,22 @@ stmt.column("name")
 let builder = PostgresQueryBuilder::new();
 let (sql, values) = builder.build_select(&stmt);
 // sql = r#"SELECT "name", "email" FROM "users" WHERE "active" = $1 ORDER BY "name" ASC LIMIT $2"#
+```
+
+Temporal projections remain structural expressions instead of raw SQL:
+
+```rust
+use reinhardt_query::prelude::*;
+
+let projection = Func::temporal_trunc(
+    Expr::col("occurred_at").into_simple_expr(),
+    TemporalTruncKind::Hour,
+    Some(TemporalTimeZone::Utc),
+    TemporalTruncOutput::DateTime,
+)
+.expect("hour truncation produces a datetime");
+let mut stmt = Query::select();
+stmt.expr_as(projection, "value").from("events").distinct();
 ```
 
 ## Usage Examples
@@ -111,6 +131,40 @@ let builder = PostgresQueryBuilder::new();
 let (sql, values) = builder.build_delete(&stmt);
 ```
 
+### Row locking
+
+Use the owned query AST to configure locking reads. A single
+[`LockBehavior`](https://docs.rs/reinhardt-query/latest/reinhardt_query/query/enum.LockBehavior.html)
+keeps `NOWAIT` and `SKIP LOCKED` mutually exclusive, and `lock_tables` accepts
+typed `TableRef` values rather than unchecked SQL.
+
+```rust
+use reinhardt_query::prelude::*;
+
+let mut stmt = Query::select();
+stmt.column(("u", "id"))
+    .from(TableRef::table_alias("users", "u"))
+    .lock(LockType::NoKeyUpdate)
+    .lock_tables([TableRef::table_alias("users", "u")])
+    .lock_behavior(LockBehavior::Nowait);
+
+let (sql, values) = PostgresQueryBuilder::new().build_select_checked(&stmt)?;
+assert_eq!(
+    sql,
+    r#"SELECT "u"."id" FROM "users" AS "u" FOR NO KEY UPDATE OF "u" NOWAIT"#
+);
+# Ok::<(), QueryBuildError>(())
+```
+
+PostgreSQL supports all four lock strengths, table targets, and both wait
+behaviors. MySQL supports `FOR UPDATE`, `FOR SHARE`, table targets, and both
+wait behaviors; its checked builder rejects the PostgreSQL-specific strengths.
+CockroachDB supports `FOR UPDATE`, `FOR SHARE`, `FOR KEY SHARE`, and `NOWAIT`.
+Its checked builder rejects `NO KEY UPDATE`, `SKIP LOCKED`, and table targets.
+SQLite does not support locking reads, so its checked builder returns
+`QueryBuildError::UnsupportedBackendFeature` instead of silently omitting the
+lock.
+
 ### CREATE TABLE
 
 ```rust
@@ -139,6 +193,31 @@ stmt.table("users")
 let builder = PostgresQueryBuilder::new();
 let (sql, values) = builder.build_create_table(&stmt);
 // sql = r#"CREATE TABLE IF NOT EXISTS "users" ("id" INTEGER NOT NULL PRIMARY KEY, "email" VARCHAR(255) NOT NULL UNIQUE)"#
+```
+
+### GENERATED Columns
+
+Use `SchemaExpr` for portable generated-column expressions. The query builder renders
+string concatenation as `||` on PostgreSQL/SQLite and `CONCAT(...)` on MySQL.
+Use `generated_sql` only when a backend-specific raw SQL body is required.
+
+```rust
+use reinhardt_query::prelude::*;
+use reinhardt_query::types::{ColumnDef, ColumnType};
+
+let mut stmt = Query::create_table();
+stmt.table("users")
+    .column(ColumnDef::new("first_name").column_type(ColumnType::String(Some(100))))
+    .column(ColumnDef::new("last_name").column_type(ColumnType::String(Some(100))))
+    .column(
+        ColumnDef::new("full_name")
+            .column_type(ColumnType::String(Some(201)))
+            .generated_stored(SchemaExpr::concat([
+                SchemaExpr::col("first_name"),
+                SchemaExpr::val(" "),
+                SchemaExpr::col("last_name"),
+            ])),
+    );
 ```
 
 ### ALTER TABLE
@@ -572,12 +651,15 @@ let stmt = Query::select().column("name").from("user");
 | Flag | Description |
 |------|-------------|
 | `thread-safe` | Use `Arc` instead of `Rc` for `DynIden` |
+| `derive` | Enable procedural derive macros from `reinhardt-query-macros` |
 | `with-chrono` | Enable chrono date/time types in `Value` |
 | `with-uuid` | Enable UUID type in `Value` |
 | `with-json` | Enable JSON type in `Value` |
 | `with-rust_decimal` | Enable Decimal type in `Value` |
 | `with-bigdecimal` | Enable BigDecimal type in `Value` |
-| `full` | Enable all optional features |
+| `nosql-redis` | Enable Redis command builder APIs |
+| `pgvector` | Enable PostgreSQL vector types and distance operators with backend validation |
+| `full` | Enable `derive`, all optional value types, `nosql-redis`, and `pgvector` |
 
 ## Security Considerations
 

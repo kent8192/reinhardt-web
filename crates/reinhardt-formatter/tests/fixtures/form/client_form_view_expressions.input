@@ -1,0 +1,10 @@
+fn login_page() {
+    let _page = form! {
+        client_form: crate::auth::LoginClientForm,
+        // Reuse the configured mutation.
+        mutation: { let handle = get::<Request, Response>(); handle },
+        customize: {
+            username: { label: { let join = |a: &str, b: &str| format!("{a},{b}"); join("User", "name") }, aria_describedby: r#"external-help"# },
+        },
+    };
+}

@@ -135,12 +135,8 @@ async fn multiple_accept_headers_handler(req: Request) -> ViewResult<Response> {
 
 #[get("/search", name = "request-response-query-params")]
 async fn request_response_query_params_handler(req: Request) -> ViewResult<Response> {
-	let query = req.query_params.get("q").map(|s| s.as_str()).unwrap_or("");
-	let limit = req
-		.query_params
-		.get("limit")
-		.map(|s| s.as_str())
-		.unwrap_or("10");
+	let query = req.query_params.get("q").unwrap_or("");
+	let limit = req.query_params.get("limit").unwrap_or("10");
 
 	let response_body = format!(r#"{{"query":"{}","limit":"{}"}}"#, query, limit);
 

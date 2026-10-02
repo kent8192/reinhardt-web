@@ -22,6 +22,9 @@ pub mod middleware;
 pub mod path_resolver;
 /// Static file processing (minification, fingerprinting).
 pub mod processing;
+/// Unified, generation-based static publication (native-only, P0).
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+pub mod publication;
 /// Static file storage backends.
 pub mod storage;
 /// Template engine integration for static file URLs.

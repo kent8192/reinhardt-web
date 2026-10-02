@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.17...reinhardt-tasks@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+- *(tasks)* document Kafka task backend
+- *(tasks)* document Kafka backend limitations
+- *(tasks)* document Kafka configuration dependencies
+- *(tasks)* document Kafka delivery semantics
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.15...reinhardt-tasks@v0.4.0-alpha.16) - 2026-09-23
+
+### Fixed
+
+- *(deps)* constrain incompatible AWS Smithy releases
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.6...reinhardt-tasks@v0.4.0-alpha.7) - 2026-08-19
+
+### Changed
+
+- *(tasks)* use reinhardt-query for sqlite dequeue claim
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.2...reinhardt-tasks@v0.4.0-alpha.1) - 2026-07-21
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.17...reinhardt-tasks@v0.3.18) - 2026-09-16
 
 ### Fixed

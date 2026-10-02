@@ -25,8 +25,6 @@ pub enum TableRef {
 	SchemaTableAlias(DynIden, DynIden, DynIden),
 	/// Subquery with alias (e.g., `(SELECT ...) AS alias`)
 	SubQuery(Box<crate::query::SelectStatement>, DynIden),
-	/// LATERAL subquery with alias (e.g., `LATERAL (SELECT ...) AS alias`)
-	LateralSubQuery(Box<crate::query::SelectStatement>, DynIden),
 }
 
 impl TableRef {
@@ -101,11 +99,6 @@ impl TableRef {
 		alias: A,
 	) -> Self {
 		Self::SchemaTableAlias(schema.into_iden(), table.into_iden(), alias.into_iden())
-	}
-
-	/// Create a LATERAL subquery with an alias.
-	pub fn lateral_subquery(query: crate::query::SelectStatement, alias: impl IntoIden) -> Self {
-		Self::LateralSubQuery(Box::new(query), alias.into_iden())
 	}
 }
 

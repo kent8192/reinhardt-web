@@ -46,30 +46,12 @@ fn create_test_migration(
 	name: &'static str,
 	operations: Vec<Operation>,
 ) -> Migration {
-	Migration {
-		app_label: app.to_string(),
-		name: name.to_string(),
-		operations,
-		dependencies: vec![],
-		replaces: vec![],
-		atomic: true,
-		initial: None,
-		state_only: false,
-		database_only: false,
-	}
+	Migration::from_parts(name.to_string(), app.to_string(), operations, vec![], vec![], true, None, false, false, Vec::new(), Vec::new())
 }
 
 /// Create a basic column definition
 fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
-	ColumnDefinition {
-		name: name.to_string(),
-		type_definition: type_def,
-		not_null: false,
-		unique: false,
-		primary_key: false,
-		auto_increment: false,
-		default: None,
-	}
+	ColumnDefinition::from_parts(name.to_string(), type_def, false, false, false, false, None, None, None)
 }
 
 // ============================================================================
@@ -105,30 +87,14 @@ async fn test_partial_migration_failure_recovery(
 			Operation::CreateTable {
 				name: leak_str("users").to_string(),
 				columns: vec![
-					ColumnDefinition {
-						name: "id".to_string(),
-						type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-						not_null: true,
-						unique: false,
-						primary_key: true,
-						auto_increment: true,
-						default: None,
-					},
+					ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 					create_basic_column("username", FieldType::VarChar(Some(100))),
 				],
 			},
 			Operation::CreateTable {
 				name: leak_str("posts").to_string(),
 				columns: vec![
-					ColumnDefinition {
-						name: "id".to_string(),
-						type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-						not_null: true,
-						unique: false,
-						primary_key: true,
-						auto_increment: true,
-						default: None,
-					},
+					ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 					create_basic_column("title", FieldType::VarChar(Some(200))),
 				],
 			},
@@ -347,15 +313,7 @@ async fn test_concurrent_migration_conflict_detection(
 		vec![Operation::CreateTable {
 			name: leak_str("concurrent_table").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-					default: None,
-				},
+				ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 				create_basic_column("name", FieldType::VarChar(Some(100))),
 			],
 		}],
@@ -479,15 +437,7 @@ async fn test_schema_drift_detection(
 			Operation::CreateTable {
 				name: leak_str("users").to_string(),
 				columns: vec![
-					ColumnDefinition {
-						name: "id".to_string(),
-						type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-						not_null: true,
-						unique: false,
-						primary_key: true,
-						auto_increment: true,
-						default: None,
-					},
+					ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 					create_basic_column("username", FieldType::VarChar(Some(100))),
 					create_basic_column("email", FieldType::VarChar(Some(255))),
 				],
@@ -495,15 +445,7 @@ async fn test_schema_drift_detection(
 			Operation::CreateTable {
 				name: leak_str("posts").to_string(),
 				columns: vec![
-					ColumnDefinition {
-						name: "id".to_string(),
-						type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-						not_null: true,
-						unique: false,
-						primary_key: true,
-						auto_increment: true,
-						default: None,
-					},
+					ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 					create_basic_column("title", FieldType::VarChar(Some(200))),
 					create_basic_column("content", FieldType::Text),
 				],
@@ -686,15 +628,7 @@ async fn test_database_connection_loss_recovery(
 		vec![Operation::CreateTable {
 			name: leak_str("test_table").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-					default: None,
-				},
+				ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 				create_basic_column("name", FieldType::VarChar(Some(100))),
 			],
 		}],
@@ -729,15 +663,7 @@ async fn test_database_connection_loss_recovery(
 		"0002_add_table",
 		vec![Operation::CreateTable {
 			name: leak_str("new_table").to_string(),
-			columns: vec![ColumnDefinition {
-				name: "id".to_string(),
-				type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-				not_null: true,
-				unique: false,
-				primary_key: true,
-				auto_increment: true,
-				default: None,
-			}],
+			columns: vec![ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None)],
 		}],
 	);
 
@@ -882,15 +808,7 @@ async fn test_irreversible_operation_error_handling(
 		vec![Operation::CreateTable {
 			name: leak_str("users").to_string(),
 			columns: vec![
-				ColumnDefinition {
-					name: "id".to_string(),
-					type_definition: FieldType::Custom("SERIAL PRIMARY KEY".to_string()),
-					not_null: true,
-					unique: false,
-					primary_key: true,
-					auto_increment: true,
-					default: None,
-				},
+				ColumnDefinition::from_parts("id".to_string(), FieldType::Custom("SERIAL PRIMARY KEY".to_string()), true, false, true, true, None, None, None),
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 			],
 		}],

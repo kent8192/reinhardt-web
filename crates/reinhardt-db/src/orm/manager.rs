@@ -1,15 +1,59 @@
-use super::connection::{DatabaseBackend, DatabaseConnection};
-use super::{Model, QuerySet};
+#[cfg(test)]
+use super::connection::QueryValue;
+use super::connection::{
+	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, OrmExecutor, QueryRow, Row,
+};
+use super::field_codec::{DatabaseArrayType, database_value_to_query_value};
+use super::inspection::FieldInfo;
+use super::query::RelationLoadInput;
+use super::{DatabaseValue, FieldCodecError, Model, QuerySet};
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 use reinhardt_query::prelude::{
-	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, Func, InsertStatement, MySqlQueryBuilder,
-	PostgresQueryBuilder, Query, QueryBuilder, SelectStatement, SqliteQueryBuilder,
-	UpdateStatement, Values,
+	Alias, CockroachDBQueryBuilder, ColumnRef, DeleteStatement, Expr, ExprTrait, Func,
+	InsertStatement, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder, SelectStatement,
+	SqliteQueryBuilder, UpdateStatement, Values,
 };
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::{
+	Arc, Mutex, RwLock as StdRwLock, RwLockReadGuard as StdRwLockReadGuard,
+	RwLockWriteGuard as StdRwLockWriteGuard,
+	atomic::{AtomicBool, Ordering},
+};
 use uuid::Uuid;
+
+fn find_field_info<'a>(field_metadata: &'a [FieldInfo], field_name: &str) -> Option<&'a FieldInfo> {
+	field_metadata.iter().find(|field| field.name == field_name)
+}
+
+fn field_codec_error(error: FieldCodecError) -> Error {
+	let kind = match &error {
+		FieldCodecError::TypeMismatch { .. }
+		| FieldCodecError::InvalidEnumValue { .. }
+		| FieldCodecError::MissingFieldMetadata { .. }
+		| FieldCodecError::FieldPolicyMismatch { .. } => DatabaseErrorKind::Type,
+		FieldCodecError::Serialization(_) => DatabaseErrorKind::Serialization,
+	};
+	let message = error.to_string();
+	Error::database_with_source(kind, message, error)
+}
+
+pub(crate) fn decode_model_row<M: Model>(row: Row) -> reinhardt_core::exception::Result<M> {
+	QueryRow::from_backend_row(row)
+		.deserialize_model::<M>()
+		.map_err(field_codec_error)
+}
+
+fn executor_field_codec_error(error: FieldCodecError) -> crate::backends::error::DatabaseError {
+	crate::backends::error::DatabaseError::new(
+		crate::backends::error::DatabaseErrorKind::Serialization,
+		error.to_string(),
+	)
+}
+
+fn executor_error(error: Error) -> crate::backends::error::DatabaseError {
+	crate::backends::error::into_database_error(error)
+}
 
 /// Build SQL with values from an INSERT statement based on database backend
 fn build_insert_sql(stmt: &InsertStatement, backend: DatabaseBackend) -> (String, Values) {
@@ -38,11 +82,6 @@ fn build_select_sql(stmt: &SelectStatement, backend: DatabaseBackend) -> (String
 	}
 }
 
-/// Convert a SELECT statement to SQL string based on database backend
-fn select_to_string(stmt: &SelectStatement, backend: DatabaseBackend) -> String {
-	build_select_sql(stmt, backend).0
-}
-
 /// Convert an INSERT statement to SQL string based on database backend
 fn insert_to_string(stmt: &InsertStatement, backend: DatabaseBackend) -> String {
 	build_insert_sql(stmt, backend).0
@@ -57,9 +96,206 @@ fn build_delete_sql(stmt: &DeleteStatement, backend: DatabaseBackend) -> (String
 	}
 }
 
+fn checked_query_build_error(error: reinhardt_query::QueryBuildError) -> Error {
+	DatabaseError::new(DatabaseErrorKind::Unsupported, error.to_string()).into()
+}
+
+#[cfg(feature = "pgvector")]
+fn database_value_uses_pgvector(value: &DatabaseValue) -> bool {
+	match value {
+		DatabaseValue::Vector(_) => true,
+		DatabaseValue::Array { values, .. } => values.iter().any(database_value_uses_pgvector),
+		_ => false,
+	}
+}
+
+fn validate_bulk_update_values_for_backend(
+	updates: &[(DatabaseValue, HashMap<String, DatabaseValue>)],
+	is_cockroachdb: bool,
+) -> reinhardt_core::exception::Result<()> {
+	#[cfg(feature = "pgvector")]
+	if is_cockroachdb
+		&& updates.iter().any(|(primary_key, fields)| {
+			database_value_uses_pgvector(primary_key)
+				|| fields.values().any(database_value_uses_pgvector)
+		}) {
+		return Err(checked_query_build_error(
+			reinhardt_query::QueryBuildError::UnsupportedBackendFeature {
+				feature: "pgvector values",
+				backend: "CockroachDB",
+			},
+		));
+	}
+
+	#[cfg(not(feature = "pgvector"))]
+	let _ = (updates, is_cockroachdb);
+
+	Ok(())
+}
+
+fn build_select_sql_checked(
+	stmt: &SelectStatement,
+	backend: DatabaseBackend,
+	is_cockroachdb: bool,
+) -> reinhardt_core::exception::Result<(String, Values)> {
+	if is_cockroachdb {
+		CockroachDBQueryBuilder::new()
+			.build_select_checked(stmt)
+			.map_err(checked_query_build_error)
+	} else {
+		Ok(build_select_sql(stmt, backend))
+	}
+}
+
+fn build_insert_sql_checked(
+	stmt: &InsertStatement,
+	backend: DatabaseBackend,
+	is_cockroachdb: bool,
+) -> reinhardt_core::exception::Result<(String, Values)> {
+	if is_cockroachdb {
+		CockroachDBQueryBuilder::new()
+			.build_insert_checked(stmt)
+			.map_err(checked_query_build_error)
+	} else {
+		Ok(build_insert_sql(stmt, backend))
+	}
+}
+
+fn build_update_sql_checked(
+	stmt: &UpdateStatement,
+	backend: DatabaseBackend,
+	is_cockroachdb: bool,
+) -> reinhardt_core::exception::Result<(String, Values)> {
+	if is_cockroachdb {
+		CockroachDBQueryBuilder::new()
+			.build_update_checked(stmt)
+			.map_err(checked_query_build_error)
+	} else {
+		Ok(build_update_sql(stmt, backend))
+	}
+}
+
+fn build_delete_sql_checked(
+	stmt: &DeleteStatement,
+	backend: DatabaseBackend,
+	is_cockroachdb: bool,
+) -> reinhardt_core::exception::Result<(String, Values)> {
+	if is_cockroachdb {
+		CockroachDBQueryBuilder::new()
+			.build_delete_checked(stmt)
+			.map_err(checked_query_build_error)
+	} else {
+		Ok(build_delete_sql(stmt, backend))
+	}
+}
+
+fn database_value_sql_literal(
+	value: DatabaseValue,
+	backend: DatabaseBackend,
+) -> Result<String, FieldCodecError> {
+	if let DatabaseValue::Array {
+		element_type,
+		values,
+	} = &value
+		&& backend == DatabaseBackend::Postgres
+		&& values.is_empty()
+	{
+		let element_type = match element_type {
+			DatabaseArrayType::String => "text",
+			DatabaseArrayType::I32 => "integer",
+			DatabaseArrayType::I64 => "bigint",
+			DatabaseArrayType::F32 => "real",
+			DatabaseArrayType::F64 => "double precision",
+			DatabaseArrayType::Bool => "boolean",
+			DatabaseArrayType::Uuid => "uuid",
+		};
+		return Ok(format!("ARRAY[]::{element_type}[]"));
+	}
+
+	if backend == DatabaseBackend::Postgres || !matches!(&value, DatabaseValue::Array { .. }) {
+		return Ok(database_value_to_query_value(value).to_sql_literal());
+	}
+
+	let json = value.into_json_value()?;
+	Ok(format!("'{}'", json.to_string().replace('\'', "''")))
+}
+
+fn quote_identifier(identifier: &str, backend: DatabaseBackend) -> String {
+	let quote = if backend == DatabaseBackend::MySql {
+		'`'
+	} else {
+		'"'
+	};
+	format!("{quote}{identifier}{quote}")
+}
+
+#[derive(Clone)]
+struct DefaultDatabase {
+	lease: DatabaseConnectionLease,
+	handle: DatabaseConnection,
+	scope: Option<Arc<ScopedRegistrationNode>>,
+	test_registration: Option<Arc<TestDatabaseRegistration>>,
+}
+
+impl DefaultDatabase {
+	fn from_scope(scope: Arc<ScopedRegistrationNode>) -> Self {
+		Self {
+			lease: scope.lease.clone(),
+			handle: scope.handle,
+			scope: Some(scope),
+			test_registration: None,
+		}
+	}
+}
+
+#[derive(Clone)]
+enum ScopedRegistrationPredecessor {
+	Scope(Arc<ScopedRegistrationNode>),
+	Baseline(DefaultDatabase),
+}
+
+struct ScopedRegistrationNode {
+	handle: DatabaseConnection,
+	lease: DatabaseConnectionLease,
+	previous: Mutex<Option<ScopedRegistrationPredecessor>>,
+	active: AtomicBool,
+}
+
+struct TestDatabaseRegistration {
+	previous: Mutex<Option<DefaultDatabase>>,
+	active: AtomicBool,
+}
+
 /// Global database connection state
-static DB: once_cell::sync::OnceCell<Arc<RwLock<Option<DatabaseConnection>>>> =
+static DB: once_cell::sync::OnceCell<Arc<StdRwLock<Option<DefaultDatabase>>>> =
 	once_cell::sync::OnceCell::new();
+
+fn database_lock_error() -> Error {
+	Error::from(DatabaseError::new(
+		DatabaseErrorKind::Configuration,
+		"database registry lock is poisoned",
+	))
+}
+
+fn database_state()
+-> reinhardt_core::exception::Result<StdRwLockWriteGuard<'static, Option<DefaultDatabase>>> {
+	DB.get_or_init(|| Arc::new(StdRwLock::new(None)))
+		.write()
+		.map_err(|_| database_lock_error())
+}
+
+fn initialized_database_state()
+-> reinhardt_core::exception::Result<StdRwLockReadGuard<'static, Option<DefaultDatabase>>> {
+	DB.get()
+		.ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"Database not initialized",
+			))
+		})?
+		.read()
+		.map_err(|_| database_lock_error())
+}
 
 /// Initialize the global database connection
 ///
@@ -83,6 +319,9 @@ pub async fn init_database(url: &str) -> reinhardt_core::exception::Result<()> {
 
 /// Initialize the global database connection with a specific pool size
 ///
+/// If the global connection is already initialized, this function returns
+/// successfully without opening another connection.
+///
 /// # Arguments
 ///
 /// * `url` - Database connection URL
@@ -103,9 +342,62 @@ pub async fn init_database_with_pool_size(
 	url: &str,
 	pool_size: Option<u32>,
 ) -> reinhardt_core::exception::Result<()> {
-	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
-	DB.get_or_init(|| Arc::new(RwLock::new(Some(conn))));
+	if DB.get().is_some()
+		&& initialized_database_state()?
+			.as_ref()
+			.is_some_and(database_has_baseline)
+	{
+		return Ok(());
+	}
+
+	let owner = super::engine::connect_backend_with_pool_size(url, pool_size).await?;
+	let lease = DatabaseConnectionLease::register(owner)?;
+	let database = DefaultDatabase {
+		handle: lease.handle(),
+		lease,
+		scope: None,
+		test_registration: None,
+	};
+
+	let mut guard = database_state()?;
+	if guard.is_none() {
+		*guard = Some(database);
+	} else if let Some(scope) = guard.as_ref().and_then(|current| current.scope.as_ref()) {
+		install_baseline_beneath_scopes(scope, database);
+	}
+
 	Ok(())
+}
+
+fn database_has_baseline(database: &DefaultDatabase) -> bool {
+	match &database.scope {
+		None => true,
+		Some(scope) => scope_has_baseline(scope),
+	}
+}
+
+fn scope_has_baseline(scope: &ScopedRegistrationNode) -> bool {
+	match scoped_predecessor(scope) {
+		Some(ScopedRegistrationPredecessor::Scope(parent)) => scope_has_baseline(&parent),
+		Some(ScopedRegistrationPredecessor::Baseline(_)) => true,
+		None => false,
+	}
+}
+
+fn install_baseline_beneath_scopes(scope: &Arc<ScopedRegistrationNode>, database: DefaultDatabase) {
+	let mut previous = scope
+		.previous
+		.lock()
+		.unwrap_or_else(|poisoned| poisoned.into_inner());
+	match previous.as_ref() {
+		Some(ScopedRegistrationPredecessor::Scope(parent)) => {
+			let parent = Arc::clone(parent);
+			drop(previous);
+			install_baseline_beneath_scopes(&parent, database);
+		}
+		Some(ScopedRegistrationPredecessor::Baseline(_)) => {}
+		None => *previous = Some(ScopedRegistrationPredecessor::Baseline(database)),
+	}
 }
 
 /// Reinitialize the global database connection (for testing)
@@ -153,29 +445,450 @@ pub async fn reinitialize_database_with_pool_size(
 	url: &str,
 	pool_size: Option<u32>,
 ) -> reinhardt_core::exception::Result<()> {
-	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
+	let owner = super::engine::connect_backend_with_pool_size(url, pool_size).await?;
+	let lease = DatabaseConnectionLease::register(owner)?;
+	let database = DefaultDatabase {
+		handle: lease.handle(),
+		lease,
+		scope: None,
+		test_registration: None,
+	};
 
-	if let Some(db_cell) = DB.get() {
-		// Replace existing connection
-		let mut guard = db_cell.write().await;
-		*guard = Some(conn);
-	} else {
-		// First time initialization
-		DB.get_or_init(|| Arc::new(RwLock::new(Some(conn))));
-	}
+	let mut guard = database_state()?;
+	*guard = Some(database);
 
 	Ok(())
 }
 
+/// A scoped owner for a temporary global ORM database registration.
+///
+/// The previous registration is restored when this guard drops, provided no
+/// other owner has replaced the scoped registration.
+#[must_use = "dropping the guard restores the previous database registration"]
+pub struct ScopedDatabaseRegistration {
+	node: Arc<ScopedRegistrationNode>,
+}
+
+impl ScopedDatabaseRegistration {
+	/// Returns the copyable handle for the scoped database.
+	pub fn connection(&self) -> DatabaseConnection {
+		self.node.handle
+	}
+
+	/// Returns a lease that keeps the scoped database connection alive.
+	///
+	/// The lease does not guarantee that this registration remains installed
+	/// globally if another owner replaces it.
+	pub fn lease(&self) -> DatabaseConnectionLease {
+		self.node.lease.clone()
+	}
+}
+
+impl Drop for ScopedDatabaseRegistration {
+	fn drop(&mut self) {
+		if !self.node.active.swap(false, Ordering::AcqRel) {
+			return;
+		}
+		restore_if_current(&self.node);
+	}
+}
+
+fn restore_if_current(node: &Arc<ScopedRegistrationNode>) {
+	match database_state() {
+		Ok(mut state) => {
+			if state.as_ref().is_some_and(|database| {
+				database
+					.scope
+					.as_ref()
+					.is_some_and(|current| Arc::ptr_eq(current, node))
+			}) {
+				*state = nearest_active_predecessor(node);
+			} else if let Some(current) = state
+				.as_ref()
+				.and_then(|database| database.scope.as_ref())
+				.filter(|current| scope_descends_from(current, node))
+			{
+				unlink_inactive_ancestor(current, node);
+			} else {
+				tracing::warn!(
+					"Scoped database registration was externally replaced; previous registration will not be restored"
+				);
+			}
+		}
+		Err(error) => {
+			tracing::warn!(
+				error = %error,
+				"Scoped database registration could not restore the previous registration"
+			);
+		}
+	}
+}
+
+fn scope_descends_from(
+	current: &ScopedRegistrationNode,
+	ancestor: &Arc<ScopedRegistrationNode>,
+) -> bool {
+	let mut previous = scoped_predecessor(current);
+	while let Some(ScopedRegistrationPredecessor::Scope(scope)) = previous {
+		if Arc::ptr_eq(&scope, ancestor) {
+			return true;
+		}
+		previous = scoped_predecessor(&scope);
+	}
+	false
+}
+
+fn nearest_active_predecessor(node: &ScopedRegistrationNode) -> Option<DefaultDatabase> {
+	let mut previous = scoped_predecessor(node);
+	loop {
+		match previous {
+			Some(ScopedRegistrationPredecessor::Scope(scope)) => {
+				if scope.active.load(Ordering::Acquire) {
+					return Some(DefaultDatabase::from_scope(scope));
+				}
+				previous = scoped_predecessor(&scope);
+			}
+			Some(ScopedRegistrationPredecessor::Baseline(database)) => {
+				return active_database_predecessor(Some(database.clone()));
+			}
+			None => return None,
+		}
+	}
+}
+
+fn scoped_predecessor(node: &ScopedRegistrationNode) -> Option<ScopedRegistrationPredecessor> {
+	node.previous
+		.lock()
+		.unwrap_or_else(|poisoned| poisoned.into_inner())
+		.clone()
+}
+
+fn unlink_inactive_ancestor(
+	current: &Arc<ScopedRegistrationNode>,
+	target: &Arc<ScopedRegistrationNode>,
+) {
+	let mut previous = current
+		.previous
+		.lock()
+		.unwrap_or_else(|poisoned| poisoned.into_inner());
+	match previous.as_ref() {
+		Some(ScopedRegistrationPredecessor::Scope(scope)) if Arc::ptr_eq(scope, target) => {
+			*previous = scoped_predecessor(target);
+		}
+		Some(ScopedRegistrationPredecessor::Scope(scope)) => {
+			let scope = Arc::clone(scope);
+			drop(previous);
+			unlink_inactive_ancestor(&scope, target);
+		}
+		Some(ScopedRegistrationPredecessor::Baseline(_)) | None => {}
+	}
+}
+
+/// Installs a temporary global ORM database registration.
+///
+/// The backend connection is created before the global registry is locked.
+pub async fn install_scoped_database(
+	database_url: &str,
+) -> reinhardt_core::exception::Result<ScopedDatabaseRegistration> {
+	let owner = super::engine::connect_backend_with_pool_size(database_url, None).await?;
+	let installed_lease = DatabaseConnectionLease::register(owner)?;
+	let installed_handle = installed_lease.handle();
+	let node = {
+		let mut state = database_state()?;
+		let previous = state.take().map(|database| match database.scope.clone() {
+			Some(scope) => ScopedRegistrationPredecessor::Scope(scope),
+			None => ScopedRegistrationPredecessor::Baseline(database),
+		});
+		let node = Arc::new(ScopedRegistrationNode {
+			handle: installed_handle,
+			lease: installed_lease,
+			previous: Mutex::new(previous),
+			active: AtomicBool::new(true),
+		});
+		*state = Some(DefaultDatabase::from_scope(node.clone()));
+		node
+	};
+
+	Ok(ScopedDatabaseRegistration { node })
+}
+
+/// RAII guard for a global ORM database registration replaced by a test.
+#[doc(hidden)]
+pub struct DatabaseRegistrationSnapshot {
+	database: Option<DefaultDatabase>,
+	test_registration: Option<Arc<TestDatabaseRegistration>>,
+	armed: bool,
+}
+
+impl DatabaseRegistrationSnapshot {
+	fn restore(&mut self) {
+		if !self.armed {
+			return;
+		}
+		self.armed = false;
+
+		if let Some(registration) = self.test_registration.take() {
+			if registration.active.swap(false, Ordering::AcqRel) {
+				restore_test_database_registration(&registration);
+			}
+			return;
+		}
+
+		let previous = self.database.take();
+		match database_state() {
+			Ok(mut state) if state.is_none() => {
+				*state = active_database_predecessor(previous);
+			}
+			Ok(_) => {
+				tracing::warn!(
+					"Test database registration was externally replaced; previous registration will not be restored"
+				);
+			}
+			Err(error) => {
+				tracing::warn!(
+					error = %error,
+					"Test database registration could not be restored"
+				);
+			}
+		}
+	}
+}
+
+impl Drop for DatabaseRegistrationSnapshot {
+	fn drop(&mut self) {
+		self.restore();
+	}
+}
+
+/// Replace the global ORM database connection and retain the previous state.
+///
+/// This is intended for test fixtures that need to mutate global ORM state while
+/// preserving RAII cleanup semantics. Passing `None` clears the global connection.
+#[doc(hidden)]
+pub async fn replace_database_connection_for_testing(
+	lease: Option<DatabaseConnectionLease>,
+) -> DatabaseRegistrationSnapshot {
+	replace_database_connection_for_testing_sync(lease)
+}
+
+fn replace_database_connection_for_testing_sync(
+	lease: Option<DatabaseConnectionLease>,
+) -> DatabaseRegistrationSnapshot {
+	let Some(lease) = lease else {
+		return match database_state() {
+			Ok(mut state) => DatabaseRegistrationSnapshot {
+				database: std::mem::take(&mut *state),
+				test_registration: None,
+				armed: true,
+			},
+			Err(error) => {
+				tracing::warn!(
+					error = %error,
+					"Test database registration could not be replaced"
+				);
+				DatabaseRegistrationSnapshot {
+					database: None,
+					test_registration: None,
+					armed: false,
+				}
+			}
+		};
+	};
+
+	let registration = Arc::new(TestDatabaseRegistration {
+		previous: Mutex::new(None),
+		active: AtomicBool::new(true),
+	});
+	let database = DefaultDatabase {
+		handle: lease.handle(),
+		lease,
+		scope: None,
+		test_registration: Some(Arc::clone(&registration)),
+	};
+	match database_state() {
+		Ok(mut state) => {
+			let previous = (*state).replace(database);
+			*registration
+				.previous
+				.lock()
+				.unwrap_or_else(std::sync::PoisonError::into_inner) = previous;
+			DatabaseRegistrationSnapshot {
+				database: None,
+				test_registration: Some(registration),
+				armed: true,
+			}
+		}
+		Err(error) => {
+			tracing::warn!(
+				error = %error,
+				"Test database registration could not be replaced"
+			);
+			DatabaseRegistrationSnapshot {
+				database: None,
+				test_registration: None,
+				armed: false,
+			}
+		}
+	}
+}
+
+/// Restores a database registration saved by [`replace_database_connection_for_testing`].
+#[doc(hidden)]
+pub async fn restore_database_connection_for_testing(mut snapshot: DatabaseRegistrationSnapshot) {
+	restore_database_connection_for_testing_sync(&mut snapshot);
+}
+
+fn restore_database_connection_for_testing_sync(snapshot: &mut DatabaseRegistrationSnapshot) {
+	snapshot.restore();
+}
+
+fn active_database_predecessor(database: Option<DefaultDatabase>) -> Option<DefaultDatabase> {
+	database.and_then(|database| {
+		if let Some(test_registration) = database.test_registration.as_ref()
+			&& !test_registration.active.load(Ordering::Acquire)
+		{
+			return active_test_database_predecessor(test_registration);
+		}
+		match database.scope.as_ref() {
+			Some(scope) if !scope.active.load(Ordering::Acquire) => {
+				nearest_active_predecessor(scope)
+			}
+			Some(_) | None => Some(database),
+		}
+	})
+}
+
+fn active_test_database_predecessor(
+	registration: &TestDatabaseRegistration,
+) -> Option<DefaultDatabase> {
+	let previous = registration
+		.previous
+		.lock()
+		.unwrap_or_else(std::sync::PoisonError::into_inner)
+		.clone();
+	active_database_predecessor(previous)
+}
+
+fn restore_test_database_registration(registration: &Arc<TestDatabaseRegistration>) {
+	match database_state() {
+		Ok(mut state) => {
+			let current = state
+				.as_ref()
+				.and_then(|database| database.test_registration.as_ref());
+			if current.is_some_and(|current| Arc::ptr_eq(current, registration)) {
+				*state = active_test_database_predecessor(registration);
+			} else if let Some(current) = current.cloned() {
+				drop(state);
+				if !test_registration_descends_from(&current, registration) {
+					tracing::warn!(
+						"Test database registration was externally replaced; previous registration will not be restored"
+					);
+					return;
+				}
+				unlink_inactive_test_registration(&current, registration);
+			} else {
+				tracing::warn!(
+					"Test database registration was externally replaced; previous registration will not be restored"
+				);
+			}
+		}
+		Err(error) => {
+			tracing::warn!(error = %error, "Test database registration could not be restored");
+		}
+	}
+}
+
+fn test_registration_descends_from(
+	current: &TestDatabaseRegistration,
+	ancestor: &Arc<TestDatabaseRegistration>,
+) -> bool {
+	let mut previous = current
+		.previous
+		.lock()
+		.unwrap_or_else(std::sync::PoisonError::into_inner)
+		.clone();
+	while let Some(database) = previous {
+		let Some(registration) = database.test_registration else {
+			return false;
+		};
+		if Arc::ptr_eq(&registration, ancestor) {
+			return true;
+		}
+		previous = registration
+			.previous
+			.lock()
+			.unwrap_or_else(std::sync::PoisonError::into_inner)
+			.clone();
+	}
+	false
+}
+
+fn unlink_inactive_test_registration(
+	current: &TestDatabaseRegistration,
+	target: &Arc<TestDatabaseRegistration>,
+) {
+	let mut previous = current
+		.previous
+		.lock()
+		.unwrap_or_else(std::sync::PoisonError::into_inner);
+	let Some(database) = previous.as_ref() else {
+		return;
+	};
+	let Some(registration) = database.test_registration.as_ref() else {
+		return;
+	};
+	if Arc::ptr_eq(registration, target) {
+		*previous = active_test_database_predecessor(target);
+	} else {
+		let registration = Arc::clone(registration);
+		drop(previous);
+		unlink_inactive_test_registration(&registration, target);
+	}
+}
+
 /// Get a reference to the global database connection
 pub async fn get_connection() -> reinhardt_core::exception::Result<DatabaseConnection> {
-	let db = DB.get().ok_or_else(|| {
-		reinhardt_core::exception::Error::Database("Database not initialized".to_string())
-	})?;
-	let guard = db.read().await;
-	guard.clone().ok_or_else(|| {
-		reinhardt_core::exception::Error::Database("Database connection not available".to_string())
-	})
+	let guard = initialized_database_state()?;
+	guard
+		.as_ref()
+		.map(|database| database.handle)
+		.ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Connection,
+				"Database connection not available",
+			))
+		})
+}
+
+/// Returns a lease that retains the global ORM database registration.
+#[doc(hidden)]
+pub async fn get_connection_lease() -> reinhardt_core::exception::Result<DatabaseConnectionLease> {
+	let guard = initialized_database_state()?;
+	guard
+		.as_ref()
+		.map(|database| database.lease.clone())
+		.ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Connection,
+				"Database connection not available",
+			))
+		})
+}
+
+/// Returns a coherent lease-and-handle snapshot of the global ORM registration.
+#[doc(hidden)]
+pub async fn get_connection_registration()
+-> reinhardt_core::exception::Result<(DatabaseConnectionLease, DatabaseConnection)> {
+	let guard = initialized_database_state()?;
+	guard
+		.as_ref()
+		.map(|database| (database.lease.clone(), database.handle))
+		.ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Connection,
+				"Database connection not available",
+			))
+		})
 }
 
 /// Model manager (similar to Django's Manager)
@@ -192,14 +905,319 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
+	fn executor_backend(executor: &dyn super::connection::TransactionExecutor) -> DatabaseBackend {
+		match executor.backend() {
+			crate::backends::types::DatabaseType::Postgres => DatabaseBackend::Postgres,
+			crate::backends::types::DatabaseType::Mysql => DatabaseBackend::MySql,
+			crate::backends::types::DatabaseType::Sqlite => DatabaseBackend::Sqlite,
+		}
+	}
+
+	fn decode_executor_row(
+		row: crate::backends::types::Row,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		super::connection::QueryRow::from_backend_row(row)
+			.deserialize_model::<M>()
+			.map_err(executor_field_codec_error)
+	}
+
+	/// Preserve the model-declared primary-key storage type when binding executor queries.
+	fn primary_key_query_value(
+		pk: &M::PrimaryKey,
+	) -> Result<reinhardt_query::value::Value, FieldCodecError> {
+		M::primary_key_database_value(pk).map(database_value_to_query_value)
+	}
+
+	fn build_delete_statement(pk: &M::PrimaryKey) -> Result<DeleteStatement, FieldCodecError> {
+		let primary_key_value = Self::primary_key_query_value(pk)?;
+		let field_metadata = M::field_metadata();
+		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+
+		let mut stmt = Query::delete();
+		stmt.from_table(Alias::new(M::table_name()))
+			.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key_value));
+		Ok(stmt)
+	}
+
+	fn is_generated_field(field: &str) -> bool {
+		M::generated_field_names().contains(&field)
+	}
+
+	fn field_column<'a>(field_metadata: &'a [FieldInfo], field_name: &'a str) -> &'a str {
+		find_field_info(field_metadata, field_name)
+			.map(FieldInfo::db_column_name)
+			.unwrap_or_else(|| {
+				if field_name == M::primary_key_field() {
+					M::primary_key_column()
+				} else {
+					field_name
+				}
+			})
+	}
+
+	fn returning_columns_from_object(
+		obj: &std::collections::BTreeMap<String, DatabaseValue>,
+	) -> Vec<Alias> {
+		let primary_key = M::primary_key_field();
+		let mut columns: Vec<&str> = obj.keys().map(String::as_str).collect();
+		columns.sort_unstable();
+		if let Some(index) = columns.iter().position(|column| *column == primary_key) {
+			let pk = columns.remove(index);
+			columns.insert(0, pk);
+		}
+		let field_metadata = M::field_metadata();
+		columns
+			.into_iter()
+			.map(|column| Alias::new(Self::field_column(&field_metadata, column)))
+			.collect()
+	}
+
+	fn build_update_statement_from_object(
+		obj: &std::collections::BTreeMap<String, DatabaseValue>,
+		_field_is_none: impl Fn(&str) -> bool,
+	) -> Result<reinhardt_query::prelude::UpdateStatement, FieldCodecError> {
+		Self::build_update_statement_from_object_with_returning(obj, true)
+	}
+
+	fn build_update_statement_from_object_with_returning(
+		obj: &std::collections::BTreeMap<String, DatabaseValue>,
+		include_returning: bool,
+	) -> Result<reinhardt_query::prelude::UpdateStatement, FieldCodecError> {
+		let mut stmt = Query::update();
+		stmt.table(Alias::new(M::table_name()));
+		let field_metadata = M::field_metadata();
+
+		let mut has_values = false;
+		for (k, v) in obj.iter().filter(|(k, _)| {
+			let key = k.as_str();
+			key != M::primary_key_field() && !Self::is_generated_field(key)
+		}) {
+			let column_name = Self::field_column(&field_metadata, k);
+			if matches!(v, DatabaseValue::Null) {
+				stmt.value_expr(Alias::new(column_name), Expr::cust("NULL"));
+			} else {
+				stmt.value(
+					Alias::new(column_name),
+					database_value_to_query_value(v.clone()),
+				);
+			}
+			has_values = true;
+		}
+
+		if !has_values {
+			let primary_key = M::primary_key_field();
+			let primary_key_column = Self::field_column(&field_metadata, primary_key);
+			stmt.value_expr(
+				Alias::new(primary_key_column),
+				Expr::col(Alias::new(primary_key_column)),
+			);
+		}
+
+		let pk_value = obj
+			.get(M::primary_key_field())
+			.filter(|value| !matches!(value, DatabaseValue::Null))
+			.cloned()
+			.ok_or_else(|| {
+				FieldCodecError::Serialization(format!(
+					"encoded {} fields must contain a non-null primary key '{}'",
+					M::table_name(),
+					M::primary_key_field()
+				))
+			})?;
+		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+		stmt.and_where(
+			Expr::col(Alias::new(primary_key_column)).eq(database_value_to_query_value(pk_value)),
+		);
+
+		if include_returning {
+			stmt.returning(Self::returning_columns_from_object(obj));
+		}
+		Ok(stmt)
+	}
+
+	fn build_insert_statement_from_object(
+		obj: &std::collections::BTreeMap<String, DatabaseValue>,
+		_field_is_none: impl Fn(&str) -> bool,
+	) -> reinhardt_core::exception::Result<InsertStatement> {
+		let mut stmt = Query::insert();
+		stmt.into_table(Alias::new(M::table_name()));
+
+		let pk_field = M::primary_key_field();
+		let field_metadata = M::field_metadata();
+		let (fields, values): (Vec<_>, Vec<_>) = obj
+			.iter()
+			.filter(|(k, v)| {
+				let key = k.as_str();
+				if Self::is_generated_field(key) {
+					return false;
+				}
+				if key == pk_field {
+					if matches!(v, DatabaseValue::Null) {
+						return false;
+					}
+					if M::primary_key_uses_zero_sentinel()
+						&& matches!(v, DatabaseValue::I32(0) | DatabaseValue::I64(0))
+					{
+						return false;
+					}
+				}
+				if matches!(v, DatabaseValue::Null)
+					&& (key == "created_at"
+						|| key == "updated_at"
+						|| key.ends_with("_date")
+						|| key.ends_with("_time")
+						|| key.ends_with("_at"))
+				{
+					return false;
+				}
+				true
+			})
+			.map(|(k, v)| {
+				let value = database_value_to_query_value(v.clone());
+				(Alias::new(Self::field_column(&field_metadata, k)), value)
+			})
+			.unzip();
+
+		if fields.is_empty() {
+			return Err(Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!(
+					"Cannot create {} because no writable fields remain after filtering generated and defaulted columns",
+					M::table_name()
+				),
+			)));
+		}
+
+		stmt.columns(fields);
+		stmt.values_panic(values);
+
+		Ok(stmt)
+	}
+
 	/// Get all records
 	pub fn all(&self) -> QuerySet<M> {
 		QuerySet::new()
 	}
 
+	/// Return distinct truncated values from a generated date field.
+	///
+	/// Querysets created from subqueries, querysets with CTEs, querysets with
+	/// lateral joins, and grouped or HAVING querysets are not supported.
+	pub async fn dates<F, Origin>(
+		&self,
+		field: super::expressions::FieldRef<M, F, Origin>,
+		kind: super::query::DateTruncKind,
+		order: super::query::DateProjectionOrder,
+	) -> reinhardt_core::exception::Result<Vec<chrono::NaiveDate>>
+	where
+		F: super::query::DateProjectionField,
+	{
+		QuerySet::new().dates(field, kind, order).await
+	}
+
+	/// Return distinct truncated dates through a caller-owned ORM executor.
+	///
+	/// Querysets created from subqueries, querysets with CTEs, querysets with
+	/// lateral joins, and grouped or HAVING querysets are not supported.
+	pub async fn dates_with_db<E, F, Origin>(
+		&self,
+		conn: &mut E,
+		field: super::expressions::FieldRef<M, F, Origin>,
+		kind: super::query::DateTruncKind,
+		order: super::query::DateProjectionOrder,
+	) -> reinhardt_core::exception::Result<Vec<chrono::NaiveDate>>
+	where
+		E: super::connection::OrmExecutor,
+		F: super::query::DateProjectionField,
+	{
+		QuerySet::new()
+			.dates_with_db(conn, field, kind, order)
+			.await
+	}
+
+	/// Return distinct truncated dates through an active transaction executor.
+	///
+	/// Querysets created from subqueries, querysets with CTEs, querysets with
+	/// lateral joins, and grouped or HAVING querysets are not supported.
+	pub async fn dates_with_executor<F, Origin>(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		field: super::expressions::FieldRef<M, F, Origin>,
+		kind: super::query::DateTruncKind,
+		order: super::query::DateProjectionOrder,
+	) -> Result<Vec<chrono::NaiveDate>, crate::backends::error::DatabaseError>
+	where
+		F: super::query::DateProjectionField,
+	{
+		QuerySet::new()
+			.dates_with_executor(executor, field, kind, order)
+			.await
+	}
+
+	/// Return distinct truncated values from a generated UTC datetime field.
+	///
+	/// Querysets created from subqueries, querysets with CTEs, querysets with
+	/// lateral joins, and grouped or HAVING querysets are not supported.
+	pub async fn datetimes<F, Origin>(
+		&self,
+		field: super::expressions::FieldRef<M, F, Origin>,
+		kind: super::query::DateTimeTruncKind,
+		order: super::query::DateProjectionOrder,
+		time_zone: Option<chrono_tz::Tz>,
+	) -> reinhardt_core::exception::Result<Vec<chrono::DateTime<chrono_tz::Tz>>>
+	where
+		F: super::query::DateTimeProjectionField,
+	{
+		QuerySet::new()
+			.datetimes(field, kind, order, time_zone)
+			.await
+	}
+
+	/// Return distinct truncated datetimes through a caller-owned ORM executor.
+	///
+	/// Querysets created from subqueries, querysets with CTEs, querysets with
+	/// lateral joins, and grouped or HAVING querysets are not supported.
+	pub async fn datetimes_with_db<E, F, Origin>(
+		&self,
+		conn: &mut E,
+		field: super::expressions::FieldRef<M, F, Origin>,
+		kind: super::query::DateTimeTruncKind,
+		order: super::query::DateProjectionOrder,
+		time_zone: Option<chrono_tz::Tz>,
+	) -> reinhardt_core::exception::Result<Vec<chrono::DateTime<chrono_tz::Tz>>>
+	where
+		E: super::connection::OrmExecutor,
+		F: super::query::DateTimeProjectionField,
+	{
+		QuerySet::new()
+			.datetimes_with_db(conn, field, kind, order, time_zone)
+			.await
+	}
+
+	/// Return distinct truncated datetimes through an active transaction executor.
+	///
+	/// Querysets created from subqueries, querysets with CTEs, querysets with
+	/// lateral joins, and grouped or HAVING querysets are not supported.
+	pub async fn datetimes_with_executor<F, Origin>(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		field: super::expressions::FieldRef<M, F, Origin>,
+		kind: super::query::DateTimeTruncKind,
+		order: super::query::DateProjectionOrder,
+		time_zone: Option<chrono_tz::Tz>,
+	) -> Result<Vec<chrono::DateTime<chrono_tz::Tz>>, crate::backends::error::DatabaseError>
+	where
+		F: super::query::DateTimeProjectionField,
+	{
+		QuerySet::new()
+			.datetimes_with_executor(executor, field, kind, order, time_zone)
+			.await
+	}
+
 	/// Filter records by a typed filter expression.
 	///
-	/// Accepts any value convertible into a [`FilterCondition`](super::query::FilterCondition).
+	/// Accepts typed and untyped inputs through
+	/// [`QueryFilterInput`](super::query::QueryFilterInput).
 	/// The intended call style is the fluent builder produced by the
 	/// `#[model]`-generated field accessors (`FieldRef::eq()` / `.gt()` / ...)
 	/// or a composite condition built with `.and()`, `.or()`, and `.not()`.
@@ -220,14 +1238,14 @@ impl<M: Model> Manager<M> {
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn filter(&self, filter: impl Into<super::query::FilterCondition>) -> QuerySet<M> {
+	pub fn filter(&self, filter: impl super::query::QueryFilterInput<M>) -> QuerySet<M> {
 		QuerySet::new().filter(filter)
 	}
 
 	/// Get a single record by primary key
 	/// Returns a QuerySet filtered by the primary key field
 	pub fn get(&self, pk: M::PrimaryKey) -> QuerySet<M> {
-		let pk_field = M::primary_key_field();
+		let pk_field = M::primary_key_column();
 		let pk_value = M::primary_key_filter_value(pk);
 
 		let filter = super::query::Filter::new(
@@ -276,22 +1294,28 @@ impl<M: Model> Manager<M> {
 
 	/// Add annotation to QuerySet
 	///
-	/// Adds a computed field to each record using SQL expressions or aggregations.
+	/// Starts a QuerySet for adding typed computed fields.
 	/// Corresponds to Django's QuerySet.annotate().
 	///
 	/// # Examples
 	///
 	/// ```ignore
-	/// use reinhardt_db::orm::annotation::{Annotation, AnnotationValue};
-	/// use reinhardt_db::orm::aggregation::Aggregate;
+	/// use reinhardt_db::orm::func;
 	///
+	/// let display_name =
+	///     func::literal::<User, String>("user".to_owned())?.label("display_name")?;
 	/// let users = User::objects()
-	///     .annotate(Annotation::new("total_orders",
-	///         AnnotationValue::Aggregate(Aggregate::count(Some("orders")))))
+	///     .annotate(display_name)?
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn annotate(&self, annotation: super::annotation::Annotation) -> QuerySet<M> {
+	pub fn annotate<K>(
+		&self,
+		annotation: super::query_fields::LabeledExpression<M, K>,
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
+	where
+		K: super::query_fields::AnnotationExpressionKind,
+	{
 		QuerySet::new().annotate(annotation)
 	}
 
@@ -347,7 +1371,10 @@ impl<M: Model> Manager<M> {
 	/// ```ignore
 	/// let posts = Post::objects().select_related(&["author", "category"]).all().await?;
 	/// ```
-	pub fn select_related(&self, fields: &[&str]) -> QuerySet<M> {
+	pub fn select_related<I>(&self, fields: I) -> QuerySet<M>
+	where
+		I: RelationLoadInput<M>,
+	{
 		QuerySet::new().select_related(fields)
 	}
 
@@ -389,7 +1416,10 @@ impl<M: Model> Manager<M> {
 	/// ```ignore
 	/// let posts = Post::objects().prefetch_related(&["comments", "tags"]).all().await?;
 	/// ```
-	pub fn prefetch_related(&self, fields: &[&str]) -> QuerySet<M> {
+	pub fn prefetch_related<I>(&self, fields: I) -> QuerySet<M>
+	where
+		I: RelationLoadInput<M>,
+	{
 		QuerySet::new().prefetch_related(fields)
 	}
 
@@ -488,11 +1518,15 @@ impl<M: Model> Manager<M> {
 	///     .filter_in_subquery("id", |subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("price", FilterOperator::Gt, FilterValue::Int(1500)))
 	///             .values(&["author_id"])
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn filter_in_subquery<R: super::Model, F>(&self, field: &str, subquery_fn: F) -> QuerySet<M>
+	pub fn filter_in_subquery<R: super::Model, F>(
+		&self,
+		field: &str,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -510,7 +1544,7 @@ impl<M: Model> Manager<M> {
 	///     .filter_not_in_subquery("id", |subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("status", FilterOperator::Eq, FilterValue::String("archived".into())))
 	///             .values(&["author_id"])
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// ```
@@ -518,7 +1552,7 @@ impl<M: Model> Manager<M> {
 		&self,
 		field: &str,
 		subquery_fn: F,
-	) -> QuerySet<M>
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -535,11 +1569,14 @@ impl<M: Model> Manager<M> {
 	/// let authors = Author::objects()
 	///     .filter_exists(|subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef(F::new("authors.id"))))
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn filter_exists<R: super::Model, F>(&self, subquery_fn: F) -> QuerySet<M>
+	pub fn filter_exists<R: super::Model, F>(
+		&self,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -556,11 +1593,14 @@ impl<M: Model> Manager<M> {
 	/// let authors = Author::objects()
 	///     .filter_not_exists(|subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef(F::new("authors.id"))))
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn filter_not_exists<R: super::Model, F>(&self, subquery_fn: F) -> QuerySet<M>
+	pub fn filter_not_exists<R: super::Model, F>(
+		&self,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -611,11 +1651,15 @@ impl<M: Model> Manager<M> {
 	///     .annotate_subquery::<Book, _>("book_count", |subq| {
 	///         subq.filter("author_id", FilterOperator::Eq, FilterValue::OuterRef(OuterRef::new("authors.id")))
 	///             .values(&["COUNT(*)"])
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn annotate_subquery<R, F>(&self, name: &str, builder: F) -> QuerySet<M>
+	pub fn annotate_subquery<R, F>(
+		&self,
+		name: &str,
+		builder: F,
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
 	where
 		R: super::Model + 'static,
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
@@ -647,121 +1691,324 @@ impl<M: Model> Manager<M> {
 
 	/// Create a new record using reinhardt-query for SQL injection protection
 	pub async fn create(&self, model: &M) -> reinhardt_core::exception::Result<M> {
-		let conn = get_connection().await?;
-		self.create_with_conn(&conn, model).await
+		let mut conn = get_connection().await?;
+		self.create_with_conn(&mut conn, model).await
 	}
 
-	/// Create a new record with an explicit database connection
-	///
-	/// This method allows using a specific connection, which is essential for
-	/// transaction support. When operations are performed within a transaction,
-	/// the same connection must be used throughout.
-	///
-	/// # Arguments
-	///
-	/// * `conn` - The database connection to use
-	/// * `model` - The model to create
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
-	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
-	/// use reinhardt_db::orm::manager::get_connection;
-	///
-	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Create within transaction
-	/// let created = manager.create_with_conn(&conn, model).await?;
-	///
-	/// tx.commit().await?;
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub async fn create_with_conn(
+	async fn create_with_executor(
 		&self,
-		conn: &DatabaseConnection,
+		executor: &mut dyn super::connection::TransactionExecutor,
 		model: &M,
-	) -> reinhardt_core::exception::Result<M> {
-		let json = serde_json::to_value(model)
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		let obj = model
+			.encode_database_fields()
+			.map_err(executor_field_codec_error)?;
+		let mut stmt =
+			Self::build_insert_statement_from_object(&obj, |field| model.field_is_none(field))
+				.map_err(executor_error)?;
+		let backend = Self::executor_backend(executor);
 
-		// Extract fields and values from model
-		let obj = json.as_object().ok_or_else(|| {
-			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
-		})?;
-
-		// Build reinhardt-query INSERT statement
-		let mut stmt = Query::insert();
-		stmt.into_table(Alias::new(M::table_name()));
-
-		// Get the primary key field name to filter out auto-increment fields
-		let pk_field = M::primary_key_field();
-
-		// Filter out primary key fields and null datetime fields.
-		// Null datetime fields are skipped to let database DEFAULT apply
-		// (e.g., created_at, updated_at with DEFAULT CURRENT_TIMESTAMP).
-		let (fields, values): (Vec<_>, Vec<_>) = obj
-			.iter()
-			.filter(|(k, v)| {
-				let key = k.as_str();
-				// Exclude primary key field if it's null or 0 (auto-increment)
-				if key == pk_field {
-					if v.is_null() {
-						return false;
-					}
-					if let Some(n) = v.as_i64() {
-						return n != 0;
-					}
-				}
-				// Skip null datetime fields to let database DEFAULT apply
-				if v.is_null()
-					&& (key == "created_at"
-						|| key == "updated_at"
-						|| key.ends_with("_date")
-						|| key.ends_with("_time")
-						|| key.ends_with("_at"))
-				{
-					return false;
-				}
-				true
-			})
-			.map(|(k, v)| {
-				// Convert null values to SQL NULL for proper insertion
-				let value = if v.is_null() {
-					reinhardt_query::value::Value::Int(None)
-				} else {
-					Self::json_to_sea_value(v)
-				};
-				(Alias::new(k.as_str()), value)
-			})
-			.unzip();
-
-		stmt.columns(fields);
-		stmt.values_panic(values);
-
-		// Add RETURNING clause with explicit column names from JSON object
-		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
-		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
-		stmt.returning(all_columns);
-
-		let (sql, values) = build_insert_sql(&stmt, conn.backend());
-		let values: Vec<_> = values
+		if backend != DatabaseBackend::MySql {
+			stmt.returning(Self::returning_columns_from_object(&obj));
+		}
+		let context = super::execution::pgvector_context_for_insert(&stmt);
+		let (sql, values) = build_insert_sql_checked(&stmt, backend, executor.is_cockroachdb())
+			.map_err(executor_error)?;
+		let params = values
 			.0
 			.into_iter()
 			.map(Self::sea_value_to_query_value)
 			.collect();
 
-		let row = conn.query_one(&sql, values).await?;
+		if backend == DatabaseBackend::MySql {
+			let explicit_primary_key = obj
+				.get(M::primary_key_field())
+				.filter(|value| {
+					!matches!(value, DatabaseValue::Null)
+						&& (!M::primary_key_uses_zero_sentinel()
+							|| !matches!(value, DatabaseValue::I32(0) | DatabaseValue::I64(0)))
+				})
+				.cloned();
+			if explicit_primary_key.is_none() {
+				executor
+					.fetch_one("SELECT LAST_INSERT_ID(0) AS generated_id", Vec::new())
+					.await
+					.map_err(executor_error)?;
+			}
+			executor
+				.execute_with_context(&sql, params, context)
+				.await
+				.map_err(executor_error)?;
 
-		// row.data is already serde_json::Value::Object so deserialize directly
-		serde_json::from_value(row.data.clone())
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
+			let primary_key_value = if let Some(primary_key) = explicit_primary_key {
+				database_value_to_query_value(primary_key)
+			} else {
+				let row = executor
+					.fetch_one(
+						"SELECT CAST(LAST_INSERT_ID() AS SIGNED) AS generated_id",
+						Vec::new(),
+					)
+					.await
+					.map_err(executor_error)?;
+				let generated_id = row.get::<i64>("generated_id")?;
+				if generated_id <= 0 {
+					return Err(crate::backends::error::DatabaseError::new(
+						crate::backends::error::DatabaseErrorKind::Unsupported,
+						"MySQL executor inserts without an explicit primary key require an auto-increment integer primary key",
+					));
+				}
+				reinhardt_query::value::Value::BigInt(Some(generated_id))
+			};
+
+			let mut select = Query::select();
+			select.from(Alias::new(M::table_name()));
+			select.column(ColumnRef::Asterisk);
+			let field_metadata = M::field_metadata();
+			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+			select.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key_value));
+			let (select_sql, select_values) =
+				build_select_sql_checked(&select, backend, executor.is_cockroachdb())
+					.map_err(executor_error)?;
+			let select_params = select_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = executor
+				.fetch_one(&select_sql, select_params)
+				.await
+				.map_err(executor_error)?;
+			return Self::decode_executor_row(row);
+		}
+
+		let row = executor
+			.fetch_one_with_context(&sql, params, context)
+			.await
+			.map_err(executor_error)?;
+		Self::decode_executor_row(row)
+	}
+
+	/// Insert a model through a caller-owned transaction executor, regardless of
+	/// whether its primary key is already populated.
+	pub async fn insert_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		self.create_with_executor(executor, model).await
+	}
+
+	/// Save a model through a caller-owned transaction executor.
+	pub async fn save_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		if model.primary_key().is_some() {
+			self.update_with_executor(executor, model).await
+		} else {
+			self.create_with_executor(executor, model).await
+		}
+	}
+
+	/// Create a new record through a caller-owned ORM executor.
+	///
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] when the
+	/// write must participate in a closure-scoped transaction.
+	///
+	/// # Arguments
+	///
+	/// * `conn` - The mutable ORM executor to use
+	/// * `model` - The model to create
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # use reinhardt_db::orm::{Manager, Model};
+	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
+	/// use reinhardt_db::orm::manager::get_connection;
+	///
+	/// let conn = get_connection().await?;
+	/// let _created = conn
+	///     .atomic(async |transaction| {
+	///         manager.create_with_conn(transaction, model).await
+	///     })
+	///     .await?;
+	/// # Ok(())
+	/// # }
+	/// ```
+	pub async fn create_with_conn<E>(
+		&self,
+		conn: &mut E,
+		model: &M,
+	) -> reinhardt_core::exception::Result<M>
+	where
+		E: OrmExecutor + ?Sized,
+	{
+		match self.create_with_conn_outcome(conn, model).await {
+			super::custom_manager::CreateWithConnOutcome::Created(model) => Ok(model),
+			super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error)
+			| super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(error) => Err(error),
+		}
+	}
+
+	/// Inserts a record and reports whether a later hydration failure happened after the write.
+	pub async fn create_with_conn_outcome<E>(
+		&self,
+		conn: &mut E,
+		model: &M,
+	) -> super::custom_manager::CreateWithConnOutcome<M>
+	where
+		E: OrmExecutor + ?Sized,
+	{
+		let obj = match model.encode_database_fields().map_err(field_codec_error) {
+			Ok(obj) => obj,
+			Err(error) => {
+				return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
+			}
+		};
+		let mut stmt = match Self::build_insert_statement_from_object(&obj, |field| {
+			model.field_is_none(field)
+		}) {
+			Ok(statement) => statement,
+			Err(error) => {
+				return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
+			}
+		};
+		let backend = conn.backend();
+		if backend != DatabaseBackend::MySql {
+			stmt.returning(Self::returning_columns_from_object(&obj));
+		}
+		let context = super::execution::pgvector_context_for_insert(&stmt);
+		let (sql, values) = match build_insert_sql_checked(&stmt, backend, conn.is_cockroachdb()) {
+			Ok(sql_and_values) => sql_and_values,
+			Err(error) => {
+				return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
+			}
+		};
+		let params = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+
+		if backend == DatabaseBackend::MySql {
+			let explicit_primary_key = obj
+				.get(M::primary_key_field())
+				.filter(|value| {
+					!matches!(value, DatabaseValue::Null)
+						&& (!matches!(value, DatabaseValue::I32(0) | DatabaseValue::I64(0))
+							|| !M::primary_key_uses_zero_sentinel())
+				})
+				.cloned();
+			let result = match conn.execute_with_context(&sql, params, context).await {
+				Ok(result) => result,
+				Err(error) => {
+					let outcome = match error.database_error().map(DatabaseError::kind) {
+						Some(DatabaseErrorKind::Connection | DatabaseErrorKind::Timeout) => {
+							super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(error)
+						}
+						_ => {
+							super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error)
+						}
+					};
+					return outcome;
+				}
+			};
+			let primary_key = explicit_primary_key
+				.map(database_value_to_query_value)
+				.or_else(|| {
+					result
+						.last_insert_id
+						.and_then(|id| i64::try_from(id).ok())
+						.filter(|id| *id > 0)
+						.map(|id| reinhardt_query::value::Value::BigInt(Some(id)))
+				})
+				.ok_or_else(|| {
+					Error::from(DatabaseError::new(
+						DatabaseErrorKind::Unsupported,
+						"MySQL insert did not return a generated primary key",
+					))
+				});
+			let primary_key = match primary_key {
+				Ok(primary_key) => primary_key,
+				Err(error) => {
+					return super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(error);
+				}
+			};
+			let field_metadata = M::field_metadata();
+			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+			let mut select = Query::select();
+			select
+				.from(Alias::new(M::table_name()))
+				.column(ColumnRef::Asterisk)
+				.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key));
+			let (select_sql, select_values) =
+				match build_select_sql_checked(&select, backend, conn.is_cockroachdb()) {
+					Ok(sql_and_values) => sql_and_values,
+					Err(error) => {
+						return super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(
+							error,
+						);
+					}
+				};
+			let select_params = select_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = match conn.fetch_one(&select_sql, select_params).await {
+				Ok(row) => row,
+				Err(error) => {
+					return super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(error);
+				}
+			};
+			return match decode_model_row(row) {
+				Ok(model) => super::custom_manager::CreateWithConnOutcome::Created(model),
+				Err(error) => {
+					super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(error)
+				}
+			};
+		}
+
+		let row = match conn.fetch_one_with_context(&sql, params, context).await {
+			Ok(row) => row,
+			Err(error) => {
+				return match error.database_error().map(DatabaseError::kind) {
+					Some(DatabaseErrorKind::Connection | DatabaseErrorKind::Timeout) => {
+						super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(error)
+					}
+					_ => super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error),
+				};
+			}
+		};
+		match decode_model_row(row) {
+			Ok(model) => super::custom_manager::CreateWithConnOutcome::Created(model),
+			Err(error) => super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(error),
+		}
+	}
+
+	pub(crate) fn json_to_sea_value_for_field(
+		value: &serde_json::Value,
+		field_info: Option<&FieldInfo>,
+		field_is_none: bool,
+	) -> reinhardt_query::value::Value {
+		if field_info
+			.map(|field| super::json::is_json_field_type(&field.field_type))
+			.unwrap_or(false)
+		{
+			if field_is_none {
+				reinhardt_query::value::Value::Json(None)
+			} else {
+				reinhardt_query::value::Value::Json(Some(Box::new(value.clone())))
+			}
+		} else {
+			Self::json_to_sea_value(value)
+		}
 	}
 
 	/// Convert serde_json::Value to reinhardt_query::value::Value for parameter binding
-	fn json_to_sea_value(v: &serde_json::Value) -> reinhardt_query::value::Value {
+	pub(crate) fn json_to_sea_value(v: &serde_json::Value) -> reinhardt_query::value::Value {
 		match v {
 			serde_json::Value::Null => reinhardt_query::value::Value::Int(None),
 			serde_json::Value::Bool(b) => reinhardt_query::value::Value::Bool(Some(*b)),
@@ -827,7 +2074,9 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Convert reinhardt_query::value::Value to QueryValue for database parameter binding
-	fn sea_value_to_query_value(v: reinhardt_query::value::Value) -> super::connection::QueryValue {
+	pub(crate) fn sea_value_to_query_value(
+		v: reinhardt_query::value::Value,
+	) -> super::connection::QueryValue {
 		use super::connection::QueryValue;
 
 		match v {
@@ -838,7 +2087,7 @@ impl<M: Model> Manager<M> {
 			reinhardt_query::value::Value::TinyInt(None) => QueryValue::Null,
 			reinhardt_query::value::Value::SmallInt(Some(i)) => QueryValue::Int(i as i64),
 			reinhardt_query::value::Value::SmallInt(None) => QueryValue::Null,
-			reinhardt_query::value::Value::Int(Some(i)) => QueryValue::Int(i as i64),
+			reinhardt_query::value::Value::Int(Some(i)) => QueryValue::Int32(i),
 			reinhardt_query::value::Value::Int(None) => QueryValue::Null,
 			reinhardt_query::value::Value::BigInt(Some(i)) => QueryValue::Int(i),
 			reinhardt_query::value::Value::BigInt(None) => QueryValue::Null,
@@ -856,6 +2105,13 @@ impl<M: Model> Manager<M> {
 			reinhardt_query::value::Value::Float(None) => QueryValue::Null,
 			reinhardt_query::value::Value::Double(Some(f)) => QueryValue::Float(f),
 			reinhardt_query::value::Value::Double(None) => QueryValue::Null,
+			// QueryValue has no dedicated decimal variant. Preserve the exact
+			// decimal spelling as text so the backend can coerce it to DECIMAL
+			// without losing precision through an intermediate float.
+			reinhardt_query::value::Value::Decimal(Some(value)) => {
+				QueryValue::String(value.to_string())
+			}
+			reinhardt_query::value::Value::Decimal(None) => QueryValue::Null,
 
 			reinhardt_query::value::Value::String(Some(s)) => QueryValue::String((*s).clone()),
 			reinhardt_query::value::Value::String(None) => QueryValue::Null,
@@ -864,27 +2120,166 @@ impl<M: Model> Manager<M> {
 			reinhardt_query::value::Value::Bytes(None) => QueryValue::Null,
 
 			// Timestamp handling
-			// ChronoDateTime contains NaiveDateTime, convert to UTC
 			reinhardt_query::value::Value::ChronoDateTime(Some(dt)) => {
-				QueryValue::Timestamp(dt.and_utc())
+				QueryValue::NaiveTimestamp(*dt)
 			}
 			reinhardt_query::value::Value::ChronoDateTime(None) => QueryValue::Null,
 			reinhardt_query::value::Value::ChronoDateTimeUtc(Some(dt)) => {
 				QueryValue::Timestamp(*dt)
 			}
 			reinhardt_query::value::Value::ChronoDateTimeUtc(None) => QueryValue::Null,
+			reinhardt_query::value::Value::ChronoDate(Some(date)) => {
+				QueryValue::String(date.to_string())
+			}
+			reinhardt_query::value::Value::ChronoDate(None) => QueryValue::Null,
+			reinhardt_query::value::Value::ChronoTime(Some(time)) => {
+				QueryValue::String(time.to_string())
+			}
+			reinhardt_query::value::Value::ChronoTime(None) => QueryValue::Null,
 
 			// UUID handling
 			reinhardt_query::value::Value::Uuid(Some(u)) => QueryValue::Uuid(*u),
 			reinhardt_query::value::Value::Uuid(None) => QueryValue::Null,
 
 			// JSON types - serialize to string
-			reinhardt_query::value::Value::Json(Some(json)) => QueryValue::String(json.to_string()),
-			reinhardt_query::value::Value::Json(None) => QueryValue::Null,
+			reinhardt_query::value::Value::Json(json) => QueryValue::Json(json),
+			#[cfg(feature = "pgvector")]
+			reinhardt_query::value::Value::Vector(Some(values)) => {
+				QueryValue::Vector(Some((*values).clone()))
+			}
+			#[cfg(feature = "pgvector")]
+			reinhardt_query::value::Value::Vector(None) => QueryValue::Vector(None),
+			reinhardt_query::value::Value::Array(array_type, Some(values)) => {
+				use reinhardt_query::value::Value as SeaValue;
+
+				match array_type {
+					reinhardt_query::value::ArrayType::String => QueryValue::StringArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::String(Some(value)) => Some((**value).clone()),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::Int => QueryValue::IntArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::Int(Some(value)) => Some(*value),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::BigInt => QueryValue::BigIntArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::BigInt(Some(value)) => Some(*value),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::Bool => QueryValue::BoolArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::Bool(Some(value)) => Some(*value),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::Float => QueryValue::FloatArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::Float(Some(value)) => Some(*value),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::Double => QueryValue::DoubleArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::Double(Some(value)) => Some(*value),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::Uuid => QueryValue::UuidArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::Uuid(Some(value)) => Some(**value),
+								_ => None,
+							})
+							.collect(),
+					),
+					_ => QueryValue::Json(Some(Box::new(super::execution::array_values_to_json(
+						&values,
+					)))),
+				}
+			}
+			reinhardt_query::value::Value::Array(_, None) => QueryValue::Null,
 
 			// For complex types or unsupported types, convert to null
 			// This is a safe fallback that won't cause runtime errors
 			_ => QueryValue::Null,
+		}
+	}
+
+	#[cfg(test)]
+	fn query_value_to_sea_value(value: QueryValue) -> reinhardt_query::value::Value {
+		match value {
+			QueryValue::Null => reinhardt_query::value::Value::Int(None),
+			QueryValue::Bool(value) => reinhardt_query::value::Value::Bool(Some(value)),
+			QueryValue::Int32(value) => reinhardt_query::value::Value::Int(Some(value)),
+			QueryValue::Int(value) => reinhardt_query::value::Value::BigInt(Some(value)),
+			QueryValue::Float(value) => reinhardt_query::value::Value::Double(Some(value)),
+			QueryValue::String(value) => {
+				reinhardt_query::value::Value::String(Some(Box::new(value)))
+			}
+			QueryValue::Bytes(value) => reinhardt_query::value::Value::Bytes(Some(Box::new(value))),
+			QueryValue::Timestamp(value) => {
+				reinhardt_query::value::Value::ChronoDateTimeUtc(Some(Box::new(value)))
+			}
+			QueryValue::NaiveTimestamp(value) => {
+				reinhardt_query::value::Value::ChronoDateTime(Some(Box::new(value)))
+			}
+			QueryValue::Uuid(value) => reinhardt_query::value::Value::Uuid(Some(Box::new(value))),
+			QueryValue::Json(value) => reinhardt_query::value::Value::Json(value),
+			#[cfg(feature = "pgvector")]
+			QueryValue::Vector(values) => reinhardt_query::value::Value::Vector(values.map(Box::new)),
+			QueryValue::StringArray(values) => {
+				reinhardt_query::value::Value::Json(Some(Box::new(serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::String).collect(),
+				))))
+			}
+			QueryValue::IntArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::BigIntArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::BoolArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::FloatArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::DoubleArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::UuidArray(values) => {
+				reinhardt_query::value::Value::Json(Some(Box::new(serde_json::Value::Array(
+					values
+						.into_iter()
+						.map(|value| serde_json::Value::String(value.to_string()))
+						.collect(),
+				))))
+			}
+			QueryValue::Now => reinhardt_query::value::Value::Int(None),
 		}
 	}
 
@@ -915,159 +2310,238 @@ impl<M: Model> Manager<M> {
 
 	/// Update an existing record using reinhardt-query for SQL injection protection
 	pub async fn update(&self, model: &M) -> reinhardt_core::exception::Result<M> {
-		let conn = get_connection().await?;
-		self.update_with_conn(&conn, model).await
+		let mut conn = get_connection().await?;
+		self.update_with_conn(&mut conn, model).await
 	}
 
-	/// Update an existing record with an explicit database connection
+	async fn update_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		let pk = model.primary_key().ok_or_else(|| {
+			crate::backends::error::DatabaseError::new(
+				crate::backends::error::DatabaseErrorKind::Query,
+				"Model must have primary key",
+			)
+		})?;
+		let obj = model
+			.encode_database_fields()
+			.map_err(executor_field_codec_error)?;
+		let backend = Self::executor_backend(executor);
+		let stmt = Self::build_update_statement_from_object_with_returning(
+			&obj,
+			backend != DatabaseBackend::MySql,
+		)
+		.map_err(executor_field_codec_error)?;
+		let context = super::execution::pgvector_context_for_update(&stmt);
+		let (sql, values) = build_update_sql_checked(&stmt, backend, executor.is_cockroachdb())
+			.map_err(executor_error)?;
+		let params = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+
+		if backend == DatabaseBackend::MySql {
+			executor
+				.execute_with_context(&sql, params, context)
+				.await
+				.map_err(executor_error)?;
+			let mut select = Query::select();
+			select.from(Alias::new(M::table_name()));
+			select.column(ColumnRef::Asterisk);
+			let field_metadata = M::field_metadata();
+			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+			select.and_where(
+				Expr::col(Alias::new(primary_key_column))
+					.eq(Self::primary_key_query_value(&pk).map_err(executor_field_codec_error)?),
+			);
+			let (select_sql, select_values) =
+				build_select_sql_checked(&select, backend, executor.is_cockroachdb())
+					.map_err(executor_error)?;
+			let select_params = select_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = executor
+				.fetch_one(&select_sql, select_params)
+				.await
+				.map_err(executor_error)?;
+			return Self::decode_executor_row(row);
+		}
+
+		let row = executor
+			.fetch_one_with_context(&sql, params, context)
+			.await
+			.map_err(executor_error)?;
+		Self::decode_executor_row(row)
+	}
+
+	/// Update an existing record through a caller-owned ORM executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// transaction support.
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] when the
+	/// write must participate in a closure-scoped transaction.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	/// * `model` - The model to update (must have primary key set)
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Update within transaction
-	/// let updated = manager.update_with_conn(&conn, model).await?;
-	///
-	/// tx.commit().await?;
+	/// let _updated = conn
+	///     .atomic(async |transaction| {
+	///         manager.update_with_conn(transaction, model).await
+	///     })
+	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn update_with_conn(
+	pub async fn update_with_conn<E>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		model: &M,
-	) -> reinhardt_core::exception::Result<M> {
-		let pk = model.primary_key().ok_or_else(|| {
-			reinhardt_core::exception::Error::Database("Model must have primary key".to_string())
+	) -> reinhardt_core::exception::Result<M>
+	where
+		E: OrmExecutor + ?Sized,
+	{
+		model.primary_key().ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"Model must have primary key",
+			))
 		})?;
 
-		let json = serde_json::to_value(model)
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
-
-		let obj = json.as_object().ok_or_else(|| {
-			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
-		})?;
-
-		// Build reinhardt-query UPDATE statement
-		let mut stmt = Query::update();
-		stmt.table(Alias::new(M::table_name()));
-
-		// Add SET clauses for all fields except primary key
-		for (k, v) in obj
-			.iter()
-			.filter(|(k, _)| k.as_str() != M::primary_key_field())
-		{
-			if v.is_null() {
-				// Use untyped NULL to avoid PostgreSQL type mismatch errors
-				// (e.g., setting timestamp column to NULL would fail with Int(None))
-				stmt.value_expr(Alias::new(k.as_str()), Expr::cust("NULL"));
-			} else {
-				stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
-			}
-		}
-
-		// Add WHERE clause for primary key
-		// Try to parse as i64 first (common for primary keys), fallback to string
-		let pk_str = pk.to_string();
-		let pk_value = if let Ok(int_value) = pk_str.parse::<i64>() {
-			reinhardt_query::value::Value::BigInt(Some(int_value))
-		} else if let Ok(uuid) = Uuid::parse_str(&pk_str) {
-			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
+		let obj = model.encode_database_fields().map_err(field_codec_error)?;
+		let backend = conn.backend();
+		let stmt = if backend == DatabaseBackend::MySql {
+			Self::build_update_statement_from_object_with_returning(&obj, false)
 		} else {
-			reinhardt_query::value::Value::String(Some(Box::new(pk_str)))
-		};
-		stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
+			Self::build_update_statement_from_object(&obj, |field| model.field_is_none(field))
+		}
+		.map_err(field_codec_error)?;
 
-		// Add RETURNING clause with explicit column names from JSON object
-		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
-		let all_columns: Vec<_> = obj.keys().map(|k| Alias::new(k.as_str())).collect();
-		stmt.returning(all_columns);
-
-		let (sql, values) = build_update_sql(&stmt, conn.backend());
+		let context = super::execution::pgvector_context_for_update(&stmt);
+		let (sql, values) = build_update_sql_checked(&stmt, backend, conn.is_cockroachdb())?;
 		let values: Vec<_> = values
 			.0
 			.into_iter()
 			.map(Self::sea_value_to_query_value)
 			.collect();
 
-		let row = conn.query_one(&sql, values).await?;
-		// row.data is already serde_json::Value::Object so deserialize directly
-		serde_json::from_value(row.data.clone())
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
+		let pk = model.primary_key().ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"Model must have primary key",
+			))
+		})?;
+		if backend == DatabaseBackend::MySql {
+			conn.execute_with_context(&sql, values, context).await?;
+			let field_metadata = M::field_metadata();
+			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+			let mut select = Query::select();
+			select
+				.from(Alias::new(M::table_name()))
+				.column(ColumnRef::Asterisk)
+				.and_where(
+					Expr::col(Alias::new(primary_key_column))
+						.eq(Self::primary_key_query_value(&pk).map_err(field_codec_error)?),
+				);
+			let (select_sql, select_values) =
+				build_select_sql_checked(&select, backend, conn.is_cockroachdb())?;
+			let select_params = select_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = conn.fetch_one(&select_sql, select_params).await?;
+			return decode_model_row(row);
+		}
+
+		let row = conn.fetch_one_with_context(&sql, values, context).await?;
+		decode_model_row(row)
 	}
 
 	/// Delete a record using reinhardt-query for SQL injection protection
 	pub async fn delete(&self, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
-		let conn = get_connection().await?;
-		self.delete_with_conn(&conn, pk).await
+		let mut conn = get_connection().await?;
+		self.delete_with_conn(&mut conn, pk).await
 	}
 
-	fn build_delete_statement(pk: M::PrimaryKey) -> DeleteStatement {
-		let primary_key_field = M::primary_key_field();
-		let primary_key_column = M::field_metadata()
-			.into_iter()
-			.find(|field| field.name == primary_key_field)
-			.map(|field| field.db_column_name().to_owned())
-			.unwrap_or_else(|| primary_key_field.to_owned());
-		let primary_key_value = M::primary_key_filter_value(pk);
-		let primary_key_value = QuerySet::<M>::filter_value_to_sea_value(&primary_key_value);
-
-		let mut stmt = Query::delete();
-		stmt.from_table(Alias::new(M::table_name()))
-			.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key_value));
-		stmt
-	}
-
-	/// Delete a record with an explicit database connection
+	/// Delete a model by primary key through a caller-owned transaction executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// transaction support. Primary-key columns are resolved from model field
-	/// metadata, and values use the model's typed primary-key binding.
+	/// The physical column comes from model metadata and the bound value comes
+	/// from the primary-key field codec.
+	pub async fn delete_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		pk: M::PrimaryKey,
+	) -> Result<(), crate::backends::error::DatabaseError> {
+		let stmt = Self::build_delete_statement(&pk).map_err(executor_field_codec_error)?;
+		let (sql, values) = build_delete_sql_checked(
+			&stmt,
+			Self::executor_backend(executor),
+			executor.is_cockroachdb(),
+		)
+		.map_err(executor_error)?;
+		let params = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+		executor
+			.execute(&sql, params)
+			.await
+			.map_err(executor_error)?;
+		Ok(())
+	}
+
+	/// Delete a record through a caller-owned ORM executor.
+	///
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] when the
+	/// deletion must participate in a closure-scoped transaction. The physical
+	/// column comes from model metadata and the bound value comes from the
+	/// primary-key field codec.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	/// * `pk` - The primary key of the record to delete
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Delete within transaction
-	/// manager.delete_with_conn(&conn, pk).await?;
-	///
-	/// tx.commit().await?;
+	/// conn.atomic(async |transaction| {
+	///     manager.delete_with_conn(transaction, pk).await
+	/// })
+	/// .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn delete_with_conn(
+	pub async fn delete_with_conn<E>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		pk: M::PrimaryKey,
-	) -> reinhardt_core::exception::Result<()> {
-		let stmt = Self::build_delete_statement(pk);
+	) -> reinhardt_core::exception::Result<()>
+	where
+		E: OrmExecutor,
+	{
+		let stmt = Self::build_delete_statement(&pk).map_err(field_codec_error)?;
 
-		let (sql, values) = build_delete_sql(&stmt, conn.backend());
+		let (sql, values) = build_delete_sql_checked(&stmt, conn.backend(), conn.is_cockroachdb())?;
 		let values: Vec<_> = values
 			.0
 			.into_iter()
@@ -1080,108 +2554,128 @@ impl<M: Model> Manager<M> {
 
 	/// Count records using reinhardt-query
 	pub async fn count(&self) -> reinhardt_core::exception::Result<i64> {
-		let conn = get_connection().await?;
-		self.count_with_conn(&conn).await
+		let mut conn = get_connection().await?;
+		self.count_with_conn(&mut conn).await
 	}
 
-	/// Count records with an explicit database connection
+	/// Count records through a caller-owned ORM executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// verifying data within a transaction before commit/rollback.
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] to observe
+	/// writes that have not yet been committed.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Count within transaction (sees uncommitted data)
-	/// let count = manager.count_with_conn(&conn).await?;
-	///
-	/// tx.commit().await?;
+	/// let _count = conn
+	///     .atomic(async |transaction| manager.count_with_conn(transaction).await)
+	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn count_with_conn(
-		&self,
-		conn: &DatabaseConnection,
-	) -> reinhardt_core::exception::Result<i64> {
+	pub async fn count_with_conn<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<i64>
+	where
+		E: OrmExecutor,
+	{
 		// Build reinhardt-query SELECT COUNT(*) statement with explicit alias
 		let stmt = Query::select()
 			.from(Alias::new(M::table_name()))
 			.expr_as(Func::count(Expr::asterisk().into()), Alias::new("count"))
 			.to_owned();
 
-		let (sql, values) = build_select_sql(&stmt, conn.backend());
+		let (sql, values) = build_select_sql_checked(&stmt, conn.backend(), conn.is_cockroachdb())?;
 		let values: Vec<_> = values
 			.0
 			.into_iter()
 			.map(Self::sea_value_to_query_value)
 			.collect();
 
-		let row = conn.query_one(&sql, values).await?;
+		let row = QueryRow::from_backend_row(conn.fetch_one(&sql, values).await?);
 		row.get::<i64>("count").ok_or_else(|| {
-			reinhardt_core::exception::Error::Database("Failed to get count".to_string())
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"Failed to get count",
+			))
 		})
 	}
 
 	/// Bulk create multiple records using reinhardt-query (similar to Django's bulk_create())
 	pub fn bulk_create_query(&self, models: &[M]) -> Option<InsertStatement> {
+		self.try_bulk_create_query(models).ok().flatten()
+	}
+
+	fn try_bulk_create_query(
+		&self,
+		models: &[M],
+	) -> Result<Option<InsertStatement>, FieldCodecError> {
 		if models.is_empty() {
-			return None;
+			return Ok(None);
 		}
 
-		// Convert all models to JSON and extract field names from first model
-		let json_values: Vec<serde_json::Value> = models
+		let database_values: Vec<std::collections::BTreeMap<String, DatabaseValue>> = models
 			.iter()
-			.filter_map(|m| serde_json::to_value(m).ok())
-			.collect();
+			.map(Model::encode_database_fields)
+			.collect::<Result<_, _>>()?;
 
-		if json_values.is_empty() {
-			return None;
+		if database_values.is_empty() {
+			return Ok(None);
 		}
 
-		// Get field names from first model
-		let first_obj = json_values[0].as_object()?;
+		let first_obj = &database_values[0];
 
-		let fields: Vec<_> = first_obj.keys().map(|k| Alias::new(k.as_str())).collect();
+		let primary_key = M::primary_key_field();
+		let field_names: Vec<String> = first_obj
+			.iter()
+			.filter_map(|(name, value)| {
+				if Self::is_generated_field(name.as_str())
+					|| (name == primary_key
+						&& (matches!(value, DatabaseValue::Null)
+							|| (M::primary_key_uses_zero_sentinel()
+								&& matches!(value, DatabaseValue::I32(0) | DatabaseValue::I64(0)))))
+				{
+					None
+				} else {
+					Some(name.clone())
+				}
+			})
+			.collect();
+		let field_metadata = M::field_metadata();
+		let fields: Vec<_> = field_names
+			.iter()
+			.map(|name| Alias::new(Self::field_column(&field_metadata, name)))
+			.collect();
+		if fields.is_empty() {
+			return Ok(None);
+		}
 
 		// Build reinhardt-query INSERT statement
 		let mut stmt = Query::insert();
 		stmt.into_table(Alias::new(M::table_name())).columns(fields);
 
 		// Add value rows for each model
-		for val in &json_values {
-			if let Some(obj) = val.as_object() {
-				let values: Vec<reinhardt_query::value::Value> = first_obj
-					.keys()
-					.map(|field| {
-						obj.get(field)
-							.map(|v| {
-								if v.is_null() {
-									// Use untyped NULL to avoid PostgreSQL type mismatch errors
-									reinhardt_query::value::Value::Int(None)
-								} else {
-									Self::json_to_sea_value(v)
-								}
-							})
+		for obj in &database_values {
+			let values: Vec<reinhardt_query::value::Value> = field_names
+				.iter()
+				.map(|field| {
+					obj.get(field.as_str())
+						.cloned()
+						.map(database_value_to_query_value)
 							// Use untyped NULL for missing fields
 							.unwrap_or(reinhardt_query::value::Value::Int(None))
-					})
-					.collect();
-				stmt.values_panic(values);
-			}
+				})
+				.collect();
+			stmt.values_panic(values);
 		}
 
-		Some(stmt.to_owned())
+		Ok(Some(stmt.to_owned()))
 	}
 
 	/// Generate bulk create SQL (convenience method)
@@ -1203,7 +2697,7 @@ impl<M: Model> Manager<M> {
 		&self,
 		queryset: &QuerySet<M>,
 		updates: &[(&str, &str)],
-	) -> (String, Vec<String>) {
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
 		use crate::orm::query::UpdateValue;
 		use std::collections::HashMap;
 
@@ -1217,63 +2711,11 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Generate DELETE query for QuerySet
-	pub fn delete_queryset(&self, queryset: &QuerySet<M>) -> (String, Vec<String>) {
-		queryset.delete_sql()
-	}
-
-	/// Get or create a record (Django's get_or_create)
-	/// Returns (model, created) where created is true if a new record was created
-	///
-	/// Django equivalent:
-	/// ```python
-	/// obj, created = Model.objects.get_or_create(
-	///     field1=value1,
-	///     defaults={'field2': value2}
-	/// )
-	/// ```
-	pub async fn get_or_create(
+	pub fn delete_queryset(
 		&self,
-		lookup_fields: HashMap<String, String>,
-		defaults: Option<HashMap<String, String>>,
-	) -> reinhardt_core::exception::Result<(M, bool)> {
-		let conn = get_connection().await?;
-
-		// Try to find existing record
-		let (select_sql, _) = self.get_or_create_sql(
-			&lookup_fields,
-			&defaults.clone().unwrap_or_default(),
-			conn.backend(),
-		);
-
-		if let Ok(Some(row)) = conn.query_optional(&select_sql, vec![]).await {
-			// row.data is already serde_json::Value::Object so deserialize directly
-			let model: M = serde_json::from_value(row.data.clone())
-				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
-			return Ok((model, false));
-		}
-
-		// Record not found, create new one
-		let mut all_fields = lookup_fields.clone();
-		if let Some(defs) = defaults {
-			all_fields.extend(defs);
-		}
-
-		let fields: Vec<String> = all_fields.keys().cloned().collect();
-		let values: Vec<String> = all_fields.values().map(|v| format!("'{}'", v)).collect();
-
-		let insert_sql = format!(
-			"INSERT INTO {} ({}) VALUES ({}) RETURNING *",
-			M::table_name(),
-			fields.join(", "),
-			values.join(", ")
-		);
-
-		let row = conn.query_one(&insert_sql, vec![]).await?;
-		// row.data is already serde_json::Value::Object so deserialize directly
-		let model: M = serde_json::from_value(row.data.clone())
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
-
-		Ok((model, true))
+		queryset: &QuerySet<M>,
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
+		queryset.delete_sql()
 	}
 
 	/// Bulk create multiple records efficiently (Django's bulk_create)
@@ -1302,61 +2744,118 @@ impl<M: Model> Manager<M> {
 			return Ok(vec![]);
 		}
 
-		let conn = get_connection().await?;
+		let mut conn = get_connection().await?;
 		let batch_size = batch_size.unwrap_or(models.len());
 		let mut results = Vec::new();
 
 		for chunk in models.chunks(batch_size) {
-			// Extract fields from first model
-			let json = serde_json::to_value(&chunk[0])
-				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
-			let obj = json.as_object().ok_or_else(|| {
-				reinhardt_core::exception::Error::Database(
-					"Model must serialize to object".to_string(),
-				)
-			})?;
-			// Exclude primary key field if it's Null (for auto-increment)
-			let pk_field = M::primary_key_field();
-			let field_names: Vec<String> = obj
-				.iter()
-				.filter_map(|(k, v)| {
-					if k == pk_field && v.is_null() {
-						None
-					} else {
-						Some(k.clone())
+			let Some(mut statement) = self
+				.try_bulk_create_query(chunk)
+				.map_err(field_codec_error)?
+			else {
+				continue;
+			};
+			if !ignore_conflicts {
+				statement.returning_all();
+			}
+			let context = super::execution::pgvector_context_for_insert(&statement);
+			let (sql, values) =
+				build_insert_sql_checked(&statement, conn.backend(), conn.is_cockroachdb())?;
+			let sql = if ignore_conflicts {
+				match conn.backend() {
+					DatabaseBackend::Postgres => format!("{sql} ON CONFLICT DO NOTHING"),
+					DatabaseBackend::MySql => sql.replacen("INSERT INTO", "INSERT IGNORE INTO", 1),
+					DatabaseBackend::Sqlite => {
+						sql.replacen("INSERT INTO", "INSERT OR IGNORE INTO", 1)
 					}
-				})
+				}
+			} else {
+				sql
+			};
+			let values = values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
 				.collect();
 
-			// Extract values for all models in chunk
-			let value_rows: Vec<Vec<serde_json::Value>> = chunk
-				.iter()
-				.map(|model| {
-					let json = serde_json::to_value(model).unwrap();
-					let obj = json.as_object().unwrap();
-					field_names.iter().map(|field| obj[field].clone()).collect()
-				})
-				.collect();
-
-			let sql = self.bulk_create_sql_detailed(&field_names, &value_rows, ignore_conflicts);
-
-			// Execute and get results
 			if ignore_conflicts {
-				conn.execute(&sql, vec![]).await?;
+				OrmExecutor::execute_with_context(&mut conn, &sql, values, context).await?;
 				// Note: Can't get RETURNING with DO NOTHING, skip results
 				// Return empty vec for ignored conflicts
 			} else {
-				let sql_with_returning = sql + " RETURNING *";
-				let rows = conn.query(&sql_with_returning, vec![]).await?;
+				let rows =
+					OrmExecutor::fetch_all_with_context(&mut conn, &sql, values, context).await?;
 				for row in rows {
-					// row.data is already serde_json::Value::Object so deserialize directly
-					let model: M = serde_json::from_value(row.data.clone())
-						.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
+					let model = decode_model_row(row)?;
 					results.push(model);
 				}
 			}
 		}
 
+		Ok(results)
+	}
+
+	/// Bulk-insert models through a caller-owned executor.
+	pub async fn bulk_create_with_conn<E>(
+		&self,
+		conn: &mut E,
+		models: Vec<M>,
+		batch_size: Option<usize>,
+		ignore_conflicts: bool,
+		_update_conflicts: bool,
+	) -> reinhardt_core::exception::Result<Vec<M>>
+	where
+		E: OrmExecutor,
+	{
+		if models.is_empty() {
+			return Ok(Vec::new());
+		}
+
+		let batch_size = batch_size.unwrap_or(models.len());
+		let mut results = Vec::new();
+		for chunk in models.chunks(batch_size) {
+			let Some(mut statement) = self
+				.try_bulk_create_query(chunk)
+				.map_err(field_codec_error)?
+			else {
+				continue;
+			};
+			let backend = conn.backend();
+			if !ignore_conflicts && backend != DatabaseBackend::MySql {
+				statement.returning_all();
+			}
+			let context = super::execution::pgvector_context_for_insert(&statement);
+			let (sql, values) =
+				build_insert_sql_checked(&statement, backend, conn.is_cockroachdb())?;
+			let sql = if ignore_conflicts {
+				match backend {
+					DatabaseBackend::Postgres => format!("{sql} ON CONFLICT DO NOTHING"),
+					DatabaseBackend::MySql => sql.replacen("INSERT INTO", "INSERT IGNORE INTO", 1),
+					DatabaseBackend::Sqlite => {
+						sql.replacen("INSERT INTO", "INSERT OR IGNORE INTO", 1)
+					}
+				}
+			} else {
+				sql
+			};
+			let values = values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+
+			if ignore_conflicts || backend == DatabaseBackend::MySql {
+				conn.execute_with_context(&sql, values, context).await?;
+				if !ignore_conflicts {
+					results.extend(chunk.iter().cloned());
+				}
+				continue;
+			}
+
+			for row in conn.fetch_all_with_context(&sql, values, context).await? {
+				results.push(decode_model_row(row)?);
+			}
+		}
 		Ok(results)
 	}
 
@@ -1387,26 +2886,52 @@ impl<M: Model> Manager<M> {
 
 		for chunk in models.chunks(batch_size) {
 			// Build updates structure
-			let updates: Vec<(M::PrimaryKey, HashMap<String, serde_json::Value>)> = chunk
+			let updates: Vec<(DatabaseValue, HashMap<String, DatabaseValue>)> = chunk
 				.iter()
-				.filter_map(|model| {
-					let pk = model.primary_key()?.clone();
-					let json = serde_json::to_value(model).ok()?;
-					let obj = json.as_object()?;
+				.map(|model| {
+					model.primary_key().ok_or_else(|| {
+						Error::from(DatabaseError::new(
+							DatabaseErrorKind::Type,
+							"Bulk update model must have primary key",
+						))
+					})?;
+					let obj = model.encode_database_fields().map_err(field_codec_error)?;
+					let pk = obj
+						.get(M::primary_key_field())
+						.filter(|value| !matches!(value, DatabaseValue::Null))
+						.cloned()
+						.ok_or_else(|| {
+							Error::from(DatabaseError::new(
+								DatabaseErrorKind::Type,
+								format!(
+									"Encoded bulk update model must contain primary key '{}'",
+									M::primary_key_field()
+								),
+							))
+						})?;
 
 					let mut field_map = HashMap::new();
-					for field in &fields {
+					for field in fields
+						.iter()
+						.filter(|field| !Self::is_generated_field(field.as_str()))
+					{
 						if let Some(val) = obj.get(field) {
 							field_map.insert(field.clone(), val.clone());
 						}
 					}
 
-					Some((pk, field_map))
+					Ok((pk, field_map))
 				})
-				.collect();
+				.collect::<reinhardt_core::exception::Result<_>>()?;
 
 			if !updates.is_empty() {
-				let sql = self.bulk_update_sql_detailed(&updates, &fields, conn.backend());
+				validate_bulk_update_values_for_backend(&updates, conn.is_cockroachdb())?;
+				let sql = self
+					.bulk_update_database_values_sql_detailed(&updates, &fields, conn.backend())
+					.map_err(field_codec_error)?;
+				if sql.is_empty() {
+					continue;
+				}
 				let rows_affected = conn.execute(&sql, vec![]).await?;
 				total_updated += rows_affected as usize;
 			}
@@ -1415,62 +2940,71 @@ impl<M: Model> Manager<M> {
 		Ok(total_updated)
 	}
 
-	/// Get or create - SQL generation using reinhardt-query (for testing)
-	pub fn get_or_create_queries(
+	/// Bulk-update models through a caller-owned executor.
+	pub async fn bulk_update_with_conn<E>(
 		&self,
-		lookup_fields: &HashMap<String, String>,
-		defaults: &HashMap<String, String>,
-	) -> (SelectStatement, InsertStatement) {
-		// Generate SELECT query with reinhardt-query
-		let mut select_stmt = Query::select();
-		select_stmt
-			.from(Alias::new(M::table_name()))
-			.column(ColumnRef::Asterisk);
-
-		for (k, v) in lookup_fields.iter() {
-			select_stmt.and_where(Expr::col(Alias::new(k.as_str())).eq(v.as_str()));
+		conn: &mut E,
+		models: Vec<M>,
+		fields: Vec<String>,
+		batch_size: Option<usize>,
+	) -> reinhardt_core::exception::Result<usize>
+	where
+		E: OrmExecutor,
+	{
+		if models.is_empty() || fields.is_empty() {
+			return Ok(0);
 		}
 
-		// Generate INSERT query with reinhardt-query
-		let mut insert_fields = lookup_fields.clone();
-		insert_fields.extend(defaults.clone());
+		let batch_size = batch_size.unwrap_or(models.len());
+		let mut total_updated = 0;
+		for chunk in models.chunks(batch_size) {
+			let updates: Vec<(DatabaseValue, HashMap<String, DatabaseValue>)> = chunk
+				.iter()
+				.map(|model| {
+					model.primary_key().ok_or_else(|| {
+						Error::from(DatabaseError::new(
+							DatabaseErrorKind::Type,
+							"Bulk update model must have primary key",
+						))
+					})?;
+					let obj = model.encode_database_fields().map_err(field_codec_error)?;
+					let pk = obj
+						.get(M::primary_key_field())
+						.filter(|value| !matches!(value, DatabaseValue::Null))
+						.cloned()
+						.ok_or_else(|| {
+							Error::from(DatabaseError::new(
+								DatabaseErrorKind::Type,
+								format!(
+									"Encoded bulk update model must contain primary key '{}'",
+									M::primary_key_field()
+								),
+							))
+						})?;
+					let field_map = fields
+						.iter()
+						.filter(|field| !Self::is_generated_field(field.as_str()))
+						.filter_map(|field| {
+							obj.get(field).cloned().map(|value| (field.clone(), value))
+						})
+						.collect();
+					Ok((pk, field_map))
+				})
+				.collect::<reinhardt_core::exception::Result<_>>()?;
 
-		let mut insert_stmt = Query::insert();
-		insert_stmt.into_table(Alias::new(M::table_name()));
-
-		let columns: Vec<_> = insert_fields
-			.keys()
-			.map(|k| Alias::new(k.as_str()))
-			.collect();
-		let values: Vec<reinhardt_query::prelude::Expr> = insert_fields
-			.values()
-			.map(|v| Expr::val(v.clone()))
-			.collect();
-
-		insert_stmt.columns(columns);
-		insert_stmt.values_panic(values);
-
-		(select_stmt.to_owned(), insert_stmt.to_owned())
-	}
-
-	/// Get or create - SQL generation (convenience method for testing)
-	///
-	/// # Arguments
-	///
-	/// * `lookup_fields` - Fields to lookup
-	/// * `defaults` - Default values for creation
-	/// * `backend` - Database backend to generate SQL for
-	pub fn get_or_create_sql(
-		&self,
-		lookup_fields: &HashMap<String, String>,
-		defaults: &HashMap<String, String>,
-		backend: DatabaseBackend,
-	) -> (String, String) {
-		let (select_stmt, insert_stmt) = self.get_or_create_queries(lookup_fields, defaults);
-		(
-			select_to_string(&select_stmt, backend),
-			insert_to_string(&insert_stmt, backend),
-		)
+			if updates.is_empty() {
+				continue;
+			}
+			validate_bulk_update_values_for_backend(&updates, conn.is_cockroachdb())?;
+			let sql = self
+				.bulk_update_database_values_sql_detailed(&updates, &fields, conn.backend())
+				.map_err(field_codec_error)?;
+			if sql.is_empty() {
+				continue;
+			}
+			total_updated += conn.execute(&sql, Vec::new()).await?.rows_affected as usize;
+		}
+		Ok(total_updated)
 	}
 
 	/// Bulk create - SQL generation only (for testing)
@@ -1484,11 +3018,31 @@ impl<M: Model> Manager<M> {
 			return String::new();
 		}
 
+		let writable_indexes: Vec<_> = field_names
+			.iter()
+			.enumerate()
+			.filter_map(|(index, field)| {
+				if Self::is_generated_field(field) {
+					None
+				} else {
+					Some(index)
+				}
+			})
+			.collect();
+		let writable_field_names: Vec<_> = writable_indexes
+			.iter()
+			.map(|index| field_names[*index].clone())
+			.collect();
+		if writable_field_names.is_empty() {
+			return String::new();
+		}
+
 		let values_clause: Vec<String> = value_rows
 			.iter()
 			.map(|row| {
-				let values = row
+				let values = writable_indexes
 					.iter()
+					.filter_map(|index| row.get(*index))
 					.map(|v| match v {
 						serde_json::Value::Null => "NULL".to_string(),
 						serde_json::Value::Number(n) => n.to_string(),
@@ -1511,7 +3065,7 @@ impl<M: Model> Manager<M> {
 		let mut sql = format!(
 			"INSERT INTO {} ({}) VALUES {}",
 			M::table_name(),
-			field_names.join(", "),
+			writable_field_names.join(", "),
 			values_clause.join(", ")
 		);
 
@@ -1526,6 +3080,67 @@ impl<M: Model> Manager<M> {
 	///
 	/// Generates raw SQL because reinhardt-query's `UpdateStatement` does not support
 	/// expression-based SET values (e.g., CASE WHEN ... END).
+	fn bulk_update_database_values_sql_detailed(
+		&self,
+		updates: &[(DatabaseValue, HashMap<String, DatabaseValue>)],
+		fields: &[String],
+		backend: DatabaseBackend,
+	) -> Result<String, FieldCodecError> {
+		if updates.is_empty() || fields.is_empty() {
+			return Ok(String::new());
+		}
+
+		let table_name = M::table_name();
+		let field_metadata = M::field_metadata();
+		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+		let mut set_clauses = Vec::new();
+
+		for field in fields
+			.iter()
+			.filter(|field| !Self::is_generated_field(field.as_str()))
+		{
+			let mut when_clauses = Vec::new();
+			for (pk, field_map) in updates {
+				if let Some(value) = field_map.get(field) {
+					when_clauses.push(format!(
+						"WHEN {} = {} THEN {}",
+						quote_identifier(primary_key_column, backend),
+						database_value_sql_literal(pk.clone(), backend)?,
+						database_value_sql_literal(value.clone(), backend)?
+					));
+				}
+			}
+			if !when_clauses.is_empty() {
+				let column_name = Self::field_column(&field_metadata, field);
+				set_clauses.push(format!(
+					"{} = CASE {} END",
+					quote_identifier(column_name, backend),
+					when_clauses.join(" ")
+				));
+			}
+		}
+
+		if set_clauses.is_empty() {
+			return Ok(String::new());
+		}
+		let ids = updates
+			.iter()
+			.map(|(pk, _)| database_value_sql_literal(pk.clone(), backend))
+			.collect::<Result<Vec<_>, _>>()?
+			.join(", ");
+		Ok(format!(
+			"UPDATE {} SET {} WHERE {} IN ({})",
+			quote_identifier(table_name, backend),
+			set_clauses.join(", "),
+			quote_identifier(primary_key_column, backend),
+			ids
+		))
+	}
+
+	/// Generates bulk-update SQL from legacy JSON input values.
+	///
+	/// Model writes use the canonical database-value path; this method remains available for
+	/// callers that explicitly construct JSON update data.
 	pub fn bulk_update_sql_detailed(
 		&self,
 		updates: &[(M::PrimaryKey, HashMap<String, serde_json::Value>)],
@@ -1540,9 +3155,14 @@ impl<M: Model> Manager<M> {
 		}
 
 		let table_name = M::table_name();
+		let field_metadata = M::field_metadata();
+		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
 		let mut set_clauses = Vec::new();
 
-		for field in fields {
+		for field in fields
+			.iter()
+			.filter(|field| !Self::is_generated_field(field.as_str()))
+		{
 			let mut when_clauses = Vec::new();
 
 			for (pk, field_map) in updates.iter() {
@@ -1557,7 +3177,8 @@ impl<M: Model> Manager<M> {
 						}
 					};
 					when_clauses.push(format!(
-						"WHEN \"id\" = '{}' THEN {}",
+						"WHEN \"{}\" = '{}' THEN {}",
+						primary_key_column,
 						pk.to_string().replace('\'', "''"),
 						val_str
 					));
@@ -1565,12 +3186,17 @@ impl<M: Model> Manager<M> {
 			}
 
 			if !when_clauses.is_empty() {
+				let column_name = Self::field_column(&field_metadata, field);
 				set_clauses.push(format!(
 					"\"{}\" = CASE {} END",
-					field,
+					column_name,
 					when_clauses.join(" ")
 				));
 			}
+		}
+
+		if set_clauses.is_empty() {
+			return String::new();
 		}
 
 		let ids: Vec<String> = updates
@@ -1579,9 +3205,10 @@ impl<M: Model> Manager<M> {
 			.collect();
 
 		format!(
-			"UPDATE \"{}\" SET {} WHERE \"id\" IN ({})",
+			"UPDATE \"{}\" SET {} WHERE \"{}\" IN ({})",
 			table_name,
 			set_clauses.join(", "),
+			primary_key_column,
 			ids.join(", ")
 		)
 	}
@@ -1595,17 +3222,645 @@ impl<M: Model> Default for Manager<M> {
 
 #[cfg(test)]
 mod tests {
-	use super::{Manager, build_delete_sql};
-	use crate::orm::FieldSelector;
+	use super::{Manager, build_delete_sql, field_codec_error};
+	#[cfg(feature = "pgvector")]
+	use crate::backends::types::QueryValue;
+	use crate::orm::Json;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
-	use crate::orm::fields::{CharField, Field};
 	use crate::orm::inspection::FieldInfo;
 	use crate::orm::query::FilterValue;
+	use crate::orm::{DatabaseValue, FieldCodecContext, FieldCodecError, FieldSelector};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 	use std::fmt;
+
+	#[cfg(feature = "pgvector")]
+	#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+	struct VectorManagerModel {
+		id: Option<i64>,
+		embedding: crate::orm::Vector<3>,
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[derive(Debug, Clone)]
+	struct VectorManagerModelFields;
+
+	#[cfg(feature = "pgvector")]
+	impl FieldSelector for VectorManagerModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	impl Model for VectorManagerModel {
+		type PrimaryKey = i64;
+		type Fields = VectorManagerModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"vector_manager_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn new_fields() -> Self::Fields {
+			VectorManagerModelFields
+		}
+
+		fn encode_database_fields(
+			&self,
+		) -> Result<std::collections::BTreeMap<String, crate::orm::DatabaseValue>, FieldCodecError>
+		{
+			Ok(std::collections::BTreeMap::from([
+				(
+					"id".to_owned(),
+					self.id
+						.map(crate::orm::DatabaseValue::I64)
+						.unwrap_or(crate::orm::DatabaseValue::Null),
+				),
+				(
+					"embedding".to_owned(),
+					crate::orm::DatabaseValue::Vector(self.embedding.as_slice().to_vec()),
+				),
+			]))
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	fn vector_manager_row() -> crate::orm::Row {
+		crate::orm::Row {
+			data: HashMap::from([
+				("id".to_owned(), QueryValue::Int(7)),
+				(
+					"embedding".to_owned(),
+					QueryValue::Vector(Some(vec![1.0, 2.0, 3.0])),
+				),
+			]),
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	struct VectorManagerOrmExecutor {
+		backend: DatabaseBackend,
+		calls: Vec<(
+			&'static str,
+			Option<crate::backends::error::PgvectorOperationKind>,
+		)>,
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[async_trait::async_trait]
+	impl crate::orm::OrmExecutor for VectorManagerOrmExecutor {
+		fn backend(&self) -> DatabaseBackend {
+			self.backend
+		}
+
+		async fn execute(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> reinhardt_core::exception::Result<crate::orm::QueryResult> {
+			self.calls.push(("execute", None));
+			Ok(crate::orm::QueryResult {
+				rows_affected: 1,
+				last_insert_id: Some(7),
+			})
+		}
+
+		async fn execute_with_context(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+			context: Option<crate::backends::error::PgvectorOperationKind>,
+		) -> reinhardt_core::exception::Result<crate::orm::QueryResult> {
+			self.calls.push(("execute_with_context", context));
+			Ok(crate::orm::QueryResult {
+				rows_affected: 1,
+				last_insert_id: Some(7),
+			})
+		}
+
+		async fn fetch_one(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> reinhardt_core::exception::Result<crate::orm::Row> {
+			self.calls.push(("fetch_one", None));
+			Ok(vector_manager_row())
+		}
+
+		async fn fetch_one_with_context(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+			context: Option<crate::backends::error::PgvectorOperationKind>,
+		) -> reinhardt_core::exception::Result<crate::orm::Row> {
+			self.calls.push(("fetch_one_with_context", context));
+			Ok(vector_manager_row())
+		}
+
+		async fn fetch_all(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> reinhardt_core::exception::Result<Vec<crate::orm::Row>> {
+			self.calls.push(("fetch_all", None));
+			Ok(vec![vector_manager_row()])
+		}
+
+		async fn fetch_all_with_context(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+			context: Option<crate::backends::error::PgvectorOperationKind>,
+		) -> reinhardt_core::exception::Result<Vec<crate::orm::Row>> {
+			self.calls.push(("fetch_all_with_context", context));
+			Ok(vec![vector_manager_row()])
+		}
+
+		async fn fetch_optional(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> reinhardt_core::exception::Result<Option<crate::orm::Row>> {
+			panic!("vector manager update test does not fetch optional rows")
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	struct VectorManagerTransaction {
+		backend: crate::backends::types::DatabaseType,
+		calls: Vec<(
+			&'static str,
+			Option<crate::backends::error::PgvectorOperationKind>,
+		)>,
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[async_trait::async_trait]
+	impl crate::orm::connection::TransactionExecutor for VectorManagerTransaction {
+		fn backend(&self) -> crate::backends::types::DatabaseType {
+			self.backend
+		}
+
+		async fn execute(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> crate::backends::error::Result<crate::orm::QueryResult> {
+			self.calls.push(("execute", None));
+			Ok(crate::orm::QueryResult {
+				rows_affected: 1,
+				last_insert_id: Some(7),
+			})
+		}
+
+		async fn execute_with_context(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+			context: Option<crate::backends::error::PgvectorOperationKind>,
+		) -> crate::backends::error::Result<crate::orm::QueryResult> {
+			self.calls.push(("execute_with_context", context));
+			Ok(crate::orm::QueryResult {
+				rows_affected: 1,
+				last_insert_id: Some(7),
+			})
+		}
+
+		async fn fetch_one(
+			&mut self,
+			sql: &str,
+			_params: Vec<QueryValue>,
+		) -> crate::backends::error::Result<crate::orm::Row> {
+			self.calls.push(("fetch_one", None));
+			if sql.contains("generated_id") {
+				Ok(crate::orm::Row {
+					data: HashMap::from([("generated_id".to_owned(), QueryValue::Int(7))]),
+				})
+			} else {
+				Ok(vector_manager_row())
+			}
+		}
+
+		async fn fetch_one_with_context(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+			context: Option<crate::backends::error::PgvectorOperationKind>,
+		) -> crate::backends::error::Result<crate::orm::Row> {
+			self.calls.push(("fetch_one_with_context", context));
+			Ok(vector_manager_row())
+		}
+
+		async fn fetch_all(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> crate::backends::error::Result<Vec<crate::orm::Row>> {
+			panic!("vector manager update test does not fetch multiple rows")
+		}
+
+		async fn fetch_optional(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> crate::backends::error::Result<Option<crate::orm::Row>> {
+			panic!("vector manager update test does not fetch optional rows")
+		}
+
+		async fn commit(self: Box<Self>) -> crate::backends::error::Result<()> {
+			Ok(())
+		}
+
+		async fn rollback(self: Box<Self>) -> crate::backends::error::Result<()> {
+			Ok(())
+		}
+	}
+
+	#[cfg(feature = "sqlite")]
+	struct DatabaseStateRestoreGuard {
+		previous: Option<super::DatabaseRegistrationSnapshot>,
+	}
+
+	#[cfg(feature = "sqlite")]
+	impl DatabaseStateRestoreGuard {
+		fn replace(lease: Option<crate::orm::connection::DatabaseConnectionLease>) -> Self {
+			Self {
+				previous: Some(super::replace_database_connection_for_testing_sync(lease)),
+			}
+		}
+	}
+
+	#[cfg(feature = "sqlite")]
+	impl Drop for DatabaseStateRestoreGuard {
+		fn drop(&mut self) {
+			if let Some(mut previous) = self.previous.take() {
+				super::restore_database_connection_for_testing_sync(&mut previous);
+			}
+		}
+	}
+
+	#[test]
+	fn test_field_codec_error_preserves_typed_source() {
+		let error = field_codec_error(FieldCodecError::Serialization(
+			"rejected manager value".to_owned(),
+		));
+
+		assert_eq!(
+			error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Serialization)
+		);
+		assert_eq!(
+			error.to_string(),
+			"Database error: field serialization failed: rejected manager value"
+		);
+		let source = std::error::Error::source(&error)
+			.expect("manager codec error should preserve its typed source");
+		assert!(source.downcast_ref::<FieldCodecError>().is_some());
+	}
+
+	#[test]
+	fn field_policy_mismatch_is_a_typed_manager_error() {
+		let source_error = FieldCodecError::FieldPolicyMismatch {
+			context: Box::new(FieldCodecContext::new("Profile", "avatar", "avatar_path")),
+			key: "file_storage".to_owned(),
+			expected: "private_uploads".to_owned(),
+			actual: "default".to_owned(),
+		};
+		let error = field_codec_error(source_error);
+
+		assert_eq!(
+			error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Type)
+		);
+		let source = std::error::Error::source(&error).unwrap();
+		assert!(matches!(
+			source.downcast_ref::<FieldCodecError>(),
+			Some(FieldCodecError::FieldPolicyMismatch { .. })
+		));
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn manager_preserves_vector_query_values() {
+		let value =
+			Manager::<JsonManagerModel>::query_value_to_sea_value(QueryValue::Vector(Some(vec![
+				1.0, 2.0, 3.0,
+			])));
+
+		assert_eq!(
+			value,
+			reinhardt_query::value::Value::Vector(Some(Box::new(vec![1.0, 2.0, 3.0])))
+		);
+		assert_eq!(
+			Manager::<JsonManagerModel>::query_value_to_sea_value(QueryValue::Vector(None)),
+			reinhardt_query::value::Value::Vector(None)
+		);
+	}
+
+	#[test]
+	#[cfg(feature = "pgvector")]
+	fn manager_binds_vector_values_natively() {
+		let value = Manager::<JsonManagerModel>::sea_value_to_query_value(
+			reinhardt_query::value::Value::Vector(Some(Box::new(vec![1.0, 2.0, 3.0]))),
+		);
+		let null_value = Manager::<JsonManagerModel>::sea_value_to_query_value(
+			reinhardt_query::value::Value::Vector(None),
+		);
+
+		assert_eq!(value, QueryValue::Vector(Some(vec![1.0, 2.0, 3.0])));
+		assert_eq!(null_value, QueryValue::Vector(None));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest::rstest]
+	#[case(DatabaseBackend::Postgres, "fetch_one_with_context")]
+	#[case(DatabaseBackend::MySql, "execute_with_context")]
+	#[tokio::test]
+	async fn manager_update_with_conn_propagates_vector_statement_context(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_method: &'static str,
+	) {
+		let model = VectorManagerModel {
+			id: Some(7),
+			embedding: crate::orm::Vector::try_from(vec![1.0, 2.0, 3.0]).unwrap(),
+		};
+		let mut executor = VectorManagerOrmExecutor {
+			backend,
+			calls: Vec::new(),
+		};
+
+		let updated = Manager::<VectorManagerModel>::new()
+			.update_with_conn(&mut executor, &model)
+			.await
+			.expect("vector manager update should decode the returned model");
+
+		assert_eq!(updated, model);
+		assert_eq!(
+			executor.calls.first(),
+			Some(&(
+				expected_method,
+				Some(crate::backends::error::PgvectorOperationKind::VectorValue)
+			))
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest::rstest]
+	#[case(
+		crate::backends::types::DatabaseType::Postgres,
+		"fetch_one_with_context"
+	)]
+	#[case(crate::backends::types::DatabaseType::Mysql, "execute_with_context")]
+	#[tokio::test]
+	async fn manager_update_with_transaction_propagates_vector_statement_context(
+		#[case] backend: crate::backends::types::DatabaseType,
+		#[case] expected_method: &'static str,
+	) {
+		let model = VectorManagerModel {
+			id: Some(7),
+			embedding: crate::orm::Vector::try_from(vec![1.0, 2.0, 3.0]).unwrap(),
+		};
+		let mut executor = VectorManagerTransaction {
+			backend,
+			calls: Vec::new(),
+		};
+
+		let updated = Manager::<VectorManagerModel>::new()
+			.save_with_executor(&mut executor, &model)
+			.await
+			.expect("vector manager transaction update should decode the returned model");
+
+		assert_eq!(updated, model);
+		assert_eq!(
+			executor.calls.first(),
+			Some(&(
+				expected_method,
+				Some(crate::backends::error::PgvectorOperationKind::VectorValue)
+			))
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest::rstest]
+	#[case(DatabaseBackend::Postgres, "fetch_one_with_context")]
+	#[case(DatabaseBackend::MySql, "execute_with_context")]
+	#[tokio::test]
+	async fn manager_create_with_conn_propagates_vector_statement_context(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_method: &'static str,
+	) {
+		let model = VectorManagerModel {
+			id: None,
+			embedding: crate::orm::Vector::try_from(vec![1.0, 2.0, 3.0]).unwrap(),
+		};
+		let mut executor = VectorManagerOrmExecutor {
+			backend,
+			calls: Vec::new(),
+		};
+
+		let created = Manager::<VectorManagerModel>::new()
+			.create_with_conn(&mut executor, &model)
+			.await
+			.expect("vector manager create should decode the returned model");
+
+		assert_eq!(created.id, Some(7));
+		assert_eq!(created.embedding, model.embedding);
+		assert_eq!(
+			executor.calls.first(),
+			Some(&(
+				expected_method,
+				Some(crate::backends::error::PgvectorOperationKind::VectorValue)
+			))
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest::rstest]
+	#[case(
+		crate::backends::types::DatabaseType::Postgres,
+		"fetch_one_with_context"
+	)]
+	#[case(crate::backends::types::DatabaseType::Mysql, "execute_with_context")]
+	#[tokio::test]
+	async fn manager_save_new_with_transaction_propagates_vector_statement_context(
+		#[case] backend: crate::backends::types::DatabaseType,
+		#[case] expected_method: &'static str,
+	) {
+		let model = VectorManagerModel {
+			id: None,
+			embedding: crate::orm::Vector::try_from(vec![1.0, 2.0, 3.0]).unwrap(),
+		};
+		let mut executor = VectorManagerTransaction {
+			backend,
+			calls: Vec::new(),
+		};
+
+		let created = Manager::<VectorManagerModel>::new()
+			.save_with_executor(&mut executor, &model)
+			.await
+			.expect("vector manager transaction create should decode the returned model");
+
+		assert_eq!(created.id, Some(7));
+		assert_eq!(created.embedding, model.embedding);
+		assert!(executor.calls.contains(&(
+			expected_method,
+			Some(crate::backends::error::PgvectorOperationKind::VectorValue)
+		)));
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest::rstest]
+	#[case(DatabaseBackend::Postgres, false, "fetch_all_with_context")]
+	#[case(DatabaseBackend::Postgres, true, "execute_with_context")]
+	#[case(DatabaseBackend::MySql, false, "execute_with_context")]
+	#[tokio::test]
+	async fn manager_bulk_create_with_conn_propagates_vector_statement_context(
+		#[case] backend: DatabaseBackend,
+		#[case] ignore_conflicts: bool,
+		#[case] expected_method: &'static str,
+	) {
+		let model = VectorManagerModel {
+			id: Some(7),
+			embedding: crate::orm::Vector::try_from(vec![1.0, 2.0, 3.0]).unwrap(),
+		};
+		let mut executor = VectorManagerOrmExecutor {
+			backend,
+			calls: Vec::new(),
+		};
+
+		let created = Manager::<VectorManagerModel>::new()
+			.bulk_create_with_conn(
+				&mut executor,
+				vec![model.clone()],
+				None,
+				ignore_conflicts,
+				false,
+			)
+			.await
+			.expect("vector manager bulk create should execute");
+
+		if ignore_conflicts {
+			assert!(created.is_empty());
+		} else {
+			assert_eq!(created, vec![model]);
+		}
+		assert_eq!(
+			executor.calls.first(),
+			Some(&(
+				expected_method,
+				Some(crate::backends::error::PgvectorOperationKind::VectorValue)
+			))
+		);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn init_database_skips_connection_when_already_initialized() {
+		let owner = crate::orm::connection::BackendsConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.unwrap();
+		let lease = crate::orm::connection::DatabaseConnectionLease::register(owner).unwrap();
+		let _database_state = DatabaseStateRestoreGuard::replace(Some(lease));
+
+		let result = super::init_database("unsupported://must-not-connect").await;
+		let backend = super::get_connection()
+			.await
+			.map(|connection| connection.backend());
+
+		result.expect("repeated initialization should not reconnect");
+		assert_eq!(backend.unwrap(), DatabaseBackend::Sqlite);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn init_database_installs_a_baseline_beneath_an_existing_scope() {
+		let _database_state = DatabaseStateRestoreGuard::replace(None);
+		let scope = super::install_scoped_database("sqlite::memory:")
+			.await
+			.expect("scope installation should succeed");
+
+		super::init_database("sqlite::memory:")
+			.await
+			.expect("initialization should install a baseline beneath the scope");
+		drop(scope);
+
+		let backend = super::get_connection()
+			.await
+			.expect("dropping the scope should restore the new baseline")
+			.backend();
+		assert_eq!(backend, DatabaseBackend::Sqlite);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn restoring_a_snapshot_skips_a_scope_dropped_during_replacement() {
+		let _database_state = DatabaseStateRestoreGuard::replace(None);
+		let scope = super::install_scoped_database("sqlite::memory:")
+			.await
+			.expect("scope installation should succeed");
+		let owner = crate::orm::connection::BackendsConnection::connect("sqlite::memory:")
+			.await
+			.expect("test replacement connection should succeed");
+		let replacement = crate::orm::connection::DatabaseConnectionLease::register(owner)
+			.expect("test replacement lease should register");
+		let snapshot = super::replace_database_connection_for_testing_sync(Some(replacement));
+
+		drop(scope);
+		let mut snapshot = snapshot;
+		super::restore_database_connection_for_testing_sync(&mut snapshot);
+
+		assert!(super::get_connection().await.is_err());
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn dropping_nested_test_snapshots_preserves_the_newer_registration() {
+		let _database_state = DatabaseStateRestoreGuard::replace(None);
+		let first_owner =
+			crate::orm::connection::BackendsConnection::connect_sqlite("sqlite::memory:")
+				.await
+				.expect("first test connection should succeed");
+		let first_lease = crate::orm::connection::DatabaseConnectionLease::register(first_owner)
+			.expect("first test connection should register");
+		let first = super::replace_database_connection_for_testing_sync(Some(first_lease));
+
+		let second_owner =
+			crate::orm::connection::BackendsConnection::connect_sqlite("sqlite::memory:")
+				.await
+				.expect("second test connection should succeed");
+		let second_lease = crate::orm::connection::DatabaseConnectionLease::register(second_owner)
+			.expect("second test connection should register");
+		let second_handle = second_lease.handle();
+		let second = super::replace_database_connection_for_testing_sync(Some(second_lease));
+
+		drop(first);
+
+		assert_eq!(
+			super::get_connection()
+				.await
+				.expect("newer registration should remain installed"),
+			second_handle
+		);
+
+		drop(second);
+
+		assert!(super::get_connection().await.is_err());
+	}
 	use uuid::Uuid;
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1769,7 +4024,8 @@ mod tests {
 	#[rstest]
 	fn test_delete_preserves_default_numeric_primary_key_binding() {
 		// Arrange and Act
-		let statement = Manager::<TestUser>::build_delete_statement(42);
+		let statement = Manager::<TestUser>::build_delete_statement(&42)
+			.expect("integer primary key should encode");
 		let (_sql, values) = build_delete_sql(&statement, DatabaseBackend::Postgres);
 
 		// Assert
@@ -1819,7 +4075,8 @@ mod tests {
 	fn test_manual_numeric_newtype_preserves_numeric_primary_key_binding() {
 		// Arrange and Act
 		let query = NumericNewtypeUser::objects().get(NumericUserId(42));
-		let statement = Manager::<NumericNewtypeUser>::build_delete_statement(NumericUserId(42));
+		let statement = Manager::<NumericNewtypeUser>::build_delete_statement(&NumericUserId(42))
+			.expect("numeric newtype primary key should encode");
 		let (_sql, values) = build_delete_sql(&statement, DatabaseBackend::Postgres);
 
 		// Assert
@@ -1879,12 +4136,22 @@ mod tests {
 			"typed_key_user"
 		}
 
-		fn primary_key(&self) -> Option<Self::PrimaryKey> {
-			Some(self.external_id.clone())
+		fn primary_key_column() -> &'static str {
+			"external_key"
+		}
+
+		fn primary_key_database_value(
+			pk: &Self::PrimaryKey,
+		) -> Result<DatabaseValue, FieldCodecError> {
+			Ok(DatabaseValue::String(format!("external:{}", pk.0)))
 		}
 
 		fn primary_key_filter_value(pk: Self::PrimaryKey) -> FilterValue {
 			FilterValue::String(format!("external:{}", pk.0))
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.external_id.clone())
 		}
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
@@ -1900,70 +4167,281 @@ mod tests {
 		}
 
 		fn field_metadata() -> Vec<FieldInfo> {
-			let mut field = CharField::new(64);
-			field.base.primary_key = true;
-			field.base.db_column = Some("external_key".to_owned());
-			field.set_attributes_from_name(Self::primary_key_field());
-			vec![FieldInfo::from_field(&field)]
+			let mut field = test_manager_field_info("external_id", "CustomKeyField", false, true);
+			field.db_column = Some(Self::primary_key_column().to_owned());
+			vec![field]
 		}
 	}
 
-	#[rstest]
-	#[case(
-		DatabaseBackend::Postgres,
-		"DELETE FROM \"typed_key_user\" WHERE \"external_key\" = $1"
-	)]
-	#[case(
-		DatabaseBackend::MySql,
-		"DELETE FROM `typed_key_user` WHERE `external_key` = ?"
-	)]
-	#[case(
-		DatabaseBackend::Sqlite,
-		"DELETE FROM \"typed_key_user\" WHERE \"external_key\" = ?"
-	)]
-	fn delete_uses_primary_key_column_and_typed_binding(
-		#[case] backend: DatabaseBackend,
-		#[case] expected_sql: &str,
-	) {
+	#[rstest::rstest]
+	fn get_uses_primary_key_column_and_custom_filter_binding() {
+		let query = TypedKeyUser::objects().get(ExternalId("42".to_owned()));
+
+		assert_eq!(query.filters().len(), 1);
+		assert_eq!(query.filters()[0].field, "external_key");
+		assert!(matches!(
+			&query.filters()[0].value,
+			FilterValue::String(value) if value == "external:42"
+		));
+	}
+
+	#[rstest::rstest]
+	fn delete_uses_primary_key_column_and_database_field_binding() {
+		let cases = [
+			(
+				DatabaseBackend::Postgres,
+				"DELETE FROM \"typed_key_user\" WHERE \"external_key\" = $1",
+			),
+			(
+				DatabaseBackend::MySql,
+				"DELETE FROM `typed_key_user` WHERE `external_key` = ?",
+			),
+			(
+				DatabaseBackend::Sqlite,
+				"DELETE FROM \"typed_key_user\" WHERE \"external_key\" = ?",
+			),
+		];
+
+		for (backend, expected_sql) in cases {
+			// Arrange
+			let primary_key = ExternalId("42".to_owned());
+
+			// Act
+			let statement = Manager::<TypedKeyUser>::build_delete_statement(&primary_key)
+				.expect("custom primary key should encode");
+			let (sql, values) = build_delete_sql(&statement, backend);
+
+			// Assert
+			assert_eq!(sql, expected_sql);
+			assert_eq!(
+				values.0,
+				vec![reinhardt_query::value::Value::String(Some(Box::new(
+					"external:42".to_owned()
+				)))]
+			);
+		}
+	}
+
+	#[rstest::rstest]
+	#[case(i32::MIN)]
+	#[case(0)]
+	#[case(i32::MAX)]
+	fn manager_preserves_int32_parameters(#[case] input: i32) {
 		// Arrange
-		let primary_key = ExternalId("42".to_owned());
+		let value = reinhardt_query::value::Value::Int(Some(input));
 
 		// Act
-		let statement = Manager::<TypedKeyUser>::build_delete_statement(primary_key);
-		let (sql, values) = build_delete_sql(&statement, backend);
+		let bound = Manager::<TestUser>::sea_value_to_query_value(value.clone());
+		let restored = Manager::<TestUser>::query_value_to_sea_value(bound.clone());
 
 		// Assert
-		assert_eq!(sql, expected_sql);
-		assert_eq!(
-			values.0,
-			vec![reinhardt_query::value::Value::String(Some(Box::new(
-				"external:42".to_owned()
-			)))]
-		);
+		assert_eq!(bound, QueryValue::Int32(input));
+		assert_eq!(restored, value);
 	}
 
 	#[test]
-	fn test_get_or_create_sql() {
-		let manager = TestUser::objects();
-		let mut lookup = HashMap::new();
-		lookup.insert("email".to_string(), "test@example.com".to_string());
+	fn manager_binds_integer_arrays_natively() {
+		let value =
+			Manager::<TestUser>::sea_value_to_query_value(reinhardt_query::value::Value::Array(
+				reinhardt_query::value::ArrayType::Int,
+				Some(Box::new(vec![reinhardt_query::value::Value::Int(Some(7))])),
+			));
 
-		let mut defaults = HashMap::new();
-		defaults.insert("name".to_string(), "Test User".to_string());
+		assert_eq!(value, crate::orm::connection::QueryValue::IntArray(vec![7]));
+	}
 
-		let (select_sql, insert_sql) =
-			manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
+	#[test]
+	fn manager_binds_naive_datetimes_without_converting_them_to_utc() {
+		let value = chrono::NaiveDate::from_ymd_opt(2026, 7, 26)
+			.expect("valid date")
+			.and_hms_opt(9, 15, 30)
+			.expect("valid time");
 
-		// reinhardt-query uses quoted identifiers and TestUser table is "test_user"
-		assert!(select_sql.contains("SELECT") && select_sql.contains("FROM"));
-		assert!(select_sql.contains("test_user"));
-		assert!(select_sql.contains("email"));
-		// reinhardt-query produces parameterized SQL with $1 placeholder instead of inline values
-		assert!(select_sql.contains("$1"));
-		assert!(insert_sql.contains("INSERT"));
-		assert!(insert_sql.contains("test_user"));
-		assert!(insert_sql.contains("email"));
-		assert!(insert_sql.contains("name"));
+		let bound = Manager::<TestUser>::sea_value_to_query_value(
+			reinhardt_query::value::Value::ChronoDateTime(Some(Box::new(value))),
+		);
+
+		assert_eq!(
+			bound,
+			crate::orm::connection::QueryValue::NaiveTimestamp(value)
+		);
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+	struct TestSettings {
+		theme: String,
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+	struct JsonManagerModel {
+		id: Option<i64>,
+		scalar_json: Json<String>,
+		settings: Json<TestSettings>,
+		optional_json: Option<Json<serde_json::Value>>,
+	}
+
+	#[derive(Debug, Clone)]
+	struct JsonManagerModelFields;
+
+	impl FieldSelector for JsonManagerModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for JsonManagerModel {
+		type PrimaryKey = i64;
+		type Fields = JsonManagerModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"json_manager_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn new_fields() -> Self::Fields {
+			JsonManagerModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![
+				test_manager_field_info("id", "BigIntegerField", false, true),
+				test_manager_field_info("scalar_json", "JsonField", false, false),
+				test_manager_field_info("settings", "JsonField", false, false),
+				test_manager_field_info("optional_json", "JsonField", true, false),
+			]
+		}
+
+		fn field_is_none(&self, field_name: &str) -> bool {
+			match field_name {
+				"id" => self.id.is_none(),
+				"optional_json" => self.optional_json.is_none(),
+				_ => false,
+			}
+		}
+	}
+
+	fn test_manager_field_info(
+		name: &str,
+		field_type: &str,
+		nullable: bool,
+		primary_key: bool,
+	) -> FieldInfo {
+		FieldInfo {
+			name: name.to_string(),
+			field_type: field_type.to_string(),
+			storage_kind: None,
+			domain: None,
+			nullable,
+			primary_key,
+			unique: false,
+			blank: false,
+			editable: true,
+			default: None,
+			db_default: None,
+			db_column: None,
+			choices: None,
+			attributes: HashMap::new(),
+		}
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct GeneratedUser {
+		id: Option<i64>,
+		name: String,
+		email: String,
+		full_name: String,
+	}
+
+	#[derive(Debug, Clone)]
+	struct GeneratedUserFields;
+
+	impl FieldSelector for GeneratedUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for GeneratedUser {
+		type PrimaryKey = i64;
+		type Fields = GeneratedUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"generated_user"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn generated_field_names() -> &'static [&'static str] {
+			&["full_name"]
+		}
+
+		fn new_fields() -> Self::Fields {
+			GeneratedUserFields
+		}
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct GeneratedOnlyUser {
+		id: Option<i64>,
+		full_name: String,
+	}
+
+	#[derive(Debug, Clone)]
+	struct GeneratedOnlyUserFields;
+
+	impl FieldSelector for GeneratedOnlyUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for GeneratedOnlyUser {
+		type PrimaryKey = i64;
+		type Fields = GeneratedOnlyUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"generated_only_user"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn generated_field_names() -> &'static [&'static str] {
+			&["full_name"]
+		}
+
+		fn new_fields() -> Self::Fields {
+			GeneratedOnlyUserFields
+		}
 	}
 
 	#[test]
@@ -2002,6 +4480,148 @@ mod tests {
 	}
 
 	#[test]
+	fn test_bulk_create_query_preserves_json_field_tags() {
+		let manager = JsonManagerModel::objects();
+		let model = JsonManagerModel {
+			id: Some(1),
+			scalar_json: Json::new("draft".to_string()),
+			settings: Json::new(TestSettings {
+				theme: "paper".to_string(),
+			}),
+			optional_json: Some(Json::new(serde_json::Value::Null)),
+		};
+
+		let stmt = manager.bulk_create_query(&[model]).unwrap();
+		let (_, values) = super::build_insert_sql(&stmt, DatabaseBackend::Postgres);
+		let json_value_count = values
+			.0
+			.iter()
+			.filter(|value| matches!(value, reinhardt_query::value::Value::Json(_)))
+			.count();
+
+		assert_eq!(json_value_count, 3);
+	}
+
+	#[rstest::rstest]
+	fn test_backend_json_string_scalar_preserves_native_json_provenance() {
+		// Arrange
+		let expected = JsonManagerModel {
+			id: Some(1),
+			scalar_json: Json::new("draft".to_string()),
+			settings: Json::new(TestSettings {
+				theme: "paper".to_string(),
+			}),
+			optional_json: None,
+		};
+		let mut backend_row = crate::backends::types::Row::new();
+		backend_row.insert("id".to_string(), crate::backends::types::QueryValue::Int(1));
+		backend_row.insert(
+			"scalar_json".to_string(),
+			crate::backends::types::QueryValue::Json(Some(Box::new(serde_json::Value::String(
+				"draft".to_string(),
+			)))),
+		);
+		backend_row.insert(
+			"settings".to_string(),
+			crate::backends::types::QueryValue::Json(Some(Box::new(serde_json::json!({
+				"theme": "paper"
+			})))),
+		);
+		backend_row.insert(
+			"optional_json".to_string(),
+			crate::backends::types::QueryValue::Json(None),
+		);
+
+		// Act
+		let model = crate::orm::connection::QueryRow::from_backend_row(backend_row)
+			.deserialize_model::<JsonManagerModel>()
+			.unwrap();
+
+		// Assert
+		assert_eq!(model, expected);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_manager_create_roundtrips_typed_json_fields_on_sqlite() {
+		let database_file = tempfile::NamedTempFile::new().unwrap();
+		let database_url = format!("sqlite://{}", database_file.path().display());
+		let owner = crate::orm::connection::BackendsConnection::connect_sqlite(&database_url)
+			.await
+			.unwrap();
+		let lease = crate::orm::connection::DatabaseConnectionLease::register(owner).unwrap();
+		let mut connection = lease.handle();
+		connection
+			.execute(
+				"CREATE TABLE json_manager_models (\
+				 id INTEGER PRIMARY KEY AUTOINCREMENT, \
+				 scalar_json TEXT NOT NULL, \
+				 settings TEXT NOT NULL, \
+				 optional_json TEXT NULL)",
+				vec![],
+			)
+			.await
+			.unwrap();
+		let model = JsonManagerModel {
+			id: None,
+			scalar_json: Json::new("draft".to_string()),
+			settings: Json::new(TestSettings {
+				theme: "paper".to_string(),
+			}),
+			optional_json: Some(Json::new(serde_json::Value::Null)),
+		};
+
+		let created = JsonManagerModel::objects()
+			.create_with_conn(&mut connection, &model)
+			.await
+			.unwrap();
+
+		assert_eq!(created.scalar_json.as_inner(), "draft");
+		assert_eq!(created.settings.theme, "paper");
+		assert_eq!(
+			created.optional_json.unwrap().into_inner(),
+			serde_json::Value::Null
+		);
+	}
+
+	#[test]
+	fn test_bulk_create_sql_detailed_omits_generated_fields() {
+		use serde_json::json;
+		let manager = GeneratedUser::objects();
+		let fields = vec![
+			"name".to_string(),
+			"email".to_string(),
+			"full_name".to_string(),
+		];
+		let values = vec![vec![
+			json!("Alice"),
+			json!("alice@example.com"),
+			json!("Alice Smith"),
+		]];
+
+		let sql = manager.bulk_create_sql_detailed(&fields, &values, false);
+
+		assert!(sql.contains("INSERT INTO generated_user"));
+		assert!(sql.contains("name"));
+		assert!(sql.contains("email"));
+		assert!(!sql.contains("full_name"));
+		assert!(!sql.contains("Alice Smith"));
+	}
+
+	#[test]
+	fn test_bulk_create_sql_detailed_returns_empty_for_only_generated_fields() {
+		use serde_json::json;
+		let manager = GeneratedUser::objects();
+		let fields = vec!["full_name".to_string()];
+		let values = vec![vec![json!("Alice Smith")]];
+
+		let sql = manager.bulk_create_sql_detailed(&fields, &values, false);
+
+		assert!(sql.is_empty());
+	}
+
+	#[test]
 	fn test_bulk_update_sql() {
 		use serde_json::json;
 		let manager = TestUser::objects();
@@ -2030,6 +4650,136 @@ mod tests {
 		assert!(sql.contains("Alice Updated"));
 		assert!(sql.contains("Bob Updated"));
 		assert!(sql.contains("WHERE"));
+	}
+
+	#[test]
+	fn test_bulk_update_database_values_serializes_arrays_per_backend() {
+		use crate::orm::{DatabaseArrayType, DatabaseValue};
+
+		let manager = TestUser::objects();
+		let mut field_values = HashMap::new();
+		field_values.insert(
+			"name".to_string(),
+			DatabaseValue::Array {
+				element_type: DatabaseArrayType::String,
+				values: vec![
+					DatabaseValue::String("alpha".to_string()),
+					DatabaseValue::String("beta".to_string()),
+				],
+			},
+		);
+		let updates = vec![(DatabaseValue::I64(1), field_values)];
+		let fields = vec!["name".to_string()];
+
+		let sqlite_sql = manager
+			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Sqlite)
+			.expect("SQLite array SQL should render");
+		assert!(sqlite_sql.contains("'[\"alpha\",\"beta\"]'"));
+		assert!(!sqlite_sql.contains("ARRAY["));
+
+		let postgres_sql = manager
+			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Postgres)
+			.expect("PostgreSQL array SQL should render");
+		assert!(postgres_sql.contains("ARRAY["));
+	}
+
+	#[test]
+	fn test_bulk_update_database_values_casts_empty_postgres_arrays() {
+		use crate::orm::{DatabaseArrayType, DatabaseValue};
+
+		let manager = TestUser::objects();
+		let mut field_values = HashMap::new();
+		field_values.insert(
+			"name".to_string(),
+			DatabaseValue::Array {
+				element_type: DatabaseArrayType::String,
+				values: vec![],
+			},
+		);
+		let updates = vec![(DatabaseValue::I64(1), field_values)];
+		let fields = vec!["name".to_string()];
+
+		let sql = manager
+			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Postgres)
+			.expect("PostgreSQL empty array SQL should render");
+
+		assert!(sql.contains("ARRAY[]::text[]"));
+	}
+
+	#[test]
+	fn test_bulk_update_sql_detailed_omits_generated_fields() {
+		use serde_json::json;
+		let manager = GeneratedUser::objects();
+		let mut updates = Vec::new();
+		let mut fields_map = HashMap::new();
+		fields_map.insert("name".to_string(), json!("Alice Updated"));
+		fields_map.insert("full_name".to_string(), json!("Alice Smith"));
+		updates.push((1i64, fields_map));
+		let fields = vec!["name".to_string(), "full_name".to_string()];
+
+		let sql = manager.bulk_update_sql_detailed(&updates, &fields, DatabaseBackend::Postgres);
+
+		assert!(sql.contains("UPDATE \"generated_user\""));
+		assert!(sql.contains("\"name\""));
+		assert!(sql.contains("Alice Updated"));
+		assert!(!sql.contains("full_name"));
+		assert!(!sql.contains("Alice Smith"));
+	}
+
+	#[test]
+	fn test_bulk_update_sql_detailed_returns_empty_for_only_generated_fields() {
+		use serde_json::json;
+		let manager = GeneratedUser::objects();
+		let mut updates = Vec::new();
+		let mut fields_map = HashMap::new();
+		fields_map.insert("full_name".to_string(), json!("Alice Smith"));
+		updates.push((1i64, fields_map));
+		let fields = vec!["full_name".to_string()];
+
+		let sql = manager.bulk_update_sql_detailed(&updates, &fields, DatabaseBackend::Postgres);
+
+		assert!(sql.is_empty());
+	}
+
+	#[test]
+	fn test_update_statement_uses_noop_set_for_generated_only_models() {
+		let model = GeneratedOnlyUser {
+			id: Some(7),
+			full_name: "Alice Smith".to_string(),
+		};
+		let obj = model
+			.encode_database_fields()
+			.expect("model fields should encode");
+		let stmt =
+			Manager::<GeneratedOnlyUser>::build_update_statement_from_object(&obj, |_| false)
+				.expect("encoded primary key should build an update statement");
+
+		let (sql, params) = super::build_update_sql(&stmt, DatabaseBackend::Postgres);
+
+		assert_eq!(
+			sql,
+			"UPDATE \"generated_only_user\" SET \"id\" = \"id\" WHERE \"id\" = $1 RETURNING \"id\", \"full_name\""
+		);
+		assert_eq!(params.len(), 1);
+	}
+
+	#[test]
+	fn test_create_statement_rejects_generated_only_models() {
+		let model = GeneratedOnlyUser {
+			id: None,
+			full_name: "Alice Smith".to_string(),
+		};
+		let obj = model
+			.encode_database_fields()
+			.expect("model fields should encode");
+
+		let err = Manager::<GeneratedOnlyUser>::build_insert_statement_from_object(&obj, |_| false)
+			.expect_err("generated-only create should fail before rendering empty INSERT");
+
+		assert!(
+			err.to_string().contains("no writable fields remain"),
+			"unexpected error: {err}"
+		);
 	}
 
 	#[test]
@@ -2070,37 +4820,6 @@ mod tests {
 		let manager = super::Manager::<TestUser>::default();
 		// Default should work the same as new
 		let _ = manager;
-	}
-
-	#[test]
-	fn test_get_or_create_sql_empty_lookup() {
-		let manager = TestUser::objects();
-		let lookup: HashMap<String, String> = HashMap::new();
-		let defaults: HashMap<String, String> = HashMap::new();
-
-		let (select_sql, insert_sql) =
-			manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
-
-		// Empty lookup still produces valid SQL structure
-		assert!(select_sql.contains("SELECT") || select_sql.contains("select"));
-		assert!(insert_sql.contains("INSERT") || insert_sql.contains("insert"));
-	}
-
-	#[test]
-	fn test_get_or_create_sql_with_multiple_lookups() {
-		let manager = TestUser::objects();
-		let mut lookup = HashMap::new();
-		lookup.insert("email".to_string(), "test@example.com".to_string());
-		lookup.insert("name".to_string(), "Test User".to_string());
-
-		let defaults: HashMap<String, String> = HashMap::new();
-
-		let (select_sql, _insert_sql) =
-			manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
-
-		// Should have both conditions in WHERE clause
-		assert!(select_sql.contains("email"));
-		assert!(select_sql.contains("name"));
 	}
 
 	#[test]

@@ -4,16 +4,73 @@
 //! method-agnostic handlers, and per-route middleware attachment.
 
 use super::ServerRouter;
-use super::types::{FunctionRoute, ViewRoute};
+use super::types::{FunctionRoute, RouteContractMetadata, ViewRoute};
 use crate::routers::Route;
 use reinhardt_core::endpoint::EndpointInfo;
-use reinhardt_http::Handler;
+use reinhardt_http::{
+	Handler, RequestlessSyncHandler, RequestlessSyncHandlerAdapter, SyncHandler, SyncHandlerAdapter,
+};
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::ViewSet;
 use std::sync::Arc;
 
+fn typed_contract_metadata(path: &str) -> RouteContractMetadata {
+	RouteContractMetadata {
+		handler: format!("view:{path}"),
+		module_path: None,
+		function_name: None,
+		authentication: reinhardt_core::endpoint::AuthProtection::None,
+		guard: None,
+	}
+}
+
+fn endpoint_contract_metadata<E: EndpointInfo>() -> RouteContractMetadata {
+	let handler = E::handler_identity();
+	let (module_path, function_name) = handler
+		.rsplit_once("::")
+		.map(|(module_path, function_name)| {
+			(
+				Some(module_path.to_string()),
+				Some(function_name.to_string()),
+			)
+		})
+		.unwrap_or((None, None));
+	RouteContractMetadata {
+		handler: handler.to_string(),
+		module_path,
+		function_name,
+		authentication: E::auth_protection(),
+		guard: E::guard_description().map(str::to_string),
+	}
+}
+
 impl ServerRouter {
+	fn register_view<V>(
+		mut self,
+		path: &str,
+		name: Option<&str>,
+		view: V,
+		authentication: reinhardt_core::endpoint::AuthProtection,
+	) -> Self
+	where
+		V: Handler + 'static,
+	{
+		self.invalidate_compiled_routes();
+		let mut metadata = typed_contract_metadata(path);
+		metadata.authentication = authentication;
+		self.views.push(ViewRoute {
+			path: path.to_string(),
+			handler: Arc::new(view),
+			sync_handler: None,
+			requestless_sync_handler: None,
+			name: name.map(str::to_owned),
+			metadata: Some(metadata),
+			middleware: Vec::new(),
+		});
+		self
+	}
+
 	/// Register a ViewSet (DRF-style)
 	///
 	/// # Examples
@@ -37,6 +94,7 @@ impl ServerRouter {
 	/// ```
 	#[cfg(feature = "viewsets")]
 	pub fn viewset<V: ViewSet + 'static>(mut self, prefix: &str, viewset: V) -> Self {
+		self.invalidate_compiled_routes();
 		self.viewsets.insert(prefix.to_string(), Arc::new(viewset));
 		self
 	}
@@ -122,6 +180,7 @@ impl ServerRouter {
 		F: FnOnce() -> E,
 		E: EndpointInfo + Handler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		let view = f();
 		let path = E::path().to_string();
 		let method = E::method();
@@ -131,7 +190,76 @@ impl ServerRouter {
 			path,
 			method,
 			handler: Arc::new(view),
+			sync_handler: None,
+			requestless_sync_handler: None,
 			name: Some(name),
+			metadata: endpoint_contract_metadata::<E>(),
+			middleware: Vec::new(),
+		});
+		self
+	}
+
+	/// Register a synchronous endpoint using the `EndpointInfo` trait.
+	///
+	/// This variant is for endpoints that can complete without awaiting I/O.
+	/// Routers call the synchronous handler directly when no middleware is
+	/// attached, avoiding the boxed future required by the async handler trait.
+	pub fn endpoint_sync<F, E>(mut self, f: F) -> Self
+	where
+		F: FnOnce() -> E,
+		E: EndpointInfo + SyncHandler + 'static,
+	{
+		self.invalidate_compiled_routes();
+		let view = f();
+		let path = E::path().to_string();
+		let method = E::method();
+		let name = E::name().to_string();
+		let sync_handler: Arc<dyn SyncHandler> = Arc::new(view);
+		let handler: Arc<dyn Handler> = Arc::new(SyncHandlerAdapter::new(sync_handler.clone()));
+
+		self.functions.push(FunctionRoute {
+			path,
+			method,
+			handler,
+			sync_handler: Some(sync_handler),
+			requestless_sync_handler: None,
+			name: Some(name),
+			metadata: endpoint_contract_metadata::<E>(),
+			middleware: Vec::new(),
+		});
+		self
+	}
+
+	/// Register a synchronous endpoint that does not inspect request state.
+	///
+	/// This is the lowest-overhead endpoint registration path. HTTP adapters can
+	/// execute these routes before constructing a full request when the incoming
+	/// request has no body and the route has no middleware or path parameters.
+	pub fn endpoint_requestless_sync<F, E>(mut self, f: F) -> Self
+	where
+		F: FnOnce() -> E,
+		E: EndpointInfo + RequestlessSyncHandler + 'static,
+	{
+		self.invalidate_compiled_routes();
+		let view = f();
+		let path = E::path().to_string();
+		let method = E::method();
+		let name = E::name().to_string();
+		let requestless_handler: Arc<dyn RequestlessSyncHandler> = Arc::new(view);
+		let adapter = Arc::new(RequestlessSyncHandlerAdapter::new(
+			requestless_handler.clone(),
+		));
+		let handler: Arc<dyn Handler> = adapter.clone();
+		let sync_handler: Arc<dyn SyncHandler> = adapter;
+
+		self.functions.push(FunctionRoute {
+			path,
+			method,
+			handler,
+			sync_handler: Some(sync_handler),
+			requestless_sync_handler: Some(requestless_handler),
+			name: Some(name),
+			metadata: endpoint_contract_metadata::<E>(),
 			middleware: Vec::new(),
 		});
 		self
@@ -157,17 +285,29 @@ impl ServerRouter {
 	/// let router = ServerRouter::new()
 	///     .view("/articles", view);
 	/// ```
-	pub fn view<V>(mut self, path: &str, view: V) -> Self
+	pub fn view<V>(self, path: &str, view: V) -> Self
 	where
 		V: Handler + 'static,
 	{
-		self.views.push(ViewRoute {
-			path: path.to_string(),
-			handler: Arc::new(view),
-			name: None,
-			middleware: Vec::new(),
-		});
-		self
+		self.register_view(
+			path,
+			None,
+			view,
+			reinhardt_core::endpoint::AuthProtection::None,
+		)
+	}
+
+	/// Register a class-based view with an explicit authentication contract.
+	pub fn view_with_authentication<V>(
+		self,
+		path: &str,
+		view: V,
+		authentication: reinhardt_core::endpoint::AuthProtection,
+	) -> Self
+	where
+		V: Handler + 'static,
+	{
+		self.register_view(path, None, view, authentication)
 	}
 
 	/// Register a named class-based view (Django-style with URL reversal)
@@ -199,17 +339,34 @@ impl ServerRouter {
 		since = "0.2.0",
 		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
 	)]
-	pub fn view_named<V>(mut self, path: &str, name: &str, view: V) -> Self
+	pub fn view_named<V>(self, path: &str, name: &str, view: V) -> Self
 	where
 		V: Handler + 'static,
 	{
-		self.views.push(ViewRoute {
-			path: path.to_string(),
-			handler: Arc::new(view),
-			name: Some(name.to_string()),
-			middleware: Vec::new(),
-		});
-		self
+		self.register_view(
+			path,
+			Some(name),
+			view,
+			reinhardt_core::endpoint::AuthProtection::None,
+		)
+	}
+
+	/// Register a named class-based view with an explicit authentication contract.
+	#[deprecated(
+		since = "0.2.0",
+		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
+	)]
+	pub fn view_named_with_authentication<V>(
+		self,
+		path: &str,
+		name: &str,
+		view: V,
+		authentication: reinhardt_core::endpoint::AuthProtection,
+	) -> Self
+	where
+		V: Handler + 'static,
+	{
+		self.register_view(path, Some(name), view, authentication)
 	}
 
 	/// Register a handler directly (recommended method)
@@ -239,7 +396,35 @@ impl ServerRouter {
 	where
 		H: Handler + 'static,
 	{
+		self.invalidate_compiled_routes();
 		let route = Route::from_handler(path, handler);
+		self.routes.push(route);
+		self
+	}
+
+	/// Register a synchronous handler directly.
+	///
+	/// This is the raw-handler counterpart to [`Self::endpoint_sync`].
+	pub fn handler_sync<H>(mut self, path: &str, handler: H) -> Self
+	where
+		H: SyncHandler + 'static,
+	{
+		self.invalidate_compiled_routes();
+		let route = Route::from_sync_handler(path, handler);
+		self.routes.push(route);
+		self
+	}
+
+	/// Register a requestless synchronous handler directly.
+	///
+	/// This is the raw-handler counterpart to
+	/// [`Self::endpoint_requestless_sync`].
+	pub fn handler_requestless_sync<H>(mut self, path: &str, handler: H) -> Self
+	where
+		H: RequestlessSyncHandler + 'static,
+	{
+		self.invalidate_compiled_routes();
+		let route = Route::from_requestless_sync_handler(path, handler);
 		self.routes.push(route);
 		self
 	}
@@ -269,8 +454,22 @@ impl ServerRouter {
 	///     .handler_arc("/custom", handler);
 	/// ```
 	pub fn handler_arc(mut self, path: &str, handler: Arc<dyn Handler>) -> Self {
+		self.invalidate_compiled_routes();
 		let route = Route::new(path, handler);
 		self.routes.push(route);
+		self
+	}
+
+	/// Register an erased handler with caller-provided contract metadata.
+	pub fn handler_arc_with_contract_metadata(
+		mut self,
+		path: &str,
+		handler: Arc<dyn Handler>,
+		metadata: RouteContractMetadata,
+	) -> Self {
+		self.invalidate_compiled_routes();
+		self.routes
+			.push(Route::new(path, handler).with_contract_metadata(metadata));
 		self
 	}
 
@@ -300,6 +499,7 @@ impl ServerRouter {
 	///     .with_route_middleware(LoggingMiddleware::new());
 	/// ```
 	pub fn with_route_middleware<M: Middleware + 'static>(mut self, middleware: M) -> Self {
+		self.invalidate_compiled_routes();
 		let middleware = Arc::new(middleware);
 		if let Some(route) = self.functions.last_mut() {
 			route.middleware.push(middleware.clone());
@@ -309,6 +509,169 @@ impl ServerRouter {
 			route.middleware.push(middleware);
 		}
 		self
+	}
+}
+
+#[cfg(test)]
+mod sync_handler_tests {
+	use super::*;
+	use async_trait::async_trait;
+	use hyper::StatusCode;
+	use reinhardt_http::{Request, Response, Result};
+
+	struct HealthEndpoint;
+
+	impl EndpointInfo for HealthEndpoint {
+		fn path() -> &'static str {
+			"/health"
+		}
+
+		fn method() -> hyper::Method {
+			hyper::Method::GET
+		}
+
+		fn name() -> &'static str {
+			"health"
+		}
+	}
+
+	impl SyncHandler for HealthEndpoint {
+		fn handle_sync(&self, _request: Request) -> Result<Response> {
+			Ok(Response::ok().with_static_body(b"ok"))
+		}
+	}
+
+	struct RequestlessHealthEndpoint;
+
+	impl EndpointInfo for RequestlessHealthEndpoint {
+		fn path() -> &'static str {
+			"/requestless-health"
+		}
+
+		fn method() -> hyper::Method {
+			hyper::Method::GET
+		}
+
+		fn name() -> &'static str {
+			"requestless_health"
+		}
+	}
+
+	impl RequestlessSyncHandler for RequestlessHealthEndpoint {
+		fn handle_requestless_sync(&self) -> Result<Response> {
+			Ok(Response::ok().with_static_body(b"ok"))
+		}
+	}
+
+	struct PassThroughMiddleware;
+
+	#[async_trait]
+	impl Middleware for PassThroughMiddleware {
+		async fn process(&self, request: Request, next: Arc<dyn Handler>) -> Result<Response> {
+			let mut response = next.handle(request).await?;
+			response.status = StatusCode::ACCEPTED;
+			Ok(response)
+		}
+	}
+
+	fn request(path: &str) -> Request {
+		Request::builder()
+			.method(hyper::Method::GET)
+			.uri(path)
+			.build()
+			.expect("request should build")
+	}
+
+	#[tokio::test]
+	async fn endpoint_sync_dispatches_synchronous_handler() {
+		// Arrange
+		let router = ServerRouter::new().endpoint_sync(|| HealthEndpoint);
+
+		// Act
+		let response = router
+			.dispatch(request("/health"))
+			.await
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.body.as_ref(), b"ok");
+	}
+
+	#[test]
+	fn endpoint_sync_dispatches_through_synchronous_router_path() {
+		// Arrange
+		let router = ServerRouter::new().endpoint_sync(|| HealthEndpoint);
+
+		// Act
+		let response = router
+			.try_dispatch_sync(request("/health"))
+			.expect("sync route should use the synchronous dispatch path")
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.body.as_ref(), b"ok");
+	}
+
+	#[test]
+	fn endpoint_requestless_sync_dispatches_without_request() {
+		// Arrange
+		let router = ServerRouter::new().endpoint_requestless_sync(|| RequestlessHealthEndpoint);
+
+		// Act
+		let response = router
+			.try_dispatch_requestless_sync("/requestless-health", &hyper::Method::GET)
+			.expect("requestless route should use the requestless dispatch path")
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::OK);
+		assert_eq!(response.body.as_ref(), b"ok");
+	}
+
+	#[test]
+	fn endpoint_requestless_sync_with_middleware_declines_requestless_path() {
+		// Arrange
+		let router = ServerRouter::new()
+			.with_middleware(PassThroughMiddleware)
+			.endpoint_requestless_sync(|| RequestlessHealthEndpoint);
+
+		// Act & Assert
+		assert!(
+			router
+				.try_dispatch_requestless_sync("/requestless-health", &hyper::Method::GET)
+				.is_none()
+		);
+	}
+
+	#[test]
+	fn endpoint_sync_with_middleware_declines_synchronous_router_path() {
+		// Arrange
+		let router = ServerRouter::new()
+			.with_middleware(PassThroughMiddleware)
+			.endpoint_sync(|| HealthEndpoint);
+
+		// Act & Assert
+		assert!(router.try_dispatch_sync(request("/health")).is_none());
+	}
+
+	#[tokio::test]
+	async fn handler_sync_still_runs_through_middleware_chain() {
+		// Arrange
+		let router = ServerRouter::new()
+			.with_middleware(PassThroughMiddleware)
+			.handler_sync("/health", HealthEndpoint);
+
+		// Act
+		let response = router
+			.dispatch(request("/health"))
+			.await
+			.expect("route should dispatch");
+
+		// Assert
+		assert_eq!(response.status, StatusCode::ACCEPTED);
+		assert_eq!(response.body.as_ref(), b"ok");
 	}
 }
 

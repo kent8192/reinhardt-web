@@ -59,12 +59,8 @@
 //! ```rust,ignore
 //! use reinhardt_pages::{SsrRenderer, SsrOptions, Component};
 //!
-//! let mut renderer = SsrRenderer::with_options(
-//!     SsrOptions::new()
-//!         .title("My Page")
-//!         .css("/styles.css")
-//! );
-//! let html = renderer.render_page(&my_component);
+//! let mut renderer = SsrRenderer::with_options(SsrOptions::new());
+//! let html = renderer.render_page_to_string(&my_component).await;
 //! ```
 //!
 //! ### Security Headers

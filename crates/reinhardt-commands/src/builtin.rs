@@ -4,9 +4,14 @@
 
 use crate::{BaseCommand, CommandArgument, CommandContext, CommandOption, CommandResult};
 use async_trait::async_trait;
+#[cfg(feature = "migrations")]
+use std::collections::HashSet;
+use std::path::PathBuf;
 
 #[cfg(feature = "migrations")]
-use reinhardt_db::migrations::DatabaseMigrationExecutor;
+use reinhardt_db::migrations::{
+	DatabaseMigrationExecutor, MigrationKey, select_replacement_migrations,
+};
 
 #[cfg(feature = "migrations")]
 use reinhardt_db::backends::{DatabaseConnection, DatabaseType};
@@ -14,10 +19,6 @@ use reinhardt_db::backends::{DatabaseConnection, DatabaseType};
 // Import DatabaseConnection for database_url_from (without migrations feature)
 #[cfg(all(feature = "reinhardt-db", not(feature = "migrations")))]
 use reinhardt_db::backends::DatabaseConnection;
-
-// Import DatabaseType for connect_database helper
-#[cfg(all(feature = "reinhardt-db", not(feature = "migrations")))]
-use reinhardt_db::backends::DatabaseType;
 
 // Import ShutdownCoordinator for runall command
 
@@ -139,10 +140,9 @@ impl BaseCommand for MigrateCommand {
 				&& !database_url.starts_with("sqlite:")
 				&& !database_url.starts_with("mysql://")
 			{
-				return Err(crate::CommandError::ExecutionError(format!(
-					"Unsupported database URL scheme: {}",
-					database_url
-				)));
+				return Err(crate::CommandError::ExecutionError(
+					"Unsupported database URL scheme.".to_owned(),
+				));
 			}
 
 			// 4. Connect to database (auto-create if it doesn't exist for PostgreSQL)
@@ -153,7 +153,13 @@ impl BaseCommand for MigrateCommand {
 			{
 				#[cfg(feature = "postgres")]
 				{
-					DatabaseConnection::connect_postgres_or_create(&database_url).await
+					DatabaseConnection::connect_postgres_or_create(&database_url)
+						.await
+						.map_err(|_| {
+							crate::CommandError::ExecutionError(
+								"Failed to connect to PostgreSQL database.".to_owned(),
+							)
+						})?
 				}
 				#[cfg(not(feature = "postgres"))]
 				{
@@ -164,7 +170,13 @@ impl BaseCommand for MigrateCommand {
 			} else if database_url.starts_with("mysql://") {
 				#[cfg(feature = "mysql")]
 				{
-					DatabaseConnection::connect_mysql(&database_url).await
+					DatabaseConnection::connect_mysql(&database_url)
+						.await
+						.map_err(|_| {
+							crate::CommandError::ExecutionError(
+								"Failed to connect to MySQL database.".to_owned(),
+							)
+						})?
 				}
 				#[cfg(not(feature = "mysql"))]
 				{
@@ -176,7 +188,13 @@ impl BaseCommand for MigrateCommand {
 				// Must be SQLite (validated above)
 				#[cfg(feature = "sqlite")]
 				{
-					DatabaseConnection::connect_sqlite(&database_url).await
+					DatabaseConnection::connect_sqlite(&database_url)
+						.await
+						.map_err(|_| {
+							crate::CommandError::ExecutionError(
+								"Failed to connect to SQLite database.".to_owned(),
+							)
+						})?
 				}
 				#[cfg(not(feature = "sqlite"))]
 				{
@@ -184,13 +202,7 @@ impl BaseCommand for MigrateCommand {
 						"SQLite support not enabled. Enable 'sqlite' feature.".to_string(),
 					));
 				}
-			}
-			.map_err(|e| {
-				crate::CommandError::ExecutionError(format!(
-					"Failed to connect to database: {:?}",
-					e
-				))
-			})?;
+			};
 
 			// 4.5. Direction detection (Django-style migrate-with-target semantics).
 			//
@@ -225,7 +237,7 @@ impl BaseCommand for MigrateCommand {
 				// `plan_applied_migrations` probes for it: a missing table on a fresh DB
 				// degrades to an empty set, while a genuine DB error fails fast so the
 				// preview never misreports the applied state.
-				let applied = if is_plan {
+				let mut applied = if is_plan {
 					plan_applied_migrations(&connection, &recorder).await?
 				} else {
 					recorder.ensure_schema_table().await.map_err(|e| {
@@ -241,18 +253,502 @@ impl BaseCommand for MigrateCommand {
 						))
 					})?
 				};
-				let target_plan =
-					migration_target_plan(app, target_name, &applied, &all_migrations)?;
-				return execute_migration_target_plan(
-					target_plan,
+				if all_migrations
+					.iter()
+					.all(|migration| migration.replaces.is_empty())
+				{
+					let target_plan =
+						migration_target_plan(app, target_name, &applied, &all_migrations)?;
+					return execute_migration_target_plan(
+						target_plan,
+						&all_migrations,
+						is_plan,
+						is_fake,
+						&recorder,
+						connection,
+						ctx,
+					)
+					.await;
+				}
+				let stale_records = stale_replacement_records(&all_migrations, app, &applied);
+				if is_plan {
+					for record in &stale_records {
+						ctx.info(&format!(
+							"[plan] Would unapply superseded record {}:{} before resolving the target",
+							record.app, record.name
+						));
+					}
+				} else if !stale_records.is_empty() {
+					for record in &stale_records {
+						recorder
+							.unapply(&record.app, &record.name)
+							.await
+							.map_err(|error| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to reconcile superseded replacement record {}:{}: {}",
+									record.app, record.name, error
+								))
+							})?;
+					}
+					applied = recorder.get_applied_migrations().await.map_err(|error| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to re-read reconciled migration history: {}",
+							error
+						))
+					})?;
+				}
+				let stale_record_names: HashSet<_> = stale_records
+					.iter()
+					.map(|record| (record.app.as_str(), record.name.as_str()))
+					.collect();
+				let applied_for_app: Vec<_> = applied
+					.iter()
+					.filter(|record| {
+						record.app == *app
+							&& (!is_plan
+								|| !stale_record_names
+									.contains(&(record.app.as_str(), record.name.as_str())))
+					})
+					.cloned()
+					.collect();
+				let target_name = if target_name == "zero" {
+					target_name.to_string()
+				} else {
+					let terminal = terminal_replacement_target(&all_migrations, app, target_name)?;
+					if terminal == target_name
+						|| replacement_history_is_fully_applied(
+							&all_migrations,
+							app,
+							&terminal,
+							&applied_for_app,
+						) {
+						terminal
+					} else {
+						target_name.to_string()
+					}
+				};
+
+				// Branch (a): `migrate <app> zero` -> unapply ALL applied migrations.
+				if target_name == "zero" {
+					if applied_for_app.is_empty() {
+						ctx.info(&format!(
+							"No applied migrations for app '{}'; nothing to do.",
+							app
+						));
+						return Ok(());
+					}
+
+					// `applied_for_app` is ASC by applied time; rollback unapplies the
+					// newest first. Plan and `--fake` operate purely on recorder records
+					// and never load files; only a real rollback needs the on-disk
+					// reverse SQL.
+					if is_plan {
+						ctx.info(&format!(
+							"[plan] Would unapply {} migration(s) for app '{}':",
+							applied_for_app.len(),
+							app
+						));
+						for r in applied_for_app.iter().rev() {
+							ctx.info(&format!("  - {}:{} (unapply)", r.app, r.name));
+						}
+						return Ok(());
+					}
+
+					if is_fake {
+						ctx.info(
+							"Faking rollback (updating recorder without executing reverse SQL):",
+						);
+						for r in applied_for_app.iter().rev() {
+							recorder.unapply(&r.app, &r.name).await.map_err(|e| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to unapply {}:{}: {}",
+									r.app, r.name, e
+								))
+							})?;
+							ctx.success(&format!("  ✓ Faked rollback: {}:{}", r.app, r.name));
+						}
+						ctx.success(&format!(
+							"Faked rollback of {} migration(s) for app '{}'",
+							applied_for_app.len(),
+							app
+						));
+						return Ok(());
+					}
+
+					let mut to_rollback = Vec::with_capacity(applied_for_app.len());
+					for r in &applied_for_app {
+						let migration = all_migrations
+							.iter()
+							.find(|m| m.app_label == r.app && m.name == r.name)
+							.cloned()
+							.ok_or_else(|| {
+								crate::CommandError::ExecutionError(format!(
+									"Migration {}:{} is recorded as applied but its file was not found on disk",
+									r.app, r.name
+								))
+							})?;
+						to_rollback.push(migration);
+					}
+
+					let mut executor = DatabaseMigrationExecutor::new(connection);
+					let result = executor
+						.rollback_migrations(&to_rollback)
+						.await
+						.map_err(|e| {
+							crate::CommandError::ExecutionError(format!(
+								"Failed to roll back migrations: {:?}",
+								e
+							))
+						})?;
+					for id in &result.applied {
+						ctx.success(&format!("  ✓ Rolled back: {}", id));
+					}
+					ctx.success(&format!(
+						"Rolled back {} migration(s) for app '{}'",
+						result.applied.len(),
+						app
+					));
+					return Ok(());
+				}
+
+				// Branch (b): target is currently applied -> roll back everything after it.
+				if let Some(pos) = applied_for_app.iter().position(|r| r.name == target_name) {
+					let to_rollback_records = &applied_for_app[pos + 1..];
+					if to_rollback_records.is_empty() {
+						ctx.info(&format!(
+							"Already at {}:{}; nothing to do.",
+							app, target_name
+						));
+						return Ok(());
+					}
+
+					// Plan and `--fake` operate purely on recorder records; only a real
+					// rollback loads the on-disk reverse SQL.
+					if is_plan {
+						ctx.info(&format!(
+							"[plan] Would unapply {} migration(s) for app '{}' to reach target '{}':",
+							to_rollback_records.len(),
+							app,
+							target_name
+						));
+						for r in to_rollback_records.iter().rev() {
+							ctx.info(&format!("  - {}:{} (unapply)", r.app, r.name));
+						}
+						return Ok(());
+					}
+
+					if is_fake {
+						ctx.info(
+							"Faking rollback (updating recorder without executing reverse SQL):",
+						);
+						for r in to_rollback_records.iter().rev() {
+							recorder.unapply(&r.app, &r.name).await.map_err(|e| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to unapply {}:{}: {}",
+									r.app, r.name, e
+								))
+							})?;
+							ctx.success(&format!("  ✓ Faked rollback: {}:{}", r.app, r.name));
+						}
+						ctx.success(&format!(
+							"Faked rollback to {}:{} ({} migration(s) unapplied)",
+							app,
+							target_name,
+							to_rollback_records.len()
+						));
+						return Ok(());
+					}
+
+					let mut to_rollback = Vec::with_capacity(to_rollback_records.len());
+					for r in to_rollback_records {
+						let migration = all_migrations
+							.iter()
+							.find(|m| m.app_label == r.app && m.name == r.name)
+							.cloned()
+							.ok_or_else(|| {
+								crate::CommandError::ExecutionError(format!(
+									"Migration {}:{} is recorded as applied but its file was not found on disk",
+									r.app, r.name
+								))
+							})?;
+						to_rollback.push(migration);
+					}
+
+					let mut executor = DatabaseMigrationExecutor::new(connection);
+					let result = executor
+						.rollback_migrations(&to_rollback)
+						.await
+						.map_err(|e| {
+							crate::CommandError::ExecutionError(format!(
+								"Failed to roll back migrations: {:?}",
+								e
+							))
+						})?;
+					for id in &result.applied {
+						ctx.success(&format!("  ✓ Rolled back: {}", id));
+					}
+					ctx.success(&format!(
+						"Rolled back to {}:{} ({} migration(s) unapplied)",
+						app,
+						target_name,
+						result.applied.len()
+					));
+					return Ok(());
+				}
+
+				// Branch (c): target is NOT currently applied -> forward to target.
+				// Validate the target exists on disk first.
+				let target_on_disk = all_migrations
+					.iter()
+					.any(|m| m.app_label == *app && m.name == target_name);
+				if !target_on_disk {
+					return Err(crate::CommandError::ExecutionError(format!(
+						"Migration {}:{} does not exist on disk",
+						app, target_name
+					)));
+				}
+
+				// Applying "to target" means applying the target plus every migration
+				// it transitively depends on within the same app. `apply_migrations`
+				// re-sorts the slice topologically and skips already-applied entries,
+				// so we only need to hand it the correct *set* of migrations. Cross-app
+				// prerequisites are managed by their own `migrate <other_app>` run,
+				// mirroring the app-scoped behavior of the apply-all path below.
+				let mut needed: HashSet<(String, String)> = HashSet::new();
+				let mut stack: Vec<(String, String)> = vec![(app.clone(), target_name.to_string())];
+				while let Some((dep_app, dep_name)) = stack.pop() {
+					let Some(migration) = all_migrations.iter().find(|migration| {
+						migration.app_label == dep_app && migration.name == dep_name
+					}) else {
+						continue;
+					};
+					if !migration.replaces.is_empty()
+						&& replacement_history_has_applied_records(
+							&all_migrations,
+							&dep_app,
+							&dep_name,
+							&applied_for_app,
+						) && !replacement_history_is_fully_applied(
+						&all_migrations,
+						&dep_app,
+						&dep_name,
+						&applied_for_app,
+					) {
+						for (original_app, original_name) in &migration.replaces {
+							if *original_app == *app {
+								stack.push((original_app.clone(), original_name.clone()));
+							}
+						}
+						continue;
+					}
+					if !needed.insert((dep_app.clone(), dep_name.clone())) {
+						continue;
+					}
+					for (da, dn) in &migration.dependencies {
+						if *da == *app {
+							let terminal = terminal_replacement_target(&all_migrations, da, dn)?;
+							let normalized = if terminal != *dn
+								&& (!replacement_history_has_applied_records(
+									&all_migrations,
+									da,
+									&terminal,
+									&applied_for_app,
+								) || replacement_history_is_fully_applied(
+									&all_migrations,
+									da,
+									&terminal,
+									&applied_for_app,
+								)) {
+								(da.clone(), terminal)
+							} else {
+								(da.clone(), dn.clone())
+							};
+							stack.push(normalized);
+						}
+					}
+				}
+
+				let mut selection_keys = needed.clone();
+				loop {
+					let mut changed = false;
+					for migration in &all_migrations {
+						if selection_keys
+							.contains(&(migration.app_label.clone(), migration.name.clone()))
+						{
+							for replacement in &migration.replaces {
+								changed |= selection_keys.insert(replacement.clone());
+							}
+						}
+					}
+					if !changed {
+						break;
+					}
+				}
+				let to_apply: Vec<_> = all_migrations
+					.iter()
+					.filter(|m| selection_keys.contains(&(m.app_label.clone(), m.name.clone())))
+					.cloned()
+					.collect();
+				let applied_keys = applied
+					.iter()
+					.map(|record| MigrationKey::new(&record.app, &record.name))
+					.collect();
+				let replacement_selection = select_replacement_migrations(&to_apply, &applied_keys)
+					.map_err(|error| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to select replacement migrations: {}",
+							error
+						))
+					})?;
+				let replacement_adoptions: Vec<_> = replacement_selection
+					.replacements_to_adopt()
+					.iter()
+					.copied()
+					.cloned()
+					.collect();
+				let selected_to_apply: Vec<_> = replacement_selection
+					.migrations()
+					.iter()
+					.copied()
+					.cloned()
+					.collect();
+
+				let applied_names: HashSet<&str> =
+					applied_for_app.iter().map(|r| r.name.as_str()).collect();
+				let pending: Vec<_> = selected_to_apply
+					.iter()
+					.filter(|m| !applied_names.contains(m.name.as_str()))
+					.collect();
+				let pending = dependency_ordered_migrations_with_partial_replacement_dependencies(
+					pending,
 					&all_migrations,
-					is_plan,
-					is_fake,
-					&recorder,
-					connection,
-					ctx,
-				)
-				.await;
+					&applied_for_app,
+				)?;
+
+				if pending.is_empty() && replacement_adoptions.is_empty() {
+					ctx.info(&format!(
+						"Already at or past {}:{}; nothing to apply.",
+						app, target_name
+					));
+					return Ok(());
+				}
+
+				if is_plan {
+					for replacement in &replacement_adoptions {
+						ctx.info(&format!(
+							"  - {}:{} (adopt replacement)",
+							replacement.app_label, replacement.name
+						));
+					}
+					ctx.info(&format!(
+						"[plan] Would apply {} migration(s) for app '{}' to reach target '{}':",
+						pending.len(),
+						app,
+						target_name
+					));
+					for migration in &pending {
+						ctx.info(&format!(
+							"  - {}:{} (apply)",
+							migration.app_label, migration.name
+						));
+					}
+					return Ok(());
+				}
+
+				if is_fake {
+					ctx.info("Faking migrations (marking as applied without executing):");
+					for replacement in &replacement_adoptions {
+						recorder
+							.adopt_replacement(
+								&replacement.app_label,
+								&replacement.name,
+								&replacement.replaces,
+							)
+							.await
+							.map_err(|e| {
+								crate::CommandError::ExecutionError(format!(
+									"Failed to adopt fake replacement {}:{}: {}",
+									replacement.app_label, replacement.name, e
+								))
+							})?;
+						ctx.success(&format!(
+							"  ✓ Adopted replacement: {}:{}",
+							replacement.app_label, replacement.name
+						));
+					}
+					for migration in &pending {
+						fake_record_migration(&recorder, migration, &all_migrations).await?;
+						ctx.success(&format!(
+							"  ✓ Faked: {}:{}",
+							migration.app_label, migration.name
+						));
+					}
+					ctx.success(&format!(
+						"Faked {} migration(s) to reach {}:{}",
+						pending.len(),
+						app,
+						target_name
+					));
+					return Ok(());
+				}
+
+				let replacement_dependencies: HashSet<_> = to_apply
+					.iter()
+					.flat_map(|migration| {
+						migration
+							.dependencies
+							.iter()
+							.map(|(dependency_app, dependency_name)| {
+								(dependency_app.as_str(), dependency_name.as_str())
+							})
+					})
+					.collect();
+				let mut execution_migrations = to_apply.clone();
+				for migration in &all_migrations {
+					let is_partial_dependency = replacement_dependencies
+						.contains(&(migration.app_label.as_str(), migration.name.as_str()))
+						&& replacement_history_has_applied_records(
+							&all_migrations,
+							&migration.app_label,
+							&migration.name,
+							&applied_for_app,
+						) && !replacement_history_is_fully_applied(
+						&all_migrations,
+						&migration.app_label,
+						&migration.name,
+						&applied_for_app,
+					);
+					if !migration.replaces.is_empty()
+						&& (is_partial_dependency
+							|| applied_for_app.iter().any(|record| {
+								record.app == migration.app_label && record.name == migration.name
+							})) && !execution_migrations.iter().any(|candidate| {
+						candidate.app_label == migration.app_label
+							&& candidate.name == migration.name
+					}) {
+						execution_migrations.push(migration.clone());
+					}
+				}
+				let mut executor = DatabaseMigrationExecutor::new(connection);
+				let result = executor
+					.apply_migrations(&execution_migrations)
+					.await
+					.map_err(|e| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to apply migrations: {:?}",
+							e
+						))
+					})?;
+				for id in &result.applied {
+					ctx.success(&format!("  ✓ Applied: {}", id));
+				}
+				ctx.success(&format!(
+					"Applied {} migration(s) to reach {}:{}",
+					result.applied.len(),
+					app,
+					target_name
+				));
+				return Ok(());
 			}
 
 			// 5. Filter and check migrations
@@ -287,16 +783,55 @@ impl BaseCommand for MigrateCommand {
 				use reinhardt_db::migrations::DatabaseMigrationRecorder;
 				let recorder = DatabaseMigrationRecorder::new(connection.clone());
 				let applied = plan_applied_migrations(&connection, &recorder).await?;
-				let pending: Vec<_> = migrations_to_apply
+				let ordered = dependency_ordered_migrations_with_applied_history(
+					&migrations_to_apply,
+					&applied,
+				)?;
+				let reconciliations: Vec<_> = migrations_to_apply
 					.iter()
+					.filter_map(|migration| {
+						(!applied.iter().any(|record| {
+							record.app == migration.app_label && record.name == migration.name
+						}))
+						.then(|| {
+							direct_replacement_history_records(
+								&migrations_to_apply,
+								migration,
+								&applied,
+							)
+						})
+						.flatten()
+						.map(|records| (migration, records))
+					})
+					.collect();
+				let reconciled_replacements: std::collections::HashSet<_> = reconciliations
+					.iter()
+					.map(|(migration, _)| (migration.app_label.as_str(), migration.name.as_str()))
+					.collect();
+				let pending: Vec<_> = ordered
+					.into_iter()
 					.filter(|m| {
 						!applied
 							.iter()
 							.any(|r| r.app == m.app_label && r.name == m.name)
+							&& !reconciled_replacements
+								.contains(&(m.app_label.as_str(), m.name.as_str()))
 					})
 					.collect();
-				let pending = dependency_ordered_migrations(pending)?;
-				if pending.is_empty() {
+				let cleanup: Vec<_> = migrations_to_apply
+					.iter()
+					.filter(|migration| {
+						!migration.replaces.is_empty()
+							&& applied.iter().any(|record| {
+								record.app == migration.app_label && record.name == migration.name
+							}) && migration.replaces.iter().any(|(app, name)| {
+							applied
+								.iter()
+								.any(|record| record.app == *app && record.name == *name)
+						})
+					})
+					.collect();
+				if pending.is_empty() && cleanup.is_empty() && reconciliations.is_empty() {
 					ctx.info("[plan] No unapplied migrations.");
 					return Ok(());
 				}
@@ -310,28 +845,51 @@ impl BaseCommand for MigrateCommand {
 						migration.app_label, migration.name
 					));
 				}
+				for migration in cleanup {
+					for (app, name) in &migration.replaces {
+						if applied
+							.iter()
+							.any(|record| record.app == *app && record.name == *name)
+						{
+							ctx.info(&format!("  - {app}:{name} (unapply superseded record)"));
+						}
+					}
+				}
+				for (migration, records) in reconciliations {
+					let historical_record = records
+						.first()
+						.expect("replacement reconciliation requires a historical record");
+					ctx.info(&format!(
+						"  - {}:{} (rename as {}:{})",
+						historical_record.app,
+						historical_record.name,
+						migration.app_label,
+						migration.name
+					));
+					for record in records.iter().skip(1) {
+						ctx.info(&format!(
+							"  - {}:{} (unapply superseded record)",
+							record.app, record.name
+						));
+					}
+				}
 				return Ok(());
 			}
 
 			// 6. Apply migrations (or fake them
 			if is_fake {
 				ctx.info("Faking migrations (marking as applied without execution):");
-
-				// Create migration executor for fake migrations
-				let mut executor = DatabaseMigrationExecutor::new(connection);
-				let migrations_to_fake = dependency_ordered_migrations(migrations_to_apply.iter())?;
+				let recorder =
+					reinhardt_db::migrations::DatabaseMigrationRecorder::new(connection.clone());
+				let applied = plan_applied_migrations(&connection, &recorder).await?;
+				let migrations_to_fake = dependency_ordered_migrations_with_applied_history(
+					&migrations_to_apply,
+					&applied,
+				)?;
 
 				// Record each migration as applied without executing
 				for migration in migrations_to_fake {
-					executor
-						.record_migration(&migration.app_label, &migration.name)
-						.await
-						.map_err(|e| {
-							crate::CommandError::ExecutionError(format!(
-								"Failed to record fake migration {}:{}: {:?}",
-								migration.app_label, migration.name, e
-							))
-						})?;
+					fake_record_migration(&recorder, migration, &migrations_to_apply).await?;
 					ctx.success(&format!(
 						"  ✓ Faked: {}:{}",
 						migration.app_label, migration.name
@@ -719,12 +1277,17 @@ fn dependency_ordered_migrations<'a>(
 			.map(|(app, name)| MigrationKey::new(app.as_str(), name.as_str()))
 			.collect();
 
+		let replaces = migration
+			.replaces
+			.iter()
+			.map(|(app, name)| MigrationKey::new(app.as_str(), name.as_str()))
+			.collect();
 		by_key.insert(key.clone(), *migration);
-		graph.add_migration(key, dependencies);
+		graph.add_migration_with_replaces(key, dependencies, replaces);
 	}
 
 	graph
-		.topological_sort()
+		.resolve_execution_order_with_replaces()
 		.map_err(|e| {
 			crate::CommandError::ExecutionError(format!(
 				"Failed to sort migration plan by dependencies: {}",
@@ -741,6 +1304,476 @@ fn dependency_ordered_migrations<'a>(
 			})
 		})
 		.collect()
+}
+
+/// Sort an apply-all preview with the same partial-replacement selection that
+/// the executor uses after reading recorder state.
+#[cfg(feature = "migrations")]
+fn dependency_ordered_migrations_with_applied_history<'a>(
+	migrations: &'a [reinhardt_db::migrations::Migration],
+	applied: &[reinhardt_db::migrations::recorder::MigrationRecord],
+) -> CommandResult<Vec<&'a reinhardt_db::migrations::Migration>> {
+	use std::collections::HashSet;
+
+	let applied_keys: HashSet<_> = applied
+		.iter()
+		.map(|record| (record.app.as_str(), record.name.as_str()))
+		.collect();
+	let partial_replacements: HashSet<_> = migrations
+		.iter()
+		.filter(|migration| {
+			!migration.replaces.is_empty()
+				&& !replacement_history_is_fully_applied(
+					migrations,
+					&migration.app_label,
+					&migration.name,
+					applied,
+				) && migration
+				.replaces
+				.iter()
+				.any(|(app, name)| applied_keys.contains(&(app.as_str(), name.as_str())))
+		})
+		.map(|migration| (migration.app_label.as_str(), migration.name.as_str()))
+		.collect();
+	let replaced_by_selected_replacements: HashSet<_> = migrations
+		.iter()
+		.filter(|migration| {
+			!partial_replacements.contains(&(migration.app_label.as_str(), migration.name.as_str()))
+		})
+		.flat_map(|migration| {
+			migration
+				.replaces
+				.iter()
+				.map(|(app, name)| (app.as_str(), name.as_str()))
+		})
+		.collect();
+	let selected = migrations.iter().filter(|migration| {
+		!partial_replacements.contains(&(migration.app_label.as_str(), migration.name.as_str()))
+			&& !replaced_by_selected_replacements
+				.contains(&(migration.app_label.as_str(), migration.name.as_str()))
+	});
+
+	dependency_ordered_migrations_with_partial_replacement_dependencies(
+		selected, migrations, applied,
+	)
+}
+
+/// Sort selected migrations while preserving dependencies on a partially applied
+/// replacement's remaining original chain.
+#[cfg(feature = "migrations")]
+fn dependency_ordered_migrations_with_partial_replacement_dependencies<'a>(
+	migrations: impl IntoIterator<Item = &'a reinhardt_db::migrations::Migration>,
+	all_migrations: &[reinhardt_db::migrations::Migration],
+	applied: &[reinhardt_db::migrations::recorder::MigrationRecord],
+) -> CommandResult<Vec<&'a reinhardt_db::migrations::Migration>> {
+	use reinhardt_db::migrations::{MigrationGraph, MigrationKey};
+	use std::collections::{HashMap, HashSet};
+
+	let applied_keys: HashSet<_> = applied
+		.iter()
+		.map(|record| (record.app.as_str(), record.name.as_str()))
+		.collect();
+	let partial_replacement_dependencies: HashMap<_, Vec<_>> = all_migrations
+		.iter()
+		.filter(|migration| {
+			!migration.replaces.is_empty()
+				&& !replacement_history_is_fully_applied(
+					all_migrations,
+					&migration.app_label,
+					&migration.name,
+					applied,
+				) && migration
+				.replaces
+				.iter()
+				.any(|(app, name)| applied_keys.contains(&(app.as_str(), name.as_str())))
+		})
+		.map(|migration| {
+			(
+				(migration.app_label.clone(), migration.name.clone()),
+				migration
+					.replaces
+					.iter()
+					.map(|(app, name)| MigrationKey::new(app.as_str(), name.as_str()))
+					.collect(),
+			)
+		})
+		.collect();
+	let migrations: Vec<_> = migrations.into_iter().collect();
+	let mut by_key = HashMap::with_capacity(migrations.len());
+	let mut graph = MigrationGraph::new();
+
+	for migration in &migrations {
+		let key = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
+		let dependencies = migration
+			.dependencies
+			.iter()
+			.flat_map(|(app, name)| {
+				partial_replacement_dependencies
+					.get(&(app.clone(), name.clone()))
+					.cloned()
+					.unwrap_or_else(|| vec![MigrationKey::new(app.as_str(), name.as_str())])
+			})
+			.collect();
+		let replaces = migration
+			.replaces
+			.iter()
+			.map(|(app, name)| MigrationKey::new(app.as_str(), name.as_str()))
+			.collect();
+		by_key.insert(key.clone(), *migration);
+		graph.add_migration_with_replaces(key, dependencies, replaces);
+	}
+
+	graph
+		.resolve_execution_order_with_replaces()
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to sort migration plan by dependencies: {}",
+				e
+			))
+		})?
+		.into_iter()
+		.map(|key| {
+			by_key.get(&key).copied().ok_or_else(|| {
+				crate::CommandError::ExecutionError(format!(
+					"Dependency-sorted migration not found: {}",
+					key.id()
+				))
+			})
+		})
+		.collect()
+}
+
+#[cfg(feature = "migrations")]
+fn terminal_replacement_target(
+	migrations: &[reinhardt_db::migrations::Migration],
+	app_label: &str,
+	target_name: &str,
+) -> CommandResult<String> {
+	use std::collections::HashSet;
+	fn collect(
+		current: &str,
+		migrations: &[reinhardt_db::migrations::Migration],
+		app: &str,
+		path: &mut HashSet<String>,
+		terminals: &mut HashSet<String>,
+	) -> CommandResult<()> {
+		if !path.insert(current.to_string()) {
+			return Err(crate::CommandError::ExecutionError(format!(
+				"Replacement cycle detected while resolving {app}:{current}"
+			)));
+		}
+		let owners: Vec<_> = migrations
+			.iter()
+			.filter(|migration| {
+				migration.app_label == app
+					&& migration
+						.replaces
+						.iter()
+						.any(|(owner_app, name)| owner_app == app && name == current)
+			})
+			.collect();
+		if owners.is_empty() {
+			terminals.insert(current.to_string());
+		}
+		for owner in owners {
+			collect(&owner.name, migrations, app, path, terminals)?;
+		}
+		path.remove(current);
+		Ok(())
+	}
+	let mut terminals = HashSet::new();
+	collect(
+		target_name,
+		migrations,
+		app_label,
+		&mut HashSet::new(),
+		&mut terminals,
+	)?;
+	match terminals.len() {
+		1 => Ok(terminals
+			.into_iter()
+			.next()
+			.expect("single terminal replacement")),
+		_ => Err(crate::CommandError::ExecutionError(format!(
+			"Migration {app_label}:{target_name} has multiple terminal replacements"
+		))),
+	}
+}
+
+#[cfg(feature = "migrations")]
+fn replacement_history_is_fully_applied(
+	migrations: &[reinhardt_db::migrations::Migration],
+	app_label: &str,
+	migration_name: &str,
+	applied: &[reinhardt_db::migrations::recorder::MigrationRecord],
+) -> bool {
+	let Some(replacement) = migrations
+		.iter()
+		.find(|migration| migration.app_label == app_label && migration.name == migration_name)
+	else {
+		return false;
+	};
+	let mut covered: std::collections::HashSet<_> = applied
+		.iter()
+		.map(|record| (record.app.as_str(), record.name.as_str()))
+		.collect();
+	loop {
+		let covered_before = covered.len();
+		for migration in migrations {
+			if covered.contains(&(migration.app_label.as_str(), migration.name.as_str())) {
+				covered.extend(
+					migration
+						.replaces
+						.iter()
+						.map(|(app, name)| (app.as_str(), name.as_str())),
+				);
+			}
+		}
+		for migration in migrations {
+			if !migration.replaces.is_empty()
+				&& migration
+					.replaces
+					.iter()
+					.all(|(app, name)| covered.contains(&(app.as_str(), name.as_str())))
+			{
+				covered.insert((migration.app_label.as_str(), migration.name.as_str()));
+			}
+		}
+		if covered.len() == covered_before {
+			break;
+		}
+	}
+	!replacement.replaces.is_empty()
+		&& replacement
+			.replaces
+			.iter()
+			.all(|(app, name)| covered.contains(&(app.as_str(), name.as_str())))
+}
+
+#[cfg(feature = "migrations")]
+fn replacement_history_has_applied_records(
+	migrations: &[reinhardt_db::migrations::Migration],
+	app_label: &str,
+	migration_name: &str,
+	applied: &[reinhardt_db::migrations::recorder::MigrationRecord],
+) -> bool {
+	fn collect_replaced_names(
+		migrations: &[reinhardt_db::migrations::Migration],
+		app_label: &str,
+		migration_name: &str,
+		visited: &mut std::collections::HashSet<(String, String)>,
+	) {
+		let key = (app_label.to_string(), migration_name.to_string());
+		if !visited.insert(key) {
+			return;
+		}
+		if let Some(migration) = migrations
+			.iter()
+			.find(|migration| migration.app_label == app_label && migration.name == migration_name)
+		{
+			for (replaced_app, replaced_name) in &migration.replaces {
+				collect_replaced_names(migrations, replaced_app, replaced_name, visited);
+			}
+		}
+	}
+
+	let mut replacement_history = std::collections::HashSet::new();
+	collect_replaced_names(
+		migrations,
+		app_label,
+		migration_name,
+		&mut replacement_history,
+	);
+	replacement_history.remove(&(app_label.to_string(), migration_name.to_string()));
+	applied
+		.iter()
+		.any(|record| replacement_history.contains(&(record.app.clone(), record.name.clone())))
+}
+
+#[cfg(feature = "migrations")]
+fn direct_replacement_history_records<'a>(
+	migrations: &[reinhardt_db::migrations::Migration],
+	migration: &reinhardt_db::migrations::Migration,
+	applied: &'a [reinhardt_db::migrations::recorder::MigrationRecord],
+) -> Option<Vec<&'a reinhardt_db::migrations::recorder::MigrationRecord>> {
+	if !replacement_history_is_fully_applied(
+		migrations,
+		&migration.app_label,
+		&migration.name,
+		applied,
+	) {
+		return None;
+	}
+	let records: Vec<_> = applied
+		.iter()
+		.filter(|record| {
+			migration
+				.replaces
+				.iter()
+				.any(|(app, name)| record.app == *app && record.name == *name)
+		})
+		.collect();
+	(!records.is_empty()).then_some(records)
+}
+
+#[cfg(feature = "migrations")]
+fn available_direct_replacement_history_record<'a>(
+	migration: &reinhardt_db::migrations::Migration,
+	applied: &'a [reinhardt_db::migrations::recorder::MigrationRecord],
+) -> Option<&'a reinhardt_db::migrations::recorder::MigrationRecord> {
+	migration.replaces.iter().find_map(|(app, name)| {
+		applied
+			.iter()
+			.find(|record| record.app == *app && record.name == *name)
+	})
+}
+
+#[cfg(feature = "migrations")]
+fn stale_replacement_records(
+	migrations: &[reinhardt_db::migrations::Migration],
+	app_label: &str,
+	applied: &[reinhardt_db::migrations::recorder::MigrationRecord],
+) -> Vec<reinhardt_db::migrations::recorder::MigrationRecord> {
+	let stale_names: std::collections::HashSet<_> = migrations
+		.iter()
+		.filter(|migration| {
+			migration.app_label == app_label
+				&& !migration.replaces.is_empty()
+				&& applied.iter().any(|record| {
+					record.app == migration.app_label && record.name == migration.name
+				})
+		})
+		.flat_map(|migration| {
+			migration
+				.replaces
+				.iter()
+				.map(|(app, name)| (app.as_str(), name.as_str()))
+		})
+		.collect();
+	applied
+		.iter()
+		.filter(|record| stale_names.contains(&(record.app.as_str(), record.name.as_str())))
+		.cloned()
+		.collect()
+}
+
+#[cfg(feature = "migrations")]
+async fn fake_record_migration(
+	recorder: &reinhardt_db::migrations::DatabaseMigrationRecorder,
+	migration: &reinhardt_db::migrations::Migration,
+	migrations: &[reinhardt_db::migrations::Migration],
+) -> CommandResult<()> {
+	if recorder
+		.is_applied(&migration.app_label, &migration.name)
+		.await
+		.map_err(|error| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to inspect fake migration {}:{}: {}",
+				migration.app_label, migration.name, error
+			))
+		})? {
+		if !migration.replaces.is_empty() {
+			let applied = recorder.get_applied_migrations().await.map_err(|error| {
+				crate::CommandError::ExecutionError(format!(
+					"Failed to inspect replacement cleanup for {}:{}: {}",
+					migration.app_label, migration.name, error
+				))
+			})?;
+			for (app, name) in &migration.replaces {
+				if applied
+					.iter()
+					.any(|record| record.app == *app && record.name == *name)
+				{
+					recorder.unapply(app, name).await.map_err(|error| {
+						crate::CommandError::ExecutionError(format!(
+							"Failed to resume fake replacement cleanup for {}:{}: {}",
+							app, name, error
+						))
+					})?;
+				}
+			}
+		}
+		return Ok(());
+	}
+
+	if !migration.replaces.is_empty() {
+		let applied = recorder.get_applied_migrations().await.map_err(|error| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to inspect replacement history for {}:{}: {}",
+				migration.app_label, migration.name, error
+			))
+		})?;
+		let covered = migration.replaces.iter().filter(|(app, name)| {
+			applied
+				.iter()
+				.any(|record| record.app == *app && record.name == *name)
+		});
+		let covered_count = covered.count();
+		if replacement_history_is_fully_applied(
+			migrations,
+			&migration.app_label,
+			&migration.name,
+			&applied,
+		) {
+			let historical_record = available_direct_replacement_history_record(
+				migration, &applied,
+			)
+			.ok_or_else(|| {
+				crate::CommandError::ExecutionError(format!(
+					"Cannot fake replacement {}:{} because a competing replacement already covers its history",
+					migration.app_label, migration.name
+				))
+			})?;
+			recorder
+				.rename_applied(
+					&historical_record.app,
+					&historical_record.name,
+					&migration.app_label,
+					&migration.name,
+				)
+				.await
+				.map_err(|error| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to reconcile fake replacement {}:{}: {}",
+						migration.app_label, migration.name, error
+					))
+				})?;
+			for (app, name) in &migration.replaces {
+				if app == &historical_record.app && name == &historical_record.name {
+					continue;
+				}
+				if !applied
+					.iter()
+					.any(|record| record.app == *app && record.name == *name)
+				{
+					continue;
+				}
+				recorder.unapply(app, name).await.map_err(|error| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to reconcile fake replacement record {}:{}: {}",
+						app, name, error
+					))
+				})?;
+			}
+			return Ok(());
+		}
+		if covered_count > 0 {
+			return Err(crate::CommandError::ExecutionError(format!(
+				"Cannot fake replacement {}:{} because only some replaced migrations are recorded",
+				migration.app_label, migration.name
+			)));
+		}
+	}
+
+	recorder
+		.record_applied(&migration.app_label, &migration.name)
+		.await
+		.map_err(|error| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to record fake migration {}:{}: {}",
+				migration.app_label, migration.name, error
+			))
+		})
 }
 
 /// Resolve the applied-migration set for a `--plan` preview without creating the
@@ -796,23 +1829,24 @@ async fn plan_applied_migrations(
 async fn build_from_state_from_db(
 	migrations_dir: &std::path::Path,
 	database_url: &str,
+	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
-	use reinhardt_db::DatabaseConnection;
+	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::{
 		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
 	};
-	eprintln!("[DEBUG] Database URL: {}", database_url);
-
 	// 2. Connect to database
 	let connection = DatabaseConnection::connect(database_url)
 		.await
-		.map_err(|e| {
-			crate::CommandError::ExecutionError(format!("Database connection failed: {}", e))
+		.map_err(|_| {
+			crate::CommandError::ExecutionError(
+				"Database connection failed for selected migration state source".to_owned(),
+			)
 		})?;
 	eprintln!("[DEBUG] Database connection successful");
 
 	// 3. Build state from database history
-	let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+	let recorder = DatabaseMigrationRecorder::new(connection);
 	let applied_records = recorder.get_applied_migrations().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to get applied migrations: {}", e))
 	})?;
@@ -833,7 +1867,8 @@ async fn build_from_state_from_db(
 		eprintln!("[DEBUG]   - {}/{}", migration.app_label, migration.name);
 	}
 
-	let loader = MigrationStateLoader::new(recorder, source);
+	let loader = MigrationStateLoader::new(recorder, source)
+		.with_dependency_context(dependency_context.clone());
 
 	let state = loader.build_current_state().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to build state: {}", e))
@@ -853,16 +1888,38 @@ async fn build_from_state_from_db(
 #[cfg(all(feature = "migrations", feature = "testcontainers"))]
 async fn build_from_state_from_testcontainers(
 	migrations_dir: &std::path::Path,
+	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_db::migrations::{
 		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
 	};
-	use reinhardt_test::fixtures::postgres_container;
+	use reinhardt_test::testcontainers::{
+		GenericImage, ImageExt,
+		core::{IntoContainerPort, WaitFor},
+		runners::AsyncRunner,
+	};
 
-	// 1. Start temporary PostgreSQL container (panics on failure during tests)
-	let (_container, _pool, _port, url) = postgres_container().await;
+	// Keep the container owned by this invocation until state reconstruction finishes.
+	let image = GenericImage::new("postgres", "16-alpine")
+		.with_exposed_port(5432.tcp())
+		.with_wait_for(WaitFor::message_on_stderr(
+			"database system is ready to accept connections",
+		))
+		.with_startup_timeout(std::time::Duration::from_secs(120))
+		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
+	let container = image.start().await.map_err(|error| {
+		crate::CommandError::ExecutionError(format!("TestContainers startup failed: {error}"))
+	})?;
+	let port = container.get_host_port_ipv4(5432).await.map_err(|error| {
+		crate::CommandError::ExecutionError(format!("TestContainers port lookup failed: {error}"))
+	})?;
+	let host = container.get_host().await.map_err(|error| {
+		crate::CommandError::ExecutionError(format!("TestContainers host lookup failed: {error}"))
+	})?;
+	let url = format!("postgres://postgres@{host}:{port}/postgres?sslmode=disable");
+	let _container = container;
 
 	// 2. Connect to temporary database
 	let connection = DatabaseConnection::connect_postgres(&url)
@@ -879,7 +1936,8 @@ async fn build_from_state_from_testcontainers(
 
 	// 4. Apply all existing migrations
 	if !all_migrations.is_empty() {
-		let mut executor = DatabaseMigrationExecutor::new(connection.clone());
+		let mut executor = DatabaseMigrationExecutor::new(connection.clone())
+			.with_dependency_context(dependency_context.clone());
 		executor
 			.apply_migrations(&all_migrations)
 			.await
@@ -890,7 +1948,8 @@ async fn build_from_state_from_testcontainers(
 
 	// 5. Build current state from applied migrations
 	let recorder = DatabaseMigrationRecorder::new(connection.clone());
-	let loader = MigrationStateLoader::new(recorder, source);
+	let loader = MigrationStateLoader::new(recorder, source)
+		.with_dependency_context(dependency_context.clone());
 
 	loader.build_current_state().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!(
@@ -904,6 +1963,7 @@ async fn build_from_state_from_testcontainers(
 #[cfg(all(feature = "migrations", not(feature = "testcontainers")))]
 async fn build_from_state_from_testcontainers(
 	_migrations_dir: &std::path::Path,
+	_dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	Err(crate::CommandError::ExecutionError(
 		"TestContainers feature not enabled. Enable with --features testcontainers".to_string(),
@@ -918,8 +1978,11 @@ async fn build_from_state_from_testcontainers(
 #[cfg(feature = "migrations")]
 async fn build_from_state_from_files(
 	migrations_dir: &std::path::Path,
+	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
-	use reinhardt_db::migrations::{FilesystemSource, MigrationSource, build_state_from_files};
+	use reinhardt_db::migrations::{
+		FilesystemSource, MigrationSource, build_state_from_files_with_context,
+	};
 
 	let source = FilesystemSource::new(migrations_dir);
 
@@ -941,17 +2004,143 @@ async fn build_from_state_from_files(
 		eprintln!("[DEBUG]   - {}/{}", migration.app_label, migration.name);
 	}
 
-	build_state_from_files(&source).await.map_err(|e| {
-		crate::CommandError::ExecutionError(format!(
-			"Failed to build state from migration files: {}",
-			e
-		))
-	})
+	build_state_from_files_with_context(&source, dependency_context)
+		.await
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to build state from migration files: {}",
+				e
+			))
+		})
+}
+
+/// Explicit state source used by the capability-aware migration entry point.
+#[cfg(feature = "migrations")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MigrationStateSource {
+	Files,
+	TemporaryDb,
+	Database,
+	Empty,
+}
+
+/// Prepare the selected migration state before the command body starts.
+/// No fallback source is attempted on failure.
+#[cfg(feature = "migrations")]
+pub(crate) async fn prepare_makemigrations_state(
+	source: MigrationStateSource,
+	migrations_dir: &std::path::Path,
+	database_url: Option<&str>,
+	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
+) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
+	match source {
+		MigrationStateSource::Files => {
+			build_from_state_from_files(migrations_dir, dependency_context).await
+		}
+		MigrationStateSource::TemporaryDb => {
+			build_from_state_from_testcontainers(migrations_dir, dependency_context).await
+		}
+		MigrationStateSource::Database => {
+			let url = database_url.ok_or_else(|| {
+				crate::CommandError::ExecutionError(
+					"database state source requires a selected database URL".to_owned(),
+				)
+			})?;
+			build_from_state_from_db(migrations_dir, url, dependency_context).await
+		}
+		MigrationStateSource::Empty => Ok(reinhardt_db::migrations::ProjectState::new()),
+	}
 }
 
 /// Make migrations command
 #[cfg(feature = "migrations")]
 pub struct MakeMigrationsCommand;
+
+#[cfg(feature = "migrations")]
+fn format_makemigrations_warning(
+	warning: &reinhardt_db::migrations::AutodetectorWarning,
+) -> String {
+	warning.to_string()
+}
+
+#[cfg(feature = "migrations")]
+fn report_autodetector_warnings_with(
+	warnings: &[reinhardt_db::migrations::AutodetectorWarning],
+	mut report: impl FnMut(&str),
+) {
+	for warning in warnings {
+		let message = format_makemigrations_warning(warning);
+		report(&message);
+	}
+}
+
+#[cfg(feature = "migrations")]
+fn makemigrations_operation_description(operation: &reinhardt_db::migrations::Operation) -> String {
+	use reinhardt_db::migrations::Operation;
+
+	match operation {
+		Operation::CreateTable { name, .. } => format!("Create model {}", name),
+		Operation::DropTable { name } => format!("Delete model {}", name),
+		Operation::RenameTable { old_name, new_name } => {
+			format!("Rename model {} to {}", old_name, new_name)
+		}
+		Operation::AddColumn { table, column, .. } => {
+			format!("Add field {} to {}", column.name, table)
+		}
+		Operation::DropColumn { table, column, .. } => {
+			format!("Remove field {} from {}", column, table)
+		}
+		Operation::AlterColumn { table, column, .. } => {
+			format!("Alter field {} on {}", column, table)
+		}
+		Operation::RenameColumn {
+			table,
+			old_name,
+			new_name,
+		} => format!("Rename field {} to {} on {}", old_name, new_name, table),
+		Operation::CreateIndex {
+			table,
+			columns,
+			unique,
+			..
+		} => {
+			let index_type = if *unique { "unique index" } else { "index" };
+			format!(
+				"Create {} on {} ({})",
+				index_type,
+				table,
+				columns.join(", ")
+			)
+		}
+		Operation::DropIndex { table, columns } => {
+			format!("Remove index on {} ({})", table, columns.join(", "))
+		}
+		Operation::AddConstraint { table, .. } => format!("Add constraint on {}", table),
+		Operation::AddConstraintDefinition { table, constraint } => {
+			format!("Add constraint {} on {}", constraint.name(), table)
+		}
+		Operation::DropConstraint {
+			table,
+			constraint_name,
+		} => format!("Remove constraint {} from {}", constraint_name, table),
+		Operation::DropConstraintDefinition { table, constraint } => {
+			format!("Remove constraint {} from {}", constraint.name(), table)
+		}
+		Operation::RunSQL { .. } => "Execute custom SQL".to_string(),
+		Operation::RunRust { .. } => "Execute custom Rust code".to_string(),
+		_ => format!("{:?}", operation),
+	}
+}
+
+#[cfg(feature = "migrations")]
+fn validate_global_migration_changes(
+	from_state: &reinhardt_db::migrations::ProjectState,
+	target_state: &reinhardt_db::migrations::ProjectState,
+) -> reinhardt_db::migrations::Result<()> {
+	target_state.validate_physical_index_names()?;
+	reinhardt_db::migrations::MigrationAutodetector::new(from_state.clone(), target_state.clone())
+		.validate_table_rename_destinations()
+}
 
 #[cfg(feature = "migrations")]
 #[async_trait]
@@ -978,6 +2167,11 @@ impl BaseCommand for MakeMigrationsCommand {
 				"dry-run",
 				"Show what would be created without writing files",
 			),
+			CommandOption::flag(
+				None,
+				"check",
+				"Check for missing migrations without writing files",
+			),
 			CommandOption::flag(None, "empty", "Create empty migration"),
 			CommandOption::flag(
 				None,
@@ -997,342 +2191,267 @@ impl BaseCommand for MakeMigrationsCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-		fn operation_description(operation: &reinhardt_db::migrations::Operation) -> String {
-			use reinhardt_db::migrations::Operation;
+		execute_makemigrations_with_state(ctx, None).await
+	}
+}
 
-			match operation {
-				// Table operations (corresponds to Model operations in Django)
-				Operation::CreateTable { name, .. } => format!("Create model {}", name),
-				Operation::DropTable { name } => format!("Delete model {}", name),
-				Operation::RenameTable { old_name, new_name } => {
-					format!("Rename model {} to {}", old_name, new_name)
-				}
+/// Execute migration generation after an optional state source was prepared.
+/// The legacy trait entry point passes `None` and retains its fallback policy.
+#[cfg(feature = "migrations")]
+pub(crate) async fn execute_makemigrations_with_state(
+	ctx: &CommandContext,
+	prepared_state: Option<reinhardt_db::migrations::ProjectState>,
+) -> CommandResult<()> {
+	let has_prepared_state = prepared_state.is_some();
+	use std::path::PathBuf;
+	ctx.info("Detecting model changes...");
 
-				// Column operations (corresponds to Field operations in Django)
-				Operation::AddColumn { table, column, .. } => {
-					format!("Add field {} to {}", column.name, table)
-				}
-				Operation::DropColumn { table, column } => {
-					format!("Remove field {} from {}", column, table)
-				}
-				Operation::AlterColumn { table, column, .. } => {
-					format!("Alter field {} on {}", column, table)
-				}
-				Operation::RenameColumn {
-					table,
-					old_name,
-					new_name,
-				} => {
-					format!("Rename field {} to {} on {}", old_name, new_name, table)
-				}
+	let is_check = ctx.has_option("check");
+	let is_dry_run = ctx.has_option("dry-run") || is_check;
+	let is_empty = ctx.has_option("empty");
+	let app_label = ctx.arg(0).map(|s| s.to_string());
+	let migration_name_opt = ctx.option("name").map(|s| s.to_string());
+	let migrations_dir_str = ctx
+		.option("migrations-dir")
+		.map(|s| s.to_string())
+		.unwrap_or_else(|| "migrations".to_string());
+	let migrations_dir = PathBuf::from(migrations_dir_str);
 
-				// Index operations
-				Operation::CreateIndex {
-					table,
-					columns,
-					unique,
-					..
-				} => {
-					let index_type = if *unique { "unique index" } else { "index" };
-					format!(
-						"Create {} on {} ({})",
-						index_type,
-						table,
-						columns.join(", ")
-					)
-				}
-				Operation::DropIndex { table, columns } => {
-					format!("Remove index on {} ({})", table, columns.join(", "))
-				}
-
-				// Constraint operations
-				Operation::AddConstraint { table, .. } => {
-					format!("Add constraint on {}", table)
-				}
-				Operation::DropConstraint {
-					table,
-					constraint_name,
-				} => {
-					format!("Remove constraint {} from {}", constraint_name, table)
-				}
-
-				// Special operations
-				Operation::RunSQL { .. } => "Execute custom SQL".to_string(),
-				Operation::RunRust { .. } => "Execute custom Rust code".to_string(),
-
-				// Other operations
-				_ => format!("{:?}", operation),
-			}
-		}
-		use std::path::PathBuf;
-		ctx.info("Detecting model changes...");
-
-		let is_dry_run = ctx.has_option("dry-run");
-		let is_empty = ctx.has_option("empty");
-		let app_label = ctx.arg(0).map(|s| s.to_string());
-		let migration_name_opt = ctx.option("name").map(|s| s.to_string());
-		let migrations_dir_str = ctx
-			.option("migrations-dir")
-			.map(|s| s.to_string())
-			.unwrap_or_else(|| "migrations".to_string());
-		let migrations_dir = PathBuf::from(migrations_dir_str);
-
-		// Validate that we are running inside a Reinhardt project directory.
-		// A valid project must contain src/bin/manage.rs (the management command
-		// entry point). Running makemigrations from the wrong directory would
-		// silently create migration files in unexpected locations.
-		if !PathBuf::from("src/bin/manage.rs").exists() {
-			return Err(crate::CommandError::ExecutionError(
-				"Cannot find src/bin/manage.rs in the current directory. \
+	// Validate that we are running inside a Reinhardt project directory.
+	// A valid project must contain src/bin/manage.rs (the management command
+	// entry point). Running makemigrations from the wrong directory would
+	// silently create migration files in unexpected locations.
+	if !PathBuf::from("src/bin/manage.rs").exists() {
+		return Err(crate::CommandError::ExecutionError(
+			"Cannot find src/bin/manage.rs in the current directory. \
 				 Please run makemigrations from your Reinhardt project root \
 				 (the directory containing src/bin/manage.rs)."
-					.to_string(),
-			));
+				.to_string(),
+		));
+	}
+
+	if is_check {
+		ctx.warning("Check mode: No files will be created");
+	} else if is_dry_run {
+		ctx.warning("Dry run mode: No files will be created");
+	}
+
+	if let Some(ref app_name) = app_label {
+		ctx.verbose(&format!("Creating migrations for: {}", app_name));
+	} else {
+		ctx.verbose("Creating migrations for all apps");
+	}
+
+	#[cfg(feature = "migrations")]
+	{
+		use crate::CommandError;
+		use reinhardt_db::migrations::{
+			FilesystemRepository, FilesystemSource, MigrationGraph, MigrationKey, MigrationNamer,
+			MigrationNumbering, MigrationService, autodetector::ProjectState,
+		};
+		use std::sync::Arc;
+		use tokio::sync::Mutex;
+
+		// Build a MigrationGraph from a list of Migration structs
+		fn build_migration_graph(
+			migrations: &[reinhardt_db::migrations::Migration],
+		) -> MigrationGraph {
+			let mut graph = MigrationGraph::new();
+			for migration in migrations {
+				let key = MigrationKey::new(migration.app_label.clone(), migration.name.clone());
+				let deps: Vec<MigrationKey> = migration
+					.dependencies
+					.iter()
+					.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
+					.collect();
+				graph.add_migration(key, deps);
+			}
+			graph
 		}
 
-		if is_dry_run {
-			ctx.warning("Dry run mode: No files will be created");
-		}
+		let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
+		let repository = Arc::new(Mutex::new(FilesystemRepository::new(
+			migrations_dir.clone(),
+		)));
+		let service = MigrationService::new(source.clone(), repository.clone());
 
-		if let Some(ref app_name) = app_label {
-			ctx.verbose(&format!("Creating migrations for: {}", app_name));
-		} else {
-			ctx.verbose("Creating migrations for all apps");
-		}
+		// Helper to get the last migration for an app
+		let get_last_migration = |app: String| {
+			let source = source.clone();
+			let repository = repository.clone();
+			async move {
+				let service = MigrationService::new(source, repository);
+				let all_migrations = service.load_all().await.ok()?;
+				let mut app_migrations: Vec<_> = all_migrations
+					.into_iter()
+					.filter(|m| m.app_label == *app)
+					.collect();
 
-		#[cfg(feature = "migrations")]
-		{
-			use crate::CommandError;
-			use reinhardt_db::migrations::{
-				FilesystemRepository, FilesystemSource, MigrationGraph, MigrationKey,
-				MigrationNamer, MigrationNumbering, MigrationService, autodetector::ProjectState,
-			};
-			use std::sync::Arc;
-			use tokio::sync::Mutex;
+				// Simple sort by name (assumes timestamp prefix)
+				app_migrations.sort_by(|a, b| a.name.cmp(&b.name));
 
-			// Build a MigrationGraph from a list of Migration structs
-			fn build_migration_graph(
-				migrations: &[reinhardt_db::migrations::Migration],
-			) -> MigrationGraph {
-				let mut graph = MigrationGraph::new();
-				for migration in migrations {
-					let key =
-						MigrationKey::new(migration.app_label.clone(), migration.name.clone());
-					let deps: Vec<MigrationKey> = migration
-						.dependencies
-						.iter()
-						.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-						.collect();
-					graph.add_migration(key, deps);
-				}
-				graph
+				app_migrations.last().cloned()
+			}
+		};
+
+		// Handle --merge flag for resolving migration conflicts
+		let is_merge = ctx.has_option("merge");
+		if is_merge {
+			if is_empty {
+				return Err(CommandError::ExecutionError(
+					"--merge and --empty are mutually exclusive options".to_string(),
+				));
 			}
 
-			let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
-			let repository = Arc::new(Mutex::new(FilesystemRepository::new(
-				migrations_dir.clone(),
-			)));
-			let service = MigrationService::new(source.clone(), repository.clone());
+			// Load all existing migrations and build the graph
+			let all_migrations = service.load_all().await.map_err(|e| {
+				CommandError::ExecutionError(format!("Failed to load migrations: {}", e))
+			})?;
 
-			// Helper to get the last migration for an app
-			let get_last_migration = |app: String| {
-				let source = source.clone();
-				let repository = repository.clone();
-				async move {
-					let service = MigrationService::new(source, repository);
-					let all_migrations = service.load_all().await.ok()?;
-					let mut app_migrations: Vec<_> = all_migrations
-						.into_iter()
-						.filter(|m| m.app_label == *app)
-						.collect();
+			let graph = build_migration_graph(&all_migrations);
 
-					// Simple sort by name (assumes timestamp prefix)
-					app_migrations.sort_by(|a, b| a.name.cmp(&b.name));
+			// Detect conflicts
+			let mut conflicts = graph.detect_conflicts();
 
-					app_migrations.last().cloned()
-				}
-			};
+			// Apply app_label filter if specified
+			if let Some(ref app_name) = app_label {
+				conflicts.retain(|app, _| app == app_name);
+			}
 
-			// Handle --merge flag for resolving migration conflicts
-			let is_merge = ctx.has_option("merge");
-			if is_merge {
-				if is_empty {
-					return Err(CommandError::ExecutionError(
-						"--merge and --empty are mutually exclusive options".to_string(),
-					));
-				}
-
-				// Load all existing migrations and build the graph
-				let all_migrations = service.load_all().await.map_err(|e| {
-					CommandError::ExecutionError(format!("Failed to load migrations: {}", e))
-				})?;
-
-				let graph = build_migration_graph(&all_migrations);
-
-				// Detect conflicts
-				let mut conflicts = graph.detect_conflicts();
-
-				// Apply app_label filter if specified
-				if let Some(ref app_name) = app_label {
-					conflicts.retain(|app, _| app == app_name);
-				}
-
-				if conflicts.is_empty() {
-					ctx.info("No conflicts detected");
-					return Ok(());
-				}
-
-				// Generate merge migration for each conflicting app
-				let mut conflict_apps: Vec<String> = conflicts.keys().cloned().collect();
-				conflict_apps.sort();
-
-				for conflict_app in &conflict_apps {
-					let leaf_keys = &conflicts[conflict_app];
-					let leaf_names: Vec<&str> = leaf_keys.iter().map(|k| k.name.as_str()).collect();
-
-					// Generate merge name
-					let base_name = migration_name_opt
-						.clone()
-						.unwrap_or_else(|| MigrationNamer::generate_merge_name(&leaf_names));
-					let migration_number =
-						MigrationNumbering::next_number(&migrations_dir, conflict_app);
-					let final_name = format!("{}_{}", migration_number, base_name);
-
-					// Dependencies = all conflicting leaves
-					let dependencies: Vec<(String, String)> = leaf_keys
-						.iter()
-						.map(|k| (k.app_label.clone(), k.name.clone()))
-						.collect();
-
-					let merge_migration = reinhardt_db::migrations::Migration {
-						app_label: conflict_app.clone(),
-						name: final_name.clone(),
-						operations: Vec::new(),
-						dependencies,
-						atomic: true,
-						replaces: Vec::new(),
-						initial: None,
-						state_only: false,
-						database_only: false,
-						optional_dependencies: Vec::new(),
-						swappable_dependencies: Vec::new(),
-					};
-
-					if !is_dry_run {
-						service
-							.save_migration(&merge_migration)
-							.await
-							.map_err(|e| {
-								CommandError::ExecutionError(format!(
-									"Failed to save merge migration: {}",
-									e
-								))
-							})?;
-						ctx.success(&format!(
-							"Created merge migration for '{}': {}",
-							conflict_app, final_name
-						));
-					} else {
-						ctx.info(&format!(
-							"Would create merge migration for '{}': {}",
-							conflict_app, final_name
-						));
-					}
-
-					// Show merged leaves
-					for leaf in leaf_keys {
-						ctx.verbose(&format!("  Merging: {}", leaf.name));
-					}
-				}
-
+			if conflicts.is_empty() {
+				ctx.info("No conflicts detected");
 				return Ok(());
 			}
 
-			// Handle --empty flag for manual migrations
-			if is_empty {
-				let app_name = app_label.ok_or_else(|| {
-					CommandError::ExecutionError(
-						"App label is required when creating an empty migration".to_string(),
-					)
-				})?;
+			// Generate merge migration for each conflicting app
+			let mut conflict_apps: Vec<String> = conflicts.keys().cloned().collect();
+			conflict_apps.sort();
 
-				let last_migration = get_last_migration(app_name.clone()).await;
-				let dependencies: Vec<(String, String)> = if let Some(ref last) = last_migration {
-					vec![(app_name.clone(), last.name.clone())]
-				} else {
-					Vec::new()
-				};
+			for conflict_app in &conflict_apps {
+				let leaf_keys = &conflicts[conflict_app];
+				let leaf_names: Vec<&str> = leaf_keys.iter().map(|k| k.name.as_str()).collect();
 
-				// Generate migration name using new naming system
-				let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
-				let base_name = migration_name_opt.unwrap_or_else(|| "custom".to_string());
-				let name = format!("{}_{}", migration_number, base_name);
-				let new_migration = reinhardt_db::migrations::Migration {
-					app_label: app_name.clone(),
-					name: name.clone(),
-					operations: Vec::new(),
-					dependencies,
-					atomic: true,
-					replaces: Vec::new(),
-					initial: None,
-					state_only: false,
-					database_only: false,
-					optional_dependencies: Vec::new(),
-					swappable_dependencies: Vec::new(),
-				};
+				// Generate merge name
+				let base_name = migration_name_opt
+					.clone()
+					.unwrap_or_else(|| MigrationNamer::generate_merge_name(&leaf_names));
+				let migration_number =
+					MigrationNumbering::next_number(&migrations_dir, conflict_app);
+				let final_name = format!("{}_{}", migration_number, base_name);
+
+				// Dependencies = all conflicting leaves
+				let dependencies: Vec<(String, String)> = leaf_keys
+					.iter()
+					.map(|k| (k.app_label.clone(), k.name.clone()))
+					.collect();
+
+				let merge_migration = dependencies.into_iter().fold(
+					reinhardt_db::migrations::Migration::new(
+						final_name.clone(),
+						conflict_app.clone(),
+					),
+					|migration, (app_label, name)| migration.add_dependency(app_label, name),
+				);
 
 				if !is_dry_run {
 					service
-						.save_migration(&new_migration)
+						.save_migration(&merge_migration)
 						.await
-						.map_err(|e| CommandError::ExecutionError(format!("Save error: {}", e)))?;
+						.map_err(|e| {
+							CommandError::ExecutionError(format!(
+								"Failed to save merge migration: {}",
+								e
+							))
+						})?;
 					ctx.success(&format!(
-						"Created empty migration for {}: {}",
-						app_name, name
+						"Created merge migration for '{}': {}",
+						conflict_app, final_name
 					));
 				} else {
 					ctx.info(&format!(
-						"Would create empty migration for {}: {}",
-						app_name, name
+						"Would create merge migration for '{}': {}",
+						conflict_app, final_name
 					));
 				}
-				return Ok(());
+
+				// Show merged leaves
+				for leaf in leaf_keys {
+					ctx.verbose(&format!("  Merging: {}", leaf.name));
+				}
 			}
 
-			// 1. Get target project state from global model registry
-			let target_project_state = ProjectState::from_global_registry();
+			if is_check {
+				return Err(CommandError::ExecutionError(format!(
+					"{} migration conflict(s) require a merge migration",
+					conflict_apps.len()
+				)));
+			}
 
-			// Determine which apps to process
-			let app_names: Vec<String> = if let Some(label) = app_label {
-				// Explicit app label specified
-				vec![label]
+			return Ok(());
+		}
+
+		// Handle --empty flag for manual migrations
+		if is_empty {
+			let app_name = app_label.ok_or_else(|| {
+				CommandError::ExecutionError(
+					"App label is required when creating an empty migration".to_string(),
+				)
+			})?;
+
+			let last_migration = get_last_migration(app_name.clone()).await;
+			let dependencies: Vec<(String, String)> = if let Some(ref last) = last_migration {
+				vec![(app_name.clone(), last.name.clone())]
 			} else {
-				// Extract all app labels from ProjectState
-				let changed_apps: Vec<String> = target_project_state
-					.models
-					.keys()
-					.map(|(app_label, _)| app_label.clone())
-					.collect::<std::collections::HashSet<_>>()
-					.into_iter()
-					.collect();
-
-				if changed_apps.is_empty() {
-					return Err(CommandError::ExecutionError(
-						"No models found. Cannot determine app_label automatically.".to_string(),
-					));
-				}
-
-				changed_apps
+				Vec::new()
 			};
 
-			let is_verbose = ctx.has_option("verbose");
+			// Generate migration name using new naming system
+			let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
+			let base_name = migration_name_opt.unwrap_or_else(|| "custom".to_string());
+			let name = format!("{}_{}", migration_number, base_name);
+			let new_migration = dependencies.into_iter().fold(
+				reinhardt_db::migrations::Migration::new(name.clone(), app_name.clone()),
+				|migration, (app_label, migration_name)| {
+					migration.add_dependency(app_label, migration_name)
+				},
+			);
 
-			// Get database URL from context option or environment, falling back
-			// to the project's composed settings (`[core.databases.default]`)
-			// when neither is provided (#5042). An empty string preserves the
-			// TestContainers `from_state` path for offline runs.
-			let database_url = ctx
-				.option("database")
+			if !is_dry_run {
+				service
+					.save_migration(&new_migration)
+					.await
+					.map_err(|e| CommandError::ExecutionError(format!("Save error: {}", e)))?;
+				ctx.success(&format!(
+					"Created empty migration for {}: {}",
+					app_name, name
+				));
+			} else {
+				ctx.info(&format!(
+					"Would create empty migration for {}: {}",
+					app_name, name
+				));
+			}
+			if is_check {
+				return Err(CommandError::ExecutionError(
+					"empty migration would be created".to_string(),
+				));
+			}
+			return Ok(());
+		}
+
+		// 1. Get target project state from global model registry
+		let target_project_state = ProjectState::from_global_registry();
+
+		let is_verbose = ctx.has_option("verbose");
+
+		// Get database URL from context option or environment, falling back
+		// to the project's composed settings (`[core.databases.default]`)
+		// when neither is provided (#5042). An empty string preserves the
+		// TestContainers `from_state` path for offline runs.
+		let database_url = if has_prepared_state {
+			String::new()
+		} else {
+			ctx.option("database")
 				.map(|s| s.to_string())
 				.or_else(|| std::env::var("DATABASE_URL").ok())
 				.or_else(|| {
@@ -1340,299 +2459,509 @@ impl BaseCommand for MakeMigrationsCommand {
 						.as_ref()
 						.and_then(|s| DatabaseConnection::database_url_from(s.as_ref(), None).ok())
 				})
-				.unwrap_or_default();
+				.unwrap_or_default()
+		};
 
-			// 2. Build from_state from database history or TestContainers
-			// This ensures all models are treated as new, generating complete migrations
-			struct MigrationResult {
-				app_name: String,
-				migration: reinhardt_db::migrations::Migration,
+		// 2. Build from_state from migration files, database history, or TestContainers
+		// This ensures all models are treated as new, generating complete migrations
+		struct MigrationResult {
+			app_name: String,
+			migration: reinhardt_db::migrations::Migration,
+		}
+
+		let mut results: Vec<MigrationResult> = Vec::new();
+
+		// Build from_state based on strategy (default: TestContainers)
+		//
+		// #3871: Check --force-empty-state before any TestContainers or DB call.
+		let from_db_flag = ctx.has_option("from-db");
+		let dependency_context = crate::showmigrations::migration_dependency_context(ctx);
+		if ctx.has_option("force-empty-state") {
+			ctx.warning("⚠️  Using empty state as requested (--force-empty-state)");
+			ctx.warning("This may create duplicate migrations!");
+		}
+		let from_state = if let Some(state) = prepared_state {
+			state
+		} else if is_check && !from_db_flag && !ctx.has_option("force-empty-state") {
+			build_from_state_from_files(&migrations_dir, &dependency_context).await?
+		} else if ctx.has_option("force-empty-state") {
+			ProjectState::new()
+		} else if from_db_flag {
+			// When --from-db flag is specified: prioritize database history
+			match build_from_state_from_db(&migrations_dir, &database_url, &dependency_context)
+				.await
+			{
+				Ok(state) => {
+					ctx.verbose("Built state from database history");
+					state
+				}
+				Err(e) => {
+					ctx.warning(&format!("Failed to connect to database: {}", e));
+					ctx.info("Falling back to TestContainers...");
+					match build_from_state_from_testcontainers(&migrations_dir, &dependency_context)
+						.await
+					{
+						Ok(state) => {
+							ctx.verbose("Built state from TestContainers");
+							state
+						}
+						Err(e) => {
+							ctx.warning(&format!("Failed to use TestContainers: {}", e));
+							ctx.info("Falling back to file-based state reconstruction...");
+							match build_from_state_from_files(&migrations_dir, &dependency_context)
+								.await
+							{
+								Ok(state) => {
+									ctx.verbose("Built state from migration files (offline)");
+									state
+								}
+								Err(e_files) => {
+									ctx.error(&format!(
+										"Failed file-based reconstruction: {}",
+										e_files
+									));
+									ctx.error(
+										"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
+									);
+									ctx.error(
+										"This will cause ALL tables to be regenerated, creating duplicate migrations.",
+									);
+									ctx.error("");
+									ctx.error("Possible solutions:");
+									ctx.error("  1. Fix TestContainers setup (recommended)");
+									ctx.error(
+										"  2. Use --from-db flag to build from database history",
+									);
+									ctx.error(
+										"  3. Use --force-empty-state to proceed anyway (dangerous)",
+									);
+									ctx.error("");
+
+									return Err("from_state construction failed. Please fix TestContainers, use --from-db, or use --force-empty-state to continue anyway.".to_string().into());
+								}
+							}
+						}
+					}
+				}
+			}
+		} else {
+			// Default: prioritize TestContainers
+			match build_from_state_from_testcontainers(&migrations_dir, &dependency_context).await {
+				Ok(state) => {
+					ctx.verbose("Built state from TestContainers");
+					state
+				}
+				Err(e) => {
+					ctx.warning(&format!("Failed to use TestContainers: {}", e));
+					ctx.info("Falling back to database history...");
+					match build_from_state_from_db(
+						&migrations_dir,
+						&database_url,
+						&dependency_context,
+					)
+					.await
+					{
+						Ok(state) => {
+							ctx.verbose("Built state from database history");
+							state
+						}
+						Err(e) => {
+							ctx.warning(&format!("Failed to connect to database: {}", e));
+							ctx.info("Falling back to file-based state reconstruction...");
+							match build_from_state_from_files(&migrations_dir, &dependency_context)
+								.await
+							{
+								Ok(state) => {
+									ctx.verbose("Built state from migration files (offline)");
+									state
+								}
+								Err(e_files) => {
+									ctx.error(&format!(
+										"Failed file-based reconstruction: {}",
+										e_files
+									));
+									ctx.error(
+										"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
+									);
+									ctx.error(
+										"This will cause ALL tables to be regenerated, creating duplicate migrations.",
+									);
+									ctx.error("");
+									ctx.error("Possible solutions:");
+									ctx.error("  1. Fix database connection (recommended)");
+									ctx.error(
+										"  2. Use TestContainers (default behavior without --from-db)",
+									);
+									ctx.error(
+										"  3. Use --force-empty-state to proceed anyway (dangerous)",
+									);
+									ctx.error("");
+
+									return Err("from_state construction failed. Please fix database connection, remove --from-db, or use --force-empty-state to continue anyway.".to_string().into());
+								}
+							}
+						}
+					}
+				}
+			}
+		};
+
+		// Include historical apps so removing an app's last model still emits
+		// its table-deletion migration.
+		let app_names: Vec<String> = if let Some(label) = app_label {
+			vec![label]
+		} else {
+			let changed_apps: Vec<String> = target_project_state
+				.models
+				.keys()
+				.chain(from_state.models.keys())
+				.map(|(app_label, _)| app_label.clone())
+				.collect::<std::collections::HashSet<_>>()
+				.into_iter()
+				.collect();
+
+			if changed_apps.is_empty() {
+				if is_check {
+					ctx.info("No changes detected");
+					return Ok(());
+				}
+				return Err(CommandError::ExecutionError(
+					"No models found. Cannot determine app_label automatically.".to_string(),
+				));
 			}
 
-			let mut results: Vec<MigrationResult> = Vec::new();
+			changed_apps
+		};
 
-			// Build from_state based on strategy (default: TestContainers)
-			//
-			// #3871: Check --force-empty-state before any TestContainers or DB call.
-			// postgres_container() panics when Docker is unavailable, so the flag must
-			// be respected before attempting container startup, not as a fallback.
-			let from_db_flag = ctx.has_option("from-db");
-			let from_state = if ctx.has_option("force-empty-state") {
-				ctx.warning("⚠️  Using empty state as requested (--force-empty-state)");
-				ctx.warning("This may create duplicate migrations!");
-				ProjectState::new()
-			} else if from_db_flag {
-				// When --from-db flag is specified: prioritize database history
-				match build_from_state_from_db(&migrations_dir, &database_url).await {
-					Ok(state) => {
-						ctx.verbose("Built state from database history");
-						state
-					}
-					Err(e) => {
-						ctx.warning(&format!("Failed to connect to database: {}", e));
-						ctx.info("Falling back to TestContainers...");
-						match build_from_state_from_testcontainers(&migrations_dir).await {
-							Ok(state) => {
-								ctx.verbose("Built state from TestContainers");
-								state
-							}
-							Err(e) => {
-								ctx.warning(&format!("Failed to use TestContainers: {}", e));
-								ctx.info("Falling back to file-based state reconstruction...");
-								match build_from_state_from_files(&migrations_dir).await {
-									Ok(state) => {
-										ctx.verbose("Built state from migration files (offline)");
-										state
-									}
-									Err(e_files) => {
-										ctx.error(&format!(
-											"Failed file-based reconstruction: {}",
-											e_files
-										));
-										ctx.error(
-											"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
-										);
-										ctx.error(
-											"This will cause ALL tables to be regenerated, creating duplicate migrations.",
-										);
-										ctx.error("");
-										ctx.error("Possible solutions:");
-										ctx.error("  1. Fix TestContainers setup (recommended)");
-										ctx.error(
-											"  2. Use --from-db flag to build from database history",
-										);
-										ctx.error(
-											"  3. Use --force-empty-state to proceed anyway (dangerous)",
-										);
-										ctx.error("");
+		// Check for migration conflicts before proceeding
+		let existing_migrations = service.load_all().await.map_err(|e| {
+			CommandError::ExecutionError(format!(
+				"Failed to load migrations for conflict check: {}",
+				e
+			))
+		})?;
+		if !existing_migrations.is_empty() {
+			let graph = build_migration_graph(&existing_migrations);
 
-										return Err("from_state construction failed. Please fix TestContainers, use --from-db, or use --force-empty-state to continue anyway.".to_string().into());
-									}
-								}
-							}
-						}
-					}
-				}
-			} else {
-				// Default: prioritize TestContainers
-				match build_from_state_from_testcontainers(&migrations_dir).await {
-					Ok(state) => {
-						ctx.verbose("Built state from TestContainers");
-						state
-					}
-					Err(e) => {
-						ctx.warning(&format!("Failed to use TestContainers: {}", e));
-						ctx.info("Falling back to database history...");
-						match build_from_state_from_db(&migrations_dir, &database_url).await {
-							Ok(state) => {
-								ctx.verbose("Built state from database history");
-								state
-							}
-							Err(e) => {
-								ctx.warning(&format!("Failed to connect to database: {}", e));
-								ctx.info("Falling back to file-based state reconstruction...");
-								match build_from_state_from_files(&migrations_dir).await {
-									Ok(state) => {
-										ctx.verbose("Built state from migration files (offline)");
-										state
-									}
-									Err(e_files) => {
-										ctx.error(&format!(
-											"Failed file-based reconstruction: {}",
-											e_files
-										));
-										ctx.error(
-											"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
-										);
-										ctx.error(
-											"This will cause ALL tables to be regenerated, creating duplicate migrations.",
-										);
-										ctx.error("");
-										ctx.error("Possible solutions:");
-										ctx.error("  1. Fix database connection (recommended)");
-										ctx.error(
-											"  2. Use TestContainers (default behavior without --from-db)",
-										);
-										ctx.error(
-											"  3. Use --force-empty-state to proceed anyway (dangerous)",
-										);
-										ctx.error("");
-
-										return Err("from_state construction failed. Please fix database connection, remove --from-db, or use --force-empty-state to continue anyway.".to_string().into());
-									}
-								}
-							}
-						}
-					}
-				}
-			};
-
-			// Check for migration conflicts before proceeding
-			let all_migrations = service.load_all().await.map_err(|e| {
-				CommandError::ExecutionError(format!(
-					"Failed to load migrations for conflict check: {}",
-					e
-				))
-			})?;
-			if !all_migrations.is_empty() {
-				let graph = build_migration_graph(&all_migrations);
-
-				let conflicts = graph.detect_conflicts();
-				if !conflicts.is_empty() {
-					let mut conflict_apps: Vec<&String> = conflicts.keys().collect();
-					conflict_apps.sort();
-					for app in &conflict_apps {
-						let leaves = &conflicts[*app];
-						let leaf_names: Vec<&str> =
-							leaves.iter().map(|k| k.name.as_str()).collect();
-						ctx.error(&format!(
-							"Conflicting migrations detected for '{}': {}",
-							app,
-							leaf_names.join(", ")
-						));
-					}
-					return Err(CommandError::ExecutionError(
-						"Run 'makemigrations --merge' to resolve migration conflicts.".to_string(),
+			let conflicts = graph.detect_conflicts();
+			if !conflicts.is_empty() {
+				let mut conflict_apps: Vec<&String> = conflicts.keys().collect();
+				conflict_apps.sort();
+				for app in &conflict_apps {
+					let leaves = &conflicts[*app];
+					let leaf_names: Vec<&str> = leaves.iter().map(|k| k.name.as_str()).collect();
+					ctx.error(&format!(
+						"Conflicting migrations detected for '{}': {}",
+						app,
+						leaf_names.join(", ")
 					));
 				}
+				return Err(CommandError::ExecutionError(
+					"Run 'makemigrations --merge' to resolve migration conflicts.".to_string(),
+				));
 			}
-			let existing_latest = latest_existing_migration_names(&all_migrations);
+		}
+		let existing_latest = latest_existing_migration_names(&existing_migrations);
 
-			// Autodetect against the full project graph so cross-app foreign
-			// keys remain visible. Per-app filtering hid provider tables and
-			// forced every `0001` migration to `dependencies: vec![]`.
-			let detector = reinhardt_db::migrations::MigrationAutodetector::new(
-				from_state.clone(),
-				target_project_state.clone(),
-			);
-			let generated_migrations = detector.generate_migrations();
-			let apps_to_write = expand_apps_with_fk_providers(
-				&app_names,
-				&generated_migrations,
+		// Validate the complete state before selecting apps so another app's
+		// physical table ownership cannot be hidden from collision detection.
+		validate_global_migration_changes(&from_state, &target_project_state).map_err(|error| {
+			CommandError::ExecutionError(format!("Failed to validate migrations: {error}"))
+		})?;
+
+		// Autodetect against the full project graph so cross-app foreign
+		// keys remain visible. Per-app filtering hid provider tables and
+		// forced every initial migration to have no dependencies.
+		let detector = reinhardt_db::migrations::MigrationAutodetector::new(
+			from_state.clone(),
+			target_project_state.clone(),
+		);
+		let generated = detector
+			.try_generate_migrations_with_warnings()
+			.map_err(|error| {
+				CommandError::ExecutionError(format!("Failed to generate migrations: {error}"))
+			})?;
+		report_autodetector_warnings_with(&generated.warnings, |message| {
+			ctx.warning(message);
+		});
+		let generated_migrations = generated.migrations;
+		let apps_to_write =
+			expand_apps_with_fk_providers(&app_names, &generated_migrations, &target_project_state);
+
+		let mut pending: Vec<(reinhardt_db::migrations::Migration, String, String)> = Vec::new();
+		let mut this_run_names = std::collections::BTreeMap::new();
+		for migration in generated_migrations {
+			if !apps_to_write.contains(&migration.app_label) {
+				continue;
+			}
+			let app_name = migration.app_label.clone();
+			let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
+			let is_initial = migration_number == "0001";
+			let base_name = migration_name_opt.clone().unwrap_or_else(|| {
+				MigrationNamer::generate_name(&migration.operations, is_initial)
+			});
+			let final_name = format!("{}_{}", migration_number, base_name);
+			this_run_names.insert(app_name, final_name.clone());
+			pending.push((migration, migration_number, final_name));
+		}
+
+		for (migration, migration_number, final_name) in pending {
+			let app_name = migration.app_label.clone();
+			let dependencies = resolve_makemigrations_dependencies(
+				&app_name,
+				&migration_number,
+				&migration.operations,
 				&target_project_state,
+				&this_run_names,
+				&existing_latest,
 			);
 
-			let mut pending: Vec<(reinhardt_db::migrations::Migration, String, String)> =
-				Vec::new();
-			let mut this_run_names = std::collections::BTreeMap::new();
-			for migration in generated_migrations {
-				if !apps_to_write.contains(&migration.app_label) {
-					continue;
-				}
-				let app_name = migration.app_label.clone();
-				let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
-				let is_initial = migration_number == "0001";
-				let base_name = migration_name_opt.clone().unwrap_or_else(|| {
-					MigrationNamer::generate_name(&migration.operations, is_initial)
+			let new_migration = dependencies.into_iter().fold(
+				reinhardt_db::migrations::Migration::new(final_name, app_name.clone())
+					.with_initial((migration_number == "0001").then_some(true)),
+				|migration, (app_label, migration_name)| {
+					migration.add_dependency(app_label, migration_name)
+				},
+			);
+			let new_migration = migration
+				.operations
+				.into_iter()
+				.fold(new_migration, |migration, operation| {
+					migration.add_operation(operation)
 				});
-				let final_name = format!("{}_{}", migration_number, base_name);
-				this_run_names.insert(app_name.clone(), final_name.clone());
-				pending.push((migration, migration_number, final_name));
-			}
 
-			for (migration, migration_number, final_name) in pending {
-				let app_name = migration.app_label.clone();
-				let dependencies = resolve_makemigrations_dependencies(
-					&app_name,
-					&migration_number,
-					&migration.operations,
-					&target_project_state,
-					&this_run_names,
-					&existing_latest,
-				);
+			results.push(MigrationResult {
+				app_name,
+				migration: new_migration,
+			});
+		}
 
-				let new_migration = reinhardt_db::migrations::Migration {
-					app_label: app_name.clone(),
-					name: final_name,
-					operations: migration.operations,
-					dependencies,
-					atomic: true,
-					replaces: Vec::new(),
-					initial: if migration_number == "0001" {
-						Some(true)
-					} else {
-						None
-					},
-					state_only: false,
-					database_only: false,
-					optional_dependencies: Vec::new(),
-					swappable_dependencies: Vec::new(),
-				};
+		// A table-name rename frees its old physical name only after the
+		// producing migration has run. When another app creates a table with
+		// that name in the same invocation, record the cross-app edge using
+		// the final generated migration names.
+		let mut generated_migrations = results
+			.iter_mut()
+			.map(|result| &mut result.migration)
+			.collect::<Vec<_>>();
+		add_reused_table_name_dependencies_with_history(
+			&mut generated_migrations,
+			&existing_migrations,
+		)
+		.map_err(crate::CommandError::ExecutionError)?;
 
-				results.push(MigrationResult {
-					app_name,
-					migration: new_migration,
-				});
-			}
+		// 4. Write all migrations
+		if !results.is_empty() {
+			let result_count = results.len();
+			for result in results {
+				ctx.info(&format!("Migrations for '{}':", result.app_name));
 
-			// 4. Write all migrations
-			if !results.is_empty() {
-				for result in results {
-					ctx.info(&format!("Migrations for '{}':", result.app_name));
+				// Build the correct file path from migration name
+				let migration_file_path = migrations_dir
+					.join(&result.app_name)
+					.join(format!("{}.rs", result.migration.name));
 
-					// Build the correct file path from migration name
-					let migration_file_path = migrations_dir
-						.join(&result.app_name)
-						.join(format!("{}.rs", result.migration.name));
-
-					if !is_dry_run {
-						service
-							.save_migration(&result.migration)
-							.await
-							.map_err(|e| {
-								let err_msg = e.to_string();
-								if err_msg.contains("already exists") {
-									CommandError::ExecutionError(format!(
-										"Migration file already exists: {}
+				if !is_dry_run {
+					service
+						.save_migration(&result.migration)
+						.await
+						.map_err(|e| {
+							let err_msg = e.to_string();
+							if err_msg.contains("already exists") {
+								CommandError::ExecutionError(format!(
+									"Migration file already exists: {}
 									
 									Possible solutions:
 									1. If the operations are identical, you don't need a new migration
 									2. If you want to modify the migration, delete the existing file first:
 									   rm migrations/{}/{{migration_file}}.rs
 									3. If you want to keep both, manually rename the existing file",
-										e, result.app_name
-									))
-								} else {
-									CommandError::ExecutionError(format!("Save error: {}", e))
-								}
-							})?;
-						ctx.success(&format!("  {}", migration_file_path.display()));
-
-						// Show detailed operations if --verbose
-						if is_verbose {
-							for operation in &result.migration.operations {
-								let description = operation_description(operation);
-								ctx.info(&format!("    - {}", description));
+									e, result.app_name
+								))
+							} else {
+								CommandError::ExecutionError(format!("Save error: {}", e))
 							}
+						})?;
+					ctx.success(&format!("  {}", migration_file_path.display()));
+
+					// Show detailed operations if --verbose
+					if is_verbose {
+						for operation in &result.migration.operations {
+							let description = makemigrations_operation_description(operation);
+							ctx.info(&format!("    - {}", description));
 						}
-					} else {
-						ctx.info(&format!(
-							"  Would create: {}",
-							migration_file_path.display()
-						));
+					}
+				} else {
+					ctx.info(&format!(
+						"  Would create: {}",
+						migration_file_path.display()
+					));
 
-						if is_verbose {
-							for operation in &result.migration.operations {
-								let description = operation_description(operation);
-								ctx.info(&format!("    - {}", description));
-							}
+					if is_verbose {
+						for operation in &result.migration.operations {
+							let description = makemigrations_operation_description(operation);
+							ctx.info(&format!("    - {}", description));
 						}
 					}
 				}
-			} else {
-				ctx.info("No changes detected");
 			}
-
-			Ok(())
+			if is_check {
+				return Err(CommandError::ExecutionError(format!(
+					"{} migration(s) would be created",
+					result_count
+				)));
+			}
+		} else {
+			ctx.info("No changes detected");
 		}
 
-		#[cfg(not(feature = "migrations"))]
-		{
-			ctx.warning("Migrations feature not enabled");
-			ctx.info("To use makemigrations, enable the 'migrations' feature");
-			Ok(())
+		Ok(())
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	{
+		ctx.warning("Migrations feature not enabled");
+		ctx.info("To use makemigrations, enable the 'migrations' feature");
+		Ok(())
+	}
+}
+
+#[cfg(feature = "migrations")]
+fn add_reused_table_name_dependencies_with_history(
+	migrations: &mut [&mut reinhardt_db::migrations::Migration],
+	historical_migrations: &[reinhardt_db::migrations::Migration],
+) -> Result<(), String> {
+	use reinhardt_db::migrations::Operation;
+
+	let all_migrations = historical_migrations
+		.iter()
+		.chain(migrations.iter().map(|migration| &**migration))
+		.collect::<Vec<_>>();
+
+	let renamed_tables: Vec<(String, String, String)> = all_migrations
+		.iter()
+		.flat_map(|migration| {
+			migration
+				.operations
+				.iter()
+				.filter_map(|operation| match operation {
+					Operation::RenameTable { old_name, .. } => Some((
+						migration.app_label.clone(),
+						migration.name.clone(),
+						old_name.clone(),
+					)),
+					Operation::MoveModel {
+						rename_table: true,
+						old_table_name: Some(old_name),
+						..
+					} => Some((
+						migration.app_label.clone(),
+						migration.name.clone(),
+						old_name.clone(),
+					)),
+					_ => None,
+				})
+		})
+		.collect();
+	let dropped_tables: Vec<(String, String, String)> = all_migrations
+		.iter()
+		.flat_map(|migration| {
+			migration
+				.operations
+				.iter()
+				.filter_map(|operation| match operation {
+					Operation::DropTable { name } => Some((
+						migration.app_label.clone(),
+						migration.name.clone(),
+						name.clone(),
+					)),
+					_ => None,
+				})
+		})
+		.collect();
+
+	let mut dependencies = Vec::new();
+	for (migration_index, migration) in migrations.iter().enumerate() {
+		let reused_tables: Vec<&str> = migration
+			.operations
+			.iter()
+			.filter_map(|operation| match operation {
+				Operation::CreateTable { name, .. } => Some(name.as_str()),
+				Operation::RenameTable { new_name, .. } => Some(new_name.as_str()),
+				Operation::MoveModel {
+					rename_table: true,
+					new_table_name: Some(new_name),
+					..
+				} => Some(new_name.as_str()),
+				_ => None,
+			})
+			.collect();
+		for (producer_app, producer_name, old_table) in &renamed_tables {
+			if producer_app != &migration.app_label && reused_tables.contains(&old_table.as_str()) {
+				dependencies.push((
+					migration_index,
+					(producer_app.clone(), producer_name.clone()),
+				));
+			}
+		}
+		for (producer_app, producer_name, dropped_table) in &dropped_tables {
+			if producer_app != &migration.app_label
+				&& reused_tables.contains(&dropped_table.as_str())
+			{
+				dependencies.push((
+					migration_index,
+					(producer_app.clone(), producer_name.clone()),
+				));
+			}
 		}
 	}
+
+	let mut graph = vec![Vec::new(); migrations.len()];
+	for (consumer_index, producer) in &dependencies {
+		if let Some(producer_index) = migrations
+			.iter()
+			.position(|migration| migration.app_label == producer.0 && migration.name == producer.1)
+		{
+			graph[*consumer_index].push(producer_index);
+		}
+	}
+	fn has_cycle(
+		node: usize,
+		graph: &[Vec<usize>],
+		visiting: &mut [bool],
+		visited: &mut [bool],
+	) -> bool {
+		if visiting[node] {
+			return true;
+		}
+		if visited[node] {
+			return false;
+		}
+		visiting[node] = true;
+		let cyclic = graph[node]
+			.iter()
+			.any(|&next| has_cycle(next, graph, visiting, visited));
+		visiting[node] = false;
+		visited[node] = true;
+		cyclic
+	}
+	let mut visiting = vec![false; migrations.len()];
+	let mut visited = vec![false; migrations.len()];
+	if (0..migrations.len()).any(|node| has_cycle(node, &graph, &mut visiting, &mut visited)) {
+		return Err("cannot generate a cyclic cross-app table-name dependency; split the rename through an explicit temporary table migration".to_string());
+	}
+
+	for (consumer_index, producer) in dependencies {
+		let migration = &mut migrations[consumer_index];
+		if !migration
+			.dependencies
+			.iter()
+			.any(|dependency| dependency == &producer)
+		{
+			migration.dependencies.push(producer);
+		}
+	}
+	Ok(())
 }
 
 #[cfg(feature = "migrations")]
@@ -1722,8 +3051,20 @@ fn resolve_makemigrations_dependencies(
 	dependencies
 }
 
-/// Interactive shell command
-pub struct ShellCommand;
+/// Interactive Rust shell command.
+#[derive(Default)]
+pub struct ShellCommand {
+	config: Option<crate::ShellConfig>,
+}
+
+impl ShellCommand {
+	/// Creates a shell command with the project configuration required to bootstrap evcxr.
+	pub fn new(config: crate::ShellConfig) -> Self {
+		Self {
+			config: Some(config),
+		}
+	}
+}
 
 #[async_trait]
 impl BaseCommand for ShellCommand {
@@ -1744,117 +3085,334 @@ impl BaseCommand for ShellCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-		if let Some(command) = ctx.option("command") {
-			ctx.info(&format!("Executing: {}", command));
-			// Execute the command
-			return Ok(());
-		}
-
-		ctx.info("Starting interactive shell...");
-		ctx.info("Type 'exit' or press Ctrl+D to quit");
-
 		#[cfg(feature = "shell")]
 		{
-			use rustyline::DefaultEditor;
-			use rustyline::error::ReadlineError;
-
-			let mut rl = DefaultEditor::new().map_err(|e| {
-				crate::CommandError::ExecutionError(format!("Failed to create REPL: {}", e))
+			let config = self.config.as_ref().ok_or_else(|| {
+				crate::CommandError::ExecutionError(
+					"Shell configuration is missing. Use \
+					 `execute_from_command_line_with_migration_settings_and_shell` from the generated manage.rs."
+						.to_string(),
+				)
 			})?;
-
-			loop {
-				let readline = rl.readline(">>> ");
-				match readline {
-					Ok(line) => {
-						let trimmed = line.trim();
-						if trimmed == "exit" || trimmed == "quit" {
-							ctx.info("Goodbye!");
-							break;
-						}
-
-						if !trimmed.is_empty() {
-							let _ = rl.add_history_entry(line.as_str());
-
-							// Evaluate code using Rhai engine
-							#[cfg(feature = "shell-rhai")]
-							{
-								Self::eval_rhai(ctx, trimmed)?;
-							}
-							#[cfg(not(feature = "shell-rhai"))]
-							{
-								ctx.warning(
-									"Rhai engine not enabled. Enable 'shell-rhai' feature.",
-								);
-							}
-						}
-					}
-					Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
-						ctx.info("Goodbye!");
-						break;
-					}
-					Err(err) => {
-						return Err(crate::CommandError::ExecutionError(format!(
-							"REPL error: {}",
-							err
-						)));
-					}
-				}
-			}
-
-			Ok(())
+			crate::shell::run(config, ctx.option("command").cloned()).await
 		}
 
 		#[cfg(not(feature = "shell"))]
 		{
-			ctx.warning("Shell feature not enabled");
-			ctx.info("To use shell, enable the 'shell' feature in Cargo.toml:");
-			ctx.info("  reinhardt-commands = { version = \"*\", features = [\"shell\"] }");
-			Ok(())
-		}
-	}
-}
-
-impl ShellCommand {
-	/// Evaluate code using Rhai engine
-	#[cfg(feature = "shell-rhai")]
-	fn eval_rhai(ctx: &CommandContext, code: &str) -> CommandResult<()> {
-		use rhai::{Engine, EvalAltResult};
-
-		let mut engine = Engine::new();
-
-		// Register helper functions
-		engine.register_fn("println", |s: &str| {
-			println!("{}", s);
-		});
-
-		// Evaluate the code
-		match engine.eval::<rhai::Dynamic>(code) {
-			Ok(result) => {
-				// Display result if not Unit type
-				if !result.is_unit() {
-					ctx.info(&format!("=> {}", result));
-				}
-				Ok(())
-			}
-			Err(e) => {
-				let error_msg = match *e {
-					EvalAltResult::ErrorParsing(ref err, _) => {
-						format!("Parse error: {}", err)
-					}
-					EvalAltResult::ErrorRuntime(ref msg, _) => {
-						format!("Runtime error: {}", msg)
-					}
-					_ => format!("Error: {}", e),
-				};
-				ctx.warning(&error_msg);
-				Ok(())
-			}
+			let _ = (&self.config, ctx);
+			Err(crate::CommandError::FeatureDisabled(
+				"The shell command requires the `shell` feature when using \
+				 `reinhardt-commands` directly, or `commands-shell` through the \
+				 `reinhardt` facade."
+					.to_string(),
+			))
 		}
 	}
 }
 
 /// Development server command
 pub struct RunServerCommand;
+
+#[cfg(feature = "server")]
+struct NativeLaunchPlan {
+	router: std::sync::Arc<reinhardt_urls::routers::ServerRouter>,
+	di_context: std::sync::Arc<reinhardt_di::InjectionContext>,
+	#[cfg(feature = "websockets")]
+	websocket: Option<std::sync::Arc<WebSocketRuntime>>,
+	#[cfg(feature = "grpc")]
+	grpc: Option<tonic::service::Routes>,
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+#[derive(Clone)]
+struct WebSocketEndpoint {
+	path: String,
+	di_context: std::sync::Arc<reinhardt_di::InjectionContext>,
+	build: fn(
+		std::sync::Arc<reinhardt_di::InjectionContext>,
+	) -> reinhardt_websockets::ConsumerBuildFuture,
+	preflight: fn(
+		std::sync::Arc<reinhardt_di::InjectionContext>,
+	) -> reinhardt_websockets::ConsumerPreflightFuture,
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+struct WebSocketRuntime {
+	endpoints: Vec<WebSocketEndpoint>,
+	#[allow(deprecated)] // The runtime validator still accepts the compatibility config type.
+	origin_config: Option<reinhardt_websockets::OriginValidationConfig>,
+	#[allow(deprecated)] // ConnectionSettings still converts through the compatibility config.
+	connection_config: reinhardt_websockets::connection::ConnectionConfig,
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+struct NativeProtocolHandler {
+	base: std::sync::Arc<dyn reinhardt_http::Handler>,
+	websocket: Option<std::sync::Arc<WebSocketRuntime>>,
+	shutdown: reinhardt_server::ShutdownCoordinator,
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+#[async_trait]
+#[allow(deprecated)] // Native handshakes still consume the compatibility origin validator.
+impl reinhardt_http::Handler for NativeProtocolHandler {
+	async fn handle(
+		&self,
+		request: reinhardt_http::Request,
+	) -> reinhardt_http::Result<reinhardt_http::Response> {
+		let Some(runtime) = &self.websocket else {
+			return self.base.handle(request).await;
+		};
+		let Some((endpoint, metadata)) = runtime.endpoints.iter().find_map(|endpoint| {
+			websocket_path_params(&endpoint.path, request.uri.path())
+				.map(|metadata| (endpoint.clone(), metadata))
+		}) else {
+			return self.base.handle(request).await;
+		};
+
+		let Some(upgrade) = request
+			.extensions
+			.get::<reinhardt_server::server::http::HttpUpgradeContext>()
+		else {
+			return Ok(reinhardt_http::Response::new(
+				hyper::StatusCode::UPGRADE_REQUIRED,
+			));
+		};
+
+		let headers = websocket_headers(&request.headers).map_err(|error| {
+			reinhardt_http::Error::Http(format!("invalid WebSocket headers: {error}"))
+		})?;
+		let uri = tungstenite::http::Uri::try_from(request.uri.to_string()).map_err(|error| {
+			reinhardt_http::Error::Http(format!("invalid WebSocket URI: {error}"))
+		})?;
+		let handshake = match reinhardt_websockets::create_upgrade_response(
+			&request.method,
+			&uri,
+			request.version,
+			&headers,
+		) {
+			Ok(handshake) => handshake,
+			Err(status) => {
+				return Ok(reinhardt_http::Response::new(
+					hyper::StatusCode::from_u16(status.as_u16())
+						.unwrap_or(hyper::StatusCode::BAD_REQUEST),
+				));
+			}
+		};
+		if let Some(config) = &runtime.origin_config {
+			let origin = match websocket_origin(&request.headers) {
+				Ok(origin) => origin,
+				Err(()) => {
+					return Ok(reinhardt_http::Response::new(hyper::StatusCode::FORBIDDEN));
+				}
+			};
+			if reinhardt_websockets::validate_origin(origin, config).is_err() {
+				return Ok(reinhardt_http::Response::new(hyper::StatusCode::FORBIDDEN));
+			}
+		}
+		let consumer = (endpoint.build)(std::sync::Arc::clone(&endpoint.di_context))
+			.await
+			.map_err(|error| reinhardt_http::Error::Http(error.to_string()))?;
+		let Some(on_upgrade) = upgrade.take_on_upgrade() else {
+			return Ok(reinhardt_http::Response::new(
+				hyper::StatusCode::UPGRADE_REQUIRED,
+			));
+		};
+		let di_context = std::sync::Arc::clone(&endpoint.di_context);
+		let connection_config = runtime.connection_config.clone();
+		let shutdown = self.shutdown.clone();
+		let task = async move {
+			let mut shutdown_rx = shutdown.subscribe();
+			let mut consumer_shutdown_rx = shutdown.subscribe();
+			tokio::select! {
+				upgraded = on_upgrade => {
+					if let Ok(upgraded) = upgraded {
+						let io = hyper_util::rt::TokioIo::new(upgraded);
+						let _ = reinhardt_websockets::serve_upgraded_consumer_with_shutdown_and_config(
+							io,
+							consumer,
+							headers,
+							metadata,
+							di_context,
+							async move { let _ = consumer_shutdown_rx.recv().await; },
+							connection_config,
+						)
+						.await;
+					}
+				}
+				_ = shutdown_rx.recv() => {}
+			}
+		};
+		upgrade.spawn(Box::pin(task)).map_err(|_| {
+			reinhardt_http::Error::Http(
+				"WebSocket upgrade task listener is shutting down".to_string(),
+			)
+		})?;
+
+		let mut response = reinhardt_http::Response::new(
+			hyper::StatusCode::from_u16(handshake.status().as_u16())
+				.unwrap_or(hyper::StatusCode::SWITCHING_PROTOCOLS),
+		);
+		for (name, value) in handshake.headers() {
+			if let (Ok(name), Ok(value)) = (
+				hyper::header::HeaderName::from_bytes(name.as_str().as_bytes()),
+				hyper::header::HeaderValue::from_bytes(value.as_bytes()),
+			) {
+				response.headers.insert(name, value);
+			}
+		}
+		Ok(response)
+	}
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+fn websocket_origin(headers: &hyper::HeaderMap) -> Result<Option<&str>, ()> {
+	headers
+		.get("origin")
+		.map(|value| value.to_str().map_err(|_| ()))
+		.transpose()
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+fn websocket_path_params(
+	pattern: &str,
+	path: &str,
+) -> Option<std::collections::HashMap<String, String>> {
+	let pattern = pattern.trim_matches('/').split('/').collect::<Vec<_>>();
+	let path = path.trim_matches('/').split('/').collect::<Vec<_>>();
+	if pattern.len() != path.len() {
+		return None;
+	}
+
+	let mut params = std::collections::HashMap::new();
+	for (expected, actual) in pattern.iter().zip(path) {
+		if expected.starts_with('{') && expected.ends_with('}') {
+			let placeholder = expected
+				.trim_start_matches('{')
+				.trim_end_matches('}')
+				.trim_start_matches('<')
+				.trim_end_matches('>');
+			let (kind, name) = placeholder.split_once(':').unwrap_or(("str", placeholder));
+			if name.is_empty() {
+				return None;
+			}
+			match kind {
+				"str" => {}
+				"int" if actual.parse::<i64>().is_ok() => {}
+				_ => return None,
+			}
+			params.insert((*name).to_string(), (*actual).to_string());
+		} else if *expected != actual {
+			return None;
+		}
+	}
+	Some(params)
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+fn normalized_protocol_path(path: &str) -> String {
+	let trimmed = path.trim_matches('/');
+	if trimmed.is_empty() {
+		"/".to_string()
+	} else {
+		format!("/{trimmed}")
+	}
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+fn canonical_protocol_path(path: &str) -> String {
+	normalized_protocol_path(path)
+		.split('/')
+		.map(|segment| {
+			if segment.starts_with('{') && segment.ends_with('}') {
+				"{}"
+			} else {
+				segment
+			}
+		})
+		.collect::<Vec<_>>()
+		.join("/")
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+fn protocol_paths_overlap(left: &str, right: &str) -> bool {
+	let left = left.trim_matches('/').split('/').collect::<Vec<_>>();
+	let right = right.trim_matches('/').split('/').collect::<Vec<_>>();
+	left.len() == right.len()
+		&& left.iter().zip(right).all(|(left, right)| {
+			let left_parameter = left.starts_with('{') && left.ends_with('}');
+			let right_parameter = right.starts_with('{') && right.ends_with('}');
+			left_parameter || right_parameter || left == &right
+		})
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+#[allow(deprecated)] // The settings-first conversion currently targets this compatibility type.
+fn load_websocket_configs(
+	base_dir: &std::path::Path,
+) -> Result<
+	(
+		Option<reinhardt_websockets::OriginValidationConfig>,
+		reinhardt_websockets::connection::ConnectionConfig,
+	),
+	crate::CommandError,
+> {
+	let profile_str = std::env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
+	let profile = reinhardt_conf::settings::profile::Profile::parse(&profile_str);
+	let settings_dir = base_dir.join("settings");
+	let merged = reinhardt_conf::settings::builder::SettingsBuilder::new()
+		.profile(profile)
+		.add_source(reinhardt_conf::settings::sources::DefaultSource::new())
+		.add_source(
+			reinhardt_conf::settings::sources::LowPriorityEnvSource::new()
+				.with_prefix("REINHARDT_"),
+		)
+		.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
+			settings_dir.join("base.toml"),
+		))
+		.add_source(reinhardt_conf::settings::sources::TomlFileSource::new(
+			settings_dir.join(format!("{profile_str}.toml")),
+		))
+		.build()
+		.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+
+	let origin_settings = match merged.get_raw("ws_origin") {
+		Some(raw) => serde_json::from_value(raw.clone()).map_err(|error| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to parse [ws_origin] settings: {error}"
+			))
+		})?,
+		None => reinhardt_websockets::OriginValidationSettings::default(),
+	};
+	let connection_settings = match merged.get_raw("ws_connection") {
+		Some(raw) => serde_json::from_value(raw.clone()).map_err(|error| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to parse [ws_connection] settings: {error}"
+			))
+		})?,
+		None => reinhardt_websockets::ConnectionSettings::default(),
+	};
+	Ok((
+		Some(reinhardt_websockets::create_origin_validation_config_from_settings(&origin_settings)),
+		reinhardt_websockets::create_connection_config_from_settings(&connection_settings),
+	))
+}
+
+#[cfg(all(feature = "server", feature = "websockets"))]
+fn websocket_headers(headers: &hyper::HeaderMap) -> Result<tungstenite::http::HeaderMap, String> {
+	let mut converted = tungstenite::http::HeaderMap::new();
+	for (name, value) in headers {
+		let name = tungstenite::http::HeaderName::from_bytes(name.as_str().as_bytes())
+			.map_err(|error| error.to_string())?;
+		let value = tungstenite::http::HeaderValue::from_bytes(value.as_bytes())
+			.map_err(|error| error.to_string())?;
+		converted.append(name, value);
+	}
+	Ok(converted)
+}
+
+#[cfg(any(feature = "pages", all(feature = "server", feature = "autoreload")))]
+const GENERATED_STYLE_ROOT_ENV: &str = "REINHARDT_GENERATED_STYLE_ROOT";
 
 /// Pure runserver settings derived from a command context before startup work.
 ///
@@ -1877,6 +3435,10 @@ struct RunServerExecutionOptions {
 	force_wasm_legacy: bool,
 	wasm_optional: bool,
 	index: Option<String>,
+	asset_mode: String,
+	asset_manifest: Option<String>,
+	asset_entrypoint: Option<String>,
+	expected_asset_build_id: Option<String>,
 }
 
 impl RunServerExecutionOptions {
@@ -1908,6 +3470,15 @@ impl RunServerExecutionOptions {
 			force_wasm_legacy: ctx.has_option("force-wasm"),
 			wasm_optional: ctx.has_option("wasm-optional"),
 			index: ctx.option("index").map(ToString::to_string),
+			asset_mode: ctx
+				.option("asset-mode")
+				.map(ToString::to_string)
+				.unwrap_or_else(|| "production".to_string()),
+			asset_manifest: ctx.option("asset-manifest").map(ToString::to_string),
+			asset_entrypoint: ctx.option("asset-entrypoint").map(ToString::to_string),
+			expected_asset_build_id: ctx
+				.option("expected-asset-build-id")
+				.map(ToString::to_string),
 		}
 	}
 }
@@ -1915,6 +3486,7 @@ impl RunServerExecutionOptions {
 #[cfg(all(feature = "server", feature = "autoreload"))]
 struct AutoreloadChildOptions<'a> {
 	address: &'a str,
+	grpc_address: &'a str,
 	insecure: bool,
 	no_docs: bool,
 	with_pages: bool,
@@ -1922,14 +3494,358 @@ struct AutoreloadChildOptions<'a> {
 	no_spa: bool,
 	no_project_static: bool,
 	index: Option<&'a str>,
+	asset_mode: &'a str,
+	asset_manifest: Option<&'a str>,
+	asset_entrypoint: Option<&'a str>,
+	expected_asset_build_id: Option<&'a str>,
 	hmr_port: Option<u16>,
 	no_wasm: bool,
 	no_override_wasm: bool,
 	force_wasm: bool,
 	wasm_optional: bool,
+	package: Option<&'a str>,
+	features: &'a [String],
+	all_features: bool,
+	generated_style_root: Option<&'a std::path::Path>,
+}
+
+#[cfg(feature = "server")]
+fn configured_static_assets(
+	base_dir: &std::path::Path,
+) -> Result<crate::StaticAssetSettings, String> {
+	crate::StaticAssetSettings::from_project_dir(base_dir)
+}
+
+#[cfg(feature = "server")]
+fn normalize_static_url_prefix(static_url: &str) -> String {
+	if static_url == "/" || static_url.ends_with('/') {
+		static_url.to_string()
+	} else {
+		format!("{static_url}/")
+	}
+}
+
+#[cfg(feature = "server")]
+fn project_static_passthrough_prefixes(static_url: &str, manifest_serving: bool) -> Vec<String> {
+	let mount = static_url.trim_end_matches('/');
+	let mut prefixes = vec![format!("{mount}/admin/")];
+	if manifest_serving {
+		prefixes.push(format!("{mount}/builds/"));
+		prefixes.push(format!("{mount}/manifest.json"));
+	}
+	prefixes
+}
+
+#[cfg(feature = "server")]
+async fn load_static_manifest(
+	static_root: &std::path::Path,
+) -> Result<std::collections::HashMap<String, String>, String> {
+	let manifest_path = static_root.join("manifest.json");
+	if !manifest_path.is_file() {
+		return Ok(std::collections::HashMap::new());
+	}
+
+	let content = tokio::fs::read_to_string(&manifest_path)
+		.await
+		.map_err(|error| format!("failed to read {}: {error}", manifest_path.display()))?;
+	let manifest: serde_json::Value = serde_json::from_str(&content)
+		.map_err(|error| format!("failed to parse {}: {error}", manifest_path.display()))?;
+	let paths = manifest
+		.get("paths")
+		.and_then(serde_json::Value::as_object)
+		.ok_or_else(|| {
+			format!(
+				"{} does not contain a paths object",
+				manifest_path.display()
+			)
+		})?;
+
+	Ok(paths
+		.iter()
+		.filter_map(|(source, collected)| {
+			collected
+				.as_str()
+				.map(|collected| (source.replace('\\', "/"), collected.replace('\\', "/")))
+		})
+		.collect())
+}
+
+#[cfg(feature = "server")]
+fn websocket_exclusion_prefix(path: &str) -> String {
+	let mut prefix = String::new();
+	for segment in path.trim_matches('/').split('/') {
+		if segment.starts_with('{') && segment.ends_with('}') {
+			break;
+		}
+		prefix.push('/');
+		prefix.push_str(segment);
+	}
+	if prefix.is_empty() {
+		"/".to_string()
+	} else if prefix.ends_with('/') {
+		prefix
+	} else {
+		format!("{prefix}/")
+	}
+}
+
+#[cfg(feature = "server")]
+fn websocket_exclusion_paths(path: &str) -> Vec<String> {
+	let trimmed = path.trim_matches('/');
+	let exact = if trimmed.is_empty() {
+		"/".to_string()
+	} else {
+		format!("/{trimmed}")
+	};
+	if trimmed
+		.split('/')
+		.any(|segment| segment.starts_with('{') && segment.ends_with('}'))
+	{
+		return vec![exact];
+	}
+	let prefix = websocket_exclusion_prefix(path);
+	if exact == prefix.trim_end_matches('/') {
+		vec![exact]
+	} else {
+		vec![exact, prefix]
+	}
+}
+
+#[cfg(feature = "server")]
+fn spa_excluded_prefixes(generated_style_url: &str, websocket_paths: &[String]) -> Vec<String> {
+	let configured_admin_prefix = format!("{}/admin/", generated_style_url.trim_end_matches('/'));
+	let mut prefixes = vec![
+		"/api/".to_string(),
+		"/admin/".to_string(),
+		"/static/admin/".to_string(),
+		configured_admin_prefix,
+	];
+	if generated_style_url != "/" {
+		prefixes.push(generated_style_url.to_string());
+	}
+	prefixes.extend(
+		websocket_paths
+			.iter()
+			.flat_map(|path| websocket_exclusion_paths(path)),
+	);
+	prefixes
+}
+
+#[cfg(feature = "pages")]
+fn require_pages_wasm_target(
+	package_context: &crate::StylePackageContext,
+	has_component_styles: bool,
+) -> Result<(), crate::wasm_builder::WasmBuildError> {
+	if has_component_styles && !package_context.has_cdylib_target() {
+		return Err(
+			crate::wasm_builder::WasmBuildError::PackageResolutionFailed(format!(
+				"selected package `{}` has component styles but no Pages cdylib target",
+				package_context.package_name
+			)),
+		);
+	}
+	Ok(())
+}
+
+#[cfg(feature = "pages")]
+fn should_prepare_component_styles(with_pages: bool, has_inherited_style_root: bool) -> bool {
+	with_pages && !has_inherited_style_root
 }
 
 impl RunServerCommand {
+	#[cfg(feature = "server")]
+	async fn prepare_native_launch_plan(ctx: &CommandContext) -> CommandResult<NativeLaunchPlan> {
+		use reinhardt_urls::routers::{NativeHttpRoutes, NativeRoutes};
+
+		let inventory_router = !reinhardt_urls::routers::is_router_registered();
+		let mut routes = if reinhardt_urls::routers::is_router_registered() {
+			let router = reinhardt_urls::routers::get_router().ok_or_else(|| {
+				crate::CommandError::ExecutionError(
+					"registered HTTP router could not be loaded".to_string(),
+				)
+			})?;
+			let mut routes = NativeRoutes::from_legacy(router);
+			if let Some(registrations) = reinhardt_urls::routers::take_di_registrations() {
+				routes.di_registrations.merge(registrations);
+			}
+			routes
+		} else {
+			let registrations: Vec<_> =
+				inventory::iter::<reinhardt_urls::routers::UrlPatternsRegistration>().collect();
+			match registrations.as_slice() {
+				[] => {
+					return Err(crate::CommandError::ExecutionError(
+						"No URL patterns registered. Add a #[routes] function or register a ServerRouter before runserver."
+							.to_string(),
+					));
+				}
+				[registration] => registration
+					.native_routes_async()
+					.await
+					.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?,
+				registrations => {
+					return Err(crate::CommandError::ExecutionError(format!(
+						"Multiple #[routes] functions detected ({} found)",
+						registrations.len()
+					)));
+				}
+			}
+		};
+
+		let di_context = routes.di_context.clone().unwrap_or_else(|| {
+			std::sync::Arc::new(
+				reinhardt_di::InjectionContext::builder(std::sync::Arc::new(
+					reinhardt_di::SingletonScope::new(),
+				))
+				.build(),
+			)
+		});
+		if !routes.di_registrations.is_empty() {
+			let registrations = std::mem::take(&mut routes.di_registrations);
+			registrations.apply_to(di_context.singleton_scope());
+		}
+
+		let router = match routes.server {
+			NativeHttpRoutes::Owned(router) => {
+				let mut router = router.with_di_context(std::sync::Arc::clone(&di_context));
+				let errors = router.register_all_routes();
+				if !errors.is_empty() {
+					return Err(crate::CommandError::ExecutionError(format!(
+						"HTTP route validation failed: {}",
+						errors.join("; ")
+					)));
+				}
+				let router = std::sync::Arc::new(router);
+				if inventory_router {
+					reinhardt_urls::routers::register_router_arc(std::sync::Arc::clone(&router));
+				}
+				router
+			}
+			NativeHttpRoutes::LegacyShared(router) => router,
+		};
+
+		#[cfg(feature = "grpc")]
+		if !routes.grpc.validation_errors().is_empty() {
+			return Err(crate::CommandError::ExecutionError(format!(
+				"gRPC route validation failed: {:?}",
+				routes.grpc.validation_errors()
+			)));
+		}
+
+		#[cfg(feature = "websockets")]
+		let websocket = if routes.websocket.is_empty() {
+			None
+		} else {
+			let registrations: Vec<_> =
+				inventory::iter::<reinhardt_websockets::WebSocketConsumerRegistration>().collect();
+			let mut endpoints = Vec::with_capacity(routes.websocket.routes().len());
+			let mut paths = std::collections::HashSet::new();
+			let mut route_patterns: Vec<String> = Vec::new();
+			let mut names = std::collections::HashSet::new();
+			let base_dir = ctx
+				.settings
+				.as_ref()
+				.map(|settings| settings.core().base_dir.clone())
+				.or_else(reinhardt_utils::staticfiles::PathResolver::find_project_root)
+				.unwrap_or(std::env::current_dir().map_err(crate::CommandError::IoError)?);
+			let (origin_config, connection_config) = load_websocket_configs(&base_dir)?;
+			let http_paths = router
+				.get_all_routes()
+				.into_iter()
+				.map(|(path, _, _, _)| canonical_protocol_path(&path))
+				.collect::<Vec<_>>();
+			for route in routes.websocket.routes() {
+				let normalized_path = canonical_protocol_path(route.path());
+				if !paths.insert(normalized_path.clone()) {
+					return Err(crate::CommandError::ExecutionError(format!(
+						"duplicate WebSocket route path `{}`",
+						route.path()
+					)));
+				}
+				if route_patterns
+					.iter()
+					.any(|path| protocol_paths_overlap(path, route.path()))
+				{
+					return Err(crate::CommandError::ExecutionError(format!(
+						"overlapping WebSocket route path `{}`",
+						route.path()
+					)));
+				}
+				route_patterns.push(route.path().to_string());
+				if http_paths
+					.iter()
+					.any(|http_path| protocol_paths_overlap(http_path, &normalized_path))
+				{
+					return Err(crate::CommandError::ExecutionError(format!(
+						"WebSocket route conflicts with HTTP route {}",
+						route.path()
+					)));
+				}
+				if let Some(name) = route.name()
+					&& !names.insert(name.to_string())
+				{
+					return Err(crate::CommandError::ExecutionError(format!(
+						"duplicate WebSocket route name {}",
+						name
+					)));
+				}
+				let registration = registrations
+					.iter()
+					.find(|registration| registration.key == route.consumer_key())
+					.ok_or_else(|| {
+						crate::CommandError::ExecutionError(format!(
+							"no WebSocket consumer factory registered for `{}`",
+							route.consumer_key().as_str()
+						))
+					})?;
+				endpoints.push(WebSocketEndpoint {
+					path: route.path().to_string(),
+					di_context: routes
+						.websocket_contexts
+						.iter()
+						.find(|(key, _)| *key == route.consumer_key())
+						.map(|(_, context)| std::sync::Arc::clone(context))
+						.unwrap_or_else(|| std::sync::Arc::clone(&di_context)),
+					build: registration.build,
+					preflight: registration.preflight,
+				});
+			}
+			Some(std::sync::Arc::new(WebSocketRuntime {
+				endpoints,
+				origin_config,
+				connection_config,
+			}))
+		};
+		reinhardt_core::ws::register_websocket_router(routes.websocket.clone()).await;
+
+		#[cfg(feature = "grpc")]
+		let grpc = (!routes.grpc.is_empty()).then(|| routes.grpc.build_routes());
+
+		ctx.verbose("Native HTTP, WebSocket, and gRPC routes prepared");
+		Ok(NativeLaunchPlan {
+			router,
+			di_context,
+			#[cfg(feature = "websockets")]
+			websocket,
+			#[cfg(feature = "grpc")]
+			grpc,
+		})
+	}
+
+	#[cfg(any(feature = "pages", all(feature = "server", feature = "autoreload")))]
+	fn style_feature_selection_from_context(ctx: &CommandContext) -> crate::StyleFeatureSelection {
+		if ctx.has_option("all-features") {
+			crate::StyleFeatureSelection::all_features()
+		} else {
+			crate::StyleFeatureSelection::with_features(
+				ctx.option("features")
+					.into_iter()
+					.flat_map(|raw| raw.split(','))
+					.filter(|feature| !feature.is_empty()),
+			)
+		}
+	}
+
 	/// Consume `UrlPatternsRegistration` `inventory` entries and install the
 	/// merged `ServerRouter` as the process-wide HTTP router.
 	///
@@ -2065,6 +3981,8 @@ impl BaseCommand for RunServerCommand {
 	fn options(&self) -> Vec<CommandOption> {
 		vec![
 			CommandOption::flag(None, "noreload", "Disable auto-reload"),
+			CommandOption::option(None, "grpc-address", "gRPC server address")
+				.with_default("127.0.0.1:50051"),
 			CommandOption::flag(
 				None,
 				"no-wasm-rebuild",
@@ -2089,6 +4007,27 @@ impl BaseCommand for RunServerCommand {
 				"Static files directory for WASM frontend",
 			)
 			.with_default("dist"),
+			CommandOption::option(
+				None,
+				"asset-mode",
+				"Unified asset publication mode (production or development)",
+			)
+			.with_default("production"),
+			CommandOption::option(
+				None,
+				"asset-manifest",
+				"Explicit unified asset manifest path",
+			),
+			CommandOption::option(
+				None,
+				"asset-entrypoint",
+				"Named Pages entrypoint in the unified asset manifest",
+			),
+			CommandOption::option(
+				None,
+				"expected-asset-build-id",
+				"Require the selected unified asset build identifier",
+			),
 			CommandOption::flag(None, "no-spa", "Disable SPA mode (no index.html fallback)"),
 			CommandOption::flag(
 				None,
@@ -2111,36 +4050,37 @@ impl BaseCommand for RunServerCommand {
 				"wasm-optional",
 				"Allow server to start even if WASM build fails",
 			),
+			CommandOption::option(
+				None,
+				"package",
+				"Cargo package containing component style definitions",
+			),
 		]
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-		// Explicit HTTP route registration (Refs #4453 DP-1):
-		// the inventory consumption used to be hidden inside the dispatch
-		// chain (cli.rs's `auto_register_router()` called before this body).
-		// We now make the call site visible here, on `RunServerCommand`,
-		// so that readers of `execute(..)` see exactly when and how the
-		// `#[routes]`-emitted server inventory becomes the global router.
-		//
-		// Opt-out path: users who hand-build a `ServerRouter` and call
-		// `reinhardt_urls::routers::register_router(..)` before this body
-		// runs will short-circuit through the `is_router_registered()`
-		// guard and skip the inventory pull — preserving the existing
-		// escape hatch unchanged.
-		#[cfg(feature = "routers")]
-		{
-			if !reinhardt_urls::routers::is_router_registered() {
-				self.register_http_routes_from_inventory()
-					.await
-					.map_err(|e| crate::CommandError::ExecutionError(e.to_string()))?;
-			} else {
-				ctx.verbose(
-					"ServerRouter already registered before RunServerCommand::execute; \
-					 skipping inventory pull (manual setter opt-out path).",
-				);
-			}
+		if ctx.option("asset-manifest").is_some() && !ctx.has_option("with-pages") {
+			return Err(crate::CommandError::ExecutionError(
+				"--asset-manifest requires --with-pages to enable manifest serving".into(),
+			));
 		}
+		if ctx.option("expected-asset-build-id").is_some() && !ctx.has_option("with-pages") {
+			return Err(crate::CommandError::ExecutionError(
+				"--expected-asset-build-id requires --with-pages to enable manifest serving".into(),
+			));
+		}
+		if ctx.option("asset-entrypoint").is_some() && !ctx.has_option("with-pages") {
+			return Err(crate::CommandError::ExecutionError(
+				"--asset-entrypoint requires --with-pages to enable manifest serving".into(),
+			));
+		}
+		// Route inventory is materialized once by `prepare_native_launch_plan`.
+		// This keeps HTTP, WebSocket, and gRPC registrations on one startup path.
 
+		let grpc_address = ctx
+			.option("grpc-address")
+			.map(String::as_str)
+			.unwrap_or("127.0.0.1:50051");
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let RunServerExecutionOptions {
 			address,
@@ -2159,7 +4099,70 @@ impl BaseCommand for RunServerCommand {
 			force_wasm_legacy,
 			wasm_optional,
 			index,
+			asset_mode: _asset_mode,
+			asset_manifest: _asset_manifest,
+			asset_entrypoint: _asset_entrypoint,
+			expected_asset_build_id: _expected_asset_build_id,
 		} = RunServerExecutionOptions::from_context(ctx);
+		#[cfg(feature = "pages")]
+		let requested_package = ctx.option("package").cloned();
+		#[cfg(feature = "pages")]
+		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
+		#[cfg(not(feature = "pages"))]
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
+		let requested_package: Option<String> = None;
+		#[cfg(feature = "pages")]
+		let inherited_style_root = std::env::var_os(GENERATED_STYLE_ROOT_ENV).map(PathBuf::from);
+		#[cfg(feature = "pages")]
+		let component_style_state =
+			if should_prepare_component_styles(with_pages, inherited_style_root.is_some()) {
+				let manifest = std::env::current_dir()
+					.map_err(crate::CommandError::IoError)?
+					.join("Cargo.toml");
+				Some(std::sync::Arc::new(std::sync::Mutex::new(
+					crate::ComponentStyleState::initialize_with_features(
+						manifest,
+						requested_package.clone(),
+						style_feature_selection,
+					)
+					.map_err(crate::CommandError::ExecutionError)?,
+				)))
+			} else {
+				None
+			};
+		#[cfg(all(not(feature = "pages"), feature = "server"))]
+		let component_style_state: Option<
+			std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>,
+		> = None;
+		#[cfg(feature = "pages")]
+		let (generated_style_root, component_styles_present) = if let Some(root) = inherited_style_root {
+			(Some(root), false)
+		} else if let Some(state) = &component_style_state {
+			let state = state.lock().map_err(|_| {
+				crate::CommandError::ExecutionError(
+					"component style state lock was poisoned".to_string(),
+				)
+			})?;
+			(
+				Some(state.generated_root().to_path_buf()),
+				state.has_component_styles(),
+			)
+		} else {
+			(None, false)
+		};
+		#[cfg(feature = "pages")]
+		if component_styles_present && let Some(state) = &component_style_state {
+			let state = state.lock().map_err(|_| {
+				crate::CommandError::ExecutionError(
+					"component style state lock was poisoned".to_string(),
+				)
+			})?;
+			require_pages_wasm_target(state.package_context(), true)
+				.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+		}
+		#[cfg(not(feature = "pages"))]
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
+		let generated_style_root: Option<PathBuf> = None;
 		// Build WASM frontend if --with-pages and not --no-wasm
 		#[cfg(feature = "pages")]
 		{
@@ -2188,147 +4191,10 @@ impl BaseCommand for RunServerCommand {
 			}
 		}
 
-		// Find available port early (before displaying banner)
-		#[cfg(feature = "server")]
-		let actual_address = {
-			let default_address = "127.0.0.1:8000";
-			let is_default_address = address == default_address;
-
-			let mut addr: std::net::SocketAddr = address.parse().map_err(|e| {
-				crate::CommandError::ExecutionError(format!("Invalid address '{}': {}", address, e))
-			})?;
-
-			// Find available port if using default address
-			if is_default_address {
-				use tokio::net::TcpListener;
-
-				loop {
-					match TcpListener::bind(addr).await {
-						Ok(_) => {
-							// Port is available
-							break;
-						}
-						Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-							// Port in use, try next port
-							let current_port = addr.port();
-							let new_port = current_port + 1;
-
-							if new_port > 9000 {
-								return Err(crate::CommandError::ExecutionError(
-									"Could not find available port in range 8000-9000".to_string(),
-								));
-							}
-
-							ctx.info(&format!(
-								"⚠️  Port {} already in use, trying {}...",
-								current_port, new_port
-							));
-
-							addr.set_port(new_port);
-						}
-						Err(e) => {
-							// Other error, fail
-							return Err(crate::CommandError::ExecutionError(format!(
-								"Failed to bind to {}: {}",
-								addr, e
-							)));
-						}
-					}
-				}
-			}
-
-			addr.to_string()
-		};
-
-		#[cfg(not(feature = "server"))]
+		// Keep address parsing and binding in the validated child launch path.
+		// The autoreload parent must not probe or reserve a listener before
+		// route/factory/hook validation has completed.
 		let actual_address = address.to_string();
-
-		// Determine if running in autoreload parent process
-		// In autoreload mode, the parent process should not display the startup banner
-		// because the child process will display it
-		#[cfg(all(feature = "server", feature = "autoreload"))]
-		let is_autoreload_parent = !noreload;
-		#[cfg(not(all(feature = "server", feature = "autoreload")))]
-		let is_autoreload_parent = false;
-
-		// Display startup banner with actual address (skip in autoreload parent)
-		if !is_autoreload_parent {
-			ctx.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-			ctx.info(&format!("🚀 Server:  http://{}", actual_address));
-
-			if with_pages {
-				let spa_status = if no_spa { "disabled" } else { "enabled" };
-				ctx.info(&format!(
-					"📦 WASM:    {} (SPA mode: {})",
-					static_dir_raw, spa_status
-				));
-			}
-
-			// Display index file info (Refs #2869)
-			if with_pages
-				&& !no_spa && let Some(index_str) = index.as_deref()
-			{
-				let path = std::path::Path::new(&index_str);
-				if path.exists() {
-					ctx.info(&format!("📄 Index:   {} (specified)", index_str));
-				} else {
-					ctx.warning(&format!(
-						"📄 Index:   {} (specified, missing — will be ignored)",
-						index_str
-					));
-				}
-			}
-
-			#[cfg(feature = "openapi-router")]
-			if !no_docs {
-				ctx.info(&format!("📖 Docs:    http://{}/api/docs", actual_address));
-			}
-
-			#[cfg(all(feature = "pages", feature = "routers"))]
-			if with_pages {
-				use reinhardt_urls::routers::registration::iter_registered_url_patterns;
-				// `client_router()` returns `Arc<ClientRouter>` (owned), and
-				// `route_patterns()` borrows from it, so the inner `collect`
-				// is required to terminate the borrow within the closure.
-				let mut routes: Vec<(String, Option<String>)> = iter_registered_url_patterns()
-					.filter_map(|reg| reg.client_router())
-					.flat_map(|cr| {
-						cr.route_patterns()
-							.map(|(pat, name)| (pat.to_string(), name.map(|n| n.to_string())))
-							.collect::<Vec<_>>()
-					})
-					.collect();
-				// inventory::iter order is linker-dependent; sort for a
-				// stable, diff-friendly startup banner across builds.
-				routes.sort();
-				if !routes.is_empty() {
-					ctx.info("🗺  Routes (WASM-bound):");
-					for (pat, name) in &routes {
-						if let Some(n) = name {
-							ctx.info(&format!("     {}  →  {}", pat, n));
-						} else {
-							ctx.info(&format!("     {}", pat));
-						}
-					}
-				}
-			}
-
-			ctx.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-			if insecure {
-				ctx.warning("Running with --insecure: Static files will be served");
-			}
-
-			ctx.info("");
-			ctx.info("Press CTRL-C to quit");
-			ctx.info("");
-		} else {
-			// Autoreload parent: show minimal message, child will show full banner
-			#[cfg(all(feature = "server", feature = "autoreload"))]
-			{
-				ctx.verbose("Auto-reload enabled");
-			}
-		}
 
 		#[cfg(all(feature = "server", not(feature = "autoreload")))]
 		if !noreload {
@@ -2352,6 +4218,7 @@ impl BaseCommand for RunServerCommand {
 				return Self::run_with_autoreload(
 					ctx,
 					&actual_address,
+					grpc_address,
 					insecure,
 					no_docs,
 					with_pages,
@@ -2364,6 +4231,9 @@ impl BaseCommand for RunServerCommand {
 					no_override_wasm,
 					force_wasm_legacy,
 					wasm_optional,
+					requested_package.as_deref(),
+					generated_style_root.as_deref(),
+					component_style_state.clone(),
 					watch_delay,
 				)
 				.await;
@@ -2374,6 +4244,7 @@ impl BaseCommand for RunServerCommand {
 			Self::run_server(
 				ctx,
 				&actual_address,
+				grpc_address,
 				noreload,
 				no_wasm_rebuild,
 				insecure,
@@ -2386,6 +4257,7 @@ impl BaseCommand for RunServerCommand {
 				no_override_wasm,
 				force_wasm_legacy,
 				wasm_optional,
+				generated_style_root.as_deref(),
 			)
 			.await
 		}
@@ -2459,13 +4331,13 @@ impl RunServerCommand {
 	// Allow many arguments: CLI command handler needs to accept all server configuration options
 	#[allow(clippy::too_many_arguments)]
 	async fn run_server(
-		// Context parameter reserved for future extensions (e.g., accessing global config)
-		#[allow(unused_variables)] ctx: &CommandContext,
+		ctx: &CommandContext,
 		address: &str,
+		grpc_address: &str,
 		noreload: bool,
 		// Only consumed by the autoreload pipeline; allow unused when feature is off.
 		#[cfg_attr(not(feature = "autoreload"), allow(unused_variables))] no_wasm_rebuild: bool,
-		_insecure: bool,
+		insecure: bool,
 		no_docs: bool,
 		with_pages: bool,
 		static_dir: &str,
@@ -2475,21 +4347,14 @@ impl RunServerCommand {
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		generated_style_root: Option<&std::path::Path>,
 	) -> CommandResult<()> {
 		use reinhardt_server::{HttpServer, ShutdownCoordinator};
 
 		use std::time::Duration;
 
-		// Get registered router
-		if !reinhardt_urls::routers::is_router_registered() {
-			return Err(crate::CommandError::ExecutionError(
-                "No router registered. Call reinhardt_urls::routers::register_router() or reinhardt_urls::routers::register_router_arc() before running the server.".to_string()
-            ));
-		}
-
-		let base_router = reinhardt_urls::routers::get_router().ok_or_else(|| {
-			crate::CommandError::ExecutionError("Failed to get registered router".to_string())
-		})?;
+		let launch_plan = Self::prepare_native_launch_plan(ctx).await?;
+		let base_router = launch_plan.router.clone();
 
 		// Forward any exception handler installed on the router to the server, so
 		// errors raised by server-level middleware use the same handler as the
@@ -2512,9 +4377,16 @@ impl RunServerCommand {
 		#[cfg(not(feature = "openapi-router"))]
 		let router = base_router;
 
-		// Parse socket address
+		// Parse socket addresses before hooks or listeners are started.
 		let addr: std::net::SocketAddr = address.parse().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Invalid address '{}': {}", address, e))
+		})?;
+		#[cfg(feature = "grpc")]
+		let grpc_addr: std::net::SocketAddr = grpc_address.parse().map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Invalid gRPC address '{}': {}",
+				grpc_address, e
+			))
 		})?;
 
 		// Create shutdown coordinator with 30s graceful shutdown timeout
@@ -2538,25 +4410,10 @@ impl RunServerCommand {
 
 		// OpenAPI documentation is shown in startup banner above
 
-		// Resolve DI context: reuse user-provided context from router, or create a new one.
-		// When the user attaches a DI context via UnifiedRouter::with_di_context(),
-		// we must register server-managed singletons (e.g., DatabaseConnection)
-		// into that context's singleton scope rather than creating a separate one.
-		let (singleton_scope, user_provided_context) =
-			if let Some(existing_ctx) = reinhardt_urls::routers::get_router_di_context() {
-				ctx.verbose("Using user-provided DI context from router configuration");
-				(existing_ctx.singleton_scope().clone(), Some(existing_ctx))
-			} else {
-				let scope = std::sync::Arc::new(reinhardt_di::SingletonScope::new());
-				// Apply deferred DI registrations only when no user context exists.
-				// When a user context is present, UnifiedRouter::flush_di_registrations
-				// has already applied them to the user's singleton scope.
-				if let Some(registrations) = reinhardt_urls::routers::take_di_registrations() {
-					ctx.verbose("Applying deferred DI registrations from route configuration");
-					registrations.apply_to(&scope);
-				}
-				(scope, None)
-			};
+		let di_context = launch_plan.di_context.clone();
+		#[cfg(feature = "reinhardt-db")]
+		let singleton_scope = di_context.singleton_scope().clone();
+		ctx.verbose("Using the authoritative DI context for all native protocols");
 
 		// Register DatabaseConnection in DI context when database feature is enabled.
 		// ORM is already initialized by run_command_with_registry() via
@@ -2564,11 +4421,12 @@ impl RunServerCommand {
 		// and register it in the DI singleton scope. (#3186)
 		#[cfg(feature = "reinhardt-db")]
 		{
-			match reinhardt_db::orm::get_connection().await {
-				Ok(db_conn) => {
+			match reinhardt_db::orm::get_connection_registration().await {
+				Ok((database_lease, database_handle)) => {
 					// Register DatabaseConnection directly (not wrapped in Arc)
 					// The DI system wraps it in Arc internally via SingletonScope::set
-					singleton_scope.set(db_conn);
+					singleton_scope.set(database_lease);
+					singleton_scope.set(database_handle);
 					let url = std::env::var("DATABASE_URL").ok().unwrap_or_default();
 					ctx.info(&format!(
 						"💾 Database: {} (DI registered)",
@@ -2584,13 +4442,14 @@ impl RunServerCommand {
 			}
 		}
 
-		// Build or reuse the DI context
-		let di_context = match user_provided_context {
-			Some(ctx) => ctx,
-			None => std::sync::Arc::new(
-				reinhardt_di::InjectionContext::builder(singleton_scope).build(),
-			),
-		};
+		#[cfg(feature = "websockets")]
+		if let Some(runtime) = launch_plan.websocket.as_ref() {
+			for endpoint in &runtime.endpoints {
+				(endpoint.preflight)(std::sync::Arc::clone(&endpoint.di_context))
+					.await
+					.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+			}
+		}
 
 		// Invoke runserver hook startup phase (#3442)
 		if !hooks.is_empty() {
@@ -2612,10 +4471,34 @@ impl RunServerCommand {
 			}
 		}
 
-		// Create HTTP server with DI context and logging middleware
+		#[cfg(feature = "websockets")]
+		let websocket_paths = launch_plan
+			.websocket
+			.as_ref()
+			.map(|runtime| {
+				runtime
+					.endpoints
+					.iter()
+					.map(|endpoint| endpoint.path.clone())
+					.collect::<Vec<_>>()
+			})
+			.unwrap_or_default();
+		#[cfg(not(feature = "websockets"))]
+		let websocket_paths: Vec<String> = Vec::new();
+
+		// Create HTTP server with DI context and logging middleware. WebSocket
+		// consumers share this listener and the same DI context.
+		#[cfg(feature = "websockets")]
+		let router = NativeProtocolHandler {
+			base: router,
+			websocket: launch_plan.websocket,
+			shutdown: coordinator.clone(),
+		};
 		let mut server = HttpServer::new(router)
-			.with_di_context(di_context)
+			.with_di_context(std::sync::Arc::clone(&di_context))
 			.with_middleware(reinhardt_middleware::LoggingMiddleware::new());
+		#[cfg(feature = "grpc")]
+		let grpc_routes = launch_plan.grpc;
 
 		// Errors raised by the server-level middleware registered above, or by the
 		// static-file middleware below, must use the router's handler too.
@@ -2625,57 +4508,177 @@ impl RunServerCommand {
 
 		// Add static files middleware for WASM frontend if enabled
 		if with_pages {
-			use reinhardt_utils::staticfiles::PathResolver;
 			use reinhardt_utils::staticfiles::caching::CacheControlConfig;
 			use reinhardt_utils::staticfiles::middleware::{
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
+			use reinhardt_utils::staticfiles::{PathResolver, TemplateStaticConfig};
+			let static_asset_settings =
+				match PathResolver::find_project_root().or_else(|| std::env::current_dir().ok()) {
+					Some(project_root) => match configured_static_assets(&project_root) {
+						Ok(settings) => Some(settings),
+						Err(error) => {
+							ctx.warning(&format!(
+								"Failed to load static URL for generated component styles: {error}. Using /static/."
+							));
+							None
+						}
+					},
+					None => None,
+				};
+			let generated_style_url = normalize_static_url_prefix(
+				static_asset_settings
+					.as_ref()
+					.map_or("/static/", |settings| settings.static_url.as_str()),
+			);
 
-			// Auto-mount <project-root>/static/ at /static/ unless opted out.
-			// This is registered BEFORE the dist/ middleware so that, when
-			// MiddlewareChain::handle reverses registration order at request
-			// time, the project-static middleware sits outermost and runs
-			// first; misses fall through to the dist/ middleware and then to
-			// the application router (Issue #4484).
-			if !no_project_static && let Some(project_root) = PathResolver::find_project_root() {
-				let project_static_dir = project_root.join("static");
-				if project_static_dir.is_dir() {
-					let mut project_static_config =
-						StaticFilesConfig::new(project_static_dir.clone())
-							.url_prefix("/static/")
-							.spa_mode(false)
-							.auto_inject_wasm(false)
-							.passthrough_prefixes(vec!["/static/admin/".to_string()]);
-					// Disable long-lived caching in dev (mirrors #4383 for the
-					// dist/ bundle so hot-reload picks up CSS/JS edits).
-					#[cfg(debug_assertions)]
-					{
-						project_static_config =
-							project_static_config.cache_config(CacheControlConfig::disabled());
-					}
-					server =
-						server.with_middleware(StaticFilesMiddleware::new(project_static_config));
-					ctx.verbose(&format!(
-						"Project static files middleware enabled: {} (mounted at /static/)",
-						project_static_dir.display()
-					));
+			if let Some(generated_root) = generated_style_root {
+				let mut generated_config = StaticFilesConfig::new(generated_root.to_path_buf())
+					.url_prefix(generated_style_url.clone())
+					.spa_mode(false)
+					.auto_inject_wasm(false);
+				#[cfg(debug_assertions)]
+				{
+					generated_config =
+						generated_config.cache_config(CacheControlConfig::disabled());
 				}
+				server = server.with_middleware(StaticFilesMiddleware::new(generated_config));
 			}
+
+			// Resolve the optional project-static root here and register it below,
+			// once we know whether generation-owned paths must pass through to the
+			// manifest middleware.
+			let project_static_dir = (!no_project_static)
+				.then(|| PathResolver::find_project_root().map(|root| root.join("static")))
+				.flatten()
+				.filter(|directory| directory.is_dir());
 
 			// Automatically resolve static directory path
 			let resolved_static_dir = PathResolver::resolve_static_dir(static_dir);
+			let collected_static_dir = static_asset_settings.as_ref().map_or_else(
+				|| resolved_static_dir.clone(),
+				|settings| settings.static_root.clone(),
+			);
+			let manifest_path = ctx
+				.option("asset-manifest")
+				.map(PathBuf::from)
+				.unwrap_or_else(|| collected_static_dir.join("manifest.json"));
+			let store = crate::runserver_assets::load_store(
+				Some(&collected_static_dir),
+				ctx.option("asset-manifest").map(std::path::Path::new),
+				ctx.option("asset-mode")
+					.map_or("production", String::as_str),
+				ctx.option("expected-asset-build-id").map(String::as_str),
+			)
+			.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+			let has_unified_manifest = store.is_some();
+			if let Some(project_static_dir) = project_static_dir {
+				let project_static_url = generated_style_url.clone();
+				let passthrough =
+					project_static_passthrough_prefixes(&project_static_url, has_unified_manifest);
+				let mut project_static_config = StaticFilesConfig::new(project_static_dir.clone())
+					.url_prefix(project_static_url.clone())
+					.spa_mode(false)
+					.auto_inject_wasm(false)
+					.passthrough_prefixes(passthrough);
+				#[cfg(debug_assertions)]
+				{
+					project_static_config =
+						project_static_config.cache_config(CacheControlConfig::disabled());
+				}
+				server = server.with_middleware(StaticFilesMiddleware::new(project_static_config));
+				ctx.verbose(&format!(
+					"Project static files middleware enabled: {} (mounted at {})",
+					project_static_dir.display(),
+					project_static_url
+				));
+			}
+			let mut unified_manifest_mounted = false;
+			if let Some(store) = store {
+				let navigation = !no_spa && !store.active().manifest().entrypoints.is_empty();
+				let store = std::sync::Arc::new(store);
+				let hmr_injection: Option<String> = {
+					#[cfg(feature = "pages")]
+					{
+						Self::autoreload_hmr_port_from_env(ctx)
+							.map(reinhardt_pages::hmr::hmr_script_tag)
+					}
+					#[cfg(not(feature = "pages"))]
+					{
+						None
+					}
+				};
+				let mut config = crate::runserver_assets::serving_config(
+					store,
+					generated_style_url.clone(),
+					ctx.option("asset-entrypoint").map(String::as_str),
+					navigation,
+				)
+				.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+				if let Some(injection) = &hmr_injection {
+					config = config.with_trusted_html_injection(injection.clone());
+				}
+				server = server.with_middleware(
+					reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware::new(
+						config,
+					),
+				);
+				unified_manifest_mounted = true;
+				ctx.verbose(&format!(
+					"Unified static asset manifest enabled: {} (mounted at {})",
+					manifest_path.display(),
+					generated_style_url
+				));
+			}
+			let manifest_aliases = if unified_manifest_mounted {
+				std::collections::HashMap::new()
+			} else {
+				match load_static_manifest(&collected_static_dir).await {
+					Ok(aliases) => aliases,
+					Err(error) => {
+						ctx.warning(&format!(
+							"Failed to load collectstatic manifest aliases: {error}"
+						));
+						std::collections::HashMap::new()
+					}
+				}
+			};
+			let root_static_dir = if generated_style_url == "/" {
+				collected_static_dir.clone()
+			} else {
+				resolved_static_dir.clone()
+			};
 
-			let mut static_config = StaticFilesConfig::new(resolved_static_dir.clone())
+			// Collected assets use the configured STATIC_URL, while the root mount
+			// below remains responsible for SPA routes and legacy bundle URLs.
+			if generated_style_url != "/" && !unified_manifest_mounted {
+				let mut collected_static_config = StaticFilesConfig::new(collected_static_dir)
+					.url_prefix(generated_style_url.clone())
+					.spa_mode(false)
+					.auto_inject_wasm(false)
+					.manifest_aliases(manifest_aliases.clone());
+				#[cfg(debug_assertions)]
+				{
+					collected_static_config =
+						collected_static_config.cache_config(CacheControlConfig::disabled());
+				}
+				server =
+					server.with_middleware(StaticFilesMiddleware::new(collected_static_config));
+			}
+
+			let mut static_config = StaticFilesConfig::new(root_static_dir)
 				.url_prefix("/")
 				.spa_mode(!no_spa)
+				.manifest_aliases(if generated_style_url == "/" {
+					manifest_aliases
+				} else {
+					std::collections::HashMap::new()
+				})
+				.template_static_config(TemplateStaticConfig::new(generated_style_url.clone()))
 				// Exclude framework-managed route prefixes from SPA fallback
 				// so that API endpoints and admin panel are handled by the
 				// application router instead of receiving index.html.
-				.excluded_prefixes(vec![
-					"/api/".to_string(),
-					"/admin/".to_string(),
-					"/static/admin/".to_string(),
-				]);
+				.excluded_prefixes(spa_excluded_prefixes(&generated_style_url, &websocket_paths));
 
 			// Issue #4383: In debug builds (dev runserver), disable the
 			// long-lived `public, immutable, max-age=31536000` Cache-Control
@@ -2688,10 +4691,12 @@ impl RunServerCommand {
 				static_config = static_config.cache_config(CacheControlConfig::disabled());
 			}
 
-			#[cfg(feature = "pages")]
-			if let Some(hmr_port) = Self::autoreload_hmr_port_from_env(ctx) {
-				static_config = static_config
-					.trusted_html_injection(reinhardt_pages::hmr::hmr_script_tag(hmr_port));
+			if !unified_manifest_mounted {
+				#[cfg(feature = "pages")]
+				if let Some(hmr_port) = Self::autoreload_hmr_port_from_env(ctx) {
+					static_config = static_config
+						.trusted_html_injection(reinhardt_pages::hmr::hmr_script_tag(hmr_port));
+				}
 			}
 
 			// Resolve index file for SPA fallback (only when SPA mode is enabled)
@@ -2726,7 +4731,9 @@ impl RunServerCommand {
 				}
 			}
 
-			server = server.with_middleware(StaticFilesMiddleware::new(static_config));
+			if !unified_manifest_mounted {
+				server = server.with_middleware(StaticFilesMiddleware::new(static_config));
+			}
 			ctx.verbose(&format!(
 				"Static files middleware enabled: {} (resolved from: {})",
 				resolved_static_dir.display(),
@@ -2734,43 +4741,199 @@ impl RunServerCommand {
 			));
 		}
 
-		// Run with or without auto-reload
+		#[cfg(feature = "autoreload")]
 		if !noreload {
-			#[cfg(feature = "autoreload")]
-			{
-				let index_raw = ctx.option("index").map(|s| s.to_string());
-				Self::run_with_autoreload(
-					ctx,
-					address,
-					_insecure,
-					no_docs,
-					with_pages,
-					static_dir,
-					no_spa,
-					no_project_static,
-					index_raw.as_deref(),
-					no_wasm_rebuild,
-					no_wasm,
-					no_override_wasm,
-					force_wasm,
-					wasm_optional,
-					crate::debounced_watcher::DEBOUNCE_WINDOW,
-				)
-				.await
-			}
-			#[cfg(not(feature = "autoreload"))]
-			{
-				server
-					.listen_with_shutdown(addr, ShutdownCoordinator::clone(&coordinator))
-					.await
-					.map_err(|e| crate::CommandError::ExecutionError(e.to_string()))
-			}
-		} else {
-			server
-				.listen_with_shutdown(addr, ShutdownCoordinator::clone(&coordinator))
-				.await
-				.map_err(|e| crate::CommandError::ExecutionError(e.to_string()))
+			let index_raw = ctx.option("index").map(|s| s.to_string());
+			return Self::run_with_autoreload(
+				ctx,
+				address,
+				grpc_address,
+				insecure,
+				no_docs,
+				with_pages,
+				static_dir,
+				no_spa,
+				no_project_static,
+				index_raw.as_deref(),
+				no_wasm_rebuild,
+				no_wasm,
+				no_override_wasm,
+				force_wasm,
+				wasm_optional,
+				ctx.option("package").map(String::as_str),
+				generated_style_root,
+				None,
+				crate::debounced_watcher::DEBOUNCE_WINDOW,
+			)
+			.await;
 		}
+
+		// Bind after route, factory, DI, and hook validation. The listener is
+		// retained and handed to HttpServer so no preflight work is repeated.
+		let mut http_addr = addr;
+		let listener = loop {
+			match tokio::net::TcpListener::bind(http_addr).await {
+				Ok(listener) => break listener,
+				Err(error)
+					if address == "127.0.0.1:8000"
+						&& error.kind() == std::io::ErrorKind::AddrInUse =>
+				{
+					let next_port = http_addr.port().saturating_add(1);
+					if next_port > 9000 {
+						coordinator.shutdown();
+						return Err(crate::CommandError::ExecutionError(
+							"Could not find available port in range 8000-9000".to_string(),
+						));
+					}
+					http_addr.set_port(next_port);
+				}
+				Err(error) => {
+					coordinator.shutdown();
+					return Err(crate::CommandError::ExecutionError(format!(
+						"failed to bind HTTP address {http_addr}: {error}"
+					)));
+				}
+			}
+		};
+		if http_addr != addr {
+			ctx.info(&format!("HTTP port in use; using {http_addr}"));
+		}
+		ctx.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+		ctx.info(&format!("🚀 Server:  http://{http_addr}"));
+		if with_pages {
+			let spa_status = if no_spa { "disabled" } else { "enabled" };
+			ctx.info(&format!(
+				"📦 WASM:    {static_dir} (SPA mode: {spa_status})"
+			));
+		}
+		if with_pages
+			&& !no_spa
+			&& let Some(index_str) = ctx.option("index")
+		{
+			let path = std::path::Path::new(index_str);
+			if path.exists() {
+				ctx.info(&format!("📄 Index:   {index_str} (specified)"));
+			} else {
+				ctx.warning(&format!(
+					"📄 Index:   {index_str} (specified, missing — will be ignored)"
+				));
+			}
+		}
+		#[cfg(feature = "openapi-router")]
+		if !no_docs {
+			ctx.info(&format!("📖 Docs:    http://{http_addr}/api/docs"));
+		}
+		#[cfg(all(feature = "pages", feature = "routers"))]
+		if with_pages {
+			use reinhardt_urls::routers::registration::iter_registered_url_patterns;
+			let mut routes: Vec<(String, Option<String>)> = iter_registered_url_patterns()
+				.filter_map(|registration| registration.client_router())
+				.flat_map(|router| {
+					router
+						.route_patterns()
+						.map(|(path, name)| (path.to_string(), name.map(str::to_string)))
+						.collect::<Vec<_>>()
+				})
+				.collect();
+			routes.sort();
+			if !routes.is_empty() {
+				ctx.info("🗺  Routes (WASM-bound):");
+				for (path, name) in &routes {
+					if let Some(name) = name {
+						ctx.info(&format!("     {path}  →  {name}"));
+					} else {
+						ctx.info(&format!("     {path}"));
+					}
+				}
+			}
+		}
+		ctx.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+		if insecure {
+			ctx.warning("Running with --insecure: Static files will be served");
+		}
+		ctx.info("");
+		ctx.info("Press CTRL-C to quit");
+		ctx.info("");
+
+		#[cfg(feature = "grpc")]
+		if let Some(routes) = grpc_routes {
+			let incoming =
+				tonic::transport::server::TcpIncoming::bind(grpc_addr).map_err(|error| {
+					coordinator.shutdown();
+					crate::CommandError::ExecutionError(format!(
+						"failed to bind gRPC address {grpc_addr}: {error}"
+					))
+				})?;
+			let grpc_coordinator = coordinator.clone();
+			let mut grpc_shutdown = grpc_coordinator.subscribe();
+			let grpc_di_context = std::sync::Arc::clone(&di_context);
+			let grpc_future = async move {
+				tonic::transport::Server::builder()
+					.layer(tonic::service::InterceptorLayer::new(
+						move |mut request: tonic::Request<()>| {
+							request
+								.extensions_mut()
+								.insert(std::sync::Arc::clone(&grpc_di_context));
+							Ok(request)
+						},
+					))
+					.add_routes(routes)
+					.serve_with_incoming_shutdown(incoming, async move {
+						let _ = grpc_shutdown.recv().await;
+					})
+					.await
+					.map_err(|error| error.to_string())
+			};
+			let http_coordinator = coordinator.clone();
+			let http_future = async move {
+				server
+					.listen_on_with_shutdown(listener, http_coordinator)
+					.await
+					.map_err(|error| error.to_string())
+			};
+			tokio::pin!(grpc_future);
+			tokio::pin!(http_future);
+			let shutdown_timeout = coordinator.timeout_duration();
+			return tokio::select! {
+				http = &mut http_future => {
+					let shutdown_requested = coordinator.is_shutdown();
+					coordinator.shutdown();
+					let shutdown_deadline = tokio::time::Instant::now() + shutdown_timeout;
+					let _ = tokio::time::timeout(
+						shutdown_deadline.saturating_duration_since(tokio::time::Instant::now()),
+						&mut grpc_future,
+					)
+					.await;
+					match http {
+						Ok(()) if shutdown_requested => Ok(()),
+						Ok(()) => Err(crate::CommandError::ExecutionError("HTTP listener exited unexpectedly".to_string())),
+						Err(error) => Err(crate::CommandError::ExecutionError(error)),
+					}
+				}
+				grpc = &mut grpc_future => {
+					let shutdown_requested = coordinator.is_shutdown();
+					coordinator.shutdown();
+					let shutdown_deadline = tokio::time::Instant::now() + shutdown_timeout;
+					let _ = tokio::time::timeout(
+						shutdown_deadline.saturating_duration_since(tokio::time::Instant::now()),
+						&mut http_future,
+					)
+					.await;
+					match grpc {
+						Ok(()) if shutdown_requested => Ok(()),
+						Ok(()) => Err(crate::CommandError::ExecutionError("gRPC listener exited unexpectedly".to_string())),
+						Err(error) => Err(crate::CommandError::ExecutionError(error)),
+					}
+				}
+			};
+		}
+
+		#[cfg(not(feature = "grpc"))]
+		let _ = grpc_address;
+		server
+			.listen_on_with_shutdown(listener, coordinator)
+			.await
+			.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))
 	}
 
 	/// Start the browser-facing HMR WebSocket listener for autoreload mode.
@@ -2853,6 +5016,7 @@ impl RunServerCommand {
 	async fn run_with_autoreload(
 		ctx: &CommandContext,
 		address: &str,
+		grpc_address: &str,
 		insecure: bool,
 		no_docs: bool,
 		with_pages: bool,
@@ -2865,8 +5029,31 @@ impl RunServerCommand {
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		package: Option<&str>,
+		generated_style_root: Option<&std::path::Path>,
+		component_style_state: Option<std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
 		debounce_window: std::time::Duration,
 	) -> CommandResult<()> {
+		#[cfg(not(feature = "pages"))]
+		let _ = &component_style_state;
+
+		// The autoreload parent performs the same address and route/factory
+		// preflight as the child, but does not bind application listeners or
+		// invoke RunserverHook::on_server_start.
+		address.parse::<std::net::SocketAddr>().map_err(|error| {
+			crate::CommandError::ExecutionError(format!("Invalid address '{}': {}", address, error))
+		})?;
+		#[cfg(feature = "grpc")]
+		grpc_address
+			.parse::<std::net::SocketAddr>()
+			.map_err(|error| {
+				crate::CommandError::ExecutionError(format!(
+					"Invalid gRPC address '{}': {}",
+					grpc_address, error
+				))
+			})?;
+		Self::prepare_native_launch_plan(ctx).await?;
+
 		// Resolve the cargo metadata for the current working directory.
 		let metadata = cargo_metadata::MetadataCommand::new().exec().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("cargo metadata failed: {}", e))
@@ -2877,7 +5064,15 @@ impl RunServerCommand {
 		})?;
 		let cwd_manifest = cwd.join("Cargo.toml");
 
-		let roots = crate::source_roots::SourceRoots::from_metadata(&metadata, &cwd_manifest);
+		let mut roots = crate::source_roots::SourceRoots::from_metadata(&metadata, &cwd_manifest);
+		if let Some(package) = package {
+			let pages_manifest =
+				crate::source_roots::SourceRoots::selected_package_manifest(&metadata, package)
+					.map_err(crate::CommandError::ExecutionError)?;
+			let pages_roots =
+				crate::source_roots::SourceRoots::from_metadata(&metadata, &pages_manifest);
+			roots.merge(pages_roots);
+		}
 
 		// Derive the bin name from the current executable file stem. The
 		// child server is always re-spawned by re-execing the same binary,
@@ -2944,8 +5139,24 @@ impl RunServerCommand {
 
 		// Captured state for the respawn closure.
 		let address_owned = address.to_string();
+		let grpc_address_owned = grpc_address.to_string();
 		let static_dir_owned = static_dir.to_string();
 		let index_owned = index.map(|s| s.to_string());
+		let asset_mode_owned = ctx
+			.option("asset-mode")
+			.map_or("production", String::as_str)
+			.to_string();
+		let asset_manifest_owned = ctx.option("asset-manifest").map(ToString::to_string);
+		let asset_entrypoint_owned = ctx.option("asset-entrypoint").map(ToString::to_string);
+		let expected_asset_build_id_owned = ctx
+			.option("expected-asset-build-id")
+			.map(ToString::to_string);
+		let package_owned = package.map(str::to_string);
+		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
+		let style_features = style_feature_selection.features().to_vec();
+		let all_style_features = style_feature_selection.all_features_enabled();
+		let respawn_features = style_features.clone();
+		let generated_style_root_owned = generated_style_root.map(std::path::Path::to_path_buf);
 		#[cfg(feature = "pages")]
 		let hmr = Self::start_autoreload_hmr(ctx, with_pages).await?;
 		#[cfg(feature = "pages")]
@@ -2954,10 +5165,13 @@ impl RunServerCommand {
 		let hmr_port: Option<u16> = None;
 		#[cfg(feature = "pages")]
 		let hmr_tx = hmr.as_ref().map(|(server, _)| server.sender());
+		#[cfg(feature = "pages")]
+		let hmr_server = hmr.as_ref().map(|(server, _)| server.clone());
 
 		let respawn = move || -> std::io::Result<tokio::process::Child> {
 			Self::spawn_server_process(
 				&address_owned,
+				&grpc_address_owned,
 				insecure,
 				no_docs,
 				with_pages,
@@ -2965,11 +5179,19 @@ impl RunServerCommand {
 				no_spa,
 				no_project_static,
 				index_owned.as_deref(),
+				&asset_mode_owned,
+				asset_manifest_owned.as_deref(),
+				asset_entrypoint_owned.as_deref(),
+				expected_asset_build_id_owned.as_deref(),
 				hmr_port,
 				no_wasm,
 				no_override_wasm,
 				force_wasm,
 				wasm_optional,
+				package_owned.as_deref(),
+				&respawn_features,
+				all_style_features,
+				generated_style_root_owned.as_deref(),
 			)
 			.map_err(|e| std::io::Error::other(e.to_string()))
 		};
@@ -2981,6 +5203,8 @@ impl RunServerCommand {
 		})?;
 
 		let cfg = crate::debounced_watcher::WatcherConfig {
+			#[cfg(feature = "pages")]
+			project_root: cwd,
 			bin_name,
 			address: address.to_string(),
 			roots,
@@ -2991,13 +5215,22 @@ impl RunServerCommand {
 			pages_enabled: with_pages,
 			#[cfg(feature = "pages")]
 			hmr_tx,
+			#[cfg(feature = "pages")]
+			hmr_server,
+			#[cfg(feature = "pages")]
+			component_styles: component_style_state,
 		};
 
-		crate::debounced_watcher::run_watcher(ctx, &cfg, shutdown_rx, child, respawn)
-			.await
-			.map_err(|e| {
-				crate::CommandError::ExecutionError(format!("File watcher error: {}", e))
-			})?;
+		crate::debounced_watcher::run_watcher_for_package(
+			ctx,
+			&cfg,
+			crate::debounced_watcher::ServerRebuildContext::for_native_server(),
+			shutdown_rx,
+			child,
+			respawn,
+		)
+		.await
+		.map_err(|e| crate::CommandError::ExecutionError(format!("File watcher error: {}", e)))?;
 
 		Ok(())
 	}
@@ -3165,6 +5398,7 @@ impl RunServerCommand {
 	#[allow(clippy::too_many_arguments)]
 	fn spawn_server_process(
 		address: &str,
+		grpc_address: &str,
 		insecure: bool,
 		no_docs: bool,
 		with_pages: bool,
@@ -3172,11 +5406,19 @@ impl RunServerCommand {
 		no_spa: bool,
 		no_project_static: bool,
 		index: Option<&str>,
+		asset_mode: &str,
+		asset_manifest: Option<&str>,
+		asset_entrypoint: Option<&str>,
+		expected_asset_build_id: Option<&str>,
 		hmr_port: Option<u16>,
 		no_wasm: bool,
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		package: Option<&str>,
+		features: &[String],
+		all_features: bool,
+		generated_style_root: Option<&std::path::Path>,
 	) -> CommandResult<tokio::process::Child> {
 		let current_exe = std::env::current_exe().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
@@ -3202,6 +5444,7 @@ impl RunServerCommand {
 		let mut cmd = tokio::process::Command::new(&current_exe);
 		let child_options = AutoreloadChildOptions {
 			address,
+			grpc_address,
 			insecure,
 			no_docs,
 			with_pages,
@@ -3209,15 +5452,26 @@ impl RunServerCommand {
 			no_spa,
 			no_project_static,
 			index,
+			asset_mode,
+			asset_manifest,
+			asset_entrypoint,
+			expected_asset_build_id,
 			hmr_port,
 			no_wasm,
 			no_override_wasm,
 			force_wasm,
 			wasm_optional,
+			package,
+			features,
+			all_features,
+			generated_style_root,
 		};
 		cmd.args(Self::build_autoreload_child_args(&child_options));
 		if let Some(port) = child_options.hmr_port {
 			cmd.env("REINHARDT_HMR_PORT", port.to_string());
+		}
+		if let Some(root) = child_options.generated_style_root {
+			cmd.env(GENERATED_STYLE_ROOT_ENV, root);
 		}
 
 		// Set environment variable to indicate this is a child process (prevent log duplication, etc.)
@@ -3253,6 +5507,8 @@ impl RunServerCommand {
 			options.address.to_string(),
 			"--noreload".to_string(),
 		];
+		args.push("--grpc-address".to_string());
+		args.push(options.grpc_address.to_string());
 
 		if options.insecure {
 			args.push("--insecure".to_string());
@@ -3277,6 +5533,22 @@ impl RunServerCommand {
 			args.push("--index".to_string());
 			args.push(index_path.to_string());
 		}
+		if options.asset_mode != "production" {
+			args.push("--asset-mode".to_string());
+			args.push(options.asset_mode.to_string());
+		}
+		if let Some(manifest) = options.asset_manifest {
+			args.push("--asset-manifest".to_string());
+			args.push(manifest.to_string());
+		}
+		if let Some(entrypoint) = options.asset_entrypoint {
+			args.push("--asset-entrypoint".to_string());
+			args.push(entrypoint.to_string());
+		}
+		if let Some(build_id) = options.expected_asset_build_id {
+			args.push("--expected-asset-build-id".to_string());
+			args.push(build_id.to_string());
+		}
 		if options.no_wasm {
 			args.push("--no-wasm".to_string());
 		}
@@ -3288,6 +5560,16 @@ impl RunServerCommand {
 		}
 		if options.wasm_optional {
 			args.push("--wasm-optional".to_string());
+		}
+		if let Some(package) = options.package {
+			args.push("--package".to_string());
+			args.push(package.to_string());
+		}
+		if options.all_features {
+			args.push("--all-features".to_string());
+		} else if !options.features.is_empty() {
+			args.push("--features".to_string());
+			args.push(options.features.join(","));
 		}
 
 		args
@@ -3311,41 +5593,31 @@ impl RunServerCommand {
 			}
 		};
 		let cargo_toml_path = cwd.join("Cargo.toml");
-
+		let feature_selection = Self::style_feature_selection_from_context(ctx);
+		let package_context = crate::StylePackageContext::resolve_with_features(
+			&cargo_toml_path,
+			ctx.option("package").map(String::as_str),
+			feature_selection.clone(),
+		)
+		.map_err(crate::wasm_builder::WasmBuildError::PackageResolutionFailed)?;
 		// Only build if this project exports cdylib
-		if !crate::wasm_builder::detect_cdylib_in_cargo_toml(&cargo_toml_path) {
+		if !package_context.has_cdylib_target() {
 			return Ok(());
 		}
+		let package_name = package_context.package_name.clone();
+		let target_name = package_context.wasm_target_name().to_owned();
+		let static_dir = ctx
+			.option("static-dir")
+			.map(String::as_str)
+			.unwrap_or("dist");
 
-		// Parse the crate name from Cargo.toml
-		let crate_name = match std::fs::read_to_string(&cargo_toml_path) {
-			Ok(content) => {
-				let mut name = String::new();
-				for line in content.lines() {
-					let trimmed = line.trim();
-					if trimmed.starts_with("name")
-						&& trimmed.contains('=')
-						&& let Some(val) = trimmed.split('=').nth(1)
-					{
-						name = val.trim().trim_matches('"').trim_matches('\'').to_string();
-						break;
-					}
-				}
-				if name.is_empty() {
-					ctx.warning("Could not determine crate name from Cargo.toml");
-					return Ok(());
-				}
-				name
-			}
-			Err(e) => {
-				ctx.warning(&format!("Failed to read Cargo.toml: {}", e));
-				return Ok(());
-			}
-		};
-
-		let js_name = crate_name.replace('-', "_");
-		let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
-		if !force && !crate::wasm_builder::is_wasm_stale(&cwd, &artifact) {
+		let js_name = target_name.replace('-', "_");
+		let artifact = cwd.join(static_dir).join(format!("{}_bg.wasm", js_name));
+		if !force
+			&& !crate::wasm_builder::is_wasm_stale_for_roots(
+				package_context.source_package_roots(),
+				&artifact,
+			) {
 			ctx.info("Pages WASM: artifacts up to date, skipping build (--no-override-wasm)");
 			return Ok(());
 		}
@@ -3359,16 +5631,33 @@ impl RunServerCommand {
 		};
 		ctx.info(&format!(
 			"Building pages WASM for {} ({})...",
-			crate_name, reason
+			package_name, reason
 		));
-		let config = crate::wasm_builder::WasmBuildConfig::new(".").output_dir("dist");
-		match crate::wasm_builder::WasmBuilder::new(config).build() {
+		let config = Self::pages_wasm_build_config(&package_name, &target_name, static_dir);
+		let builder = crate::wasm_builder::WasmBuilder::new(config)
+			.features(feature_selection.features().iter().cloned())
+			.all_features(feature_selection.all_features_enabled());
+		match builder.build() {
 			Ok(_) => {
 				ctx.info("Pages WASM build succeeded.");
 				Ok(())
 			}
 			Err(e) => Err(e),
 		}
+	}
+
+	/// Configure the Pages bundle to use the same debug cfgs as style extraction.
+	#[cfg(feature = "pages")]
+	fn pages_wasm_build_config(
+		package_name: &str,
+		target_name: &str,
+		static_dir: &str,
+	) -> crate::wasm_builder::WasmBuildConfig {
+		crate::wasm_builder::WasmBuildConfig::new(".")
+			.output_dir(static_dir)
+			.release(!cfg!(debug_assertions))
+			.target_name(target_name)
+			.package(package_name)
 	}
 }
 
@@ -3492,6 +5781,50 @@ impl BaseCommand for ShowUrlsCommand {
 /// Check system command
 pub struct CheckCommand;
 
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_MARKER: &str = "__reinhardt_scoped_check";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_DATABASE_URL: &str = "__reinhardt_scoped_check_database_url";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_STATIC_ROOT: &str = "__reinhardt_scoped_check_static_root";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_SECRET_LENGTH: &str = "__reinhardt_scoped_check_secret_length";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_DEBUG: &str = "__reinhardt_scoped_check_debug";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_ALLOWED_HOSTS: &str = "__reinhardt_scoped_check_allowed_hosts";
+#[cfg(feature = "contract")]
+const SCOPED_CHECK_SSL_REDIRECT: &str = "__reinhardt_scoped_check_ssl_redirect";
+
+#[cfg(feature = "contract")]
+pub(crate) fn attach_scoped_check_inputs(
+	ctx: &mut CommandContext,
+	inputs: &crate::capabilities::CheckInputs,
+) {
+	ctx.set_option(SCOPED_CHECK_MARKER.to_owned(), "true".to_owned());
+	if let Some(url) = &inputs.database_url {
+		ctx.set_option(SCOPED_CHECK_DATABASE_URL.to_owned(), url.clone());
+	}
+	ctx.set_option(
+		SCOPED_CHECK_STATIC_ROOT.to_owned(),
+		inputs.static_root_configured.to_string(),
+	);
+	if let Some(length) = inputs.secret_key_length {
+		ctx.set_option(SCOPED_CHECK_SECRET_LENGTH.to_owned(), length.to_string());
+	}
+	if let Some(debug) = inputs.debug {
+		ctx.set_option(SCOPED_CHECK_DEBUG.to_owned(), debug.to_string());
+	}
+	ctx.set_option(
+		SCOPED_CHECK_ALLOWED_HOSTS.to_owned(),
+		inputs.allowed_hosts_configured.to_string(),
+	);
+	ctx.set_option(
+		SCOPED_CHECK_SSL_REDIRECT.to_owned(),
+		inputs.ssl_redirect.to_string(),
+	);
+}
+
 #[async_trait]
 impl BaseCommand for CheckCommand {
 	fn name(&self) -> &str {
@@ -3544,11 +5877,27 @@ impl BaseCommand for CheckCommand {
 		// 2. Settings validation
 		ctx.info("Checking settings...");
 		checks_passed += Self::check_settings(ctx, is_deploy);
+		#[cfg(feature = "contract")]
+		if is_deploy && ctx.has_option(SCOPED_CHECK_MARKER) {
+			if ctx
+				.option(SCOPED_CHECK_SECRET_LENGTH)
+				.and_then(|length| length.parse::<usize>().ok())
+				.is_none_or(|length| length < 32)
+			{
+				checks_failed += 1;
+			}
+			if ctx
+				.option(SCOPED_CHECK_DEBUG)
+				.is_some_and(|value| value == "true")
+			{
+				checks_failed += 1;
+			}
+		}
 
 		// 3. Migration status check (only when we have a database URL).
 		if database_url.is_some() {
 			ctx.info("Checking migrations...");
-			match Self::check_migrations().await {
+			match Self::check_migrations(database_url.as_deref().expect("checked above")).await {
 				Ok(count) => {
 					if count == 0 {
 						ctx.success("  ✓ All migrations applied");
@@ -3582,6 +5931,22 @@ impl BaseCommand for CheckCommand {
 		if is_deploy {
 			ctx.info("Checking security settings...");
 			checks_passed += Self::check_security(ctx);
+			#[cfg(feature = "contract")]
+			if ctx.has_option(SCOPED_CHECK_MARKER)
+				&& ctx
+					.option(SCOPED_CHECK_ALLOWED_HOSTS)
+					.is_some_and(|value| value == "false")
+			{
+				checks_failed += 1;
+			}
+			#[cfg(feature = "contract")]
+			if ctx.has_option(SCOPED_CHECK_MARKER)
+				&& ctx
+					.option(SCOPED_CHECK_SSL_REDIRECT)
+					.is_some_and(|value| value == "false")
+			{
+				checks_failed += 1;
+			}
 		}
 
 		ctx.info("");
@@ -3607,6 +5972,10 @@ impl CheckCommand {
 	///
 	/// Returns `None` when neither source produces a URL.
 	fn resolve_database_url(ctx: &CommandContext) -> Option<String> {
+		#[cfg(feature = "contract")]
+		if ctx.has_option(SCOPED_CHECK_MARKER) {
+			return ctx.option(SCOPED_CHECK_DATABASE_URL).cloned();
+		}
 		let env_database_url = std::env::var("DATABASE_URL").ok();
 
 		#[cfg(feature = "reinhardt-db")]
@@ -3642,6 +6011,12 @@ impl CheckCommand {
 	/// Returns true when a static-files root is configured, either via
 	/// composed settings or via the `STATIC_ROOT` env var.
 	fn resolve_static_root_configured(_ctx: &CommandContext) -> bool {
+		#[cfg(feature = "contract")]
+		if _ctx.has_option(SCOPED_CHECK_MARKER) {
+			return _ctx
+				.option(SCOPED_CHECK_STATIC_ROOT)
+				.is_some_and(|value| value == "true");
+		}
 		// CoreSettings does not own the static-files root; downstream
 		// projects compose `StaticSettings` separately. Without
 		// `HasStaticSettings` in `HasCommonSettings` we cannot peek at
@@ -3669,7 +6044,7 @@ impl CheckCommand {
 							connection
 								.execute("SELECT 1", vec![])
 								.await
-								.map_err(|e| format!("Query failed: {}", e))?;
+								.map_err(|_| "Query failed".to_owned())?;
 						}
 						_ => {
 							// MySQL or other database types that don't have SQL execution support yet
@@ -3677,7 +6052,7 @@ impl CheckCommand {
 					}
 					Ok(())
 				}
-				Err(e) => Err(format!("Connection failed: {:?}", e)),
+				Err(_) => Err("Connection failed".to_owned()),
 			}
 		}
 
@@ -3691,6 +6066,31 @@ impl CheckCommand {
 	/// Check settings configuration
 	fn check_settings(ctx: &CommandContext, is_deploy: bool) -> u32 {
 		let mut passed = 0;
+		#[cfg(feature = "contract")]
+		if ctx.has_option(SCOPED_CHECK_MARKER) {
+			if is_deploy {
+				match ctx
+					.option(SCOPED_CHECK_SECRET_LENGTH)
+					.and_then(|length| length.parse::<usize>().ok())
+				{
+					Some(length) if length >= 32 => {
+						ctx.success("  ✓ SECRET_KEY configured");
+						passed += 1;
+					}
+					Some(_) => ctx.warning("  ✗ SECRET_KEY too short (minimum 32 characters)"),
+					None => ctx.warning("  ✗ SECRET_KEY not set (required for deployment)"),
+				}
+			}
+			if let Some(debug) = ctx.option(SCOPED_CHECK_DEBUG) {
+				if is_deploy && debug == "true" {
+					ctx.warning("  ✗ DEBUG=true in deployment (should be false)");
+				} else {
+					ctx.success("  ✓ DEBUG setting appropriate");
+					passed += 1;
+				}
+			}
+			return passed;
+		}
 
 		// Check SECRET_KEY (always required in deployment)
 		if is_deploy {
@@ -3720,7 +6120,7 @@ impl CheckCommand {
 	}
 
 	/// Check migrations status
-	async fn check_migrations() -> Result<u32, String> {
+	async fn check_migrations(database_url: &str) -> Result<u32, String> {
 		#[cfg(feature = "migrations")]
 		{
 			use reinhardt_db::migrations::{
@@ -3742,12 +6142,9 @@ impl CheckCommand {
 				.map_err(|e| format!("Failed to load all migrations: {:?}", e))?;
 
 			// 2. Connect to database
-			let database_url =
-				std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL not set".to_string())?;
-
-			let (_db_type, connection) = connect_database(&database_url)
+			let (_db_type, connection) = connect_database(database_url)
 				.await
-				.map_err(|e| format!("Database connection failed: {:?}", e))?;
+				.map_err(|_| "Database connection failed".to_owned())?;
 
 			// 3. Check applied migrations using Recorder
 			let recorder = DatabaseMigrationRecorder::new(connection);
@@ -3774,6 +6171,7 @@ impl CheckCommand {
 
 		#[cfg(not(feature = "migrations"))]
 		{
+			let _ = database_url;
 			// Without migrations feature, assume no unapplied migrations
 			Ok(0)
 		}
@@ -3782,6 +6180,28 @@ impl CheckCommand {
 	/// Check security settings
 	fn check_security(ctx: &CommandContext) -> u32 {
 		let mut passed = 0;
+		#[cfg(feature = "contract")]
+		if ctx.has_option(SCOPED_CHECK_MARKER) {
+			if ctx
+				.option(SCOPED_CHECK_ALLOWED_HOSTS)
+				.is_some_and(|value| value == "true")
+			{
+				ctx.success("  ✓ ALLOWED_HOSTS configured");
+				passed += 1;
+			} else {
+				ctx.warning("  ✗ ALLOWED_HOSTS not set (required for deployment)");
+			}
+			if ctx
+				.option(SCOPED_CHECK_SSL_REDIRECT)
+				.is_some_and(|value| value == "true")
+			{
+				ctx.success("  ✓ SECURE_SSL_REDIRECT enabled");
+				passed += 1;
+			} else {
+				ctx.warning("  ✗ SECURE_SSL_REDIRECT disabled (required for deployment)");
+			}
+			return passed;
+		}
 
 		// Check ALLOWED_HOSTS
 		if std::env::var("ALLOWED_HOSTS").is_ok() {
@@ -3890,25 +6310,7 @@ pub(crate) async fn initialize_orm_database(
 	ctx: &CommandContext,
 ) -> Result<(), crate::CommandError> {
 	let env_database_url = std::env::var("DATABASE_URL").ok();
-	let url =
-		match ctx.settings.as_ref() {
-			Some(settings) => DatabaseConnection::database_url_from(
-				settings.as_ref(),
-				env_database_url.as_deref(),
-			)
-			.map_err(|e| {
-				crate::CommandError::ExecutionError(format!("Failed to get database URL: {}", e))
-			})?,
-			None => match env_database_url.clone() {
-				Some(url) => url,
-				// No `ctx.settings` and no `DATABASE_URL`: fall back to the disk
-				// loader that reads `settings/*.toml` directly. This restores
-				// parity with the pre-refactor behaviour and is symmetric with
-				// `sync_database_url_to_env`, which already re-resolves from
-				// settings on its `None` arm (#5042).
-				None => get_database_url_from_settings()?,
-			},
-		};
+	let url = resolve_database_url(ctx.settings.as_deref(), env_database_url.as_deref())?;
 
 	sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
 
@@ -3922,6 +6324,29 @@ pub(crate) async fn initialize_orm_database(
 		sanitize_database_url(&url)
 	));
 	Ok(())
+}
+
+/// Resolves the database URL with the management-command precedence rules.
+///
+/// An explicit `DATABASE_URL` value overrides composed settings. Callers without
+/// a composed settings value fall back to the on-disk settings loader.
+#[cfg(feature = "reinhardt-db")]
+pub(crate) fn resolve_database_url(
+	settings: Option<&dyn reinhardt_conf::HasCommonSettings>,
+	env_database_url: Option<&str>,
+) -> Result<String, crate::CommandError> {
+	match settings {
+		Some(settings) => DatabaseConnection::database_url_from(settings, env_database_url)
+			.map_err(|error| {
+				crate::CommandError::ExecutionError(format!("Failed to get database URL: {error}"))
+			}),
+		None => match env_database_url {
+			Some(url) => Ok(url.to_string()),
+			// Commands without typed settings retain compatibility with projects
+			// that load their database configuration directly from TOML files.
+			None => get_database_url_from_settings(),
+		},
+	}
 }
 
 /// Helper function to get DATABASE_URL from settings files only (ignoring env var).
@@ -4031,7 +6456,7 @@ pub(crate) fn get_database_url_from_settings() -> Result<String, crate::CommandE
 }
 
 /// Helper function to connect to database
-#[cfg(feature = "reinhardt-db")]
+#[cfg(feature = "migrations")]
 async fn connect_database(url: &str) -> CommandResult<(DatabaseType, DatabaseConnection)> {
 	let db_type = if url.starts_with("postgres://") || url.starts_with("postgresql://") {
 		DatabaseType::Postgres
@@ -4162,309 +6587,443 @@ impl BaseCommand for CheckDiCommand {
 	}
 }
 
-/// Database schema introspection command
-///
-/// Generates Reinhardt ORM models from existing database schema.
-pub struct IntrospectCommand;
-
-#[cfg(feature = "migrations")]
-#[async_trait]
-impl BaseCommand for IntrospectCommand {
-	fn name(&self) -> &str {
-		"introspect"
-	}
-
-	fn description(&self) -> &str {
-		"Generate Reinhardt ORM models from existing database schema"
-	}
-
-	fn arguments(&self) -> Vec<CommandArgument> {
-		vec![]
-	}
-
-	fn options(&self) -> Vec<CommandOption> {
-		vec![
-			CommandOption::option(Some('d'), "database", "Database URL to introspect"),
-			CommandOption::option(Some('o'), "output", "Output directory for generated files")
-				.with_default("src/models/generated"),
-			CommandOption::option(Some('a'), "app-label", "App label for generated models")
-				.with_default("app"),
-			CommandOption::option(Some('c'), "config", "Path to configuration TOML file"),
-			CommandOption::option(None, "include", "Regex pattern for tables to include"),
-			CommandOption::option(None, "exclude", "Regex pattern for tables to exclude"),
-			CommandOption::flag(
-				None,
-				"dry-run",
-				"Show what would be generated without writing",
-			),
-			CommandOption::flag(None, "force", "Overwrite existing files"),
-			CommandOption::flag(Some('v'), "verbose", "Show detailed output"),
-			CommandOption::flag(None, "single-file", "Generate all models in a single file"),
-		]
-	}
-
-	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-		use crate::CommandError;
-		use reinhardt_db::migrations::{
-			DatabaseIntrospector, IntrospectConfig, generate_models, preview_output, write_output,
-		};
-		use std::path::PathBuf;
-
-		ctx.info("🔍 Introspecting database schema...");
-
-		let is_dry_run = ctx.has_option("dry-run");
-		let is_force = ctx.has_option("force");
-		let is_verbose = ctx.has_option("verbose");
-
-		// Build configuration
-		let mut config = if let Some(config_path) = ctx.option("config") {
-			ctx.verbose(&format!("Loading config from: {}", config_path));
-			IntrospectConfig::from_file(config_path)
-				.map_err(|e| CommandError::ExecutionError(format!("Config error: {}", e)))?
-		} else {
-			IntrospectConfig::default()
-		};
-
-		// Override with CLI options
-		if let Some(db_url) = ctx.option("database") {
-			config = config.with_database_url(db_url);
-		} else if config.database.url.is_empty() {
-			// Try environment variable
-			if let Ok(url) = std::env::var("DATABASE_URL") {
-				config = config.with_database_url(&url);
-			} else {
-				return Err(CommandError::ExecutionError(
-					"Database URL required. Use --database or set DATABASE_URL environment variable."
-						.to_string(),
-				));
-			}
-		}
-
-		if let Some(output_dir) = ctx.option("output") {
-			config = config.with_output_dir(PathBuf::from(output_dir));
-		}
-
-		if let Some(app_label) = ctx.option("app-label") {
-			config = config.with_app_label(app_label);
-		}
-
-		if ctx.has_option("single-file") {
-			config.output.single_file = true;
-		}
-
-		// Handle include/exclude patterns
-		if let Some(include) = ctx.option("include") {
-			config.tables.include = vec![include.to_string()];
-		}
-
-		if let Some(exclude) = ctx.option("exclude") {
-			config.tables.exclude.push(exclude.to_string());
-		}
-
-		if is_verbose {
-			ctx.info(&format!(
-				"  Database: {}",
-				mask_db_password(&config.database.url)
-			));
-			ctx.info(&format!("  Output: {:?}", config.output.directory));
-			ctx.info(&format!("  App Label: {}", config.generation.app_label));
-		}
-
-		// Resolve database URL
-		let db_url = config
-			.database
-			.resolve_url()
-			.map_err(|e| CommandError::ExecutionError(format!("URL resolution error: {}", e)))?;
-
-		// Determine database type and create introspector
-		let db_type = detect_database_type(&db_url)?;
-		ctx.verbose(&format!("Detected database type: {:?}", db_type));
-
-		// Connect and introspect
-		ctx.info("Connecting to database...");
-
-		let schema: reinhardt_db::migrations::introspection::DatabaseSchema = match db_type {
-			DatabaseType::Postgres => {
-				#[cfg(feature = "postgres")]
-				{
-					use sqlx::postgres::PgPoolOptions;
-					let pool = PgPoolOptions::new()
-						.max_connections(1)
-						.connect(&db_url)
-						.await
-						.map_err(|e| {
-							CommandError::ExecutionError(format!("Connection error: {}", e))
-						})?;
-
-					let introspector =
-						reinhardt_db::migrations::introspection::PostgresIntrospector::new(pool);
-					introspector.read_schema().await.map_err(|e| {
-						CommandError::ExecutionError(format!("Introspection error: {}", e))
-					})?
-				}
-				#[cfg(not(feature = "postgres"))]
-				{
-					return Err(CommandError::ExecutionError(
-						"PostgreSQL support not enabled. Enable 'postgres' feature.".to_string(),
-					));
-				}
-			}
-			DatabaseType::Mysql => {
-				#[cfg(feature = "mysql")]
-				{
-					use sqlx::mysql::MySqlPoolOptions;
-					let pool = MySqlPoolOptions::new()
-						.max_connections(1)
-						.connect(&db_url)
-						.await
-						.map_err(|e| {
-							CommandError::ExecutionError(format!("Connection error: {}", e))
-						})?;
-
-					let introspector =
-						reinhardt_db::migrations::introspection::MySQLIntrospector::new(pool);
-					introspector.read_schema().await.map_err(|e| {
-						CommandError::ExecutionError(format!("Introspection error: {}", e))
-					})?
-				}
-				#[cfg(not(feature = "mysql"))]
-				{
-					return Err(CommandError::ExecutionError(
-						"MySQL support not enabled. Enable 'mysql' feature.".to_string(),
-					));
-				}
-			}
-			DatabaseType::Sqlite => {
-				#[cfg(feature = "sqlite")]
-				{
-					use sqlx::sqlite::SqlitePoolOptions;
-					let pool = SqlitePoolOptions::new()
-						.max_connections(1)
-						.connect(&db_url)
-						.await
-						.map_err(|e| {
-							CommandError::ExecutionError(format!("Connection error: {}", e))
-						})?;
-
-					let introspector =
-						reinhardt_db::migrations::introspection::SQLiteIntrospector::new(pool);
-					introspector.read_schema().await.map_err(|e| {
-						CommandError::ExecutionError(format!("Introspection error: {}", e))
-					})?
-				}
-				#[cfg(not(feature = "sqlite"))]
-				{
-					return Err(CommandError::ExecutionError(
-						"SQLite support not enabled. Enable 'sqlite' feature.".to_string(),
-					));
-				}
-			}
-		};
-
-		ctx.info(&format!("Found {} tables", schema.tables.len()));
-
-		if schema.tables.is_empty() {
-			ctx.warning("No tables found in database");
-			return Ok(());
-		}
-
-		// Generate code
-		ctx.info("Generating models...");
-		let output = generate_models(&config, &schema)
-			.map_err(|e| CommandError::ExecutionError(format!("Generation error: {}", e)))?;
-
-		if output.files.is_empty() {
-			ctx.warning("No models generated (tables may be filtered out)");
-			return Ok(());
-		}
-
-		ctx.info(&format!("Generated {} files", output.files.len()));
-
-		// Show or write output
-		if is_dry_run {
-			ctx.warning("Dry run mode: showing generated code");
-			let preview = preview_output(&output);
-			println!("{}", preview);
-		} else {
-			write_output(&output, is_force)
-				.map_err(|e| CommandError::ExecutionError(format!("Write error: {}", e)))?;
-
-			for file in &output.files {
-				ctx.success(&format!("  Created: {:?}", file.path));
-			}
-		}
-
-		ctx.success("✓ Introspection complete");
-		Ok(())
-	}
-}
-
-#[cfg(not(feature = "migrations"))]
-#[async_trait]
-impl BaseCommand for IntrospectCommand {
-	fn name(&self) -> &str {
-		"introspect"
-	}
-
-	fn description(&self) -> &str {
-		"Generate Reinhardt ORM models from existing database schema"
-	}
-
-	fn arguments(&self) -> Vec<CommandArgument> {
-		vec![]
-	}
-
-	fn options(&self) -> Vec<CommandOption> {
-		vec![]
-	}
-
-	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-		ctx.warning("Migrations feature is not enabled");
-		ctx.info("To use introspect, enable the 'migrations' feature");
-		Err(crate::CommandError::ExecutionError(
-			"introspect command requires 'migrations' feature to be enabled".to_string(),
-		))
-	}
-}
-
-/// Mask password in database URL for display
-#[cfg(feature = "migrations")]
-fn mask_db_password(url: &str) -> String {
-	if let Some(at_pos) = url.find('@')
-		&& let Some(colon_pos) = url[..at_pos].rfind(':')
-		&& let Some(slash_pos) = url[..colon_pos].rfind('/')
-		&& let Some(user_end) = url[slash_pos + 1..].find(':').map(|p| slash_pos + 1 + p)
-	{
-		let prefix = &url[..slash_pos + 1];
-		let user = &url[slash_pos + 1..user_end];
-		let suffix = &url[at_pos..];
-		return format!("{}{}:****{}", prefix, user, suffix);
-	}
-	url.to_string()
-}
-
-/// Detect database type from URL
-#[cfg(feature = "migrations")]
-fn detect_database_type(url: &str) -> Result<DatabaseType, crate::CommandError> {
-	if url.starts_with("postgres://") || url.starts_with("postgresql://") {
-		Ok(DatabaseType::Postgres)
-	} else if url.starts_with("mysql://") || url.starts_with("mariadb://") {
-		Ok(DatabaseType::Mysql)
-	} else if url.starts_with("sqlite://") || url.starts_with("sqlite:") {
-		Ok(DatabaseType::Sqlite)
-	} else {
-		Err(crate::CommandError::ExecutionError(format!(
-			"Unknown database type in URL: {}",
-			url
-		)))
-	}
-}
-
 // Additional command metadata and execution tests
 #[cfg(test)]
 mod tests {
 	use super::*;
 
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn replacement_target_stays_original_for_partial_history() {
+		use chrono::Utc;
+		use reinhardt_db::migrations::{Migration, recorder::MigrationRecord};
+
+		let first = Migration::new("0001_initial", "app");
+		let second = Migration::new("0002_add_field", "app");
+		let mut squashed = Migration::new("0001_squashed_0002", "app");
+		squashed.replaces = vec![
+			("app".to_string(), "0001_initial".to_string()),
+			("app".to_string(), "0002_add_field".to_string()),
+		];
+		let migrations = vec![first, second, squashed];
+		let partial = vec![MigrationRecord {
+			app: "app".to_string(),
+			name: "0001_initial".to_string(),
+			applied: Utc::now(),
+		}];
+
+		let terminal = terminal_replacement_target(&migrations, "app", "0001_initial")
+			.expect("replacement target should resolve");
+
+		assert_eq!(terminal, "0001_squashed_0002");
+		assert!(replacement_history_has_applied_records(
+			&migrations,
+			"app",
+			&terminal,
+			&partial
+		));
+		assert!(!replacement_history_is_fully_applied(
+			&migrations,
+			"app",
+			&terminal,
+			&partial
+		));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn plan_reconciles_a_fully_covered_replacement_from_one_direct_squash_record() {
+		use chrono::Utc;
+		use reinhardt_db::migrations::{Migration, recorder::MigrationRecord};
+
+		let first = Migration::new("0001_initial", "app");
+		let second = Migration::new("0002_add_field", "app");
+		let mut older_squash = Migration::new("0001_squashed_0002", "app");
+		older_squash.replaces = vec![
+			("app".to_string(), "0001_initial".to_string()),
+			("app".to_string(), "0002_add_field".to_string()),
+		];
+		let mut replacement = Migration::new("0001_squashed_0002_v2", "app");
+		replacement.replaces = vec![
+			("app".to_string(), "0001_initial".to_string()),
+			("app".to_string(), "0002_add_field".to_string()),
+			("app".to_string(), "0001_squashed_0002".to_string()),
+		];
+		let migrations = vec![first, second, older_squash, replacement.clone()];
+		let applied = vec![MigrationRecord {
+			app: "app".to_string(),
+			name: "0001_squashed_0002".to_string(),
+			applied: Utc::now(),
+		}];
+
+		let records = direct_replacement_history_records(&migrations, &replacement, &applied)
+			.expect("fully covered history should provide the direct squash reconciliation anchor");
+		assert_eq!(records.len(), 1);
+		assert_eq!(records[0].name, "0001_squashed_0002");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn nested_replacement_is_fully_applied_when_its_replaced_squash_is_covered() {
+		use chrono::Utc;
+		use reinhardt_db::migrations::{Migration, recorder::MigrationRecord};
+
+		let first = Migration::new("0001_initial", "app");
+		let second = Migration::new("0002_add_field", "app");
+		let mut older_squash = Migration::new("0001_squashed_0002", "app");
+		older_squash.replaces = vec![
+			("app".to_string(), "0001_initial".to_string()),
+			("app".to_string(), "0002_add_field".to_string()),
+		];
+		let mut newer_squash = Migration::new("0001_squashed_0002_v2", "app");
+		newer_squash.replaces = vec![("app".to_string(), "0001_squashed_0002".to_string())];
+		let migrations = vec![first, second, older_squash, newer_squash];
+		let applied = vec![
+			MigrationRecord {
+				app: "app".to_string(),
+				name: "0001_initial".to_string(),
+				applied: Utc::now(),
+			},
+			MigrationRecord {
+				app: "app".to_string(),
+				name: "0002_add_field".to_string(),
+				applied: Utc::now(),
+			},
+		];
+
+		assert!(replacement_history_is_fully_applied(
+			&migrations,
+			"app",
+			"0001_squashed_0002_v2",
+			&applied,
+		));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest::rstest]
+	fn plan_order_keeps_originals_for_partial_replacement_history() {
+		use chrono::Utc;
+		use reinhardt_db::migrations::{Migration, recorder::MigrationRecord};
+
+		let first = Migration::new("0001_initial", "app");
+		let second = Migration::new("0002_add_field", "app").add_dependency("app", "0001_initial");
+		let mut squashed = Migration::new("0001_squashed_0002", "app");
+		squashed.replaces = vec![
+			("app".to_string(), "0001_initial".to_string()),
+			("app".to_string(), "0002_add_field".to_string()),
+		];
+		let third =
+			Migration::new("0003_after_squash", "app").add_dependency("app", "0001_squashed_0002");
+		let migrations = vec![first, second, squashed, third];
+		let applied = vec![MigrationRecord {
+			app: "app".to_string(),
+			name: "0001_initial".to_string(),
+			applied: Utc::now(),
+		}];
+
+		let ordered = dependency_ordered_migrations_with_applied_history(&migrations, &applied)
+			.expect("partial replacement history should retain original migrations in the plan");
+
+		assert_eq!(
+			ordered
+				.iter()
+				.map(|migration| migration.name.as_str())
+				.collect::<Vec<_>>(),
+			vec!["0001_initial", "0002_add_field", "0003_after_squash"]
+		);
+	}
+
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn makemigrations_reports_enum_domain_warnings_to_the_command_sink() {
+		use reinhardt_db::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
+		use reinhardt_db::migrations::AutodetectorWarning;
+
+		let warning = AutodetectorWarning::EnumDomainDataMigrationRequired {
+			table: "jobs".to_string(),
+			column: "status".to_string(),
+			old_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![
+					ModelEnumValue::String("queued".to_string()),
+					ModelEnumValue::String("running".to_string()),
+				],
+			},
+			new_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("queued".to_string())],
+			},
+		};
+		let mut reported = Vec::new();
+
+		report_autodetector_warnings_with(&[warning], |message| {
+			reported.push(message.to_string());
+		});
+
+		assert_eq!(reported.len(), 1);
+		assert!(reported[0].contains("running"), "{}", reported[0]);
+		assert!(reported[0].contains("data migration"), "{}", reported[0]);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn global_migration_validation_rejects_cross_app_table_rename_collisions() {
+		use reinhardt_db::migrations::{ModelState, ProjectState};
+
+		let mut from_state = ProjectState::new();
+		let mut old_profile = ModelState::new("accounts", "Profile");
+		old_profile.table_name = "accounts_profile".to_string();
+		from_state.add_model(old_profile);
+		let mut audit_user = ModelState::new("audit", "User");
+		audit_user.table_name = "users".to_string();
+		from_state.add_model(audit_user);
+
+		let mut target_state = ProjectState::new();
+		let mut renamed_profile = ModelState::new("accounts", "Profile");
+		renamed_profile.table_name = "users".to_string();
+		target_state.add_model(renamed_profile);
+		let mut retained_audit_user = ModelState::new("audit", "User");
+		retained_audit_user.table_name = "users".to_string();
+		target_state.add_model(retained_audit_user);
+
+		let error = validate_global_migration_changes(&from_state, &target_state)
+			.expect_err("cross-app table rename collisions must be rejected before app filtering");
+
+		assert!(error.to_string().contains("multiple target models claim"));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn global_migration_validation_rejects_cross_app_physical_index_name_collisions() {
+		use reinhardt_db::migrations::{IndexDefinition, ModelState, ProjectState};
+
+		let from_state = ProjectState::new();
+		let mut target_state = ProjectState::new();
+		for (app_label, model_name) in [("search", "Document"), ("billing", "Invoice")] {
+			let mut model = ModelState::new(app_label, model_name);
+			model.indexes.push(IndexDefinition::new(
+				"shared_embedding_ann",
+				vec!["embedding".to_string()],
+				false,
+			));
+			target_state.add_model(model);
+		}
+
+		let error = validate_global_migration_changes(&from_state, &target_state)
+			.expect_err("cross-app physical names must be validated before app filtering");
+
+		assert!(matches!(
+			error,
+			reinhardt_db::migrations::MigrationError::InvalidMigration(message)
+				if message.contains("shared_embedding_ann")
+					&& message.contains("search_document")
+					&& message.contains("billing_invoice")
+		));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn global_migration_validation_ignores_unrelated_field_rename_ambiguity() {
+		use reinhardt_db::migrations::{FieldState, FieldType, ModelState, ProjectState};
+
+		let mut from_state = ProjectState::new();
+		from_state.add_model(ModelState::new("blog", "Post"));
+		let mut old_audit_entry = ModelState::new("audit", "Entry");
+		old_audit_entry.fields.insert(
+			"legacy_code".to_string(),
+			FieldState::new("legacy_code", FieldType::VarChar(255), false),
+		);
+		old_audit_entry.fields.insert(
+			"old_code".to_string(),
+			FieldState::new("old_code", FieldType::VarChar(255), false),
+		);
+		from_state.add_model(old_audit_entry);
+
+		let mut target_state = ProjectState::new();
+		target_state.add_model(ModelState::new("blog", "Post"));
+		let mut new_audit_entry = ModelState::new("audit", "Entry");
+		new_audit_entry.fields.insert(
+			"code".to_string(),
+			FieldState::new("code", FieldType::VarChar(255), false),
+		);
+		target_state.add_model(new_audit_entry);
+
+		validate_global_migration_changes(&from_state, &target_state)
+			.expect("global validation should not inspect unrelated field rename ambiguity");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn reused_table_name_depends_on_the_cross_app_rename() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0007_rename_user", "accounts").add_operation(Operation::RenameTable {
+				old_name: "user".to_string(),
+				new_name: "account".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "profiles").add_operation(Operation::CreateTable {
+				name: "user".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0007_rename_user".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn cross_app_rename_into_a_reused_table_depends_on_the_producer() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0007_rename_user", "accounts").add_operation(Operation::RenameTable {
+				old_name: "users".to_string(),
+				new_name: "user".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0004_archive", "archive").add_operation(Operation::RenameTable {
+				old_name: "archive_users".to_string(),
+				new_name: "users".to_string(),
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0007_rename_user".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn move_model_table_rename_frees_a_reused_name() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0003_move", "archive").add_operation(Operation::MoveModel {
+				model_name: "User".to_string(),
+				from_app: "accounts".to_string(),
+				to_app: "archive".to_string(),
+				rename_table: true,
+				old_table_name: Some("users".to_string()),
+				new_table_name: Some("archived_users".to_string()),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "profiles").add_operation(Operation::CreateTable {
+				name: "users".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("archive".to_string(), "0003_move".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn cross_app_created_table_depends_on_the_drop_that_frees_its_name() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0004_remove_legacy", "accounts").add_operation(Operation::DropTable {
+				name: "legacy".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "archive").add_operation(Operation::CreateTable {
+				name: "legacy".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0004_remove_legacy".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn reused_table_name_depends_on_a_historical_cross_app_rename() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let historical =
+			Migration::new("0002_rename_user", "accounts").add_operation(Operation::RenameTable {
+				old_name: "users".to_string(),
+				new_name: "accounts_user".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "profiles").add_operation(Operation::CreateTable {
+				name: "users".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut consumer], &[historical])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0002_rename_user".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn cross_app_table_name_swaps_are_rejected_before_adding_a_cycle() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut accounts =
+			Migration::new("0002_swap", "accounts").add_operation(Operation::RenameTable {
+				old_name: "users".to_string(),
+				new_name: "accounts_users".to_string(),
+			});
+		let mut archive =
+			Migration::new("0002_swap", "archive").add_operation(Operation::RenameTable {
+				old_name: "accounts_users".to_string(),
+				new_name: "users".to_string(),
+			});
+
+		let error = add_reused_table_name_dependencies_with_history(
+			&mut [&mut accounts, &mut archive],
+			&[],
+		)
+		.expect_err("cross-app table-name swaps require an explicit temporary migration");
+
+		assert!(error.contains("cyclic cross-app table-name dependency"));
+		assert!(accounts.dependencies.is_empty());
+		assert!(archive.dependencies.is_empty());
+	}
+
+	#[cfg(feature = "reinhardt-db")]
 	struct EnvVarGuard {
 		key: &'static str,
 		original: Option<std::ffi::OsString>,
@@ -4510,6 +7069,134 @@ mod tests {
 		fn drop(&mut self) {
 			let _ = std::env::set_current_dir(&self.original);
 		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn expected_asset_build_cannot_be_ignored_without_serving() {
+		// Arrange
+		let mut ctx = CommandContext::new(Vec::new());
+		ctx.set_option("expected-asset-build-id".into(), "required".into());
+		// Act
+		let result = RunServerCommand.execute(&ctx).await;
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Execution error: --expected-asset-build-id requires --with-pages to enable manifest serving"
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn asset_manifest_requires_manifest_serving() {
+		// Arrange
+		let mut ctx = CommandContext::new(Vec::new());
+		ctx.set_option("asset-manifest".into(), "custom.json".into());
+		// Act
+		let result = RunServerCommand.execute(&ctx).await;
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Execution error: --asset-manifest requires --with-pages to enable manifest serving"
+		);
+	}
+
+	#[cfg(feature = "server")]
+	#[tokio::test]
+	async fn project_static_mount_passes_generation_assets_to_manifest_server() {
+		use reinhardt_http::{Handler, Middleware, MiddlewareChain, Request, Response};
+		use reinhardt_utils::staticfiles::middleware::{StaticFilesConfig, StaticFilesMiddleware};
+		use reinhardt_utils::staticfiles::publication::{
+			AssetInput, AssetMode, AssetPipeline, AssetPublisher, ManifestServingConfig,
+			ManifestStaticMiddleware, ManifestStore, SnapshotOptions,
+		};
+		use std::sync::Arc;
+
+		struct NotFound;
+		#[async_trait::async_trait]
+		impl Handler for NotFound {
+			async fn handle(&self, _: Request) -> reinhardt_core::exception::Result<Response> {
+				Ok(Response::not_found())
+			}
+		}
+
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let mut pipeline = AssetPipeline::new();
+		pipeline
+			.add_input(AssetInput::bytes("app.txt", b"published".to_vec()))
+			.unwrap();
+		AssetPublisher::new(root.path().into())
+			.publish(pipeline.prepare(AssetMode::Production).unwrap())
+			.unwrap();
+		let store = Arc::new(
+			ManifestStore::open(root.path().into(), SnapshotOptions::production()).unwrap(),
+		);
+		let published_path = store.active().manifest().paths["app.txt"].clone();
+		let config = StaticFilesConfig::new(root.path())
+			.url_prefix("/static/")
+			.spa_mode(false)
+			.passthrough_prefixes(project_static_passthrough_prefixes("/static/", true));
+		let manifest = ManifestStaticMiddleware::new(
+			ManifestServingConfig::new(store, "/static/".into()).unwrap(),
+		);
+		let chain = MiddlewareChain::new(Arc::new(NotFound))
+			.with_middleware(Arc::new(StaticFilesMiddleware::new(config)) as Arc<dyn Middleware>)
+			.with_middleware(Arc::new(manifest) as Arc<dyn Middleware>);
+
+		// Act
+		let response = chain
+			.handle(
+				Request::builder()
+					.uri(format!("/static/{published_path}"))
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, hyper::StatusCode::OK);
+		assert!(response.file_body().is_some());
+		drop(response);
+		std::fs::write(root.path().join(&published_path), b"modified!").unwrap();
+		let modified = chain
+			.handle(
+				Request::builder()
+					.uri(format!("/static/{published_path}"))
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(modified.status, hyper::StatusCode::SERVICE_UNAVAILABLE);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn asset_entrypoint_requires_manifest_serving() {
+		// Arrange
+		let mut ctx = CommandContext::new(Vec::new());
+		ctx.set_option("asset-entrypoint".into(), "dashboard".into());
+		// Act
+		let result = RunServerCommand.execute(&ctx).await;
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Execution error: --asset-entrypoint requires --with-pages to enable manifest serving"
+		);
+		assert_eq!(
+			RunServerExecutionOptions::from_context(&ctx)
+				.asset_entrypoint
+				.as_deref(),
+			Some("dashboard")
+		);
+		assert!(
+			RunServerCommand
+				.options()
+				.iter()
+				.any(|option| option.long == "asset-entrypoint")
+		);
 	}
 
 	#[test]
@@ -4848,50 +7535,211 @@ mod tests {
 		);
 	}
 
-	#[rstest::rstest]
-	#[cfg(feature = "migrations")]
-	#[case("postgres://user:secret@host/db", "postgres://user:****@host/db")]
-	#[case("postgresql://user:secret@host/db", "postgresql://user:****@host/db")]
-	#[case("mysql://user:secret@host/db", "mysql://user:****@host/db")]
-	#[case("sqlite:///tmp/app.db", "sqlite:///tmp/app.db")]
-	fn mask_db_password_redacts_only_passwords(#[case] url: &str, #[case] expected: &str) {
-		// Act
-		let masked = mask_db_password(url);
-
-		// Assert
-		assert_eq!(masked, expected);
-	}
-
-	#[rstest::rstest]
-	#[cfg(feature = "migrations")]
-	#[case("postgres://user:secret@host/db", DatabaseType::Postgres)]
-	#[case("postgresql://user:secret@host/db", DatabaseType::Postgres)]
-	#[case("mysql://user:secret@host/db", DatabaseType::Mysql)]
-	#[case("sqlite:///tmp/app.db", DatabaseType::Sqlite)]
-	fn detect_database_type_recognizes_supported_schemes(
-		#[case] url: &str,
-		#[case] expected: DatabaseType,
-	) {
-		// Act
-		let database_type = detect_database_type(url).expect("supported scheme must be recognized");
-
-		// Assert
-		assert_eq!(database_type, expected);
-	}
-
+	#[cfg(feature = "server")]
 	#[test]
-	#[cfg(feature = "migrations")]
-	fn detect_database_type_rejects_unknown_scheme_with_exact_error() {
-		// Act
-		let error = detect_database_type("invalid://value")
-			.expect_err("unknown scheme must not select a database backend");
+	fn generated_component_styles_use_the_project_static_url() {
+		let directory = tempfile::tempdir().expect("create project directory");
+		let settings_dir = directory.path().join("settings");
+		std::fs::create_dir_all(&settings_dir).expect("create settings directory");
+		std::fs::write(
+			settings_dir.join("base.toml"),
+			"[static]\nurl = \"/assets/\"\n",
+		)
+		.expect("write static settings");
 
-		// Assert
-		assert!(matches!(error, crate::CommandError::ExecutionError(_)));
+		let static_url = configured_static_assets(directory.path())
+			.expect("resolve static asset settings")
+			.static_url;
+
+		assert_eq!(static_url, "/assets/");
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn collected_assets_use_the_configured_static_root() {
+		let directory = tempfile::tempdir().expect("create project directory");
+		let settings_dir = directory.path().join("settings");
+		std::fs::create_dir_all(&settings_dir).expect("create settings directory");
+		std::fs::write(
+			settings_dir.join("base.toml"),
+			"[static]\nroot = \"collected\"\n",
+		)
+		.expect("write static settings");
+
+		let settings = configured_static_assets(directory.path()).expect("resolve static settings");
+
+		assert_eq!(settings.static_root, directory.path().join("collected"));
+	}
+
+	#[cfg(feature = "server")]
+	#[tokio::test]
+	async fn collected_asset_manifest_exposes_unhashed_aliases() {
+		let directory = tempfile::tempdir().expect("create static root");
+		std::fs::write(
+			directory.path().join("manifest.json"),
+			r#"{"version":"1.0","paths":{"vendor/runtime.js":"vendor/runtime.1234.js"}}"#,
+		)
+		.expect("write collectstatic manifest");
+
+		let aliases = load_static_manifest(directory.path())
+			.await
+			.expect("load collectstatic manifest");
+
 		assert_eq!(
-			error.to_string(),
-			"Execution error: Unknown database type in URL: invalid://value"
+			aliases.get("vendor/runtime.js").map(String::as_str),
+			Some("vendor/runtime.1234.js")
 		);
+	}
+
+	#[cfg(feature = "server")]
+	#[tokio::test]
+	async fn collected_asset_manifest_normalizes_windows_paths() {
+		let directory = tempfile::tempdir().expect("create static root");
+		std::fs::write(
+			directory.path().join("manifest.json"),
+			r#"{"version":"1.0","paths":{"vendor\\runtime.js":"vendor\\runtime.1234.js"}}"#,
+		)
+		.expect("write collectstatic manifest");
+
+		let aliases = load_static_manifest(directory.path())
+			.await
+			.expect("load collectstatic manifest");
+
+		assert_eq!(
+			aliases.get("vendor/runtime.js").map(String::as_str),
+			Some("vendor/runtime.1234.js")
+		);
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn spa_fallback_excludes_the_configured_admin_static_prefix() {
+		assert!(spa_excluded_prefixes("/assets/", &[]).contains(&"/assets/admin/".to_string()));
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn spa_fallback_excludes_the_configured_static_prefix() {
+		assert!(spa_excluded_prefixes("/assets/", &[]).contains(&"/assets/".to_string()));
+		assert!(!spa_excluded_prefixes("/", &[]).contains(&"/".to_string()));
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn spa_fallback_excludes_websocket_route_prefixes() {
+		let paths = vec!["/ws/chat/{room_id}".to_string(), "/events/".to_string()];
+		let prefixes = spa_excluded_prefixes("/assets/", &paths);
+		assert!(prefixes.contains(&"/ws/chat/{room_id}".to_string()));
+		assert!(!prefixes.contains(&"/ws/chat/".to_string()));
+		assert!(prefixes.contains(&"/events".to_string()));
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn spa_fallback_excludes_slashless_websocket_route_exactly() {
+		let prefixes = spa_excluded_prefixes("/assets/", &["/ws/chat".to_string()]);
+		assert!(prefixes.contains(&"/ws/chat".to_string()));
+	}
+
+	#[cfg(all(feature = "server", feature = "websockets"))]
+	#[test]
+	fn typed_websocket_path_parameters_strip_converter_delimiters() {
+		assert_eq!(
+			websocket_path_params("/events/{<int:id>}", "/events/42"),
+			Some(std::collections::HashMap::from([(
+				"id".to_string(),
+				"42".to_string(),
+			)]))
+		);
+		assert!(websocket_path_params("/events/{<int:id>}", "/events/not-an-int").is_none());
+	}
+
+	#[cfg(all(feature = "server", feature = "websockets"))]
+	#[test]
+	fn protocol_overlap_detects_literal_parameter_collisions() {
+		assert!(protocol_paths_overlap("/rooms/new", "/rooms/{id}"));
+		assert!(!protocol_paths_overlap(
+			"/rooms/new",
+			"/rooms/{id}/messages"
+		));
+	}
+
+	#[cfg(all(feature = "server", feature = "websockets"))]
+	#[test]
+	fn malformed_websocket_origin_is_rejected() {
+		let mut headers = hyper::HeaderMap::new();
+		headers.insert(
+			"origin",
+			hyper::header::HeaderValue::from_bytes(b"\xff").expect("opaque header value"),
+		);
+
+		assert!(websocket_origin(&headers).is_err());
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn static_url_prefix_is_segment_terminated() {
+		assert_eq!(normalize_static_url_prefix("/assets"), "/assets/");
+		assert_eq!(normalize_static_url_prefix("/assets/"), "/assets/");
+		assert_eq!(normalize_static_url_prefix("/"), "/");
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn styled_packages_without_a_pages_target_are_rejected() {
+		let directory = tempfile::tempdir().expect("create package directory");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::create_dir(directory.path().join("src")).expect("create package source directory");
+		std::fs::write(directory.path().join("src/lib.rs"), "").expect("write package source");
+		std::fs::write(
+			&manifest_path,
+			"[package]\nname = \"server-only\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write package manifest");
+
+		let package_context = crate::StylePackageContext::resolve(&manifest_path, None)
+			.expect("resolve package metadata");
+		let error = require_pages_wasm_target(&package_context, true)
+			.expect_err("component styles require a Pages cdylib target");
+
+		assert!(error.to_string().contains("Pages cdylib target"));
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn styled_packages_with_multiline_cdylib_targets_are_accepted() {
+		let directory = tempfile::tempdir().expect("create package directory");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::create_dir(directory.path().join("src")).expect("create package source directory");
+		std::fs::write(directory.path().join("src/lib.rs"), "").expect("write package source");
+		std::fs::write(
+			&manifest_path,
+			concat!(
+				"[package]\n",
+				"name = \"multiline-cdylib\"\n",
+				"version = \"0.1.0\"\n",
+				"edition = \"2024\"\n\n",
+				"[lib]\n",
+				"crate-type = [\n",
+				"  \"cdylib\",\n",
+				"  \"rlib\",\n",
+				"]\n",
+			),
+		)
+		.expect("write package manifest");
+
+		let package_context = crate::StylePackageContext::resolve(&manifest_path, None)
+			.expect("resolve package metadata");
+		require_pages_wasm_target(&package_context, true)
+			.expect("Cargo metadata should recognize a multiline cdylib target");
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn component_styles_are_initialized_when_wasm_builds_are_disabled() {
+		assert!(should_prepare_component_styles(true, false));
+		assert!(!should_prepare_component_styles(true, true));
+		assert!(!should_prepare_component_styles(false, false));
 	}
 
 	#[test]
@@ -5054,6 +7902,61 @@ name = "db.sqlite3"
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());
 	}
 
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn makemigrations_formats_enum_domain_warning_for_stderr() {
+		use reinhardt_db::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
+		use reinhardt_db::migrations::AutodetectorWarning;
+
+		let warning = AutodetectorWarning::EnumDomainDataMigrationRequired {
+			table: "jobs".to_string(),
+			column: "status".to_string(),
+			old_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("running".to_string())],
+			},
+			new_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("queued".to_string())],
+			},
+		};
+
+		let message = super::format_makemigrations_warning(&warning);
+
+		assert_eq!(
+			message,
+			"enum domain change for jobs.status removes or re-encodes values [running]; place a data migration before the new constraint"
+		);
+	}
+
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn makemigrations_describes_typed_constraint_operations_for_people() {
+		use reinhardt_db::migrations::{Constraint, Operation};
+
+		let constraint = Constraint::Unique {
+			name: "jobs_code_key".to_string(),
+			columns: vec!["code".to_string()],
+		};
+		let add = Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: constraint.clone(),
+		};
+		let drop = Operation::DropConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint,
+		};
+
+		assert_eq!(
+			super::makemigrations_operation_description(&add),
+			"Add constraint jobs_code_key on jobs"
+		);
+		assert_eq!(
+			super::makemigrations_operation_description(&drop),
+			"Remove constraint jobs_code_key from jobs"
+		);
+	}
+
 	#[tokio::test]
 	#[serial_test::serial(runserver)]
 	async fn test_runserver_command() {
@@ -5149,7 +8052,7 @@ name = "db.sqlite3"
 
 	#[test]
 	fn test_shell_command_metadata() {
-		let cmd = ShellCommand;
+		let cmd = ShellCommand::default();
 		assert_eq!(cmd.name(), "shell");
 		assert_eq!(cmd.description(), "Start an interactive Rust REPL");
 
@@ -5158,6 +8061,21 @@ name = "db.sqlite3"
 		// Only option: -c/--command
 		assert_eq!(options[0].short, Some('c'));
 		assert_eq!(options[0].long, "command");
+	}
+
+	#[tokio::test]
+	#[cfg(feature = "shell")]
+	async fn shell_command_without_project_config_returns_migration_guidance() {
+		let error = ShellCommand::default()
+			.execute(&CommandContext::default())
+			.await
+			.expect_err("registry construction must not make shell configuration optional");
+
+		assert_eq!(
+			error.to_string(),
+			"Execution error: Shell configuration is missing. Use \
+			 `execute_from_command_line_with_migration_settings_and_shell` from the generated manage.rs."
+		);
 	}
 
 	#[test]
@@ -5224,10 +8142,26 @@ name = "db.sqlite3"
 	}
 
 	#[test]
+	#[cfg(feature = "pages")]
+	fn pages_wasm_build_config_uses_the_served_static_directory() {
+		// Act
+		let config =
+			RunServerCommand::pages_wasm_build_config("style-app", "client_app", "static/app");
+
+		// Assert
+		assert_eq!(config.release, !cfg!(debug_assertions));
+		assert_eq!(config.package.as_deref(), Some("style-app"));
+		assert_eq!(config.target_name.as_deref(), Some("client_app"));
+		assert_eq!(config.output_dir, std::path::PathBuf::from("static/app"));
+	}
+
+	#[test]
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	fn test_autoreload_child_args_forward_wasm_startup_flags() {
+		let features = vec!["brand".to_string(), "theme".to_string()];
 		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
 			address: "127.0.0.1:8000",
+			grpc_address: "127.0.0.1:50061",
 			insecure: true,
 			no_docs: true,
 			with_pages: true,
@@ -5235,11 +8169,19 @@ name = "db.sqlite3"
 			no_spa: true,
 			no_project_static: true,
 			index: Some("index.html"),
+			asset_mode: "production",
+			asset_manifest: None,
+			asset_entrypoint: Some("dashboard"),
+			expected_asset_build_id: None,
 			hmr_port: Some(35729),
 			no_wasm: true,
 			no_override_wasm: true,
 			force_wasm: true,
 			wasm_optional: true,
+			package: Some("poll-app"),
+			features: &features,
+			all_features: false,
+			generated_style_root: None,
 		});
 
 		assert_eq!(
@@ -5248,6 +8190,8 @@ name = "db.sqlite3"
 				"runserver",
 				"127.0.0.1:8000",
 				"--noreload",
+				"--grpc-address",
+				"127.0.0.1:50061",
 				"--insecure",
 				"--no-docs",
 				"--with-pages",
@@ -5257,10 +8201,58 @@ name = "db.sqlite3"
 				"--no-project-static",
 				"--index",
 				"index.html",
+				"--asset-entrypoint",
+				"dashboard",
 				"--no-wasm",
 				"--no-override-wasm",
 				"--force-wasm",
 				"--wasm-optional",
+				"--package",
+				"poll-app",
+				"--features",
+				"brand,theme",
+			]
+		);
+	}
+
+	#[test]
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn test_autoreload_child_args_forward_all_features() {
+		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
+			address: "127.0.0.1:8000",
+			grpc_address: "127.0.0.1:50051",
+			insecure: false,
+			no_docs: false,
+			with_pages: true,
+			static_dir: "",
+			no_spa: false,
+			no_project_static: false,
+			index: None,
+			asset_mode: "production",
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
+			hmr_port: None,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
+			package: None,
+			features: &[],
+			all_features: true,
+			generated_style_root: None,
+		});
+
+		assert_eq!(
+			args,
+			vec![
+				"runserver",
+				"127.0.0.1:8000",
+				"--noreload",
+				"--grpc-address",
+				"127.0.0.1:50051",
+				"--with-pages",
+				"--all-features",
 			]
 		);
 	}
@@ -5270,6 +8262,7 @@ name = "db.sqlite3"
 	fn test_autoreload_child_args_omit_disabled_wasm_startup_flags() {
 		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
 			address: "127.0.0.1:8000",
+			grpc_address: "127.0.0.1:50061",
 			insecure: false,
 			no_docs: false,
 			with_pages: false,
@@ -5277,14 +8270,41 @@ name = "db.sqlite3"
 			no_spa: false,
 			no_project_static: false,
 			index: None,
+			asset_mode: "production",
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			hmr_port: None,
 			no_wasm: false,
 			no_override_wasm: false,
 			force_wasm: false,
 			wasm_optional: false,
+			package: None,
+			features: &[],
+			all_features: false,
+			generated_style_root: None,
 		});
 
-		assert_eq!(args, vec!["runserver", "127.0.0.1:8000", "--noreload"]);
+		assert_eq!(
+			args,
+			vec![
+				"runserver",
+				"127.0.0.1:8000",
+				"--noreload",
+				"--grpc-address",
+				"127.0.0.1:50061",
+			]
+		);
+		assert_eq!(
+			args.iter()
+				.filter(|argument| argument.as_str() == "--grpc-address")
+				.count(),
+			1
+		);
+		let value = args
+			.windows(2)
+			.find_map(|pair| (pair[0] == "--grpc-address").then_some(pair[1].as_str()));
+		assert_eq!(value, Some("127.0.0.1:50061"));
 	}
 
 	#[test]
@@ -5522,16 +8542,23 @@ name = "db.sqlite3"
 	}
 
 	#[tokio::test]
-	async fn test_shell_command_with_command_option() {
-		let cmd = ShellCommand;
+	async fn test_shell_command_requires_runtime_configuration() {
+		let cmd = ShellCommand::default();
 		let mut ctx = CommandContext::default();
 		ctx.set_option("command".to_string(), "let x = 1 + 2".to_string());
 
-		// Execute with a simple command
-		let result = cmd.execute(&ctx).await;
+		let error = cmd
+			.execute(&ctx)
+			.await
+			.expect_err("shell execution must not proceed without its runtime configuration");
 
-		// Should succeed (command is processed and returned)
-		assert!(result.is_ok());
+		#[cfg(feature = "shell")]
+		assert_eq!(
+			error.to_string(),
+			"Execution error: Shell configuration is missing. Use `execute_from_command_line_with_migration_settings_and_shell` from the generated manage.rs."
+		);
+		#[cfg(not(feature = "shell"))]
+		assert!(matches!(error, crate::CommandError::FeatureDisabled(_)));
 	}
 
 	#[test]
@@ -5582,6 +8609,26 @@ name = "db.sqlite3"
 		// Assert
 		assert_eq!(protected_count, 2);
 		assert_eq!(unprotected_count, 0);
+	}
+
+	#[cfg(feature = "contract")]
+	#[tokio::test]
+	async fn scoped_deployment_check_fails_without_https_redirect() {
+		let mut ctx = CommandContext::default();
+		ctx.set_option("deploy".to_owned(), "true".to_owned());
+		attach_scoped_check_inputs(
+			&mut ctx,
+			&crate::capabilities::CheckInputs {
+				database_url: None,
+				static_root_configured: true,
+				secret_key_length: Some(32),
+				debug: Some(false),
+				allowed_hosts_configured: true,
+				ssl_redirect: false,
+			},
+		);
+		let error = CheckCommand.execute(&ctx).await.unwrap_err();
+		assert_eq!(error.to_string(), "Execution error: 1 check(s) failed");
 	}
 
 	#[tokio::test]

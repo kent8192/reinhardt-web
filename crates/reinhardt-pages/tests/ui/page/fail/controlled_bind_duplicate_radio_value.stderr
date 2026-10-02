@@ -1,0 +1,5 @@
+error: a bound radio input cannot specify duplicate `value` attributes
+  --> tests/ui/page/fail/controlled_bind_duplicate_radio_value.rs:12:10
+   |
+12 |             bind: selected
+   |                   ^^^^^^^^

@@ -1,19 +1,19 @@
 //! Unified Router with endpoint-based server and client configuration.
 //!
 //! This module provides [`UnifiedRouter`], a unified entry point for configuring
-//! both server-side HTTP routing and client-side SPA routing.
+//! server-side HTTP, WebSocket, and gRPC routing together with client-side SPA
+//! routing.
 //!
 //! # Architecture
 //!
-//! ```text
-//! ┌─────────────────────────────────────────┐
-//! │             UnifiedRouter               │
-//! │  ┌─────────────┐  ┌─────────────────┐   │
-//! │  │ClientRouter │  │  ServerRouter   │   │
-//! │  │ (WASM/SPA)  │  │ (HTTP/Backend)  │   │
-//! │  └─────────────┘  └─────────────────┘   │
-//! └─────────────────────────────────────────┘
-//! ```
+//! | Target | Active private storage | Active builder | Access and extraction |
+//! |---|---|---|---|
+//! | Native | Server, WebSocket, gRPC, DI, and streaming routes | `.server(...)` | Server access and extraction |
+//! | WASM | Client routes and navigation state | `.client(...)` | Client access and extraction |
+//!
+//! `UnifiedRouter` is non-generic on both targets. The inactive builder is P1:
+//! it type-checks its closure and returns the router unchanged without invoking
+//! the closure or storing the inactive route representation.
 //!
 //! # Example
 //!
@@ -26,6 +26,9 @@
 //!         .with_prefix("/api/v1")
 //!         .endpoint(list_users)
 //!         .endpoint(create_user))
+//!     // Native-only protocol builders are available when enabled.
+//!     // .websocket(|ws| ws.mount("/ws/", app_ws_routes()))
+//!     // .grpc(|grpc| grpc.merge(app_grpc_services()))
 //!     .client(|c| c
 //!         .route("home", "/", || home_page())
 //!         .route_path("user_detail", "/users/{id}", |Path(id): Path<i64>| user_page(id)));
@@ -33,8 +36,9 @@
 //!
 //! # Feature Flags
 //!
-//! - When `client-router` feature is **enabled**: Full [`UnifiedRouter`] with both
-//!   `.server()` and `.client()` methods available.
+//! - When `client-router` feature is **enabled**: Non-generic [`UnifiedRouter`]
+//!   with both declaration builders. Each target stores and executes only its
+//!   applicable route representation.
 //! - When `client-router` feature is **disabled**: Server-only [`UnifiedRouter`] with
 //!   only `.server()` method available.
 //!
@@ -43,6 +47,8 @@
 
 #[cfg(native)]
 use crate::routers::server_router::ServerRouter;
+#[cfg(native)]
+use crate::routers::{NativeHttpRoutes, NativeRoutes};
 
 #[cfg(feature = "client-router")]
 use crate::routers::client_router::ClientRouter;
@@ -62,15 +68,51 @@ use reinhardt_middleware::Middleware;
 #[cfg(native)]
 use std::sync::Arc;
 
+#[cfg(native)]
+fn attach_child_di_registrations(
+	parent: &mut reinhardt_di::DiRegistrationList,
+	child_server: ServerRouter,
+	registrations: reinhardt_di::DiRegistrationList,
+) -> ServerRouter {
+	if let Some(context) = child_server.di_context() {
+		registrations.apply_to(context.singleton_scope());
+	} else {
+		parent.merge(registrations);
+	}
+	child_server
+}
+
+#[cfg(native)]
+fn retain_websocket_context(
+	contexts: &mut Vec<(
+		reinhardt_core::ws::WebSocketConsumerKey,
+		Arc<InjectionContext>,
+	)>,
+	router: &reinhardt_core::ws::WebSocketRouter,
+	context: Option<Arc<InjectionContext>>,
+) {
+	let Some(context) = context else { return };
+	for route in router.routes() {
+		if !contexts.iter().any(|(key, _)| *key == route.consumer_key()) {
+			contexts.push((route.consumer_key(), Arc::clone(&context)));
+		}
+	}
+}
+
 // ============================================================================
 // client-router feature ENABLED
 // ============================================================================
 
-/// Unified router combining server and client routing capabilities.
+/// Target-neutral unified router for native route declarations.
 ///
-/// This struct provides a unified interface for configuring both:
-/// - **Server-side routes**: HTTP methods, middleware, DI, ViewSets
-/// - **Client-side routes**: SPA navigation, history API, [`Page`] rendering
+/// This non-generic public type stores only native server, WebSocket, gRPC,
+/// DI, and streaming state. It exposes server access and extraction APIs on
+/// native. Client access and extraction APIs are available only on the WASM
+/// `UnifiedRouter`, which stores [`ClientRouter`] instead.
+///
+/// The `.client(...)` builder is retained as a P1 declaration API: it
+/// type-checks its closure and drops it without invocation or registration.
+/// Do not put required side effects in that closure.
 ///
 /// # Example
 ///
@@ -87,9 +129,14 @@ use std::sync::Arc;
 #[cfg(all(feature = "client-router", native))]
 pub struct UnifiedRouter {
 	server: ServerRouter,
-	client: ClientRouter,
 	/// WebSocket router for `urls.ws().<app>().<handler>()` URL resolution.
 	pub websocket: reinhardt_core::ws::WebSocketRouter,
+	websocket_contexts: Vec<(
+		reinhardt_core::ws::WebSocketConsumerKey,
+		Arc<InjectionContext>,
+	)>,
+	#[cfg(feature = "grpc")]
+	grpc: reinhardt_grpc::GrpcRouter,
 	di_registrations: reinhardt_di::DiRegistrationList,
 	#[cfg(feature = "streaming")]
 	streaming_handlers: Vec<reinhardt_streaming::StreamingHandlerRegistration>,
@@ -97,16 +144,36 @@ pub struct UnifiedRouter {
 
 #[cfg(all(feature = "client-router", native))]
 impl UnifiedRouter {
-	/// Creates a new `UnifiedRouter` with default server and client routers.
+	/// Creates a new `UnifiedRouter` with a default server router.
 	pub fn new() -> Self {
 		Self {
 			server: ServerRouter::new(),
-			client: ClientRouter::new(),
 			websocket: reinhardt_core::ws::WebSocketRouter::new(),
+			websocket_contexts: Vec::new(),
+			#[cfg(feature = "grpc")]
+			grpc: reinhardt_grpc::GrpcRouter::new(),
 			di_registrations: reinhardt_di::DiRegistrationList::new(),
 			#[cfg(feature = "streaming")]
 			streaming_handlers: Vec::new(),
 		}
+	}
+
+	/// Declare client-side routing configuration on native targets.
+	///
+	/// Parity: P1.
+	///
+	/// This method type-checks `f` as `FnOnce(ClientRouter) -> ClientRouter`, then
+	/// drops it and returns the unchanged native router. It does not construct a
+	/// `ClientRouter`, invoke the closure, register client routes, or retain client
+	/// state. Captured values are dropped normally. Required client-route work must
+	/// run on WASM or construct [`ClientRouter`] directly in a reactive scope.
+	///
+	/// The WASM counterpart invokes and stores this closure's result.
+	pub fn client<F>(self, _f: F) -> Self
+	where
+		F: FnOnce(ClientRouter) -> ClientRouter,
+	{
+		self
 	}
 
 	/// Configure server-side routing with a closure.
@@ -116,8 +183,12 @@ impl UnifiedRouter {
 	/// Parity: P1.
 	///
 	/// Native builds execute the closure and store the configured `ServerRouter`.
-	/// WASM builds accept the same closure shape for type checking and return the
-	/// router unchanged without registration side effects.
+	/// The WASM counterpart type-checks and drops the closure without invoking it.
+	///
+	/// For native-only handler references, annotate the enclosing builder function
+	/// with the facade's `#[reinhardt::url_patterns]`. It removes the complete
+	/// server argument before name resolution unless the caller enables
+	/// `cfg(server)` on a non-browser-WASM target.
 	///
 	/// # Example
 	///
@@ -135,26 +206,6 @@ impl UnifiedRouter {
 		self
 	}
 
-	/// Configure client-side routing with a closure.
-	///
-	/// The closure receives a [`ClientRouter`] and should return a configured router.
-	///
-	/// # Example
-	///
-	/// ```rust,ignore
-	/// let router = UnifiedRouter::new()
-	///     .client(|c| c
-	///         .route("home", "/", || home_page())
-	///         .route_path("user_detail", "/users/{id}", |Path(id): Path<i64>| user_page(id)));
-	/// ```
-	pub fn client<F>(mut self, f: F) -> Self
-	where
-		F: FnOnce(ClientRouter) -> ClientRouter,
-	{
-		self.client = f(self.client);
-		self
-	}
-
 	/// Returns a reference to the server router.
 	pub fn server_ref(&self) -> &ServerRouter {
 		&self.server
@@ -163,16 +214,6 @@ impl UnifiedRouter {
 	/// Returns a mutable reference to the server router.
 	pub fn server_mut(&mut self) -> &mut ServerRouter {
 		&mut self.server
-	}
-
-	/// Returns a reference to the client router.
-	pub fn client_ref(&self) -> &ClientRouter {
-		&self.client
-	}
-
-	/// Returns a mutable reference to the client router.
-	pub fn client_mut(&mut self) -> &mut ClientRouter {
-		&mut self.client
 	}
 
 	/// Configure WebSocket routing with a closure.
@@ -199,6 +240,38 @@ impl UnifiedRouter {
 	/// Returns a reference to the WebSocket router.
 	pub fn websocket_ref(&self) -> &reinhardt_core::ws::WebSocketRouter {
 		&self.websocket
+	}
+
+	/// Configure gRPC routing with a closure.
+	#[cfg(feature = "grpc")]
+	pub fn grpc<F>(mut self, configure: F) -> Self
+	where
+		F: FnOnce(reinhardt_grpc::GrpcRouter) -> reinhardt_grpc::GrpcRouter,
+	{
+		self.grpc = configure(self.grpc);
+		self
+	}
+
+	/// Consumes the router and returns every native protocol component.
+	#[doc(hidden)]
+	pub fn __into_native_routes(mut self) -> NativeRoutes {
+		let di_context = self.server.di_context().cloned();
+		retain_websocket_context(
+			&mut self.websocket_contexts,
+			&self.websocket,
+			di_context.clone(),
+		);
+		NativeRoutes {
+			server: NativeHttpRoutes::Owned(Box::new(self.server)),
+			websocket: self.websocket,
+			websocket_contexts: self.websocket_contexts,
+			#[cfg(feature = "grpc")]
+			grpc: self.grpc,
+			di_context,
+			di_registrations: self.di_registrations,
+			#[cfg(feature = "streaming")]
+			streaming_handlers: self.streaming_handlers,
+		}
 	}
 
 	/// Apply or stash deferred DI registrations.
@@ -235,45 +308,6 @@ impl UnifiedRouter {
 		self.server
 	}
 
-	/// Consumes the router and returns the client router.
-	pub fn into_client(mut self) -> ClientRouter {
-		self.flush_di_registrations();
-		self.client
-	}
-
-	/// Consumes the router and returns both parts.
-	pub fn into_parts(mut self) -> (ServerRouter, ClientRouter) {
-		self.flush_di_registrations();
-		let errors = self.server.register_all_routes();
-		for error in &errors {
-			tracing::warn!("{}", error);
-		}
-		(self.server, self.client)
-	}
-
-	/// Registers server router globally and returns client router.
-	///
-	/// This is a convenience method for full-stack applications that need to:
-	/// 1. Register the server router globally for HTTP request handling
-	/// 2. Keep the client router for SPA navigation
-	///
-	/// # Example
-	///
-	/// ```rust,ignore
-	/// let client = UnifiedRouter::new()
-	///     .server(|s| s.endpoint(api_data))
-	///     .client(|c| c.route("home", "/", || home_page()))
-	///     .register_globally();
-	///
-	/// // Server router is now globally registered
-	/// // Client router is returned for SPA use
-	/// ```
-	pub fn register_globally(self) -> ClientRouter {
-		let (server, client) = self.into_parts();
-		crate::routers::register_router(server);
-		client
-	}
-
 	/// Attach deferred DI registrations to this router.
 	///
 	/// When the router is consumed, these registrations are applied directly
@@ -294,22 +328,6 @@ impl UnifiedRouter {
 	/// This is a convenience method that delegates to [`ServerRouter::with_prefix`].
 	pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
 		self.server = self.server.with_prefix(prefix);
-		self
-	}
-
-	/// Set namespace for both server and client routers.
-	///
-	/// Delegates to [`ServerRouter::with_namespace`] and
-	/// [`ClientRouter::with_namespace`] so that server-side URL resolvers
-	/// and client-side named route keys are both prefixed consistently
-	/// with `"<namespace>:"`. Fixes #3726.
-	pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
-		let ns: String = namespace.into();
-		// Borrow for the client (accepts `&str`) first, then move the owned
-		// `String` into the server (accepts `impl Into<String>`) to avoid a
-		// redundant `String` allocation.
-		self.client = self.client.with_namespace(&ns);
-		self.server = self.server.with_namespace(ns);
 		self
 	}
 
@@ -366,20 +384,6 @@ impl UnifiedRouter {
 		self
 	}
 
-	/// Mount a child UnifiedRouter on this router.
-	///
-	/// Mounts the child's server router under `prefix` and merges its client
-	/// routes into the parent. Client named routes are preserved with index
-	/// offset adjustment so that `url_for("app:route")` resolves on the
-	/// project-level unified `UrlReverser`.
-	///
-	/// The `prefix` argument is applied to server routes only; client routes
-	/// keep their patterns as-declared, mirroring the WASM behavior.
-	pub fn mount_unified(mut self, prefix: &str, child: UnifiedRouter) -> Self {
-		self.client = self.client.merge(child.client);
-		self.mount(prefix, child.server)
-	}
-
 	/// Mount streaming handlers (producers and consumers) on this router.
 	///
 	/// Registrations are stored on the router for Phase 3 worker startup.
@@ -401,6 +405,74 @@ impl UnifiedRouter {
 		self.server = self.server.endpoint(f);
 		self
 	}
+
+	/// Set namespace for the native server, WebSocket, and gRPC routers.
+	pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
+		let namespace = namespace.into();
+		self.server = self.server.with_namespace(&namespace);
+		self.websocket = self.websocket.with_namespace(&namespace);
+		#[cfg(feature = "grpc")]
+		{
+			self.grpc = self.grpc.with_namespace(namespace);
+		}
+		self
+	}
+
+	/// Merge another unified router without applying a prefix.
+	pub fn merge(mut self, child: Self) -> Self {
+		self.websocket_contexts
+			.extend(child.websocket_contexts.iter().cloned());
+		retain_websocket_context(
+			&mut self.websocket_contexts,
+			&child.websocket,
+			child.server.di_context().cloned(),
+		);
+		let child_server = attach_child_di_registrations(
+			&mut self.di_registrations,
+			child.server,
+			child.di_registrations,
+		);
+		self.server = self.server.group(vec![child_server]);
+		self.websocket = self.websocket.merge(child.websocket);
+		#[cfg(feature = "grpc")]
+		{
+			self.grpc = self.grpc.merge(child.grpc);
+		}
+		#[cfg(feature = "streaming")]
+		self.streaming_handlers.extend(child.streaming_handlers);
+		self
+	}
+
+	/// Registers the server router globally.
+	pub fn register_globally(mut self) {
+		self.flush_di_registrations();
+		crate::routers::register_router(self.server);
+	}
+
+	/// Mount a child unified router on this router.
+	pub fn mount_unified(mut self, prefix: &str, child: Self) -> Self {
+		self.websocket_contexts
+			.extend(child.websocket_contexts.iter().cloned());
+		retain_websocket_context(
+			&mut self.websocket_contexts,
+			&child.websocket,
+			child.server.di_context().cloned(),
+		);
+		let child_server = attach_child_di_registrations(
+			&mut self.di_registrations,
+			child.server,
+			child.di_registrations,
+		);
+		self.server = self.server.mount(prefix, child_server);
+		self.websocket = self.websocket.mount(prefix, child.websocket);
+		#[cfg(feature = "grpc")]
+		{
+			self.grpc = self.grpc.mount(prefix, child.grpc);
+		}
+		#[cfg(feature = "streaming")]
+		self.streaming_handlers.extend(child.streaming_handlers);
+		self
+	}
 }
 
 #[cfg(all(feature = "client-router", native))]
@@ -408,7 +480,6 @@ impl std::fmt::Debug for UnifiedRouter {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("UnifiedRouter")
 			.field("server", &self.server)
-			.field("client", &self.client)
 			.field("di_registrations", &self.di_registrations)
 			.finish()
 	}
@@ -441,7 +512,7 @@ const _: fn() = || {
 // As of #4065 / #4067, ClientRouter is Send + Sync on native targets (Signal<T> is backed
 // by Arc<RwLock<T>>), so the previous Sync blocker no longer applies. A Handler impl can
 // be added in a follow-up PR.
-// For server-side HTTP handling, use ServerRouter directly or extract it via into_parts().
+// For server-side HTTP handling, use `into_server()` or `__into_native_routes()`.
 
 // ============================================================================
 // client-router feature DISABLED
@@ -463,6 +534,14 @@ const _: fn() = || {
 #[cfg(not(feature = "client-router"))]
 pub struct UnifiedRouter {
 	server: ServerRouter,
+	/// WebSocket router for native consumer routes.
+	pub websocket: reinhardt_core::ws::WebSocketRouter,
+	websocket_contexts: Vec<(
+		reinhardt_core::ws::WebSocketConsumerKey,
+		Arc<InjectionContext>,
+	)>,
+	#[cfg(feature = "grpc")]
+	grpc: reinhardt_grpc::GrpcRouter,
 	di_registrations: reinhardt_di::DiRegistrationList,
 	#[cfg(feature = "streaming")]
 	streaming_handlers: Vec<reinhardt_streaming::StreamingHandlerRegistration>,
@@ -474,6 +553,10 @@ impl UnifiedRouter {
 	pub fn new() -> Self {
 		Self {
 			server: ServerRouter::new(),
+			websocket: reinhardt_core::ws::WebSocketRouter::new(),
+			websocket_contexts: Vec::new(),
+			#[cfg(feature = "grpc")]
+			grpc: reinhardt_grpc::GrpcRouter::new(),
 			di_registrations: reinhardt_di::DiRegistrationList::new(),
 			#[cfg(feature = "streaming")]
 			streaming_handlers: Vec::new(),
@@ -487,6 +570,10 @@ impl UnifiedRouter {
 	/// This arm only exists when `client-router` is disabled, and `routers.rs`
 	/// only re-exports it on native targets. WASM builds require the
 	/// `client-router` feature for the P1 no-op `server` closure shape.
+	///
+	/// The facade's `#[reinhardt::url_patterns]` can remove this call entirely
+	/// when the calling crate does not enable `cfg(server)`. Direct builder
+	/// calls retain their existing behavior.
 	pub fn server<F>(mut self, f: F) -> Self
 	where
 		F: FnOnce(ServerRouter) -> ServerRouter,
@@ -503,6 +590,77 @@ impl UnifiedRouter {
 	/// Returns a mutable reference to the server router.
 	pub fn server_mut(&mut self) -> &mut ServerRouter {
 		&mut self.server
+	}
+
+	/// Configure WebSocket routing with a closure.
+	pub fn websocket<F>(mut self, configure: F) -> Self
+	where
+		F: FnOnce(reinhardt_core::ws::WebSocketRouter) -> reinhardt_core::ws::WebSocketRouter,
+	{
+		self.websocket = configure(self.websocket);
+		self
+	}
+
+	/// Returns a reference to the WebSocket router.
+	pub fn websocket_ref(&self) -> &reinhardt_core::ws::WebSocketRouter {
+		&self.websocket
+	}
+
+	/// Configure gRPC routing with a closure.
+	#[cfg(feature = "grpc")]
+	pub fn grpc<F>(mut self, configure: F) -> Self
+	where
+		F: FnOnce(reinhardt_grpc::GrpcRouter) -> reinhardt_grpc::GrpcRouter,
+	{
+		self.grpc = configure(self.grpc);
+		self
+	}
+
+	/// Merge another unified router without applying a prefix.
+	pub fn merge(mut self, child: Self) -> Self {
+		self.websocket_contexts
+			.extend(child.websocket_contexts.iter().cloned());
+		retain_websocket_context(
+			&mut self.websocket_contexts,
+			&child.websocket,
+			child.server.di_context().cloned(),
+		);
+		let child_server = attach_child_di_registrations(
+			&mut self.di_registrations,
+			child.server,
+			child.di_registrations,
+		);
+		self.server = self.server.group(vec![child_server]);
+		self.websocket = self.websocket.merge(child.websocket);
+		#[cfg(feature = "grpc")]
+		{
+			self.grpc = self.grpc.merge(child.grpc);
+		}
+		#[cfg(feature = "streaming")]
+		self.streaming_handlers.extend(child.streaming_handlers);
+		self
+	}
+
+	/// Consumes the router and returns every native protocol component.
+	#[doc(hidden)]
+	pub fn __into_native_routes(mut self) -> NativeRoutes {
+		let di_context = self.server.di_context().cloned();
+		retain_websocket_context(
+			&mut self.websocket_contexts,
+			&self.websocket,
+			di_context.clone(),
+		);
+		NativeRoutes {
+			server: NativeHttpRoutes::Owned(Box::new(self.server)),
+			websocket: self.websocket,
+			websocket_contexts: self.websocket_contexts,
+			#[cfg(feature = "grpc")]
+			grpc: self.grpc,
+			di_context,
+			di_registrations: self.di_registrations,
+			#[cfg(feature = "streaming")]
+			streaming_handlers: self.streaming_handlers,
+		}
 	}
 
 	/// Apply or stash deferred DI registrations.
@@ -568,7 +726,13 @@ impl UnifiedRouter {
 
 	/// Set namespace for server router.
 	pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
-		self.server = self.server.with_namespace(namespace);
+		let namespace = namespace.into();
+		self.server = self.server.with_namespace(&namespace);
+		self.websocket = self.websocket.with_namespace(&namespace);
+		#[cfg(feature = "grpc")]
+		{
+			self.grpc = self.grpc.with_namespace(namespace);
+		}
 		self
 	}
 
@@ -613,7 +777,21 @@ impl UnifiedRouter {
 
 	/// Mount a child UnifiedRouter on this router.
 	pub fn mount_unified(self, prefix: &str, child: UnifiedRouter) -> Self {
-		self.mount(prefix, child.server)
+		let mut mounted = self;
+		let child_server = attach_child_di_registrations(
+			&mut mounted.di_registrations,
+			child.server,
+			child.di_registrations,
+		);
+		mounted.server = mounted.server.mount(prefix, child_server);
+		mounted.websocket = mounted.websocket.mount(prefix, child.websocket);
+		#[cfg(feature = "grpc")]
+		{
+			mounted.grpc = mounted.grpc.mount(prefix, child.grpc);
+		}
+		#[cfg(feature = "streaming")]
+		mounted.streaming_handlers.extend(child.streaming_handlers);
+		mounted
 	}
 
 	/// Mount streaming handlers on this router.
@@ -840,11 +1018,16 @@ const _: fn() = || {
 	let _ = UnifiedRouter::new().server(delegate).client(|c| c);
 };
 
-/// Unified router for WASM targets with client-side routing.
+/// Target-neutral unified router for WASM client routing.
 ///
-/// On WASM, only client-side routing is available. The `.server()` method
-/// accepts a closure but discards its result, allowing shared route
-/// definitions to compile on both server and client.
+/// This non-generic public type stores only [`ClientRouter`] state. It exposes
+/// client access and extraction APIs on WASM. Server access and extraction APIs
+/// are available only on native `UnifiedRouter`, which stores native protocol
+/// state instead.
+///
+/// The `.server(...)` builder is retained as a P1 declaration API: it
+/// type-checks its closure and drops it without invocation or registration.
+/// Do not put required side effects in that closure.
 #[cfg(all(wasm, feature = "client-router"))]
 pub struct UnifiedRouter {
 	client: ClientRouter,
@@ -864,13 +1047,16 @@ impl UnifiedRouter {
 	/// Parity: P1.
 	///
 	/// Native builds execute the closure and store the configured `ServerRouter`.
-	/// WASM builds accept the same closure shape for type checking and return the
-	/// router unchanged without registration side effects.
+	/// WASM builds type-check and drop the closure without invoking it.
 	///
 	/// On WASM, server routing is not available. The closure is accepted for
 	/// cross-target type-checking — its `ServerRouter` parameter type is unified
 	/// with the native arm — and then discarded without being invoked, so the
 	/// shared route definitions compile on both targets at zero WASM runtime cost.
+	/// Handler names must still be available on WASM for a direct builder call.
+	/// The facade's `#[reinhardt::url_patterns]` removes the complete server
+	/// argument before name resolution on browser WASM, even if the caller has
+	/// `cfg(server)` enabled.
 	pub fn server<F>(self, _f: F) -> Self
 	where
 		F: FnOnce(ServerRouter) -> ServerRouter,
@@ -895,6 +1081,12 @@ impl UnifiedRouter {
 	/// Returns a mutable reference to the client router.
 	pub fn client_mut(&mut self) -> &mut ClientRouter {
 		&mut self.client
+	}
+
+	/// Merge another client-only router without applying a prefix.
+	pub fn merge(mut self, child: Self) -> Self {
+		self.client = self.client.merge(child.client);
+		self
 	}
 
 	/// Consumes the router and returns the client router.
@@ -970,164 +1162,105 @@ impl Default for UnifiedRouter {
 #[allow(deprecated)]
 mod tests {
 	use super::*;
-
-	#[cfg(feature = "client-router")]
+	#[cfg(all(wasm, feature = "client-router"))]
 	use reinhardt_core::page::Page;
+	use reinhardt_core::reactive::ReactiveScope;
 
 	#[test]
 	fn test_unified_router_new() {
-		let router = UnifiedRouter::new();
-		// Should have default server router
+		ReactiveScope::run(|| {
+			let router = UnifiedRouter::new();
+			// Should have default server router
+			assert_eq!(router.server_ref().prefix(), "");
+		});
+	}
+
+	#[cfg(all(feature = "client-router", native))]
+	#[test]
+	fn server_only_router_does_not_require_a_reactive_scope() {
+		let router = UnifiedRouter::new()
+			.server(|server| server.with_prefix("/api"))
+			.into_server();
+
+		assert_eq!(router.prefix(), "/api");
+	}
+
+	#[cfg(all(feature = "client-router", native))]
+	#[test]
+	fn native_client_builder_is_inert_and_preserves_send_and_sync() {
+		fn assert_send_and_sync<T: Send + Sync>(_: &T) {}
+
+		let router = UnifiedRouter::new().client(|_| {
+			panic!("native client builder must not be invoked");
+		});
+
+		assert_send_and_sync(&router);
 		assert_eq!(router.server_ref().prefix(), "");
 	}
 
 	#[test]
 	fn test_unified_router_server_closure() {
-		let router = UnifiedRouter::new().server(|s| s.with_prefix("/api").with_namespace("v1"));
+		ReactiveScope::run(|| {
+			let router =
+				UnifiedRouter::new().server(|s| s.with_prefix("/api").with_namespace("v1"));
 
-		assert_eq!(router.server_ref().prefix(), "/api");
-		assert_eq!(router.server_ref().namespace(), Some("v1"));
+			assert_eq!(router.server_ref().prefix(), "/api");
+			assert_eq!(router.server_ref().namespace(), Some("v1"));
+		});
 	}
 
 	#[test]
 	fn test_unified_router_convenience_methods() {
-		let router = UnifiedRouter::new()
-			.with_prefix("/api")
-			.with_namespace("v1");
+		ReactiveScope::run(|| {
+			let router = UnifiedRouter::new()
+				.with_prefix("/api")
+				.with_namespace("v1");
 
-		assert_eq!(router.server_ref().prefix(), "/api");
-		assert_eq!(router.server_ref().namespace(), Some("v1"));
+			assert_eq!(router.server_ref().prefix(), "/api");
+			assert_eq!(router.server_ref().namespace(), Some("v1"));
+		});
 	}
 
-	#[cfg(feature = "client-router")]
+	#[cfg(all(wasm, feature = "client-router"))]
 	#[test]
 	fn test_unified_router_client_closure() {
-		let router = UnifiedRouter::new().client(|c| c.route("home", "/", || Page::Empty));
+		ReactiveScope::run(|| {
+			let router = UnifiedRouter::new().client(|c| c.route("home", "/", || Page::Empty));
 
-		assert_eq!(router.client_ref().route_count(), 1);
-	}
-
-	#[cfg(all(feature = "client-router", native))]
-	#[test]
-	fn unified_with_namespace_propagates_to_client() {
-		// Arrange: routes are added first, namespace applied after (matches
-		// the call pattern generated by route declarations).
-		let router = UnifiedRouter::new()
-			.client(|c| c.route("login", "/login/", || Page::Empty))
-			.with_namespace("app");
-
-		// Act & Assert
-		assert!(
-			router.client_ref().has_route("app:login"),
-			"client-side named route should be namespaced by UnifiedRouter::with_namespace"
-		);
-		assert!(
-			!router.client_ref().has_route("login"),
-			"unprefixed name should no longer resolve after with_namespace"
-		);
-	}
-
-	#[cfg(all(feature = "client-router", native))]
-	#[test]
-	fn mount_unified_merges_client_routes_on_native() {
-		// Arrange: a child UnifiedRouter that declares a client named route,
-		// mirroring what a client route declaration produces on native
-		// via `client_url_patterns()`.
-		let child =
-			UnifiedRouter::new().client(|c| c.route("login_page", "/login/", || Page::Empty));
-		let parent = UnifiedRouter::new().client(|c| c.route("home", "/", || Page::Empty));
-
-		// Act
-		let merged = parent.mount_unified("/", child);
-
-		// Assert: both parent and child client routes are reachable on the
-		// resulting router and can resolve via `ClientRouter::reverse()`.
-		assert!(merged.client_ref().has_route("home"));
-		assert!(
-			merged.client_ref().has_route("login_page"),
-			"native mount_unified must merge child client routes (#4076)"
-		);
-		assert_eq!(merged.client_ref().route_count(), 2);
-
-		assert_eq!(
-			merged.client_ref().reverse("login_page", &[]).ok(),
-			Some("/login/".to_string()),
-			"merged client routes must be resolvable on native"
-		);
-	}
-
-	#[cfg(all(feature = "client-router", native))]
-	#[test]
-	fn mount_unified_merges_namespaced_client_routes_on_native() {
-		// Arrange: child router applies its own namespace before being mounted,
-		// matching the per-app composition pattern `mount_unified("/", auth::routes())`
-		// where `auth::routes()` already called `.with_namespace("auth")`.
-		let child = UnifiedRouter::new()
-			.client(|c| c.route("login_page", "/login/", || Page::Empty))
-			.with_namespace("auth");
-		let parent = UnifiedRouter::new();
-
-		// Act
-		let merged = parent.mount_unified("/", child);
-
-		// Assert
-		assert!(
-			merged.client_ref().has_route("auth:login_page"),
-			"namespaced child client routes must survive native mount_unified"
-		);
-		assert_eq!(
-			merged.client_ref().reverse("auth:login_page", &[]).ok(),
-			Some("/login/".to_string())
-		);
+			assert_eq!(router.client_ref().route_count(), 1);
+		});
 	}
 
 	#[cfg(all(wasm, feature = "client-router"))]
 	#[test]
 	fn unified_wasm_with_namespace_propagates_to_client() {
-		// Arrange
-		let router = UnifiedRouter::new()
-			.client(|c| c.route("login", "/login/", || Page::Empty))
-			.with_namespace("app");
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = UnifiedRouter::new()
+				.client(|c| c.route("login", "/login/", || Page::Empty))
+				.with_namespace("app");
 
-		// Act & Assert
-		assert!(
-			router.client_ref().has_route("app:login"),
-			"WASM UnifiedRouter::with_namespace must propagate to ClientRouter"
-		);
-		assert!(
-			!router.client_ref().has_route("login"),
-			"unprefixed name should no longer resolve after with_namespace on WASM"
-		);
-	}
-
-	#[cfg(feature = "client-router")]
-	#[test]
-	fn test_unified_router_into_parts() {
-		let router = UnifiedRouter::new()
-			.server(|s| s.with_prefix("/api"))
-			.client(|c| c.route("home", "/", || Page::Empty));
-
-		let (server, client) = router.into_parts();
-		assert_eq!(server.prefix(), "/api");
-		assert_eq!(client.route_count(), 1);
+			// Act & Assert
+			assert!(
+				router.client_ref().has_route("app:login"),
+				"WASM UnifiedRouter::with_namespace must propagate to ClientRouter"
+			);
+			assert!(
+				!router.client_ref().has_route("login"),
+				"unprefixed name should no longer resolve after with_namespace on WASM"
+			);
+		});
 	}
 
 	#[cfg(feature = "client-router")]
 	#[test]
 	fn test_unified_router_into_server() {
-		let router = UnifiedRouter::new().server(|s| s.with_prefix("/api"));
+		ReactiveScope::run(|| {
+			let router = UnifiedRouter::new().server(|s| s.with_prefix("/api"));
 
-		let server = router.into_server();
-		assert_eq!(server.prefix(), "/api");
-	}
-
-	#[cfg(feature = "client-router")]
-	#[test]
-	fn test_unified_router_into_client() {
-		let router = UnifiedRouter::new().client(|c| c.route("home", "/", || Page::Empty));
-
-		let client = router.into_client();
-		assert_eq!(client.route_count(), 1);
+			let server = router.into_server();
+			assert_eq!(server.prefix(), "/api");
+		});
 	}
 
 	mod flush_di_registrations {
@@ -1136,65 +1269,136 @@ mod tests {
 		use rstest::rstest;
 		use std::sync::Arc;
 
+		struct ChildWebSocket;
+
+		impl reinhardt_core::ws::WebSocketEndpointInfo for ChildWebSocket {
+			fn path() -> &'static str {
+				"/ws/child"
+			}
+			fn name() -> Option<&'static str> {
+				Some("child")
+			}
+		}
+
 		#[rstest]
 		fn applies_registrations_to_di_context_singleton_scope() {
-			// Arrange
-			let singleton_scope = Arc::new(SingletonScope::new());
-			let di_ctx = Arc::new(InjectionContext::builder(Arc::clone(&singleton_scope)).build());
+			ReactiveScope::run(|| {
+				// Arrange
+				let singleton_scope = Arc::new(SingletonScope::new());
+				let di_ctx =
+					Arc::new(InjectionContext::builder(Arc::clone(&singleton_scope)).build());
 
-			let mut registrations = DiRegistrationList::new();
-			registrations.register(42i32);
+				let mut registrations = DiRegistrationList::new();
+				registrations.register(42i32);
 
-			// Act
-			let _server = UnifiedRouter::new()
-				.with_di_registrations(registrations)
-				.with_di_context(di_ctx)
-				.into_server();
+				// Act
+				let _server = UnifiedRouter::new()
+					.with_di_registrations(registrations)
+					.with_di_context(di_ctx)
+					.into_server();
 
-			// Assert
-			let value = singleton_scope
-				.get::<i32>()
-				.expect("i32 should be registered");
-			assert_eq!(*value, 42);
+				// Assert
+				let value = singleton_scope
+					.get::<i32>()
+					.expect("i32 should be registered");
+				assert_eq!(*value, 42);
+			});
 		}
 
 		#[rstest]
 		fn applies_registrations_regardless_of_builder_order() {
-			// Arrange
-			let singleton_scope = Arc::new(SingletonScope::new());
-			let di_ctx = Arc::new(InjectionContext::builder(Arc::clone(&singleton_scope)).build());
+			ReactiveScope::run(|| {
+				// Arrange
+				let singleton_scope = Arc::new(SingletonScope::new());
+				let di_ctx =
+					Arc::new(InjectionContext::builder(Arc::clone(&singleton_scope)).build());
 
-			let mut registrations = DiRegistrationList::new();
-			registrations.register(99u64);
+				let mut registrations = DiRegistrationList::new();
+				registrations.register(99u64);
 
-			// Act: with_di_context BEFORE with_di_registrations
-			let _server = UnifiedRouter::new()
-				.with_di_context(di_ctx)
-				.with_di_registrations(registrations)
-				.into_server();
+				// Act: with_di_context BEFORE with_di_registrations
+				let _server = UnifiedRouter::new()
+					.with_di_context(di_ctx)
+					.with_di_registrations(registrations)
+					.into_server();
 
-			// Assert
-			let value = singleton_scope
-				.get::<u64>()
-				.expect("u64 should be registered");
-			assert_eq!(*value, 99);
+				// Assert
+				let value = singleton_scope
+					.get::<u64>()
+					.expect("u64 should be registered");
+				assert_eq!(*value, 99);
+			});
+		}
+
+		#[rstest]
+		fn merge_applies_child_registrations_to_the_child_context() {
+			ReactiveScope::run(|| {
+				// Arrange
+				let parent_scope = Arc::new(SingletonScope::new());
+				let child_scope = Arc::new(SingletonScope::new());
+				let parent_context =
+					Arc::new(InjectionContext::builder(Arc::clone(&parent_scope)).build());
+				let child_context =
+					Arc::new(InjectionContext::builder(Arc::clone(&child_scope)).build());
+				let mut registrations = DiRegistrationList::new();
+				registrations.register(123usize);
+
+				// Act
+				let _merged = UnifiedRouter::new().with_di_context(parent_context).merge(
+					UnifiedRouter::new()
+						.with_di_context(child_context)
+						.with_di_registrations(registrations),
+				);
+
+				// Assert
+				assert!(parent_scope.get::<usize>().is_none());
+				assert_eq!(
+					*child_scope.get::<usize>().expect("child registration"),
+					123
+				);
+			});
+		}
+
+		#[rstest]
+		fn merge_retains_child_context_for_websocket_routes() {
+			ReactiveScope::run(|| {
+				let parent_context =
+					Arc::new(InjectionContext::builder(Arc::new(SingletonScope::new())).build());
+				let child_context =
+					Arc::new(InjectionContext::builder(Arc::new(SingletonScope::new())).build());
+				let routes = UnifiedRouter::new()
+					.with_di_context(parent_context)
+					.merge(
+						UnifiedRouter::new()
+							.with_di_context(Arc::clone(&child_context))
+							.websocket(|router| router.consumer(|| ChildWebSocket)),
+					)
+					.__into_native_routes();
+
+				assert!(routes.websocket_contexts.iter().any(|(key, context)| {
+					*key == reinhardt_core::ws::WebSocketConsumerKey::of::<ChildWebSocket>()
+						&& Arc::ptr_eq(context, &child_context)
+				}));
+			});
 		}
 
 		#[rstest]
 		#[serial_test::serial(global_di)]
 		fn stashes_globally_when_no_di_context() {
-			// Arrange
-			let mut registrations = DiRegistrationList::new();
-			registrations.register(7u8);
+			ReactiveScope::run(|| {
+				// Arrange
+				let mut registrations = DiRegistrationList::new();
+				registrations.register(7u8);
 
-			// Act
-			let _server = UnifiedRouter::new()
-				.with_di_registrations(registrations)
-				.into_server();
+				// Act
+				let _server = UnifiedRouter::new()
+					.with_di_registrations(registrations)
+					.into_server();
 
-			// Assert: registrations stashed globally
-			let taken = crate::routers::take_di_registrations();
-			assert!(taken.is_some(), "registrations should be stashed globally");
+				// Assert: registrations stashed globally
+				let taken = crate::routers::take_di_registrations();
+				assert!(taken.is_some(), "registrations should be stashed globally");
+			});
 		}
 	}
 
@@ -1205,19 +1409,23 @@ mod tests {
 
 		#[rstest]
 		fn unified_router_implements_debug() {
-			let router = UnifiedRouter::new().with_prefix("/api");
-			let debug_output = format!("{:?}", router);
-			assert!(debug_output.contains("UnifiedRouter"));
-			assert!(debug_output.contains("ServerRouter"));
+			ReactiveScope::run(|| {
+				let router = UnifiedRouter::new().with_prefix("/api");
+				let debug_output = format!("{:?}", router);
+				assert!(debug_output.contains("UnifiedRouter"));
+				assert!(debug_output.contains("ServerRouter"));
+			});
 		}
 
 		#[rstest]
 		fn arc_try_unwrap_with_expect() {
-			// This is the primary use case from #3391:
-			// Arc::try_unwrap().expect() requires Debug on the error type
-			let router = Arc::new(UnifiedRouter::new());
-			let unwrapped = Arc::try_unwrap(router).expect("should have single ref");
-			assert_eq!(unwrapped.server_ref().prefix(), "");
+			ReactiveScope::run(|| {
+				// This is the primary use case from #3391:
+				// Arc::try_unwrap().expect() requires Debug on the error type
+				let router = Arc::new(UnifiedRouter::new());
+				let unwrapped = Arc::try_unwrap(router).expect("should have single ref");
+				assert_eq!(unwrapped.server_ref().prefix(), "");
+			});
 		}
 	}
 
@@ -1253,31 +1461,18 @@ mod tests {
 
 		#[rstest]
 		fn into_server_registers_routes_for_reverse() {
-			// Arrange
-			let router = UnifiedRouter::new()
-				.server(|s| s.with_namespace("api").endpoint(|| HealthEndpoint));
+			ReactiveScope::run(|| {
+				// Arrange
+				let router = UnifiedRouter::new()
+					.server(|s| s.with_namespace("api").endpoint(|| HealthEndpoint));
 
-			// Act
-			let server = router.into_server();
+				// Act
+				let server = router.into_server();
 
-			// Assert
-			let url = server.reverse("api:health", &[]);
-			assert_eq!(url, Some("/health".to_string()));
-		}
-
-		#[cfg(feature = "client-router")]
-		#[rstest]
-		fn into_parts_registers_routes_for_reverse() {
-			// Arrange
-			let router = UnifiedRouter::new()
-				.server(|s| s.with_namespace("api").endpoint(|| HealthEndpoint));
-
-			// Act
-			let (server, _client) = router.into_parts();
-
-			// Assert
-			let url = server.reverse("api:health", &[]);
-			assert_eq!(url, Some("/health".to_string()));
+				// Assert
+				let url = server.reverse("api:health", &[]);
+				assert_eq!(url, Some("/health".to_string()));
+			});
 		}
 	}
 }

@@ -41,14 +41,16 @@
 //! `pool_size = "${DB_POOL_SIZE:-10}"` resolves directly to the field's
 //! declared Rust type (e.g. `u16`) without manual parsing.
 
-use reinhardt::conf::settings::builder::SettingsBuilder;
+use reinhardt::conf::settings::builder::{BuildError, SettingsBuilder};
+use reinhardt::conf::settings::PendingSettings;
+use reinhardt::conf::settings::scoped::ScopedSettings;
 use reinhardt::conf::settings::profile::Profile;
 use reinhardt::conf::settings::sources::{DefaultSource, HighPriorityEnvSource, TomlFileSource};
 use reinhardt::settings;
 use std::env;
 
 // Add fragments to extend settings: e.g. `#[settings(core: CoreSettings | cache: CacheSettings)]`
-#[settings(core: CoreSettings | contacts: ContactSettings)]
+#[settings(core: CoreSettings | contacts: ContactSettings | migrations: MigrationSettings)]
 pub struct ProjectSettings;
 
 /// Get settings based on environment variable
@@ -61,31 +63,41 @@ pub struct ProjectSettings;
 /// ```no_run
 /// use {{ crate_name }}::config::settings::get_settings;
 ///
-/// let settings = get_settings();
+/// let settings = get_settings().expect("settings sources should load");
 /// ```
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if:
-/// - Settings files cannot be read
-/// - Settings cannot be deserialized
-/// - Required settings are missing
-pub fn get_settings() -> ProjectSettings {
+/// Returns an error when a settings source cannot be loaded or parsed.
+pub fn get_settings() -> Result<PendingSettings<ProjectSettings>, BuildError> {
+    settings_builder().build_pending_composed::<ProjectSettings>()
+}
+
+/// Merge settings without expanding unselected runtime secrets.
+pub fn get_scoped_settings() -> Result<ScopedSettings, BuildError> {
+    settings_builder().build_scoped()
+}
+
+fn settings_builder() -> SettingsBuilder {
     let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
     let profile = Profile::parse(&profile_str);
 
-    // Get the project root directory (parent of src/)
-    let base_dir = env::current_dir().expect("Failed to get current directory");
+    // Resolve the managed project root independently of the caller's working directory.
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let settings_dir = base_dir.join("settings");
 
     // Build settings by merging sources in priority order.
-    // `build_composed::<T>()` uses `MergeStrategy::Deep` by default, so a
+    // The composed and scoped paths use deep merging, so a
     // single key in `production.toml` overrides only that key — sibling
     // entries inside the same nested table inherit from `base.toml`.
     SettingsBuilder::new()
         .profile(profile)
         // Lowest priority: Default values
-        .add_source(DefaultSource::new())
+        .add_source(
+            DefaultSource::new()
+                .with_value("core", serde_json::json!({ "base_dir": base_dir }))
+                .with_value("migrations", serde_json::json!({})),
+        )
         // Medium priority: Base TOML file
         .add_source(TomlFileSource::new(settings_dir.join("base.toml")))
         // Profile priority: Environment-specific TOML file
@@ -94,10 +106,16 @@ pub fn get_settings() -> ProjectSettings {
         ))
         // Highest priority: explicit process environment overrides
         .add_source(HighPriorityEnvSource::new().with_prefix("REINHARDT_"))
-        .build_composed::<ProjectSettings>()
-        .unwrap_or_else(|err| {
-            panic!("Failed to build/compose settings for profile `{profile_str}`: {err}")
-        })
+}
+
+/// Return plain project settings for consumers whose evaluator type is `ProjectSettings`.
+pub fn get_shell_settings() -> ProjectSettings {
+    get_settings()
+        .expect("Failed to build settings")
+        .resolve()
+        .expect("Failed to resolve settings")
+        .into_parts()
+        .0
 }
 
 #[cfg(test)]
@@ -107,9 +125,9 @@ mod tests {
     #[test]
     fn test_get_settings() {
         // Smoke test: ensures settings load without panic and required fields are present
-        let settings = get_settings();
+        let settings = get_settings().expect("settings sources should load");
         assert!(
-            !settings.core.secret_key.is_empty(),
+            !settings.resolve().unwrap().settings().core.secret_key.is_empty(),
             "secret_key should be populated from settings sources"
         );
     }

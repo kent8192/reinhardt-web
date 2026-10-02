@@ -16,7 +16,7 @@ type FormatterResult<T> = Result<T, String>;
 
 #[derive(Parser)]
 #[command(name = "reinhardt-formatter")]
-#[command(about = "Format Reinhardt page!, form!, and head! DSL macros", long_about = None)]
+#[command(about = "Format Reinhardt page!, form!, head!, and style! DSL macros", long_about = None)]
 #[command(version)]
 struct Cli {
 	#[command(subcommand)]
@@ -29,11 +29,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-	/// Format Rust code and page!/form!/head! macro DSL in source files
+	/// Format Rust code and page!/form!/head!/style! macro DSL in source files
 	///
-	/// By default, formats page!/form!/head! DSL macros with Topiary, formats
+	/// By default, formats page!/form!/head!/style! DSL macros with Topiary, formats
 	/// supported page! Rust expression islands with rustfmt, and then runs
-	/// rustfmt for the surrounding Rust source.
+	/// rustfmt for the surrounding Rust source. Topiary owns style! bodies while
+	/// rustfmt owns their surrounding static items.
 	/// Use --with-rustfmt=false to skip only the final surrounding-source rustfmt pass.
 	Fmt {
 		/// Path to file or directory to format
@@ -76,7 +77,7 @@ enum Commands {
 
 	/// Format all code: Reinhardt DSL macros via Topiary + Rust via rustfmt
 	///
-	/// This command formats page!/form!/head! macros first, including supported
+	/// This command formats page!/form!/head!/style! macros first, including supported
 	/// page! Rust expression islands, then runs `cargo fmt --all` on the root
 	/// workspace.
 	FmtAll {
@@ -176,7 +177,7 @@ fn run_fmt(
 	backup: bool,
 	verbosity: u8,
 ) -> FormatterResult<()> {
-	use format_engine::{FormatEngine, RustfmtOptions};
+	use format_engine::{FormatEngine, RustfmtOptions, protect_style_bodies, restore_style_bodies};
 	use formatter::collect_rust_files;
 
 	if let Some(ref cp) = config_path {
@@ -295,7 +296,23 @@ fn run_fmt(
 		};
 
 		let final_result = if with_rustfmt {
-			match run_rustfmt(&dsl_result, &options) {
+			let (protected_source, protected_bodies) = match protect_style_bodies(&dsl_result) {
+				Ok(protected) => protected,
+				Err(e) => {
+					eprintln!(
+						"{} {} {}: style protection failed: {}",
+						progress.bright_blue(),
+						"Error".red(),
+						display_path(file_path),
+						sanitize_error(&e)
+					);
+					error_count += 1;
+					continue;
+				}
+			};
+			match run_rustfmt(&protected_source, &options)
+				.and_then(|output| restore_style_bodies(&output, &protected_bodies))
+			{
 				Ok(output) => output,
 				Err(e) => {
 					eprintln!(
@@ -413,7 +430,9 @@ fn run_fmt_all(
 	backup: bool,
 	verbosity: u8,
 ) -> FormatterResult<()> {
-	use format_engine::FormatEngine;
+	use format_engine::{
+		FormatEngine, ProtectedStyleBodies, protect_style_bodies, restore_style_bodies,
+	};
 	use formatter::{collect_rust_files, nested_workspace_roots};
 	use std::collections::HashMap;
 	use std::process::{Command, Stdio};
@@ -470,6 +489,7 @@ fn run_fmt_all(
 	})?;
 
 	let mut original_contents: HashMap<PathBuf, String> = HashMap::new();
+	let mut protected_style_bodies: HashMap<PathBuf, ProtectedStyleBodies> = HashMap::new();
 	let total_files = files.len();
 	let mut dsl_file_count = 0;
 	let mut error_count = 0;
@@ -512,12 +532,28 @@ fn run_fmt_all(
 			}
 		};
 
-		if !format_result.contains_dsl_macro || format_result.skipped.is_some() {
+		if !format_result.contains_dsl_macro {
 			continue;
 		}
 
-		if format_result.content != original_content {
-			utils::atomic_write(file_path, &format_result.content).map_err(|e| {
+		let dsl_content = if format_result.skipped.is_some() {
+			original_content.clone()
+		} else {
+			format_result.content
+		};
+		let (rustfmt_content, protected_bodies) =
+			protect_style_bodies(&dsl_content).map_err(|e| {
+				format!(
+					"Failed to protect style bodies in {}: {e}",
+					mask_path(file_path)
+				)
+			})?;
+		if !protected_bodies.is_empty() {
+			protected_style_bodies.insert(file_path.clone(), protected_bodies);
+		}
+
+		if rustfmt_content != original_content {
+			utils::atomic_write(file_path, &rustfmt_content).map_err(|e| {
 				format!(
 					"Failed to write DSL-formatted content to {}: {}",
 					mask_path(file_path),
@@ -607,9 +643,31 @@ fn run_fmt_all(
 		let Some(original_content) = original_contents.get(file_path) else {
 			continue;
 		};
-		let Ok(current_content) = std::fs::read_to_string(file_path) else {
+		let Ok(mut current_content) = std::fs::read_to_string(file_path) else {
 			continue;
 		};
+		if let Some(protected_bodies) = protected_style_bodies.get(file_path) {
+			current_content = match restore_style_bodies(&current_content, protected_bodies) {
+				Ok(restored) => restored,
+				Err(error) => {
+					let rollback_paths: Vec<PathBuf> = original_contents.keys().cloned().collect();
+					let rollback_errors =
+						utils::rollback_files(&rollback_paths, &original_contents);
+					utils::report_rollback_errors(&rollback_errors);
+					return Err(format!(
+						"Failed to restore style bodies in {}: {error}",
+						mask_path(file_path)
+					));
+				}
+			};
+			utils::atomic_write(file_path, &current_content).map_err(|error| {
+				format!(
+					"Failed to write restored style bodies to {}: {}",
+					mask_path(file_path),
+					sanitize_error(&error.to_string())
+				)
+			})?;
+		}
 
 		if &current_content != original_content {
 			if check {

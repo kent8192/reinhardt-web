@@ -25,8 +25,20 @@ mod crud_lifecycle_integration;
 #[path = "orm/multi_database_integration.rs"]
 mod multi_database_integration;
 
+#[path = "orm/model_enum_integration.rs"]
+mod model_enum_integration;
+
+#[path = "orm/mysql_json_transaction_integration.rs"]
+mod mysql_json_transaction_integration;
+
 #[path = "orm/proxy_advanced_features.rs"]
 mod proxy_advanced_features;
 
 #[path = "orm/proxy_orm_integration.rs"]
 mod proxy_orm_integration;
+
+#[path = "orm/queryset_retrieval_integration.rs"]
+mod queryset_retrieval_integration;
+
+#[path = "orm/row_locking_integration.rs"]
+mod row_locking_integration;

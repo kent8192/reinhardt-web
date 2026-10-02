@@ -1,0 +1,17 @@
+error[E0599]: no method named `true_label` found for struct `reinhardt_pages::client_form::__private::FieldPresentation<reinhardt_pages::client_form::__private::OptionalEnumKind<Mode>>` in the current scope
+  --> tests/ui/client_form/view/fail/enum_bool_label.rs:11:5
+   |
+ 6 |       let _view = form! {
+   |  _________________-
+ 7 | |         client_form: RequestClientForm,
+ 8 | |         mutation: &mutation,
+ 9 | |         customize: {
+10 | |             optional_mode: {
+11 | |                 true_label: "Yes"
+   | |________________-^^^^^^^^^^
+   |
+help: there is a method `label` with a similar name
+   |
+11 -                 true_label: "Yes"
+11 +                 label: "Yes"
+   |

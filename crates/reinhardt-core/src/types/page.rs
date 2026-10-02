@@ -21,51 +21,71 @@
 //! let html = view.render_to_string();
 //! ```
 
-#[doc(hidden)]
+/// Controlled form-element binding descriptors.
 pub mod control_binding;
 pub mod event;
+pub mod event_file;
 pub mod head;
+#[cfg(feature = "page-hot-reload")]
+pub mod hot_reload;
+#[cfg(native)]
+pub mod native_event;
 mod util;
 
-#[doc(hidden)]
-pub use control_binding::{ControlBinding, ControlKind, ControlValue};
-pub use event::EventType;
+pub use control_binding::{
+	ControlBinding, ControlBindingError, ControlBindingSnapshot, ControlKind, ControlValue,
+	ControlWriteOutcome, NumberParseError, NumberParseErrorKind, NumberValue,
+};
+pub use event::{EventInterface, EventName, EventType};
+pub use event_file::EventFile;
 pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};
+#[cfg(feature = "page-hot-reload")]
+pub use hot_reload::DevTemplateMetadata;
+#[cfg(native)]
+pub use native_event::*;
 pub(crate) use util::html_escape;
-pub use util::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
+pub use util::{BOOLEAN_ATTRS, is_boolean_attr, is_boolean_attr_truthy};
 
 use std::borrow::Cow;
 use std::sync::Arc;
+
+use control_binding::SSR_OMITTED_PASSWORD_ATTRIBUTE;
 
 /// Type alias for event handler functions.
 #[cfg(wasm)]
 pub type PageEventHandler = Arc<dyn Fn(web_sys::Event) + 'static>;
 
-/// Dummy event type for non-WASM environments.
-///
-/// This type exists to maintain API compatibility between WASM and non-WASM builds.
-/// In non-WASM environments, event handlers still accept an argument (this dummy type)
-/// so that user code doesn't need conditional compilation for event handler signatures.
+/// Type alias for event handler functions on native targets.
 #[cfg(native)]
-#[derive(Debug, Clone, Default)]
-pub struct DummyEvent;
+pub type PageEventHandler = Arc<dyn Fn(NativeEvent) + 'static>;
 
-#[cfg(native)]
-impl DummyEvent {
-	/// No-op method for API compatibility with web_sys::Event.
-	///
-	/// This method exists to maintain API compatibility between WASM and non-WASM builds.
-	/// In non-WASM environments, this is a no-op.
-	pub fn prevent_default(&self) {}
+/// An attribute whose value is evaluated from reactive state when rendered.
+#[derive(Clone)]
+pub struct ReactiveAttribute {
+	name: Cow<'static, str>,
+	render: Arc<dyn Fn() -> Option<Cow<'static, str>> + 'static>,
 }
 
-/// Type alias for event handler functions (non-WASM placeholder).
-///
-/// Uses `DummyEvent` to maintain API compatibility with the WASM version,
-/// allowing the same event handler signatures (e.g., `|_| { ... }`) to work
-/// in both WASM and non-WASM environments.
-#[cfg(native)]
-pub type PageEventHandler = Arc<dyn Fn(DummyEvent) + 'static>;
+impl std::fmt::Debug for ReactiveAttribute {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("ReactiveAttribute")
+			.field("name", &self.name)
+			.finish_non_exhaustive()
+	}
+}
+
+impl ReactiveAttribute {
+	/// Returns the attribute name.
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+
+	/// Evaluates and returns the current attribute value.
+	pub fn value(&self) -> Option<Cow<'static, str>> {
+		(self.render)().filter(|value| is_safe_html_attribute(&self.name, value))
+	}
+}
 
 /// Error type for mounting views to the DOM.
 #[non_exhaustive]
@@ -81,6 +101,8 @@ pub enum MountError {
 	SetAttributeFailed,
 	/// Failed to append a child element.
 	AppendChildFailed,
+	/// Failed to install a controlled form-element binding.
+	ControlBinding(ControlBindingError),
 }
 
 impl std::fmt::Display for MountError {
@@ -91,11 +113,25 @@ impl std::fmt::Display for MountError {
 			MountError::CreateElementFailed => write!(f, "Failed to create element"),
 			MountError::SetAttributeFailed => write!(f, "Failed to set attribute"),
 			MountError::AppendChildFailed => write!(f, "Failed to append child"),
+			MountError::ControlBinding(error) => write!(f, "Failed to bind control: {error}"),
 		}
 	}
 }
 
-impl std::error::Error for MountError {}
+impl std::error::Error for MountError {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			Self::ControlBinding(error) => Some(error),
+			_ => None,
+		}
+	}
+}
+
+impl From<ControlBindingError> for MountError {
+	fn from(error: ControlBindingError) -> Self {
+		Self::ControlBinding(error)
+	}
+}
 
 /// Reactive conditional rendering.
 ///
@@ -131,6 +167,37 @@ pub struct Reactive {
 	render: std::sync::Arc<dyn Fn() -> Page + 'static>,
 }
 
+/// Suspense view node with lazy branch factories.
+///
+/// The branch factories are stored as `Arc<dyn Fn>` so the enclosing `Page`
+/// remains cloneable while each traversal can render a fresh branch.
+pub struct SuspenseNode {
+	/// Optional boundary identifier for matching SSR and hydration boundaries.
+	boundary_id: Option<String>,
+	/// Resource hydration keys explicitly tracked by this boundary.
+	tracked_resource_ids: Vec<String>,
+	/// Pending-state closure used to choose the active branch on the client.
+	is_pending: Arc<dyn Fn() -> bool + 'static>,
+	/// Fallback view factory invoked while the boundary is pending.
+	fallback: Arc<dyn Fn() -> Page + 'static>,
+	/// Content view factory invoked after the boundary has resolved.
+	content: Arc<dyn Fn() -> Page + 'static>,
+}
+
+/// Deferred view node with lazy fallback and content factories.
+///
+/// Deferred nodes preserve both branches for async SSR orchestration while
+/// normal page traversal renders the content branch.
+#[derive(Clone)]
+pub struct DeferredNode {
+	/// Stable node identifier for SSR and hydration coordination.
+	node_id: String,
+	/// Fallback view factory reserved for deferred streaming boundaries.
+	fallback: Arc<dyn Fn() -> Page + 'static>,
+	/// Content view factory rendered by normal traversal.
+	content: Arc<dyn Fn() -> Page + 'static>,
+}
+
 impl std::fmt::Debug for Reactive {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Reactive")
@@ -148,6 +215,161 @@ impl Reactive {
 	/// Consumes the Reactive and returns the render closure.
 	pub fn into_render(self) -> std::sync::Arc<dyn Fn() -> Page + 'static> {
 		self.render
+	}
+}
+
+impl std::fmt::Debug for SuspenseNode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("SuspenseNode")
+			.field("boundary_id", &self.boundary_id)
+			.field("tracked_resource_ids", &self.tracked_resource_ids)
+			.field("is_pending", &"<closure>")
+			.field("fallback", &"<closure>")
+			.field("content", &"<closure>")
+			.finish()
+	}
+}
+
+impl Clone for SuspenseNode {
+	fn clone(&self) -> Self {
+		Self {
+			boundary_id: self.boundary_id.clone(),
+			tracked_resource_ids: self.tracked_resource_ids.clone(),
+			is_pending: Arc::clone(&self.is_pending),
+			fallback: Arc::clone(&self.fallback),
+			content: Arc::clone(&self.content),
+		}
+	}
+}
+
+impl SuspenseNode {
+	/// Creates a new suspense node.
+	pub fn new(
+		boundary_id: Option<String>,
+		is_pending: impl Fn() -> bool + 'static,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self::new_with_tracked_resources(boundary_id, Vec::new(), is_pending, fallback, content)
+	}
+
+	/// Creates a new suspense node with tracked SSR resource keys.
+	pub fn new_with_tracked_resources(
+		boundary_id: Option<String>,
+		tracked_resource_ids: Vec<String>,
+		is_pending: impl Fn() -> bool + 'static,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self {
+			boundary_id,
+			tracked_resource_ids,
+			is_pending: Arc::new(is_pending),
+			fallback: Arc::new(fallback),
+			content: Arc::new(content),
+		}
+	}
+
+	/// Returns the optional boundary identifier.
+	pub fn boundary_id(&self) -> Option<&str> {
+		self.boundary_id.as_deref()
+	}
+
+	/// Returns resource hydration keys explicitly tracked by this boundary.
+	pub fn tracked_resource_ids(&self) -> &[String] {
+		&self.tracked_resource_ids
+	}
+
+	/// Returns `true` when the fallback branch should render.
+	pub fn is_pending(&self) -> bool {
+		(self.is_pending)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn fallback(&self) -> Page {
+		(self.fallback)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn render_fallback(&self) -> Page {
+		self.fallback()
+	}
+
+	/// Renders the content branch.
+	pub fn content(&self) -> Page {
+		(self.content)()
+	}
+
+	/// Renders the content branch.
+	pub fn render_content(&self) -> Page {
+		self.content()
+	}
+
+	/// Renders the currently active branch.
+	pub fn render_branch(&self) -> Page {
+		if self.is_pending() {
+			self.fallback()
+		} else {
+			self.content()
+		}
+	}
+
+	fn find_topmost_content_head_owned(&self) -> Option<Head> {
+		self.content().find_topmost_head_owned()
+	}
+}
+
+impl std::fmt::Debug for DeferredNode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("DeferredNode")
+			.field("node_id", &self.node_id)
+			.field("fallback", &"<closure>")
+			.field("content", &"<closure>")
+			.finish()
+	}
+}
+
+impl DeferredNode {
+	/// Creates a new deferred node.
+	pub fn new(
+		node_id: impl Into<String>,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self {
+			node_id: node_id.into(),
+			fallback: Arc::new(fallback),
+			content: Arc::new(content),
+		}
+	}
+
+	/// Returns the stable node identifier.
+	pub fn node_id(&self) -> &str {
+		&self.node_id
+	}
+
+	/// Renders the fallback branch.
+	pub fn fallback(&self) -> Page {
+		(self.fallback)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn render_fallback(&self) -> Page {
+		self.fallback()
+	}
+
+	/// Renders the content branch.
+	pub fn content(&self) -> Page {
+		(self.content)()
+	}
+
+	/// Renders the content branch.
+	pub fn render_content(&self) -> Page {
+		self.content()
+	}
+
+	fn find_topmost_content_head_owned(&self) -> Option<Head> {
+		self.content().find_topmost_head_owned()
 	}
 }
 
@@ -192,6 +414,46 @@ impl ReactiveIf {
 	}
 }
 
+/// Router-managed outlet content used by layout routes.
+#[derive(Debug, Clone)]
+pub struct Outlet {
+	id: Option<String>,
+	child: Option<Box<Page>>,
+}
+
+impl Outlet {
+	/// Creates an inline outlet for stateless native and SSR rendering.
+	pub fn inline(child: impl IntoPage) -> Self {
+		Self {
+			id: None,
+			child: Some(Box::new(child.into_page())),
+		}
+	}
+
+	/// Creates a placeholder outlet for browser mount managers.
+	pub fn placeholder(id: impl Into<String>) -> Self {
+		Self {
+			id: Some(id.into()),
+			child: None,
+		}
+	}
+
+	/// Returns the placeholder id, if this outlet is a browser placeholder.
+	pub fn id(&self) -> Option<&str> {
+		self.id.as_deref()
+	}
+
+	/// Returns the inline child page, if present.
+	pub fn child(&self) -> Option<&Page> {
+		self.child.as_deref()
+	}
+
+	/// Consumes the outlet and returns the inline child page.
+	pub fn into_child(self) -> Option<Page> {
+		self.child.map(|child| *child)
+	}
+}
+
 /// A unified representation of renderable content.
 ///
 /// Page is the core abstraction for all UI elements in the component system.
@@ -212,6 +474,8 @@ pub enum Page {
 	Fragment(Vec<Page>),
 	/// A fragment whose children have stable identity keys.
 	KeyedFragment(Vec<(String, Page)>),
+	/// A router-managed outlet used by layout routes.
+	Outlet(Outlet),
 	/// An empty view (renders nothing).
 	Empty,
 	/// A view with associated head section.
@@ -222,6 +486,22 @@ pub enum Page {
 		/// The head section for this view.
 		head: Head,
 		/// The actual view content.
+		view: Box<Page>,
+	},
+	/// A development template descriptor paired with its renderable view.
+	#[cfg(feature = "page-hot-reload")]
+	DevTemplate {
+		/// Opaque descriptor emitted by the template macro.
+		metadata: DevTemplateMetadata,
+		/// The renderable template view.
+		view: Box<Page>,
+	},
+	/// A development dynamic-slot marker paired with its renderable view.
+	#[cfg(feature = "page-hot-reload")]
+	DevSlot {
+		/// Stable slot identity within the containing template.
+		slot_id: u32,
+		/// The renderable dynamic slot view.
 		view: Box<Page>,
 	},
 	/// A reactive conditional view.
@@ -236,6 +516,10 @@ pub enum Page {
 	/// automatic DOM updates when Signal values accessed within the
 	/// closure change.
 	Reactive(Reactive),
+	/// A suspense boundary with pending and resolved branch factories.
+	Suspense(SuspenseNode),
+	/// A deferred node with fallback and content branch factories.
+	Deferred(DeferredNode),
 }
 
 /// Represents a DOM element in the view tree.
@@ -250,13 +534,14 @@ pub struct PageElement {
 	tag: Cow<'static, str>,
 	/// HTML attributes.
 	attrs: Vec<(Cow<'static, str>, Cow<'static, str>)>,
+	reactive_attrs: Vec<ReactiveAttribute>,
 	/// Child views.
 	children: Vec<Page>,
 	/// Whether this is a void element (no closing tag).
 	is_void: bool,
 	/// Event handlers attached to this element.
-	event_handlers: Vec<(EventType, PageEventHandler)>,
-	/// A generated form control's retained state binding.
+	event_handlers: Vec<(EventName, PageEventHandler)>,
+	/// Optional controlled form-element binding.
 	control_binding: Option<ControlBinding>,
 }
 
@@ -273,6 +558,26 @@ impl std::fmt::Debug for PageElement {
 	}
 }
 
+#[cfg(feature = "reactive")]
+#[allow(
+	clippy::arc_with_non_send_sync,
+	reason = "PageEventHandler stays Arc-backed for cloneable Page trees while allowing handlers to capture thread-affine reactive state."
+)]
+fn scoped_event_handler(handler: PageEventHandler) -> PageEventHandler {
+	let Some(scope) = crate::reactive::scope::current_scope_id() else {
+		return handler;
+	};
+
+	Arc::new(move |event| {
+		let _ = crate::reactive::scope::enter_scope(scope, || handler(event));
+	})
+}
+
+#[cfg(not(feature = "reactive"))]
+fn scoped_event_handler(handler: PageEventHandler) -> PageEventHandler {
+	handler
+}
+
 impl PageElement {
 	/// Creates a new element view.
 	pub fn new(tag: impl Into<Cow<'static, str>>) -> Self {
@@ -282,19 +587,16 @@ impl PageElement {
 		} else {
 			Cow::Borrowed("span")
 		};
-		let is_void = matches!(
-			tag.as_ref(),
-			"area"
-				| "base" | "br"
-				| "col" | "embed"
-				| "hr" | "img"
-				| "input" | "link"
-				| "meta" | "source"
-				| "track" | "wbr"
-		);
+		let is_void = [
+			"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source",
+			"track", "wbr",
+		]
+		.iter()
+		.any(|void_tag| tag.eq_ignore_ascii_case(void_tag));
 		Self {
 			tag,
 			attrs: Vec::new(),
+			reactive_attrs: Vec::new(),
 			children: Vec::new(),
 			is_void,
 			event_handlers: Vec::new(),
@@ -324,6 +626,26 @@ impl PageElement {
 	{
 		for (name, value) in attrs {
 			self = self.attr(name, value);
+		}
+		self
+	}
+
+	/// Adds an attribute whose value is evaluated from reactive state.
+	pub fn reactive_attr<F>(mut self, name: impl Into<Cow<'static, str>>, render: F) -> Self
+	where
+		F: Fn() -> Option<Cow<'static, str>> + 'static,
+	{
+		let name = name.into();
+		if is_safe_html_name(&name)
+			&& !name.eq_ignore_ascii_case("srcdoc")
+			&& !name
+				.get(..2)
+				.is_some_and(|prefix| prefix.eq_ignore_ascii_case("on"))
+		{
+			self.reactive_attrs.push(ReactiveAttribute {
+				name,
+				render: Arc::new(render),
+			});
 		}
 		self
 	}
@@ -379,37 +701,28 @@ impl PageElement {
 	}
 
 	/// Adds an event handler.
-	pub fn on(mut self, event_type: EventType, handler: PageEventHandler) -> Self {
-		self.event_handlers.push((event_type, handler));
+	pub fn on(mut self, event_type: impl Into<EventName>, handler: PageEventHandler) -> Self {
+		self.event_handlers
+			.push((event_type.into(), scoped_event_handler(handler)));
 		self
 	}
 
-	/// Attaches the retained state binding used by generated form controls.
-	#[doc(hidden)]
+	/// Attaches a controlled form-element binding.
 	pub fn control_binding(mut self, binding: ControlBinding) -> Self {
 		self.control_binding = Some(binding);
 		self
 	}
 
-	/// Returns the retained state binding without changing `into_parts`.
-	#[doc(hidden)]
-	pub fn bound_control(&self) -> Option<&ControlBinding> {
-		self.control_binding.as_ref()
-	}
-
 	/// Adds an event listener using string event name (convenience method).
 	///
 	/// This is a convenience wrapper around [`on`] that accepts a string event name
-	/// and a closure. The event name is parsed to [`EventType`] at runtime.
+	/// and a closure. Catalog names are stored as known events, while all other
+	/// names are preserved as explicit custom events.
 	///
 	/// # Arguments
 	///
 	/// * `event_name` - The event name (e.g., "click", "submit", "input")
 	/// * `handler` - The event handler closure
-	///
-	/// # Panics
-	///
-	/// Panics if the event name is not a recognized event type.
 	///
 	/// # Example
 	///
@@ -424,25 +737,16 @@ impl PageElement {
 	where
 		F: Fn(web_sys::Event) + 'static,
 	{
-		use std::str::FromStr;
-		let event_type = EventType::from_str(event_name)
-			.unwrap_or_else(|_| panic!("Unknown event type: {}", event_name));
-		self.on(event_type, Arc::new(handler))
+		self.on(classify_event_name(event_name), Arc::new(handler))
 	}
 
-	/// Adds an event listener using string event name (non-WASM stub).
-	///
-	/// In non-WASM environments, this is a stub that stores the handler
-	/// for API compatibility but won't actually attach to DOM events.
+	/// Adds a native event listener using a string event name.
 	#[cfg(native)]
 	pub fn listener<F>(self, event_name: &str, handler: F) -> Self
 	where
-		F: Fn(DummyEvent) + 'static,
+		F: Fn(NativeEvent) + 'static,
 	{
-		use std::str::FromStr;
-		let event_type = EventType::from_str(event_name)
-			.unwrap_or_else(|_| panic!("Unknown event type: {}", event_name));
-		self.on(event_type, Arc::new(handler))
+		self.on(classify_event_name(event_name), Arc::new(handler))
 	}
 
 	/// Returns the tag name.
@@ -453,6 +757,11 @@ impl PageElement {
 	/// Returns the attributes.
 	pub fn attrs(&self) -> &[(Cow<'static, str>, Cow<'static, str>)] {
 		&self.attrs
+	}
+
+	/// Returns the reactive attributes.
+	pub fn reactive_attrs(&self) -> &[ReactiveAttribute] {
+		&self.reactive_attrs
 	}
 
 	/// Returns the child views.
@@ -484,13 +793,23 @@ impl PageElement {
 	}
 
 	/// Adds an event handler mutably (for parser use).
-	pub fn add_event_handler(&mut self, event_type: EventType, handler: PageEventHandler) {
-		self.event_handlers.push((event_type, handler));
+	pub fn add_event_handler(
+		&mut self,
+		event_type: impl Into<EventName>,
+		handler: PageEventHandler,
+	) {
+		self.event_handlers
+			.push((event_type.into(), scoped_event_handler(handler)));
 	}
 
 	/// Returns the event handlers.
-	pub fn event_handlers(&self) -> &[(EventType, PageEventHandler)] {
+	pub fn event_handlers(&self) -> &[(EventName, PageEventHandler)] {
 		&self.event_handlers
+	}
+
+	/// Returns the controlled form-element binding, if present.
+	pub fn bound_control(&self) -> Option<&ControlBinding> {
+		self.control_binding.as_ref()
 	}
 
 	/// Consumes the element view and returns the children.
@@ -499,11 +818,11 @@ impl PageElement {
 	}
 
 	/// Consumes the element view and returns the event handlers.
-	pub fn into_event_handlers(self) -> Vec<(EventType, PageEventHandler)> {
+	pub fn into_event_handlers(self) -> Vec<(EventName, PageEventHandler)> {
 		self.event_handlers
 	}
 
-	/// Consumes the element view and returns all parts.
+	/// Consumes the element view and returns its original public parts.
 	///
 	/// Returns a tuple of (tag, attrs, children, is_void, event_handlers).
 	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
@@ -514,7 +833,7 @@ impl PageElement {
 		Vec<(Cow<'static, str>, Cow<'static, str>)>,
 		Vec<Page>,
 		bool,
-		Vec<(EventType, PageEventHandler)>,
+		Vec<(EventName, PageEventHandler)>,
 	) {
 		(
 			self.tag,
@@ -523,6 +842,39 @@ impl PageElement {
 			self.is_void,
 			self.event_handlers,
 		)
+	}
+
+	/// Consumes the element view and returns all parts, including its control binding.
+	///
+	/// Returns a tuple of (tag, attrs, reactive_attrs, children, is_void, event_handlers, control_binding).
+	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
+	pub fn into_parts_with_control_binding(
+		self,
+	) -> (
+		Cow<'static, str>,
+		Vec<(Cow<'static, str>, Cow<'static, str>)>,
+		Vec<ReactiveAttribute>,
+		Vec<Page>,
+		bool,
+		Vec<(EventName, PageEventHandler)>,
+		Option<ControlBinding>,
+	) {
+		(
+			self.tag,
+			self.attrs,
+			self.reactive_attrs,
+			self.children,
+			self.is_void,
+			self.event_handlers,
+			self.control_binding,
+		)
+	}
+}
+
+fn classify_event_name(event_name: &str) -> EventName {
+	match event::event_spec(event_name) {
+		Some(spec) => EventName::Known(spec.kind),
+		None => EventName::Custom(Cow::Owned(event_name.to_owned())),
 	}
 }
 
@@ -561,6 +913,11 @@ impl Page {
 		Self::Empty
 	}
 
+	/// Creates an outlet page node.
+	pub fn outlet(outlet: Outlet) -> Self {
+		Page::Outlet(outlet)
+	}
+
 	/// Attaches a head section to this view.
 	///
 	/// The head section contains metadata like title, meta tags, stylesheets,
@@ -579,6 +936,90 @@ impl Page {
 		Page::WithHead {
 			head,
 			view: Box::new(self),
+		}
+	}
+
+	/// Borrows the immediate content of a development template or slot wrapper.
+	///
+	/// This accessor is available independently of `page-hot-reload`, so consumers
+	/// can traverse wrappers enabled by another dependency's feature selection.
+	/// Returns `None` for ordinary pages and when `page-hot-reload` is disabled.
+	/// This is a P2 API: native and WASM targets have identical behavior.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_core::types::page::Page;
+	///
+	/// assert!(Page::empty().as_dev_view().is_none());
+	/// # #[cfg(feature = "page-hot-reload")]
+	/// # {
+	/// let page = Page::text("content").with_dev_slot(1);
+	/// assert_eq!(page.as_dev_view().unwrap().render_to_string(), "content");
+	/// # }
+	/// ```
+	pub fn as_dev_view(&self) -> Option<&Page> {
+		match self {
+			#[cfg(feature = "page-hot-reload")]
+			Self::DevTemplate { view, .. } | Self::DevSlot { view, .. } => Some(view),
+			_ => None,
+		}
+	}
+
+	/// Attaches opaque development template metadata to this view.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn with_dev_template_metadata<T>(self, metadata: T) -> Self
+	where
+		T: std::any::Any + Send + Sync,
+	{
+		Self::DevTemplate {
+			metadata: DevTemplateMetadata::new(metadata),
+			view: Box::new(self),
+		}
+	}
+
+	/// Marks this view as a development dynamic slot.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn with_dev_slot(self, slot_id: u32) -> Self {
+		Self::DevSlot {
+			slot_id,
+			view: Box::new(self),
+		}
+	}
+
+	/// Returns development template metadata without consuming the view.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn dev_template_metadata(&self) -> Option<&DevTemplateMetadata> {
+		match self {
+			Self::DevTemplate { metadata, .. } => Some(metadata),
+			_ => None,
+		}
+	}
+
+	/// Consumes a development template wrapper and returns its parts.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn into_dev_template_parts(self) -> Option<(DevTemplateMetadata, Page)> {
+		match self {
+			Self::DevTemplate { metadata, view } => Some((metadata, *view)),
+			_ => None,
+		}
+	}
+
+	/// Returns the development slot identity without consuming the view.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn dev_slot_id(&self) -> Option<u32> {
+		match self {
+			Self::DevSlot { slot_id, .. } => Some(*slot_id),
+			_ => None,
+		}
+	}
+
+	/// Consumes a development slot wrapper and returns its parts.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn into_dev_slot_parts(self) -> Option<(u32, Page)> {
+		match self {
+			Self::DevSlot { slot_id, view } => Some((slot_id, *view)),
+			_ => None,
 		}
 	}
 
@@ -682,33 +1123,72 @@ impl Page {
 
 	/// Extracts the head section from this view if it has one.
 	///
-	/// Returns `Some(&Head)` if this view is a `WithHead` variant,
-	/// or `None` for other variants.
+	/// Returns `Some(&Head)` if this view is a `WithHead` variant or a
+	/// development wrapper around one, or `None` for other variants.
 	pub fn extract_head(&self) -> Option<&Head> {
 		match self {
 			Page::WithHead { head, .. } => Some(head),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => view.extract_head(),
 			_ => None,
 		}
 	}
 
-	/// Finds the topmost head section in the view tree.
+	/// Finds the first structural `Head` for compatibility-oriented inspection.
 	///
-	/// This method searches the view tree from the root and returns the first
-	/// head section found. This ensures that the outermost (page-level) head
-	/// takes precedence over inner component heads.
+	/// This is not the document-head resolution API. SSR, hydration, and browser
+	/// mounting compose every active declaration through `reinhardt-pages`.
 	///
 	/// # Search Order
 	///
 	/// 1. If this view is a `WithHead`, returns its head
-	/// 2. For `Fragment` views, searches children in order and returns the first found
-	/// 3. For other variants, returns `None`
+	/// 2. For element and fragment views, searches children in order and returns the first found
+	/// 3. For inline `Outlet` views, searches the child page
+	/// 4. For other variants, returns `None`
+	///
+	/// Use [`Page::find_topmost_head_owned`] when lazy Suspense/Deferred content
+	/// should participate in the lookup.
 	pub fn find_topmost_head(&self) -> Option<&Head> {
 		match self {
 			Page::WithHead { head, .. } => Some(head),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.find_map(|view| view.find_topmost_head()),
 			Page::Fragment(children) => children.iter().find_map(|v| v.find_topmost_head()),
 			Page::KeyedFragment(children) => {
 				children.iter().find_map(|(_, v)| v.find_topmost_head())
 			}
+			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => view.find_topmost_head(),
+			_ => None,
+		}
+	}
+
+	/// Finds the first structural `Head` and returns an owned copy for
+	/// compatibility-oriented inspection.
+	///
+	/// This is not the document-head resolution API. SSR, hydration, and browser
+	/// mounting compose every active declaration through `reinhardt-pages`.
+	/// Unlike [`Page::find_topmost_head`], this method can evaluate lazy
+	/// Suspense/Deferred content without storing request state on the `Page`.
+	pub fn find_topmost_head_owned(&self) -> Option<Head> {
+		match self {
+			Page::WithHead { head, .. } => Some(head.clone()),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.find_map(Page::find_topmost_head_owned),
+			Page::Fragment(children) => children.iter().find_map(Page::find_topmost_head_owned),
+			Page::KeyedFragment(children) => children
+				.iter()
+				.find_map(|(_, v)| v.find_topmost_head_owned()),
+			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head_owned),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => view.find_topmost_head_owned(),
+			Page::Suspense(node) => node.find_topmost_content_head_owned(),
+			Page::Deferred(node) => node.find_topmost_content_head_owned(),
 			_ => None,
 		}
 	}
@@ -716,32 +1196,126 @@ impl Page {
 	/// Renders the view to an HTML string.
 	///
 	/// This is the core SSR method that converts the view tree to HTML.
-	/// Leading textarea newlines are preserved through HTML parsing.
+	/// Bound password values are omitted and marked with `data-rh-password-omitted`
+	/// so browser hydration can restore the bound value without exposing it in HTML.
+	/// Leading newlines in `<textarea>` and `<pre>` content are preserved through
+	/// HTML parsing.
 	pub fn render_to_string(&self) -> String {
 		let mut output = String::new();
-		self.render_to_string_inner(&mut output);
+		self.render_to_string_inner(&mut output, None);
 		output
 	}
 
-	fn render_to_string_inner(&self, output: &mut String) {
+	fn render_to_string_inner(
+		&self,
+		output: &mut String,
+		selection: Option<&StringRenderSelection>,
+	) {
 		match self {
 			Page::Element(el) => {
 				if !is_safe_html_element_name(el.tag_name()) {
 					for child in el.child_views() {
-						child.render_to_string_inner(output);
+						child.render_to_string_inner(output, selection);
 					}
 					return;
 				}
 				output.push('<');
 				output.push_str(el.tag_name());
+				let binding = el.bound_control();
+				let binding_value = binding.map(ControlBinding::read);
+				let reactive_input_type = el
+					.reactive_attrs()
+					.iter()
+					.enumerate()
+					.rfind(|(_, attribute)| attribute.name().eq_ignore_ascii_case("type"))
+					.map(|(index, attribute)| (index, attribute.value()));
+				let reactive_input_type_is_supported =
+					reactive_input_type.as_ref().is_none_or(|(_, value)| {
+						binding.is_none_or(|binding| {
+							control_binding::controlled_attribute_update_is_supported(
+								el.tag_name(),
+								binding.kind(),
+								"type",
+								value.as_deref(),
+							)
+						})
+					});
+				let reactive_select_multiple = el
+					.reactive_attrs()
+					.iter()
+					.enumerate()
+					.rfind(|(_, attribute)| attribute.name().eq_ignore_ascii_case("multiple"))
+					.map(|(index, attribute)| (index, attribute.value()));
+				let reactive_select_multiple_is_supported =
+					reactive_select_multiple.as_ref().is_none_or(|(_, value)| {
+						binding.is_none_or(|binding| {
+							control_binding::controlled_attribute_update_is_supported(
+								el.tag_name(),
+								binding.kind(),
+								"multiple",
+								value.as_deref(),
+							)
+						})
+					});
+				let mut input_type_is_password = el
+					.attrs()
+					.iter()
+					.find(|(name, _)| name.eq_ignore_ascii_case("type"))
+					.is_some_and(|(_, value)| value.eq_ignore_ascii_case("password"));
+				if reactive_input_type_is_supported
+					&& let Some((_, value)) = reactive_input_type.as_ref()
+				{
+					input_type_is_password = value
+						.as_deref()
+						.is_some_and(|value| value.eq_ignore_ascii_case("password"));
+				}
+				let omits_bound_password_value = el.tag_name().eq_ignore_ascii_case("input")
+					&& input_type_is_password
+					&& binding.is_some_and(|binding| binding.kind() == ControlKind::Text);
+				let omits_bound_file_value = el.tag_name().eq_ignore_ascii_case("input")
+					&& binding.is_some_and(|binding| binding.kind() == ControlKind::File);
+				let projected_input_value = if omits_bound_password_value {
+					None
+				} else {
+					binding.and_then(|binding| match (binding.kind(), binding_value.as_ref()) {
+						(
+							ControlKind::Text | ControlKind::Number,
+							Some(ControlValue::Text(value)),
+						) => Some(value.as_str()),
+						(ControlKind::Radio, _) => binding.radio_value(),
+						_ => None,
+					})
+				};
+				let projects_value =
+					el.tag_name().eq_ignore_ascii_case("input") && projected_input_value.is_some();
+				let projects_checked = matches!(binding_value, Some(ControlValue::Checked(true)));
+				let projects_selected = el.tag_name().eq_ignore_ascii_case("option")
+					&& selection.is_some_and(|selection| selection.matches(el));
 
 				for (name, value) in el.attrs() {
 					if !is_safe_html_attribute(name, value) {
 						continue;
 					}
+					let has_reactive_attribute = el
+						.reactive_attrs()
+						.iter()
+						.any(|attribute| attribute.name().eq_ignore_ascii_case(name))
+						&& (!(name.eq_ignore_ascii_case("type") && reactive_input_type.is_some())
+							|| reactive_input_type_is_supported)
+						&& (!(name.eq_ignore_ascii_case("multiple")
+							&& reactive_select_multiple.is_some())
+							|| reactive_select_multiple_is_supported);
 					// Skip boolean attributes with falsy values (empty, "false", "0")
 					let name_str: &str = name.as_ref();
-					if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value) {
+					if (name_str.eq_ignore_ascii_case("value")
+						&& (projects_value || omits_bound_password_value || omits_bound_file_value))
+						|| (name_str.eq_ignore_ascii_case("checked") && binding.is_some())
+						|| (name_str.eq_ignore_ascii_case("selected") && selection.is_some())
+						|| (omits_bound_password_value
+							&& name_str.eq_ignore_ascii_case(SSR_OMITTED_PASSWORD_ATTRIBUTE))
+						|| (is_boolean_attr(name_str) && !is_boolean_attr_truthy(value))
+						|| has_reactive_attribute
+					{
 						continue;
 					}
 
@@ -751,21 +1325,96 @@ impl Page {
 					output.push_str(&html_escape(value));
 					output.push('"');
 				}
+				for (index, attribute) in el.reactive_attrs().iter().enumerate() {
+					let name = attribute.name();
+					if (name.eq_ignore_ascii_case("value")
+						&& (projects_value || omits_bound_password_value || omits_bound_file_value))
+						|| (name.eq_ignore_ascii_case("checked") && binding.is_some())
+						|| (name.eq_ignore_ascii_case("selected") && selection.is_some())
+						|| (omits_bound_password_value
+							&& name.eq_ignore_ascii_case(SSR_OMITTED_PASSWORD_ATTRIBUTE))
+					{
+						continue;
+					}
+					if el.reactive_attrs()[index + 1..]
+						.iter()
+						.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+					{
+						continue;
+					}
+					let value = match reactive_input_type.as_ref() {
+						Some((type_index, value)) if *type_index == index => value.clone(),
+						_ => match reactive_select_multiple.as_ref() {
+							Some((multiple_index, value)) if *multiple_index == index => {
+								value.clone()
+							}
+							_ => attribute.value(),
+						},
+					};
+					if (reactive_input_type
+						.as_ref()
+						.is_some_and(|(type_index, _)| *type_index == index)
+						&& !reactive_input_type_is_supported)
+						|| (reactive_select_multiple
+							.as_ref()
+							.is_some_and(|(multiple_index, _)| *multiple_index == index)
+							&& !reactive_select_multiple_is_supported)
+					{
+						continue;
+					}
+					if let Some(value) = value
+						&& is_safe_html_attribute(attribute.name(), &value)
+						&& (!is_boolean_attr(attribute.name()) || is_boolean_attr_truthy(&value))
+					{
+						output.push(' ');
+						output.push_str(attribute.name());
+						output.push_str("=\"");
+						output.push_str(&html_escape(&value));
+						output.push('"');
+					}
+				}
+				if let Some(value) = projected_input_value
+					&& el.tag_name().eq_ignore_ascii_case("input")
+				{
+					output.push_str(" value=\"");
+					output.push_str(&html_escape(value));
+					output.push('"');
+				}
+				if omits_bound_password_value {
+					output.push(' ');
+					output.push_str(SSR_OMITTED_PASSWORD_ATTRIBUTE);
+					output.push_str("=\"true\"");
+				}
+				if projects_checked {
+					output.push_str(" checked=\"checked\"");
+				}
+				if projects_selected {
+					output.push_str(" selected=\"selected\"");
+				}
 
 				if el.is_void() {
 					output.push_str(" />");
 				} else {
 					output.push('>');
 					let content_start = output.len();
-					for child in el.child_views() {
-						child.render_to_string_inner(output);
-					}
 					if el.tag_name().eq_ignore_ascii_case("textarea")
-						&& output[content_start..].starts_with(['\n', '\r'])
+						&& let Some(ControlValue::Text(value)) = &binding_value
 					{
-						// HTML parsing normalizes CR/CRLF before discarding one leading LF.
-						output.insert(content_start, '\n');
+						output.push_str(&html_escape(value));
+					} else {
+						let child_selection = if el.tag_name().eq_ignore_ascii_case("select") {
+							StringRenderSelection::from_binding(binding, binding_value.as_ref())
+						} else {
+							None
+						};
+						for child in el.child_views() {
+							child.render_to_string_inner(
+								output,
+								child_selection.as_ref().or(selection),
+							);
+						}
 					}
+					preserve_leading_raw_text_newline(output, content_start, el.tag_name());
 					output.push_str("</");
 					output.push_str(el.tag_name());
 					output.push('>');
@@ -776,18 +1425,27 @@ impl Page {
 			}
 			Page::Fragment(children) => {
 				for child in children {
-					child.render_to_string_inner(output);
+					child.render_to_string_inner(output, selection);
 				}
 			}
 			Page::KeyedFragment(children) => {
 				for (_, child) in children {
-					child.render_to_string_inner(output);
+					child.render_to_string_inner(output, selection);
+				}
+			}
+			Page::Outlet(outlet) => {
+				if let Some(child) = outlet.child() {
+					child.render_to_string_inner(output, selection);
 				}
 			}
 			Page::Empty => {}
 			Page::WithHead { view, .. } => {
 				// The head is extracted separately during SSR; here we just render the content
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
+			}
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+				view.render_to_string_inner(output, selection);
 			}
 			Page::ReactiveIf(reactive_if) => {
 				// For SSR, evaluate condition once and render the appropriate branch
@@ -797,12 +1455,153 @@ impl Page {
 				} else {
 					(reactive_if.else_view)()
 				};
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
 			}
 			Page::Reactive(reactive) => {
 				// For SSR, evaluate render once and render the result
 				let view = reactive.render();
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
+			}
+			Page::Suspense(node) => {
+				let view = node.render_branch();
+				view.render_to_string_inner(output, selection);
+			}
+			Page::Deferred(node) => {
+				let view = node.content();
+				view.render_to_string_inner(output, selection);
+			}
+		}
+	}
+}
+
+/// Adds the padding required to preserve a leading line feed in raw-text HTML elements.
+fn preserve_leading_raw_text_newline(output: &mut String, content_start: usize, tag_name: &str) {
+	if (tag_name.eq_ignore_ascii_case("textarea") || tag_name.eq_ignore_ascii_case("pre"))
+		&& output[content_start..].starts_with(['\n', '\r'])
+	{
+		// HTML parsing normalizes CR/CRLF before discarding one leading LF.
+		output.insert(content_start, '\n');
+	}
+}
+
+#[derive(Clone)]
+enum StringRenderSelection {
+	One {
+		value: String,
+		matched: std::cell::Cell<bool>,
+	},
+	Many(Vec<String>),
+}
+
+impl StringRenderSelection {
+	fn from_binding(
+		binding: Option<&ControlBinding>,
+		value: Option<&ControlValue>,
+	) -> Option<Self> {
+		match (binding.map(ControlBinding::kind), value) {
+			(Some(ControlKind::SelectOne), Some(ControlValue::Text(value))) => Some(Self::One {
+				value: value.clone(),
+				matched: std::cell::Cell::new(false),
+			}),
+			(Some(ControlKind::SelectMany), Some(ControlValue::SelectedValues(values))) => {
+				Some(Self::Many(values.clone()))
+			}
+			_ => None,
+		}
+	}
+
+	fn matches(&self, option: &PageElement) -> bool {
+		let value = option
+			.attrs()
+			.iter()
+			.find(|(name, _)| name.eq_ignore_ascii_case("value"))
+			.map(|(_, value)| value.as_ref().to_owned())
+			.or_else(|| {
+				(!Self::has_dynamic_option_content(option))
+					.then(|| Self::normalize_option_text(option))
+			});
+		let Some(value) = value else {
+			return false;
+		};
+		match self {
+			Self::One {
+				value: selected,
+				matched,
+			} => selected == &value && !matched.replace(true),
+			Self::Many(selected) => selected.iter().any(|selected| selected == &value),
+		}
+	}
+
+	fn normalize_option_text(option: &PageElement) -> String {
+		Self::text_content_without_script(&Page::Element(option.clone()))
+			.split_ascii_whitespace()
+			.collect::<Vec<_>>()
+			.join(" ")
+	}
+
+	fn has_dynamic_option_content(option: &PageElement) -> bool {
+		option
+			.child_views()
+			.iter()
+			.any(Self::page_has_dynamic_content)
+	}
+
+	fn is_script_element(element: &PageElement) -> bool {
+		let tag = element.tag_name();
+		tag.eq_ignore_ascii_case("script") || tag.eq_ignore_ascii_case("svg:script")
+	}
+
+	fn page_has_dynamic_content(page: &Page) -> bool {
+		match page {
+			Page::Element(element) if Self::is_script_element(element) => false,
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.any(Self::page_has_dynamic_content),
+			Page::Text(_) | Page::Empty => false,
+			Page::Fragment(children) => children.iter().any(Self::page_has_dynamic_content),
+			Page::KeyedFragment(children) => children
+				.iter()
+				.any(|(_, child)| Self::page_has_dynamic_content(child)),
+			Page::Outlet(outlet) => outlet.child().is_some_and(Self::page_has_dynamic_content),
+			Page::WithHead { view, .. } => Self::page_has_dynamic_content(view),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } => Self::page_has_dynamic_content(view),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevSlot { .. } => true,
+			Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => true,
+		}
+	}
+
+	fn text_content_without_script(page: &Page) -> String {
+		match page {
+			Page::Element(element) if Self::is_script_element(element) => String::new(),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.map(Self::text_content_without_script)
+				.collect(),
+			Page::Text(text) => text.to_string(),
+			Page::Fragment(children) => children
+				.iter()
+				.map(Self::text_content_without_script)
+				.collect(),
+			Page::KeyedFragment(children) => children
+				.iter()
+				.map(|(_, child)| Self::text_content_without_script(child))
+				.collect(),
+			Page::Outlet(outlet) => outlet
+				.child()
+				.map(Self::text_content_without_script)
+				.unwrap_or_default(),
+			Page::Empty => String::new(),
+			Page::WithHead { view, .. } => Self::text_content_without_script(view),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } => Self::text_content_without_script(view),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevSlot { .. } => String::new(),
+			Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => {
+				String::new()
 			}
 		}
 	}
@@ -891,6 +1690,12 @@ impl IntoPage for PageElement {
 	}
 }
 
+impl IntoPage for Outlet {
+	fn into_page(self) -> Page {
+		Page::Outlet(self)
+	}
+}
+
 impl IntoPage for String {
 	fn into_page(self) -> Page {
 		Page::Text(Cow::Owned(self))
@@ -961,7 +1766,224 @@ impl<A: IntoPage, B: IntoPage, C: IntoPage, D: IntoPage> IntoPage for (A, B, C, 
 
 #[cfg(test)]
 mod tests {
+	use std::cell::Cell;
+	use std::rc::Rc;
+
 	use super::*;
+	use crate::reactive::{ReactiveScope, Signal};
+	use rstest::rstest;
+
+	#[cfg(feature = "page-hot-reload")]
+	#[test]
+	fn dev_page_metadata_round_trips() {
+		// Arrange
+		let page = Page::text("body")
+			.with_dev_slot(7)
+			.with_dev_template_metadata(String::from("descriptor"));
+
+		// Act
+		let (metadata, view) = page.into_dev_template_parts().expect("metadata");
+
+		// Assert
+		assert_eq!(
+			metadata.downcast_ref::<String>(),
+			Some(&String::from("descriptor"))
+		);
+		assert!(matches!(view, Page::DevSlot { slot_id: 7, .. }));
+	}
+
+	#[test]
+	fn mount_error_preserves_control_binding_failure() {
+		let binding_error = ControlBindingError::UnsupportedElement {
+			control: ControlKind::Checkbox,
+			actual_tag: "select".to_owned(),
+		};
+
+		let mount_error = MountError::from(binding_error.clone());
+
+		assert_eq!(mount_error, MountError::ControlBinding(binding_error));
+		assert!(std::error::Error::source(&mount_error).is_some());
+	}
+
+	#[test]
+	fn event_type_reexports_the_complete_catalog() {
+		let event_type: EventType = EventType::PointerDown;
+
+		assert_eq!(event_type.as_str(), "pointerdown");
+	}
+
+	#[cfg(all(native, feature = "reactive"))]
+	#[test]
+	fn page_element_preserves_known_and_custom_event_names() {
+		let element = PageElement::new("button")
+			.on(EventType::Click, Arc::new(|_| {}))
+			.listener("editor:commit", |_| {});
+
+		assert_eq!(
+			element.event_handlers()[0].0,
+			EventName::Known(EventType::Click)
+		);
+		assert_eq!(
+			element.event_handlers()[1].0,
+			EventName::Custom(Cow::Owned("editor:commit".to_owned()))
+		);
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn page_event_handlers_reenter_their_creation_scope() {
+		use crate::reactive::{ReactiveScope, Signal};
+		use std::cell::Cell;
+		use std::rc::Rc;
+
+		let scope = ReactiveScope::new();
+		let calls = Rc::new(Cell::new(0));
+		let handlers = scope.enter(|| {
+			let on_calls = Rc::clone(&calls);
+			let mut element = PageElement::new("button").on(
+				EventType::Click,
+				Arc::new(move |_| {
+					let signal = Signal::new(1);
+					assert_eq!(signal.get(), 1);
+					on_calls.set(on_calls.get() + 1);
+				}),
+			);
+			let added_calls = Rc::clone(&calls);
+			element.add_event_handler(
+				EventType::Input,
+				Arc::new(move |_| {
+					let signal = Signal::new(2);
+					assert_eq!(signal.get(), 2);
+					added_calls.set(added_calls.get() + 1);
+				}),
+			);
+			element.into_event_handlers()
+		});
+
+		let event = NativeEvent::for_known(EventType::Click, NativeEventPayload::default());
+		for (_, handler) in handlers {
+			handler(event.clone());
+		}
+
+		assert_eq!(calls.get(), 2);
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_target_owns_control_state_snapshot() {
+		let target = NativeEventTarget::new("INPUT")
+			.with_attribute("type", "checkbox")
+			.with_value("enabled")
+			.with_checked(true)
+			.with_selected_values(["primary", "secondary"])
+			.with_file(NativeEventFile::new("avatar.png", "image/png", 128, 42))
+			.with_text_content("Enabled")
+			.with_content_editable(true);
+
+		assert_eq!(target.tag_name(), "input");
+		assert_eq!(target.attribute("type"), Some("checkbox"));
+		assert_eq!(target.value(), Some("enabled"));
+		assert_eq!(target.checked(), Some(true));
+		assert_eq!(target.selected_values(), &["primary", "secondary"]);
+		assert_eq!(target.files()[0].name(), "avatar.png");
+		assert_eq!(target.text_content(), Some("Enabled"));
+		assert!(target.is_content_editable());
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_payload_exposes_its_interface_family_data() {
+		assert_eq!(
+			NativeEventPayload::for_interface(EventInterface::Keyboard).interface(),
+			EventInterface::Keyboard
+		);
+		let payload = NativeEventPayload::Pointer(PointerEventData {
+			mouse: MouseEventData {
+				client_x: 120.0,
+				client_y: 80.0,
+				button: 0,
+				buttons: 1,
+				modifiers: ModifierState {
+					shift: true,
+					..ModifierState::default()
+				},
+				..MouseEventData::default()
+			},
+			pointer_id: 7,
+			pointer_kind: "pen".to_owned(),
+			pressure: 0.5,
+			..PointerEventData::default()
+		});
+
+		assert_eq!(payload.interface(), EventInterface::Pointer);
+		let NativeEventPayload::Pointer(pointer) = payload else {
+			panic!("pointer payload must retain its family data");
+		};
+		assert_eq!(
+			(pointer.mouse.client_x, pointer.mouse.client_y),
+			(120.0, 80.0)
+		);
+		assert_eq!(pointer.pointer_id, 7);
+		assert_eq!(pointer.pointer_kind, "pen");
+		assert_eq!(pointer.pressure, 0.5);
+		assert!(pointer.mouse.modifiers.shift);
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_event_snapshots_share_cancelation_and_propagation_state() {
+		let target = NativeEventTarget::new("span").with_text_content("Save");
+		let button = NativeEventTarget::new("button").with_attribute("type", "submit");
+		let ancestor = NativeEventTarget::new("form");
+		let event = NativeEvent::for_known(
+			EventType::Click,
+			NativeEventPayload::Pointer(PointerEventData::default()),
+		)
+		.with_target(target.clone())
+		.with_current_target(button.clone());
+		let ancestor_event = event.with_current_target(ancestor.clone());
+
+		assert_eq!(event.target(), Some(&target));
+		assert_eq!(event.current_target(), Some(&button));
+		assert_eq!(ancestor_event.target(), Some(&target));
+		assert_eq!(ancestor_event.current_target(), Some(&ancestor));
+		assert!(event.base().cancelable);
+		event.prevent_default();
+		ancestor_event.stop_propagation();
+
+		assert!(ancestor_event.default_prevented());
+		assert!(event.propagation_stopped());
+		assert!(!event.immediate_propagation_stopped());
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_event_respects_cancelable_and_immediate_propagation_semantics() {
+		let event = NativeEvent::new(
+			EventName::Known(EventType::Input),
+			BaseEventData {
+				bubbles: true,
+				cancelable: false,
+				composed: true,
+				time_stamp: 12.5,
+				is_trusted: false,
+			},
+			NativeEventPayload::Input(InputEventData {
+				data: Some("x".to_owned()),
+				input_type: Some("insertText".to_owned()),
+				is_composing: false,
+			}),
+		);
+
+		event.prevent_default();
+		event.stop_immediate_propagation();
+
+		assert!(!event.default_prevented());
+		assert!(event.propagation_stopped());
+		assert!(event.immediate_propagation_stopped());
+		assert_eq!(event.base().time_stamp, 12.5);
+		assert_eq!(event.name(), &EventName::Known(EventType::Input));
+	}
 
 	#[test]
 	fn test_element_view_creation() {
@@ -977,6 +1999,7 @@ mod tests {
 		assert!(PageElement::new("br").is_void);
 		assert!(PageElement::new("img").is_void);
 		assert!(PageElement::new("input").is_void);
+		assert!(PageElement::new("INPUT").is_void);
 		assert!(!PageElement::new("div").is_void);
 		assert!(!PageElement::new("span").is_void);
 	}
@@ -1030,6 +2053,430 @@ mod tests {
 	fn test_render_simple_element() {
 		let view = PageElement::new("div").into_page();
 		assert_eq!(view.render_to_string(), "<div></div>");
+	}
+
+	#[test]
+	fn render_to_string_prefers_reactive_attributes() {
+		let view = PageElement::new("div")
+			.attr("class", "stale")
+			.reactive_attr("CLASS", || Some("current".into()))
+			.into_page();
+
+		assert_eq!(view.render_to_string(), "<div CLASS=\"current\"></div>");
+	}
+
+	#[test]
+	fn render_to_string_omits_falsy_reactive_boolean_attributes() {
+		// Arrange
+		let view = PageElement::new("button")
+			.reactive_attr("DISABLED", || Some("false".into()))
+			.into_page();
+
+		// Act
+		let html = view.render_to_string();
+
+		// Assert
+		assert_eq!(html, "<button></button>");
+	}
+
+	#[test]
+	fn render_to_string_omits_unsafe_reactive_attributes() {
+		let view = PageElement::new("a")
+			.reactive_attr("href", || Some("javascript:alert(1)".into()))
+			.reactive_attr("onclick", || Some("alert(1)".into()))
+			.into_page();
+
+		assert_eq!(view.render_to_string(), "<a></a>");
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_input_and_textarea_values() {
+		ReactiveScope::run(|| {
+			let input = PageElement::new("input")
+				.attr("type", "text")
+				.attr("value", "stale")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.into_page();
+			let textarea = PageElement::new("textarea")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.into_page();
+
+			assert_eq!(
+				input.render_to_string(),
+				"<input type=\"text\" value=\"current\" />"
+			);
+			assert_eq!(textarea.render_to_string(), "<textarea>current</textarea>");
+		});
+	}
+
+	#[rstest]
+	fn render_to_string_omits_bound_password_values() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let input = PageElement::new("input")
+				.attr("type", "password")
+				.attr("value", "stale")
+				.attr("data-rh-password-omitted", "false")
+				.attr("DATA-RH-PASSWORD-OMITTED", "conflicting")
+				.control_binding(ControlBinding::text(Signal::new("secret".to_owned())))
+				.into_page();
+
+			// Act
+			let html = input.render_to_string();
+
+			// Assert
+			assert_eq!(
+				html,
+				"<input type=\"password\" data-rh-password-omitted=\"true\" />"
+			);
+		});
+	}
+
+	#[cfg(native)]
+	#[rstest]
+	fn render_to_string_omits_bound_file_values() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let file =
+				EventFile::from(&NativeEventFile::new("secret.txt", "text/plain", 12, 1_000));
+			let input = PageElement::new("input")
+				.attr("type", "file")
+				.attr("value", "secret.txt")
+				.control_binding(ControlBinding::file(Signal::new(vec![file])))
+				.into_page();
+
+			// Act
+			let html = input.render_to_string();
+
+			// Assert
+			assert_eq!(html, r#"<input type="file" />"#);
+		});
+	}
+
+	#[cfg(native)]
+	#[rstest]
+	fn render_to_string_omits_bound_file_values_with_reactive_attribute() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let file =
+				EventFile::from(&NativeEventFile::new("secret.txt", "text/plain", 12, 1_000));
+			let input = PageElement::new("input")
+				.attr("type", "file")
+				.reactive_attr("value", || Some("secret.txt".into()))
+				.control_binding(ControlBinding::file(Signal::new(vec![file])))
+				.into_page();
+
+			// Act
+			let html = input.render_to_string();
+
+			// Assert
+			assert_eq!(html, r#"<input type="file" />"#);
+		});
+	}
+
+	#[rstest]
+	fn render_to_string_uses_the_first_static_password_type() {
+		ReactiveScope::run(|| {
+			let input = PageElement::new("input")
+				.attr("type", "password")
+				.attr("type", "text")
+				.control_binding(ControlBinding::text(Signal::new("secret".to_owned())))
+				.into_page();
+
+			assert_eq!(
+				input.render_to_string(),
+				"<input type=\"password\" type=\"text\" data-rh-password-omitted=\"true\" />"
+			);
+		});
+	}
+
+	#[rstest]
+	fn render_to_string_omits_bound_password_values_for_reactive_types() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let type_evaluations = Rc::new(Cell::new(0));
+			let reactive_type_evaluations = Rc::clone(&type_evaluations);
+			let overridden_value_evaluations = Rc::new(Cell::new(0));
+			let reactive_value_evaluations = Rc::clone(&overridden_value_evaluations);
+			let superseded_class_evaluations = Rc::new(Cell::new(0));
+			let first_class_evaluations = Rc::clone(&superseded_class_evaluations);
+			let final_class_evaluations = Rc::new(Cell::new(0));
+			let last_class_evaluations = Rc::clone(&final_class_evaluations);
+			let marker_evaluations = Rc::new(Cell::new(0));
+			let reactive_marker_evaluations = Rc::clone(&marker_evaluations);
+			let input = PageElement::new("input")
+				.attr("type", "text")
+				.attr("data-rh-password-omitted", "false")
+				.reactive_attr("type", move || {
+					reactive_type_evaluations.set(reactive_type_evaluations.get() + 1);
+					Some("password".into())
+				})
+				.reactive_attr("value", move || {
+					reactive_value_evaluations.set(reactive_value_evaluations.get() + 1);
+					Some("exposed".into())
+				})
+				.reactive_attr("DATA-RH-PASSWORD-OMITTED", move || {
+					reactive_marker_evaluations.set(reactive_marker_evaluations.get() + 1);
+					Some("false".into())
+				})
+				.reactive_attr("class", move || {
+					first_class_evaluations.set(first_class_evaluations.get() + 1);
+					Some("superseded".into())
+				})
+				.reactive_attr("class", move || {
+					last_class_evaluations.set(last_class_evaluations.get() + 1);
+					Some("final".into())
+				})
+				.attr("value", "stale")
+				.control_binding(ControlBinding::text(Signal::new("secret".to_owned())))
+				.into_page();
+
+			// Act
+			let html = input.render_to_string();
+
+			// Assert
+			assert_eq!(
+				html,
+				"<input type=\"password\" class=\"final\" data-rh-password-omitted=\"true\" />"
+			);
+			assert_eq!(type_evaluations.get(), 1);
+			assert_eq!(overridden_value_evaluations.get(), 0);
+			assert_eq!(superseded_class_evaluations.get(), 0);
+			assert_eq!(final_class_evaluations.get(), 1);
+			assert_eq!(marker_evaluations.get(), 0);
+		});
+	}
+
+	#[rstest]
+	#[case(None, "<input value=\"secret\" />")]
+	#[case(Some("text"), "<input type=\"text\" value=\"secret\" />")]
+	#[case(Some("TIME"), "<input type=\"TIME\" value=\"secret\" />")]
+	#[case(
+		Some("PASSWORD"),
+		"<input type=\"PASSWORD\" data-rh-password-omitted=\"true\" />"
+	)]
+	#[case(
+		Some("file"),
+		"<input type=\"password\" data-rh-password-omitted=\"true\" />"
+	)]
+	fn render_to_string_marks_only_effective_bound_password_types(
+		#[case] input_type: Option<&'static str>,
+		#[case] expected: &str,
+	) {
+		ReactiveScope::run(|| {
+			// Arrange
+			let input = PageElement::new("input")
+				.attr("type", "password")
+				.reactive_attr("type", move || input_type.map(Into::into))
+				.control_binding(ControlBinding::text(Signal::new("secret".to_owned())))
+				.into_page();
+
+			// Act
+			let html = input.render_to_string();
+
+			// Assert
+			assert_eq!(html, expected);
+		});
+	}
+
+	#[test]
+	fn render_to_string_rejects_a_binding_incompatible_reactive_input_type() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let input = PageElement::new("input")
+				.attr("type", "text")
+				.reactive_attr("type", || Some("file".into()))
+				.control_binding(ControlBinding::text(Signal::new("secret".to_owned())))
+				.into_page();
+
+			// Act
+			let html = input.render_to_string();
+
+			// Assert
+			assert_eq!(html, "<input type=\"text\" value=\"secret\" />");
+		});
+	}
+
+	#[test]
+	fn render_to_string_rejects_a_binding_incompatible_reactive_select_cardinality() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let select = PageElement::new("select")
+				.reactive_attr("multiple", || Some("multiple".into()))
+				.control_binding(ControlBinding::select_one(Signal::new("draft".to_owned())))
+				.into_page();
+
+			// Act
+			let html = select.render_to_string();
+
+			// Assert
+			assert_eq!(html, "<select></select>");
+		});
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_radio_values() {
+		ReactiveScope::run(|| {
+			let input = PageElement::new("input")
+				.attr("type", "radio")
+				.attr("value", "stale")
+				.control_binding(ControlBinding::radio(
+					Signal::new("draft".to_owned()),
+					"draft".to_owned(),
+				))
+				.into_page();
+
+			assert_eq!(
+				input.render_to_string(),
+				"<input type=\"radio\" value=\"draft\" checked=\"checked\" />"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_normalizes_controlled_attribute_names() {
+		ReactiveScope::run(|| {
+			let input = PageElement::new("INPUT")
+				.attr("VALUE", "stale")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.into_page();
+
+			assert_eq!(input.render_to_string(), "<INPUT value=\"current\" />");
+		});
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_select_option_state() {
+		ReactiveScope::run(|| {
+			let single = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new("wasm".to_owned())))
+				.child(
+					PageElement::new("option")
+						.attr("value", "rust")
+						.child("Rust"),
+				)
+				.child(
+					PageElement::new("option")
+						.attr("value", "wasm")
+						.attr("selected", "selected")
+						.child("WebAssembly"),
+				)
+				.into_page();
+			let multiple = PageElement::new("select")
+				.attr("multiple", "multiple")
+				.control_binding(ControlBinding::select_many(Signal::new(vec![
+					"rust".to_owned(),
+					"wasm".to_owned(),
+				])))
+				.child(
+					PageElement::new("option")
+						.attr("value", "rust")
+						.child("Rust"),
+				)
+				.child(PageElement::new("option").child("WebAssembly"))
+				.into_page();
+
+			assert_eq!(
+				single.render_to_string(),
+				"<select><option value=\"rust\">Rust</option><option value=\"wasm\" selected=\"selected\">WebAssembly</option></select>"
+			);
+			assert_eq!(
+				multiple.render_to_string(),
+				"<select multiple=\"multiple\"><option value=\"rust\" selected=\"selected\">Rust</option><option>WebAssembly</option></select>"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_select_only_once() {
+		ReactiveScope::run(|| {
+			let select = PageElement::new("SELECT")
+				.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+				.child(
+					PageElement::new("OPTION")
+						.attr("value", "Rust")
+						.child("First"),
+				)
+				.child(
+					PageElement::new("option")
+						.attr("value", "Rust")
+						.child("Second"),
+				)
+				.into_page();
+
+			assert_eq!(
+				select.render_to_string(),
+				"<SELECT><OPTION value=\"Rust\" selected=\"selected\">First</OPTION><option value=\"Rust\">Second</option></SELECT>"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_normalizes_inferred_bound_option_value() {
+		ReactiveScope::run(|| {
+			let select = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+				.child(PageElement::new("option").child(" \tRust\n"))
+				.into_page();
+
+			assert_eq!(
+				select.render_to_string(),
+				"<select><option selected=\"selected\"> \tRust\n</option></select>"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_sanitizes_svg_script_when_inferring_bound_option_value() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let select = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+				.child(
+					PageElement::new("option")
+						.child("Rust")
+						.child(PageElement::new("svg:script").child("ignored")),
+				)
+				.into_page();
+
+			// Act
+			let html = select.render_to_string();
+
+			// Assert
+			assert_eq!(
+				html,
+				"<select><option>Rust<span>ignored</span></option></select>"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_does_not_evaluate_dynamic_option_content_to_infer_value() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let renders = std::rc::Rc::new(std::cell::Cell::new(0));
+			let render_count = std::rc::Rc::clone(&renders);
+			let select = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new(
+					"Static Dynamic".to_owned(),
+				)))
+				.child(
+					PageElement::new("option")
+						.child("Static")
+						.child(Page::reactive(move || {
+							render_count.set(render_count.get() + 1);
+							Page::text(" Dynamic")
+						})),
+				)
+				.into_page();
+
+			// Act
+			let html = select.render_to_string();
+
+			// Assert
+			assert_eq!(renders.get(), 1);
+			assert_eq!(html, "<select><option>Static Dynamic</option></select>");
+		});
 	}
 
 	#[test]
@@ -1114,6 +2561,28 @@ mod tests {
 	}
 
 	#[rstest::rstest]
+	fn render_noscript_fallback_children_as_markup() {
+		// Arrange
+		let view = PageElement::new("noscript")
+			.child(
+				PageElement::new("input")
+					.attr("type", "hidden")
+					.attr("name", "fallback")
+					.attr("value", "true"),
+			)
+			.into_page();
+
+		// Act
+		let html = view.render_to_string();
+
+		// Assert
+		assert_eq!(
+			html,
+			"<noscript><input type=\"hidden\" name=\"fallback\" value=\"true\" /></noscript>"
+		);
+	}
+
+	#[rstest::rstest]
 	fn render_textarea_preserves_leading_line_feeds_through_html_parsing() {
 		for (value, expected) in [
 			("", "<textarea></textarea>"),
@@ -1130,6 +2599,31 @@ mod tests {
 		] {
 			// Arrange: fragment children may hide the first rendered text node.
 			let view = PageElement::new("textarea")
+				.child(Page::fragment([Page::Empty, Page::text(value)]))
+				.into_page();
+
+			// Act and assert.
+			assert_eq!(view.render_to_string(), expected);
+		}
+	}
+
+	#[rstest::rstest]
+	fn render_pre_preserves_leading_line_feeds_through_html_parsing() {
+		for (value, expected) in [
+			("", "<pre></pre>"),
+			("notes", "<pre>notes</pre>"),
+			("\n", "<pre>\n\n</pre>"),
+			("\nnotes", "<pre>\n\nnotes</pre>"),
+			("\n\nnotes", "<pre>\n\n\nnotes</pre>"),
+			("\n<&", "<pre>\n\n&lt;&amp;</pre>"),
+			("\r", "<pre>\n\r</pre>"),
+			("\r\n", "<pre>\n\r\n</pre>"),
+			("\rnotes", "<pre>\n\rnotes</pre>"),
+			("\r\nnotes", "<pre>\n\r\nnotes</pre>"),
+			("\r\n\rnotes", "<pre>\n\r\n\rnotes</pre>"),
+		] {
+			// Arrange: fragment children may hide the first rendered text node.
+			let view = PageElement::new("pre")
 				.child(Page::fragment([Page::Empty, Page::text(value)]))
 				.into_page();
 
@@ -1169,6 +2663,61 @@ mod tests {
 	fn test_render_empty() {
 		let view = Page::empty();
 		assert_eq!(view.render_to_string(), "");
+	}
+
+	#[test]
+	fn outlet_inline_renders_child_page() {
+		let view = Page::outlet(Outlet::inline(Page::text("Child")));
+
+		assert_eq!(view.render_to_string(), "Child");
+	}
+
+	#[test]
+	fn outlet_placeholder_renders_empty_on_string_render() {
+		let view = Page::outlet(Outlet::placeholder("layout-0"));
+
+		assert_eq!(view.render_to_string(), "");
+	}
+
+	#[test]
+	fn outlet_inline_participates_in_head_lookup() {
+		let view = Page::outlet(Outlet::inline(
+			Page::text("Child").with_head(Head::new().title("Child")),
+		));
+
+		assert_eq!(
+			view.find_topmost_head()
+				.and_then(|head| head.title.as_deref()),
+			Some("Child")
+		);
+	}
+
+	#[test]
+	fn suspense_head_lookup_uses_fresh_content_per_call() {
+		let title = std::rc::Rc::new(std::cell::RefCell::new("first".to_string()));
+		let content_title = std::rc::Rc::clone(&title);
+		let node = SuspenseNode::new(
+			Some("head-boundary".to_string()),
+			|| false,
+			|| Page::text("loading"),
+			move || {
+				Page::text("content").with_head(Head::new().title(content_title.borrow().clone()))
+			},
+		);
+
+		let view = Page::Suspense(node);
+		assert_eq!(
+			view.find_topmost_head_owned()
+				.and_then(|head| head.title.map(|title| title.into_owned())),
+			Some("first".to_string())
+		);
+
+		*title.borrow_mut() = "second".to_string();
+		assert_eq!(
+			view.find_topmost_head_owned()
+				.and_then(|head| head.title.map(|title| title.into_owned())),
+			Some("second".to_string())
+		);
 	}
 
 	#[test]

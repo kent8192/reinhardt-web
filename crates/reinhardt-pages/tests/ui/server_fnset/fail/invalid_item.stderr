@@ -1,0 +1,5 @@
+error: `server_fnset` can only be applied to a function or inherent impl
+ --> tests/ui/server_fnset/fail/invalid_item.rs:4:1
+  |
+4 | struct AdminFns;
+  | ^^^^^^^^^^^^^^^^

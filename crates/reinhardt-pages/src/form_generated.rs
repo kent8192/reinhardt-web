@@ -1,8 +1,7 @@
 //! Static Metadata Types for form! Macro Generated Code
 //!
-//! This module is always available (on both WASM and server) because it only
-//! depends on `serde`. It provides metadata structures specifically designed
-//! for the form! macro.
+//! This module is available on both WASM and server. It provides metadata and
+//! lifetime guards used by generated forms.
 //!
 //! Unlike `FormMetadata` from `reinhardt-forms::wasm_compat` which is extracted from
 //! runtime Form instances, these types are generated at compile-time and include
@@ -38,6 +37,46 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+
+/// Tracks the lifetime of controls owned by one generated form reset handler.
+#[doc(hidden)]
+#[derive(Debug, Clone, Default)]
+pub struct NativeFormResetOwner {
+	active: std::rc::Rc<std::cell::Cell<usize>>,
+	generation: std::rc::Rc<std::cell::Cell<u64>>,
+}
+
+impl NativeFormResetOwner {
+	/// Registers a mounted control; dropping the returned guard releases it.
+	pub fn register(&self) -> Box<dyn std::any::Any> {
+		self.active.set(self.active.get() + 1);
+		Box::new(NativeFormResetRegistration(self.clone()))
+	}
+
+	/// Captures the current mount generation for a deferred reset.
+	pub fn generation(&self) -> u64 {
+		self.generation.get()
+	}
+
+	/// Checks that controls from the captured mount are still alive.
+	pub fn is_active(&self, generation: u64) -> bool {
+		self.active.get() > 0 && self.generation.get() == generation
+	}
+}
+
+struct NativeFormResetRegistration(NativeFormResetOwner);
+
+impl Drop for NativeFormResetRegistration {
+	fn drop(&mut self) {
+		let remaining = self.0.active.get() - 1;
+		self.0.active.set(remaining);
+		if remaining == 0 {
+			self.0
+				.generation
+				.set(self.0.generation.get().wrapping_add(1));
+		}
+	}
+}
 
 /// Static form metadata for macro-generated forms.
 ///

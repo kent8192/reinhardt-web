@@ -3,11 +3,16 @@
 use super::*;
 use hyper::Method;
 use reinhardt_core::endpoint::EndpointInfo;
-use reinhardt_http::{Handler, Request, Response, Result};
+use reinhardt_http::{Handler, Request, Response, Result, SyncHandler};
 use rstest::rstest;
 use std::sync::{
 	Arc, Mutex,
 	atomic::{AtomicUsize, Ordering},
+};
+
+#[cfg(feature = "viewsets")]
+use reinhardt_views::viewsets::{
+	Action, ActionMetadata, PermissionMiddleware, ViewSet, ViewSetBuilder, ViewSetMiddleware,
 };
 
 struct TestEndpoint<const ID: u8>;
@@ -43,13 +48,15 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			26 => "/items",
 			27 => "/users",
 			28 => "/profile",
-			29 => "/files/{<path:asset>}",
-			30 => "/files/{*asset}",
-			31 => "/users/{<int:id>}/files/{<path:asset>}",
-			32 => "/files/{<path:asset>}/metadata",
-			33 => "/files/{{<path:literal>}}/{<path:asset>}",
-			34 => "/files/{<path:asset>",
-			35 => "/static/files/{<path:asset>}",
+			29 => "/trace",
+			30 => "/webdav",
+			31 => "/files/{<path:asset>}",
+			32 => "/files/{*asset}",
+			33 => "/users/{<int:id>}/files/{<path:asset>}",
+			34 => "/files/{<path:asset>}/metadata",
+			35 => "/files/{{<path:literal>}}/{<path:asset>}",
+			36 => "/files/{<path:asset>",
+			37 => "/static/files/{<path:asset>}",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -58,6 +65,8 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 		match ID {
 			8 | 11 | 12 | 13 | 14 | 18 | 27 => Method::POST,
 			21 => Method::PUT,
+			29 => Method::TRACE,
+			30 => Method::from_bytes(b"PROPFIND").unwrap(),
 			_ => Method::GET,
 		}
 	}
@@ -92,12 +101,14 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 			26 => "items-list",
 			27 => "users-create",
 			28 => "!profile_detail",
-			29 | 30 => "files",
-			31 => "user-files",
-			32 => "file-metadata",
-			33 => "escaped-files",
-			34 => "unclosed-files",
-			35 => "prefixed-files",
+			29 => "trace",
+			30 => "webdav",
+			31 | 32 => "files",
+			33 => "user-files",
+			34 => "file-metadata",
+			35 => "escaped-files",
+			36 => "unclosed-files",
+			37 => "prefixed-files",
 			_ => unreachable!("unsupported test endpoint"),
 		}
 	}
@@ -107,6 +118,120 @@ impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 impl<const ID: u8> Handler for TestEndpoint<ID> {
 	async fn handle(&self, _req: Request) -> Result<Response> {
 		Ok(Response::ok())
+	}
+}
+
+struct ProtectedEndpoint;
+
+impl EndpointInfo for ProtectedEndpoint {
+	fn path() -> &'static str {
+		"/items"
+	}
+
+	fn method() -> Method {
+		Method::GET
+	}
+
+	fn name() -> &'static str {
+		"!protected-items"
+	}
+
+	fn handler_identity() -> &'static str {
+		"tests::ProtectedEndpoint"
+	}
+
+	fn auth_protection() -> reinhardt_core::endpoint::AuthProtection {
+		reinhardt_core::endpoint::AuthProtection::Protected
+	}
+
+	fn guard_description() -> Option<&'static str> {
+		Some("role=admin")
+	}
+}
+
+#[async_trait::async_trait]
+impl Handler for ProtectedEndpoint {
+	async fn handle(&self, _req: Request) -> Result<Response> {
+		Ok(Response::ok())
+	}
+}
+
+struct ContractRawHandler;
+
+#[async_trait::async_trait]
+impl Handler for ContractRawHandler {
+	async fn handle(&self, _req: Request) -> Result<Response> {
+		Ok(Response::ok())
+	}
+}
+
+struct ContractClassView;
+
+#[async_trait::async_trait]
+impl Handler for ContractClassView {
+	async fn handle(&self, _req: Request) -> Result<Response> {
+		Ok(Response::ok())
+	}
+}
+
+#[cfg(feature = "viewsets")]
+struct ContractViewSet;
+
+#[cfg(feature = "viewsets")]
+#[async_trait::async_trait]
+impl ViewSet for ContractViewSet {
+	fn get_basename(&self) -> &str {
+		"contracts"
+	}
+
+	async fn dispatch(&self, _request: Request, _action: Action) -> Result<Response> {
+		Ok(Response::ok())
+	}
+
+	fn get_extra_actions(&self) -> Vec<ActionMetadata> {
+		vec![ActionMetadata::new("archive")]
+	}
+}
+
+#[cfg(feature = "viewsets")]
+struct PermissionOnlyViewSet;
+
+#[cfg(feature = "viewsets")]
+#[async_trait::async_trait]
+impl ViewSet for PermissionOnlyViewSet {
+	fn get_basename(&self) -> &str {
+		"permission-only"
+	}
+
+	async fn dispatch(&self, _request: Request, _action: Action) -> Result<Response> {
+		Ok(Response::ok())
+	}
+
+	fn requires_login(&self) -> bool {
+		true
+	}
+
+	fn get_middleware(&self) -> Option<Arc<dyn ViewSetMiddleware>> {
+		Some(Arc::new(PermissionMiddleware::new(vec![
+			"read".to_string(),
+		])))
+	}
+}
+
+struct PathParamCountHandler;
+
+#[async_trait::async_trait]
+impl Handler for PathParamCountHandler {
+	async fn handle(&self, req: Request) -> Result<Response> {
+		Ok(Response::ok().with_body(req.path_params.len().to_string()))
+	}
+}
+
+struct PathParamCountSyncHandler;
+
+impl SyncHandler for PathParamCountSyncHandler {
+	fn handle_sync(&self, req: Request) -> Result<Response> {
+		Ok(Response::ok().with_body(req.path_params.len().to_string()))
 	}
 }
 
@@ -340,7 +465,7 @@ fn registered_typed_path_reverse_validates_converter_values(
 	#[values(false, true)] mounted: bool,
 ) {
 	// Arrange
-	let child = ServerRouter::new().endpoint(|| TestEndpoint::<29>);
+	let child = ServerRouter::new().endpoint(|| TestEndpoint::<31>);
 	let (mut router, name, prefix) = if mounted {
 		(
 			ServerRouter::new()
@@ -441,8 +566,12 @@ async fn test_route_matching_correctness() {
 	assert_eq!(route_match.param("post_id"), Some("789"));
 	assert_eq!(route_match.param("comment_id"), Some("101"));
 	assert_eq!(
-		route_match.params.as_slice(),
-		&[
+		route_match
+			.params
+			.as_ref()
+			.expect("parameterized route should expose path params")
+			.to_vec(),
+		vec![
 			("post_id".to_string(), "789".to_string()),
 			("comment_id".to_string(), "101".to_string()),
 		],
@@ -452,6 +581,64 @@ async fn test_route_matching_correctness() {
 	// Act & Assert - non-matching route
 	let result = router.match_own_routes("/nonexistent", &Method::GET);
 	assert!(result.is_none());
+}
+
+#[test]
+fn test_compile_routes_populates_exact_static_route_table() {
+	// Arrange
+	let router = ServerRouter::new()
+		.endpoint(|| TestEndpoint::<1>)
+		.endpoint(|| TestEndpoint::<3>);
+
+	// Act
+	router.compile_routes();
+	let compiled = router.compiled_routes();
+
+	// Assert
+	assert!(
+		compiled
+			.exact_for_method(&Method::GET)
+			.expect("GET exact routes should be available")
+			.contains_key("/health")
+	);
+	assert!(
+		!compiled
+			.exact_for_method(&Method::GET)
+			.expect("GET exact routes should be available")
+			.contains_key("/users/{id}")
+	);
+	assert!(
+		compiled
+			.router_for_method(&Method::GET)
+			.expect("GET router should be available")
+			.at("/users/123")
+			.is_ok()
+	);
+}
+
+#[test]
+fn test_compile_routes_skips_exact_table_for_escaped_static_routes() {
+	// Arrange
+	let router = ServerRouter::new().handler("/{{hello}}", PathParamCountHandler);
+
+	// Act
+	router.compile_routes();
+	let compiled = router.compiled_routes();
+
+	// Assert
+	assert!(
+		!compiled
+			.exact_for_method(&Method::GET)
+			.expect("GET exact routes should be available")
+			.contains_key("/{{hello}}")
+	);
+	assert!(
+		compiled
+			.router_for_method(&Method::GET)
+			.expect("GET router should be available")
+			.at("/{hello}")
+			.is_ok()
+	);
 }
 
 #[tokio::test]
@@ -472,8 +659,12 @@ async fn test_route_matching_preserves_url_pattern_order_issue_4013() {
 
 	// Assert
 	assert_eq!(
-		route_match.params.as_slice(),
-		&[
+		route_match
+			.params
+			.as_ref()
+			.expect("parameterized route should expose path params")
+			.to_vec(),
+		vec![
 			("org".to_string(), "myslug".to_string()),
 			("cluster_id".to_string(), "5".to_string()),
 		],
@@ -503,6 +694,36 @@ async fn test_route_matching_different_methods() {
 }
 
 #[rstest]
+fn test_unsupported_methods_do_not_fall_back_to_get_routes() {
+	// Arrange
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
+	router.compile_routes();
+	let trace = Method::from_bytes(b"TRACE").unwrap();
+	let custom = Method::from_bytes(b"BREW").unwrap();
+
+	// Act & Assert
+	assert!(router.match_own_routes("/health", &trace).is_none());
+	assert!(router.match_own_routes("/health", &custom).is_none());
+	assert!(router.path_exists_for_any_method("/health"));
+}
+
+#[rstest]
+fn test_registered_non_default_methods_resolve() {
+	// Arrange
+	let router = ServerRouter::new()
+		.endpoint(|| TestEndpoint::<29>)
+		.endpoint(|| TestEndpoint::<30>);
+	router.compile_routes();
+	let propfind = Method::from_bytes(b"PROPFIND").unwrap();
+
+	// Act & Assert
+	assert!(router.match_own_routes("/trace", &Method::TRACE).is_some());
+	assert!(router.match_own_routes("/webdav", &propfind).is_some());
+	assert!(router.match_own_routes("/trace", &Method::GET).is_none());
+	assert!(router.path_exists_for_any_method("/webdav"));
+}
+
+#[rstest]
 #[case::single_segment("/files/single.txt", "single.txt")]
 #[case::nested_path("/files/nested/file.txt", "nested/file.txt")]
 #[case::trailing_slash("/files/nested/directory/", "nested/directory/")]
@@ -513,9 +734,9 @@ fn test_catch_all_endpoint_matching(
 ) {
 	// Arrange
 	let router = if typed {
-		ServerRouter::new().endpoint(|| TestEndpoint::<29>)
+		ServerRouter::new().endpoint(|| TestEndpoint::<31>)
 	} else {
-		ServerRouter::new().endpoint(|| TestEndpoint::<30>)
+		ServerRouter::new().endpoint(|| TestEndpoint::<32>)
 	};
 
 	// Act
@@ -526,15 +747,19 @@ fn test_catch_all_endpoint_matching(
 	assert_eq!(validation, Ok(()));
 	let matched = matched.expect("a validated catch-all endpoint should match");
 	assert_eq!(
-		matched.params.as_slice(),
-		&[(String::from("asset"), asset.to_owned())]
+		matched
+			.params
+			.as_ref()
+			.expect("captured parameters")
+			.to_vec(),
+		vec![(String::from("asset"), asset.to_owned())]
 	);
 }
 
 #[rstest]
 fn test_typed_endpoint_preserves_parameter_names_and_order() {
 	// Arrange
-	let router = ServerRouter::new().endpoint(|| TestEndpoint::<31>);
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<33>);
 
 	// Act
 	let validation = router.validate_routes();
@@ -544,8 +769,12 @@ fn test_typed_endpoint_preserves_parameter_names_and_order() {
 	assert_eq!(validation, Ok(()));
 	let matched = matched.expect("typed parameters should match");
 	assert_eq!(
-		matched.params.as_slice(),
-		&[
+		matched
+			.params
+			.as_ref()
+			.expect("captured parameters")
+			.to_vec(),
+		vec![
 			(String::from("id"), String::from("42")),
 			(String::from("asset"), String::from("nested/file.txt")),
 		]
@@ -561,8 +790,8 @@ fn test_validate_routes_rejects_nonterminal_path_converter(
 	#[values(false, true)] lazy_first: bool,
 ) {
 	// Arrange
-	let mut router = ServerRouter::new().endpoint(|| TestEndpoint::<32>);
-	let mut valid_router = ServerRouter::new().endpoint(|| TestEndpoint::<29>);
+	let mut router = ServerRouter::new().endpoint(|| TestEndpoint::<34>);
+	let mut valid_router = ServerRouter::new().endpoint(|| TestEndpoint::<31>);
 	for _ in 0..depth {
 		router = ServerRouter::new().mount("/child/", router);
 		valid_router = ServerRouter::new().mount("/child/", valid_router);
@@ -602,7 +831,7 @@ fn test_validate_routes_rejects_nonterminal_path_converter(
 #[rstest]
 fn test_typed_endpoint_preserves_escaped_literal_braces() {
 	// Arrange
-	let router = ServerRouter::new().endpoint(|| TestEndpoint::<33>);
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<35>);
 
 	// Act
 	let validation = router.validate_routes();
@@ -612,15 +841,19 @@ fn test_typed_endpoint_preserves_escaped_literal_braces() {
 	assert_eq!(validation, Ok(()));
 	let matched = matched.expect("escaped braces should remain literal");
 	assert_eq!(
-		matched.params.as_slice(),
-		&[(String::from("asset"), String::from("nested/file.txt"))]
+		matched
+			.params
+			.as_ref()
+			.expect("captured parameters")
+			.to_vec(),
+		vec![(String::from("asset"), String::from("nested/file.txt"))]
 	);
 }
 
 #[rstest]
 fn test_validate_routes_rejects_unclosed_typed_parameter() {
 	// Arrange
-	let router = ServerRouter::new().endpoint(|| TestEndpoint::<34>);
+	let router = ServerRouter::new().endpoint(|| TestEndpoint::<36>);
 	let mut matcher = matchit::Router::new();
 	let expected_error = matcher
 		.insert("/files/{<path:asset>", ())
@@ -643,7 +876,7 @@ fn test_typed_endpoint_with_absolute_prefix() {
 	// Arrange
 	let router = ServerRouter::new()
 		.with_prefix("/static")
-		.endpoint(|| TestEndpoint::<35>);
+		.endpoint(|| TestEndpoint::<37>);
 
 	// Act
 	let validation = router.validate_routes();
@@ -653,8 +886,12 @@ fn test_typed_endpoint_with_absolute_prefix() {
 	assert_eq!(validation, Ok(()));
 	let matched = matched.expect("an absolute endpoint prefix must only be applied once");
 	assert_eq!(
-		matched.params.as_slice(),
-		&[(String::from("asset"), String::from("nested/file.txt"))]
+		matched
+			.params
+			.as_ref()
+			.expect("captured parameters")
+			.to_vec(),
+		vec![(String::from("asset"), String::from("nested/file.txt"))]
 	);
 }
 
@@ -703,43 +940,56 @@ fn test_validate_routes_returns_errors_for_invalid_patterns() {
 	assert!(!errors.is_empty());
 }
 
+#[test]
+fn test_validate_routes_checks_mounted_child_routes() {
+	let child = ServerRouter::new()
+		.endpoint(|| TestEndpoint::<7>)
+		.endpoint(|| TestEndpoint::<25>);
+	let router = ServerRouter::new().mount("/nested/", child);
+
+	let errors = router
+		.validate_routes()
+		.expect_err("child route should fail validation");
+
+	assert!(
+		errors
+			.iter()
+			.any(|error| error.contains("Failed to compile route"))
+	);
+}
+
 #[rstest]
-fn test_router_recovers_from_poisoned_rwlock() {
+fn test_router_reuses_compiled_routes() {
 	// Arrange
 	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
 
-	// Poison the compilation-result RwLock by panicking while holding its write guard
-	let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-		let _guard = router.route_compilation.write().unwrap();
-		panic!("intentional panic to poison lock");
-	}));
-
-	// Act - compile_routes should recover from poisoned lock
-	let errors = router.compile_routes();
+	// Act
+	let first_errors = router.compile_routes();
+	let second_errors = router.compile_routes();
+	let first_table = router.compiled_routes() as *const _;
+	let second_table = router.compiled_routes() as *const _;
 
 	// Assert
-	assert!(errors.is_empty());
+	assert!(first_errors.is_empty());
+	assert!(second_errors.is_empty());
+	assert_eq!(first_table, second_table);
 	let result = router.match_own_routes("/health", &Method::GET);
 	assert!(result.is_some());
 }
 
 #[rstest]
-fn test_route_matching_recovers_from_poisoned_method_router() {
+fn test_router_rebuilds_compiled_routes_after_endpoint_registration() {
 	// Arrange
 	let router = ServerRouter::new().endpoint(|| TestEndpoint::<1>);
 	router.compile_routes();
+	assert!(router.match_own_routes("/list", &Method::GET).is_none());
 
-	// Poison the get_router RwLock
-	let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-		let _guard = router.get_router.write().unwrap();
-		panic!("intentional panic to poison lock");
-	}));
+	// Act
+	let router = router.endpoint(|| TestEndpoint::<2>);
 
-	// Act - match_own_routes should recover from poisoned lock
-	let result = router.match_own_routes("/health", &Method::GET);
-
-	// Assert - route matching should still work
-	assert!(result.is_some());
+	// Assert
+	assert!(router.match_own_routes("/health", &Method::GET).is_some());
+	assert!(router.match_own_routes("/list", &Method::GET).is_some());
 }
 
 // --- ServerRouter::exclude() tests ---
@@ -767,6 +1017,63 @@ fn create_test_request(path: &str) -> reinhardt_http::Request {
 		.body(bytes::Bytes::new())
 		.build()
 		.unwrap()
+}
+
+fn create_test_request_with_path_params(path: &str) -> reinhardt_http::Request {
+	reinhardt_http::Request::builder()
+		.method(Method::GET)
+		.uri(path)
+		.version(hyper::Version::HTTP_11)
+		.headers(hyper::HeaderMap::new())
+		.body(bytes::Bytes::new())
+		.path_params(vec![("id".to_string(), "stale".to_string())])
+		.build()
+		.unwrap()
+}
+
+#[rstest]
+#[tokio::test]
+async fn static_route_dispatch_clears_existing_path_params() {
+	// Arrange
+	let router = ServerRouter::new().handler("/health", PathParamCountHandler);
+	let request = create_test_request_with_path_params("/health");
+
+	// Act
+	let response = Handler::handle(&router, request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.body, bytes::Bytes::from_static(b"0"));
+}
+
+#[rstest]
+fn static_route_sync_dispatch_clears_existing_path_params() {
+	// Arrange
+	let router = ServerRouter::new().handler_sync("/health", PathParamCountSyncHandler);
+	let request = create_test_request_with_path_params("/health");
+
+	// Act
+	let response = router
+		.try_dispatch_sync(request)
+		.expect("static sync route should use sync fast path")
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.body, bytes::Bytes::from_static(b"0"));
+}
+
+#[rstest]
+fn escaped_literal_brace_route_resolves_without_path_params() {
+	// Arrange
+	let router = ServerRouter::new().handler("/{{hello}}", PathParamCountHandler);
+
+	// Act
+	let route_match = router
+		.resolve("/{hello}", &Method::GET)
+		.expect("literal brace route should resolve");
+
+	// Assert
+	assert!(route_match.params.is_none());
+	assert!(router.resolve("/{{hello}}", &Method::GET).is_none());
 }
 
 #[rstest]
@@ -1517,6 +1824,266 @@ fn test_validate_routes_includes_name_errors() {
 	assert!(errors.iter().any(|e| e.contains("Duplicate route name")));
 }
 
+#[test]
+fn mounted_contract_includes_each_mount_with_endpoint_metadata() {
+	let api =
+		ServerRouter::new().mount("/api/", ServerRouter::new().endpoint(|| ProtectedEndpoint));
+	let router = api.mount(
+		"/internal/",
+		ServerRouter::new().endpoint(|| ProtectedEndpoint),
+	);
+
+	let contracts = router.get_mounted_route_contracts().unwrap();
+	let routes: Vec<_> = contracts
+		.into_iter()
+		.map(|contract| {
+			(
+				contract.path,
+				contract.method,
+				contract.metadata.handler,
+				contract.metadata.authentication,
+				contract.metadata.guard,
+			)
+		})
+		.collect();
+
+	assert_eq!(
+		routes,
+		vec![
+			(
+				"/api/items".to_string(),
+				Method::GET,
+				"tests::ProtectedEndpoint".to_string(),
+				reinhardt_core::endpoint::AuthProtection::Protected,
+				Some("role=admin".to_string()),
+			),
+			(
+				"/internal/items".to_string(),
+				Method::GET,
+				"tests::ProtectedEndpoint".to_string(),
+				reinhardt_core::endpoint::AuthProtection::Protected,
+				Some("role=admin".to_string()),
+			),
+		]
+	);
+}
+
+#[test]
+fn mounted_contract_normalizes_endpoint_path_that_includes_router_prefix() {
+	let router = ServerRouter::new()
+		.with_prefix("/api")
+		.endpoint(|| TestEndpoint::<10>);
+
+	let contracts = router.get_mounted_route_contracts().unwrap();
+	let paths: Vec<_> = contracts
+		.into_iter()
+		.map(|contract| contract.path)
+		.collect();
+
+	assert_eq!(paths, vec!["/api/users/".to_string()]);
+}
+
+#[test]
+fn mounted_contract_rejects_collisions_after_prefix_flattening() {
+	let router = ServerRouter::new()
+		.handler("/nested/health", ContractRawHandler)
+		.mount(
+			"/nested/",
+			ServerRouter::new().endpoint(|| TestEndpoint::<1>),
+		);
+
+	let error = router.get_mounted_route_contracts().unwrap_err();
+
+	assert_eq!(error, "mounted route collision for `/nested/health` GET");
+}
+
+#[test]
+fn mounted_contract_expands_typed_raw_handlers_and_class_views() {
+	let router = ServerRouter::new()
+		.handler("/raw", ContractRawHandler)
+		.view("/class", ContractClassView);
+
+	let contracts = router.get_mounted_route_contracts().unwrap();
+	let raw_methods: Vec<_> = contracts
+		.iter()
+		.filter(|contract| contract.path == "/raw")
+		.map(|contract| contract.method.clone())
+		.collect();
+	let class_methods: Vec<_> = contracts
+		.iter()
+		.filter(|contract| contract.path == "/class")
+		.map(|contract| contract.method.clone())
+		.collect();
+	let raw_handler = contracts
+		.iter()
+		.find(|contract| contract.path == "/raw")
+		.map(|contract| contract.metadata.handler.as_str());
+	let class_handler = contracts
+		.iter()
+		.find(|contract| contract.path == "/class")
+		.map(|contract| contract.metadata.handler.as_str());
+
+	assert_eq!(
+		raw_methods,
+		vec![
+			Method::GET,
+			Method::POST,
+			Method::PUT,
+			Method::DELETE,
+			Method::PATCH,
+		]
+	);
+	assert_eq!(class_methods, raw_methods);
+	assert_eq!(raw_handler, Some("route:/raw"));
+	assert_eq!(class_handler, Some("view:/class"));
+}
+
+#[test]
+fn mounted_contract_uses_declared_class_view_authentication() {
+	#[allow(deprecated)]
+	let router = ServerRouter::new()
+		.view_with_authentication(
+			"/class",
+			ContractClassView,
+			reinhardt_core::endpoint::AuthProtection::Protected,
+		)
+		.view_named_with_authentication(
+			"/named-class",
+			"named-class",
+			ContractClassView,
+			reinhardt_core::endpoint::AuthProtection::Protected,
+		);
+
+	let contracts = router.get_mounted_route_contracts().unwrap();
+
+	assert_eq!(contracts.len(), 10);
+	assert!(contracts.iter().all(|contract| {
+		contract.metadata.authentication == reinhardt_core::endpoint::AuthProtection::Protected
+	}));
+}
+
+#[cfg(feature = "viewsets")]
+#[test]
+fn mounted_contract_omits_viewset_extra_actions() {
+	let router = ServerRouter::new().viewset("/contracts", ContractViewSet);
+
+	let contracts = router.get_mounted_route_contracts().unwrap();
+	assert!(contracts.iter().all(|contract| {
+		contract.metadata.authentication == reinhardt_core::endpoint::AuthProtection::Public
+	}));
+	let handlers: Vec<_> = contracts
+		.into_iter()
+		.map(|contract| contract.metadata.handler)
+		.collect();
+	let viewset_name = "viewset:contracts";
+
+	assert_eq!(
+		handlers,
+		vec![
+			format!("{viewset_name}::list"),
+			format!("{viewset_name}::create"),
+			format!("{viewset_name}::retrieve"),
+			format!("{viewset_name}::update"),
+			format!("{viewset_name}::destroy"),
+		]
+	);
+	assert!(
+		!handlers
+			.iter()
+			.any(|handler| handler.ends_with("::archive"))
+	);
+	assert!(!handlers.iter().any(|handler| handler == "<erased handler>"));
+}
+
+#[cfg(feature = "viewsets")]
+#[test]
+fn mounted_contract_does_not_treat_permission_middleware_as_authentication() {
+	let router = ServerRouter::new().viewset("/permission-only", PermissionOnlyViewSet);
+
+	let contracts = router.get_mounted_route_contracts().unwrap();
+
+	assert!(contracts.iter().all(|contract| {
+		contract.metadata.authentication == reinhardt_core::endpoint::AuthProtection::None
+	}));
+}
+
+#[cfg(feature = "viewsets")]
+#[test]
+fn mounted_contract_rejects_viewset_builder_erased_handler_metadata() {
+	let mut router = ServerRouter::new();
+	ViewSetBuilder::new(ContractViewSet)
+		.action(Method::GET, "list")
+		.register_to(&mut router, "/builder")
+		.unwrap();
+
+	let error = router.get_mounted_route_contracts().unwrap_err();
+
+	assert_eq!(
+		error,
+		"mounted route `/builder` has no application-contract metadata; use a typed registration method or handler_arc_with_contract_metadata"
+	);
+}
+
+#[cfg(feature = "viewsets")]
+#[test]
+fn mounted_contract_qualifies_standard_viewset_route_names() {
+	let router = ServerRouter::new()
+		.with_namespace("api")
+		.viewset("/contracts", ContractViewSet);
+
+	let contracts = router.get_mounted_route_contracts().unwrap();
+	let names: Vec<_> = contracts
+		.into_iter()
+		.map(|contract| contract.name)
+		.collect();
+
+	assert_eq!(
+		names,
+		vec![
+			Some("api:contracts-list".to_string()),
+			Some("api:contracts-list".to_string()),
+			Some("api:contracts-detail".to_string()),
+			Some("api:contracts-detail".to_string()),
+			Some("api:contracts-detail".to_string()),
+		]
+	);
+}
+
+#[test]
+fn mounted_contract_rejects_erased_handler_without_metadata() {
+	let router = ServerRouter::new().handler_arc("/opaque", Arc::new(TestEndpoint::<1>));
+
+	let error = router.get_mounted_route_contracts().unwrap_err();
+
+	assert_eq!(
+		error,
+		"mounted route `/opaque` has no application-contract metadata; use a typed registration method or handler_arc_with_contract_metadata"
+	);
+}
+
+#[test]
+fn mounted_contract_uses_explicit_erased_handler_metadata() {
+	let router = ServerRouter::new().handler_arc_with_contract_metadata(
+		"/opaque",
+		Arc::new(TestEndpoint::<1>),
+		RouteContractMetadata {
+			handler: "tests::OpaqueEndpoint".to_string(),
+			module_path: Some("tests".to_string()),
+			function_name: Some("OpaqueEndpoint".to_string()),
+			authentication: reinhardt_core::endpoint::AuthProtection::Public,
+			guard: None,
+		},
+	);
+
+	let contracts = router.get_mounted_route_contracts().unwrap();
+
+	assert_eq!(contracts.len(), 5);
+	assert!(contracts.iter().all(|contract| {
+		contract.metadata.handler == "tests::OpaqueEndpoint"
+			&& contract.metadata.authentication == reinhardt_core::endpoint::AuthProtection::Public
+	}));
+}
+
 // --- Exception handler installation (Issue #6294) ---
 
 /// Exception handler producing a body identifiable in assertions.
@@ -1818,6 +2385,75 @@ async fn inherited_exception_handler_reaches_router_middleware() {
 	}
 }
 
+struct FailingSyncRoute;
+
+impl SyncHandler for FailingSyncRoute {
+	fn handle_sync(&self, _request: Request) -> Result<Response> {
+		Err(reinhardt_http::Error::Internal(
+			"sync route failed".to_owned(),
+		))
+	}
+}
+
+impl reinhardt_http::RequestlessSyncHandler for FailingSyncRoute {
+	fn handle_requestless_sync(&self) -> Result<Response> {
+		Err(reinhardt_http::Error::Internal(
+			"requestless route failed".to_owned(),
+		))
+	}
+}
+
+#[rstest]
+#[case(false, false)]
+#[case(false, true)]
+#[case(true, false)]
+#[case(true, true)]
+#[tokio::test]
+async fn sync_routes_preserve_exception_handling(
+	#[case] requestless: bool,
+	#[case] inherited: bool,
+) {
+	// Arrange
+	let calls = Arc::new(AtomicUsize::new(0));
+	let exception_handler: Arc<dyn reinhardt_http::ExceptionHandler> = Arc::new(CountingErrors {
+		calls: Arc::clone(&calls),
+	});
+	let router = if requestless {
+		ServerRouter::new().handler_requestless_sync("/fail", FailingSyncRoute)
+	} else {
+		ServerRouter::new().handler_sync("/fail", FailingSyncRoute)
+	};
+	let router = if inherited {
+		router
+	} else {
+		router.with_exception_handler(Arc::clone(&exception_handler))
+	};
+	let request = || {
+		let request = create_test_request("/fail");
+		if inherited {
+			request.extensions.insert(Arc::clone(&exception_handler));
+		}
+		request
+	};
+
+	// Act and assert: async exception conversion must bypass synchronous entry points.
+	assert!(router.try_dispatch_sync(request()).is_none());
+	if !inherited {
+		assert!(
+			router
+				.try_dispatch_requestless_sync("/fail", &Method::GET)
+				.is_none()
+		);
+	}
+	assert_eq!(calls.load(Ordering::SeqCst), 0);
+	let response = router.dispatch(request()).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(response.body, bytes::Bytes::from_static(b"teapot"));
+	assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
 #[rstest]
 #[case::parent("foo/../../etc/passwd")]
 #[case::encoded_dots("foo/%2e%2e/etc/passwd")]
@@ -1843,10 +2479,10 @@ fn test_typed_path_endpoint_rejects_traversal(
 	let router = if prefixed {
 		ServerRouter::new().with_prefix("/api/").mount(
 			"/static/",
-			ServerRouter::new().endpoint(|| TestEndpoint::<29>),
+			ServerRouter::new().endpoint(|| TestEndpoint::<31>),
 		)
 	} else {
-		ServerRouter::new().endpoint(|| TestEndpoint::<29>)
+		ServerRouter::new().endpoint(|| TestEndpoint::<31>)
 	};
 	let path = if prefixed {
 		format!("/api/static/files/{asset}")
@@ -1895,7 +2531,7 @@ async fn rejected_typed_paths_report_not_found(
 	#[values(Method::GET, Method::POST)] method: Method,
 ) {
 	// Arrange
-	let child = ServerRouter::new().endpoint(|| TestEndpoint::<29>);
+	let child = ServerRouter::new().endpoint(|| TestEndpoint::<31>);
 	let (router, prefix) = if mounted {
 		(ServerRouter::new().mount("/static/", child), "/static")
 	} else {

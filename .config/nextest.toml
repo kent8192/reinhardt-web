@@ -8,9 +8,9 @@
 # Views tests spawn PostgreSQL containers which consume significant resources
 test-threads = 2
 
-# Increase timeout for database operations
-# TestContainers startup can be slow, especially PostgreSQL 17
-slow-timeout = "360s"
+# Increase timeout for database operations while terminating a test that remains
+# stalled well beyond the TestContainers startup allowance.
+slow-timeout = { period = "360s", terminate-after = 2 }
 
 # Enable retries for flaky infrastructure tests
 retries = 2
@@ -52,6 +52,11 @@ threads-required = 1
 filter = 'test(database_integration)'
 threads-required = 1
 
+# The e2e_pages test processes share database schemas during DDL setup.
+[[profile.default.overrides]]
+filter = 'binary(e2e_pages)'
+threads-required = 2
+
 # DML integration tests require exclusive execution
 # Each test spawns independent PostgreSQL containers with limited connection pools
 # With test-threads=2 and threads-required=1, two tests could run in parallel,
@@ -62,6 +67,47 @@ threads-required = 1
 [[profile.default.overrides]]
 filter = 'binary(/(dml|insert_|delete_|update_|select_)/)'
 threads-required = 2
+
+# Consumer contract verification, shell fixture generation, and custom-manager
+# trybuild compilation each launch nested Cargo builds. They must run alone on
+# constrained CI runners and need a longer allowance than ordinary integration tests.
+# The shell E2E also starts a second interactive evaluator (PTY) after `shell -c`,
+# so allow a third 1200s period for that bootstrap.
+[[profile.default.overrides]]
+filter = 'test(consumer_processes_clean_violating_and_short_circuit_paths) | test(generated_manage_shell_covers_project_bindings_models_and_recovery) | test(custom_manager_compile_pass) | test(guard_macro_compile_cases) | test(migration_operation_source_compat)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 3 }
+
+# The settings schema trybuild test launches a nested all-feature Cargo build.
+# Run it alone and retain the same allowance as the other nested compilation tests.
+[[profile.default.overrides]]
+filter = 'test(settings_schema_compile_pass)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 2 }
+
+# Model payload parity compiles and runs native and WASM fixtures sequentially
+# in a fresh target directory. Reserve both slots and allow for both cold builds
+# on CI runners with a single Cargo build job.
+[[profile.default.overrides]]
+filter = 'package(=reinhardt-macros) & binary(=model_wasm_parity) & test(=model_generated_payload_executes_on_wasm)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 3 }
+
+# The renamed ClientForm consumer runs native tests and WASM checks twice,
+# once per public facade, in an isolated target directory. Reserve both slots
+# and apply the same cold-build allowance as the other cross-target fixtures.
+[[profile.default.overrides]]
+filter = 'package(=reinhardt-pages) & binary(=client_form_view_facade_compile) & test(=renamed_pages_and_facade_support_external_dtos_on_native_and_wasm)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 3 }
+
+# This single consumer matrix runs 64 nested Cargo commands across native and
+# browser targets, including linked runtime tests and diagnostic controls.
+# Its measured duration exceeds the default timeout even with shared artifacts.
+[[profile.default.overrides]]
+filter = 'package(=reinhardt-integration-tests) & binary(=url_patterns_target_parity) & test(=url_patterns_target_matrix)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 3 }
 
 # Note: trybuild UI tests are now separated into a dedicated profile
 # Use `cargo make ui-test` to run UI tests with the ui-test profile

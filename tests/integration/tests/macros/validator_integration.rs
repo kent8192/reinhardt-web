@@ -2,7 +2,7 @@
 
 use reinhardt_core::validators::Validate;
 use reinhardt_db::orm::Model as ModelTrait;
-use reinhardt_macros::model;
+use reinhardt_macros::{ModelEnum, model};
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
@@ -239,6 +239,57 @@ fn generated_length_validator_enforces_min_bound(
 		expected_ok,
 		"username {username:?} => {result:?}"
 	);
+}
+
+#[rstest]
+#[case("ok", false, true)]
+#[case("four", true, true)]
+#[case("x", false, false)]
+#[case("longer", true, false)]
+fn generated_length_validation_preserves_model_enum_fields(
+	#[case] title: &str,
+	#[case] has_fallback: bool,
+	#[case] expected_ok: bool,
+) {
+	// Arrange
+	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+	#[model_enum(repr = "string")]
+	enum Status {
+		#[model_enum(value = "queued")]
+		Queued,
+		#[model_enum(value = "running")]
+		Running,
+	}
+
+	#[derive(Serialize, Deserialize)]
+	#[model(app_label = "test_app", table_name = "validator_model_enum_items")]
+	struct EnumItem {
+		#[field(primary_key = true)]
+		id: i64,
+		#[field(min_length = 2, max_length = 4)]
+		title: String,
+		#[field(max_length = 7)]
+		status: Status,
+		#[field(max_length = 7)]
+		fallback: Option<Status>,
+	}
+
+	let fallback = has_fallback.then_some(Status::Queued);
+	let info = EnumItemInfo {
+		id: 1,
+		title: title.to_owned(),
+		status: Status::Running,
+		fallback: fallback.clone(),
+	};
+
+	// Act
+	let result = info.validate();
+	let model: EnumItem = info.into();
+
+	// Assert
+	assert_eq!(result.is_ok(), expected_ok, "title {title:?} => {result:?}");
+	assert_eq!(model.status, Status::Running);
+	assert_eq!(model.fallback, fallback);
 }
 
 /// Regression test for issue #6295: a `min_value` / `max_value` bound applied to

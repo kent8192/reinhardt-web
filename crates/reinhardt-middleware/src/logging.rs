@@ -147,7 +147,7 @@ impl Middleware for LoggingMiddleware {
 						format!("[{timestamp}]").dimmed(),
 						request_line.white(),
 						status_colored,
-						response.body.len().to_string().cyan(),
+						response_body_length(response).to_string().cyan(),
 						format_request_duration(duration).dimmed(),
 					);
 				} else {
@@ -156,7 +156,7 @@ impl Middleware for LoggingMiddleware {
 						format!("[{timestamp}]").dimmed(),
 						request_line.white(),
 						status_colored,
-						response.body.len().to_string().cyan(),
+						response_body_length(response).to_string().cyan(),
 						format_request_duration(duration).dimmed(),
 					);
 				}
@@ -256,6 +256,12 @@ fn format_error_multiline(
 	}
 }
 
+fn response_body_length(response: &reinhardt_http::Response) -> u64 {
+	response
+		.file_body()
+		.map_or(response.body.len() as u64, |body| body.len())
+}
+
 #[cfg(test)]
 mod tests {
 	use super::format_request_duration;
@@ -287,5 +293,38 @@ mod tests {
 			format_request_duration(Duration::from_millis(1_234)),
 			"1.234s"
 		);
+	}
+}
+
+#[cfg(test)]
+mod body_length_tests {
+	use super::response_body_length;
+	use reinhardt_http::Response;
+	use rstest::rstest;
+
+	#[rstest]
+	#[case(0, 10)]
+	#[case(3, 4)]
+	#[case(10, 0)]
+	fn access_log_uses_owned_file_range(#[case] offset: u64, #[case] length: u64) {
+		// Arrange
+		let file = tempfile::tempfile().unwrap();
+		file.set_len(10).unwrap();
+		let response = Response::ok().with_file_body(file, offset, length).unwrap();
+		// Act
+		let logged = response_body_length(&response);
+		// Assert
+		assert_eq!(logged, length);
+		assert!(response.body.is_empty());
+	}
+
+	#[rstest]
+	fn access_log_uses_buffered_length_and_bodyless_zero() {
+		// Arrange
+		let buffered = Response::ok().with_body("hello");
+		let head = Response::ok().with_header("content-length", "100");
+		// Act / Assert
+		assert_eq!(response_body_length(&buffered), 5);
+		assert_eq!(response_body_length(&head), 0);
 	}
 }

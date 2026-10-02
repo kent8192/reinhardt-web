@@ -519,7 +519,7 @@ mod tests {
 				request: &Request,
 				_error: reinhardt_core::exception::Error,
 			) -> Response {
-				*self.observed.lock().unwrap() = request.path_params.get("id").cloned();
+				*self.observed.lock().unwrap() = request.path_params.get("id").map(str::to_owned);
 				Response::new(StatusCode::IM_A_TEAPOT)
 			}
 		}
@@ -590,7 +590,7 @@ mod tests {
 				self.observed
 					.lock()
 					.unwrap()
-					.push(request.path_params.get("id").cloned());
+					.push(request.path_params.get("id").map(str::to_owned));
 				Response::new(StatusCode::IM_A_TEAPOT)
 			}
 		}

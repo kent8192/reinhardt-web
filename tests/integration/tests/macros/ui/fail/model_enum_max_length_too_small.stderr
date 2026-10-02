@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: model enum value exceeds field max_length
+  --> tests/macros/ui/fail/model_enum_max_length_too_small.rs:15:1
+   |
+15 | #[model(app_label = "jobs", table_name = "jobs")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed here

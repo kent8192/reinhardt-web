@@ -1,0 +1,5 @@
+error: unknown style function `paint`; use a registered function or wrap one balanced call in `unchecked_fn!(...)`
+ --> tests/ui/style/fail/unknown_function.rs:6:10
+  |
+6 |         color: paint(red);
+  |                ^^^^^

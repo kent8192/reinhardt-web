@@ -230,7 +230,7 @@ impl Form {
 		}
 
 		self.validation_complete = false;
-		self.errors.clear();
+		self.clear_errors();
 		self.cleaned_data = self.data.clone();
 		self.cleaned_field_names.clear();
 
@@ -314,9 +314,18 @@ impl Form {
 	pub fn cleaned_data(&self) -> &HashMap<String, serde_json::Value> {
 		&self.cleaned_data
 	}
+
+	/// Returns the currently bound, pre-cleaning form values.
+	pub fn bound_data(&self) -> &HashMap<String, serde_json::Value> {
+		&self.data
+	}
 	/// Returns the current validation errors keyed by field name.
 	pub fn errors(&self) -> &HashMap<String, Vec<String>> {
 		&self.errors
+	}
+	/// Clears recorded errors without invalidating cleaned field values.
+	pub(crate) fn clear_errors(&mut self) {
+		self.errors.clear();
 	}
 	/// Append an error message to the given field's error list.
 	///
@@ -1419,7 +1428,10 @@ mod tests {
 
 		// Assert
 		assert!(!valid);
-		assert_eq!(form.errors().get("name"), Some(&vec!["name".to_string()]));
+		assert_eq!(
+			form.errors().get("name"),
+			Some(&vec!["This field is required.".to_owned()])
+		);
 	}
 
 	#[rstest]

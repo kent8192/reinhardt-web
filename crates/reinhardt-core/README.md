@@ -76,6 +76,7 @@ This crate provides the following modules:
 
 - **Parsers**: Request body parsing
   - JSON, XML, YAML, Form, MultiPart parsers
+  - XML input must be valid UTF-8
   - File upload handling
   - Content-type negotiation
 
@@ -94,7 +95,7 @@ Add this to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-core = "0.3.20"
+reinhardt-core = "0.4.0-alpha.18"
 ```
 
 ### Optional Features
@@ -104,7 +105,7 @@ Enable specific modules based on your needs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-core = { version = "0.3.20", features = ["signals", "macros", "security"] }
+reinhardt-core = { version = "0.4.0-alpha.18", features = ["signals", "macros", "security"] }
 ```
 
 Available features:
@@ -120,8 +121,10 @@ Available features:
 - `negotiation`: Content negotiation
 - `parsers`: Request body parsers
 - `pagination`: Pagination strategies
-- `page`: Page types (requires `types` and `security`)
+- `page`: Page types and URL-attribute safety checks (enables `types`, `reactive`, and `security`)
 - `reactive`: Reactive types
+- `serde`: Compatibility feature; `serde` is always available because the
+  target-neutral model-form contract names its serialization traits directly.
 
 With `reactive`, explicit `batch()` calls defer both layout and passive effects
 until the outermost batch exits, then flush layout work before passive consumers
@@ -172,6 +175,34 @@ fn validate_user(authenticated: bool, authorized: bool) -> Result<()> {
     Ok(())
 }
 ```
+
+### Database Constraint Metadata
+
+`DatabaseError::code()` is a driver or database error code. Constraint
+violations can additionally retain structured object metadata through
+`constraint()`, `table()`, and `columns()`:
+
+```rust
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
+
+let error = DatabaseError::new(
+	DatabaseErrorKind::UniqueViolation,
+	"duplicate key",
+)
+.with_code("23505")
+.with_constraint("users_email_key")
+.with_table("users")
+.with_columns(["email"]);
+
+assert_eq!(error.constraint(), Some("users_email_key"));
+assert_eq!(error.table(), Some("users"));
+assert_eq!(error.columns(), ["email"]);
+```
+
+The message is diagnostic-only. Do not parse SQLx messages to discover a
+constraint, table, or column, and do not expose them to clients. PostgreSQL
+currently supplies these object identifiers; MySQL and SQLite normally expose
+only the portable error kind through SQLx.
 
 ### Application HTTP Errors
 
@@ -265,11 +296,11 @@ use reinhardt_core::signals::Signal;
 - **Django-style exception hierarchy** - Comprehensive `Error` enum with categorized error types
 - **HTTP status code exceptions** - `Http`, `Authentication` (401), `Authorization` (403), `NotFound` (404), `Internal` (500), etc.
 - **Validation error handling** - `Validation` variant with field-level error support
-- **Database exception types** - `Database` variant for DB-related errors
+- **Structured database exception types** - `DatabaseError` retains a portable `DatabaseErrorKind`, a diagnostic message, and an optional vendor code
 - **Custom error types** - `ImproperlyConfigured`, `BodyAlreadyConsumed`, `ParseError`, etc.
 - **Error serialization** - All errors implement `Display` and can be converted to HTTP responses via `status_code()` method
 - **thiserror integration** - Full integration with `thiserror` for derived error impl
-- **anyhow integration** - `Other` variant wraps any `anyhow::Error` for compatibility
+- **Portable database classification** - `database_kind()` exposes connection, constraint, transaction, serialization, and query categories without driver downcasts
 - **Error categorization** - `ErrorKind` enum for categorical classification
 - **Standard conversions** - `From` implementations for `serde_json::Error`, `std::io::Error`, `http::Error`, `String`, `&str`, `reinhardt_core::validators::ValidationErrors`
 - **Parameter validation context** - `ParamErrorContext` struct with detailed parameter extraction error information
@@ -935,6 +966,25 @@ let validator = ConditionalValidator::unless(
 	Box::new(MinLengthValidator::new(5)),
 );
 ```
+
+## Reactive Batching
+
+`reactive::batch` defers effect callbacks triggered by reactive writes until the
+outermost batch returns, including when it returns an error. Layout effects settle
+their reactive writes before passive effects run. Automatic and explicit-dependency
+Memos invalidate immediately, so reads within nested batches observe current values.
+
+If a batch body panics, its queued callbacks wait until unwinding finishes. The
+next normal batch or explicit flush drains that work. A subsequent signal change
+runs retained Layout effects and schedules passive effects through the configured
+scheduler. If a callback itself panics, callbacks that have not run remain queued;
+the original panic is preserved and notification state is restored.
+
+## Testing
+
+Reactive batching regressions inject `rstest` scope fixtures. Native fixtures use
+`reinhardt-test` teardown guards around the local runtime's `ReactiveScope`; WASM
+fixtures retain the same scope type and its existing automatic cleanup.
 
 ## License
 

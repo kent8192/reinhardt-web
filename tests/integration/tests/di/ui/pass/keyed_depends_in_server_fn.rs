@@ -1,5 +1,5 @@
-use reinhardt_di::{Depends, FactoryOutput, injectable, injectable_key};
-use reinhardt_pages::server_fn::{ServerFnError, server_fn};
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+use reinhardt_di::{KeyedDepends, KeyedFactoryOutput, injectable, injectable_key};
 
 #[injectable_key]
 pub struct ConfigKey;
@@ -10,13 +10,13 @@ pub struct AppConfig {
 }
 
 #[injectable(scope = "transient")]
-async fn app_config() -> FactoryOutput<ConfigKey, AppConfig> {
-	FactoryOutput::new(AppConfig { value: "server_fn" })
+async fn app_config() -> KeyedFactoryOutput<ConfigKey, AppConfig> {
+	KeyedFactoryOutput::new(AppConfig { value: "server_fn" })
 }
 
 #[server_fn]
 pub async fn hello(
-	#[inject] config: Depends<ConfigKey, AppConfig>,
+	#[inject] config: KeyedDepends<ConfigKey, AppConfig>,
 ) -> Result<String, ServerFnError> {
 	Ok(config.value.to_string())
 }

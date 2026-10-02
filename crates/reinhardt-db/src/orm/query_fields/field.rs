@@ -4,6 +4,12 @@ use super::comparison::{ComparisonOperator, FieldComparison, FieldRef};
 use super::lookup::{Lookup, LookupType};
 use super::traits::{Comparable, Date, DateTime, NumericType};
 use crate::orm::Model;
+#[cfg(feature = "pgvector")]
+use crate::orm::Vector;
+#[cfg(feature = "pgvector")]
+use reinhardt_query::prelude::{Alias, BinOper, Expr, SimpleExpr};
+#[cfg(feature = "pgvector")]
+use reinhardt_query::types::PgBinOper;
 use std::marker::PhantomData;
 
 /// Represents a field with its type information
@@ -76,6 +82,15 @@ impl<M: Model, T> Field<M, T> {
 		&self.path
 	}
 
+	/// Convert a persisted field into a structured typed expression.
+	#[cfg(feature = "pgvector")]
+	pub fn into_expression(self) -> super::expression::TypedExpression<M, T>
+	where
+		T: crate::orm::DatabaseField,
+	{
+		super::expression::TypedExpression::new(self.column_expr())
+	}
+
 	/// Set table alias
 	///
 	/// Used when referencing the same table multiple times (e.g., self-JOINs).
@@ -97,6 +112,18 @@ impl<M: Model, T> Field<M, T> {
 			table_alias: self.table_alias.clone(),
 			field_path: self.path.clone(),
 		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	fn column_expr(&self) -> SimpleExpr {
+		let column = self
+			.path
+			.last()
+			.expect("typed fields always contain a column path");
+		self.table_alias.as_ref().map_or_else(
+			|| Expr::col(Alias::new(column)).into_simple_expr(),
+			|alias| Expr::col((Alias::new(alias), Alias::new(column))).into_simple_expr(),
+		)
 	}
 
 	// =============================================================================
@@ -162,6 +189,84 @@ impl<M: Model, T> Field<M, T> {
 			other.to_field_ref(),
 			ComparisonOperator::Ne,
 		)
+	}
+}
+
+#[cfg(feature = "pgvector")]
+impl<M: Model, const N: usize> Field<M, Vector<N>> {
+	fn vector_distance(
+		self,
+		target: Vector<N>,
+		operator: PgBinOper,
+	) -> super::expression::TypedExpression<M, f64> {
+		let expr = SimpleExpr::Binary(
+			Box::new(self.column_expr()),
+			BinOper::PgOperator(operator),
+			Box::new(
+				Expr::value(reinhardt_query::value::Value::Vector(Some(Box::new(
+					target.into_vec(),
+				))))
+				.into_simple_expr(),
+			),
+		);
+		super::expression::TypedExpression::new(expr)
+	}
+
+	/// Compute Euclidean (L2) distance using PostgreSQL's `<->` operator.
+	pub fn l2_distance(self, target: Vector<N>) -> super::expression::TypedExpression<M, f64> {
+		self.vector_distance(target, PgBinOper::L2Distance)
+	}
+
+	/// Compute negative inner product using PostgreSQL's `<#>` operator.
+	pub fn negative_inner_product(
+		self,
+		target: Vector<N>,
+	) -> super::expression::TypedExpression<M, f64> {
+		self.vector_distance(target, PgBinOper::NegativeInnerProduct)
+	}
+
+	/// Compute cosine distance using PostgreSQL's `<=>` operator.
+	pub fn cosine_distance(self, target: Vector<N>) -> super::expression::TypedExpression<M, f64> {
+		self.vector_distance(target, PgBinOper::CosineDistance)
+	}
+}
+
+#[cfg(feature = "pgvector")]
+impl<M: Model, const N: usize> Field<M, Option<Vector<N>>> {
+	fn vector_distance(
+		self,
+		target: Vector<N>,
+		operator: PgBinOper,
+	) -> super::expression::TypedExpression<M, f64> {
+		let expr = SimpleExpr::Binary(
+			Box::new(self.column_expr()),
+			BinOper::PgOperator(operator),
+			Box::new(
+				Expr::value(reinhardt_query::value::Value::Vector(Some(Box::new(
+					target.into_vec(),
+				))))
+				.into_simple_expr(),
+			),
+		);
+		super::expression::TypedExpression::new(expr)
+	}
+
+	/// Compute Euclidean (L2) distance using PostgreSQL's `<->` operator.
+	pub fn l2_distance(self, target: Vector<N>) -> super::expression::TypedExpression<M, f64> {
+		self.vector_distance(target, PgBinOper::L2Distance)
+	}
+
+	/// Compute negative inner product using PostgreSQL's `<#>` operator.
+	pub fn negative_inner_product(
+		self,
+		target: Vector<N>,
+	) -> super::expression::TypedExpression<M, f64> {
+		self.vector_distance(target, PgBinOper::NegativeInnerProduct)
+	}
+
+	/// Compute cosine distance using PostgreSQL's `<=>` operator.
+	pub fn cosine_distance(self, target: Vector<N>) -> super::expression::TypedExpression<M, f64> {
+		self.vector_distance(target, PgBinOper::CosineDistance)
 	}
 }
 

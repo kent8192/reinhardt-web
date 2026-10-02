@@ -1,7 +1,8 @@
 //! Tree-sitter + Topiary based formatter engine for Reinhardt DSL macros.
 //!
-//! Rust source files are parsed with tree-sitter-rust so `page!`, `form!`, and
-//! `head!` invocations are detected as syntax nodes rather than by text search.
+//! Rust source files are parsed with tree-sitter-rust so `page!`, `form!`,
+//! `head!`, and `style!` invocations are detected as syntax nodes rather than
+//! by text search.
 //! Each DSL body is then parsed by a small Reinhardt tree-sitter grammar and
 //! formatted through Topiary query captures. Supported `page!` Rust expression
 //! islands are then passed through rustfmt conservatively; invalid or
@@ -95,6 +96,7 @@ enum MacroKind {
 	Page,
 	Form,
 	Head,
+	Style,
 }
 
 impl MacroKind {
@@ -103,6 +105,7 @@ impl MacroKind {
 			Self::Page => "page",
 			Self::Form => "form",
 			Self::Head => "head",
+			Self::Style => "style",
 		}
 	}
 
@@ -111,6 +114,7 @@ impl MacroKind {
 			Self::Page => include_str!("../queries/page_formatting.scm"),
 			Self::Form => include_str!("../queries/form_formatting.scm"),
 			Self::Head => include_str!("../queries/head_formatting.scm"),
+			Self::Style => include_str!("../queries/style_formatting.scm"),
 		}
 	}
 
@@ -119,6 +123,7 @@ impl MacroKind {
 			Self::Page => tree_sitter_reinhardt_page::LANGUAGE.into(),
 			Self::Form => tree_sitter_reinhardt_form::LANGUAGE.into(),
 			Self::Head => tree_sitter_reinhardt_head::LANGUAGE.into(),
+			Self::Style => tree_sitter_reinhardt_style::LANGUAGE.into(),
 		}
 	}
 }
@@ -148,6 +153,111 @@ struct ProtectedRustfmtIsland {
 struct FormattedDsl {
 	output: String,
 	protected_islands: Vec<ProtectedRustfmtIsland>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProtectedStyleBody {
+	marker: String,
+	original_body: String,
+	original_indent: usize,
+}
+
+/// Style bodies temporarily replaced while rustfmt owns the surrounding Rust.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ProtectedStyleBodies {
+	bodies: Vec<ProtectedStyleBody>,
+}
+
+impl ProtectedStyleBodies {
+	pub(crate) fn is_empty(&self) -> bool {
+		self.bodies.is_empty()
+	}
+}
+
+/// Replace every bare `style!` body with a unique Rust identifier marker.
+pub(crate) fn protect_style_bodies(
+	content: &str,
+) -> Result<(String, ProtectedStyleBodies), String> {
+	let macros = find_dsl_macros(content)?;
+	let mut protected = content.to_string();
+	let mut bodies = Vec::new();
+	let mut marker_index = 0usize;
+
+	for info in macros
+		.into_iter()
+		.filter(|info| info.kind == MacroKind::Style)
+		.rev()
+	{
+		let original = &content[info.start..info.end];
+		let parts = split_macro(original, MacroKind::Style)?;
+		let inner_start = parts.inner.as_ptr() as usize - original.as_ptr() as usize;
+		let inner_end = inner_start + parts.inner.len();
+		let marker = loop {
+			let candidate = format!("__reinhardt_style_body_{marker_index}");
+			marker_index += 1;
+			if !content.contains(&candidate) {
+				break candidate;
+			}
+		};
+		let original_indent = base_indent(content, info.start);
+		protected.replace_range(info.start + inner_start..info.start + inner_end, &marker);
+		bodies.push(ProtectedStyleBody {
+			marker,
+			original_body: parts.inner.to_string(),
+			original_indent,
+		});
+	}
+	bodies.reverse();
+
+	Ok((protected, ProtectedStyleBodies { bodies }))
+}
+
+/// Restore every protected style body after rustfmt and follow its new indentation.
+pub(crate) fn restore_style_bodies(
+	content: &str,
+	protected: &ProtectedStyleBodies,
+) -> Result<String, String> {
+	let mut restored = content.to_string();
+	for body in &protected.bodies {
+		let mut matches = restored.match_indices(&body.marker);
+		let Some((marker_offset, _)) = matches.next() else {
+			return Err(format!("rustfmt removed style body marker {}", body.marker));
+		};
+		if matches.next().is_some() {
+			return Err(format!(
+				"rustfmt duplicated style body marker {}",
+				body.marker
+			));
+		}
+		let indentation = base_indent(&restored, marker_offset);
+		let replacement =
+			reindent_style_body(&body.original_body, body.original_indent, indentation);
+		restored.replace_range(
+			marker_offset..marker_offset + body.marker.len(),
+			&replacement,
+		);
+	}
+	Ok(restored)
+}
+
+fn reindent_style_body(body: &str, from: usize, to: usize) -> String {
+	let from_prefix = "\t".repeat(from);
+	let to_prefix = "\t".repeat(to);
+	body.split('\n')
+		.enumerate()
+		.map(|(index, line)| {
+			if index == 0 {
+				return line.to_string();
+			}
+			let relative = line.strip_prefix(&from_prefix).unwrap_or(line);
+			if line.is_empty() {
+				String::new()
+			} else {
+				format!("{to_prefix}{relative}")
+			}
+		})
+		.collect::<Vec<_>>()
+		.join("\n")
 }
 
 /// Formatter engine used by `fmt` and `fmt-all`.
@@ -285,6 +395,7 @@ fn macro_kind(text: &str) -> Option<MacroKind> {
 		("page", MacroKind::Page),
 		("form", MacroKind::Form),
 		("head", MacroKind::Head),
+		("style", MacroKind::Style),
 	] {
 		let Some(rest) = trimmed.strip_prefix(name) else {
 			continue;
@@ -954,6 +1065,7 @@ fn topiary_language(kind: MacroKind) -> Result<TopiaryLanguage, String> {
 		MacroKind::Page => tree_sitter_reinhardt_page::LANGUAGE.into(),
 		MacroKind::Form => tree_sitter_reinhardt_form::LANGUAGE.into(),
 		MacroKind::Head => tree_sitter_reinhardt_head::LANGUAGE.into(),
+		MacroKind::Style => tree_sitter_reinhardt_style::LANGUAGE.into(),
 	};
 	let query = TopiaryQuery::new(&grammar, kind.query())
 		.map_err(|e| format!("invalid Topiary query for {} DSL: {e}", kind.name()))?;
@@ -1127,6 +1239,25 @@ mod tests {
 	}
 
 	#[rstest]
+	fn formats_page_macro_with_direct_body() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source = r#"fn main() {
+	let view = page!({ div { "x" } });
+}"#;
+
+		// Act
+		let result = formatter.format(source).expect("format source");
+
+		// Assert
+		assert_eq!(
+			result.content,
+			"fn main() {\n\tlet view = page!({\n\t\tdiv { \"x\" }\n\t});\n}"
+		);
+		assert_eq!(result.skipped, None);
+	}
+
+	#[rstest]
 	fn formats_page_dsl_directly_with_topiary_query() {
 		// Act
 		let formatted =
@@ -1202,6 +1333,15 @@ mod tests {
 			"wrapped closure args should normalize hard-tabs rustfmt alignment padding: {hard_tabs_formatted}"
 		);
 		assert_eq!(hard_tabs_second, hard_tabs_formatted);
+	}
+
+	#[rstest]
+	fn formats_page_direct_body_dsl_directly_with_topiary_query() {
+		// Act
+		let formatted = format_dsl(MacroKind::Page, r#"{ div { "x" } }"#).expect("format page DSL");
+
+		// Assert
+		assert_eq!(formatted, "{\n\tdiv { \"x\" }\n}");
 	}
 
 	#[rstest]
@@ -1991,6 +2131,69 @@ fn main() {}";
 	}
 
 	#[rstest]
+	fn macro_kind_recognizes_bare_style() {
+		// Act
+		let result = macro_kind("style! { .card { color: red; } }");
+
+		// Assert
+		assert_eq!(result, Some(MacroKind::Style));
+	}
+
+	#[rstest]
+	#[case("crate::style! { .card { color: red; } }")]
+	#[case("mystyle! { .card { color: red; } }")]
+	#[case("style_alias! { .card { color: red; } }")]
+	fn macro_kind_rejects_noncanonical_style_paths(#[case] source: &str) {
+		// Arrange and Act
+		let result = macro_kind(source);
+
+		// Assert
+		assert_eq!(result, None);
+	}
+
+	#[rstest]
+	#[case(
+		include_str!("../tests/fixtures/style/representative.input.rs"),
+		include_str!("../tests/fixtures/style/representative.expected.rs")
+	)]
+	#[case(
+		include_str!("../tests/fixtures/style/comments.input.rs"),
+		include_str!("../tests/fixtures/style/comments.expected.rs")
+	)]
+	#[case(
+		include_str!("../tests/fixtures/style/expressions.input.rs"),
+		include_str!("../tests/fixtures/style/expressions.expected.rs")
+	)]
+	fn style_fixtures_format_exactly_and_idempotently(#[case] input: &str, #[case] expected: &str) {
+		// Arrange
+		let formatter = FormatEngine::new();
+
+		// Act
+		let formatted = formatter
+			.format(input)
+			.expect("style fixture should format");
+		let second = formatter
+			.format(&formatted.content)
+			.expect("formatted fixture should reformat");
+
+		// Assert
+		assert_eq!(formatted.content, expected);
+		assert_eq!(second.content, expected);
+	}
+
+	#[rstest]
+	fn style_query_formats_a_definition_body() {
+		// Arrange
+		let input = "{ globals { border: Color; } .card { color: red; } }";
+
+		// Act
+		let formatted = format_dsl(MacroKind::Style, input).expect("style query should format");
+
+		// Assert
+		assert!(formatted.contains("border: Color;"));
+	}
+
+	#[rstest]
 	fn macro_kind_returns_none_for_unknown() {
 		// Act
 		let result = macro_kind("vec! [1, 2, 3]");
@@ -2215,6 +2418,33 @@ fn main() {}";
 		assert!(
 			formatted.contains("_ => set_done(),"),
 			"fallback match arm spacing should be formatted inside event closure body: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn page_rustfmt_island_preserves_match_arm_space_after_pattern_call() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source = r#"fn render() {
+	let view = page!(|| {
+		{
+			match resource {
+				ResourceState::Error(error) => {
+					message
+				}
+				_ => {}
+			}
+		}
+	});
+}"#;
+
+		// Act
+		let formatted = formatter.format(source).expect("format source").content;
+
+		// Assert
+		assert!(
+			formatted.contains("ResourceState::Error(error) => {"),
+			"match-arm arrow should retain a leading space after a pattern call: {formatted}"
 		);
 	}
 
@@ -2465,6 +2695,136 @@ fn main() {}";
 		assert!(
 			!formatted.contains("div {\n"),
 			"empty element block should not expand: {formatted}"
+		);
+	}
+
+	#[rstest]
+	fn style_body_rustfmt_protection_round_trips_multiple_bodies() {
+		// Arrange
+		let source = r###"fn styles() {
+	#[style_def]
+	static FIRST: FirstStyles = style! {
+		.card { transform: unchecked_fn!("fn({ raw })"); }
+	};
+	// reinhardt-fmt: ignore
+	#[style_def]
+	static SECOND: SecondStyles = style! { .item { color: red; } };
+}"###;
+
+		// Act
+		let (protected_source, bodies) = protect_style_bodies(source).expect("protect bodies");
+		let restored = restore_style_bodies(&protected_source, &bodies).expect("restore bodies");
+
+		// Assert
+		assert_eq!(restored, source);
+		assert_eq!(
+			protected_source.matches("__reinhardt_style_body_").count(),
+			2
+		);
+	}
+
+	#[rstest]
+	fn style_body_rustfmt_protection_avoids_existing_marker_prefix() {
+		// Arrange
+		let source = "const __reinhardt_style_body_0: () = ();\n\
+#[style_def]\n\
+static STYLES: Styles = style! { .card { color: red; } };\n";
+
+		// Act
+		let (protected_source, bodies) = protect_style_bodies(source).expect("protect bodies");
+		let restored = restore_style_bodies(&protected_source, &bodies).expect("restore bodies");
+
+		// Assert
+		assert!(protected_source.contains("__reinhardt_style_body_1"));
+		assert_eq!(restored, source);
+	}
+
+	#[rstest]
+	fn style_body_rustfmt_protection_handles_no_styles() {
+		// Arrange
+		let source = "fn main() {}\n";
+
+		// Act
+		let (protected_source, bodies) = protect_style_bodies(source).expect("protect bodies");
+		let restored = restore_style_bodies(&protected_source, &bodies).expect("restore bodies");
+
+		// Assert
+		assert_eq!(protected_source, source);
+		assert_eq!(restored, source);
+	}
+
+	#[cfg(feature = "testing")]
+	#[rstest]
+	#[case(include_str!("../tests/fixtures/form/client_form_view.input"))]
+	#[case(include_str!("../tests/fixtures/form/client_form_view_expressions.input"))]
+	fn named_client_form_preserves_parsed_expressions_and_is_idempotent(#[case] input: &str) {
+		use quote::ToTokens;
+		use reinhardt_manouche::core::{ClientFormViewClause, PresentationProperty};
+		use syn::visit::Visit;
+		struct Views(Vec<Vec<String>>);
+		impl<'ast> Visit<'ast> for Views {
+			fn visit_macro(&mut self, node: &'ast syn::Macro) {
+				if !node.path.is_ident("form") {
+					return;
+				}
+				let ast = reinhardt_manouche::parser::parse_client_form_view(node.tokens.clone())
+					.unwrap();
+				let mut expressions = vec![ast.companion.to_token_stream().to_string()];
+				fn properties(items: Vec<PresentationProperty>, out: &mut Vec<String>) {
+					for property in items {
+						out.push(property.name.to_string());
+						out.push(property.value.to_token_stream().to_string());
+					}
+				}
+				for clause in ast.clauses {
+					match clause {
+						ClientFormViewClause::Mutation(value) | ClientFormViewClause::Id(value) => {
+							expressions.push(value.to_token_stream().to_string())
+						}
+						ClientFormViewClause::Customize(fields) => {
+							for field in fields {
+								expressions.push(field.field.to_string());
+								properties(field.properties, &mut expressions);
+							}
+						}
+						ClientFormViewClause::Styling(items)
+						| ClientFormViewClause::Submit(items)
+						| ClientFormViewClause::Summary(items) => properties(items, &mut expressions),
+					}
+				}
+				self.0.push(expressions);
+			}
+		}
+		// Arrange
+		let formatter = FormatEngine::new();
+		let mut before = Views(Vec::new());
+		before.visit_file(&syn::parse_file(input).unwrap());
+		// Act
+		let formatted = formatter.format(input).unwrap().content;
+		let mut after = Views(Vec::new());
+		after.visit_file(&syn::parse_file(&formatted).unwrap());
+		// Assert
+		assert_eq!(before.0.len(), 1);
+		assert_eq!(before.0, after.0);
+		assert_eq!(formatter.format(&formatted).unwrap().content, formatted);
+		assert_eq!(
+			input.matches("// Reuse the configured mutation.").count(),
+			formatted
+				.matches("// Reuse the configured mutation.")
+				.count()
+		);
+	}
+
+	#[test]
+	fn named_client_form_matches_the_golden_layout() {
+		let result = FormatEngine::new()
+			.format(include_str!(
+				"../tests/fixtures/form/client_form_view.input"
+			))
+			.unwrap();
+		assert_eq!(
+			result.content,
+			include_str!("../tests/fixtures/form/client_form_view.expected.rs")
 		);
 	}
 }

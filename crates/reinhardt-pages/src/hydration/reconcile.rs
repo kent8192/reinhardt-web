@@ -2,13 +2,17 @@
 //!
 //! This module verifies that SSR-rendered DOM matches the expected
 //! component structure during hydration.
+//! Empty presentation text follows the browser's child-node filtering; raw-text
+//! snapshots such as `textarea` and `pre` retain their whitespace and line feeds.
 
 use crate::component::Page;
 
 #[cfg(wasm)]
+use crate::component::ControlKind;
+#[cfg(wasm)]
 use crate::dom::Element;
 #[cfg(wasm)]
-use reinhardt_core::types::page::{BOOLEAN_ATTRS, PageElement, is_boolean_attr_truthy};
+use reinhardt_core::types::page::{PageElement, is_boolean_attr, is_boolean_attr_truthy};
 #[cfg(wasm)]
 use wasm_bindgen::JsCast;
 
@@ -245,11 +249,11 @@ fn reconcile_at_path(
 	element: &Element,
 	view: &Page,
 	path: ReconcilePath,
-	controlled_select: bool,
+	inside_controlled_select: bool,
 ) -> Result<(), ReconcileError> {
 	match view {
 		Page::Element(el_view) => {
-			reconcile_element_at_path(element, el_view, path, controlled_select)
+			reconcile_element_at_path(element, el_view, path, inside_controlled_select)
 		}
 		Page::Text(expected_text) => reconcile_text_at_path(
 			element.text_content().unwrap_or_default(),
@@ -257,17 +261,28 @@ fn reconcile_at_path(
 			path,
 		),
 		Page::Fragment(views) => {
-			reconcile_children_at_path(element, views, path, controlled_select)
+			reconcile_children_at_path(element, views, path, inside_controlled_select)
 		}
 		Page::KeyedFragment(views) => {
 			let child_views: Vec<Page> = views.iter().map(|(_, view)| view.clone()).collect();
-			reconcile_children_at_path(element, &child_views, path, controlled_select)
+			reconcile_children_at_path(element, &child_views, path, inside_controlled_select)
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				reconcile_at_path(element, child, path, inside_controlled_select)
+			} else {
+				Ok(())
+			}
 		}
 		Page::Empty => Ok(()),
 		Page::WithHead { view, .. } => {
 			// Head section is handled separately during SSR
 			// For hydration, just reconcile the inner view
-			reconcile_at_path(element, view, path, controlled_select)
+			reconcile_at_path(element, view, path, inside_controlled_select)
+		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+			reconcile_at_path(element, view, path, inside_controlled_select)
 		}
 		Page::ReactiveIf(reactive_if) => {
 			// For hydration, evaluate the condition and reconcile the rendered branch.
@@ -277,13 +292,21 @@ fn reconcile_at_path(
 			} else {
 				reactive_if.else_view()
 			};
-			reconcile_at_path(element, &branch_view, path, controlled_select)
+			reconcile_at_path(element, &branch_view, path, inside_controlled_select)
 		}
 		Page::Reactive(reactive) => {
 			// For hydration, evaluate the render closure and reconcile the resulting view.
 			// SSR rendered the initial view from the closure.
 			let rendered_view = reactive.render();
-			reconcile_at_path(element, &rendered_view, path, controlled_select)
+			reconcile_at_path(element, &rendered_view, path, inside_controlled_select)
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			reconcile_at_path(element, &branch_view, path, inside_controlled_select)
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			reconcile_at_path(element, &content_view, path, inside_controlled_select)
 		}
 	}
 }
@@ -293,7 +316,7 @@ fn reconcile_element_at_path(
 	element: &Element,
 	el_view: &PageElement,
 	path: ReconcilePath,
-	controlled_select: bool,
+	inside_controlled_select: bool,
 ) -> Result<(), ReconcileError> {
 	let actual_tag = element.tag_name().to_lowercase();
 	let expected_tag = el_view.tag_name().to_lowercase();
@@ -307,28 +330,26 @@ fn reconcile_element_at_path(
 		});
 	}
 
-	reconcile_attrs_at_path(element, el_view, element_path.clone(), controlled_select)?;
-	if el_view.bound_control().is_some() && expected_tag == "textarea" {
-		// Textarea contents are the browser's reset value, not its live state.
+	reconcile_attrs_at_path(
+		element,
+		el_view,
+		element_path.clone(),
+		inside_controlled_select,
+	)?;
+	if el_view.tag_name().eq_ignore_ascii_case("textarea") && el_view.bound_control().is_some() {
 		return Ok(());
 	}
-	let controlled_select = controlled_select || is_controlled_select(el_view);
+	// Noscript children are fallback markup. With scripting enabled, the browser
+	// parses SSR fallback content as inert text and CSR mounting intentionally omits it.
+	if el_view.tag_name().eq_ignore_ascii_case("noscript") {
+		return Ok(());
+	}
 	reconcile_children_at_path(
 		element,
 		el_view.child_views(),
 		element_path,
-		controlled_select,
+		inside_controlled_select || is_controlled_select(el_view),
 	)
-}
-
-#[cfg(wasm)]
-fn is_controlled_select(el_view: &PageElement) -> bool {
-	el_view.bound_control().is_some_and(|binding| {
-		matches!(
-			binding.kind(),
-			crate::component::ControlKind::SelectOne | crate::component::ControlKind::SelectMany
-		)
-	})
 }
 
 #[cfg(wasm)]
@@ -336,7 +357,7 @@ fn reconcile_dom_node_at_path(
 	node: &web_sys::Node,
 	view: &Page,
 	path: ReconcilePath,
-	controlled_select: bool,
+	inside_controlled_select: bool,
 ) -> Result<(), ReconcileError> {
 	match view {
 		Page::Element(el_view) => {
@@ -345,7 +366,7 @@ fn reconcile_dom_node_at_path(
 					&Element::new(element.clone()),
 					el_view,
 					path,
-					controlled_select,
+					inside_controlled_select,
 				)
 			} else {
 				Err(ReconcileError::TagMismatch {
@@ -356,6 +377,13 @@ fn reconcile_dom_node_at_path(
 			}
 		}
 		Page::Text(expected_text) => {
+			if node.node_type() != web_sys::Node::TEXT_NODE {
+				return Err(ReconcileError::TagMismatch {
+					path,
+					expected: "#text".to_string(),
+					actual: node.node_name().to_lowercase(),
+				});
+			}
 			reconcile_text_at_path(node.text_content().unwrap_or_default(), expected_text, path)
 		}
 		Page::Fragment(views) => {
@@ -364,7 +392,7 @@ fn reconcile_dom_node_at_path(
 					&Element::new(element.clone()),
 					views,
 					path,
-					controlled_select,
+					inside_controlled_select,
 				)
 			} else {
 				let mut expected_children = Vec::new();
@@ -374,7 +402,7 @@ fn reconcile_dom_node_at_path(
 						node,
 						&expected_children[0].1,
 						expected_children[0].0.clone(),
-						controlled_select,
+						inside_controlled_select,
 					)
 				} else {
 					Err(ReconcileError::ChildCountMismatch {
@@ -392,7 +420,7 @@ fn reconcile_dom_node_at_path(
 					&Element::new(element.clone()),
 					&child_views,
 					path,
-					controlled_select,
+					inside_controlled_select,
 				)
 			} else {
 				let mut expected_children = Vec::new();
@@ -402,7 +430,7 @@ fn reconcile_dom_node_at_path(
 						node,
 						&expected_children[0].1,
 						expected_children[0].0.clone(),
-						controlled_select,
+						inside_controlled_select,
 					)
 				} else {
 					Err(ReconcileError::ChildCountMismatch {
@@ -413,9 +441,20 @@ fn reconcile_dom_node_at_path(
 				}
 			}
 		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				reconcile_dom_node_at_path(node, child, path, inside_controlled_select)
+			} else {
+				Ok(())
+			}
+		}
 		Page::Empty => Ok(()),
 		Page::WithHead { view, .. } => {
-			reconcile_dom_node_at_path(node, view, path, controlled_select)
+			reconcile_dom_node_at_path(node, view, path, inside_controlled_select)
+		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+			reconcile_dom_node_at_path(node, view, path, inside_controlled_select)
 		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_view = if reactive_if.condition() {
@@ -423,11 +462,19 @@ fn reconcile_dom_node_at_path(
 			} else {
 				reactive_if.else_view()
 			};
-			reconcile_dom_node_at_path(node, &branch_view, path, controlled_select)
+			reconcile_dom_node_at_path(node, &branch_view, path, inside_controlled_select)
 		}
 		Page::Reactive(reactive) => {
 			let rendered_view = reactive.render();
-			reconcile_dom_node_at_path(node, &rendered_view, path, controlled_select)
+			reconcile_dom_node_at_path(node, &rendered_view, path, inside_controlled_select)
+		}
+		Page::Suspense(suspense_node) => {
+			let branch_view = suspense_node.render_branch();
+			reconcile_dom_node_at_path(node, &branch_view, path, inside_controlled_select)
+		}
+		Page::Deferred(deferred_node) => {
+			let content_view = deferred_node.content();
+			reconcile_dom_node_at_path(node, &content_view, path, inside_controlled_select)
 		}
 	}
 }
@@ -437,28 +484,47 @@ fn reconcile_attrs_at_path(
 	element: &Element,
 	el_view: &PageElement,
 	path: ReconcilePath,
-	controlled_select: bool,
+	inside_controlled_select: bool,
 ) -> Result<(), ReconcileError> {
-	for (name, value) in el_view.attrs() {
+	for (index, (name, value)) in el_view.attrs().iter().enumerate() {
+		if !crate::component::into_page::static_attribute_is_effective(el_view.attrs(), index) {
+			continue;
+		}
 		let name_str = name.as_ref();
-		let controlled_default = el_view.bound_control().is_some_and(|binding| {
-			use crate::component::ControlKind;
-			match binding.kind() {
-				ControlKind::Text => name_str.eq_ignore_ascii_case("value"),
-				ControlKind::Checkbox | ControlKind::Radio => {
-					name_str.eq_ignore_ascii_case("checked")
-				}
-				ControlKind::SelectOne | ControlKind::SelectMany | ControlKind::File => false,
-			}
-		}) || (controlled_select
+		let has_reactive_override = el_view
+			.reactive_attrs()
+			.iter()
+			.any(|attribute| attribute.name().eq_ignore_ascii_case(name_str));
+		if inside_controlled_select
 			&& el_view.tag_name().eq_ignore_ascii_case("option")
-			&& name_str.eq_ignore_ascii_case("selected"));
-		if controlled_default {
-			// Retained bindings adopt the live property after structural validation.
+			&& name_str.eq_ignore_ascii_case("selected")
+		{
+			continue;
+		}
+		if has_reactive_override {
+			continue;
+		}
+		if crate::component::into_page::controlled_attribute_is_overridden(
+			el_view.bound_control(),
+			name_str,
+		) {
 			continue;
 		}
 		let expected = expected_dom_attr_value(name_str, value.as_ref());
 		let actual = element.get_attribute(name_str);
+		// Hidden input values reflect into their attributes when the pre-hydration
+		// interaction tracker records an edit. Preserve that mutable protocol state.
+		if name_str.eq_ignore_ascii_case("value")
+			&& el_view.tag_name().eq_ignore_ascii_case("input")
+			&& element.get_attribute("type").as_deref() == Some("hidden")
+			&& element
+				.get_attribute("name")
+				.is_some_and(|name| name.starts_with("__reinhardt_native_edited_"))
+			&& expected.as_deref() == Some("false")
+			&& matches!(actual.as_deref(), Some("true" | "false"))
+		{
+			continue;
+		}
 
 		if actual != expected {
 			return Err(ReconcileError::AttributeMismatch {
@@ -478,16 +544,20 @@ fn reconcile_children_at_path(
 	element: &Element,
 	child_views: &[Page],
 	path: ReconcilePath,
-	controlled_select: bool,
+	inside_controlled_select: bool,
 ) -> Result<(), ReconcileError> {
 	let mut expected_children = Vec::new();
 	collect_expected_children(child_views, &path, &mut expected_children);
-	if element.tag_name().eq_ignore_ascii_case("textarea")
+	if (element.tag_name().eq_ignore_ascii_case("textarea")
+		|| element.tag_name().eq_ignore_ascii_case("pre"))
 		&& expected_children
 			.iter()
 			.all(|(_, view)| matches!(view, Page::Text(_)))
+		&& relevant_child_nodes(element)
+			.iter()
+			.all(|node| node.node_type() == web_sys::Node::TEXT_NODE)
 	{
-		// Textarea snapshots retain whitespace, including an absent empty text node.
+		// Raw-text snapshots retain whitespace, including an absent empty text node.
 		let expected: String = expected_children
 			.iter()
 			.filter_map(|(_, view)| {
@@ -509,6 +579,10 @@ fn reconcile_children_at_path(
 		}
 		return Ok(());
 	}
+	// Match the DOM traversal without discarding raw textarea snapshot content.
+	expected_children.retain(
+		|(_, child)| !matches!(child, Page::Text(text) if normalize_whitespace(text).is_empty()),
+	);
 	let actual_nodes = relevant_child_nodes(element);
 
 	for (index, (child_path, child_view)) in expected_children.iter().enumerate() {
@@ -519,7 +593,7 @@ fn reconcile_children_at_path(
 			actual_node,
 			child_view,
 			child_path.clone(),
-			controlled_select,
+			inside_controlled_select,
 		)?;
 	}
 
@@ -532,6 +606,15 @@ fn reconcile_children_at_path(
 	}
 
 	Ok(())
+}
+
+#[cfg(wasm)]
+fn is_controlled_select(element: &PageElement) -> bool {
+	element.tag_name().eq_ignore_ascii_case("select")
+		&& matches!(
+			element.bound_control().map(|binding| binding.kind()),
+			Some(ControlKind::SelectOne | ControlKind::SelectMany)
+		)
 }
 
 #[cfg(wasm)]
@@ -596,6 +679,14 @@ fn collect_expected_child(
 			let rendered_view = reactive.render();
 			collect_expected_child(&rendered_view, path, children);
 		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			collect_expected_child(&branch_view, path, children);
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			collect_expected_child(&content_view, path, children);
+		}
 		Page::Text(text) => {
 			if let Some((_, Page::Text(previous_text))) = children.last_mut() {
 				*previous_text = format!("{}{}", previous_text.as_ref(), text.as_ref()).into();
@@ -644,7 +735,7 @@ fn path_with_dom_component(element: &Element, path: ReconcilePath) -> ReconcileP
 
 #[cfg(wasm)]
 fn expected_dom_attr_value(name: &str, value: &str) -> Option<String> {
-	if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+	if is_boolean_attr(name) && !is_boolean_attr_truthy(value) {
 		None
 	} else {
 		Some(value.to_string())
@@ -687,7 +778,7 @@ fn reconcile_with_options_at_path(
 	view: &Page,
 	options: &ReconcileOptions,
 	path: ReconcilePath,
-	controlled_select: bool,
+	inside_controlled_select: bool,
 ) -> Result<(), ReconcileError> {
 	// Check if this element should be skipped
 	let should_skip = if options.skip_static {
@@ -714,7 +805,7 @@ fn reconcile_with_options_at_path(
 
 	// Perform reconciliation if applicable
 	if should_reconcile
-		&& let Err(err) = reconcile_at_path(element, view, path.clone(), controlled_select)
+		&& let Err(err) = reconcile_at_path(element, view, path.clone(), inside_controlled_select)
 	{
 		handle_reconcile_error(err, options)?;
 	}
@@ -730,7 +821,7 @@ fn reconcile_with_options_at_path(
 	};
 
 	if should_recurse {
-		reconcile_options_children_at_path(element, view, options, path, controlled_select)?;
+		reconcile_options_children_at_path(element, view, options, path, inside_controlled_select)?;
 	}
 
 	Ok(())
@@ -742,16 +833,18 @@ fn reconcile_options_children_at_path(
 	view: &Page,
 	options: &ReconcileOptions,
 	path: ReconcilePath,
-	mut controlled_select: bool,
+	inside_controlled_select: bool,
 ) -> Result<(), ReconcileError> {
 	let keyed_child_views;
 	let child_views: &[Page] = match view {
 		Page::Element(el_view) => {
-			// Textarea children are raw text, so they cannot contain nested islands.
-			if el_view.tag_name().eq_ignore_ascii_case("textarea") {
+			// Textarea and noscript children are raw or inert content, so they cannot
+			// contain nested islands that hydration should traverse.
+			if el_view.tag_name().eq_ignore_ascii_case("textarea")
+				|| el_view.tag_name().eq_ignore_ascii_case("noscript")
+			{
 				return Ok(());
 			}
-			controlled_select |= is_controlled_select(el_view);
 			el_view.child_views()
 		}
 		Page::Fragment(views) => views,
@@ -768,7 +861,17 @@ fn reconcile_options_children_at_path(
 				view,
 				options,
 				path,
-				controlled_select,
+				inside_controlled_select,
+			);
+		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+			return reconcile_options_children_at_path(
+				element,
+				view,
+				options,
+				path,
+				inside_controlled_select,
 			);
 		}
 		Page::ReactiveIf(reactive_if) => {
@@ -782,7 +885,7 @@ fn reconcile_options_children_at_path(
 				&branch_view,
 				options,
 				path,
-				controlled_select,
+				inside_controlled_select,
 			);
 		}
 		Page::Reactive(reactive) => {
@@ -792,8 +895,40 @@ fn reconcile_options_children_at_path(
 				&rendered_view,
 				options,
 				path,
-				controlled_select,
+				inside_controlled_select,
 			);
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			return reconcile_options_children_at_path(
+				element,
+				&branch_view,
+				options,
+				path,
+				inside_controlled_select,
+			);
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			return reconcile_options_children_at_path(
+				element,
+				&content_view,
+				options,
+				path,
+				inside_controlled_select,
+			);
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				return reconcile_options_children_at_path(
+					element,
+					child,
+					options,
+					path,
+					inside_controlled_select,
+				);
+			}
+			return Ok(());
 		}
 		Page::Text(_) | Page::Empty => return Ok(()),
 	};
@@ -805,7 +940,12 @@ fn reconcile_options_children_at_path(
 		Page::Element(el_view) => path.with_element(el_view.tag_name().to_lowercase()),
 		_ => path,
 	};
+	let children_inside_controlled_select = inside_controlled_select
+		|| matches!(view, Page::Element(element) if is_controlled_select(element));
 	collect_expected_children(child_views, &parent_path, &mut expected_children);
+	expected_children.retain(
+		|(_, child)| !matches!(child, Page::Text(text) if normalize_whitespace(text).is_empty()),
+	);
 
 	for (index, (child_path, child_view)) in expected_children.iter().enumerate() {
 		let Some(actual_node) = actual_nodes.get(index) else {
@@ -824,14 +964,14 @@ fn reconcile_options_children_at_path(
 				child_view,
 				options,
 				child_path.clone(),
-				controlled_select,
+				children_inside_controlled_select,
 			)?;
 		} else if matches!(child_view, Page::Element(_))
 			&& let Err(err) = reconcile_dom_node_at_path(
 				actual_node,
 				child_view,
 				child_path.clone(),
-				controlled_select,
+				children_inside_controlled_select,
 			) {
 			handle_reconcile_error(err, options)?;
 		}
@@ -1006,9 +1146,18 @@ fn compare_recursive(element: &Element, view: &Page, path: &str, differences: &m
 				}
 			}
 		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				compare_recursive(element, child, path, differences);
+			}
+		}
 		Page::WithHead { view, .. } => {
 			// Head section is handled separately during SSR
 			// For comparison, just compare the inner view
+			compare_recursive(element, view, path, differences);
+		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
 			compare_recursive(element, view, path, differences);
 		}
 		Page::ReactiveIf(reactive_if) => {
@@ -1024,6 +1173,14 @@ fn compare_recursive(element: &Element, view: &Page, path: &str, differences: &m
 			// For comparison, evaluate the render closure and compare the resulting view
 			let rendered_view = reactive.render();
 			compare_recursive(element, &rendered_view, path, differences);
+		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			compare_recursive(element, &branch_view, path, differences);
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			compare_recursive(element, &content_view, path, differences);
 		}
 	}
 }

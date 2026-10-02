@@ -6,7 +6,249 @@
 //! Use [`reactive::batch`] to group related reactive writes into one update
 //! cycle. Async [`Action`] handles can be connected to [`OptimisticState`] with
 //! [`Action::with_optimistic`] so failed mutations automatically roll back
-//! optimistic UI state.
+//! optimistic UI state. [`Resource::latest_after`] and
+//! [`use_latest_resource_value`] compose loaded resource state with action
+//! success values so screens can render the latest loaded or mutated data.
+//! [`use_query`] and [`use_action`] provide application-owned keyed reads and
+//! explicit mutation workflows. A browser [`ClientLauncher`] owns one
+//! [`QueryClient`], while SSR requests and native component-test screens use
+//! isolated clients. Generated [`QueryFamily`], [`QueryKey`], and
+//! [`QueryDescriptor`] helpers canonicalize JSON object arguments, hydrated
+//! settled state is reused by the first client observer, and [`QuerySnapshot`]
+//! distinguishes initial pending state from background fetching.
+//!
+//! ## Typed multipart server functions
+//!
+//! The function-like [`server_fn`] API infers multipart transport when a
+//! client-visible argument is exactly
+//! [`reinhardt_core::parsers::UploadedFile`] or
+//! `Option<UploadedFile>`. Argument identifiers become multipart part names;
+//! every other client-visible argument is encoded as a scalar JSON part.
+//! Multipart is inferred request framing, not a selectable codec.
+//! Native HTML submissions contain browser text for scalar parts;
+//! the model-form multipart adapter removes CSRF and internal control markers,
+//! normalizes those text values, and then applies typed validation. It also
+//! accepts JSON-encoded scalar strings emitted by generated browser clients.
+//! Generated model-form clients attach reserved provenance markers to those
+//! scalar parts, so a native text value that happens to be valid JSON remains
+//! literal instead of being unwrapped. Marked parts preserve JSON null and empty
+//! strings through normalization before model validation.
+//!
+//! ```rust,no_run
+//! use reinhardt_core::parsers::UploadedFile;
+//! use reinhardt_pages::server_fn::{server_fn, ServerFnError};
+//!
+//! #[server_fn]
+//! async fn save(name: String, avatar: Option<UploadedFile>) -> Result<usize, ServerFnError> {
+//!     let _ = name;
+//!     Ok(avatar.as_ref().map_or(0, |file| file.size))
+//! }
+//!
+//! async fn call_save() -> Result<usize, ServerFnError> {
+//!     save(String::from("Ada"), None).await
+//! }
+//!
+//! # fn main() {}
+//! ```
+//!
+//! On the browser, an optional file input with an empty filename and no bytes
+//! becomes `None`; a named zero-byte file remains a file. Required files reject
+//! an empty browser file. Type aliases, `Vec<UploadedFile>`, nested `Option`,
+//! and other wrappers are unsupported, as are destructured client arguments.
+//! File arguments cannot be combined with an explicit `json`, `url`, or
+//! `msgpack` codec. Use the database field descriptors for storage-backed
+//! lifecycle coordination; the lower-level storage `store` API remains a
+//! separate operation.
+//!
+//! ## Query client v2
+//!
+//! Configure application defaults on the launcher and observer behavior when
+//! mounting a query:
+//!
+//! ```ignore
+//! use std::time::Duration;
+//! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::server_fn::{ServerFnError, ServerFnErrorKind};
+//! use reinhardt_pages::ClientLauncher;
+//!
+//! ClientLauncher::new("#root")
+//!     .query_defaults(
+//!         QueryDefaults::new()
+//!             .stale_time(Duration::from_secs(30))
+//!             .gc_time(Duration::from_secs(300)),
+//!     );
+//!
+//! let jobs = use_query(
+//!     list_project_jobs::query(project_id),
+//!     QueryOptions::new().refetch_interval(Duration::from_secs(5)),
+//! );
+//!
+//! let retrying_jobs = use_query(
+//!     list_project_jobs::query(project_id),
+//!     QueryOptions::new().retry(
+//!         RetryPolicy::exponential()
+//!             .max_attempts(3)
+//!             .base_delay(Duration::from_millis(250))
+//!             .max_delay(Duration::from_secs(5))
+//!             .jitter(true)
+//!             .when(|error: &ServerFnError| {
+//!                 matches!(
+//!                     error.kind(),
+//!                     ServerFnErrorKind::Server | ServerFnErrorKind::Transport
+//!                 )
+//!             }),
+//!     ),
+//! );
+//! ```
+//!
+//! The generated server-function module exposes `family()`, `key(args...)`,
+//! and `query(args...)`. Non-server-function reads can use
+//! [`QueryFamily::new`] and [`QueryFamily::query`] directly. Call
+//! [`QueryClient::invalidate`] for one exact key or
+//! [`QueryClient::invalidate_family`] after a successful [`use_action`]
+//! mutation. Disabled uncached observers report [`QueryStatus::Idle`];
+//! use [`QueryClient::remove`] or [`QueryClient::remove_family`] at an
+//! authentication boundary when cached data must not cross principals.
+//! Eviction clears the cached result, retry state, and active request so the
+//! next observer starts from [`QueryStatus::Pending`] (or `Idle` when disabled).
+//! enabled observers progress through [`QueryStatus::Pending`],
+//! [`QueryStatus::Success`], or [`QueryStatus::Error`]. Successful data remains
+//! visible if a background sequence ultimately fails, with the terminal error
+//! available through the `QuerySnapshot::refetch_error` field. Three attempts
+//! include the initial request. Intermediate errors are not published, equal
+//! jitter never exceeds the nominal delay, and `QuerySnapshot::is_fetching` is
+//! `false` while a retry waits in backoff.
+//!
+//! A realtime event should invalidate the exact typed key or family and let the
+//! query client fetch authoritative state. Use [`QueryHandle::is_invalidated`]
+//! to keep a status view in `Syncing` until a completion covers the newest
+//! invalidation generation; [`QueryHandle::is_stale`] also includes age-based
+//! freshness and therefore is not a synchronization barrier. The executable
+//! `examples/realtime_state.rs` recipe shows exact-key invalidation, family
+//! invalidation, and authentication-boundary removal.
+//!
+//! Observer polling suspends while the browser document is hidden and resumes
+//! according to freshness. Retry attempts are shared by the cache entry across
+//! observers. Hidden time does not consume retry backoff: stale data retries
+//! immediately when visibility returns, while fresh data waits only the saved
+//! remainder.
+//!
+//! SSR query state is request-local and is serialized for hydration before the
+//! browser's first observer mounts. SSR retries require both an observer policy
+//! and an explicit renderer gate, and the resource timeout covers fetches,
+//! backoff, and jitter:
+//!
+//! ```ignore
+//! let options = SsrOptions::new()
+//!     .query_retries(true)
+//!     .resource_timeout(Duration::from_secs(2));
+//! ```
+//!
+//! Query client v2 removes `QueryKey::new`, query-handle policy builders,
+//! `use_mutation`, and `Action::invalidates`. Normalized entities and retry
+//! policy (#5844) are independent descriptor/request-level extensions.
+//!
+//! ## Normalized entity cache
+//!
+//! Opt into normalization by implementing [`Entity`] and calling
+//! [`QueryDescriptor::with_entities`]. `Entity::TYPE` is a non-empty,
+//! application-wide stable namespace, and `Entity::Id` is encoded as canonical
+//! JSON. The standard [`EntityValue`] (required), [`OptionalEntity`] (optional),
+//! and [`EntityVec`] (ordered vector) adapters cover the common result shapes:
+//!
+//! ```rust,no_run
+//! use reinhardt_pages::{Entity, EntityValue, QueryFamily};
+//! use serde::{Deserialize, Serialize};
+//!
+//! #[derive(Clone, Debug, Deserialize, Serialize)]
+//! struct Project {
+//!     id: u64,
+//!     name: String,
+//! }
+//! impl Entity for Project {
+//!     type Id = u64;
+//!     const TYPE: &'static str = "example.project";
+//!     fn entity_id(&self) -> Self::Id { self.id }
+//! }
+//! #[derive(Clone, Debug, Deserialize, Serialize)]
+//! struct LoadError;
+//!
+//! let family = QueryFamily::<u64, Project, LoadError>::new("projects.detail.v1");
+//! let descriptor = family
+//!     .query(7, || async {
+//!         Ok::<_, LoadError>(Project {
+//!             id: 7,
+//!             name: String::from("Pages"),
+//!         })
+//!     })
+//!     .with_entities(EntityValue::<Project>::new());
+//! let _ = descriptor;
+//! ```
+//!
+//! Use [`OptionalEntity`] when a missing entity should become `None`, and
+//! [`EntityVec`] when removed IDs should disappear while the remaining order is
+//! preserved. A custom [`EntityProjection`] is a zero-sized adapter with a
+//! versioned, non-empty `SCHEMA`; its `dependencies` method must declare every
+//! identity that `EntityReader` may access. The module-level
+//! [`reactive::entity`] documentation contains a complete multi-entity custom
+//! projection example.
+//!
+//! After a successful mutation, update the arena through the client. Upserts
+//! are complete replacements: normalization never infers collection
+//! membership, relationships, cascades, patches, or optimistic rollback.
+//! `remove_entity` creates a tombstone. Required projections become internally
+//! `MissingRequired`, mark their query stale (`normalization_missing`), and
+//! always retain the last successful `T` with `QueryStatus::Success`, including
+//! inactive and disabled handles. Only an active enabled `QueryHandle` observer
+//! schedules at most one recovery refetch; inactive and disabled handles wait
+//! for an enabled mount or an explicit refetch. Optional projections become
+//! `None`, vectors drop the removed ID, and direct entity handles read `None`.
+//! `update_entities` stages all writes and publishes dependent query snapshots
+//! and handles atomically in one reactive batch:
+//!
+//! ```rust,no_run
+//! use reinhardt_pages::{Entity, QueryClient, QueryDefaults};
+//! use serde::{Deserialize, Serialize};
+//!
+//! #[derive(Clone, Debug, Deserialize, Serialize)]
+//! struct Project { id: u64, name: String }
+//! impl Entity for Project {
+//!     type Id = u64;
+//!     const TYPE: &'static str = "example.project";
+//!     fn entity_id(&self) -> Self::Id { self.id }
+//! }
+//!
+//! let client = QueryClient::new(QueryDefaults::new());
+//! client.upsert_entity(Project { id: 7, name: String::from("Pages") });
+//! client.update_entities(|entities| {
+//!     entities.upsert(Project { id: 7, name: String::from("Updated") });
+//! });
+//! client.remove_entity::<Project>(&7);
+//! assert!(client.entity::<Project>(7).get().is_none());
+//! ```
+//!
+//! `QueryClient::new_ssr` tracks identities read by normalized queries and
+//! handles. SSR serializes one deduplicated `(TYPE, canonical ID)` table per
+//! request; browser hydration consumes that table into the existing
+//! application client before the first observer materializes its recipe, so a
+//! normalized query can render without a duplicate fetch. Malformed tables,
+//! incompatible types, duplicate identities, and missing required entities are
+//! rejected. Plain query snapshots keep their existing serialization format.
+//!
+//! This extension preserves Query Client V2 migration compatibility. Existing
+//! plain descriptors require no changes, `QueryHandle<T, E>` still exposes the
+//! original `T` from `snapshot()` and `data()`, and only descriptors with
+//! `.with_entities(...)` participate in normalization. Query family IDs,
+//! `QueryOptions`, invalidation, polling, and the public `QueryStatus` are
+//! unchanged.
+//!
+//! The executable `examples/realtime_state.rs` also demonstrates bounded log
+//! reconciliation. History and live events share one state owner; a server
+//! watermark and stable IDs enable cursor-aware merging, while ID-only and
+//! no-metadata fallbacks retain an explicit degraded continuity state. Row,
+//! UTF-8 byte, record, pending, and snapshot limits are enforced before the
+//! example accepts more data, and old selection or connection tokens cannot
+//! commit late results.
 //!
 //! ## Features
 //!
@@ -15,29 +257,44 @@
 //! - **Django-like API**: Familiar patterns for Reinhardt developers
 //! - **Boundaries**: Suspense and error boundaries for async UI states
 //!
-//! ## React-aligned hook signatures (v0.2, Refs #4195)
+//! ## React-aligned hook signatures (v0.4, Refs #5511 and #5577)
 //!
-//! `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
-//! `use_callback_with` take an explicit dependency tuple as the second
-//! argument:
+//! `use_effect`, `use_layout_effect`, and `use_memo` accept either an explicit
+//! `deps![...]` dependency list or `deps_auto!()`. Retained effects, callbacks,
+//! and resources require an explicit list. Effect closures return `()` when no
+//! cleanup is needed, or `Option<C>` when they register cleanup:
 //!
 //! ```ignore
 //! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::reactive::ReactiveScope;
 //!
-//! let count = Signal::new(0_i32);
-//! let count_for_effect = count.clone();
-//! let _eff = use_effect(
-//!     move || {
-//!         println!("count = {}", count_for_effect.get());
-//!         None::<fn()>
-//!     },
-//!     (count.clone(),),
-//! );
+//! ReactiveScope::run(|| {
+//!     let count = Signal::new(0_i32);
+//!     use_retained_effect(
+//!         {
+//!             let count = count.clone();
+//!             move || {
+//!                 println!("count = {}", count.get());
+//!             }
+//!         },
+//!         deps![count],
+//!     );
+//! });
 //! ```
 //!
-//! Closures run with no active reactive Observer ("Option A"), so
-//! `Signal::get` inside does NOT auto-subscribe — subscriptions derive
-//! exclusively from the deps tuple. Pass `()` for mount-only effects.
+//! In explicit dependency mode (`deps![...]`), effect, layout-effect, and memo
+//! closures run with no active reactive Observer ("Option A"); `Signal::get`
+//! inside does not auto-subscribe, and subscriptions derive exclusively from
+//! the dependency list. Pass `deps![]` for a mount-only effect or memo.
+//! Automatic tracking is available only for effects, layout effects, and memos;
+//! pass `deps_auto!()` as their second argument to subscribe to signals read by
+//! the closure. Retained effects, callbacks, and resources always use explicit
+//! dependency lists.
+//!
+//! This is a breaking migration from the tuple and unit forms. Replace `()`
+//! with `deps![]`, and replace `(signal.clone(), ...)` with `deps![signal, ...]`.
+//! See `docs/migration/0.4.0-hook-dependency-modes.md` for the complete
+//! migration guide and the relationship between #5511 and #5577.
 //!
 //! For a concept-by-concept mapping from React to Reinhardt Pages, see
 //! `docs/react_to_reinhardt.md` in this crate.
@@ -52,8 +309,11 @@
 //! - [`dom`]: DOM abstraction layer
 //! - [`builder`]: HTML element builder API
 //! - [`component`](mod@component): Component system with IntoPage trait, Head management
+//! - [`ui`]: Headless asynchronous UI primitives ([`ui::ActionButton`],
+//!   [`ui::ActionResultPanel`], and [`ui::ResourcePanel`])
 //! - [`form`](mod@form): Django Form integration
 //! - [`form_state`]: Typed `use_form` runtime state
+//! - [`mod@client_form`]: Runtime support for DTO-derived client forms
 //! - [`csrf`]: CSRF protection
 //! - [`auth`]: Authentication integration
 //! - [`api`]: API client with Django QuerySet-like interface
@@ -62,7 +322,261 @@
 //! - [`hydration`]: Client-side hydration
 //! - [`router`]: Client-side routing (reinhardt-urls compatible)
 //! - [`portal`]: Explicit portal mounting into existing DOM targets
+//! - `i18n`: Reactive page translations with SSR-resolved catalogs (requires the `i18n` feature)
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
+//! - [`mod@style`]: Scoped class composition and typed runtime CSS values
+//!
+//! ## Asynchronous navigation guards
+//!
+//! Use `#[navigation_guard]` with [`NavigationContext`] and
+//! [`NavigationDecision`] to gate a route tree before its loaders and again
+//! before commit. Guards use the existing [`QueryClient`] for fresh,
+//! deduplicated reads, and the same contract applies to SPA navigation,
+//! prefetch, SSR, and initial hydration. Navigation guards control rendering
+//! and navigation UX; endpoint authentication and authorization remain
+//! mandatory server-side checks.
+//!
+//! The existing HTTP `Guard<P>`/`guard!`, synchronous
+//! `ClientRoute::with_guard`, and render-time `guard()`/`guard_or()` APIs are
+//! unchanged. See [Asynchronous navigation guards](docs/navigation_guards.md)
+//! for the complete lifecycle, SSR status mapping, redirect semantics, and
+//! authentication invalidation contract.
+//!
+//! ## Structured server-function errors
+//!
+//! [`ServerFnError`] carries a versioned error envelope with a stable kind,
+//! optional HTTP status, safe user message, and validation field errors. Match
+//! on [`ServerFnErrorKind`] instead of parsing response JSON:
+//!
+//! ```no_run
+//! use reinhardt_pages::{ServerFnError, ServerFnErrorKind};
+//!
+//! # fn log(_: &str, _: &str) {}
+//! # fn redirect_to_login() {}
+//! # fn show_message(_: &str) {}
+//! # let error = ServerFnError::validation_with_message(
+//! #     "Please correct the submitted values",
+//! #     [("email", "Enter a valid email address")],
+//! # );
+//! match error.kind() {
+//!     ServerFnErrorKind::Validation => {
+//!         for field_error in error.field_errors() {
+//!             log(field_error.field(), field_error.message());
+//!         }
+//!     }
+//!     ServerFnErrorKind::Auth => redirect_to_login(),
+//!     _ => show_message(error.user_message()),
+//! }
+//! ```
+//!
+//! With the native `model-server-fnset` feature,
+//! `ServerFnError::try_from_model_error_with` maps only proven model
+//! constraint violations. The optional callback may supply fixed,
+//! client-safe text:
+//!
+//! ```rust,ignore
+//! let server_error = ServerFnError::try_from_model_error_with::<User, _>(
+//!     error,
+//!     |database_error, _fields| {
+//!         (database_error.constraint() == Some("users_email_unique"))
+//!             .then(|| "This email is already registered".to_owned())
+//!     },
+//! )
+//! .unwrap_or_else(|error| {
+//!     tracing::error!(error = %error, "user write failed");
+//!     ServerFnError::application("Failed to save user")
+//! });
+//! ```
+//!
+//! Callback code must not return `DatabaseError::message()`, rejected values,
+//! table names, constraint names, or vendor diagnostics to the browser.
+//! Single-field violations are field errors, while composite `UNIQUE` and
+//! `CHECK` violations are form errors. Unmapped or unproven errors remain the
+//! original framework error. The conversion helper is native-only; browser
+//! code receives the resulting [`ServerFnError`].
+//!
+//! Conversion preserves the serialized [`ServerFnError`] wire shape and adds no
+//! database metadata to the browser response. Generated client forms route
+//! field errors by logical model field names. Composite `UNIQUE` and `CHECK`
+//! violations have no single logical field, so they reach the form error.
+//!
+//! ## Typed server function sets
+//!
+//! [`server_fn::server_fnset`] groups existing server function markers into a
+//! named, typed registration chain. Members retain their codec, CSRF,
+//! dependency-injection, extractor, metadata, and mock contracts; applications
+//! explicitly attach the completed set with
+//! [`server_fn::ServerFnRouterExt::server_fnset`]. Mixed-codec sets are valid.
+//!
+//! The opt-in `model-server-fnset` feature generates exactly six standard POST
+//! RPCs for a [`server_fn::ServerFnResource`]: `list`, `retrieve`, `create`,
+//! `update`, `partial_update`, and `destroy`. Native resources select an
+//! explicit `ServerFnSetPolicy`, provide model-to-DTO mappings, and
+//! return a typed unique lookup. Pagination defaults to 25, accepts `1..=100`,
+//! and reports the policy-scoped total before slicing. Checked standard
+//! overrides and custom transactional actions share the same policy and
+//! transaction runtime. Full and partial updates authorize the resulting object
+//! again before read mapping and transaction commit.
+//!
+//! Wire contracts, structured errors, metadata, generated markers, and client
+//! stubs are cross-target. ORM resources, policies, action contexts, database
+//! executors, native CRUD handlers, and `ModelServerFnSet` are
+//! native-only. Generated model failures map to stable 400/401/403/404/409/500
+//! responses, and internal details are sanitized before serialization. Action
+//! markers remain independent for component and MSW mocks.
+//!
+//! Model sets intentionally do not provide subsets, a read-only set type,
+//! REST/OpenAPI generation, cursor pagination, bulk or nested actions,
+//! composite lookups, global discovery, or automatic model-to-DTO derivation.
+//! See `docs/server_fn_macro.md` for a complete resource and action example.
+//!
+//! ## Typed events
+//!
+//! Standard intrinsic `page!` events use one catalog-generated payload type per
+//! event. Payloads expose common propagation and target snapshots, plus only
+//! the capabilities assigned to that event, such as `InputEvent::value` or
+//! `ChangeEvent::checked`. `current_target()` is captured while the listener is
+//! active, so it remains available after an async handler yields.
+//!
+//! ```ignore
+//! use reinhardt_pages::event::{ClickEvent, InputEvent};
+//! use reinhardt_pages::prelude::*;
+//!
+//! page!({
+//!     button { @click: |event: ClickEvent| { event.prevent_default(); }, "Run" }
+//!     input { @input: |event: InputEvent| {
+//!         if let Ok(value) = event.value() {
+//!             info_log!("{value}");
+//!         }
+//!     } }
+//! })
+//! ```
+//!
+//! Arbitrary intrinsic events have adjacent raw and typed forms. Use
+//! `@custom("name")` when the handler needs the unmodified
+//! [`platform::Event`], or `@custom::<Detail>("name")` when a browser
+//! `CustomEvent.detail` payload should deserialize into `Detail`.
+//!
+//! ```ignore
+//! use reinhardt_pages::prelude::*;
+//! use serde::Deserialize;
+//!
+//! #[derive(Deserialize)]
+//! struct ItemSelected {
+//!     id: u64,
+//! }
+//!
+//! page!({
+//!     // Raw custom-event transport.
+//!     button { @custom("item-selected"): |event: Event| { inspect(event); } }
+//!
+//!     // Typed custom-event detail, inferred from the DSL.
+//!     button { @custom::<ItemSelected>("item-selected"): |event| {
+//!         if let Ok(detail) = event.detail() {
+//!             select(detail.id);
+//!         }
+//!     } }
+//! })
+//! ```
+//!
+//! Component `@event` props retain the type of their declared component prop
+//! instead of using the intrinsic event catalog.
+//!
+//! ## Controlled form elements
+//!
+//! The `bind:` directive connects native form controls to typed [`Signal`]
+//! values. String-valued inputs (`text`, `search`, `tel`, `url`, `email`,
+//! `password`, `color`, `date`, `datetime-local`, `month`, `week`, and `time`)
+//! and radio groups use `Signal<String>`, checkboxes use `Signal<bool>`, numeric
+//! inputs use a primitive implementing [`NumberValue`], and multiple selects
+//! use `Signal<Vec<String>>`. File inputs, whether single or `multiple`, use
+//! `Signal<Vec<event::EventFile>>`. Date/time inputs use the browser's serialized
+//! value, with `""` for an empty or browser-rejected editor value. Browser
+//! normalization of a valid application write updates the signal, such as
+//! `2026-08-31 10:30` becoming `2026-08-31T10:30` for `datetime-local`. When an
+//! invalid application value is sanitized to `""`, the original signal is
+//! preserved.
+//! This `page!` contract does not expand `form!`, `ClientForm`, or `ModelForm`;
+//! their file fields retain the existing `Option<web_sys::File>` contract.
+//! Password values stay out of HTML attributes. Resetting a connected password
+//! form reconciles its signal in a deferred task; cancelled resets and
+//! unmounted controls do not change the signal.
+//! Numeric bindings may expose a [`NumberParseError`] signal that retains
+//! recoverable invalid editor text.
+//! Owned signal handles, shared references, and mutable references are supported,
+//! including both signals passed to `number(value, error)`.
+//! Only unmodified Arrow/Home/End keyboard moves are predicted; modifier-key
+//! commands and already-canceled key events are treated as unknown. When a
+//! pointer-positioned number edit is sanitized before its inaccessible selection
+//! can be recovered, the error reports the browser's empty value.
+//! Reactive `type` and `multiple` updates are applied only while the resulting
+//! control remains compatible with its binding. Initial hydration writes
+//! browser-normalized range values back after reactive `min`, `max`, or `step`
+//! constraints apply, while ordinary number inputs retain rejected editor text.
+//! Multiple range controls bound to one signal reconcile browser-normalized
+//! values only when their bounds overlap at an accepted value and their grids
+//! match: equal steps with aligned bases, or all `step="any"`. Differing grids,
+//! including continuous/stepped pairs, keep normalization local even if they
+//! share valid values. Decimal grid alignment allows bounded floating-point
+//! roundoff. Reactive constraints refresh shared peers, and each controlled
+//! range write updates its default step base before live value normalization.
+//! Radio `value` expressions are evaluated once per rendered element. A bound
+//! single select projects only its first matching option in tree order during
+//! SSR, including options resolved inside a pending boundary; a multiple
+//! select projects every match.
+//!
+//! ```rust
+//! use reinhardt_pages::event::EventFile;
+//! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::reactive::Signal;
+//! use reinhardt_pages::reactive::ReactiveScope;
+//!
+//! ReactiveScope::run(|| {
+//!     let query = Signal::new(String::new());
+//!     let enabled = Signal::new(false);
+//!     let mode = Signal::new("draft".to_owned());
+//!     let amount = Signal::new(0_f64);
+//!     let amount_error = Signal::new(None::<NumberParseError>);
+//!     let targets = Signal::new(Vec::<String>::new());
+//!     let files = Signal::new(Vec::<EventFile>::new());
+//!     let attachments = Signal::new(Vec::<EventFile>::new());
+//!
+//!     let _form = page!({
+//!         input { aria_label: "Search", bind: query }
+//!         input { aria_label: "Enabled", type: "checkbox", bind: enabled }
+//!         input {
+//!             aria_label: "Draft",
+//!             type: "radio",
+//!             value: "draft",
+//!             bind: mode,
+//!         }
+//!         input {
+//!             aria_label: "Amount",
+//!             type: "number",
+//!             bind: number(amount, amount_error),
+//!         }
+//!         select {
+//!             aria_label: "Targets",
+//!             multiple: true,
+//!             bind: targets,
+//!             option { value: "native", "Native" }
+//!             option { value: "wasm", "WebAssembly" }
+//!         }
+//!         input { aria_label: "Avatar", type: "file", bind: files }
+//!         input { aria_label: "Attachments", type: "file", multiple: true, bind: attachments }
+//!     });
+//! });
+//! ```
+//!
+//! A file-input change replaces its signal with the full ordered browser
+//! selection. File bindings observe the browser-owned selection. Clearing the
+//! Signal clears its input; a non-empty Signal cannot populate the control.
+//! Successful form reset synchronizes the live selection after a browser task,
+//! so reset handlers and their microtasks can still observe the previous Signal.
+//! Cancelled reset and disposed bindings do not receive a reset-driven write.
+//! Listener ownership is shared with password bindings and released when the
+//! controller is dropped. Hydration likewise adopts live DOM files. SSR emits
+//! neither file metadata nor a file value.
 //!
 //! ## Forms
 //!
@@ -90,6 +604,267 @@
 //! runtime.set_value(login_form.username_field(), "ada".to_string());
 //! ```
 //!
+//! ### Typed field bindings and reset ownership
+//!
+//! A generated form's runtime is the owner of values and mounted control
+//! state. Call [`UseFormReturn::field`] with the generated token and pass the
+//! opaque handle to `bind:`. The token spelling depends on the form source:
+//!
+//! - `ClientForm`: `runtime.field(LoginClientFormField::Email)` when the
+//!   generated field enum is in scope;
+//! - an ordinary `form!`: `runtime.field(login_form.email_field())`;
+//! - a ModelForm using `fields: [email]`:
+//!   `runtime.field(model_form.email_field())`.
+//!
+//! ModelForm field accessors are generated only for the explicit `fields: [...]`
+//! selection. The accessor keeps the internal model token private while still
+//! providing the same typed binding contract.
+//!
+//! ```rust,no_run
+//! use reinhardt_pages::{form, page, use_form};
+//! use reinhardt_pages::reactive::ReactiveScope;
+//!
+//! ReactiveScope::run(|| {
+//!     let form = form! {
+//!         name: LoginForm,
+//!         action: "/login",
+//!         fields: {
+//!             email: EmailField { required },
+//!         },
+//!     };
+//!     let runtime = use_form(&form).build();
+//!     let _page = page!({
+//!         input {
+//!             aria_label: "Email",
+//!             bind: runtime.field(form.email_field()),
+//!         }
+//!     });
+//!     runtime.reset();
+//! });
+//! ```
+//!
+//! The supported value/control matrix is:
+//!
+//! | Generated value | Supported controls |
+//! | --- | --- |
+//! | `String` | text, email, URL, password or textarea, radio, select-one |
+//! | `T` implementing [`NumberValue`] | number (`input[type=number]`) |
+//! | `bool` | checkbox |
+//! | `Vec<String>` | select-many |
+//!
+//! `RangeInput` and `input[type=range]` are not currently compatible with a
+//! typed runtime field binding; use an unbound or application-specific path
+//! for range controls.
+//!
+//! A token from another form fails at the Rust type boundary. A token from the
+//! right form paired with an incompatible control is valid Rust but panics at
+//! page construction with a message naming the field and requested control.
+//!
+//! Reset is explicit: [`UseFormReturn::reset`] applies the current defaults
+//! source-first, clears field/collection/path/form/submit errors and
+//! touched/dirty/submitting/success state, and returns connected
+//! [`FormAction`] handles to idle. It does not run automatically after a
+//! successful submission and it is not wired to a native reset button or reset
+//! event. [`UseFormReturn::sync_after_native_reset`] remains available when an
+//! application handles native reset for its own controls. Generated `form!` controls
+//! synchronize browser defaults automatically without invoking `reset()`.
+//! A pending `use_form_action` request is not cancelled; its stale completion
+//! cannot repopulate form-owned submit state. Standalone [`use_action`] handles
+//! are not connected to this reset boundary.
+//!
+//! Fresh mount writes runtime values to the DOM. Hydration is normally
+//! DOM-first, preserving an edit made after SSR and before hydration. If the
+//! application calls `runtime.reset()` before hydration, runtime field
+//! bindings become source-preferred and write the reset defaults instead of
+//! adopting stale SSR properties. Existing direct `Signal` bindings retain
+//! their normal DOM-first hydration behavior.
+//!
+//! Numeric bindings preserve invalid editor text and the last valid typed
+//! value. The current [`NumberParseError`] retains the raw text and failure
+//! kind; generated form runtimes expose it through field error state. Clearing
+//! displayed errors preserves parse failures and continues to block validation
+//! and submission. A valid numeric write clears the parse failure;
+//! [`UseFormReturn::reset_field`] clears it only for the restored field, while
+//! `reset()` restores every formatted default and clears all parse state.
+//! Generated email, URL, and password widgets synchronize their mounted values
+//! on reset as well.
+//!
+//! Named `model_form:` contracts and ModelForm `exclude: [...]` declarations
+//! also expose selected typed field bindings. `page!` runtime bindings exclude
+//! file inputs and nested collection paths; generated mutation pages bind their
+//! single-file controls through the existing ModelForm upload channel.
+//!
+//! DTO request types can opt in to generated client-form companions with
+//! [`ClientForm`]. The generated form keeps enum choices and typed request
+//! assembly tied to the request type while using the same [`use_form`] runtime.
+//! Use the `#[client_form(...)]` attribute for the concise form; it uses the
+//! same expansion logic as the derive and preserves container and field serde
+//! metadata even without serde derives. Alternatively, keep
+//! `#[derive(ClientForm)]` with its helper attribute for compatibility.
+//! The `client_form` attribute macro must be imported explicitly; it is not re-exported by
+//! `prelude::*` so legacy derive/helper declarations remain helper-only.
+//! `#[client_form(...)]` before `#[serde(...)]` when no serde derive is present
+//! so the attribute macro can consume those helper attributes.
+//! Add `validate` when the DTO implements `Validate` and should feed those errors
+//! into the generated form runtime:
+//!
+//! ```ignore
+//! use reinhardt_pages::{ClientFormChoices, client_form, use_form};
+//!
+//! #[derive(Clone, Default, PartialEq, ClientFormChoices)]
+//! #[serde(rename_all = "snake_case")]
+//! enum ProviderMode {
+//!     #[default]
+//!     Fake,
+//!     LiveApi,
+//! }
+//!
+//! #[reinhardt::dto]
+//! #[derive(Clone, serde::Serialize, serde::Deserialize)]
+//! #[client_form(server_fn = crate::server::submit_project, validate)]
+//! struct ProjectRequest {
+//!     name: String,
+//!     title: Option<String>,
+//!     provider_mode: ProviderMode,
+//! }
+//!
+//! let form = ProjectRequestClientForm::new();
+//! let runtime = use_form(&form).build();
+//! runtime.set_value(ProjectRequestClientFormField::Title, "  ".to_string());
+//! let request = ProjectRequestClientForm::to_request(&runtime);
+//! assert_eq!(request.title, None);
+//! let outcome = form.submit(&runtime).await?;
+//! ```
+//!
+//! Generated `submit` methods have the same signature on native and WASM
+//! targets, so shared components can construct one action without
+//! target-specific branches. Submission executes only on WASM; native SSR code
+//! must not await or dispatch the generated method.
+//!
+//! [`ClientFormChoices`] mirrors serde's externally tagged string names for
+//! unit variants, including matching `rename_all` and variant `rename`; tagged,
+//! untagged, or directionally renamed enum representations are rejected because
+//! form choices submit bare strings. DTO fields marked with serde skip
+//! attributes are kept out of editable form fields and preserved through
+//! generated request values. Exported DTOs cannot use private editable fields;
+//! mark the field public or make it an explicit hidden field with
+//! `#[client_form(skip)]` or a serde skip attribute. Forms with generated
+//! `server_fn` submit helpers reject serde-skipped request fields because the
+//! browser payload must match native request deserialization exactly.
+//!
+//! Compose validated submit flows with [`use_form_action`]:
+//!
+//! ```ignore
+//! use reinhardt_pages::{form, use_form, use_form_action};
+//!
+//! let runtime = use_form(&login_form).build();
+//! let save = use_form_action(&runtime, |values: LoginFormValues| async move {
+//!     submit_login(values).await
+//! });
+//!
+//! if !save.is_pending() {
+//!     save.submit();
+//! }
+//! ```
+//!
+//! `use_form_action` remains the generic local async helper for validated form
+//! workflows. Use [`use_server_mutation`] when the work is a server mutation and
+//! you want one target-neutral status handle with invalidation and redirect
+//! hooks:
+//!
+//! ```rust,no_run
+//! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::server_fn::ServerFnError;
+//!
+//! async fn delete_cluster(cluster_id: String) -> Result<(), ServerFnError> {
+//!     let _ = cluster_id;
+//!     Ok(())
+//! }
+//!
+//! mod clusters {
+//!     use reinhardt_pages::prelude::*;
+//!     use reinhardt_pages::server_fn::ServerFnError;
+//!
+//!     pub fn family() -> QueryFamily<(), Vec<String>, ServerFnError> {
+//!         QueryFamily::new("docs.clusters.list.v1")
+//!     }
+//! }
+//!
+//! let query_client = QueryClient::new_ssr(QueryDefaults::default());
+//! let remove = use_server_mutation(delete_cluster)
+//!     .invalidate_family(query_client, clusters::family())
+//!     .redirect("/clusters")
+//!     .build();
+//! let outcome = remove.dispatch("cluster-1".to_owned());
+//! # let _ = outcome;
+//! ```
+//!
+//! Adapt multiple client arguments explicitly with a tuple closure:
+//!
+//! ```rust,no_run
+//! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::server_fn::ServerFnError;
+//!
+//! async fn delete_cluster(cluster_id: String, force: bool) -> Result<(), ServerFnError> {
+//!     let _ = (cluster_id, force);
+//!     Ok(())
+//! }
+//!
+//! let remove = use_server_mutation(|(cluster_id, force): (String, bool)| {
+//!     delete_cluster(cluster_id, force)
+//! })
+//! .build();
+//! # let _ = remove;
+//! ```
+//!
+//! Generated `function_name::mutation()` adapters keep injected or extractor
+//! parameters out of the client input shape:
+//!
+//! ```rust,no_run
+//! # mod docs {
+//! use async_trait::async_trait;
+//! use reinhardt_di::{DiResult, Injectable, InjectionContext};
+//! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::server_fn::{ServerFnError, server_fn};
+//!
+//! #[derive(Clone)]
+//! pub struct CurrentOrg;
+//!
+//! #[async_trait]
+//! impl Injectable for CurrentOrg {
+//!     async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+//!         Ok(Self)
+//!     }
+//! }
+//!
+//! #[server_fn]
+//! pub async fn delete_cluster(
+//!     cluster_id: String,
+//!     #[inject] current_org: CurrentOrg,
+//! ) -> Result<(), ServerFnError> {
+//!     let _ = (cluster_id, current_org);
+//!     Ok(())
+//! }
+//!
+//! pub fn build_remove() -> ServerMutation<String, ()> {
+//!     use_server_mutation(delete_cluster::mutation()).build()
+//! }
+//! # }
+//! let remove = docs::build_remove();
+//! let outcome = remove.dispatch("cluster-1".to_owned());
+//! # let _ = outcome;
+//! ```
+//!
+//! Native dispatch returns [`MutationDispatchOutcome::UnsupportedTarget`] and
+//! does not validate, invoke the mutation closure, invalidate queries, reset
+//! generated forms, or navigate.
+//!
+//! Use [`ui::FormActionButton`] with [`FormAction::submit_handler`] to preserve
+//! native form submit semantics. [`ui::FormActionResultPanel`] renders
+//! validation and typed mutation errors separately, while
+//! [`Resource::latest_after_form`] composes successful validated mutations
+//! without exposing the underlying dispatch handle.
+//!
 //! `FileField` and `ImageField` participate in this runtime contract as
 //! `Option<web_sys::File>` values. File values are browser-owned and are
 //! tracked for dirty/touched state without treating the file payload as a
@@ -107,6 +882,12 @@
 //! survive HTML parsing, including selective hydration. Native reset clears touched
 //! state and errors without emitting edit or validation events, and preserves
 //! subscriptions to later custom widget errors and field edits.
+//! Server-rendered optional color/range controls include inert `<noscript>`
+//! fallback inputs so native submission preserves browser defaults when scripting
+//! is unavailable. CSR mounting and hydration omit those fallback descendants while
+//! scripts are active. Browser-owned file selections are excluded from runtime
+//! default snapshots because browsers cannot restore saved file handles; runtime
+//! resets clear the active file selection instead.
 //! Static choice values are evaluated once per option. Textarea hydration compares
 //! normalized HTML line endings so parsing alone does not create an edit.
 //! Unbound textarea snapshots preserve whitespace and validate parsed default text.
@@ -118,6 +899,8 @@
 //! |---|---|---|
 //! | `MonthInput` | `<input type="month">` | string field |
 //! | `WeekInput` | `<input type="week">` | string field |
+//! | `RadioInput` | one `<input type="radio">` | `ChoiceField<String>` |
+//! | `RadioSelect` | a group of `<input type="radio">` controls | choice field |
 //! | `ResetButton` | `<button type="reset">` | none |
 //! | `Button` | `<button type="button">` | none |
 //! | `ImageInput` | `<input type="image">` | none |
@@ -126,6 +909,33 @@
 //! | `Output` | `<output>` | none |
 //! | `Meter` | `<meter>` | none |
 //! | `Progress` | `<progress>` | none |
+//!
+//! `RadioInput` renders one string-valued choice, with the field's name and ID.
+//! Its fixed option value defaults to `"on"`; exactly one static option such as
+//! `choices: [("yes", "Yes")]` supplies another value and an optional label.
+//! An explicit field label takes precedence, and an option marked `disabled`
+//! disables the input. Multiple, empty, grouped, or dynamic options are rejected;
+//! use `RadioSelect` with `choices_from` for a group and `CheckboxInput` for booleans.
+//!
+//! The radio is checked when its field value equals its option value. Selecting
+//! it updates the field, and programmatic values and runtime resets update the
+//! checked state. Runtime validation requires a required radio's value to match
+//! its fixed option, including collection fields. Hydration honors field-specific
+//! setters and resets without discarding unrelated browser edits. Forms with a
+//! bound scalar radio restore all bound scalar and collection fields on native
+//! reset, including defaults loaded after mounting
+//! or saved through [`UseFormReturn::reset_default_values`].
+//! Collection defaults follow item keys; rows without persisted loader defaults
+//! use their values at page construction, or field defaults for new rows. Reset
+//! preserves collection keys, order, and unbound values, and clears file inputs.
+//! DOM and signal values are restored before runtime touched state and errors are
+//! cleared without change or validation events. Later reset listeners or immediate
+//! source writes after `reset()` supersede the pending reset, even for equal values.
+//! Password controls share that reset owner. Pending resets stop when mounted
+//! controls or their source scope are disposed. Custom widget errors remain
+//! reactive after reset. Scalar and collection radios preserve `autocomplete`
+//! and retain focus within their reactive subtree during mounting and hydration.
+//! For scalar fields, `bind: false` snapshots the current value without binding.
 //!
 //! Typed native attributes are accepted for the controls that support them:
 //!
@@ -166,12 +976,65 @@
 //! CSRF should be supplied by `#[server_fn]` client stubs through the
 //! `X-CSRFToken` header rather than as a server function business argument.
 //!
+//! ## Generated model-form mutation pages
+//!
+//! Build the form runtime and mutation once, then call `action.page()` to render
+//! their generated controls. The page uses the runtime already attached to the
+//! mutation, including validation, error state, and configured callbacks.
+//!
+//! The generated **Submit** button dispatches that mutation and becomes disabled
+//! with **Submitting...** while pending. **Reset** restores the runtime's defaults
+//! and interaction state. With `reset_form_on_success()`, the latest typed result
+//! remains available after the controls reset. Render success content outside the
+//! form subtree and call `action.reset()` to dismiss it after the request completes.
+//! Resetting the action while it is pending does not cancel the request.
+//!
+//! Each form instance supports one mounted generated page. Labels, help text, and
+//! field errors refer to stable control IDs; the linked error summary follows field
+//! order. Form-level errors, including `_all`, excluded, and unknown fields, appear
+//! separately. Input elements remain mounted during editing and error/pending/reset
+//! updates. Server-owned fields outside the model-form selection do not become
+//! controls or mutation payload fields.
+//!
+//! Native page construction and rendering do not execute the server function or
+//! submission callbacks. Browser controls use the existing runtime bindings.
+//! Existing `into_page()` remains available for its standalone submission flow.
+//!
+//! ```rust
+//! use reinhardt_pages::{FormPageSource, FormServerMutation, Page, PageElement};
+//! use reinhardt_pages::component::IntoPage;
+//!
+//! fn page_with_confirmation<Form, Deps, Input, Output>(
+//!     action: FormServerMutation<Form, Deps, Input, Output>,
+//!     render_result: impl Fn(Output) -> Page + 'static,
+//! ) -> Page
+//! where
+//!     Form: FormPageSource,
+//!     Deps: Clone + PartialEq + 'static,
+//!     Input: 'static,
+//!     Output: Clone + 'static,
+//! {
+//!     let generated_form = action.page();
+//!     PageElement::new("section")
+//!         .child(generated_form)
+//!         .child(Page::reactive(move || {
+//!             action.result().map(&render_result).unwrap_or(Page::Empty)
+//!         }))
+//!         .into_page()
+//! }
+//! ```
+//!
 //! ## Macros
 //!
 //! - [`page!`]: JSX-like macro for defining view components
 //! - [`head!`]: JSX-like macro for defining HTML head sections
 //! - [`form!`]: Type-safe form component macro
+//! - [`style!`]: Typed component-scoped style definition language
+//! - [`style_def`]: Canonical static-item bridge for `style!`
+//! - `t!`: Reactive page translation macro (requires the `i18n` feature)
 //! - [`client_page`]: Client page function macro with native route-table stubs
+//! - `#[component]`: Route-backed page component macro
+//! - `#[layout]`: Route-backed layout component macro for nested SPA shells
 //! - [`wasm_server_api`]: WASM/server API parity macro
 //!
 //! See `docs/wasm_server_api.md` for the target-specific API parity contract.
@@ -181,16 +1044,19 @@
 //! ### Basic Component
 //!
 //! ```no_run
-//! use reinhardt_pages::{Signal, Page, page};
+//! use reinhardt_pages::{Page, Signal, page};
+//! use reinhardt_pages::reactive::ReactiveScope;
 //!
-//! fn counter() -> Page {
-//!     let count = Signal::new(0);
+//! fn counter(scope: &ReactiveScope) -> Page {
+//!     scope.enter(|| {
+//!         let count = Signal::new(0);
 //!
-//!     page!(|count: Signal<i32>| {
-//!         div {
-//!             p { { format!("Count: {}", count.get()) } }
-//!         }
-//!     })(count)
+//!         page!(|count: Signal<i32>| {
+//!             div {
+//!                 p { { format!("Count: {}", count.get()) } }
+//!             }
+//!         })(count)
+//!     })
 //! }
 //! ```
 //!
@@ -217,12 +1083,45 @@
 //! }
 //! ```
 //!
+//! ### Lifecycle-managed document head
+//!
+//! `Head` declarations are composed in structural page order. A `page!`
+//! `#head:` contribution is retained while its page is mounted, and its
+//! parent contribution becomes visible again when the child is removed.
+//! Route metadata contributes through the same model:
+//!
+//! ```ignore
+//! use reinhardt_pages::{head, use_page_title, Head};
+//! use reinhardt_pages::deps;
+//! use reinhardt_urls::routers::RouteMetadata;
+//!
+//! let route_metadata = RouteMetadata::new().with_head(head!(|| {
+//!     base { href: "/app/" }
+//!     title { "Workspace" }
+//! }));
+//!
+//! let project = Signal::new("Outline".to_owned());
+//! use_page_title(
+//!     {
+//!         let project = project.clone();
+//!         move || format!("{} · Cocrea", project.get())
+//!     },
+//!     deps![project.clone()],
+//! );
+//! ```
+//!
+//! Server rendering, hydration, and browser mounting resolve the same active
+//! declarations. Hydration adopts framework-marked nodes, and browser
+//! reconciliation touches only those marked nodes; unmanaged head elements
+//! remain untouched. An unchanged script node is reused, but removing a
+//! script cannot undo side effects that already ran in the browser.
+//!
 //! ### WebSocket Integration
 //!
 //! The `use_websocket` hook provides reactive WebSocket connections:
 //!
 //! ```ignore
-//! use reinhardt_pages::reactive::hooks::{use_websocket, use_effect, UseWebSocketOptions};
+//! use reinhardt_pages::reactive::hooks::{use_effect, use_websocket, UseWebSocketOptions};
 //! use reinhardt_pages::reactive::hooks::{ConnectionState, WebSocketMessage};
 //!
 //! fn chat_component() -> Page {
@@ -230,34 +1129,34 @@
 //!     let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 //!
 //!     // Monitor connection state reactively
+//!     let connection_state = ws.connection_state().clone();
 //!     use_effect(
 //!         {
-//!             let ws = ws.clone();
+//!             let connection_state = connection_state.clone();
 //!             move || {
-//!                 match ws.connection_state().get() {
+//!                 match connection_state.get() {
 //!                     ConnectionState::Open => log!("Connected to chat"),
 //!                     ConnectionState::Closed => log!("Disconnected from chat"),
 //!                     ConnectionState::Error(e) => log!("Connection error: {}", e),
 //!                     _ => {}
 //!                 }
-//!                 None::<fn()>
 //!             }
 //!         },
-//!         (),
+//!         (connection_state,),
 //!     );
 //!
 //!     // Handle incoming messages
+//!     let latest_message = ws.latest_message().clone();
 //!     use_effect(
 //!         {
-//!             let ws = ws.clone();
+//!             let latest_message = latest_message.clone();
 //!             move || {
-//!                 if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
+//!                 if let Some(WebSocketMessage::Text(text)) = latest_message.get() {
 //!                     log!("Received: {}", text);
 //!                 }
-//!                 None::<fn()>
 //!             }
 //!         },
-//!         (),
+//!         (latest_message,),
 //!     );
 //!
 //!     page!(|| {
@@ -273,10 +1172,61 @@
 //! }
 //! ```
 //!
+//! A browser connection retries after a peer disconnect or connection failure
+//! when `auto_reconnect` is enabled. `max_reconnect_attempts` counts consecutive
+//! retries after the initial attempt; every successful open resets that count.
+//! Retries use the fixed `reconnect_delay` in milliseconds. `on_open` runs for
+//! both the first connection and each recovery, so applications can send their
+//! subscription messages again and refetch authoritative state. Messages sent
+//! while disconnected are not replayed. Calling `close()`, disposing the owning
+//! reactive scope (such as on logout), or dropping the last handle clone cancels
+//! pending retries and detaches browser callbacks. An explicit close is terminal;
+//! create a new hook for a new session.
+//!
 //! **Note**: WebSocket functionality is WASM-only. On the server side (SSR),
 //! `use_websocket` returns a no-op handle with connection state always set to `Closed`.
+//!
+//! For event sequences, use an owned typed subscription instead of treating
+//! `latest_message` as a delivery queue:
+//!
+//! ```no_run
+//! use reinhardt_pages::reactive::hooks::{
+//!     use_websocket, WebSocketEventError, WebSocketSubscriptionOptions,
+//! };
+//! use reinhardt_pages::reactive::ReactiveScope;
+//! use reinhardt_pages::reactive::query::{QueryClient, QueryDefaults, QueryFamily};
+//! use serde::Deserialize;
+//! use std::num::NonZeroUsize;
+//!
+//! #[derive(Deserialize)]
+//! struct DeploymentEvent { deployment_id: u64 }
+//!
+//! ReactiveScope::run(|| {
+//!     let client = QueryClient::new(QueryDefaults::default());
+//!     let family = QueryFamily::<u64, String, String>::new("deployment-status");
+//!     let socket = use_websocket("wss://example.invalid/events", Default::default());
+//!     let _subscription = socket.subscribe_json(
+//!         WebSocketSubscriptionOptions::new(NonZeroUsize::new(16 * 1024).unwrap()),
+//!         move |event: DeploymentEvent| {
+//!             let descriptor = family.query(event.deployment_id, || async {
+//!                 Ok("running".to_owned())
+//!             });
+//!             client.invalidate(descriptor.key());
+//!         },
+//!         |error: WebSocketEventError| eprintln!("Realtime error: {error:?}"),
+//!     );
+//! });
+//! ```
+//!
+//! The subscription guard owns delivery. Equal consecutive events remain
+//! observable, malformed frames report a safe category and do not stop later
+//! frames, and native/SSR subscriptions remain inert. Reconnection requires
+//! application-owned resubscription and authoritative reconciliation; a live
+//! socket alone does not prove synchronized query or log state.
 
 #![warn(missing_docs)]
+
+extern crate self as reinhardt_pages;
 
 // Re-export AST definitions from reinhardt-pages-ast
 // This is deprecated but kept for backward compatibility
@@ -286,9 +1236,22 @@ pub use reinhardt_pages_ast as ast;
 // Core modules
 pub mod builder;
 pub mod callback;
+// The cancellation substrate is introduced before its query/navigation
+// consumers; this temporary allow keeps the foundational task warning-free.
+#[allow(dead_code)]
+mod cancellation;
+pub use cancellation::{CancellationHandle, CancellationToken, Cancelled};
+pub mod control_binding;
+#[allow(dead_code)] // SSR and browser adapters consume this staged crate-private contract.
+pub(crate) mod document_head;
 pub mod dom;
+pub mod event;
+#[cfg(feature = "i18n")]
+pub mod i18n;
 pub mod logging;
 pub mod reactive;
+/// Typed runtime values generated by component style definitions.
+pub mod style;
 
 // Platform abstraction (unified types and task spawning for WASM and native)
 pub mod platform;
@@ -319,6 +1282,9 @@ pub mod prelude;
 // Component system
 pub mod component;
 
+/// Headless UI primitives for common asynchronous screen states.
+pub mod ui;
+
 // Form and security
 pub mod auth;
 pub mod csrf;
@@ -328,14 +1294,17 @@ mod fetch;
 pub mod form_generated;
 // Typed form runtime state (WASM-compatible)
 pub mod form_state;
-// FormComponent requires reinhardt-forms which is not WASM-compatible yet.
-// Client-side forms use PageElement.
-#[cfg(native)]
+// Runtime support for DTO-derived client forms.
+#[doc = include_str!("../docs/client_forms.md")]
+pub mod client_form;
+// Model-backed form state is target-neutral. Legacy FormComponent support is
+// gated inside the module because it still depends on reinhardt-forms.
 pub mod form;
 
 // API and communication
 pub mod api;
 pub mod server_fn;
+pub mod server_mutation;
 
 // Server-side rendering
 pub mod ssr;
@@ -362,8 +1331,8 @@ pub mod testing;
 // Static file URL resolver
 pub mod static_resolver;
 
-// Hot Module Replacement (server-side only, feature-gated)
-#[cfg(all(native, feature = "hmr"))]
+// Hot Module Replacement (feature-gated with target-neutral protocol types)
+#[cfg(feature = "hmr")]
 pub mod hmr;
 
 // Table utilities (django-tables2 equivalent)
@@ -378,45 +1347,66 @@ pub use builder::{
 		a, button, div, form, h1, h2, h3, img, input, li, ol, option, p, select, span, textarea, ul,
 	},
 };
-pub use callback::{Callback, IntoEventHandler, event_handler, into_event_handler};
+pub use callback::{
+	Callback, IntoEventHandler, IntoTypedEventHandler, event_handler, into_event_handler,
+	raw_async_event_handler, raw_event_handler, typed_async_custom_event_handler,
+	typed_async_event_handler, typed_custom_event_handler, typed_event_handler,
+};
+pub use client_form::{ClientFormChoice, ClientFormChoiceSource};
 #[cfg(native)]
-pub use component::DummyEvent;
+pub use component::NativeEvent;
 #[cfg(wasm)]
 pub use component::cleanup_reactive_nodes;
 pub use component::{
 	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
-	IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props, ResourceTracker, ScriptTag,
-	StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle, ViewTransitionStatus,
-	start_view_transition,
+	IntoPage, LinkTag, MetaTag, Outlet, Page, PageElement, PageExt, Props, ResourceTracker,
+	ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle,
+	ViewTransitionStatus, start_view_transition,
+};
+pub use control_binding::{
+	ControlBindingError, NumberParseError, NumberParseErrorKind, NumberValue,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 #[cfg(native)]
 pub use form::{FormBinding, FormComponent};
+pub use reinhardt_core::{deps, deps_auto};
 // Static form metadata types (always available, used by form! macro)
+pub use form::page::FormPageSource;
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
 	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
-	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
-	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
-	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
-	UseFormReturn, UseFormSubmitOutcome, use_form,
+	FieldError, FieldPathState, FieldState, FocusError, FormAction, FormCollectionRuntimeSource,
+	FormEvent, FormRuntimeSource, FormState, FormSubscription, FormValidationError,
+	FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
+	RuntimeControlBindingRequest, RuntimeFieldBinding, UseFormAsyncSubmitOutcome, UseFormBuilder,
+	UseFormReturn, UseFormSubmitOutcome, use_form, use_form_action,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
-pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
+pub use reactive::{
+	Effect, Entity, EntityArena, EntityDependencies, EntityHandle, EntityProjection, EntityReader,
+	EntityValue, EntityVec, EntityWriter, ExplicitDeps, LatestResourceState, LatestResourceValue,
+	LatestResourceValueBuilder, Memo, NoRetry, OptionalEntity, ProjectionMaterialization,
+	ProjectionRemoval, QueryClient, QueryDefaults, QueryDescriptor, QueryFamily, QueryHandle,
+	QueryKey, QueryOptions, QuerySnapshot, QueryStatus, ReactiveDeps, RemovedEntities, Resource,
+	ResourceState, RetryPolicy, Signal, Trackable, queries, use_latest_resource_value,
+	use_resource, use_resource_with_key,
+};
 // Re-export Context system
 pub use reactive::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
 };
 // Re-export Hooks API
 pub use app::{ClientLauncher, LaunchCtx, PathCtx, PathParams};
-pub use reactive::{Action, ActionPhase, use_action};
+pub use reactive::use_query;
+pub use reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use reactive::{
-	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
-	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
-	use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
-	use_sync_external_store, use_transition,
+	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SetStateExt, SharedSetState,
+	SharedSignal, TransitionState, use_callback, use_context, use_debug_value, use_deferred_value,
+	use_effect, use_head, use_id, use_layout_effect, use_memo, use_optimistic, use_page_title,
+	use_reducer, use_ref, use_retained_effect, use_retained_layout_effect, use_shared_state,
+	use_state, use_sync_external_store, use_transition,
 };
 #[cfg(native)]
 pub use reinhardt_forms::{
@@ -428,32 +1418,92 @@ pub use router::Link;
 // function; `use_router` returns a `RouterHandle` for use inside hooks /
 // components. `NavigateError` is the public error returned by both paths.
 pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
-pub use router::{NavigationType, navigate};
-pub use router::{Path, Query};
-pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
+pub use router::loader::{
+	Loader, LoaderInputError, LoaderInputKind, LoaderInputSpec, LoaderStore, LoaderStoreError,
+	LoaderStoreScope, RouteLoader, RouteLoaderError, active_loader_store, canonical_loader_inputs,
+	enter_loader_store, loader_cache_id, with_loader_store,
+};
+pub use router::{
+	NavigationContext, NavigationDecision, NavigationGuard, NavigationGuardError,
+	NavigationGuardExecutor, NavigationGuardFuture, NavigationGuardRegistration,
+	NavigationGuardRegistry, NavigationKind, execute_navigation_guards,
+};
+pub use router::{NavigationGuardId, Path, Query, RouteLoaderId};
+pub use router::{NavigationType, navigate, navigate_named, navigate_or_reload};
+pub use server_fn::{
+	ServerFn, ServerFnError, ServerFnErrorKind, ServerFnErrorPayload, ServerFnFieldError,
+};
+pub use server_mutation::{
+	FormServerMutation, FormServerMutationBuilder, MutationDispatchOutcome, ServerMutation,
+	ServerMutationBuilder, use_server_mutation,
+};
 pub use ssr::SsrState;
 #[cfg(native)]
-pub use ssr::{SsrOptions, SsrRenderer};
-pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
+pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStream};
+pub use static_resolver::{
+	AssetUrlError, AssetUrlSnapshot, component_stylesheet_url, init_static_resolver,
+	is_initialized, resolve_static, try_component_stylesheet_url, try_resolve_static,
+};
+#[cfg(wasm)]
+pub use static_resolver::{browser_asset_snapshot, try_resolve_browser_static};
+pub use style::{
+	ClassList, ClassToken, CssAngle, CssColor, CssInteger, CssLength, CssLengthPercentage,
+	CssNumber, CssPercentage, CssTime, CssValueError, StyleValue, StyleVars,
+};
+
+#[cfg(feature = "i18n")]
+pub use i18n::{
+	I18nContext, I18nError, I18nStateError, LazyString, MessageCatalog, TranslatedText,
+	TranslationContext, TranslationGuard, locale, provide_i18n_context, set_locale, tn, tnp, tp,
+	tr, use_i18n_context, with_i18n_context,
+};
 
 // Re-export procedural macros
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
+pub use reinhardt_pages_macros::layout;
+pub use reinhardt_pages_macros::loader;
+pub use reinhardt_pages_macros::navigation_guard;
 pub use reinhardt_pages_macros::page;
+pub use reinhardt_pages_macros::style;
+pub use reinhardt_pages_macros::style_def;
 pub use reinhardt_pages_macros::wasm_server_api;
-pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props};
+pub use reinhardt_pages_macros::{
+	ClientForm, ClientFormChoices, FromRequest, client_form, client_page, component, page_props,
+};
 
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub mod client_form {
+		pub use crate::client_form::__private::*;
+	}
+
+	pub fn capture<T: Clone>(value: &T) -> T {
+		value.clone()
+	}
+
 	pub mod fetch {
 		pub use crate::fetch::{
 			FetchCredentials, FetchResponse, request, request_with_credentials,
 		};
 	}
 	pub use bon;
+	pub use bytes;
+	#[cfg(wasm)]
+	pub use gloo_timers::future::TimeoutFuture;
+	#[cfg(native)]
+	pub use hyper;
 	pub use inventory;
+	#[cfg(native)]
+	pub use reinhardt_http;
 	pub use reinhardt_urls;
+	pub use serde;
+	pub use serde_json;
+	#[cfg(wasm)]
+	pub use wasm_bindgen;
+	#[cfg(wasm)]
+	pub use web_sys;
 
 	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
 	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.
@@ -466,3 +1516,31 @@ pub mod __private {
 
 // Logging macros are automatically exported via #[macro_export]
 // Users can access them as: reinhardt_pages::debug_log!, reinhardt_pages::info_log!, etc.
+
+#[cfg(all(test, feature = "hmr"))]
+mod hmr_feature_tests {
+	use super::{Page, page};
+	use crate::hmr::protocol::{SourceId, TemplateKey};
+
+	#[test]
+	fn hmr_feature_enables_page_metadata_and_page_macro() {
+		// Arrange
+		let key = TemplateKey {
+			source_id: SourceId("src/app.rs".to_owned()),
+			line: 12,
+			column: 4,
+			nested_template_index: 0,
+		};
+
+		// Act
+		let view = page!({ "body" })
+			.with_dev_slot(3)
+			.with_dev_template_metadata(key.clone());
+		let (metadata, slot) = view.into_dev_template_parts().expect("metadata");
+
+		// Assert
+		assert_eq!(metadata.downcast_ref::<TemplateKey>(), Some(&key));
+		assert_eq!(slot.dev_slot_id(), Some(3));
+		assert!(matches!(slot, Page::DevSlot { .. }));
+	}
+}

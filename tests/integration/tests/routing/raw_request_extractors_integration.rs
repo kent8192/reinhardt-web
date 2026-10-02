@@ -23,8 +23,8 @@ async fn get_import_job(req: Request, Path(job_id): Path<String>) -> ViewResult<
 #[get("/files/{<path:asset>}", name = "typed-path-asset")]
 async fn get_asset(req: Request, Path(asset): Path<String>) -> ViewResult<Response> {
 	assert_eq!(
-		req.path_params.as_slice(),
-		&[(String::from("asset"), asset.clone())]
+		req.path_params.to_vec(),
+		vec![(String::from("asset"), asset.clone())]
 	);
 	Ok(Response::ok().with_body(asset))
 }

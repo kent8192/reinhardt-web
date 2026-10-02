@@ -4,11 +4,13 @@ use std::path::{Path, PathBuf};
 
 use walkdir::WalkDir;
 
+use super::error::Result;
+
 /// Returns every `*.rs` file under `root`, skipping `target/` and hidden dirs.
 ///
 /// The `root` itself is never skipped even if its file_name starts with `.`
 /// (e.g. macOS `tempdir()` returns paths under `/var/folders/.../T/.tmpXXX`).
-pub fn find_rs_files(root: &Path) -> anyhow::Result<Vec<PathBuf>> {
+pub fn find_rs_files(root: &Path) -> Result<Vec<PathBuf>> {
 	let mut out = Vec::new();
 	for entry in WalkDir::new(root)
 		.into_iter()

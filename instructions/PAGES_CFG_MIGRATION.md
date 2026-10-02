@@ -9,7 +9,7 @@ This guide explains how to introduce the reinhardt-pages cfg simplification feat
 1. **prelude module**: Unified imports for commonly used types
 2. **platform module**: Common type aliases for WASM/native
 3. **cfg_aliases**: `#[cfg(wasm)]` and `#[cfg(native)]` shortcuts
-4. **page! macro improvements**: Event handlers are automatically ignored on the server side
+4. **page! macro improvements**: Event handlers share typed payloads across browser and native component tests
 
 ### Benefits
 
@@ -143,7 +143,7 @@ pub fn button(on_click: Signal<bool>) -> View {
 
 ```rust
 pub fn button(on_click: Signal<bool>) -> View {
-    // The macro automatically ignores event handlers on the server side
+    // The macro stores handlers on native targets for component tests.
     page!(|| {
         button {
             @click: move |_| { on_click.set(true); },
@@ -161,7 +161,7 @@ If you want to abstract platform-specific types:
 use reinhardt_pages::platform::Event;
 
 // WASM: web_sys::Event
-// Native: DummyEvent
+// Native: NativeEvent
 fn handle_event(_event: Event) {
     // Processing
 }
@@ -209,8 +209,8 @@ The `page!` macro automatically suppresses warnings for captured variables, but 
 #[cfg(wasm)]
 let handler = move |_| { /* ... */ };
 
-#[cfg(native)]
-let handler = |_: reinhardt_pages::platform::Event| {};
+// Standard events infer an exact payload on both targets.
+let handler = |_: reinhardt_pages::event::ClickEvent| {};
 ```
 
 ---

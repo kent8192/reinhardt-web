@@ -6,7 +6,15 @@ use super::{
 	backend::DatabaseBackend,
 	error::Result,
 	query_builder::{DeleteBuilder, InsertBuilder, SelectBuilder, UpdateBuilder},
+	types::{
+		DatabaseType, QueryResult, QueryValue, Row, RowLockCapabilities, RowStream,
+		TransactionExecutor,
+	},
 };
+
+#[cfg(any(feature = "postgres", feature = "sqlite", feature = "mysql"))]
+use super::error::map_sqlx_error;
+use super::error::{DatabaseError, DatabaseErrorKind};
 
 #[cfg(feature = "postgres")]
 use super::dialect::PostgresBackend;
@@ -14,6 +22,64 @@ use super::dialect::PostgresBackend;
 /// SQLSTATE code for "invalid_catalog_name" (database does not exist)
 #[cfg(feature = "postgres")]
 const SQLSTATE_INVALID_CATALOG_NAME: &str = "3D000";
+
+#[cfg(feature = "postgres")]
+fn map_postgres_initial_connect_error(error: sqlx::Error) -> DatabaseError {
+	match error {
+		sqlx::Error::PoolTimedOut => DatabaseError::new(
+			DatabaseErrorKind::Timeout,
+			"Initial PostgreSQL connection timed out",
+		),
+		error => map_sqlx_error(error),
+	}
+}
+
+fn parse_server_version(version: &str) -> Option<(u16, u16, u16)> {
+	let start = version.find(|character: char| character.is_ascii_digit())?;
+	let mut parts = version[start..]
+		.split(|character: char| !character.is_ascii_digit())
+		.filter(|part| !part.is_empty());
+	Some((
+		parts.next()?.parse().ok()?,
+		parts.next()?.parse().ok()?,
+		parts.next().and_then(|part| part.parse().ok()).unwrap_or(0),
+	))
+}
+
+fn postgres_row_lock_capabilities(
+	version: Option<&str>,
+	is_cockroachdb: bool,
+) -> RowLockCapabilities {
+	if is_cockroachdb {
+		return RowLockCapabilities::cockroachdb();
+	}
+	version
+		.and_then(parse_server_version)
+		.map(|(major, minor, _)| RowLockCapabilities::postgres_for_version(major, minor))
+		.unwrap_or_else(RowLockCapabilities::postgres)
+}
+
+#[cfg(feature = "mysql")]
+fn mysql_row_lock_capabilities(version: Option<&str>) -> RowLockCapabilities {
+	let Some(version) = version else {
+		return RowLockCapabilities::mysql();
+	};
+	let components: Vec<_> = version.split('-').collect();
+	let normalized_version = components
+		.iter()
+		.position(|component| component.to_ascii_lowercase().contains("mariadb"))
+		.and_then(|mariadb| mariadb.checked_sub(1))
+		.and_then(|version_component| components.get(version_component).copied())
+		.unwrap_or(version);
+	let Some((major, minor, patch)) = parse_server_version(normalized_version) else {
+		return RowLockCapabilities::mysql();
+	};
+	if version.to_ascii_lowercase().contains("mariadb") {
+		RowLockCapabilities::mariadb_for_version(major, minor, patch)
+	} else {
+		RowLockCapabilities::mysql_for_version(major, minor, patch)
+	}
+}
 
 #[cfg(feature = "sqlite")]
 use super::dialect::SqliteBackend;
@@ -34,6 +100,131 @@ pub struct DatabaseConnection {
 	/// differently. This flag is set at connection time via a `SELECT version()`
 	/// probe and is `false` for any non-Postgres backend.
 	is_cockroachdb: bool,
+	row_lock_capabilities: Option<RowLockCapabilities>,
+}
+
+struct FlavoredTransactionExecutor {
+	inner: Box<dyn TransactionExecutor>,
+	is_cockroachdb: bool,
+	row_lock_capabilities: Option<RowLockCapabilities>,
+}
+
+#[async_trait::async_trait]
+impl TransactionExecutor for FlavoredTransactionExecutor {
+	fn backend(&self) -> DatabaseType {
+		self.inner.backend()
+	}
+
+	fn is_cockroachdb(&self) -> bool {
+		self.is_cockroachdb
+	}
+
+	fn row_lock_capabilities(&self) -> super::types::RowLockCapabilities {
+		self.row_lock_capabilities
+			.unwrap_or_else(|| self.inner.row_lock_capabilities())
+	}
+
+	fn supports_pgvector_error_hints(&self) -> bool {
+		self.inner.supports_pgvector_error_hints()
+	}
+
+	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
+		self.inner.execute(sql, params).await
+	}
+
+	async fn execute_with_context(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		self.inner.execute_with_context(sql, params, context).await
+	}
+
+	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
+		self.inner.fetch_one(sql, params).await
+	}
+
+	async fn fetch_one_with_context(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		self.inner
+			.fetch_one_with_context(sql, params, context)
+			.await
+	}
+
+	async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
+		self.inner.fetch_all(sql, params).await
+	}
+
+	async fn fetch_all_with_context(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		self.inner
+			.fetch_all_with_context(sql, params, context)
+			.await
+	}
+
+	fn fetch_stream<'a>(
+		&'a mut self,
+		sql: String,
+		params: Vec<QueryValue>,
+		chunk_size: usize,
+	) -> Result<RowStream<'a>> {
+		self.inner.fetch_stream(sql, params, chunk_size)
+	}
+
+	fn fetch_stream_with_context<'a>(
+		&'a mut self,
+		sql: String,
+		params: Vec<QueryValue>,
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		self.inner
+			.fetch_stream_with_context(sql, params, chunk_size, context)
+	}
+
+	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
+		self.inner.fetch_optional(sql, params).await
+	}
+
+	async fn fetch_optional_with_context(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		self.inner
+			.fetch_optional_with_context(sql, params, context)
+			.await
+	}
+
+	async fn commit(self: Box<Self>) -> Result<()> {
+		self.inner.commit().await
+	}
+
+	async fn rollback(self: Box<Self>) -> Result<()> {
+		self.inner.rollback().await
+	}
+
+	async fn savepoint(&mut self, name: &str) -> Result<()> {
+		self.inner.savepoint(name).await
+	}
+
+	async fn release_savepoint(&mut self, name: &str) -> Result<()> {
+		self.inner.release_savepoint(name).await
+	}
+
+	async fn rollback_to_savepoint(&mut self, name: &str) -> Result<()> {
+		self.inner.rollback_to_savepoint(name).await
+	}
 }
 
 /// Injectable implementation for DatabaseConnection
@@ -96,6 +287,50 @@ impl reinhardt_di::Injectable for DatabaseConnection {
 }
 
 impl DatabaseConnection {
+	/// Connects to the backend selected by the URL scheme.
+	pub async fn connect(url: &str) -> Result<Self> {
+		let postgres = url.starts_with("postgres://") || url.starts_with("postgresql://");
+		let mysql = url.starts_with("mysql://");
+		let sqlite = url.starts_with("sqlite://") || url.starts_with("sqlite:");
+
+		#[cfg(feature = "postgres")]
+		if postgres {
+			return Self::connect_postgres(url).await;
+		}
+
+		#[cfg(feature = "mysql")]
+		if mysql {
+			return Self::connect_mysql(url).await;
+		}
+
+		#[cfg(feature = "sqlite")]
+		if sqlite {
+			return Self::connect_sqlite(url).await;
+		}
+
+		let missing_feature = if postgres {
+			Some("postgres")
+		} else if mysql {
+			Some("mysql")
+		} else if sqlite {
+			Some("sqlite")
+		} else {
+			None
+		};
+		if let Some(feature) = missing_feature {
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				format!("Database backend not compiled in. Enable the '{feature}' feature."),
+			)
+			.into());
+		}
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Configuration,
+			format!("Unsupported database URL scheme: {url}"),
+		)
+		.into())
+	}
+
 	/// Creates a new instance.
 	///
 	/// Defaults to `is_cockroachdb = false`, which is the correct choice when
@@ -113,9 +348,28 @@ impl DatabaseConnection {
 	/// flavor is already known — e.g. tests that mount a CockroachDB pool, or
 	/// adapters that pre-probe `SELECT version()` themselves.
 	pub fn new_with_flavor(backend: Arc<dyn DatabaseBackend>, is_cockroachdb: bool) -> Self {
+		let row_lock_capabilities = is_cockroachdb.then_some(RowLockCapabilities::cockroachdb());
 		Self {
 			backend,
 			is_cockroachdb,
+			row_lock_capabilities,
+		}
+	}
+
+	/// Creates a new instance with an explicit row-lock capability profile.
+	///
+	/// This is useful for custom backends whose server version is known by the
+	/// caller. Without an explicit profile, transaction executors retain their
+	/// own capability reporting.
+	pub fn new_with_flavor_and_row_lock_capabilities(
+		backend: Arc<dyn DatabaseBackend>,
+		is_cockroachdb: bool,
+		row_lock_capabilities: RowLockCapabilities,
+	) -> Self {
+		Self {
+			backend,
+			is_cockroachdb,
+			row_lock_capabilities: Some(row_lock_capabilities),
 		}
 	}
 
@@ -131,12 +385,20 @@ impl DatabaseConnection {
 		url: &str,
 		pool_size: Option<u32>,
 	) -> Result<Self> {
-		let pool = Self::build_postgres_pool(url, pool_size).await?;
-		let is_cockroachdb = Self::probe_cockroachdb(&pool).await;
+		let pool = Self::build_postgres_pool(url, pool_size)
+			.await
+			.map_err(map_postgres_initial_connect_error)?;
+		let version = Self::probe_postgres_version(&pool).await;
+		let is_cockroachdb = version
+			.as_deref()
+			.is_some_and(|value| value.starts_with("CockroachDB"));
+		let row_lock_capabilities =
+			postgres_row_lock_capabilities(version.as_deref(), is_cockroachdb);
 
 		Ok(Self {
 			backend: Arc::new(PostgresBackend::new(pool)),
 			is_cockroachdb,
+			row_lock_capabilities: Some(row_lock_capabilities),
 		})
 	}
 
@@ -155,11 +417,11 @@ impl DatabaseConnection {
 	/// Used to drive the migration-lock dispatch in `MigrationRecorder`
 	/// (issue #4642: CockroachDB does not implement `pg_advisory_lock`).
 	#[cfg(feature = "postgres")]
-	async fn probe_cockroachdb(pool: &sqlx::PgPool) -> bool {
-		sqlx::query_scalar::<_, bool>("SELECT version() LIKE 'CockroachDB%'")
+	async fn probe_postgres_version(pool: &sqlx::PgPool) -> Option<String> {
+		sqlx::query_scalar::<_, String>("SELECT version()")
 			.fetch_one(pool)
 			.await
-			.unwrap_or(false)
+			.ok()
 	}
 
 	/// Connect to PostgreSQL with automatic database creation if it doesn't exist.
@@ -235,10 +497,17 @@ impl DatabaseConnection {
 		// so we can check the SQLSTATE code
 		match Self::build_postgres_pool(url, pool_size).await {
 			Ok(pool) => {
-				let is_cockroachdb = Self::probe_cockroachdb(&pool).await;
+				let version = Self::probe_postgres_version(&pool).await;
+				let is_cockroachdb = version
+					.as_deref()
+					.is_some_and(|value| value.starts_with("CockroachDB"));
 				return Ok(Self {
 					backend: Arc::new(PostgresBackend::new(pool)),
 					is_cockroachdb,
+					row_lock_capabilities: Some(postgres_row_lock_capabilities(
+						version.as_deref(),
+						is_cockroachdb,
+					)),
 				});
 			}
 			Err(e) => {
@@ -249,7 +518,7 @@ impl DatabaseConnection {
 					sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some(SQLSTATE_INVALID_CATALOG_NAME)
 				);
 				if !is_db_not_found {
-					return Err(e.into());
+					return Err(map_postgres_initial_connect_error(e).into());
 				}
 				// Database doesn't exist, try to create it
 			}
@@ -267,24 +536,14 @@ impl DatabaseConnection {
 			.acquire_timeout(Duration::from_secs(10))
 			.connect(&admin_url)
 			.await
-			.map_err(|e| {
-				super::error::DatabaseError::ConnectionError(format!(
-					"Failed to connect to postgres database for auto-creation: {}",
-					e
-				))
-			})?;
+			.map_err(map_postgres_initial_connect_error)?;
 
 		// Create the database (escape double quotes to prevent SQL injection)
 		let create_sql = format!("CREATE DATABASE \"{}\"", db_name.replace('"', "\"\""));
 		sqlx::query(&create_sql)
 			.execute(&admin_pool)
 			.await
-			.map_err(|e| {
-				super::error::DatabaseError::QueryError(format!(
-					"Failed to create database '{}': {}",
-					db_name, e
-				))
-			})?;
+			.map_err(map_sqlx_error)?;
 
 		// Close admin connection
 		admin_pool.close().await;
@@ -304,7 +563,8 @@ impl DatabaseConnection {
 			.strip_prefix("postgres://")
 			.or_else(|| url.strip_prefix("postgresql://"))
 			.ok_or_else(|| {
-				super::error::DatabaseError::ConnectionError(
+				DatabaseError::new(
+					DatabaseErrorKind::Configuration,
 					"Invalid PostgreSQL URL: must start with postgres:// or postgresql://"
 						.to_string(),
 				)
@@ -318,7 +578,8 @@ impl DatabaseConnection {
 
 		// Find the last '/' which separates host:port from database name
 		let last_slash_pos = path_part.rfind('/').ok_or_else(|| {
-			super::error::DatabaseError::ConnectionError(
+			DatabaseError::new(
+				DatabaseErrorKind::Configuration,
 				"Invalid PostgreSQL URL: no database name found".to_string(),
 			)
 		})?;
@@ -327,9 +588,11 @@ impl DatabaseConnection {
 		let db_name = &path_part[last_slash_pos + 1..];
 
 		if db_name.is_empty() {
-			return Err(super::error::DatabaseError::ConnectionError(
-				"Invalid PostgreSQL URL: database name is empty".to_string(),
-			));
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"Invalid PostgreSQL URL: database name is empty",
+			)
+			.into());
 		}
 
 		// Construct admin URL with 'postgres' database
@@ -344,16 +607,24 @@ impl DatabaseConnection {
 	/// Connects to a SQLite database at the given URL.
 	#[cfg(feature = "sqlite")]
 	pub async fn connect_sqlite(url: &str) -> Result<Self> {
-		use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
+		use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 		use std::path::Path;
 		use std::str::FromStr;
 
 		// Handle in-memory database
 		if url == "sqlite::memory:" {
-			let pool = SqlitePool::connect(url).await?;
+			let pool = SqlitePoolOptions::new()
+				.max_connections(1)
+				.min_connections(1)
+				.idle_timeout(None)
+				.max_lifetime(None)
+				.connect(url)
+				.await
+				.map_err(map_sqlx_error)?;
 			return Ok(Self {
 				backend: Arc::new(SqliteBackend::new(pool)),
 				is_cockroachdb: false,
+				row_lock_capabilities: Some(RowLockCapabilities::unsupported()),
 			});
 		}
 
@@ -367,10 +638,10 @@ impl DatabaseConnection {
 			let rel_path = url.trim_start_matches("sqlite://");
 			std::env::current_dir()
 				.map_err(|e| {
-					super::error::DatabaseError::ConnectionError(format!(
-						"Failed to get current directory: {}",
-						e
-					))
+					DatabaseError::new(
+						DatabaseErrorKind::Connection,
+						format!("Failed to get current directory: {}", e),
+					)
 				})?
 				.join(rel_path)
 				.to_string_lossy()
@@ -381,10 +652,10 @@ impl DatabaseConnection {
 			let rel_path = url.trim_start_matches("sqlite:");
 			std::env::current_dir()
 				.map_err(|e| {
-					super::error::DatabaseError::ConnectionError(format!(
-						"Failed to get current directory: {}",
-						e
-					))
+					DatabaseError::new(
+						DatabaseErrorKind::Connection,
+						format!("Failed to get current directory: {}", e),
+					)
 				})?
 				.join(rel_path)
 				.to_string_lossy()
@@ -398,11 +669,10 @@ impl DatabaseConnection {
 		let normalized_path = if db_path.exists() {
 			// If file exists, canonicalize to get absolute path
 			db_path.canonicalize().map_err(|e| {
-				super::error::DatabaseError::ConnectionError(format!(
-					"Failed to canonicalize path {}: {}",
-					db_path.display(),
-					e
-				))
+				DatabaseError::new(
+					DatabaseErrorKind::Connection,
+					format!("Failed to canonicalize path {}: {}", db_path.display(), e),
+				)
 			})?
 		} else {
 			// If file doesn't exist, use the path as-is but ensure it's absolute
@@ -412,10 +682,10 @@ impl DatabaseConnection {
 				// Convert relative path to absolute
 				std::env::current_dir()
 					.map_err(|e| {
-						super::error::DatabaseError::ConnectionError(format!(
-							"Failed to get current directory: {}",
-							e
-						))
+						DatabaseError::new(
+							DatabaseErrorKind::Connection,
+							format!("Failed to get current directory: {}", e),
+						)
 					})?
 					.join(db_path)
 			}
@@ -427,11 +697,14 @@ impl DatabaseConnection {
 			&& !parent.exists()
 		{
 			std::fs::create_dir_all(parent).map_err(|e| {
-				super::error::DatabaseError::ConnectionError(format!(
-					"Failed to create database directory {}: {}",
-					parent.display(),
-					e
-				))
+				DatabaseError::new(
+					DatabaseErrorKind::Connection,
+					format!(
+						"Failed to create database directory {}: {}",
+						parent.display(),
+						e
+					),
+				)
 			})?;
 		}
 
@@ -442,19 +715,17 @@ impl DatabaseConnection {
 
 		// Use SqliteConnectOptions with create_if_missing enabled
 		let options = SqliteConnectOptions::from_str(&absolute_url)
-			.map_err(|e| {
-				super::error::DatabaseError::ConnectionError(format!(
-					"Invalid SQLite URL '{}': {}",
-					absolute_url, e
-				))
-			})?
+			.map_err(map_sqlx_error)?
 			.create_if_missing(true);
 
-		let pool = SqlitePool::connect_with(options).await?;
+		let pool = SqlitePool::connect_with(options)
+			.await
+			.map_err(map_sqlx_error)?;
 
 		Ok(Self {
 			backend: Arc::new(SqliteBackend::new(pool)),
 			is_cockroachdb: false,
+			row_lock_capabilities: Some(RowLockCapabilities::unsupported()),
 		})
 	}
 
@@ -464,6 +735,7 @@ impl DatabaseConnection {
 		Self {
 			backend: Arc::new(SqliteBackend::new(pool)),
 			is_cockroachdb: false,
+			row_lock_capabilities: Some(RowLockCapabilities::unsupported()),
 		}
 	}
 
@@ -471,10 +743,15 @@ impl DatabaseConnection {
 	#[cfg(feature = "mysql")]
 	pub async fn connect_mysql(url: &str) -> Result<Self> {
 		use sqlx::MySqlPool;
-		let pool = MySqlPool::connect(url).await?;
+		let pool = MySqlPool::connect(url).await.map_err(map_sqlx_error)?;
+		let version = sqlx::query_scalar::<_, String>("SELECT VERSION()")
+			.fetch_one(&pool)
+			.await
+			.ok();
 		Ok(Self {
 			backend: Arc::new(MySqlBackend::new(pool)),
 			is_cockroachdb: false,
+			row_lock_capabilities: Some(mysql_row_lock_capabilities(version.as_deref())),
 		})
 	}
 
@@ -486,6 +763,11 @@ impl DatabaseConnection {
 	/// Get the database type
 	pub fn database_type(&self) -> super::types::DatabaseType {
 		self.backend.database_type()
+	}
+
+	/// Returns whether the inner backend supports contextual pgvector hints.
+	pub fn supports_pgvector_error_hints(&self) -> bool {
+		self.backend.supports_pgvector_error_hints()
 	}
 
 	/// Returns true when the underlying server is CockroachDB.
@@ -572,7 +854,8 @@ impl DatabaseConnection {
 
 		let core = settings.core();
 		let db_config = core.databases.get("default").ok_or_else(|| {
-			super::error::DatabaseError::ConnectionError(
+			DatabaseError::new(
+				DatabaseErrorKind::Configuration,
 				"Database configuration `core.databases.default` not found in settings."
 					.to_string(),
 			)
@@ -590,6 +873,17 @@ impl DatabaseConnection {
 		self.backend.execute(sql, params).await
 	}
 
+	pub(crate) async fn execute_with_context(
+		&self,
+		sql: &str,
+		params: Vec<super::types::QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<super::types::QueryResult> {
+		self.backend
+			.execute_with_context(sql, params, context)
+			.await
+	}
+
 	/// Fetches one.
 	pub async fn fetch_one(
 		&self,
@@ -597,6 +891,17 @@ impl DatabaseConnection {
 		params: Vec<super::types::QueryValue>,
 	) -> Result<super::types::Row> {
 		self.backend.fetch_one(sql, params).await
+	}
+
+	pub(crate) async fn fetch_one_with_context(
+		&self,
+		sql: &str,
+		params: Vec<super::types::QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<super::types::Row> {
+		self.backend
+			.fetch_one_with_context(sql, params, context)
+			.await
 	}
 
 	/// Fetches all.
@@ -608,6 +913,42 @@ impl DatabaseConnection {
 		self.backend.fetch_all(sql, params).await
 	}
 
+	/// Streams rows without eagerly materializing the result set.
+	pub fn fetch_stream(
+		&self,
+		sql: String,
+		params: Vec<super::types::QueryValue>,
+		chunk_size: usize,
+	) -> Result<RowStream<'_>> {
+		self.backend.fetch_stream(sql, params, chunk_size)
+	}
+
+	pub(crate) fn fetch_stream_with_context(
+		&self,
+		sql: String,
+		params: Vec<super::types::QueryValue>,
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'_>> {
+		self.backend
+			.fetch_stream_with_context(sql, params, chunk_size, context)
+	}
+
+	pub(crate) fn supports_row_streaming(&self) -> bool {
+		self.backend.supports_row_streaming()
+	}
+
+	pub(crate) async fn fetch_all_with_context(
+		&self,
+		sql: &str,
+		params: Vec<super::types::QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Vec<super::types::Row>> {
+		self.backend
+			.fetch_all_with_context(sql, params, context)
+			.await
+	}
+
 	/// Fetches optional.
 	pub async fn fetch_optional(
 		&self,
@@ -615,6 +956,17 @@ impl DatabaseConnection {
 		params: Vec<super::types::QueryValue>,
 	) -> Result<Option<super::types::Row>> {
 		self.backend.fetch_optional(sql, params).await
+	}
+
+	pub(crate) async fn fetch_optional_with_context(
+		&self,
+		sql: &str,
+		params: Vec<super::types::QueryValue>,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Option<super::types::Row>> {
+		self.backend
+			.fetch_optional_with_context(sql, params, context)
+			.await
 	}
 
 	/// Begin a database transaction and return a dedicated executor
@@ -644,7 +996,22 @@ impl DatabaseConnection {
 	/// # }
 	/// ```
 	pub async fn begin(&self) -> Result<Box<dyn super::types::TransactionExecutor>> {
-		self.backend.begin().await
+		let inner = self.backend.begin().await?;
+		Ok(Box::new(FlavoredTransactionExecutor {
+			inner,
+			is_cockroachdb: self.is_cockroachdb,
+			row_lock_capabilities: self.row_lock_capabilities,
+		}))
+	}
+
+	/// Begins a transaction that acquires write intent before reading.
+	pub async fn begin_write(&self) -> Result<Box<dyn super::types::TransactionExecutor>> {
+		let inner = self.backend.begin_write().await?;
+		Ok(Box::new(FlavoredTransactionExecutor {
+			inner,
+			is_cockroachdb: self.is_cockroachdb,
+			row_lock_capabilities: self.row_lock_capabilities,
+		}))
 	}
 
 	/// Begin a transaction with a specific isolation level
@@ -668,7 +1035,12 @@ impl DatabaseConnection {
 		&self,
 		level: super::types::IsolationLevel,
 	) -> Result<Box<dyn super::types::TransactionExecutor>> {
-		self.backend.begin_with_isolation(level).await
+		let inner = self.backend.begin_with_isolation(level).await?;
+		Ok(Box::new(FlavoredTransactionExecutor {
+			inner,
+			is_cockroachdb: self.is_cockroachdb,
+			row_lock_capabilities: self.row_lock_capabilities,
+		}))
 	}
 
 	#[cfg(feature = "postgres")]
@@ -702,6 +1074,184 @@ impl DatabaseConnection {
 #[cfg(test)]
 mod tests {
 	use rstest::rstest;
+
+	#[cfg(feature = "pgvector")]
+	struct WrappedPostgresBackend {
+		context:
+			std::sync::Arc<std::sync::Mutex<Option<super::super::error::PgvectorOperationKind>>>,
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[async_trait::async_trait]
+	impl super::super::backend::DatabaseBackend for WrappedPostgresBackend {
+		fn database_type(&self) -> super::super::types::DatabaseType {
+			super::super::types::DatabaseType::Postgres
+		}
+
+		fn supports_pgvector_error_hints(&self) -> bool {
+			true
+		}
+
+		fn placeholder(&self, index: usize) -> String {
+			format!("${index}")
+		}
+
+		fn supports_returning(&self) -> bool {
+			true
+		}
+
+		fn supports_on_conflict(&self) -> bool {
+			true
+		}
+
+		async fn execute(
+			&self,
+			_sql: &str,
+			_params: Vec<super::super::types::QueryValue>,
+		) -> super::super::error::Result<super::super::types::QueryResult> {
+			panic!("contextual connection execution must use the backend context seam")
+		}
+
+		async fn execute_with_context(
+			&self,
+			_sql: &str,
+			_params: Vec<super::super::types::QueryValue>,
+			context: Option<super::super::error::PgvectorOperationKind>,
+		) -> super::super::error::Result<super::super::types::QueryResult> {
+			*self
+				.context
+				.lock()
+				.expect("context mutex should not be poisoned") = context;
+			Ok(super::super::types::QueryResult {
+				rows_affected: 1,
+				last_insert_id: None,
+			})
+		}
+
+		async fn fetch_one(
+			&self,
+			_sql: &str,
+			_params: Vec<super::super::types::QueryValue>,
+		) -> super::super::error::Result<super::super::types::Row> {
+			panic!("wrapped test backend does not fetch rows")
+		}
+
+		async fn fetch_all(
+			&self,
+			_sql: &str,
+			_params: Vec<super::super::types::QueryValue>,
+		) -> super::super::error::Result<Vec<super::super::types::Row>> {
+			panic!("wrapped test backend does not fetch rows")
+		}
+
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<super::super::types::QueryValue>,
+		) -> super::super::error::Result<Option<super::super::types::Row>> {
+			panic!("wrapped test backend does not fetch rows")
+		}
+
+		async fn begin(
+			&self,
+		) -> super::super::error::Result<Box<dyn super::super::types::TransactionExecutor>> {
+			panic!("wrapped test backend does not begin transactions")
+		}
+
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[tokio::test]
+	async fn contextual_execution_uses_wrapped_backend_trait_seam() {
+		let context = std::sync::Arc::new(std::sync::Mutex::new(None));
+		let connection =
+			super::DatabaseConnection::new(std::sync::Arc::new(WrappedPostgresBackend {
+				context: context.clone(),
+			}));
+
+		assert_eq!(
+			connection.database_type(),
+			super::super::types::DatabaseType::Postgres
+		);
+		assert!(connection.supports_pgvector_error_hints());
+
+		let result = connection
+			.execute_with_context(
+				"ALTER TABLE source ADD COLUMN embedding vector(3)",
+				Vec::new(),
+				Some(super::super::error::PgvectorOperationKind::ColumnType),
+			)
+			.await
+			.expect("wrapped backend should execute contextually");
+
+		assert_eq!(result.rows_affected, 1);
+		assert_eq!(
+			*context
+				.lock()
+				.expect("context mutex should not be poisoned"),
+			Some(super::super::error::PgvectorOperationKind::ColumnType)
+		);
+	}
+
+	#[cfg(feature = "postgres")]
+	#[test]
+	fn postgres_initial_pool_timeout_is_classified_as_timeout() {
+		let error = super::map_postgres_initial_connect_error(sqlx::Error::PoolTimedOut);
+
+		assert_eq!(error.kind(), super::DatabaseErrorKind::Timeout);
+	}
+
+	#[rstest]
+	#[case("PostgreSQL 9.4.26", Some((9, 4, 26)))]
+	#[case("8.0.0-rc1", Some((8, 0, 0)))]
+	#[case("not a version", None)]
+	fn server_version_parser_extracts_numeric_components(
+		#[case] version: &str,
+		#[case] expected: Option<(u16, u16, u16)>,
+	) {
+		assert_eq!(super::parse_server_version(version), expected);
+	}
+
+	#[test]
+	fn maria_db_compatibility_prefix_uses_the_maria_db_version() {
+		let capabilities = super::mysql_row_lock_capabilities(Some("5.5.5-10.11.6-MariaDB"));
+
+		assert!(capabilities.nowait);
+		assert!(capabilities.skip_locked);
+		assert!(!capabilities.targets);
+	}
+
+	#[test]
+	fn row_lock_capabilities_follow_probed_server_versions() {
+		let postgres_94 = super::postgres_row_lock_capabilities(Some("PostgreSQL 9.4.26"), false);
+		assert!(postgres_94.update);
+		assert!(postgres_94.no_key_update);
+		assert!(postgres_94.nowait);
+		assert!(!postgres_94.skip_locked);
+
+		let mysql_800 = super::mysql_row_lock_capabilities(Some("8.0.0"));
+		assert!(mysql_800.update);
+		assert!(!mysql_800.nowait);
+		assert!(!mysql_800.skip_locked);
+		assert!(!mysql_800.targets);
+
+		let mysql_801 = super::mysql_row_lock_capabilities(Some("8.0.1"));
+		assert!(mysql_801.nowait);
+		assert!(mysql_801.skip_locked);
+		assert!(mysql_801.targets);
+
+		let mariadb_105 = super::mysql_row_lock_capabilities(Some("10.5.23-MariaDB"));
+		assert!(mariadb_105.nowait);
+		assert!(!mariadb_105.skip_locked);
+		assert!(!mariadb_105.targets);
+
+		let mariadb_106 = super::mysql_row_lock_capabilities(Some("10.6.18-MariaDB"));
+		assert!(mariadb_106.skip_locked);
+		assert!(!mariadb_106.targets);
+	}
 
 	/// Helper to build a CREATE DATABASE SQL statement with proper identifier escaping.
 	/// Mirrors the escaping logic used in `connect_postgres_or_create_with_pool_size`.
@@ -760,5 +1310,72 @@ mod tests {
 		// Assert
 		assert_eq!(db_name, "testdb");
 		assert_eq!(admin_url, "postgres://user:pass@localhost:5432/postgres");
+	}
+
+	#[cfg(feature = "postgres")]
+	#[rstest]
+	#[case("http://localhost/testdb")]
+	#[case("postgres://localhost")]
+	#[case("postgres://localhost/")]
+	fn test_parse_postgres_url_rejects_invalid_configuration(#[case] url: &str) {
+		// Act
+		let error = super::DatabaseConnection::parse_postgres_url_for_creation(url).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.database_kind(),
+			Some(super::DatabaseErrorKind::Configuration)
+		);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[tokio::test]
+	async fn connect_selects_sqlite_from_url_scheme() {
+		// Act
+		let connection = super::DatabaseConnection::connect("sqlite::memory:")
+			.await
+			.unwrap();
+
+		// Assert
+		assert!(connection.into_sqlite().is_some());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn connect_rejects_unknown_url_scheme() {
+		// Act
+		let Err(error) = super::DatabaseConnection::connect("unknown://localhost/database").await
+		else {
+			panic!("unknown URL schemes must be rejected");
+		};
+
+		// Assert
+		assert_eq!(
+			error.database_kind(),
+			Some(super::DatabaseErrorKind::Configuration)
+		);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[tokio::test]
+	async fn sqlite_memory_connection_uses_single_pool_connection() {
+		// Arrange
+		let connection = super::DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.unwrap();
+		let pool = connection.into_sqlite().unwrap();
+
+		// Act
+		let first = pool.acquire().await.unwrap();
+		let second = pool.try_acquire();
+		drop(first);
+
+		// Assert
+		assert!(
+			second.is_none(),
+			"sqlite::memory: must stay single-connection so migrated schema remains visible"
+		);
 	}
 }

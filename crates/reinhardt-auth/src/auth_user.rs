@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use reinhardt_db::orm::{CustomManager, DatabaseConnection, Model};
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
 use reinhardt_http::AuthState;
-use std::sync::Arc;
 
 /// Authenticated user extractor that loads the full user model from database.
 ///
@@ -86,7 +85,7 @@ where
 	// using get_singleton/get_request directly because DatabaseConnection is
 	// pre-seeded into the singleton scope at server startup, not registered in
 	// the global DependencyRegistry.
-	let db: Arc<DatabaseConnection> = ctx
+	let db = ctx
 		.get_singleton::<DatabaseConnection>()
 		.or_else(|| ctx.get_request::<DatabaseConnection>())
 		.ok_or_else(|| {
@@ -95,10 +94,11 @@ where
 				message: "CurrentUser: DatabaseConnection not registered in DI context".to_string(),
 			}
 		})?;
+	let mut db = *db;
 
 	let user = U::objects()
 		.get(model_pk)
-		.first_with_db(&db)
+		.first_with_db(&mut db)
 		.await
 		.map_err(|e| {
 			::tracing::warn!(error = ?e, "CurrentUser: Failed to load user from database");

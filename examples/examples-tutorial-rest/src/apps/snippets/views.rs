@@ -3,7 +3,7 @@ use reinhardt::Validate;
 use reinhardt::core::serde::json;
 use reinhardt::db::DatabaseConnection;
 use reinhardt::db::orm::Manager;
-use reinhardt::di::Depends;
+use reinhardt::di::KeyedDepends;
 use reinhardt::http::ViewResult;
 use reinhardt::{Json, Path, Response, StatusCode};
 use reinhardt::{delete, get, post, put};
@@ -30,11 +30,12 @@ use super::serializers::{SnippetResponse, SnippetSerializer};
 
 /// Snippet listing configuration endpoint.
 ///
-/// Demonstrates keyed `Depends<K, T>` for a fallible provider. The
+/// Demonstrates keyed `KeyedDepends<K, T>` for a fallible provider. The
 /// `checked_list_config` provider in `di.rs` returns
-/// `FactoryOutput<CheckedSnippetListConfigKey, Result<SnippetListConfig,
+/// `KeyedFactoryOutput<CheckedSnippetListConfigKey, Result<SnippetListConfig,
 /// ConfigError>>`, so the key type distinguishes this provider from any other
-/// `SnippetListConfig` provider.
+/// fallible `SnippetListConfig` provider. The base `SnippetListConfig`
+/// singleton is self-keyed and consumed with `Depends<SnippetListConfig>`.
 ///
 /// Registered before `retrieve` (`/snippets/{id}/`) in `urls.rs` so this
 /// literal `/snippets/config/` path is matched first.
@@ -44,9 +45,12 @@ use super::serializers::{SnippetResponse, SnippetSerializer};
 /// Error response: 503 Service Unavailable with `{ "error": <message> }`
 #[get("/snippets/config/", name = "snippets-config")]
 pub async fn config(
-	#[inject] cfg: Depends<CheckedSnippetListConfigKey, Result<SnippetListConfig, ConfigError>>,
+	#[inject] cfg: KeyedDepends<
+		CheckedSnippetListConfigKey,
+		Result<SnippetListConfig, ConfigError>,
+	>,
 ) -> ViewResult<Response> {
-	// `Depends<K, Result<T, E>>` derefs to `Result<T, E>`. `.as_ref()` matches
+	// `KeyedDepends<K, Result<T, E>>` derefs to `Result<T, E>`. `.as_ref()` matches
 	// on `Result<&SnippetListConfig, &ConfigError>` without consuming `cfg`.
 	match (*cfg).as_ref() {
 		Ok(cfg) => {
@@ -70,7 +74,8 @@ pub async fn config(
 /// Success response: 200 OK with array of snippets
 #[get("/snippets/", name = "snippets-list")]
 pub async fn list(#[inject] db: DatabaseConnection) -> ViewResult<Response> {
-	let snippets = Manager::<Snippet>::new().all().all_with_db(&db).await?;
+	let mut db = db;
+	let snippets = Manager::<Snippet>::new().all().all_with_db(&mut db).await?;
 	let snippet_responses: Vec<SnippetResponse> =
 		snippets.iter().map(SnippetResponse::from_model).collect();
 
@@ -95,6 +100,7 @@ pub async fn create(
 	Json(serializer): Json<SnippetSerializer>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
+	let mut db = db;
 	// `pre_validate = true` on the route macro extracts `Json<SnippetSerializer>`
 	// into a temporary, calls `Validate::validate(&__tmp)`, then re-destructures
 	// into the original `Json(serializer)` binding. No manual `serializer.validate()?`
@@ -114,7 +120,7 @@ pub async fn create(
 		.finish();
 
 	let created = Manager::<Snippet>::new()
-		.create_with_conn(&db, &snippet)
+		.create_with_conn(&mut db, &snippet)
 		.await?;
 
 	let response_data = json!({
@@ -139,9 +145,10 @@ pub async fn retrieve(
 	Path(snippet_id): Path<i64>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
+	let mut db = db;
 	let snippets = Manager::<Snippet>::new()
 		.get(snippet_id)
-		.all_with_db(&db)
+		.all_with_db(&mut db)
 		.await?;
 
 	let snippet = match snippets.first() {
@@ -181,12 +188,13 @@ pub async fn update(
 	Json(serializer): Json<SnippetSerializer>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
+	let mut db = db;
 	// Manual validation — see module-level comment on why `pre_validate = true`
 	// is not used here.
 	serializer.validate()?;
 
 	let manager = Manager::<Snippet>::new();
-	let existing = manager.get(snippet_id).all_with_db(&db).await?;
+	let existing = manager.get(snippet_id).all_with_db(&mut db).await?;
 
 	let mut snippet = match existing.into_iter().next() {
 		Some(snippet) => snippet,
@@ -202,7 +210,7 @@ pub async fn update(
 	snippet.code = serializer.code.clone();
 	snippet.language = serializer.language.clone();
 
-	let updated = manager.update_with_conn(&db, &snippet).await?;
+	let updated = manager.update_with_conn(&mut db, &snippet).await?;
 
 	let response_data = json!({
 		"message": "Snippet updated",
@@ -226,8 +234,9 @@ pub async fn delete(
 	Path(snippet_id): Path<i64>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
+	let mut db = db;
 	let manager = Manager::<Snippet>::new();
-	let existing = manager.get(snippet_id).all_with_db(&db).await?;
+	let existing = manager.get(snippet_id).all_with_db(&mut db).await?;
 
 	if existing.is_empty() {
 		let error = json::to_string(&json!({"error": "Snippet not found"}))?;
@@ -236,7 +245,7 @@ pub async fn delete(
 			.with_body(error));
 	}
 
-	manager.delete_with_conn(&db, snippet_id).await?;
+	manager.delete_with_conn(&mut db, snippet_id).await?;
 
 	// Return 204 No Content for successful deletion
 	Ok(Response::new(StatusCode::NO_CONTENT))

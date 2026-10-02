@@ -12,8 +12,9 @@ use reinhardt_core::exception::Result;
 use reinhardt_http::{Handler, Middleware};
 use reinhardt_http::{Request, Response};
 
-use super::caching::CacheControlConfig;
+use super::caching::{CacheControlConfig, CachePolicy};
 use super::handler::{StaticError, StaticFileHandler};
+use super::template_integration::TemplateStaticConfig;
 
 /// Detected WASM entry point for auto-injection.
 #[derive(Debug, Clone)]
@@ -43,7 +44,9 @@ pub struct StaticFilesConfig {
 	pub index_file: Option<PathBuf>,
 	/// File extensions to serve (empty = all)
 	pub allowed_extensions: Vec<String>,
-	/// Path prefixes to exclude from SPA fallback (e.g., ["/api/", "/docs"])
+	/// Path prefixes to exclude from SPA fallback (e.g., ["/api/", "/docs"]).
+	/// Matching is path-segment aware, so `/docs` matches `/docs` and
+	/// `/docs/guide` but not `/docs-old`.
 	pub excluded_prefixes: Vec<String>,
 	/// Path prefixes that bypass this middleware entirely.
 	///
@@ -80,6 +83,13 @@ pub struct StaticFilesConfig {
 	pub wasm_entry: Option<String>,
 	/// Manifest mapping original filenames to hashed filenames
 	pub wasm_manifest: Option<HashMap<String, String>>,
+	/// Manifest aliases used to serve unhashed request paths from hashed files.
+	pub manifest_aliases: HashMap<String, String>,
+	/// Static URL resolver applied to `{{ static_url("...") }}` in SPA HTML responses.
+	///
+	/// This preserves source templates for production collection while allowing
+	/// development SPA fallbacks to resolve framework-managed static assets.
+	pub template_static_config: Option<TemplateStaticConfig>,
 	/// Trusted HTML fragments appended to SPA HTML responses.
 	///
 	/// These fragments are not escaped. They are intended for framework-owned
@@ -102,6 +112,8 @@ impl Default for StaticFilesConfig {
 			auto_inject_wasm: true,
 			wasm_entry: None,
 			wasm_manifest: None,
+			manifest_aliases: HashMap::new(),
+			template_static_config: None,
 			trusted_html_injections: Vec::new(),
 		}
 	}
@@ -236,6 +248,18 @@ impl StaticFilesConfig {
 	/// Set the WASM manifest for filename resolution (e.g., hashed filenames).
 	pub fn wasm_manifest(mut self, manifest: HashMap<String, String>) -> Self {
 		self.wasm_manifest = Some(manifest);
+		self
+	}
+
+	/// Set manifest aliases used while resolving static file requests.
+	pub fn manifest_aliases(mut self, aliases: HashMap<String, String>) -> Self {
+		self.manifest_aliases = aliases;
+		self
+	}
+
+	/// Set the static URL resolver used while serving SPA HTML fallbacks.
+	pub fn template_static_config(mut self, config: TemplateStaticConfig) -> Self {
+		self.template_static_config = Some(config);
 		self
 	}
 
@@ -411,6 +435,18 @@ impl StaticFilesMiddleware {
 		format!("{url_prefix}{resolved}")
 	}
 
+	/// Resolve static URL template expressions in an SPA HTML response.
+	fn render_static_url_templates(html: &str, config: &TemplateStaticConfig) -> String {
+		static STATIC_URL_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+			regex::Regex::new(r#"\{\{\s*static_url\("([^"]+)"\)\s*\}\}"#).unwrap()
+		});
+		STATIC_URL_RE
+			.replace_all(html, |captures: &regex::Captures| {
+				config.resolve_url(&captures[1])
+			})
+			.into_owned()
+	}
+
 	/// Inject a WASM auto-loader script into HTML content before `</body>`.
 	///
 	/// If no `</body>` tag is found (case-insensitive), the script is appended to the end.
@@ -512,6 +548,43 @@ impl StaticFilesMiddleware {
 		})
 	}
 
+	/// Check if a path matches an excluded prefix on a path-segment boundary.
+	fn matches_excluded_prefix(path: &str, prefix: &str) -> bool {
+		let normalized_path = Self::normalize_prefix_match_path(path);
+		let normalized_prefix = Self::normalize_prefix_match_path(prefix);
+		if normalized_prefix.contains('{') {
+			let path_segments = normalized_path.trim_matches('/').split('/');
+			let prefix_segments = normalized_prefix.trim_matches('/').split('/');
+			let path_segments = path_segments.collect::<Vec<_>>();
+			let prefix_segments = prefix_segments.collect::<Vec<_>>();
+			return path_segments.len() == prefix_segments.len()
+				&& prefix_segments
+					.iter()
+					.zip(path_segments)
+					.all(|(expected, actual)| {
+						if expected.starts_with('{') && expected.ends_with('}') {
+							let parameter = expected
+								.trim_start_matches('{')
+								.trim_end_matches('}')
+								.trim_start_matches('<')
+								.trim_end_matches('>');
+							match parameter.split_once(':').map(|(kind, _)| kind) {
+								Some("int") => actual.parse::<i64>().is_ok(),
+								Some(_) => false,
+								None => true,
+							}
+						} else {
+							*expected == actual
+						}
+					});
+		}
+		if normalized_prefix.ends_with('/') {
+			return normalized_path.starts_with(&normalized_prefix);
+		}
+		let boundary = normalized_prefix.trim_end_matches('/');
+		normalized_path == boundary || normalized_path.starts_with(&format!("{boundary}/"))
+	}
+
 	/// Check if the request path matches the URL prefix.
 	fn matches_prefix(&self, path: &str) -> bool {
 		if self.config.url_prefix == "/" {
@@ -553,7 +626,12 @@ impl StaticFilesMiddleware {
 
 	/// Try to serve a static file.
 	async fn try_serve(&self, path: &str) -> Option<Response> {
-		match self.handler.serve(path).await {
+		let manifest_alias = self
+			.config
+			.manifest_aliases
+			.get(path.trim_start_matches('/'));
+		let resolved_path = manifest_alias.map_or(path, String::as_str);
+		match self.handler.serve(resolved_path).await {
 			Ok(file) => {
 				// Refs #5186: directory index responses must receive the same
 				// WASM bootstrap as SPA fallback responses.
@@ -572,13 +650,18 @@ impl StaticFilesMiddleware {
 
 				// Only set cache headers when caching is enabled
 				if self.config.cache_config.enabled {
-					let policy = self.config.cache_config.get_policy(path);
-					let cache_value = policy.to_header_value();
+					let (cache_value, vary) = if manifest_alias.is_some() {
+						let policy = CachePolicy::short_term();
+						(policy.to_header_value(), policy.vary)
+					} else {
+						let policy = self.config.cache_config.get_policy(path);
+						(policy.to_header_value(), policy.vary.clone())
+					};
 					response = response.with_header("Cache-Control", &cache_value);
 
 					// Apply Vary header if specified in the policy
-					if let Some(vary) = &policy.vary {
-						response = response.with_header("Vary", vary);
+					if let Some(vary) = vary {
+						response = response.with_header("Vary", &vary);
 					}
 				}
 
@@ -625,37 +708,43 @@ impl StaticFilesMiddleware {
 			.and_then(|n| n.to_str())
 			.unwrap_or("index.html");
 
-		// Apply WASM and trusted development-script injections if needed.
-		let final_content =
-			if self.wasm_entry.is_some() || !self.config.trusted_html_injections.is_empty() {
-				match String::from_utf8(content) {
-					Ok(html) => {
-						let mut injected = html;
-						if let Some(ref entry) = self.wasm_entry {
-							injected = Self::inject_wasm_script(
-								&injected,
-								entry,
-								&self.config.url_prefix,
-								self.config.wasm_manifest.as_ref(),
-							);
-							tracing::debug!("injected WASM auto-loader into SPA response");
-						}
-						for fragment in &self.config.trusted_html_injections {
-							injected = Self::inject_trusted_html_fragment(&injected, fragment);
-						}
-						injected.into_bytes()
+		// Apply static URL resolution, WASM, and trusted development-script injections if needed.
+		let final_content = if self.wasm_entry.is_some()
+			|| self.config.template_static_config.is_some()
+			|| !self.config.trusted_html_injections.is_empty()
+		{
+			match String::from_utf8(content) {
+				Ok(html) => {
+					let mut injected = html;
+					if let Some(template_static_config) = &self.config.template_static_config {
+						injected =
+							Self::render_static_url_templates(&injected, template_static_config);
 					}
-					Err(e) => {
-						tracing::warn!(
-							"SPA fallback is not valid UTF-8, serving raw content: {}",
-							e
+					if let Some(ref entry) = self.wasm_entry {
+						injected = Self::inject_wasm_script(
+							&injected,
+							entry,
+							&self.config.url_prefix,
+							self.config.wasm_manifest.as_ref(),
 						);
-						e.into_bytes()
+						tracing::debug!("injected WASM auto-loader into SPA response");
 					}
+					for fragment in &self.config.trusted_html_injections {
+						injected = Self::inject_trusted_html_fragment(&injected, fragment);
+					}
+					injected.into_bytes()
 				}
-			} else {
-				content
-			};
+				Err(e) => {
+					tracing::warn!(
+						"SPA fallback is not valid UTF-8, serving raw content: {}",
+						e
+					);
+					e.into_bytes()
+				}
+			}
+		} else {
+			content
+		};
 
 		// Generate ETag from final content (post-injection)
 		let etag = {
@@ -768,7 +857,7 @@ impl Middleware for StaticFilesMiddleware {
 				.config
 				.excluded_prefixes
 				.iter()
-				.any(|prefix| path.starts_with(prefix))
+				.any(|prefix| Self::matches_excluded_prefix(path, prefix))
 			&& let Some(response) = self.serve_spa_fallback().await
 		{
 			return Ok(response);
@@ -840,6 +929,44 @@ mod tests {
 
 		assert!(middleware.matches_prefix("/app.js"));
 		assert!(middleware.matches_prefix("/api/users"));
+	}
+
+	#[test]
+	fn test_excluded_prefix_matches_segment_boundary() {
+		assert!(StaticFilesMiddleware::matches_excluded_prefix(
+			"/ws/chat", "/ws/chat"
+		));
+		assert!(StaticFilesMiddleware::matches_excluded_prefix(
+			"/ws/chat/42",
+			"/ws/chat"
+		));
+		assert!(!StaticFilesMiddleware::matches_excluded_prefix(
+			"/ws/chat-history",
+			"/ws/chat"
+		));
+		assert!(!StaticFilesMiddleware::matches_excluded_prefix(
+			"/events", "/events/"
+		));
+		assert!(StaticFilesMiddleware::matches_excluded_prefix(
+			"/events/42",
+			"/events/"
+		));
+		assert!(StaticFilesMiddleware::matches_excluded_prefix(
+			"/events/42",
+			"/events/{event_id}"
+		));
+		assert!(!StaticFilesMiddleware::matches_excluded_prefix(
+			"/events/42/details",
+			"/events/{event_id}"
+		));
+		assert!(StaticFilesMiddleware::matches_excluded_prefix(
+			"/events/42",
+			"/events/{<int:event_id>}"
+		));
+		assert!(!StaticFilesMiddleware::matches_excluded_prefix(
+			"/events/not-an-int",
+			"/events/{<int:event_id>}"
+		));
 	}
 
 	#[test]
@@ -1252,6 +1379,37 @@ mod tests {
 		assert!(
 			!js_response.headers.contains_key("Cache-Control"),
 			"js response should not carry Cache-Control when cache is disabled",
+		);
+	}
+
+	#[tokio::test]
+	async fn test_manifest_alias_uses_revalidating_cache_policy() {
+		// Arrange
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(
+			dir.path().join("app.12345678.js"),
+			b"export const version = 1;",
+		)
+		.unwrap();
+		let config = StaticFilesConfig::new(dir.path()).manifest_aliases(HashMap::from([(
+			"app.js".to_string(),
+			"app.12345678.js".to_string(),
+		)]));
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let response = middleware
+			.try_serve("app.js")
+			.await
+			.expect("manifest alias should be served");
+
+		// Assert
+		assert_eq!(
+			response
+				.headers
+				.get("Cache-Control")
+				.and_then(|value| value.to_str().ok()),
+			Some("public, must-revalidate, max-age=300")
 		);
 	}
 
@@ -1688,6 +1846,34 @@ mod tests {
 		assert!(body.contains("await import('/my_app.js')"));
 		assert!(body.contains("await init({ module_or_path: '/my_app_bg.wasm' })"));
 		assert!(body.contains("</body></html>"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_spa_fallback_resolves_static_url_templates() {
+		// Arrange
+		let directory = tempfile::tempdir().unwrap();
+		std::fs::write(
+			directory.path().join("index.html"),
+			"<html><head><link rel=\"stylesheet\" href=\"{{ static_url(\"__reinhardt__/components.css\") }}\"></head><body></body></html>",
+		)
+		.unwrap();
+		let config = StaticFilesConfig::new(directory.path())
+			.auto_inject_wasm(false)
+			.template_static_config(crate::staticfiles::TemplateStaticConfig::new(
+				"/assets/".to_string(),
+			));
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let response = middleware.serve_spa_fallback().await.unwrap();
+
+		// Assert
+		let body = std::str::from_utf8(&response.body).unwrap();
+		assert_eq!(
+			body,
+			"<html><head><link rel=\"stylesheet\" href=\"/assets/__reinhardt__/components.css\"></head><body></body></html>"
+		);
 	}
 
 	#[rstest]

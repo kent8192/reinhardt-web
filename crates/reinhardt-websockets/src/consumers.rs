@@ -25,7 +25,7 @@
 //! #
 //! async fn on_message(&self, ctx: &mut ConsumerContext, msg: Message) -> WebSocketResult<()> {
 //!     // Resolve dependencies from DI context
-//!     // let db: Arc<DatabaseConnection> = ctx.resolve().await?;
+//!     // let db: DatabaseConnection = ctx.resolve().await?;
 //!     // let cache: CacheService = ctx.resolve_uncached().await?;
 //!
 //!     // Use the dependencies...
@@ -44,7 +44,9 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 #[cfg(feature = "di")]
-use reinhardt_di::{Injectable, InjectionContext};
+use reinhardt_di::Injectable;
+#[cfg(feature = "di")]
+pub use reinhardt_di::InjectionContext;
 
 /// Consumer context containing connection and message information
 ///
@@ -194,7 +196,7 @@ impl ConsumerContext {
 	/// # Examples
 	///
 	/// ```ignore
-	/// let db: Arc<DatabaseConnection> = ctx.resolve().await?;
+	/// let db: DatabaseConnection = ctx.resolve().await?;
 	/// ```
 	#[cfg(feature = "di")]
 	pub async fn resolve<T>(&self) -> WebSocketResult<T>

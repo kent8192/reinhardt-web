@@ -1,0 +1,13 @@
+error[E0308]: mismatched types
+ --> tests/ui/hooks/fail/document_head_auto_deps.rs:7:38
+  |
+7 |     use_page_title(|| "Document title", deps_auto!());
+  |     --------------                      ^^^^^^^^^^^^ expected `ExplicitDeps`, found `ReactiveDeps`
+  |     |
+  |     arguments to this function are incorrect
+  |
+note: function defined here
+ --> src/reactive/hooks/head.rs
+  |
+  | pub fn use_page_title<F, T>(mut factory: F, deps: ExplicitDeps)
+  |        ^^^^^^^^^^^^^^

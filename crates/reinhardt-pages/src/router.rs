@@ -9,7 +9,9 @@
 //! - **History API Integration**: `pushState` and `popstate` handling
 //! - **Named Routes**: Reverse URL lookup by route name
 //! - **Reactive Navigation**: Signal-based current route tracking
-//! - **Route Guards**: Optional authentication/authorization checks
+//! - **Route Guards**: Synchronous matching predicates and asynchronous
+//!   navigation decisions
+//! - **Route Loaders**: Entry-blocking layout and leaf data with prefetch
 //!
 //! ## Usage
 //!
@@ -59,10 +61,75 @@
 //! deprecated — they are rendering primitives with no migration target.
 //!
 //! See `kent8192/reinhardt-web#4234` for the full design.
+//!
+//! # Layout Routes
+//!
+//! `ClientRouter::routes` supports nested layout routes for SPA shells. A
+//! `#[layout]` function receives normal `Path` / `Query` extractors plus one
+//! [`Outlet`](crate::component::Outlet) parameter, and child `#[component]`
+//! paths are relative to that layout scope:
+//!
+//! ```ignore
+//! use reinhardt_pages::{Outlet, Page, Path, component, layout, page};
+//! use reinhardt_urls::routers::ClientRouter;
+//!
+//! #[layout("/workspaces/{workspace_id}/", name = "workspace-shell")]
+//! fn workspace_shell(Path(workspace_id): Path<i64>, outlet: Outlet) -> Page {
+//!     page!(|workspace_id: i64, outlet: Outlet| {
+//!         section {
+//!             h1 { { format!("Workspace {workspace_id}") } }
+//!             { outlet }
+//!         }
+//!     })(workspace_id, outlet)
+//! }
+//!
+//! #[component("jobs", name = "workspace-jobs")]
+//! fn workspace_jobs(Path(workspace_id): Path<i64>) -> Page {
+//!     page!(|workspace_id: i64| {
+//!         p { { format!("Jobs for {workspace_id}") } }
+//!     })(workspace_id)
+//! }
+//!
+//! let router = ClientRouter::new().routes(|routes| {
+//!     routes.layout(workspace_shell, |children| {
+//!         children.component(workspace_jobs)
+//!     })
+//! });
+//! ```
+//!
+//! On browser WASM, navigating between sibling children with the same layout
+//! key preserves the layout shell and remounts only the outlet subtree.
+//!
+//! Route loaders are bound with `loader = ...` on `#[component]` and
+//! `#[layout]`; see [`crate::router::loader`] and
+//! `docs/route_loaders.md` for the prepare/commit and hydration contract.
+//!
+//! ## Asynchronous navigation guards
+//!
+//! Attach one `navigation_guard = ...` option to a `#[component]` or
+//! `#[layout]` and define the function with `#[navigation_guard]`. The
+//! [`NavigationContext`] is read-only and includes the complete destination,
+//! including its query. [`NavigationDecision`] controls allow, redirect,
+//! not-found, and forbidden outcomes; [`NavigationGuardError`] represents an
+//! unexpected safe error.
+//!
+//! Matched guards run sequentially from root to leaf before loaders and again
+//! immediately before commit. They share the existing [`crate::QueryClient`] cache,
+//! run for prefetch and hydration, and never replace endpoint authorization.
+//! Existing synchronous `ClientRoute::with_guard` and rendering
+//! [`guard()`]/[`guard_or()`] helpers retain their current semantics. See
+//! `docs/navigation_guards.md` for the complete contract.
 
 mod components;
 mod history;
 mod navigate;
+mod params;
+
+pub mod loader;
+pub mod loader_registry;
+pub mod loader_store;
+pub mod navigation_guard;
+pub mod navigation_guard_registry;
 
 /// Manouche DSL v2 spec §4.3 `FromRequest`-based page handlers.
 ///
@@ -79,15 +146,18 @@ mod navigate;
 ///
 /// ```ignore
 /// use reinhardt_pages::router::request::{
-///     ExtractError, FromRequest, PathParam, RouteContext,
+///     ExtractError, FromRequest, OptionalQueryParam, RouteContext,
 /// };
-/// use reinhardt_urls::routers::ClientRouter;
 ///
-/// struct UserPageProps { id: PathParam<i32> }
+/// struct DeploymentRequest {
+///     logs: OptionalQueryParam<i64>,
+/// }
 ///
-/// impl FromRequest for UserPageProps {
+/// impl FromRequest for DeploymentRequest {
 ///     fn from_request(ctx: &RouteContext) -> Result<Self, ExtractError> {
-///         Ok(Self { id: PathParam::extract(ctx, "id")? })
+///         Ok(Self {
+///             logs: OptionalQueryParam::extract(ctx, "logs")?,
+///         })
 ///     }
 /// }
 /// ```
@@ -98,15 +168,23 @@ mod navigate;
 /// this submodule.
 pub mod request {
 	pub use reinhardt_urls::routers::client_router::from_request::{
-		ExtractError, FromRequest, PathParam, QueryParam, RouteContext,
+		ExtractError, FromRequest, OptionalQueryParam, PathParam, QueryParam, RouteContext,
 	};
 }
 
-pub use components::{Link, Redirect, RouterOutlet, guard, guard_or};
+pub use components::{Link, PrefetchMode, Redirect, RouterOutlet, guard, guard_or};
 pub use history::{HistoryState, NavigationType};
-pub use navigate::navigate;
+pub use navigate::{navigate, navigate_named, navigate_or_reload};
+pub use navigation_guard::{
+	NavigationContext, NavigationDecision, NavigationGuard, NavigationGuardError, NavigationKind,
+};
+pub use navigation_guard_registry::{
+	NavigationGuardExecutor, NavigationGuardFuture, NavigationGuardRegistration,
+	NavigationGuardRegistry, execute_navigation_guards,
+};
+pub use params::route_params;
 pub use reinhardt_urls::routers::ClientRouter;
-pub use reinhardt_urls::routers::client_router::Path;
+pub use reinhardt_urls::routers::client_router::{NavigationGuardId, Path, RouteLoaderId};
 // `setup_popstate_listener` is wasm-only — see `history` module docs.
 #[cfg(wasm)]
 pub use history::setup_popstate_listener;

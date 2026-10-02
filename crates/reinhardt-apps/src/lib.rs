@@ -127,7 +127,7 @@ pub use reinhardt_core::exception::{Error, Result};
 pub use reinhardt_server::{HttpServer, serve};
 
 // Re-export from reinhardt-http (cross-target).
-pub use reinhardt_http::{Handler, Middleware, MiddlewareChain};
+pub use reinhardt_http::{Handler, Middleware, MiddlewareChain, SyncHandler, SyncHandlerAdapter};
 
 // Re-export inventory for macro usage (native-only; inventory relies on
 // link-section constructors not portable to `wasm32-unknown-unknown`).
@@ -197,8 +197,8 @@ mod tests {
 			.build()
 			.unwrap();
 
-		assert_eq!(request.query_params.get("foo"), Some(&"bar".to_string()));
-		assert_eq!(request.query_params.get("baz"), Some(&"qux".to_string()));
+		assert_eq!(request.query_params.get("foo"), Some("bar"));
+		assert_eq!(request.query_params.get("baz"), Some("qux"));
 	}
 
 	#[test]

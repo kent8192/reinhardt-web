@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.4.0-alpha.14...reinhardt-admin-cli@v0.4.0-alpha.15) - 2026-09-10
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+### Testing
+
+- *(admin)* cover migration source upgrade lifecycle
+- *(migrations)* enforce exact source upgrade assertions
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.4.0-alpha.13...reinhardt-admin-cli@v0.4.0-alpha.14) - 2026-09-07
+
+### Maintenance
+
+- merge develop/0.4.0 into migration source PR
+
+### Added
+
+- Add offline `migrations upgrade-source [PATH]` with preflight `--check` mode
+  for versioned, source-preserving generated migration upgrades.
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.4.0-alpha.10...reinhardt-admin-cli@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Fixed
+
+- *(formatter)* stabilize direct page capture indentation
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.4.0-alpha.8...reinhardt-admin-cli@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.3.15...reinhardt-admin-cli@v0.3.16) - 2026-09-08
 
 ### Maintenance
@@ -43,6 +91,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.4.0-alpha.6...reinhardt-admin-cli@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.3.2...reinhardt-admin-cli@v0.4.0-alpha.1) - 2026-07-21
+
+### Changed
+
+- *(pages)* migrate hooks to deps list syntax
+
+### Fixed
+
+- *(pages)* harden hook dependency migration
+- *(pages)* harden dependency migration
+- *(pages)* harden dependency migration edge cases
+- *(pages)* harden dependency migration edge cases
+- *(admin)* satisfy migration clippy lints
+- *(admin)* preserve unresolved local hook calls
+- *(admin)* preserve unresolved omitted hook calls
+- *(pages)* repair hook dependency migration tests
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- migrate dependency policy checks to cargo-deny
+- merge develop/0.4.0 into fix/issue-5561-remove-anyhow
+- merge develop/0.4.0 into remove-anyhow branch
+- merge develop/0.4.0 into anyhow removal branch
+
+### Added
+
+- *(formatter)* delegate component-scoped `style!` formatting to `reinhardt-formatter`
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.3.9...reinhardt-admin-cli@v0.3.10) - 2026-08-22
 
 ### Maintenance

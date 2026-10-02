@@ -1,0 +1,5 @@
+error: `fields` is not allowed in a named ClientForm view
+ --> tests/ui/client_form/view/fail/standalone_fields.rs:9:3
+  |
+9 |         fields: {
+  |         ^^^^^^

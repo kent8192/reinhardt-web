@@ -337,8 +337,7 @@ mod tests {
 
 	#[fixture]
 	fn database_url() -> String {
-		// Share one in-memory database within the pool, while isolating each
-		// backend's audit records from concurrently active test backends.
+		// Give each backend its own database while sharing it across pooled connections.
 		format!("sqlite:file:{}?mode=memory&cache=shared", random_test_key())
 	}
 
@@ -404,9 +403,8 @@ mod tests {
 		#[future(awt)] backend: DatabaseAuditBackend,
 		#[from(backend)]
 		#[future(awt)]
-		independent_backend: DatabaseAuditBackend,
+		other_backend: DatabaseAuditBackend,
 	) {
-		// Arrange
 		let mut changes = HashMap::new();
 		changes.insert(
 			"test_key".to_string(),
@@ -429,7 +427,7 @@ mod tests {
 		let events = backend.get_events(None).await.unwrap();
 		assert_eq!(events.len(), 1);
 		assert_eq!(events[0].event_type, EventType::ConfigUpdate);
-		assert_eq!(independent_backend.get_events(None).await.unwrap().len(), 0);
+		assert_eq!(other_backend.get_events(None).await.unwrap().len(), 0);
 	}
 
 	#[rstest]

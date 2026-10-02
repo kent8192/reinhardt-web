@@ -11,6 +11,9 @@ use crate::core::{HeadMacro, TypedHeadAttr, TypedHeadContent, TypedHeadElement, 
 /// Known safe head element tag names.
 const ALLOWED_HEAD_TAGS: &[&str] = &["title", "meta", "link", "style", "base", "noscript"];
 
+/// Dangerous URL schemes rejected for literal URL attributes.
+const DANGEROUS_URL_SCHEMES: &[&str] = &["javascript:", "data:", "vbscript:"];
+
 /// Validates a `HeadMacro`.
 ///
 /// Performs the following checks:
@@ -43,6 +46,10 @@ pub fn validate_head(ast: &HeadMacro) -> Result<TypedHeadMacro> {
 					ALLOWED_HEAD_TAGS.join(", ")
 				),
 			));
+		}
+
+		if tag_name == "base" {
+			validate_base_element(elem)?;
 		}
 
 		// Build typed attributes, extracting literal values where possible.
@@ -84,6 +91,60 @@ pub fn validate_head(ast: &HeadMacro) -> Result<TypedHeadMacro> {
 		elements: validated_elements,
 		span: ast.span,
 	})
+}
+
+/// Validate that a base element has exactly one value-bearing safe href.
+fn validate_base_element(elem: &crate::core::HeadElement) -> Result<()> {
+	if elem.attrs.len() != 1
+		|| crate::core::attr_utils::ident_to_html_attr_name(&elem.attrs[0].name.to_string())
+			!= "href"
+	{
+		return Err(syn::Error::new(
+			elem.span,
+			"base tag requires exactly one 'href' attribute with a value",
+		));
+	}
+
+	let href = &elem.attrs[0];
+	if matches!(&href.value, Expr::Lit(expr_lit) if matches!(&expr_lit.lit, Lit::Bool(_))) {
+		return Err(syn::Error::new(
+			href.span,
+			"base tag requires exactly one 'href' attribute with a value",
+		));
+	}
+
+	validate_url_scheme(&href.value, href.span, "href", "base")
+}
+
+/// Validate a literal URL expression against dangerous schemes.
+fn validate_url_scheme(
+	expr: &Expr,
+	span: proc_macro2::Span,
+	attr_name: &str,
+	tag_name: &str,
+) -> Result<()> {
+	if let Expr::Lit(expr_lit) = expr
+		&& let Lit::Str(value) = &expr_lit.lit
+	{
+		let normalized = value.value().to_ascii_lowercase();
+		let trimmed = normalized.trim_start();
+
+		for scheme in DANGEROUS_URL_SCHEMES {
+			if trimmed.starts_with(scheme) {
+				return Err(syn::Error::new(
+					span,
+					format!(
+						"dangerous URL scheme '{}' is not allowed in {} {} attribute",
+						scheme.trim_end_matches(':'),
+						tag_name,
+						attr_name,
+					),
+				));
+			}
+		}
+	}
+
+	Ok(())
 }
 
 /// Extract a string value from a `syn::Expr` if it is a literal.
@@ -201,5 +262,77 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert!(err.to_string().contains("http-equiv=\"refresh\""));
+	}
+
+	#[rstest]
+	fn test_validate_head_base_requires_exactly_one_href() {
+		for input in [
+			quote!(|| { base {} }),
+			quote!(|| { base { href } }),
+			quote!(|| { base { href: false } }),
+			quote!(|| {
+				base {
+					href: "/app/",
+					href: "/other/",
+				}
+			}),
+			quote!(|| { base { target: "_blank" } }),
+		] {
+			let ast = parse_head(input).unwrap();
+			let result = validate_head(&ast);
+			assert!(result.is_err());
+			assert!(result.unwrap_err().to_string().contains("base tag"));
+		}
+	}
+
+	#[rstest]
+	fn test_validate_head_base_rejects_dangerous_url_schemes() {
+		for input in [
+			quote!(|| {
+				base {
+					href: "javascript:alert(1)",
+				}
+			}),
+			quote!(|| {
+				base {
+					href: "data:text/html,unsafe",
+				}
+			}),
+			quote!(|| {
+				base {
+					href: "vbscript:MsgBox",
+				}
+			}),
+		] {
+			let ast = parse_head(input).unwrap();
+			let result = validate_head(&ast);
+			assert!(result.is_err());
+			assert!(
+				result
+					.unwrap_err()
+					.to_string()
+					.contains("dangerous URL scheme")
+			);
+		}
+	}
+
+	#[rstest]
+	fn test_validate_head_base_accepts_safe_href() {
+		let ast = parse_head(quote!(|| { base { href: "/app/" } })).unwrap();
+
+		let typed = validate_head(&ast).unwrap();
+
+		assert_eq!(typed.elements[0].tag, "base");
+		assert_eq!(typed.elements[0].attrs[0].name, "href");
+		assert_eq!(typed.elements[0].attrs[0].value, "/app/");
+	}
+
+	#[rstest]
+	fn test_validate_head_base_normalizes_raw_href() {
+		let ast = parse_head(quote!(|| { base { r#href: "/app/" } })).unwrap();
+
+		let typed = validate_head(&ast).unwrap();
+
+		assert_eq!(typed.elements[0].attrs[0].name, "href");
 	}
 }

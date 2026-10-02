@@ -1,0 +1,5 @@
+error: ModelEnum variants require #[model_enum(value = ...)]
+ --> tests/ui/model_enum/fail/missing_value.rs:6:2
+  |
+6 |     Queued,
+  |     ^^^^^^

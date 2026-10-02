@@ -37,6 +37,39 @@ fn index_name(operation: &Operation) -> String {
 	}
 }
 
+fn repair_index(
+	expressions: &[&str],
+	predicate: Option<&str>,
+	explicit_name: Option<&str>,
+) -> Operation {
+	let Operation::CreateIndex {
+		table,
+		columns,
+		unique,
+		index_type,
+		where_clause,
+		concurrently,
+		expressions,
+		mysql_options,
+		operator_class,
+	} = create_index(expressions, predicate)
+	else {
+		panic!("create_index must return CreateIndex");
+	};
+	Operation::CreateIndexRepair {
+		table,
+		name: explicit_name.map(str::to_owned),
+		columns,
+		unique,
+		index_type,
+		where_clause,
+		concurrently,
+		expressions,
+		mysql_options,
+		operator_class,
+	}
+}
+
 #[rstest]
 #[case::expressions(
 	create_index(&["(data->>'tenant')", "sequence"], None),
@@ -104,8 +137,13 @@ fn statement_rendering_uses_the_same_index_name(#[case] operation: Operation) {
 
 	// Assert
 	assert_eq!(
-		sql.split_once(" ON ").unwrap().0,
-		format!("CREATE INDEX \"{expected_name}\"")
+		sql.split_once(" ON ")
+			.unwrap()
+			.0
+			.strip_prefix("CREATE INDEX ")
+			.unwrap()
+			.trim_matches('"'),
+		expected_name
 	);
 }
 
@@ -124,10 +162,18 @@ fn create_and_rollback_use_the_same_index_name(
 	let where_sql = predicate
 		.filter(|_| !matches!(dialect, SqlDialect::Mysql))
 		.map_or_else(String::new, |predicate| format!(" WHERE {predicate}"));
-	let on_table = if matches!(dialect, SqlDialect::Mysql) {
-		" ON events"
+	let mysql = matches!(dialect, SqlDialect::Mysql);
+	let on_table = if mysql { " ON `events`" } else { "" };
+	let table = if mysql { "`events`" } else { "events" };
+	let forward_name = if mysql {
+		format!("`{name}`")
 	} else {
-		""
+		name.clone()
+	};
+	let reverse_name = if mysql {
+		format!("`{name}`")
+	} else {
+		format!("\"{name}\"")
 	};
 
 	// Act
@@ -144,10 +190,16 @@ fn create_and_rollback_use_the_same_index_name(
 	// Assert
 	assert_eq!(
 		sql,
-		format!("CREATE INDEX {name} ON events ((data->>'tenant'), sequence){where_sql};")
+		format!("CREATE INDEX {forward_name} ON {table} ((data->>'tenant'), sequence){where_sql};")
 	);
-	assert_eq!(reverse, vec![format!("DROP INDEX {name}{on_table};")]);
-	assert_eq!(reverse_operation.to_sql(&dialect), reverse[0]);
+	assert_eq!(
+		reverse,
+		vec![format!("DROP INDEX {reverse_name}{on_table};")]
+	);
+	assert_eq!(
+		reverse_operation.to_sql(&dialect),
+		format!("DROP INDEX {forward_name}{on_table};")
+	);
 }
 
 #[rstest]
@@ -246,7 +298,7 @@ fn replay_and_removal_preserve_each_index_name() {
 	let mut model = ModelState::new("app", "Event");
 	model.table_name = "events".to_owned();
 	model.add_field(FieldState::new("sequence", FieldType::BigInteger, false));
-	model.add_field(FieldState::new("data", FieldType::JsonBinary, false));
+	model.add_field(FieldState::new("data", FieldType::Jsonb, false));
 	let mut replayed = ProjectState::new();
 	replayed.add_model(model);
 	let without_indexes = replayed.clone();
@@ -259,6 +311,17 @@ fn replay_and_removal_preserve_each_index_name() {
 
 	// Act
 	replayed.apply_migration_operations(&operations, "app");
+	let mut directly_replayed = without_indexes.clone();
+	for operation in &operations {
+		operation.state_forwards("app", &mut directly_replayed);
+	}
+	let direct_names: Vec<_> = directly_replayed
+		.find_model_by_table("events")
+		.unwrap()
+		.indexes
+		.iter()
+		.map(|index| index.name.as_str())
+		.collect();
 	let replayed_names: Vec<_> = replayed
 		.find_model_by_table("events")
 		.unwrap()
@@ -278,6 +341,7 @@ fn replay_and_removal_preserve_each_index_name() {
 
 	// Assert
 	assert_eq!(replayed_names, expected);
+	assert_eq!(direct_names, expected);
 	assert_eq!(dropped_names, expected);
 }
 
@@ -288,13 +352,11 @@ fn repair_operations_preserve_explicit_or_generated_names(#[case] explicit_name:
 	// Arrange
 	let operation = create_index(&["(data->>'tenant')", "sequence"], Some("sequence > 0"));
 	let state = ProjectState::new();
-	let drop = operation.to_reverse_operation(&state).unwrap().unwrap();
-	let mut repair = drop.to_reverse_operation(&state).unwrap().unwrap();
-	if let Operation::CreateIndexRepair { name, .. } = &mut repair {
-		*name = explicit_name.map(str::to_owned);
-	} else {
-		panic!("expected CreateIndexRepair, got {repair:?}");
-	}
+	let repair = repair_index(
+		&["(data->>'tenant')", "sequence"],
+		Some("sequence > 0"),
+		explicit_name,
+	);
 	let expected_name = explicit_name
 		.map(str::to_owned)
 		.unwrap_or_else(|| index_name(&operation));
@@ -303,8 +365,13 @@ fn repair_operations_preserve_explicit_or_generated_names(#[case] explicit_name:
 	let sql = repair.to_sql(&SqlDialect::Postgres);
 	let reverse = repair
 		.to_reverse_sql(&SqlDialect::Postgres, &state)
-		.unwrap()
 		.unwrap();
+	let reverse_operation = repair.to_reverse_operation(&state).unwrap();
+	let mut replayed = ProjectState::new();
+	let mut model = ModelState::new("app", "Event");
+	model.table_name = "events".to_owned();
+	replayed.add_model(model);
+	repair.state_forwards("app", &mut replayed);
 
 	// Assert
 	assert_eq!(
@@ -313,8 +380,12 @@ fn repair_operations_preserve_explicit_or_generated_names(#[case] explicit_name:
 			"CREATE INDEX {expected_name} ON events ((data->>'tenant'), sequence) WHERE sequence > 0;"
 		)
 	);
-	assert_eq!(index_name(&repair), expected_name);
-	assert_eq!(reverse, vec![format!("DROP INDEX {expected_name};")]);
+	assert_eq!(
+		replayed.find_model_by_table("events").unwrap().indexes[0].name,
+		expected_name
+	);
+	assert!(reverse.is_none());
+	assert!(reverse_operation.is_none());
 }
 
 #[cfg(all(feature = "postgres", feature = "backends"))]
@@ -347,7 +418,7 @@ mod postgres {
 		let table = Operation::CreateTable {
 			name: "events".to_owned(),
 			columns: vec![
-				ColumnDefinition::new("data", FieldType::JsonBinary),
+				ColumnDefinition::new("data", FieldType::Jsonb),
 				ColumnDefinition::new("sequence", FieldType::BigInteger),
 			],
 			constraints: Vec::new(),
@@ -366,6 +437,35 @@ mod postgres {
 			create_index(&[], Some("sequence > 1")),
 		];
 		let state = ProjectState::new();
+
+		// Upgrade an already-applied legacy expression index before automatic rollback.
+		let legacy_index = repair_index(
+			&["(data->>'tenant')", "sequence"],
+			None,
+			Some("idx_events_expr"),
+		);
+		connection
+			.execute(&legacy_index.to_sql(&SqlDialect::Postgres), Vec::new())
+			.await
+			.unwrap();
+		let rename = Operation::RunSQL {
+			sql: format!(
+				"ALTER INDEX idx_events_expr RENAME TO {};",
+				index_name(&indexes[0])
+			),
+			reverse_sql: None,
+		};
+		connection
+			.execute(&rename.to_sql(&SqlDialect::Postgres), Vec::new())
+			.await
+			.unwrap();
+		for sql in indexes[0]
+			.to_reverse_sql(&SqlDialect::Postgres, &state)
+			.unwrap()
+			.unwrap()
+		{
+			connection.execute(&sql, Vec::new()).await.unwrap();
+		}
 
 		// CREATE
 		for index in &indexes {

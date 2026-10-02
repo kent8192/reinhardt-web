@@ -7,6 +7,11 @@
 //! - [`Effect`]: A side effect that automatically reruns when dependencies change
 //! - [`Memo<T>`]: A cached computation that automatically updates when dependencies change
 //!
+//! Normal Pages entrypoints, including SSR rendering, hydration, and
+//! [`ClientLauncher`](crate::app::ClientLauncher), install and own reactive scopes
+//! automatically. Low-level code that creates nodes directly must use
+//! [`ReactiveScope::run`](reinhardt_core::reactive::ReactiveScope::run).
+//!
 //! ## Architecture
 //!
 //! The reactivity system is built on a pull-based model:
@@ -53,24 +58,29 @@
 //!
 //! ## Layout Effects
 //!
-//! For DOM measurements and synchronous updates before paint, use `use_layout_effect`:
+//! For DOM measurements and synchronous updates before paint, use
+//! `use_layout_effect`:
 //!
 //! ```ignore
-//! use reinhardt_pages::reactive::{Signal, hooks::{use_layout_effect, use_ref}};
+//! use reinhardt_pages::reactive::{Signal, hooks::{use_ref, use_retained_layout_effect}};
 //!
 //! let element_ref = use_ref(None::<Element>);
 //! let width = Signal::new(0);
 //!
-//! use_layout_effect({
-//!     let element_ref = element_ref.clone();
-//!     let width = width.clone();
-//!     move || {
-//!         if let Some(el) = element_ref.current().as_ref() {
-//!             // Runs synchronously before browser paint
-//!             width.set(el.offset_width());
+//! use_retained_layout_effect(
+//!     {
+//!         let element_ref = element_ref.clone();
+//!         let width = width.clone();
+//!         move || {
+//!             if let Some(el) = element_ref.current().as_ref() {
+//!                 // Runs synchronously before browser paint
+//!                 width.set(el.offset_width());
+//!             }
+//!             None::<fn()>
 //!         }
-//!     }
-//! });
+//!     },
+//!     (element_ref,),
+//! );
 //! ```
 //!
 //! **When to use `use_layout_effect`**:
@@ -88,31 +98,55 @@
 //!
 //! ## Memory Management
 //!
-//! All reactive nodes (Signals, Effects, Memos) automatically clean up their dependencies
-//! when dropped, preventing memory leaks. However, Effects that capture references to
-//! Signals will keep those Signals alive - be mindful of circular dependencies.
+//! Reactive nodes are owned by the active scope and clean up together when that scope is
+//! dropped. Reactive handles are copied keys and do not extend the scope lifetime.
 
 // Re-export core reactive primitives from reinhardt-reactive
 pub use reinhardt_core::reactive::{
-	Context, ContextGuard, Effect, EffectTiming, Memo, NodeId, NodeType, Observer, Runtime, Signal,
-	batch, context, create_context, effect, get_context, memo, provide_context, remove_context,
-	runtime, signal, with_runtime,
+	Context, ContextGuard, Effect, EffectTiming, ExplicitDeps, IntoSignalHandle, Memo, NodeId,
+	NodeType, Observer, ReactiveDeps, ReactiveScope, Runtime, Signal, batch, context,
+	copy_signal_handle, create_context, current_scope_id, effect, get_context, memo,
+	provide_context, remove_context, runtime, signal, untracked, with_runtime,
 };
 
 // WASM-specific modules (kept in reinhardt-pages)
+pub mod entity;
 pub mod hooks;
+pub(crate) mod pages_arena;
+pub mod query;
 pub mod resource;
+pub mod resource_value;
 pub mod trackable;
 
+// Normalized entity contracts are target-neutral: the same identity, arena,
+// projection, and materialization APIs are available to native SSR and WASM
+// clients. Browser-only hydration internals remain crate-private.
+pub use entity::{
+	Entity, EntityArena, EntityDependencies, EntityHandle, EntityProjection, EntityReader,
+	EntityValue, EntityVec, EntityWriter, OptionalEntity, ProjectionMaterialization,
+	ProjectionRemoval, RemovedEntities,
+};
 pub use trackable::Trackable;
 
 // Re-export resource types and the unified hook (available on all targets)
-pub use resource::{Resource, ResourceState, use_resource};
+pub use query::{
+	NoRetry, QueryClient, QueryDefaults, QueryDescriptor, QueryFamily, QueryHandle, QueryKey,
+	QueryOptions, QuerySnapshot, QueryStatus, RetryPolicy, queries, use_query,
+};
+pub(crate) use query::{
+	QueryAcquireOptions, QueryConsumer, QueryErrorPolicy, QueryLease, QueryResultError,
+};
+pub use resource::{Resource, ResourceState, use_resource, use_resource_with_key};
+pub use resource_value::{
+	LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, use_latest_resource_value,
+};
 
 // Re-export hooks
 pub use hooks::{
-	Action, ActionPhase, Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal,
-	TransitionState, use_action, use_callback, use_context, use_debug_value, use_deferred_value,
-	use_effect, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref,
-	use_shared_state, use_state, use_sync_external_store, use_transition,
+	Action, ActionPhase, ActionStateBuilder, Dispatch, EffectReturn, OptimisticState, Ref,
+	SetState, SetStateExt, SharedSetState, SharedSignal, TransitionState, use_action,
+	use_action_state, use_callback, use_context, use_debug_value, use_deferred_value, use_effect,
+	use_head, use_id, use_layout_effect, use_memo, use_optimistic, use_page_title, use_reducer,
+	use_ref, use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
+	use_sync_external_store, use_transition,
 };

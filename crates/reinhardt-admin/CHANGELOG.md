@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.17...reinhardt-admin@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- *(admin)* correct feature flag descriptions
+
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.15...reinhardt-admin@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(staticfiles)* unify pages and collected asset publication
+
+### Fixed
+
+- *(staticfiles)* preserve explicit document-relative runtime imports
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.14...reinhardt-admin@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Fixed
+
+- *(admin)* project response fields through admin policy
+- *(admin)* close response projection gaps
+- *(admin)* project field responses exactly
+- *(admin)* retain list record identifiers
+- *(admin)* separate list routing identifiers
+- *(admin)* preserve custom list primary keys
+- *(admin)* merge current main into advisory fix
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+### Testing
+
+- *(admin)* grant empty object filters on permission-granting ModelAdmins
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.13...reinhardt-admin@v0.4.0-alpha.14) - 2026-09-07
+
+### Maintenance
+
+- merge develop/0.4.0 into migration source PR
+- merge develop/0.4.0 into model form validation
+
+## [0.4.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.12...reinhardt-admin@v0.4.0-alpha.13) - 2026-09-02
+
+### Fixed
+
+- *(admin)* project response fields through admin policy
+- *(admin)* close response projection gaps
+- *(admin)* project response fields exactly
+- *(admin)* separate list routing identifiers
+- *(admin)* merge current develop into advisory fix
+- *(admin)* align object-scope regression coverage
+- *(admin)* preserve aliased edit-form values
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.10...reinhardt-admin@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.8...reinhardt-admin@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define UI and transport boundaries
+- *(security)* qualify remaining policy boundaries
+- *(security)* qualify remaining boundary assumptions
+- *(security)* document remaining boundary assumptions
+- *(security)* qualify remaining policy boundaries
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+- *(admin)* convert new FilterValue temporal and decimal variants
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.15...reinhardt-admin@v0.3.16) - 2026-09-08
 
 ### Maintenance
@@ -53,6 +147,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.6...reinhardt-admin@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Fixed
+
+- *(admin)* support typed filter values
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.3...reinhardt-admin@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- update version references to v0.4.0-alpha.4
+- update version references to v0.4.0-alpha.5
+- *(release)* restore coherent alpha.3 references
+
+### Fixed
+
+- *(db)* validate typed queryset ordering fields
+- *(db)* integrate develop/0.4.0 with typed upsert builders
+- *(release)* restore unpublished crates after partial release
+
+### Other
+
+- sync develop/0.4.0 into pgvector branch
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.1...reinhardt-admin@v0.4.0-alpha.2) - 2026-07-23
+
+### Added
+
+- *(db)* [**breaking**] add Copy-safe injected connection handles
+
+### Fixed
+
+- *(admin)* restore Arc import in database tests
+
+### Maintenance
+
+- auto-fix fmt and clippy
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.2...reinhardt-admin@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(manouche,pages)* lower typed intrinsic event handlers
+
+### Changed
+
+- *(pages)* migrate model-set error adapters
+
+### Fixed
+
+- *(manouche)* handle composed accessibility labels
+- *(admin)* satisfy strict clippy checks
+- *(pages)* align native callbacks with scoped handles
+- *(pages)* retain owner scopes for deferred work
+- *(pages)* merge deferred owner scope fixes
+- *(ci)* terminate cfg aliases macro invocations
+- *(pages)* retain mount scopes for events
+- *(pages)* scope error-kind imports to tests
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge latest develop/0.4.0 into forward-merge branch
+- merge latest main into develop forward-merge
+- *(pages)* merge develop/0.4.0 into typed events
+- merge develop/0.4.0 into retained effects
+- merge develop/0.4.0 into arena copy handles branch
+
+### Performance
+
+- [**breaking**] inline path parameter dispatch values
+
+### Testing
+
+- update path parameter assertions
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.9...reinhardt-admin@v0.3.10) - 2026-08-22
 
 ### Maintenance

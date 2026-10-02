@@ -32,7 +32,7 @@ use examples_tutorial_basis::apps::users::client::components::{
 use examples_tutorial_basis::apps::users::models::UserInfo;
 use examples_tutorial_basis::apps::users::server_fn::{current_user, login, logout, register};
 use reinhardt::pages::component::Page;
-use reinhardt::pages::server_fn::ServerFnError;
+use reinhardt::pages::server_fn::{ServerFnError, ServerFnErrorKind};
 use reinhardt::test::msw::MockServiceWorker;
 
 // ============================================================================
@@ -160,16 +160,13 @@ async fn test_login_surfaces_invalid_credentials() {
 	let err = login("alice".to_string(), "wrong".to_string())
 		.await
 		.expect_err("expected invalid-credentials error");
-	match err {
-		ServerFnError::Server { status, message } => {
-			assert_eq!(status, 401, "expected HTTP 401 status");
-			assert_eq!(
-				message, "Invalid credentials",
-				"expected mocked credentials message to propagate verbatim"
-			);
-		}
-		other => panic!("expected ServerFnError::Server, got: {other:?}"),
-	}
+	assert_eq!(err.kind(), ServerFnErrorKind::Server);
+	assert_eq!(err.status(), Some(401), "expected HTTP 401 status");
+	assert_eq!(
+		err.user_message(),
+		"Invalid credentials",
+		"expected mocked credentials message to propagate verbatim"
+	);
 }
 
 /// `register(...)` returns the freshly created `UserInfo` on success.
@@ -214,16 +211,13 @@ async fn test_register_surfaces_validation_error() {
 	)
 	.await
 	.expect_err("expected validation error");
-	match err {
-		ServerFnError::Server { status, message } => {
-			assert_eq!(status, 400, "expected HTTP 400 status");
-			assert_eq!(
-				message, "Username is already taken",
-				"expected mocked validation message to propagate verbatim"
-			);
-		}
-		other => panic!("expected ServerFnError::Server, got: {other:?}"),
-	}
+	assert_eq!(err.kind(), ServerFnErrorKind::Server);
+	assert_eq!(err.status(), Some(400), "expected HTTP 400 status");
+	assert_eq!(
+		err.user_message(),
+		"Username is already taken",
+		"expected mocked validation message to propagate verbatim"
+	);
 }
 
 /// `logout()` round-trips through MSW.

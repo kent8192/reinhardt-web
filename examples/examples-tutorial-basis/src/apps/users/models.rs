@@ -33,8 +33,8 @@ use serde::{Deserialize, Serialize};
 
 // `manager = false` opts out of the auto-generated manager that
 // `#[user(...)]` emits by default since reinhardt-web#4451 — the tutorial
-// keeps its own DB-backed `AuthUserManager` below (registered via a keyed
-// provider function) which would otherwise be shadowed. The
+// keeps its own DB-backed `AuthUserManager` below (registered via a
+// self-keyed provider function) which would otherwise be shadowed. The
 // auto-manager is also gated to `Uuid` / `Option<Uuid>` primary keys
 // (issue #4455), and this model uses `i64` to demonstrate auto-increment
 // integer PKs in the tutorial.
@@ -77,8 +77,8 @@ mod manager {
 	use reinhardt::DatabaseConnection;
 	use reinhardt::Model;
 	use reinhardt::core::async_trait;
-	use reinhardt::core::exception::Error;
-	use reinhardt::di::{FactoryOutput, injectable, injectable_key};
+	use reinhardt::core::exception::{DatabaseError, DatabaseErrorKind, Error};
+	use reinhardt::di::injectable;
 	// `BaseUserManager` lives in `reinhardt-auth` and is not yet re-exported
 	// at the top level of `reinhardt`; reach it via the doc-hidden module
 	// re-export until the facade exposes it directly (tracked in #4444).
@@ -94,7 +94,8 @@ mod manager {
 	///
 	/// Encapsulates the "create + hash + persist" pipeline for the tutorial
 	/// `User`. Server functions receive an injected instance via
-	/// keyed `Depends` and delegate to `create_user` / `create_superuser` so
+	/// `Depends<AuthUserManager>` and delegate to `create_user` /
+	/// `create_superuser` so
 	/// password hashing, uniqueness checks, and saves stay in a single place.
 	///
 	/// `#[user(...)]` does emit a manager by default (since
@@ -103,7 +104,7 @@ mod manager {
 	/// shadow this hand-written one — and because the auto-manager is gated
 	/// to `Uuid` / `Option<Uuid>` primary keys (issue #4455) whereas this
 	/// model uses `i64`. `Clone` is derived so a server function can pull an
-	/// owned `AuthUserManager` out of `Depends<_, _>` and invoke the
+	/// owned `AuthUserManager` out of `Depends<_>` and invoke the
 	/// `BaseUserManager::create_user(&mut self, …)` trait method without
 	/// fighting `Arc` mutability.
 	///
@@ -114,14 +115,9 @@ mod manager {
 		db: DatabaseConnection,
 	}
 
-	#[injectable_key]
-	pub struct AuthUserManagerKey;
-
 	#[injectable(scope = "transient")]
-	async fn auth_user_manager_factory(
-		#[inject] db: DatabaseConnection,
-	) -> FactoryOutput<AuthUserManagerKey, AuthUserManager> {
-		FactoryOutput::new(AuthUserManager { db })
+	async fn auth_user_manager_factory(#[inject] db: DatabaseConnection) -> AuthUserManager {
+		AuthUserManager { db }
 	}
 
 	impl AuthUserManager {
@@ -145,8 +141,7 @@ mod manager {
 			let existing = manager
 				.filter(User::field_username().eq(username.to_string()))
 				.first()
-				.await
-				.map_err(|e| Error::Database(e.to_string()))?;
+				.await?;
 			if existing.is_some() {
 				return Err(Error::Validation("Username is already taken".to_string()));
 			}
@@ -189,9 +184,11 @@ mod manager {
 		) -> Result<User, Error> {
 			let new_user = self.build_user(username, password, &extra).await?;
 			User::objects()
-				.create_with_conn(&self.db, &new_user)
+				.create_with_conn(&mut self.db, &new_user)
 				.await
-				.map_err(|e| Error::Database(e.to_string()))
+				.map_err(|error| {
+					DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()
+				})
 		}
 
 		async fn create_superuser(
@@ -203,12 +200,14 @@ mod manager {
 			let mut new_user = self.build_user(username, password, &extra).await?;
 			new_user.is_superuser = true;
 			User::objects()
-				.create_with_conn(&self.db, &new_user)
+				.create_with_conn(&mut self.db, &new_user)
 				.await
-				.map_err(|e| Error::Database(e.to_string()))
+				.map_err(|error| {
+					DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()
+				})
 		}
 	}
 }
 
 #[cfg(server)]
-pub use manager::{AuthUserManager, AuthUserManagerKey};
+pub use manager::AuthUserManager;

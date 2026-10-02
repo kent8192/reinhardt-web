@@ -7,6 +7,233 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.17...reinhardt-auth@v0.4.0-alpha.18) - 2026-09-27
+
+### Documentation
+
+- update version references to v0.3.18
+- update version references to v0.3.19
+- update version references to v0.3.20
+- *(auth)* clarify legacy OAuth2 helper scope
+- *(auth)* clarify OAuth2 helper scope and validation
+- *(auth)* complete OAuth setup and token docs
+- *(auth)* align OAuth2 module catalog wording
+
+### Fixed
+
+- *(auth)* accept array audiences in OIDC ID tokens
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Security
+
+- *(auth)* validate azp on multi-audience ID tokens
+
+## [0.4.0-alpha.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.16...reinhardt-auth@v0.4.0-alpha.17) - 2026-09-25
+
+### Added
+
+- *(auth)* add OAuth authorization and token core
+- *(auth)* persist OAuth state in PostgreSQL
+- *(auth)* expose OAuth HTTP protocol handlers
+- *(auth)* isolate OIDC grants in the OAuth server
+- *(auth)* persist OIDC subjects and signing-key state
+- *(auth)* serve OIDC code flow and provider metadata
+
+### Changed
+
+- *(auth)* group code exchange parameters
+
+### Documentation
+
+- *(auth)* explain OAuth server setup and migration
+- *(auth)* show OAuth handler routing
+- *(auth)* [**breaking**] document OAuth server migration
+- *(auth)* explain OIDC issuer integration and key operations
+- *(auth)* document atomic code exchange and OIDC state maintenance
+
+### Fixed
+
+- *(auth)* validate legacy OAuth codes and stop refresh issuance
+- *(auth)* [**breaking**] bind OAuth continuations and token issuance to validated state
+- *(auth)* [**breaking**] bind OIDC continuations to sessions and retire accounts atomically
+- *(auth)* reject case-variant HTTP resource audiences
+- *(auth)* align OIDC HTTP responses with protocol requirements
+- *(auth)* revoke OIDC tokens on expired code replay
+- *(auth)* reject subsecond OIDC token lifetimes
+- *(auth)* [**breaking**] make authorization lifecycle transitions atomic
+- *(auth)* [**breaking**] resolve resource rotation and OIDC review findings
+- *(auth)* correct OAuth and OIDC endpoint error responses
+- *(auth)* move OIDC RSA signing to blocking workers
+- *(auth)* [**breaking**] reject conflicting OAuth registrations atomically
+
+### Maintenance
+
+- *(auth)* merge updated OAuth server foundation
+
+### Styling
+
+- *(auth)* format OIDC integration test assertion
+
+### Testing
+
+- *(auth)* cover OAuth grants and replay boundaries
+- *(auth)* verify OAuth migration rollback
+- *(auth)* verify OIDC flows with an independent RP and PostgreSQL
+- *(auth)* cover OIDC HTTPS and client IP behind trusted proxies
+
+### Added
+
+- Add routable OAuth 2.0 Authorization Code with PKCE `S256` and Client Credentials endpoints, PostgreSQL-backed state, token revocation, introspection, and server metadata.
+
+### Breaking Changes
+
+- Legacy `OAuth2Authentication` helpers now require a registered client, an allowed authorization-code grant, and an exact redirect URI before issuing a code. In-memory access-token lookup enforces expiry, and code exchange no longer returns an unusable refresh token. The new server does not import legacy codes, tokens, or client registrations. These changes prevent unregistered redirects, expired-token acceptance, and promises of a refresh flow that does not exist.
+
+**Migration:** Apply `PostgresOAuthStore::migration()` in the host's Reinhardt migration graph, register resource audiences, and recreate clients with explicit grants, redirect URIs, scopes, audiences, browser origins, and new secrets. For example, after constructing `server: OAuthServer`:
+
+```rust
+use reinhardt_auth::oauth2_server::{ClientKind, ClientRegistration};
+
+let resource_secret = server.register_resource("api", "https://api.example").await?;
+let client_secret = server.register_client(ClientRegistration {
+    client_id: "client-a".into(),
+    kind: ClientKind::Confidential,
+    secret_hash: None,
+    previous_secret_hash: None,
+    previous_secret_expires_at: None,
+    oidc_enabled: false,
+    authorization_code: true,
+    client_credentials: false,
+    redirect_uris: vec!["https://client.example/callback".into()],
+    scopes: vec!["read".into()],
+    default_scopes: vec!["read".into()],
+    audiences: vec!["https://api.example".into()],
+    default_audience: Some("https://api.example".into()),
+    browser_origins: vec![],
+    enabled: true,
+}).await?;
+// Deliver both generated secrets to their respective operators once.
+```
+
+Mount the `OAuthHandler` authorization and token endpoints, then have clients use PKCE `S256`. Users must authorize again because legacy codes and tokens are not imported. See [OAuth2 Authorization Server](README.md#oauth2-authorization-server) for setup and routing examples. The legacy helper types remain available; no removal date is scheduled.
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.14...reinhardt-auth@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+## [0.4.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.11...reinhardt-auth@v0.4.0-alpha.12) - 2026-08-30
+
+### Added
+
+- *(auth)* add contextual OAuth state records
+- *(auth)* add browser-bound OAuth context flow
+
+### Documentation
+
+- document contextual OAuth state features
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.8...reinhardt-auth@v0.4.0-alpha.9) - 2026-08-23
+
+### Documentation
+
+- *(security)* define data and identity boundaries
+- *(security)* qualify remaining raw boundaries
+- *(security)* qualify auth and vault boundaries
+- *(security)* document secret and csrf boundaries
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(security)* qualify boundary control ownership
+- *(security)* qualify boundary control ownership
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.6...reinhardt-auth@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Fixed
+
+- *(auth)* validate session accounts before authorization
+
+### Maintenance
+
+- auto-fix fmt and clippy
+- merge main into develop/0.4.0
+
+### Security
+
+- *(auth)* restore JWT secret wrapper
+- *(auth)* preserve JWT secret field compatibility
+
+### Styling
+
+- *(auth)* format macro helper
+
+### Testing
+
+- *(settings)* move JWT secret contract integration
+- *(auth)* cover guard proc macro
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.5...reinhardt-auth@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.2...reinhardt-auth@v0.4.0-alpha.3) - 2026-07-27
+
+### Fixed
+
+- *(auth)* use injected connection for session reads
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.1...reinhardt-auth@v0.4.0-alpha.2) - 2026-07-23
+
+### Added
+
+- *(db)* [**breaking**] add Copy-safe injected connection handles
+
+### Fixed
+
+- *(db)* restore URL-based backend owner connection
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.2...reinhardt-auth@v0.4.0-alpha.1) - 2026-07-21
+
+### Changed
+
+- *(orm)* migrate callers to explicit ORM executors
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge main into develop/0.4.0
+- merge anyhow removal into atomic transactions
+
 ## [0.3.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.19...reinhardt-auth@v0.3.20) - 2026-09-25
 
 ### Fixed

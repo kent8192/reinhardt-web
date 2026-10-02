@@ -1,0 +1,145 @@
+use std::fs;
+
+use reinhardt_commands::{CollectStaticCommand, CollectStaticOptions, VirtualStaticAsset};
+use reinhardt_utils::staticfiles::StaticFilesConfig;
+use rstest::rstest;
+
+#[rstest]
+#[case(false)]
+#[case(true)]
+fn virtual_component_styles_are_hashed_and_written_as_regular_files(#[case] link: bool) {
+	let directory = tempfile::tempdir().expect("create destination");
+	let destination = directory.path().join("static-root");
+	let config = StaticFilesConfig {
+		static_root: destination.clone(),
+		static_url: "/static/".to_string(),
+		staticfiles_dirs: Vec::new(),
+		media_url: None,
+	};
+	let options = CollectStaticOptions {
+		link,
+		enable_hashing: true,
+		verbosity: 0,
+		..CollectStaticOptions::default()
+	};
+	let mut command = CollectStaticCommand::new(config, options);
+	command.add_virtual_asset(VirtualStaticAsset {
+		logical_path: "__reinhardt__/components.css".to_string(),
+		bytes: b".card { color: red; }\n".to_vec(),
+	});
+
+	let stats = command.execute().expect("collect virtual component CSS");
+
+	let manifest: serde_json::Value =
+		serde_json::from_slice(&fs::read(destination.join("manifest.json")).unwrap()).unwrap();
+	let paths = manifest["paths"]
+		.as_object()
+		.expect("collectstatic manifest paths");
+	assert_eq!(stats.copied, paths.len());
+	let hashed = manifest["paths"]["__reinhardt__/components.css"]
+		.as_str()
+		.expect("hashed mapping");
+	let output = destination.join(hashed);
+	assert_eq!(fs::read(&output).unwrap(), b".card { color: red; }\n");
+	assert!(!output.symlink_metadata().unwrap().file_type().is_symlink());
+	assert!(!destination.join("__reinhardt__/components.css").exists());
+}
+
+#[rstest]
+fn physical_sources_cannot_claim_the_reserved_namespace() {
+	let directory = tempfile::tempdir().expect("create source tree");
+	let source = directory.path().join("source");
+	fs::create_dir_all(source.join("__reinhardt__")).unwrap();
+	fs::write(source.join("__reinhardt__/components.css"), "stale").unwrap();
+	let destination = directory.path().join("destination");
+	fs::create_dir_all(&destination).unwrap();
+	fs::write(destination.join("retained-before-preflight.txt"), "retain").unwrap();
+	let config = StaticFilesConfig {
+		static_root: destination.clone(),
+		static_url: "/static/".to_string(),
+		staticfiles_dirs: vec![source],
+		media_url: None,
+	};
+	let mut command = CollectStaticCommand::new(
+		config,
+		CollectStaticOptions {
+			clear: true,
+			..CollectStaticOptions::default()
+		},
+	);
+
+	let error = command
+		.execute()
+		.expect_err("reserved source must fail preflight");
+
+	assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+	assert_eq!(
+		fs::read_to_string(destination.join("retained-before-preflight.txt")).unwrap(),
+		"retain"
+	);
+}
+
+#[rstest]
+fn virtual_assets_cannot_escape_the_static_root() {
+	// Arrange
+	let directory = tempfile::tempdir().expect("create destination");
+	let destination = directory.path().join("static-root");
+	let outside = directory.path().join("outside.css");
+	let config = StaticFilesConfig {
+		static_root: destination,
+		static_url: "/static/".to_string(),
+		staticfiles_dirs: Vec::new(),
+		media_url: None,
+	};
+	let mut command = CollectStaticCommand::new(config, CollectStaticOptions::default());
+	command.add_virtual_asset(VirtualStaticAsset {
+		logical_path: "__reinhardt__/../../outside.css".to_string(),
+		bytes: b"escaped".to_vec(),
+	});
+
+	// Act
+	let error = command
+		.execute()
+		.expect_err("traversal path must be rejected before writing");
+
+	// Assert
+	assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+	assert!(!outside.exists());
+}
+
+#[rstest]
+fn physical_index_templates_resolve_hashed_virtual_component_styles() {
+	let directory = tempfile::tempdir().expect("create source tree");
+	let source = directory.path().join("source");
+	fs::create_dir_all(&source).expect("create static source");
+	fs::write(
+		source.join("index.html"),
+		"<link rel=\"stylesheet\" href=\"{{ static_url(\"__reinhardt__/components.css\") }}\">\n",
+	)
+	.expect("write static index template");
+	let destination = directory.path().join("destination");
+	let config = StaticFilesConfig {
+		static_root: destination.clone(),
+		static_url: "/static/".to_string(),
+		staticfiles_dirs: vec![source],
+		media_url: None,
+	};
+	let mut command = CollectStaticCommand::new(config, CollectStaticOptions::default());
+	command.add_virtual_asset(VirtualStaticAsset {
+		logical_path: "__reinhardt__/components.css".to_string(),
+		bytes: b".card { color: red; }\n".to_vec(),
+	});
+
+	command.execute().expect("collect templated static assets");
+
+	let manifest: serde_json::Value =
+		serde_json::from_slice(&fs::read(destination.join("manifest.json")).unwrap()).unwrap();
+	let hashed = manifest["paths"]["__reinhardt__/components.css"]
+		.as_str()
+		.expect("hashed virtual stylesheet mapping");
+	let rendered = fs::read_to_string(destination.join("index.html")).unwrap();
+	assert_eq!(
+		rendered,
+		format!("<link rel=\"stylesheet\" href=\"/static/{hashed}\">\n")
+	);
+}

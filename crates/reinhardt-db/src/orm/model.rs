@@ -1,75 +1,162 @@
+use base64::Engine;
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-const SQL_NULL_ARRAY_ELEMENT_KEY: &str = "__reinhardt_sql_null_array_element";
-const JSON_ARRAY_ELEMENT_KEY: &str = "__reinhardt_json_array_element";
+use super::inspection::FieldInfo;
+use super::{DatabaseField, DatabaseScalar, DatabaseValue, FieldCodecError};
 
+/// Deserializes one route segment into a model primary-key type.
 #[doc(hidden)]
-pub type DatabaseValue = serde_json::Value;
-
-#[doc(hidden)]
-pub type DatabaseSerializationError = serde_json::Error;
-
-#[doc(hidden)]
-pub fn serialize_model_database_value<T: Serialize>(
-	value: &T,
-) -> Result<DatabaseValue, DatabaseSerializationError> {
-	serde_json::to_value(value)
+pub fn deserialize_primary_key_from_str<T>(value: &str) -> Result<T, serde_json::Error>
+where
+	T: serde::de::DeserializeOwned,
+{
+	serde_json::from_value(serde_json::Value::String(value.to_owned()))
+		.or_else(|_| serde_json::from_str(value))
 }
 
-/// Encode a nullable JSON array while retaining SQL-NULL element semantics.
+/// Deserializes a route segment through a generated primary-key database codec.
 #[doc(hidden)]
-pub fn serialize_nullable_json_array(values: &[Option<serde_json::Value>]) -> serde_json::Value {
-	serde_json::Value::Array(
-		values
-			.iter()
-			.map(|value| {
-				value.as_ref().map_or_else(
-					|| {
-						let mut marker = serde_json::Map::new();
-						marker.insert(
-							SQL_NULL_ARRAY_ELEMENT_KEY.to_owned(),
-							serde_json::Value::Bool(true),
-						);
-						serde_json::Value::Object(marker)
-					},
-					|value| {
-						let mut element = serde_json::Map::new();
-						element.insert(JSON_ARRAY_ELEMENT_KEY.to_owned(), value.clone());
-						serde_json::Value::Object(element)
-					},
-				)
-			})
-			.collect(),
-	)
+pub fn deserialize_primary_key_from_database_str<M>(
+	value: &str,
+) -> Result<M::PrimaryKey, FieldCodecError>
+where
+	M: Model,
+	M::PrimaryKey: DatabaseField,
+{
+	let storage_kind = <M::PrimaryKey as DatabaseField>::Storage::STORAGE_KIND;
+	let value = match storage_kind {
+		super::DatabaseStorageKind::Decimal | super::DatabaseStorageKind::String => {
+			serde_json::Value::String(value.to_owned())
+		}
+		_ => serde_json::from_str(value)
+			.unwrap_or_else(|_| serde_json::Value::String(value.to_owned())),
+	};
+	let database_value = super::json::database_value_from_json(value, Some(storage_kind))?;
+	let decoded = M::decode_database_field(M::primary_key_field(), database_value)?;
+	serde_json::from_value(decoded)
+		.map_err(|error| FieldCodecError::Serialization(error.to_string()))
 }
 
-/// Encode an optional nullable JSON array while retaining SQL-NULL elements.
+fn legacy_storage_kind(field_type: &str) -> Option<super::DatabaseStorageKind> {
+	if field_type.contains("UuidField") || field_type.contains("UUIDField") {
+		Some(super::DatabaseStorageKind::Uuid)
+	} else if field_type.contains("DateTimeField") {
+		Some(super::DatabaseStorageKind::DateTime)
+	} else if field_type.contains("DateField") {
+		Some(super::DatabaseStorageKind::Date)
+	} else if field_type.contains("TimeField") {
+		Some(super::DatabaseStorageKind::Time)
+	} else if field_type.contains("BooleanField") {
+		Some(super::DatabaseStorageKind::Bool)
+	} else if field_type.contains("BigIntegerField") {
+		Some(super::DatabaseStorageKind::I64)
+	} else if field_type.contains("IntegerField") {
+		Some(super::DatabaseStorageKind::I32)
+	} else if field_type.contains("FloatField") {
+		Some(super::DatabaseStorageKind::F64)
+	} else if field_type.contains("DecimalField") {
+		Some(super::DatabaseStorageKind::Decimal)
+	} else {
+		None
+	}
+}
+
+/// Convert a route component using the storage type recorded for its model field.
 #[doc(hidden)]
-pub fn serialize_nullable_json_array_option(
-	values: &Option<Vec<Option<serde_json::Value>>>,
-) -> serde_json::Value {
-	values.as_ref().map_or(serde_json::Value::Null, |values| {
-		serialize_nullable_json_array(values)
-	})
+pub fn filter_value_from_field(
+	field: &FieldInfo,
+	value: &str,
+) -> Result<super::query::FilterValue, FieldCodecError> {
+	use super::DatabaseStorageKind;
+
+	let Some(storage_kind) = field
+		.storage_kind
+		.or_else(|| legacy_storage_kind(&field.field_type))
+	else {
+		return Ok(super::query::FilterValue::String(value.to_owned()));
+	};
+
+	let database_value =
+		match storage_kind {
+			DatabaseStorageKind::Bool => DatabaseValue::Bool(value.parse().map_err(|_| {
+				FieldCodecError::Serialization(format!("invalid boolean value: {value}"))
+			})?),
+			DatabaseStorageKind::I32 => DatabaseValue::I32(value.parse().map_err(|_| {
+				FieldCodecError::Serialization(format!("invalid i32 value: {value}"))
+			})?),
+			DatabaseStorageKind::I64 => DatabaseValue::I64(value.parse().map_err(|_| {
+				FieldCodecError::Serialization(format!("invalid i64 value: {value}"))
+			})?),
+			DatabaseStorageKind::F32 => DatabaseValue::F32(value.parse().map_err(|_| {
+				FieldCodecError::Serialization(format!("invalid f32 value: {value}"))
+			})?),
+			DatabaseStorageKind::F64 => DatabaseValue::F64(value.parse().map_err(|_| {
+				FieldCodecError::Serialization(format!("invalid f64 value: {value}"))
+			})?),
+			DatabaseStorageKind::Decimal => {
+				DatabaseValue::Decimal(value.parse().map_err(|_| {
+					FieldCodecError::Serialization(format!("invalid decimal value: {value}"))
+				})?)
+			}
+			DatabaseStorageKind::String => DatabaseValue::String(value.to_owned()),
+			DatabaseStorageKind::Bytes => DatabaseValue::Bytes(
+				base64::engine::general_purpose::STANDARD
+					.decode(value)
+					.map_err(|error| FieldCodecError::Serialization(error.to_string()))?,
+			),
+			DatabaseStorageKind::Uuid => DatabaseValue::Uuid(value.parse().map_err(|_| {
+				FieldCodecError::Serialization(format!("invalid UUID value: {value}"))
+			})?),
+			DatabaseStorageKind::Date => DatabaseValue::Date(value.parse().map_err(|_| {
+				FieldCodecError::Serialization(format!("invalid date value: {value}"))
+			})?),
+			DatabaseStorageKind::Time => DatabaseValue::Time(value.parse().map_err(|_| {
+				FieldCodecError::Serialization(format!("invalid time value: {value}"))
+			})?),
+			DatabaseStorageKind::DateTime => DatabaseValue::DateTime(
+				chrono::DateTime::parse_from_rfc3339(value)
+					.or_else(|_| value.parse::<chrono::DateTime<chrono::FixedOffset>>())
+					.map_err(|_| {
+						FieldCodecError::Serialization(format!("invalid datetime value: {value}"))
+					})?
+					.with_timezone(&chrono::Utc),
+			),
+			DatabaseStorageKind::NaiveDateTime => DatabaseValue::NaiveDateTime(
+				chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f")
+					.or_else(|_| {
+						chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f")
+					})
+					.map_err(|_| {
+						FieldCodecError::Serialization(format!("invalid datetime value: {value}"))
+					})?,
+			),
+			_ => return Ok(super::query::FilterValue::String(value.to_owned())),
+		};
+
+	Ok(super::query::FilterValue::Typed(Ok(database_value)))
 }
 
-pub(crate) fn is_sql_null_array_element(value: &serde_json::Value) -> bool {
-	value.as_object().is_some_and(|object| {
-		object.len() == 1
-			&& object
-				.get(SQL_NULL_ARRAY_ELEMENT_KEY)
-				.is_some_and(|value| value == &serde_json::Value::Bool(true))
-	})
+/// JSON carrier used only for final whole-model assembly after field decoding.
+#[doc(hidden)]
+pub type ModelFieldJsonValue = serde_json::Value;
+
+/// Serializes a decoded typed database field for final model assembly.
+#[doc(hidden)]
+pub fn serialize_decoded_database_field<T: Serialize>(
+	value: T,
+) -> Result<ModelFieldJsonValue, FieldCodecError> {
+	serde_json::to_value(value).map_err(|error| FieldCodecError::Serialization(error.to_string()))
 }
 
-pub(crate) fn unwrap_json_array_element(value: &serde_json::Value) -> Option<&serde_json::Value> {
-	value.as_object().and_then(|object| {
-		(object.len() == 1)
-			.then(|| object.get(JSON_ARRAY_ELEMENT_KEY))
-			.flatten()
-	})
-}
+/// Canonical fixture field values keyed by model field name.
+#[doc(hidden)]
+pub type FixtureFields = serde_json::Map<String, serde_json::Value>;
+
+/// One canonical fixture field value.
+#[doc(hidden)]
+pub type FixtureValue = serde_json::Value;
 
 /// Trait for type-safe field selectors
 ///
@@ -81,129 +168,6 @@ pub trait FieldSelector: Clone {
 	/// This is used for self-joins where the same table appears multiple times
 	/// with different aliases.
 	fn with_alias(self, alias: &str) -> Self;
-}
-
-/// Deserializes one route segment into a model primary-key type.
-///
-/// The route segment is first deserialized as a JSON string so string keys,
-/// including numeric-looking values such as `"00123"`, retain their exact
-/// representation. If that fails, the raw segment is deserialized as JSON to
-/// support numeric primary keys.
-#[doc(hidden)]
-pub fn deserialize_primary_key_from_str<T>(value: &str) -> Result<T, serde_json::Error>
-where
-	T: serde::de::DeserializeOwned,
-{
-	serde_json::from_value(serde_json::Value::String(value.to_owned()))
-		.or_else(|_| serde_json::from_str(value))
-}
-
-fn is_timezone_aware_datetime_type(type_name: &str) -> bool {
-	type_name.starts_with("chrono::DateTime<")
-		|| type_name.starts_with("chrono::datetime::DateTime<")
-}
-
-fn is_decimal_type(type_name: &str) -> bool {
-	matches!(
-		type_name,
-		"rust_decimal::Decimal" | "rust_decimal::decimal::Decimal"
-	)
-}
-
-/// Converts route values for primary-key types with dedicated filter variants.
-///
-/// This keeps UUID and UTC timestamp primary keys in their typed filter
-/// variants after [`deserialize_primary_key_from_str`] applies its
-/// string-first and raw-JSON fallback parsing.
-#[doc(hidden)]
-pub fn deserialize_primary_key_filter_value_from_str<T>(
-	value: &str,
-) -> Result<Option<super::query::FilterValue>, serde_json::Error>
-where
-	T: serde::de::DeserializeOwned,
-{
-	if std::any::type_name::<T>() == std::any::type_name::<uuid::Uuid>() {
-		return deserialize_primary_key_from_str::<uuid::Uuid>(value)
-			.map(super::query::FilterValue::Uuid)
-			.map(Some);
-	}
-
-	if is_timezone_aware_datetime_type(std::any::type_name::<T>()) {
-		return serde_json::from_value::<chrono::DateTime<chrono::Utc>>(serde_json::Value::String(
-			value.to_owned(),
-		))
-		.map(super::query::FilterValue::Timestamp)
-		.map(Some);
-	}
-
-	if is_decimal_type(std::any::type_name::<T>()) {
-		return deserialize_primary_key_from_str::<rust_decimal::Decimal>(value)
-			.map(super::query::FilterValue::Decimal)
-			.map(Some);
-	}
-
-	if std::any::type_name::<T>() == std::any::type_name::<chrono::NaiveDate>() {
-		return deserialize_primary_key_from_str::<chrono::NaiveDate>(value)
-			.map(super::query::FilterValue::Date)
-			.map(Some);
-	}
-
-	if std::any::type_name::<T>() == std::any::type_name::<chrono::NaiveTime>() {
-		return deserialize_primary_key_from_str::<chrono::NaiveTime>(value)
-			.map(super::query::FilterValue::Time)
-			.map(Some);
-	}
-
-	Ok(None)
-}
-
-/// Converts a field metadata type and route segment into a typed filter value.
-#[doc(hidden)]
-pub fn filter_value_from_field_type(
-	field_type: &str,
-	value: &str,
-) -> reinhardt_core::exception::Result<super::query::FilterValue> {
-	use reinhardt_core::exception::Error;
-
-	let invalid = || Error::Validation(format!("invalid {field_type} value: {value}"));
-	match field_type.rsplit('.').next() {
-		Some("BooleanField") => value
-			.parse()
-			.map(super::query::FilterValue::Boolean)
-			.map_err(|_| invalid()),
-		Some("IntegerField") | Some("AutoField") => value
-			.parse::<i32>()
-			.map(|value| super::query::FilterValue::Integer(i64::from(value)))
-			.map_err(|_| invalid()),
-		Some("BigIntegerField") | Some("BigAutoField") => value
-			.parse::<i64>()
-			.map(super::query::FilterValue::Integer)
-			.map_err(|_| invalid()),
-		Some("FloatField") => value
-			.parse::<f64>()
-			.map(super::query::FilterValue::Float)
-			.map_err(|_| invalid()),
-		Some("UuidField") | Some("UUIDField") => value
-			.parse()
-			.map(super::query::FilterValue::Uuid)
-			.map_err(|_| invalid()),
-		Some("DateTimeField") => chrono::DateTime::parse_from_rfc3339(value)
-			.map(|value| super::query::FilterValue::Timestamp(value.with_timezone(&chrono::Utc)))
-			.map_err(|_| invalid()),
-		Some("DateField") => value
-			.parse()
-			.map(super::query::FilterValue::Date)
-			.map_err(|_| invalid()),
-		Some("TimeField") => value
-			.parse()
-			.map(super::query::FilterValue::Time)
-			.map_err(|_| invalid()),
-		Some("DecimalField") => value
-			.parse()
-			.map(super::query::FilterValue::Decimal)
-			.map_err(|_| invalid()),
-		_ => Ok(super::query::FilterValue::String(value.to_owned())),
-	}
 }
 
 /// Core trait for database models
@@ -253,6 +217,58 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		"id"
 	}
 
+	/// Get the physical database column that stores the primary key.
+	///
+	/// Manual model implementations default to the Rust field name. The model
+	/// macro overrides this when `db_column` renames the primary-key column.
+	fn primary_key_column() -> &'static str {
+		Self::primary_key_field()
+	}
+
+	/// Get the physical database columns used as the default latest ordering.
+	///
+	/// Manual model implementations have no default latest ordering. The model
+	/// macro overrides this method for `#[model(get_latest_by = (...))]`.
+	fn latest_by_fields() -> &'static [&'static str] {
+		&[]
+	}
+
+	/// Encodes a primary key into its canonical database representation.
+	///
+	/// Macro-generated models route this through the primary-key field's
+	/// [`DatabaseField`] implementation. Manual model
+	/// implementations retain the legacy numeric, UUID, or string fallback and
+	/// can override this method for custom primary-key codecs.
+	fn primary_key_database_value(pk: &Self::PrimaryKey) -> Result<DatabaseValue, FieldCodecError> {
+		let value = pk.to_string();
+		let field_type = Self::field_metadata()
+			.into_iter()
+			.find(|field| field.name == Self::primary_key_field())
+			.map(|field| field.field_type);
+
+		let value = match field_type
+			.as_deref()
+			.and_then(|value| value.rsplit('.').next())
+		{
+			Some("AutoField")
+			| Some("IntegerField")
+			| Some("BigAutoField")
+			| Some("BigIntegerField") => value
+				.parse::<i64>()
+				.map(DatabaseValue::I64)
+				.unwrap_or_else(|_| DatabaseValue::String(value.clone())),
+			Some("UuidField") => uuid::Uuid::parse_str(&value)
+				.map(DatabaseValue::Uuid)
+				.unwrap_or_else(|_| DatabaseValue::String(value.clone())),
+			_ => value
+				.parse::<i64>()
+				.map(DatabaseValue::I64)
+				.unwrap_or(DatabaseValue::String(value)),
+		};
+
+		Ok(value)
+	}
+
 	/// Converts a primary key into a query filter value.
 	///
 	/// Primitive integer primary keys retain numeric bindings, while standard
@@ -297,27 +313,6 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				.unwrap_or(super::query::FilterValue::String(value));
 		}
 
-		if type_name == std::any::type_name::<bool>() {
-			return value
-				.parse::<bool>()
-				.map(super::query::FilterValue::Boolean)
-				.unwrap_or(super::query::FilterValue::String(value));
-		}
-
-		if type_name == std::any::type_name::<f32>() {
-			return value
-				.parse::<f32>()
-				.map(|value| super::query::FilterValue::Float(f64::from(value)))
-				.unwrap_or(super::query::FilterValue::String(value));
-		}
-
-		if type_name == std::any::type_name::<f64>() {
-			return value
-				.parse::<f64>()
-				.map(super::query::FilterValue::Float)
-				.unwrap_or(super::query::FilterValue::String(value));
-		}
-
 		if matches!(
 			type_name,
 			name if name == std::any::type_name::<String>()
@@ -334,32 +329,33 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				.unwrap_or(super::query::FilterValue::String(value));
 		}
 
-		if is_timezone_aware_datetime_type(type_name) {
+		if type_name == std::any::type_name::<bool>() {
+			return value
+				.parse()
+				.map(super::query::FilterValue::Boolean)
+				.unwrap_or(super::query::FilterValue::String(value));
+		}
+
+		if type_name == std::any::type_name::<f32>() {
+			return value
+				.parse::<f32>()
+				.map(|value| super::query::FilterValue::Float(value as f64))
+				.unwrap_or(super::query::FilterValue::String(value));
+		}
+
+		if type_name == std::any::type_name::<f64>() {
+			return value
+				.parse::<f64>()
+				.map(super::query::FilterValue::Float)
+				.unwrap_or(super::query::FilterValue::String(value));
+		}
+
+		if type_name == std::any::type_name::<chrono::DateTime<chrono::Utc>>() {
 			return chrono::DateTime::parse_from_rfc3339(&value)
+				.or_else(|_| value.parse::<chrono::DateTime<chrono::FixedOffset>>())
 				.map(|value| {
 					super::query::FilterValue::Timestamp(value.with_timezone(&chrono::Utc))
 				})
-				.unwrap_or(super::query::FilterValue::String(value));
-		}
-
-		if is_decimal_type(type_name) {
-			return value
-				.parse()
-				.map(super::query::FilterValue::Decimal)
-				.unwrap_or(super::query::FilterValue::String(value));
-		}
-
-		if type_name == std::any::type_name::<chrono::NaiveDate>() {
-			return value
-				.parse()
-				.map(super::query::FilterValue::Date)
-				.unwrap_or(super::query::FilterValue::String(value));
-		}
-
-		if type_name == std::any::type_name::<chrono::NaiveTime>() {
-			return value
-				.parse()
-				.map(super::query::FilterValue::Time)
 				.unwrap_or(super::query::FilterValue::String(value));
 		}
 
@@ -371,13 +367,8 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 
 	/// Converts a route primary key into a query filter value.
 	///
-	/// Models generated by `#[model]` strictly deserialize the declared primary
-	/// key type, so malformed or out-of-range route values are rejected instead
-	/// of being coerced. Manual `Model` implementations can override this method
-	/// when a custom primary-key type needs an exact database binding. The method
-	/// intentionally adds no new bound to [`Model::PrimaryKey`]; generated models
-	/// provide the typed conversion without requiring all hand-written models to
-	/// implement serde deserialization.
+	/// Derived models override this method so UUIDs, timestamps, and custom
+	/// primary-key codecs use the same typed conversion as model instances.
 	fn primary_key_filter_value_from_str(
 		value: &str,
 	) -> reinhardt_core::exception::Result<super::query::FilterValue> {
@@ -413,9 +404,16 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		parse_standard_integer!(usize, "unsigned integer");
 		parse_standard_integer!(u128, "unsigned integer");
 
+		if type_name == std::any::type_name::<uuid::Uuid>() {
+			return value
+				.parse()
+				.map(super::query::FilterValue::Uuid)
+				.map_err(|_| Error::Validation(format!("invalid UUID primary key: {value}")));
+		}
+
 		if type_name == std::any::type_name::<bool>() {
 			return value
-				.parse::<bool>()
+				.parse()
 				.map(super::query::FilterValue::Boolean)
 				.map_err(|_| Error::Validation(format!("invalid boolean primary key: {value}")));
 		}
@@ -423,7 +421,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		if type_name == std::any::type_name::<f32>() {
 			return value
 				.parse::<f32>()
-				.map(|value| super::query::FilterValue::Float(f64::from(value)))
+				.map(|value| super::query::FilterValue::Float(value as f64))
 				.map_err(|_| Error::Validation(format!("invalid float primary key: {value}")));
 		}
 
@@ -434,48 +432,37 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				.map_err(|_| Error::Validation(format!("invalid float primary key: {value}")));
 		}
 
-		if type_name == std::any::type_name::<uuid::Uuid>() {
-			return value
-				.parse()
-				.map(super::query::FilterValue::Uuid)
-				.map_err(|_| Error::Validation(format!("invalid UUID primary key: {value}")));
-		}
-
-		if is_timezone_aware_datetime_type(type_name) {
+		if type_name == std::any::type_name::<chrono::DateTime<chrono::Utc>>() {
 			return chrono::DateTime::parse_from_rfc3339(value)
+				.or_else(|_| value.parse::<chrono::DateTime<chrono::FixedOffset>>())
 				.map(|value| {
 					super::query::FilterValue::Timestamp(value.with_timezone(&chrono::Utc))
 				})
 				.map_err(|_| Error::Validation(format!("invalid timestamp primary key: {value}")));
 		}
 
-		if is_decimal_type(type_name) {
-			return value
-				.parse()
-				.map(super::query::FilterValue::Decimal)
-				.map_err(|_| Error::Validation(format!("invalid decimal primary key: {value}")));
+		macro_rules! parse_typed_primary_key {
+			($ty:ty, $variant:ident, $category:literal) => {
+				if type_name == std::any::type_name::<$ty>() {
+					return value
+						.parse::<$ty>()
+						.map(|parsed| {
+							super::query::FilterValue::Typed(Ok(DatabaseValue::$variant(parsed)))
+						})
+						.map_err(|_| {
+							Error::Validation(format!(
+								concat!("invalid ", $category, " primary key: {}"),
+								value
+							))
+						});
+				}
+			};
 		}
 
-		if type_name == std::any::type_name::<chrono::NaiveDate>() {
-			return value
-				.parse()
-				.map(super::query::FilterValue::Date)
-				.map_err(|_| Error::Validation(format!("invalid date primary key: {value}")));
-		}
-
-		if type_name == std::any::type_name::<chrono::NaiveTime>() {
-			return value
-				.parse()
-				.map(super::query::FilterValue::Time)
-				.map_err(|_| Error::Validation(format!("invalid time primary key: {value}")));
-		}
-
-		if is_decimal_type(type_name) {
-			return value
-				.parse()
-				.map(super::query::FilterValue::Decimal)
-				.map_err(|_| Error::Validation(format!("invalid decimal primary key: {value}")));
-		}
+		parse_typed_primary_key!(chrono::NaiveDate, Date, "date");
+		parse_typed_primary_key!(chrono::NaiveTime, Time, "time");
+		parse_typed_primary_key!(chrono::NaiveDateTime, NaiveDateTime, "naive datetime");
+		parse_typed_primary_key!(rust_decimal::Decimal, Decimal, "decimal");
 
 		Ok(super::query::FilterValue::String(value.to_owned()))
 	}
@@ -502,6 +489,85 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// Returns empty HashMap for single primary key models.
 	fn get_composite_pk_values(&self) -> HashMap<String, super::composite_pk::PkValue> {
 		HashMap::new()
+	}
+
+	/// Returns whether the named model field is currently `None`.
+	///
+	/// Macro-generated implementations inspect `Option<T>` fields directly so
+	/// `None` remains distinguishable from a present value that serializes as
+	/// JSON `null`. Manual implementations use this serialization-based fallback,
+	/// which treats a serialized JSON `null` as `None`.
+	///
+	/// Returns `false` when serialization fails, the model does not serialize to
+	/// an object, or the field name is unknown.
+	fn field_is_none(&self, field_name: &str) -> bool {
+		match serde_json::to_value(self) {
+			Ok(serde_json::Value::Object(fields)) => {
+				fields.get(field_name).is_some_and(|value| value.is_null())
+			}
+			_ => false,
+		}
+	}
+
+	/// Encodes model fields into their canonical database representations.
+	///
+	/// Macro-generated models override this method with typed field codecs.
+	/// This serde-based implementation preserves compatibility for manual model
+	/// implementations.
+	fn encode_database_fields(&self) -> Result<BTreeMap<String, DatabaseValue>, FieldCodecError> {
+		let value = serde_json::to_value(self)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string()))?;
+		let fields = value.as_object().ok_or_else(|| {
+			FieldCodecError::Serialization("model must serialize to an object".to_owned())
+		})?;
+		let metadata = Self::field_metadata();
+
+		fields
+			.iter()
+			.map(|(name, value)| {
+				let metadata = metadata.iter().find(|field| field.name == *name);
+				let storage_kind = metadata.and_then(|field| {
+					field
+						.storage_kind
+						.or_else(|| legacy_storage_kind(&field.field_type))
+				});
+				let is_json_field = metadata
+					.is_some_and(|field| super::json::is_json_field_type(&field.field_type));
+				let value = if is_json_field && !self.field_is_none(name) {
+					DatabaseValue::Json(value.clone())
+				} else {
+					super::json::database_value_from_json(value.clone(), storage_kind)?
+				};
+				Ok((name.clone(), value))
+			})
+			.collect()
+	}
+
+	/// Decodes one canonical database value for final model assembly.
+	///
+	/// Macro-generated models override this method with typed field codecs.
+	fn decode_database_field(
+		_field_name: &str,
+		value: DatabaseValue,
+	) -> Result<serde_json::Value, FieldCodecError> {
+		value.into_json_value()
+	}
+
+	/// Validate canonical fixture fields before they are written to the database.
+	///
+	/// Macro-generated models override this with a projection that excludes
+	/// database-generated fields and ignores API-facing serde naming rules.
+	/// Manual models that expose field metadata use the fixture layer's canonical
+	/// field mapping, because that metadata does not retain API-facing serde
+	/// aliases. Manual implementations without metadata retain the serde-based
+	/// fallback and can override this method when they need stricter validation.
+	#[doc(hidden)]
+	fn validate_fixture_fields(fields: &FixtureFields) -> Result<(), String> {
+		if Self::field_metadata().is_empty() {
+			let _: Self = serde_json::from_value(serde_json::Value::Object(fields.clone()))
+				.map_err(|error| error.to_string())?;
+		}
+		Ok(())
 	}
 
 	/// Get field metadata for inspection
@@ -534,11 +600,6 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		Vec::new()
 	}
 
-	/// Serialize model fields for database writes.
-	fn serialize_database_value(&self) -> Result<DatabaseValue, DatabaseSerializationError> {
-		serialize_model_database_value(self)
-	}
-
 	/// Get relationship metadata for inspection
 	///
 	/// This method should be implemented to provide relationship introspection.
@@ -564,6 +625,29 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// manual implementations to provide actual constraint metadata.
 	fn constraint_metadata() -> Vec<super::inspection::ConstraintInfo> {
 		Vec::new()
+	}
+
+	/// Returns public model fields owned by an exact physical constraint name.
+	///
+	/// `Some(fields)` proves ownership. `Some(Vec::new())` represents a known
+	/// form-level constraint. Manual implementations opt in by overriding this
+	/// method; unknown names return `None`.
+	fn constraint_fields(_constraint: &str) -> Option<Vec<&'static str>> {
+		None
+	}
+
+	/// Get database-generated column names that must be omitted from ORM writes.
+	fn generated_field_names() -> &'static [&'static str] {
+		&[]
+	}
+
+	/// Return whether a scalar integer primary key uses zero as its auto-generated sentinel.
+	///
+	/// The model macro enables this for non-`Option` integer primary keys whose
+	/// `auto_increment` setting is enabled. Manual model implementations can
+	/// override it when they use the same database convention.
+	fn primary_key_uses_zero_sentinel() -> bool {
+		false
 	}
 
 	/// Django-style objects manager accessor
@@ -661,17 +745,42 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		Self: Sized,
 	{
 		async move {
-			use super::events::{EventResult, get_active_registry};
 			use super::manager::get_connection;
 
+			let mut conn = get_connection().await?;
+			self.save_with_conn(&mut conn).await
+		}
+	}
+
+	/// Save the model instance through a caller-owned ORM executor.
+	fn save_with_conn<'a, E>(
+		&'a mut self,
+		conn: &'a mut E,
+	) -> impl std::future::Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a
+	where
+		Self: Sized,
+		E: super::connection::OrmExecutor + 'a,
+	{
+		async move {
+			use super::events::{EventResult, get_active_registry};
+
 			let registry = get_active_registry();
-			let conn = get_connection().await?;
 			let manager = super::Manager::<Self>::new();
 
-			let json = serde_json::to_value(&*self)
-				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
+			let json = serde_json::to_value(&*self).map_err(|error| {
+				Error::from(DatabaseError::new(
+					DatabaseErrorKind::Serialization,
+					error.to_string(),
+				))
+			})?;
 
-			if self.primary_key().is_none() {
+			let uses_zero_sentinel_primary_key = Self::primary_key_uses_zero_sentinel()
+				&& json
+					.as_object()
+					.and_then(|fields| fields.get(Self::primary_key_field()))
+					.is_some_and(|value| value.as_i64() == Some(0) || value.as_u64() == Some(0));
+
+			if self.primary_key().is_none() || uses_zero_sentinel_primary_key {
 				// INSERT: new record
 				let instance_id = format!("{}-new-{}", Self::table_name(), uuid::Uuid::now_v7());
 
@@ -681,14 +790,16 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 						.dispatch_before_insert(Self::table_name(), &instance_id, &json)
 						.await;
 					if result == EventResult::Veto {
-						return Err(reinhardt_core::exception::Error::Database(
-							"Insert operation vetoed by event listener".to_string(),
-						));
+						return Err(DatabaseError::new(
+							DatabaseErrorKind::Query,
+							"Insert operation vetoed by event listener",
+						)
+						.into());
 					}
 				}
 
 				// Perform the INSERT
-				let created = manager.create_with_conn(&conn, self).await?;
+				let created = manager.create_with_conn(conn, self).await?;
 				*self = created;
 
 				// Dispatch after_insert event if registry is active
@@ -719,14 +830,16 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 						.dispatch_before_update(Self::table_name(), &instance_id, &json)
 						.await;
 					if result == EventResult::Veto {
-						return Err(reinhardt_core::exception::Error::Database(
-							"Update operation vetoed by event listener".to_string(),
-						));
+						return Err(DatabaseError::new(
+							DatabaseErrorKind::Query,
+							"Update operation vetoed by event listener",
+						)
+						.into());
 					}
 				}
 
 				// Perform the UPDATE
-				let updated = manager.update_with_conn(&conn, self).await?;
+				let updated = manager.update_with_conn(conn, self).await?;
 				*self = updated;
 
 				// Dispatch after_update event if registry is active
@@ -734,6 +847,132 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 					reg.dispatch_after_update(Self::table_name(), &instance_id)
 						.await;
 				}
+			}
+
+			Ok(())
+		}
+	}
+
+	/// Save this model through a caller-owned transaction executor.
+	fn save_with_executor(
+		&mut self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> impl std::future::Future<Output = Result<(), crate::backends::error::DatabaseError>> + Send
+	where
+		Self: Sized,
+	{
+		async move {
+			use super::events::{EventResult, get_active_registry};
+
+			let registry = get_active_registry();
+			let manager = super::Manager::<Self>::new();
+			let json = serde_json::to_value(&*self).map_err(|error| {
+				DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string())
+			})?;
+			let is_insert = self.primary_key().is_none();
+			let instance_id = if is_insert {
+				format!("{}-new-{}", Self::table_name(), uuid::Uuid::now_v7())
+			} else {
+				format!(
+					"{}-{}",
+					Self::table_name(),
+					self.primary_key()
+						.map(|pk| pk.to_string())
+						.unwrap_or_default()
+				)
+			};
+
+			if let Some(ref registry) = registry {
+				let result = if is_insert {
+					registry
+						.dispatch_before_insert(Self::table_name(), &instance_id, &json)
+						.await
+				} else {
+					registry
+						.dispatch_before_update(Self::table_name(), &instance_id, &json)
+						.await
+				};
+				if result == EventResult::Veto {
+					let operation = if is_insert { "Insert" } else { "Update" };
+					return Err(crate::backends::error::DatabaseError::new(
+						crate::backends::error::DatabaseErrorKind::Query,
+						format!("{operation} operation vetoed by event listener"),
+					));
+				}
+			}
+
+			*self = manager.save_with_executor(executor, self).await?;
+
+			if let Some(ref registry) = registry {
+				if is_insert {
+					let final_id = format!(
+						"{}-{}",
+						Self::table_name(),
+						self.primary_key()
+							.map(|pk| pk.to_string())
+							.unwrap_or_default()
+					);
+					registry
+						.dispatch_after_insert(Self::table_name(), &final_id)
+						.await;
+				} else {
+					registry
+						.dispatch_after_update(Self::table_name(), &instance_id)
+						.await;
+				}
+			}
+
+			Ok(())
+		}
+	}
+
+	/// Insert this model through a caller-owned transaction executor.
+	///
+	/// Unlike [`Self::save_with_executor`], this always performs an INSERT. This
+	/// is required for resources whose natural or UUID primary key is assigned
+	/// before creation.
+	fn insert_with_executor(
+		&mut self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> impl std::future::Future<Output = Result<(), crate::backends::error::DatabaseError>> + Send
+	where
+		Self: Sized,
+	{
+		async move {
+			use super::events::{EventResult, get_active_registry};
+
+			let registry = get_active_registry();
+			let manager = super::Manager::<Self>::new();
+			let json = serde_json::to_value(&*self).map_err(|error| {
+				DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string())
+			})?;
+			let instance_id = format!("{}-new-{}", Self::table_name(), uuid::Uuid::now_v7());
+
+			if let Some(ref registry) = registry {
+				let result = registry
+					.dispatch_before_insert(Self::table_name(), &instance_id, &json)
+					.await;
+				if result == EventResult::Veto {
+					return Err(crate::backends::error::DatabaseError::new(
+						crate::backends::error::DatabaseErrorKind::Query,
+						"Insert operation vetoed by event listener",
+					));
+				}
+			}
+
+			*self = manager.insert_with_executor(executor, self).await?;
+
+			if let Some(ref registry) = registry {
+				let final_id = format!(
+					"{}-{}",
+					Self::table_name(),
+					self.primary_key()
+						.map(|pk| pk.to_string())
+						.unwrap_or_default()
+				);
+				registry
+					.dispatch_after_insert(Self::table_name(), &final_id)
+					.await;
 			}
 
 			Ok(())
@@ -785,16 +1024,32 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		Self: Sized,
 	{
 		async move {
-			use super::events::{EventResult, get_active_registry};
 			use super::manager::get_connection;
 
+			let mut conn = get_connection().await?;
+			self.delete_with_conn(&mut conn).await
+		}
+	}
+
+	/// Delete the model instance through a caller-owned ORM executor.
+	fn delete_with_conn<'a, E>(
+		&'a self,
+		conn: &'a mut E,
+	) -> impl std::future::Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a
+	where
+		Self: Sized,
+		E: super::connection::OrmExecutor + 'a,
+	{
+		async move {
+			use super::events::{EventResult, get_active_registry};
+
 			let pk = self.primary_key().ok_or_else(|| {
-				reinhardt_core::exception::Error::Database(
-					"Cannot delete model without primary key".to_string(),
-				)
+				Error::from(DatabaseError::new(
+					DatabaseErrorKind::Query,
+					"Cannot delete model without primary key",
+				))
 			})?;
 
-			let conn = get_connection().await?;
 			let manager = super::Manager::<Self>::new();
 
 			let instance_id = format!("{}-{}", Self::table_name(), pk);
@@ -805,16 +1060,63 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 					.dispatch_before_delete(Self::table_name(), &instance_id)
 					.await;
 				if result == EventResult::Veto {
-					return Err(reinhardt_core::exception::Error::Database(
-						"Delete operation vetoed by event listener".to_string(),
-					));
+					return Err(DatabaseError::new(
+						DatabaseErrorKind::Query,
+						"Delete operation vetoed by event listener",
+					)
+					.into());
 				}
 			}
 
 			// Perform the DELETE
-			manager.delete_with_conn(&conn, pk.clone()).await?;
+			manager.delete_with_conn(conn, pk.clone()).await?;
 
 			// Dispatch after_delete event if registry is available
+			if let Some(registry) = get_active_registry() {
+				registry
+					.dispatch_after_delete(Self::table_name(), &instance_id)
+					.await;
+			}
+
+			Ok(())
+		}
+	}
+
+	/// Delete this model through a caller-owned transaction executor.
+	fn delete_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> impl std::future::Future<Output = Result<(), crate::backends::error::DatabaseError>> + Send
+	where
+		Self: Sized,
+	{
+		async move {
+			use super::events::{EventResult, get_active_registry};
+
+			let pk = self.primary_key().ok_or_else(|| {
+				crate::backends::error::DatabaseError::new(
+					crate::backends::error::DatabaseErrorKind::Query,
+					"Cannot delete model without primary key",
+				)
+			})?;
+			let instance_id = format!("{}-{}", Self::table_name(), pk);
+
+			if let Some(registry) = get_active_registry() {
+				let result = registry
+					.dispatch_before_delete(Self::table_name(), &instance_id)
+					.await;
+				if result == EventResult::Veto {
+					return Err(crate::backends::error::DatabaseError::new(
+						crate::backends::error::DatabaseErrorKind::Query,
+						"Delete operation vetoed by event listener",
+					));
+				}
+			}
+
+			super::Manager::<Self>::new()
+				.delete_with_executor(executor, pk)
+				.await?;
+
 			if let Some(registry) = get_active_registry() {
 				registry
 					.dispatch_after_delete(Self::table_name(), &instance_id)
@@ -971,122 +1273,142 @@ impl Default for SoftDelete {
 
 #[cfg(test)]
 mod tests {
-	use super::{FieldSelector, Model};
-	use crate::orm::{Manager, query::FilterValue};
+	use super::Model;
+	use crate::orm::fields::{BinaryField, CharField, Field};
+	use crate::orm::inspection::FieldInfo;
+	use crate::orm::{DatabaseStorageKind, DatabaseValue, FieldSelector, Manager};
+	use reinhardt_core::macros::{ModelEnum, model};
+	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
+	use std::collections::HashMap;
 
-	#[test]
-	fn serialize_nullable_json_array_preserves_sql_null_elements() {
-		let values = vec![
-			Some(serde_json::json!({"status": "ready"})),
-			None,
-			Some(serde_json::Value::Null),
-		];
-
-		let serialized = super::serialize_nullable_json_array(&values);
-
-		assert_eq!(
-			serialized[0],
-			serde_json::json!({"__reinhardt_json_array_element": {"status": "ready"}})
-		);
-		assert!(super::is_sql_null_array_element(&serialized[1]));
-		assert_eq!(
-			serialized[2],
-			serde_json::json!({"__reinhardt_json_array_element": null})
-		);
+	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+	#[model_enum(repr = "string")]
+	#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+	enum Status {
+		#[model_enum(value = "queued")]
+		Queued,
+		#[model_enum(value = "running")]
+		Running,
 	}
 
-	#[test]
-	fn serialize_nullable_json_array_escapes_sql_null_marker_values() {
-		let marker = serde_json::json!({"__reinhardt_sql_null_array_element": true});
-		let serialized = super::serialize_nullable_json_array(&[Some(marker.clone())]);
-
-		assert!(!super::is_sql_null_array_element(&serialized[0]));
-		assert_eq!(
-			super::unwrap_json_array_element(&serialized[0]),
-			Some(&marker)
-		);
+	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+	#[model_enum(repr = "i32")]
+	enum Priority {
+		#[model_enum(value = 10)]
+		Low,
+		#[model_enum(value = 20)]
+		Normal,
 	}
 
-	#[derive(Clone, Serialize, Deserialize)]
-	struct StringPrimaryKeyModel {
-		id: String,
+	#[model(app_label = "tests", table_name = "field_map_records")]
+	#[derive(Clone, Debug, Serialize, Deserialize)]
+	struct FieldMapRecord {
+		#[field(primary_key = true)]
+		id: Option<i64>,
+		#[field(max_length = 16)]
+		status: Status,
+		priority: Priority,
 	}
 
-	#[derive(Clone, Serialize, Deserialize)]
-	struct IntegerPrimaryKeyModel {
-		id: i64,
-	}
-
-	#[derive(Clone, Serialize, Deserialize)]
-	struct SmallIntegerPrimaryKeyModel {
-		id: i8,
-	}
-
-	#[derive(Clone, Serialize, Deserialize)]
-	struct DecimalPrimaryKeyModel {
+	#[model(app_label = "tests", table_name = "decimal_primary_key_records")]
+	#[derive(Clone, Debug, Serialize, Deserialize)]
+	struct DecimalPrimaryKeyRecord {
+		#[field(primary_key = true)]
 		id: rust_decimal::Decimal,
 	}
 
-	type UuidPrimaryKey = uuid::Uuid;
-	type TimestampPrimaryKey = chrono::DateTime<chrono::Utc>;
-	type FixedOffsetTimestampPrimaryKey = chrono::DateTime<chrono::FixedOffset>;
-	type LocalTimestampPrimaryKey = chrono::DateTime<chrono::Local>;
-	type DatePrimaryKey = chrono::NaiveDate;
-	type TimePrimaryKey = chrono::NaiveTime;
-
-	#[derive(Clone, Serialize, Deserialize)]
-	struct UuidPrimaryKeyModel {
-		id: UuidPrimaryKey,
+	#[model(app_label = "tests", table_name = "datetime_primary_key_records")]
+	#[derive(Clone, Debug, Serialize, Deserialize)]
+	struct DateTimePrimaryKeyRecord {
+		#[field(primary_key = true)]
+		id: chrono::DateTime<chrono::Utc>,
 	}
 
-	#[derive(Clone, Serialize, Deserialize)]
-	struct TimestampPrimaryKeyModel {
-		id: TimestampPrimaryKey,
+	#[derive(Clone, Debug, Serialize, Deserialize)]
+	struct LegacyTypedRecord {
+		id: Option<i64>,
+		external_id: uuid::Uuid,
+		occurred_at: chrono::DateTime<chrono::Utc>,
 	}
 
-	#[derive(Clone, Serialize, Deserialize)]
-	struct FixedOffsetTimestampPrimaryKeyModel {
-		id: FixedOffsetTimestampPrimaryKey,
-	}
+	#[derive(Clone, Debug)]
+	struct LegacyTypedRecordFields;
 
-	#[derive(Clone, Serialize, Deserialize)]
-	struct LocalTimestampPrimaryKeyModel {
-		id: LocalTimestampPrimaryKey,
-	}
-
-	#[derive(Clone, Serialize, Deserialize)]
-	struct DatePrimaryKeyModel {
-		id: DatePrimaryKey,
-	}
-
-	#[derive(Clone, Serialize, Deserialize)]
-	struct TimePrimaryKeyModel {
-		id: TimePrimaryKey,
-	}
-
-	#[derive(Clone)]
-	struct PrimaryKeyTestFields;
-
-	impl FieldSelector for PrimaryKeyTestFields {
+	impl FieldSelector for LegacyTypedRecordFields {
 		fn with_alias(self, _alias: &str) -> Self {
 			self
 		}
 	}
 
-	macro_rules! impl_primary_key_test_model {
-		($model:ty, $pk:ty) => {
-			impl Model for $model {
-				type PrimaryKey = $pk;
-				type Fields = PrimaryKeyTestFields;
+	impl Model for LegacyTypedRecord {
+		type PrimaryKey = i64;
+		type Fields = LegacyTypedRecordFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"legacy_typed_records"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			LegacyTypedRecordFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			["id", "external_id", "occurred_at"]
+				.into_iter()
+				.map(|name| FieldInfo {
+					name: name.to_owned(),
+					field_type: match name {
+						"id" => "reinhardt.orm.models.BigIntegerField",
+						"external_id" => "reinhardt.orm.models.UuidField",
+						"occurred_at" => "reinhardt.orm.models.DateTimeField",
+						_ => unreachable!(),
+					}
+					.to_owned(),
+					storage_kind: None,
+					domain: None,
+					nullable: name == "id",
+					primary_key: name == "id",
+					unique: false,
+					blank: false,
+					editable: true,
+					default: None,
+					db_default: None,
+					db_column: None,
+					choices: None,
+					attributes: HashMap::new(),
+				})
+				.collect()
+		}
+	}
+
+	macro_rules! define_manual_primary_key_model {
+		($name:ident, $key:ty, $table:literal) => {
+			#[derive(Clone, Debug, Serialize, Deserialize)]
+			struct $name {
+				id: $key,
+			}
+
+			impl Model for $name {
+				type PrimaryKey = $key;
+				type Fields = LegacyTypedRecordFields;
 				type Objects = Manager<Self>;
 
 				fn table_name() -> &'static str {
-					"primary_key_test"
-				}
-
-				fn new_fields() -> Self::Fields {
-					PrimaryKeyTestFields
+					$table
 				}
 
 				fn primary_key(&self) -> Option<Self::PrimaryKey> {
@@ -1096,181 +1418,223 @@ mod tests {
 				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 					self.id = value;
 				}
-			}
-		};
-	}
-
-	impl_primary_key_test_model!(StringPrimaryKeyModel, String);
-	impl_primary_key_test_model!(IntegerPrimaryKeyModel, i64);
-	impl_primary_key_test_model!(SmallIntegerPrimaryKeyModel, i8);
-	impl_primary_key_test_model!(DecimalPrimaryKeyModel, rust_decimal::Decimal);
-
-	macro_rules! impl_alias_primary_key_test_model {
-		($model:ty, $pk:ty) => {
-			impl Model for $model {
-				type PrimaryKey = $pk;
-				type Fields = PrimaryKeyTestFields;
-				type Objects = Manager<Self>;
-
-				fn table_name() -> &'static str {
-					"primary_key_test"
-				}
 
 				fn new_fields() -> Self::Fields {
-					PrimaryKeyTestFields
-				}
-
-				fn primary_key(&self) -> Option<Self::PrimaryKey> {
-					Some(self.id)
-				}
-
-				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-					self.id = value;
-				}
-
-				fn primary_key_filter_value_from_str(
-					value: &str,
-				) -> reinhardt_core::exception::Result<FilterValue> {
-					let filter_value = super::deserialize_primary_key_filter_value_from_str::<
-						Self::PrimaryKey,
-					>(value)
-					.map_err(|_| {
-						reinhardt_core::exception::Error::Validation(format!(
-							"invalid primary key: {value}"
-						))
-					})?;
-					if let Some(filter_value) = filter_value {
-						return Ok(filter_value);
-					}
-					let primary_key =
-						super::deserialize_primary_key_from_str::<Self::PrimaryKey>(value)
-							.map_err(|_| {
-								reinhardt_core::exception::Error::Validation(format!(
-									"invalid primary key: {value}"
-								))
-							})?;
-					Ok(Self::primary_key_filter_value(primary_key))
+					LegacyTypedRecordFields
 				}
 			}
 		};
 	}
 
-	impl_alias_primary_key_test_model!(UuidPrimaryKeyModel, UuidPrimaryKey);
-	impl_alias_primary_key_test_model!(TimestampPrimaryKeyModel, TimestampPrimaryKey);
-	impl_alias_primary_key_test_model!(
-		FixedOffsetTimestampPrimaryKeyModel,
-		FixedOffsetTimestampPrimaryKey
+	define_manual_primary_key_model!(ManualBooleanPrimaryKey, bool, "manual_boolean_keys");
+	define_manual_primary_key_model!(ManualF32PrimaryKey, f32, "manual_f32_keys");
+	define_manual_primary_key_model!(ManualF64PrimaryKey, f64, "manual_f64_keys");
+	define_manual_primary_key_model!(
+		ManualDateTimePrimaryKey,
+		chrono::DateTime<chrono::Utc>,
+		"manual_datetime_keys"
 	);
-	impl_alias_primary_key_test_model!(LocalTimestampPrimaryKeyModel, LocalTimestampPrimaryKey);
-	impl_alias_primary_key_test_model!(DatePrimaryKeyModel, DatePrimaryKey);
-	impl_alias_primary_key_test_model!(TimePrimaryKeyModel, TimePrimaryKey);
 
-	#[rstest::rstest]
-	fn primary_key_filter_value_from_str_parses_date_and_time_keys() {
-		let date = DatePrimaryKeyModel::primary_key_filter_value_from_str("2026-08-20").unwrap();
-		let time = TimePrimaryKeyModel::primary_key_filter_value_from_str("12:34:56").unwrap();
-		let direct_date = DatePrimaryKeyModel::primary_key_filter_value(
-			chrono::NaiveDate::from_ymd_opt(2026, 8, 20).expect("date should be valid"),
-		);
-		let direct_time = TimePrimaryKeyModel::primary_key_filter_value(
-			chrono::NaiveTime::from_hms_opt(12, 34, 56).expect("time should be valid"),
-		);
-
-		let FilterValue::Date(date) = date else {
-			panic!("date primary key should use the date filter variant");
+	#[rstest]
+	fn string_enum_database_value_survives_field_map_round_trip() {
+		// Arrange
+		let record = FieldMapRecord {
+			id: None,
+			status: Status::Queued,
+			priority: Priority::Normal,
 		};
-		let FilterValue::Time(time) = time else {
-			panic!("time primary key should use the time filter variant");
+
+		// Act
+		let fields = record
+			.encode_database_fields()
+			.expect("model fields should encode");
+		let database_value = fields
+			.get("status")
+			.cloned()
+			.expect("status should be encoded");
+		let decoded = FieldMapRecord::decode_database_field("status", database_value.clone())
+			.expect("status should decode");
+		let status: Status =
+			serde_json::from_value(decoded).expect("decoded status should deserialize");
+
+		// Assert
+		assert_eq!(database_value, DatabaseValue::String("queued".to_owned()));
+		assert_eq!(status, Status::Queued);
+	}
+
+	#[rstest]
+	fn i32_enum_database_value_survives_field_map_round_trip() {
+		// Arrange
+		let record = FieldMapRecord {
+			id: None,
+			status: Status::Queued,
+			priority: Priority::Normal,
 		};
-		let FilterValue::Date(direct_date) = direct_date else {
-			panic!("direct date primary key should use the date filter variant");
+
+		// Act
+		let fields = record
+			.encode_database_fields()
+			.expect("model fields should encode");
+		let database_value = fields
+			.get("priority")
+			.cloned()
+			.expect("priority should be encoded");
+		let decoded = FieldMapRecord::decode_database_field("priority", database_value.clone())
+			.expect("priority should decode");
+		let priority: Priority =
+			serde_json::from_value(decoded).expect("decoded priority should deserialize");
+
+		// Assert
+		assert_eq!(database_value, DatabaseValue::I32(20));
+		assert_eq!(priority, Priority::Normal);
+	}
+
+	#[test]
+	fn legacy_metadata_infers_uuid_and_datetime_database_values() {
+		// Arrange
+		let occurred_at = chrono::DateTime::parse_from_rfc3339("2026-07-18T12:00:00Z")
+			.expect("timestamp should parse")
+			.with_timezone(&chrono::Utc);
+		let record = LegacyTypedRecord {
+			id: Some(1),
+			external_id: uuid::Uuid::nil(),
+			occurred_at,
 		};
-		let FilterValue::Time(direct_time) = direct_time else {
-			panic!("direct time primary key should use the time filter variant");
-		};
+
+		// Act
+		let fields = record
+			.encode_database_fields()
+			.expect("legacy model fields should encode");
+
+		// Assert
 		assert_eq!(
-			date,
-			chrono::NaiveDate::from_ymd_opt(2026, 8, 20).expect("date should be valid")
+			fields.get("external_id"),
+			Some(&DatabaseValue::Uuid(uuid::Uuid::nil()))
 		);
 		assert_eq!(
-			direct_date,
-			chrono::NaiveDate::from_ymd_opt(2026, 8, 20).expect("date should be valid")
-		);
-		assert_eq!(
-			time,
-			chrono::NaiveTime::from_hms_opt(12, 34, 56).expect("time should be valid")
-		);
-		assert_eq!(
-			direct_time,
-			chrono::NaiveTime::from_hms_opt(12, 34, 56).expect("time should be valid")
+			fields.get("occurred_at"),
+			Some(&DatabaseValue::DateTime(occurred_at))
 		);
 	}
 
-	#[test]
-	fn primary_key_filter_value_from_str_preserves_numeric_strings() {
-		let value = StringPrimaryKeyModel::primary_key_filter_value_from_str("00123").unwrap();
-		assert!(matches!(value, FilterValue::String(ref value) if value == "00123"));
-	}
+	#[rstest]
+	fn legacy_metadata_infers_scalar_database_values() {
+		let cases = [
+			("BooleanField", "true", DatabaseValue::Bool(true)),
+			("IntegerField", "7", DatabaseValue::I32(7)),
+			(
+				"BigIntegerField",
+				"9007199254740993",
+				DatabaseValue::I64(9007199254740993),
+			),
+			("FloatField", "1.25", DatabaseValue::F64(1.25)),
+			(
+				"DecimalField",
+				"9007199254740993.123456789",
+				DatabaseValue::Decimal("9007199254740993.123456789".parse().unwrap()),
+			),
+		];
 
-	#[test]
-	fn primary_key_filter_value_from_str_parses_integer_keys() {
-		let value = IntegerPrimaryKeyModel::primary_key_filter_value_from_str("42").unwrap();
-		assert!(matches!(value, FilterValue::Integer(42)));
-	}
+		for (field_type, value, expected) in cases {
+			let mut field = CharField::new(255);
+			field.set_attributes_from_name("value");
+			let mut info = FieldInfo::from_field(&field);
+			info.field_type = format!("reinhardt.orm.models.{field_type}");
 
-	#[test]
-	fn primary_key_filter_value_from_str_rejects_invalid_integer_keys() {
-		let error = IntegerPrimaryKeyModel::primary_key_filter_value_from_str("not-an-integer")
-			.unwrap_err();
-		assert!(matches!(
-			error,
-			reinhardt_core::exception::Error::Validation(_)
-		));
-	}
-
-	#[test]
-	fn primary_key_filter_value_from_str_rejects_out_of_range_integer_keys() {
-		let error =
-			SmallIntegerPrimaryKeyModel::primary_key_filter_value_from_str("128").unwrap_err();
-		assert!(matches!(
-			error,
-			reinhardt_core::exception::Error::Validation(_)
-		));
-	}
-
-	#[test]
-	fn primary_key_filter_value_from_str_parses_decimal_keys() {
-		let value = DecimalPrimaryKeyModel::primary_key_filter_value_from_str("1.25").unwrap();
-		assert!(matches!(
-			value,
-			FilterValue::Decimal(value) if value == rust_decimal::Decimal::new(125, 2)
-		));
-	}
-
-	#[test]
-	fn primary_key_filter_value_from_str_uses_uuid_filter_for_aliases() {
-		let value = UuidPrimaryKeyModel::primary_key_filter_value_from_str(
-			"018e9c80-0b25-7d44-9c68-3a88f6797553",
-		)
-		.unwrap();
-		assert!(matches!(value, FilterValue::Uuid(_)));
-	}
-
-	#[test]
-	fn primary_key_filter_value_from_str_uses_timestamp_filter_for_aliases() {
-		for value in [
-			TimestampPrimaryKeyModel::primary_key_filter_value_from_str("2026-08-19T00:00:00Z")
-				.unwrap(),
-			FixedOffsetTimestampPrimaryKeyModel::primary_key_filter_value_from_str(
-				"2026-08-19T00:00:00+09:00",
-			)
-			.unwrap(),
-			LocalTimestampPrimaryKeyModel::primary_key_filter_value_from_str(
-				"2026-08-19T00:00:00Z",
-			)
-			.unwrap(),
-		] {
-			assert!(matches!(value, FilterValue::Timestamp(_)));
+			let filter = super::filter_value_from_field(&info, value).unwrap();
+			assert!(
+				matches!(filter, crate::orm::query::FilterValue::Typed(Ok(actual)) if actual == expected)
+			);
 		}
+	}
+
+	#[rstest]
+	fn datetime_route_values_accept_display_format() {
+		let field = LegacyTypedRecord::field_metadata()
+			.into_iter()
+			.find(|field| field.name == "occurred_at")
+			.expect("datetime metadata should exist");
+		let filter = super::filter_value_from_field(&field, "2026-07-18 12:00:00 UTC")
+			.expect("display-formatted datetime should parse");
+
+		assert!(matches!(
+			filter,
+			crate::orm::query::FilterValue::Typed(Ok(DatabaseValue::DateTime(value)))
+				if value == chrono::DateTime::parse_from_rfc3339("2026-07-18T12:00:00Z")
+					.expect("expected datetime should parse")
+					.with_timezone(&chrono::Utc)
+		));
+	}
+
+	#[rstest]
+	fn binary_route_values_decode_base64() {
+		let mut field = BinaryField::new();
+		field.set_attributes_from_name("payload");
+		let mut info = FieldInfo::from_field(&field);
+		info.storage_kind = Some(DatabaseStorageKind::Bytes);
+
+		let filter = super::filter_value_from_field(&info, "AAH//w==")
+			.expect("base64 binary route value should parse");
+
+		let crate::orm::query::FilterValue::Typed(Ok(value)) = filter else {
+			panic!("binary route value should produce a typed database value");
+		};
+		assert_eq!(value, DatabaseValue::Bytes(vec![0, 1, 255, 255]));
+	}
+
+	#[rstest]
+	fn generated_datetime_primary_key_accepts_display_format() {
+		let filter =
+			DateTimePrimaryKeyRecord::primary_key_filter_value_from_str("2026-07-18 12:00:00 UTC")
+				.expect("display-formatted datetime primary key should parse");
+
+		assert!(matches!(
+			filter,
+			crate::orm::query::FilterValue::Timestamp(value)
+				if value == chrono::DateTime::parse_from_rfc3339("2026-07-18T12:00:00Z")
+					.expect("expected datetime should parse")
+					.with_timezone(&chrono::Utc)
+		));
+	}
+
+	#[rstest]
+	fn manual_primary_keys_preserve_boolean_float_and_display_datetime_types() {
+		assert!(matches!(
+			ManualBooleanPrimaryKey::primary_key_filter_value(true),
+			crate::orm::query::FilterValue::Boolean(true)
+		));
+		assert!(matches!(
+			ManualF32PrimaryKey::primary_key_filter_value(1.25),
+			crate::orm::query::FilterValue::Float(value) if (value - 1.25).abs() < f64::EPSILON
+		));
+		assert!(matches!(
+			ManualF64PrimaryKey::primary_key_filter_value(2.5),
+			crate::orm::query::FilterValue::Float(value) if (value - 2.5).abs() < f64::EPSILON
+		));
+
+		let filter =
+			ManualDateTimePrimaryKey::primary_key_filter_value_from_str("2026-07-18 12:00:00 UTC")
+				.unwrap();
+		assert!(matches!(
+			filter,
+			crate::orm::query::FilterValue::Timestamp(value)
+				if value == chrono::DateTime::parse_from_rfc3339("2026-07-18T12:00:00Z")
+					.unwrap()
+					.with_timezone(&chrono::Utc)
+		));
+	}
+
+	#[rstest]
+	fn generated_decimal_primary_key_preserves_route_precision() {
+		let route_value = "9007199254740993.123456789";
+		let filter = DecimalPrimaryKeyRecord::primary_key_filter_value_from_str(route_value)
+			.expect("decimal primary key should parse");
+		let expected: rust_decimal::Decimal = route_value.parse().expect("decimal should parse");
+
+		assert!(matches!(
+			filter,
+			crate::orm::query::FilterValue::Typed(Ok(DatabaseValue::Decimal(value)))
+				if value == expected
+		));
 	}
 }

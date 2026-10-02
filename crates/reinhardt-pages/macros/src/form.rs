@@ -50,6 +50,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 
+mod client_form_view;
 mod codegen;
 mod validator;
 
@@ -61,6 +62,12 @@ mod validator;
 /// 3. Generate: TypedFormMacro → TokenStream (Rust code)
 pub(crate) fn form_impl(input: TokenStream) -> TokenStream {
 	let input2 = TokenStream2::from(input);
+	if reinhardt_manouche::parser::is_client_form_view(&input2) {
+		return match reinhardt_manouche::parser::parse_client_form_view(input2) {
+			Ok(ast) => client_form_view::generate(ast).into(),
+			Err(error) => error.to_compile_error().into(),
+		};
+	}
 	let ambient_arguments_source =
 		reinhardt_manouche::parser::detect_ambient_arguments_source(&input2);
 

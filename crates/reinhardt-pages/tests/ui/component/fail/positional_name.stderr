@@ -1,0 +1,5 @@
+error: expected named route argument `name = "..."`; positional route names are no longer supported
+ --> tests/ui/component/fail/positional_name.rs:5:29
+  |
+5 | #[component("/users/{id}/", "user-detail")]
+  |                             ^^^^^^^^^^^^^

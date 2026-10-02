@@ -1,0 +1,5 @@
+error: #[loader] functions must not be generic
+ --> tests/ui/loader/fail/generic.rs:4:17
+  |
+4 | async fn generic<T>() -> Result<T, String> {
+  |                 ^^^

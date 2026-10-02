@@ -1,0 +1,19 @@
+error[E0271]: type mismatch resolving `<PostAuthorRelationDescriptor as RelationDescriptor>::Source == Comment`
+  --> tests/ui/model/fail/relation_descriptor_source_mismatch.rs:31:72
+   |
+31 |         db::orm::relations::RelationPath::<Comment, User>::from_descriptor::<PostAuthorRelationDescriptor>();
+   |                                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<PostAuthorRelationDescriptor as RelationDescriptor>::Source == Comment`
+   |
+note: expected this to be `Comment`
+  --> tests/ui/model/fail/relation_descriptor_source_mismatch.rs:15:8
+   |
+15 | struct Post {
+   |        ^^^^
+note: required by a bound in `RelationPath::<Root, Target>::from_descriptor`
+  --> tests/ui/model/fail/../support.rs
+   |
+   |                 pub fn from_descriptor<D>() -> Self
+   |                        --------------- required by a bound in this associated function
+   |                 where
+   |                     D: RelationDescriptor<Source = Root, Target = Target>,
+   |                                           ^^^^^^^^^^^^^ required by this bound in `RelationPath::<Root, Target>::from_descriptor`

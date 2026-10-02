@@ -54,7 +54,7 @@ fn test_path_matcher() {
 	assert!(result.is_some());
 	let (handler_id, params) = result.unwrap();
 	assert_eq!(handler_id, "users_detail");
-	assert_eq!(params.get("id"), Some(&"123".to_string()));
+	assert_eq!(params.get("id"), Some("123"));
 }
 
 // ===================================================================
@@ -298,7 +298,7 @@ fn test_radix_router_basic_matching() {
 	assert!(result.is_some());
 	let (handler_id, params) = result.unwrap();
 	assert_eq!(handler_id, "users_detail");
-	assert_eq!(params.get("id"), Some(&"123".to_string()));
+	assert_eq!(params.get("id"), Some("123"));
 }
 
 #[test]
@@ -312,8 +312,8 @@ fn test_radix_router_multiple_parameters() {
 	assert!(result.is_some());
 	let (handler_id, params) = result.unwrap();
 	assert_eq!(handler_id, "post_detail");
-	assert_eq!(params.get("id"), Some(&"123".to_string()));
-	assert_eq!(params.get("post_id"), Some(&"456".to_string()));
+	assert_eq!(params.get("id"), Some("123"));
+	assert_eq!(params.get("post_id"), Some("456"));
 }
 
 #[test]
@@ -327,7 +327,7 @@ fn test_radix_router_wildcard() {
 	assert!(result.is_some());
 	let (handler_id, params) = result.unwrap();
 	assert_eq!(handler_id, "serve_file");
-	assert_eq!(params.get("path"), Some(&"images/logo.png".to_string()));
+	assert_eq!(params.get("path"), Some("images/logo.png"));
 }
 
 #[test]
@@ -363,7 +363,7 @@ fn test_path_matcher_radix_tree_mode() {
 	assert!(result.is_some());
 	let (handler_id, params) = result.unwrap();
 	assert_eq!(handler_id, "users_detail");
-	assert_eq!(params.get("id"), Some(&"123".to_string()));
+	assert_eq!(params.get("id"), Some("123"));
 }
 
 #[test]
@@ -595,10 +595,7 @@ fn typed_path_rejects_mixed_separator_traversal(
 	assert_eq!(matched, None);
 	let (handler, params) = safe.expect("a dot-prefixed filename should remain accepted");
 	assert_eq!(handler, "files");
-	assert_eq!(
-		params.get("asset").map(String::as_str),
-		Some("nested/..hidden/file.txt")
-	);
+	assert_eq!(params.get("asset"), Some("nested/..hidden/file.txt"));
 }
 
 #[test]
@@ -664,7 +661,7 @@ fn test_radix_tree_mode_rejects_traversal() {
 	assert!(result.is_some());
 	let (handler_id, params) = result.unwrap();
 	assert_eq!(handler_id, "serve_file");
-	assert_eq!(params.get("filepath"), Some(&"css/style.css".to_string()));
+	assert_eq!(params.get("filepath"), Some("css/style.css"));
 }
 
 #[test]

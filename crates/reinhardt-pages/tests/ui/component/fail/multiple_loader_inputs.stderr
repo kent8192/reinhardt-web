@@ -1,0 +1,13 @@
+error: #[component] functions accept exactly one Loader<T> input
+  --> tests/ui/component/fail/multiple_loader_inputs.rs:12:9
+   |
+12 |     Loader(second): Loader<String>,
+   |            ^^^^^^
+
+warning: unused imports: `Loader`, `Page`, and `page`
+ --> tests/ui/component/fail/multiple_loader_inputs.rs:1:23
+  |
+1 | use reinhardt_pages::{Loader, Page, Path, component, loader, page};
+  |                       ^^^^^^  ^^^^                           ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

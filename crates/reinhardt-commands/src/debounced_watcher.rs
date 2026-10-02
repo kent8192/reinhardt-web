@@ -9,7 +9,6 @@
 //! crate (`builtin::Runserver::run_with_autoreload`).
 
 use std::collections::BTreeSet;
-use std::future::Future;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -22,6 +21,11 @@ use tokio::time::{Instant, sleep, timeout_at};
 
 use crate::CommandContext;
 use crate::source_roots::SourceRoots;
+#[cfg(feature = "pages")]
+use crate::{
+	DispatchOutcome, TemplateBuildArtifact, TemplateHotReloadCoordinator,
+	template_manifest::collect_client_baseline,
+};
 
 /// Default time window over which bursts of events are coalesced into a single
 /// rebuild trigger.
@@ -115,90 +119,11 @@ impl RebuildTargets {
 	}
 }
 
-/// Observable result of dispatching one debounced rebuild batch.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RebuildDispatchOutcome {
-	/// No selected pipeline needed work.
-	NoTargets,
-	/// A static Pages patch was delivered without starting a rebuild pipeline.
-	StaticPatchSent,
-	/// The selected pipelines completed and may have delivered a full reload.
-	Rebuilt {
-		/// WASM pipeline result when the target was selected.
-		wasm_succeeded: Option<bool>,
-		/// Server pipeline result when the target was selected.
-		server_succeeded: Option<bool>,
-		/// Whether a browser received the full reload message.
-		browser_reloaded: bool,
-	},
-}
-
-async fn dispatch_rebuild_with<StaticPatch, BrowserReload, WasmFuture, ServerFuture>(
-	targets: RebuildTargets,
-	paths: &[PathBuf],
-	mut static_patch: StaticPatch,
-	rebuild_wasm: WasmFuture,
-	rebuild_server: ServerFuture,
-	mut browser_reload: BrowserReload,
-) -> RebuildDispatchOutcome
-where
-	StaticPatch: FnMut(&[PathBuf], RebuildTargets) -> bool,
-	BrowserReload: FnMut(&str) -> bool,
-	WasmFuture: Future<Output = bool>,
-	ServerFuture: Future<Output = bool>,
-{
-	if !targets.has_work() {
-		return RebuildDispatchOutcome::NoTargets;
-	}
-	if static_patch(paths, targets) {
-		return RebuildDispatchOutcome::StaticPatchSent;
-	}
-
-	let (wasm_succeeded, server_succeeded, browser_reloaded) = match (targets.wasm, targets.server)
-	{
-		(true, true) => {
-			let (wasm_succeeded, server_succeeded) = tokio::join!(rebuild_wasm, rebuild_server);
-			let browser_reloaded = if wasm_succeeded && server_succeeded {
-				browser_reload("Rust rebuild completed successfully")
-			} else {
-				false
-			};
-			(
-				Some(wasm_succeeded),
-				Some(server_succeeded),
-				browser_reloaded,
-			)
-		}
-		(true, false) => {
-			let wasm_succeeded = rebuild_wasm.await;
-			let browser_reloaded = if wasm_succeeded {
-				browser_reload("WASM rebuild completed successfully")
-			} else {
-				false
-			};
-			(Some(wasm_succeeded), None, browser_reloaded)
-		}
-		(false, true) => {
-			let server_succeeded = rebuild_server.await;
-			let browser_reloaded = if server_succeeded {
-				browser_reload("Server rebuild completed successfully")
-			} else {
-				false
-			};
-			(None, Some(server_succeeded), browser_reloaded)
-		}
-		(false, false) => unreachable!("has_work excludes an empty rebuild target"),
-	};
-
-	RebuildDispatchOutcome::Rebuilt {
-		wasm_succeeded,
-		server_succeeded,
-		browser_reloaded,
-	}
-}
-
 /// Configuration for `run_watcher`.
 pub struct WatcherConfig {
+	/// Project root used to derive stable, project-relative template keys.
+	#[cfg(feature = "pages")]
+	pub project_root: PathBuf,
 	/// Bin name passed to `cargo build --bin`.
 	pub bin_name: String,
 	/// Advertised runserver address that must be reachable after restart.
@@ -219,6 +144,51 @@ pub struct WatcherConfig {
 	/// successful rebuild. `None` keeps the watcher in compile-only mode.
 	#[cfg(feature = "pages")]
 	pub hmr_tx: Option<broadcast::Sender<String>>,
+	/// HMR server used for retained patch replay and client acknowledgements.
+	#[cfg(feature = "pages")]
+	pub hmr_server: Option<reinhardt_pages::hmr::HmrServer>,
+	/// Last-good component style compiler state processed before rebuild classification.
+	#[cfg(feature = "pages")]
+	pub component_styles: Option<std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
+}
+
+/// Cargo configuration used by native hot-reload rebuilds.
+#[derive(Clone, Copy)]
+pub(crate) struct ServerRebuildContext<'a> {
+	package: Option<&'a str>,
+	features: &'a [String],
+	all_features: bool,
+}
+
+impl<'a> ServerRebuildContext<'a> {
+	pub(crate) fn new(
+		package: Option<&'a str>,
+		features: &'a [String],
+		all_features: bool,
+	) -> Self {
+		Self {
+			package,
+			features,
+			all_features,
+		}
+	}
+
+	pub(crate) fn for_native_server() -> Self {
+		Self::default()
+	}
+}
+
+impl Default for ServerRebuildContext<'_> {
+	fn default() -> Self {
+		Self::new(None, &[], false)
+	}
+}
+
+/// Shared state required to rebuild one debounced path batch.
+struct WatcherRebuildContext<'a, 'b> {
+	command_context: &'a CommandContext,
+	config: &'a WatcherConfig,
+	server_rebuild_context: ServerRebuildContext<'b>,
 }
 
 /// Select rebuild pipelines for a debounced path batch.
@@ -305,6 +275,22 @@ fn normalized_path(path: &std::path::Path) -> String {
 	path.to_string_lossy().replace('\\', "/")
 }
 
+fn paths_change_cargo_metadata(paths: &[PathBuf]) -> bool {
+	paths.iter().any(|path| {
+		path.file_name()
+			.is_some_and(|name| name == "Cargo.toml" || name == "Cargo.lock")
+	})
+}
+
+#[cfg(feature = "pages")]
+fn can_attempt_template_patch(paths: &[PathBuf], config: &WatcherConfig) -> bool {
+	if !config.pages_enabled || config.no_wasm_rebuild || paths_change_cargo_metadata(paths) {
+		return false;
+	}
+	let targets = rebuild_targets_for_paths(paths, config);
+	targets.wasm && !targets.server
+}
+
 #[cfg(feature = "pages")]
 fn wasm_rebuild_succeeded(outcome: &crate::wasm_rebuild_pipeline::WasmRebuildOutcome) -> bool {
 	matches!(
@@ -341,6 +327,27 @@ async fn wait_for_server_ready(address: Option<&str>) -> bool {
 }
 
 #[cfg(feature = "pages")]
+async fn next_hmr_client_event(receiver: &mut Option<broadcast::Receiver<String>>) -> String {
+	loop {
+		let Some(receiver) = receiver.as_mut() else {
+			return std::future::pending::<String>().await;
+		};
+		match receiver.recv().await {
+			Ok(event) => return event,
+			Err(broadcast::error::RecvError::Lagged(_)) => continue,
+			Err(broadcast::error::RecvError::Closed) => {
+				return std::future::pending::<String>().await;
+			}
+		}
+	}
+}
+
+#[cfg(not(feature = "pages"))]
+async fn next_hmr_client_event(_: &mut ()) -> String {
+	std::future::pending::<String>().await
+}
+
+#[cfg(feature = "pages")]
 fn notify_browser_reload(hmr_tx: Option<&broadcast::Sender<String>>, reason: &str) -> bool {
 	let Some(tx) = hmr_tx else {
 		return false;
@@ -355,27 +362,44 @@ fn notify_browser_reload(hmr_tx: Option<&broadcast::Sender<String>>, reason: &st
 }
 
 #[cfg(feature = "pages")]
-fn notify_static_page_patch(
-	hmr_tx: Option<&broadcast::Sender<String>>,
-	paths: &[PathBuf],
-	targets: RebuildTargets,
-) -> bool {
-	if hmr_tx.is_none() || targets.server || !targets.wasm {
-		return false;
-	}
-	let Some(html) = crate::page_hot_patch::render_static_page_patch(paths) else {
-		return false;
-	};
-	let msg = reinhardt_pages::hmr::HmrMessage::HtmlReplace {
-		selector: "#app".to_string(),
-		html,
-	};
-	if let Ok(json) = msg.to_json()
-		&& let Some(tx) = hmr_tx
+async fn notify_server_reload_if_ready(
+	server_outcome: &crate::server_rebuild_pipeline::ServerRebuildOutcome,
+	config: &WatcherConfig,
+) {
+	if server_rebuild_succeeded(server_outcome)
+		&& wait_for_server_ready(config.server_address.as_deref()).await
 	{
-		return tx.send(json).is_ok();
+		notify_browser_reload(
+			config.hmr_tx.as_ref(),
+			"Server rebuild completed successfully",
+		);
 	}
-	false
+}
+
+#[cfg(feature = "pages")]
+fn commit_pending_component_styles(
+	component_styles: Option<&std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
+	wasm_rebuilt: bool,
+) -> bool {
+	if !wasm_rebuilt {
+		return false;
+	}
+	let Some(state) = component_styles else {
+		return true;
+	};
+	match state.lock() {
+		Ok(mut state) => match state.commit_pending() {
+			Ok(_) => true,
+			Err(error) => {
+				eprintln!("component stylesheet replacement failed after rebuild: {error}");
+				false
+			}
+		},
+		Err(_) => {
+			eprintln!("component stylesheet state lock was poisoned after rebuild");
+			false
+		}
+	}
 }
 
 /// Dispatch one debounced path batch through the selected rebuild pipelines.
@@ -390,28 +414,82 @@ pub async fn run_rebuild_for_paths(
 	current_child: &mut tokio::process::Child,
 	respawn: &(impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync),
 ) {
+	run_rebuild_for_paths_for_package(
+		WatcherRebuildContext {
+			command_context: ctx,
+			config,
+			server_rebuild_context: ServerRebuildContext::default(),
+		},
+		paths,
+		current_child,
+		respawn,
+		#[cfg(feature = "pages")]
+		None,
+		#[cfg(feature = "pages")]
+		None,
+	)
+	.await;
+}
+
+async fn run_rebuild_for_paths_for_package(
+	watcher_rebuild_context: WatcherRebuildContext<'_, '_>,
+	paths: Vec<PathBuf>,
+	current_child: &mut tokio::process::Child,
+	respawn: &(impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync),
+	#[cfg(feature = "pages")] mut template_coordinator: Option<&mut TemplateHotReloadCoordinator>,
+	#[cfg(feature = "pages")] template_fallback_generation: Option<
+		reinhardt_pages::hmr::PatchGeneration,
+	>,
+) {
+	let WatcherRebuildContext {
+		command_context: ctx,
+		config,
+		server_rebuild_context: rebuild_context,
+	} = watcher_rebuild_context;
+
 	ctx.info(&format!(
 		"[hot-reload] change detected ({} path(s))",
 		paths.len()
 	));
 	let targets = rebuild_targets_for_paths(&paths, config);
-	let outcome = dispatch_rebuild_with(
-		targets,
-		&paths,
-		|paths, targets| {
-			#[cfg(feature = "pages")]
-			{
-				notify_static_page_patch(config.hmr_tx.as_ref(), paths, targets)
+	#[cfg(feature = "pages")]
+	let metadata_changed = paths_change_cargo_metadata(&paths);
+	#[cfg(feature = "pages")]
+	let (style_stage, component_style_paths_only) = if let Some(state) = &config.component_styles {
+		match state.lock() {
+			Ok(mut state) => {
+				let component_style_paths_only =
+					paths.iter().all(|path| state.tracks_source_path(path));
+				(state.refresh(metadata_changed), component_style_paths_only)
 			}
-			#[cfg(not(feature = "pages"))]
-			{
-				let _ = (paths, targets);
-				false
-			}
-		},
-		async {
-			#[cfg(feature = "pages")]
-			{
+			Err(_) => (crate::ComponentStyleStageResult::Failed, false),
+		}
+	} else {
+		(crate::ComponentStyleStageResult::Unchanged, false)
+	};
+	#[cfg(feature = "pages")]
+	let css_only = style_stage == crate::ComponentStyleStageResult::CssOnly && !metadata_changed;
+	#[cfg(feature = "pages")]
+	if css_only {
+		notify_component_stylesheet_update(config.hmr_tx.as_ref());
+	}
+	#[cfg(feature = "pages")]
+	if can_short_circuit_css_only(style_stage, metadata_changed, component_style_paths_only) {
+		ctx.info("[hot-reload] component stylesheet updated without rebuilding");
+		return;
+	}
+	#[cfg(feature = "pages")]
+	if css_only {
+		ctx.info("[hot-reload] component stylesheet updated; rebuilding other changed targets");
+	}
+	if !targets.has_work() {
+		ctx.info("[hot-reload] no rebuild target matched; waiting for next change");
+		return;
+	}
+	let wasm_fut = async {
+		#[cfg(feature = "pages")]
+		{
+			if targets.wasm {
 				let outcome = crate::wasm_rebuild_pipeline::WasmRebuildPipeline::run(ctx).await;
 				if let Some(line) =
 					crate::wasm_rebuild_pipeline::WasmRebuildPipeline::format_log_line(&outcome)
@@ -424,55 +502,199 @@ pub async fn run_rebuild_for_paths(
 						eprintln!("[hot-reload] watching for next change...");
 					}
 				}
-				wasm_rebuild_succeeded(&outcome)
+				return wasm_rebuild_succeeded(&outcome);
 			}
-			#[cfg(not(feature = "pages"))]
-			{
-				true
-			}
-		},
-		async {
-			let (server_outcome, new_child) =
-				crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
-					&config.bin_name,
-					current_child,
-					respawn,
-					&config.address,
-				)
-				.await;
-			let server_ok = server_rebuild_succeeded(&server_outcome);
-			if let Some(child) = new_child {
-				*current_child = child;
-			}
-			if server_ok {
-				wait_for_server_ready(config.server_address.as_deref()).await
-			} else {
-				false
-			}
-		},
-		|reason| {
-			#[cfg(feature = "pages")]
-			{
-				notify_browser_reload(config.hmr_tx.as_ref(), reason)
-			}
-			#[cfg(not(feature = "pages"))]
-			{
-				let _ = reason;
-				false
-			}
-		},
-	)
-	.await;
+		}
+		true
+	};
 
-	if matches!(outcome, RebuildDispatchOutcome::NoTargets) {
-		ctx.info("[hot-reload] no rebuild target matched; waiting for next change");
-		return;
-	}
-	if matches!(outcome, RebuildDispatchOutcome::StaticPatchSent) {
-		ctx.info("[hot-reload] static page patch sent without rebuilding WASM");
+	if targets.server && targets.wasm {
+		// Spec §4: run wasm + server pipelines in parallel. They touch
+		// disjoint cargo target directories (`wasm32-unknown-unknown` vs
+		// `debug`) and the wasm pipeline does not interact with the running
+		// child process, so concurrent execution is safe.
+		let server_fut =
+			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness_for_package_with_features(
+				&config.bin_name,
+				rebuild_context.package,
+				rebuild_context.features,
+				rebuild_context.all_features,
+				current_child,
+				respawn,
+				&config.address,
+			);
+		let (wasm_ok, (server_outcome, new_child)) = tokio::join!(wasm_fut, server_fut);
+		let server_ok = server_rebuild_succeeded(&server_outcome);
+		if let Some(child) = new_child {
+			*current_child = child;
+		}
+		let server_ready = if server_ok {
+			wait_for_server_ready(config.server_address.as_deref()).await
+		} else {
+			false
+		};
+		#[cfg(feature = "pages")]
+		let browser_ready = wasm_ok
+			&& server_ready
+			&& (css_only
+				|| commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok));
+		#[cfg(feature = "pages")]
+		let template_fallback_handled = finalize_template_fallback_build(
+			template_coordinator.as_deref_mut(),
+			template_fallback_generation,
+			config,
+			browser_ready,
+		);
+		#[cfg(feature = "pages")]
+		if browser_ready && !template_fallback_handled {
+			notify_browser_reload(
+				config.hmr_tx.as_ref(),
+				"Rust rebuild completed successfully",
+			);
+			refresh_template_baseline_after_full_reload(
+				template_coordinator.as_deref_mut(),
+				config,
+			);
+		}
+		#[cfg(not(feature = "pages"))]
+		let _ = (wasm_ok, server_ready);
+	} else if targets.wasm {
+		let wasm_ok = wasm_fut.await;
+		#[cfg(feature = "pages")]
+		let component_styles_committed =
+			wasm_ok && commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok);
+		#[cfg(feature = "pages")]
+		let browser_ready = should_notify_wasm_reload(wasm_ok, css_only, component_styles_committed);
+		#[cfg(feature = "pages")]
+		let template_fallback_handled = finalize_template_fallback_build(
+			template_coordinator.as_deref_mut(),
+			template_fallback_generation,
+			config,
+			browser_ready,
+		);
+		#[cfg(feature = "pages")]
+		if browser_ready && !template_fallback_handled {
+			notify_browser_reload(
+				config.hmr_tx.as_ref(),
+				"WASM rebuild completed successfully",
+			);
+			refresh_template_baseline_after_full_reload(template_coordinator, config);
+		}
+		#[cfg(not(feature = "pages"))]
+		let _ = wasm_ok;
+	} else {
+		let (server_outcome, new_child) =
+			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness_for_package_with_features(
+				&config.bin_name,
+				rebuild_context.package,
+				rebuild_context.features,
+				rebuild_context.all_features,
+				current_child,
+				respawn,
+				&config.address,
+			)
+			.await;
+		if let Some(child) = new_child {
+			*current_child = child;
+		}
+		#[cfg(feature = "pages")]
+		notify_server_reload_if_ready(&server_outcome, config).await;
+		// A server-only rebuild cannot activate pending component-style APIs:
+		// the browser still runs the previous WASM bundle. Keep the stylesheet
+		// staged until a successful WASM rebuild can commit it atomically.
 	}
 	// Pipeline failures are recorded as log lines and never propagate as Err;
 	// the caller's loop continues unconditionally.
+}
+
+#[cfg(feature = "pages")]
+fn finalize_template_fallback_build(
+	coordinator: Option<&mut TemplateHotReloadCoordinator>,
+	generation: Option<reinhardt_pages::hmr::PatchGeneration>,
+	config: &WatcherConfig,
+	browser_ready: bool,
+) -> bool {
+	let (Some(coordinator), Some(generation)) = (coordinator, generation) else {
+		return false;
+	};
+	if !browser_ready {
+		coordinator.publish_build_failure(
+			generation,
+			reinhardt_pages::hmr::DiagnosticTarget::WasmRustc,
+			"The fallback build did not become ready; the last working page remains active.",
+		);
+		return true;
+	}
+	match collect_client_baseline(&config.project_root, &config.roots.src_dirs) {
+		Ok(baseline) => {
+			let artifact = TemplateBuildArtifact {
+				build_id: baseline.build_id,
+				manifest_digest: baseline.manifest_digest,
+				baseline,
+			};
+			if let Err(error) = coordinator.install_successful_build(artifact) {
+				coordinator.publish_build_failure(
+					generation,
+					reinhardt_pages::hmr::DiagnosticTarget::Template,
+					format!("failed to install the rebuilt template manifest: {error}"),
+				);
+			}
+		}
+		Err(error) => coordinator.publish_build_failure(
+			generation,
+			reinhardt_pages::hmr::DiagnosticTarget::Template,
+			format!("failed to collect the rebuilt template manifest: {error}"),
+		),
+	}
+	true
+}
+
+#[cfg(feature = "pages")]
+fn refresh_template_baseline_after_full_reload(
+	coordinator: Option<&mut TemplateHotReloadCoordinator>,
+	config: &WatcherConfig,
+) {
+	let Some(coordinator) = coordinator else {
+		return;
+	};
+	match collect_client_baseline(&config.project_root, &config.roots.src_dirs) {
+		Ok(baseline) => coordinator.refresh_successful_baseline(baseline),
+		Err(error) => eprintln!(
+			"[hot-reload] unable to refresh template patch baseline after full reload: {error}"
+		),
+	}
+}
+
+#[cfg(feature = "pages")]
+fn should_notify_wasm_reload(
+	wasm_ok: bool,
+	css_only: bool,
+	component_styles_committed: bool,
+) -> bool {
+	wasm_ok && (css_only || component_styles_committed)
+}
+
+#[cfg(feature = "pages")]
+fn can_short_circuit_css_only(
+	style_stage: crate::ComponentStyleStageResult,
+	metadata_changed: bool,
+	component_style_paths_only: bool,
+) -> bool {
+	style_stage == crate::ComponentStyleStageResult::CssOnly
+		&& !metadata_changed
+		&& component_style_paths_only
+}
+
+#[cfg(feature = "pages")]
+fn notify_component_stylesheet_update(hmr_tx: Option<&broadcast::Sender<String>>) {
+	if let Some(tx) = hmr_tx {
+		let message = reinhardt_pages::hmr::HmrMessage::CssUpdate {
+			path: crate::COMPONENT_STYLES_PATH.to_string(),
+		};
+		if let Ok(json) = message.to_json() {
+			let _ = tx.send(json);
+		}
+	}
 }
 
 /// Run the hot-reload watcher loop until shutdown.
@@ -497,6 +719,26 @@ pub async fn run_rebuild_for_paths(
 pub async fn run_watcher(
 	ctx: &CommandContext,
 	config: &WatcherConfig,
+	shutdown_rx: oneshot::Receiver<()>,
+	current_child: tokio::process::Child,
+	respawn: impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync,
+) -> Result<(), notify::Error> {
+	run_watcher_for_package(
+		ctx,
+		config,
+		ServerRebuildContext::default(),
+		shutdown_rx,
+		current_child,
+		respawn,
+	)
+	.await
+}
+
+/// Run the watcher while forwarding the selected Cargo build context to native rebuilds.
+pub(crate) async fn run_watcher_for_package(
+	ctx: &CommandContext,
+	config: &WatcherConfig,
+	rebuild_context: ServerRebuildContext<'_>,
 	shutdown_rx: oneshot::Receiver<()>,
 	mut current_child: tokio::process::Child,
 	respawn: impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync,
@@ -540,6 +782,36 @@ pub async fn run_watcher(
 	}
 
 	let mut shutdown_rx = shutdown_rx;
+	#[cfg(feature = "pages")]
+	let mut template_coordinator = if config.pages_enabled && !config.no_wasm_rebuild {
+		match (
+			config.hmr_server.clone(),
+			collect_client_baseline(&config.project_root, &config.roots.src_dirs),
+		) {
+			(Some(server), Ok(baseline)) => {
+				let mut coordinator =
+					TemplateHotReloadCoordinator::new(config.project_root.clone(), Some(server));
+				coordinator.install_initial_baseline(baseline);
+				Some(coordinator)
+			}
+			(Some(_), Err(error)) => {
+				ctx.warning(&format!(
+					"[hot-reload] template patching is unavailable until the next successful WASM build: {error}"
+				));
+				None
+			}
+			(None, _) => None,
+		}
+	} else {
+		None
+	};
+	#[cfg(feature = "pages")]
+	let mut hmr_client_events = config
+		.hmr_server
+		.as_ref()
+		.map(reinhardt_pages::hmr::HmrServer::client_events);
+	#[cfg(not(feature = "pages"))]
+	let mut hmr_client_events = ();
 
 	loop {
 		tokio::select! {
@@ -549,6 +821,47 @@ pub async fn run_watcher(
 				let _ = current_child.wait().await;
 				return Ok(());
 			}
+			client_event = next_hmr_client_event(&mut hmr_client_events) => {
+				#[cfg(feature = "pages")]
+				{
+					let fallback = reinhardt_pages::hmr::HmrMessage::from_json(&client_event)
+						.ok()
+						.and_then(|message| match message {
+							reinhardt_pages::hmr::HmrMessage::PatchApplied { generation } => {
+								template_coordinator
+									.as_mut()
+									.map(|coordinator| coordinator.handle_patch_applied(generation));
+								None
+							}
+							reinhardt_pages::hmr::HmrMessage::PatchRejected { generation, reason } => {
+								template_coordinator.as_mut().and_then(|coordinator| {
+									let outcome = coordinator.handle_patch_rejection(generation, reason);
+									matches!(outcome, DispatchOutcome::RebuildStarted(_))
+										.then(|| coordinator.pending_rebuild_paths().map(|paths| (generation, paths.to_vec())))
+										.flatten()
+								})
+							}
+							_ => None,
+						});
+					if let Some((generation, paths)) = fallback {
+						run_rebuild_for_paths_for_package(
+							WatcherRebuildContext {
+								command_context: ctx,
+								config,
+								server_rebuild_context: rebuild_context,
+							},
+							paths,
+							&mut current_child,
+							&respawn,
+							template_coordinator.as_mut(),
+							Some(generation),
+						)
+						.await;
+					}
+				}
+				#[cfg(not(feature = "pages"))]
+				let _ = client_event;
+			}
 				debounced = debounce_next(&mut rx, config.debounce_window) => {
 					let Some(paths) = debounced else {
 						// Channel closed: the watcher dropped or the OS torn
@@ -557,7 +870,36 @@ pub async fn run_watcher(
 						let _ = current_child.wait().await;
 						return Ok(());
 					};
-					run_rebuild_for_paths(ctx, config, paths, &mut current_child, &respawn).await;
+					#[cfg(feature = "pages")]
+					let (patch_sent, fallback_generation) = if can_attempt_template_patch(&paths, config) {
+						match template_coordinator.as_mut().map(|coordinator| coordinator.classify_and_dispatch(paths.clone())) {
+							Some(DispatchOutcome::PatchSent(_) | DispatchOutcome::IgnoredStale(_)) => (true, None),
+							Some(DispatchOutcome::RebuildStarted(generation)) => (false, Some(generation)),
+							Some(DispatchOutcome::DiagnosticPublished(generation)) => (false, Some(generation)),
+							None => (false, None),
+						}
+					} else {
+						(false, None)
+					};
+					#[cfg(not(feature = "pages"))]
+					let patch_sent = false;
+					if !patch_sent {
+						run_rebuild_for_paths_for_package(
+							WatcherRebuildContext {
+								command_context: ctx,
+								config,
+								server_rebuild_context: rebuild_context,
+							},
+							paths,
+							&mut current_child,
+							&respawn,
+							#[cfg(feature = "pages")]
+							template_coordinator.as_mut(),
+							#[cfg(feature = "pages")]
+							fallback_generation,
+						)
+						.await;
+					}
 				}
 		}
 	}
@@ -571,6 +913,17 @@ mod tests {
 	use rstest::rstest;
 	use std::path::PathBuf;
 	use tokio::sync::mpsc;
+
+	#[test]
+	fn native_server_rebuild_ignores_pages_package_selection() {
+		// Arrange and Act
+		let context = ServerRebuildContext::for_native_server();
+
+		// Assert
+		assert_eq!(context.package, None);
+		assert!(context.features.is_empty());
+		assert!(!context.all_features);
+	}
 
 	fn ev(kind: EventKind, path: &str) -> Event {
 		Event {
@@ -697,7 +1050,6 @@ mod tests {
 
 	#[tokio::test(flavor = "current_thread", start_paused = true)]
 	async fn debounce_returns_sorted_unique_paths_when_channel_closes_after_first_event() {
-		// Arrange
 		let (tx, mut rx) = mpsc::channel::<Event>(4);
 		tx.send(ev(EventKind::Modify(ModifyKind::Any), "/p/src/z.rs"))
 			.await
@@ -710,10 +1062,8 @@ mod tests {
 			.expect("duplicate event is queued");
 		drop(tx);
 
-		// Act
 		let paths = debounce_next(&mut rx, DEBOUNCE_WINDOW).await;
 
-		// Assert
 		assert_eq!(
 			paths,
 			Some(vec![
@@ -723,35 +1073,28 @@ mod tests {
 		);
 	}
 
-	#[cfg(feature = "pages")]
-	#[rstest]
-	#[case::workspace_manifest("/project/Cargo.toml", RebuildTargets { server: true, wasm: true })]
-	#[case::nested_manifest("/project/apps/store/Cargo.toml", RebuildTargets { server: true, wasm: true })]
-	#[case::static_asset("/project/static/site.css", RebuildTargets { server: true, wasm: true })]
-	#[case::page_route("/project/src/apps/store/routes.rs", RebuildTargets { server: true, wasm: true })]
-	#[case::page_component("/project/src/apps/store/client/components/cart.rs", RebuildTargets { server: false, wasm: true })]
-	#[case::page_template("/project/src/client/templates/store.rs", RebuildTargets { server: false, wasm: true })]
-	#[case::hidden_rust_file("/project/src/.generated.rs", RebuildTargets { server: true, wasm: true })]
-	#[case::target_artifact("/project/target/debug/app.rs", RebuildTargets { server: true, wasm: true })]
-	#[case::editor_swap("/project/src/lib.rs.swp", RebuildTargets { server: true, wasm: true })]
-	#[case::unrelated_extension("/project/README.md", RebuildTargets { server: true, wasm: true })]
-	fn rebuild_targets_classification_table_covers_path_kinds(
-		#[case] path: &str,
-		#[case] expected: RebuildTargets,
-	) {
+	#[test]
+	fn metadata_change_is_detected_when_batched_with_a_stylesheet_source_change() {
 		// Arrange
-		let config = pages_config(false);
+		let paths = vec![
+			PathBuf::from("/project/src/styles.rs"),
+			PathBuf::from("/project/Cargo.toml"),
+		];
 
 		// Act
-		let actual = rebuild_targets_for_paths(&[PathBuf::from(path)], &config);
+		let changed = paths_change_cargo_metadata(&paths);
 
 		// Assert
-		assert_eq!(actual, expected, "unexpected targets for {path}");
+		assert!(
+			changed,
+			"Cargo metadata must keep the rebuild pipeline active"
+		);
 	}
 
 	#[cfg(feature = "pages")]
 	fn pages_config(no_wasm_rebuild: bool) -> WatcherConfig {
 		WatcherConfig {
+			project_root: PathBuf::from("/project"),
 			bin_name: "manage".to_string(),
 			address: "127.0.0.1:8000".to_string(),
 			roots: SourceRoots {
@@ -764,6 +1107,8 @@ mod tests {
 			no_wasm_rebuild,
 			pages_enabled: true,
 			hmr_tx: None,
+			hmr_server: None,
+			component_styles: None,
 		}
 	}
 
@@ -839,240 +1184,42 @@ mod tests {
 		);
 	}
 
+	#[cfg(feature = "pages")]
 	#[test]
-	fn rebuild_targets_without_pages_only_restart_the_server() {
-		// Arrange
-		let config = WatcherConfig {
-			bin_name: "manage".to_string(),
-			address: "127.0.0.1:8000".to_string(),
-			roots: SourceRoots {
-				src_dirs: vec![PathBuf::from("/project/src")],
-				manifest_files: vec![PathBuf::from("/project/Cargo.toml")],
-				lockfile: Some(PathBuf::from("/project/Cargo.lock")),
-			},
-			debounce_window: DEBOUNCE_WINDOW,
-			server_address: None,
-			no_wasm_rebuild: false,
-			#[cfg(feature = "pages")]
-			pages_enabled: false,
-			#[cfg(feature = "pages")]
-			hmr_tx: None,
-		};
-
-		// Act
-		let actual = rebuild_targets_for_paths(&[PathBuf::from("/project/src/lib.rs")], &config);
-
-		// Assert
-		assert_eq!(
-			actual,
-			RebuildTargets {
-				server: true,
-				wasm: false,
-			},
-		);
+	fn css_only_shortcut_requires_a_component_style_only_batch() {
+		// Act & Assert
+		assert!(can_short_circuit_css_only(
+			crate::ComponentStyleStageResult::CssOnly,
+			false,
+			true,
+		));
+		assert!(!can_short_circuit_css_only(
+			crate::ComponentStyleStageResult::CssOnly,
+			false,
+			false,
+		));
 	}
 
 	#[cfg(feature = "pages")]
-	#[tokio::test]
-	async fn dispatcher_runs_server_when_wasm_fails_without_reloading_browser() {
+	#[test]
+	fn component_stylesheet_update_sends_css_hmr_message() {
 		// Arrange
-		let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-		let static_calls = calls.clone();
-		let wasm_calls = calls.clone();
-		let server_calls = calls.clone();
-		let reload_calls = calls.clone();
+		let (tx, mut rx) = broadcast::channel::<String>(8);
 
 		// Act
-		let outcome = dispatch_rebuild_with(
-			RebuildTargets {
-				server: true,
-				wasm: true,
-			},
-			&[PathBuf::from("/project/src/lib.rs")],
-			move |_, _| {
-				static_calls
-					.lock()
-					.expect("call lock is available")
-					.push("static");
-				false
-			},
-			{
-				let calls = wasm_calls.clone();
-				async move {
-					calls.lock().expect("call lock is available").push("wasm");
-					false
-				}
-			},
-			{
-				let calls = server_calls.clone();
-				async move {
-					calls.lock().expect("call lock is available").push("server");
-					true
-				}
-			},
-			move |_| {
-				reload_calls
-					.lock()
-					.expect("call lock is available")
-					.push("reload");
-				true
-			},
-		)
-		.await;
+		notify_component_stylesheet_update(Some(&tx));
 
 		// Assert
+		let json = rx
+			.try_recv()
+			.expect("stylesheet update should be broadcast");
+		let message: reinhardt_pages::hmr::HmrMessage =
+			serde_json::from_str(&json).expect("message should be valid HMR JSON");
 		assert_eq!(
-			outcome,
-			RebuildDispatchOutcome::Rebuilt {
-				wasm_succeeded: Some(false),
-				server_succeeded: Some(true),
-				browser_reloaded: false,
-			},
-		);
-		assert_eq!(
-			*calls.lock().expect("call lock is available"),
-			vec!["static", "wasm", "server"],
-		);
-	}
-
-	#[cfg(feature = "pages")]
-	#[tokio::test]
-	async fn dispatcher_keeps_failure_local_and_returns_server_failure_outcome() {
-		// Arrange
-		let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-		let static_calls = calls.clone();
-		let server_calls = calls.clone();
-
-		// Act
-		let outcome = dispatch_rebuild_with(
-			RebuildTargets {
-				server: true,
-				wasm: false,
-			},
-			&[PathBuf::from("/project/src/bin/manage.rs")],
-			move |_, _| {
-				static_calls
-					.lock()
-					.expect("call lock is available")
-					.push("static");
-				false
-			},
-			async { unreachable!("server-only target must not start WASM") },
-			{
-				let calls = server_calls.clone();
-				async move {
-					calls.lock().expect("call lock is available").push("server");
-					false
-				}
-			},
-			|_| unreachable!("failed server rebuild must not reload the browser"),
-		)
-		.await;
-
-		// Assert
-		assert_eq!(
-			outcome,
-			RebuildDispatchOutcome::Rebuilt {
-				wasm_succeeded: None,
-				server_succeeded: Some(false),
-				browser_reloaded: false,
-			},
-		);
-		assert_eq!(
-			*calls.lock().expect("call lock is available"),
-			vec!["static", "server"],
-		);
-	}
-
-	#[cfg(feature = "pages")]
-	#[tokio::test]
-	async fn dispatcher_gives_successful_static_patch_precedence_over_pipelines() {
-		// Arrange
-		let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-		let static_calls = calls.clone();
-
-		// Act
-		let outcome = dispatch_rebuild_with(
-			RebuildTargets {
-				server: false,
-				wasm: true,
-			},
-			&[PathBuf::from("/project/src/client.rs")],
-			move |_, _| {
-				static_calls
-					.lock()
-					.expect("call lock is available")
-					.push("static");
-				true
-			},
-			async { unreachable!("successful static patch must skip WASM rebuild") },
-			async { unreachable!("successful static patch must skip server rebuild") },
-			|_| unreachable!("static patch must not send a full browser reload"),
-		)
-		.await;
-
-		// Assert
-		assert_eq!(outcome, RebuildDispatchOutcome::StaticPatchSent);
-		assert_eq!(
-			*calls.lock().expect("call lock is available"),
-			vec!["static"],
-		);
-	}
-
-	#[cfg(feature = "pages")]
-	#[tokio::test]
-	async fn dispatcher_records_no_browser_delivery_when_hmr_sender_is_absent() {
-		// Arrange
-		let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-		let static_calls = calls.clone();
-		let wasm_calls = calls.clone();
-		let reload_calls = calls.clone();
-
-		// Act
-		let outcome = dispatch_rebuild_with(
-			RebuildTargets {
-				server: false,
-				wasm: true,
-			},
-			&[PathBuf::from("/project/src/client.rs")],
-			move |_, _| {
-				static_calls
-					.lock()
-					.expect("call lock is available")
-					.push("static");
-				false
-			},
-			{
-				let calls = wasm_calls.clone();
-				async move {
-					calls.lock().expect("call lock is available").push("wasm");
-					true
-				}
-			},
-			async { unreachable!("WASM-only target must not restart the server") },
-			move |reason| {
-				assert_eq!(reason, "WASM rebuild completed successfully");
-				reload_calls
-					.lock()
-					.expect("call lock is available")
-					.push("reload");
-				false
-			},
-		)
-		.await;
-
-		// Assert
-		assert_eq!(
-			outcome,
-			RebuildDispatchOutcome::Rebuilt {
-				wasm_succeeded: Some(true),
-				server_succeeded: None,
-				browser_reloaded: false,
-			},
-		);
-		assert_eq!(
-			*calls.lock().expect("call lock is available"),
-			vec!["static", "wasm", "reload"],
+			message,
+			reinhardt_pages::hmr::HmrMessage::CssUpdate {
+				path: crate::COMPONENT_STYLES_PATH.to_string(),
+			}
 		);
 	}
 
@@ -1083,7 +1230,7 @@ mod tests {
 		let (tx, mut rx) = broadcast::channel::<String>(8);
 
 		// Act
-		notify_browser_reload(Some(&tx), "WASM rebuild completed successfully");
+		let sent = notify_browser_reload(Some(&tx), "WASM rebuild completed successfully");
 
 		// Assert
 		let json = rx.try_recv().expect("reload message should be broadcast");
@@ -1095,133 +1242,99 @@ mod tests {
 				reason: "WASM rebuild completed successfully".to_string()
 			}
 		);
+		assert!(sent);
 	}
 
 	#[cfg(feature = "pages")]
 	#[test]
 	fn notify_browser_reload_without_channel_is_noop() {
 		// Act & Assert
-		notify_browser_reload(None, "Server rebuild completed successfully");
+		assert!(!notify_browser_reload(
+			None,
+			"Server rebuild completed successfully"
+		));
 	}
 
 	#[cfg(feature = "pages")]
 	#[test]
-	fn notify_static_page_patch_sends_html_replace_for_wasm_only_static_page() {
-		// Arrange
-		let temp_dir = tempfile::tempdir().expect("tempdir should be created");
-		let client_path = temp_dir.path().join("src").join("client.rs");
-		std::fs::create_dir_all(
-			client_path
-				.parent()
-				.expect("client path should have parent"),
-		)
-		.expect("client dir should be created");
-		std::fs::write(
-			&client_path,
-			r#"
-				use reinhardt_pages::page;
+	fn wasm_rebuild_with_css_only_batch_requires_a_full_reload() {
+		assert!(should_notify_wasm_reload(true, true, false));
+		assert!(!should_notify_wasm_reload(false, true, false));
+	}
 
-				fn home_page() -> Page {
-					page!(|| {
-						div {
-							id: "route-home",
-							"Updated"
-						}
-					})()
-				}
-			"#,
-		)
-		.expect("client page fixture should be written");
+	#[cfg(feature = "pages")]
+	#[tokio::test]
+	async fn server_rebuild_reload_notifies_after_readiness() {
+		// Arrange
 		let (tx, mut rx) = broadcast::channel::<String>(8);
+		let mut config = pages_config(false);
+		config.hmr_tx = Some(tx);
+		let outcome = crate::server_rebuild_pipeline::ServerRebuildOutcome::Ok {
+			duration: Duration::ZERO,
+		};
 
 		// Act
-		let sent = notify_static_page_patch(
-			Some(&tx),
-			&[client_path],
-			RebuildTargets {
-				server: false,
-				wasm: true,
-			},
-		);
+		notify_server_reload_if_ready(&outcome, &config).await;
 
 		// Assert
-		assert!(sent, "static page patch should be sent");
 		let json = rx
 			.try_recv()
-			.expect("html patch message should be broadcast");
+			.expect("server rebuild should notify the browser");
 		let message: reinhardt_pages::hmr::HmrMessage =
 			serde_json::from_str(&json).expect("message should be valid HMR JSON");
 		assert_eq!(
 			message,
-			reinhardt_pages::hmr::HmrMessage::HtmlReplace {
-				selector: "#app".to_string(),
-				html: r#"<div id="route-home">Updated</div>"#.to_string(),
+			reinhardt_pages::hmr::HmrMessage::FullReload {
+				reason: "Server rebuild completed successfully".to_string()
 			}
 		);
 	}
 
 	#[cfg(feature = "pages")]
 	#[test]
-	fn notify_static_page_patch_falls_back_for_server_target() {
+	fn pending_component_styles_are_not_committed_without_a_wasm_rebuild() {
 		// Arrange
-		let (tx, _rx) = broadcast::channel::<String>(8);
-
-		// Act
-		let sent = notify_static_page_patch(
-			Some(&tx),
-			&[PathBuf::from("/project/src/lib.rs")],
-			RebuildTargets {
-				server: true,
-				wasm: true,
-			},
-		);
-
-		// Assert
-		assert!(!sent, "shared files must keep the rebuild path");
-	}
-
-	#[cfg(feature = "pages")]
-	#[test]
-	fn notify_static_page_patch_falls_back_without_hmr_receiver() {
-		// Arrange
-		let temp_dir = tempfile::tempdir().expect("tempdir should be created");
-		let client_path = temp_dir.path().join("src").join("client.rs");
-		std::fs::create_dir_all(
-			client_path
-				.parent()
-				.expect("client path should have parent"),
-		)
-		.expect("client dir should be created");
+		let directory = tempfile::tempdir().expect("create temporary package");
+		std::fs::create_dir(directory.path().join("src")).expect("create source root");
 		std::fs::write(
-			&client_path,
-			r#"
-				use reinhardt_pages::page;
-
-				fn home_page() -> Page {
-					page!(|| {
-						div { "Updated" }
-					})()
-				}
-			"#,
+			directory.path().join("Cargo.toml"),
+			"[package]\nname = \"watcher-style-api\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
 		)
-		.expect("client page fixture should be written");
-		let (tx, rx) = broadcast::channel::<String>(8);
-		drop(rx);
-
-		// Act
-		let sent = notify_static_page_patch(
-			Some(&tx),
-			&[client_path],
-			RebuildTargets {
-				server: false,
-				wasm: true,
-			},
+		.expect("write manifest");
+		let source_path = directory.path().join("src/lib.rs");
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } };\n",
+		)
+		.expect("write initial source");
+		let state = std::sync::Arc::new(std::sync::Mutex::new(
+			crate::ComponentStyleState::initialize(directory.path().join("Cargo.toml"), None)
+				.expect("initialize component styles"),
+		));
+		let stylesheet = state
+			.lock()
+			.expect("lock component styles")
+			.generated_root()
+			.join(crate::COMPONENT_STYLES_PATH);
+		let before = std::fs::read(&stylesheet).expect("read initial stylesheet");
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } .label { color: blue; } };\n",
+		)
+		.expect("write API-changing source");
+		assert_eq!(
+			state.lock().expect("lock component styles").refresh(false),
+			crate::ComponentStyleStageResult::RustOrApiChanged
 		);
 
+		// Act
+		let committed = commit_pending_component_styles(Some(&state), false);
+
 		// Assert
-		assert!(
-			!sent,
-			"hot patch must fall back to WASM rebuild when no browser receives it"
+		assert!(!committed);
+		assert_eq!(
+			std::fs::read(&stylesheet).expect("read retained stylesheet"),
+			before
 		);
 	}
 }

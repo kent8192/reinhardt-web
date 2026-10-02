@@ -1,0 +1,75 @@
+name: OAuth and OIDC committed-source verification
+on:
+  push:
+    branches: [feature/issue-6355-oauth-authorization-server]
+    paths:
+      - crates/reinhardt-auth/**
+      - .github/workflows/pr-6372-review-verification.yml
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+env:
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_TERM_COLOR: never
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+jobs:
+  committed-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pr-6372-auth-review
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: '28.x'
+      - name: Record the unmodified checkout
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/auth-verification
+          git rev-parse HEAD | tee /tmp/auth-verification/commit.txt
+          git rev-parse HEAD:crates/reinhardt-auth | tee /tmp/auth-verification/auth-tree.txt
+          test -z "$(git status --porcelain)"
+      - name: Run the affected suites including every review regression
+        run: |
+          set -euo pipefail
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oauth2_server::tests -- --test-threads=2 2>&1 | tee /tmp/auth-verification/oauth.log
+          cargo test -p reinhardt-auth --no-default-features --features oidc-op,database --lib oidc_op::tests -- --test-threads=2 2>&1 | tee /tmp/auth-verification/oidc.log
+      - name: Check isolated and aggregate feature configurations
+        run: |
+          set -euo pipefail
+          for features in oauth oauth,database oidc-op oidc-op,database auth-full; do
+            cargo check -p reinhardt-auth --no-default-features --features "$features" 2>&1 | tee "/tmp/auth-verification/check-${features//,/-}.log"
+          done
+          python3 - <<'PY'
+          import pathlib, tomllib
+          root = tomllib.loads(pathlib.Path('Cargo.toml').read_text())
+          auth = tomllib.loads(pathlib.Path('crates/reinhardt-auth/Cargo.toml').read_text())
+          assert 'reinhardt-auth/auth-full' in root['features']['full']
+          assert 'oidc-op' in auth['features']['auth-full']
+          PY
+      - name: Check production lint and documentation
+        run: |
+          set -euo pipefail
+          cargo clippy -p reinhardt-auth --features oidc-op,database,reinhardt-db/postgres --lib --no-deps -- -D warnings 2>&1 | tee /tmp/auth-verification/clippy.log
+          RUSTDOCFLAGS='-D warnings' cargo doc -p reinhardt-auth --features oidc-op,database,reinhardt-db/postgres --no-deps 2>&1 | tee /tmp/auth-verification/rustdoc.log
+          cargo test -p reinhardt-auth --features oidc-op,database --doc oauth2_server 2>&1 | tee /tmp/auth-verification/doctest.log
+          cargo fmt -p reinhardt-auth --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: auth-committed-source-verification
+          path: /tmp/auth-verification/
+          retention-days: 7

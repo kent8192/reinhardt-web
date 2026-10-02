@@ -30,3 +30,6 @@ mod repro_issue_4522;
 
 #[path = "macros/model_info_integration.rs"]
 mod model_info_integration;
+
+#[path = "macros/model_unique_field_ref.rs"]
+mod model_unique_field_ref;

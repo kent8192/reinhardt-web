@@ -4,14 +4,14 @@
 //! - Circular dependency detection (using automatic runtime detection)
 //! - Injectable failure propagation
 //! - Async operation timeout handling
-//! - Depends lifetime management with Arc
+//! - KeyedDepends lifetime management with Arc
 //! - DiError to HTTP error status code mapping
 
 use super::test_helpers::resolve_injectable;
 use reinhardt_core::exception::Error;
 use reinhardt_di::{
-	Depends, DiError, DiResult, FactoryOutput, Injectable, InjectableKey, InjectionContext,
-	SingletonScope,
+	DiError, DiResult, Injectable, InjectableKey, InjectionContext, KeyedDepends,
+	KeyedFactoryOutput, SingletonScope,
 };
 use rstest::rstest;
 use serial_test::serial;
@@ -219,13 +219,13 @@ async fn test_depends_lifetime_management() {
 	let singleton = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton).build();
 
-	// Resolve dependency using Depends
-	let depends_resource = Depends::<ResourceOwnerKey, ResourceOwner>::builder()
+	// Resolve dependency using KeyedDepends
+	let depends_resource = KeyedDepends::<ResourceOwnerKey, ResourceOwner>::builder()
 		.resolve(&ctx)
 		.await
 		.unwrap();
 
-	// Verify Depends uses Arc internally by cloning
+	// Verify KeyedDepends uses Arc internally by cloning
 	let depends_clone = depends_resource.clone();
 
 	// Both should access the same data via Deref
@@ -239,7 +239,7 @@ async fn test_depends_lifetime_management() {
 	assert_eq!(depends_resource.data, "owned-data");
 
 	// Resolve again from context (should return cached instance)
-	let depends_resource2 = Depends::<ResourceOwnerKey, ResourceOwner>::builder()
+	let depends_resource2 = KeyedDepends::<ResourceOwnerKey, ResourceOwner>::builder()
 		.resolve(&ctx)
 		.await
 		.unwrap();
@@ -248,12 +248,13 @@ async fn test_depends_lifetime_management() {
 	assert_eq!(depends_resource.id, depends_resource2.id);
 	assert_eq!(depends_resource.data, depends_resource2.data);
 
-	// Drop all Depends instances
+	// Drop all KeyedDepends instances
 	drop(depends_resource);
 	drop(depends_resource2);
 
 	// Verify context cache still holds the value
-	let cached: Option<Arc<FactoryOutput<ResourceOwnerKey, ResourceOwner>>> = ctx.get_request();
+	let cached: Option<Arc<KeyedFactoryOutput<ResourceOwnerKey, ResourceOwner>>> =
+		ctx.get_request();
 	assert!(cached.is_some());
 	let cached_value = cached.unwrap();
 	assert_eq!(cached_value.as_ref().id, 1);
@@ -273,10 +274,10 @@ fn register_resource_owner_output() {
 	static REGISTER: Once = Once::new();
 	REGISTER.call_once(|| {
 		reinhardt_di::global_registry()
-			.register_async::<FactoryOutput<ResourceOwnerKey, ResourceOwner>, _, _>(
+			.register_async::<KeyedFactoryOutput<ResourceOwnerKey, ResourceOwner>, _, _>(
 				reinhardt_di::DependencyScope::Request,
 				|_ctx| async {
-					Ok(FactoryOutput::new(ResourceOwner {
+					Ok(KeyedFactoryOutput::new(ResourceOwner {
 						id: 1,
 						data: "owned-data".to_string(),
 					}))

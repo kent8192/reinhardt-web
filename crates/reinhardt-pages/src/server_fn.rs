@@ -77,6 +77,11 @@ pub mod injectable;
 pub mod metadata;
 #[cfg(feature = "msw")]
 pub mod mockable;
+#[cfg(all(native, feature = "model-server-fnset"))]
+mod model_error;
+pub mod model_set;
+#[cfg(native)]
+mod multipart;
 #[cfg(native)]
 pub mod negotiation;
 #[cfg(native)]
@@ -86,6 +91,7 @@ pub mod registry;
 #[cfg(native)]
 pub mod router_ext;
 pub mod server_fn_trait;
+pub mod set;
 
 // Re-exports
 #[cfg(feature = "msgpack")]
@@ -93,9 +99,27 @@ pub use codec::MessagePackCodec;
 pub use codec::{Codec, JsonCodec, UrlCodec};
 #[cfg(native)]
 pub use injectable::{ServerFnBody, ServerFnRequest};
-pub use metadata::ServerFnMetadata;
+pub use metadata::{
+	ServerFnArgument, ServerFnArgumentCount, ServerFnArgumentKind, ServerFnArgumentMetadata,
+	ServerFnMetadata, ServerFnQueryArg, ServerFnQueryResult, ServerFnRequestMetadata,
+	ServerFnResponseMetadata,
+};
 #[cfg(feature = "msw")]
 pub use mockable::MockableServerFn;
+#[cfg(all(native, feature = "model-server-fnset"))]
+pub use model_set::{
+	AllowAllPolicy, AllowAllPrincipal, CollectionActionContext, CollectionReadActionContext,
+	CreateActionContext, CreateModelInput, DetailActionContext, DetailReadActionContext,
+	ModelServerFnResource, ModelServerFnSet, PatchModelInput, PolicyPrincipal, ServerFnSetAction,
+	ServerFnSetPolicy, UpdateModelInput,
+};
+pub use model_set::{
+	FieldError, FieldErrors, ModelServerFnSetLink, Page, PageRequest, ServerFnListQuery,
+	ServerFnResource, ServerFnSetError, ValidatedPageRequest,
+};
+#[cfg(native)]
+#[doc(hidden)]
+pub use multipart::MultipartArguments;
 #[cfg(native)]
 pub use negotiation::convert_body_for_codec;
 #[cfg(native)]
@@ -104,10 +128,39 @@ pub use registration::ServerFnRegistration;
 pub use registry::{ServerFnHandler, ServerFnRoute};
 #[cfg(native)]
 pub use router_ext::ServerFnRouterExt;
-pub use server_fn_trait::{ServerFn, ServerFnError, parse_server_error_message};
+pub use server_fn_trait::{
+	ServerFn, ServerFnError, ServerFnErrorKind, ServerFnErrorPayload, ServerFnFieldError,
+};
+pub use set::{
+	NamedServerFnSet, ServerFnSet, ServerFnSetActionMetadata, ServerFnSetActions,
+	ServerFnSetChainExt, ServerFnSetCons, ServerFnSetMetadata, ServerFnSetNil,
+	ServerFnSetRegistration,
+};
+
+#[cfg(all(native, feature = "testing", feature = "msw"))]
+pub use crate::testing::component::server_fn_mock::{
+	has_active_scope as has_active_server_fn_mock_scope, try_call_active_mock,
+};
+
+#[cfg(all(native, feature = "msw", not(feature = "testing")))]
+/// Returns false outside component-test builds.
+pub const fn has_active_server_fn_mock_scope() -> bool {
+	false
+}
+
+#[cfg(all(native, feature = "msw", not(feature = "testing")))]
+/// No-op native server-function mock probe outside component-test builds.
+pub fn try_call_active_mock<S>(_: S::Args) -> Option<Result<S::Response, ServerFnError>>
+where
+	S: MockableServerFn + 'static,
+	S::Args: 'static,
+	S::Response: 'static,
+{
+	None
+}
 
 // Re-export the macro for convenience
-pub use reinhardt_pages_macros::server_fn;
+pub use reinhardt_pages_macros::{server_fn, server_fnset};
 
 #[cfg(any(wasm, test))]
 fn prefixed_same_origin_path(prefix: &str, path: &str) -> String {
@@ -230,6 +283,32 @@ pub fn resolve_endpoint(path: &str) -> String {
 #[cfg(native)]
 pub fn resolve_endpoint(path: &str) -> String {
 	path.to_string()
+}
+
+/// Sends a multipart server function request through the shared browser transport.
+#[cfg(wasm)]
+#[doc(hidden)]
+pub async fn request_multipart(
+	path: &str,
+	form_data: web_sys::FormData,
+	csrf_enabled: bool,
+) -> Result<crate::fetch::FetchResponse, ServerFnError> {
+	let mut headers = Vec::new();
+	if csrf_enabled && let Some((header_name, header_value)) = crate::csrf::csrf_headers() {
+		headers.push((header_name.to_owned(), header_value));
+	}
+	if let Some((header_name, header_value)) = crate::auth::auth_headers() {
+		headers.push((header_name.to_string(), header_value));
+	}
+
+	crate::fetch::request_with_form_data(
+		"POST",
+		&resolve_endpoint(path),
+		&form_data,
+		headers,
+		crate::fetch::FetchCredentials::Include,
+	)
+	.await
 }
 
 #[cfg(test)]

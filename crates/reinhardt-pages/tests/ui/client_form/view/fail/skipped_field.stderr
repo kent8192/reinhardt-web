@@ -1,0 +1,21 @@
+error[E0599]: no method named `__reinhardt_field_internal` found for struct `__RequestClientFormView<Deps, Output>` in the current scope
+  --> tests/ui/client_form/view/fail/skipped_field.rs:10:4
+   |
+ 6 |       let _view = form! {
+   |  _________________-
+ 7 | |         client_form: RequestClientForm,
+ 8 | |         mutation: &mutation,
+ 9 | |         customize: {
+10 | |             internal: {
+   | |____________-^^^^^^^^
+   |
+  ::: tests/ui/client_form/view/fail/../support.rs
+   |
+   |   #[client_form(server_fn = endpoint)]
+   |   ------------------------------------ method `__reinhardt_field_internal` not found for this struct
+   |
+help: there is a method `__reinhardt_field_text` with a similar name
+   |
+10 -             internal: {
+10 +             __reinhardt_field_text: {
+   |

@@ -1,8 +1,10 @@
 //! Command execution context
 
 use reinhardt_conf::HasCommonSettings;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+
+const SUPPRESS_OUTPUT_OPTION: &str = "__reinhardt_suppress_output";
 
 /// Execution context passed to management commands.
 ///
@@ -26,14 +28,76 @@ pub struct CommandContext {
 
 impl std::fmt::Debug for CommandContext {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let args = redact_arguments(&self.args);
+		let options: BTreeMap<_, _> = self
+			.options
+			.iter()
+			.map(|(key, values)| {
+				let displayed_values = if option_values_are_sensitive(key, values) {
+					vec!["[REDACTED]"]
+				} else {
+					values.iter().map(String::as_str).collect()
+				};
+				(key.as_str(), displayed_values)
+			})
+			.collect();
 		// `dyn HasCommonSettings` is not Debug, so render its presence only.
 		f.debug_struct("CommandContext")
-			.field("args", &self.args)
-			.field("options", &self.options)
+			.field("args", &args)
+			.field("options", &options)
 			.field("verbosity", &self.verbosity)
+			.field("suppress_output", &self.output_is_suppressed())
 			.field("settings", &self.settings.as_ref().map(|_| "<settings>"))
 			.finish()
 	}
+}
+
+fn option_values_are_sensitive(key: &str, values: &[String]) -> bool {
+	option_name_is_sensitive(key) || values.iter().any(|value| value_is_sensitive(value))
+}
+
+fn option_name_is_sensitive(key: &str) -> bool {
+	let normalized_key = key.to_ascii_lowercase().replace('_', "-");
+	normalized_key == "url"
+		|| normalized_key.ends_with("-url")
+		|| normalized_key.contains("password")
+		|| normalized_key.contains("passwd")
+		|| normalized_key.contains("secret")
+		|| normalized_key.contains("token")
+		|| normalized_key.contains("api-key")
+		|| normalized_key.contains("credential")
+}
+
+fn value_is_sensitive(value: &str) -> bool {
+	value.contains("://") || value.contains('@')
+}
+
+fn argument_is_sensitive(argument: &str) -> bool {
+	if value_is_sensitive(argument) {
+		return true;
+	}
+	argument
+		.strip_prefix("--")
+		.and_then(|flag| flag.split_once('='))
+		.is_some_and(|(name, _)| option_name_is_sensitive(name))
+}
+
+fn redact_arguments(arguments: &[String]) -> Vec<&str> {
+	let mut redact_next = false;
+	arguments
+		.iter()
+		.map(|argument| {
+			let is_sensitive = redact_next || argument_is_sensitive(argument);
+			redact_next = argument
+				.strip_prefix("--")
+				.is_some_and(|flag| !flag.contains('=') && option_name_is_sensitive(flag));
+			if is_sensitive {
+				"[REDACTED]"
+			} else {
+				argument.as_str()
+			}
+		})
+		.collect()
 }
 
 impl CommandContext {
@@ -89,14 +153,35 @@ impl CommandContext {
 		self.options.contains_key(key)
 	}
 
+	/// Controls whether informational, success, and verbose messages are printed.
+	///
+	/// The state is stored in the existing options map to preserve compatibility
+	/// for callers that construct [`CommandContext`] with a public struct literal.
+	pub fn set_output_suppressed(&mut self, suppress_output: bool) {
+		if suppress_output {
+			self.options
+				.insert(SUPPRESS_OUTPUT_OPTION.to_string(), Vec::new());
+		} else {
+			self.options.remove(SUPPRESS_OUTPUT_OPTION);
+		}
+	}
+
+	fn output_is_suppressed(&self) -> bool {
+		self.options.contains_key(SUPPRESS_OUTPUT_OPTION)
+	}
+
 	/// Prints an informational message to stdout.
 	pub fn info(&self, message: &str) {
-		println!("[INFO] {}", message);
+		if !self.output_is_suppressed() {
+			println!("[INFO] {}", message);
+		}
 	}
 
 	/// Prints a success message to stdout.
 	pub fn success(&self, message: &str) {
-		println!("[SUCCESS] {}", message);
+		if !self.output_is_suppressed() {
+			println!("[SUCCESS] {}", message);
+		}
 	}
 
 	/// Prints a warning message to stderr.
@@ -106,7 +191,9 @@ impl CommandContext {
 
 	/// Prints a verbose message to stdout.
 	pub fn verbose(&self, message: &str) {
-		println!("[VERBOSE] {}", message);
+		if !self.output_is_suppressed() {
+			println!("[VERBOSE] {}", message);
+		}
 	}
 
 	/// Prints an error message to stderr.
@@ -254,7 +341,19 @@ mod tests {
 		assert_eq!(ctx.args[1], "arg2");
 		assert!(ctx.options.is_empty());
 		assert_eq!(ctx.verbosity, 0);
+		assert!(!ctx.output_is_suppressed());
 		assert!(ctx.settings.is_none());
+	}
+
+	#[rstest]
+	fn output_suppression_uses_the_existing_options_map() {
+		let mut ctx = CommandContext::default();
+
+		ctx.set_output_suppressed(true);
+		assert!(ctx.output_is_suppressed());
+
+		ctx.set_output_suppressed(false);
+		assert!(!ctx.output_is_suppressed());
 	}
 
 	#[rstest]
@@ -284,6 +383,22 @@ mod tests {
 
 		assert!(ctx.has_option("key"));
 		assert_eq!(ctx.option("key"), Some(&"value".to_string()));
+	}
+
+	#[rstest]
+	fn debug_redacts_positional_values_after_sensitive_flags() {
+		let context = CommandContext::new(vec![
+			"--password".to_string(),
+			"hunter2".to_string(),
+			"--token".to_string(),
+			"abc123".to_string(),
+			"safe".to_string(),
+		]);
+
+		assert_eq!(
+			format!("{context:?}"),
+			"CommandContext { args: [\"--password\", \"[REDACTED]\", \"--token\", \"[REDACTED]\", \"safe\"], options: {}, verbosity: 0, suppress_output: false, settings: None }"
+		);
 	}
 
 	#[rstest]

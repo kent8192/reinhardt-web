@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.17...reinhardt-rest@v0.4.0-alpha.18) - 2026-09-27
+
+### Fixed
+
+- *(rest)* preserve streaming responses in browsable api
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.14...reinhardt-rest@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.13...reinhardt-rest@v0.4.0-alpha.14) - 2026-09-07
+
+### Fixed
+
+- *(deps)* align quick-xml with the plist dependency
+
+## [0.4.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.11...reinhardt-rest@v0.4.0-alpha.12) - 2026-08-30
+
+### Fixed
+
+- *(macros)* address dto schema review feedback
+- *(macros)* complete dto schema facade wiring
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.10...reinhardt-rest@v0.4.0-alpha.11) - 2026-08-27
+
+### Documentation
+
+- update version references to v0.3.12
+- update version references to v0.3.13
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.8...reinhardt-rest@v0.4.0-alpha.9) - 2026-08-23
+
+### Added
+
+- *(rest)* expose configurable field errors
+- *(serializers)* store error formatters on serializer fields
+
+### Documentation
+
+- update version references to v0.3.9
+- update version references to v0.3.10
+
+### Fixed
+
+- *(serializers)* keep field structs constructible with error messages
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+### Other
+
+- bring main into configurable field error messages
+- keep field error formatters with JSON extraction
+
+### Testing
+
+- *(serializers)* cover required, fallback, and field-type stability
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.3.15...reinhardt-rest@v0.3.16) - 2026-09-08
 
 ### Maintenance
@@ -44,6 +123,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update Cargo.toml dependencies
 
+## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.6...reinhardt-rest@v0.4.0-alpha.7) - 2026-08-19
+
+### Documentation
+
+- update version references to v0.3.3
+- update version references to v0.3.4
+- update version references to v0.3.5
+- update version references to v0.3.6
+- update version references to v0.3.7
+- update version references to v0.3.8
+
+### Maintenance
+
+- merge main into develop/0.4.0
+
+## [0.4.0-alpha.6](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.5...reinhardt-rest@v0.4.0-alpha.6) - 2026-08-06
+
+### Documentation
+
+- *(release)* restore coherent alpha.3 references
+
+## [0.4.0-alpha.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.3...reinhardt-rest@v0.4.0-alpha.4) - 2026-08-04
+
+### Fixed
+
+- *(ci)* repair pgvector test coverage
+
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.4.0-alpha.1...reinhardt-rest@v0.4.0-alpha.2) - 2026-07-23
+
+### Added
+
+- *(db)* [**breaking**] add Copy-safe injected connection handles
+
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.3.2...reinhardt-rest@v0.4.0-alpha.1) - 2026-07-21
+
+### Changed
+
+- [**breaking**] replace dynamic domain error adapters
+
+### Fixed
+
+- *(rest)* preserve domain error boundaries
+- preserve internal error classification
+- *(rest)* classify invalid model shapes as internal errors
+- *(errors)* preserve database retry classifications
+- preserve structured database errors
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+- merge develop/0.4.0 into fix/issue-5561-remove-anyhow
+- merge develop/0.4.0 into remove-anyhow branch
 ## [0.3.10](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.3.9...reinhardt-rest@v0.3.10) - 2026-08-22
 
 ### Maintenance
