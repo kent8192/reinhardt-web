@@ -10,6 +10,30 @@
 /// relationship.
 /// A model reference (`&T`) extracts the model's primary key.
 ///
+/// # Downstream implementations
+///
+/// The framework implements this trait for [`String`] and `&str` whenever
+/// `T::PrimaryKey = String`. These implementations conflict with downstream
+/// implementations for the same model and text type (E0119). Their introduction
+/// is a source-breaking change, even though this trait's signature is unchanged.
+/// Remove downstream identity conversions and use the framework implementations.
+///
+/// Preserve application-specific conversions on a local newtype. Raw text
+/// conversions preserve whitespace, leading zeros, empty strings, and Unicode;
+/// they do not perform application-specific normalization or validation.
+///
+/// ```rust
+/// use reinhardt_db::orm::{IntoPrimaryKey, Model};
+///
+/// struct NormalizedTextKey<'a>(&'a str);
+///
+/// impl<T: Model<PrimaryKey = String>> IntoPrimaryKey<T> for NormalizedTextKey<'_> {
+///     fn into_primary_key(self) -> String {
+///         self.0.trim().to_owned()
+///     }
+/// }
+/// ```
+///
 /// # Examples
 ///
 /// Convert owned and borrowed text keys without loading a related model:

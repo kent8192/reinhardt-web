@@ -1,0 +1,19 @@
+error[E0119]: conflicting implementations of trait `IntoPrimaryKey<Peer>` for type `std::string::String`
+  --> tests/ui/into_primary_key_text_impl_conflicts.rs:40:1
+   |
+40 | impl IntoPrimaryKey<Peer> for String {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: conflicting implementation in crate `reinhardt_db`:
+           - impl<T> IntoPrimaryKey<T> for std::string::String
+             where <T as Model>::PrimaryKey == std::string::String, T: Model;
+
+error[E0119]: conflicting implementations of trait `IntoPrimaryKey<Peer>` for type `&str`
+  --> tests/ui/into_primary_key_text_impl_conflicts.rs:46:1
+   |
+46 | impl IntoPrimaryKey<Peer> for &str {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: conflicting implementation in crate `reinhardt_db`:
+           - impl<T> IntoPrimaryKey<T> for &str
+             where <T as Model>::PrimaryKey == std::string::String, T: Model;
