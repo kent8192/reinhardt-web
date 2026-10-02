@@ -1,3 +1,6 @@
+// Rejected macro items leave their supporting imports unused.
+#![allow(unused_imports)]
+
 use reinhardt_pages::{
 	NavigationContext, NavigationDecision, NavigationGuardError, Outlet, Page, layout,
 	navigation_guard, page,

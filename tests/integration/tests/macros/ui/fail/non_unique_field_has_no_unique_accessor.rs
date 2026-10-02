@@ -1,3 +1,6 @@
+// The model macro emits native cfgs; this fixture tests the missing unique accessor.
+#![allow(unexpected_cfgs)]
+
 use reinhardt::model;
 use serde::{Deserialize, Serialize};
 

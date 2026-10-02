@@ -1,3 +1,6 @@
+// Rejected macro items leave their supporting imports unused.
+#![allow(unused_imports)]
+
 use reinhardt_pages::{Outlet, Page, layout, loader, page};
 
 #[loader]
