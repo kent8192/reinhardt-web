@@ -25,6 +25,9 @@ its existing component `Display` contract and does not gain ORM dependencies.
 Native binary key components use standard Base64, matching typed ViewSet route
 parsing. For example, the bytes `[1, 2]` are displayed as `AQI=`.
 
+Storage-backed key fields validate the declared `file_storage` and
+`file_max_length` metadata through the same codec context as model persistence.
+
 `Model::get_composite_pk_values()` and generated `CompositePk::to_pk_values()`
 now return `Result<HashMap<String, PkValue>, FieldCodecError>`. Add `?` at
 call sites and return `Ok(values)` from manual `Model` overrides. This permits

@@ -4,7 +4,7 @@ use reinhardt::db::backends::DatabaseConnection as BackendsConnection;
 use reinhardt::db::orm::composite_pk::PkValue;
 use reinhardt::db::orm::{
 	DatabaseConnectionLease, DatabaseField, DatabaseValue, FieldCodecContext, FieldCodecError,
-	Model, QuerySet, query_types::DbBackend,
+	FileField, Model, QuerySet, query_types::DbBackend,
 };
 use reinhardt::{ModelEnum, model};
 use reinhardt_http::Request;
@@ -135,6 +135,103 @@ struct BinaryRevision {
 	revision: i64,
 	#[field(max_length = 64)]
 	label: String,
+}
+
+#[model(app_label = "composite_codecs", table_name = "file_revisions")]
+#[derive(Serialize, Deserialize)]
+struct FileRevision {
+	#[field(
+		primary_key = true,
+		upload_to = "assets",
+		file_storage = "private_uploads",
+		max_length = 80,
+		db_column = "asset_path"
+	)]
+	file: FileField,
+	#[field(primary_key = true)]
+	revision: i64,
+}
+
+#[rstest]
+fn file_composite_keys_share_persistence_codec_metadata() {
+	// Arrange
+	let model = FileRevision {
+		file: FileField::from_existing("assets/report.txt", "private_uploads").unwrap(),
+		revision: 1,
+	};
+	let key = model.primary_key().unwrap();
+
+	// Act
+	let fields = model.encode_database_fields().unwrap();
+	let values = key.to_pk_values().unwrap();
+	let decoded = FileRevision::decode_database_field("file", fields["file"].clone()).unwrap();
+
+	// Assert
+	assert_eq!(
+		values["file"],
+		PkValue::String("assets/report.txt".to_owned())
+	);
+	assert_eq!(
+		fields["file"],
+		DatabaseValue::String("assets/report.txt".to_owned())
+	);
+	assert_eq!(values, model.get_composite_pk_values().unwrap());
+	assert_eq!(decoded, serde_json::to_value(&model.file).unwrap());
+	assert_eq!(
+		key.to_string(),
+		"(v2;file=17:assets/report.txt, revision=1:1)"
+	);
+}
+
+#[rstest]
+fn file_composite_keys_reject_storage_alias_mismatches() {
+	// Arrange
+	let model = FileRevision {
+		file: FileField::from_existing("assets/report.txt", "other_uploads").unwrap(),
+		revision: 1,
+	};
+	let key = model.primary_key().unwrap();
+	let context = FieldCodecContext::new("FileRevision", "file", "asset_path")
+		.with_metadata("file_storage", "private_uploads")
+		.with_metadata("file_max_length", "80");
+
+	// Act
+	let error = key.to_pk_values().unwrap_err();
+
+	// Assert
+	assert_eq!(
+		error,
+		FieldCodecError::FieldPolicyMismatch {
+			context: Box::new(context),
+			key: "file_storage".to_owned(),
+			expected: "private_uploads".to_owned(),
+			actual: "other_uploads".to_owned(),
+		}
+	);
+	assert_eq!(model.encode_database_fields().unwrap_err(), error);
+	assert_eq!(key.to_string(), "<invalid composite primary key>");
+}
+
+#[rstest]
+fn file_composite_keys_reject_paths_exceeding_the_declared_length() {
+	// Arrange
+	let model = FileRevision {
+		file: FileField::from_existing(format!("assets/{}", "x".repeat(80)), "private_uploads")
+			.unwrap(),
+		revision: 1,
+	};
+	let key = model.primary_key().unwrap();
+
+	// Act
+	let error = key.to_pk_values().unwrap_err();
+
+	// Assert
+	assert_eq!(
+		error,
+		FieldCodecError::Serialization("FileField path exceeds max_length 80".to_owned())
+	);
+	assert_eq!(model.encode_database_fields().unwrap_err(), error);
+	assert_eq!(key.to_string(), "<invalid composite primary key>");
 }
 
 #[derive(Debug, Iden)]

@@ -2789,6 +2789,29 @@ fn file_field_max_length(
 	config.max_length.unwrap_or(100).try_into()
 }
 
+/// Build the same codec context for persistence and composite key components.
+fn generate_field_codec_context(struct_name: &syn::Ident, field: &FieldInfo) -> TokenStream {
+	let orm_crate = get_reinhardt_orm_crate();
+	let logical_name = ident_to_wire_name(&field.name);
+	let column_name = field.config.db_column.as_deref().unwrap_or(&logical_name);
+	let metadata = if storage_field_kind(&field.ty).is_some() {
+		let storage_alias = field.config.file_storage.as_deref().unwrap_or("default");
+		let max_length = file_field_max_length(&field.config)
+			.expect("validated FileField max_length must fit in u32")
+			.to_string();
+		quote! { .with_metadata("file_storage", #storage_alias).with_metadata("file_max_length", #max_length) }
+	} else {
+		quote! {}
+	};
+	quote! {
+		#orm_crate::FieldCodecContext::new(
+			stringify!(#struct_name),
+			#logical_name,
+			#column_name,
+		)#metadata
+	}
+}
+
 fn valid_file_storage_alias(alias: &str) -> bool {
 	if alias == "default" {
 		return true;
@@ -8348,26 +8371,9 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		let field_name = &field.name;
 		let field_ty = &field.ty;
 		let logical_name = ident_to_wire_name(field_name);
-		let column_name = field
-			.config
-			.db_column
-			.clone()
-			.unwrap_or_else(|| logical_name.clone());
-		let context_metadata = if storage_field_kind(&field.ty).is_some() {
-			let storage_alias = field.config.file_storage.as_deref().unwrap_or("default");
-			let max_length = file_field_max_length(&field.config)
-				.expect("validated FileField max_length must fit in u32")
-				.to_string();
-			quote! { .with_metadata("file_storage", #storage_alias).with_metadata("file_max_length", #max_length) }
-		} else {
-			quote! {}
-		};
+		let context = generate_field_codec_context(struct_name, field);
 		quote! {
-			let context = #orm_crate::FieldCodecContext::new(
-				stringify!(#struct_name),
-				#logical_name,
-				#column_name,
-			)#context_metadata;
+			let context = #context;
 			<#field_ty as #orm_crate::DatabaseField>::validate_database_context(
 				&self.#field_name,
 				&context,
@@ -8400,28 +8406,11 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		let field_name = &field.name;
 		let field_ty = &field.ty;
 		let logical_name = ident_to_wire_name(field_name);
-		let column_name = field
-			.config
-			.db_column
-			.clone()
-			.unwrap_or_else(|| logical_name.clone());
-		let context_metadata = if storage_field_kind(&field.ty).is_some() {
-			let storage_alias = field.config.file_storage.as_deref().unwrap_or("default");
-			let max_length = file_field_max_length(&field.config)
-				.expect("validated FileField max_length must fit in u32")
-				.to_string();
-			quote! { .with_metadata("file_storage", #storage_alias).with_metadata("file_max_length", #max_length) }
-		} else {
-			quote! {}
-		};
+		let context = generate_field_codec_context(struct_name, field);
 		quote! {
 			#logical_name => {
 				let storage = <<#field_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::from_database_value(value)?;
-				let context = #orm_crate::FieldCodecContext::new(
-					stringify!(#struct_name),
-					#logical_name,
-					#column_name,
-				)#context_metadata;
+				let context = #context;
 				let decoded = <#field_ty as #orm_crate::DatabaseField>::decode_database(storage, &context)?;
 				#orm_crate::model::serialize_decoded_database_field(decoded)
 			}
@@ -10799,11 +10788,11 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 		.map(|(field, ty)| {
 			let name = &field.name;
 			let name_wire = ident_to_wire_name(name);
-			let column = field.config.db_column.as_deref().unwrap_or(&name_wire);
+			let context = generate_field_codec_context(struct_name, field);
 			quote! {
 				<#ty as #orm_crate::DatabaseField>::validate_database_context(
 					&self.#name,
-					&#orm_crate::FieldCodecContext::new(stringify!(#struct_name), #name_wire, #column),
+					&#context,
 				)?;
 				values.insert(
 					#name_wire.to_string(),

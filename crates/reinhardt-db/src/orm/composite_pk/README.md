@@ -108,6 +108,10 @@ need a `PkValue` conversion or a native `Display` implementation.
 Binary URL components use standard Base64, matching the typed ViewSet parser.
 For example, the bytes `[1, 2]` are displayed as `AQI=`.
 
+Storage-backed key fields receive the same codec context as model persistence,
+including the declared storage alias and maximum path length. Invalid aliases
+or over-length paths return the corresponding field-policy or codec error.
+
 Both `key.to_pk_values()` and `model.get_composite_pk_values()` return a
 `Result<HashMap<String, PkValue>, FieldCodecError>`. Propagate the error with
 `?` before passing the map to `get_composite()` or `get_composite_with_db()`.
