@@ -4,6 +4,9 @@
 //! which consist of multiple fields combined to form a unique identifier for a database record.
 
 use super::constraints::Constraint;
+use super::field_codec::{
+	DatabaseField, DatabaseScalar, DatabaseValue, FieldCodecError, database_value_to_query_value,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -59,9 +62,50 @@ pub enum PkValue {
 	Uint(u64),
 	/// Bool variant.
 	Bool(bool),
+	/// A codec-produced value retaining its database storage type.
+	Database {
+		/// The canonical storage value produced by the field codec.
+		value: DatabaseValue,
+	},
 }
 
 impl PkValue {
+	/// Encodes a native ORM key component using its field codec (P0: native only).
+	///
+	/// UUIDs retain native UUID binding, and model enums use their declared
+	/// persistent values independently of serde names or display labels.
+	/// Encoding failures are returned before a query can be issued.
+	///
+	/// ```rust
+	/// use reinhardt_db::orm::{DatabaseValue, composite_pk::PkValue};
+	///
+	/// let value = PkValue::from_field(&17_i32).unwrap();
+	/// assert_eq!(value, PkValue::Database { value: DatabaseValue::I32(17) });
+	/// ```
+	pub fn from_field<T: DatabaseField>(value: &T) -> Result<Self, FieldCodecError> {
+		value
+			.encode_database()
+			.map(DatabaseScalar::into_database_value)
+			.map(Self::from)
+	}
+
+	/// Returns the stored component's unquoted text for a composite key URL.
+	///
+	/// This native ORM operation (P0) does not require the field to implement
+	/// `Display`. Values that cannot be represented as JSON return a codec error.
+	pub fn to_key_string(&self) -> Result<String, FieldCodecError> {
+		match self {
+			Self::String(value) => Ok(value.clone()),
+			Self::Int(value) => Ok(value.to_string()),
+			Self::Uint(value) => Ok(value.to_string()),
+			Self::Bool(value) => Ok(value.to_string()),
+			Self::Database { value } => match value.clone().into_json_value()? {
+				serde_json::Value::String(value) => Ok(value),
+				value => Ok(value.to_string()),
+			},
+		}
+	}
+
 	/// Convert the value to a string representation for SQL
 	///
 	/// # Examples
@@ -81,6 +125,20 @@ impl PkValue {
 			PkValue::Int(i) => i.to_string(),
 			PkValue::Uint(u) => u.to_string(),
 			PkValue::Bool(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
+			PkValue::Database { value } => {
+				database_value_to_query_value(value.clone()).to_sql_literal()
+			}
+		}
+	}
+}
+
+impl From<DatabaseValue> for PkValue {
+	fn from(value: DatabaseValue) -> Self {
+		match value {
+			DatabaseValue::String(value) => Self::String(value),
+			DatabaseValue::I64(value) => Self::Int(value),
+			DatabaseValue::Bool(value) => Self::Bool(value),
+			value => Self::Database { value },
 		}
 	}
 }
@@ -383,6 +441,62 @@ impl Constraint for CompositePrimaryKey {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case(DatabaseValue::Null, "null")]
+	#[case(DatabaseValue::I32(17), "17")]
+	#[case(
+		DatabaseValue::Uuid(uuid::Uuid::from_u128(1)),
+		"00000000-0000-0000-0000-000000000001"
+	)]
+	#[case(DatabaseValue::Bytes(vec![1, 2]), "[1,2]")]
+	fn codec_values_preserve_type_through_serialization(
+		#[case] value: DatabaseValue,
+		#[case] key_text: &str,
+	) {
+		// Arrange
+		let key = PkValue::from(value);
+
+		// Act
+		let serialized = serde_json::to_string(&key).unwrap();
+		let decoded: PkValue = serde_json::from_str(&serialized).unwrap();
+
+		// Assert
+		assert_eq!(decoded, key);
+		assert_eq!(decoded.to_key_string().unwrap(), key_text);
+	}
+
+	#[rstest]
+	fn codec_text_uses_existing_sql_escaping() {
+		// Arrange
+		let key = PkValue::from_field(&"O'Brien".to_owned()).unwrap();
+
+		// Act
+		let sql = key.to_sql_string();
+
+		// Assert
+		assert_eq!(key, PkValue::String("O'Brien".to_owned()));
+		assert_eq!(sql, "'O''Brien'");
+	}
+
+	#[rstest]
+	fn uuid_sql_literal_keeps_canonical_value() {
+		// Arrange
+		let value = uuid::Uuid::from_u128(1);
+		let key = PkValue::from_field(&value).unwrap();
+
+		// Act
+		let sql = key.to_sql_string();
+
+		// Assert
+		assert_eq!(
+			key,
+			PkValue::Database {
+				value: DatabaseValue::Uuid(value)
+			}
+		);
+		assert_eq!(sql, "'00000000-0000-0000-0000-000000000001'");
+	}
 
 	#[test]
 	fn test_composite_pk_new_valid() {

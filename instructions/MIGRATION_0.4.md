@@ -8,6 +8,29 @@ For the complete `get_or_create` and `update_or_create` migration, including
 transaction, uniqueness, race, and custom-manager hook semantics, see
 [`0.4.0-typed-manager-upserts.md`](../docs/migration/0.4.0-typed-manager-upserts.md).
 
+## Composite primary key codecs
+
+Generated composite keys now encode components through `DatabaseField`, so
+UUIDs, string and integer `ModelEnum` values, and custom codecs retain their
+physical database types. Native key formatting uses encoded storage values;
+custom fields no longer need `Display` for native composite keys. WASM keeps
+its existing component `Display` contract and does not gain ORM dependencies.
+
+`Model::get_composite_pk_values()` and generated `CompositePk::to_pk_values()`
+now return `Result<HashMap<String, PkValue>, FieldCodecError>`. Add `?` at
+call sites and return `Ok(values)` from manual `Model` overrides. This permits
+custom codec failures to reach the caller before query execution.
+Native key `Display` renders `<invalid composite primary key>` on encoding or
+context validation failure; use the fallible methods to inspect the error.
+
+`PkValue` adds a `Database { value: DatabaseValue }` variant. Update exhaustive
+matches to handle it without stringifying native values. Generated 32-bit integer
+keys use `Database { value: DatabaseValue::I32(...) }`; existing manual
+`From<i32>` conversions continue to produce the legacy `Int` variant.
+The legacy variants keep their existing untagged serde representation; the
+new variant preserves the tagged
+`DatabaseValue` representation through serialization.
+
 ## Storage-backed `FileField` source migration
 
 The 0.4 storage foundation separates the old synchronous field descriptors

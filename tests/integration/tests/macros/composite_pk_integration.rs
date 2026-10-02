@@ -99,7 +99,7 @@ fn test_composite_pk_values() {
 	};
 
 	// Get composite PK values
-	let pk_values = post_tag.get_composite_pk_values();
+	let pk_values = post_tag.get_composite_pk_values().unwrap();
 
 	// Verify we have 2 values
 	assert_eq!(pk_values.len(), 2, "Should have 2 PK values");
@@ -131,7 +131,7 @@ fn test_composite_pk_with_optional_field() {
 		granted_by: Some("admin".to_string()),
 	};
 
-	let pk_values = user_role.get_composite_pk_values();
+	let pk_values = user_role.get_composite_pk_values().unwrap();
 	assert_eq!(pk_values.len(), 2, "Should have 2 PK values");
 	assert!(pk_values.contains_key("user_id"));
 	assert!(pk_values.contains_key("role_id"));
@@ -143,7 +143,7 @@ fn test_composite_pk_with_optional_field() {
 		granted_by: None,
 	};
 
-	let pk_values_none = user_role_none.get_composite_pk_values();
+	let pk_values_none = user_role_none.get_composite_pk_values().unwrap();
 	assert_eq!(pk_values_none.len(), 2, "Should have 2 PK values");
 }
 
