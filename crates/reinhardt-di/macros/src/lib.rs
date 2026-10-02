@@ -21,6 +21,10 @@ mod utils;
 /// `K` is an `InjectableKey` and `T` is the value consumed through
 /// `Depends<K, T>`.
 ///
+/// The generated implementation reuses the provider's original function block.
+/// Single-expression bodies do not gain a nested block that can trigger
+/// `unused_braces` suggestions against required function braces.
+///
 /// On `wasm32-unknown-unknown` the generated provider becomes an inert
 /// same-name async stub and skips DI registration. This lets downstream crates
 /// keep DI provider definitions in modules that are also compiled for WASM,
