@@ -381,7 +381,7 @@ fn expression_has_window_feature(
 		| SimpleExpr::AsEnum(_, func)
 		| SimpleExpr::ExprAlias(func, _)
 		| SimpleExpr::Cast(func, _) => expression_has_window_feature(func, predicate),
-		SimpleExpr::Binary(left, _, right) => {
+		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
 			expression_has_window_feature(left, predicate)
 				|| expression_has_window_feature(right, predicate)
 		}
@@ -507,7 +507,7 @@ fn expression_matches(expression: &SimpleExpr, predicate: &impl Fn(&SimpleExpr) 
 				})
 		}
 			SimpleExpr::SubQuery(_, query) => statement_has_expression(query, predicate),
-			SimpleExpr::Binary(left, _, right) => {
+			SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
 				expression_matches(left, predicate) || expression_matches(right, predicate)
 			}
 			SimpleExpr::FunctionCall(_, expressions)
@@ -558,7 +558,7 @@ fn expression_has_select(
 		| SimpleExpr::WindowNamed {
 			func: expression, ..
 		} => expression_has_select(expression, predicate),
-		SimpleExpr::Binary(left, _, right) => {
+		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
 			expression_has_select(left, predicate) || expression_has_select(right, predicate)
 		}
 		SimpleExpr::FunctionCall(_, expressions)
@@ -660,7 +660,9 @@ fn unsafe_expr(expression: &SimpleExpr) -> bool {
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => unsafe_expr(expression),
-		SimpleExpr::Binary(left, _, right) => unsafe_expr(left) || unsafe_expr(right),
+		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+			unsafe_expr(left) || unsafe_expr(right)
+		}
 		SimpleExpr::Tuple(expressions) => expressions.iter().any(unsafe_expr),
 		SimpleExpr::Case(statement) => {
 			statement
@@ -837,7 +839,7 @@ fn quote_mysql_like_template_expr(expression: &mut SimpleExpr) {
 		| SimpleExpr::WindowNamed {
 			func: expression, ..
 		} => quote_mysql_like_template_expr(expression),
-		SimpleExpr::Binary(left, _, right) => {
+		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
 			quote_mysql_like_template_expr(left);
 			quote_mysql_like_template_expr(right);
 		}
@@ -942,6 +944,59 @@ mod tests {
 			.from("users")
 			.and_where(Expr::col("active").eq(true))
 			.to_owned()
+	}
+
+	#[rstest]
+	fn mysql_explain_allows_typed_escaped_like() {
+		// Arrange
+		let select = Query::select()
+			.column("id")
+			.from("users")
+			.and_where(Expr::col("username").starts_with("ada"))
+			.to_owned();
+		let statement = ExplainStatement::new(select, ExplainOptions::default());
+
+		// Act
+		let (sql, values) = statement.build_mysql_checked().unwrap();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"EXPLAIN SELECT `id` FROM `users` WHERE `username` LIKE ? ESCAPE 0x5C"
+		);
+		assert_eq!(values.0, vec![crate::value::Value::from("ada%")]);
+	}
+
+	#[rstest]
+	#[case::left(true)]
+	#[case::right(false)]
+	fn mysql_explain_checks_both_escaped_like_operands(#[case] unchecked_left: bool) {
+		// Arrange
+		let (left, right) = if unchecked_left {
+			(Expr::cust("unchecked()"), Expr::val("ada%"))
+		} else {
+			(Expr::col("username"), Expr::cust("unchecked()"))
+		};
+		let select = Query::select()
+			.column("id")
+			.from("users")
+			.and_where(SimpleExpr::LikeWithEscape(
+				Box::new(left.into()),
+				Box::new(right.into()),
+			))
+			.to_owned();
+
+		// Act
+		let result = ExplainStatement::new(select, ExplainOptions::default()).build_mysql_checked();
+
+		// Assert
+		assert_eq!(
+			result,
+			Err(QueryBuildError::UnsupportedBackendFeature {
+				feature: "plan-only EXPLAIN for subqueries or unchecked expressions",
+				backend: "MySQL",
+			})
+		);
 	}
 
 	#[rstest]

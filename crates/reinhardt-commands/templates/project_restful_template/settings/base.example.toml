@@ -38,6 +38,11 @@ name = "{{ project_name }}_db"
 user = "postgres"
 # password = "uncomment-this-line-and-replace-with-db-password"
 
+# Optional recipients for administrator and manager notifications.
+[contacts]
+admins = []
+managers = []
+
 [static]
 url = "/static/"
 root = "staticfiles"

@@ -98,6 +98,8 @@ fn settings_builder() -> SettingsBuilder {
         .add_source(
             DefaultSource::new()
                 .with_value("core", serde_json::json!({ "base_dir": base_dir }))
+                // Initialize the parent table so optional contact fields use their defaults.
+                .with_value("contacts", serde_json::json!({}))
                 .with_value("migrations", serde_json::json!({})),
         )
         // Medium priority: Base TOML file

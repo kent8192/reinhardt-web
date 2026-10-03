@@ -9865,7 +9865,12 @@ where
 			let pk_value: &super::composite_pk::PkValue = pk_values.get(field_name).unwrap();
 			let column = field_metadata
 				.iter()
-				.find(|field| field.name == *field_name)
+				.find(|field| field.db_column_name() == field_name)
+				.or_else(|| {
+					field_metadata
+						.iter()
+						.find(|field| field.name == *field_name)
+				})
 				.map(|field| field.db_column_name())
 				.unwrap_or(field_name);
 			let col_alias = Alias::new(column);
@@ -17008,7 +17013,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE NOT "username" = 'alice'"#
+			r#"SELECT * FROM "test_users" WHERE NOT ("username" = 'alice')"#
 		);
 	}
 
