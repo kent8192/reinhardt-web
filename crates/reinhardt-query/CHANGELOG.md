@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `OnConflict::new()` and `Default` construct a targetless `DO NOTHING` clause.
+- The non-exhaustive `SimpleExpr` enum includes `LikeWithEscape`, used by
+  `starts_with`, `ends_with`, and `contains` for backend-aware escape rendering.
+
+### Fixed
+
+- Empty conflict-column iterators render `ON CONFLICT DO NOTHING` on PostgreSQL
+  and SQLite instead of invalid empty parentheses. PostgreSQL rejects targetless
+  `DO UPDATE` clauses during rendering.
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.17...reinhardt-query@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation

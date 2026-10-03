@@ -168,7 +168,7 @@ fn file_composite_keys_share_persistence_codec_metadata() {
 
 	// Assert
 	assert_eq!(
-		values["file"],
+		values["asset_path"],
 		PkValue::String("assets/report.txt".to_owned())
 	);
 	assert_eq!(
@@ -348,7 +348,7 @@ fn uuid_components_retain_native_database_values() {
 	// Assert
 	assert_eq!(values.len(), 2);
 	assert_eq!(
-		values["tenant_id"],
+		values["tenant_key"],
 		PkValue::Database {
 			value: DatabaseValue::Uuid(tenant_id)
 		}
@@ -374,7 +374,10 @@ fn enum_components_use_storage_values_without_display_or_serde_labels() {
 	let values = key.to_pk_values().unwrap();
 
 	// Assert
-	assert_eq!(values["kind"], PkValue::String("task_record".to_owned()));
+	assert_eq!(
+		values["resource_kind"],
+		PkValue::String("task_record".to_owned())
+	);
 	assert_eq!(key.to_string(), "(v2;owner=5:alice, kind=11:task_record)");
 	assert_eq!(
 		serde_json::to_value(ResourceKind::Task).unwrap(),

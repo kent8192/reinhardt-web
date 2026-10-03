@@ -574,8 +574,19 @@ fn primary_key_filter_for_model<T: Model>(
 		.strip_prefix('(')
 		.and_then(|value| value.strip_suffix(')'))
 		.ok_or_else(|| ViewError::NotFound(format!("Object with pk={} not found", pk_string)))?;
-	let fields = composite.fields();
 	let metadata = T::field_metadata();
+	// SQL metadata uses physical columns; generated Display keys retain Rust fields.
+	let fields: Vec<_> = composite
+		.fields()
+		.iter()
+		.map(|column| {
+			metadata
+				.iter()
+				.find(|field| field.db_column_name() == column)
+				.or_else(|| metadata.iter().find(|field| field.name == *column))
+				.map_or_else(|| column.clone(), |field| field.name.clone())
+		})
+		.collect();
 	let is_valid_part = |index: usize, part: &str| {
 		let field_name = &fields[index];
 		match metadata.iter().find(|field| field.name == *field_name) {
@@ -583,8 +594,8 @@ fn primary_key_filter_for_model<T: Model>(
 			None => true,
 		}
 	};
-	let parts = parse_length_prefixed_composite_parts(inner, fields)
-		.or_else(|| parse_legacy_composite_parts(inner, fields, 0, &is_valid_part));
+	let parts = parse_length_prefixed_composite_parts(inner, &fields)
+		.or_else(|| parse_legacy_composite_parts(inner, &fields, 0, &is_valid_part));
 	let parts = parts
 		.ok_or_else(|| ViewError::NotFound(format!("Object with pk={} not found", pk_string)))?;
 	let filters = fields
@@ -676,7 +687,8 @@ fn assigned_primary_key_filter<T: Model>(item: &T) -> Option<FilterCondition> {
 				};
 				let column = metadata
 					.iter()
-					.find(|field| field.name == *field_name)
+					.find(|field| field.db_column_name() == field_name)
+					.or_else(|| metadata.iter().find(|field| field.name == *field_name))
 					.map(|field| field.db_column_name().to_owned())
 					.unwrap_or_else(|| field_name.clone());
 				Some(Filter::new(column, FilterOperator::Eq, value).into())
