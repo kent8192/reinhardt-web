@@ -10,6 +10,8 @@ A type-safe SQL query builder for the Reinhardt framework.
 typed PostgreSQL `bytea` hex literals, including inside custom expressions and
 subqueries. Empty bytes and SQL NULL remain distinct. Parameterized `build()`
 retains the original bytes, and MySQL/SQLite keep their `X'...'` literal syntax.
+Byte array elements use the same PostgreSQL literals, and byte arrays carry an
+explicit `bytea[]` type, including empty arrays and arrays of NULL elements.
 
 The standalone `inline_params` helper uses PostgreSQL literals for numbered
 placeholders (`$1`, `$2`, ...) and generic literals for positional placeholders

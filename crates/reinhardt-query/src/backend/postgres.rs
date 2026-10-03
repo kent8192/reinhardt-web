@@ -53,7 +53,7 @@ use crate::{
 		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef, TriggerBody},
-	value::{Value, Values},
+	value::{ArrayType, Value, Values},
 };
 
 /// PostgreSQL query builder
@@ -62,6 +62,8 @@ use crate::{
 /// - Identifiers: Double quotes (`"table_name"`)
 /// - Placeholders: Numbered (`$1`, `$2`, ...)
 /// - Inline bytes: Hex-encoded literals with an explicit PostgreSQL `bytea` type
+/// - Inline byte arrays: Recursively rendered elements with a `bytea[]` type,
+///   including empty arrays and arrays containing only NULL elements
 /// - Grouping: Typed expressions retain their precedence and associativity
 ///   through parentheses, including WHERE/HAVING predicates and DDL constraints
 ///
@@ -110,6 +112,15 @@ impl PostgresQueryBuilder {
 					write!(literal, "{byte:02x}").unwrap();
 				}
 				literal.push_str("'::bytea");
+				literal
+			}
+			Value::Array(array_type, Some(values)) => {
+				let items: Vec<String> = values.iter().map(Self::value_to_sql_literal).collect();
+				let mut literal = format!("ARRAY[{}]", items.join(","));
+				if matches!(array_type, ArrayType::Bytes) {
+					// The cast also types empty arrays and arrays of NULL elements.
+					literal.push_str("::bytea[]");
+				}
 				literal
 			}
 			_ => value.to_sql_literal(),
@@ -746,7 +757,7 @@ impl PostgresQueryBuilder {
 						let escaped = c.to_string().replace('\'', "''");
 						writer.push(&format!("'{}'", escaped));
 					}
-					Value::Bytes(Some(_)) => {
+					Value::Bytes(Some(_)) | Value::Array(_, Some(_)) => {
 						writer.push(&Self::value_to_sql_literal(value));
 					}
 					#[cfg(feature = "with-chrono")]

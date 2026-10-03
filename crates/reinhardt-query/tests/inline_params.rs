@@ -3,9 +3,9 @@
 use reinhardt_query::query::traits::inline_params;
 use reinhardt_query::types::{TriggerEvent, TriggerScope, TriggerTiming};
 use reinhardt_query::{
-	Alias, ColumnDef, Expr, ExprTrait, IntoIden, MySqlQueryBuilder, PostgresQueryBuilder, Query,
-	QueryBuilderTrait, QueryStatementBuilder, SelectStatement, SimpleExpr, SqliteQueryBuilder,
-	TableRef, Value, Values,
+	Alias, ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, IntoIden, MySqlQueryBuilder,
+	PostgresQueryBuilder, Query, QueryBuilderTrait, QueryStatementBuilder, SelectStatement,
+	SimpleExpr, SqliteQueryBuilder, TableRef, Value, Values,
 };
 use rstest::{fixture, rstest};
 
@@ -149,6 +149,113 @@ fn postgres_to_string_renders_bytea_defaults_and_checks() {
 	assert_eq!(
 		inlined,
 		r#"CREATE TABLE "records" ("value" BYTEA DEFAULT E'\\x0001ff'::bytea CHECK ("value" = E'\\x0001ff'::bytea))"#
+	);
+}
+
+#[rstest]
+#[case::mixed_bytes(
+	ArrayType::Bytes,
+	Some(vec![vec![0x00_u8, 0xff].into(), Vec::<u8>::new().into(), Value::Bytes(None)]),
+	r"ARRAY[E'\\x00ff'::bytea,E'\\x'::bytea,NULL]::bytea[]"
+)]
+#[case::empty_bytes(ArrayType::Bytes, Some(vec![]), "ARRAY[]::bytea[]")]
+#[case::null_bytes(ArrayType::Bytes, Some(vec![Value::Bytes(None)]), "ARRAY[NULL]::bytea[]")]
+#[case::null_array(ArrayType::Bytes, None, "NULL")]
+#[case::other_elements(ArrayType::Int, Some(vec![7_i32.into(), Value::Int(None)]), "ARRAY[7,NULL]")]
+#[case::nested_bytes(
+	ArrayType::Bytes,
+	Some(vec![
+		Value::Array(ArrayType::Bytes, Some(Box::new(vec![vec![0x00_u8].into()]))),
+		Value::Array(ArrayType::Bytes, Some(Box::new(vec![vec![0xff_u8].into()]))),
+	]),
+	r"ARRAY[ARRAY[E'\\x00'::bytea]::bytea[],ARRAY[E'\\xff'::bytea]::bytea[]]::bytea[]"
+)]
+fn postgres_to_string_renders_array_elements_with_backend_literals(
+	#[case] array_type: ArrayType,
+	#[case] elements: Option<Vec<Value>>,
+	#[case] literal: &str,
+) {
+	// Arrange
+	let value = Value::Array(array_type, elements.map(Box::new));
+	let inner = Query::select().expr(Expr::value(value.clone())).to_owned();
+	let query = Query::select()
+		.expr(Expr::value(value.clone()))
+		.expr(SimpleExpr::CustomWithExpr(
+			"(?)".into(),
+			vec![Expr::value(value.clone()).into()],
+		))
+		.expr(Expr::subquery(inner))
+		.to_owned();
+
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+	let inlined = query.to_string(PostgresQueryBuilder);
+	let helper_inlined = inline_params("SELECT $1", &Values(vec![value.clone()]));
+	let after = query.build(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(
+		inlined,
+		format!("SELECT {literal}, ({literal}), (SELECT {literal})")
+	);
+	assert_eq!(helper_inlined, format!("SELECT {literal}"));
+	if value.is_null() {
+		assert_eq!(sql, "SELECT NULL, (NULL), (SELECT NULL)");
+		assert_eq!(values, Values::new());
+	} else {
+		assert_eq!(sql, "SELECT $1, ($2), (SELECT $3)");
+		assert_eq!(values, Values(vec![value.clone(), value.clone(), value]));
+	}
+	assert_eq!(after, (sql, values));
+}
+
+#[rstest]
+fn inline_params_preserves_generic_byte_array_literals_for_positional_placeholders() {
+	// Arrange
+	let value = Value::Array(
+		ArrayType::Bytes,
+		Some(Box::new(vec![
+			vec![0x00_u8, 0xff].into(),
+			Value::Bytes(None),
+		])),
+	);
+
+	// Act
+	let inlined = inline_params("SELECT ?", &Values(vec![value.clone()]));
+	let generic = value.to_sql_literal();
+
+	// Assert
+	assert_eq!(inlined, "SELECT ARRAY[X'00FF',NULL]");
+	assert_eq!(generic, "ARRAY[X'00FF',NULL]");
+}
+
+#[rstest]
+fn postgres_to_string_renders_byte_array_defaults_and_checks() {
+	// Arrange
+	let value = Value::Array(
+		ArrayType::Bytes,
+		Some(Box::new(vec![
+			vec![0x00_u8, 0xff].into(),
+			Value::Bytes(None),
+		])),
+	);
+	let query = Query::create_table()
+		.table("records")
+		.col(
+			ColumnDef::new("value")
+				.array(ColumnType::Blob)
+				.default(Expr::value(value.clone()).into())
+				.check(Expr::col("value").eq(Expr::value(value))),
+		)
+		.to_owned();
+
+	// Act
+	let inlined = query.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(
+		inlined,
+		r#"CREATE TABLE "records" ("value" BYTEA[] DEFAULT ARRAY[E'\\x00ff'::bytea,NULL]::bytea[] CHECK ("value" = ARRAY[E'\\x00ff'::bytea,NULL]::bytea[]))"#
 	);
 }
 
