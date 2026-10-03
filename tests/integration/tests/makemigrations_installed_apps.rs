@@ -6,8 +6,8 @@ use reinhardt_commands::{BaseCommand, CommandContext, MakeMigrationsCommand};
 use reinhardt_db::migrations::autodetector::ForeignKeyInfo;
 use reinhardt_db::migrations::model_registry::{FieldMetadata, ModelMetadata, global_registry};
 use reinhardt_db::migrations::{
-	FieldType, FilesystemRepository, FilesystemSource, ForeignKeyAction, Migration,
-	MigrationRepository, MigrationSource, Operation,
+	ColumnDefinition, FieldType, FilesystemRepository, FilesystemSource, ForeignKeyAction,
+	Migration, MigrationRepository, MigrationSource, Operation,
 };
 use reinhardt_db::orm::Model;
 use rstest::{fixture, rstest};
@@ -28,6 +28,10 @@ mod first_registration {
 
 mod second_registration {
 	reinhardt::installed_apps! { second: "ambiguous.app" }
+}
+
+mod label_collision_registration {
+	reinhardt::installed_apps! { first: "identity" }
 }
 
 #[model(app_label = "identity", table_name = "own_identities")]
@@ -290,6 +294,34 @@ async fn ambiguous_installed_app_path_is_rejected(project: TempDir) {
 }
 
 #[rstest]
+#[tokio::test]
+#[serial(makemigrations_installed_apps)]
+async fn direct_label_wins_over_another_apps_path(
+	project: TempDir,
+	#[values(false, true)] explicit: bool,
+) {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let _cwd = ProjectDirGuard::enter(project.path());
+	register_model("identity", "own_identities", None);
+	register_model("first", "first_records", None);
+	let mut context = context(project.path(), Some(&["identity"]));
+	if explicit {
+		context.add_arg("identity".to_owned());
+	}
+
+	// Act
+	MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect("an exact app label must not be reinterpreted as another app's path");
+
+	// Assert
+	assert_eq!(migration_apps(project.path()).await, ["identity"]);
+	assert!(!project.path().join("migrations/first").exists());
+}
+
+#[rstest]
 #[case::generate(None)]
 #[case::empty(Some("empty"))]
 #[case::merge(Some("merge"))]
@@ -394,9 +426,9 @@ async fn explicit_uninstalled_app_is_rejected(project: TempDir, #[case] mode: Op
 
 #[rstest]
 #[case::installed(&["identity", "provider"], &["identity", "provider"], true)]
-#[case::uninstalled(&["identity"], &["identity"], false)]
+#[case::uninstalled(&["identity"], &[], false)]
 #[case::installed_paths(&["myproject.accounts", "myproject.providers"], &["identity", "provider"], true)]
-#[case::uninstalled_path(&["myproject.accounts"], &["identity"], false)]
+#[case::uninstalled_path(&["myproject.accounts"], &[], false)]
 #[tokio::test]
 #[serial(makemigrations_installed_apps)]
 async fn foreign_key_providers_stay_within_installed_scope(
@@ -414,12 +446,21 @@ async fn foreign_key_providers_stay_within_installed_scope(
 	context.add_arg("identity".to_owned());
 
 	// Act
-	MakeMigrationsCommand
-		.execute(&context)
-		.await
-		.expect("foreign key migrations should be generated");
+	let result = MakeMigrationsCommand.execute(&context).await;
 
 	// Assert
+	if !has_provider_dependency {
+		let error = result.expect_err("an uninstalled foreign key provider must be rejected");
+		assert_eq!(
+			error.to_string(),
+			"Execution error: App 'identity' references uninstalled app 'provider'. Add 'provider' to CoreSettings::installed_apps before generating migrations."
+		);
+		assert_eq!(migration_apps(project.path()).await, expected_apps);
+		assert!(!project.path().join("migrations").exists());
+		assert_eq!(global_registry().get_models().len(), 2);
+		return;
+	}
+	result.expect("installed foreign key migrations should be generated");
 	assert_eq!(migration_apps(project.path()).await, expected_apps);
 	let migration = FilesystemSource::new(project.path().join("migrations"))
 		.get_migration("identity", "0001_initial")
@@ -431,6 +472,141 @@ async fn foreign_key_providers_stay_within_installed_scope(
 		Vec::new()
 	};
 	assert_eq!(migration.dependencies, dependencies);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(makemigrations_installed_apps)]
+async fn previous_app_history_is_preserved_for_model_moves(
+	project: TempDir,
+	#[values(false, true)] rename_table: bool,
+	#[values(false, true)] explicit: bool,
+) {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let _cwd = ProjectDirGuard::enter(project.path());
+	let mut previous = ModelMetadata::new("legacy", "Deployment", "legacy_deployment");
+	previous.add_field(
+		"id".to_owned(),
+		FieldMetadata::new(FieldType::Integer).with_param("primary_key", "true"),
+	);
+	for field in ["created_at", "updated_at"] {
+		previous.add_field(field.to_owned(), FieldMetadata::new(FieldType::DateTime));
+	}
+	previous.add_field(
+		"status".to_owned(),
+		FieldMetadata::new(FieldType::VarChar(32)),
+	);
+	let previous_state = previous.to_model_state();
+	let mut initial = Migration::new("0001_initial", "legacy");
+	initial.operations.push(Operation::CreateTable {
+		name: previous_state.table_name.clone(),
+		columns: previous_state
+			.fields
+			.iter()
+			.map(|(name, field)| ColumnDefinition::from_field_state(name, field))
+			.collect(),
+		constraints: Vec::new(),
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	});
+	let mut repository = FilesystemRepository::new(project.path().join("migrations"));
+	repository
+		.save(&initial)
+		.await
+		.expect("previous app history should be saved");
+	let mut current = previous;
+	current.app_label = "deployments".to_owned();
+	current.model_name = "Project".to_owned();
+	if rename_table {
+		current.table_name = "deployments_project".to_owned();
+	}
+	current.add_field(
+		"project_name".to_owned(),
+		FieldMetadata::new(FieldType::VarChar(255)).with_nullable(true),
+	);
+	global_registry().register_model(current);
+	let mut context = context(project.path(), Some(&["deployments"]));
+	context.options.remove("force-empty-state");
+	// Avoid relying on a configured database if container replay needs a fallback.
+	context.set_option("database".to_owned(), "invalid://offline".to_owned());
+	if explicit {
+		context.add_arg("deployments".to_owned());
+	}
+
+	// Act
+	MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect("a model move must retain the old app's history");
+	let migrations = FilesystemSource::new(project.path().join("migrations"))
+		.all_migrations()
+		.await
+		.expect("generated migrations should be readable");
+	MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect("saved move migrations must replay without recreating an existing table");
+
+	// Assert
+	assert_eq!(
+		migration_apps(project.path()).await,
+		["deployments", "legacy"]
+	);
+	assert_eq!(migrations.len(), 2);
+	assert_eq!(
+		migrations
+			.iter()
+			.filter(|migration| migration.app_label == "legacy")
+			.count(),
+		1
+	);
+	let migration = migrations
+		.iter()
+		.find(|migration| migration.app_label == "deployments")
+		.expect("only the new app should receive a migration");
+	assert_eq!(
+		migration.dependencies,
+		[("legacy".to_owned(), "0001_initial".to_owned())]
+	);
+	assert_eq!(
+		migration.operations.len(),
+		2,
+		"unexpected operations: {:?}",
+		migration.operations
+	);
+	let move_index = migration
+		.operations
+		.iter()
+		.position(|operation| matches!(operation, Operation::MoveModel { .. }))
+		.expect("a cross-app move must remain in the saved migration");
+	let column_index = migration
+		.operations
+		.iter()
+		.position(|operation| matches!(operation, Operation::AddColumn { .. }))
+		.expect("the moved model's added field must remain in the saved migration");
+	assert!(
+		matches!(
+			&migration.operations[move_index],
+			Operation::MoveModel { from_app, to_app, rename_table: actual_rename, old_table_name, new_table_name, .. }
+				if from_app == "legacy" && to_app == "deployments"
+					&& *actual_rename == rename_table
+					&& old_table_name.as_deref() == rename_table.then_some("legacy_deployment")
+					&& new_table_name.as_deref() == rename_table.then_some("deployments_project")
+		),
+		"unexpected move: {:?}",
+		migration.operations[move_index]
+	);
+	assert!(matches!(
+		&migration.operations[column_index], Operation::AddColumn { column, .. } if column.name == "project_name"
+	));
+	if rename_table {
+		assert!(
+			move_index < column_index,
+			"the table must be renamed before its new column is added"
+		);
+	}
 }
 
 #[rstest]

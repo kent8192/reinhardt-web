@@ -1267,6 +1267,7 @@ impl ProjectState {
 	/// - DropColumn: Removes a field from a model
 	/// - AlterColumn: Modifies a field
 	/// - RenameTable: Renames a model's table
+	/// - MoveModel: Moves a model's app ownership and optionally renames its table
 	/// - RenameColumn: Renames a field
 	/// - CreateIndex/DropIndex: Tracks model indexes
 	/// - Other operations are logged but not applied to state
@@ -1469,6 +1470,44 @@ impl ProjectState {
 						model.table_name = table.to_string();
 						model.add_field(updated_field);
 						self.add_model(model);
+					}
+				}
+				Operation::MoveModel {
+					model_name,
+					from_app,
+					to_app,
+					rename_table,
+					old_table_name,
+					new_table_name,
+				} => {
+					let named_key = (from_app.clone(), model_name.clone());
+					let source_key = if self.models.contains_key(&named_key) {
+						Some(named_key)
+					} else {
+						// Offline state can use table-derived model keys.
+						self.models.iter().find_map(|(key, model)| {
+							(model.app_label == *from_app
+								&& old_table_name.as_deref() == Some(model.table_name.as_str()))
+							.then(|| key.clone())
+						})
+					};
+					if let Some(source_key) = source_key {
+						if *rename_table
+							&& let Some(new_name) = new_table_name
+							&& let Some(model) = self.models.get(&source_key)
+						{
+							// Reuse table-rename replay so generated index metadata stays aligned.
+							let rename = Operation::RenameTable {
+								old_name: model.table_name.clone(),
+								new_name: new_name.clone(),
+							};
+							self.apply_migration_operations(&[rename], from_app);
+						}
+						if let Some(mut model) = self.models.remove(&source_key) {
+							model.app_label.clone_from(to_app);
+							model.name.clone_from(model_name);
+							self.add_model(model);
+						}
 					}
 				}
 				Operation::RenameTable { old_name, new_name } => {
@@ -7792,6 +7831,53 @@ mod tests {
 			constraints,
 			many_to_many_fields: Vec::new(),
 		}
+	}
+
+	#[rstest]
+	fn apply_migration_operations_replays_cross_app_move(
+		#[values(false, true)] rename_table: bool,
+		#[values(false, true)] table_keyed: bool,
+	) {
+		// Arrange
+		let mut model = ModelState::new("legacy", "Deployment");
+		model.table_name = "legacy_deployment".to_owned();
+		model.add_field(FieldState::new("id", FieldType::Integer, false));
+		model.add_field(FieldState::new("status", FieldType::VarChar(32), true));
+		if table_keyed {
+			model.name = model.table_name.clone();
+		}
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		let operation = super::super::Operation::MoveModel {
+			model_name: "Deployment".to_owned(),
+			from_app: "legacy".to_owned(),
+			to_app: "deployments".to_owned(),
+			rename_table,
+			old_table_name: Some("legacy_deployment".to_owned()),
+			new_table_name: Some("deployments_project".to_owned()),
+		};
+
+		// Act
+		state.apply_migration_operations(&[operation], "deployments");
+
+		// Assert
+		assert_eq!(state.models.len(), 1);
+		let model = state.get_model("deployments", "Deployment").unwrap();
+		assert_eq!(model.app_label, "deployments");
+		assert_eq!(model.name, "Deployment");
+		assert_eq!(
+			model.table_name,
+			if rename_table {
+				"deployments_project"
+			} else {
+				"legacy_deployment"
+			}
+		);
+		assert_eq!(model.fields.len(), 2);
+		assert_eq!(model.fields["id"].field_type, FieldType::Integer);
+		assert_eq!(model.fields["status"].field_type, FieldType::VarChar(32));
+		assert!(model.fields["status"].nullable);
+		assert!(state.models.keys().all(|(app, _)| app != "legacy"));
 	}
 
 	#[rstest]

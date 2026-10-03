@@ -1,7 +1,8 @@
 //! AST parser utilities for migration files
 //!
 //! Provides helper functions to extract migration metadata and operations
-//! from parsed Rust ASTs.
+//! from parsed Rust ASTs. Cross-app `MoveModel` literals retain app labels,
+//! the table-rename flag, and optional table names through filesystem round trips.
 
 use super::{Migration, Result};
 use syn::{Expr, File, Item, ItemFn, Stmt};
@@ -222,6 +223,22 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 				let old_name = extract_string_field(&expr_struct.fields, "old_name")?;
 				let new_name = extract_string_field(&expr_struct.fields, "new_name")?;
 				return Some(super::Operation::RenameTable { old_name, new_name });
+			}
+			"MoveModel" => {
+				return Some(super::Operation::MoveModel {
+					model_name: extract_string_field(&expr_struct.fields, "model_name")?,
+					from_app: extract_string_field(&expr_struct.fields, "from_app")?,
+					to_app: extract_string_field(&expr_struct.fields, "to_app")?,
+					rename_table: extract_bool_field(&expr_struct.fields, "rename_table")?,
+					old_table_name: extract_optional_str_field(
+						&expr_struct.fields,
+						"old_table_name",
+					),
+					new_table_name: extract_optional_str_field(
+						&expr_struct.fields,
+						"new_table_name",
+					),
+				});
 			}
 			"RenameColumn" => {
 				let table = extract_string_field(&expr_struct.fields, "table")?;

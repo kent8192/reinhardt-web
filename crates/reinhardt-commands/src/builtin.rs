@@ -1070,7 +1070,22 @@ impl BaseCommand for MakeMigrationsCommand {
 		let is_dry_run = ctx.has_option("dry-run");
 		let is_empty = ctx.has_option("empty");
 		let app_label = ctx.arg(0).map(|s| s.to_string());
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		fn resolve_app_label(path: &str) -> Result<&str, crate::CommandError> {
+			// A declared label is authoritative even if another app uses it as a path.
+			if inventory::iter::<reinhardt_apps::registry::InstalledAppRegistration>
+				.into_iter()
+				.any(|app| app.label == path)
+			{
+				return Ok(path);
+			}
+			#[cfg(feature = "migrations")]
+			if !reinhardt_db::migrations::model_registry::global_registry()
+				.get_app_models(path)
+				.is_empty()
+			{
+				return Ok(path);
+			}
 			let mut labels = inventory::iter::<reinhardt_apps::registry::InstalledAppRegistration>
 				.into_iter()
 				.filter(|app| app.path == path)
@@ -1085,6 +1100,11 @@ impl BaseCommand for MakeMigrationsCommand {
 				)));
 			}
 			Ok(label)
+		}
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		fn resolve_app_label(path: &str) -> Result<&str, crate::CommandError> {
+			// Native app metadata is unavailable on browser targets.
+			Ok(path)
 		}
 		// A nonempty installed-app list owns the migration scope. Empty
 		// defaults preserve automatic discovery for existing callers.
@@ -1341,13 +1361,9 @@ impl BaseCommand for MakeMigrationsCommand {
 				return Ok(());
 			}
 
-			// Scope a snapshot without removing linked metadata from the registry.
-			let mut target_project_state = ProjectState::from_global_registry();
-			if let Some(apps) = installed_apps {
-				target_project_state
-					.models
-					.retain(|(app, _), _| apps.contains(app));
-			}
+			// Keep the full graph for cross-app matching and foreign key validation.
+			// Restrict generated output below without erasing historical move sources.
+			let target_project_state = ProjectState::from_global_registry();
 
 			// Determine which apps to process
 			let app_names: Vec<String> = if let Some(label) = app_label {
@@ -1407,7 +1423,7 @@ impl BaseCommand for MakeMigrationsCommand {
 			// postgres_container() panics when Docker is unavailable, so the flag must
 			// be respected before attempting container startup, not as a fallback.
 			let from_db_flag = ctx.has_option("from-db");
-			let mut from_state = if ctx.has_option("force-empty-state") {
+			let from_state = if ctx.has_option("force-empty-state") {
 				ctx.warning("⚠️  Using empty state as requested (--force-empty-state)");
 				ctx.warning("This may create duplicate migrations!");
 				ProjectState::new()
@@ -1517,10 +1533,6 @@ impl BaseCommand for MakeMigrationsCommand {
 				}
 			};
 
-			if let Some(apps) = installed_apps {
-				from_state.models.retain(|(app, _), _| apps.contains(app));
-			}
-
 			// Check for migration conflicts before proceeding
 			let all_migrations = service.load_all().await.map_err(|e| {
 				CommandError::ExecutionError(format!(
@@ -1562,7 +1574,13 @@ impl BaseCommand for MakeMigrationsCommand {
 				from_state.clone(),
 				target_project_state.clone(),
 			);
-			let generated_migrations = detector.generate_migrations();
+			let generated_migrations: Vec<_> = detector
+				.generate_migrations()
+				.into_iter()
+				.filter(|migration| {
+					installed_apps.is_none_or(|apps| apps.contains(&migration.app_label))
+				})
+				.collect();
 			let apps_to_write = expand_apps_with_fk_providers(
 				&app_names,
 				&generated_migrations,
@@ -1575,6 +1593,30 @@ impl BaseCommand for MakeMigrationsCommand {
 			for migration in generated_migrations {
 				if !apps_to_write.contains(&migration.app_label) {
 					continue;
+				}
+				if let Some(apps) = installed_apps {
+					for operation in &migration.operations {
+						// A move depends on existing source-app history, which remains valid
+						// after the source is removed from the installed app list.
+						if matches!(
+							operation,
+							reinhardt_db::migrations::Operation::MoveModel { .. }
+						) {
+							continue;
+						}
+						for provider in reinhardt_db::migrations::MigrationAutodetector::foreign_key_provider_apps(
+							&target_project_state,
+							std::slice::from_ref(operation),
+							&migration.app_label,
+						) {
+							if !apps.contains(&provider) {
+								return Err(CommandError::ExecutionError(format!(
+									"App '{}' references uninstalled app '{provider}'. Add '{provider}' to CoreSettings::installed_apps before generating migrations.",
+									migration.app_label
+								)));
+							}
+						}
+					}
 				}
 				let app_name = migration.app_label.clone();
 				let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);

@@ -254,12 +254,21 @@ When composed settings supply a nonempty `CoreSettings::installed_apps` list,
 app labels and uses those labels as the migration ownership scope. For example,
 `identity: "myproject.accounts"` selects models and migrations labeled `identity`,
 including when settings use `InstalledApp::all_apps()`. Direct app labels remain
-supported. A path registered under multiple distinct labels is rejected. Linked
-models from other apps remain registered but do not produce migrations, including
-when they provide foreign key targets. An explicit app label must belong to the
+supported, and exact declared or registered model labels take precedence over
+another app's matching path. A path registered under multiple distinct labels
+is rejected. Linked models from other apps remain registered but do not produce
+migrations. Foreign keys to uninstalled provider apps are rejected before any
+files are written; include those providers in `installed_apps` to generate an
+applicable dependency graph. An explicit app label must belong to the
 resolved scope; `--empty` and `--merge` respect the same boundary. Without
 settings, or with an empty default list, automatic discovery uses the linked
 models as before.
+
+The full current model graph and historical state remain available for detecting
+model moves and renames. Moving a model from an old app to an installed new app
+preserves the `MoveModel` operation and dependency on the old app's existing
+migration, even when that old label is no longer installed. The ownership scope
+restricts generated files, rather than deleting the comparison state.
 
 Initial migrations record `dependencies` for table providers within this scope
 referenced by inline foreign keys. Same-app `CreateTable` operations are
