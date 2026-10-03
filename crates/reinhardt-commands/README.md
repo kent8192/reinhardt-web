@@ -278,7 +278,8 @@ path. New files are written under `<DIR>/<app_label>/`; existing migrations in
 that directory determine numbering and dependencies. The same directory is used
 by `--dry-run`, `--check`, and `--merge`.
 
-When composed settings supply a nonempty `CoreSettings::installed_apps` list,
+When the capability provider's core migration metadata or legacy composed
+settings supply a nonempty `CoreSettings::installed_apps` list,
 `makemigrations` resolves paths registered by `installed_apps!` to their declared
 app labels and uses those labels as the migration ownership scope. For example,
 `identity: "myproject.accounts"` selects models and migrations labeled `identity`,
@@ -290,9 +291,11 @@ Linked models from other apps remain registered but do not produce
 migrations. Foreign keys to uninstalled provider apps are rejected before any
 files are written; include those providers in `installed_apps` to generate an
 applicable dependency graph. An explicit app label must belong to the
-resolved scope; `--empty` respects the same boundary. Without
-settings, or with an empty default list, automatic discovery uses the linked
-models as before.
+resolved scope; `--empty` and `--merge` respect the same boundary. The capability
+entry point uses its resolved core metadata without requesting full runtime
+settings or secrets for file-based discovery. Legacy callers continue to use
+their composed settings. Without either source, or with an empty default list,
+automatic discovery uses the linked models as before.
 
 The full current model graph and historical state remain available for detecting
 model moves and renames. Moving a model from an old app to an installed new app
