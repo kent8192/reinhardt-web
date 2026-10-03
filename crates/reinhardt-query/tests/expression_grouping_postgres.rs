@@ -103,6 +103,47 @@ async fn postgres_custom_or_selects_only_targeted_obligations(
 #[case::template_inlined(true, false)]
 #[case::template_parameterized(true, true)]
 #[tokio::test]
+async fn postgres_custom_line_comment_preserves_neighboring_filters(
+	#[future] obligations: (PgContainer, Arc<sqlx::PgPool>),
+	#[case] with_values: bool,
+	#[case] parameterized: bool,
+) {
+	// Arrange
+	let (_container, pool) = obligations.await;
+	let predicate: SimpleExpr = if with_values {
+		Expr::cust_with_values("state = ? OR publish_until IS NULL -- reason", ["pending"]).into()
+	} else {
+		Expr::cust("state = 'pending' OR publish_until IS NULL -- reason").into()
+	};
+	let query = Query::select()
+		.column("id")
+		.from("obligations")
+		.and_where(predicate)
+		.and_where(Expr::col("id").eq(2))
+		.order_by("id", Order::Asc)
+		.to_owned();
+	let (sql, values) = if parameterized {
+		query.build(PostgresQueryBuilder)
+	} else {
+		(query.to_string(PostgresQueryBuilder), Values::default())
+	};
+
+	// Act
+	let ids = sqlx::query_scalar_with::<_, i32, _>(&sql, postgres_arguments(values))
+		.fetch_all(pool.as_ref())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(ids, vec![2]);
+}
+
+#[rstest]
+#[case::raw_inlined(false, false)]
+#[case::raw_parameterized(false, true)]
+#[case::template_inlined(true, false)]
+#[case::template_parameterized(true, true)]
+#[tokio::test]
 async fn postgres_custom_or_mutates_only_targeted_obligations(
 	#[future] obligations: (PgContainer, Arc<sqlx::PgPool>),
 	#[case] _with_values: bool,

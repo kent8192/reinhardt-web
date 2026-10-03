@@ -67,6 +67,8 @@ use crate::{
 ///   with AND, OR, or NOT, including condition groups and neighboring filters.
 ///   Their SQL is not parsed; standalone expressions and scalar operands retain
 ///   their original rendering.
+///   Grouped custom predicates containing `--` gain a newline before the closing
+///   parenthesis so trailing line comments cannot consume it.
 ///
 /// # Examples
 ///
@@ -429,12 +431,20 @@ impl PostgresQueryBuilder {
 		if parenthesized {
 			writer.push("(");
 		}
+		let expression_start = writer.len();
 		if unquoted {
 			self.write_simple_expr_unquoted(writer, expr);
 		} else {
 			self.write_simple_expr(writer, expr);
 		}
 		if parenthesized {
+			// Conservatively terminate possible line comments without parsing SQL.
+			// Inspect the rendered fragment to include nested custom expressions.
+			if matches!(expr, SimpleExpr::Custom(_) | SimpleExpr::CustomWithExpr(..))
+				&& writer.sql()[expression_start..].contains("--")
+			{
+				writer.push("\n");
+			}
 			writer.push(")");
 		}
 	}

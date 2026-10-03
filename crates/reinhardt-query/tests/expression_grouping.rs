@@ -198,6 +198,78 @@ fn postgres_custom_boolean_operands_retain_grouping(
 }
 
 #[rstest]
+#[case::left_and(Expr::cust("TRUE -- reason").and(false), "SELECT (TRUE -- reason\n) AND $1", "SELECT (TRUE -- reason\n) AND FALSE")]
+#[case::right_and(Expr::val(false).and(Expr::cust("TRUE -- reason")), "SELECT $1 AND (TRUE -- reason\n)", "SELECT FALSE AND (TRUE -- reason\n)")]
+#[case::left_or(Expr::cust("TRUE -- reason").or(false), "SELECT (TRUE -- reason\n) OR $1", "SELECT (TRUE -- reason\n) OR FALSE")]
+#[case::right_or(Expr::val(false).or(Expr::cust("TRUE -- reason")), "SELECT $1 OR (TRUE -- reason\n)", "SELECT FALSE OR (TRUE -- reason\n)")]
+#[case::template(Expr::cust_with_values("? -- reason", [true]).and(false), "SELECT ($1 -- reason\n) AND $2", "SELECT (TRUE -- reason\n) AND FALSE")]
+#[case::not(Expr::cust("TRUE -- reason").not(), "SELECT NOT (TRUE -- reason\n)", "SELECT NOT (TRUE -- reason\n)")]
+#[case::not_template(Expr::cust_with_values("? -- reason", [true]).not(), "SELECT NOT ($1 -- reason\n)", "SELECT NOT (TRUE -- reason\n)")]
+#[case::nested_template(SimpleExpr::CustomWithExpr("?".into(), vec![Expr::cust("TRUE -- reason").into()]).not(), "SELECT NOT (TRUE -- reason\n)", "SELECT NOT (TRUE -- reason\n)")]
+#[case::quoted_dashes(Expr::cust("'--' = '--'").not(), "SELECT NOT ('--' = '--'\n)", "SELECT NOT ('--' = '--'\n)")]
+fn postgres_custom_line_comments_keep_closing_parentheses(
+	#[case] expression: SimpleExpr,
+	#[case] expected_sql: &str,
+	#[case] expected_inlined: &str,
+	#[values(false, true)] cockroachdb: bool,
+) {
+	// Arrange
+	let query = Query::select().expr(expression).to_owned();
+
+	// Act
+	let sql = if cockroachdb {
+		CockroachDBQueryBuilder::new().build_select(&query).0
+	} else {
+		query.build(PostgresQueryBuilder).0
+	};
+	let inlined = query.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(inlined, expected_inlined);
+}
+
+#[rstest]
+#[case::raw(false)]
+#[case::template(true)]
+fn postgres_standalone_where_line_comment_keeps_closing_parenthesis(#[case] with_values: bool) {
+	// Arrange
+	let predicate: SimpleExpr = if with_values {
+		Expr::cust_with_values("? -- reason", [true]).into()
+	} else {
+		Expr::cust("TRUE -- reason").into()
+	};
+	let query = Query::select()
+		.column("id")
+		.from("runs")
+		.and_where(predicate)
+		.to_owned();
+
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+	let inlined = query.to_string(PostgresQueryBuilder);
+
+	// Assert
+	let (expected_sql, expected_values) = if with_values {
+		(
+			"SELECT \"id\" FROM \"runs\" WHERE ($1 -- reason\n)",
+			Values(vec![true.into()]),
+		)
+	} else {
+		(
+			"SELECT \"id\" FROM \"runs\" WHERE (TRUE -- reason\n)",
+			Values::default(),
+		)
+	};
+	assert_eq!(sql, expected_sql);
+	assert_eq!(values, expected_values);
+	assert_eq!(
+		inlined,
+		"SELECT \"id\" FROM \"runs\" WHERE (TRUE -- reason\n)"
+	);
+}
+
+#[rstest]
 fn postgres_nested_conditions_preserve_custom_predicates() {
 	// Arrange
 	let query = Query::select()
