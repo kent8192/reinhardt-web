@@ -25,6 +25,19 @@ use linkme::distributed_slice;
 use std::collections::HashMap;
 use std::sync::{OnceLock, PoisonError, RwLock};
 
+/// Internal path-to-label registration emitted by `installed_apps!`.
+///
+/// This metadata supports native management commands (P0); it is absent on WASM.
+#[doc(hidden)]
+pub struct InstalledAppRegistration {
+	/// The declared application label used by models and migrations.
+	pub label: &'static str,
+	/// The configured application module path.
+	pub path: &'static str,
+}
+
+inventory::collect!(InstalledAppRegistration);
+
 /// Metadata for a registered model
 ///
 /// This structure contains essential information about a model that has been

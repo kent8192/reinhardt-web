@@ -1688,6 +1688,7 @@ impl ProjectState {
 	/// - DropColumn: Removes a field from a model
 	/// - AlterColumn: Modifies a field
 	/// - RenameTable: Renames a model's table
+	/// - MoveModel: Moves a model's app ownership and optionally renames its table
 	/// - RenameColumn: Renames a field
 	/// - CreateIndex/DropIndex: Tracks model indexes
 	/// - Other operations are logged but not applied to state
@@ -1953,6 +1954,44 @@ impl ProjectState {
 						model.table_name = table.to_string();
 						model.add_field(updated_field);
 						self.add_model(model);
+					}
+				}
+				Operation::MoveModel {
+					model_name,
+					from_app,
+					to_app,
+					rename_table,
+					old_table_name,
+					new_table_name,
+				} => {
+					let named_key = (from_app.clone(), model_name.clone());
+					let source_key = if self.models.contains_key(&named_key) {
+						Some(named_key)
+					} else {
+						// Offline state can use table-derived model keys.
+						self.models.iter().find_map(|(key, model)| {
+							(model.app_label == *from_app
+								&& old_table_name.as_deref() == Some(model.table_name.as_str()))
+							.then(|| key.clone())
+						})
+					};
+					if let Some(source_key) = source_key {
+						if *rename_table
+							&& let Some(new_name) = new_table_name
+							&& let Some(model) = self.models.get(&source_key)
+						{
+							// Reuse table-rename replay so generated index metadata stays aligned.
+							let rename = Operation::RenameTable {
+								old_name: model.table_name.clone(),
+								new_name: new_name.clone(),
+							};
+							self.apply_migration_operations(&[rename], from_app);
+						}
+						if let Some(mut model) = self.models.remove(&source_key) {
+							model.app_label.clone_from(to_app);
+							model.name.clone_from(model_name);
+							self.add_model(model);
+						}
 					}
 				}
 				Operation::RenameTable { old_name, new_name } => {
@@ -6057,19 +6096,19 @@ impl MigrationAutodetector {
 	/// assert!(changes.renamed_models.len() <= 1);
 	/// ```
 	fn detect_renamed_models(&self, changes: &mut DetectedChanges) {
-		// Get deleted and created models
-		let deleted: Vec<_> = self
-			.from_state
-			.models
-			.keys()
-			.filter(|k| !self.to_state.models.contains_key(k))
+		// Reserve unchanged source tables, even when replay inferred a different
+		// model name. Target candidates can still reuse a table released by a move.
+		let deleted: Vec<_> = changes
+			.deleted_models
+			.iter()
+			.filter(|key| !self.to_state.models.contains_key(*key))
 			.collect();
 
 		let created: Vec<_> = self
 			.to_state
 			.models
 			.keys()
-			.filter(|k| !self.from_state.models.contains_key(k))
+			.filter(|key| !self.from_state.models.contains_key(*key))
 			.collect();
 
 		// Use bipartite matching to find optimal model pairs
@@ -6675,6 +6714,23 @@ impl MigrationAutodetector {
 			if let Some(from_model) = self.from_state.models.get(*deleted_key) {
 				for (j, created_key) in created.iter().enumerate() {
 					if let Some(to_model) = self.to_state.models.get(*created_key) {
+						if let Some(owner) = self
+							.from_state
+							.get_model_by_table_name(&to_model.app_label, &to_model.table_name)
+						{
+							// Preserve the physical target identity unless a cross-app
+							// move names the same model or an existing owner releases
+							// its table through a table rename.
+							let owner_renames_table = self
+								.to_state
+								.get_model(&owner.app_label, &owner.name)
+								.is_some_and(|current| current.table_name != owner.table_name);
+							if deleted_key.0 == created_key.0
+								|| (deleted_key.1 != created_key.1 && !owner_renames_table)
+							{
+								continue;
+							}
+						}
 						let similarity = self.calculate_model_similarity(from_model, to_model);
 
 						// Only add edge if similarity exceeds threshold
@@ -9026,11 +9082,8 @@ impl MigrationAutodetector {
 				from_app: from_app.clone(),
 				to_app: to_app.clone(),
 				rename_table: *rename_table,
-				old_table_name: if *rename_table {
-					Some(old_table_name)
-				} else {
-					None
-				},
+				// State replay needs the physical identity even without a table rename.
+				old_table_name: Some(old_table_name),
 				new_table_name: if *rename_table {
 					Some(new_table_name.clone())
 				} else {
@@ -10971,6 +11024,118 @@ mod tests {
 				if table == "accounts_user"
 					&& constraint.name() == "ck_accounts_user_status_enum"
 		));
+	}
+
+	#[rstest]
+	fn apply_migration_operations_replays_cross_app_move(
+		#[values(false, true)] rename_table: bool,
+		#[values(false, true)] table_keyed: bool,
+	) {
+		// Arrange
+		let mut model = ModelState::new("legacy", "Deployment");
+		model.table_name = "legacy_deployment".to_owned();
+		model.add_field(FieldState::new("id", FieldType::Integer, false));
+		model.add_field(FieldState::new("status", FieldType::VarChar(32), true));
+		if table_keyed {
+			model.name = model.table_name.clone();
+		}
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		let operation = super::super::Operation::MoveModel {
+			model_name: "Deployment".to_owned(),
+			from_app: "legacy".to_owned(),
+			to_app: "deployments".to_owned(),
+			rename_table,
+			old_table_name: Some("legacy_deployment".to_owned()),
+			new_table_name: Some("deployments_project".to_owned()),
+		};
+
+		// Act
+		state.apply_migration_operations(&[operation], "deployments");
+
+		// Assert
+		assert_eq!(state.models.len(), 1);
+		let model = state.get_model("deployments", "Deployment").unwrap();
+		assert_eq!(model.app_label, "deployments");
+		assert_eq!(model.name, "Deployment");
+		assert_eq!(
+			model.table_name,
+			if rename_table {
+				"deployments_project"
+			} else {
+				"legacy_deployment"
+			}
+		);
+		assert_eq!(model.fields.len(), 2);
+		assert_eq!(model.fields["id"].field_type, FieldType::Integer);
+		assert_eq!(model.fields["status"].field_type, FieldType::VarChar(32));
+		assert!(model.fields["status"].nullable);
+		assert!(state.models.keys().all(|(app, _)| app != "legacy"));
+	}
+
+	#[rstest]
+	fn generated_state_only_moves_replay_custom_table_ownership(
+		#[values("legacy_deployment", "audit_events")] table: &str,
+	) {
+		// Arrange
+		let mut previous = build_model_state(
+			"legacy",
+			"Deployment",
+			vec![
+				FieldState::new("id", FieldType::Integer, false),
+				FieldState::new("created_at", FieldType::DateTime, false),
+				FieldState::new("updated_at", FieldType::DateTime, false),
+				FieldState::new("status", FieldType::VarChar(32), false),
+			],
+			Vec::new(),
+			Vec::new(),
+		);
+		previous.table_name = table.to_owned();
+		let initial = super::super::Operation::CreateTable {
+			name: table.to_owned(),
+			columns: previous
+				.fields
+				.iter()
+				.map(|(name, field)| super::super::ColumnDefinition::from_field_state(name, field))
+				.collect(),
+			constraints: Vec::new(),
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let mut from_state = ProjectState::new();
+		from_state.add_model(previous.clone());
+		let mut current = previous;
+		current.app_label = "deployments".to_owned();
+		current.name = "Project".to_owned();
+		let mut to_state = ProjectState::new();
+		to_state.add_model(current);
+		let detector = MigrationAutodetector::new(from_state, to_state.clone());
+		let mut replayed = ProjectState::new();
+		replayed.apply_migration_operations(&[initial], "legacy");
+
+		// Act
+		let migrations = detector.try_generate_migrations().unwrap();
+		for migration in &migrations {
+			replayed.apply_migration_operations(&migration.operations, &migration.app_label);
+		}
+
+		// Assert
+		assert_eq!(migrations.len(), 1);
+		assert!(matches!(migrations[0].operations.as_slice(),
+			[super::super::Operation::MoveModel { rename_table: false, old_table_name: Some(old_table), new_table_name: None, .. }]
+				if old_table == table));
+		assert_eq!(replayed.models.len(), 1);
+		assert!(replayed.models.keys().all(|(app, _)| app == "deployments"));
+		let moved = replayed.find_model_by_table(table).unwrap();
+		assert_eq!(moved.fields.len(), 4);
+		assert_eq!(moved.fields["status"].field_type, FieldType::VarChar(32));
+		assert!(
+			MigrationAutodetector::new(replayed, to_state)
+				.try_generate_migrations()
+				.unwrap()
+				.is_empty()
+		);
 	}
 
 	#[rstest]

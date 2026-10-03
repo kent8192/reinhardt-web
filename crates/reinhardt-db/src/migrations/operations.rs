@@ -1678,7 +1678,8 @@ pub enum Operation {
 		to_app: String,
 		/// Whether to rename the underlying table
 		rename_table: bool,
-		/// Old table name (if rename_table is true)
+		/// Source table identity for state replay, including moves without a rename.
+		/// Older migrations may omit this when `rename_table` is false.
 		old_table_name: Option<String>,
 		/// New table name (if rename_table is true)
 		new_table_name: Option<String>,

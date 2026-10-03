@@ -14431,8 +14431,8 @@ mod tests {
 			.expect("update SQL should compile");
 
 		// HashMap iteration order is not guaranteed, so we check both possible orderings
-		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
-		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
+		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND (\"email\" LIKE $4 ESCAPE '\\'))";
+		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND (\"email\" LIKE $4 ESCAPE '\\'))";
 		assert!(
 			sql == valid_sql_1 || sql == valid_sql_2,
 			"Generated SQL '{}' does not match either expected pattern",
@@ -14479,7 +14479,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND \"email\" LIKE $2 ESCAPE '\\')"
+			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND (\"email\" LIKE $2 ESCAPE '\\'))"
 		);
 		assert_eq!(params, vec!["alice", "alice@%"]);
 	}
@@ -15440,7 +15440,7 @@ mod tests {
 
 		assert_eq!(
 			queryset.to_sql().expect("query SQL should compile"),
-			r#"SELECT * FROM "test_users" WHERE ("id" IN (SELECT * FROM "test_users" FOR UPDATE) AND "id" NOT IN (SELECT * FROM "test_users" FOR UPDATE) AND EXISTS (SELECT * FROM "test_users" FOR UPDATE) AND NOT EXISTS (SELECT * FROM "test_users" FOR UPDATE))"#
+			r#"SELECT * FROM "test_users" WHERE (("id" IN (SELECT * FROM "test_users" FOR UPDATE)) AND ("id" NOT IN (SELECT * FROM "test_users" FOR UPDATE)) AND (EXISTS (SELECT * FROM "test_users" FOR UPDATE)) AND (NOT EXISTS (SELECT * FROM "test_users" FOR UPDATE)))"#
 		);
 	}
 
@@ -16979,7 +16979,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' OR "email" ILIKE '%example.com%' ESCAPE '\')"#
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' OR ("email" ILIKE '%example.com%' ESCAPE '\'))"#
 		);
 	}
 
@@ -17032,7 +17032,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"DELETE FROM "test_users" WHERE ("username" = $1 OR "email" ILIKE $2 ESCAPE '\')"#
+			r#"DELETE FROM "test_users" WHERE ("username" = $1 OR ("email" ILIKE $2 ESCAPE '\'))"#
 		);
 		assert_eq!(params, vec!["alice", "%example.com%"]);
 	}
@@ -17345,7 +17345,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' AND "email" ILIKE '%example.com%' ESCAPE '\' AND "id" IN (1, 2, 3) AND EXTRACT(YEAR FROM "created_at") >= 2026)"#
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' AND ("email" ILIKE '%example.com%' ESCAPE '\') AND "id" IN (1, 2, 3) AND EXTRACT(YEAR FROM "created_at") >= 2026)"#
 		);
 	}
 
@@ -17363,7 +17363,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("email" IS NOT NULL AND "id" NOT IN (10, 20) AND "id" BETWEEN 100 AND 200)"#
+			r#"SELECT * FROM "test_users" WHERE ("email" IS NOT NULL AND "id" NOT IN (10, 20) AND ("id" BETWEEN 100 AND 200))"#
 		);
 	}
 
@@ -17385,7 +17385,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%lic%' ESCAPE '\' AND "username" LIKE 'a%' ESCAPE '\' AND "username" LIKE '%e' ESCAPE '\' AND "username" ILIKE 'AL%' ESCAPE '\' AND "username" ILIKE '%CE' ESCAPE '\' AND "username" ~ '^a.*e$' AND "username" ~* '^A.*E$')"#
+			r#"SELECT * FROM "test_users" WHERE (("username" LIKE '%lic%' ESCAPE '\') AND ("username" LIKE 'a%' ESCAPE '\') AND ("username" LIKE '%e' ESCAPE '\') AND ("username" ILIKE 'AL%' ESCAPE '\') AND ("username" ILIKE '%CE' ESCAPE '\') AND ("username" ~ '^a.*e$') AND ("username" ~* '^A.*E$'))"#
 		);
 	}
 
@@ -17431,7 +17431,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("tags" @> ARRAY['rust', 'async'] AND "tags" && ARRAY['web', 'orm'] AND "metadata" @> '{"active": true}'::jsonb AND "metadata" ?| array['tier', 'plan'] AND "active_period" && '[2026-01-01,2027-01-01)')"#
+			r#"SELECT * FROM "test_users" WHERE (("tags" @> ARRAY['rust', 'async']) AND ("tags" && ARRAY['web', 'orm']) AND ("metadata" @> '{"active": true}'::jsonb) AND "metadata" ?| array['tier', 'plan'] AND ("active_period" && '[2026-01-01,2027-01-01)'))"#
 		);
 	}
 
@@ -17453,7 +17453,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT DISTINCT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' ESCAPE '\' AND "username" IS NOT NULL AND EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
+			r#"SELECT DISTINCT * FROM "test_users" WHERE (("email" ILIKE '%example.com%' ESCAPE '\') AND "username" IS NOT NULL AND (EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026)) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
 		);
 	}
 
