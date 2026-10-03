@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.20...reinhardt-db@v0.3.21) - 2026-10-03
+
+### Documentation
+
+- *(db)* update Django composite key comparison
+
+### Fixed
+
+- *(db)* bound generated foreign-key constraint names
+- *(orm)* match every composite key component when updating
+- *(commands)* preserve installed migration scope and history
+- *(migrations)* preserve scoped model move history
+
+### Maintenance
+
+- merge main into installed app migration fix
+
+### Testing
+
+- *(db)* align negated filter SQL expectations
+- *(db)* align standalone predicate SQL expectations
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.17...reinhardt-db@v0.3.18) - 2026-09-16
 
 ### Fixed
