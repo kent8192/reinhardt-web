@@ -7172,7 +7172,7 @@ mod tests {
 		let sql = queryset.to_sql();
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE (EXISTS (SELECT * FROM "test_users" WHERE "tenant_id" = "items"."tenant_id") AND NOT EXISTS (SELECT * FROM "test_users" WHERE "organization_id" = "items"."organization_key"))"#
+			r#"SELECT * FROM "test_users" WHERE ((EXISTS (SELECT * FROM "test_users" WHERE "tenant_id" = "items"."tenant_id")) AND (NOT EXISTS (SELECT * FROM "test_users" WHERE "organization_id" = "items"."organization_key")))"#
 		);
 	}
 
@@ -7203,7 +7203,7 @@ mod tests {
 
 		assert_eq!(
 			queryset.to_sql(),
-			r#"SELECT * FROM "test_users" WHERE EXISTS (SELECT * FROM "test_users" WHERE ("tenant_id" = "items"."b" AND "organization_id" = "items"."c"))"#
+			r#"SELECT * FROM "test_users" WHERE (EXISTS (SELECT * FROM "test_users" WHERE ("tenant_id" = "items"."b" AND "organization_id" = "items"."c")))"#
 		);
 	}
 
@@ -7288,7 +7288,7 @@ mod tests {
 			QuerySet::<TestUser>::new().with_lateral_join(
 				crate::orm::lateral_join::LateralJoin::new("latest", "SELECT 1"),
 			),
-			"LEFT JOIN LATERAL (SELECT 1) AS \"latest\" ON true",
+			"LEFT JOIN LATERAL (SELECT 1) AS \"latest\" ON (true)",
 		);
 		assert_supported(
 			QuerySet::<TestUser>::new().inner_join::<TestUser>("id", "id"),
@@ -7651,8 +7651,8 @@ mod tests {
 		let (sql, params) = queryset.update_sql(&updates);
 
 		// HashMap iteration order is not guaranteed, so we check both possible orderings
-		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
-		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
+		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND (\"email\" LIKE $4 ESCAPE '\\'))";
+		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND (\"email\" LIKE $4 ESCAPE '\\'))";
 		assert!(
 			sql == valid_sql_1 || sql == valid_sql_2,
 			"Generated SQL '{}' does not match either expected pattern",
@@ -7699,7 +7699,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND \"email\" LIKE $2 ESCAPE '\\')"
+			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND (\"email\" LIKE $2 ESCAPE '\\'))"
 		);
 		assert_eq!(params, vec!["alice", "alice@%"]);
 	}
@@ -7738,7 +7738,7 @@ mod tests {
 
 		let (sql, params) = queryset.delete_sql();
 
-		assert_eq!(sql, r#"DELETE FROM "test_users" WHERE FALSE"#);
+		assert_eq!(sql, r#"DELETE FROM "test_users" WHERE (FALSE)"#);
 		assert!(params.is_empty());
 	}
 
@@ -7756,7 +7756,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			r#"DELETE FROM "test_users" WHERE ("id" = $1 AND TRUE)"#
+			r#"DELETE FROM "test_users" WHERE ("id" = $1 AND (TRUE))"#
 		);
 		assert_eq!(params, vec!["1"]);
 	}
@@ -8167,7 +8167,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "tags" @> ARRAY['rust', 'web']"#
+			r#"SELECT * FROM "test_users" WHERE ("tags" @> ARRAY['rust', 'web'])"#
 		);
 	}
 
@@ -8261,7 +8261,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "tags" <@ ARRAY['rust']"#
+			r#"SELECT * FROM "test_users" WHERE ("tags" <@ ARRAY['rust'])"#
 		);
 	}
 
@@ -8280,7 +8280,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "tags" && ARRAY['rust']"#
+			r#"SELECT * FROM "test_users" WHERE ("tags" && ARRAY['rust'])"#
 		);
 	}
 
@@ -8299,7 +8299,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "content" @@ plainto_tsquery('english', 'search term')"#
+			r#"SELECT * FROM "test_users" WHERE ("content" @@ plainto_tsquery('english', 'search term'))"#
 		);
 	}
 
@@ -8318,7 +8318,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "metadata" @> '{"key": "value"}'::jsonb"#
+			r#"SELECT * FROM "test_users" WHERE ("metadata" @> '{"key": "value"}'::jsonb)"#
 		);
 	}
 
@@ -8337,7 +8337,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "metadata" <@ '{"key": "value"}'::jsonb"#
+			r#"SELECT * FROM "test_users" WHERE ("metadata" <@ '{"key": "value"}'::jsonb)"#
 		);
 	}
 
@@ -8413,34 +8413,34 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "metadata" @'$.key' "#
+			r#"SELECT * FROM "test_users" WHERE ("metadata" @'$.key' )"#
 		);
 	}
 
 	#[rstest]
 	#[case(
 		Filter::new("username", FilterOperator::IExact, FilterValue::String("Alice".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'Alice' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'Alice' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("email", FilterOperator::IContains, FilterValue::String("example.com".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%example.com%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IStartsWith, FilterValue::String("ali".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'ali%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'ali%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IEndsWith, FilterValue::String("ice".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE '%ice' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE '%ice' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::Regex, FilterValue::String("^a".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ~ '^a'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ~ '^a')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IRegex, FilterValue::String("^a".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ~* '^a'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ~* '^a')"#
 	)]
 	fn test_django_style_string_lookup_filters(#[case] filter: Filter, #[case] expected: &str) {
 		// Arrange
@@ -8467,7 +8467,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' OR "email" ILIKE '%example.com%' ESCAPE '\')"#
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' OR ("email" ILIKE '%example.com%' ESCAPE '\'))"#
 		);
 	}
 
@@ -8520,7 +8520,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"DELETE FROM "test_users" WHERE ("username" = $1 OR "email" ILIKE $2 ESCAPE '\')"#
+			r#"DELETE FROM "test_users" WHERE ("username" = $1 OR ("email" ILIKE $2 ESCAPE '\'))"#
 		);
 		assert_eq!(params, vec!["alice", "%example.com%"]);
 	}
@@ -8543,7 +8543,7 @@ mod tests {
 			result,
 			Err(reinhardt_core::exception::Error::Validation(_))
 		));
-		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE FALSE"#);
+		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE (FALSE)"#);
 	}
 
 	#[rstest]
@@ -8552,7 +8552,7 @@ mod tests {
 
 		assert_eq!(
 			queryset.to_sql(),
-			r#"SELECT * FROM "test_users" WHERE FALSE"#
+			r#"SELECT * FROM "test_users" WHERE (FALSE)"#
 		);
 	}
 
@@ -8578,18 +8578,18 @@ mod tests {
 
 		assert_eq!(
 			queryset.to_sql(),
-			r#"SELECT * FROM "test_users" WHERE NOT (TRUE)"#
+			r#"SELECT * FROM "test_users" WHERE NOT ((TRUE))"#
 		);
 	}
 
 	#[rstest]
 	#[case(
 		Filter::new("email", FilterOperator::IContains, FilterValue::String("100%_match\\".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%100\%\_match\\%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("email" ILIKE '%100\%\_match\\%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IExact, FilterValue::String("alice_admin".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'alice\_admin' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'alice\_admin' ESCAPE '\')"#
 	)]
 	fn test_django_style_case_insensitive_like_filters_escape_metacharacters(
 		#[case] filter: Filter,
@@ -8608,15 +8608,15 @@ mod tests {
 	#[rstest]
 	#[case(
 		Filter::new("email", FilterOperator::Contains, FilterValue::String("100%_match\\".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "email" LIKE '%100\%\_match\\%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("email" LIKE '%100\%\_match\\%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::StartsWith, FilterValue::String("alice_admin".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" LIKE 'alice\_admin%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" LIKE 'alice\_admin%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::EndsWith, FilterValue::String("100%".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" LIKE '%100\%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%100\%' ESCAPE '\')"#
 	)]
 	fn test_django_style_case_sensitive_like_filters_escape_metacharacters(
 		#[case] filter: Filter,
@@ -8666,7 +8666,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "id" BETWEEN 10 AND 20"#
+			r#"SELECT * FROM "test_users" WHERE ("id" BETWEEN 10 AND 20)"#
 		);
 	}
 
@@ -8758,7 +8758,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' AND "email" ILIKE '%example.com%' ESCAPE '\' AND "id" IN (1, 2, 3) AND EXTRACT(YEAR FROM "created_at") >= 2026)"#
+			r#"SELECT * FROM "test_users" WHERE ("username" = 'alice' AND ("email" ILIKE '%example.com%' ESCAPE '\') AND "id" IN (1, 2, 3) AND EXTRACT(YEAR FROM "created_at") >= 2026)"#
 		);
 	}
 
@@ -8776,7 +8776,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("email" IS NOT NULL AND "id" NOT IN (10, 20) AND "id" BETWEEN 100 AND 200)"#
+			r#"SELECT * FROM "test_users" WHERE ("email" IS NOT NULL AND "id" NOT IN (10, 20) AND ("id" BETWEEN 100 AND 200))"#
 		);
 	}
 
@@ -8798,7 +8798,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%lic%' ESCAPE '\' AND "username" LIKE 'a%' ESCAPE '\' AND "username" LIKE '%e' ESCAPE '\' AND "username" ILIKE 'AL%' ESCAPE '\' AND "username" ILIKE '%CE' ESCAPE '\' AND "username" ~ '^a.*e$' AND "username" ~* '^A.*E$')"#
+			r#"SELECT * FROM "test_users" WHERE (("username" LIKE '%lic%' ESCAPE '\') AND ("username" LIKE 'a%' ESCAPE '\') AND ("username" LIKE '%e' ESCAPE '\') AND ("username" ILIKE 'AL%' ESCAPE '\') AND ("username" ILIKE '%CE' ESCAPE '\') AND ("username" ~ '^a.*e$') AND ("username" ~* '^A.*E$'))"#
 		);
 	}
 
@@ -8844,7 +8844,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("tags" @> ARRAY['rust', 'async'] AND "tags" && ARRAY['web', 'orm'] AND "metadata" @> '{"active": true}'::jsonb AND "metadata" ?| array['tier', 'plan'] AND "active_period" && '[2026-01-01,2027-01-01)')"#
+			r#"SELECT * FROM "test_users" WHERE (("tags" @> ARRAY['rust', 'async']) AND ("tags" && ARRAY['web', 'orm']) AND ("metadata" @> '{"active": true}'::jsonb) AND "metadata" ?| array['tier', 'plan'] AND ("active_period" && '[2026-01-01,2027-01-01)'))"#
 		);
 	}
 
@@ -8866,7 +8866,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT DISTINCT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' ESCAPE '\' AND "username" IS NOT NULL AND EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
+			r#"SELECT DISTINCT * FROM "test_users" WHERE (("email" ILIKE '%example.com%' ESCAPE '\') AND "username" IS NOT NULL AND (EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026)) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
 		);
 	}
 
@@ -8885,7 +8885,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "age_range" @> '25'"#
+			r#"SELECT * FROM "test_users" WHERE ("age_range" @> '25')"#
 		);
 	}
 
@@ -8904,7 +8904,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "age_range" <@ '[20, 30]'"#
+			r#"SELECT * FROM "test_users" WHERE ("age_range" <@ '[20, 30]')"#
 		);
 	}
 
@@ -8923,7 +8923,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE "age_range" && '[20, 30]'"#
+			r#"SELECT * FROM "test_users" WHERE ("age_range" && '[20, 30]')"#
 		);
 	}
 }
