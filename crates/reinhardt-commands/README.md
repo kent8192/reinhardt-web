@@ -249,7 +249,15 @@ path. New files are written under `<DIR>/<app_label>/`; existing migrations in
 that directory determine numbering and dependencies. The same directory is used
 by `--dry-run`, `--check`, and `--merge`.
 
-Initial migrations record `dependencies` for every external table provider
+When composed settings supply a nonempty `CoreSettings::installed_apps` list,
+`makemigrations` uses those app labels as the migration ownership scope. Linked
+models from other apps remain registered but do not produce migrations, including
+when they provide foreign key targets. An explicit app label must belong to the
+configured list; `--empty` and `--merge` respect the same boundary. Without
+settings, or with an empty default list, automatic discovery uses the linked
+models as before.
+
+Initial migrations record `dependencies` for table providers within this scope
 referenced by inline foreign keys. Same-app `CreateTable` operations are
 emitted in topological order from that metadata so a fresh PostgreSQL database
 can apply the generated files without hand-editing.

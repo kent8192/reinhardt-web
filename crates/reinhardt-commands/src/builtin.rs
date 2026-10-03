@@ -1070,6 +1070,20 @@ impl BaseCommand for MakeMigrationsCommand {
 		let is_dry_run = ctx.has_option("dry-run");
 		let is_empty = ctx.has_option("empty");
 		let app_label = ctx.arg(0).map(|s| s.to_string());
+		// A nonempty installed-app list owns the migration scope. Empty
+		// defaults preserve automatic discovery for existing callers.
+		let installed_apps = ctx
+			.settings
+			.as_ref()
+			.map(|settings| settings.core().installed_apps.as_slice())
+			.filter(|apps| !apps.is_empty());
+		if let (Some(app), Some(installed)) = (&app_label, installed_apps)
+			&& !installed.contains(app)
+		{
+			return Err(crate::CommandError::ExecutionError(format!(
+				"App '{app}' is not in CoreSettings::installed_apps."
+			)));
+		}
 		let migration_name_opt = ctx.option("name").map(|s| s.to_string());
 		let migrations_dir_str = ctx
 			.option("migrations-dir")
@@ -1096,6 +1110,8 @@ impl BaseCommand for MakeMigrationsCommand {
 
 		if let Some(ref app_name) = app_label {
 			ctx.verbose(&format!("Creating migrations for: {}", app_name));
+		} else if installed_apps.is_some() {
+			ctx.verbose("Creating migrations for installed apps");
 		} else {
 			ctx.verbose("Creating migrations for all apps");
 		}
@@ -1171,6 +1187,9 @@ impl BaseCommand for MakeMigrationsCommand {
 
 				// Detect conflicts
 				let mut conflicts = graph.detect_conflicts();
+				if let Some(apps) = installed_apps {
+					conflicts.retain(|app, _| apps.contains(app));
+				}
 
 				// Apply app_label filter if specified
 				if let Some(ref app_name) = app_label {
@@ -1299,13 +1318,21 @@ impl BaseCommand for MakeMigrationsCommand {
 				return Ok(());
 			}
 
-			// 1. Get target project state from global model registry
-			let target_project_state = ProjectState::from_global_registry();
+			// Scope a snapshot without removing linked metadata from the registry.
+			let mut target_project_state = ProjectState::from_global_registry();
+			if let Some(apps) = installed_apps {
+				target_project_state
+					.models
+					.retain(|(app, _), _| apps.contains(app));
+			}
 
 			// Determine which apps to process
 			let app_names: Vec<String> = if let Some(label) = app_label {
 				// Explicit app label specified
 				vec![label]
+			} else if let Some(apps) = installed_apps {
+				// Include installed apps without current models so deletions can be detected.
+				apps.to_vec()
 			} else {
 				// Extract all app labels from ProjectState
 				let changed_apps: Vec<String> = target_project_state
@@ -1357,7 +1384,7 @@ impl BaseCommand for MakeMigrationsCommand {
 			// postgres_container() panics when Docker is unavailable, so the flag must
 			// be respected before attempting container startup, not as a fallback.
 			let from_db_flag = ctx.has_option("from-db");
-			let from_state = if ctx.has_option("force-empty-state") {
+			let mut from_state = if ctx.has_option("force-empty-state") {
 				ctx.warning("⚠️  Using empty state as requested (--force-empty-state)");
 				ctx.warning("This may create duplicate migrations!");
 				ProjectState::new()
@@ -1467,6 +1494,10 @@ impl BaseCommand for MakeMigrationsCommand {
 				}
 			};
 
+			if let Some(apps) = installed_apps {
+				from_state.models.retain(|(app, _), _| apps.contains(app));
+			}
+
 			// Check for migration conflicts before proceeding
 			let all_migrations = service.load_all().await.map_err(|e| {
 				CommandError::ExecutionError(format!(
@@ -1477,7 +1508,10 @@ impl BaseCommand for MakeMigrationsCommand {
 			if !all_migrations.is_empty() {
 				let graph = build_migration_graph(&all_migrations);
 
-				let conflicts = graph.detect_conflicts();
+				let mut conflicts = graph.detect_conflicts();
+				if let Some(apps) = installed_apps {
+					conflicts.retain(|app, _| apps.contains(app));
+				}
 				if !conflicts.is_empty() {
 					let mut conflict_apps: Vec<&String> = conflicts.keys().collect();
 					conflict_apps.sort();
@@ -1498,7 +1532,7 @@ impl BaseCommand for MakeMigrationsCommand {
 			}
 			let existing_latest = latest_existing_migration_names(&all_migrations);
 
-			// Autodetect against the full project graph so cross-app foreign
+			// Autodetect against the installed project graph so cross-app foreign
 			// keys remain visible. Per-app filtering hid provider tables and
 			// forced every `0001` migration to `dependencies: vec![]`.
 			let detector = reinhardt_db::migrations::MigrationAutodetector::new(
