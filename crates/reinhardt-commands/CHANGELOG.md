@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.20...reinhardt-commands@v0.3.21) - 2026-10-03
+
+### Documentation
+
+- *(commands)* qualify the runserver command link
+- *(commands)* clarify migration comparison scope
+
+### Fixed
+
+- *(commands)* honor makemigrations migration directory
+- *(commands)* reject non-utf8 migration directory paths
+- *(commands)* scope migrations to installed apps
+- *(commands)* resolve installed app paths to migration labels
+- *(commands)* preserve installed migration scope and history
+- *(migrations)* preserve scoped model move history
+
+### Maintenance
+
+- merge main into installed app migration fix
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.15...reinhardt-commands@v0.3.16) - 2026-09-08
 
 ### Testing
