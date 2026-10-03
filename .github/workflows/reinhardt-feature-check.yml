@@ -45,6 +45,9 @@ env:
   RUST_BACKTRACE: 1
   CARGO_TARGET_DIR: /tmp/cargo_target
   CARGO_INCREMENTAL: 0
+  # Use Git's transport for cold-cache dependency fetches; Cargo's built-in
+  # Git backend produced an opaque SSL error in PR #6471.
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
   # Cache seeding: runs ONE --all-features check on main push to populate
