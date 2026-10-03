@@ -274,7 +274,7 @@ impl BaseCommand for MigrateCommand {
 			}
 
 			ctx.info(&format!(
-				"Found {} migration(s) to apply",
+				"Loaded {} migration(s)",
 				migrations_to_apply.len()
 			));
 
@@ -313,8 +313,8 @@ impl BaseCommand for MigrateCommand {
 				return Ok(());
 			}
 
-			// 6. Apply migrations (or fake them
-			if is_fake {
+			// 6. Apply migrations (or fake them).
+			let completed_count = if is_fake {
 				ctx.info("Faking migrations (marking as applied without execution):");
 
 				// Create migration executor for fake migrations
@@ -322,7 +322,7 @@ impl BaseCommand for MigrateCommand {
 				let migrations_to_fake = dependency_ordered_migrations(migrations_to_apply.iter())?;
 
 				// Record each migration as applied without executing
-				for migration in migrations_to_fake {
+				for migration in &migrations_to_fake {
 					executor
 						.record_migration(&migration.app_label, &migration.name)
 						.await
@@ -337,6 +337,7 @@ impl BaseCommand for MigrateCommand {
 						migration.app_label, migration.name
 					));
 				}
+				migrations_to_fake.len()
 			} else {
 				ctx.info("Applying migrations:");
 
@@ -349,6 +350,7 @@ impl BaseCommand for MigrateCommand {
 						for applied_id in &result.applied {
 							ctx.success(&format!("  ✓ Applied: {}", applied_id));
 						}
+						result.applied.len()
 					}
 					Err(e) => {
 						return Err(crate::CommandError::ExecutionError(format!(
@@ -357,12 +359,13 @@ impl BaseCommand for MigrateCommand {
 						)));
 					}
 				}
-			}
+			};
 
 			ctx.info("");
 			ctx.success(&format!(
-				"Applied {} migration(s) successfully",
-				migrations_to_apply.len()
+				"{} {} migration(s) successfully",
+				if is_fake { "Faked" } else { "Applied" },
+				completed_count
 			));
 
 			Ok(())
