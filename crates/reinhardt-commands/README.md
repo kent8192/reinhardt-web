@@ -869,7 +869,38 @@ path. New files are written under `<DIR>/<app_label>/`; existing migrations in
 that directory determine numbering and dependencies. The same directory is used
 by `--dry-run`, `--check`, and `--merge`.
 
-Initial migrations record `dependencies` for every external table provider
+When composed settings supply a nonempty `CoreSettings::installed_apps` list,
+`makemigrations` resolves paths registered by `installed_apps!` to their declared
+app labels and uses those labels as the migration ownership scope. For example,
+`identity: "myproject.accounts"` selects models and migrations labeled `identity`,
+including when settings use `InstalledApp::all_apps()`. Direct app labels remain
+supported, and exact declared or registered model labels take precedence over
+another app's matching path. A path registered under multiple distinct labels
+is rejected. The path registration lookup is compiled only on native targets.
+Linked models from other apps remain registered but do not produce
+migrations. Foreign keys to uninstalled provider apps are rejected before any
+files are written; include those providers in `installed_apps` to generate an
+applicable dependency graph. An explicit app label must belong to the
+resolved scope; `--empty` respects the same boundary. Without
+settings, or with an empty default list, automatic discovery uses the linked
+models as before.
+
+The full current model graph and historical state remain available for detecting
+model moves and renames. Moving a model from an old app to an installed new app
+preserves the `MoveModel` operation and dependency on the old app's existing
+migration, even when that old label is no longer installed. The ownership scope
+restricts generated files, rather than deleting the comparison state. Conflicts
+in a pending move's source history must be resolved before generating the move.
+Run `makemigrations --merge` (optionally selecting the installed destination app)
+to merge all conflicting source leaves, including those of an uninstalled old
+app. Unrelated uninstalled apps remain outside this conflict scope. Moves from
+an installed app to an uninstalled destination are rejected before files are
+written, including during `--dry-run` and `--check`; install the destination
+before generating the move. Saved moves retain their source table identity
+even without a table rename so offline replay preserves app ownership for
+custom table names.
+
+Initial migrations record `dependencies` for table providers within this scope
 referenced by inline foreign keys. Same-app `CreateTable` operations are
 emitted in topological order from that metadata so a fresh PostgreSQL database
 can apply the generated files without hand-editing.
@@ -918,6 +949,13 @@ the direction is resolved from the currently applied state.
 **Note:** Although `<APP_LABEL>` and `<MIGRATION_NAME>` are each individually
 optional, supplying a `<MIGRATION_NAME>` requires `<APP_LABEL>` to be given as
 well; otherwise the command fails with `<migration> requires <app>`.
+
+Without a target, `Loaded N migration(s)` reports the selected migration files,
+including files already recorded as applied. The final `Applied N migration(s)
+successfully` summary counts only migrations newly applied by that invocation.
+Repeating a completed migration run reports `Applied 0 migration(s) successfully`.
+With `--fake`, the summary uses `Faked N migration(s) successfully` to distinguish
+recorder updates from executed migrations.
 
 #### Migrate to a Target
 

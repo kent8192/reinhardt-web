@@ -28,6 +28,33 @@ mod raw_identifier_label {
 	}
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[rstest::rstest]
+fn installed_app_paths_register_their_declared_labels() {
+	// Arrange
+	use reinhardt_apps::registry::InstalledAppRegistration;
+
+	// Act
+	let mut registrations: Vec<_> = reinhardt_apps::inventory::iter::<InstalledAppRegistration>
+		.into_iter()
+		.map(|app| (app.label, app.path))
+		.collect();
+	registrations.sort();
+
+	// Assert
+	assert_eq!(
+		registrations,
+		[
+			("another", "custom.another"),
+			("auth", "myproject.auth"),
+			("contenttypes", "myproject.contenttypes"),
+			("myapp", "apps.myapp"),
+			("sessions", "myproject.sessions"),
+			("type", "myproject.type"),
+		]
+	);
+}
+
 #[test]
 fn test_installed_apps_empty() {
 	installed_apps! {}

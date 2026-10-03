@@ -1,7 +1,8 @@
 //! AST parser utilities for migration files
 //!
 //! Provides helper functions to extract migration metadata and operations
-//! from parsed Rust ASTs.
+//! from parsed Rust ASTs. Cross-app `MoveModel` literals retain app labels,
+//! the table-rename flag, and optional table names through filesystem round trips.
 
 use super::{Migration, MigrationError, Result};
 use quote::ToTokens;
