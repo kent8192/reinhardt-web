@@ -232,7 +232,7 @@ fn postgres_custom_line_comments_keep_closing_parentheses(
 #[rstest]
 #[case::raw(false)]
 #[case::template(true)]
-fn postgres_standalone_where_line_comment_keeps_closing_parenthesis(#[case] with_values: bool) {
+fn postgres_standalone_where_preserves_custom_line_comment(#[case] with_values: bool) {
 	// Arrange
 	let predicate: SimpleExpr = if with_values {
 		Expr::cust_with_values("? -- reason", [true]).into()
@@ -252,21 +252,105 @@ fn postgres_standalone_where_line_comment_keeps_closing_parenthesis(#[case] with
 	// Assert
 	let (expected_sql, expected_values) = if with_values {
 		(
-			"SELECT \"id\" FROM \"runs\" WHERE ($1 -- reason\n)",
+			"SELECT \"id\" FROM \"runs\" WHERE $1 -- reason",
 			Values(vec![true.into()]),
 		)
 	} else {
 		(
-			"SELECT \"id\" FROM \"runs\" WHERE (TRUE -- reason\n)",
+			"SELECT \"id\" FROM \"runs\" WHERE TRUE -- reason",
 			Values::default(),
 		)
 	};
 	assert_eq!(sql, expected_sql);
 	assert_eq!(values, expected_values);
+	assert_eq!(inlined, "SELECT \"id\" FROM \"runs\" WHERE TRUE -- reason");
+}
+
+#[rstest]
+fn postgres_current_of_preserves_standalone_where(
+	#[values(false, true)] delete: bool,
+	#[values(false, true)] template: bool,
+	#[values(false, true)] condition_group: bool,
+	#[values(false, true)] cockroachdb: bool,
+) {
+	// Arrange
+	let predicate = if template {
+		SimpleExpr::CustomWithExpr(
+			"CURRENT OF ?".into(),
+			vec![Expr::cust("scoped_cursor").into()],
+		)
+	} else {
+		Expr::cust("CURRENT OF scoped_cursor").into()
+	};
+	// Act
+	let (sql, values, inlined) = if delete {
+		let mut query = Query::delete().from_table("runs").to_owned();
+		if condition_group {
+			query.and_where(Condition::all().add(Condition::any().add(predicate)));
+		} else {
+			query.and_where(predicate);
+		}
+		let (sql, values) = if cockroachdb {
+			CockroachDBQueryBuilder::new().build_delete(&query)
+		} else {
+			query.build(PostgresQueryBuilder)
+		};
+		(sql, values, query.to_string(PostgresQueryBuilder))
+	} else {
+		let mut query = Query::update()
+			.table("runs")
+			.value("control", "CLAIMED")
+			.to_owned();
+		if condition_group {
+			query.and_where(Condition::all().add(Condition::any().add(predicate)));
+		} else {
+			query.and_where(predicate);
+		}
+		let (sql, values) = if cockroachdb {
+			CockroachDBQueryBuilder::new().build_update(&query)
+		} else {
+			query.build(PostgresQueryBuilder)
+		};
+		(sql, values, query.to_string(PostgresQueryBuilder))
+	};
+
+	// Assert
+	if delete {
+		assert_eq!(sql, "DELETE FROM \"runs\" WHERE CURRENT OF scoped_cursor");
+		assert_eq!(inlined, sql);
+		assert_eq!(values, Values::default());
+	} else {
+		assert_eq!(
+			sql,
+			"UPDATE \"runs\" SET \"control\" = $1 WHERE CURRENT OF scoped_cursor"
+		);
+		assert_eq!(
+			inlined,
+			"UPDATE \"runs\" SET \"control\" = 'CLAIMED' WHERE CURRENT OF scoped_cursor"
+		);
+		assert_eq!(values, Values(vec!["CLAIMED".into()]));
+	}
+}
+
+#[rstest]
+fn postgres_single_custom_condition_keeps_outer_composition_grouping() {
+	// Arrange
+	let query = Query::select()
+		.column("id")
+		.from("runs")
+		.and_where(Condition::all().add(Condition::any().add(Expr::cust("FALSE OR TRUE"))))
+		.and_where(Expr::val(false))
+		.to_owned();
+
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+
+	// Assert
 	assert_eq!(
-		inlined,
-		"SELECT \"id\" FROM \"runs\" WHERE (TRUE -- reason\n)"
+		sql,
+		"SELECT \"id\" FROM \"runs\" WHERE (FALSE OR TRUE) AND $1"
 	);
+	assert_eq!(values, Values(vec![false.into()]));
 }
 
 #[rstest]
