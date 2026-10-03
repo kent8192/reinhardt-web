@@ -66,6 +66,15 @@ use crate::{
 ///   including empty arrays and arrays containing only NULL elements
 /// - Grouping: Typed expressions retain their precedence and associativity
 ///   through parentheses, including WHERE/HAVING predicates and DDL constraints
+/// - Custom predicates: Opaque SQL expressions are parenthesized when composed
+///   with AND, OR, or NOT, including condition groups and neighboring filters.
+///   Their SQL is not parsed; standalone expressions and scalar operands retain
+///   their original rendering.
+///   A single WHERE/HAVING predicate adds no grouping, including PostgreSQL's
+///   `WHERE CURRENT OF cursor_name` alternative. One-child condition groups
+///   inherit grouping only from an enclosing logical composition.
+///   Grouped custom predicates containing `--` gain a newline before the closing
+///   parenthesis so trailing line comments cannot consume it.
 ///
 /// # Examples
 ///
@@ -80,6 +89,24 @@ use crate::{
 ///
 /// let (sql, values) = builder.build_select(&stmt);
 /// // sql: SELECT "id" FROM "users"
+/// ```
+///
+/// Custom predicates retain their grouping alongside typed filters:
+///
+/// ```rust
+/// use reinhardt_query::{Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder};
+///
+/// let query = Query::select()
+///     .column("id")
+///     .from("runs")
+///     .and_where(Expr::cust("lease_until IS NULL OR lease_until <= CURRENT_TIMESTAMP"))
+///     .and_where(Expr::col("id").eq(2_i64))
+///     .to_owned();
+///
+/// assert_eq!(
+///     query.to_string(PostgresQueryBuilder),
+///     r#"SELECT "id" FROM "runs" WHERE (lease_until IS NULL OR lease_until <= CURRENT_TIMESTAMP) AND "id" = 2"#,
+/// );
 /// ```
 ///
 /// Byte literals also retain their type when selected without a column context:
@@ -447,12 +474,20 @@ impl PostgresQueryBuilder {
 		if parenthesized {
 			writer.push("(");
 		}
+		let expression_start = writer.len();
 		if unquoted {
 			self.write_simple_expr_unquoted(writer, expr);
 		} else {
 			self.write_simple_expr(writer, expr);
 		}
 		if parenthesized {
+			// Conservatively terminate possible line comments without parsing SQL.
+			// Inspect the rendered fragment to include nested custom expressions.
+			if matches!(expr, SimpleExpr::Custom(_) | SimpleExpr::CustomWithExpr(..))
+				&& writer.sql()[expression_start..].contains("--")
+			{
+				writer.push("\n");
+			}
 			writer.push(")");
 		}
 	}
@@ -485,6 +520,11 @@ impl PostgresQueryBuilder {
 				parent_precedence >= Self::binary_precedence(BinOper::Like)
 			}
 			SimpleExpr::Unary(_, _) => parent_precedence > 3,
+			// Opaque predicates have unknown precedence. Group them at boolean
+			// composition boundaries without interpreting their SQL text.
+			SimpleExpr::Custom(_) | SimpleExpr::CustomWithExpr(..) => {
+				matches!(parent, BinOper::And | BinOper::Or)
+			}
 			_ => false,
 		};
 		self.write_grouped_expr(writer, expr, parenthesized, unquoted);
@@ -535,6 +575,8 @@ impl PostgresQueryBuilder {
 				let parenthesized = matches!(
 					expr.as_ref(),
 					SimpleExpr::Binary(_, BinOper::And | BinOper::Or, _)
+						| SimpleExpr::Custom(_)
+						| SimpleExpr::CustomWithExpr(..)
 				);
 				self.write_grouped_expr(writer, expr, parenthesized, false);
 			}
@@ -849,6 +891,8 @@ impl PostgresQueryBuilder {
 				let parenthesized = matches!(
 					expr.as_ref(),
 					SimpleExpr::Binary(_, BinOper::And | BinOper::Or, _)
+						| SimpleExpr::Custom(_)
+						| SimpleExpr::CustomWithExpr(..)
 				);
 				self.write_grouped_expr(writer, expr, parenthesized, true);
 			}
@@ -949,7 +993,12 @@ impl PostgresQueryBuilder {
 	}
 
 	/// Write a condition
-	fn write_condition(&self, writer: &mut SqlWriter, condition: &Condition) {
+	fn write_condition(
+		&self,
+		writer: &mut SqlWriter,
+		condition: &Condition,
+		parent: Option<BinOper>,
+	) {
 		use crate::expr::ConditionType;
 
 		if condition.conditions.is_empty() {
@@ -963,10 +1012,11 @@ impl PostgresQueryBuilder {
 		if condition.conditions.len() == 1 {
 			if condition.negate {
 				writer.push("(");
-				self.write_condition_expr(writer, &condition.conditions[0], BinOper::Or);
+				self.write_condition_expr(writer, &condition.conditions[0], Some(BinOper::Or));
 				writer.push(")");
 			} else {
-				self.write_condition_expr(writer, &condition.conditions[0], BinOper::And);
+				// A one-child condition contributes no logical operator of its own.
+				self.write_condition_expr(writer, &condition.conditions[0], parent);
 			}
 			return;
 		}
@@ -977,7 +1027,7 @@ impl PostgresQueryBuilder {
 			ConditionType::Any => (" OR ", BinOper::Or),
 		};
 		writer.push_list(&condition.conditions, separator, |w, cond_expr| {
-			self.write_condition_expr(w, cond_expr, parent);
+			self.write_condition_expr(w, cond_expr, Some(parent));
 		});
 		writer.push(")");
 	}
@@ -987,16 +1037,20 @@ impl PostgresQueryBuilder {
 		&self,
 		writer: &mut SqlWriter,
 		cond_expr: &crate::expr::ConditionExpression,
-		parent: BinOper,
+		parent: Option<BinOper>,
 	) {
 		use crate::expr::ConditionExpression;
 
 		match cond_expr {
 			ConditionExpression::Condition(cond) => {
-				self.write_condition(writer, cond);
+				self.write_condition(writer, cond, parent);
 			}
 			ConditionExpression::SimpleExpr(expr) => {
-				self.write_binary_operand(writer, expr, parent, false, false);
+				if let Some(parent) = parent {
+					self.write_binary_operand(writer, expr, parent, false, false);
+				} else {
+					self.write_simple_expr(writer, expr);
+				}
 			}
 		}
 	}
@@ -1025,7 +1079,7 @@ impl PostgresQueryBuilder {
 				JoinOn::Condition(cond) => {
 					writer.push_keyword("ON");
 					writer.push_space();
-					self.write_condition(writer, cond);
+					self.write_condition(writer, cond, None);
 				}
 				JoinOn::Using(cols) => {
 					writer.push_keyword("USING");
@@ -1270,8 +1324,9 @@ impl PostgresQueryBuilder {
 			writer.push_keyword("WHERE");
 			writer.push_space();
 			// Write all conditions in the ConditionHolder with AND
+			let parent = (stmt.r#where.conditions.len() > 1).then_some(BinOper::And);
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr, BinOper::And);
+				self.write_condition_expr(w, cond_expr, parent);
 			});
 		}
 
@@ -1289,8 +1344,9 @@ impl PostgresQueryBuilder {
 			writer.push_keyword("HAVING");
 			writer.push_space();
 			// Write all conditions in the ConditionHolder with AND
+			let parent = (stmt.having.conditions.len() > 1).then_some(BinOper::And);
 			writer.push_list(&stmt.having.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr, BinOper::And);
+				self.write_condition_expr(w, cond_expr, parent);
 			});
 		}
 
@@ -1554,8 +1610,9 @@ impl PostgresQueryBuilder {
 		if !stmt.r#where.is_empty() {
 			writer.push_keyword("WHERE");
 			writer.push_space();
+			let parent = (stmt.r#where.conditions.len() > 1).then_some(BinOper::And);
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr, BinOper::And);
+				self.write_condition_expr(w, cond_expr, parent);
 			});
 		}
 
@@ -1599,8 +1656,9 @@ impl PostgresQueryBuilder {
 		if !stmt.r#where.is_empty() {
 			writer.push_keyword("WHERE");
 			writer.push_space();
+			let parent = (stmt.r#where.conditions.len() > 1).then_some(BinOper::And);
 			writer.push_list(&stmt.r#where.conditions, " AND ", |w, cond_expr| {
-				self.write_condition_expr(w, cond_expr, BinOper::And);
+				self.write_condition_expr(w, cond_expr, parent);
 			});
 		}
 
