@@ -109,6 +109,13 @@ filter = 'package(=reinhardt-integration-tests) & binary(=url_patterns_target_pa
 threads-required = 2
 slow-timeout = { period = "1200s", terminate-after = 3 }
 
+# This CLI regression builds a standalone consumer linking auth/session models.
+# Reserve both slots and allow its nested Cargo build to finish on a cold cache.
+[[profile.default.overrides]]
+filter = 'package(=reinhardt-integration-tests) & binary(=capability_migration_scope) & test(=capability_cli_scopes_generation_and_baseline_checks)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 2 }
+
 # Note: trybuild UI tests are now separated into a dedicated profile
 # Use `cargo make ui-test` to run UI tests with the ui-test profile
 # UI tests are identified by binary(/ui/) filter pattern

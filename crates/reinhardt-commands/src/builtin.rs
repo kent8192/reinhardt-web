@@ -2259,10 +2259,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 	}
 	// A nonempty installed-app list owns the migration scope. Empty
 	// defaults preserve automatic discovery for existing callers.
-	let installed_app_labels = ctx
-		.settings
-		.as_ref()
-		.map(|settings| settings.core().installed_apps.as_slice())
+	let installed_app_labels = crate::showmigrations::migration_installed_apps(ctx)
 		.filter(|apps| !apps.is_empty())
 		.map(|apps| {
 			apps.iter()

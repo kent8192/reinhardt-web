@@ -51,6 +51,16 @@ pub(crate) fn attach_core_migration_metadata(
 	}
 }
 
+pub(crate) fn migration_installed_apps(ctx: &CommandContext) -> Option<&[String]> {
+	#[cfg(feature = "contract")]
+	if let Some(apps) = ctx.options.get(CORE_MIGRATION_APPS_OPTION) {
+		return Some(apps);
+	}
+	ctx.settings
+		.as_ref()
+		.map(|settings| settings.core().installed_apps.as_slice())
+}
+
 pub(crate) fn attach_migration_settings(ctx: &mut CommandContext, settings: &MigrationSettings) {
 	ctx.set_option_multi(
 		MIGRATION_FEATURES_OPTION.to_string(),
