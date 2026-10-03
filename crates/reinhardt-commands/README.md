@@ -256,7 +256,8 @@ app labels and uses those labels as the migration ownership scope. For example,
 including when settings use `InstalledApp::all_apps()`. Direct app labels remain
 supported, and exact declared or registered model labels take precedence over
 another app's matching path. A path registered under multiple distinct labels
-is rejected. Linked models from other apps remain registered but do not produce
+is rejected. The path registration lookup is compiled only on native targets.
+Linked models from other apps remain registered but do not produce
 migrations. Foreign keys to uninstalled provider apps are rejected before any
 files are written; include those providers in `installed_apps` to generate an
 applicable dependency graph. An explicit app label must belong to the

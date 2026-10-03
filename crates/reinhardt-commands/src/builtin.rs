@@ -1570,9 +1570,8 @@ impl BaseCommand for MakeMigrationsCommand {
 			}
 			let existing_latest = latest_existing_migration_names(&all_migrations);
 
-			// Autodetect against the installed project graph so cross-app foreign
-			// keys remain visible. Per-app filtering hid provider tables and
-			// forced every `0001` migration to `dependencies: vec![]`.
+			// Compare complete snapshots before restricting generated files, keeping
+			// provider tables and historical move sources visible for dependencies.
 			let detector = reinhardt_db::migrations::MigrationAutodetector::new(
 				from_state.clone(),
 				target_project_state.clone(),
