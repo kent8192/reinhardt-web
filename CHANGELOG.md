@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.18...reinhardt-web@v0.4.0-alpha.19) - 2026-10-03
+
+### Documentation
+
+- add release announcement(s)
+- correct command and admin rustdoc links
+- *(admin)* qualify the authentication state link
+- *(pages)* qualify reactive type links in ui module
+
+### Fixed
+
+- *(orm)* match every composite key component when updating
+- *(orm)* round-trip binary composite keys through viewsets
+- *(macros)* preserve field policy metadata in composite keys
+- *(commands)* initialize contacts in REST scaffolds
+
+### Maintenance
+
+- *(orm)* merge develop/0.4.0 into composite key codecs
+- chore!(sync): merge main into develop/0.4.0
+- *(feature-check)* use git CLI for dependency fetches
+- *(sync)* merge main into develop/0.4.0
+
+### Testing
+
+- *(router)* fetch standalone parity fixture dependencies
+- *(commands)* gate REST scaffold settings regression to native targets
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.17...reinhardt-web@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation

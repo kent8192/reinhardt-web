@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.18...reinhardt-middleware@v0.4.0-alpha.19) - 2026-10-03
+
+### Testing
+
+- *(middleware)* remove ineffective duplicate use cases
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.17...reinhardt-middleware@v0.4.0-alpha.18) - 2026-09-27
 
 ### Fixed

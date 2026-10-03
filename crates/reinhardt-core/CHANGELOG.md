@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.18...reinhardt-core@v0.4.0-alpha.19) - 2026-10-03
+
+### Fixed
+
+- *(macros)* honor db_column in composite primary keys
+- *(commands)* resolve installed app paths to migration labels
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.17...reinhardt-core@v0.4.0-alpha.18) - 2026-09-27
 
 ### Fixed
