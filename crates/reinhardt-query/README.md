@@ -11,6 +11,10 @@ typed PostgreSQL `bytea` hex literals, including inside custom expressions and
 subqueries. Empty bytes and SQL NULL remain distinct. Parameterized `build()`
 retains the original bytes, and MySQL/SQLite keep their `X'...'` literal syntax.
 
+The standalone `inline_params` helper uses PostgreSQL literals for numbered
+placeholders (`$1`, `$2`, ...) and generic literals for positional placeholders
+(`?`), preserving `X'...'` byte literals for positional SQL.
+
 ## Features
 
 ### DML (Data Manipulation Language)

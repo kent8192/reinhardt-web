@@ -74,6 +74,45 @@ fn inline_params_renders_postgres_bytea_values() {
 }
 
 #[rstest]
+#[case::reported_bytes(Some(vec![0x00, 0x01, 0xff]), "X'0001FF'")]
+#[case::empty(Some(vec![]), "X''")]
+#[case::sql_sensitive_bytes(Some(vec![0x00, 0x27, 0x5c, 0x80, 0xff]), "X'00275C80FF'")]
+#[case::null(None, "NULL")]
+fn inline_params_preserves_positional_byte_literals(
+	#[case] bytes: Option<Vec<u8>>,
+	#[case] literal: &str,
+) {
+	// Arrange
+	let values = Values(vec![Value::Bytes(bytes.map(Box::new)), Value::Bytes(None)]);
+
+	// Act
+	let inlined = inline_params("SELECT ?, ?, ?", &values);
+
+	// Assert
+	assert_eq!(inlined, format!("SELECT {literal}, NULL, ?"));
+}
+
+#[rstest]
+#[case::quoted("SELECT '$1', ?", "SELECT '$1', X'0001FF'")]
+#[case::comment("SELECT /* $1 */ ?", "SELECT /* $1 */ X'0001FF'")]
+#[case::dollar_quote("SELECT $$ $1 $$, ?", "SELECT $$ $1 $$, X'0001FF'")]
+#[case::identifier("SELECT price$1, ?", "SELECT price$1, X'0001FF'")]
+#[case::numbered_precedence("SELECT ?, $1", r"SELECT ?, E'\\x0001ff'::bytea")]
+fn inline_params_infers_byte_literal_syntax_from_placeholder_tokens(
+	#[case] sql: &str,
+	#[case] expected: &str,
+) {
+	// Arrange
+	let values = Values(vec![vec![0x00_u8, 0x01, 0xff].into()]);
+
+	// Act
+	let inlined = inline_params(sql, &values);
+
+	// Assert
+	assert_eq!(inlined, expected);
+}
+
+#[rstest]
 fn postgres_to_string_propagates_bytea_rendering_to_subqueries() {
 	// Arrange
 	let inner = Query::select()

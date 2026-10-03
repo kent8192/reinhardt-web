@@ -23,6 +23,8 @@ use crate::value::Values;
 /// (including MySQL's default string escapes).
 /// Numbered tokens take precedence over `?` tokens, which can be PostgreSQL
 /// operators. Placeholders without a corresponding value are left unchanged.
+/// Numbered placeholders use PostgreSQL literals; positional placeholders retain
+/// generic literal syntax, including `X'...'` for bytes.
 pub fn inline_params(sql: &str, values: &Values) -> String {
 	inline_params_with_dialect(
 		sql,
@@ -70,7 +72,7 @@ fn inline_params_with_dialect(sql: &str, values: &Values, dialect: InlineDialect
 		};
 		if let Some(value) = index.and_then(|index| values.0.get(index)) {
 			result.push_str(&sql[copied_until..range.start]);
-			let literal = if dialect.postgres {
+			let literal = if dialect.postgres && numbered {
 				PostgresQueryBuilder::value_to_sql_literal(value)
 			} else {
 				value.to_sql_literal()
