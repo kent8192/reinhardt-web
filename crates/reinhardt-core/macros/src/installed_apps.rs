@@ -8,6 +8,7 @@
 //! - An `InstalledApp` enum with variants for each registered application
 //! - Trait implementations: `Display`, `FromStr`, `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`, `Hash`
 //! - Helper methods: `all_apps()`, `path()`
+//! - Native path-to-label metadata for management command app selection
 //! - Compile-time validation for framework modules (`reinhardt.*`)
 //!
 //! **Important**: This macro is for **user applications only**. Built-in framework features
@@ -678,6 +679,18 @@ pub(crate) fn installed_apps_impl(input: TokenStream) -> Result<TokenStream> {
 				InstalledApp::path(self)
 			}
 		}
+
+		// Keep runtime app ownership tied to the declared label, not the path suffix.
+		// Use the target predicate directly because callers may not define `native`.
+		#(
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			#apps_crate::inventory::submit! {
+				#apps_crate::registry::InstalledAppRegistration {
+					label: stringify!(#labels),
+					path: #paths,
+				}
+			}
+		)*
 
 		// Compile-time validation
 		#(#validations)*

@@ -1070,13 +1070,36 @@ impl BaseCommand for MakeMigrationsCommand {
 		let is_dry_run = ctx.has_option("dry-run");
 		let is_empty = ctx.has_option("empty");
 		let app_label = ctx.arg(0).map(|s| s.to_string());
+		fn resolve_app_label(path: &str) -> Result<&str, crate::CommandError> {
+			let mut labels = inventory::iter::<reinhardt_apps::registry::InstalledAppRegistration>
+				.into_iter()
+				.filter(|app| app.path == path)
+				.map(|app| app.label);
+			let Some(label) = labels.next() else {
+				// Preserve callers that configure app labels directly.
+				return Ok(path);
+			};
+			if labels.any(|other| other != label) {
+				return Err(crate::CommandError::ExecutionError(format!(
+					"Installed app path '{path}' is registered with multiple app labels."
+				)));
+			}
+			Ok(label)
+		}
 		// A nonempty installed-app list owns the migration scope. Empty
 		// defaults preserve automatic discovery for existing callers.
-		let installed_apps = ctx
+		let installed_app_labels = ctx
 			.settings
 			.as_ref()
 			.map(|settings| settings.core().installed_apps.as_slice())
-			.filter(|apps| !apps.is_empty());
+			.filter(|apps| !apps.is_empty())
+			.map(|apps| {
+				apps.iter()
+					.map(|app| resolve_app_label(app).map(str::to_owned))
+					.collect::<Result<Vec<_>, _>>()
+			})
+			.transpose()?;
+		let installed_apps = installed_app_labels.as_deref();
 		if let (Some(app), Some(installed)) = (&app_label, installed_apps)
 			&& !installed.contains(app)
 		{

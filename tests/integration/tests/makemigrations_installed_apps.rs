@@ -1,6 +1,6 @@
 //! Installed application ownership at the makemigrations command boundary.
 
-use reinhardt::{model, settings};
+use reinhardt::{installed_apps, model, settings};
 use reinhardt_auth::sessions::backends::database::Session;
 use reinhardt_commands::{BaseCommand, CommandContext, MakeMigrationsCommand};
 use reinhardt_db::migrations::autodetector::ForeignKeyInfo;
@@ -15,6 +15,20 @@ use serial_test::serial;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
+
+installed_apps! {
+	identity: "myproject.accounts",
+	auth: "myproject.auth",
+	provider: "myproject.providers",
+}
+
+mod first_registration {
+	reinhardt::installed_apps! { first: "ambiguous.app" }
+}
+
+mod second_registration {
+	reinhardt::installed_apps! { second: "ambiguous.app" }
+}
 
 #[model(app_label = "identity", table_name = "own_identities")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -182,6 +196,8 @@ async fn linked_auth_and_session_models_do_not_own_project_migrations(project: T
 
 #[rstest]
 #[case::configured(Some(&["identity"][..]), &["identity"])]
+#[case::module_path(Some(&["myproject.accounts"][..]), &["identity"])]
+#[case::auth_module_path(Some(&["myproject.auth"][..]), &["auth"])]
 #[case::no_installed_models(Some(&["emptyapp"][..]), &[])]
 #[case::no_settings(None, &["auth", "default", "identity"])]
 #[case::default_settings(Some(&[][..]), &["auth", "default", "identity"])]
@@ -209,6 +225,140 @@ async fn default_selection_respects_configured_scope(
 	// Assert
 	assert_eq!(migration_apps(project.path()).await, expected_apps);
 	assert_eq!(global_registry().get_models().len(), 3);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(makemigrations_installed_apps)]
+async fn macro_app_paths_select_their_declared_labels(project: TempDir) {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let _cwd = ProjectDirGuard::enter(project.path());
+	register_model("identity", "own_identities", None);
+	register_model("auth", "auth_group", None);
+	register_model("provider", "provider_records", None);
+	register_model("default", "sessions", None);
+	let mut context = context(project.path(), Some(&[]));
+	let mut settings = MigrationSettings::default();
+	settings.core.installed_apps = InstalledApp::all_apps();
+	context.settings = Some(Arc::new(settings));
+
+	// Act
+	MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect("macro paths should select the declared app labels");
+
+	// Assert
+	assert_eq!(
+		migration_apps(project.path()).await,
+		["auth", "identity", "provider"]
+	);
+	assert_eq!(global_registry().get_models().len(), 4);
+	assert!(
+		!project
+			.path()
+			.join("migrations/myproject.accounts")
+			.exists()
+	);
+	assert!(!project.path().join("migrations/default").exists());
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(makemigrations_installed_apps)]
+async fn ambiguous_installed_app_path_is_rejected(project: TempDir) {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let _cwd = ProjectDirGuard::enter(project.path());
+	register_model("first", "first_records", None);
+	register_model("second", "second_records", None);
+	let context = context(project.path(), Some(&["ambiguous.app"]));
+
+	// Act
+	let error = MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect_err("conflicting path registrations must not choose an arbitrary label");
+
+	// Assert
+	assert_eq!(
+		error.to_string(),
+		"Execution error: Installed app path 'ambiguous.app' is registered with multiple app labels."
+	);
+	assert!(!project.path().join("migrations").exists());
+}
+
+#[rstest]
+#[case::generate(None)]
+#[case::empty(Some("empty"))]
+#[case::merge(Some("merge"))]
+#[tokio::test]
+#[serial(makemigrations_installed_apps)]
+async fn explicit_installed_label_accepts_configured_path(
+	project: TempDir,
+	#[case] mode: Option<&str>,
+) {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let _cwd = ProjectDirGuard::enter(project.path());
+	register_model("identity", "own_identities", None);
+	let mut context = context(project.path(), Some(&["myproject.accounts"]));
+	context.add_arg("identity".to_owned());
+	context.set_option("name".to_owned(), "scoped".to_owned());
+	if let Some(mode) = mode {
+		context.set_option(mode.to_owned(), "true".to_owned());
+	}
+	if mode == Some("merge") {
+		let mut repository = FilesystemRepository::new(project.path().join("migrations"));
+		for name in ["0001_initial", "0002_left", "0002_right"] {
+			let mut migration = Migration::new(name, "identity");
+			if name != "0001_initial" {
+				migration.dependencies = vec![("identity".to_owned(), "0001_initial".to_owned())];
+			}
+			repository
+				.save(&migration)
+				.await
+				.expect("history should be saved");
+		}
+	}
+
+	// Act
+	MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect("installed label should be accepted in every mode");
+
+	// Assert
+	let name = if mode == Some("merge") {
+		"0003_scoped"
+	} else {
+		"0001_scoped"
+	};
+	let migration = FilesystemSource::new(project.path().join("migrations"))
+		.get_migration("identity", name)
+		.await
+		.expect("migration should use the app label");
+	assert_eq!(migration.app_label, "identity");
+	assert_eq!(migration.name, name);
+	assert_eq!(migration.operations.len(), usize::from(mode.is_none()));
+	let mut dependencies = migration.dependencies;
+	dependencies.sort();
+	let expected_dependencies = if mode == Some("merge") {
+		vec![
+			("identity".to_owned(), "0002_left".to_owned()),
+			("identity".to_owned(), "0002_right".to_owned()),
+		]
+	} else {
+		Vec::new()
+	};
+	assert_eq!(dependencies, expected_dependencies);
+	assert!(
+		!project
+			.path()
+			.join("migrations/myproject.accounts")
+			.exists()
+	);
 }
 
 #[rstest]
@@ -245,6 +395,8 @@ async fn explicit_uninstalled_app_is_rejected(project: TempDir, #[case] mode: Op
 #[rstest]
 #[case::installed(&["identity", "provider"], &["identity", "provider"], true)]
 #[case::uninstalled(&["identity"], &["identity"], false)]
+#[case::installed_paths(&["myproject.accounts", "myproject.providers"], &["identity", "provider"], true)]
+#[case::uninstalled_path(&["myproject.accounts"], &["identity"], false)]
 #[tokio::test]
 #[serial(makemigrations_installed_apps)]
 async fn foreign_key_providers_stay_within_installed_scope(
@@ -286,7 +438,11 @@ async fn foreign_key_providers_stay_within_installed_scope(
 #[case::merge(true)]
 #[tokio::test]
 #[serial(makemigrations_installed_apps)]
-async fn uninstalled_migration_conflicts_are_ignored(project: TempDir, #[case] merge: bool) {
+async fn uninstalled_migration_conflicts_are_ignored(
+	project: TempDir,
+	#[case] merge: bool,
+	#[values("identity", "myproject.accounts")] installed_app: &str,
+) {
 	// Arrange
 	let _registry = ModelRegistryGuard::clear();
 	let _cwd = ProjectDirGuard::enter(project.path());
@@ -303,7 +459,7 @@ async fn uninstalled_migration_conflicts_are_ignored(project: TempDir, #[case] m
 			.await
 			.expect("history fixture should be saved");
 	}
-	let mut context = context(project.path(), Some(&["identity"]));
+	let mut context = context(project.path(), Some(&[installed_app]));
 	if merge {
 		context.set_option("merge".to_owned(), "true".to_owned());
 	}

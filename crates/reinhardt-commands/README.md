@@ -250,10 +250,14 @@ that directory determine numbering and dependencies. The same directory is used
 by `--dry-run`, `--check`, and `--merge`.
 
 When composed settings supply a nonempty `CoreSettings::installed_apps` list,
-`makemigrations` uses those app labels as the migration ownership scope. Linked
+`makemigrations` resolves paths registered by `installed_apps!` to their declared
+app labels and uses those labels as the migration ownership scope. For example,
+`identity: "myproject.accounts"` selects models and migrations labeled `identity`,
+including when settings use `InstalledApp::all_apps()`. Direct app labels remain
+supported. A path registered under multiple distinct labels is rejected. Linked
 models from other apps remain registered but do not produce migrations, including
 when they provide foreign key targets. An explicit app label must belong to the
-configured list; `--empty` and `--merge` respect the same boundary. Without
+resolved scope; `--empty` and `--merge` respect the same boundary. Without
 settings, or with an empty default list, automatic discovery uses the linked
 models as before.
 
