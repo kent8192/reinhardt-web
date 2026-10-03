@@ -261,7 +261,7 @@ Linked models from other apps remain registered but do not produce
 migrations. Foreign keys to uninstalled provider apps are rejected before any
 files are written; include those providers in `installed_apps` to generate an
 applicable dependency graph. An explicit app label must belong to the
-resolved scope; `--empty` and `--merge` respect the same boundary. Without
+resolved scope; `--empty` respects the same boundary. Without
 settings, or with an empty default list, automatic discovery uses the linked
 models as before.
 
@@ -269,7 +269,16 @@ The full current model graph and historical state remain available for detecting
 model moves and renames. Moving a model from an old app to an installed new app
 preserves the `MoveModel` operation and dependency on the old app's existing
 migration, even when that old label is no longer installed. The ownership scope
-restricts generated files, rather than deleting the comparison state.
+restricts generated files, rather than deleting the comparison state. Conflicts
+in a pending move's source history must be resolved before generating the move.
+Run `makemigrations --merge` (optionally selecting the installed destination app)
+to merge all conflicting source leaves, including those of an uninstalled old
+app. Unrelated uninstalled apps remain outside this conflict scope. Moves from
+an installed app to an uninstalled destination are rejected before files are
+written, including during `--dry-run` and `--check`; install the destination
+before generating the move. Saved moves retain their source table identity
+even without a table rename so offline replay preserves app ownership for
+custom table names.
 
 Initial migrations record `dependencies` for table providers within this scope
 referenced by inline foreign keys. Same-app `CreateTable` operations are

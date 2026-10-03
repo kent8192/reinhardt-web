@@ -129,6 +129,43 @@ fn register_model(app: &str, table: &str, provider: Option<&str>) {
 	global_registry().register_model(model);
 }
 
+fn move_source_model(table: &str) -> ModelMetadata {
+	let mut model = ModelMetadata::new("legacy", "Deployment", table);
+	model.add_field(
+		"id".to_owned(),
+		FieldMetadata::new(FieldType::Integer).with_param("primary_key", "true"),
+	);
+	for field in ["created_at", "updated_at"] {
+		model.add_field(field.to_owned(), FieldMetadata::new(FieldType::DateTime));
+	}
+	model.add_field(
+		"status".to_owned(),
+		FieldMetadata::new(FieldType::VarChar(32)),
+	);
+	model
+}
+
+async fn save_initial_model(project: &Path, model: &ModelMetadata) {
+	let state = model.to_model_state();
+	let mut initial = Migration::new("0001_initial", &model.app_label);
+	initial.operations.push(Operation::CreateTable {
+		name: state.table_name.clone(),
+		columns: state
+			.fields
+			.iter()
+			.map(|(name, field)| ColumnDefinition::from_field_state(name, field))
+			.collect(),
+		constraints: Vec::new(),
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	});
+	FilesystemRepository::new(project.join("migrations"))
+		.save(&initial)
+		.await
+		.expect("previous app history should be saved");
+}
+
 async fn migration_apps(project: &Path) -> Vec<String> {
 	let mut apps = FilesystemSource::new(project.join("migrations"))
 		.all_migrations()
@@ -481,41 +518,13 @@ async fn previous_app_history_is_preserved_for_model_moves(
 	project: TempDir,
 	#[values(false, true)] rename_table: bool,
 	#[values(false, true)] explicit: bool,
+	#[values("legacy_deployment", "audit_events")] old_table: &str,
 ) {
 	// Arrange
 	let _registry = ModelRegistryGuard::clear();
 	let _cwd = ProjectDirGuard::enter(project.path());
-	let mut previous = ModelMetadata::new("legacy", "Deployment", "legacy_deployment");
-	previous.add_field(
-		"id".to_owned(),
-		FieldMetadata::new(FieldType::Integer).with_param("primary_key", "true"),
-	);
-	for field in ["created_at", "updated_at"] {
-		previous.add_field(field.to_owned(), FieldMetadata::new(FieldType::DateTime));
-	}
-	previous.add_field(
-		"status".to_owned(),
-		FieldMetadata::new(FieldType::VarChar(32)),
-	);
-	let previous_state = previous.to_model_state();
-	let mut initial = Migration::new("0001_initial", "legacy");
-	initial.operations.push(Operation::CreateTable {
-		name: previous_state.table_name.clone(),
-		columns: previous_state
-			.fields
-			.iter()
-			.map(|(name, field)| ColumnDefinition::from_field_state(name, field))
-			.collect(),
-		constraints: Vec::new(),
-		without_rowid: None,
-		interleave_in_parent: None,
-		partition: None,
-	});
-	let mut repository = FilesystemRepository::new(project.path().join("migrations"));
-	repository
-		.save(&initial)
-		.await
-		.expect("previous app history should be saved");
+	let previous = move_source_model(old_table);
+	save_initial_model(project.path(), &previous).await;
 	let mut current = previous;
 	current.app_label = "deployments".to_owned();
 	current.model_name = "Project".to_owned();
@@ -592,7 +601,7 @@ async fn previous_app_history_is_preserved_for_model_moves(
 			Operation::MoveModel { from_app, to_app, rename_table: actual_rename, old_table_name, new_table_name, .. }
 				if from_app == "legacy" && to_app == "deployments"
 					&& *actual_rename == rename_table
-					&& old_table_name.as_deref() == rename_table.then_some("legacy_deployment")
+					&& old_table_name.as_deref() == Some(old_table)
 					&& new_table_name.as_deref() == rename_table.then_some("deployments_project")
 		),
 		"unexpected move: {:?}",
@@ -607,6 +616,207 @@ async fn previous_app_history_is_preserved_for_model_moves(
 			"the table must be renamed before its new column is added"
 		);
 	}
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(makemigrations_installed_apps)]
+async fn move_source_conflicts_require_and_support_merge(
+	project: TempDir,
+	#[values(false, true)] explicit: bool,
+) {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let _cwd = ProjectDirGuard::enter(project.path());
+	let mut current = move_source_model("audit_events");
+	save_initial_model(project.path(), &current).await;
+	let migrations_dir = project.path().join("migrations");
+	let mut repository = FilesystemRepository::new(&migrations_dir);
+	for (name, column) in [
+		("0002_left", "left_payload"),
+		("0002_right", "right_payload"),
+	] {
+		current.add_field(
+			column.to_owned(),
+			FieldMetadata::new(FieldType::VarChar(32)).with_nullable(true),
+		);
+		let mut branch = Migration::new(name, "legacy");
+		branch.dependencies = vec![("legacy".to_owned(), "0001_initial".to_owned())];
+		branch.operations.push(Operation::AddColumn {
+			table: current.table_name.clone(),
+			column: ColumnDefinition::from_field_state(
+				column,
+				&current.to_model_state().fields[column],
+			),
+			mysql_options: None,
+		});
+		repository
+			.save(&branch)
+			.await
+			.expect("branch should be saved");
+	}
+	current.app_label = "deployments".to_owned();
+	current.model_name = "Project".to_owned();
+	global_registry().register_model(current);
+	let mut context = context(project.path(), Some(&["deployments"]));
+	context.options.remove("force-empty-state");
+	context.set_option("database".to_owned(), "invalid://offline".to_owned());
+	if explicit {
+		context.add_arg("deployments".to_owned());
+	}
+
+	// Act
+	let error = MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect_err("a pending move must not choose one conflicting source leaf");
+
+	// Assert
+	assert_eq!(
+		error.to_string(),
+		"Execution error: Run 'makemigrations --merge' to resolve migration conflicts."
+	);
+	assert_eq!(
+		migration_apps(project.path()).await,
+		["legacy", "legacy", "legacy"]
+	);
+	assert!(!migrations_dir.join("deployments").exists());
+
+	// Act
+	let mut merge_context = context.clone();
+	merge_context.set_option("merge".to_owned(), "true".to_owned());
+	MakeMigrationsCommand
+		.execute(&merge_context)
+		.await
+		.expect("the selected destination must allow merging its historical source");
+	let source = FilesystemSource::new(&migrations_dir);
+	let history = source
+		.all_migrations()
+		.await
+		.expect("history should be readable");
+	let merge = history
+		.iter()
+		.find(|migration| migration.name.starts_with("0003_"))
+		.expect("a source-app merge should be generated");
+	MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect("the merged history should allow the move");
+	let move_migration = source
+		.get_migration("deployments", "0001_initial")
+		.await
+		.expect("the move should be saved");
+	MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect("the complete saved history should replay");
+
+	// Assert
+	assert_eq!(history.len(), 4);
+	assert_eq!(merge.app_label, "legacy");
+	assert!(merge.operations.is_empty());
+	let mut dependencies = merge.dependencies.clone();
+	dependencies.sort();
+	assert_eq!(
+		dependencies,
+		[
+			("legacy".to_owned(), "0002_left".to_owned()),
+			("legacy".to_owned(), "0002_right".to_owned()),
+		]
+	);
+	assert_eq!(
+		move_migration.dependencies,
+		[("legacy".to_owned(), merge.name.clone())]
+	);
+	assert!(
+		matches!(move_migration.operations.as_slice(), [Operation::MoveModel { from_app, to_app, .. }]
+		if from_app == "legacy" && to_app == "deployments")
+	);
+	assert_eq!(source.all_migrations().await.unwrap().len(), 5);
+}
+
+#[rstest]
+#[case::generate(None)]
+#[case::dry_run(Some("dry-run"))]
+#[case::check(Some("check"))]
+#[tokio::test]
+#[serial(makemigrations_installed_apps)]
+async fn moves_to_uninstalled_apps_are_rejected(
+	project: TempDir,
+	#[case] inspection: Option<&str>,
+	#[values(false, true)] explicit: bool,
+) {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let _cwd = ProjectDirGuard::enter(project.path());
+	let mut current = move_source_model("audit_events");
+	save_initial_model(project.path(), &current).await;
+	current.app_label = "archive".to_owned();
+	global_registry().register_model(current);
+	let mut context = context(project.path(), Some(&["legacy"]));
+	context.options.remove("force-empty-state");
+	context.set_option("database".to_owned(), "invalid://offline".to_owned());
+	if explicit {
+		context.add_arg("legacy".to_owned());
+	}
+	if let Some(option) = inspection {
+		context.set_option(option.to_owned(), "true".to_owned());
+	}
+
+	// Act
+	let error = MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect_err("an installed source must not silently lose an outgoing move");
+
+	// Assert
+	assert_eq!(
+		error.to_string(),
+		"Execution error: App 'legacy' moves a model to uninstalled app 'archive'. Add 'archive' to CoreSettings::installed_apps before generating migrations."
+	);
+	assert_eq!(migration_apps(project.path()).await, ["legacy"]);
+	assert!(!project.path().join("migrations/archive").exists());
+	assert_eq!(global_registry().get_models()[0].app_label, "archive");
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(makemigrations_installed_apps)]
+async fn moves_between_uninstalled_apps_do_not_change_owned_output(project: TempDir) {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let _cwd = ProjectDirGuard::enter(project.path());
+	let mut current = move_source_model("audit_events");
+	save_initial_model(project.path(), &current).await;
+	current.app_label = "archive".to_owned();
+	global_registry().register_model(current);
+	register_model("identity", "own_identities", None);
+	let mut context = context(project.path(), Some(&["identity"]));
+	context.options.remove("force-empty-state");
+	context.set_option("database".to_owned(), "invalid://offline".to_owned());
+
+	// Act
+	MakeMigrationsCommand
+		.execute(&context)
+		.await
+		.expect("unrelated uninstalled moves must not block the selected app");
+
+	// Assert
+	assert_eq!(migration_apps(project.path()).await, ["identity", "legacy"]);
+	let migrations = FilesystemSource::new(project.path().join("migrations"))
+		.all_migrations()
+		.await
+		.expect("generated history should be readable");
+	let identity = migrations
+		.iter()
+		.find(|migration| migration.app_label == "identity")
+		.unwrap();
+	assert!(identity.dependencies.is_empty());
+	assert!(
+		matches!(identity.operations.as_slice(), [Operation::CreateTable { name, .. }]
+		if name == "own_identities")
+	);
+	assert!(!project.path().join("migrations/archive").exists());
 }
 
 #[rstest]
