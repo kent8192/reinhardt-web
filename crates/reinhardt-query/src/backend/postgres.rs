@@ -63,6 +63,10 @@ use crate::{
 /// - Placeholders: Numbered (`$1`, `$2`, ...)
 /// - Grouping: Typed expressions retain their precedence and associativity
 ///   through parentheses, including WHERE/HAVING predicates and DDL constraints
+/// - Custom predicates: Opaque SQL expressions are parenthesized when composed
+///   with AND, OR, or NOT, including condition groups and neighboring filters.
+///   Their SQL is not parsed; standalone expressions and scalar operands retain
+///   their original rendering.
 ///
 /// # Examples
 ///
@@ -77,6 +81,24 @@ use crate::{
 ///
 /// let (sql, values) = builder.build_select(&stmt);
 /// // sql: SELECT "id" FROM "users"
+/// ```
+///
+/// Custom predicates retain their grouping alongside typed filters:
+///
+/// ```rust
+/// use reinhardt_query::{Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder};
+///
+/// let query = Query::select()
+///     .column("id")
+///     .from("runs")
+///     .and_where(Expr::cust("lease_until IS NULL OR lease_until <= CURRENT_TIMESTAMP"))
+///     .and_where(Expr::col("id").eq(2_i64))
+///     .to_owned();
+///
+/// assert_eq!(
+///     query.to_string(PostgresQueryBuilder),
+///     r#"SELECT "id" FROM "runs" WHERE (lease_until IS NULL OR lease_until <= CURRENT_TIMESTAMP) AND "id" = 2"#,
+/// );
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct PostgresQueryBuilder;
@@ -445,6 +467,11 @@ impl PostgresQueryBuilder {
 				parent_precedence >= Self::binary_precedence(BinOper::Like)
 			}
 			SimpleExpr::Unary(_, _) => parent_precedence > 3,
+			// Opaque predicates have unknown precedence. Group them at boolean
+			// composition boundaries without interpreting their SQL text.
+			SimpleExpr::Custom(_) | SimpleExpr::CustomWithExpr(..) => {
+				matches!(parent, BinOper::And | BinOper::Or)
+			}
 			_ => false,
 		};
 		self.write_grouped_expr(writer, expr, parenthesized, unquoted);
@@ -495,6 +522,8 @@ impl PostgresQueryBuilder {
 				let parenthesized = matches!(
 					expr.as_ref(),
 					SimpleExpr::Binary(_, BinOper::And | BinOper::Or, _)
+						| SimpleExpr::Custom(_)
+						| SimpleExpr::CustomWithExpr(..)
 				);
 				self.write_grouped_expr(writer, expr, parenthesized, false);
 			}
@@ -815,6 +844,8 @@ impl PostgresQueryBuilder {
 				let parenthesized = matches!(
 					expr.as_ref(),
 					SimpleExpr::Binary(_, BinOper::And | BinOper::Or, _)
+						| SimpleExpr::Custom(_)
+						| SimpleExpr::CustomWithExpr(..)
 				);
 				self.write_grouped_expr(writer, expr, parenthesized, true);
 			}
