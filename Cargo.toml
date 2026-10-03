@@ -38,6 +38,10 @@ required-features = ["file-storage"]
 name = "native_http_streaming"
 required-features = ["minimal"]
 
+[[test]]
+name = "rest_scaffold_settings"
+required-features = ["commands", "conf", "test"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
