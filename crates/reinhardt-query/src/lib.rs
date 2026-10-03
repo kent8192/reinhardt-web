@@ -7,6 +7,9 @@
 //! This crate provides a fluent API for constructing SQL queries that target
 //! PostgreSQL, MySQL, and SQLite databases. It generates parameterized queries
 //! with proper identifier escaping and value placeholders for each backend.
+//! For PostgreSQL, [`QueryStatementBuilder::to_string`] renders byte values as
+//! typed `bytea` hex literals. Empty bytes and SQL NULL remain distinct, while
+//! [`QueryStatementBuilder::build`] retains byte values as prepared parameters.
 //!
 //! ## Features
 //!

@@ -6,6 +6,11 @@ A type-safe SQL query builder for the Reinhardt framework.
 
 `reinhardt-query` provides a fluent API for constructing SQL queries targeting PostgreSQL, MySQL, SQLite, and CockroachDB. It generates parameterized queries with proper identifier escaping and value placeholders for each backend.
 
+`QueryStatementBuilder::to_string(PostgresQueryBuilder)` renders byte values as
+typed PostgreSQL `bytea` hex literals, including inside custom expressions and
+subqueries. Empty bytes and SQL NULL remain distinct. Parameterized `build()`
+retains the original bytes, and MySQL/SQLite keep their `X'...'` literal syntax.
+
 ## Features
 
 ### DML (Data Manipulation Language)
