@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.18...reinhardt-db@v0.4.0-alpha.19) - 2026-10-03
+
+### Fixed
+
+- *(migrations)* accept literal string conversions
+- *(orm)* match every composite key component when updating
+- *(orm)* round-trip binary composite keys through viewsets
+- *(macros)* preserve field policy metadata in composite keys
+
+### Maintenance
+
+- *(orm)* merge develop/0.4.0 into composite key codecs
+- chore!(sync): merge main into develop/0.4.0
+- *(sync)* merge main into develop/0.4.0
+
 ### Breaking Changes
 
 - Preserve `i32` native query parameters as `QueryValue::Int32(i32)` so

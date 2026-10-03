@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.18...reinhardt-query@v0.4.0-alpha.19) - 2026-10-03
+
+### Fixed
+
+- *(query)* preserve PostgreSQL expression grouping
+- *(query)* preserve custom predicate grouping
+- *(query)* terminate line comments before predicate parentheses
+- *(query)* preserve standalone current of predicates
+
+### Maintenance
+
+- *(query)* integrate main rendering fixes
+- merge main into custom predicate fix
+- *(sync)* merge main into develop/0.4.0
+
 ### Added
 
 - `OnConflict::new()` and `Default` construct a targetless `DO NOTHING` clause.
