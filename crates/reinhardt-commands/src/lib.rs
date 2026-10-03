@@ -124,6 +124,12 @@
 pub mod base;
 /// Built-in management commands (migrate, runserver, shell, etc.).
 pub mod builtin;
+/// Native command capability preparation (P0: native management API).
+#[cfg(feature = "contract")]
+pub mod capabilities;
+/// Launcher Cargo context retained by capability-aware management binaries.
+#[cfg(feature = "contract")]
+pub mod cargo_context;
 /// CLI argument parsing and command dispatch.
 pub mod cli;
 /// Static file collection command.
@@ -170,6 +176,8 @@ pub mod runserver_hooks;
 #[cfg(feature = "autoreload")]
 #[doc(hidden)]
 pub mod server_rebuild_pipeline;
+#[cfg(feature = "migrations")]
+mod showmigrations;
 /// Source-tree enumeration for hot-reload watch targets.
 #[cfg(feature = "autoreload")]
 #[doc(hidden)]
@@ -309,3 +317,15 @@ impl From<serde_json::Error> for CommandError {
 
 /// A specialized `Result` type for management command operations.
 pub type CommandResult<T> = std::result::Result<T, CommandError>;
+
+#[cfg(feature = "contract")]
+pub use capabilities::{
+	CapabilityCommand, CapabilityContext, CapabilityProvider, CapabilityRequirement,
+	CoreMigrationMetadata, PreparedValue, SelectedDatabase, SettingsView, build_scoped_settings,
+};
+#[cfg(feature = "contract")]
+pub use cargo_context::{
+	CargoCheckContext, CargoConfigReplay, CargoProfile, CargoReplayUnsupported,
+};
+#[cfg(feature = "contract")]
+pub use cli::execute_from_command_line_with_capabilities;

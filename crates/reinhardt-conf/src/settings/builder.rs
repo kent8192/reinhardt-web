@@ -5,6 +5,7 @@
 
 use super::composed::ComposedSettings;
 use super::profile::Profile;
+use super::scoped::ScopedSettings;
 use super::sources::{ConfigSource, DotEnvSource, EnvSource, SourceError};
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
@@ -241,34 +242,62 @@ impl SettingsBuilder {
 	/// opt back into [`MergeStrategy::Shallow`] for the legacy
 	/// top-level-replacement behaviour. See
 	/// [issue #4260](https://github.com/kent8192/reinhardt-web/issues/4260).
-	pub fn build_composed<T: ComposedSettings>(mut self) -> Result<T, BuildError> {
-		// `build_composed` exists for layered TOML files where deep merging is
-		// the natural expectation. Apply the deep default only when the caller
-		// has not explicitly chosen a strategy, so explicit `Shallow` opt-outs
-		// still work.
+	pub fn build_composed<T: ComposedSettings>(self) -> Result<T, BuildError> {
+		Ok(self
+			.build_pending_composed::<T>()?
+			.resolve()?
+			.into_settings())
+	}
+
+	/// Merge syntax-checked configuration for selected command capabilities.
+	///
+	/// Unlike `build_pending_composed`, this path defers TOML interpolation until
+	/// an effective settings path is requested. Eager-only custom sources fail
+	/// with guidance instead of loading unrelated configuration.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_conf::settings::builder::SettingsBuilder;
+	/// use reinhardt_conf::settings::sources::DefaultSource;
+	/// use serde_json::json;
+	///
+	/// let settings = SettingsBuilder::new()
+	///     .add_source(DefaultSource::new().with_value("core", json!({
+	///         "installed_apps": ["identity"],
+	///     })))
+	///     .build_scoped()?;
+	/// let apps: Vec<String> = settings.require_path(&["core", "installed_apps"])?;
+	/// assert_eq!(apps, ["identity"]);
+	/// # Ok::<(), reinhardt_conf::settings::builder::BuildError>(())
+	/// ```
+	pub fn build_scoped(self) -> Result<ScopedSettings, BuildError> {
+		ScopedSettings::build(
+			self.sources,
+			self.profile,
+			self.typed_coercion,
+			self.merge_strategy.unwrap_or(MergeStrategy::Deep),
+		)
+	}
+
+	/// Merge runtime sources without validating or deserializing the composed type.
+	///
+	/// Uses the same eager interpolation, deep-merge default, and typed coercion
+	/// as [`Self::build_composed`]. Required-field validation runs when
+	/// [`super::composed::PendingSettings::resolve`] is called. Fragment-level
+	/// validation remains the caller's responsibility.
+	pub fn build_pending_composed<T: ComposedSettings>(
+		mut self,
+	) -> Result<super::composed::PendingSettings<T>, BuildError> {
 		if self.merge_strategy.is_none() {
 			self.merge_strategy = Some(MergeStrategy::Deep);
 		}
-		// Capture the flag before `self.build()` consumes self.
 		let typed_coercion = self.typed_coercion;
-		let merged = self.build()?;
-		T::validate_requirements(merged.as_map())?;
-
-		if typed_coercion {
-			use crate::settings::typed_deserializer::TypedSettingsDeserializer;
-			let json_value = Value::Object(
-				merged
-					.as_map()
-					.iter()
-					.map(|(k, v)| (k.clone(), v.clone()))
-					.collect(),
-			);
-			let de = TypedSettingsDeserializer::new(&json_value);
-			T::deserialize(de).map_err(BuildError::Coercion)
-		} else {
-			let settings: T = merged.into_typed().map_err(BuildError::from)?;
-			Ok(settings)
-		}
+		Ok(super::composed::PendingSettings {
+			merged: self.build()?,
+			typed_coercion,
+			marker: std::marker::PhantomData,
+		})
 	}
 
 	/// Build the configuration by merging all sources
