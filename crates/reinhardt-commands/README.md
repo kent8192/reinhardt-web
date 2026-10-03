@@ -70,7 +70,36 @@ details.
 
 - `migrations` - Enable migration-related commands (requires
   `reinhardt-db`)
+- `contract` - Enable the opt-in capability-aware management entry point
+  (includes `migrations`); exposed as `commands-contract` by the facade, which
+  also enables the configuration types needed by the provider
 - `routers` - Enable URL-related commands (requires `reinhardt-urls`)
+
+### Capability-aware migration bootstrap
+
+With `commands-contract`, call
+`execute_from_command_line_with_capabilities(registry, provider, None)` from the
+native management binary. The provider returns raw `ScopedSettings` for
+migration capabilities and `PendingSettings<ProjectSettings>` for existing
+runtime commands. Include `CoreSettings`, `ContactSettings`, and
+`MigrationSettings` in the project's composed settings.
+
+Enable a database backend at compile time, such as the facade's `db-sqlite` or
+`db-postgres`, as required by the stable migration engine. File-based discovery
+still runs without a database connection or credentials.
+
+`makemigrations --state-source files` and `makemigrations --check` resolve only
+migration metadata. The check implies dry-run behavior and exits unsuccessfully
+when files would be created. `--state-source database --database ALIAS` resolves
+only the named database configuration; `--state-source temporary-db` requires
+the `testcontainers` feature. `--empty` and `--merge` remain database-free.
+Other existing commands retain the full settings bootstrap. Legacy entry points
+and their `Commands` variants retain their existing signatures and flags.
+
+This entry point uses the existing stable-line migration engine. It does not
+add the development line's verification or migration-visibility commands. The
+optional `CargoCheckContext` preserves launcher compatibility and is not used
+by the stable-line commands.
 
 ## Template System
 

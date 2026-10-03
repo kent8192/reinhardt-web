@@ -952,6 +952,39 @@ async fn build_from_state_from_files(
 	})
 }
 
+/// Explicit state selected by the capability entry point; legacy dispatch keeps its policy.
+#[cfg(feature = "contract")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MigrationStateSource {
+	Files,
+	TemporaryDb,
+	Database,
+	Empty,
+}
+
+#[cfg(feature = "contract")]
+pub(crate) async fn prepare_makemigrations_state(
+	source: MigrationStateSource,
+	migrations_dir: &std::path::Path,
+	database_url: Option<&str>,
+) -> CommandResult<reinhardt_db::migrations::ProjectState> {
+	match source {
+		MigrationStateSource::Files => build_from_state_from_files(migrations_dir).await,
+		MigrationStateSource::TemporaryDb => {
+			build_from_state_from_testcontainers(migrations_dir).await
+		}
+		MigrationStateSource::Database => {
+			let url = database_url.ok_or_else(|| {
+				crate::CommandError::ExecutionError(
+					"database state source requires a selected database URL".to_owned(),
+				)
+			})?;
+			build_from_state_from_db(migrations_dir, url).await
+		}
+		MigrationStateSource::Empty => Ok(reinhardt_db::migrations::ProjectState::new()),
+	}
+}
+
 /// Make migrations command
 #[cfg(feature = "migrations")]
 pub struct MakeMigrationsCommand;
@@ -1000,367 +1033,310 @@ impl BaseCommand for MakeMigrationsCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-		fn operation_description(operation: &reinhardt_db::migrations::Operation) -> String {
-			use reinhardt_db::migrations::Operation;
+		execute_makemigrations_with_state(ctx, None).await
+	}
+}
 
-			match operation {
-				// Table operations (corresponds to Model operations in Django)
-				Operation::CreateTable { name, .. } => format!("Create model {}", name),
-				Operation::DropTable { name } => format!("Delete model {}", name),
-				Operation::RenameTable { old_name, new_name } => {
-					format!("Rename model {} to {}", old_name, new_name)
-				}
+#[cfg(feature = "migrations")]
+pub(crate) async fn execute_makemigrations_with_state(
+	ctx: &CommandContext,
+	prepared_state: Option<reinhardt_db::migrations::ProjectState>,
+) -> CommandResult<()> {
+	fn operation_description(operation: &reinhardt_db::migrations::Operation) -> String {
+		use reinhardt_db::migrations::Operation;
 
-				// Column operations (corresponds to Field operations in Django)
-				Operation::AddColumn { table, column, .. } => {
-					format!("Add field {} to {}", column.name, table)
-				}
-				Operation::DropColumn { table, column } => {
-					format!("Remove field {} from {}", column, table)
-				}
-				Operation::AlterColumn { table, column, .. } => {
-					format!("Alter field {} on {}", column, table)
-				}
-				Operation::RenameColumn {
+		match operation {
+			// Table operations (corresponds to Model operations in Django)
+			Operation::CreateTable { name, .. } => format!("Create model {}", name),
+			Operation::DropTable { name } => format!("Delete model {}", name),
+			Operation::RenameTable { old_name, new_name } => {
+				format!("Rename model {} to {}", old_name, new_name)
+			}
+
+			// Column operations (corresponds to Field operations in Django)
+			Operation::AddColumn { table, column, .. } => {
+				format!("Add field {} to {}", column.name, table)
+			}
+			Operation::DropColumn { table, column } => {
+				format!("Remove field {} from {}", column, table)
+			}
+			Operation::AlterColumn { table, column, .. } => {
+				format!("Alter field {} on {}", column, table)
+			}
+			Operation::RenameColumn {
+				table,
+				old_name,
+				new_name,
+			} => {
+				format!("Rename field {} to {} on {}", old_name, new_name, table)
+			}
+
+			// Index operations
+			Operation::CreateIndex {
+				table,
+				columns,
+				unique,
+				..
+			} => {
+				let index_type = if *unique { "unique index" } else { "index" };
+				format!(
+					"Create {} on {} ({})",
+					index_type,
 					table,
-					old_name,
-					new_name,
-				} => {
-					format!("Rename field {} to {} on {}", old_name, new_name, table)
-				}
-
-				// Index operations
-				Operation::CreateIndex {
-					table,
-					columns,
-					unique,
-					..
-				} => {
-					let index_type = if *unique { "unique index" } else { "index" };
-					format!(
-						"Create {} on {} ({})",
-						index_type,
-						table,
-						columns.join(", ")
-					)
-				}
-				Operation::DropIndex { table, columns } => {
-					format!("Remove index on {} ({})", table, columns.join(", "))
-				}
-
-				// Constraint operations
-				Operation::AddConstraint { table, .. } => {
-					format!("Add constraint on {}", table)
-				}
-				Operation::DropConstraint {
-					table,
-					constraint_name,
-				} => {
-					format!("Remove constraint {} from {}", constraint_name, table)
-				}
-
-				// Special operations
-				Operation::RunSQL { .. } => "Execute custom SQL".to_string(),
-				Operation::RunRust { .. } => "Execute custom Rust code".to_string(),
-
-				// Other operations
-				_ => format!("{:?}", operation),
+					columns.join(", ")
+				)
 			}
+			Operation::DropIndex { table, columns } => {
+				format!("Remove index on {} ({})", table, columns.join(", "))
+			}
+
+			// Constraint operations
+			Operation::AddConstraint { table, .. } => {
+				format!("Add constraint on {}", table)
+			}
+			Operation::DropConstraint {
+				table,
+				constraint_name,
+			} => {
+				format!("Remove constraint {} from {}", constraint_name, table)
+			}
+
+			// Special operations
+			Operation::RunSQL { .. } => "Execute custom SQL".to_string(),
+			Operation::RunRust { .. } => "Execute custom Rust code".to_string(),
+
+			// Other operations
+			_ => format!("{:?}", operation),
 		}
-		use std::path::PathBuf;
-		ctx.info("Detecting model changes...");
+	}
+	use std::path::PathBuf;
+	ctx.info("Detecting model changes...");
 
-		let is_dry_run = ctx.has_option("dry-run");
-		let is_empty = ctx.has_option("empty");
-		let app_label = ctx.arg(0).map(|s| s.to_string());
-		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-		fn resolve_app_label(path: &str) -> Result<&str, crate::CommandError> {
-			// A declared label is authoritative even if another app uses it as a path.
-			if inventory::iter::<reinhardt_apps::registry::InstalledAppRegistration>
-				.into_iter()
-				.any(|app| app.label == path)
-			{
-				return Ok(path);
-			}
-			#[cfg(feature = "migrations")]
-			if !reinhardt_db::migrations::model_registry::global_registry()
-				.get_app_models(path)
-				.is_empty()
-			{
-				return Ok(path);
-			}
-			let mut labels = inventory::iter::<reinhardt_apps::registry::InstalledAppRegistration>
-				.into_iter()
-				.filter(|app| app.path == path)
-				.map(|app| app.label);
-			let Some(label) = labels.next() else {
-				// Preserve callers that configure app labels directly.
-				return Ok(path);
-			};
-			if labels.any(|other| other != label) {
-				return Err(crate::CommandError::ExecutionError(format!(
-					"Installed app path '{path}' is registered with multiple app labels."
-				)));
-			}
-			Ok(label)
-		}
-		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-		fn resolve_app_label(path: &str) -> Result<&str, crate::CommandError> {
-			// Native app metadata is unavailable on browser targets.
-			Ok(path)
-		}
-		// A nonempty installed-app list owns the migration scope. Empty
-		// defaults preserve automatic discovery for existing callers.
-		let installed_app_labels = ctx
-			.settings
-			.as_ref()
-			.map(|settings| settings.core().installed_apps.as_slice())
-			.filter(|apps| !apps.is_empty())
-			.map(|apps| {
-				apps.iter()
-					.map(|app| resolve_app_label(app).map(str::to_owned))
-					.collect::<Result<Vec<_>, _>>()
-			})
-			.transpose()?;
-		let installed_apps = installed_app_labels.as_deref();
-		if let (Some(app), Some(installed)) = (&app_label, installed_apps)
-			&& !installed.contains(app)
+	let is_check = ctx.has_option("check");
+	let is_dry_run = ctx.has_option("dry-run") || is_check;
+	let is_empty = ctx.has_option("empty");
+	let app_label = ctx.arg(0).map(|s| s.to_string());
+	#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+	fn resolve_app_label(path: &str) -> Result<&str, crate::CommandError> {
+		// A declared label is authoritative even if another app uses it as a path.
+		if inventory::iter::<reinhardt_apps::registry::InstalledAppRegistration>
+			.into_iter()
+			.any(|app| app.label == path)
 		{
-			return Err(crate::CommandError::ExecutionError(format!(
-				"App '{app}' is not in CoreSettings::installed_apps."
-			)));
+			return Ok(path);
 		}
-		let migration_name_opt = ctx.option("name").map(|s| s.to_string());
-		let migrations_dir_str = ctx
-			.option("migrations-dir")
-			.map(|s| s.to_string())
-			.unwrap_or_else(|| "migrations".to_string());
-		let migrations_dir = PathBuf::from(migrations_dir_str);
-
-		// Validate that we are running inside a Reinhardt project directory.
-		// A valid project must contain src/bin/manage.rs (the management command
-		// entry point). Running makemigrations from the wrong directory would
-		// silently create migration files in unexpected locations.
-		if !PathBuf::from("src/bin/manage.rs").exists() {
-			return Err(crate::CommandError::ExecutionError(
-				"Cannot find src/bin/manage.rs in the current directory. \
-				 Please run makemigrations from your Reinhardt project root \
-				 (the directory containing src/bin/manage.rs)."
-					.to_string(),
-			));
-		}
-
-		if is_dry_run {
-			ctx.warning("Dry run mode: No files will be created");
-		}
-
-		if let Some(ref app_name) = app_label {
-			ctx.verbose(&format!("Creating migrations for: {}", app_name));
-		} else if installed_apps.is_some() {
-			ctx.verbose("Creating migrations for installed apps");
-		} else {
-			ctx.verbose("Creating migrations for all apps");
-		}
-
 		#[cfg(feature = "migrations")]
+		if !reinhardt_db::migrations::model_registry::global_registry()
+			.get_app_models(path)
+			.is_empty()
 		{
-			use crate::CommandError;
-			use reinhardt_db::migrations::{
-				FilesystemRepository, FilesystemSource, MigrationGraph, MigrationKey,
-				MigrationNamer, MigrationNumbering, MigrationService, autodetector::ProjectState,
-			};
-			use std::sync::Arc;
-			use tokio::sync::Mutex;
+			return Ok(path);
+		}
+		let mut labels = inventory::iter::<reinhardt_apps::registry::InstalledAppRegistration>
+			.into_iter()
+			.filter(|app| app.path == path)
+			.map(|app| app.label);
+		let Some(label) = labels.next() else {
+			// Preserve callers that configure app labels directly.
+			return Ok(path);
+		};
+		if labels.any(|other| other != label) {
+			return Err(crate::CommandError::ExecutionError(format!(
+				"Installed app path '{path}' is registered with multiple app labels."
+			)));
+		}
+		Ok(label)
+	}
+	#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+	fn resolve_app_label(path: &str) -> Result<&str, crate::CommandError> {
+		// Native app metadata is unavailable on browser targets.
+		Ok(path)
+	}
+	// A nonempty installed-app list owns the migration scope. Empty
+	// defaults preserve automatic discovery for existing callers.
+	let installed_app_labels = crate::showmigrations::migration_installed_apps(ctx)
+		.filter(|apps| !apps.is_empty())
+		.map(|apps| {
+			apps.iter()
+				.map(|app| resolve_app_label(app).map(str::to_owned))
+				.collect::<Result<Vec<_>, _>>()
+		})
+		.transpose()?;
+	let installed_apps = installed_app_labels.as_deref();
+	if let (Some(app), Some(installed)) = (&app_label, installed_apps)
+		&& !installed.contains(app)
+	{
+		return Err(crate::CommandError::ExecutionError(format!(
+			"App '{app}' is not in CoreSettings::installed_apps."
+		)));
+	}
+	let migration_name_opt = ctx.option("name").map(|s| s.to_string());
+	let migrations_dir_str = ctx
+		.option("migrations-dir")
+		.map(|s| s.to_string())
+		.unwrap_or_else(|| "migrations".to_string());
+	let migrations_dir = PathBuf::from(migrations_dir_str);
 
-			// Build a MigrationGraph from a list of Migration structs
-			fn build_migration_graph(
-				migrations: &[reinhardt_db::migrations::Migration],
-			) -> MigrationGraph {
-				let mut graph = MigrationGraph::new();
-				for migration in migrations {
-					let key =
-						MigrationKey::new(migration.app_label.clone(), migration.name.clone());
-					let deps: Vec<MigrationKey> = migration
-						.dependencies
-						.iter()
-						.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
-						.collect();
-					graph.add_migration(key, deps);
-				}
-				graph
+	// Validate that we are running inside a Reinhardt project directory.
+	// A valid project must contain src/bin/manage.rs (the management command
+	// entry point). Running makemigrations from the wrong directory would
+	// silently create migration files in unexpected locations.
+	if !PathBuf::from("src/bin/manage.rs").exists() {
+		return Err(crate::CommandError::ExecutionError(
+			"Cannot find src/bin/manage.rs in the current directory. \
+			 Please run makemigrations from your Reinhardt project root \
+			 (the directory containing src/bin/manage.rs)."
+				.to_string(),
+		));
+	}
+
+	if is_dry_run {
+		ctx.warning("Dry run mode: No files will be created");
+	}
+
+	if let Some(ref app_name) = app_label {
+		ctx.verbose(&format!("Creating migrations for: {}", app_name));
+	} else if installed_apps.is_some() {
+		ctx.verbose("Creating migrations for installed apps");
+	} else {
+		ctx.verbose("Creating migrations for all apps");
+	}
+
+	#[cfg(feature = "migrations")]
+	{
+		use crate::CommandError;
+		use reinhardt_db::migrations::{
+			FilesystemRepository, FilesystemSource, MigrationGraph, MigrationKey, MigrationNamer,
+			MigrationNumbering, MigrationService, autodetector::ProjectState,
+		};
+		use std::sync::Arc;
+		use tokio::sync::Mutex;
+
+		// Build a MigrationGraph from a list of Migration structs
+		fn build_migration_graph(
+			migrations: &[reinhardt_db::migrations::Migration],
+		) -> MigrationGraph {
+			let mut graph = MigrationGraph::new();
+			for migration in migrations {
+				let key = MigrationKey::new(migration.app_label.clone(), migration.name.clone());
+				let deps: Vec<MigrationKey> = migration
+					.dependencies
+					.iter()
+					.map(|(app, name)| MigrationKey::new(app.clone(), name.clone()))
+					.collect();
+				graph.add_migration(key, deps);
+			}
+			graph
+		}
+
+		let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
+		let repository = Arc::new(Mutex::new(FilesystemRepository::new(
+			migrations_dir.clone(),
+		)));
+		let service = MigrationService::new(source.clone(), repository.clone());
+
+		// Helper to get the last migration for an app
+		let get_last_migration = |app: String| {
+			let source = source.clone();
+			let repository = repository.clone();
+			async move {
+				let service = MigrationService::new(source, repository);
+				let all_migrations = service.load_all().await.ok()?;
+				let mut app_migrations: Vec<_> = all_migrations
+					.into_iter()
+					.filter(|m| m.app_label == *app)
+					.collect();
+
+				// Simple sort by name (assumes timestamp prefix)
+				app_migrations.sort_by(|a, b| a.name.cmp(&b.name));
+
+				app_migrations.last().cloned()
+			}
+		};
+
+		// Handle --merge flag for resolving migration conflicts
+		let is_merge = ctx.has_option("merge");
+		if is_merge {
+			if is_empty {
+				return Err(CommandError::ExecutionError(
+					"--merge and --empty are mutually exclusive options".to_string(),
+				));
 			}
 
-			let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
-			let repository = Arc::new(Mutex::new(FilesystemRepository::new(
-				migrations_dir.clone(),
-			)));
-			let service = MigrationService::new(source.clone(), repository.clone());
+			// Load all existing migrations and build the graph
+			let all_migrations = service.load_all().await.map_err(|e| {
+				CommandError::ExecutionError(format!("Failed to load migrations: {}", e))
+			})?;
 
-			// Helper to get the last migration for an app
-			let get_last_migration = |app: String| {
-				let source = source.clone();
-				let repository = repository.clone();
-				async move {
-					let service = MigrationService::new(source, repository);
-					let all_migrations = service.load_all().await.ok()?;
-					let mut app_migrations: Vec<_> = all_migrations
-						.into_iter()
-						.filter(|m| m.app_label == *app)
-						.collect();
+			let graph = build_migration_graph(&all_migrations);
 
-					// Simple sort by name (assumes timestamp prefix)
-					app_migrations.sort_by(|a, b| a.name.cmp(&b.name));
-
-					app_migrations.last().cloned()
-				}
-			};
-
-			// Handle --merge flag for resolving migration conflicts
-			let is_merge = ctx.has_option("merge");
-			if is_merge {
-				if is_empty {
-					return Err(CommandError::ExecutionError(
-						"--merge and --empty are mutually exclusive options".to_string(),
-					));
-				}
-
-				// Load all existing migrations and build the graph
-				let all_migrations = service.load_all().await.map_err(|e| {
-					CommandError::ExecutionError(format!("Failed to load migrations: {}", e))
-				})?;
-
-				let graph = build_migration_graph(&all_migrations);
-
-				// Detect conflicts
-				let mut conflicts = graph.detect_conflicts();
-				let move_sources =
-					if !conflicts.is_empty() && (installed_apps.is_some() || app_label.is_some()) {
-						// Merging must include historical apps needed by a selected move,
-						// even when those apps are no longer installed. Replay files without
-						// applying the conflicting graph to a database.
-						let from_state = build_from_state_from_files(&migrations_dir).await?;
-						let target_state = ProjectState::from_global_registry();
-						let detector = reinhardt_db::migrations::MigrationAutodetector::new(
-							from_state,
-							target_state.clone(),
-						);
-						let mut generated = detector.generate_migrations();
-						generated.retain(|migration| {
-							installed_apps.is_none_or(|apps| apps.contains(&migration.app_label))
-						});
-						let requested = if let Some(app) = &app_label {
-							vec![app.clone()]
-						} else {
-							installed_apps.unwrap_or_default().to_vec()
-						};
-						let apps_to_write =
-							expand_apps_with_fk_providers(&requested, &generated, &target_state);
-						makemigrations_move_source_apps(&generated, &apps_to_write)
+			// Detect conflicts
+			let mut conflicts = graph.detect_conflicts();
+			let move_sources =
+				if !conflicts.is_empty() && (installed_apps.is_some() || app_label.is_some()) {
+					// Merging must include historical apps needed by a selected move,
+					// even when those apps are no longer installed. Replay files without
+					// applying the conflicting graph to a database.
+					let from_state = build_from_state_from_files(&migrations_dir).await?;
+					let target_state = ProjectState::from_global_registry();
+					let detector = reinhardt_db::migrations::MigrationAutodetector::new(
+						from_state,
+						target_state.clone(),
+					);
+					let mut generated = detector.generate_migrations();
+					generated.retain(|migration| {
+						installed_apps.is_none_or(|apps| apps.contains(&migration.app_label))
+					});
+					let requested = if let Some(app) = &app_label {
+						vec![app.clone()]
 					} else {
-						std::collections::BTreeSet::new()
+						installed_apps.unwrap_or_default().to_vec()
 					};
-				if let Some(apps) = installed_apps {
-					conflicts.retain(|app, _| apps.contains(app) || move_sources.contains(app));
-				}
+					let apps_to_write =
+						expand_apps_with_fk_providers(&requested, &generated, &target_state);
+					makemigrations_move_source_apps(&generated, &apps_to_write)
+				} else {
+					std::collections::BTreeSet::new()
+				};
+			if let Some(apps) = installed_apps {
+				conflicts.retain(|app, _| apps.contains(app) || move_sources.contains(app));
+			}
 
-				// Apply app_label filter if specified
-				if let Some(ref app_name) = app_label {
-					conflicts.retain(|app, _| app == app_name || move_sources.contains(app));
-				}
+			// Apply app_label filter if specified
+			if let Some(ref app_name) = app_label {
+				conflicts.retain(|app, _| app == app_name || move_sources.contains(app));
+			}
 
-				if conflicts.is_empty() {
-					ctx.info("No conflicts detected");
-					return Ok(());
-				}
-
-				// Generate merge migration for each conflicting app
-				let mut conflict_apps: Vec<String> = conflicts.keys().cloned().collect();
-				conflict_apps.sort();
-
-				for conflict_app in &conflict_apps {
-					let leaf_keys = &conflicts[conflict_app];
-					let leaf_names: Vec<&str> = leaf_keys.iter().map(|k| k.name.as_str()).collect();
-
-					// Generate merge name
-					let base_name = migration_name_opt
-						.clone()
-						.unwrap_or_else(|| MigrationNamer::generate_merge_name(&leaf_names));
-					let migration_number =
-						MigrationNumbering::next_number(&migrations_dir, conflict_app);
-					let final_name = format!("{}_{}", migration_number, base_name);
-
-					// Dependencies = all conflicting leaves
-					let dependencies: Vec<(String, String)> = leaf_keys
-						.iter()
-						.map(|k| (k.app_label.clone(), k.name.clone()))
-						.collect();
-
-					let merge_migration = reinhardt_db::migrations::Migration {
-						app_label: conflict_app.clone(),
-						name: final_name.clone(),
-						operations: Vec::new(),
-						dependencies,
-						atomic: true,
-						replaces: Vec::new(),
-						initial: None,
-						state_only: false,
-						database_only: false,
-						optional_dependencies: Vec::new(),
-						swappable_dependencies: Vec::new(),
-					};
-
-					if !is_dry_run {
-						service
-							.save_migration(&merge_migration)
-							.await
-							.map_err(|e| {
-								CommandError::ExecutionError(format!(
-									"Failed to save merge migration: {}",
-									e
-								))
-							})?;
-						ctx.success(&format!(
-							"Created merge migration for '{}': {}",
-							conflict_app, final_name
-						));
-					} else {
-						ctx.info(&format!(
-							"Would create merge migration for '{}': {}",
-							conflict_app, final_name
-						));
-					}
-
-					// Show merged leaves
-					for leaf in leaf_keys {
-						ctx.verbose(&format!("  Merging: {}", leaf.name));
-					}
-				}
-
+			if conflicts.is_empty() {
+				ctx.info("No conflicts detected");
 				return Ok(());
 			}
 
-			// Handle --empty flag for manual migrations
-			if is_empty {
-				let app_name = app_label.ok_or_else(|| {
-					CommandError::ExecutionError(
-						"App label is required when creating an empty migration".to_string(),
-					)
-				})?;
+			// Generate merge migration for each conflicting app
+			let mut conflict_apps: Vec<String> = conflicts.keys().cloned().collect();
+			conflict_apps.sort();
 
-				let last_migration = get_last_migration(app_name.clone()).await;
-				let dependencies: Vec<(String, String)> = if let Some(ref last) = last_migration {
-					vec![(app_name.clone(), last.name.clone())]
-				} else {
-					Vec::new()
-				};
+			for conflict_app in &conflict_apps {
+				let leaf_keys = &conflicts[conflict_app];
+				let leaf_names: Vec<&str> = leaf_keys.iter().map(|k| k.name.as_str()).collect();
 
-				// Generate migration name using new naming system
-				let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
-				let base_name = migration_name_opt.unwrap_or_else(|| "custom".to_string());
-				let name = format!("{}_{}", migration_number, base_name);
-				let new_migration = reinhardt_db::migrations::Migration {
-					app_label: app_name.clone(),
-					name: name.clone(),
+				// Generate merge name
+				let base_name = migration_name_opt
+					.clone()
+					.unwrap_or_else(|| MigrationNamer::generate_merge_name(&leaf_names));
+				let migration_number =
+					MigrationNumbering::next_number(&migrations_dir, conflict_app);
+				let final_name = format!("{}_{}", migration_number, base_name);
+
+				// Dependencies = all conflicting leaves
+				let dependencies: Vec<(String, String)> = leaf_keys
+					.iter()
+					.map(|k| (k.app_label.clone(), k.name.clone()))
+					.collect();
+
+				let merge_migration = reinhardt_db::migrations::Migration {
+					app_label: conflict_app.clone(),
+					name: final_name.clone(),
 					operations: Vec::new(),
 					dependencies,
 					atomic: true,
@@ -1374,410 +1350,472 @@ impl BaseCommand for MakeMigrationsCommand {
 
 				if !is_dry_run {
 					service
-						.save_migration(&new_migration)
+						.save_migration(&merge_migration)
 						.await
-						.map_err(|e| CommandError::ExecutionError(format!("Save error: {}", e)))?;
+						.map_err(|e| {
+							CommandError::ExecutionError(format!(
+								"Failed to save merge migration: {}",
+								e
+							))
+						})?;
 					ctx.success(&format!(
-						"Created empty migration for {}: {}",
-						app_name, name
+						"Created merge migration for '{}': {}",
+						conflict_app, final_name
 					));
 				} else {
 					ctx.info(&format!(
-						"Would create empty migration for {}: {}",
-						app_name, name
+						"Would create merge migration for '{}': {}",
+						conflict_app, final_name
 					));
 				}
-				return Ok(());
+
+				// Show merged leaves
+				for leaf in leaf_keys {
+					ctx.verbose(&format!("  Merging: {}", leaf.name));
+				}
 			}
 
-			// Keep the full graph for cross-app matching and foreign key validation.
-			// Restrict generated output below without erasing historical move sources.
-			let target_project_state = ProjectState::from_global_registry();
+			return Ok(());
+		}
 
-			// Determine which apps to process
-			let app_names: Vec<String> = if let Some(label) = app_label {
-				// Explicit app label specified
-				vec![label]
-			} else if let Some(apps) = installed_apps {
-				// Include installed apps without current models so deletions can be detected.
-				apps.to_vec()
+		// Handle --empty flag for manual migrations
+		if is_empty {
+			let app_name = app_label.ok_or_else(|| {
+				CommandError::ExecutionError(
+					"App label is required when creating an empty migration".to_string(),
+				)
+			})?;
+
+			let last_migration = get_last_migration(app_name.clone()).await;
+			let dependencies: Vec<(String, String)> = if let Some(ref last) = last_migration {
+				vec![(app_name.clone(), last.name.clone())]
 			} else {
-				// Extract all app labels from ProjectState
-				let changed_apps: Vec<String> = target_project_state
-					.models
-					.keys()
-					.map(|(app_label, _)| app_label.clone())
-					.collect::<std::collections::HashSet<_>>()
-					.into_iter()
-					.collect();
-
-				if changed_apps.is_empty() {
-					return Err(CommandError::ExecutionError(
-						"No models found. Cannot determine app_label automatically.".to_string(),
-					));
-				}
-
-				changed_apps
+				Vec::new()
 			};
 
-			let is_verbose = ctx.has_option("verbose");
+			// Generate migration name using new naming system
+			let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
+			let base_name = migration_name_opt.unwrap_or_else(|| "custom".to_string());
+			let name = format!("{}_{}", migration_number, base_name);
+			let new_migration = reinhardt_db::migrations::Migration {
+				app_label: app_name.clone(),
+				name: name.clone(),
+				operations: Vec::new(),
+				dependencies,
+				atomic: true,
+				replaces: Vec::new(),
+				initial: None,
+				state_only: false,
+				database_only: false,
+				optional_dependencies: Vec::new(),
+				swappable_dependencies: Vec::new(),
+			};
 
-			// Get database URL from context option or environment, falling back
-			// to the project's composed settings (`[core.databases.default]`)
-			// when neither is provided (#5042). An empty string preserves the
-			// TestContainers `from_state` path for offline runs.
-			let database_url = ctx
-				.option("database")
-				.map(|s| s.to_string())
-				.or_else(|| std::env::var("DATABASE_URL").ok())
-				.or_else(|| {
-					ctx.settings
-						.as_ref()
-						.and_then(|s| DatabaseConnection::database_url_from(s.as_ref(), None).ok())
-				})
-				.unwrap_or_default();
+			if !is_dry_run {
+				service
+					.save_migration(&new_migration)
+					.await
+					.map_err(|e| CommandError::ExecutionError(format!("Save error: {}", e)))?;
+				ctx.success(&format!(
+					"Created empty migration for {}: {}",
+					app_name, name
+				));
+			} else {
+				ctx.info(&format!(
+					"Would create empty migration for {}: {}",
+					app_name, name
+				));
+			}
+			return Ok(());
+		}
 
-			// 2. Build from_state from database history or TestContainers
-			// This ensures all models are treated as new, generating complete migrations
-			struct MigrationResult {
-				app_name: String,
-				migration: reinhardt_db::migrations::Migration,
+		// Keep the full graph for cross-app matching and foreign key validation.
+		// Restrict generated output below without erasing historical move sources.
+		let target_project_state = ProjectState::from_global_registry();
+
+		// Determine which apps to process
+		let app_names: Vec<String> = if let Some(label) = app_label {
+			// Explicit app label specified
+			vec![label]
+		} else if let Some(apps) = installed_apps {
+			// Include installed apps without current models so deletions can be detected.
+			apps.to_vec()
+		} else {
+			// Extract all app labels from ProjectState
+			let changed_apps: Vec<String> = target_project_state
+				.models
+				.keys()
+				.map(|(app_label, _)| app_label.clone())
+				.collect::<std::collections::HashSet<_>>()
+				.into_iter()
+				.collect();
+
+			if changed_apps.is_empty() {
+				return Err(CommandError::ExecutionError(
+					"No models found. Cannot determine app_label automatically.".to_string(),
+				));
 			}
 
-			let mut results: Vec<MigrationResult> = Vec::new();
+			changed_apps
+		};
 
-			// Build from_state based on strategy (default: TestContainers)
-			//
-			// #3871: Check --force-empty-state before any TestContainers or DB call.
-			// postgres_container() panics when Docker is unavailable, so the flag must
-			// be respected before attempting container startup, not as a fallback.
-			let from_db_flag = ctx.has_option("from-db");
-			let from_state = if ctx.has_option("force-empty-state") {
-				ctx.warning("⚠️  Using empty state as requested (--force-empty-state)");
-				ctx.warning("This may create duplicate migrations!");
-				ProjectState::new()
-			} else if from_db_flag {
-				// When --from-db flag is specified: prioritize database history
-				match build_from_state_from_db(&migrations_dir, &database_url).await {
-					Ok(state) => {
-						ctx.verbose("Built state from database history");
-						state
-					}
-					Err(e) => {
-						ctx.warning(&format!("Failed to connect to database: {}", e));
-						ctx.info("Falling back to TestContainers...");
-						match build_from_state_from_testcontainers(&migrations_dir).await {
-							Ok(state) => {
-								ctx.verbose("Built state from TestContainers");
-								state
-							}
-							Err(e) => {
-								ctx.warning(&format!("Failed to use TestContainers: {}", e));
-								ctx.info("Falling back to file-based state reconstruction...");
-								match build_from_state_from_files(&migrations_dir).await {
-									Ok(state) => {
-										ctx.verbose("Built state from migration files (offline)");
-										state
-									}
-									Err(e_files) => {
-										ctx.error(&format!(
-											"Failed file-based reconstruction: {}",
-											e_files
-										));
-										ctx.error(
-											"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
-										);
-										ctx.error(
-											"This will cause ALL tables to be regenerated, creating duplicate migrations.",
-										);
-										ctx.error("");
-										ctx.error("Possible solutions:");
-										ctx.error("  1. Fix TestContainers setup (recommended)");
-										ctx.error(
-											"  2. Use --from-db flag to build from database history",
-										);
-										ctx.error(
-											"  3. Use --force-empty-state to proceed anyway (dangerous)",
-										);
-										ctx.error("");
+		let is_verbose = ctx.has_option("verbose");
 
-										return Err("from_state construction failed. Please fix TestContainers, use --from-db, or use --force-empty-state to continue anyway.".to_string().into());
-									}
+		// Get database URL from context option or environment, falling back
+		// to the project's composed settings (`[core.databases.default]`)
+		// when neither is provided (#5042). An empty string preserves the
+		// TestContainers `from_state` path for offline runs.
+		let database_url = ctx
+			.option("database")
+			.map(|s| s.to_string())
+			.or_else(|| std::env::var("DATABASE_URL").ok())
+			.or_else(|| {
+				ctx.settings
+					.as_ref()
+					.and_then(|s| DatabaseConnection::database_url_from(s.as_ref(), None).ok())
+			})
+			.unwrap_or_default();
+
+		// 2. Build from_state from database history or TestContainers
+		// This ensures all models are treated as new, generating complete migrations
+		struct MigrationResult {
+			app_name: String,
+			migration: reinhardt_db::migrations::Migration,
+		}
+
+		let mut results: Vec<MigrationResult> = Vec::new();
+
+		// Build from_state based on strategy (default: TestContainers)
+		//
+		// #3871: Check --force-empty-state before any TestContainers or DB call.
+		// postgres_container() panics when Docker is unavailable, so the flag must
+		// be respected before attempting container startup, not as a fallback.
+		let from_db_flag = ctx.has_option("from-db");
+		let from_state = if let Some(state) = prepared_state {
+			state
+		} else if ctx.has_option("force-empty-state") {
+			ctx.warning("⚠️  Using empty state as requested (--force-empty-state)");
+			ctx.warning("This may create duplicate migrations!");
+			ProjectState::new()
+		} else if from_db_flag {
+			// When --from-db flag is specified: prioritize database history
+			match build_from_state_from_db(&migrations_dir, &database_url).await {
+				Ok(state) => {
+					ctx.verbose("Built state from database history");
+					state
+				}
+				Err(e) => {
+					ctx.warning(&format!("Failed to connect to database: {}", e));
+					ctx.info("Falling back to TestContainers...");
+					match build_from_state_from_testcontainers(&migrations_dir).await {
+						Ok(state) => {
+							ctx.verbose("Built state from TestContainers");
+							state
+						}
+						Err(e) => {
+							ctx.warning(&format!("Failed to use TestContainers: {}", e));
+							ctx.info("Falling back to file-based state reconstruction...");
+							match build_from_state_from_files(&migrations_dir).await {
+								Ok(state) => {
+									ctx.verbose("Built state from migration files (offline)");
+									state
+								}
+								Err(e_files) => {
+									ctx.error(&format!(
+										"Failed file-based reconstruction: {}",
+										e_files
+									));
+									ctx.error(
+										"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
+									);
+									ctx.error(
+										"This will cause ALL tables to be regenerated, creating duplicate migrations.",
+									);
+									ctx.error("");
+									ctx.error("Possible solutions:");
+									ctx.error("  1. Fix TestContainers setup (recommended)");
+									ctx.error(
+										"  2. Use --from-db flag to build from database history",
+									);
+									ctx.error(
+										"  3. Use --force-empty-state to proceed anyway (dangerous)",
+									);
+									ctx.error("");
+
+									return Err("from_state construction failed. Please fix TestContainers, use --from-db, or use --force-empty-state to continue anyway.".to_string().into());
 								}
 							}
 						}
 					}
 				}
-			} else {
-				// Default: prioritize TestContainers
-				match build_from_state_from_testcontainers(&migrations_dir).await {
-					Ok(state) => {
-						ctx.verbose("Built state from TestContainers");
-						state
-					}
-					Err(e) => {
-						ctx.warning(&format!("Failed to use TestContainers: {}", e));
-						ctx.info("Falling back to database history...");
-						match build_from_state_from_db(&migrations_dir, &database_url).await {
-							Ok(state) => {
-								ctx.verbose("Built state from database history");
-								state
-							}
-							Err(e) => {
-								ctx.warning(&format!("Failed to connect to database: {}", e));
-								ctx.info("Falling back to file-based state reconstruction...");
-								match build_from_state_from_files(&migrations_dir).await {
-									Ok(state) => {
-										ctx.verbose("Built state from migration files (offline)");
-										state
-									}
-									Err(e_files) => {
-										ctx.error(&format!(
-											"Failed file-based reconstruction: {}",
-											e_files
-										));
-										ctx.error(
-											"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
-										);
-										ctx.error(
-											"This will cause ALL tables to be regenerated, creating duplicate migrations.",
-										);
-										ctx.error("");
-										ctx.error("Possible solutions:");
-										ctx.error("  1. Fix database connection (recommended)");
-										ctx.error(
-											"  2. Use TestContainers (default behavior without --from-db)",
-										);
-										ctx.error(
-											"  3. Use --force-empty-state to proceed anyway (dangerous)",
-										);
-										ctx.error("");
+			}
+		} else {
+			// Default: prioritize TestContainers
+			match build_from_state_from_testcontainers(&migrations_dir).await {
+				Ok(state) => {
+					ctx.verbose("Built state from TestContainers");
+					state
+				}
+				Err(e) => {
+					ctx.warning(&format!("Failed to use TestContainers: {}", e));
+					ctx.info("Falling back to database history...");
+					match build_from_state_from_db(&migrations_dir, &database_url).await {
+						Ok(state) => {
+							ctx.verbose("Built state from database history");
+							state
+						}
+						Err(e) => {
+							ctx.warning(&format!("Failed to connect to database: {}", e));
+							ctx.info("Falling back to file-based state reconstruction...");
+							match build_from_state_from_files(&migrations_dir).await {
+								Ok(state) => {
+									ctx.verbose("Built state from migration files (offline)");
+									state
+								}
+								Err(e_files) => {
+									ctx.error(&format!(
+										"Failed file-based reconstruction: {}",
+										e_files
+									));
+									ctx.error(
+										"⚠️  CRITICAL: Cannot build from_state from existing migrations!",
+									);
+									ctx.error(
+										"This will cause ALL tables to be regenerated, creating duplicate migrations.",
+									);
+									ctx.error("");
+									ctx.error("Possible solutions:");
+									ctx.error("  1. Fix database connection (recommended)");
+									ctx.error(
+										"  2. Use TestContainers (default behavior without --from-db)",
+									);
+									ctx.error(
+										"  3. Use --force-empty-state to proceed anyway (dangerous)",
+									);
+									ctx.error("");
 
-										return Err("from_state construction failed. Please fix database connection, remove --from-db, or use --force-empty-state to continue anyway.".to_string().into());
-									}
+									return Err("from_state construction failed. Please fix database connection, remove --from-db, or use --force-empty-state to continue anyway.".to_string().into());
 								}
 							}
 						}
 					}
 				}
-			};
+			}
+		};
 
-			// Compare complete snapshots before restricting generated files, keeping
-			// provider tables and historical move sources visible for dependencies.
-			let detector = reinhardt_db::migrations::MigrationAutodetector::new(
-				from_state.clone(),
-				target_project_state.clone(),
-			);
-			let mut generated_migrations = detector.generate_migrations();
+		// Compare complete snapshots before restricting generated files, keeping
+		// provider tables and historical move sources visible for dependencies.
+		let detector = reinhardt_db::migrations::MigrationAutodetector::new(
+			from_state.clone(),
+			target_project_state.clone(),
+		);
+		let mut generated_migrations = detector.generate_migrations();
+		if let Some(apps) = installed_apps {
+			for migration in &generated_migrations {
+				for operation in &migration.operations {
+					if let reinhardt_db::migrations::Operation::MoveModel {
+						from_app, to_app, ..
+					} = operation && apps.contains(from_app)
+						&& !apps.contains(to_app)
+					{
+						return Err(CommandError::ExecutionError(format!(
+							"App '{from_app}' moves a model to uninstalled app '{to_app}'. Add '{to_app}' to CoreSettings::installed_apps before generating migrations."
+						)));
+					}
+				}
+			}
+		}
+		generated_migrations.retain(|migration| {
+			installed_apps.is_none_or(|apps| apps.contains(&migration.app_label))
+		});
+		let apps_to_write =
+			expand_apps_with_fk_providers(&app_names, &generated_migrations, &target_project_state);
+		let move_sources = makemigrations_move_source_apps(&generated_migrations, &apps_to_write);
+
+		// Reject conflicting history for installed apps and selected move sources.
+		let all_migrations = service.load_all().await.map_err(|e| {
+			CommandError::ExecutionError(format!(
+				"Failed to load migrations for conflict check: {}",
+				e
+			))
+		})?;
+		if !all_migrations.is_empty() {
+			let graph = build_migration_graph(&all_migrations);
+
+			let mut conflicts = graph.detect_conflicts();
 			if let Some(apps) = installed_apps {
-				for migration in &generated_migrations {
-					for operation in &migration.operations {
-						if let reinhardt_db::migrations::Operation::MoveModel {
-							from_app,
-							to_app,
-							..
-						} = operation && apps.contains(from_app)
-							&& !apps.contains(to_app)
-						{
+				conflicts.retain(|app, _| apps.contains(app) || move_sources.contains(app));
+			}
+			if !conflicts.is_empty() {
+				let mut conflict_apps: Vec<&String> = conflicts.keys().collect();
+				conflict_apps.sort();
+				for app in &conflict_apps {
+					let leaves = &conflicts[*app];
+					let leaf_names: Vec<&str> = leaves.iter().map(|k| k.name.as_str()).collect();
+					ctx.error(&format!(
+						"Conflicting migrations detected for '{}': {}",
+						app,
+						leaf_names.join(", ")
+					));
+				}
+				return Err(CommandError::ExecutionError(
+					"Run 'makemigrations --merge' to resolve migration conflicts.".to_string(),
+				));
+			}
+		}
+		let existing_latest = latest_existing_migration_names(&all_migrations);
+
+		let mut pending: Vec<(reinhardt_db::migrations::Migration, String, String)> = Vec::new();
+		let mut this_run_names = std::collections::BTreeMap::new();
+		for migration in generated_migrations {
+			if !apps_to_write.contains(&migration.app_label) {
+				continue;
+			}
+			if let Some(apps) = installed_apps {
+				for operation in &migration.operations {
+					// A move depends on existing source-app history, which remains valid
+					// after the source is removed from the installed app list.
+					if matches!(
+						operation,
+						reinhardt_db::migrations::Operation::MoveModel { .. }
+					) {
+						continue;
+					}
+					for provider in
+						reinhardt_db::migrations::MigrationAutodetector::foreign_key_provider_apps(
+							&target_project_state,
+							std::slice::from_ref(operation),
+							&migration.app_label,
+						) {
+						if !apps.contains(&provider) {
 							return Err(CommandError::ExecutionError(format!(
-								"App '{from_app}' moves a model to uninstalled app '{to_app}'. Add '{to_app}' to CoreSettings::installed_apps before generating migrations."
+								"App '{}' references uninstalled app '{provider}'. Add '{provider}' to CoreSettings::installed_apps before generating migrations.",
+								migration.app_label
 							)));
 						}
 					}
 				}
 			}
-			generated_migrations.retain(|migration| {
-				installed_apps.is_none_or(|apps| apps.contains(&migration.app_label))
+			let app_name = migration.app_label.clone();
+			let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
+			let is_initial = migration_number == "0001";
+			let base_name = migration_name_opt.clone().unwrap_or_else(|| {
+				MigrationNamer::generate_name(&migration.operations, is_initial)
 			});
-			let apps_to_write = expand_apps_with_fk_providers(
-				&app_names,
-				&generated_migrations,
+			let final_name = format!("{}_{}", migration_number, base_name);
+			this_run_names.insert(app_name.clone(), final_name.clone());
+			pending.push((migration, migration_number, final_name));
+		}
+
+		for (migration, migration_number, final_name) in pending {
+			let app_name = migration.app_label.clone();
+			let dependencies = resolve_makemigrations_dependencies(
+				&app_name,
+				&migration_number,
+				&migration.operations,
 				&target_project_state,
+				&this_run_names,
+				&existing_latest,
 			);
-			let move_sources =
-				makemigrations_move_source_apps(&generated_migrations, &apps_to_write);
 
-			// Reject conflicting history for installed apps and selected move sources.
-			let all_migrations = service.load_all().await.map_err(|e| {
-				CommandError::ExecutionError(format!(
-					"Failed to load migrations for conflict check: {}",
-					e
-				))
-			})?;
-			if !all_migrations.is_empty() {
-				let graph = build_migration_graph(&all_migrations);
+			let new_migration = reinhardt_db::migrations::Migration {
+				app_label: app_name.clone(),
+				name: final_name,
+				operations: migration.operations,
+				dependencies,
+				atomic: true,
+				replaces: Vec::new(),
+				initial: if migration_number == "0001" {
+					Some(true)
+				} else {
+					None
+				},
+				state_only: false,
+				database_only: false,
+				optional_dependencies: Vec::new(),
+				swappable_dependencies: Vec::new(),
+			};
 
-				let mut conflicts = graph.detect_conflicts();
-				if let Some(apps) = installed_apps {
-					conflicts.retain(|app, _| apps.contains(app) || move_sources.contains(app));
-				}
-				if !conflicts.is_empty() {
-					let mut conflict_apps: Vec<&String> = conflicts.keys().collect();
-					conflict_apps.sort();
-					for app in &conflict_apps {
-						let leaves = &conflicts[*app];
-						let leaf_names: Vec<&str> =
-							leaves.iter().map(|k| k.name.as_str()).collect();
-						ctx.error(&format!(
-							"Conflicting migrations detected for '{}': {}",
-							app,
-							leaf_names.join(", ")
-						));
+			results.push(MigrationResult {
+				app_name,
+				migration: new_migration,
+			});
+		}
+
+		// 4. Write all migrations
+		if !results.is_empty() {
+			let migration_count = results.len();
+			for result in results {
+				ctx.info(&format!("Migrations for '{}':", result.app_name));
+
+				// Build the correct file path from migration name
+				let migration_file_path = migrations_dir
+					.join(&result.app_name)
+					.join(format!("{}.rs", result.migration.name));
+
+				if !is_dry_run {
+					service
+						.save_migration(&result.migration)
+						.await
+						.map_err(|e| {
+							let err_msg = e.to_string();
+							if err_msg.contains("already exists") {
+								CommandError::ExecutionError(format!(
+									"Migration file already exists: {}
+
+								Possible solutions:
+								1. If the operations are identical, you don't need a new migration
+								2. If you want to modify the migration, delete the existing file first:
+								   rm migrations/{}/{{migration_file}}.rs
+								3. If you want to keep both, manually rename the existing file",
+									e, result.app_name
+								))
+							} else {
+								CommandError::ExecutionError(format!("Save error: {}", e))
+							}
+						})?;
+					ctx.success(&format!("  {}", migration_file_path.display()));
+
+					// Show detailed operations if --verbose
+					if is_verbose {
+						for operation in &result.migration.operations {
+							let description = operation_description(operation);
+							ctx.info(&format!("    - {}", description));
+						}
 					}
-					return Err(CommandError::ExecutionError(
-						"Run 'makemigrations --merge' to resolve migration conflicts.".to_string(),
+				} else {
+					ctx.info(&format!(
+						"  Would create: {}",
+						migration_file_path.display()
 					));
-				}
-			}
-			let existing_latest = latest_existing_migration_names(&all_migrations);
 
-			let mut pending: Vec<(reinhardt_db::migrations::Migration, String, String)> =
-				Vec::new();
-			let mut this_run_names = std::collections::BTreeMap::new();
-			for migration in generated_migrations {
-				if !apps_to_write.contains(&migration.app_label) {
-					continue;
-				}
-				if let Some(apps) = installed_apps {
-					for operation in &migration.operations {
-						// A move depends on existing source-app history, which remains valid
-						// after the source is removed from the installed app list.
-						if matches!(
-							operation,
-							reinhardt_db::migrations::Operation::MoveModel { .. }
-						) {
-							continue;
-						}
-						for provider in reinhardt_db::migrations::MigrationAutodetector::foreign_key_provider_apps(
-							&target_project_state,
-							std::slice::from_ref(operation),
-							&migration.app_label,
-						) {
-							if !apps.contains(&provider) {
-								return Err(CommandError::ExecutionError(format!(
-									"App '{}' references uninstalled app '{provider}'. Add '{provider}' to CoreSettings::installed_apps before generating migrations.",
-									migration.app_label
-								)));
-							}
+					if is_verbose {
+						for operation in &result.migration.operations {
+							let description = operation_description(operation);
+							ctx.info(&format!("    - {}", description));
 						}
 					}
 				}
-				let app_name = migration.app_label.clone();
-				let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
-				let is_initial = migration_number == "0001";
-				let base_name = migration_name_opt.clone().unwrap_or_else(|| {
-					MigrationNamer::generate_name(&migration.operations, is_initial)
-				});
-				let final_name = format!("{}_{}", migration_number, base_name);
-				this_run_names.insert(app_name.clone(), final_name.clone());
-				pending.push((migration, migration_number, final_name));
 			}
-
-			for (migration, migration_number, final_name) in pending {
-				let app_name = migration.app_label.clone();
-				let dependencies = resolve_makemigrations_dependencies(
-					&app_name,
-					&migration_number,
-					&migration.operations,
-					&target_project_state,
-					&this_run_names,
-					&existing_latest,
-				);
-
-				let new_migration = reinhardt_db::migrations::Migration {
-					app_label: app_name.clone(),
-					name: final_name,
-					operations: migration.operations,
-					dependencies,
-					atomic: true,
-					replaces: Vec::new(),
-					initial: if migration_number == "0001" {
-						Some(true)
-					} else {
-						None
-					},
-					state_only: false,
-					database_only: false,
-					optional_dependencies: Vec::new(),
-					swappable_dependencies: Vec::new(),
-				};
-
-				results.push(MigrationResult {
-					app_name,
-					migration: new_migration,
-				});
+			if is_check {
+				return Err(CommandError::ExecutionError(format!(
+					"{migration_count} migration(s) would be created"
+				)));
 			}
-
-			// 4. Write all migrations
-			if !results.is_empty() {
-				for result in results {
-					ctx.info(&format!("Migrations for '{}':", result.app_name));
-
-					// Build the correct file path from migration name
-					let migration_file_path = migrations_dir
-						.join(&result.app_name)
-						.join(format!("{}.rs", result.migration.name));
-
-					if !is_dry_run {
-						service
-							.save_migration(&result.migration)
-							.await
-							.map_err(|e| {
-								let err_msg = e.to_string();
-								if err_msg.contains("already exists") {
-									CommandError::ExecutionError(format!(
-										"Migration file already exists: {}
-									
-									Possible solutions:
-									1. If the operations are identical, you don't need a new migration
-									2. If you want to modify the migration, delete the existing file first:
-									   rm migrations/{}/{{migration_file}}.rs
-									3. If you want to keep both, manually rename the existing file",
-										e, result.app_name
-									))
-								} else {
-									CommandError::ExecutionError(format!("Save error: {}", e))
-								}
-							})?;
-						ctx.success(&format!("  {}", migration_file_path.display()));
-
-						// Show detailed operations if --verbose
-						if is_verbose {
-							for operation in &result.migration.operations {
-								let description = operation_description(operation);
-								ctx.info(&format!("    - {}", description));
-							}
-						}
-					} else {
-						ctx.info(&format!(
-							"  Would create: {}",
-							migration_file_path.display()
-						));
-
-						if is_verbose {
-							for operation in &result.migration.operations {
-								let description = operation_description(operation);
-								ctx.info(&format!("    - {}", description));
-							}
-						}
-					}
-				}
-			} else {
-				ctx.info("No changes detected");
-			}
-
-			Ok(())
+		} else {
+			ctx.info("No changes detected");
 		}
 
-		#[cfg(not(feature = "migrations"))]
-		{
-			ctx.warning("Migrations feature not enabled");
-			ctx.info("To use makemigrations, enable the 'migrations' feature");
-			Ok(())
-		}
+		Ok(())
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	{
+		ctx.warning("Migrations feature not enabled");
+		ctx.info("To use makemigrations, enable the 'migrations' feature");
+		Ok(())
 	}
 }
-
 #[cfg(feature = "migrations")]
 fn latest_existing_migration_names(
 	migrations: &[reinhardt_db::migrations::Migration],
