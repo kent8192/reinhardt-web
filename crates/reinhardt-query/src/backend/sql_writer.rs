@@ -34,8 +34,8 @@ pub struct SqlWriter {
 	values: Values,
 	/// Current parameter index (1-based for PostgreSQL)
 	param_index: usize,
-	/// Render managed values directly, preserving raw SQL fragments verbatim.
-	inline_values: bool,
+	/// Render managed values with the backend's literal syntax when supplied.
+	inline_value: Option<fn(&Value) -> String>,
 }
 
 impl SqlWriter {
@@ -45,13 +45,13 @@ impl SqlWriter {
 			sql: String::new(),
 			values: Values::default(),
 			param_index: 1,
-			inline_values: false,
+			inline_value: None,
 		}
 	}
 
-	pub(crate) fn new_inlined() -> Self {
+	pub(crate) fn new_inlined(render_value: fn(&Value) -> String) -> Self {
 		Self {
-			inline_values: true,
+			inline_value: Some(render_value),
 			..Self::new()
 		}
 	}
@@ -60,7 +60,7 @@ impl SqlWriter {
 	// mode it collects no parameters, so raw bind markers are never renumbered.
 	pub(crate) fn for_subquery(&self) -> Self {
 		Self {
-			inline_values: self.inline_values,
+			inline_value: self.inline_value,
 			..Self::new()
 		}
 	}
@@ -128,8 +128,8 @@ impl SqlWriter {
 			return None;
 		}
 
-		if self.inline_values {
-			self.sql.push_str(&value.to_sql_literal());
+		if let Some(render_value) = self.inline_value {
+			self.sql.push_str(&render_value(&value));
 			return None;
 		}
 

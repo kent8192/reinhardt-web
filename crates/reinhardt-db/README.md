@@ -889,6 +889,9 @@ Optimize how related objects are loaded:
   - Model creation/deletion detection
   - Field addition/removal/modification detection
   - Smart rename detection for models and fields
+  - Same-app physical-table matches take precedence over similarity-based renames.
+    Replayed migration state can use inferred model names without swapping
+    unchanged tables that have identical schemas.
   - Index and constraint change detection
 
 - **Migration Execution**

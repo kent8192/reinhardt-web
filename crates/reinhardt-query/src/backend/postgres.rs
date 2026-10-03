@@ -53,7 +53,7 @@ use crate::{
 		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
 	types::{BinOper, ColumnRef, TableRef, TriggerBody},
-	value::Values,
+	value::{ArrayType, Value, Values},
 };
 
 /// PostgreSQL query builder
@@ -61,6 +61,9 @@ use crate::{
 /// This struct implements SQL generation for PostgreSQL, using the following conventions:
 /// - Identifiers: Double quotes (`"table_name"`)
 /// - Placeholders: Numbered (`$1`, `$2`, ...)
+/// - Inline bytes: Hex-encoded literals with an explicit PostgreSQL `bytea` type
+/// - Inline byte arrays: Recursively rendered elements with a `bytea[]` type,
+///   including empty arrays and arrays containing only NULL elements
 /// - Grouping: Typed expressions retain their precedence and associativity
 ///   through parentheses, including WHERE/HAVING predicates and DDL constraints
 /// - Custom predicates: Opaque SQL expressions are parenthesized when composed
@@ -105,6 +108,17 @@ use crate::{
 ///     r#"SELECT "id" FROM "runs" WHERE (lease_until IS NULL OR lease_until <= CURRENT_TIMESTAMP) AND "id" = 2"#,
 /// );
 /// ```
+///
+/// Byte literals also retain their type when selected without a column context:
+///
+/// ```rust
+/// use reinhardt_query::{Expr, PostgresQueryBuilder, Query, QueryStatementBuilder};
+///
+/// let query = Query::select()
+///     .expr(Expr::value(vec![0x00_u8, 0x01, 0xff]))
+///     .to_owned();
+/// assert_eq!(query.to_string(PostgresQueryBuilder), r"SELECT E'\\x0001ff'::bytea");
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct PostgresQueryBuilder;
 
@@ -112,6 +126,32 @@ impl PostgresQueryBuilder {
 	/// Create a new PostgreSQL query builder
 	pub fn new() -> Self {
 		Self
+	}
+
+	pub(crate) fn value_to_sql_literal(value: &Value) -> String {
+		match value {
+			Value::Bytes(Some(bytes)) => {
+				let mut literal = String::with_capacity(bytes.len() * 2 + 13);
+				// Escape-string syntax preserves the bytea hex prefix regardless of
+				// standard_conforming_strings; the cast also types standalone values.
+				literal.push_str("E'\\\\x");
+				for byte in bytes.iter() {
+					write!(literal, "{byte:02x}").unwrap();
+				}
+				literal.push_str("'::bytea");
+				literal
+			}
+			Value::Array(array_type, Some(values)) => {
+				let items: Vec<String> = values.iter().map(Self::value_to_sql_literal).collect();
+				let mut literal = format!("ARRAY[{}]", items.join(","));
+				if matches!(array_type, ArrayType::Bytes) {
+					// The cast also types empty arrays and arrays of NULL elements.
+					literal.push_str("::bytea[]");
+				}
+				literal
+			}
+			_ => value.to_sql_literal(),
+		}
 	}
 
 	/// Escape an identifier for PostgreSQL
@@ -759,14 +799,8 @@ impl PostgresQueryBuilder {
 						let escaped = c.to_string().replace('\'', "''");
 						writer.push(&format!("'{}'", escaped));
 					}
-					Value::Bytes(Some(b)) => {
-						let mut hex = String::with_capacity(b.as_ref().len() * 2);
-						for byte in b.as_ref() {
-							write!(hex, "{:02x}", byte).unwrap();
-						}
-						writer.push("E'\\\\x");
-						writer.push(&hex);
-						writer.push("'");
+					Value::Bytes(Some(_)) | Value::Array(_, Some(_)) => {
+						writer.push(&Self::value_to_sql_literal(value));
 					}
 					#[cfg(feature = "with-chrono")]
 					Value::ChronoDate(Some(d)) => {

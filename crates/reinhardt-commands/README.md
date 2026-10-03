@@ -299,6 +299,13 @@ the direction is resolved from the currently applied state.
 optional, supplying a `<MIGRATION_NAME>` requires `<APP_LABEL>` to be given as
 well; otherwise the command fails with `<migration> requires <app>`.
 
+Without a target, `Loaded N migration(s)` reports the selected migration files,
+including files already recorded as applied. The final `Applied N migration(s)
+successfully` summary counts only migrations newly applied by that invocation.
+Repeating a completed migration run reports `Applied 0 migration(s) successfully`.
+With `--fake`, the summary uses `Faked N migration(s) successfully` to distinguish
+recorder updates from executed migrations.
+
 #### Migrate to a Target
 
 When a `<MIGRATION_NAME>` is given, the direction is auto-detected by comparing

@@ -3,11 +3,261 @@
 use reinhardt_query::query::traits::inline_params;
 use reinhardt_query::types::{TriggerEvent, TriggerScope, TriggerTiming};
 use reinhardt_query::{
-	Alias, ColumnDef, Expr, ExprTrait, IntoIden, MySqlQueryBuilder, PostgresQueryBuilder, Query,
-	QueryBuilderTrait, QueryStatementBuilder, SelectStatement, SqliteQueryBuilder, TableRef, Value,
-	Values,
+	Alias, ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, IntoIden, MySqlQueryBuilder,
+	PostgresQueryBuilder, Query, QueryBuilderTrait, QueryStatementBuilder, SelectStatement,
+	SimpleExpr, SqliteQueryBuilder, TableRef, Value, Values,
 };
 use rstest::{fixture, rstest};
+
+#[rstest]
+#[case::reported_bytes(Some(vec![0x00, 0x01, 0xff]), r"E'\\x0001ff'::bytea")]
+#[case::empty(Some(vec![]), r"E'\\x'::bytea")]
+#[case::sql_sensitive_bytes(Some(vec![0x00, 0x27, 0x5c, 0x80, 0xff]), r"E'\\x00275c80ff'::bytea")]
+#[case::null(None, "NULL")]
+fn postgres_to_string_renders_bytea_values(#[case] bytes: Option<Vec<u8>>, #[case] literal: &str) {
+	// Arrange
+	let value = Value::Bytes(bytes.map(Box::new));
+	let query = Query::select()
+		.expr(Expr::value(value.clone()))
+		.expr(SimpleExpr::CustomWithExpr(
+			"(?)".into(),
+			vec![Expr::value(value.clone()).into()],
+		))
+		.to_owned();
+
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+	let inlined = query.to_string(PostgresQueryBuilder);
+	let after = query.build(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(inlined, format!("SELECT {literal}, ({literal})"));
+	if value.is_null() {
+		assert_eq!(sql, "SELECT NULL, (NULL)");
+		assert_eq!(values, Values::new());
+	} else {
+		assert_eq!(sql, "SELECT $1, ($2)");
+		assert_eq!(values, Values(vec![value.clone(), value]));
+	}
+	assert_eq!(after, (sql, values));
+}
+
+#[rstest]
+#[case::mysql(MySqlQueryBuilder)]
+#[case::sqlite(SqliteQueryBuilder)]
+fn to_string_preserves_other_backend_byte_literals(#[case] builder: impl QueryBuilderTrait) {
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::value(vec![0x00_u8, 0x01, 0xff]))
+		.to_owned();
+
+	// Act
+	let inlined = query.to_string(builder);
+
+	// Assert
+	assert_eq!(inlined, "SELECT X'0001FF'");
+}
+
+#[rstest]
+fn inline_params_renders_postgres_bytea_values() {
+	// Arrange
+	let values = Values(vec![vec![0x00_u8, 0x01, 0xff].into(), Value::Bytes(None)]);
+
+	// Act
+	let inlined = inline_params("SELECT $1, $2, $1", &values);
+
+	// Assert
+	assert_eq!(
+		inlined,
+		r"SELECT E'\\x0001ff'::bytea, NULL, E'\\x0001ff'::bytea"
+	);
+}
+
+#[rstest]
+#[case::reported_bytes(Some(vec![0x00, 0x01, 0xff]), "X'0001FF'")]
+#[case::empty(Some(vec![]), "X''")]
+#[case::sql_sensitive_bytes(Some(vec![0x00, 0x27, 0x5c, 0x80, 0xff]), "X'00275C80FF'")]
+#[case::null(None, "NULL")]
+fn inline_params_preserves_positional_byte_literals(
+	#[case] bytes: Option<Vec<u8>>,
+	#[case] literal: &str,
+) {
+	// Arrange
+	let values = Values(vec![Value::Bytes(bytes.map(Box::new)), Value::Bytes(None)]);
+
+	// Act
+	let inlined = inline_params("SELECT ?, ?, ?", &values);
+
+	// Assert
+	assert_eq!(inlined, format!("SELECT {literal}, NULL, ?"));
+}
+
+#[rstest]
+#[case::quoted("SELECT '$1', ?", "SELECT '$1', X'0001FF'")]
+#[case::comment("SELECT /* $1 */ ?", "SELECT /* $1 */ X'0001FF'")]
+#[case::dollar_quote("SELECT $$ $1 $$, ?", "SELECT $$ $1 $$, X'0001FF'")]
+#[case::identifier("SELECT price$1, ?", "SELECT price$1, X'0001FF'")]
+#[case::numbered_precedence("SELECT ?, $1", r"SELECT ?, E'\\x0001ff'::bytea")]
+fn inline_params_infers_byte_literal_syntax_from_placeholder_tokens(
+	#[case] sql: &str,
+	#[case] expected: &str,
+) {
+	// Arrange
+	let values = Values(vec![vec![0x00_u8, 0x01, 0xff].into()]);
+
+	// Act
+	let inlined = inline_params(sql, &values);
+
+	// Assert
+	assert_eq!(inlined, expected);
+}
+
+#[rstest]
+fn postgres_to_string_propagates_bytea_rendering_to_subqueries() {
+	// Arrange
+	let inner = Query::select()
+		.expr(Expr::cust("$1"))
+		.expr(Expr::value(vec![0x00_u8, 0x01, 0xff]))
+		.to_owned();
+	let query = Query::select().expr(Expr::subquery(inner)).to_owned();
+
+	// Act
+	let inlined = query.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(inlined, r"SELECT (SELECT $1, E'\\x0001ff'::bytea)");
+}
+
+#[rstest]
+fn postgres_to_string_renders_bytea_defaults_and_checks() {
+	// Arrange
+	let bytes = vec![0x00_u8, 0x01, 0xff];
+	let query = Query::create_table()
+		.table("records")
+		.col(
+			ColumnDef::new("value")
+				.blob()
+				.default(Expr::value(bytes.clone()).into())
+				.check(Expr::col("value").eq(Expr::value(bytes))),
+		)
+		.to_owned();
+
+	// Act
+	let inlined = query.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(
+		inlined,
+		r#"CREATE TABLE "records" ("value" BYTEA DEFAULT E'\\x0001ff'::bytea CHECK ("value" = E'\\x0001ff'::bytea))"#
+	);
+}
+
+#[rstest]
+#[case::mixed_bytes(
+	ArrayType::Bytes,
+	Some(vec![vec![0x00_u8, 0xff].into(), Vec::<u8>::new().into(), Value::Bytes(None)]),
+	r"ARRAY[E'\\x00ff'::bytea,E'\\x'::bytea,NULL]::bytea[]"
+)]
+#[case::empty_bytes(ArrayType::Bytes, Some(vec![]), "ARRAY[]::bytea[]")]
+#[case::null_bytes(ArrayType::Bytes, Some(vec![Value::Bytes(None)]), "ARRAY[NULL]::bytea[]")]
+#[case::null_array(ArrayType::Bytes, None, "NULL")]
+#[case::other_elements(ArrayType::Int, Some(vec![7_i32.into(), Value::Int(None)]), "ARRAY[7,NULL]")]
+#[case::nested_bytes(
+	ArrayType::Bytes,
+	Some(vec![
+		Value::Array(ArrayType::Bytes, Some(Box::new(vec![vec![0x00_u8].into()]))),
+		Value::Array(ArrayType::Bytes, Some(Box::new(vec![vec![0xff_u8].into()]))),
+	]),
+	r"ARRAY[ARRAY[E'\\x00'::bytea]::bytea[],ARRAY[E'\\xff'::bytea]::bytea[]]::bytea[]"
+)]
+fn postgres_to_string_renders_array_elements_with_backend_literals(
+	#[case] array_type: ArrayType,
+	#[case] elements: Option<Vec<Value>>,
+	#[case] literal: &str,
+) {
+	// Arrange
+	let value = Value::Array(array_type, elements.map(Box::new));
+	let inner = Query::select().expr(Expr::value(value.clone())).to_owned();
+	let query = Query::select()
+		.expr(Expr::value(value.clone()))
+		.expr(SimpleExpr::CustomWithExpr(
+			"(?)".into(),
+			vec![Expr::value(value.clone()).into()],
+		))
+		.expr(Expr::subquery(inner))
+		.to_owned();
+
+	// Act
+	let (sql, values) = query.build(PostgresQueryBuilder);
+	let inlined = query.to_string(PostgresQueryBuilder);
+	let helper_inlined = inline_params("SELECT $1", &Values(vec![value.clone()]));
+	let after = query.build(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(
+		inlined,
+		format!("SELECT {literal}, ({literal}), (SELECT {literal})")
+	);
+	assert_eq!(helper_inlined, format!("SELECT {literal}"));
+	if value.is_null() {
+		assert_eq!(sql, "SELECT NULL, (NULL), (SELECT NULL)");
+		assert_eq!(values, Values::new());
+	} else {
+		assert_eq!(sql, "SELECT $1, ($2), (SELECT $3)");
+		assert_eq!(values, Values(vec![value.clone(), value.clone(), value]));
+	}
+	assert_eq!(after, (sql, values));
+}
+
+#[rstest]
+fn inline_params_preserves_generic_byte_array_literals_for_positional_placeholders() {
+	// Arrange
+	let value = Value::Array(
+		ArrayType::Bytes,
+		Some(Box::new(vec![
+			vec![0x00_u8, 0xff].into(),
+			Value::Bytes(None),
+		])),
+	);
+
+	// Act
+	let inlined = inline_params("SELECT ?", &Values(vec![value.clone()]));
+	let generic = value.to_sql_literal();
+
+	// Assert
+	assert_eq!(inlined, "SELECT ARRAY[X'00FF',NULL]");
+	assert_eq!(generic, "ARRAY[X'00FF',NULL]");
+}
+
+#[rstest]
+fn postgres_to_string_renders_byte_array_defaults_and_checks() {
+	// Arrange
+	let value = Value::Array(
+		ArrayType::Bytes,
+		Some(Box::new(vec![
+			vec![0x00_u8, 0xff].into(),
+			Value::Bytes(None),
+		])),
+	);
+	let query = Query::create_table()
+		.table("records")
+		.col(
+			ColumnDef::new("value")
+				.array(ColumnType::Blob)
+				.default(Expr::value(value.clone()).into())
+				.check(Expr::col("value").eq(Expr::value(value))),
+		)
+		.to_owned();
+
+	// Act
+	let inlined = query.to_string(PostgresQueryBuilder);
+
+	// Assert
+	assert_eq!(
+		inlined,
+		r#"CREATE TABLE "records" ("value" BYTEA[] DEFAULT ARRAY[E'\\x00ff'::bytea,NULL]::bytea[] CHECK ("value" = ARRAY[E'\\x00ff'::bytea,NULL]::bytea[]))"#
+	);
+}
 
 #[rstest]
 #[case::mysql(

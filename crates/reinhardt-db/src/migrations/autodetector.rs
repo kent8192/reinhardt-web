@@ -4830,19 +4830,19 @@ impl MigrationAutodetector {
 	/// assert!(changes.renamed_models.len() <= 1);
 	/// ```
 	fn detect_renamed_models(&self, changes: &mut DetectedChanges) {
-		// Get deleted and created models
-		let deleted: Vec<_> = self
-			.from_state
-			.models
-			.keys()
-			.filter(|k| !self.to_state.models.contains_key(k))
+		// Reuse physical-table create/delete candidates so unchanged (app, table)
+		// identities cannot be reassigned by schema similarity. Migration replay
+		// may infer different model names for those tables.
+		let deleted: Vec<_> = changes
+			.deleted_models
+			.iter()
+			.filter(|key| !self.to_state.models.contains_key(*key))
 			.collect();
 
-		let created: Vec<_> = self
-			.to_state
-			.models
-			.keys()
-			.filter(|k| !self.from_state.models.contains_key(k))
+		let created: Vec<_> = changes
+			.created_models
+			.iter()
+			.filter(|key| !self.from_state.models.contains_key(*key))
 			.collect();
 
 		// Use bipartite matching to find optimal model pairs

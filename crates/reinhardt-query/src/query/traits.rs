@@ -23,6 +23,8 @@ use crate::value::Values;
 /// (including MySQL's default string escapes).
 /// Numbered tokens take precedence over `?` tokens, which can be PostgreSQL
 /// operators. Placeholders without a corresponding value are left unchanged.
+/// Numbered placeholders use PostgreSQL literals; positional placeholders retain
+/// generic literal syntax, including `X'...'` for bytes.
 pub fn inline_params(sql: &str, values: &Values) -> String {
 	inline_params_with_dialect(
 		sql,
@@ -70,7 +72,12 @@ fn inline_params_with_dialect(sql: &str, values: &Values, dialect: InlineDialect
 		};
 		if let Some(value) = index.and_then(|index| values.0.get(index)) {
 			result.push_str(&sql[copied_until..range.start]);
-			result.push_str(&value.to_sql_literal());
+			let literal = if dialect.postgres && numbered {
+				PostgresQueryBuilder::value_to_sql_literal(value)
+			} else {
+				value.to_sql_literal()
+			};
+			result.push_str(&literal);
 			copied_until = range.end;
 		}
 	}
@@ -247,7 +254,12 @@ pub(crate) fn postgres_to_string<S: QueryStatementBuilder, T: QueryBuilderTrait>
 	render: fn(&PostgresQueryBuilder, &S, SqlWriter) -> (String, Values),
 ) -> String {
 	if let Some(postgres) = (&query_builder as &dyn Any).downcast_ref::<PostgresQueryBuilder>() {
-		render(postgres, statement, SqlWriter::new_inlined()).0
+		render(
+			postgres,
+			statement,
+			SqlWriter::new_inlined(PostgresQueryBuilder::value_to_sql_literal),
+		)
+		.0
 	} else {
 		inline_statement(statement, query_builder)
 	}
@@ -289,6 +301,9 @@ pub trait QueryStatementBuilder: Debug {
 	/// Raw SQL fragments, including `$n` bind markers in [`crate::Expr::cust`], are
 	/// preserved verbatim. Such markers still require caller-supplied bindings;
 	/// prefer fully managed parameters when executing queries with [`Self::build`].
+	/// Byte values use typed PostgreSQL `bytea` hex literals, including within
+	/// custom expression templates and subqueries. Empty bytes remain distinct
+	/// from SQL NULL. MySQL and SQLite retain their `X'...'` byte literal syntax.
 	///
 	/// # Examples
 	///
