@@ -9,6 +9,7 @@
 //!
 //! - **Multiple configuration sources**: Files, environment variables, command-line arguments
 //! - **Type-safe settings**: Strong type validation with custom validators
+//! - **Scoped settings**: Resolve only selected effective paths for command-aware bootstrap
 //! - **Secrets management**: Integration with HashiCorp Vault, AWS Secrets Manager, Azure Key Vault
 //! - **Encryption**: Built-in encryption for sensitive settings
 //! - **Dynamic backends**: Redis and database-backed dynamic settings
@@ -85,6 +86,9 @@ pub use settings::TemplateConfig;
 pub use indexmap;
 #[doc(hidden)]
 pub use serde_json;
+
+#[cfg(feature = "settings")]
+pub use settings::migrations::MigrationSettings;
 
 // Re-export fragment system types at the crate root
 #[cfg(feature = "settings")]
