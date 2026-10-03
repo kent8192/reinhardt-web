@@ -3,8 +3,10 @@
 //! This module provides specialized fixtures that wrap reinhardt-test's generic fixtures
 //! to inject test-specific data for command testing.
 
-use reinhardt_commands::{CommandContext, MigrateCommand};
-use reinhardt_db::migrations::{Migration, Operation};
+use reinhardt_commands::CommandContext;
+use reinhardt_db::migrations::{
+	FilesystemRepository, Migration, MigrationRepository, MigrationSource, Operation,
+};
 use reinhardt_query::prelude::{
 	Alias, ColumnDef, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
@@ -23,13 +25,8 @@ use testcontainers::GenericImage;
 
 /// Specialized fixture for MigrateCommand testing
 ///
-/// Wraps postgres_container and provides pre-configured migrations
+/// Persists arranged migrations into the directory consumed by MigrateCommand.
 pub(crate) struct MigrateCommandFixture {
-	/// The migrate command instance
-	#[allow(dead_code)] // Kept for future command execution tests
-	pub(crate) command: MigrateCommand,
-	/// Command context with default settings
-	pub(crate) context: CommandContext,
 	/// Test migration source with sample migrations
 	pub(crate) migrations: TestMigrationSource,
 }
@@ -38,8 +35,6 @@ impl MigrateCommandFixture {
 	/// Create a new MigrateCommandFixture
 	pub(crate) fn new() -> Self {
 		Self {
-			command: MigrateCommand,
-			context: CommandContext::default(),
 			migrations: TestMigrationSource::new(),
 		}
 	}
@@ -96,28 +91,25 @@ impl MigrateCommandFixture {
 		self.add_migration(app_label, name, vec![operation]);
 	}
 
-	/// Set context options for fake mode
-	pub(crate) fn set_fake_mode(&mut self) {
-		self.context
-			.set_option("fake".to_string(), "true".to_string());
-	}
-
-	/// Set context options for fake-initial mode
-	pub(crate) fn set_fake_initial_mode(&mut self) {
-		self.context
-			.set_option("fake-initial".to_string(), "true".to_string());
-	}
-
-	/// Set the database URL in context
-	#[allow(dead_code)] // May be used in future tests
-	pub(crate) fn set_database_url(&mut self, url: &str) {
-		self.context
-			.set_option("database".to_string(), url.to_string());
-	}
-
-	/// Set app label filter in context
-	pub(crate) fn set_app_label(&mut self, app_label: &str) {
-		self.context.add_arg(app_label.to_string());
+	/// Persist the arranged migrations and wire their directory to the real command.
+	/// The returned TempDir owns the files until command execution completes.
+	pub(crate) async fn command_context(&self, url: &str) -> (TempDir, CommandContext) {
+		let directory = TempDir::new().unwrap();
+		let mut repository = FilesystemRepository::new(directory.path());
+		for migration in self.migrations.all_migrations().await.unwrap() {
+			repository
+				.save(&migration)
+				.await
+				.expect("migration fixture should be persisted");
+		}
+		let mut context = CommandContext::default();
+		context.set_option("database".into(), url.into());
+		context.set_option(
+			"migrations-dir".into(),
+			directory.path().to_str().unwrap().into(),
+		);
+		context.set_verbosity(0);
+		(directory, context)
 	}
 }
 
@@ -125,22 +117,6 @@ impl Default for MigrateCommandFixture {
 	fn default() -> Self {
 		Self::new()
 	}
-}
-
-/// rstest fixture for MigrateCommandFixture
-#[fixture]
-pub fn migrate_command_fixture() -> MigrateCommandFixture {
-	MigrateCommandFixture::new()
-}
-
-/// rstest fixture for MigrateCommandFixture with sample migrations
-#[fixture]
-pub fn migrate_command_with_migrations() -> MigrateCommandFixture {
-	let mut fixture = MigrateCommandFixture::new();
-	fixture.add_create_table_migration("auth", "0001_initial", "auth_user");
-	fixture.add_create_table_migration("auth", "0002_add_profile", "auth_profile");
-	fixture.add_create_table_migration("posts", "0001_initial", "blog_post");
-	fixture
 }
 
 // ============================================================================

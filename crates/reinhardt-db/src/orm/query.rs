@@ -6942,7 +6942,7 @@ where
 
 			// LEFT JOIN related_table AS related_field ON table.fk_field = related_field.id
 			stmt.left_join(
-				related_table,
+				TableRef::table_alias(related_table, related_alias.clone()),
 				Expr::col((Alias::new(root_alias), fk_field))
 					.equals((related_alias.clone(), Alias::new("id"))),
 			);

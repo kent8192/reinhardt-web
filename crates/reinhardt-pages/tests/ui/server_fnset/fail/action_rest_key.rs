@@ -1,3 +1,6 @@
+// Rejected macro items leave their supporting imports unused.
+#![allow(unused_imports)]
+
 include!("../pass/model_crud_types.inc");
 
 struct Actions;

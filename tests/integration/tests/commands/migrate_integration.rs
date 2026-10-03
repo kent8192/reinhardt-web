@@ -1,22 +1,13 @@
-//! MigrateCommand integration tests
-//!
-//! Tests for the migrate command execution with actual database connections.
-//! These tests use TestContainers for database isolation.
+//! Real migrate command lifecycle against persisted migration files and PostgreSQL.
 
-use super::fixtures::{
-	MigrateCommandFixture, migrate_command_fixture, migrate_command_with_migrations,
-};
-use reinhardt_commands::{BaseCommand, CommandContext, MigrateCommand};
-use reinhardt_test::fixtures::postgres_container;
-use rstest::*;
+use super::fixtures::MigrateCommandFixture;
+use reinhardt_commands::{BaseCommand, MigrateCommand};
+use reinhardt_db::migrations::MigrationSource;
+use reinhardt_test::fixtures::{TestMigrationSource, postgres_container};
+use rstest::rstest;
 use sqlx::PgPool;
 use std::sync::Arc;
-use testcontainers::ContainerAsync;
-use testcontainers::GenericImage;
-
-// ============================================================================
-// Happy Path Tests
-// ============================================================================
+use testcontainers::{ContainerAsync, GenericImage};
 
 /// Test: MigrateCommand name and description
 ///
@@ -69,318 +60,287 @@ fn test_migrate_command_arguments_and_options() {
 	);
 }
 
-/// Test: MigrateCommand with empty migrations
-///
-/// Category: Happy Path
-/// Verifies that running migrate with no migrations succeeds.
 #[rstest]
 #[tokio::test]
-async fn test_migrate_empty_migrations(
+async fn test_migrate_empty_directory_is_a_noop(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
-	let (_container, _pool, _port, url) = postgres_container.await;
-
-	let mut ctx = CommandContext::default();
-	ctx.set_option("database".to_string(), url);
-	ctx.set_verbosity(0); // Quiet mode
-
-	let command = MigrateCommand;
-
-	// Execute should succeed even with no migrations
-	// Note: This tests the command's handling of empty migration sets
-	// The actual result depends on the implementation's behavior
-	let result = command.execute(&ctx).await;
-
-	// The command should not panic
-	// It may return Ok or an error depending on migration source availability
-	assert!(
-		result.is_ok() || result.is_err(),
-		"Command should complete without panic"
-	);
+	// Arrange
+	let (_container, pool, _port, url) = postgres_container.await;
+	let fixture = MigrateCommandFixture::new();
+	let (_directory, context) = fixture.command_context(&url).await;
+	let before: Vec<String> = sqlx::query_scalar("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name")
+        .fetch_all(pool.as_ref()).await.unwrap();
+	// Act
+	MigrateCommand.execute(&context).await.unwrap();
+	MigrateCommand.execute(&context).await.unwrap();
+	// Assert
+	let after: Vec<String> = sqlx::query_scalar("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name")
+        .fetch_all(pool.as_ref()).await.unwrap();
+	assert_eq!(after, before);
 }
 
-// ============================================================================
-// Edge Case Tests
-// ============================================================================
-
-/// Test: MigrateCommand idempotent rerun
-///
-/// Category: Edge Case
-/// Verifies that running migrate twice does not fail.
+/// Pending migrations change schema/history exactly once, including on rerun.
 #[rstest]
+#[case::one_migration(1)]
+#[case::multiple_migrations(3)]
 #[tokio::test]
-async fn test_migrate_idempotent_rerun(
+async fn test_migrate_applies_once_and_reruns_without_changes(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[case] count: usize,
 ) {
-	let (_container, _pool, _port, url) = postgres_container.await;
+	// Arrange
+	let (_container, pool, _port, url) = postgres_container.await;
+	let mut fixture = MigrateCommandFixture::new();
+	for index in 0..count {
+		fixture.add_create_table_migration(
+			"audit",
+			&format!("000{index}_table"),
+			&format!("audit_table_{index}"),
+		);
+	}
+	let (_directory, context) = fixture.command_context(&url).await;
+	let schema_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'audit_table_%'")
+        .fetch_one(pool.as_ref()).await.unwrap();
+	assert_eq!(schema_before, 0);
 
-	let mut ctx = CommandContext::default();
-	ctx.set_option("database".to_string(), url.clone());
-	ctx.set_verbosity(0);
+	// Act
+	MigrateCommand
+		.execute(&context)
+		.await
+		.expect("initial migrate must succeed");
+	let history_before: Vec<(String, String, chrono::NaiveDateTime)> =
+		sqlx::query_as("SELECT app, name, applied FROM reinhardt_migrations ORDER BY app, name")
+			.fetch_all(pool.as_ref())
+			.await
+			.unwrap();
+	MigrateCommand
+		.execute(&context)
+		.await
+		.expect("rerun must succeed");
 
-	let command = MigrateCommand;
-
-	// First run
-	let result1 = command.execute(&ctx).await;
-
-	// Second run (should not fail for already applied migrations)
-	let result2 = command.execute(&ctx).await;
-
-	// Both runs should complete (success or expected error)
-	// The key is that the second run doesn't cause a panic or unexpected failure
-	assert!(
-		result1.is_ok() || result1.is_err(),
-		"First run should complete"
+	// Assert: full history equality also detects rewriting the application timestamp.
+	let history_after: Vec<(String, String, chrono::NaiveDateTime)> =
+		sqlx::query_as("SELECT app, name, applied FROM reinhardt_migrations ORDER BY app, name")
+			.fetch_all(pool.as_ref())
+			.await
+			.unwrap();
+	let expected: Vec<_> = (0..count)
+		.map(|index| ("audit".to_owned(), format!("000{index}_table")))
+		.collect();
+	assert_eq!(
+		history_before
+			.iter()
+			.map(|(app, name, _)| (app.clone(), name.clone()))
+			.collect::<Vec<_>>(),
+		expected
 	);
-	assert!(
-		result2.is_ok() || result2.is_err(),
-		"Second run should complete"
-	);
+	assert_eq!(history_after, history_before);
+	for index in 0..count {
+		// Writing a row verifies the migrated columns and constraints, not merely a table name.
+		sqlx::query(&format!(
+			"INSERT INTO audit_table_{index} (name) VALUES ('persisted')"
+		))
+		.execute(pool.as_ref())
+		.await
+		.unwrap();
+		let names: Vec<String> =
+			sqlx::query_scalar(&format!("SELECT name FROM audit_table_{index}"))
+				.fetch_all(pool.as_ref())
+				.await
+				.unwrap();
+		assert_eq!(names, ["persisted"]);
+	}
 }
 
-// ============================================================================
-// Error Path Tests
-// ============================================================================
-
-/// Test: MigrateCommand with invalid database URL
-///
-/// Category: Error Path
-/// Verifies that invalid database URL returns an error.
 #[rstest]
 #[tokio::test]
 async fn test_migrate_invalid_database_url() {
-	let mut ctx = CommandContext::default();
-	ctx.set_option(
-		"database".to_string(),
-		"invalid://not-a-valid-url".to_string(),
+	// Arrange
+	let fixture = MigrateCommandFixture::new();
+	let (_directory, context) = fixture.command_context("invalid://not-a-valid-url").await;
+	// Act
+	let error = MigrateCommand.execute(&context).await.unwrap_err();
+	// Assert
+	assert_eq!(
+		error.to_string(),
+		"Execution error: Unsupported database URL scheme."
 	);
-	ctx.set_verbosity(0);
-
-	let command = MigrateCommand;
-	let result = command.execute(&ctx).await;
-
-	assert!(result.is_err(), "Should fail with invalid database URL");
 }
 
-/// Test: MigrateCommand with connection failure
-///
-/// Category: Error Path
-/// Verifies that connection refused returns an error.
 #[rstest]
 #[tokio::test]
 async fn test_migrate_connection_failure() {
-	let mut ctx = CommandContext::default();
-	// Use a port that is likely not running PostgreSQL
-	ctx.set_option(
-		"database".to_string(),
-		"postgres://localhost:59999/nonexistent".to_string(),
+	// Arrange
+	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let url = format!(
+		"postgres://postgres:postgres@{}/nonexistent?connect_timeout=1",
+		listener.local_addr().unwrap()
 	);
-	ctx.set_verbosity(0);
-
-	let command = MigrateCommand;
-	let result = command.execute(&ctx).await;
-
-	assert!(result.is_err(), "Should fail with connection refused");
-}
-
-// ============================================================================
-// Boundary Value Tests
-// ============================================================================
-
-/// Test: MigrateCommand with zero migrations
-///
-/// Category: Boundary
-/// Verifies handling of zero migrations.
-#[rstest]
-fn test_migrate_zero_migrations(migrate_command_fixture: MigrateCommandFixture) {
+	let fixture = MigrateCommandFixture::new();
+	let (_directory, context) = fixture.command_context(&url).await;
+	let mut peers = tokio::task::JoinSet::new();
+	peers.spawn(async move {
+		loop {
+			let (stream, _) = listener.accept().await.unwrap();
+			drop(stream);
+		}
+	});
+	// Act
+	let error = tokio::time::timeout(
+		std::time::Duration::from_secs(10),
+		MigrateCommand.execute(&context),
+	)
+	.await
+	.expect("connection failure should be bounded")
+	.unwrap_err();
+	// Assert
 	assert_eq!(
-		migrate_command_fixture.migrations.len(),
-		0,
-		"Default fixture should have zero migrations"
-	);
-}
-
-/// Test: MigrateCommand fixture with sample migrations
-///
-/// Category: Boundary
-/// Verifies fixture with multiple migrations.
-#[rstest]
-fn test_migrate_with_sample_migrations(migrate_command_with_migrations: MigrateCommandFixture) {
-	assert_eq!(
-		migrate_command_with_migrations.migrations.len(),
-		3,
-		"Should have 3 sample migrations"
+		error.to_string(),
+		"Execution error: Failed to connect to PostgreSQL database."
 	);
 }
 
-// ============================================================================
-// Decision Table Tests
-// ============================================================================
-
-/// Test: Migrate flag combinations (Decision Table)
-///
-/// Category: Decision Table
-/// Verifies all combinations of --fake and --fake-initial flags.
-#[rstest]
-#[case(false, false, "neither flag")]
-#[case(true, false, "fake only")]
-#[case(false, true, "fake_initial only")]
-#[case(true, true, "both flags")]
-fn test_migrate_decision_fake_combinations(
-	mut migrate_command_fixture: MigrateCommandFixture,
-	#[case] fake: bool,
-	#[case] fake_initial: bool,
-	#[case] description: &str,
-) {
-	if fake {
-		migrate_command_fixture.set_fake_mode();
-	}
-	if fake_initial {
-		migrate_command_fixture.set_fake_initial_mode();
-	}
-
-	assert_eq!(
-		migrate_command_fixture.context.has_option("fake"),
-		fake,
-		"{}: fake option mismatch",
-		description
-	);
-	assert_eq!(
-		migrate_command_fixture.context.has_option("fake-initial"),
-		fake_initial,
-		"{}: fake-initial option mismatch",
-		description
-	);
-}
-
-// ============================================================================
-// State Transition Tests
-// ============================================================================
-
-/// Test: MigrateCommand state - pending to applied
-///
-/// Category: State Transition
-/// Verifies that migrations change state correctly.
-#[rstest]
-fn test_migrate_state_pending_to_applied(mut migrate_command_fixture: MigrateCommandFixture) {
-	// Add a migration
-	migrate_command_fixture.add_create_table_migration("test", "0001_initial", "test_table");
-
-	// Before execution, migration should be in the source
-	assert_eq!(
-		migrate_command_fixture.migrations.len(),
-		1,
-		"Should have 1 pending migration"
-	);
-}
-
-// ============================================================================
-// Use Case Tests
-// ============================================================================
-
-/// Test: MigrateCommand full lifecycle
-///
-/// Category: Use Case
-/// Verifies the complete command lifecycle.
 #[rstest]
 #[tokio::test]
-async fn test_migrate_lifecycle(
+async fn test_migrate_plan_preserves_schema(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+) {
+	// Arrange
+	let (_container, pool, _port, url) = postgres_container.await;
+	let mut fixture = MigrateCommandFixture::new();
+	fixture.add_create_table_migration("plan_test", "0001_initial", "test_table");
+	let (_directory, mut context) = fixture.command_context(&url).await;
+	context.set_option("plan".into(), "true".into());
+	let before: Vec<String> = sqlx::query_scalar("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name")
+        .fetch_all(pool.as_ref()).await.unwrap();
+
+	// Act
+	MigrateCommand
+		.execute(&context)
+		.await
+		.expect("plan must succeed");
+
+	// Assert: neither migration history nor application schema may be created.
+	let after: Vec<String> = sqlx::query_scalar("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name")
+        .fetch_all(pool.as_ref()).await.unwrap();
+	assert_eq!(after, before);
+}
+
+#[rstest]
+#[case::all_pending(false)]
+#[case::partially_applied(true)]
+#[tokio::test]
+async fn test_migrate_fake_preserves_schema(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+	#[case] partially_applied: bool,
+) {
+	// Arrange
+	let (_container, pool, _port, url) = postgres_container.await;
+	let mut fixture = MigrateCommandFixture::new();
+	fixture.add_create_table_migration("audit_fake", "0001_initial", "audit_existing");
+	let (_first_directory, first_context) = fixture.command_context(&url).await;
+	if partially_applied {
+		MigrateCommand.execute(&first_context).await.unwrap();
+	}
+	fixture.add_create_table_migration("audit_fake", "0002_pending", "audit_pending");
+	let (_directory, mut context) = fixture.command_context(&url).await;
+	context.set_option("fake".into(), "true".into());
+	let tables_before: Vec<String> = sqlx::query_scalar("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'audit_%' ORDER BY table_name")
+        .fetch_all(pool.as_ref()).await.unwrap();
+	assert_eq!(
+		tables_before,
+		if partially_applied {
+			vec!["audit_existing"]
+		} else {
+			vec![]
+		}
+	);
+
+	// Act
+	MigrateCommand
+		.execute(&context)
+		.await
+		.expect("fake mode must succeed");
+
+	// Assert
+	let history: Vec<(String, String, chrono::NaiveDateTime)> =
+		sqlx::query_as("SELECT app, name, applied FROM reinhardt_migrations ORDER BY app, name")
+			.fetch_all(pool.as_ref())
+			.await
+			.unwrap();
+	assert_eq!(
+		history
+			.iter()
+			.map(|(app, name, _)| (app.as_str(), name.as_str()))
+			.collect::<Vec<_>>(),
+		[
+			("audit_fake", "0001_initial"),
+			("audit_fake", "0002_pending")
+		]
+	);
+	let tables_after: Vec<String> = sqlx::query_scalar("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'audit_%' ORDER BY table_name")
+        .fetch_all(pool.as_ref()).await.unwrap();
+	assert_eq!(tables_after, tables_before);
+	MigrateCommand
+		.execute(&context)
+		.await
+		.expect("fake rerun must succeed");
+	let after_rerun: Vec<(String, String, chrono::NaiveDateTime)> =
+		sqlx::query_as("SELECT app, name, applied FROM reinhardt_migrations ORDER BY app, name")
+			.fetch_all(pool.as_ref())
+			.await
+			.unwrap();
+	assert_eq!(after_rerun, history);
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_migrate_target_rolls_back_later_migrations(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) {
 	let (_container, pool, _port, url) = postgres_container.await;
 
-	// 1. Create command
-	let command = MigrateCommand;
-
-	// 2. Verify command metadata
-	assert_eq!(command.name(), "migrate");
-	assert!(command.requires_system_checks());
-
-	// 3. Create context
-	let mut ctx = CommandContext::default();
-	ctx.set_option("database".to_string(), url);
-	ctx.set_verbosity(0);
-
-	// 4. Verify context setup
-	assert!(ctx.has_option("database"));
-	assert_eq!(ctx.verbosity, 0);
-
-	// 5. Execute (may succeed or fail based on migration availability)
-	let _result = command.execute(&ctx).await;
-
-	// 6. Verify pool is still valid
-	let query = "SELECT 1 as val";
-	let row: (i32,) = sqlx::query_as(query)
-		.fetch_one(pool.as_ref())
+	// Arrange
+	let mut fixture = MigrateCommandFixture::new();
+	fixture.add_create_table_migration("target_test", "0001_initial", "table_1");
+	fixture.add_create_table_migration("target_test", "0002_add_table", "table_2");
+	fixture.add_create_table_migration("target_test", "0003_add_more", "table_3");
+	let mut migrations = fixture.migrations.all_migrations().await.unwrap();
+	migrations[1]
+		.dependencies
+		.push(("target_test".into(), "0001_initial".into()));
+	migrations[2]
+		.dependencies
+		.push(("target_test".into(), "0002_add_table".into()));
+	fixture.migrations = TestMigrationSource::with_migrations(migrations);
+	let (_directory, context) = fixture.command_context(&url).await;
+	MigrateCommand
+		.execute(&context)
 		.await
-		.expect("Database should still be accessible");
-	assert_eq!(row.0, 1, "Database query should return 1");
-}
+		.expect("all migrations must apply");
+	let before: Vec<String> = sqlx::query_scalar("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'table_%' ORDER BY table_name")
+		.fetch_all(pool.as_ref()).await.unwrap();
+	assert_eq!(before, ["table_1", "table_2", "table_3"]);
 
-// ============================================================================
-// Equivalence Partitioning Tests
-// ============================================================================
+	// Act
+	let mut target = context.clone();
+	target.add_arg("target_test".into());
+	target.add_arg("0002_add_table".into());
+	MigrateCommand
+		.execute(&target)
+		.await
+		.expect("rollback must succeed");
 
-/// Test: MigrateCommand app_label partitions
-///
-/// Category: Equivalence
-/// Verifies handling of different app_label inputs.
-#[rstest]
-#[case(None, "no app label")]
-#[case(Some("auth"), "single app label")]
-#[case(Some("all"), "all apps")]
-fn test_migrate_app_label_partitions(
-	mut migrate_command_fixture: MigrateCommandFixture,
-	#[case] app_label: Option<&str>,
-	#[case] description: &str,
-) {
-	if let Some(label) = app_label {
-		migrate_command_fixture.set_app_label(label);
-	}
-
-	match app_label {
-		None => {
-			assert!(
-				migrate_command_fixture.context.arg(0).is_none(),
-				"{}: should have no app label",
-				description
-			);
-		}
-		Some(label) => {
-			assert_eq!(
-				migrate_command_fixture.context.arg(0).map(String::as_str),
-				Some(label),
-				"{}: should have app label",
-				description
-			);
-		}
-	}
-}
-
-// ============================================================================
-// Sanity Tests
-// ============================================================================
-
-/// Test: MigrateCommand basic sanity check
-///
-/// Category: Sanity
-/// Verifies the basic command structure.
-#[rstest]
-fn test_migrate_sanity() {
-	// Create command
-	let command = MigrateCommand;
-
-	// Verify it implements BaseCommand
-	assert_eq!(command.name(), "migrate");
-	assert!(!command.description().is_empty());
-	assert!(!command.arguments().is_empty());
-	assert!(!command.options().is_empty());
-
-	// Verify fixture creation
-	let fixture = MigrateCommandFixture::new();
-	assert!(fixture.migrations.is_empty());
-
-	// Verify fixture with migrations
-	let fixture_with_migrations = MigrateCommandFixture::default();
-	assert!(fixture_with_migrations.migrations.is_empty());
+	// Assert
+	let after: Vec<String> = sqlx::query_scalar("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'table_%' ORDER BY table_name")
+		.fetch_all(pool.as_ref()).await.unwrap();
+	assert_eq!(after, ["table_1", "table_2"]);
+	let history: Vec<String> = sqlx::query_scalar(
+		"SELECT name FROM reinhardt_migrations WHERE app = 'target_test' ORDER BY name",
+	)
+	.fetch_all(pool.as_ref())
+	.await
+	.unwrap();
+	assert_eq!(history, ["0001_initial", "0002_add_table"]);
 }

@@ -887,6 +887,14 @@ impl BaseCommand for MigrateCommand {
 					&applied,
 				)?;
 
+				// Fresh databases need history storage even when application DDL is skipped.
+				recorder.ensure_schema_table().await.map_err(|error| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to ensure migration recorder table: {}",
+						error
+					))
+				})?;
+
 				// Record each migration as applied without executing
 				for migration in migrations_to_fake {
 					fake_record_migration(&recorder, migration, &migrations_to_apply).await?;
@@ -7023,7 +7031,6 @@ mod tests {
 		assert!(archive.dependencies.is_empty());
 	}
 
-	#[cfg(feature = "reinhardt-db")]
 	struct EnvVarGuard {
 		key: &'static str,
 		original: Option<std::ffi::OsString>,

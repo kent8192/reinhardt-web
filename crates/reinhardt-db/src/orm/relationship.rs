@@ -679,13 +679,15 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_one_to_many_relationship() {
-		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
+	#[rstest::rstest]
+	#[case("posts")]
+	#[case("test_rel")]
+	fn test_one_to_many_relationship(#[case] name: &str) {
+		let rel = Relationship::<User, Post>::new(name, RelationshipType::OneToMany)
 			.with_foreign_key("user_id")
 			.with_lazy(LoadingStrategy::Lazy);
 
-		assert_eq!(rel.name(), "posts");
+		assert_eq!(rel.name(), name);
 		assert_eq!(rel.relationship_type(), RelationshipType::OneToMany);
 		assert_eq!(rel.lazy(), LoadingStrategy::Lazy);
 	}
@@ -728,57 +730,6 @@ mod tests {
 		assert_eq!(rel.name(), "posts");
 	}
 
-	// Auto-generated relationship tests
-	// Total: 30 tests
-
-	#[test]
-	fn test_search_with_exact_lookup_relationship_field() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_search_with_exact_lookup_relationship_field_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_emptylistfieldfilter_reverse_relationships() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_emptylistfieldfilter_reverse_relationships_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_relatedfieldlistfilter_reverse_relationships() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_relatedfieldlistfilter_reverse_relationships_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_relatedfieldlistfilter_reverse_relationships_default_ordering() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_relatedfieldlistfilter_reverse_relationships_default_ordering_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
 	#[test]
 	fn test_relatedonlyfieldlistfilter_foreignkey_reverse_relationships() {
 		let rel = Relationship::<User, Post>::new("posts", RelationshipType::OneToMany)
@@ -805,114 +756,6 @@ mod tests {
 		let rel = Relationship::<User, Role>::new("roles", RelationshipType::ManyToMany)
 			.with_secondary("user_roles");
 		assert_eq!(rel.relationship_type(), RelationshipType::ManyToMany);
-	}
-
-	#[test]
-	fn test_valid_generic_relationship() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_valid_generic_relationship_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_valid_generic_relationship_with_explicit_fields() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_valid_generic_relationship_with_explicit_fields_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_valid_self_referential_generic_relationship() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_valid_self_referential_generic_relationship_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_delete_with_keeping_parents_relationships() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_delete_with_keeping_parents_relationships_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_fast_delete_combined_relationships() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_fast_delete_combined_relationships_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_aggregate() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_aggregate_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_aggregate_2() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_aggregate_3() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_as_subquery() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_as_subquery_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_condition_deeper_relation_name() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
-	}
-
-	#[test]
-	fn test_condition_deeper_relation_name_1() {
-		let rel = Relationship::<User, Post>::new("test_rel", RelationshipType::OneToMany);
-		assert_eq!(rel.name(), "test_rel");
 	}
 
 	#[test]

@@ -1,12 +1,6 @@
-//! Combined Features Integration Tests
+//! HTTP server integration with middleware, rate limits, timeouts, and shutdown.
 //!
-//! This module tests the integration of multiple server features working together:
-//! - HTTP/2 + Middleware chain (multiple middleware with HTTP/2)
-//! - WebSocket + Rate limiting (feature-gated: `#[cfg(feature = "websocket")]`)
-//! - GraphQL + Timeout (feature-gated: `#[cfg(feature = "graphql")]`)
-//! - HTTP/1.1 and HTTP/2 mixed environment
-//! - Graceful shutdown + WebSocket (feature-gated: `#[cfg(feature = "websocket")]`)
-//! - Multiple middleware + DI (if DI integration exists)
+//! Covers HTTP/1.1 and HTTP/2 transport behavior and middleware composition.
 
 use http::Version;
 use reinhardt_http::{Handler, Middleware};
@@ -14,16 +8,31 @@ use reinhardt_http::{Request, Response};
 use reinhardt_server::{Http2Server, HttpServer, ShutdownCoordinator, TimeoutHandler};
 use reinhardt_test::APIClient;
 
-#[cfg(feature = "websocket")]
-use reinhardt_server::{RateLimitConfig, RateLimitHandler, RateLimitStrategy};
+use reinhardt_server::{
+	RateLimitSettings, RateLimitStrategyKind, create_rate_limit_handler_from_settings,
+};
 use rstest::*;
 use std::net::SocketAddr;
 
 use std::sync::Arc;
-#[cfg(feature = "websocket")]
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use tokio::time::sleep;
+
+/// Aborts the listener on every exit path, including a failed assertion.
+struct ServerTask(tokio::task::JoinHandle<()>);
+
+impl ServerTask {
+	fn spawn(future: impl std::future::Future<Output = ()> + Send + 'static) -> Self {
+		Self(tokio::spawn(future))
+	}
+}
+
+impl Drop for ServerTask {
+	fn drop(&mut self) {
+		self.0.abort();
+	}
+}
 
 // ============================================================================
 // Test Handlers
@@ -41,15 +50,11 @@ impl Handler for BasicTestHandler {
 }
 
 /// Handler with configurable delay for timeout testing
-///
-/// This handler is only available when the `graphql` feature is enabled.
-#[cfg(feature = "graphql")]
 #[derive(Clone)]
 struct DelayedHandler {
 	delay: Duration,
 }
 
-#[cfg(feature = "graphql")]
 #[async_trait::async_trait]
 impl Handler for DelayedHandler {
 	async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
@@ -59,15 +64,11 @@ impl Handler for DelayedHandler {
 }
 
 /// Handler with counter for tracking requests
-///
-/// This handler is only available when the `websocket` feature is enabled.
-#[cfg(feature = "websocket")]
 #[derive(Clone)]
 struct CountingHandler {
 	counter: Arc<AtomicU32>,
 }
 
-#[cfg(feature = "websocket")]
 impl CountingHandler {
 	fn new() -> Self {
 		Self {
@@ -80,7 +81,6 @@ impl CountingHandler {
 	}
 }
 
-#[cfg(feature = "websocket")]
 #[async_trait::async_trait]
 impl Handler for CountingHandler {
 	async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
@@ -242,7 +242,7 @@ async fn test_http2_with_middleware_chain() {
 
 	// Start HTTP/2 server
 	let server_coordinator = coordinator.clone();
-	let server_task = tokio::spawn(async move {
+	let server_task = ServerTask::spawn(async move {
 		let server = Http2Server::new(chain);
 		let _ = server
 			.listen_with_shutdown(actual_addr, server_coordinator)
@@ -277,43 +277,38 @@ async fn test_http2_with_middleware_chain() {
 
 	// Cleanup
 	coordinator.shutdown();
-	server_task.abort();
+	server_task.0.abort();
 }
 
 // ============================================================================
-// Test 2: WebSocket + Rate Limiting
+// Test 2: HTTP + Rate Limiting
 // ============================================================================
 
-#[cfg(feature = "websocket")]
-/// Test WebSocket server with rate limiting
-///
-/// This test verifies that WebSocket connections respect rate limits.
+/// HTTP requests beyond the configured limit receive 429.
 #[rstest]
 #[tokio::test]
-async fn test_websocket_with_rate_limit() {
-	// Note: This is a placeholder test demonstrating the pattern
-	// Full WebSocket implementation requires additional setup
-
+async fn test_http_with_rate_limit() {
 	let handler = Arc::new(BasicTestHandler);
-	let config = RateLimitConfig::new(2, Duration::from_secs(1), RateLimitStrategy::FixedWindow);
-	let rate_limit_handler = Arc::new(RateLimitHandler::new(handler, config));
+	let mut settings = RateLimitSettings::default();
+	settings.max_requests = 2;
+	settings.window_secs = 60;
+	settings.strategy = RateLimitStrategyKind::FixedWindow;
+	let rate_limit_handler = Arc::new(create_rate_limit_handler_from_settings(handler, &settings));
 
 	let coordinator = ShutdownCoordinator::new(Duration::from_secs(10));
 	let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
 	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 	let actual_addr = listener.local_addr().unwrap();
 	let url = format!("http://{}", actual_addr);
-	drop(listener);
 
 	let server_coordinator = coordinator.clone();
-	let server_task = tokio::spawn(async move {
+	let server_task = ServerTask::spawn(async move {
 		let server = HttpServer::new(rate_limit_handler);
-		let _ = server
-			.listen_with_shutdown(actual_addr, server_coordinator)
-			.await;
+		server
+			.listen_on_with_shutdown(listener, server_coordinator)
+			.await
+			.expect("HTTP listener should exit without error");
 	});
-
-	sleep(Duration::from_millis(100)).await;
 
 	let client = APIClient::with_base_url(&url);
 
@@ -333,23 +328,17 @@ async fn test_websocket_with_rate_limit() {
 
 	// Cleanup
 	coordinator.shutdown();
-	server_task.abort();
+	server_task.0.abort();
 }
 
 // ============================================================================
-// Test 3: GraphQL + Timeout
+// Test 3: HTTP + Timeout
 // ============================================================================
 
-#[cfg(feature = "graphql")]
-/// Test GraphQL server with request timeout
-///
-/// This test verifies that GraphQL requests respect timeout configuration.
+/// A slow HTTP handler receives the configured timeout response.
 #[rstest]
 #[tokio::test]
-async fn test_graphql_with_timeout() {
-	// Note: This is a placeholder test demonstrating the pattern
-	// Full GraphQL implementation requires additional setup
-
+async fn test_http_with_timeout() {
 	// Setup handler with 2 second delay
 	let slow_handler = Arc::new(DelayedHandler {
 		delay: Duration::from_secs(2),
@@ -366,17 +355,15 @@ async fn test_graphql_with_timeout() {
 	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 	let actual_addr = listener.local_addr().unwrap();
 	let url = format!("http://{}", actual_addr);
-	drop(listener);
 
 	let server_coordinator = coordinator.clone();
-	let server_task = tokio::spawn(async move {
+	let server_task = ServerTask::spawn(async move {
 		let server = HttpServer::new(timeout_handler);
-		let _ = server
-			.listen_with_shutdown(actual_addr, server_coordinator)
-			.await;
+		server
+			.listen_on_with_shutdown(listener, server_coordinator)
+			.await
+			.expect("HTTP listener should exit without error");
 	});
-
-	sleep(Duration::from_millis(100)).await;
 
 	let client = APIClient::with_base_url(&url);
 	let response = client.get("/").await.expect("Request should complete");
@@ -386,7 +373,7 @@ async fn test_graphql_with_timeout() {
 
 	// Cleanup
 	coordinator.shutdown();
-	server_task.abort();
+	server_task.0.abort();
 }
 
 // ============================================================================
@@ -414,7 +401,7 @@ async fn test_http1_http2_mixed_environment() {
 	drop(listener1);
 
 	let server1_coordinator = coordinator1.clone();
-	let server1_task = tokio::spawn(async move {
+	let server1_task = ServerTask::spawn(async move {
 		let server = HttpServer::new(handler1);
 		let _ = server
 			.listen_with_shutdown(actual_addr1, server1_coordinator)
@@ -429,7 +416,7 @@ async fn test_http1_http2_mixed_environment() {
 	drop(listener2);
 
 	let server2_coordinator = coordinator2.clone();
-	let server2_task = tokio::spawn(async move {
+	let server2_task = ServerTask::spawn(async move {
 		let server = Http2Server::new(handler2);
 		let _ = server
 			.listen_with_shutdown(actual_addr2, server2_coordinator)
@@ -472,25 +459,18 @@ async fn test_http1_http2_mixed_environment() {
 	// Cleanup
 	coordinator1.shutdown();
 	coordinator2.shutdown();
-	server1_task.abort();
-	server2_task.abort();
+	server1_task.0.abort();
+	server2_task.0.abort();
 }
 
 // ============================================================================
-// Test 5: Graceful Shutdown + WebSocket
+// Test 5: Graceful Shutdown after HTTP Requests
 // ============================================================================
 
-#[cfg(feature = "websocket")]
-/// Test graceful shutdown with active WebSocket connections
-///
-/// This test verifies that the server can gracefully shutdown even when
-/// WebSocket connections are active.
+/// The HTTP listener terminates cleanly after serving a request.
 #[rstest]
 #[tokio::test]
-async fn test_graceful_shutdown_with_websocket() {
-	// Note: This is a placeholder test demonstrating the pattern
-	// Full WebSocket implementation requires additional setup
-
+async fn test_graceful_shutdown_after_http_request() {
 	let handler = Arc::new(CountingHandler::new());
 	let coordinator = ShutdownCoordinator::new(Duration::from_secs(5));
 
@@ -498,18 +478,16 @@ async fn test_graceful_shutdown_with_websocket() {
 	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 	let actual_addr = listener.local_addr().unwrap();
 	let url = format!("http://{}", actual_addr);
-	drop(listener);
 
 	let server_coordinator = coordinator.clone();
 	let server_handler = handler.clone();
-	let server_task = tokio::spawn(async move {
+	let mut server_task = ServerTask::spawn(async move {
 		let server = HttpServer::new(server_handler);
-		let _ = server
-			.listen_with_shutdown(actual_addr, server_coordinator)
-			.await;
+		server
+			.listen_on_with_shutdown(listener, server_coordinator)
+			.await
+			.expect("HTTP listener should exit without error");
 	});
-
-	sleep(Duration::from_millis(100)).await;
 
 	let client = APIClient::with_base_url(&url);
 
@@ -525,21 +503,20 @@ async fn test_graceful_shutdown_with_websocket() {
 	coordinator.wait_for_shutdown().await;
 
 	// Verify server task completed
-	let result = tokio::time::timeout(Duration::from_secs(2), server_task).await;
-	assert!(result.is_ok(), "Server should shutdown gracefully");
+	tokio::time::timeout(Duration::from_secs(2), &mut server_task.0)
+		.await
+		.expect("server should shut down gracefully")
+		.expect("server task should not panic");
 }
 
 // ============================================================================
-// Test 6: Multiple Middleware + DI (Dependency Injection)
+// Test 6: HTTP + Multiple Middleware
 // ============================================================================
 
-/// Test multiple middleware with Dependency Injection
-///
-/// This test verifies that multiple middleware can work together and that
-/// DI (if available) integrates correctly with the middleware chain.
+/// HTTP requests traverse logging, header, and timeout middleware.
 #[rstest]
 #[tokio::test]
-async fn test_multiple_middleware_with_di() {
+async fn test_http_with_multiple_middleware() {
 	// Setup middleware chain
 	let logging_middleware = Arc::new(LoggingMiddleware::new());
 	let header_middleware = Arc::new(HeaderMiddleware::new("X-Framework", "Reinhardt"));
@@ -548,11 +525,9 @@ async fn test_multiple_middleware_with_di() {
 		Duration::from_secs(5),
 	));
 
-	// Build chain (innermost to outermost: handler -> timeout -> logging -> header)
-	let chain = MiddlewareChain::new(timeout_middleware as Arc<dyn Handler>)
-		.with_middleware(logging_middleware.clone() as Arc<dyn Middleware>)
-		.with_middleware(header_middleware as Arc<dyn Middleware>)
-		.build();
+	let server = HttpServer::new(timeout_middleware)
+		.with_middleware(logging_middleware.as_ref().clone())
+		.with_middleware(header_middleware.as_ref().clone());
 
 	// Setup server
 	let coordinator = ShutdownCoordinator::new(Duration::from_secs(10));
@@ -560,17 +535,14 @@ async fn test_multiple_middleware_with_di() {
 	let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 	let actual_addr = listener.local_addr().unwrap();
 	let url = format!("http://{}", actual_addr);
-	drop(listener);
 
 	let server_coordinator = coordinator.clone();
-	let server_task = tokio::spawn(async move {
-		let server = HttpServer::new(chain);
-		let _ = server
-			.listen_with_shutdown(actual_addr, server_coordinator)
-			.await;
+	let server_task = ServerTask::spawn(async move {
+		server
+			.listen_on_with_shutdown(listener, server_coordinator)
+			.await
+			.expect("HTTP listener should exit without error");
 	});
-
-	sleep(Duration::from_millis(100)).await;
 
 	let client = APIClient::with_base_url(&url);
 
@@ -599,5 +571,5 @@ async fn test_multiple_middleware_with_di() {
 
 	// Cleanup
 	coordinator.shutdown();
-	server_task.abort();
+	server_task.0.abort();
 }

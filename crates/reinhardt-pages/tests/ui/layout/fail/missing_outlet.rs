@@ -1,3 +1,6 @@
+// Rejected macro items leave their supporting imports unused.
+#![allow(unused_imports)]
+
 use reinhardt_pages::{Page, Path, layout, page};
 
 #[layout("/workspaces/{workspace_id}/", name = "workspace-shell")]

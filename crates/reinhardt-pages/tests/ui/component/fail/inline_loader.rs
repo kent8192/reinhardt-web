@@ -1,3 +1,6 @@
+// Rejected macro items leave their supporting imports unused.
+#![allow(unused_imports)]
+
 use reinhardt_pages::{Page, component, page};
 
 #[component("/projects/", name = "project", loader = || async { Ok::<_, String>(1_u64) })]

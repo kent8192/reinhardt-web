@@ -590,58 +590,6 @@ async fn test_query_optimizer_integration(
 	);
 }
 
-/// Test N+1 query problem detection with ORM relationships
-///
-/// **Test Intent**: Verify N+1 query problem can be detected by counting queries
-/// in ORM relationship loading (users → posts).
-///
-/// **Integration Point**: ORM relationship queries → Query counting
-#[rstest]
-#[tokio::test]
-async fn test_n_plus_one_detection(
-	#[future] filter_test_db: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>),
-) {
-	let (_container, pool) = filter_test_db.await;
-
-	// Simulate N+1 problem: Load users, then load posts for each user
-	let users_query = "SELECT * FROM users";
-	let users = sqlx::query(users_query)
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("Users query failed");
-
-	let mut query_count = 1; // 1 query for users
-
-	// For each user, load their posts (N queries)
-	for user_row in &users {
-		let user_id: i32 = user_row.try_get("id").expect("Failed to get user id");
-		let posts_query = format!("SELECT * FROM posts WHERE user_id = {}", user_id);
-		let _posts = sqlx::query(&posts_query)
-			.fetch_all(pool.as_ref())
-			.await
-			.expect("Posts query failed");
-		query_count += 1;
-	}
-
-	// N+1 problem: 1 + 5 = 6 queries total
-	assert_eq!(query_count, 6);
-
-	// Optimized approach: Use JOIN to load users with posts in a single query
-	let joined_query = "SELECT users.*, posts.id as post_id, posts.title FROM users LEFT JOIN posts ON users.id = posts.user_id";
-	let joined_rows = sqlx::query(joined_query)
-		.fetch_all(pool.as_ref())
-		.await
-		.expect("JOIN query failed");
-
-	// JOIN approach: Only 1 query, no N+1 problem
-	// Should return 6 rows (2 + 1 + 1 + 1 + 1)
-	assert_eq!(joined_rows.len(), 6);
-
-	// Verify query optimization eliminated N+1 problem
-	assert!(query_count > 1); // Naive approach triggers N+1
-	assert_eq!(1, 1); // JOIN approach uses single query
-}
-
 /// Test FuzzySearchFilter integration with Levenshtein distance
 ///
 /// **Test Intent**: Verify FuzzySearchFilter can perform fuzzy matching
