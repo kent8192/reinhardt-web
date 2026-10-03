@@ -1,5 +1,7 @@
 //! Resolve the unmodified REST scaffold settings in an isolated consumer.
 
+#![cfg(native)]
+
 use reinhardt::commands::{BaseCommand, CommandContext, StartProjectCommand};
 use reinhardt::test::fixtures::temp_dir;
 use rstest::*;
