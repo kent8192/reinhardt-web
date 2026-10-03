@@ -7203,7 +7203,7 @@ mod tests {
 
 		assert_eq!(
 			queryset.to_sql(),
-			r#"SELECT * FROM "test_users" WHERE (EXISTS (SELECT * FROM "test_users" WHERE ("tenant_id" = "items"."b" AND "organization_id" = "items"."c")))"#
+			r#"SELECT * FROM "test_users" WHERE EXISTS (SELECT * FROM "test_users" WHERE ("tenant_id" = "items"."b" AND "organization_id" = "items"."c"))"#
 		);
 	}
 
@@ -7288,7 +7288,7 @@ mod tests {
 			QuerySet::<TestUser>::new().with_lateral_join(
 				crate::orm::lateral_join::LateralJoin::new("latest", "SELECT 1"),
 			),
-			"LEFT JOIN LATERAL (SELECT 1) AS \"latest\" ON (true)",
+			"LEFT JOIN LATERAL (SELECT 1) AS \"latest\" ON true",
 		);
 		assert_supported(
 			QuerySet::<TestUser>::new().inner_join::<TestUser>("id", "id"),
@@ -7738,7 +7738,7 @@ mod tests {
 
 		let (sql, params) = queryset.delete_sql();
 
-		assert_eq!(sql, r#"DELETE FROM "test_users" WHERE (FALSE)"#);
+		assert_eq!(sql, r#"DELETE FROM "test_users" WHERE FALSE"#);
 		assert!(params.is_empty());
 	}
 
@@ -8167,7 +8167,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("tags" @> ARRAY['rust', 'web'])"#
+			r#"SELECT * FROM "test_users" WHERE "tags" @> ARRAY['rust', 'web']"#
 		);
 	}
 
@@ -8261,7 +8261,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("tags" <@ ARRAY['rust'])"#
+			r#"SELECT * FROM "test_users" WHERE "tags" <@ ARRAY['rust']"#
 		);
 	}
 
@@ -8280,7 +8280,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("tags" && ARRAY['rust'])"#
+			r#"SELECT * FROM "test_users" WHERE "tags" && ARRAY['rust']"#
 		);
 	}
 
@@ -8299,7 +8299,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("content" @@ plainto_tsquery('english', 'search term'))"#
+			r#"SELECT * FROM "test_users" WHERE "content" @@ plainto_tsquery('english', 'search term')"#
 		);
 	}
 
@@ -8318,7 +8318,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("metadata" @> '{"key": "value"}'::jsonb)"#
+			r#"SELECT * FROM "test_users" WHERE "metadata" @> '{"key": "value"}'::jsonb"#
 		);
 	}
 
@@ -8337,7 +8337,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("metadata" <@ '{"key": "value"}'::jsonb)"#
+			r#"SELECT * FROM "test_users" WHERE "metadata" <@ '{"key": "value"}'::jsonb"#
 		);
 	}
 
@@ -8413,34 +8413,34 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("metadata" @'$.key' )"#
+			r#"SELECT * FROM "test_users" WHERE "metadata" @'$.key' "#
 		);
 	}
 
 	#[rstest]
 	#[case(
 		Filter::new("username", FilterOperator::IExact, FilterValue::String("Alice".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'Alice' ESCAPE '\')"#
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'Alice' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("email", FilterOperator::IContains, FilterValue::String("example.com".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' ESCAPE '\')"#
+		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%example.com%' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IStartsWith, FilterValue::String("ali".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'ali%' ESCAPE '\')"#
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'ali%' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IEndsWith, FilterValue::String("ice".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE '%ice' ESCAPE '\')"#
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE '%ice' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::Regex, FilterValue::String("^a".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("username" ~ '^a')"#
+		r#"SELECT * FROM "test_users" WHERE "username" ~ '^a'"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IRegex, FilterValue::String("^a".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("username" ~* '^a')"#
+		r#"SELECT * FROM "test_users" WHERE "username" ~* '^a'"#
 	)]
 	fn test_django_style_string_lookup_filters(#[case] filter: Filter, #[case] expected: &str) {
 		// Arrange
@@ -8543,7 +8543,7 @@ mod tests {
 			result,
 			Err(reinhardt_core::exception::Error::Validation(_))
 		));
-		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE (FALSE)"#);
+		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE FALSE"#);
 	}
 
 	#[rstest]
@@ -8552,7 +8552,7 @@ mod tests {
 
 		assert_eq!(
 			queryset.to_sql(),
-			r#"SELECT * FROM "test_users" WHERE (FALSE)"#
+			r#"SELECT * FROM "test_users" WHERE FALSE"#
 		);
 	}
 
@@ -8585,11 +8585,11 @@ mod tests {
 	#[rstest]
 	#[case(
 		Filter::new("email", FilterOperator::IContains, FilterValue::String("100%_match\\".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("email" ILIKE '%100\%\_match\\%' ESCAPE '\')"#
+		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%100\%\_match\\%' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IExact, FilterValue::String("alice_admin".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'alice\_admin' ESCAPE '\')"#
+		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'alice\_admin' ESCAPE '\'"#
 	)]
 	fn test_django_style_case_insensitive_like_filters_escape_metacharacters(
 		#[case] filter: Filter,
@@ -8608,15 +8608,15 @@ mod tests {
 	#[rstest]
 	#[case(
 		Filter::new("email", FilterOperator::Contains, FilterValue::String("100%_match\\".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("email" LIKE '%100\%\_match\\%' ESCAPE '\')"#
+		r#"SELECT * FROM "test_users" WHERE "email" LIKE '%100\%\_match\\%' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::StartsWith, FilterValue::String("alice_admin".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("username" LIKE 'alice\_admin%' ESCAPE '\')"#
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE 'alice\_admin%' ESCAPE '\'"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::EndsWith, FilterValue::String("100%".to_string())),
-		r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%100\%' ESCAPE '\')"#
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE '%100\%' ESCAPE '\'"#
 	)]
 	fn test_django_style_case_sensitive_like_filters_escape_metacharacters(
 		#[case] filter: Filter,
@@ -8666,7 +8666,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("id" BETWEEN 10 AND 20)"#
+			r#"SELECT * FROM "test_users" WHERE "id" BETWEEN 10 AND 20"#
 		);
 	}
 
@@ -8885,7 +8885,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("age_range" @> '25')"#
+			r#"SELECT * FROM "test_users" WHERE "age_range" @> '25'"#
 		);
 	}
 
@@ -8904,7 +8904,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("age_range" <@ '[20, 30]')"#
+			r#"SELECT * FROM "test_users" WHERE "age_range" <@ '[20, 30]'"#
 		);
 	}
 
@@ -8923,7 +8923,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("age_range" && '[20, 30]')"#
+			r#"SELECT * FROM "test_users" WHERE "age_range" && '[20, 30]'"#
 		);
 	}
 }
