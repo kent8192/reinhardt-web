@@ -328,7 +328,7 @@ mod database_storage {
 		Alias, Expr, ExprTrait, Iden, IntoIden, IntoValue, OnConflict, PostgresQueryBuilder, Query,
 		QueryStatementBuilder,
 	};
-	use sqlx::PgPool;
+	use sqlx::{Arguments, PgPool, postgres::PgArguments, types::Json};
 
 	/// Table identifier for auth_tokens
 	#[derive(Debug, Iden)]
@@ -429,7 +429,7 @@ mod database_storage {
 			let metadata_json = serde_json::to_value(&token.metadata)
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
 
-			let (sql, _values) = Query::insert()
+			let (sql, values) = Query::insert()
 				.into_table(AuthTokens::Table.into_iden())
 				.columns([
 					AuthTokens::Token,
@@ -441,7 +441,7 @@ mod database_storage {
 					token.token.clone().into_value(),
 					token.user_id.into_value(),
 					token.expires_at.into_value(),
-					metadata_json.to_string().into_value(),
+					metadata_json.into_value(),
 				])
 				.on_conflict(
 					OnConflict::column(AuthTokens::Token)
@@ -450,7 +450,31 @@ mod database_storage {
 				)
 				.build(PostgresQueryBuilder);
 
-			sqlx::query(&sql)
+			// Bind exactly the values emitted by the renderer, including native JSONB.
+			// NULL expiration is rendered as SQL NULL and has no argument position.
+			let mut arguments = PgArguments::default();
+			for value in values.0 {
+				match value {
+					reinhardt_query::Value::String(value) => {
+						arguments.add(value.map(|value| *value))
+					}
+					reinhardt_query::Value::BigInt(value) => arguments.add(value),
+					reinhardt_query::Value::Json(value) => {
+						arguments.add(value.map(|value| Json(*value)))
+					}
+					_ => {
+						return Err(TokenStorageError::StorageError(
+							"Unsupported token storage argument type".into(),
+						));
+					}
+				}
+				.map_err(|_| {
+					TokenStorageError::StorageError(
+						"Failed to encode token storage argument".into(),
+					)
+				})?;
+			}
+			sqlx::query_with(&sql, arguments)
 				.execute(&self.pool)
 				.await
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
@@ -574,6 +598,62 @@ mod database_storage {
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
 
 			Ok(result.rows_affected() as usize)
+		}
+	}
+	#[cfg(test)]
+	mod database_tests {
+		use super::*;
+		use rstest::rstest;
+		use testcontainers::runners::AsyncRunner;
+		use testcontainers_modules::postgres::Postgres;
+
+		#[rstest]
+		#[case(None)]
+		#[case(Some(1_900_000_000))]
+		#[tokio::test]
+		async fn stores_bound_token_and_native_json_metadata(#[case] expiration: Option<i64>) {
+			// Arrange: each test owns its container and pool through RAII.
+			let container = Postgres::default().start().await.unwrap();
+			let pool = PgPool::connect(&format!(
+				"postgres://postgres:postgres@{}:{}/postgres",
+				container.get_host().await.unwrap(),
+				container.get_host_port_ipv4(5432).await.unwrap()
+			))
+			.await
+			.unwrap();
+			let storage = DatabaseTokenStorage::new(pool);
+			storage.initialize().await.unwrap();
+			let mut token = StoredToken::new("'quoted ? $1", 42);
+			token.expires_at = expiration;
+			token
+				.metadata
+				.insert("provider".into(), "'quoted \"json\" ? $2".into());
+			// Act
+			storage.store(token.clone()).await.unwrap();
+			// Assert: native JSON and NULL/Some expiration survive get/list and conflict update.
+			assert_eq!(storage.get(&token.token).await.unwrap(), token);
+			assert_eq!(
+				storage.get_user_tokens(42).await.unwrap(),
+				vec![token.clone()]
+			);
+			token.expires_at = Some(2_000_000_000);
+			token.metadata.insert("provider".into(), "updated".into());
+			storage.store(token.clone()).await.unwrap();
+			assert_eq!(storage.get(&token.token).await.unwrap(), token);
+			assert_eq!(storage.cleanup_expired(2_000_000_001).await.unwrap(), 1);
+			assert_eq!(
+				storage.get(&token.token).await,
+				Err(TokenStorageError::NotFound)
+			);
+			storage.store(token.clone()).await.unwrap();
+			storage.delete(&token.token).await.unwrap();
+			assert_eq!(
+				storage.delete(&token.token).await,
+				Err(TokenStorageError::NotFound)
+			);
+			storage.store(token.clone()).await.unwrap();
+			storage.delete_user_tokens(42).await.unwrap();
+			assert_eq!(storage.get_user_tokens(42).await.unwrap(), vec![]);
 		}
 	}
 }
