@@ -917,16 +917,15 @@ mod tests {
 		assert_eq!(user.id(), expected_id);
 	}
 
+	type MockAuthResult = Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>;
+
 	struct MockAuthBackend {
-		auth_result: Mutex<Option<Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>>>,
-		get_user_result: Mutex<Option<Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>>>,
+		auth_result: Mutex<Option<MockAuthResult>>,
+		get_user_result: Mutex<Option<MockAuthResult>>,
 	}
 
 	impl MockAuthBackend {
-		fn new(
-			auth_result: Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>,
-			get_user_result: Result<Option<Box<dyn AuthIdentity>>, AuthenticationError>,
-		) -> Self {
+		fn new(auth_result: MockAuthResult, get_user_result: MockAuthResult) -> Self {
 			Self {
 				auth_result: Mutex::new(Some(auth_result)),
 				get_user_result: Mutex::new(Some(get_user_result)),
