@@ -23,6 +23,7 @@ use reinhardt_query::{
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
+use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
 
 fn build<T: QueryStatementBuilder>(database: DatabaseType, statement: T) -> (String, Values) {
@@ -1621,6 +1622,13 @@ async fn postgres_generated_pool_execution_keeps_decimal_and_nullable_arrays() {
 #[tokio::test]
 async fn mysql_generated_pool_execution_keeps_decimal_and_full_unsigned_range() {
 	let container = testcontainers_modules::mysql::Mysql::default()
+		// The default log waits time out despite a healthy SQL server; see
+		// docs/mysql-fixture-readiness.md. Remove this override once the default
+		// conditions pass reliably; ideally use Mysql::default().start().
+		.with_ready_conditions(vec![testcontainers::core::WaitFor::message_on_stderr(
+			"port: 3306  MySQL Community Server",
+		)])
+		.with_startup_timeout(std::time::Duration::from_secs(120))
 		.start()
 		.await
 		.unwrap();
