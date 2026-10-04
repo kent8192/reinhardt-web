@@ -69,6 +69,25 @@ impl QueryRow {
 	}
 
 	/// Creates an instance from backend row.
+	///
+	/// Nullable scalar arrays preserve element positions as JSON nulls and can be
+	/// read as `Vec<Option<T>>`. A SQL NULL for the entire array remains distinct
+	/// from an empty array.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_db::backends::{QueryValue, Row};
+	/// use reinhardt_db::orm::QueryRow;
+	///
+	/// let mut row = Row::new();
+	/// row.insert("items".into(), QueryValue::NullableStringArray(vec![
+	///     Some("kept".into()), None,
+	/// ]));
+	/// let row = QueryRow::from_backend_row(row);
+	/// assert_eq!(row.get::<Vec<Option<String>>>("items"),
+	///     Some(vec![Some("kept".into()), None]));
+	/// ```
 	pub fn from_backend_row(row: Row) -> Self {
 		// Convert Row to JSON for backward compatibility
 		let mut map = serde_json::Map::new();
@@ -135,6 +154,27 @@ impl QueryRow {
 						.map(|value| serde_json::Value::String(value.to_string()))
 						.collect(),
 				),
+				QueryValue::NullableStringArray(values) => {
+					serde_json::to_value(values).expect("nullable arrays serialize")
+				}
+				QueryValue::NullableIntArray(values) => {
+					serde_json::to_value(values).expect("nullable arrays serialize")
+				}
+				QueryValue::NullableBigIntArray(values) => {
+					serde_json::to_value(values).expect("nullable arrays serialize")
+				}
+				QueryValue::NullableBoolArray(values) => {
+					serde_json::to_value(values).expect("nullable arrays serialize")
+				}
+				QueryValue::NullableFloatArray(values) => {
+					serde_json::to_value(values).expect("nullable arrays serialize")
+				}
+				QueryValue::NullableDoubleArray(values) => {
+					serde_json::to_value(values).expect("nullable arrays serialize")
+				}
+				QueryValue::NullableUuidArray(values) => {
+					serde_json::to_value(values).expect("nullable arrays serialize")
+				}
 				// NOW() should never appear in Row data (it's resolved to actual timestamp in database)
 				QueryValue::Now => panic!("QueryValue::Now should not appear in Row data"),
 			};

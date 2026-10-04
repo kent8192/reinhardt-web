@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve NULL element positions when decoding supported PostgreSQL scalar
+  arrays, including the distinction between SQL NULL and empty arrays.
+
+### Changed
+
+- **Breaking:** `QueryValue` adds seven `Nullable*Array(Vec<Option<T>>)` variants.
+  Update exhaustive matches to handle the new variants. Existing non-nullable
+  array constructors and payload types are unchanged.
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.18...reinhardt-db@v0.4.0-alpha.19) - 2026-10-03
 
 ### Fixed

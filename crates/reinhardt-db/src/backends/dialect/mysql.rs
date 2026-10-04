@@ -138,6 +138,27 @@ impl MySqlBackend {
 			QueryValue::UuidArray(values) => {
 				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
 			}
+			QueryValue::NullableStringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableBigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableBoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableFloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableDoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableUuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
 			QueryValue::Now => {
 				// MySQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -443,6 +464,27 @@ impl MySqlTransactionExecutor {
 			}
 			QueryValue::UuidArray(values) => {
 				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
+			}
+			QueryValue::NullableStringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableBigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableBoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableFloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableDoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
+			}
+			QueryValue::NullableUuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("nullable arrays serialize"))
 			}
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		})

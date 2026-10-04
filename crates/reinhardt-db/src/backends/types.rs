@@ -54,6 +54,11 @@ impl DatabaseType {
 /// Integer parameters retain their binding width: `Int32` binds as PostgreSQL
 /// `integer`, while `Int` binds as `bigint`. Use `QueryValue::from(3_i32)` for
 /// functions requiring an `integer` argument, such as `right(text, integer)`.
+///
+/// PostgreSQL array rows without NULL elements retain their non-nullable array
+/// variants. Rows with NULL elements use the corresponding `Nullable*Array`
+/// variant, preserving every position. An empty array retains its scalar type;
+/// SQL NULL for the entire array is [`QueryValue::Null`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum QueryValue {
 	/// Null variant.
@@ -97,6 +102,20 @@ pub enum QueryValue {
 	Now,
 	/// Signed 32-bit integer parameter.
 	Int32(i32),
+	/// PostgreSQL-compatible string array with nullable elements.
+	NullableStringArray(Vec<Option<String>>),
+	/// PostgreSQL-compatible 32-bit integer array with nullable elements.
+	NullableIntArray(Vec<Option<i32>>),
+	/// PostgreSQL-compatible 64-bit integer array with nullable elements.
+	NullableBigIntArray(Vec<Option<i64>>),
+	/// PostgreSQL-compatible boolean array with nullable elements.
+	NullableBoolArray(Vec<Option<bool>>),
+	/// PostgreSQL-compatible 32-bit floating-point array with nullable elements.
+	NullableFloatArray(Vec<Option<f32>>),
+	/// PostgreSQL-compatible 64-bit floating-point array with nullable elements.
+	NullableDoubleArray(Vec<Option<f64>>),
+	/// PostgreSQL-compatible UUID array with nullable elements.
+	NullableUuidArray(Vec<Option<Uuid>>),
 }
 
 impl From<&str> for QueryValue {

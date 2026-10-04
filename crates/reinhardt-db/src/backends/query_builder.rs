@@ -115,6 +115,50 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 					.collect(),
 			)),
 		),
+		QueryValue::NullableStringArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::String,
+			Some(Box::new(
+				values
+					.iter()
+					.cloned()
+					.map(|value| Value::String(value.map(Box::new)))
+					.collect(),
+			)),
+		),
+		QueryValue::NullableIntArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Int,
+			Some(Box::new(values.iter().copied().map(Value::Int).collect())),
+		),
+		QueryValue::NullableBigIntArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::BigInt,
+			Some(Box::new(
+				values.iter().copied().map(Value::BigInt).collect(),
+			)),
+		),
+		QueryValue::NullableBoolArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Bool,
+			Some(Box::new(values.iter().copied().map(Value::Bool).collect())),
+		),
+		QueryValue::NullableFloatArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Float,
+			Some(Box::new(values.iter().copied().map(Value::Float).collect())),
+		),
+		QueryValue::NullableDoubleArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Double,
+			Some(Box::new(
+				values.iter().copied().map(Value::Double).collect(),
+			)),
+		),
+		QueryValue::NullableUuidArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Uuid,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Uuid(value.map(Box::new)))
+					.collect(),
+			)),
+		),
 		// NOW() is handled specially in build() methods, should not reach here
 		QueryValue::Now => {
 			panic!("QueryValue::Now should be handled in build() method, not converted to Value")
@@ -1542,6 +1586,36 @@ mod tests {
 	use crate::backends::error::DatabaseErrorKind;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
 	use rstest::rstest;
+
+	#[rstest]
+	#[case::string(QueryValue::NullableStringArray(vec![None, Some("kept".to_owned()), None]), reinhardt_query::value::ArrayType::String, vec![Value::String(None), Value::from("kept"), Value::String(None)])]
+	#[case::int(QueryValue::NullableIntArray(vec![None, Some(i32::MAX), None]), reinhardt_query::value::ArrayType::Int, vec![Value::Int(None), Value::Int(Some(i32::MAX)), Value::Int(None)])]
+	#[case::bigint(QueryValue::NullableBigIntArray(vec![None, Some(i64::MAX), None]), reinhardt_query::value::ArrayType::BigInt, vec![Value::BigInt(None), Value::BigInt(Some(i64::MAX)), Value::BigInt(None)])]
+	#[case::bool(QueryValue::NullableBoolArray(vec![None, Some(false), None]), reinhardt_query::value::ArrayType::Bool, vec![Value::Bool(None), Value::Bool(Some(false)), Value::Bool(None)])]
+	#[case::float(QueryValue::NullableFloatArray(vec![None, Some(1.5), None]), reinhardt_query::value::ArrayType::Float, vec![Value::Float(None), Value::Float(Some(1.5)), Value::Float(None)])]
+	#[case::double(QueryValue::NullableDoubleArray(vec![None, Some(-2.5), None]), reinhardt_query::value::ArrayType::Double, vec![Value::Double(None), Value::Double(Some(-2.5)), Value::Double(None)])]
+	#[case::uuid(QueryValue::NullableUuidArray(vec![None, Some(uuid::Uuid::nil()), None]), reinhardt_query::value::ArrayType::Uuid, vec![Value::Uuid(None), Value::Uuid(Some(Box::new(uuid::Uuid::nil()))), Value::Uuid(None)])]
+	#[case::empty_string(QueryValue::NullableStringArray(vec![]), reinhardt_query::value::ArrayType::String, vec![])]
+	#[case::empty_int(QueryValue::NullableIntArray(vec![]), reinhardt_query::value::ArrayType::Int, vec![])]
+	#[case::empty_bigint(QueryValue::NullableBigIntArray(vec![]), reinhardt_query::value::ArrayType::BigInt, vec![])]
+	#[case::empty_bool(QueryValue::NullableBoolArray(vec![]), reinhardt_query::value::ArrayType::Bool, vec![])]
+	#[case::empty_float(QueryValue::NullableFloatArray(vec![]), reinhardt_query::value::ArrayType::Float, vec![])]
+	#[case::empty_double(QueryValue::NullableDoubleArray(vec![]), reinhardt_query::value::ArrayType::Double, vec![])]
+	#[case::empty_uuid(QueryValue::NullableUuidArray(vec![]), reinhardt_query::value::ArrayType::Uuid, vec![])]
+	fn query_builder_preserves_nullable_array_types(
+		#[case] input: QueryValue,
+		#[case] array_type: reinhardt_query::value::ArrayType,
+		#[case] expected_elements: Vec<Value>,
+	) {
+		// Act
+		let value = query_value_to_sea_value(&input);
+
+		// Assert
+		assert_eq!(
+			value,
+			Value::Array(array_type, Some(Box::new(expected_elements)))
+		);
+	}
 
 	#[rstest]
 	#[case::int32_min(QueryValue::Int32(i32::MIN), Value::Int(Some(i32::MIN)))]

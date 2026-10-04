@@ -2318,6 +2318,27 @@ impl<M: Model> Manager<M> {
 						.collect(),
 				))))
 			}
+			QueryValue::NullableStringArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableIntArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableBigIntArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableBoolArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableFloatArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableDoubleArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableUuidArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
 			QueryValue::Now => reinhardt_query::value::Value::Int(None),
 		}
 	}

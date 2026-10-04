@@ -8,6 +8,27 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+### PostgreSQL arrays with NULL elements
+
+PostgreSQL row decoding retains NULL element positions in text (including
+`varchar` and `char`), integer, bigint, boolean, real, double precision, and UUID
+arrays. Arrays containing NULL elements use the corresponding
+`QueryValue::NullableStringArray`, `NullableIntArray`, `NullableBigIntArray`,
+`NullableBoolArray`, `NullableFloatArray`, `NullableDoubleArray`, or
+`NullableUuidArray` variant with a `Vec<Option<T>>` payload. Arrays without NULL
+elements, including empty arrays, retain the existing `StringArray`, `IntArray`,
+and other non-nullable variants. A SQL NULL for the entire array is
+`QueryValue::Null`.
+
+`QueryRow` preserves these positions when deserializing into `Vec<Option<T>>`.
+Use `Option<Vec<Option<T>>>` when the entire column can also be SQL NULL.
+Rebinding a nullable array on PostgreSQL retains its scalar element type; MySQL
+and SQLite use the existing JSON array encoding with JSON null elements.
+
+The additional public `QueryValue` variants require downstream exhaustive
+matches to handle the seven `Nullable*Array` variants. Existing array
+constructors and their payload types remain available.
+
 ## Features
 
 ### Implemented ✓
