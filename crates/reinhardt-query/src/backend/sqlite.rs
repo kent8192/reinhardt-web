@@ -1028,10 +1028,13 @@ impl QueryBuilder for SqliteQueryBuilder {
 		let mut writer = SqlWriter::new();
 
 		// INSERT INTO clause
-		writer.push(if stmt.sqlite_or_replace {
-			"INSERT OR REPLACE INTO"
-		} else {
-			"INSERT INTO"
+		writer.push(match stmt.modifier {
+			crate::query::insert::InsertModifier::None => "INSERT INTO",
+			crate::query::insert::InsertModifier::SqliteReplace => "INSERT OR REPLACE INTO",
+			crate::query::insert::InsertModifier::SqliteIgnore => "INSERT OR IGNORE INTO",
+			crate::query::insert::InsertModifier::MySqlIgnore => {
+				panic!("MySQL INSERT IGNORE is unsupported by this backend")
+			}
 		});
 		writer.push_space();
 

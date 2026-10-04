@@ -1831,8 +1831,8 @@ impl PostgresQueryBuilder {
 	) -> (String, Values) {
 		use crate::query::insert::InsertSource;
 		assert!(
-			!stmt.sqlite_or_replace,
-			"SQLite INSERT OR REPLACE is unsupported by this backend"
+			stmt.modifier == crate::query::insert::InsertModifier::None,
+			"backend-specific INSERT modifier is unsupported by this backend"
 		);
 
 		// INSERT INTO clause

@@ -772,11 +772,15 @@ pub(crate) fn validate_insert_for_backend(
 	statement: &InsertStatement,
 	backend: &'static str,
 ) -> Result<(), QueryBuildError> {
-	if statement.sqlite_or_replace && backend != "SQLite" {
-		return Err(QueryBuildError::UnsupportedBackendFeature {
-			feature: "SQLite INSERT OR REPLACE",
-			backend,
-		});
+	use crate::query::insert::InsertModifier;
+	let unsupported_modifier = match statement.modifier {
+		InsertModifier::SqliteReplace if backend != "SQLite" => Some("SQLite INSERT OR REPLACE"),
+		InsertModifier::SqliteIgnore if backend != "SQLite" => Some("SQLite INSERT OR IGNORE"),
+		InsertModifier::MySqlIgnore if backend != "MySQL" => Some("MySQL INSERT IGNORE"),
+		_ => None,
+	};
+	if let Some(feature) = unsupported_modifier {
+		return Err(QueryBuildError::UnsupportedBackendFeature { feature, backend });
 	}
 
 	if let Some(table) = &statement.table {

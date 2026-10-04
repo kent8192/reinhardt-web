@@ -1111,16 +1111,23 @@ impl QueryBuilder for MySqlQueryBuilder {
 	}
 
 	fn build_insert(&self, stmt: &InsertStatement) -> (String, Values) {
-		use crate::query::insert::InsertSource;
+		use crate::query::insert::{InsertModifier, InsertSource};
 		assert!(
-			!stmt.sqlite_or_replace,
-			"SQLite INSERT OR REPLACE is unsupported by this backend"
+			matches!(
+				stmt.modifier,
+				InsertModifier::None | InsertModifier::MySqlIgnore
+			),
+			"SQLite INSERT modifier is unsupported by this backend"
 		);
 
 		let mut writer = SqlWriter::new();
 
 		// INSERT INTO clause
-		writer.push("INSERT INTO");
+		writer.push(if stmt.modifier == InsertModifier::MySqlIgnore {
+			"INSERT IGNORE INTO"
+		} else {
+			"INSERT INTO"
+		});
 		writer.push_space();
 
 		if let Some(table) = &stmt.table {

@@ -51773,8 +51773,8 @@
       "path": "crates/reinhardt-query/src/backend/mysql.rs",
       "symbol": "MySqlQueryBuilder as QueryBuilder::build_insert",
       "kind": "sql-literal",
-      "line": 1123,
-      "fingerprint": "03b366b241faee7fe095b7f705c8396904fafb13f0539ba7a648c062fc8dba9f",
+      "line": 1127,
+      "fingerprint": "4996204b648089dfd9a09a3727d8f6ec6e569a5e2bb02f43af20a22af6adcf54",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -51785,12 +51785,41 @@
       "feature_reachability": [
         "native and wasm; query feature selections"
       ],
-      "rationale": "Executor-independent query rendering and caller-requested raw/inlined SQL capabilities; no runtime database execution.",
+      "rationale": "Executor-independent typed INSERT prefix rendering. MySQL IGNORE and SQLite OR IGNORE/OR REPLACE modifiers are mutually exclusive; generated Values and source semantics are retained. Runtime consumers are audited independently.",
       "backends": [
         "renderer-selected"
       ],
       "evidence": [
-        "Executor-independent AST renderer. Structural INSERT rows: 8 focused backend/order/traversal tests, 2109 unit tests and 559 doctests passed; all-target Clippy, WASM and local SemVer passed."
+        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
+        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
+        "Independent native and WASM consumers compile the new public builder methods without optional query features."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/mysql.rs::MySqlQueryBuilder as QueryBuilder::build_insert::sql-literal#2",
+      "path": "crates/reinhardt-query/src/backend/mysql.rs",
+      "symbol": "MySqlQueryBuilder as QueryBuilder::build_insert",
+      "kind": "sql-literal",
+      "line": 1129,
+      "fingerprint": "d584d3dc62cf5438fbf9b09afd22294cc60bab76b380b1732c799c81e3994709",
+      "conditions": [],
+      "test_only": false,
+      "category": "dml",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "native and wasm; no backend feature gates"
+      ],
+      "backends": [
+        "renderer-selected"
+      ],
+      "rationale": "Executor-independent typed INSERT prefix rendering. MySQL IGNORE and SQLite OR IGNORE/OR REPLACE modifiers are mutually exclusive; generated Values and source semantics are retained. Runtime consumers are audited independently.",
+      "evidence": [
+        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
+        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
+        "Independent native and WASM consumers compile the new public builder methods without optional query features."
       ]
     },
     {
@@ -54274,7 +54303,7 @@
       "symbol": "PostgresQueryBuilder::build_insert_with_writer",
       "kind": "sql-literal",
       "line": 1839,
-      "fingerprint": "999043a6c3ab876665234bf1e8fe5b8530d6df1b7794c02d864148f74a22e409",
+      "fingerprint": "337f7f379f0419202b35dff048e32637558a0ab44406f37d179d9cde7274f708",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -54285,12 +54314,14 @@
       "feature_reachability": [
         "native and wasm; query feature selections"
       ],
-      "rationale": "Executor-independent query rendering and caller-requested raw/inlined SQL capabilities; no runtime database execution.",
+      "rationale": "Executor-independent typed INSERT prefix rendering. MySQL IGNORE and SQLite OR IGNORE/OR REPLACE modifiers are mutually exclusive; generated Values and source semantics are retained. Runtime consumers are audited independently.",
       "backends": [
         "renderer-selected"
       ],
       "evidence": [
-        "Executor-independent AST renderer. Structural INSERT rows: 8 focused backend/order/traversal tests, 2109 unit tests and 559 doctests passed; all-target Clippy, WASM and local SemVer passed."
+        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
+        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
+        "Independent native and WASM consumers compile the new public builder methods without optional query features."
       ]
     },
     {
@@ -54924,7 +54955,7 @@
       "symbol": "SqliteQueryBuilder as QueryBuilder::build_insert",
       "kind": "sql-literal",
       "line": 1032,
-      "fingerprint": "e8bece3dbc0e26d79c343fa17695d9d8ddff467c6c8ab0f67fee0b8470360584",
+      "fingerprint": "07597e323ea475bcebe6c3fbb98265e716ca6e72136d7bc8ac92b5af60981fa4",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -54935,12 +54966,14 @@
       "feature_reachability": [
         "native and wasm; query feature selections"
       ],
-      "rationale": "Executor-independent query rendering and caller-requested raw/inlined SQL capabilities; no runtime database execution.",
+      "rationale": "Executor-independent typed INSERT prefix rendering. MySQL IGNORE and SQLite OR IGNORE/OR REPLACE modifiers are mutually exclusive; generated Values and source semantics are retained. Runtime consumers are audited independently.",
       "backends": [
         "renderer-selected"
       ],
       "evidence": [
-        "Executor-independent AST renderer. Structural INSERT rows: 8 focused backend/order/traversal tests, 2109 unit tests and 559 doctests passed; all-target Clippy, WASM and local SemVer passed."
+        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
+        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
+        "Independent native and WASM consumers compile the new public builder methods without optional query features."
       ]
     },
     {
@@ -54948,8 +54981,8 @@
       "path": "crates/reinhardt-query/src/backend/sqlite.rs",
       "symbol": "SqliteQueryBuilder as QueryBuilder::build_insert",
       "kind": "sql-literal",
-      "line": 1034,
-      "fingerprint": "11598946e773cbbe50bcc572945b8b9d11d1597362e190d12ff76c259b8b7fee",
+      "line": 1033,
+      "fingerprint": "3ff35734e9f4ff4e928727afb0156326ab605cbd11128558602d8a711689f48a",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -54960,12 +54993,41 @@
       "feature_reachability": [
         "native and wasm; query feature selections"
       ],
-      "rationale": "Executor-independent query rendering and caller-requested raw/inlined SQL capabilities; no runtime database execution.",
+      "rationale": "Executor-independent typed INSERT prefix rendering. MySQL IGNORE and SQLite OR IGNORE/OR REPLACE modifiers are mutually exclusive; generated Values and source semantics are retained. Runtime consumers are audited independently.",
       "backends": [
         "renderer-selected"
       ],
       "evidence": [
-        "Executor-independent AST renderer. Structural INSERT rows: 8 focused backend/order/traversal tests, 2109 unit tests and 559 doctests passed; all-target Clippy, WASM and local SemVer passed."
+        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
+        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
+        "Independent native and WASM consumers compile the new public builder methods without optional query features."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/backend/sqlite.rs::SqliteQueryBuilder as QueryBuilder::build_insert::sql-literal#3",
+      "path": "crates/reinhardt-query/src/backend/sqlite.rs",
+      "symbol": "SqliteQueryBuilder as QueryBuilder::build_insert",
+      "kind": "sql-literal",
+      "line": 1034,
+      "fingerprint": "9dcc57d53ce9a044e01e629569acb33106a46798032f82b95b7d6d9e490016e2",
+      "conditions": [],
+      "test_only": false,
+      "category": "dml",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "feature_reachability": [
+        "native and wasm; no backend feature gates"
+      ],
+      "backends": [
+        "renderer-selected"
+      ],
+      "rationale": "Executor-independent typed INSERT prefix rendering. MySQL IGNORE and SQLite OR IGNORE/OR REPLACE modifiers are mutually exclusive; generated Values and source semantics are retained. Runtime consumers are audited independently.",
+      "evidence": [
+        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
+        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
+        "Independent native and WASM consumers compile the new public builder methods without optional query features."
       ]
     },
     {

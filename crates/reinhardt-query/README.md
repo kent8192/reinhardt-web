@@ -147,6 +147,14 @@ adding an argument to a prepared query. It accepts an unsigned integer, and the
 backend places the clause before row locking. Calling `limit(...)` again restores
 the usual bound limit. Both forms are available on native and WASM targets.
 
+`InsertStatement::mysql_ignore()` and `sqlite_or_ignore()` select the backend's
+INSERT conflict modifier while retaining generated Values. MySQL emits
+`INSERT IGNORE`; SQLite emits `INSERT OR IGNORE`. Checked builders reject other
+backends; legacy builders panic instead of silently dropping the modifier.
+The last modifier replaces earlier modifiers, including `sqlite_or_replace()`,
+and `take()` resets the original statement. Construction and rendering are
+available with the same behavior on native and WASM targets.
+
 ### Row locking
 
 Use the owned query AST to configure locking reads. A single
