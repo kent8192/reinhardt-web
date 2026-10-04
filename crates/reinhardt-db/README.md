@@ -362,6 +362,11 @@ annotations, related loading, joins, grouping, CTEs, and alternate sources are
 not model-shaped and return an error. Array filter parameters are not supported
 through `sqlx::Any` on the main line.
 
+Session text reads accept both SQLx Any strings and complete UTF-8 byte values,
+including MySQL TEXT columns reported as BLOB. Values are not truncated or
+decoded lossily. Invalid UTF-8 returns a serialization error identifying the
+table, model field, and physical column; nullable text preserves SQL NULL.
+
 `AsyncQuery` preserves bind parameters when executing legacy `Q` filters.
 Runtime field names and operators are treated as query structure and accept
 only supported forms. `Q::from_sql` rejects unrecognized SQL, while
