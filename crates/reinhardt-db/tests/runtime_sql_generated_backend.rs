@@ -17,8 +17,8 @@ use reinhardt_db::orm::{
 	ManyToManyAccessor, Model, OrmExecutor, QuerySet, ReverseAccessor,
 };
 use reinhardt_query::{
-	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
-	SqliteQueryBuilder, Value, Values,
+	Alias, ColumnDef, ColumnType, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query,
+	QueryStatementBuilder, SqliteQueryBuilder, Value, Values,
 };
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
@@ -282,6 +282,197 @@ impl Model for GeneratedModel {
 			attributes: std::collections::HashMap::new(),
 		})
 		.collect()
+	}
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct GeneratedArrayModel {
+	id: i64,
+	items: Vec<String>,
+	title: String,
+}
+
+impl Model for GeneratedArrayModel {
+	type PrimaryKey = i64;
+	type Fields = GeneratedFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
+	fn table_name() -> &'static str {
+		"generated_model_arrays"
+	}
+	fn new_fields() -> Self::Fields {
+		GeneratedFields
+	}
+	fn primary_key(&self) -> Option<i64> {
+		Some(self.id)
+	}
+	fn set_primary_key(&mut self, value: i64) {
+		self.id = value;
+	}
+	fn field_metadata() -> Vec<reinhardt_db::orm::inspection::FieldInfo> {
+		use reinhardt_db::orm::field_codec::DatabaseStorageKind;
+		let mut fields = GeneratedModel::field_metadata();
+		fields[0].nullable = false;
+		let mut title = fields[1].clone();
+		title.name = "title".into();
+		fields[1].name = "items".into();
+		fields[1].field_type = "ArrayField".into();
+		fields[1].storage_kind = Some(DatabaseStorageKind::Json);
+		fields.push(title);
+		fields
+	}
+	fn encode_database_fields(
+		&self,
+	) -> Result<std::collections::BTreeMap<String, DatabaseValue>, reinhardt_db::orm::FieldCodecError>
+	{
+		Ok(std::collections::BTreeMap::from([
+			("id".into(), DatabaseValue::I64(self.id)),
+			(
+				"items".into(),
+				DatabaseValue::Array {
+					element_type: reinhardt_db::orm::DatabaseArrayType::String,
+					values: self
+						.items
+						.iter()
+						.cloned()
+						.map(DatabaseValue::String)
+						.collect(),
+				},
+			),
+			("title".into(), DatabaseValue::String(self.title.clone())),
+		]))
+	}
+}
+
+async fn exercise_manager_model_arrays(connection: &DatabaseConnection) {
+	// SETUP: PostgreSQL uses SQL arrays; MySQL/SQLite use declared JSON storage.
+	let database = connection.database_type();
+	let items = ColumnDef::new("items");
+	let items = match database {
+		DatabaseType::Postgres => items.array(ColumnType::Text),
+		DatabaseType::Mysql => items.json(),
+		DatabaseType::Sqlite => items.text(),
+	};
+	let schema = build(
+		database,
+		Query::create_table()
+			.table(Alias::new(GeneratedArrayModel::table_name()))
+			.col(ColumnDef::new("id").big_integer().primary_key(true))
+			.col(items)
+			.col(ColumnDef::new("title").text())
+			.take(),
+	);
+	connection.execute_generated(schema, None).await.unwrap();
+	let lease = DatabaseConnectionLease::register(connection.clone()).unwrap();
+	let mut handle = lease.handle();
+	let manager = GeneratedArrayModel::objects();
+	let quoted = vec!["array' ? $2".into(), "\"double quote\" \\ newline\n".into()];
+	let mut expected = Vec::new();
+	// CREATE / UPDATE: both empty and populated arrays retain adjacent arguments.
+	for (id, items) in [(1, quoted.clone()), (2, Vec::new())] {
+		let model = GeneratedArrayModel {
+			id,
+			items,
+			title: format!("create' ? $3 {id}"),
+		};
+		assert_eq!(
+			manager.create_with_conn(&mut handle, &model).await.unwrap(),
+			model
+		);
+		let updated = GeneratedArrayModel {
+			items: if id == 1 { Vec::new() } else { quoted.clone() },
+			title: format!("update' ? $3 {id}"),
+			..model
+		};
+		assert_eq!(
+			manager
+				.update_with_conn(&mut handle, &updated)
+				.await
+				.unwrap(),
+			updated
+		);
+		expected.push(updated);
+	}
+	// CREATE / UPDATE: dedicated transaction executors use the same model encoding.
+	let mut transaction = connection.begin_write().await.unwrap();
+	for (id, items) in [(3, quoted.clone()), (4, Vec::new())] {
+		let model = GeneratedArrayModel {
+			id,
+			items,
+			title: format!("transaction create' ? $3 {id}"),
+		};
+		assert_eq!(
+			manager
+				.insert_with_executor(&mut *transaction, &model)
+				.await
+				.unwrap(),
+			model
+		);
+		let updated = GeneratedArrayModel {
+			items: if id == 3 { Vec::new() } else { quoted.clone() },
+			title: format!("transaction update' ? $3 {id}"),
+			..model
+		};
+		assert_eq!(
+			manager
+				.save_with_executor(&mut *transaction, &updated)
+				.await
+				.unwrap(),
+			updated
+		);
+		expected.push(updated);
+	}
+	transaction.commit().await.unwrap();
+	// READ: committed values hydrate through their declared column storage metadata.
+	assert_eq!(
+		QuerySet::<GeneratedArrayModel>::new()
+			.order_by(&["id"])
+			.all_with_db(&mut handle)
+			.await
+			.unwrap(),
+		expected
+	);
+	if database != DatabaseType::Postgres {
+		// Direct SQL array arguments remain unsupported, even for JSON model columns.
+		let raw_array = || {
+			build(
+				database,
+				Query::insert()
+					.into_table(Alias::new(GeneratedArrayModel::table_name()))
+					.columns([Alias::new("id"), Alias::new("items"), Alias::new("title")])
+					.values_panic([
+						Value::BigInt(Some(99)),
+						Value::Array(
+							reinhardt_query::ArrayType::String,
+							Some(Box::new(vec!["private array".into()])),
+						),
+						"private title".into(),
+					])
+					.take(),
+			)
+		};
+		let error = connection
+			.execute_generated(raw_array(), None)
+			.await
+			.unwrap_err();
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Type));
+		let backend = if database == DatabaseType::Mysql {
+			"mysql"
+		} else {
+			"sqlite"
+		};
+		let expected_message = format!(
+			"cannot encode Array argument 2 for {backend}: arrays require a PostgreSQL native codec"
+		);
+		assert_eq!(error.database_error().unwrap().message(), expected_message);
+		let mut transaction = connection.begin_write().await.unwrap();
+		let error = transaction
+			.execute_generated(raw_array(), None)
+			.await
+			.unwrap_err();
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Type));
+		assert_eq!(error.database_error().unwrap().message(), expected_message);
+		transaction.rollback().await.unwrap();
+		assert_eq!(manager.count_with_conn(&mut handle).await.unwrap(), 4);
 	}
 }
 
@@ -1550,6 +1741,7 @@ async fn postgres_generated_pool_execution_keeps_decimal_and_nullable_arrays() {
 	exercise_queryset_generated_capabilities(&connection).await;
 	exercise_relationship_generated_capabilities(&connection).await;
 	exercise_manager_generated_capabilities(&connection).await;
+	exercise_manager_model_arrays(&connection).await;
 	// Arrange / Act: nullable array elements bypass the legacy Debug conversion.
 	connection
 		.execute("CREATE TABLE generated_arrays (items INTEGER[])", vec![])
@@ -1644,6 +1836,7 @@ async fn mysql_generated_pool_execution_keeps_decimal_and_full_unsigned_range() 
 	exercise_queryset_generated_capabilities(&connection).await;
 	exercise_relationship_generated_capabilities(&connection).await;
 	exercise_manager_generated_capabilities(&connection).await;
+	exercise_manager_model_arrays(&connection).await;
 	// Arrange / Act: the native backend must bypass the signed compatibility bridge.
 	connection
 		.execute(
@@ -1695,6 +1888,7 @@ async fn sqlite_generated_pool_execution_keeps_text_uuid_and_rejects_lossy_value
 	exercise_queryset_generated_capabilities(&connection).await;
 	exercise_relationship_generated_capabilities(&connection).await;
 	exercise_manager_generated_capabilities(&connection).await;
+	exercise_manager_model_arrays(&connection).await;
 	// Act: failed encoding must occur before an invalid SQL statement is executed.
 	let built = build(
 		DatabaseType::Sqlite,
