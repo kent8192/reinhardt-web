@@ -436,8 +436,9 @@ When applied history spans multiple apps, all applied migration definitions must
 be available to check cross-app dependents. Missing definitions, including files
 skipped because they could not be parsed, stop rollback before changing schema or
 recorder rows in real, fake, and preview modes. Restore those definitions before
-retrying. Single-app history retains fake rollback for missing selected files;
-real execution always requires every selected migration definition.
+retrying. Single-app history retains preview and fake rollback for missing selected
+files, using reverse recorder order for the selected suffix. Real execution always
+requires every selected migration definition.
 
 `--plan` never mutates the database, including the migration bookkeeping table:
 on a fresh database a dry-run leaves it uncreated. Apply plans are displayed in

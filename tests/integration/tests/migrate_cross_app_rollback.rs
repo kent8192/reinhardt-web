@@ -360,6 +360,89 @@ async fn unrelated_missing_squash_preserves_pending_dependency_boundaries(
 }
 
 #[rstest]
+#[tokio::test]
+async fn single_app_missing_files_preserve_preview_and_fake_order(
+	#[future] migration_executor: MigrationExecutorFixture,
+	temp_dir: TempDir,
+	#[values("zero", "0001_first")] target: &str,
+	#[values("0001_first", "0002_second", "0003_third")] missing: &str,
+) {
+	// Arrange: apply a native chain, then remove a definition from its recorded history.
+	let root = temp_dir.path();
+	for (name, dependency, table, referenced_table) in [
+		("0001_first", None, "single_first", None),
+		(
+			"0002_second",
+			Some("0001_first"),
+			"single_second",
+			Some("single_first"),
+		),
+		(
+			"0003_third",
+			Some("0002_second"),
+			"single_third",
+			Some("single_second"),
+		),
+	] {
+		let dependencies: Vec<_> = dependency.map(|name| ("myapp", name)).into_iter().collect();
+		let reference = referenced_table
+			.map(|table| format!(", parent_id integer REFERENCES {table}(id)"))
+			.unwrap_or_default();
+		write_migration(
+			root,
+			"myapp",
+			name,
+			&dependencies,
+			&format!("CREATE TABLE {table} (id integer PRIMARY KEY{reference})"),
+			&format!("DROP TABLE {table}"),
+		);
+	}
+	let (mut executor, _container, pool, _port, url) = migration_executor.await;
+	let migrations = FilesystemSource::new(root.join("migrations"))
+		.all_migrations()
+		.await
+		.expect("load the complete single-app chain");
+	let result = executor
+		.apply_migrations(&migrations)
+		.await
+		.expect("apply the single-app baseline");
+	assert_eq!(result.applied.len(), 3);
+	let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+	let before = applied_keys(&recorder).await;
+	std::fs::remove_file(root.join(format!("migrations/myapp/{missing}.rs")))
+		.expect("remove the selected historical definition");
+	let mut expected = vec!["myapp:0003_third", "myapp:0002_second"];
+	if target == "zero" {
+		expected.push("myapp:0001_first");
+	}
+
+	// Act
+	let plan = run_migrate(root, &url, "myapp", target, "plan");
+	let planned: Vec<_> = plan
+		.lines()
+		.filter_map(|line| line.strip_prefix("[INFO]   - ")?.strip_suffix(" (unapply)"))
+		.collect();
+	assert_eq!(planned, expected);
+	assert_eq!(applied_keys(&recorder).await, before);
+	let output = run_migrate(root, &url, "myapp", target, "fake");
+
+	// Assert: fake removes the recorded suffix in reverse recorder order without changing SQL.
+	let executed: Vec<_> = output
+		.lines()
+		.filter_map(|line| line.strip_prefix("[SUCCESS]   ✓ Faked rollback: "))
+		.collect();
+	assert_eq!(executed, expected);
+	let removed: BTreeSet<_> = expected.into_iter().map(str::to_owned).collect();
+	assert_eq!(
+		applied_keys(&recorder).await,
+		before.difference(&removed).cloned().collect()
+	);
+	for table in ["single_first", "single_second", "single_third"] {
+		assert!(table_exists(pool.as_ref(), table).await, "{table}");
+	}
+}
+
+#[rstest]
 #[case::partial_target("foundation", "0001_retained", vec![
 	"reporting:0001_leaf", "consumer:0001_references", "foundation:0002_tables",
 ])]

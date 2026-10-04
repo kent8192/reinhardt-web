@@ -562,6 +562,17 @@ fn dependency_ordered_rollback_records(
 			}
 		}
 	}
+	if !spans_apps
+		&& roots.iter().any(|record| {
+			!migrations_by_key.contains_key(&MigrationKey::new(
+				record.app.as_str(),
+				record.name.as_str(),
+			))
+		}) {
+		// Incomplete single-app metadata cannot reconstruct ordering edges. The
+		// native suffix already contains every selected record in recorder order.
+		return Ok(roots.to_vec());
+	}
 	let mut replacements = HashMap::new();
 	let mut unavailable_replacements = HashSet::new();
 	for migration in all_migrations {
@@ -5425,15 +5436,26 @@ mod tests {
 	}
 
 	#[rstest::rstest]
+	#[case::zero_missing_first("zero", "0001_first")]
+	#[case::zero_missing_middle("zero", "0002_second")]
+	#[case::zero_missing_last("zero", "0003_third")]
+	#[case::target_missing_first("0001_first", "0001_first")]
+	#[case::target_missing_middle("0001_first", "0002_second")]
+	#[case::target_missing_last("0001_first", "0003_third")]
 	#[cfg(feature = "migrations")]
-	fn migration_target_plan_preserves_single_app_missing_file_history_repair() {
+	fn migration_target_plan_preserves_single_app_missing_file_history_repair(
+		#[case] target: &str,
+		#[case] missing: &str,
+	) {
 		use reinhardt_db::migrations::Migration;
 
-		// Arrange: native app history selects the suffix even without its final file.
-		let migrations = vec![
+		// Arrange: native app history supplies the suffix even with incomplete definitions.
+		let mut migrations = vec![
 			Migration::new("0001_first", "myapp"),
 			Migration::new("0002_second", "myapp").add_dependency("myapp", "0001_first"),
+			Migration::new("0003_third", "myapp").add_dependency("myapp", "0002_second"),
 		];
+		migrations.retain(|migration| migration.name != missing);
 		let applied = vec![
 			migration_record("myapp", "0001_first"),
 			migration_record("myapp", "0002_second"),
@@ -5441,20 +5463,58 @@ mod tests {
 		];
 
 		// Act
-		let plan = migration_target_plan("myapp", "0001_first", &applied, &migrations)
+		let plan = migration_target_plan("myapp", target, &applied, &migrations)
 			.expect("single-app fake history repair must retain its existing selection");
 
 		// Assert: fake can update these records; real execution still preflights files.
 		let MigrationTargetPlan::Rollback { records, .. } = plan else {
 			panic!("the recorded suffix must select rollback");
 		};
+		let mut expected = vec!["myapp:0003_third", "myapp:0002_second"];
+		if target == "zero" {
+			expected.push("myapp:0001_first");
+		}
 		assert_eq!(
 			records
 				.iter()
 				.rev()
 				.map(|record| format!("{}:{}", record.app, record.name))
 				.collect::<Vec<_>>(),
-			vec!["myapp:0003_third", "myapp:0002_second"]
+			expected
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_preserves_recorder_order_with_nonlexical_missing_keys() {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: recorder order, not migration names, defines the native rollback suffix.
+		let applied = vec![
+			migration_record("myapp", "0001_first"),
+			migration_record("myapp", "0003_second"),
+			migration_record("myapp", "0002_third"),
+		];
+		let migrations = vec![
+			Migration::new("0001_first", "myapp"),
+			Migration::new("0003_second", "myapp").add_dependency("myapp", "0001_first"),
+		];
+
+		// Act
+		let plan = migration_target_plan("myapp", "zero", &applied, &migrations)
+			.expect("missing files must preserve the recorded application order");
+
+		// Assert
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must select the complete recorder history");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| record.name.as_str())
+				.collect::<Vec<_>>(),
+			vec!["0002_third", "0003_second", "0001_first"]
 		);
 	}
 
