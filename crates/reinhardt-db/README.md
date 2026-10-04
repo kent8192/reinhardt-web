@@ -162,6 +162,10 @@ QuerySet execution, count, EXPLAIN, temporal projections, typed terminal
 aggregates, updates, deletes and borrowed iterators also consume the owned
 renderer pair. Query instrumentation keeps its existing SQL and parameter
 samples; these diagnostic samples are separate from the native driver arguments.
+Typed `get_or_create` and `update_or_create` retain renderer Values through
+conflict recovery and nested savepoints. Their constant two-row cardinality
+limit and backend row locks are query-builder clauses; the constant preserves
+the existing SQL and argument count.
 
 ### Streaming QuerySets
 

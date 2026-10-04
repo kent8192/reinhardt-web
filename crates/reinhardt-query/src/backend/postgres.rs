@@ -1742,6 +1742,10 @@ impl PostgresQueryBuilder {
 			writer.push_keyword("LIMIT");
 			writer.push_space();
 			writer.push_value(limit.clone(), |i| self.placeholder(i));
+		} else if let Some(limit) = stmt.literal_limit {
+			writer.push_keyword("LIMIT");
+			writer.push_space();
+			writer.push(&limit.to_string());
 		}
 
 		// OFFSET clause

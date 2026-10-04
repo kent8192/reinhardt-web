@@ -965,6 +965,10 @@ impl QueryBuilder for SqliteQueryBuilder {
 			writer.push_keyword("LIMIT");
 			writer.push_space();
 			writer.push_value(limit.clone(), |_i| self.placeholder(0));
+		} else if let Some(limit) = stmt.literal_limit {
+			writer.push_keyword("LIMIT");
+			writer.push_space();
+			writer.push(&limit.to_string());
 		}
 
 		// OFFSET clause

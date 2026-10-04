@@ -13,8 +13,8 @@ use reinhardt_db::orm::execution::{
 };
 use reinhardt_db::orm::query::{FieldAssignment, Filter, UpdateValue};
 use reinhardt_db::orm::{
-	DatabaseConnectionLease, DatabaseValue, FilterOperator, FilterValue, Model, OrmExecutor,
-	QuerySet,
+	CustomManager, DatabaseConnectionLease, DatabaseValue, FilterOperator, FilterValue, Model,
+	OrmExecutor, QuerySet,
 };
 use reinhardt_query::{
 	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
@@ -256,6 +256,55 @@ impl Model for GeneratedModel {
 	}
 	fn set_primary_key(&mut self, value: i64) {
 		self.id = Some(value);
+	}
+	fn field_metadata() -> Vec<reinhardt_db::orm::inspection::FieldInfo> {
+		use reinhardt_db::orm::field_codec::DatabaseStorageKind;
+		[
+			("id", DatabaseStorageKind::I64),
+			("name", DatabaseStorageKind::String),
+		]
+		.into_iter()
+		.map(|(name, storage)| reinhardt_db::orm::inspection::FieldInfo {
+			name: name.into(),
+			field_type: name.into(),
+			storage_kind: Some(storage),
+			domain: None,
+			nullable: name == "id",
+			primary_key: name == "id",
+			unique: false,
+			blank: false,
+			editable: true,
+			default: None,
+			db_default: None,
+			db_column: None,
+			choices: None,
+			attributes: std::collections::HashMap::new(),
+		})
+		.collect()
+	}
+}
+
+fn generated_id_field() -> reinhardt_db::orm::expressions::FieldRef<
+	GeneratedModel,
+	Option<i64>,
+	reinhardt_db::orm::expressions::GeneratedModelField,
+> {
+	// SAFETY: id is the declared optional i64 primary key with physical column id.
+	unsafe {
+		reinhardt_db::orm::expressions::FieldRef::from_generated_model_field_with_names("id", "id")
+	}
+}
+
+fn generated_name_field() -> reinhardt_db::orm::expressions::FieldRef<
+	GeneratedModel,
+	String,
+	reinhardt_db::orm::expressions::GeneratedModelField,
+> {
+	// SAFETY: name is the declared String field with physical column name.
+	unsafe {
+		reinhardt_db::orm::expressions::FieldRef::from_generated_model_field_with_names(
+			"name", "name",
+		)
 	}
 }
 
@@ -542,6 +591,75 @@ async fn exercise_queryset_generated_capabilities(connection: &DatabaseConnectio
 	);
 	assert_eq!(by_id.delete_with_conn(&mut handle).await.unwrap(), 1);
 	assert_eq!(by_id.count_with_db(&mut handle).await.unwrap(), 0);
+	// Generated upserts retain their cardinality and write-intent lock contracts.
+	let (created, inserted) = GeneratedModel::objects()
+		.get_or_create()
+		.lookup(generated_id_field(), Some(33_i64))
+		.default(generated_name_field(), "upsert' ? $5")
+		.execute_with(&mut handle)
+		.await
+		.unwrap();
+	assert!(inserted);
+	assert_eq!(
+		created,
+		GeneratedModel {
+			id: Some(33),
+			name: "upsert' ? $5".into()
+		}
+	);
+	let (existing, inserted) = GeneratedModel::objects()
+		.get_or_create()
+		.lookup(generated_id_field(), Some(33_i64))
+		.default(generated_name_field(), "ignored")
+		.execute_with(&mut handle)
+		.await
+		.unwrap();
+	assert!(!inserted);
+	assert_eq!(existing, created);
+	let (updated, inserted) = handle
+		.atomic_write(async |transaction| {
+			GeneratedModel::objects()
+				.update_or_create()
+				.lookup(generated_id_field(), Some(33_i64))
+				.set(generated_name_field(), "upsert update' ? $7")
+				.execute_with(transaction)
+				.await
+		})
+		.await
+		.unwrap();
+	assert!(!inserted);
+	assert_eq!(
+		updated,
+		GeneratedModel {
+			id: Some(33),
+			name: "upsert update' ? $7".into()
+		}
+	);
+	let (created, inserted) = handle
+		.atomic_write(async |transaction| {
+			GeneratedModel::objects()
+				.update_or_create()
+				.lookup(generated_id_field(), Some(34_i64))
+				.set(generated_name_field(), "upsert create' ? $8")
+				.execute_with(transaction)
+				.await
+		})
+		.await
+		.unwrap();
+	assert!(inserted);
+	assert_eq!(
+		created,
+		GeneratedModel {
+			id: Some(34),
+			name: "upsert create' ? $8".into()
+		}
+	);
+	let upserts = QuerySet::<GeneratedModel>::new().filter(Filter::new(
+		"id",
+		FilterOperator::In,
+		FilterValue::List(vec![FilterValue::Integer(33), FilterValue::Integer(34)]),
+	));
+	assert_eq!(upserts.delete_with_conn(&mut handle).await.unwrap(), 2);
 }
 
 async fn exercise_transactions_and_streams(connection: &DatabaseConnection) {
@@ -866,6 +984,39 @@ async fn postgres_generated_pool_execution_keeps_decimal_and_nullable_arrays() {
 		row.try_get::<Vec<Option<i32>>, _>("items").unwrap(),
 		[Some(3), None]
 	);
+	// Workaround: https://github.com/kent8192/reinhardt-web/issues/6533
+	// Independently reproduce SQLx's cache key omitting parameter type identity.
+	// Retain this compatibility assertion until a validated driver/framework
+	// fix isolates argument signatures; persistent(false) alone cannot do so.
+	let pool = connection.into_postgres().unwrap();
+	let mut dedicated = pool.acquire().await.unwrap();
+	let sql = "SELECT $1::BIGINT AS cached_width";
+	let first: i64 = sqlx::query_scalar(sql)
+		.bind(7_i32)
+		.fetch_one(&mut *dedicated)
+		.await
+		.unwrap();
+	assert_eq!(first, 7);
+	let error = sqlx::query_scalar::<_, i64>(sql)
+		.bind(8_i64)
+		.persistent(false)
+		.fetch_one(&mut *dedicated)
+		.await
+		.unwrap_err();
+	assert_eq!(
+		error.as_database_error().unwrap().code().as_deref(),
+		Some("22P03")
+	);
+	sqlx::Connection::clear_cached_statements(&mut *dedicated)
+		.await
+		.unwrap();
+	let second: i64 = sqlx::query_scalar(sql)
+		.bind(8_i64)
+		.persistent(false)
+		.fetch_one(&mut *dedicated)
+		.await
+		.unwrap();
+	assert_eq!(second, 8);
 }
 
 #[rstest]

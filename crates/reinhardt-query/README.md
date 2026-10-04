@@ -142,6 +142,11 @@ let builder = PostgresQueryBuilder::new();
 let (sql, values) = builder.build_delete(&stmt);
 ```
 
+`SelectStatement::limit_literal(2)` expresses a fixed cardinality limit without
+adding an argument to a prepared query. It accepts an unsigned integer, and the
+backend places the clause before row locking. Calling `limit(...)` again restores
+the usual bound limit. Both forms are available on native and WASM targets.
+
 ### Row locking
 
 Use the owned query AST to configure locking reads. A single
