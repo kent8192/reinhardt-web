@@ -178,6 +178,9 @@ the existing SQL and argument count.
 Reverse foreign-key and many-to-many accessors also retain native arguments
 through counts, joins, pagination and writes. Caller-owned transactions still
 control atomic relationship replacement.
+Manager create, update, delete and count operations use native generated
+arguments through ORM and dedicated transaction executors while preserving
+hydration and write-outcome reporting.
 
 ### Streaming QuerySets
 

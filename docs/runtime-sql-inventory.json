@@ -38479,7 +38479,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create",
       "kind": "execution-wrapper",
-      "line": 2810,
+      "line": 2799,
       "fingerprint": "bec69aa08efe7809c9919ebdab8ef664eb80e9bc006aaf65a6a77b63af7f4a64",
       "conditions": [],
       "test_only": false,
@@ -38502,7 +38502,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create",
       "kind": "execution-wrapper",
-      "line": 2815,
+      "line": 2804,
       "fingerprint": "9ddb689d581de0759bc64117cd866642e4e5230a0581ef6fad87c6cb36a3a203",
       "conditions": [],
       "test_only": false,
@@ -38525,7 +38525,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create",
       "kind": "sql-literal",
-      "line": 2795,
+      "line": 2784,
       "fingerprint": "5025c969f263e829f8f95e963088c263a6ade885597842366dcf9d53788c3156",
       "conditions": [],
       "test_only": false,
@@ -38548,7 +38548,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create",
       "kind": "sql-literal",
-      "line": 2795,
+      "line": 2784,
       "fingerprint": "192bbf4573f6824beadf6f7e912a88217c9943ade1200514af9ba3f2be362b76",
       "conditions": [],
       "test_only": false,
@@ -38571,7 +38571,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create",
       "kind": "sql-literal",
-      "line": 2797,
+      "line": 2786,
       "fingerprint": "5025c969f263e829f8f95e963088c263a6ade885597842366dcf9d53788c3156",
       "conditions": [],
       "test_only": false,
@@ -38594,7 +38594,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create",
       "kind": "sql-literal",
-      "line": 2797,
+      "line": 2786,
       "fingerprint": "a17c1614ffd9f9a9af05f98a108b5f897a93965aa1a53579ec1ff477ecda6b9f",
       "conditions": [],
       "test_only": false,
@@ -38617,7 +38617,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create_sql_detailed",
       "kind": "macro-sql-literal",
-      "line": 3094,
+      "line": 3083,
       "fingerprint": "73915f26684ebd455d5be497fa1ed0cdc1f2529cee02f34b25073e97d5699e52",
       "conditions": [],
       "test_only": false,
@@ -38640,7 +38640,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create_with_conn",
       "kind": "execution-wrapper",
-      "line": 2876,
+      "line": 2865,
       "fingerprint": "727d624b3f1b56dcad9c166447cddb1d016b94f7a3d27093ca105ea01db3fb00",
       "conditions": [],
       "test_only": false,
@@ -38663,7 +38663,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create_with_conn",
       "kind": "execution-wrapper",
-      "line": 2883,
+      "line": 2872,
       "fingerprint": "7e8cd4c0a10fdf74e69d817e258b80b6ad14cec0041fdde8393b2d0f459c2757",
       "conditions": [],
       "test_only": false,
@@ -38686,7 +38686,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create_with_conn",
       "kind": "sql-literal",
-      "line": 2861,
+      "line": 2850,
       "fingerprint": "bdcb7fd90acea635e1edd33e18d1cacbc7962af9113b75603e3ff244a1ce7781",
       "conditions": [],
       "test_only": false,
@@ -38709,7 +38709,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create_with_conn",
       "kind": "sql-literal",
-      "line": 2861,
+      "line": 2850,
       "fingerprint": "78ff51b5688aebd0a2a1ec0e8acb68be79cbfd83767fb81f5184aa011dc6c625",
       "conditions": [],
       "test_only": false,
@@ -38732,7 +38732,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create_with_conn",
       "kind": "sql-literal",
-      "line": 2863,
+      "line": 2852,
       "fingerprint": "bdcb7fd90acea635e1edd33e18d1cacbc7962af9113b75603e3ff244a1ce7781",
       "conditions": [],
       "test_only": false,
@@ -38755,7 +38755,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create_with_conn",
       "kind": "sql-literal",
-      "line": 2863,
+      "line": 2852,
       "fingerprint": "a8ba1b80b6eeed3f2bc98fabc5e71193318dc748cf703de8abe23bc77d02fdcb",
       "conditions": [],
       "test_only": false,
@@ -38778,7 +38778,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_update",
       "kind": "execution-wrapper",
-      "line": 2963,
+      "line": 2952,
       "fingerprint": "770154c3732c51049ebfe945bafd2a490bdda1ae1c47a7644f5fd897e6c08b02",
       "conditions": [],
       "test_only": false,
@@ -38801,7 +38801,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_update_database_values_sql_detailed",
       "kind": "macro-sql-literal",
-      "line": 3160,
+      "line": 3149,
       "fingerprint": "2308e1be5324fb7878b6141fe370a8d78645cd84f58ef3d7a352fb6cae510f51",
       "conditions": [],
       "test_only": false,
@@ -38824,7 +38824,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_update_sql_detailed",
       "kind": "macro-sql-literal",
-      "line": 3236,
+      "line": 3225,
       "fingerprint": "11952b458efe626424488af482d90f8f1a19919f33b97254d94ef415150fad8f",
       "conditions": [],
       "test_only": false,
@@ -38847,7 +38847,7 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_update_with_conn",
       "kind": "execution-wrapper",
-      "line": 3033,
+      "line": 3022,
       "fingerprint": "13ccc7f6325966052b9bb092c225d781bae1c1fd9fa76cd4abc97e0ff8aabdd7",
       "conditions": [],
       "test_only": false,
@@ -38870,100 +38870,132 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::count_with_conn",
       "kind": "execution-wrapper",
-      "line": 2629,
-      "fingerprint": "de09dbaa8f2cc9201ddaa4d314e435d9b37bfdb250b4eaa0618660509aafd36d",
+      "line": 2618,
+      "fingerprint": "be8de3b2c24ef22dd6503b7f3bb5c6d1a0a69529cb9148bc992558944e36f734",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_conn_outcome::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_conn_outcome",
       "kind": "execution-wrapper",
-      "line": 1943,
-      "fingerprint": "fe790aabd8c4ba05ba8a36427045c590465ac515997740de49198e131414821e",
+      "line": 1941,
+      "fingerprint": "589450d9ae246c287ed48a374be34756bbff1f4f9c67f4962496383c2a905573",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_conn_outcome::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_conn_outcome",
       "kind": "execution-wrapper",
-      "line": 1999,
-      "fingerprint": "b282cf51c576cae7bbc36a30001e6c774f7d70bfb74f8f5d3428d909646afa56",
+      "line": 1995,
+      "fingerprint": "237ae1435ca549687bb299e1a5ada6e657bd98893df70242d3b3559ab8e86173",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_conn_outcome::execution-wrapper#3",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_conn_outcome",
       "kind": "execution-wrapper",
-      "line": 2013,
-      "fingerprint": "34b6954878b4e51b060faeb2ad1d274d6d6aa5356f73c9b2de93d43df1616039",
+      "line": 2012,
+      "fingerprint": "60020050945edacc1536fc1ff34e65cb07be9266bdab9940ab0d3c320d62ff77",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_executor::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1772,
-      "fingerprint": "4d90ea782aafab07fc6982ea235cb472982538ff07ce58b618c75878c8d430c9",
+      "line": 1770,
+      "fingerprint": "ade050c5cfb7af1f486c3786592ed9473b37962c025e26945d58fd4684268e70",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -38985,31 +39017,39 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1777,
-      "fingerprint": "b7ad056b94f5ea11f77286059116d59fe262837b80fb6520adbaac0cf1c0631b",
+      "line": 1775,
+      "fingerprint": "0d7eceda5e207ed11bb2c37210225133a2a6f2dbac2245da0964c572d0d32df4",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_executor::execution-wrapper#3",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1785,
-      "fingerprint": "362b3d4f77c0890384b1c0f3bad0e7987158431e044d1792187280189c349932",
+      "line": 1783,
+      "fingerprint": "fc655e69c351dda77dd082f1ef8d966099d58a97cf9049096d5819c4a9feccac",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39031,54 +39071,70 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1816,
-      "fingerprint": "5ed8eadb694b54692c4b96ed63315459f1fdaff974fcb645d5167379501a99b3",
+      "line": 1813,
+      "fingerprint": "15d33a21e02d9f82af9111dd39db664f704697576879cedd190220f702db0169",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_executor::execution-wrapper#5",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1823,
-      "fingerprint": "ab5980f758da67e05236b096345721c79d6d89d30158e923ffc04daff0470696",
+      "line": 1820,
+      "fingerprint": "7005b943d96b5a22a31d81b17daac9e1b6ffcf5878f734324c29f1345b1d9162",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_executor::sql-literal#1",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "sql-literal",
-      "line": 1773,
-      "fingerprint": "d572a21b19143f5df4ccf85b038ffa68519c36de88080002ff384c765e3c7d74",
+      "line": 1771,
+      "fingerprint": "d2239d903c5a932fbd25d7c592bcba6bb4ade52b8766a019e2f5d2a30e95f9a1",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -39100,8 +39156,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "sql-literal",
-      "line": 1787,
-      "fingerprint": "b94e996918ca648a8cf81b0155acbc7764cc2e8a4b192b4be5a967eeeea36c79",
+      "line": 1785,
+      "fingerprint": "3e8a78f78d020f59bd40d2b311958b882acc618060b55f8aecf5ea9cb59979e6",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -39123,184 +39179,248 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::delete_with_conn",
       "kind": "execution-wrapper",
-      "line": 2579,
-      "fingerprint": "36f8ceb0c75df26669c832fdfb21d41393a3ecfbc3342f3e9917a3e787fc8d6b",
+      "line": 2569,
+      "fingerprint": "25df68f6b21be55ee975d6a5befa49dcbe1bcfe7f060e615cd9650d033dcb6c1",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::delete_with_executor::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::delete_with_executor",
       "kind": "execution-wrapper",
-      "line": 2528,
-      "fingerprint": "25a2e784367413d1ccbc73f19be3a28aa99b8e24a16c45f6d355eef7d76fbf28",
+      "line": 2519,
+      "fingerprint": "cc10f50075aaeabf8f5795875a100b14d8cd0805e6f1cbe36aa18130c0013188",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::update_with_conn::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_conn",
       "kind": "execution-wrapper",
-      "line": 2478,
-      "fingerprint": "38a8a6286c28019f6c5376efb23bc42f72a1fe4e8c5f0c74d56c594336d9731c",
+      "line": 2471,
+      "fingerprint": "bfe579edf54e97d3470d23adc030014bb54bfaa823428e7b4bdde5e07534950b",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::update_with_conn::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_conn",
       "kind": "execution-wrapper",
-      "line": 2493,
-      "fingerprint": "6cde016ce96d689eaf778bcc6e30355334d6f0319f5d16bff3a67467ef4b6c66",
+      "line": 2484,
+      "fingerprint": "daceb233dcc40b8d31a206646d945f680411ded8c3751175832a9e002e234c6b",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::update_with_conn::execution-wrapper#3",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_conn",
       "kind": "execution-wrapper",
-      "line": 2497,
-      "fingerprint": "38cb25cacb7da8d0353d544430a375a3f9250b0b00c3efd53a450fc36901a4b6",
+      "line": 2490,
+      "fingerprint": "48211b4f30b7844cbcc23748ed2517df4d1192685951abed7236c8a27edbd45e",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::update_with_executor::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_executor",
       "kind": "execution-wrapper",
-      "line": 2386,
-      "fingerprint": "9914a7d6a6bc1bd9881adcfec06fdd49fcd7dc6512816a6afec2cc65ecb8d46f",
+      "line": 2383,
+      "fingerprint": "db72ac8331764868334d90557ad40f39290444a14b96c5daf8c17647b3543f0c",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::update_with_executor::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_executor",
       "kind": "execution-wrapper",
-      "line": 2405,
-      "fingerprint": "e98a7852cc02aa33d101eaa9115995c6628cafa2ae0321343e0cc39ba9dd38db",
+      "line": 2400,
+      "fingerprint": "9de1348075a3d5ab7decfe72ae792941737863d1c2f69319267480afe9c05ae3",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::update_with_executor::execution-wrapper#3",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_executor",
       "kind": "execution-wrapper",
-      "line": 2412,
-      "fingerprint": "65e7e5353e464eb1fc871d66ccc690128d7e229290748d816e3f65c341c94659",
+      "line": 2407,
+      "fingerprint": "b481c78fc1f731292cf2f49142f24672667fe7bf8d645fb74ed6730841ee94e0",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Manager CRUD ASTs are consumed before awaiting the native renderer SQL/Values pair. Checked Cockroach rendering, pgvector context, physical columns, write-before/after failure outcomes, hydration and caller-owned transactions are preserved.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
+        "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
+        "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs::ManyToManyAccessor < S , T >::add_with_conn::execution-wrapper#1",

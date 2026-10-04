@@ -1742,22 +1742,20 @@ impl<M: Model> Manager<M> {
 		let obj = model
 			.encode_database_fields()
 			.map_err(executor_field_codec_error)?;
-		let mut stmt =
-			Self::build_insert_statement_from_object(&obj, |field| model.field_is_none(field))
-				.map_err(executor_error)?;
 		let backend = Self::executor_backend(executor);
+		let (sql, values, context) = {
+			let mut stmt =
+				Self::build_insert_statement_from_object(&obj, |field| model.field_is_none(field))
+					.map_err(executor_error)?;
 
-		if backend != DatabaseBackend::MySql {
-			stmt.returning(Self::returning_columns_from_object(&obj));
-		}
-		let context = super::execution::pgvector_context_for_insert(&stmt);
-		let (sql, values) = build_insert_sql_checked(&stmt, backend, executor.is_cockroachdb())
-			.map_err(executor_error)?;
-		let params = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+			if backend != DatabaseBackend::MySql {
+				stmt.returning(Self::returning_columns_from_object(&obj));
+			}
+			let context = super::execution::pgvector_context_for_insert(&stmt);
+			let (sql, values) = build_insert_sql_checked(&stmt, backend, executor.is_cockroachdb())
+				.map_err(executor_error)?;
+			(sql, values, context)
+		};
 
 		if backend == DatabaseBackend::MySql {
 			let explicit_primary_key = obj
@@ -1775,7 +1773,7 @@ impl<M: Model> Manager<M> {
 					.map_err(executor_error)?;
 			}
 			executor
-				.execute_with_context(&sql, params, context)
+				.execute_generated((sql, values), context)
 				.await
 				.map_err(executor_error)?;
 
@@ -1799,29 +1797,28 @@ impl<M: Model> Manager<M> {
 				reinhardt_query::value::Value::BigInt(Some(generated_id))
 			};
 
-			let mut select = Query::select();
-			select.from(Alias::new(M::table_name()));
-			select.column(ColumnRef::Asterisk);
-			let field_metadata = M::field_metadata();
-			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
-			select.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key_value));
-			let (select_sql, select_values) =
-				build_select_sql_checked(&select, backend, executor.is_cockroachdb())
-					.map_err(executor_error)?;
-			let select_params = select_values
-				.0
-				.into_iter()
-				.map(Self::sea_value_to_query_value)
-				.collect();
+			let (select_sql, select_values) = {
+				let mut select = Query::select();
+				select.from(Alias::new(M::table_name()));
+				select.column(ColumnRef::Asterisk);
+				let field_metadata = M::field_metadata();
+				let primary_key_column =
+					Self::field_column(&field_metadata, M::primary_key_field());
+				select.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key_value));
+				let (select_sql, select_values) =
+					build_select_sql_checked(&select, backend, executor.is_cockroachdb())
+						.map_err(executor_error)?;
+				(select_sql, select_values)
+			};
 			let row = executor
-				.fetch_one(&select_sql, select_params)
+				.fetch_one_generated((select_sql, select_values), None)
 				.await
 				.map_err(executor_error)?;
 			return Self::decode_executor_row(row);
 		}
 
 		let row = executor
-			.fetch_one_with_context(&sql, params, context)
+			.fetch_one_generated((sql, values), context)
 			.await
 			.map_err(executor_error)?;
 		Self::decode_executor_row(row)
@@ -1906,30 +1903,31 @@ impl<M: Model> Manager<M> {
 				return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
 			}
 		};
-		let mut stmt = match Self::build_insert_statement_from_object(&obj, |field| {
-			model.field_is_none(field)
-		}) {
-			Ok(statement) => statement,
-			Err(error) => {
-				return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
-			}
-		};
 		let backend = conn.backend();
-		if backend != DatabaseBackend::MySql {
-			stmt.returning(Self::returning_columns_from_object(&obj));
-		}
-		let context = super::execution::pgvector_context_for_insert(&stmt);
-		let (sql, values) = match build_insert_sql_checked(&stmt, backend, conn.is_cockroachdb()) {
-			Ok(sql_and_values) => sql_and_values,
-			Err(error) => {
-				return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
+		let (sql, values, context) = {
+			let mut stmt = match Self::build_insert_statement_from_object(&obj, |field| {
+				model.field_is_none(field)
+			}) {
+				Ok(statement) => statement,
+				Err(error) => {
+					return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
+				}
+			};
+			if backend != DatabaseBackend::MySql {
+				stmt.returning(Self::returning_columns_from_object(&obj));
 			}
+			let context = super::execution::pgvector_context_for_insert(&stmt);
+			let (sql, values) =
+				match build_insert_sql_checked(&stmt, backend, conn.is_cockroachdb()) {
+					Ok(sql_and_values) => sql_and_values,
+					Err(error) => {
+						return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(
+							error,
+						);
+					}
+				};
+			(sql, values, context)
 		};
-		let params = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
 
 		if backend == DatabaseBackend::MySql {
 			let explicit_primary_key = obj
@@ -1940,7 +1938,7 @@ impl<M: Model> Manager<M> {
 							|| !M::primary_key_uses_zero_sentinel())
 				})
 				.cloned();
-			let result = match conn.execute_with_context(&sql, params, context).await {
+			let result = match conn.execute_generated((sql, values), context).await {
 				Ok(result) => result,
 				Err(error) => {
 					let outcome = match error.database_error().map(DatabaseError::kind) {
@@ -1977,26 +1975,27 @@ impl<M: Model> Manager<M> {
 			};
 			let field_metadata = M::field_metadata();
 			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
-			let mut select = Query::select();
-			select
-				.from(Alias::new(M::table_name()))
-				.column(ColumnRef::Asterisk)
-				.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key));
-			let (select_sql, select_values) =
-				match build_select_sql_checked(&select, backend, conn.is_cockroachdb()) {
-					Ok(sql_and_values) => sql_and_values,
-					Err(error) => {
-						return super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(
-							error,
-						);
-					}
-				};
-			let select_params = select_values
-				.0
-				.into_iter()
-				.map(Self::sea_value_to_query_value)
-				.collect();
-			let row = match conn.fetch_one(&select_sql, select_params).await {
+			let (select_sql, select_values) = {
+				let mut select = Query::select();
+				select
+					.from(Alias::new(M::table_name()))
+					.column(ColumnRef::Asterisk)
+					.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key));
+				let (select_sql, select_values) =
+					match build_select_sql_checked(&select, backend, conn.is_cockroachdb()) {
+						Ok(sql_and_values) => sql_and_values,
+						Err(error) => {
+							return super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(
+								error,
+							);
+						}
+					};
+				(select_sql, select_values)
+			};
+			let row = match conn
+				.fetch_one_generated((select_sql, select_values), None)
+				.await
+			{
 				Ok(row) => row,
 				Err(error) => {
 					return super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(error);
@@ -2010,7 +2009,7 @@ impl<M: Model> Manager<M> {
 			};
 		}
 
-		let row = match conn.fetch_one_with_context(&sql, params, context).await {
+		let row = match conn.fetch_one_generated((sql, values), context).await {
 			Ok(row) => row,
 			Err(error) => {
 				return match error.database_error().map(DatabaseError::kind) {
@@ -2368,49 +2367,45 @@ impl<M: Model> Manager<M> {
 			.encode_database_fields()
 			.map_err(executor_field_codec_error)?;
 		let backend = Self::executor_backend(executor);
-		let stmt = Self::build_update_statement_from_object_with_returning(
-			&obj,
-			backend != DatabaseBackend::MySql,
-		)
-		.map_err(executor_field_codec_error)?;
-		let context = super::execution::pgvector_context_for_update(&stmt);
-		let (sql, values) = build_update_sql_checked(&stmt, backend, executor.is_cockroachdb())
-			.map_err(executor_error)?;
-		let params = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+		let (sql, values, context) = {
+			let stmt = Self::build_update_statement_from_object_with_returning(
+				&obj,
+				backend != DatabaseBackend::MySql,
+			)
+			.map_err(executor_field_codec_error)?;
+			let context = super::execution::pgvector_context_for_update(&stmt);
+			let (sql, values) = build_update_sql_checked(&stmt, backend, executor.is_cockroachdb())
+				.map_err(executor_error)?;
+			(sql, values, context)
+		};
 
 		if backend == DatabaseBackend::MySql {
 			executor
-				.execute_with_context(&sql, params, context)
+				.execute_generated((sql, values), context)
 				.await
 				.map_err(executor_error)?;
-			let mut select = Query::select();
-			select.from(Alias::new(M::table_name()));
-			select.column(ColumnRef::Asterisk);
-			select.cond_where(
-				Self::primary_key_condition_from_object(&obj)
-					.map_err(executor_field_codec_error)?,
-			);
-			let (select_sql, select_values) =
-				build_select_sql_checked(&select, backend, executor.is_cockroachdb())
-					.map_err(executor_error)?;
-			let select_params = select_values
-				.0
-				.into_iter()
-				.map(Self::sea_value_to_query_value)
-				.collect();
+			let (select_sql, select_values) = {
+				let mut select = Query::select();
+				select.from(Alias::new(M::table_name()));
+				select.column(ColumnRef::Asterisk);
+				select.cond_where(
+					Self::primary_key_condition_from_object(&obj)
+						.map_err(executor_field_codec_error)?,
+				);
+				let (select_sql, select_values) =
+					build_select_sql_checked(&select, backend, executor.is_cockroachdb())
+						.map_err(executor_error)?;
+				(select_sql, select_values)
+			};
 			let row = executor
-				.fetch_one(&select_sql, select_params)
+				.fetch_one_generated((select_sql, select_values), None)
 				.await
 				.map_err(executor_error)?;
 			return Self::decode_executor_row(row);
 		}
 
 		let row = executor
-			.fetch_one_with_context(&sql, params, context)
+			.fetch_one_generated((sql, values), context)
 			.await
 			.map_err(executor_error)?;
 		Self::decode_executor_row(row)
@@ -2459,42 +2454,40 @@ impl<M: Model> Manager<M> {
 
 		let obj = model.encode_database_fields().map_err(field_codec_error)?;
 		let backend = conn.backend();
-		let stmt = if backend == DatabaseBackend::MySql {
-			Self::build_update_statement_from_object_with_returning(&obj, false)
-		} else {
-			Self::build_update_statement_from_object(&obj, |field| model.field_is_none(field))
-		}
-		.map_err(field_codec_error)?;
+		let (sql, values, context) = {
+			let stmt = if backend == DatabaseBackend::MySql {
+				Self::build_update_statement_from_object_with_returning(&obj, false)
+			} else {
+				Self::build_update_statement_from_object(&obj, |field| model.field_is_none(field))
+			}
+			.map_err(field_codec_error)?;
 
-		let context = super::execution::pgvector_context_for_update(&stmt);
-		let (sql, values) = build_update_sql_checked(&stmt, backend, conn.is_cockroachdb())?;
-		let values: Vec<_> = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+			let context = super::execution::pgvector_context_for_update(&stmt);
+			let (sql, values) = build_update_sql_checked(&stmt, backend, conn.is_cockroachdb())?;
+			(sql, values, context)
+		};
 
 		if backend == DatabaseBackend::MySql {
-			conn.execute_with_context(&sql, values, context).await?;
-			let mut select = Query::select();
-			select
-				.from(Alias::new(M::table_name()))
-				.column(ColumnRef::Asterisk)
-				.cond_where(
-					Self::primary_key_condition_from_object(&obj).map_err(field_codec_error)?,
-				);
-			let (select_sql, select_values) =
-				build_select_sql_checked(&select, backend, conn.is_cockroachdb())?;
-			let select_params = select_values
-				.0
-				.into_iter()
-				.map(Self::sea_value_to_query_value)
-				.collect();
-			let row = conn.fetch_one(&select_sql, select_params).await?;
+			conn.execute_generated((sql, values), context).await?;
+			let (select_sql, select_values) = {
+				let mut select = Query::select();
+				select
+					.from(Alias::new(M::table_name()))
+					.column(ColumnRef::Asterisk)
+					.cond_where(
+						Self::primary_key_condition_from_object(&obj).map_err(field_codec_error)?,
+					);
+				let (select_sql, select_values) =
+					build_select_sql_checked(&select, backend, conn.is_cockroachdb())?;
+				(select_sql, select_values)
+			};
+			let row = conn
+				.fetch_one_generated((select_sql, select_values), None)
+				.await?;
 			return decode_model_row(row);
 		}
 
-		let row = conn.fetch_one_with_context(&sql, values, context).await?;
+		let row = conn.fetch_one_generated((sql, values), context).await?;
 		decode_model_row(row)
 	}
 
@@ -2513,20 +2506,18 @@ impl<M: Model> Manager<M> {
 		executor: &mut dyn super::connection::TransactionExecutor,
 		pk: M::PrimaryKey,
 	) -> Result<(), crate::backends::error::DatabaseError> {
-		let stmt = Self::build_delete_statement(&pk).map_err(executor_field_codec_error)?;
-		let (sql, values) = build_delete_sql_checked(
-			&stmt,
-			Self::executor_backend(executor),
-			executor.is_cockroachdb(),
-		)
-		.map_err(executor_error)?;
-		let params = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+		let (sql, values) = {
+			let stmt = Self::build_delete_statement(&pk).map_err(executor_field_codec_error)?;
+			let (sql, values) = build_delete_sql_checked(
+				&stmt,
+				Self::executor_backend(executor),
+				executor.is_cockroachdb(),
+			)
+			.map_err(executor_error)?;
+			(sql, values)
+		};
 		executor
-			.execute(&sql, params)
+			.execute_generated((sql, values), None)
 			.await
 			.map_err(executor_error)?;
 		Ok(())
@@ -2567,16 +2558,15 @@ impl<M: Model> Manager<M> {
 	where
 		E: OrmExecutor,
 	{
-		let stmt = Self::build_delete_statement(&pk).map_err(field_codec_error)?;
+		let (sql, values) = {
+			let stmt = Self::build_delete_statement(&pk).map_err(field_codec_error)?;
 
-		let (sql, values) = build_delete_sql_checked(&stmt, conn.backend(), conn.is_cockroachdb())?;
-		let values: Vec<_> = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+			let (sql, values) =
+				build_delete_sql_checked(&stmt, conn.backend(), conn.is_cockroachdb())?;
+			(sql, values)
+		};
 
-		conn.execute(&sql, values).await?;
+		conn.execute_generated((sql, values), None).await?;
 		Ok(())
 	}
 
@@ -2614,19 +2604,18 @@ impl<M: Model> Manager<M> {
 		E: OrmExecutor,
 	{
 		// Build reinhardt-query SELECT COUNT(*) statement with explicit alias
-		let stmt = Query::select()
-			.from(Alias::new(M::table_name()))
-			.expr_as(Func::count(Expr::asterisk().into()), Alias::new("count"))
-			.to_owned();
+		let (sql, values) = {
+			let stmt = Query::select()
+				.from(Alias::new(M::table_name()))
+				.expr_as(Func::count(Expr::asterisk().into()), Alias::new("count"))
+				.to_owned();
 
-		let (sql, values) = build_select_sql_checked(&stmt, conn.backend(), conn.is_cockroachdb())?;
-		let values: Vec<_> = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+			let (sql, values) =
+				build_select_sql_checked(&stmt, conn.backend(), conn.is_cockroachdb())?;
+			(sql, values)
+		};
 
-		let row = QueryRow::from_backend_row(conn.fetch_one(&sql, values).await?);
+		let row = QueryRow::from_backend_row(conn.fetch_one_generated((sql, values), None).await?);
 		row.get::<i64>("count").ok_or_else(|| {
 			Error::from(DatabaseError::new(
 				DatabaseErrorKind::Query,

@@ -308,6 +308,84 @@ impl Model for GeneratedChild {
 	}
 }
 
+async fn exercise_manager_generated_capabilities(connection: &DatabaseConnection) {
+	// Arrange: use the same declared codec model through both executor families.
+	let lease = DatabaseConnectionLease::register(connection.clone()).unwrap();
+	let mut handle = lease.handle();
+	let manager = GeneratedModel::objects();
+	let before = manager.count_with_conn(&mut handle).await.unwrap();
+	let model = GeneratedModel {
+		id: Some(61),
+		name: "manager' ? $14".into(),
+	};
+	// Act / Assert: pool create, hydration, update, count and delete.
+	assert_eq!(
+		manager.create_with_conn(&mut handle, &model).await.unwrap(),
+		model
+	);
+	assert_eq!(
+		manager.count_with_conn(&mut handle).await.unwrap(),
+		before + 1
+	);
+	let updated = GeneratedModel {
+		name: "manager update' ? $15".into(),
+		..model.clone()
+	};
+	assert_eq!(
+		manager
+			.update_with_conn(&mut handle, &updated)
+			.await
+			.unwrap(),
+		updated
+	);
+	manager.delete_with_conn(&mut handle, 61).await.unwrap();
+	assert_eq!(manager.count_with_conn(&mut handle).await.unwrap(), before);
+	// Dedicated transaction executors retain commit/rollback and hydration ownership.
+	let mut transaction = connection.begin_write().await.unwrap();
+	assert_eq!(
+		manager
+			.insert_with_executor(&mut *transaction, &model)
+			.await
+			.unwrap(),
+		model
+	);
+	assert_eq!(
+		manager
+			.save_with_executor(&mut *transaction, &updated)
+			.await
+			.unwrap(),
+		updated
+	);
+	transaction.commit().await.unwrap();
+	let loaded = QuerySet::<GeneratedModel>::new()
+		.filter(Filter::new(
+			"id",
+			FilterOperator::Eq,
+			FilterValue::Integer(61),
+		))
+		.all_with_db(&mut handle)
+		.await
+		.unwrap();
+	assert_eq!(loaded, std::slice::from_ref(&updated));
+	let mut transaction = connection.begin_write().await.unwrap();
+	manager
+		.delete_with_executor(&mut *transaction, 61)
+		.await
+		.unwrap();
+	transaction.rollback().await.unwrap();
+	assert_eq!(
+		manager.count_with_conn(&mut handle).await.unwrap(),
+		before + 1
+	);
+	let mut transaction = connection.begin_write().await.unwrap();
+	manager
+		.delete_with_executor(&mut *transaction, 61)
+		.await
+		.unwrap();
+	transaction.commit().await.unwrap();
+	assert_eq!(manager.count_with_conn(&mut handle).await.unwrap(), before);
+}
+
 async fn exercise_relationship_generated_capabilities(connection: &DatabaseConnection) {
 	// Arrange: isolated test-owned tables and exact integer/quote-bearing records.
 	connection
@@ -1137,6 +1215,7 @@ async fn postgres_generated_pool_execution_keeps_decimal_and_nullable_arrays() {
 	exercise_orm_generated_capabilities(&connection).await;
 	exercise_queryset_generated_capabilities(&connection).await;
 	exercise_relationship_generated_capabilities(&connection).await;
+	exercise_manager_generated_capabilities(&connection).await;
 	// Arrange / Act: nullable array elements bypass the legacy Debug conversion.
 	connection
 		.execute("CREATE TABLE generated_arrays (items INTEGER[])", vec![])
@@ -1223,6 +1302,7 @@ async fn mysql_generated_pool_execution_keeps_decimal_and_full_unsigned_range() 
 	exercise_orm_generated_capabilities(&connection).await;
 	exercise_queryset_generated_capabilities(&connection).await;
 	exercise_relationship_generated_capabilities(&connection).await;
+	exercise_manager_generated_capabilities(&connection).await;
 	// Arrange / Act: the native backend must bypass the signed compatibility bridge.
 	connection
 		.execute(
@@ -1273,6 +1353,7 @@ async fn sqlite_generated_pool_execution_keeps_text_uuid_and_rejects_lossy_value
 	exercise_orm_generated_capabilities(&connection).await;
 	exercise_queryset_generated_capabilities(&connection).await;
 	exercise_relationship_generated_capabilities(&connection).await;
+	exercise_manager_generated_capabilities(&connection).await;
 	// Act: failed encoding must occur before an invalid SQL statement is executed.
 	let built = build(
 		DatabaseType::Sqlite,
