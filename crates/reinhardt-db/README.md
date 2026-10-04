@@ -181,6 +181,28 @@ use `get_composite` or filter explicitly on every key component. Generated UUID
 and enum composite keys remain subject to
 [#6456](https://github.com/kent8192/reinhardt-web/issues/6456).
 
+### PostgreSQL parameter signatures
+
+PostgreSQL backend pool and transaction execute/fetch methods preserve each
+argument's native type. SQLx 0.8.6 caches prepared statements by SQL text, so an
+existing statement can have an incompatible parameter signature. For example,
+`QueryValue::Null` binds as INT4, whereas `QueryValue::Int` binds as INT8.
+
+Before execution, the backend clears existing named statements on the same
+acquired connection and disables persistence for that query. Disabling
+persistence alone does not bypass an existing cached statement. SQL text,
+values, transaction boundaries, and connection guard ownership are preserved.
+This trades statement reuse for correctness: backend queries are prepared
+again, and cache entries created through direct SQLx pool access are cleared.
+Direct SQLx calls can still cache statements before and after backend calls.
+
+Regression tests cover all pool and transaction execute/fetch methods, NULL to
+large integer transitions, both native integer widths, partially consumed
+streams, and INSERT commit/rollback. Remove the bypass only when the selected
+SQLx version safely handles changing native signatures without it. The
+dependency compatibility limitation remains tracked in
+[#6533](https://github.com/kent8192/reinhardt-web/issues/6533).
+
 ### Existence checks
 
 `SelectExecution::exists_async` returns `true` when the selected query matches
