@@ -12,7 +12,7 @@
 //!
 //! ## Features
 //!
-//! - `argon2-hasher` (default): Enables Argon2id password hashing
+//! - `argon2-hasher` (optional): Enables Argon2id password hashing
 //!
 //! ## Examples
 //!
@@ -20,12 +20,15 @@
 //!
 //! Implement `BaseUser` and `FullUser` on a custom struct:
 //!
+//! This example requires the `argon2-hasher` feature.
+//!
 //! ```no_run
+//! # #[cfg(feature = "argon2-hasher")]
+//! # {
 //! use reinhardt_auth::core::{BaseUser, FullUser, PasswordHasher};
 //! use uuid::Uuid;
 //! use chrono::{DateTime, Utc};
 //!
-//! # #[cfg(feature = "argon2-hasher")]
 //! # use reinhardt_auth::core::Argon2Hasher;
 //! # use serde::{Serialize, Deserialize};
 //! # #[derive(Serialize, Deserialize)]
@@ -33,7 +36,6 @@
 //! #     first_name: String, last_name: String, password_hash: Option<String>,
 //! #     last_login: Option<DateTime<Utc>>, is_active: bool, is_staff: bool,
 //! #     is_superuser: bool, date_joined: DateTime<Utc> }
-//! # #[cfg(feature = "argon2-hasher")]
 //! # impl BaseUser for MyUser {
 //! #     type PrimaryKey = Uuid; type Hasher = Argon2Hasher;
 //! #     fn get_username_field() -> &'static str { "username" }
@@ -52,6 +54,7 @@
 //! #     fn is_staff(&self) -> bool { self.is_staff }
 //! #     fn is_superuser(&self) -> bool { self.is_superuser }
 //! #     fn date_joined(&self) -> DateTime<Utc> { self.date_joined }
+//! # }
 //! # }
 //! ```
 //!
