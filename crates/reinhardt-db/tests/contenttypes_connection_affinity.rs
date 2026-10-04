@@ -7,7 +7,6 @@ use reinhardt_db::contenttypes::orm_integration::ContentTypeTransaction;
 use reinhardt_db::contenttypes::persistence::{
 	ContentTypePersistence, ContentTypePersistenceBackend, PersistenceError,
 };
-use reinhardt_testkit::fixtures::temp_dir;
 use rstest::{fixture, rstest};
 use sqlx::AnyPool;
 use sqlx::any::AnyPoolOptions;
@@ -22,7 +21,8 @@ struct SqliteContentTypes {
 }
 
 #[fixture]
-async fn sqlite_content_types(temp_dir: TempDir) -> SqliteContentTypes {
+async fn sqlite_content_types() -> SqliteContentTypes {
+	let temp_dir = tempfile::tempdir().expect("Failed to create temporary SQLite directory");
 	sqlx::any::install_default_drivers();
 	let database_path = temp_dir.path().join("contenttypes.sqlite");
 	let url = format!("sqlite://{}?mode=rwc", database_path.display());
