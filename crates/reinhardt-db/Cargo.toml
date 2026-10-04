@@ -171,6 +171,7 @@ orm = ["backends", "db-deps", "hybrid"]
 file-storage = ["orm", "dep:reinhardt-storages"]
 migrations = [
   "db-deps",
+  "dep:cap-fs-ext",
   "dep:cap-std",
   "dep:libc",
   "dep:refinery",
@@ -265,6 +266,9 @@ libc = { workspace = true, optional = true }
 
 [target.'cfg(any(unix, windows, target_os = "redox"))'.dependencies]
 same-file = { workspace = true, optional = true }
+
+[target.'cfg(windows)'.dependencies]
+cap-fs-ext = { version = "3.4.6", optional = true }
 
 [[test]]
 name = "contenttypes_registry"
