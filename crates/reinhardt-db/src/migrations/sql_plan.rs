@@ -7,6 +7,7 @@ use super::{
 	operations::{PlannedOperationOutput, SqlDialect},
 };
 use crate::backends::{DatabaseConnection, types::DatabaseType};
+use reinhardt_query::Query;
 #[cfg(feature = "sqlite")]
 use std::collections::HashMap;
 
@@ -60,7 +61,7 @@ impl MigrationSqlPlan {
 		let mut rendered = String::new();
 
 		if sqlite_recreation {
-			rendered.push_str("PRAGMA foreign_keys = OFF;\n");
+			rendered.push_str(&render_sqlite_foreign_keys(false));
 		}
 		if wrapped {
 			rendered.push_str("BEGIN;\n");
@@ -82,11 +83,18 @@ impl MigrationSqlPlan {
 		}
 		if sqlite_recreation {
 			rendered.push_str("PRAGMA foreign_key_check;\n");
-			rendered.push_str("PRAGMA foreign_keys = ON;\n");
+			rendered.push_str(&render_sqlite_foreign_keys(true));
 		}
 
 		rendered
 	}
+}
+
+fn render_sqlite_foreign_keys(enabled: bool) -> String {
+	let (sql, _) = Query::sqlite_foreign_keys(enabled)
+		.build_sqlite_checked()
+		.expect("SQLite supports its typed foreign-key enforcement setting");
+	render_sql_statement(&sql, SqlDialect::Sqlite)
 }
 
 fn render_sql_statement(sql: &str, dialect: SqlDialect) -> String {

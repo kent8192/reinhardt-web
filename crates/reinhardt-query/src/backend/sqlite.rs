@@ -10,7 +10,8 @@ use crate::{
 		CreateIndexStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
 		DeleteStatement, DropIndexStatement, DropTableStatement, DropTriggerStatement,
 		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
-		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
+		RepairTableStatement, SelectStatement, SqliteForeignKeysStatement, TruncateTableStatement,
+		UpdateStatement,
 	},
 	types::{
 		BinOper, ColumnRef, GeneratedColumn, GeneratedStorage, SchemaBinOper, SchemaExpr,
@@ -50,6 +51,18 @@ use crate::{
 pub struct SqliteQueryBuilder;
 
 impl SqliteQueryBuilder {
+	pub(crate) fn build_foreign_keys_setting(
+		&self,
+		statement: &SqliteForeignKeysStatement,
+	) -> (String, Values) {
+		let sql = if statement.enabled {
+			"PRAGMA foreign_keys = ON"
+		} else {
+			"PRAGMA foreign_keys = OFF"
+		};
+		(sql.to_owned(), Values::default())
+	}
+
 	/// Create a new SQLite query builder
 	pub fn new() -> Self {
 		Self
