@@ -1,8 +1,8 @@
 //! ORM Integration Module
 //!
 //! This module provides integration between ContentTypes and reinhardt-orm.
-//! Through integration with Session, Query, and Transaction interfaces,
-//! ContentType operations through the ORM are made possible.
+//! It provides an ORM-style query builder and pool-backed ContentType operations.
+//! These interfaces execute through the pool and do not own a database transaction.
 
 #[cfg(feature = "database")]
 use reinhardt_query::prelude::{
@@ -406,10 +406,18 @@ impl ContentTypeQuery {
 	}
 }
 
-/// ContentType operations with transaction support
+/// Pool-backed ContentType operations without transaction ownership.
 ///
-/// Enables executing ContentType operations within transactions
-/// through integration with ORM Transaction.
+/// The historical name is retained for compatibility. This context stores a pool;
+/// it does not begin or own a database transaction and has no commit or rollback
+/// boundary. Each operation executes independently through the pool, using its
+/// normal autocommit behavior. An error or dropping the context does not roll back
+/// preceding writes.
+///
+/// Queries returned by [`Self::query`] also execute through the pool. Opening a
+/// transaction separately on a pool connection does not enlist these operations
+/// in that transaction. Callers requiring atomic changes must use an API that
+/// executes on an owned database transaction.
 #[cfg(feature = "database")]
 pub struct ContentTypeTransaction {
 	pool: Arc<AnyPool>,
@@ -417,17 +425,24 @@ pub struct ContentTypeTransaction {
 
 #[cfg(feature = "database")]
 impl ContentTypeTransaction {
-	/// Create a new transaction context
+	/// Create a pool-backed context without acquiring a connection or beginning a transaction.
 	pub fn new(pool: Arc<AnyPool>) -> Self {
 		Self { pool }
 	}
 
-	/// Get query builder
+	/// Get an independent query builder using the same pool.
+	///
+	/// The builder does not share a transaction or snapshot with this context and
+	/// can be used after the context is dropped.
 	pub fn query(&self) -> ContentTypeQuery {
 		ContentTypeQuery::new(self.pool.clone())
 	}
 
-	/// Create ContentType (within transaction)
+	/// Create a ContentType through the pool using autocommit.
+	///
+	/// Successful writes are not rolled back when the context is dropped or a
+	/// subsequent operation fails. This method does not provide atomicity with
+	/// other context operations.
 	pub async fn create(
 		&self,
 		app_label: impl Into<String>,
@@ -469,7 +484,10 @@ impl ContentTypeTransaction {
 		})
 	}
 
-	/// Delete ContentType (within transaction)
+	/// Delete a ContentType through the pool using autocommit.
+	///
+	/// Successful deletes are not rolled back when the context is dropped or a
+	/// subsequent operation fails.
 	pub async fn delete(&self, id: i64) -> Result<(), PersistenceError> {
 		let stmt = Query::delete()
 			.from_table(Alias::new("django_content_type"))
@@ -492,7 +510,8 @@ impl ContentTypeTransaction {
 #[cfg(all(test, feature = "database"))]
 mod tests {
 	use super::*;
-	use crate::contenttypes::persistence::ContentTypePersistence;
+	use crate::contenttypes::persistence::{ContentTypePersistence, ContentTypePersistenceBackend};
+	use rstest::{fixture, rstest};
 	use std::sync::Once;
 
 	static INIT_DRIVERS: Once = Once::new();
@@ -503,6 +522,7 @@ mod tests {
 		});
 	}
 
+	#[fixture]
 	async fn setup_test_db() -> Arc<AnyPool> {
 		init_drivers();
 
@@ -526,6 +546,125 @@ mod tests {
 			.expect("Failed to create table");
 
 		pool.into()
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_create_persists_after_drop(
+		#[future] setup_test_db: Arc<AnyPool>,
+	) {
+		// Arrange
+		let pool = setup_test_db.await;
+		let persistence = ContentTypePersistence::from_pool(pool.clone(), "sqlite::memory:");
+
+		// Act
+		let created = {
+			let context = ContentTypeTransaction::new(pool);
+			context
+				.create("affinity", "CommittedWithoutTransaction")
+				.await
+				.expect("Failed to create content type")
+		};
+		let stored = persistence
+			.get("affinity", "CommittedWithoutTransaction")
+			.await
+			.expect("Failed to retrieve content type");
+
+		// Assert
+		assert_eq!(stored, Some(created));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_delete_persists_after_drop(
+		#[future] setup_test_db: Arc<AnyPool>,
+	) {
+		// Arrange
+		let pool = setup_test_db.await;
+		let persistence = ContentTypePersistence::from_pool(pool.clone(), "sqlite::memory:");
+		let created = persistence
+			.get_or_create("affinity", "DeletedWithoutTransaction")
+			.await
+			.expect("Failed to create content type");
+
+		// Act
+		{
+			let context = ContentTypeTransaction::new(pool);
+			context
+				.delete(created.id.expect("Missing content type ID"))
+				.await
+				.expect("Failed to delete content type");
+		}
+		let stored = persistence
+			.get("affinity", "DeletedWithoutTransaction")
+			.await
+			.expect("Failed to retrieve content type");
+
+		// Assert
+		assert_eq!(stored, None);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_error_does_not_roll_back_writes(
+		#[future] setup_test_db: Arc<AnyPool>,
+	) {
+		// Arrange
+		let pool = setup_test_db.await;
+		let persistence = ContentTypePersistence::from_pool(pool.clone(), "sqlite::memory:");
+
+		// Act
+		let (created, error) = {
+			let context = ContentTypeTransaction::new(pool);
+			let created = context
+				.create("affinity", "KeptAfterError")
+				.await
+				.expect("Failed to create content type");
+			let deleted = context
+				.create("affinity", "DeletedBeforeError")
+				.await
+				.expect("Failed to create content type");
+			context
+				.delete(deleted.id.expect("Missing content type ID"))
+				.await
+				.expect("Failed to delete content type");
+			let error = context
+				.create("affinity", "KeptAfterError")
+				.await
+				.expect_err("Duplicate content type should fail");
+			(created, error)
+		};
+		let remaining = persistence
+			.load_all()
+			.await
+			.expect("Failed to load content types");
+
+		// Assert
+		assert!(matches!(error, PersistenceError::DatabaseError(_)));
+		assert_eq!(remaining, vec![created]);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_query_survives_context_drop(
+		#[future] setup_test_db: Arc<AnyPool>,
+	) {
+		// Arrange
+		let pool = setup_test_db.await;
+
+		// Act
+		let (created, query) = {
+			let context = ContentTypeTransaction::new(pool);
+			let created = context
+				.create("affinity", "IndependentQuery")
+				.await
+				.expect("Failed to create content type");
+			(created, context.query())
+		};
+		let results = query.all().await.expect("Failed to query content types");
+
+		// Assert
+		assert_eq!(results, vec![created]);
 	}
 
 	#[tokio::test]

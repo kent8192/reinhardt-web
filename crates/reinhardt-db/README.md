@@ -792,12 +792,15 @@ Optimize how related objects are loaded:
   - `exists()` - Check if any records match
   - Django-inspired QuerySet API with method chaining
 
-- **ContentTypeTransaction** - Transaction-aware content type operations
-  - `new()` - Create transaction context
-  - `query()` - Get query builder for transaction
-  - `create()` - Create content type within transaction
-  - `delete()` - Delete content type within transaction
-  - Full ACID transaction support for content type operations
+- **ContentTypeTransaction** - Pool-backed content type operations (historical name)
+  - `new()` - Create a context without beginning or owning a database transaction
+  - `query()` - Get an independent query builder using the same pool
+  - `create()` - Create a content type using pool autocommit
+  - `delete()` - Delete a content type using pool autocommit
+  - Each operation executes independently; errors and dropping the context do not
+    roll back preceding writes. A transaction opened separately on a pool
+    connection does not enlist these operations. Use a transaction-aware API when
+    atomic changes are required.
 
 
 ## hybrid
