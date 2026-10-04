@@ -8,6 +8,13 @@ Background task queue for executing long-running or scheduled tasks asynchronous
 
 Supports task scheduling, retries, task priorities, and multiple worker processes.
 
+With `durable` enabled, `SqliteDurableJobStore::from_pool` uses checked,
+connection-local database-list inspection to identify an empty filename on the
+main database. It accepts single-connection private in-memory pools and shared
+in-memory pools; multiple-connection private in-memory pools are rejected after
+schema-sharing verification. In-memory attachments do not change this decision
+for a file-backed main database.
+
 ## Installation
 
 Add the facade task and streaming features and the direct task-crate dependency

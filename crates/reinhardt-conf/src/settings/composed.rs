@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 
 use super::builder::{BuildError, MergedSettings, deserialize_composed};
 use super::fragment::{HasSettings, SettingsFragment};
+use super::migrations::MigrationSettings;
 use super::profile::Profile;
 use super::schema::{SettingsResolutionMetadata, SettingsRootSchema};
 use super::validation::ValidationResult;
@@ -15,7 +16,7 @@ use super::validation::ValidationResult;
 /// and fragment-level validation delegation.
 pub trait ComposedSettings: Sized + DeserializeOwned {
 	/// Resolve the migration fragment supplied by a root-level Serde default.
-	fn default_migration_settings() -> Option<crate::MigrationSettings> {
+	fn default_migration_settings() -> Option<MigrationSettings> {
 		None
 	}
 

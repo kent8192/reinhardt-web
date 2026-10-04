@@ -106,6 +106,8 @@ pub mod returning;
 pub mod schema;
 pub mod select;
 pub mod sequence;
+pub mod sqlite_database_list;
+pub mod sqlite_foreign_keys;
 pub mod traits;
 pub mod truncate_table;
 pub mod type_def;
@@ -153,6 +155,8 @@ pub use select::{
 	SelectStatement, UnionType,
 };
 pub use sequence::{AlterSequenceStatement, CreateSequenceStatement, DropSequenceStatement};
+pub use sqlite_database_list::SqliteDatabaseListStatement;
+pub use sqlite_foreign_keys::SqliteForeignKeysStatement;
 pub use traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
 pub use truncate_table::TruncateTableStatement;
 pub use type_def::{AlterTypeStatement, CreateTypeStatement, DropTypeStatement};
@@ -194,6 +198,20 @@ pub use update::UpdateStatement;
 pub struct Query;
 
 impl Query {
+	/// Constructs checked SQLite database-list inspection with P2 native/WASM parity.
+	///
+	/// Execution and decoding remain caller-owned on both targets.
+	pub const fn sqlite_database_list() -> SqliteDatabaseListStatement {
+		SqliteDatabaseListStatement::new()
+	}
+
+	/// Constructs a checked SQLite connection-local foreign-key setting.
+	///
+	/// SQL generation has P2 native/WASM parity; execution remains caller-owned.
+	pub const fn sqlite_foreign_keys(enabled: bool) -> SqliteForeignKeysStatement {
+		SqliteForeignKeysStatement::new(enabled)
+	}
+
 	/// Construct a new [`SelectStatement`]
 	///
 	/// # Examples

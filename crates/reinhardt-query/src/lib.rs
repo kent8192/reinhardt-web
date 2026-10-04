@@ -23,6 +23,8 @@
 //! - **Type-safe query construction** - Build SELECT, INSERT, UPDATE, DELETE statements
 //! - **Plan-only diagnostics** - Wrap typed SELECT statements in backend-aware
 //!   [`ExplainStatement`] values without exposing `ANALYZE`
+//! - **SQLite connection inspection** - Checked [`SqliteDatabaseListStatement`]
+//!   generation preserves `seq`, `name`, and `file`; execution remains caller-owned
 //! - **DCL (Data Control Language) support** - Build GRANT and REVOKE statements
 //! - **Expression system** - Rich expression API with arithmetic, comparison, and logical operators
 //! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
@@ -39,6 +41,8 @@
 //! - **Events** - CREATE/ALTER/DROP EVENT (MySQL)
 //! - **Comments** - COMMENT ON for all database objects (PostgreSQL, CockroachDB)
 //! - **Maintenance** - VACUUM, ANALYZE, OPTIMIZE/REPAIR/CHECK TABLE
+//! - **SQLite connection settings** - Checked [`SqliteForeignKeysStatement`]
+//!   generation for caller-owned connections, with native/WASM SQL parity
 //!
 //! ### Multi-Backend Support
 //! - **PostgreSQL** - Full DDL and DML support with advanced features
@@ -398,7 +402,7 @@ pub mod prelude {
 		DeleteStatement, ExplainFormat, ExplainOptions, ExplainStatement, ForeignKey,
 		ForeignKeyCreateStatement, InsertStatement, LockBehavior, LockType, OnConflict, Query,
 		QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter, SelectStatement,
-		UpdateStatement,
+		SqliteDatabaseListStatement, SqliteForeignKeysStatement, UpdateStatement,
 	};
 	// DDL query builders
 	pub use crate::query::{
