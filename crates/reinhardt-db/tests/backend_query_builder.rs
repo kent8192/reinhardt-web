@@ -551,13 +551,13 @@ fn test_query_value_from_i32() {
 
 #[rstest]
 fn test_query_value_from_f64() {
-	// Arrange
+	// Arrange: 1.1 loses precision if the conversion narrows through f32.
 
 	// Act
-	let val: QueryValue = 2.5f64.into();
+	let val: QueryValue = 1.1f64.into();
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(2.5));
+	assert_eq!(val, QueryValue::Float(1.1));
 }
 
 #[rstest]
@@ -1328,15 +1328,15 @@ fn test_update_builder_mixed_inline_null_bindings(
 #[rstest]
 #[case(
 	DatabaseType::Postgres,
-	"UPDATE \"users\" SET \"name\" = $1 WHERE \"deleted_at\" = NULL AND \"id\" = $2"
+	"UPDATE \"users\" SET \"name\" = $1 WHERE \"deleted_at\" IS NULL AND \"id\" = $2"
 )]
 #[case(
 	DatabaseType::Mysql,
-	"UPDATE `users` SET `name` = ? WHERE `deleted_at` = NULL AND `id` = ?"
+	"UPDATE `users` SET `name` = ? WHERE `deleted_at` IS NULL AND `id` = ?"
 )]
 #[case(
 	DatabaseType::Sqlite,
-	"UPDATE \"users\" SET \"name\" = ? WHERE \"deleted_at\" = NULL AND \"id\" = ?"
+	"UPDATE \"users\" SET \"name\" = ? WHERE \"deleted_at\" IS NULL AND \"id\" = ?"
 )]
 fn test_update_builder_where_inline_null_bindings(
 	#[case] db_type: DatabaseType,
@@ -1355,6 +1355,37 @@ fn test_update_builder_where_inline_null_bindings(
 	// Assert
 	assert_eq!(sql, expected_sql);
 	assert_eq!(params, vec![QueryValue::from("two"), QueryValue::Int(2)]);
+}
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"name\" = NULL WHERE \"deleted_at\" IS NULL"
+)]
+#[case(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `name` = NULL WHERE `deleted_at` IS NULL"
+)]
+#[case(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"name\" = NULL WHERE \"deleted_at\" IS NULL"
+)]
+fn test_update_builder_all_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = UpdateBuilder::new(backend, "users")
+		.set("name", QueryValue::Null)
+		.where_eq("deleted_at", QueryValue::Null);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, Vec::<QueryValue>::new());
 }
 
 #[cfg(feature = "sqlite")]

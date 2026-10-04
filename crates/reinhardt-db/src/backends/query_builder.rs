@@ -1050,7 +1050,7 @@ impl UpdateBuilder {
 		self
 	}
 
-	/// Performs the where eq operation.
+	/// Adds an equality predicate, using `IS NULL` for `QueryValue::Null`.
 	pub fn where_eq(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.wheres
 			.push((column.into(), "=".to_string(), value.into()));
@@ -1084,9 +1084,12 @@ impl UpdateBuilder {
 		// Add WHERE clauses
 		for (col, op, val) in &self.wheres {
 			if op == "=" {
-				stmt.and_where(
-					Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
-				);
+				let column = Expr::col(Alias::new(col));
+				if matches!(val, QueryValue::Null) {
+					stmt.and_where(column.is_null());
+				} else {
+					stmt.and_where(column.eq(Expr::val(query_value_to_sea_value(val))));
+				}
 			}
 		}
 
