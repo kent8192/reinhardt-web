@@ -795,6 +795,14 @@ pub(crate) fn validate_insert_for_backend(
 	if let InsertSource::Subquery(query) = &statement.source {
 		validate_select_lock_for_backend(query, backend)?;
 	}
+	if let Some(rows) = &statement.expression_values {
+		for row in rows {
+			for expression in row {
+				validate_simple_expr(expression, backend)?;
+				validate_simple_expr_lock(expression, backend, &[])?;
+			}
+		}
+	}
 	if let Some(expressions) = &statement.returning_exprs {
 		for expression in expressions {
 			validate_simple_expr(expression, backend)?;
@@ -810,6 +818,13 @@ pub(crate) fn validate_insert_lock_for_backend(
 ) -> Result<(), QueryBuildError> {
 	if let InsertSource::Subquery(query) = &statement.source {
 		validate_select_lock_for_backend(query, backend)?;
+	}
+	if let Some(rows) = &statement.expression_values {
+		for row in rows {
+			for expression in row {
+				validate_simple_expr_lock(expression, backend, &[])?;
+			}
+		}
 	}
 	if let Some(expressions) = &statement.returning_exprs {
 		for expression in expressions {
@@ -1272,6 +1287,13 @@ fn collect_insert_pgvector_features(
 			}
 		}
 		InsertSource::Subquery(query) => collect_select_pgvector_features(query, features),
+	}
+	if let Some(rows) = &statement.expression_values {
+		for row in rows {
+			for expression in row {
+				collect_simple_expr_pgvector_features(expression, features);
+			}
+		}
 	}
 	if let Some(expressions) = &statement.returning_exprs {
 		for expression in expressions {

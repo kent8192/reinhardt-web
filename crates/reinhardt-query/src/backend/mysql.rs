@@ -1142,7 +1142,17 @@ impl QueryBuilder for MySqlQueryBuilder {
 				writer.push_keyword("() VALUES ()");
 			}
 			InsertSource::Values(values) => {
-				if !values.is_empty() {
+				if let Some(rows) = &stmt.expression_values {
+					writer.push_keyword("VALUES");
+					writer.push_space();
+					writer.push_list(rows, ", ", |w, row| {
+						w.push("(");
+						w.push_list(row, ", ", |w2, expression| {
+							self.write_simple_expr(w2, expression);
+						});
+						w.push(")");
+					});
+				} else if !values.is_empty() {
 					writer.push_keyword("VALUES");
 					writer.push_space();
 

@@ -52,6 +52,7 @@ pub struct InsertStatement {
 	pub(crate) table: Option<TableRef>,
 	pub(crate) columns: Vec<DynIden>,
 	pub(crate) source: InsertSource,
+	pub(crate) expression_values: Option<Vec<Vec<SimpleExpr>>>,
 	pub(crate) returning: Option<ReturningClause>,
 	pub(crate) returning_exprs: Option<Vec<SimpleExpr>>,
 	pub(crate) on_conflict: Option<super::on_conflict::OnConflict>,
@@ -67,6 +68,7 @@ impl InsertStatement {
 			table: None,
 			columns: Vec::new(),
 			source: InsertSource::Values(Vec::new()),
+			expression_values: None,
 			returning: None,
 			returning_exprs: None,
 			on_conflict: None,
@@ -82,6 +84,7 @@ impl InsertStatement {
 			table: self.table.take(),
 			columns: std::mem::take(&mut self.columns),
 			source: std::mem::replace(&mut self.source, InsertSource::Values(Vec::new())),
+			expression_values: self.expression_values.take(),
 			returning: self.returning.take(),
 			returning_exprs: self.returning_exprs.take(),
 			on_conflict: self.on_conflict.take(),
@@ -175,6 +178,10 @@ impl InsertStatement {
 			));
 		}
 		self.default_values = false;
+		if let Some(rows) = &mut self.expression_values {
+			rows.push(values.into_iter().map(SimpleExpr::Value).collect());
+			return Ok(self);
+		}
 		match &mut self.source {
 			InsertSource::Values(vals) => vals.push(values),
 			InsertSource::Subquery(_) => {
@@ -215,6 +222,10 @@ impl InsertStatement {
 			);
 		}
 		self.default_values = false;
+		if let Some(rows) = &mut self.expression_values {
+			rows.push(values.into_iter().map(SimpleExpr::Value).collect());
+			return self;
+		}
 		match &mut self.source {
 			InsertSource::Values(vals) => vals.push(values),
 			InsertSource::Subquery(_) => {
@@ -222,6 +233,52 @@ impl InsertStatement {
 			}
 		}
 		self
+	}
+
+	/// Append a VALUES row containing structural SQL expressions.
+	///
+	/// Values inside expressions retain their renderer-generated argument order.
+	/// Existing value rows are preserved, and subsequent [`Self::values`] rows
+	/// are appended in call order. Backend-checked rendering validates nested
+	/// expressions. Construction and rendering have native/WASM parity (P2).
+	///
+	/// Returns an error when the row length differs from an already-set column
+	/// list. A row replaces a previous SELECT source, matching [`Self::values`].
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, PostgresQueryBuilder, Query, QueryStatementBuilder};
+	/// let mut statement = Query::insert();
+	/// statement.into_table("events").columns(["name", "created_at"]);
+	/// statement.values_expr(vec![Expr::val("created").into(), Expr::current_timestamp().into()])?;
+	/// let (sql, values) = statement.build(PostgresQueryBuilder);
+	/// assert_eq!(sql, "INSERT INTO \"events\" (\"name\", \"created_at\") VALUES ($1, CURRENT_TIMESTAMP)");
+	/// assert_eq!(values.len(), 1);
+	/// # Ok::<(), String>(())
+	/// ```
+	pub fn values_expr(&mut self, values: Vec<SimpleExpr>) -> Result<&mut Self, String> {
+		if !self.columns.is_empty() && values.len() != self.columns.len() {
+			return Err(format!(
+				"Number of values ({}) doesn't match number of columns ({})",
+				values.len(),
+				self.columns.len()
+			));
+		}
+		self.default_values = false;
+		if self.expression_values.is_none() {
+			let previous = std::mem::replace(&mut self.source, InsertSource::Values(Vec::new()));
+			let rows = match previous {
+				InsertSource::Values(rows) => rows
+					.into_iter()
+					.map(|row| row.into_iter().map(SimpleExpr::Value).collect())
+					.collect(),
+				InsertSource::Subquery(_) => Vec::new(),
+			};
+			self.expression_values = Some(rows);
+		}
+		if let Some(rows) = &mut self.expression_values {
+			rows.push(values);
+		}
+		Ok(self)
 	}
 
 	/// Add a RETURNING clause with multiple columns
@@ -368,6 +425,7 @@ impl InsertStatement {
 	/// ```
 	pub fn from_subquery(&mut self, select: SelectStatement) -> &mut Self {
 		self.default_values = false;
+		self.expression_values = None;
 		self.source = InsertSource::Subquery(Box::new(select));
 		self
 	}
@@ -389,14 +447,18 @@ impl InsertStatement {
 	pub fn default_values(&mut self) -> &mut Self {
 		self.columns.clear();
 		self.source = InsertSource::Values(Vec::new());
+		self.expression_values = None;
 		self.default_values = true;
 		self
 	}
 
 	/// Get the values if this is a VALUES source
 	///
-	/// Returns `None` if the source is a subquery.
+	/// Returns `None` if the source is a subquery or contains expression rows.
 	pub fn get_values(&self) -> Option<&Vec<Vec<Value>>> {
+		if self.expression_values.is_some() {
+			return None;
+		}
 		match &self.source {
 			InsertSource::Values(vals) => Some(vals),
 			InsertSource::Subquery(_) => None,
