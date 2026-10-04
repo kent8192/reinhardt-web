@@ -124,7 +124,18 @@ impl ToTokens for IdentityOperation {
 		};
 		let old = optional(&self.old);
 		let new = optional(&self.new);
-		tokens.extend(quote! { IdentityOperation::new(#table, #column, #field_type, #old, #new) });
+		let mut builder =
+			quote! { IdentityOperation::new(#table, #column, #field_type, #old, #new) };
+		if let Some(old_type) = &self.old_field_type {
+			let old_type = match old_type {
+				FieldType::SmallInteger => quote! { FieldType::SmallInteger },
+				FieldType::Integer => quote! { FieldType::Integer },
+				FieldType::BigInteger => quote! { FieldType::BigInteger },
+				_ => panic!("identity operation requires an integer column"),
+			};
+			builder.extend(quote! { .with_old_field_type(#old_type) });
+		}
+		tokens.extend(builder);
 	}
 }
 impl ToTokens for SequenceOperation {

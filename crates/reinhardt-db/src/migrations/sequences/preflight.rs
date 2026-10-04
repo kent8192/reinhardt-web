@@ -117,7 +117,20 @@ pub(crate) async fn preflight(
 			} = operation
 			{
 				let field = current
-					.find_model_by_table(&identity.table.name)
+					.models
+					.values()
+					.find(|model| {
+						model.table_name == identity.table.name
+							&& model
+								.options
+								.get("schema")
+								.map(String::as_str)
+								.unwrap_or(&schema) == identity
+								.table
+								.schema
+								.as_deref()
+								.unwrap_or(&schema)
+					})
 					.and_then(|model| model.fields.get(&identity.column))
 					.ok_or_else(|| {
 						MigrationError::InvalidMigration(
@@ -126,7 +139,31 @@ pub(crate) async fn preflight(
 					})?;
 				let column = ColumnDefinition::from_field_state(&identity.column, field);
 				column.validate_generation()?;
-				if column.identity != identity.old
+				let expected = identity.old.as_ref().map(|old| {
+					retarget_identity_width(
+						old,
+						identity
+							.old_field_type
+							.as_ref()
+							.unwrap_or(&identity.field_type),
+						&identity.field_type,
+					)
+				});
+				let mut observed = column.identity.clone();
+				if let Some(identity) = &mut observed {
+					identity.sequence_name = identity
+						.sequence_name
+						.as_ref()
+						.map(|name| resolved(name, &schema));
+				}
+				let mut expected = expected;
+				if let Some(identity) = &mut expected {
+					identity.sequence_name = identity
+						.sequence_name
+						.as_ref()
+						.map(|name| resolved(name, &schema));
+				}
+				if observed != expected
 					|| column.type_definition != identity.field_type
 					|| !column.not_null
 					|| column.default.is_some()
@@ -147,7 +184,27 @@ pub(crate) async fn preflight(
 					"logical sequence rename requires an existing source and an unused target identity",
 				);
 			}
-			operation.state_forwards(&migration.app_label, &mut current);
+			let mut normalized_operation = operation.clone();
+			if let Operation::Identity { operation } = &mut normalized_operation {
+				operation.table.schema = current
+					.models
+					.values()
+					.find(|model| {
+						model.table_name == operation.table.name
+							&& model
+								.options
+								.get("schema")
+								.map(String::as_str)
+								.unwrap_or(&schema) == operation
+								.table
+								.schema
+								.as_deref()
+								.unwrap_or(&schema)
+					})
+					.and_then(|model| model.options.get("schema"))
+					.cloned();
+			}
+			normalized_operation.state_forwards(&migration.app_label, &mut current);
 			planned.push(operation.clone());
 		}
 	} else {

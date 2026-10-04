@@ -877,6 +877,9 @@ pub struct IdentityOperation {
 	pub column: String,
 	/// Column width used to resolve sequence defaults.
 	pub field_type: FieldType,
+	/// Previous column width, when a type change precedes this transition.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub old_field_type: Option<FieldType>,
 	/// Complete previous identity definition, absent when adding identity.
 	pub old: Option<IdentityDefinition>,
 	/// Complete desired definition, absent when dropping identity.
@@ -891,13 +894,25 @@ impl IdentityOperation {
 		old: Option<IdentityDefinition>,
 		new: Option<IdentityDefinition>,
 	) -> Self {
+		let mut new = new;
+		if let (Some(old), Some(new)) = (&old, &mut new)
+			&& new.sequence_name.is_none()
+		{
+			new.sequence_name = old.sequence_name.clone();
+		}
 		Self {
 			table,
 			column: column.into(),
 			field_type,
+			old_field_type: None,
 			old,
 			new,
 		}
+	}
+	/// Retains the original width for validation and schema rollback.
+	pub fn with_old_field_type(mut self, field_type: FieldType) -> Self {
+		self.old_field_type = Some(field_type);
+		self
 	}
 	/// Validates the transition before generating SQL.
 	pub fn validate(&self) -> Result<()> {
@@ -908,7 +923,10 @@ impl IdentityOperation {
 		{
 			return invalid("invalid identity transition");
 		}
-		for identity in self.old.iter().chain(self.new.iter()) {
+		if let Some(identity) = &self.old {
+			identity.effective_options(self.old_field_type.as_ref().unwrap_or(&self.field_type))?;
+		}
+		if let Some(identity) = &self.new {
 			identity.effective_options(&self.field_type)?;
 		}
 		if let (Some(old), Some(new)) = (&self.old, &self.new) {
@@ -972,13 +990,24 @@ impl IdentityOperation {
 	/// Reverses the schema definition without recovering consumed values.
 	pub fn reverse(&self) -> Self {
 		Self {
+			field_type: self
+				.old_field_type
+				.clone()
+				.unwrap_or_else(|| self.field_type.clone()),
+			old_field_type: self
+				.old_field_type
+				.as_ref()
+				.map(|_| self.field_type.clone()),
 			old: self.new.clone(),
 			new: self.old.clone(),
 			..self.clone()
 		}
 	}
 	pub(crate) fn state_forwards(&self, state: &mut ProjectState) {
-		if let Some(model) = state.find_model_by_table_mut(&self.table.name)
+		if let Some(model) = state
+			.models
+			.values_mut()
+			.find(|model| model_matches(model, &self.table))
 			&& let Some(field) = model.fields.get_mut(&self.column)
 		{
 			field.params.remove("identity_always");
@@ -997,6 +1026,40 @@ impl IdentityOperation {
 			}
 		}
 	}
+}
+
+pub(crate) fn model_matches(model: &super::ModelState, table: &QualifiedName) -> bool {
+	model.table_name == table.name && model.options.get("schema") == table.schema.as_ref()
+}
+
+pub(crate) fn retarget_identity_width(
+	identity: &IdentityDefinition,
+	old_type: &FieldType,
+	new_type: &FieldType,
+) -> IdentityDefinition {
+	let mut identity = identity.clone();
+	if old_type != new_type {
+		let old_defaults = SequenceOptions::new()
+			.with_data_type(SequenceDataType::from_field_type(old_type).expect("integer identity"))
+			.with_increment(identity.options.increment.unwrap_or(1))
+			.effective()
+			.expect("default options");
+		let new_defaults = SequenceOptions::new()
+			.with_data_type(SequenceDataType::from_field_type(new_type).expect("integer identity"))
+			.with_increment(identity.options.increment.unwrap_or(1))
+			.effective()
+			.expect("default options");
+		if identity.options.data_type.is_some() {
+			identity.options.data_type = new_defaults.data_type;
+		}
+		if identity.options.min_value == old_defaults.min_value {
+			identity.options.min_value = new_defaults.min_value;
+		}
+		if identity.options.max_value == old_defaults.max_value {
+			identity.options.max_value = new_defaults.max_value;
+		}
+	}
+	identity
 }
 
 pub(crate) fn identity_from_params(

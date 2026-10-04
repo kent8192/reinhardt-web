@@ -87,9 +87,10 @@ fn expression_value(expression: &Expr, context: &str) -> Result<Value> {
 					&["generation"],
 					json!({"sequence_name": null, "options": serde_json::to_value(super::super::SequenceOptions::new()).expect("serializable options")}),
 				),
-				"IdentityOperation" => {
-					(&["table", "column", "field_type", "old", "new"], json!({}))
-				}
+				"IdentityOperation" => (
+					&["table", "column", "field_type", "old", "new"],
+					json!({"old_field_type": null}),
+				),
 				_ => return Err(strict_payload_error(context, "constructor")),
 			};
 			if fields.len() != call.args.len() {
@@ -118,28 +119,29 @@ fn expression_value(expression: &Expr, context: &str) -> Result<Value> {
 				return Err(strict_payload_error(context, &method));
 			};
 			// Only methods on the concrete framework builder are accepted.
-			let allowed: &[&str] =
-				if value.get("logical_name").is_some() || value.get("column").is_some() {
-					&[]
-				} else if value.get("generation").is_some() {
-					&["sequence_name", "options"]
-				} else if value.get("key").is_some() && value.get("options").is_some() {
-					&["options", "owned_by"]
-				} else if value.get("increment").is_some() {
-					&[
-						"data_type",
-						"increment",
-						"min_value",
-						"max_value",
-						"start",
-						"cache",
-						"cycle",
-					]
-				} else if value.get("schema").is_some() {
-					&["schema"]
-				} else {
-					&[]
-				};
+			let allowed: &[&str] = if value.get("field_type").is_some() {
+				&["old_field_type"]
+			} else if value.get("logical_name").is_some() || value.get("column").is_some() {
+				&[]
+			} else if value.get("generation").is_some() {
+				&["sequence_name", "options"]
+			} else if value.get("key").is_some() && value.get("options").is_some() {
+				&["options", "owned_by"]
+			} else if value.get("increment").is_some() {
+				&[
+					"data_type",
+					"increment",
+					"min_value",
+					"max_value",
+					"start",
+					"cache",
+					"cycle",
+				]
+			} else if value.get("schema").is_some() {
+				&["schema"]
+			} else {
+				&[]
+			};
 			if !allowed.contains(&field) {
 				return Err(strict_payload_error(context, &method));
 			}
@@ -149,7 +151,15 @@ fn expression_value(expression: &Expr, context: &str) -> Result<Value> {
 			{
 				return Err(strict_payload_error(context, &method));
 			}
-			value[field] = expression_value(&call.args[0], context)?;
+			value[field] = if field == "old_field_type" {
+				serde_json::to_value(
+					parse_field_type_strict(&call.args[0])
+						.ok_or_else(|| strict_payload_error(context, field))?,
+				)
+				.expect("serializable field type")
+			} else {
+				expression_value(&call.args[0], context)?
+			};
 			return Ok(value);
 		}
 		Expr::Struct(operation) => {

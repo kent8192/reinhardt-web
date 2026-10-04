@@ -1265,3 +1265,290 @@ async fn incremental_executor_applies_and_reverses_identity_lifecycle() {
 		reinhardt_db::migrations::DatabaseMigrationRecorder::new(fixture.connection.clone());
 	assert_eq!(recorder.get_applied_migrations().await.unwrap().len(), 1);
 }
+
+#[rstest]
+#[case(false)]
+#[case(true)]
+#[tokio::test]
+async fn executor_identity_width_change_restores_sequence_bounds(#[case] explicit: bool) {
+	// Arrange
+	let fixture = postgres("16-alpine").await;
+	let mut old = ProjectState::new();
+	let mut model = ModelState::new("events", "Event");
+	model.table_name = "events".into();
+	let options = if explicit {
+		SequenceOptions::new().with_data_type(SequenceDataType::Integer)
+	} else {
+		SequenceOptions::new()
+	};
+	model.add_field(
+		FieldState::new("n", FieldType::Integer, false).with_identity(
+			IdentityDefinition::new(IdentityGeneration::Always).with_options(options),
+		),
+	);
+	old.add_model(model);
+	let initial = MigrationAutodetector::new(ProjectState::new(), old.clone())
+		.try_generate_operations()
+		.unwrap()
+		.into_iter()
+		.fold(
+			Migration::new("0001_initial", "events"),
+			|migration, operation| migration.add_operation(operation),
+		);
+	let mut new = old.clone();
+	let options = if explicit {
+		SequenceOptions::new().with_data_type(SequenceDataType::BigInteger)
+	} else {
+		SequenceOptions::new()
+	};
+	new.models.values_mut().next().unwrap().add_field(
+		FieldState::new("n", FieldType::BigInteger, false).with_identity(
+			IdentityDefinition::new(IdentityGeneration::Always).with_options(options),
+		),
+	);
+	let change = MigrationAutodetector::new(old, new)
+		.try_generate_operations()
+		.unwrap()
+		.into_iter()
+		.fold(
+			Migration::new("0002_width", "events").add_dependency("events", "0001_initial"),
+			|migration, operation| migration.add_operation(operation),
+		);
+	let mut executor =
+		reinhardt_db::migrations::DatabaseMigrationExecutor::new(fixture.connection.clone());
+	executor.apply_migrations(&[initial]).await.unwrap();
+	// Act
+	executor
+		.apply_migrations(std::slice::from_ref(&change))
+		.await
+		.unwrap();
+	let introspector = PostgresIntrospector::new(fixture.pool.clone());
+	let widened = introspector
+		.read_table("events")
+		.await
+		.unwrap()
+		.unwrap()
+		.columns["n"]
+		.clone();
+	executor.rollback_migrations(&[change]).await.unwrap();
+	let restored = introspector
+		.read_table("events")
+		.await
+		.unwrap()
+		.unwrap()
+		.columns["n"]
+		.clone();
+	// Assert
+	assert_eq!(widened.column_type, FieldType::BigInteger);
+	assert_eq!(
+		widened.identity.unwrap().options.max_value,
+		Some(SequenceBound::Value(i64::MAX))
+	);
+	assert_eq!(restored.column_type, FieldType::Integer);
+	assert_eq!(
+		restored.identity.unwrap().options.max_value,
+		Some(SequenceBound::Value(i64::from(i32::MAX)))
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn catalog_identity_changes_keep_implicit_physical_names() {
+	// Arrange
+	let fixture = postgres("16-alpine").await;
+	let mut target = ProjectState::new();
+	let mut model = ModelState::new("events", "Event");
+	model.table_name = "events".into();
+	model.add_field(
+		FieldState::new("n", FieldType::Integer, false)
+			.with_identity(IdentityDefinition::new(IdentityGeneration::Always)),
+	);
+	target.add_model(model);
+	let initial = MigrationAutodetector::new(ProjectState::new(), target.clone())
+		.try_generate_operations()
+		.unwrap()
+		.into_iter()
+		.fold(
+			Migration::new("0001_initial", "events"),
+			|migration, operation| migration.add_operation(operation),
+		);
+	let mut executor =
+		reinhardt_db::migrations::DatabaseMigrationExecutor::new(fixture.connection.clone());
+	executor.apply_migrations(&[initial]).await.unwrap();
+	let introspector = PostgresIntrospector::new(fixture.pool.clone());
+	let catalog = introspector.read_schema().await.unwrap();
+	let original_name = catalog.tables["events"].columns["n"]
+		.identity
+		.as_ref()
+		.unwrap()
+		.sequence_name
+		.clone();
+	target.models.values_mut().next().unwrap().add_field(
+		FieldState::new("n", FieldType::Integer, false).with_identity(
+			IdentityDefinition::new(IdentityGeneration::ByDefault)
+				.with_options(SequenceOptions::new().with_cache(4)),
+		),
+	);
+	let change = SchemaDiff::with_dialect(
+		catalog.into(),
+		target.to_database_schema(),
+		reinhardt_db::migrations::SqlDialect::Postgres,
+	)
+	.try_generate_operations()
+	.unwrap()
+	.into_iter()
+	.fold(
+		Migration::new("0002_mode", "events").add_dependency("events", "0001_initial"),
+		|migration, operation| migration.add_operation(operation),
+	);
+	// Catalog-derived migrations use the observed definition as their pre-state.
+	let mut history =
+		Migration::new("0001_initial", "events").add_operation(Operation::CreateTable {
+			name: "events".into(),
+			columns: vec![
+				ColumnDefinition::new("n", FieldType::Integer)
+					.with_not_null(true)
+					.with_identity(
+						introspector
+							.read_table("events")
+							.await
+							.unwrap()
+							.unwrap()
+							.columns["n"]
+							.identity
+							.clone(),
+					),
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		});
+	history.state_only = true;
+	let mut executor =
+		reinhardt_db::migrations::DatabaseMigrationExecutor::new(fixture.connection.clone())
+			.with_migration_history(vec![history]);
+	// Act
+	executor.apply_migrations(&[change]).await.unwrap();
+	let changed = introspector.read_schema().await.unwrap();
+	let second = SchemaDiff::with_dialect(
+		changed.clone().into(),
+		target.to_database_schema(),
+		reinhardt_db::migrations::SqlDialect::Postgres,
+	)
+	.try_generate_operations()
+	.unwrap();
+	// Assert
+	assert_eq!(
+		changed.tables["events"].columns["n"]
+			.identity
+			.as_ref()
+			.unwrap()
+			.sequence_name,
+		original_name
+	);
+	assert!(second.is_empty());
+}
+
+#[rstest]
+#[tokio::test]
+async fn qualified_identity_preflight_and_rollback_use_the_requested_schema() {
+	use reinhardt_query::prelude::{
+		Alias, ColumnDef, ColumnType, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	};
+	// Arrange
+	let fixture = postgres("16-alpine").await;
+	let mut before = ProjectState::new();
+	for (schema, cache) in [("alpha", 2), ("beta", 4)] {
+		let sql = Query::create_schema()
+			.name(Alias::new(schema))
+			.to_string(PostgresQueryBuilder);
+		sqlx::query(&sql).execute(&fixture.pool).await.unwrap();
+		let sql = Query::create_table()
+			.table((Alias::new(schema), Alias::new("events")))
+			.col(
+				ColumnDef::new("n")
+					.column_type(ColumnType::BigInteger)
+					.not_null(true),
+			)
+			.to_string(PostgresQueryBuilder);
+		sqlx::query(&sql).execute(&fixture.pool).await.unwrap();
+		let identity = IdentityDefinition::new(IdentityGeneration::Always)
+			.with_options(SequenceOptions::new().with_cache(cache));
+		let sql = IdentityOperation::new(
+			QualifiedName::new("events").with_schema(schema),
+			"n",
+			FieldType::BigInteger,
+			None,
+			Some(identity.clone()),
+		)
+		.to_sql();
+		sqlx::query(&sql).execute(&fixture.pool).await.unwrap();
+		let mut model = ModelState::new(schema, "Event");
+		model.table_name = "events".into();
+		model.options.insert("schema".into(), schema.into());
+		model.add_field(FieldState::new("n", FieldType::BigInteger, false).with_identity(identity));
+		before.add_model(model);
+	}
+	let migration = Migration::new("0002_generation", "beta").add_operation(Operation::Identity {
+		operation: IdentityOperation::new(
+			QualifiedName::new("events").with_schema("beta"),
+			"n",
+			FieldType::BigInteger,
+			Some(
+				IdentityDefinition::new(IdentityGeneration::Always)
+					.with_options(SequenceOptions::new().with_cache(4)),
+			),
+			Some(
+				IdentityDefinition::new(IdentityGeneration::ByDefault)
+					.with_options(SequenceOptions::new().with_cache(8)),
+			),
+		),
+	});
+	let after = replay(&before, &migration);
+	let catalog_query = "SELECT n.nspname::text, a.attidentity::text, s.seqcache FROM pg_attribute a JOIN pg_class t ON t.oid=a.attrelid JOIN pg_namespace n ON n.oid=t.relnamespace JOIN pg_depend d ON d.refobjid=t.oid AND d.refobjsubid=a.attnum AND d.deptype='i' JOIN pg_sequence s ON s.seqrelid=d.objid WHERE n.nspname IN ('alpha', 'beta') AND t.relname='events' AND a.attname='n' ORDER BY n.nspname";
+	// Act
+	execute(
+		&fixture,
+		&migration,
+		&before,
+		&after,
+		MigrationDirection::Forward,
+	)
+	.await;
+	let changed: Vec<(String, String, i64)> = sqlx::query_as(catalog_query)
+		.fetch_all(&fixture.pool)
+		.await
+		.unwrap();
+	execute(
+		&fixture,
+		&migration,
+		&before,
+		&after,
+		MigrationDirection::Backward,
+	)
+	.await;
+	let restored: Vec<(String, String, i64)> = sqlx::query_as(catalog_query)
+		.fetch_all(&fixture.pool)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(
+		changed,
+		vec![
+			("alpha".into(), "a".into(), 2),
+			("beta".into(), "d".into(), 8)
+		]
+	);
+	assert_eq!(
+		restored,
+		vec![
+			("alpha".into(), "a".into(), 2),
+			("beta".into(), "a".into(), 4)
+		]
+	);
+	assert_eq!(
+		after.models[&("alpha".into(), "Event".into())],
+		before.models[&("alpha".into(), "Event".into())]
+	);
+}

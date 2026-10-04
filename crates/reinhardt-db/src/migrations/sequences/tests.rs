@@ -564,3 +564,144 @@ fn mutually_referencing_apps_create_sequences_before_either_table() {
 			.is_empty()
 	);
 }
+
+#[rstest]
+#[case(false)]
+#[case(true)]
+fn identity_width_changes_preserve_both_snapshots(#[case] explicit: bool) {
+	// Arrange
+	let old_options = if explicit {
+		SequenceOptions::new().with_data_type(SequenceDataType::Integer)
+	} else {
+		SequenceOptions::new()
+	};
+	let new_options = if explicit {
+		SequenceOptions::new().with_data_type(SequenceDataType::BigInteger)
+	} else {
+		SequenceOptions::new()
+	};
+	let mut old = ProjectState::new();
+	let mut model = ModelState::new("events", "Event");
+	model.table_name = "events".into();
+	model.add_field(
+		FieldState::new("n", FieldType::Integer, false).with_identity(
+			IdentityDefinition::new(IdentityGeneration::Always).with_options(old_options),
+		),
+	);
+	old.add_model(model);
+	let mut new = old.clone();
+	let model = new.models.values_mut().next().unwrap();
+	model.add_field(
+		FieldState::new("n", FieldType::BigInteger, false).with_identity(
+			IdentityDefinition::new(IdentityGeneration::Always).with_options(new_options),
+		),
+	);
+	// Act
+	let operations = MigrationAutodetector::new(old.clone(), new.clone())
+		.try_generate_operations()
+		.unwrap();
+	let transition = operations
+		.iter()
+		.find_map(|operation| match operation {
+			Operation::Identity { operation } => Some(operation),
+			_ => None,
+		})
+		.unwrap();
+	let reverse = transition.reverse();
+	let migration = operations.iter().cloned().fold(
+		Migration::new("0002_width", "events"),
+		|migration, operation| migration.add_operation(operation),
+	);
+	let source = FilesystemRepository::new("/tmp/unused-6532-source")
+		.render(
+			&migration,
+			MigrationRenderOptions {
+				include_header: true,
+			},
+		)
+		.unwrap();
+	let loaded = crate::migrations::ast_parser::extract_migration_metadata_strict(
+		&syn::parse_file(&source).unwrap(),
+		"events",
+		"0002_width",
+	)
+	.unwrap();
+	let mut replayed = old;
+	for operation in &operations {
+		operation.try_to_sql(&SqlDialect::Postgres).unwrap();
+		operation.state_forwards("events", &mut replayed);
+	}
+	// Assert
+	assert_eq!(transition.old_field_type, Some(FieldType::Integer));
+	assert_eq!(transition.field_type, FieldType::BigInteger);
+	assert_eq!(reverse.field_type, FieldType::Integer);
+	reverse.validate().unwrap();
+	assert!(reverse.to_sql().contains("MAXVALUE 2147483647"));
+	assert_eq!(loaded.operations, migration.operations);
+	assert!(
+		MigrationAutodetector::new(replayed, new)
+			.try_generate_operations()
+			.unwrap()
+			.is_empty()
+	);
+}
+
+#[rstest]
+fn omitted_identity_name_preserves_catalog_name() {
+	// Arrange
+	let old = IdentityDefinition::new(IdentityGeneration::Always)
+		.with_sequence_name(QualifiedName::new("events_n_seq").with_schema("public"));
+	let new = IdentityDefinition::new(IdentityGeneration::ByDefault)
+		.with_options(SequenceOptions::new().with_cache(4));
+	// Act
+	let operation = IdentityOperation::new(
+		QualifiedName::new("events"),
+		"n",
+		FieldType::Integer,
+		Some(old.clone()),
+		Some(new),
+	);
+	// Assert
+	operation.validate().unwrap();
+	assert_eq!(
+		operation.new.as_ref().unwrap().sequence_name,
+		old.sequence_name
+	);
+	assert!(!operation.to_sql().contains("RENAME"));
+	operation.reverse().validate().unwrap();
+}
+
+#[rstest]
+fn qualified_identity_replay_changes_only_the_requested_schema() {
+	// Arrange
+	let mut state = ProjectState::new();
+	for schema in ["alpha", "beta"] {
+		let mut model = ModelState::new(schema, "Event");
+		model.table_name = "events".into();
+		model.options.insert("schema".into(), schema.into());
+		model.add_field(FieldState::new("n", FieldType::Integer, false));
+		state.add_model(model);
+	}
+	let operation = IdentityOperation::new(
+		QualifiedName::new("events").with_schema("beta"),
+		"n",
+		FieldType::Integer,
+		None,
+		Some(IdentityDefinition::new(IdentityGeneration::Always)),
+	);
+	// Act
+	operation.state_forwards(&mut state);
+	// Assert
+	assert!(
+		identity_from_params(&state.models[&("alpha".into(), "Event".into())].fields["n"].params)
+			.unwrap()
+			.is_none()
+	);
+	assert_eq!(
+		identity_from_params(&state.models[&("beta".into(), "Event".into())].fields["n"].params)
+			.unwrap()
+			.unwrap()
+			.generation,
+		IdentityGeneration::Always
+	);
+}

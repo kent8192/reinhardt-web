@@ -227,7 +227,7 @@ pub(crate) fn augment_operations(
 			});
 		}
 	}
-	for operations in by_app.values_mut() {
+	for (app, operations) in by_app.iter_mut() {
 		// A sequence rename updates default OID references automatically. Keep
 		// old column snapshots at the already-renamed physical name so rollback
 		// does not reference the old name before reversing the sequence rename.
@@ -251,12 +251,12 @@ pub(crate) fn augment_operations(
 			}
 			true
 		});
-		rewrite_identity_changes(operations);
+		rewrite_identity_changes(operations, to, app);
 	}
 	by_app.retain(|_, operations| !operations.is_empty());
 }
 
-fn rewrite_identity_changes(operations: &mut Vec<Operation>) {
+fn rewrite_identity_changes(operations: &mut Vec<Operation>, to: &ProjectState, app: &str) {
 	let mut rewritten = Vec::new();
 	for operation in operations.drain(..) {
 		if let Operation::AlterColumn {
@@ -268,7 +268,12 @@ fn rewrite_identity_changes(operations: &mut Vec<Operation>) {
 		} = &operation
 		{
 			let old_identity = old.identity.clone();
-			let new_identity = new.identity.clone();
+			let mut new_identity = new.identity.clone();
+			if let (Some(old), Some(new)) = (&old_identity, &mut new_identity)
+				&& new.sequence_name.is_none()
+			{
+				new.sequence_name = old.sequence_name.clone();
+			}
 			if old_identity.is_some() || new_identity.is_some() {
 				let equivalent = match (&old_identity, &new_identity) {
 					(Some(old_identity), Some(new_identity)) => {
@@ -283,13 +288,32 @@ fn rewrite_identity_changes(operations: &mut Vec<Operation>) {
 					}
 					_ => false,
 				};
-				let transition = IdentityOperation::new(
-					QualifiedName::new(table),
+				let mut table_name = QualifiedName::new(table);
+				if let Some(schema) = to
+					.models
+					.values()
+					.find(|model| model.app_label == app && model.table_name == *table)
+					.and_then(|model| model.options.get("schema"))
+				{
+					table_name.schema = Some(schema.clone());
+				}
+				let mut transition = IdentityOperation::new(
+					table_name,
 					column,
-					new.type_definition.clone(),
+					if new_identity.is_none() {
+						old.type_definition.clone()
+					} else {
+						new.type_definition.clone()
+					},
 					old_identity.clone(),
 					new_identity.clone(),
 				);
+				if old_identity.is_some()
+					&& new_identity.is_some()
+					&& old.type_definition != new.type_definition
+				{
+					transition = transition.with_old_field_type(old.type_definition.clone());
+				}
 				let mut old_plain = old.clone();
 				let mut new_plain = new.clone();
 				old_plain.identity = None;
@@ -310,7 +334,13 @@ fn rewrite_identity_changes(operations: &mut Vec<Operation>) {
 						old_identity.clone()
 					};
 					old_plain.identity = staged_identity.clone();
-					new_plain.identity = staged_identity;
+					new_plain.identity = staged_identity.map(|identity| {
+						retarget_identity_width(
+							&identity,
+							&old.type_definition,
+							&new.type_definition,
+						)
+					});
 					let mut column_operation = operation.clone();
 					if let Operation::AlterColumn {
 						old_definition,
