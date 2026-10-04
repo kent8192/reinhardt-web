@@ -207,6 +207,7 @@ jobs:
           - { name: "full",        pkg: "reinhardt-web", features: "full",                                           no_default: "true"  }
           - { name: "api-only",    pkg: "reinhardt-web", features: "api-only",                                       no_default: "true"  }
           - { name: "admin-forms", pkg: "reinhardt-web", features: "minimal,admin,database,db-postgres,auth",        no_default: "true"  }
+          - { name: "db-orm-sqlite", pkg: "reinhardt-db", features: "orm,sqlite",                                     no_default: "true"  }
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
