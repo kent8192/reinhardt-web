@@ -176,6 +176,58 @@ fn squashed_migration_project(temp_dir: TempDir, #[default(false)] nested: bool)
 	project
 }
 
+#[fixture]
+fn legacy_squash_migration_project(temp_dir: TempDir, #[default(false)] nested: bool) -> TempDir {
+	let project = migration_project(temp_dir);
+	let root = project.path();
+	write_migration(
+		root,
+		"foundation",
+		"0003_parent_code",
+		&[("foundation", "0002_tables")],
+		"ALTER TABLE rollback_probe.parent ADD COLUMN code integer UNIQUE",
+		"ALTER TABLE rollback_probe.parent DROP COLUMN code",
+	);
+	let statements = (
+		"CREATE TABLE rollback_probe.parent (id integer PRIMARY KEY, code integer UNIQUE)",
+		"DROP TABLE rollback_probe.parent",
+	);
+	let originals = [
+		("foundation", "0002_tables"),
+		("foundation", "0003_parent_code"),
+	];
+	write_migration_definition(
+		root,
+		"foundation",
+		"0002_intermediate",
+		&[("foundation", "0001_retained")],
+		&originals,
+		statements,
+	);
+	let replacements = if nested {
+		vec![("foundation", "0002_intermediate")]
+	} else {
+		originals.to_vec()
+	};
+	write_migration_definition(
+		root,
+		"foundation",
+		"0002_squashed",
+		&[("foundation", "0001_retained")],
+		&replacements,
+		statements,
+	);
+	write_migration(
+		root,
+		"consumer",
+		"0001_references",
+		&[("foundation", "0002_squashed")],
+		"CREATE TABLE rollback_probe.consumer (id integer PRIMARY KEY, parent_code integer REFERENCES rollback_probe.parent(code))",
+		"DROP TABLE rollback_probe.consumer",
+	);
+	project
+}
+
 fn run_migrate(project: &Path, url: &str, app: &str, target: &str, mode: &str) -> String {
 	let output = Command::new(std::env::current_exe().expect("locate test executable"))
 		.args([
@@ -252,6 +304,21 @@ async fn table_exists(pool: &sqlx::PgPool, table: &str) -> bool {
 		.fetch_one(pool)
 		.await
 		.expect("inspect migration table")
+}
+
+async fn parent_code_exists(pool: &sqlx::PgPool) -> bool {
+	let query = Query::select()
+		.expr(Expr::val(1))
+		.from(("information_schema", "columns"))
+		.and_where(Expr::col("table_schema").eq("rollback_probe"))
+		.and_where(Expr::col("table_name").eq("parent"))
+		.and_where(Expr::col("column_name").eq("code"))
+		.to_string(PostgresQueryBuilder);
+	sqlx::query_scalar::<_, i32>(&query)
+		.fetch_optional(pool)
+		.await
+		.expect("inspect the recorded parent column")
+		.is_some()
 }
 
 #[rstest]
@@ -669,6 +736,128 @@ async fn incomplete_cross_app_metadata_preserves_history_and_schema(
 }
 
 #[rstest]
+#[case::direct_zero("zero", false)]
+#[case::direct_target("0001_retained", false)]
+#[case::direct_retained_original("0002_tables", false)]
+#[case::nested_zero("zero", true)]
+#[case::nested_target("0001_retained", true)]
+#[case::nested_retained_original("0002_tables", true)]
+#[tokio::test]
+async fn pending_squash_rollback_matches_recorded_path_and_replays_schema(
+	#[future] migration_executor: MigrationExecutorFixture,
+	temp_dir: TempDir,
+	#[case] target: &str,
+	#[case] nested: bool,
+	#[values("", "fake")] mode: &str,
+) {
+	// Arrange: originals are recorded; a later consumer references the unapplied squash.
+	let project = legacy_squash_migration_project(temp_dir, nested);
+	let root = project.path();
+	let (mut executor, _container, pool, _port, url) = migration_executor.await;
+	let migrations = FilesystemSource::new(root.join("migrations"))
+		.all_migrations()
+		.await
+		.expect("load old and squash migration paths");
+	assert_eq!(migrations.len(), 10);
+	let baseline: Vec<_> = [
+		("operations", "0000_environment"),
+		("foundation", "0001_retained"),
+		("foundation", "0002_tables"),
+		("foundation", "0003_parent_code"),
+		("consumer", "0001_references"),
+		("reporting", "0001_leaf"),
+		("unrelated", "0002_tables"),
+	]
+	.into_iter()
+	.map(|(app, name)| {
+		migrations
+			.iter()
+			.find(|migration| migration.app_label == app && migration.name == name)
+			.expect("recorded old path definition exists")
+	})
+	.collect();
+	for migration in &baseline {
+		let result = executor
+			.apply_migrations(std::slice::from_ref(*migration))
+			.await
+			.expect("apply the old foreign-key baseline without recording the squash");
+		assert_eq!(result.applied.len(), 1);
+	}
+	let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+	let before = applied_keys(&recorder).await;
+	assert_eq!(before.len(), 7);
+	assert!(parent_code_exists(pool.as_ref()).await);
+	let mut expected = vec![
+		"reporting:0001_leaf",
+		"consumer:0001_references",
+		"foundation:0003_parent_code",
+	];
+	if target != "0002_tables" {
+		expected.push("foundation:0002_tables");
+	}
+	if target == "zero" {
+		expected.push("foundation:0001_retained");
+	}
+
+	// Act
+	let plan = run_migrate(root, &url, "foundation", target, "plan");
+	let planned: Vec<_> = plan
+		.lines()
+		.filter_map(|line| line.strip_prefix("[INFO]   - ")?.strip_suffix(" (unapply)"))
+		.collect();
+	assert_eq!(planned, expected);
+	assert_eq!(applied_keys(&recorder).await, before);
+	let output = run_migrate(root, &url, "foundation", target, mode);
+
+	// Assert: the consumer precedes every selected old migration, and no pending squash is recorded.
+	let prefix = if mode == "fake" {
+		"[SUCCESS]   ✓ Faked rollback: "
+	} else {
+		"[SUCCESS]   ✓ Rolled back: "
+	};
+	let executed: Vec<_> = output
+		.lines()
+		.filter_map(|line| line.strip_prefix(prefix))
+		.map(|key| key.replace('.', ":"))
+		.collect();
+	assert_eq!(executed, expected);
+	let removed: BTreeSet<_> = expected.iter().map(|key| (*key).to_owned()).collect();
+	assert_eq!(
+		applied_keys(&recorder).await,
+		before.difference(&removed).cloned().collect()
+	);
+	for (table, key) in [
+		("rollback_probe.retained", "foundation:0001_retained"),
+		("rollback_probe.parent", "foundation:0002_tables"),
+		("rollback_probe.consumer", "consumer:0001_references"),
+		("rollback_probe.leaf", "reporting:0001_leaf"),
+		("rollback_unrelated", "unrelated:0002_tables"),
+		("rollback_probe.pending", "consumer:0002_pending"),
+	] {
+		assert_eq!(
+			table_exists(pool.as_ref(), table).await,
+			before.contains(key) && (mode == "fake" || !removed.contains(key)),
+			"{table}"
+		);
+	}
+	assert_eq!(parent_code_exists(pool.as_ref()).await, mode == "fake");
+	if mode.is_empty() {
+		let mut reapplied = 0;
+		for migration in baseline {
+			reapplied += executor
+				.apply_migrations(std::slice::from_ref(migration))
+				.await
+				.expect("replay the recorded old path")
+				.applied
+				.len();
+		}
+		assert_eq!(reapplied, expected.len());
+		assert_eq!(applied_keys(&recorder).await, before);
+		assert!(parent_code_exists(pool.as_ref()).await);
+	}
+}
+
+#[rstest]
 #[case::squashed_zero("zero", false)]
 #[case::squashed_target("0001_retained", false)]
 #[case::nested_squash_zero("zero", true)]
@@ -798,27 +987,42 @@ async fn squashed_cross_app_rollback_matches_plan_and_replays_schema(
 async fn incomplete_nested_squash_preserves_history_and_schema(
 	#[future] migration_executor: MigrationExecutorFixture,
 	temp_dir: TempDir,
+	#[values(false, true)] originals_recorded: bool,
 	#[values("missing", "invalid")] metadata: &str,
 	#[values("zero", "0001_retained")] target: &str,
 	#[values("", "fake", "plan")] mode: &str,
 ) {
-	// Arrange: apply the final squash and consumers, then lose only intermediate metadata.
+	// Arrange: apply either recorded path and consumers, then lose only intermediate metadata.
 	let (mut executor, _container, pool, _port, url) = migration_executor.await;
-	let project = squashed_migration_project(temp_dir, true);
+	let project = if originals_recorded {
+		legacy_squash_migration_project(temp_dir, true)
+	} else {
+		squashed_migration_project(temp_dir, true)
+	};
 	let root = project.path();
 	let migrations = FilesystemSource::new(root.join("migrations"))
 		.all_migrations()
 		.await
 		.expect("load complete nested squash metadata");
-	assert_eq!(migrations.len(), 9);
-	for (app, name) in [
+	assert_eq!(migrations.len(), if originals_recorded { 10 } else { 9 });
+	let mut baseline = vec![
 		("operations", "0000_environment"),
 		("foundation", "0001_retained"),
-		("foundation", "0002_squashed"),
+	];
+	if originals_recorded {
+		baseline.extend([
+			("foundation", "0002_tables"),
+			("foundation", "0003_parent_code"),
+		]);
+	} else {
+		baseline.push(("foundation", "0002_squashed"));
+	}
+	baseline.extend([
 		("consumer", "0001_references"),
 		("reporting", "0001_leaf"),
 		("unrelated", "0002_tables"),
-	] {
+	]);
+	for (app, name) in baseline {
 		let migration = migrations
 			.iter()
 			.find(|migration| migration.app_label == app && migration.name == name)
@@ -834,7 +1038,7 @@ async fn incomplete_nested_squash_preserves_history_and_schema(
 		.get_applied_migrations()
 		.await
 		.expect("read complete applied history");
-	assert_eq!(before.len(), 6);
+	assert_eq!(before.len(), if originals_recorded { 7 } else { 6 });
 	let definition = root.join("migrations/foundation/0002_intermediate.rs");
 	if metadata == "invalid" {
 		std::fs::write(definition, "pub fn migration( {")
@@ -861,9 +1065,16 @@ async fn incomplete_nested_squash_preserves_history_and_schema(
 		.expect_err("unresolved nested aliases must fail before any rollback effects");
 
 	// Assert: preview, fake, and real preserve all ledger rows, timestamps, and tables.
+	let dependency = if originals_recorded {
+		"0002_squashed"
+	} else {
+		"0002_tables"
+	};
 	assert_eq!(
 		error.to_string(),
-		"Execution error: Cannot determine cross-app rollback dependencies: applied migration consumer:0001_references references unresolved dependency foundation:0002_tables while replacement definition foundation:0002_intermediate is unavailable"
+		format!(
+			"Execution error: Cannot determine cross-app rollback dependencies: applied migration consumer:0001_references references unresolved dependency foundation:{dependency} while replacement definition foundation:0002_intermediate is unavailable"
+		)
 	);
 	let after = recorder
 		.get_applied_migrations()
@@ -902,4 +1113,5 @@ async fn incomplete_nested_squash_preserves_history_and_schema(
 			.expect("inspect unchanged schema");
 		assert_eq!(exists, expected, "table {table}");
 	}
+	assert_eq!(parent_code_exists(pool.as_ref()).await, originals_recorded);
 }
