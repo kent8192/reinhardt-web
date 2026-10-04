@@ -214,6 +214,7 @@ fn count_unqualified_columns(expression: &SimpleExpr) -> Option<usize> {
 		SimpleExpr::Unary(_, value)
 		| SimpleExpr::ExprAlias(value, _)
 		| SimpleExpr::Cast(value, _)
+		| SimpleExpr::PgExtractEpoch(value)
 		| SimpleExpr::AsEnum(_, value)
 		| SimpleExpr::TemporalTrunc { expr: value, .. }
 		| SimpleExpr::WindowNamed { func: value, .. } => count_unqualified_columns(value),
@@ -298,6 +299,7 @@ fn qualify_related_columns(expression: &mut SimpleExpr, alias: &str) -> bool {
 		SimpleExpr::Unary(_, value)
 		| SimpleExpr::ExprAlias(value, _)
 		| SimpleExpr::Cast(value, _)
+		| SimpleExpr::PgExtractEpoch(value)
 		| SimpleExpr::AsEnum(_, value)
 		| SimpleExpr::TemporalTrunc { expr: value, .. }
 		| SimpleExpr::WindowNamed { func: value, .. } => qualify_related_columns(value, alias),

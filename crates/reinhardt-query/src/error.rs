@@ -432,6 +432,7 @@ fn contains_aggregate(expr: &SimpleExpr) -> bool {
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => contains_aggregate(expression),
@@ -471,6 +472,7 @@ fn contains_window(expr: &SimpleExpr) -> bool {
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => contains_window(expression),
@@ -648,6 +650,7 @@ fn validate_simple_expr_lock(
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => validate_simple_expr_lock(expression, backend, visible_cte_names),
@@ -750,6 +753,12 @@ pub(crate) fn validate_create_index_for_backend(
 	statement: &CreateIndexStatement,
 	backend: &'static str,
 ) -> Result<(), QueryBuildError> {
+	for column in &statement.columns {
+		if let Some(expression) = &column.expression {
+			validate_simple_expr(expression, backend)?;
+		}
+	}
+
 	if let Some(table) = &statement.table {
 		validate_table_ref(table, backend)?;
 	}
@@ -1059,6 +1068,12 @@ fn validate_simple_expr(expr: &SimpleExpr, backend: &'static str) -> Result<(), 
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _) => validate_simple_expr(expression, backend),
+		SimpleExpr::PgExtractEpoch(expression) => {
+			if backend != "PostgreSQL" {
+				return Err(unsupported("PostgreSQL numeric epoch extraction", backend));
+			}
+			validate_simple_expr(expression, backend)
+		}
 		SimpleExpr::TemporalTrunc {
 			expr,
 			kind,
@@ -1318,6 +1333,7 @@ fn collect_simple_expr_pgvector_features_with_values(
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => {

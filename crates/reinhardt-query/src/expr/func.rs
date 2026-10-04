@@ -62,6 +62,23 @@ impl Func {
 		SimpleExpr::FunctionCall("COALESCE".into_iden(), exprs)
 	}
 
+	/// Extract numeric epoch seconds using PostgreSQL's `EXTRACT` (P2).
+	///
+	/// This preserves the numeric result and fractional seconds. Cast to the
+	/// desired database type explicitly. Checked non-PostgreSQL builders reject
+	/// this expression. The API is available on native and WASM targets.
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, ExprTrait, Func, PostgresQueryBuilder, Query, QueryStatementBuilder};
+	/// let sql = Query::select()
+	///     .expr(Func::pg_extract_epoch(Expr::current_timestamp().into_simple_expr()).cast_as("int8"))
+	///     .to_string(PostgresQueryBuilder);
+	/// assert_eq!(sql, "SELECT CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) AS \"int8\")");
+	/// ```
+	pub fn pg_extract_epoch(expr: SimpleExpr) -> SimpleExpr {
+		SimpleExpr::PgExtractEpoch(Box::new(expr))
+	}
+
 	/// Create a typed temporal truncation expression.
 	///
 	/// For PostgreSQL [`TemporalTruncOutput::DateTime`] output, `expr` must
@@ -251,5 +268,100 @@ mod tests {
 		} else {
 			panic!("Expected FunctionCall variant");
 		}
+	}
+}
+
+#[cfg(test)]
+mod epoch_tests {
+	use crate::{
+		CockroachDBQueryBuilder, ColumnDef, Expr, ExprTrait, Func, MySqlQueryBuilder,
+		PostgresQueryBuilder, Query, QueryBuildError, SqliteQueryBuilder, Value, Values,
+	};
+	use rstest::rstest;
+
+	#[rstest]
+	fn epoch_extraction_keeps_numeric_syntax_and_argument_order() {
+		// Arrange: extraction wraps the first bind, and the next projection follows it.
+		let statement = Query::select()
+			.expr(Func::pg_extract_epoch(
+				Expr::val("2000-01-01T00:00:00.125Z").cast_as("timestamptz"),
+			))
+			.expr(Expr::val(9_i64))
+			.take();
+		// Act
+		let (sql, values) = PostgresQueryBuilder
+			.build_select_checked(&statement)
+			.unwrap();
+		// Assert
+		assert_eq!(
+			sql,
+			"SELECT EXTRACT(EPOCH FROM CAST($1 AS \"timestamptz\")), $2"
+		);
+		assert_eq!(
+			values,
+			Values(vec![
+				Value::String(Some(Box::new("2000-01-01T00:00:00.125Z".into()))),
+				Value::BigInt(Some(9))
+			])
+		);
+		for (backend, result) in [
+			("MySQL", MySqlQueryBuilder.build_select_checked(&statement)),
+			(
+				"SQLite",
+				SqliteQueryBuilder.build_select_checked(&statement),
+			),
+			(
+				"CockroachDB",
+				CockroachDBQueryBuilder::new().build_select_checked(&statement),
+			),
+		] {
+			assert_eq!(
+				result,
+				Err(QueryBuildError::UnsupportedBackendFeature {
+					feature: "PostgreSQL numeric epoch extraction",
+					backend
+				})
+			);
+		}
+	}
+
+	#[rstest]
+	fn schema_defaults_and_nested_index_expressions_use_checked_backends() {
+		// Arrange
+		let epoch = Func::pg_extract_epoch(Expr::current_timestamp().into_simple_expr());
+		let table = Query::create_table()
+			.table("records")
+			.col(
+				ColumnDef::new("created_at")
+					.big_integer()
+					.default(epoch.clone().cast_as("int8")),
+			)
+			.take();
+		let index = Query::create_index()
+			.table("records")
+			.name("epoch_index")
+			.expr(epoch)
+			.take();
+		// Act / Assert: schema defaults are constants; SQLite rejects the nested PG operation.
+		let (sql, values) = PostgresQueryBuilder
+			.build_create_table_checked(&table)
+			.unwrap();
+		assert_eq!(
+			sql,
+			"CREATE TABLE \"records\" (\"created_at\" BIGINT DEFAULT CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) AS \"int8\"))"
+		);
+		assert!(values.is_empty());
+		let expected = Err(QueryBuildError::UnsupportedBackendFeature {
+			feature: "PostgreSQL numeric epoch extraction",
+			backend: "SQLite",
+		});
+		assert_eq!(
+			SqliteQueryBuilder.build_create_table_checked(&table),
+			expected
+		);
+		assert_eq!(
+			SqliteQueryBuilder.build_create_index_checked(&index),
+			expected
+		);
 	}
 }

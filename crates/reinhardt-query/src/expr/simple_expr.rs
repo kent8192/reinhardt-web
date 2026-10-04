@@ -173,6 +173,12 @@ pub enum SimpleExpr {
 	/// `CAST(x AS "text")`. See [`ExprTrait::cast_as`](super::ExprTrait::cast_as).
 	Cast(Box<SimpleExpr>, DynIden),
 
+	/// PostgreSQL's numeric epoch extraction (P2 native/WASM parity).
+	///
+	/// Checked builders reject other backends instead of substituting a
+	/// floating-point function or changing timestamp semantics.
+	PgExtractEpoch(Box<SimpleExpr>),
+
 	/// A typed backend-specific temporal truncation expression.
 	TemporalTrunc {
 		/// Source date or datetime expression.

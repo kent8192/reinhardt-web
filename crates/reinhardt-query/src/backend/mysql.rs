@@ -637,6 +637,9 @@ impl MySqlQueryBuilder {
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
+			SimpleExpr::PgExtractEpoch(_) => {
+				panic!("PostgreSQL numeric epoch extraction is not supported by mysql")
+			}
 			SimpleExpr::TemporalTrunc {
 				expr,
 				kind,

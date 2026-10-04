@@ -380,7 +380,8 @@ fn expression_has_window_feature(
 		| SimpleExpr::Unary(_, func)
 		| SimpleExpr::AsEnum(_, func)
 		| SimpleExpr::ExprAlias(func, _)
-		| SimpleExpr::Cast(func, _) => expression_has_window_feature(func, predicate),
+		| SimpleExpr::Cast(func, _)
+		| SimpleExpr::PgExtractEpoch(func) => expression_has_window_feature(func, predicate),
 		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
 			expression_has_window_feature(left, predicate)
 				|| expression_has_window_feature(right, predicate)
@@ -493,6 +494,7 @@ fn expression_matches(expression: &SimpleExpr, predicate: &impl Fn(&SimpleExpr) 
 			| SimpleExpr::AsEnum(_, expression)
 			| SimpleExpr::ExprAlias(expression, _)
 			| SimpleExpr::Cast(expression, _)
+			| SimpleExpr::PgExtractEpoch(expression)
 			| SimpleExpr::WindowNamed {
 				func: expression, ..
 			} => expression_matches(expression, predicate),
@@ -552,6 +554,7 @@ fn expression_has_select(
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		}
@@ -657,6 +660,7 @@ fn unsafe_expr(expression: &SimpleExpr) -> bool {
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => unsafe_expr(expression),
@@ -833,6 +837,7 @@ fn quote_mysql_like_template_expr(expression: &mut SimpleExpr) {
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		}

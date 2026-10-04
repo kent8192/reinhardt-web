@@ -579,6 +579,9 @@ impl SqliteQueryBuilder {
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
+			SimpleExpr::PgExtractEpoch(_) => {
+				panic!("PostgreSQL numeric epoch extraction is not supported by sqlite")
+			}
 			SimpleExpr::TemporalTrunc {
 				expr, kind, output, ..
 			} => self.write_temporal_trunc(writer, expr, *kind, *output),
