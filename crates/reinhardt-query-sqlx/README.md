@@ -28,6 +28,9 @@ it from Values; the adapter never reconstructs that omitted argument. Errors
 identify the backend, one-based argument position, type and redacted reason.
 PostgreSQL arrays accept the canonical `Value::Int(None)` NULL carrier using
 the declared array element type, alongside matching typed NULL elements.
+NULL element positions are preserved for every supported array codec. Empty,
+all-NULL and NULL arrays retain their declared PostgreSQL type; empty arrays remain
+distinct from NULL arrays.
 Unsupported types, mismatched non-NULL array elements and integer overflow fail before
 execution; no debug-string fallback or floating-point decimal coercion exists.
 

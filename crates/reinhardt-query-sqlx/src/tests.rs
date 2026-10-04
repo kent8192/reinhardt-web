@@ -46,6 +46,9 @@ fn postgres_preserves_sql_and_all_supplied_values(scalar_values: Values) {
 	"unsigned integer exceeds signed 64-bit range"
 )]
 #[case(Value::Array(ArrayType::Int, Some(Box::new(vec![Value::String(Some(Box::new("secret".into())))]))), "Array", "array element does not match declared element type")]
+#[case(Value::Array(ArrayType::String, Some(Box::new(vec![Value::Int(None), Value::Int(Some(7))]))), "Array", "array element does not match declared element type")]
+#[case(Value::Array(ArrayType::String, Some(Box::new(vec![Value::Int(None), Value::Bool(None)]))), "Array", "array element does not match declared element type")]
+#[case(Value::Array(ArrayType::BigUnsigned, Some(Box::new(vec![Value::Int(None), Value::BigUnsigned(Some(u64::MAX))]))), "Array", "unsigned array element exceeds signed 64-bit range")]
 fn postgres_rejects_invalid_values_without_contents(
 	#[case] value: Value,
 	#[case] kind: &'static str,
@@ -243,51 +246,202 @@ fn any_requires_explicit_complex_text_codec() {
 }
 
 #[cfg(feature = "postgres")]
-#[rstest]
-#[case(ArrayType::String, Value::String(Some(Box::new("text".into()))))]
-#[case(ArrayType::Bool, Value::Bool(Some(true)))]
-#[case(ArrayType::Int, Value::Int(Some(7)))]
-#[case(ArrayType::BigInt, Value::BigInt(Some(7)))]
-#[case(ArrayType::Float, Value::Float(Some(1.25)))]
-#[case(ArrayType::Double, Value::Double(Some(1.25)))]
-fn postgres_arrays_accept_canonical_null_elements(
-	#[case] element_type: ArrayType,
-	#[case] element: Value,
-) {
-	// Arrange: canonical ORM values use the untyped Int(None) NULL carrier.
-	let values = Values(vec![Value::Array(
-		element_type,
-		Some(Box::new(vec![element, Value::Int(None)])),
-	)]);
-	// Act
-	let (sql, arguments) = prepare_postgres(("SELECT $1".into(), values))
-		.unwrap()
-		.into_parts();
-	// Assert
-	assert_eq!(sql, "SELECT $1");
-	assert_eq!(arguments.len(), 1);
+struct PostgresArrayCase {
+	element_type: ArrayType,
+	value: Value,
+	typed_null: Value,
+	postgres_type: &'static str,
 }
 
-#[cfg(all(feature = "postgres", feature = "with-uuid"))]
-#[rstest]
-fn postgres_uuid_array_accepts_canonical_null_elements() {
-	// Arrange
-	let values = Values(vec![Value::Array(
-		ArrayType::Uuid,
-		Some(Box::new(vec![
-			Value::Uuid(Some(Box::new(sqlx::types::Uuid::from_u128(42)))),
-			Value::Int(None),
-		])),
-	)]);
-	// Act / Assert
-	assert_eq!(
-		prepare_postgres(("SELECT $1".into(), values))
-			.unwrap()
-			.into_parts()
-			.1
-			.len(),
-		1
+#[cfg(feature = "postgres")]
+#[fixture]
+fn postgres_array_cases() -> Vec<PostgresArrayCase> {
+	let mut cases = Vec::new();
+	macro_rules! array_cases {
+		($(($variant:ident, $value:expr, $postgres_type:literal)),+ $(,)?) => {
+			cases.extend([$(
+				PostgresArrayCase {
+					element_type: ArrayType::$variant,
+					value: Value::$variant(Some($value)),
+					typed_null: Value::$variant(None),
+					postgres_type: $postgres_type,
+				}
+			),+]);
+		};
+	}
+	array_cases!(
+		(Bool, true, "boolean[]"),
+		(TinyInt, i8::MIN, "smallint[]"),
+		(SmallInt, i16::MIN, "smallint[]"),
+		(Int, i32::MIN, "integer[]"),
+		(BigInt, i64::MIN, "bigint[]"),
+		(TinyUnsigned, u8::MAX, "smallint[]"),
+		(SmallUnsigned, u16::MAX, "integer[]"),
+		(Unsigned, u32::MAX, "bigint[]"),
+		(BigUnsigned, i64::MAX as u64, "bigint[]"),
+		(Float, 1.25, "real[]"),
+		(Double, 1.25, "double precision[]"),
+		(Char, '界', "text[]"),
+		(String, Box::new("text".into()), "text[]"),
+		(Bytes, Box::new(vec![0, 255]), "bytea[]"),
 	);
+	#[cfg(feature = "with-chrono")]
+	{
+		use sqlx::types::chrono::{Local, NaiveDate, NaiveTime};
+		let date = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
+		let time = NaiveTime::from_hms_opt(3, 4, 5).unwrap();
+		let datetime = date.and_time(time);
+		let utc = datetime.and_utc();
+		array_cases!(
+			(ChronoDate, Box::new(date), "date[]"),
+			(ChronoTime, Box::new(time), "time without time zone[]"),
+			(
+				ChronoDateTime,
+				Box::new(datetime),
+				"timestamp without time zone[]"
+			),
+			(
+				ChronoDateTimeUtc,
+				Box::new(utc),
+				"timestamp with time zone[]"
+			),
+			(
+				ChronoDateTimeLocal,
+				Box::new(utc.with_timezone(&Local)),
+				"timestamp with time zone[]"
+			),
+			(
+				ChronoDateTimeWithTimeZone,
+				Box::new(utc.fixed_offset()),
+				"timestamp with time zone[]"
+			),
+		);
+	}
+	#[cfg(feature = "with-uuid")]
+	array_cases!((Uuid, Box::new(sqlx::types::Uuid::from_u128(42)), "uuid[]"));
+	#[cfg(feature = "with-json")]
+	array_cases!((
+		Json,
+		Box::new(sqlx::types::JsonValue::from("text")),
+		"jsonb[]"
+	));
+	#[cfg(feature = "with-rust_decimal")]
+	array_cases!((
+		Decimal,
+		Box::new(sqlx::types::Decimal::new(125, 2)),
+		"numeric[]"
+	));
+	#[cfg(feature = "with-bigdecimal")]
+	array_cases!((
+		BigDecimal,
+		Box::new(sqlx::types::BigDecimal::from(125)),
+		"numeric[]"
+	));
+	cases
+}
+
+#[cfg(feature = "postgres")]
+#[rstest]
+fn postgres_arrays_accept_canonical_null_elements(postgres_array_cases: Vec<PostgresArrayCase>) {
+	for case in postgres_array_cases {
+		// Arrange: exercise empty, NULL, all-NULL, and mixed arrays for every codec.
+		for elements in [
+			None,
+			Some(vec![]),
+			Some(vec![Value::Int(None)]),
+			Some(vec![case.typed_null.clone()]),
+			Some(vec![
+				Value::Int(None),
+				case.value.clone(),
+				Value::Int(None),
+				case.value.clone(),
+				Value::Int(None),
+				case.typed_null.clone(),
+			]),
+		] {
+			let values = Values(vec![
+				Value::Int(Some(42)),
+				Value::Array(case.element_type.clone(), elements.map(Box::new)),
+				Value::String(Some(Box::new("tail".into()))),
+			]);
+			// Act
+			let (sql, arguments) = prepare_postgres(("SELECT $1, $2, $3".into(), values))
+				.unwrap_or_else(|error| panic!("{:?}: {error}", case.element_type))
+				.into_parts();
+			// Assert
+			assert_eq!(sql, "SELECT $1, $2, $3");
+			assert_eq!(arguments.len(), 3, "{:?}", case.element_type);
+		}
+	}
+}
+
+#[cfg(feature = "postgres")]
+#[rstest]
+#[tokio::test]
+async fn postgres_array_round_trip_preserves_null_positions_and_types(
+	postgres_array_cases: Vec<PostgresArrayCase>,
+) {
+	use sqlx::Row;
+	use testcontainers::runners::AsyncRunner;
+	// Arrange: one disposable database exercises every enabled array codec.
+	let container = testcontainers_modules::postgres::Postgres::default()
+		.start()
+		.await
+		.unwrap();
+	let url = format!(
+		"postgres://postgres:postgres@{}:{}/postgres",
+		container.get_host().await.unwrap(),
+		container.get_host_port_ipv4(5432).await.unwrap()
+	);
+	let pool = sqlx::PgPool::connect(&url).await.unwrap();
+	for case in postgres_array_cases {
+		let array = |elements: Option<Vec<Value>>| {
+			Value::Array(case.element_type.clone(), elements.map(Box::new))
+		};
+		let values = Values(vec![
+			array(Some(vec![
+				Value::Int(None),
+				case.value.clone(),
+				Value::Int(None),
+				case.value.clone(),
+				Value::Int(None),
+				case.typed_null.clone(),
+			])),
+			array(Some(vec![])),
+			array(Some(vec![Value::Int(None), Value::Int(None)])),
+			array(None),
+		]);
+		let sql = "SELECT pg_typeof($1)::text, cardinality($1), array_positions($1, NULL), \
+			$1[2] IS NOT NULL, $1[4] IS NOT NULL, $1[2] IS NOT DISTINCT FROM $1[4], \
+			pg_typeof($2)::text, cardinality($2), $2 IS NULL, \
+			pg_typeof($3)::text, array_positions($3, NULL), pg_typeof($4)::text, $4 IS NULL";
+		let (prepared_sql, arguments) =
+			prepare_postgres((sql.into(), values)).unwrap().into_parts();
+		assert_eq!(prepared_sql, sql);
+		assert_eq!(arguments.len(), 4);
+		// Act: infer parameter types from the adapter, without array casts in SQL.
+		let row = sqlx::query_with(&prepared_sql, arguments)
+			// Each case uses different parameter types for the same SQL text.
+			.persistent(false)
+			.fetch_one(&pool)
+			.await
+			.unwrap_or_else(|error| panic!("{:?}: {error}", case.element_type));
+		// Assert: empty, all-NULL, and NULL arrays retain the same declared type.
+		for column in [0, 6, 9, 11] {
+			assert_eq!(
+				row.try_get::<String, _>(column).unwrap(),
+				case.postgres_type
+			);
+		}
+		assert_eq!(row.try_get::<i32, _>(1).unwrap(), 6);
+		assert_eq!(row.try_get::<Vec<i32>, _>(2).unwrap(), vec![1, 3, 5, 6]);
+		for column in [3, 4, 5, 12] {
+			assert!(row.try_get::<bool, _>(column).unwrap());
+		}
+		assert_eq!(row.try_get::<i32, _>(7).unwrap(), 0);
+		assert!(!row.try_get::<bool, _>(8).unwrap());
+		assert_eq!(row.try_get::<Vec<i32>, _>(10).unwrap(), vec![1, 2]);
+	}
 }
 
 #[cfg(feature = "postgres")]
