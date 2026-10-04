@@ -41,6 +41,8 @@
 //! - **Events** - CREATE/ALTER/DROP EVENT (MySQL)
 //! - **Comments** - COMMENT ON for all database objects (PostgreSQL, CockroachDB)
 //! - **Maintenance** - VACUUM, ANALYZE, OPTIMIZE/REPAIR/CHECK TABLE
+//! - **SQLite connection settings** - Checked [`SqliteForeignKeysStatement`]
+//!   generation for caller-owned connections, with native/WASM SQL parity
 //!
 //! ### Multi-Backend Support
 //! - **PostgreSQL** - Full DDL and DML support with advanced features
@@ -400,7 +402,7 @@ pub mod prelude {
 		DeleteStatement, ExplainFormat, ExplainOptions, ExplainStatement, ForeignKey,
 		ForeignKeyCreateStatement, InsertStatement, LockBehavior, LockType, OnConflict, Query,
 		QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter, SelectStatement,
-		SqliteDatabaseListStatement, UpdateStatement,
+		SqliteDatabaseListStatement, SqliteForeignKeysStatement, UpdateStatement,
 	};
 	// DDL query builders
 	pub use crate::query::{

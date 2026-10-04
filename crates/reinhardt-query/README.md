@@ -17,6 +17,14 @@ The standalone `inline_params` helper uses PostgreSQL literals for numbered
 placeholders (`$1`, `$2`, ...) and generic literals for positional placeholders
 (`?`), preserving `X'...'` byte literals for positional SQL.
 
+`Query::sqlite_foreign_keys(enabled).build_sqlite_checked()` builds a typed
+connection-local foreign-key setting. The checked PostgreSQL, MySQL, and
+CockroachDB methods reject it before execution. Execute the SQLite statement on
+the caller's connection outside a transaction or savepoint, and restore the
+prior setting after a temporary change. SQL generation has native/WASM parity.
+See [the setting-site inventory](../../docs/migration/sqlite-foreign-key-settings.md)
+for the schema editor's connection and cleanup guarantees.
+
 ## Features
 
 ### DML (Data Manipulation Language)
