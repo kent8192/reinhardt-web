@@ -55,6 +55,9 @@ through a typed expression with a signed integer result. Reset, insert, and read
 must share one executor. Checked non-MySQL builders and plan-only MySQL EXPLAIN
 reject this stateful expression. Both native and WASM can build it.
 
+`ExprTrait::cast_as_text` and `cast_as_signed_integer` use each backend's
+built-in type grammar while retaining bound values and escaped source identifiers.
+
 ### Multi-Backend Support
 - **PostgreSQL** - Full DDL and DML support with advanced features
 - **MySQL** - DML, Functions, Procedures, Events, and table maintenance

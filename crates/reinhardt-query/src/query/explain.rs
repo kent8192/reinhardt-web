@@ -252,7 +252,10 @@ impl ExplainStatement {
 			return Err(unsupported("PostgreSQL operators", "MySQL"));
 		}
 		if statement_has_expression(&self.select, &|expression| {
-			matches!(expression, SimpleExpr::Cast(_, _))
+			matches!(
+				expression,
+				SimpleExpr::Cast(_, _) | SimpleExpr::TextCast(_) | SimpleExpr::SignedIntegerCast(_)
+			)
 		}) {
 			return Err(unsupported("CAST expressions", "MySQL"));
 		}
@@ -384,6 +387,8 @@ fn expression_has_window_feature(
 		| SimpleExpr::AsEnum(_, func)
 		| SimpleExpr::ExprAlias(func, _)
 		| SimpleExpr::Cast(func, _)
+		| SimpleExpr::TextCast(func)
+		| SimpleExpr::SignedIntegerCast(func)
 		| SimpleExpr::PgExtractEpoch(func) => expression_has_window_feature(func, predicate),
 		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
 			expression_has_window_feature(left, predicate)
@@ -498,6 +503,8 @@ fn expression_matches(expression: &SimpleExpr, predicate: &impl Fn(&SimpleExpr) 
 			| SimpleExpr::AsEnum(_, expression)
 			| SimpleExpr::ExprAlias(expression, _)
 			| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 			| SimpleExpr::PgExtractEpoch(expression)
 			| SimpleExpr::WindowNamed {
 				func: expression, ..
@@ -559,6 +566,8 @@ fn expression_has_select(
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
@@ -666,6 +675,8 @@ fn unsafe_expr(expression: &SimpleExpr) -> bool {
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
@@ -848,6 +859,8 @@ fn quote_mysql_like_template_expr(expression: &mut SimpleExpr) {
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..

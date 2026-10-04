@@ -231,6 +231,12 @@ pub enum SimpleExpr {
 	/// builders reject other backends. This expression may mutate connection
 	/// state, so MySQL's safe EXPLAIN path rejects it.
 	MySqlLastInsertId(Option<Box<SimpleExpr>>),
+
+	/// Cast to the backend's text type: TEXT on PostgreSQL/SQLite, CHAR on MySQL.
+	TextCast(Box<SimpleExpr>),
+
+	/// Cast to a signed integer: BIGINT, SIGNED, or INTEGER for the selected backend.
+	SignedIntegerCast(Box<SimpleExpr>),
 }
 
 /// SQL keywords that can appear as constants.

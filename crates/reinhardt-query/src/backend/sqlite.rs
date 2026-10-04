@@ -583,6 +583,16 @@ impl SqliteQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
+			SimpleExpr::TextCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS TEXT)");
+			}
+			SimpleExpr::SignedIntegerCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS INTEGER)");
+			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr(writer, expr);

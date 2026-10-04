@@ -441,6 +441,8 @@ fn contains_aggregate(expr: &SimpleExpr) -> bool {
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
@@ -484,6 +486,8 @@ fn contains_window(expr: &SimpleExpr) -> bool {
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
@@ -668,6 +672,8 @@ fn validate_simple_expr_lock(
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
@@ -1179,7 +1185,9 @@ fn validate_simple_expr(expr: &SimpleExpr, backend: &'static str) -> Result<(), 
 		SimpleExpr::Unary(_, expression)
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
-		| SimpleExpr::Cast(expression, _) => validate_simple_expr(expression, backend),
+		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression) => validate_simple_expr(expression, backend),
 		SimpleExpr::PgExtractEpoch(expression) => {
 			if backend != "PostgreSQL" {
 				return Err(unsupported("PostgreSQL numeric epoch extraction", backend));
@@ -1468,6 +1476,8 @@ fn collect_simple_expr_pgvector_features_with_values(
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
