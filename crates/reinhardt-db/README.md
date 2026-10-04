@@ -88,6 +88,29 @@ This crate provides the following modules:
   - Per-model read and write database configuration
   - Multi-database support through hybrid module
 
+## Generated query parameters
+
+ORM-generated statements pass the renderer's original `Values` to native SQLx
+codecs. PostgreSQL retains typed arrays (including NULL and empty arrays), JSON
+versus JSONB array types, and exact decimals. MySQL retains exact decimals and
+the full unsigned integer range. SQLite rejects decimal and array arguments
+because it has no corresponding native codec.
+
+Arguments that cannot be encoded without loss fail before SQL execution. Errors
+report the backend, value type, and one-based argument position without exposing
+the value. PostgreSQL and MySQL reject temporal values with sub-microsecond
+precision or leap seconds; SQLite also rejects NaN rather than storing SQL NULL.
+UUIDs keep the existing native PostgreSQL and text MySQL/SQLite representation.
+BigDecimal arguments must fit the native
+[PostgreSQL numeric range](https://www.postgresql.org/docs/16/datatype-numeric.html)
+or [MySQL decimal precision and scale](https://dev.mysql.com/doc/refman/8.0/en/precision-math-decimal-characteristics.html).
+
+The public `orm::execution::convert_values` function remains a legacy compatibility
+adapter with its historical lossy behavior. Explicit raw executors still accept
+`Vec<QueryValue>`, and row decoding retains its existing contract. Custom backends
+that implement only the raw executor receive checked, representable values and
+reject types requiring a native codec.
+
 ## Module Architecture
 
 The `reinhardt-db` crate is organized into three logical layers:

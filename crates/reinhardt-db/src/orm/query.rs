@@ -4,6 +4,7 @@
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
 use super::FieldSelector;
+#[cfg(test)]
 use crate::backends::types::QueryValue;
 use crate::naming::to_snake_case;
 use crate::orm::query_fields::GroupByFields;
@@ -16,7 +17,6 @@ use reinhardt_query::prelude::{
 	SelectStatement, SimpleExpr, SqliteQueryBuilder, UpdateStatement,
 };
 use reinhardt_query::types::PgBinOper;
-use reinhardt_query::value::Value;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
@@ -4779,10 +4779,10 @@ where
 			self.select_related_query()
 		};
 
-		let (sql, params) = build_select_statement(&stmt, conn.backend())?;
+		let (sql, params) = build_select_statement(&stmt, conn.backend());
 
 		let started_at = Instant::now();
-		let query_result = conn.query(&sql, params.clone()).await;
+		let query_result = conn.query_generated(&sql, params.clone()).await;
 		let duration = started_at.elapsed();
 
 		let rows = match query_result {
@@ -4959,7 +4959,7 @@ where
 	/// # }
 	/// ```
 	pub async fn count(&self) -> reinhardt_core::exception::Result<usize> {
-		use reinhardt_query::prelude::{Func, PostgresQueryBuilder, QueryBuilder};
+		use reinhardt_query::prelude::Func;
 
 		let conn = super::manager::get_connection().await?;
 
@@ -4974,13 +4974,10 @@ where
 		}
 
 		// Convert to SQL and extract parameter values
-		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
+		let (sql, values) = conn.build_select(&stmt);
 
-		// Convert reinhardt_query::value::Values to QueryValue
-		let params = super::execution::convert_values(values);
-
-		// Execute query with parameters
-		let rows = conn.query(&sql, params).await?;
+		// Execute the renderer's exact arguments through native codecs.
+		let rows = conn.query_generated(&sql, values).await?;
 		if let Some(row) = rows.first() {
 			// Extract count from first row
 			if let Some(count_value) = row.data.get("count")
@@ -5176,9 +5173,7 @@ where
 	{
 		let stmt = self.update_fields_query(values)?;
 		let (sql, values) = Self::build_update_for_backend(&stmt, conn.backend());
-		let params = super::execution::convert_values(values);
-
-		conn.execute(&sql, params)
+		conn.execute_generated(&sql, values)
 			.await
 			.map_err(|error| reinhardt_core::exception::Error::Database(error.to_string()))
 	}
@@ -6876,18 +6871,12 @@ fn escape_like_pattern(value: &str) -> String {
 fn build_select_statement(
 	statement: &SelectStatement,
 	backend: super::connection::DatabaseBackend,
-) -> reinhardt_core::exception::Result<(String, Vec<QueryValue>)> {
-	let (sql, values) = match backend {
+) -> (String, reinhardt_query::Values) {
+	match backend {
 		super::connection::DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
 		super::connection::DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
 		super::connection::DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
-	};
-
-	let params = values
-		.into_iter()
-		.map(query_value_from_sea_value)
-		.collect::<reinhardt_core::exception::Result<Vec<_>>>()?;
-	Ok((sql, params))
+	}
 }
 
 #[cfg(test)]
@@ -6895,36 +6884,10 @@ fn render_select_statement(
 	statement: &SelectStatement,
 	backend: super::connection::DatabaseBackend,
 ) -> String {
-	let (sql, values) = build_select_statement(statement, backend)
-		.expect("test statements must contain bind values supported by QueryValue");
-	inline_query_params(&sql, &values)
-}
-
-fn query_value_from_sea_value(value: Value) -> reinhardt_core::exception::Result<QueryValue> {
-	let value = match value {
-		Value::Bool(Some(v)) => QueryValue::Bool(v),
-		Value::TinyInt(Some(v)) => QueryValue::Int(i64::from(v)),
-		Value::SmallInt(Some(v)) => QueryValue::Int(i64::from(v)),
-		Value::Int(Some(v)) => QueryValue::Int(i64::from(v)),
-		Value::BigInt(Some(v)) => QueryValue::Int(v),
-		Value::TinyUnsigned(Some(v)) => QueryValue::Int(i64::from(v)),
-		Value::SmallUnsigned(Some(v)) => QueryValue::Int(i64::from(v)),
-		Value::Unsigned(Some(v)) => QueryValue::Int(i64::from(v)),
-		Value::BigUnsigned(Some(v)) => QueryValue::Int(i64::try_from(v).map_err(|_| {
-			reinhardt_core::exception::Error::Database(format!(
-				"Unsigned query parameter {v} exceeds the supported i64 range"
-			))
-		})?),
-		Value::Float(Some(v)) => QueryValue::Float(f64::from(v)),
-		Value::Double(Some(v)) => QueryValue::Float(v),
-		Value::Char(Some(v)) => QueryValue::String(v.to_string()),
-		Value::String(Some(v)) => QueryValue::String(*v),
-		Value::Bytes(Some(v)) => QueryValue::Bytes(*v),
-		Value::ChronoDateTimeUtc(Some(v)) => QueryValue::Timestamp(*v),
-		Value::Uuid(Some(v)) => QueryValue::Uuid(*v),
-		_ => QueryValue::Null,
-	};
-	Ok(value)
+	let (sql, values) = build_select_statement(statement, backend);
+	let params = crate::backends::generated::legacy_values(values, "snapshot")
+		.expect("snapshot statements must contain values representable by QueryValue");
+	inline_query_params(&sql, &params)
 }
 
 #[cfg(test)]
@@ -6963,7 +6926,9 @@ mod tests {
 	use crate::orm::connection::DatabaseBackend;
 	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
-	use reinhardt_query::prelude::{ExprTrait, PostgresQueryBuilder, QueryStatementBuilder};
+	use reinhardt_query::prelude::{
+		Alias, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
+	};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
@@ -6997,36 +6962,50 @@ mod tests {
 			);
 
 		// Act
-		let (sql, params) = build_select_statement(&statement, DatabaseBackend::MySql)
-			.expect("string filter should fit in QueryValue");
+		let (sql, params) = build_select_statement(&statement, DatabaseBackend::MySql);
 
 		// Assert
 		assert_eq!(sql, "SELECT `id` FROM `users` WHERE `name` = ?");
 		assert_eq!(
-			params,
-			vec![crate::backends::types::QueryValue::String(
-				payload.to_string()
-			)]
+			params.0,
+			vec![Value::String(Some(Box::new(payload.to_string())))]
 		);
 	}
 
-	#[test]
-	fn build_select_statement_rejects_oversized_unsigned_parameters() {
+	#[rstest::rstest]
+	fn build_select_statement_preserves_unsigned_parameters_for_native_codec() {
 		// Arrange
-		let mut statement = reinhardt_query::prelude::Query::select();
+		let mut statement = Query::select();
 		statement
-			.column(reinhardt_query::prelude::Alias::new("id"))
-			.from(reinhardt_query::prelude::Alias::new("users"))
-			.limit((i64::MAX as u64) + 1);
+			.column(Alias::new("id"))
+			.from(Alias::new("users"))
+			.limit(u64::MAX);
 
 		// Act
-		let error = build_select_statement(&statement, DatabaseBackend::MySql)
-			.expect_err("oversized unsigned parameters must not be clamped");
+		let (sql, values) = build_select_statement(&statement, DatabaseBackend::MySql);
+
+		// Assert
+		assert_eq!(sql, "SELECT `id` FROM `users` LIMIT ?");
+		assert_eq!(values.0, vec![Value::BigUnsigned(Some(u64::MAX))]);
+	}
+
+	#[cfg(all(feature = "sqlite", target_pointer_width = "64"))]
+	#[rstest]
+	#[tokio::test]
+	async fn queryset_native_execution_redacts_overflow_before_sql_execution() {
+		// Arrange
+		let db = crate::orm::connection::DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.unwrap();
+		let queryset = QuerySet::<TestUser>::new().limit(usize::MAX);
+
+		// Act
+		let error = queryset.all_with_db(&db).await.unwrap_err();
 
 		// Assert
 		assert_eq!(
 			error.to_string(),
-			"Database error: Unsigned query parameter 9223372036854775808 exceeds the supported i64 range"
+			"Type conversion error: cannot encode BigUnsigned argument 1 for sqlite: unsigned integer exceeds signed 64-bit range"
 		);
 	}
 

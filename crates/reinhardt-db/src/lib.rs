@@ -115,6 +115,11 @@
 //!
 //! ## Architecture
 //!
+//! ORM-generated query arguments use native backend codecs, preserving supported
+//! decimal and array types. Unsupported or lossy arguments fail before execution
+//! with a redacted backend/type/position error. Explicit raw executors and the
+//! legacy `orm::execution::convert_values` adapter retain their existing contracts.
+//!
 //! Key modules in this crate:
 //!
 //! - [`backends`]: Low-level database operations, schema editor, DDL generation

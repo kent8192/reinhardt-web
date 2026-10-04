@@ -96,6 +96,57 @@ impl DatabaseBackend for MockBackend {
 	}
 }
 
+#[rstest]
+#[case(DatabaseType::Postgres, "postgres")]
+#[case(DatabaseType::Mysql, "mysql")]
+#[case(DatabaseType::Sqlite, "sqlite")]
+#[tokio::test]
+async fn legacy_backend_generated_dispatch_rejects_unrepresentable_values(
+	#[case] db_type: DatabaseType,
+	#[case] backend_name: &str,
+) {
+	use reinhardt_query::{Value, Values};
+
+	// Arrange
+	let backend: Arc<dyn DatabaseBackend> = MockBackend::new(db_type);
+	let values = Values(vec![
+		7i64.into(),
+		Value::Decimal(Some(Box::new("123456789.123456789".parse().unwrap()))),
+	]);
+	let expected = format!(
+		"Type conversion error: cannot encode Decimal argument 2 for {backend_name}: type requires a native generated-value codec"
+	);
+
+	// Act
+	let execute_error = backend
+		.__execute_generated("probe", values.clone())
+		.await
+		.unwrap_err();
+	let one_error = backend
+		.__fetch_one_generated("probe", values.clone())
+		.await
+		.unwrap_err();
+	let all_error = backend
+		.__fetch_all_generated("probe", values)
+		.await
+		.unwrap_err();
+	let raw_result = backend
+		.execute("probe", vec![QueryValue::Int(7)])
+		.await
+		.unwrap();
+	let generated_result = backend
+		.__execute_generated("probe", Values(vec![7i64.into()]))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(execute_error.to_string(), expected);
+	assert_eq!(one_error.to_string(), expected);
+	assert_eq!(all_error.to_string(), expected);
+	assert_eq!(raw_result.rows_affected, 0);
+	assert_eq!(generated_result.rows_affected, 0);
+}
+
 // ==================== OnConflictClause tests ====================
 
 #[rstest]
@@ -441,10 +492,10 @@ fn test_query_value_float() {
 	// Arrange
 
 	// Act
-	let val = QueryValue::Float(3.14);
+	let val = QueryValue::Float(3.5);
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(3.14));
+	assert_eq!(val, QueryValue::Float(3.5));
 }
 
 #[rstest]
@@ -554,10 +605,10 @@ fn test_query_value_from_f64() {
 	// Arrange
 
 	// Act
-	let val: QueryValue = 2.718f64.into();
+	let val: QueryValue = 2.5f64.into();
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(2.718));
+	assert_eq!(val, QueryValue::Float(2.5));
 }
 
 #[rstest]

@@ -6,9 +6,7 @@
 
 use crate::backends::types::QueryValue;
 use crate::orm::Model;
-use reinhardt_query::prelude::{
-	Alias, ColumnRef, Expr, ExprTrait, Func, Query, QueryStatementBuilder, SelectStatement,
-};
+use reinhardt_query::prelude::{Alias, ColumnRef, Expr, ExprTrait, Func, Query, SelectStatement};
 use rust_decimal::prelude::ToPrimitive;
 use std::marker::PhantomData;
 
@@ -171,7 +169,11 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 	}
 }
 
-/// Convert reinhardt_query Values (`Vec<Value>`) to `Vec<QueryValue>`
+/// Convert renderer values to the legacy raw-executor representation.
+///
+/// This compatibility API retains its historical lossy conversions. ORM-generated
+/// execution uses native backend codecs instead; callers needing exact decimal,
+/// array, or date/time types must not use this adapter.
 pub fn convert_values(values: reinhardt_query::prelude::Values) -> Vec<QueryValue> {
 	values
 		.0
@@ -463,10 +465,9 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.get(pk);
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let row = db.query_one(&sql, query_values).await?;
+		let row = db.query_one_generated(&sql, values).await?;
 		let json = serde_json::to_value(&row)?;
 		let result = serde_json::from_value(json)?;
 		Ok(result)
@@ -480,10 +481,9 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.all();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.query_generated(&sql, values).await?;
 		let mut results = Vec::with_capacity(rows.len());
 		for row in rows {
 			let json = serde_json::to_value(&row)?;
@@ -501,10 +501,9 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.first();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.query_generated(&sql, values).await?;
 		match rows.first() {
 			Some(row) => {
 				let json = serde_json::to_value(row)?;
@@ -523,10 +522,9 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.one();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.query_generated(&sql, values).await?;
 		match rows.len() {
 			0 => Err(ExecutionError::NoResultFound),
 			1 => {
@@ -546,10 +544,9 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.one_or_none();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.query_generated(&sql, values).await?;
 		match rows.len() {
 			0 => Ok(None),
 			1 => {
@@ -569,10 +566,9 @@ where
 		S: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.scalar();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.query_generated(&sql, values).await?;
 		match rows.first() {
 			Some(row) => {
 				// Get the first column value
@@ -594,10 +590,9 @@ where
 		db: &super::connection::DatabaseConnection,
 	) -> Result<i64, ExecutionError> {
 		let stmt = self.count();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let row = db.query_one(&sql, query_values).await?;
+		let row = db.query_one_generated(&sql, values).await?;
 		let json = serde_json::to_value(&row)?;
 
 		// Extract count from the result (usually the first column)
@@ -618,10 +613,9 @@ where
 		db: &super::connection::DatabaseConnection,
 	) -> Result<bool, ExecutionError> {
 		let stmt = self.exists();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let row = db.query_one(&sql, query_values).await?;
+		let row = db.query_one_generated(&sql, values).await?;
 		let json = serde_json::to_value(&row)?;
 
 		// Extract exists from the result (usually the first column)
@@ -826,6 +820,34 @@ mod tests {
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = Some(value);
 		}
+	}
+
+	#[rstest::rstest]
+	fn legacy_converter_retains_public_raw_representation() {
+		use reinhardt_query::{ArrayType, Value, Values};
+
+		// Arrange
+		let values = Values(vec![
+			Value::BigUnsigned(Some(u64::MAX)),
+			Value::Decimal(Some(Box::new("42.5".parse().unwrap()))),
+			Value::Array(
+				ArrayType::String,
+				Some(Box::new(vec!["quoted element".into()])),
+			),
+		]);
+
+		// Act
+		let converted = convert_values(values);
+
+		// Assert
+		assert_eq!(
+			converted,
+			vec![
+				QueryValue::Int(i64::MAX),
+				QueryValue::Float(42.5),
+				QueryValue::String("Some([String(Some(\"quoted element\"))])".to_owned()),
+			]
+		);
 	}
 
 	#[test]

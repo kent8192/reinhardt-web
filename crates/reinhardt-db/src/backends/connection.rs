@@ -581,6 +581,33 @@ impl DatabaseConnection {
 		Ok(db_config.to_url())
 	}
 
+	#[cfg(any(feature = "orm", feature = "associations"))]
+	pub(crate) async fn execute_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<super::types::QueryResult> {
+		self.backend.__execute_generated(sql, values).await
+	}
+
+	#[cfg(feature = "orm")]
+	pub(crate) async fn fetch_one_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<super::types::Row> {
+		self.backend.__fetch_one_generated(sql, values).await
+	}
+
+	#[cfg(feature = "orm")]
+	pub(crate) async fn fetch_all_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Vec<super::types::Row>> {
+		self.backend.__fetch_all_generated(sql, values).await
+	}
+
 	/// Executes the operation.
 	pub async fn execute(
 		&self,

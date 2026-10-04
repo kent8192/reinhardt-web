@@ -131,12 +131,11 @@ where
 				.to_owned(),
 			);
 
-		let pg = PostgresQueryBuilder::new();
-		let (sql, values) = pg.build_insert(&stmt);
-		let params = crate::orm::execution::convert_values(values);
+		let (sql, values) =
+			crate::backends::sql_build_helpers::build_insert(conn.inner().database_type(), &stmt);
 
 		// Execute SQL
-		conn.execute(&sql, params).await?;
+		conn.execute_generated(&sql, values).await?;
 		Ok(())
 	}
 
