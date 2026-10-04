@@ -2087,3 +2087,41 @@ Optimize how related objects are loaded:
 ## License
 
 Licensed under the BSD 3-Clause License.
+
+## PostgreSQL sequence and identity migrations
+
+The `migrations::sequences` API represents independent generators with
+`SequenceDefinition`/`SequenceMetadata` and stable `(app_label, logical_name)` keys.
+Register them through `global_registry().register_sequence(...)`, and use typed
+`SequenceDefault` field metadata for dependency-aware `nextval` defaults.
+Names have separate literal schema/name components; dots inside a component are
+preserved. `makemigrations` creates sequences before defaults and establishes
+`OWNED BY` after the owner exists, including staged cross-app dependencies.
+
+`IdentityDefinition` belongs to a column. The model macro accepts
+`identity_always = true` or `identity_by_default = true` together with nested
+`identity_options(sequence_name = "events_sequence_seq", start = 1, increment = 1,
+no_min_value = true, no_max_value = true, cache = 1, cycle = false)`.
+Identity takes precedence over inferred auto-increment metadata, preserves
+`db_column`, and does not make a column a primary key. The PostgreSQL macro
+feature (`db-postgres` on the facade) is required for these attributes.
+
+Complete before/after sequence options support ALTER and physical rename without
+restarting allocation. Logical declaration changes use explicit
+`SequenceOperation::RenameDeclaration` in a state-only migration. Catalog
+introspection matches managed physical objects; unmanaged sequences are retained.
+Opaque defaults retain their SQL and require explicit migration dependencies.
+
+Rollback restores schema definitions, not rows or consumed numbers. Provide full
+history with `DatabaseMigrationExecutor::with_migration_history` when rolling back
+a subset containing destructive operations. Dropping an owning column/table
+implicitly deletes its sequence; reverse planning recreates it before restoring
+its default and ownership. Explicit `Restart` requires a reverse target or is
+irreversible. `START WITH` updates the recorded start without moving the cursor.
+
+This feature supports permanent PostgreSQL sequences only. MySQL, SQLite,
+CockroachDB, temporary/unlogged generators, schema moves, and role changes are
+rejected for the new operations. Existing `auto_increment` migrations retain
+their backend behavior. See the crate changelog for intentional alpha API changes;
+non-exhaustive hardening of existing types is tracked separately in
+[#6511](https://github.com/kent8192/reinhardt-web/issues/6511).

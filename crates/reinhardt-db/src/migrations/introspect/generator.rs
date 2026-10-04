@@ -527,26 +527,55 @@ impl SchemaCodeGenerator {
 			attrs.push(quote! { db_column = #column_name });
 		}
 
-		// Primary key attribute
-		if table.primary_key.contains(&column.name) {
-			if let Some(identity_generation) = column.identity_generation.as_deref() {
-				match identity_generation {
-					"ALWAYS" => attrs.push(quote! { primary_key = true, identity_always = true }),
-					"BY DEFAULT" => {
-						attrs.push(quote! { primary_key = true, identity_by_default = true })
-					}
-					other => {
-						return Err(MigrationError::IntrospectionError(format!(
-							"column `{}.{}` has unsupported PostgreSQL identity generation mode `{other}`",
-							table.name, column.name
-						)));
+		let is_primary_key = table.primary_key.contains(&column.name);
+		if is_primary_key {
+			attrs.push(quote! { primary_key = true });
+		}
+		if let Some(mode) = column.identity_generation.as_deref() {
+			match mode {
+				"ALWAYS" => attrs.push(quote! { identity_always = true }),
+				"BY DEFAULT" => attrs.push(quote! { identity_by_default = true }),
+				other => {
+					return Err(MigrationError::IntrospectionError(format!(
+						"column `{}.{}` has unsupported identity mode `{other}`",
+						table.name, column.name
+					)));
+				}
+			}
+			if let Some(identity) = &column.identity {
+				let mut options = Vec::new();
+				if let Some(name) = &identity.sequence_name {
+					let value = &name.name;
+					options.push(quote! { sequence_name = #value });
+					if let Some(schema) = &name.schema {
+						options.push(quote! { sequence_schema = #schema });
 					}
 				}
-			} else if column.auto_increment {
-				attrs.push(quote! { primary_key = true, auto_increment = true });
-			} else {
-				attrs.push(quote! { primary_key = true, auto_increment = false });
+				if let Some(value) = identity.options.start {
+					options.push(quote! { start = #value });
+				}
+				if let Some(value) = identity.options.increment {
+					options.push(quote! { increment = #value });
+				}
+				if let Some(super::super::SequenceBound::Value(value)) = identity.options.min_value
+				{
+					options.push(quote! { min_value = #value });
+				}
+				if let Some(super::super::SequenceBound::Value(value)) = identity.options.max_value
+				{
+					options.push(quote! { max_value = #value });
+				}
+				if let Some(value) = identity.options.cache {
+					options.push(quote! { cache = #value });
+				}
+				if let Some(value) = identity.options.cycle {
+					options.push(quote! { cycle = #value });
+				}
+				attrs.push(quote! { identity_options(#(#options),*) });
 			}
+		} else if is_primary_key {
+			let auto_increment = column.auto_increment;
+			attrs.push(quote! { auto_increment = #auto_increment });
 		}
 
 		// Unique attribute
@@ -828,6 +857,8 @@ mod tests {
 				auto_increment: true,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 
@@ -841,6 +872,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 
@@ -854,6 +887,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 
@@ -893,6 +928,8 @@ mod tests {
 
 		let mut schema = DatabaseSchema {
 			tables: HashMap::new(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 		schema.tables.insert("users".to_string(), table.clone());
 
@@ -931,6 +968,8 @@ mod tests {
 		);
 		let schema = DatabaseSchema {
 			tables: [("users".to_string(), table.clone())].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 
 		let error = generator
@@ -952,6 +991,8 @@ mod tests {
 		});
 		let schema = DatabaseSchema {
 			tables: [("users".to_string(), table.clone())].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 
 		let error = generator
@@ -978,6 +1019,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		table.columns.insert(
@@ -990,10 +1033,14 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let schema = DatabaseSchema {
 			tables: [("users".to_string(), table.clone())].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 		let code = generator
 			.format_tokens(
@@ -1026,6 +1073,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let code = generator
@@ -1036,6 +1085,8 @@ mod tests {
 						&HashMap::new(),
 						&DatabaseSchema {
 							tables: [("users".to_string(), table.clone())].into(),
+							sequences: Vec::new(),
+							default_schema: None,
 						},
 					)
 					.expect("identity and cast defaults should be representable"),
@@ -1060,6 +1111,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		table.columns.insert(
@@ -1072,6 +1125,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let code = generator
@@ -1082,6 +1137,8 @@ mod tests {
 						&HashMap::new(),
 						&DatabaseSchema {
 							tables: [("users".to_string(), table.clone())].into(),
+							sequences: Vec::new(),
+							default_schema: None,
 						},
 					)
 					.expect("JSON types should be representable"),
@@ -1106,10 +1163,14 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let schema = DatabaseSchema {
 			tables: [("users".to_string(), table.clone())].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 		let code = generator
 			.format_tokens(
@@ -1144,6 +1205,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		job.foreign_keys = vec![ForeignKeyInfo {
@@ -1160,6 +1223,8 @@ mod tests {
 				("jobs".to_string(), job.clone()),
 			]
 			.into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 		let code = generator
 			.format_tokens(
@@ -1196,6 +1261,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let mut invoices = create_test_table();
@@ -1210,6 +1277,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		invoices.foreign_keys = vec![ForeignKeyInfo {
@@ -1226,6 +1295,8 @@ mod tests {
 				("invoices".to_string(), invoices.clone()),
 			]
 			.into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 
 		let code = generator
@@ -1258,10 +1329,14 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let schema = DatabaseSchema {
 			tables: [("users".to_string(), table.clone())].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 
 		let code = generator
@@ -1291,6 +1366,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		table.columns.insert(
@@ -1303,10 +1380,14 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let schema = DatabaseSchema {
 			tables: [("users".to_string(), table.clone())].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 
 		let error = generator
@@ -1333,6 +1414,8 @@ mod tests {
 				("user_profile".to_string(), underscored),
 			]
 			.into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 
 		let error = generator
@@ -1349,6 +1432,8 @@ mod tests {
 		let table = create_test_table();
 		let schema = DatabaseSchema {
 			tables: [("users".to_string(), table)].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 
 		let output = generator
@@ -1401,6 +1486,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let mut invoices = create_test_table();
@@ -1415,6 +1502,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		invoices.foreign_keys = vec![ForeignKeyInfo {
@@ -1433,6 +1522,8 @@ mod tests {
 					("invoices".to_string(), invoices),
 				]
 				.into(),
+				sequences: Vec::new(),
+				default_schema: None,
 			})
 			.expect("multi-file generation should succeed");
 		let invoice_file = output
@@ -1459,6 +1550,8 @@ mod tests {
 		let output = generator
 			.generate(&DatabaseSchema {
 				tables: [("type".to_string(), table)].into(),
+				sequences: Vec::new(),
+				default_schema: None,
 			})
 			.expect("keyword table should generate valid Rust 2024 modules");
 		assert!(
@@ -1482,6 +1575,8 @@ mod tests {
 		let output = SchemaCodeGenerator::new(config)
 			.generate(&DatabaseSchema {
 				tables: HashMap::new(),
+				sequences: Vec::new(),
+				default_schema: None,
 			})
 			.expect("empty schema should still provide the module entry point");
 		assert_eq!(output.files.len(), 1);
@@ -1502,6 +1597,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		if target_uses_unique_index {
@@ -1537,6 +1634,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		profiles.foreign_keys = vec![ForeignKeyInfo {
@@ -1559,6 +1658,8 @@ mod tests {
 				("profiles".to_string(), profiles.clone()),
 			]
 			.into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 		generator
 			.format_tokens(
@@ -1622,6 +1723,8 @@ mod tests {
 		}];
 		let schema = DatabaseSchema {
 			tables: [("profiles".to_string(), profile.clone())].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 
 		let error = generator
@@ -1644,6 +1747,8 @@ mod tests {
 		}];
 		let schema = DatabaseSchema {
 			tables: [("users".to_string(), table.clone())].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 		assert!(
 			generator
@@ -1699,6 +1804,8 @@ mod tests {
 					"lower(name)",
 					GeneratedStorage::Stored,
 				)),
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		table.columns.insert(
@@ -1715,12 +1822,16 @@ mod tests {
 					"SchemaExpr::col(\"name\")",
 					GeneratedStorage::Virtual,
 				)),
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let table_to_struct: HashMap<String, String> =
 			[("users".to_string(), "Users".to_string())].into();
 		let mut schema = DatabaseSchema {
 			tables: HashMap::new(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 		schema.tables.insert("users".to_string(), table.clone());
 
@@ -1752,12 +1863,16 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let table_to_struct: HashMap<String, String> =
 			[("users".to_string(), "Users".to_string())].into();
 		let schema = DatabaseSchema {
 			tables: [("users".to_string(), table.clone())].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 
 		let tokens = generator

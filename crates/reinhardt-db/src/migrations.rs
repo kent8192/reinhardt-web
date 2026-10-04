@@ -162,6 +162,7 @@ pub mod registry;
 pub mod repository;
 pub mod schema_diff;
 pub mod schema_editor;
+pub mod sequences;
 pub mod service;
 pub mod source;
 pub mod source_format;
@@ -591,6 +592,11 @@ mod tests {
 /// Prelude module.
 pub mod prelude {
 	pub use super::fields::prelude::*;
+	pub use super::sequences::{
+		IdentityDefinition, IdentityGeneration, IdentityOperation, QualifiedName, SequenceBound,
+		SequenceDataType, SequenceDefault, SequenceDefinition, SequenceKey, SequenceOperation,
+		SequenceOptions, SequenceOwner,
+	};
 	pub use super::{
 		AlterTableOptions, ColumnDefinition, ColumnType, Constraint, DeferrableOption,
 		ForeignKeyAction, GeneratedColumnDefinition, GeneratedStorage, IndexType, InterleaveSpec,
@@ -599,3 +605,9 @@ pub mod prelude {
 	};
 	pub use crate::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
 }
+
+pub use sequences::{
+	IdentityDefinition, IdentityGeneration, IdentityOperation, QualifiedName, SequenceBound,
+	SequenceDataType, SequenceDefault, SequenceDefinition, SequenceKey, SequenceMetadata,
+	SequenceOperation, SequenceOptions, SequenceOwner,
+};

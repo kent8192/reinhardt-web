@@ -217,6 +217,13 @@ impl AutoMigrationGenerator {
 			.iter()
 			.rev()
 			.filter_map(|op| match op {
+				Operation::Sequence { operation } => operation
+					.reverse()
+					.ok()
+					.map(|operation| Operation::Sequence { operation }),
+				Operation::Identity { operation } => Some(Operation::Identity {
+					operation: operation.reverse(),
+				}),
 				// Table operations
 				Operation::CreateTable { name, .. } => {
 					Some(Operation::DropTable { name: name.clone() })
@@ -950,6 +957,10 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				generated: None,
+
+				identity: None,
+				sequence_default: None,
+				observed_sequence_default: None,
 			},
 		);
 		current.tables.insert("users".to_string(), current_table);
@@ -971,6 +982,10 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				generated: None,
+
+				identity: None,
+				sequence_default: None,
+				observed_sequence_default: None,
 			},
 		);
 		target.tables.insert("users".to_string(), target_table);

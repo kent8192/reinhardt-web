@@ -188,7 +188,7 @@ fn trailing_line_comment_start(sql: &str, dialect: SqlDialect) -> Option<usize> 
 	line_comment_start
 }
 
-fn migration_sql_dialect(connection: &DatabaseConnection) -> SqlDialect {
+pub(crate) fn migration_sql_dialect(connection: &DatabaseConnection) -> SqlDialect {
 	if connection.is_cockroachdb() {
 		return SqlDialect::Cockroachdb;
 	}
@@ -1175,6 +1175,12 @@ async fn sqlite_advance_virtual_schema(
 	transforms: &mut Vec<SqliteRenameTransform>,
 ) -> Result<()> {
 	match operation {
+		Operation::Sequence { .. } | Operation::Identity { .. } => {
+			return Err(MigrationError::UnsupportedBackendFeature {
+				feature: "PostgreSQL sequences and identity definitions",
+				backend: "sqlite",
+			});
+		}
 		Operation::CreateTable {
 			name,
 			columns,
@@ -1598,6 +1604,9 @@ enum SqliteVirtualEffect {
 #[cfg(feature = "sqlite")]
 fn sqlite_forward_virtual_effect(operation: &Operation) -> SqliteVirtualEffect {
 	match operation {
+		Operation::Sequence { .. } | Operation::Identity { .. } => {
+			SqliteVirtualEffect::Opaque("PostgreSQL-only operation")
+		}
 		Operation::CreateTable { .. }
 		| Operation::DropTable { .. }
 		| Operation::AddColumn { .. }
@@ -1646,6 +1655,9 @@ fn sqlite_virtual_effect(
 	match direction {
 		MigrationDirection::Forward => sqlite_forward_virtual_effect(operation),
 		MigrationDirection::Backward => match operation {
+			Operation::Sequence { .. } | Operation::Identity { .. } => {
+				SqliteVirtualEffect::Opaque("PostgreSQL-only operation")
+			}
 			Operation::RunSQL { reverse_sql, .. } => {
 				if reverse_sql.is_some() {
 					SqliteVirtualEffect::Opaque("RunSQL")
@@ -1856,15 +1868,34 @@ pub(crate) async fn plan_migration_sql_for_execution(
 	direction: MigrationDirection,
 	editor: &mut SchemaEditor,
 ) -> Result<MigrationSqlPlan> {
+	let operation_states = if direction == MigrationDirection::Backward
+		&& (!state.models.is_empty() || !state.sequences.is_empty())
+	{
+		Some(migration_operation_pre_states(migration, state)?.0)
+	} else {
+		None
+	};
 	plan_migration_sql_with_irreversible_policy(
 		connection,
 		migration,
 		state,
 		direction,
 		MigrationSqlPlanningOptions {
-			strict_irreversible: false,
+			strict_irreversible: migration.operations.iter().any(|operation| {
+				matches!(
+					operation,
+					Operation::Sequence { .. } | Operation::Identity { .. }
+				) || match operation {
+					Operation::DropColumn {
+						old_definition: Some(column),
+						..
+					} => column.identity.is_some() || column.sequence_default.is_some(),
+					Operation::DropTable { .. } => !state.sequences.is_empty(),
+					_ => false,
+				}
+			}),
 			sqlite_editor: Some(editor),
-			backward_operation_states: None,
+			backward_operation_states: operation_states.as_deref(),
 			historical_state_only: false,
 		},
 	)
@@ -1908,6 +1939,8 @@ async fn plan_migration_sql_with_irreversible_policy(
 	let backward_operation_states = options.backward_operation_states;
 	#[cfg(feature = "sqlite")]
 	let historical_state_only = options.historical_state_only;
+	#[cfg(feature = "postgres")]
+	let sequence_preflight_required = options.sqlite_editor.is_none();
 	#[cfg(feature = "sqlite")]
 	let mut sqlite_editor = options.sqlite_editor;
 
@@ -1922,6 +1955,18 @@ async fn plan_migration_sql_with_irreversible_policy(
 	}
 
 	let dialect = migration_sql_dialect(connection);
+	#[cfg(feature = "postgres")]
+	if sequence_preflight_required {
+		super::sequences::preflight(
+			connection,
+			migration,
+			backward_operation_states
+				.and_then(|states| states.first())
+				.unwrap_or(state),
+			direction,
+		)
+		.await?;
+	}
 	let mut statements = Vec::new();
 	let mut planned_operations = Vec::new();
 	let mut sqlite_recreation_groups = Vec::new();

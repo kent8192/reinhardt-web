@@ -14,6 +14,10 @@ use crate::backends::{DatabaseConnection, DatabaseType};
 pub struct DatabaseSchema {
 	/// All tables in the schema
 	pub tables: HashMap<String, TableInfo>,
+	/// Independent and identity sequence catalog definitions.
+	pub sequences: Vec<SequenceInfo>,
+	/// Actual current schema used to resolve omitted declaration schemas.
+	pub default_schema: Option<String>,
 }
 
 /// Options controlling the schema objects selected for inspectdb output.
@@ -63,6 +67,10 @@ pub struct ColumnInfo {
 	pub identity_generation: Option<String>,
 	/// Generated-column metadata, when the backend exposes it.
 	pub generated: Option<super::GeneratedColumnDefinition>,
+	/// Full column-owned identity definition.
+	pub identity: Option<super::IdentityDefinition>,
+	/// Catalog-resolved plain nextval dependency, without SQL-name heuristics.
+	pub sequence_default: Option<super::QualifiedName>,
 }
 
 /// Index metadata
@@ -345,7 +353,11 @@ pub async fn inspect_database(
 		selected.insert(table_name.clone(), table);
 	}
 
-	Ok(DatabaseSchema { tables: selected })
+	Ok(DatabaseSchema {
+		tables: selected,
+		sequences: Vec::new(),
+		default_schema: None,
+	})
 }
 
 fn validate_partition_option(database_type: DatabaseType, include_partitions: bool) -> Result<()> {
@@ -710,6 +722,26 @@ impl PostgresIntrospector {
 				enum_values,
 			);
 
+			let identity = if is_identity == "YES" {
+				Some(
+					self.column_identity(
+						table_name,
+						&column_name,
+						identity_generation.as_deref().ok_or_else(|| {
+							MigrationError::IntrospectionError("identity mode missing".into())
+						})?,
+					)
+					.await?,
+				)
+			} else {
+				None
+			};
+			let sequence_default = if identity.is_none() {
+				self.default_sequence(table_name, &column_name).await?
+			} else {
+				None
+			};
+
 			columns.insert(
 				column_name.clone(),
 				ColumnInfo {
@@ -729,6 +761,9 @@ impl PostgresIntrospector {
 								super::GeneratedStorage::Stored,
 							)
 						}),
+
+					identity,
+					sequence_default,
 				},
 			);
 		}
@@ -1069,7 +1104,16 @@ impl DatabaseIntrospector for PostgresIntrospector {
 			tables.insert(table_name, table_info);
 		}
 
-		Ok(DatabaseSchema { tables })
+		Ok(DatabaseSchema {
+			tables,
+			sequences: self.read_sequences().await?,
+			default_schema: Some(
+				sqlx::query_scalar("SELECT current_schema()::text")
+					.fetch_one(&self.pool)
+					.await
+					.map_err(|error| MigrationError::IntrospectionError(error.to_string()))?,
+			),
+		})
 	}
 
 	async fn read_table(&self, table_name: &str) -> Result<Option<TableInfo>> {
@@ -1376,6 +1420,8 @@ impl MySQLIntrospector {
 							};
 							super::GeneratedColumnDefinition::raw_sql(expression, storage)
 						}),
+					identity: None,
+					sequence_default: None,
 				},
 			);
 		}
@@ -1542,7 +1588,11 @@ impl DatabaseIntrospector for MySQLIntrospector {
 			tables.insert(table_name, table_info);
 		}
 
-		Ok(DatabaseSchema { tables })
+		Ok(DatabaseSchema {
+			tables,
+			sequences: Vec::new(),
+			default_schema: None,
+		})
 	}
 
 	async fn read_table(&self, table_name: &str) -> Result<Option<TableInfo>> {
@@ -2300,6 +2350,8 @@ impl SQLiteIntrospector {
 						&row.name,
 						row.hidden,
 					),
+					identity: None,
+					sequence_default: None,
 				},
 			);
 		}
@@ -2478,7 +2530,11 @@ impl DatabaseIntrospector for SQLiteIntrospector {
 			tables.insert(table_info.name.clone(), table_info);
 		}
 
-		Ok(DatabaseSchema { tables })
+		Ok(DatabaseSchema {
+			tables,
+			sequences: Vec::new(),
+			default_schema: None,
+		})
 	}
 
 	async fn read_table(&self, table_name: &str) -> Result<Option<TableInfo>> {
@@ -2548,7 +2604,11 @@ async fn read_postgres_schema(
 			};
 			tables.insert(name.clone(), table);
 		}
-		DatabaseSchema { tables }
+		DatabaseSchema {
+			tables,
+			sequences: Vec::new(),
+			default_schema: None,
+		}
 	};
 	let partition_names = read_postgres_partition_names(&pool).await?;
 	filter_postgres_partitions(&mut schema, &partition_names, options.include_partitions);
@@ -2645,7 +2705,11 @@ async fn read_mysql_schema(
 			};
 			tables.insert(name.clone(), table);
 		}
-		DatabaseSchema { tables }
+		DatabaseSchema {
+			tables,
+			sequences: Vec::new(),
+			default_schema: None,
+		}
 	};
 	if !options.include_views || !options.tables.is_empty() {
 		return Ok(schema);
@@ -2705,7 +2769,11 @@ async fn read_sqlite_schema(
 			};
 			tables.insert(name.clone(), table);
 		}
-		DatabaseSchema { tables }
+		DatabaseSchema {
+			tables,
+			sequences: Vec::new(),
+			default_schema: None,
+		}
 	};
 	if !options.include_views || !options.tables.is_empty() {
 		return Ok(schema);
@@ -3031,6 +3099,8 @@ mod tests {
 
 		let mut without_partitions = DatabaseSchema {
 			tables: tables.clone(),
+			sequences: Vec::new(),
+			default_schema: None,
 		};
 		filter_postgres_partitions(&mut without_partitions, &partition_names, false);
 		assert_eq!(
@@ -3045,7 +3115,11 @@ mod tests {
 			])
 		);
 
-		let mut with_partitions = DatabaseSchema { tables };
+		let mut with_partitions = DatabaseSchema {
+			tables,
+			sequences: Vec::new(),
+			default_schema: None,
+		};
 		filter_postgres_partitions(&mut with_partitions, &partition_names, true);
 		assert_eq!(
 			with_partitions
@@ -3815,3 +3889,6 @@ mod tests {
 		);
 	}
 }
+
+mod sequences;
+pub use sequences::SequenceInfo;

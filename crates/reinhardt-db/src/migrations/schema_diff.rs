@@ -26,6 +26,12 @@ pub struct SchemaDiff {
 pub struct DatabaseSchema {
 	/// Table definitions (BTreeMap for deterministic iteration order)
 	pub tables: BTreeMap<String, TableSchema>,
+	/// Managed sequence declarations from model state.
+	pub sequences: BTreeMap<super::SequenceKey, super::SequenceDefinition>,
+	/// Catalog sequences, including unmanaged objects retained for comparison.
+	pub observed_sequences: Vec<super::introspection::SequenceInfo>,
+	/// PostgreSQL schema used to resolve omitted schema components.
+	pub default_schema: Option<String>,
 }
 
 impl From<introspection::DatabaseSchema> for DatabaseSchema {
@@ -46,6 +52,9 @@ impl From<introspection::DatabaseSchema> for DatabaseSchema {
 						primary_key: intro_table.primary_key.contains(&col_name), // Check if column is in primary_key list
 						auto_increment: intro_col.auto_increment,
 						generated: intro_col.generated,
+						identity: intro_col.identity,
+						sequence_default: None,
+						observed_sequence_default: intro_col.sequence_default,
 					},
 				);
 			}
@@ -156,7 +165,12 @@ impl From<introspection::DatabaseSchema> for DatabaseSchema {
 			);
 		}
 
-		DatabaseSchema { tables }
+		DatabaseSchema {
+			tables,
+			sequences: BTreeMap::new(),
+			observed_sequences: intro_schema.sequences,
+			default_schema: intro_schema.default_schema,
+		}
 	}
 }
 
@@ -187,6 +201,9 @@ impl DatabaseSchema {
 
 		DatabaseSchema {
 			tables: filtered_tables,
+			sequences: self.sequences.clone(),
+			observed_sequences: self.observed_sequences.clone(),
+			default_schema: self.default_schema.clone(),
 		}
 	}
 }
@@ -221,6 +238,12 @@ pub struct ColumnSchema {
 	pub auto_increment: bool,
 	/// Generated-column metadata
 	pub generated: Option<super::GeneratedColumnDefinition>,
+	/// Structured identity column definition.
+	pub identity: Option<super::IdentityDefinition>,
+	/// Declared typed sequence default.
+	pub sequence_default: Option<super::SequenceDefault>,
+	/// Catalog-resolved nextval reference.
+	pub observed_sequence_default: Option<super::QualifiedName>,
 }
 
 #[derive(Debug, Clone)]
@@ -330,10 +353,62 @@ impl SchemaDiff {
 		current_col.name == target_col.name
 			&& current_col.data_type == target_col.data_type
 			&& current_col.nullable == target_col.nullable
-			&& current_col.default == target_col.default
+			&& self.defaults_equal(current_col, target_col)
+			&& self.identities_equal(current_col, target_col)
 			&& current_col.primary_key == target_col.primary_key
-			&& current_col.auto_increment == target_col.auto_increment
+			&& (target_col.identity.is_some()
+				|| target_col.sequence_default.is_some()
+				|| current_col.auto_increment == target_col.auto_increment)
 			&& self.generated_columns_equal(&current_col.generated, &target_col.generated)
+	}
+
+	fn resolve_name(&self, name: &super::QualifiedName) -> super::QualifiedName {
+		let mut name = name.clone();
+		if name.schema.is_none() {
+			name.schema = self.current_schema.default_schema.clone();
+		}
+		name
+	}
+	fn defaults_equal(&self, current: &ColumnSchema, target: &ColumnSchema) -> bool {
+		if let Some(default) = &target.sequence_default {
+			return current
+				.observed_sequence_default
+				.as_ref()
+				.or_else(|| {
+					current
+						.sequence_default
+						.as_ref()
+						.map(|default| &default.name)
+				})
+				.is_some_and(|name| self.resolve_name(name) == self.resolve_name(&default.name));
+		}
+		current.default == target.default
+	}
+	fn identities_equal(&self, current: &ColumnSchema, target: &ColumnSchema) -> bool {
+		match (&current.identity, &target.identity) {
+			(Some(current_identity), Some(target_identity)) => {
+				current_identity.generation == target_identity.generation
+					&& target_identity.sequence_name.as_ref().is_none_or(|name| {
+						current_identity
+							.sequence_name
+							.as_ref()
+							.is_some_and(|observed| {
+								self.resolve_name(observed) == self.resolve_name(name)
+							})
+					}) && current_identity.effective_options(&current.data_type).ok()
+					== target_identity.effective_options(&target.data_type).ok()
+			}
+			(None, None) => true,
+			(Some(current_identity), None) => {
+				target.auto_increment
+					&& current_identity.generation == super::IdentityGeneration::ByDefault
+					&& current_identity.effective_options(&current.data_type).ok()
+						== super::IdentityDefinition::new(super::IdentityGeneration::ByDefault)
+							.effective_options(&target.data_type)
+							.ok()
+			}
+			_ => false,
+		}
 	}
 
 	fn generated_columns_equal(
@@ -492,6 +567,8 @@ impl SchemaDiff {
 			auto_increment: Self::is_auto_increment(col),
 			generated: col.generated.clone(),
 			domain: None,
+			identity: col.identity.clone(),
+			sequence_default: col.sequence_default.clone(),
 		}
 	}
 
@@ -1110,6 +1187,75 @@ impl SchemaDiff {
 
 	/// Generate migration operations from diff
 	pub fn generate_operations(&self) -> Vec<Operation> {
+		self.try_generate_operations().expect("schema migration generation failed; use try_generate_operations for unsupported or incomplete metadata")
+	}
+
+	/// Generates operations after validating typed sequence and identity metadata.
+	pub fn try_generate_operations(&self) -> super::Result<Vec<Operation>> {
+		use super::{ProjectState, SequenceDefinition};
+		let mut to = ProjectState::new();
+		to.sequences = self.target_schema.sequences.clone();
+		for table in self.target_schema.tables.values() {
+			let mut model = super::ModelState::new("schema", &table.name);
+			model.table_name = table.name.clone();
+			for (name, column) in &table.columns {
+				let definition = Self::column_definition_from_schema(
+					&self.target_schema,
+					&table.name,
+					name,
+					column,
+				);
+				definition.validate_generation()?;
+				model.add_field(super::operations::field_state_from_column(&definition));
+			}
+			to.add_model(model);
+		}
+		to.validate_sequences()?;
+		let mut from = ProjectState::new();
+		from.sequences = self.current_schema.sequences.clone();
+		for (key, desired) in &to.sequences {
+			if from.sequences.contains_key(key) {
+				continue;
+			}
+			if let Some(observed) = self
+				.current_schema
+				.observed_sequences
+				.iter()
+				.find(|sequence| {
+					!sequence.identity
+						&& self.resolve_name(&sequence.name) == self.resolve_name(&desired.name)
+				}) {
+				if !observed.supported {
+					return Err(super::MigrationError::IntrospectionError(
+						"managed sequence has unsupported catalog metadata".into(),
+					));
+				}
+				let owner = observed.owned_by.as_ref().map(|owner| {
+					let mut owner = owner.clone();
+					if desired.name.schema.is_none()
+						&& owner.table.schema == self.current_schema.default_schema
+					{
+						owner.table.schema = None;
+					}
+					owner
+				});
+				from.sequences.insert(
+					key.clone(),
+					SequenceDefinition::new(key.clone(), desired.name.clone())
+						.with_options(observed.options.clone())
+						.with_owned_by(owner),
+				);
+			}
+		}
+		let mut by_app = BTreeMap::new();
+		by_app.insert("schema".into(), self.generate_table_operations());
+		super::sequences::augment_operations(&from, &to, &mut by_app);
+		let mut operations: Vec<_> = by_app.into_values().flatten().collect();
+		super::sequences::order_operations(&mut operations);
+		Ok(operations)
+	}
+
+	fn generate_table_operations(&self) -> Vec<Operation> {
 		let diff = self.detect();
 		let mut operations = Vec::new();
 
@@ -1707,6 +1853,8 @@ mod tests {
 				auto_increment: false,
 				identity_generation: None,
 				generated: Some(generated.clone()),
+				identity: None,
+				sequence_default: None,
 			},
 		);
 		let mut intro_tables = std::collections::HashMap::new();
@@ -1726,6 +1874,8 @@ mod tests {
 		// Act
 		let schema = DatabaseSchema::from(introspection::DatabaseSchema {
 			tables: intro_tables,
+			sequences: Vec::new(),
+			default_schema: None,
 		});
 
 		// Assert
@@ -1777,6 +1927,8 @@ mod tests {
 		// Act
 		let schema = DatabaseSchema::from(introspection::DatabaseSchema {
 			tables: intro_tables,
+			sequences: Vec::new(),
+			default_schema: None,
 		});
 
 		// Assert
@@ -1832,6 +1984,8 @@ mod tests {
 		// Act
 		let schema = DatabaseSchema::from(introspection::DatabaseSchema {
 			tables: intro_tables,
+			sequences: Vec::new(),
+			default_schema: None,
 		});
 
 		// Assert
@@ -1868,6 +2022,9 @@ mod tests {
 				primary_key: false,
 				auto_increment: false,
 				generated: None,
+				identity: None,
+				sequence_default: None,
+				observed_sequence_default: None,
 			},
 		);
 		target.tables.insert("users".to_string(), target_table);
@@ -1915,6 +2072,9 @@ mod tests {
 			primary_key: false,
 			auto_increment: false,
 			generated: None,
+			identity: None,
+			sequence_default: None,
+			observed_sequence_default: None,
 		}
 	}
 
@@ -1928,6 +2088,9 @@ mod tests {
 			primary_key: true,
 			auto_increment: true,
 			generated: None,
+			identity: None,
+			sequence_default: None,
+			observed_sequence_default: None,
 		}
 	}
 
@@ -3214,9 +3377,15 @@ mod tests {
 		target_table.indexes[0].operator_class = Some("vector_l2_ops".to_string());
 		let current = DatabaseSchema {
 			tables: BTreeMap::from([("source".to_string(), current_table)]),
+			sequences: BTreeMap::new(),
+			observed_sequences: Vec::new(),
+			default_schema: None,
 		};
 		let target = DatabaseSchema {
 			tables: BTreeMap::from([("source".to_string(), target_table)]),
+			sequences: BTreeMap::new(),
+			observed_sequences: Vec::new(),
+			default_schema: None,
 		};
 
 		// Act
@@ -3292,6 +3461,8 @@ mod tests {
 		);
 		let current = DatabaseSchema::from(introspection::DatabaseSchema {
 			tables: intro_tables,
+			sequences: Vec::new(),
+			default_schema: None,
 		});
 		let mut target = current.clone();
 		let target_index = &mut target.tables.get_mut("events").unwrap().indexes[0];

@@ -287,6 +287,7 @@ pub struct DatabaseMigrationExecutor {
 	recorder: DatabaseMigrationRecorder,
 	db_type: DatabaseType,
 	planner: Arc<dyn SqlPlanner>,
+	migration_history: Option<Vec<Migration>>,
 	dependency_context: Option<super::DependencyResolutionContext>,
 }
 
@@ -317,6 +318,7 @@ impl DatabaseMigrationExecutor {
 			db_type,
 			planner: Arc::new(DefaultSqlPlanner),
 			dependency_context: None,
+			migration_history: None,
 		}
 	}
 
@@ -330,12 +332,21 @@ impl DatabaseMigrationExecutor {
 			db_type,
 			planner,
 			dependency_context: None,
+			migration_history: None,
 		}
 	}
 
 	/// Resolve conditional and swappable dependencies when ordering migrations.
 	pub fn with_dependency_context(mut self, context: super::DependencyResolutionContext) -> Self {
 		self.dependency_context = Some(context);
+		self
+	}
+
+	/// Supplies complete historical definitions for destructive schema rollback.
+	///
+	/// Sequence allocation positions and row data are never reconstructed.
+	pub fn with_migration_history(mut self, history: Vec<Migration>) -> Self {
+		self.migration_history = Some(history);
 		self
 	}
 
@@ -518,6 +529,7 @@ impl DatabaseMigrationExecutor {
 				.ok_or_else(|| {
 					MigrationError::DependencyError(format!("Migration not found: {}", key.id()))
 				})?;
+			let state_before = validation_state.clone();
 			validate_and_advance_migration_state(migration, &mut validation_state)?;
 
 			// A previous replacement reconciliation can have recorded the replacement
@@ -595,7 +607,8 @@ impl DatabaseMigrationExecutor {
 			}
 
 			// Apply migration operations
-			self.apply_migration(migration).await?;
+			self.apply_migration_with_state(migration, &state_before)
+				.await?;
 
 			// Record migration as applied
 			self.recorder
@@ -662,6 +675,9 @@ impl DatabaseMigrationExecutor {
 		&mut self,
 		migrations: &[Migration],
 	) -> Result<ExecutionResult> {
+		if self.migration_history.is_none() {
+			self.migration_history = Some(migrations.to_vec());
+		}
 		let mut rolledback = Vec::new();
 
 		// Process migrations in reverse order (newest first)
@@ -704,12 +720,48 @@ impl DatabaseMigrationExecutor {
 			return Ok(());
 		}
 
-		let project_state = super::ProjectState::default();
+		let mut project_state = super::ProjectState::default();
+		if let Some(history) = &self.migration_history {
+			let mut graph = super::MigrationGraph::new();
+			for item in history {
+				graph.add_migration(
+					super::MigrationKey::new(&item.app_label, &item.name),
+					item.dependencies
+						.iter()
+						.map(|(app, name)| super::MigrationKey::new(app, name))
+						.collect(),
+				);
+			}
+			for key in graph.resolve_execution_order_with_replaces()? {
+				if key.app_label == migration.app_label && key.name == migration.name {
+					break;
+				}
+				let item = history
+					.iter()
+					.find(|item| item.app_label == key.app_label && item.name == key.name)
+					.ok_or_else(|| {
+						MigrationError::InvalidMigration("incomplete rollback history".into())
+					})?;
+				if !item.database_only {
+					for operation in &item.operations {
+						operation.state_forwards(&item.app_label, &mut project_state);
+					}
+				}
+			}
+		}
 		let requires_sqlite_recreation = migration_requires_sqlite_recreation(
 			&self.connection,
 			migration,
 			MigrationDirection::Backward,
 		);
+		#[cfg(feature = "postgres")]
+		super::sequences::preflight(
+			&self.connection,
+			migration,
+			&project_state,
+			MigrationDirection::Backward,
+		)
+		.await?;
 		let mut editor = SchemaEditor::new_for_migration(
 			self.connection.clone(),
 			migration_is_atomic(migration, self.db_type),
@@ -756,7 +808,16 @@ impl DatabaseMigrationExecutor {
 	///
 	/// For databases that don't support transactional DDL (MySQL), operations
 	/// are executed directly without transaction wrapping, and a warning is logged.
+	#[cfg(test)]
 	async fn apply_migration(&self, migration: &Migration) -> Result<()> {
+		self.apply_migration_with_state(migration, &ProjectState::new())
+			.await
+	}
+	async fn apply_migration_with_state(
+		&self,
+		migration: &Migration,
+		state: &ProjectState,
+	) -> Result<()> {
 		// Skip database operations if state_only flag is set
 		// (Django's SeparateDatabaseAndState equivalent with state_operations only)
 		if migration.state_only {
@@ -785,6 +846,14 @@ impl DatabaseMigrationExecutor {
 			migration,
 			MigrationDirection::Forward,
 		);
+		#[cfg(feature = "postgres")]
+		super::sequences::preflight(
+			&self.connection,
+			migration,
+			state,
+			MigrationDirection::Forward,
+		)
+		.await?;
 		let mut editor = SchemaEditor::new_for_migration(
 			self.connection.clone(),
 			migration_is_atomic(migration, self.db_type),
@@ -797,7 +866,7 @@ impl DatabaseMigrationExecutor {
 			.plan(
 				&self.connection,
 				migration,
-				&ProjectState::default(),
+				state,
 				MigrationDirection::Forward,
 				&mut editor,
 			)
@@ -990,6 +1059,7 @@ impl DatabaseMigrationExecutor {
 		let mut validation_state = super::ProjectState::new();
 
 		for migration in &plan.migrations {
+			let state_before = validation_state.clone();
 			validate_and_advance_migration_state(migration, &mut validation_state)?;
 
 			// Check if already applied
@@ -1001,7 +1071,8 @@ impl DatabaseMigrationExecutor {
 				continue;
 			}
 
-			self.apply_migration(migration).await?;
+			self.apply_migration_with_state(migration, &state_before)
+				.await?;
 
 			// Record migration as applied
 			self.recorder
@@ -1188,6 +1259,8 @@ impl DatabaseMigrationExecutor {
 						c.hidden,
 					),
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				}
 			})
 			.collect();
@@ -1549,32 +1622,41 @@ impl DatabaseMigrationExecutor {
 			}
 			validate_and_advance_migration_state(&historical_migration, &mut validation_state)?;
 		}
+		let state_before = validation_state.clone();
 		validate_and_advance_migration_state(&migration, &mut validation_state)?;
 
 		#[cfg(feature = "postgres")]
 		if self.connection.is_cockroachdb() {
 			return self
-				.execute_migration_with_cockroachdb_schema_lock(&migration)
+				.execute_migration_with_cockroachdb_schema_lock(&migration, &state_before)
 				.await;
 		}
 
 		self.recorder.ensure_schema_table().await?;
-		self.execute_migration_after_schema_table(&migration).await
+		self.execute_migration_after_schema_table(&migration, &state_before)
+			.await
 	}
 
 	#[cfg(feature = "postgres")]
 	async fn execute_migration_with_cockroachdb_schema_lock(
 		&mut self,
 		migration: &Migration,
+		state_before: &ProjectState,
 	) -> Result<()> {
 		let _lock = self.recorder.acquire_cockroachdb_schema_lock().await?;
 		self.recorder.ensure_schema_table_internal().await?;
-		self.execute_migration_after_schema_table(migration).await
+		self.execute_migration_after_schema_table(migration, state_before)
+			.await
 	}
 
-	async fn execute_migration_after_schema_table(&mut self, migration: &Migration) -> Result<()> {
+	async fn execute_migration_after_schema_table(
+		&mut self,
+		migration: &Migration,
+		state_before: &ProjectState,
+	) -> Result<()> {
 		// Apply operations
-		self.apply_migration(migration).await?;
+		self.apply_migration_with_state(migration, state_before)
+			.await?;
 
 		// Record as applied
 		self.recorder
