@@ -142,12 +142,13 @@ impl Drop for TemporaryFileGuard {
 ///
 /// Literal `RunSQL` SQL assets are validated relative to each source. A directory
 /// invocation confines assets to that directory; a single-file invocation uses
-/// the source's parent. Shared assets above that parent require a directory
-/// invocation. Referenced internal asset links are read-only inputs; migration
-/// rewrite destinations remain regular files. Includes and asset bytes are kept.
+/// the source's parent and registers its numbered sources before validating
+/// assets, but only upgrades the selected file. Shared assets above that parent
+/// require a directory invocation. Referenced internal asset links are read-only
+/// inputs; migration rewrite destinations remain regular files. Includes and
+/// asset bytes are kept.
 pub fn run(args: UpgradeSourceArgs) -> Result<()> {
 	let root = validate_root(&args.path)?;
-	let (files, links) = find_source_files(&root, args.path.is_file())?;
 	let asset_root = if root.is_file() {
 		root.parent().ok_or_else(|| {
 			MigrationSourceError::Preflight("source has no parent directory".into())
@@ -155,6 +156,7 @@ pub fn run(args: UpgradeSourceArgs) -> Result<()> {
 	} else {
 		&root
 	};
+	let (mut files, mut links) = find_source_files(asset_root)?;
 	let mut assets = SqlAssetContext::new(asset_root)
 		.map_err(|error| MigrationSourceError::Preflight(error.to_string()))?;
 	let mut plans = Vec::new();
@@ -174,6 +176,10 @@ pub fn run(args: UpgradeSourceArgs) -> Result<()> {
 		{
 			diagnostics.push(format!("{}: {error}", path.display()));
 		}
+	}
+	if root.is_file() {
+		files = vec![root.clone()];
+		links.clear();
 	}
 	for path in files {
 		let relative_path = path
@@ -304,11 +310,7 @@ fn validate_root(path: &Path) -> Result<PathBuf> {
 	Ok(root)
 }
 
-fn find_source_files(root: &Path, single_file: bool) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
-	if single_file {
-		return Ok((vec![root.to_path_buf()], Vec::new()));
-	}
-
+fn find_source_files(root: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
 	let mut files = Vec::new();
 	let mut links = Vec::new();
 	for entry in WalkDir::new(root).follow_links(false) {
@@ -608,7 +610,12 @@ mod tests {
 	}
 
 	#[rstest]
-	fn malformed_numbered_source_cannot_be_reclassified_as_text_asset() {
+	#[case::directory(false)]
+	#[case::single_file(true)]
+	fn malformed_numbered_source_cannot_be_reclassified_as_text_asset(
+		#[case] single_file: bool,
+		#[values(false, true)] check: bool,
+	) {
 		// Arrange
 		let directory = tempfile::tempdir_in("/tmp").unwrap();
 		let asset = directory.path().join("0002_text.rs");
@@ -620,8 +627,12 @@ mod tests {
 		fs::write(&path, &text).unwrap();
 		// Act
 		let error = run(UpgradeSourceArgs {
-			path: directory.path().into(),
-			check: false,
+			path: if single_file {
+				path.clone()
+			} else {
+				directory.path().into()
+			},
+			check,
 		})
 		.unwrap_err()
 		.to_string();
@@ -631,6 +642,103 @@ mod tests {
 			"{error}"
 		);
 		assert_eq!(fs::read(&path).unwrap(), text.as_bytes());
+	}
+
+	#[cfg(unix)]
+	#[rstest]
+	fn single_file_registers_numbered_sibling_symlinks() {
+		// Arrange
+		let directory = tempfile::tempdir_in("/tmp").unwrap();
+		let asset = directory.path().join("payload.sql");
+		fs::write(&asset, "SELECT 1;").unwrap();
+		std::os::unix::fs::symlink(&asset, directory.path().join("0002_sibling.rs")).unwrap();
+		let path = directory.path().join("0001_guard.rs");
+		let text = INCLUDED_SQL
+			.replace("sql/forward.sql", "payload.sql")
+			.replace("sql/reverse.txt", "payload.sql");
+		fs::write(&path, &text).unwrap();
+
+		// Act
+		let error = run(UpgradeSourceArgs {
+			path: path.clone(),
+			check: false,
+		})
+		.unwrap_err()
+		.to_string();
+
+		// Assert
+		assert!(
+			error.contains("both a migration source and an SQL asset"),
+			"{error}"
+		);
+		assert_eq!(fs::read(&path).unwrap(), text.as_bytes());
+		assert_eq!(fs::read_to_string(&asset).unwrap(), "SELECT 1;");
+	}
+
+	#[cfg(unix)]
+	#[rstest]
+	#[case::hard_link(false)]
+	#[case::symlink(true)]
+	fn single_file_rejects_asset_aliasing_a_sibling_source(#[case] symlink: bool) {
+		// Arrange
+		let directory = tempfile::tempdir_in("/tmp").unwrap();
+		let sibling = directory.path().join("0002_sibling.rs");
+		fs::write(&sibling, LEGACY_DROP_COLUMN).unwrap();
+		let alias = directory.path().join("payload.sql");
+		if symlink {
+			std::os::unix::fs::symlink(&sibling, &alias).unwrap();
+		} else {
+			fs::hard_link(&sibling, &alias).unwrap();
+		}
+		let path = directory.path().join("0001_guard.rs");
+		let text = INCLUDED_SQL
+			.replace("sql/forward.sql", "payload.sql")
+			.replace("sql/reverse.txt", "payload.sql");
+		fs::write(&path, &text).unwrap();
+
+		// Act
+		let error = run(UpgradeSourceArgs {
+			path: path.clone(),
+			check: false,
+		})
+		.unwrap_err()
+		.to_string();
+
+		// Assert
+		assert!(
+			error.contains("both a migration source and an SQL asset"),
+			"{error}"
+		);
+		assert_eq!(fs::read(&path).unwrap(), text.as_bytes());
+		assert_eq!(fs::read(&sibling).unwrap(), LEGACY_DROP_COLUMN.as_bytes());
+	}
+
+	#[rstest]
+	fn single_file_upgrade_preserves_unselected_sibling_sources() {
+		// Arrange
+		let directory = tempfile::tempdir_in("/tmp").unwrap();
+		let path = directory.path().join("0001_guard.rs");
+		let sibling = directory.path().join("0002_sibling.rs");
+		fs::write(&path, LEGACY_DROP_COLUMN).unwrap();
+		fs::write(&sibling, "malformed unselected source").unwrap();
+
+		// Act
+		run(UpgradeSourceArgs {
+			path: path.clone(),
+			check: false,
+		})
+		.unwrap();
+
+		// Assert
+		assert!(
+			fs::read_to_string(&path)
+				.unwrap()
+				.starts_with("// reinhardt-migration-source: 1\n")
+		);
+		assert_eq!(
+			fs::read_to_string(&sibling).unwrap(),
+			"malformed unselected source"
+		);
 	}
 
 	#[rstest]
