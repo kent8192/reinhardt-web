@@ -805,8 +805,6 @@ async fn build_from_state_from_db(
 	use reinhardt_db::migrations::{
 		DatabaseMigrationRecorder, MigrationSource, MigrationStateLoader,
 	};
-	eprintln!("[DEBUG] Database URL: {}", database_url);
-
 	// 2. Connect to database
 	let connection = DatabaseConnection::connect(database_url)
 		.await

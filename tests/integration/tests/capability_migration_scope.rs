@@ -366,6 +366,50 @@ fn capability_check_rejects_empty_and_merge_proposals_without_writes(consumer: C
 }
 
 #[rstest]
+fn capability_database_state_does_not_log_configured_credentials(consumer: Consumer) {
+	// Arrange: synthetic credentials; this consumer deliberately enables only SQLite.
+	let project = new_project(&consumer, "credentials");
+	let password = "capability_secret_must_not_be_logged_6493";
+	let config = serde_json::json!({"core": {"databases": {"selected": {
+		"engine": "postgresql", "name": "migration_test", "user": "migration_user",
+		"host": "127.0.0.1", "port": 1, "password": password,
+	}}}});
+
+	// Act
+	let output = invoke_with_config(
+		&consumer,
+		&project,
+		r#"["identity"]"#,
+		&[
+			"makemigrations",
+			"--dry-run",
+			"--state-source",
+			"database",
+			"--database",
+			"selected",
+		],
+		&config,
+	);
+
+	// Assert
+	assert_status(&output, 1);
+	let stdout = String::from_utf8_lossy(&output.stdout);
+	let stderr = String::from_utf8_lossy(&output.stderr);
+	assert!(stderr.contains("Database connection failed"), "{stderr}");
+	for log in [stdout, stderr] {
+		assert!(
+			!log.contains(password),
+			"credential appeared in command output"
+		);
+		assert!(
+			!log.contains("Database URL:"),
+			"raw URL logging must be absent"
+		);
+	}
+	assert_eq!(migration_files(&project), []);
+}
+
+#[rstest]
 fn capability_dependencies_order_plans_execution_and_file_state(consumer: Consumer) {
 	// Arrange
 	let project = new_project(&consumer, "dependency_order");
