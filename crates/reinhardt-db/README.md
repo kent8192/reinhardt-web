@@ -180,7 +180,10 @@ through counts, joins, pagination and writes. Caller-owned transactions still
 control atomic relationship replacement.
 Manager create, update, delete and count operations use native generated
 arguments through ORM and dedicated transaction executors while preserving
-hydration and write-outcome reporting.
+hydration and write-outcome reporting. Bulk updates use typed CASE expressions
+and native arguments with the same batching, generated-field exclusions and
+physical column names. PostgreSQL arrays retain native element types; arrays
+stored in JSON columns on other backends keep that explicit encoding.
 
 ### Streaming QuerySets
 

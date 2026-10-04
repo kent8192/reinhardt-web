@@ -384,6 +384,89 @@ async fn exercise_manager_generated_capabilities(connection: &DatabaseConnection
 		.unwrap();
 	transaction.commit().await.unwrap();
 	assert_eq!(manager.count_with_conn(&mut handle).await.unwrap(), before);
+	// Bulk CASE updates keep quoted values bound, batch counts and caller rollback.
+	let originals = vec![
+		GeneratedModel {
+			id: Some(62),
+			name: "bulk first".into(),
+		},
+		GeneratedModel {
+			id: Some(63),
+			name: "bulk second".into(),
+		},
+	];
+	for model in &originals {
+		manager.create_with_conn(&mut handle, model).await.unwrap();
+	}
+	let updates = vec![
+		GeneratedModel {
+			id: Some(62),
+			name: "bulk first' ? $16".into(),
+		},
+		GeneratedModel {
+			id: Some(63),
+			name: "bulk second' ? $17".into(),
+		},
+	];
+	let all_bulk = || {
+		QuerySet::<GeneratedModel>::new()
+			.filter(Filter::new(
+				"id",
+				FilterOperator::In,
+				FilterValue::List(vec![FilterValue::Integer(62), FilterValue::Integer(63)]),
+			))
+			.order_by(&["id"])
+	};
+	let result = handle
+		.atomic_write(async |transaction| {
+			assert_eq!(
+				manager
+					.bulk_update_with_conn(
+						transaction,
+						updates.clone(),
+						vec!["name".into()],
+						Some(1)
+					)
+					.await?,
+				2
+			);
+			assert_eq!(all_bulk().all_with_db(transaction).await?, updates);
+			Err::<(), _>(reinhardt_core::exception::Error::Internal(
+				"roll back bulk update".into(),
+			))
+		})
+		.await;
+	assert!(result.is_err());
+	assert_eq!(
+		all_bulk().all_with_db(&mut handle).await.unwrap(),
+		originals
+	);
+	assert_eq!(
+		manager
+			.bulk_update_with_conn(&mut handle, updates.clone(), vec!["name".into()], None)
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(all_bulk().all_with_db(&mut handle).await.unwrap(), updates);
+	assert_eq!(
+		manager
+			.bulk_update_with_conn(&mut handle, Vec::new(), vec!["name".into()], None)
+			.await
+			.unwrap(),
+		0
+	);
+	assert_eq!(
+		manager
+			.bulk_update_with_conn(&mut handle, updates, Vec::new(), None)
+			.await
+			.unwrap(),
+		0
+	);
+	for id in [62, 63] {
+		manager.delete_with_conn(&mut handle, id).await.unwrap();
+	}
+	assert_eq!(manager.count_with_conn(&mut handle).await.unwrap(), before);
 }
 
 async fn exercise_relationship_generated_capabilities(connection: &DatabaseConnection) {

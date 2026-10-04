@@ -3,7 +3,7 @@ use super::connection::QueryValue;
 use super::connection::{
 	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, OrmExecutor, QueryRow, Row,
 };
-use super::field_codec::{DatabaseArrayType, database_value_to_query_value};
+use super::field_codec::database_value_to_query_value;
 use super::inspection::FieldInfo;
 use super::query::RelationLoadInput;
 use super::{DatabaseValue, FieldCodecError, Model, QuerySet};
@@ -187,46 +187,6 @@ fn build_delete_sql_checked(
 	} else {
 		Ok(build_delete_sql(stmt, backend))
 	}
-}
-
-fn database_value_sql_literal(
-	value: DatabaseValue,
-	backend: DatabaseBackend,
-) -> Result<String, FieldCodecError> {
-	if let DatabaseValue::Array {
-		element_type,
-		values,
-	} = &value
-		&& backend == DatabaseBackend::Postgres
-		&& values.is_empty()
-	{
-		let element_type = match element_type {
-			DatabaseArrayType::String => "text",
-			DatabaseArrayType::I32 => "integer",
-			DatabaseArrayType::I64 => "bigint",
-			DatabaseArrayType::F32 => "real",
-			DatabaseArrayType::F64 => "double precision",
-			DatabaseArrayType::Bool => "boolean",
-			DatabaseArrayType::Uuid => "uuid",
-		};
-		return Ok(format!("ARRAY[]::{element_type}[]"));
-	}
-
-	if backend == DatabaseBackend::Postgres || !matches!(&value, DatabaseValue::Array { .. }) {
-		return Ok(database_value_to_query_value(value).to_sql_literal());
-	}
-
-	let json = value.into_json_value()?;
-	Ok(format!("'{}'", json.to_string().replace('\'', "''")))
-}
-
-fn quote_identifier(identifier: &str, backend: DatabaseBackend) -> String {
-	let quote = if backend == DatabaseBackend::MySql {
-		'`'
-	} else {
-		'"'
-	};
-	format!("{quote}{identifier}{quote}")
 }
 
 #[derive(Clone)]
@@ -2897,7 +2857,7 @@ impl<M: Model> Manager<M> {
 			return Ok(0);
 		}
 
-		let conn = get_connection().await?;
+		let mut conn = get_connection().await?;
 		let batch_size = batch_size.unwrap_or(models.len());
 		let mut total_updated = 0;
 
@@ -2943,14 +2903,24 @@ impl<M: Model> Manager<M> {
 
 			if !updates.is_empty() {
 				validate_bulk_update_values_for_backend(&updates, conn.is_cockroachdb())?;
-				let sql = self
-					.bulk_update_database_values_sql_detailed(&updates, &fields, conn.backend())
-					.map_err(field_codec_error)?;
-				if sql.is_empty() {
-					continue;
-				}
-				let rows_affected = conn.execute(&sql, vec![]).await?;
-				total_updated += rows_affected as usize;
+				let (sql, values, context) = {
+					let Some(statement) = self
+						.bulk_update_database_values_query(&updates, &fields, conn.backend())
+						.map_err(field_codec_error)?
+					else {
+						continue;
+					};
+					let context = super::execution::pgvector_context_for_update(&statement);
+					let (sql, values) = build_update_sql_checked(
+						&statement,
+						conn.backend(),
+						conn.is_cockroachdb(),
+					)?;
+					(sql, values, context)
+				};
+				let result =
+					OrmExecutor::execute_generated(&mut conn, (sql, values), context).await?;
+				total_updated += result.rows_affected as usize;
 			}
 		}
 
@@ -3013,13 +2983,22 @@ impl<M: Model> Manager<M> {
 				continue;
 			}
 			validate_bulk_update_values_for_backend(&updates, conn.is_cockroachdb())?;
-			let sql = self
-				.bulk_update_database_values_sql_detailed(&updates, &fields, conn.backend())
-				.map_err(field_codec_error)?;
-			if sql.is_empty() {
-				continue;
-			}
-			total_updated += conn.execute(&sql, Vec::new()).await?.rows_affected as usize;
+			let (sql, values, context) = {
+				let Some(statement) = self
+					.bulk_update_database_values_query(&updates, &fields, conn.backend())
+					.map_err(field_codec_error)?
+				else {
+					continue;
+				};
+				let context = super::execution::pgvector_context_for_update(&statement);
+				let (sql, values) =
+					build_update_sql_checked(&statement, conn.backend(), conn.is_cockroachdb())?;
+				(sql, values, context)
+			};
+			total_updated += conn
+				.execute_generated((sql, values), context)
+				.await?
+				.rows_affected as usize;
 		}
 		Ok(total_updated)
 	}
@@ -3093,65 +3072,65 @@ impl<M: Model> Manager<M> {
 		sql
 	}
 
-	/// Bulk update SQL generation using CASE expressions
-	///
-	/// Generates raw SQL because reinhardt-query's `UpdateStatement` does not support
-	/// expression-based SET values (e.g., CASE WHEN ... END).
-	fn bulk_update_database_values_sql_detailed(
+	/// Builds bulk updates with typed CASE expressions and bound database values.
+	fn bulk_update_database_values_query(
 		&self,
 		updates: &[(DatabaseValue, HashMap<String, DatabaseValue>)],
 		fields: &[String],
 		backend: DatabaseBackend,
-	) -> Result<String, FieldCodecError> {
+	) -> Result<Option<UpdateStatement>, FieldCodecError> {
 		if updates.is_empty() || fields.is_empty() {
-			return Ok(String::new());
+			return Ok(None);
 		}
 
-		let table_name = M::table_name();
 		let field_metadata = M::field_metadata();
 		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
-		let mut set_clauses = Vec::new();
+		let mut statement = Query::update();
+		statement.table(Alias::new(M::table_name()));
+		let query_value = |value: DatabaseValue| {
+			// Non-PostgreSQL model arrays retain their existing JSON column encoding.
+			let value = if backend != DatabaseBackend::Postgres
+				&& matches!(&value, DatabaseValue::Array { .. })
+			{
+				DatabaseValue::Json(value.into_json_value()?)
+			} else {
+				value
+			};
+			Ok::<_, FieldCodecError>(database_value_to_query_value(value))
+		};
+		let mut has_values = false;
 
 		for field in fields
 			.iter()
 			.filter(|field| !Self::is_generated_field(field.as_str()))
 		{
-			let mut when_clauses = Vec::new();
+			let mut case = Expr::case();
+			let mut has_when = false;
 			for (pk, field_map) in updates {
 				if let Some(value) = field_map.get(field) {
-					when_clauses.push(format!(
-						"WHEN {} = {} THEN {}",
-						quote_identifier(primary_key_column, backend),
-						database_value_sql_literal(pk.clone(), backend)?,
-						database_value_sql_literal(value.clone(), backend)?
-					));
+					case = case.when(
+						Expr::col(Alias::new(primary_key_column)).eq(query_value(pk.clone())?),
+						Expr::val(query_value(value.clone())?),
+					);
+					has_when = true;
 				}
 			}
-			if !when_clauses.is_empty() {
+			if has_when {
 				let column_name = Self::field_column(&field_metadata, field);
-				set_clauses.push(format!(
-					"{} = CASE {} END",
-					quote_identifier(column_name, backend),
-					when_clauses.join(" ")
-				));
+				statement.value_expr(Alias::new(column_name), case.build());
+				has_values = true;
 			}
 		}
 
-		if set_clauses.is_empty() {
-			return Ok(String::new());
+		if !has_values {
+			return Ok(None);
 		}
 		let ids = updates
 			.iter()
-			.map(|(pk, _)| database_value_sql_literal(pk.clone(), backend))
-			.collect::<Result<Vec<_>, _>>()?
-			.join(", ");
-		Ok(format!(
-			"UPDATE {} SET {} WHERE {} IN ({})",
-			quote_identifier(table_name, backend),
-			set_clauses.join(", "),
-			quote_identifier(primary_key_column, backend),
-			ids
-		))
+			.map(|(pk, _)| query_value(pk.clone()))
+			.collect::<Result<Vec<_>, _>>()?;
+		statement.and_where(Expr::col(Alias::new(primary_key_column)).is_in(ids));
+		Ok(Some(statement))
 	}
 
 	/// Generates bulk-update SQL from legacy JSON input values.
@@ -3778,6 +3757,35 @@ mod tests {
 				expected_method,
 				Some(crate::backends::error::PgvectorOperationKind::VectorValue)
 			))
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	#[tokio::test]
+	async fn manager_bulk_update_propagates_vector_statement_context() {
+		// Arrange
+		let model = VectorManagerModel {
+			id: Some(7),
+			embedding: crate::orm::Vector::try_from(vec![1.0, 2.0, 3.0]).unwrap(),
+		};
+		let mut executor = VectorManagerOrmExecutor {
+			backend: DatabaseBackend::Postgres,
+			calls: Vec::new(),
+		};
+		// Act
+		let updated = Manager::<VectorManagerModel>::new()
+			.bulk_update_with_conn(&mut executor, vec![model], vec!["embedding".into()], None)
+			.await
+			.unwrap();
+		// Assert
+		assert_eq!(updated, 1);
+		assert_eq!(
+			executor.calls,
+			vec![(
+				"execute_with_context",
+				Some(crate::backends::error::PgvectorOperationKind::VectorValue)
+			)]
 		);
 	}
 
@@ -4850,58 +4858,209 @@ mod tests {
 		assert!(sql.contains("WHERE"));
 	}
 
-	#[test]
-	fn test_bulk_update_database_values_serializes_arrays_per_backend() {
-		use crate::orm::{DatabaseArrayType, DatabaseValue};
-
+	#[rstest]
+	#[case(
+		DatabaseBackend::Postgres,
+		"UPDATE \"test_user\" SET \"name\" = CASE WHEN \"id\" = $1 THEN $2 END WHERE \"id\" IN ($3)"
+	)]
+	#[case(
+		DatabaseBackend::MySql,
+		"UPDATE `test_user` SET `name` = CASE WHEN `id` = ? THEN ? END WHERE `id` IN (?)"
+	)]
+	#[case(
+		DatabaseBackend::Sqlite,
+		"UPDATE \"test_user\" SET \"name\" = CASE WHEN \"id\" = ? THEN ? END WHERE \"id\" IN (?)"
+	)]
+	fn bulk_update_database_arrays_keep_backend_encoding(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange: JSON columns outside PostgreSQL and native array elements inside it.
+		use crate::orm::DatabaseArrayType;
+		let array = DatabaseValue::Array {
+			element_type: DatabaseArrayType::String,
+			values: vec![
+				DatabaseValue::String("alpha' ? $1".into()),
+				DatabaseValue::Null,
+			],
+		};
+		let updates = vec![(
+			DatabaseValue::I64(1),
+			HashMap::from([("name".into(), array.clone())]),
+		)];
 		let manager = TestUser::objects();
-		let mut field_values = HashMap::new();
-		field_values.insert(
-			"name".to_string(),
-			DatabaseValue::Array {
-				element_type: DatabaseArrayType::String,
-				values: vec![
-					DatabaseValue::String("alpha".to_string()),
-					DatabaseValue::String("beta".to_string()),
-				],
-			},
-		);
-		let updates = vec![(DatabaseValue::I64(1), field_values)];
-		let fields = vec!["name".to_string()];
-
-		let sqlite_sql = manager
-			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Sqlite)
-			.expect("SQLite array SQL should render");
-		assert!(sqlite_sql.contains("'[\"alpha\",\"beta\"]'"));
-		assert!(!sqlite_sql.contains("ARRAY["));
-
-		let postgres_sql = manager
-			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Postgres)
-			.expect("PostgreSQL array SQL should render");
-		assert!(postgres_sql.contains("ARRAY["));
+		// Act
+		let statement = manager
+			.bulk_update_database_values_query(&updates, &["name".into()], backend)
+			.unwrap()
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&statement, backend);
+		// Assert
+		assert_eq!(sql, expected_sql);
+		let expected_array = if backend == DatabaseBackend::Postgres {
+			super::database_value_to_query_value(array)
+		} else {
+			reinhardt_query::value::Value::Json(Some(Box::new(serde_json::json!([
+				"alpha' ? $1",
+				null
+			]))))
+		};
+		assert_eq!(values.0, vec![1_i64.into(), expected_array, 1_i64.into()]);
 	}
 
-	#[test]
-	fn test_bulk_update_database_values_casts_empty_postgres_arrays() {
-		use crate::orm::{DatabaseArrayType, DatabaseValue};
-
-		let manager = TestUser::objects();
-		let mut field_values = HashMap::new();
-		field_values.insert(
-			"name".to_string(),
-			DatabaseValue::Array {
-				element_type: DatabaseArrayType::String,
-				values: vec![],
-			},
+	#[rstest]
+	fn bulk_update_empty_postgres_array_keeps_element_type() {
+		// Arrange
+		use crate::orm::DatabaseArrayType;
+		let array = DatabaseValue::Array {
+			element_type: DatabaseArrayType::String,
+			values: vec![],
+		};
+		let updates = vec![(
+			DatabaseValue::I64(1),
+			HashMap::from([("name".into(), array.clone())]),
+		)];
+		// Act
+		let statement = TestUser::objects()
+			.bulk_update_database_values_query(
+				&updates,
+				&["name".into()],
+				DatabaseBackend::Postgres,
+			)
+			.unwrap()
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&statement, DatabaseBackend::Postgres);
+		// Assert: the typed argument supplies the empty array's element type.
+		assert_eq!(
+			sql,
+			"UPDATE \"test_user\" SET \"name\" = CASE WHEN \"id\" = $1 THEN $2 END WHERE \"id\" IN ($3)"
 		);
-		let updates = vec![(DatabaseValue::I64(1), field_values)];
-		let fields = vec!["name".to_string()];
+		assert_eq!(
+			values.0,
+			vec![
+				1_i64.into(),
+				super::database_value_to_query_value(array),
+				1_i64.into()
+			]
+		);
+	}
 
-		let sql = manager
-			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Postgres)
-			.expect("PostgreSQL empty array SQL should render");
+	#[rstest]
+	#[case(
+		DatabaseBackend::Postgres,
+		"UPDATE \"test_user\" SET \"name\" = CASE WHEN \"id\" = $1 THEN $2 WHEN \"id\" = $3 THEN $4 END, \"email\" = CASE WHEN \"id\" = $5 THEN NULL END WHERE \"id\" IN ($6, $7)"
+	)]
+	#[case(
+		DatabaseBackend::MySql,
+		"UPDATE `test_user` SET `name` = CASE WHEN `id` = ? THEN ? WHEN `id` = ? THEN ? END, `email` = CASE WHEN `id` = ? THEN NULL END WHERE `id` IN (?, ?)"
+	)]
+	#[case(
+		DatabaseBackend::Sqlite,
+		"UPDATE \"test_user\" SET \"name\" = CASE WHEN \"id\" = ? THEN ? WHEN \"id\" = ? THEN ? END, \"email\" = CASE WHEN \"id\" = ? THEN NULL END WHERE \"id\" IN (?, ?)"
+	)]
+	fn bulk_update_case_keeps_null_decimal_and_argument_order(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange: requested field order controls CASE/argument order; missing arms have no ELSE.
+		let text = "quote' ? $2";
+		let decimal = rust_decimal::Decimal::from_str_exact("123456789012.123456789012").unwrap();
+		let updates = vec![
+			(
+				DatabaseValue::I64(1),
+				HashMap::from([
+					("name".into(), DatabaseValue::String(text.into())),
+					("email".into(), DatabaseValue::Null),
+				]),
+			),
+			(
+				DatabaseValue::I64(2),
+				HashMap::from([("name".into(), DatabaseValue::Decimal(decimal))]),
+			),
+		];
+		// Act
+		let statement = TestUser::objects()
+			.bulk_update_database_values_query(&updates, &["name".into(), "email".into()], backend)
+			.unwrap()
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&statement, backend);
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(
+			values.0,
+			vec![
+				1_i64.into(),
+				text.into(),
+				2_i64.into(),
+				reinhardt_query::value::Value::Decimal(Some(Box::new(decimal))),
+				1_i64.into(),
+				1_i64.into(),
+				2_i64.into()
+			]
+		);
+	}
 
-		assert!(sql.contains("ARRAY[]::text[]"));
+	#[rstest]
+	fn bulk_update_uses_physical_primary_key_and_skips_empty_generated_updates() {
+		// Arrange
+		let key = DatabaseValue::String("external:quote' ? $2".into());
+		let updates = vec![(
+			key.clone(),
+			HashMap::from([("body".into(), DatabaseValue::String("bound".into()))]),
+		)];
+		// Act
+		let statement = TypedKeyUser::objects()
+			.bulk_update_database_values_query(
+				&updates,
+				&["body".into()],
+				DatabaseBackend::Postgres,
+			)
+			.unwrap()
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&statement, DatabaseBackend::Postgres);
+		// Assert
+		assert_eq!(
+			sql,
+			"UPDATE \"typed_key_user\" SET \"body\" = CASE WHEN \"external_key\" = $1 THEN $2 END WHERE \"external_key\" IN ($3)"
+		);
+		assert_eq!(
+			values.0,
+			vec![
+				super::database_value_to_query_value(key.clone()),
+				"bound".into(),
+				super::database_value_to_query_value(key)
+			]
+		);
+		assert!(
+			TypedKeyUser::objects()
+				.bulk_update_database_values_query(
+					&updates,
+					&["absent".into()],
+					DatabaseBackend::Postgres
+				)
+				.unwrap()
+				.is_none()
+		);
+		assert!(
+			TypedKeyUser::objects()
+				.bulk_update_database_values_query(&[], &["body".into()], DatabaseBackend::Postgres)
+				.unwrap()
+				.is_none()
+		);
+		let generated = vec![(
+			DatabaseValue::I64(1),
+			HashMap::from([("full_name".into(), DatabaseValue::String("computed".into()))]),
+		)];
+		assert!(
+			GeneratedUser::objects()
+				.bulk_update_database_values_query(
+					&generated,
+					&["full_name".into()],
+					DatabaseBackend::Postgres
+				)
+				.unwrap()
+				.is_none()
+		);
 	}
 
 	#[test]

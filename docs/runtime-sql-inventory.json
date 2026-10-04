@@ -38778,46 +38778,30 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_update",
       "kind": "execution-wrapper",
-      "line": 2952,
-      "fingerprint": "770154c3732c51049ebfe945bafd2a490bdda1ae1c47a7644f5fd897e6c08b02",
+      "line": 2922,
+      "fingerprint": "f6fda20406f56d842fdc948aeb7984fd8f83f6cdad0409fbd37a617110d7df3d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_update_database_values_sql_detailed::macro-sql-literal#1",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::bulk_update_database_values_sql_detailed",
-      "kind": "macro-sql-literal",
-      "line": 3149,
-      "fingerprint": "2308e1be5324fb7878b6141fe370a8d78645cd84f58ef3d7a352fb6cae510f51",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
+      "status": "typed",
       "operation": "dml",
-      "representation": "review-required",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "orm; native configured backend feature; pgvector when enabled"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Typed CASE/UPDATE retains metadata column aliases, field and batch order, generated-field exclusions and missing-arm NULL semantics. Owned rendered SQL/Values reach generated execution before awaiting; PostgreSQL arrays stay typed while non-PostgreSQL array fields retain explicit JSON encoding. CockroachDB validation and pgvector operation context are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite",
+        "cockroachdb (checked PostgreSQL renderer)"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native PostgreSQL/MySQL/SQLite scenarios passed bound quoted CASE values, affected-row counts, one-row batches, rollback and empty input/fields.",
+        "77 focused Manager tests passed, including exact CASE SQL/argument order, literal NULL without a bound slot, exact Decimal carrier, nullable/empty native arrays, JSON array encoding, physical primary-key aliases and pgvector context.",
+        "Focused production/native Clippy and eight Manager doctests passed (25 ignored). Zero batch-size validation defect independently reproduced on unchanged baseline and tracked in #6535; not repaired here."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_update_sql_detailed::macro-sql-literal#1",
@@ -38847,23 +38831,30 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_update_with_conn",
       "kind": "execution-wrapper",
-      "line": 3022,
-      "fingerprint": "13ccc7f6325966052b9bb092c225d781bae1c1fd9fa76cd4abc97e0ff8aabdd7",
+      "line": 2998,
+      "fingerprint": "6d544ea82f365d62c00b79d78e369ad19c495d5c577c4a32cf5f4ac161bfacba",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "orm; native configured backend feature; pgvector when enabled"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Typed CASE/UPDATE retains metadata column aliases, field and batch order, generated-field exclusions and missing-arm NULL semantics. Owned rendered SQL/Values reach generated execution before awaiting; PostgreSQL arrays stay typed while non-PostgreSQL array fields retain explicit JSON encoding. CockroachDB validation and pgvector operation context are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite",
+        "cockroachdb (checked PostgreSQL renderer)"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native PostgreSQL/MySQL/SQLite scenarios passed bound quoted CASE values, affected-row counts, one-row batches, rollback and empty input/fields.",
+        "77 focused Manager tests passed, including exact CASE SQL/argument order, literal NULL without a bound slot, exact Decimal carrier, nullable/empty native arrays, JSON array encoding, physical primary-key aliases and pgvector context.",
+        "Focused production/native Clippy and eight Manager doctests passed (25 ignored). Zero batch-size validation defect independently reproduced on unchanged baseline and tracked in #6535; not repaired here."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::count_with_conn::execution-wrapper#1",
