@@ -109,6 +109,7 @@ pub struct ColumnDef {
 	pub(crate) default: Option<SimpleExpr>,
 	pub(crate) check: Option<SimpleExpr>,
 	pub(crate) generated: Option<GeneratedColumn>,
+	pub(crate) identity: Option<super::IdentityDef>,
 	pub(crate) comment: Option<String>,
 }
 
@@ -128,8 +129,15 @@ impl ColumnDef {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		}
+	}
+
+	/// Sets a PostgreSQL identity declaration. Checked builders reject unsupported backends.
+	pub fn identity(mut self, identity: super::IdentityDef) -> Self {
+		self.identity = Some(identity);
+		self
 	}
 
 	/// Set the column type
