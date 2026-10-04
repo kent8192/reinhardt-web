@@ -222,6 +222,15 @@ pub enum SimpleExpr {
 		/// The window name
 		name: DynIden,
 	},
+
+	/// MySQL's connection-scoped last insert ID, projected as a signed integer.
+	///
+	/// `None` reads the ID. `Some(expr)` also assigns the connection's ID. The
+	/// signed cast matches an `i64` decoder; callers must reject nonpositive
+	/// generated IDs when they require a positive auto-increment key. Checked
+	/// builders reject other backends. This expression may mutate connection
+	/// state, so MySQL's safe EXPLAIN path rejects it.
+	MySqlLastInsertId(Option<Box<SimpleExpr>>),
 }
 
 /// SQL keywords that can appear as constants.

@@ -422,6 +422,9 @@ fn table_ref_references_cte(table: &TableRef, cte_names: &[String]) -> bool {
 
 fn contains_aggregate(expr: &SimpleExpr) -> bool {
 	match expr {
+		SimpleExpr::MySqlLastInsertId(value) => value
+			.as_ref()
+			.is_some_and(|value| contains_aggregate(value)),
 		SimpleExpr::FunctionCall(name, arguments) => {
 			matches!(
 				name.to_string().to_ascii_uppercase().as_str(),
@@ -473,6 +476,9 @@ fn contains_aggregate(expr: &SimpleExpr) -> bool {
 
 fn contains_window(expr: &SimpleExpr) -> bool {
 	match expr {
+		SimpleExpr::MySqlLastInsertId(value) => {
+			value.as_ref().is_some_and(|value| contains_window(value))
+		}
 		SimpleExpr::Window { .. } | SimpleExpr::WindowNamed { .. } => true,
 		SimpleExpr::Unary(_, expression)
 		| SimpleExpr::AsEnum(_, expression)
@@ -646,6 +652,12 @@ fn validate_simple_expr_lock(
 	visible_cte_names: &[String],
 ) -> Result<(), QueryBuildError> {
 	match expr {
+		SimpleExpr::MySqlLastInsertId(value) => {
+			if let Some(value) = value {
+				validate_simple_expr_lock(value, backend, visible_cte_names)?;
+			}
+			Ok(())
+		}
 		SimpleExpr::Column(_)
 		| SimpleExpr::TableColumn(_, _)
 		| SimpleExpr::Value(_)
@@ -1149,6 +1161,15 @@ fn validate_condition_expression(
 
 fn validate_simple_expr(expr: &SimpleExpr, backend: &'static str) -> Result<(), QueryBuildError> {
 	match expr {
+		SimpleExpr::MySqlLastInsertId(value) => {
+			if backend != "MySQL" {
+				return Err(unsupported("MySQL last insert ID", backend));
+			}
+			if let Some(value) = value {
+				validate_simple_expr(value, backend)?;
+			}
+			Ok(())
+		}
 		SimpleExpr::Column(_)
 		| SimpleExpr::TableColumn(_, _)
 		| SimpleExpr::Custom(_)
@@ -1424,6 +1445,15 @@ fn collect_simple_expr_pgvector_features_with_values(
 	collect_vector_values: bool,
 ) {
 	match expr {
+		SimpleExpr::MySqlLastInsertId(value) => {
+			if let Some(value) = value {
+				collect_simple_expr_pgvector_features_with_values(
+					value,
+					features,
+					collect_vector_values,
+				);
+			}
+		}
 		SimpleExpr::Column(_)
 		| SimpleExpr::TableColumn(_, _)
 		| SimpleExpr::Custom(_)

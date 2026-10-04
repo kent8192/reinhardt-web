@@ -50,6 +50,11 @@ placeholders (`$1`, `$2`, ...) and generic literals for positional placeholders
     table. Unsupported configurations return QueryBuildError. Identifier
     escaping and generated empty Values are identical on native and WASM.
 
+`Func::mysql_last_insert_id` reads or assigns connection-scoped MySQL state
+through a typed expression with a signed integer result. Reset, insert, and read
+must share one executor. Checked non-MySQL builders and plan-only MySQL EXPLAIN
+reject this stateful expression. Both native and WASM can build it.
+
 ### Multi-Backend Support
 - **PostgreSQL** - Full DDL and DML support with advanced features
 - **MySQL** - DML, Functions, Procedures, Events, and table maintenance

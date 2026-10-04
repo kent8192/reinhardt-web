@@ -593,6 +593,9 @@ impl SqliteQueryBuilder {
 			SimpleExpr::PgExtractEpoch(_) => {
 				panic!("PostgreSQL numeric epoch extraction is not supported by sqlite")
 			}
+			SimpleExpr::MySqlLastInsertId(_) => {
+				panic!("MySQL last insert ID is not supported by sqlite")
+			}
 			SimpleExpr::TemporalTrunc {
 				expr, kind, output, ..
 			} => self.write_temporal_trunc(writer, expr, *kind, *output),

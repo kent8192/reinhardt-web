@@ -373,6 +373,9 @@ fn expression_has_window_feature(
 	predicate: impl Fn(&WindowStatement) -> bool + Copy,
 ) -> bool {
 	match expression {
+		SimpleExpr::MySqlLastInsertId(value) => value
+			.as_ref()
+			.is_some_and(|value| expression_has_window_feature(value, predicate)),
 		SimpleExpr::Window { func, window } => {
 			predicate(window) || expression_has_window_feature(func, predicate)
 		}
@@ -490,6 +493,7 @@ fn conditions_match(
 fn expression_matches(expression: &SimpleExpr, predicate: &impl Fn(&SimpleExpr) -> bool) -> bool {
 	predicate(expression)
 		|| match expression {
+		SimpleExpr::MySqlLastInsertId(value) => { value.as_ref().is_some_and(|value| expression_matches(value, predicate)) },
 			SimpleExpr::Unary(_, expression)
 			| SimpleExpr::AsEnum(_, expression)
 			| SimpleExpr::ExprAlias(expression, _)
@@ -549,6 +553,7 @@ fn expression_has_select(
 	predicate: &impl Fn(&SelectStatement) -> bool,
 ) -> bool {
 	match expression {
+		SimpleExpr::MySqlLastInsertId(value) => { value.as_ref().is_some_and(|value| expression_has_select(value, predicate)) },
 		SimpleExpr::SubQuery(_, query) => statement_has_select(query, predicate),
 		SimpleExpr::Unary(_, expression)
 		| SimpleExpr::AsEnum(_, expression)
@@ -647,6 +652,7 @@ fn unsafe_window(window: &WindowStatement) -> bool {
 
 fn unsafe_expr(expression: &SimpleExpr) -> bool {
 	match expression {
+		SimpleExpr::MySqlLastInsertId(_) => true,
 		SimpleExpr::SubQuery(_, _) | SimpleExpr::Custom(_) => true,
 		SimpleExpr::FunctionCall(function, expressions) => {
 			!is_safe_aggregate_function(&function.to_string())
@@ -833,6 +839,11 @@ fn quote_mysql_like_template_window(window: &mut WindowStatement) {
 
 fn quote_mysql_like_template_expr(expression: &mut SimpleExpr) {
 	match expression {
+		SimpleExpr::MySqlLastInsertId(value) => {
+			if let Some(value) = value {
+				quote_mysql_like_template_expr(value);
+			}
+		}
 		SimpleExpr::Unary(_, expression)
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)

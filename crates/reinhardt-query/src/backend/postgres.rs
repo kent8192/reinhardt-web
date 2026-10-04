@@ -1071,6 +1071,9 @@ impl PostgresQueryBuilder {
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
 			}
+			SimpleExpr::MySqlLastInsertId(_) => {
+				panic!("MySQL last insert ID is not supported by PostgreSQL")
+			}
 			SimpleExpr::PgExtractEpoch(expression) => {
 				writer.push("EXTRACT(EPOCH FROM ");
 				self.write_simple_expr(writer, expression);
@@ -1330,6 +1333,9 @@ impl PostgresQueryBuilder {
 				writer.push(" AS ");
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
+			}
+			SimpleExpr::MySqlLastInsertId(_) => {
+				panic!("MySQL last insert ID is not supported by PostgreSQL")
 			}
 			SimpleExpr::PgExtractEpoch(expression) => {
 				writer.push("EXTRACT(EPOCH FROM ");

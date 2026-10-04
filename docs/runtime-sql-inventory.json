@@ -38880,31 +38880,36 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1762,
-      "fingerprint": "d0bb441616fd2b1e8bf853dc1a9d95e09afdd7f9ffb23056c87cd145bf98338c",
+      "line": 1771,
+      "fingerprint": "334b305956ebfcd9ba4bfcbbd92d8610e30d72e5a4edd4909ffc203110f5855b",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "control",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/mysql for native MySQL execution; custom TransactionExecutor capability receives checked owned arguments"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The connection-scoped reset and signed read of LAST_INSERT_ID are typed MySQL-only AST expressions. Both consume exact checked SQL/Values through the same caller-owned executor before and after INSERT; explicit keys skip these stateful operations and nonpositive generated IDs fail before reload.",
       "backends": [
-        "review-required"
+        "mysql"
       ],
-      "evidence": []
+      "evidence": [
+        "Native isolated MySQL test covers generated and explicit keys, stale-ID reset, failed non-generating insertion, same transaction ownership and rollback.",
+        "46 executor contracts pass, including exact reset/insert/read/reload order and reset argument zero.",
+        "Eight typed query contracts and 2116 query units, one executable doc, strict query/DB focused Clippy, warning-denied docs, all-feature WASM and no-default native/WASM consumers pass."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_executor::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1767,
-      "fingerprint": "bf8bc875c0e864f1acee925bfba3d1ca3afd1207365bcad1b3f7f933030e0d3e",
+      "line": 1776,
+      "fingerprint": "311d5e3aa09db76f5b96d2a48c7ecf92460b9c676e740781bf250142f5bddfd8",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -38928,7 +38933,8 @@
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
         "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
         "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
-        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed.",
+        "After replacing connection-state operations with typed MySQL expressions, 46 caller-owned executor contracts pass and the isolated native MySQL ID/reset/reload/rollback regression passes."
       ]
     },
     {
@@ -38936,31 +38942,36 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1775,
-      "fingerprint": "c4877cfca01b9a1754cdfe133b3b2b135ca260217c46461733918a6a9efe90e8",
+      "line": 1790,
+      "fingerprint": "eb3750d0759f520c2e4b5ba393c8c3bae59d134226cbcda23e47144c75b984cd",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "control",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/mysql for native MySQL execution; custom TransactionExecutor capability receives checked owned arguments"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The connection-scoped reset and signed read of LAST_INSERT_ID are typed MySQL-only AST expressions. Both consume exact checked SQL/Values through the same caller-owned executor before and after INSERT; explicit keys skip these stateful operations and nonpositive generated IDs fail before reload.",
       "backends": [
-        "review-required"
+        "mysql"
       ],
-      "evidence": []
+      "evidence": [
+        "Native isolated MySQL test covers generated and explicit keys, stale-ID reset, failed non-generating insertion, same transaction ownership and rollback.",
+        "46 executor contracts pass, including exact reset/insert/read/reload order and reset argument zero.",
+        "Eight typed query contracts and 2116 query units, one executable doc, strict query/DB focused Clippy, warning-denied docs, all-feature WASM and no-default native/WASM consumers pass."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_executor::execution-wrapper#4",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1805,
-      "fingerprint": "2a0c74be5ad81e9648d77a541cf29edec0421a7ebda60573ab027502a16a053d",
+      "line": 1817,
+      "fingerprint": "e7f27e3a73f71e42fd83c1904090013c96fd1c55b46dc171748ea37d51500142",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -38984,7 +38995,8 @@
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
         "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
         "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
-        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed.",
+        "After replacing connection-state operations with typed MySQL expressions, 46 caller-owned executor contracts pass and the isolated native MySQL ID/reset/reload/rollback regression passes."
       ]
     },
     {
@@ -38992,8 +39004,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1812,
-      "fingerprint": "d21824798224f63d22ef21f4633de337950f28c1d2f2c69805e2a54ef68fe7ce",
+      "line": 1824,
+      "fingerprint": "37fed488aaedca21bd025ec4a8df1c8211521781ec4afde9f7d527b733081a6b",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39017,54 +39029,9 @@
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
         "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
         "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
-        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed.",
+        "After replacing connection-state operations with typed MySQL expressions, 46 caller-owned executor contracts pass and the isolated native MySQL ID/reset/reload/rollback regression passes."
       ]
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_executor::sql-literal#1",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::create_with_executor",
-      "kind": "sql-literal",
-      "line": 1763,
-      "fingerprint": "61e15556e09983e1928b93c89ca313c9cc1cb04c8cc53e3db953d84bf48cd59e",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::create_with_executor::sql-literal#2",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::create_with_executor",
-      "kind": "sql-literal",
-      "line": 1777,
-      "fingerprint": "fd01e9d8498b05f56a788d8de2ac0e8dbd3f6aba2339c2248899e7e2a1240dfd",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::delete_with_conn::execution-wrapper#1",

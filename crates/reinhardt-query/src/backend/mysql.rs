@@ -651,6 +651,13 @@ impl MySqlQueryBuilder {
 			SimpleExpr::PgExtractEpoch(_) => {
 				panic!("PostgreSQL numeric epoch extraction is not supported by mysql")
 			}
+			SimpleExpr::MySqlLastInsertId(value) => {
+				writer.push("CAST(LAST_INSERT_ID(");
+				if let Some(value) = value {
+					self.write_simple_expr(writer, value);
+				}
+				writer.push(") AS SIGNED)");
+			}
 			SimpleExpr::TemporalTrunc {
 				expr,
 				kind,
