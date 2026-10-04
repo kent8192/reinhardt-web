@@ -120,6 +120,10 @@ Low-level database connectivity and connection management:
   - PostgreSQL, MySQL, SQLite support
   - Query execution and schema operations
   - reinhardt-query integration for query building
+  - MySQL `InsertBuilder` returns `DatabaseError::NotSupported` for named conflict
+    targets or `WHERE` conditions before executing a query. Unconditional upserts
+    and `INSERT IGNORE` retain MySQL's handling of conflicts on any unique key,
+    including when the fluent API specifies conflict columns.
   - **When to use**: Need direct database access or custom queries
 
 - **`pool` module**: Connection pooling implementation

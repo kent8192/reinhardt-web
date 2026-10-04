@@ -625,11 +625,15 @@ impl InsertBuilder {
 				}
 			}
 			DatabaseType::Mysql => {
-				// MySQL does not support conflict targets or WHERE clauses
-				// Warn if constraint-based target is used
 				if let Some(ConflictTarget::Constraint(_)) = &clause.target {
-					// MySQL doesn't support ON CONFLICT ON CONSTRAINT
-					// Fall back to standard MySQL behavior
+					return Err(super::error::DatabaseError::NotSupported(
+						"MySQL does not support named conflict targets".into(),
+					));
+				}
+				if clause.where_condition.is_some() {
+					return Err(super::error::DatabaseError::NotSupported(
+						"MySQL does not support conditional ON DUPLICATE KEY UPDATE".into(),
+					));
 				}
 
 				match &clause.action {
@@ -647,7 +651,6 @@ impl InsertBuilder {
 							.join(", ");
 
 						sql.push_str(&format!(" ON DUPLICATE KEY UPDATE {}", update_str));
-						// Note: MySQL does not support WHERE clause in ON DUPLICATE KEY UPDATE
 					}
 				}
 			}
@@ -1917,12 +1920,12 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_on_conflict_clause_where_ignored_mysql() {
+	#[rstest]
+	fn test_on_conflict_clause_where_rejected_mysql() {
 		// Arrange
 		let backend = Arc::new(MockMysqlBackend);
 
-		// Act - MySQL does not support WHERE clause, but should not error
+		// Act
 		let builder = InsertBuilder::new(backend, "users")
 			.value("email", QueryValue::String("test@example.com".to_string()))
 			.on_conflict(
@@ -1930,14 +1933,15 @@ mod tests {
 					.do_update(vec!["name"])
 					.where_clause("users.version < VALUES(version)"),
 			);
-		let (sql, _) = builder.build().unwrap();
+		let error = builder.build().unwrap_err();
 
-		// Assert - WHERE clause is ignored for MySQL (reinhardt-query uses parameterized queries)
+		// Assert
 		assert_eq!(
-			sql,
-			"INSERT INTO `users` (`email`) VALUES (?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`)"
+			error,
+			DatabaseError::NotSupported(
+				"MySQL does not support conditional ON DUPLICATE KEY UPDATE".into()
+			)
 		);
-		assert!(!sql.contains("WHERE"));
 	}
 
 	// ==========================================
