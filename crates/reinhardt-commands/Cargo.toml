@@ -117,6 +117,7 @@ admin = []
 pages = ["routers", "reinhardt-urls/client-router", "reinhardt-pages/hmr"]
 full = [
   "migrations",
+  "contract",
   "routers",
   "introspect",
   "server",

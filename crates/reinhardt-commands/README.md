@@ -72,7 +72,8 @@ details.
   `reinhardt-db`)
 - `contract` - Enable the opt-in capability-aware management entry point
   (includes `migrations`); exposed as `commands-contract` by the facade, which
-  also enables the configuration types needed by the provider
+  also enables the configuration types needed by the provider. The `full`
+  preset includes `contract`
 - `routers` - Enable URL-related commands (requires `reinhardt-urls`)
 
 ### Capability-aware migration bootstrap
