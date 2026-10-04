@@ -1,4 +1,4 @@
-//! Session reads retain quoted identifiers, canonical keys and Any projections.
+//! Session DML retains quoted identifiers, canonical values and transaction ownership.
 #![cfg(all(feature = "postgres", feature = "mysql", feature = "sqlite"))]
 
 use reinhardt_db::orm::inspection::FieldInfo;
@@ -6,7 +6,8 @@ use reinhardt_db::orm::json::Json;
 use reinhardt_db::orm::query_types::DbBackend;
 use reinhardt_db::orm::session::Session;
 use reinhardt_db::orm::{
-	DatabaseStorageKind, DatabaseValue, FieldCodecError, FieldSelector, Manager, Model,
+	DatabaseArrayType, DatabaseStorageKind, DatabaseValue, FieldCodecError, FieldSelector, Manager,
+	Model,
 };
 use reinhardt_query::{
 	Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, SimpleExpr,
@@ -17,7 +18,10 @@ use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
 use sqlx::AnyPool;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	sync::Arc,
+};
 use testcontainers::{ImageExt, runners::AsyncRunner};
 
 #[derive(Clone)]
@@ -59,6 +63,49 @@ impl Model for Record {
 	}
 	fn set_primary_key(&mut self, id: i64) {
 		self.id = id;
+	}
+	fn field_is_none(&self, field: &str) -> bool {
+		field == "optional_payload" && self.optional_payload.is_none()
+	}
+	fn encode_database_fields(&self) -> Result<BTreeMap<String, DatabaseValue>, FieldCodecError> {
+		Ok([
+			("id", DatabaseValue::I64(self.id)),
+			("name", DatabaseValue::String(self.name.clone())),
+			("uid", DatabaseValue::Uuid(self.uid)),
+			("enabled", DatabaseValue::Bool(self.enabled)),
+			("amount", DatabaseValue::Decimal(self.amount)),
+			("payload", DatabaseValue::Json(self.payload.0.clone())),
+			(
+				"optional_payload",
+				self.optional_payload
+					.as_ref()
+					.map_or(DatabaseValue::Null, |value| {
+						DatabaseValue::Json(value.0.clone())
+					}),
+			),
+			(
+				"items",
+				DatabaseValue::Array {
+					element_type: DatabaseArrayType::String,
+					values: self
+						.items
+						.iter()
+						.map(|value| {
+							value.as_ref().map_or(DatabaseValue::Null, |value| {
+								DatabaseValue::String(value.clone())
+							})
+						})
+						.collect(),
+				},
+			),
+			("on_date", DatabaseValue::Date(self.on_date)),
+			("on_time", DatabaseValue::Time(self.on_time)),
+			("at", DatabaseValue::DateTime(self.at)),
+			("bytes", DatabaseValue::Bytes(self.bytes.clone())),
+		]
+		.into_iter()
+		.map(|(name, value)| (name.into(), value))
+		.collect())
 	}
 	fn field_metadata() -> Vec<FieldInfo> {
 		[
@@ -316,7 +363,8 @@ async fn exercise_reads(pool: AnyPool, backend: DbBackend) {
 		.execute(&pool)
 		.await
 		.unwrap();
-	let mut session = Session::new(Arc::new(pool), backend).await.unwrap();
+	let pool = Arc::new(pool);
+	let mut session = Session::new(pool.clone(), backend).await.unwrap();
 	// Act / Assert: direct reads and identity hits retain all projected types.
 	assert_eq!(
 		session.get::<Record>(expected.id).await.unwrap(),
@@ -342,7 +390,7 @@ async fn exercise_reads(pool: AnyPool, backend: DbBackend) {
 		.await
 		.unwrap();
 	listed.sort_by_key(|record| record.id);
-	assert_eq!(listed, vec![expected, second]);
+	assert_eq!(listed, vec![expected.clone(), second]);
 	assert_eq!(session.get::<Record>(-1).await.unwrap(), None);
 	assert_eq!(
 		session.get::<MappedKey>(5).await.unwrap(),
@@ -350,6 +398,107 @@ async fn exercise_reads(pool: AnyPool, backend: DbBackend) {
 			id: 105,
 			name: "codec".into()
 		})
+	);
+	exercise_writes(pool, backend, expected).await;
+}
+
+fn keyed(id: i64) -> reinhardt_db::orm::QuerySet<Record> {
+	use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue};
+	reinhardt_db::orm::QuerySet::new().filter(Filter::new(
+		"pk\"key`",
+		FilterOperator::Eq,
+		FilterValue::Integer(id),
+	))
+}
+
+async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Record) {
+	// Arrange: use one caller-owned transaction for reads, locks and every write.
+	let mut writer = Session::new(pool.clone(), backend).await.unwrap();
+	let reader = Session::new(pool.clone(), backend).await.unwrap();
+	let mut transaction = pool.begin().await.unwrap();
+	let inserted = Record {
+		id: original.id + 2,
+		name: "insert' $50 ? 雪".into(),
+		items: vec![Some("quote\" slash\\ dollar$8 comma,".into()), None],
+		optional_payload: None,
+		..original.clone()
+	};
+	// Act / Assert: verify stored values through a separate reader on the same connection.
+	writer.add_new(inserted.clone()).await.unwrap();
+	writer
+		.flush_with_connection(&mut transaction)
+		.await
+		.unwrap();
+	assert_eq!(
+		reader
+			.list_with_connection(&keyed(inserted.id), &mut transaction)
+			.await
+			.unwrap(),
+		vec![inserted.clone()]
+	);
+	if backend != DbBackend::Sqlite {
+		assert_eq!(
+			reader
+				.list_with_connection_for_update(&keyed(inserted.id), &mut transaction)
+				.await
+				.unwrap(),
+			vec![inserted.clone()]
+		);
+	}
+	let updated = Record {
+		name: "update' $70 ?".into(),
+		enabled: false,
+		payload: Json(serde_json::json!(["changed' $99", null])),
+		optional_payload: Some(Json(serde_json::Value::Null)),
+		..inserted
+	};
+	writer.add(updated.clone()).await.unwrap();
+	writer
+		.flush_with_connection(&mut transaction)
+		.await
+		.unwrap();
+	assert_eq!(
+		reader
+			.list_with_connection(&keyed(updated.id), &mut transaction)
+			.await
+			.unwrap(),
+		vec![updated.clone()]
+	);
+	writer.delete(updated.clone()).await.unwrap();
+	writer
+		.flush_with_connection(&mut transaction)
+		.await
+		.unwrap();
+	assert!(
+		reader
+			.list_with_connection(&keyed(updated.id), &mut transaction)
+			.await
+			.unwrap()
+			.is_empty()
+	);
+	let rolled_back = Record {
+		id: original.id + 3,
+		..original
+	};
+	writer.add_new(rolled_back.clone()).await.unwrap();
+	writer
+		.flush_with_connection(&mut transaction)
+		.await
+		.unwrap();
+	assert_eq!(
+		reader
+			.list_with_connection(&keyed(rolled_back.id), &mut transaction)
+			.await
+			.unwrap(),
+		vec![rolled_back.clone()]
+	);
+	transaction.rollback().await.unwrap();
+	assert!(
+		reader
+			.list(&keyed(rolled_back.id))
+			.await
+			.unwrap()
+			.is_empty()
 	);
 }
 

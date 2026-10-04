@@ -42795,104 +42795,70 @@
       ]
     },
     {
+      "id": "crates/reinhardt-db/src/orm/session.rs::Session::execute_prepared::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/session.rs",
+      "symbol": "Session::execute_prepared",
+      "kind": "execution-wrapper",
+      "line": 1089,
+      "fingerprint": "9a0cc014d11574ef3889cea0a595954c961e3388666fe0a83af9ca8e0f2e9c42",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "feature_reachability": [
+        "reinhardt-db/orm; configured backend drivers through canonical postgres/mysql/sqlite features"
+      ],
+      "rationale": "Session-owned model DML and canonical key/field values are adapted on the typed AST before checked backend rendering. The exact owned SQL/Values pair enters the companion Any adapter and query_with on the original pool/caller-owned connection. No SQL text rewriting or manual argument loops remain.",
+      "evidence": [
+        "75 Session units verify actual unsigned range/redaction, structural complex casts, array declarations, SQL NULL slots and PostgreSQL native array acceptance.",
+        "Three native PostgreSQL/MySQL/SQLite scenarios preserve quoted physical identifiers and full complex-value INSERT/UPDATE/DELETE/read behavior; same-transaction row locks on PostgreSQL/MySQL and rollback pass. Strict Clippy, executable docs and warning-denied docs pass.",
+        "Reviewed all callers: flush factories only receive canonical model DML; get uses canonical key codecs. QuerySet filter provenance is tracked separately on pending list/lock consumers."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/session.rs::Session::execute_prepared::executor#1",
+      "path": "crates/reinhardt-db/src/orm/session.rs",
+      "symbol": "Session::execute_prepared",
+      "kind": "executor",
+      "line": 1089,
+      "fingerprint": "9480dc6ef1b33c7e96a8b92ea9aeb1d1e6aafe126feecbe2d77f23f871e26baf",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "feature_reachability": [
+        "reinhardt-db/orm; configured backend drivers through canonical postgres/mysql/sqlite features"
+      ],
+      "rationale": "Session-owned model DML and canonical key/field values are adapted on the typed AST before checked backend rendering. The exact owned SQL/Values pair enters the companion Any adapter and query_with on the original pool/caller-owned connection. No SQL text rewriting or manual argument loops remain.",
+      "evidence": [
+        "75 Session units verify actual unsigned range/redaction, structural complex casts, array declarations, SQL NULL slots and PostgreSQL native array acceptance.",
+        "Three native PostgreSQL/MySQL/SQLite scenarios preserve quoted physical identifiers and full complex-value INSERT/UPDATE/DELETE/read behavior; same-transaction row locks on PostgreSQL/MySQL and rollback pass. Strict Clippy, executable docs and warning-denied docs pass.",
+        "Reviewed all callers: flush factories only receive canonical model DML; get uses canonical key codecs. QuerySet filter provenance is tracked separately on pending list/lock consumers."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::execute_returning::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::execute_returning",
       "kind": "execution-wrapper",
-      "line": 1477,
-      "fingerprint": "10d6d6a01485a17248253afa4da84aa4ff96def1cdab579f265a07c0cb9e0d43",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::execute_returning::executor#1",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::execute_returning",
-      "kind": "executor",
-      "line": 1470,
-      "fingerprint": "69802780dd7f4ed9a21982a790af07b12ecfaa29295ce308c975a7ed18c7d19a",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::execute_with_values::execution-wrapper#1",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::execute_with_values",
-      "kind": "execution-wrapper",
-      "line": 1454,
-      "fingerprint": "7cb89ca21a35d155993b7c8a0cc477197c1342e73926fab734d0bc80e87ff68f",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::execute_with_values::executor#1",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::execute_with_values",
-      "kind": "executor",
-      "line": 1447,
-      "fingerprint": "b2732302b0361cae5f539dbcf32aa0359cbd985ace11447976c8d104f75b10af",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::get::execution-wrapper#1",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::get",
-      "kind": "execution-wrapper",
-      "line": 433,
-      "fingerprint": "4abcf1d97b13687fed7d5050476b031783dfb077eb4dbdcab7f3fdee26149903",
+      "line": 1103,
+      "fingerprint": "608cace1abd986cc6bf236e5ed70556209e64f63d271e0f4d117e1e9b484bca7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -42901,17 +42867,72 @@
       "operation": "dml",
       "representation": "typed-query",
       "feature_reachability": [
-        "reinhardt-db/orm; configured Any backend drivers through canonical postgres/mysql/sqlite features"
+        "reinhardt-db/orm; configured backend drivers through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Session-owned SELECT uses quoted structural model projections and canonical primary-key codecs. The checked dialect renderer returns the exact SQL/Values pair consumed by the companion Any adapter and query_with on the owned pool. Temporal masks are bound; no inline SQL or custom projection fragments remain on these readers.",
+      "rationale": "Session-owned model DML and canonical key/field values are adapted on the typed AST before checked backend rendering. The exact owned SQL/Values pair enters the companion Any adapter and query_with on the original pool/caller-owned connection. No SQL text rewriting or manual argument loops remain.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "75 Session units verify actual unsigned range/redaction, structural complex casts, array declarations, SQL NULL slots and PostgreSQL native array acceptance.",
+        "Three native PostgreSQL/MySQL/SQLite scenarios preserve quoted physical identifiers and full complex-value INSERT/UPDATE/DELETE/read behavior; same-transaction row locks on PostgreSQL/MySQL and rollback pass. Strict Clippy, executable docs and warning-denied docs pass.",
+        "Reviewed all callers: flush factories only receive canonical model DML; get uses canonical key codecs. QuerySet filter provenance is tracked separately on pending list/lock consumers."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/session.rs::Session::execute_returning::executor#1",
+      "path": "crates/reinhardt-db/src/orm/session.rs",
+      "symbol": "Session::execute_returning",
+      "kind": "executor",
+      "line": 1103,
+      "fingerprint": "47d78253a4977412e190bdb465f8fdf5e1339c3a75a5268eefded02426806034",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/orm; configured backend drivers through canonical postgres/mysql/sqlite features"
+      ],
+      "rationale": "Session-owned model DML and canonical key/field values are adapted on the typed AST before checked backend rendering. The exact owned SQL/Values pair enters the companion Any adapter and query_with on the original pool/caller-owned connection. No SQL text rewriting or manual argument loops remain.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "75 Session units verify actual unsigned range/redaction, structural complex casts, array declarations, SQL NULL slots and PostgreSQL native array acceptance.",
+        "Three native PostgreSQL/MySQL/SQLite scenarios preserve quoted physical identifiers and full complex-value INSERT/UPDATE/DELETE/read behavior; same-transaction row locks on PostgreSQL/MySQL and rollback pass. Strict Clippy, executable docs and warning-denied docs pass.",
+        "Reviewed all callers: flush factories only receive canonical model DML; get uses canonical key codecs. QuerySet filter provenance is tracked separately on pending list/lock consumers."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/session.rs::Session::get::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/session.rs",
+      "symbol": "Session::get",
+      "kind": "execution-wrapper",
+      "line": 431,
+      "fingerprint": "cc02252fb5e5a7a965318842a2e48cb9cc81da0a72b6c712a8f91cd013c2f361",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/orm; configured backend drivers through canonical postgres/mysql/sqlite features"
+      ],
+      "rationale": "Session-owned model DML and canonical key/field values are adapted on the typed AST before checked backend rendering. The exact owned SQL/Values pair enters the companion Any adapter and query_with on the original pool/caller-owned connection. No SQL text rewriting or manual argument loops remain.",
       "backends": [
         "postgres",
         "mysql",
         "sqlite"
       ],
       "evidence": [
-        "Three native backend regressions preserve quoted tables/physical columns, i64 width, custom logical key codec, complete long UTF-8 text, UUID/bool/decimal/JSON/nullable arrays/temporal/binary values and identity-map hits.",
-        "66 Session units, 13 executable rustdocs, warning-denied docs and production/regression Clippy; #6591/#6592/#6593/#6594 track independent baseline findings. Session.list/locks/flush manual binders remain pending."
+        "75 Session units verify actual unsigned range/redaction, structural complex casts, array declarations, SQL NULL slots and PostgreSQL native array acceptance.",
+        "Three native PostgreSQL/MySQL/SQLite scenarios preserve quoted physical identifiers and full complex-value INSERT/UPDATE/DELETE/read behavior; same-transaction row locks on PostgreSQL/MySQL and rollback pass. Strict Clippy, executable docs and warning-denied docs pass.",
+        "Reviewed all callers: flush factories only receive canonical model DML; get uses canonical key codecs. QuerySet filter provenance is tracked separately on pending list/lock consumers."
       ]
     },
     {
@@ -42919,8 +42940,8 @@
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::get",
       "kind": "executor",
-      "line": 433,
-      "fingerprint": "ee993c2d1de5fec4838b535b4d782de3ea15bfd0578663f33738dfab5204fab8",
+      "line": 431,
+      "fingerprint": "d880db5c1035f4303b13fd48e109d00a83bbb2f52481eca851138234c9394fa3",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -42929,17 +42950,18 @@
       "operation": "dml",
       "representation": "typed-query",
       "feature_reachability": [
-        "reinhardt-db/orm; configured Any backend drivers through canonical postgres/mysql/sqlite features"
+        "reinhardt-db/orm; configured backend drivers through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Session-owned SELECT uses quoted structural model projections and canonical primary-key codecs. The checked dialect renderer returns the exact SQL/Values pair consumed by the companion Any adapter and query_with on the owned pool. Temporal masks are bound; no inline SQL or custom projection fragments remain on these readers.",
+      "rationale": "Session-owned model DML and canonical key/field values are adapted on the typed AST before checked backend rendering. The exact owned SQL/Values pair enters the companion Any adapter and query_with on the original pool/caller-owned connection. No SQL text rewriting or manual argument loops remain.",
       "backends": [
         "postgres",
         "mysql",
         "sqlite"
       ],
       "evidence": [
-        "Three native backend regressions preserve quoted tables/physical columns, i64 width, custom logical key codec, complete long UTF-8 text, UUID/bool/decimal/JSON/nullable arrays/temporal/binary values and identity-map hits.",
-        "66 Session units, 13 executable rustdocs, warning-denied docs and production/regression Clippy; #6591/#6592/#6593/#6594 track independent baseline findings. Session.list/locks/flush manual binders remain pending."
+        "75 Session units verify actual unsigned range/redaction, structural complex casts, array declarations, SQL NULL slots and PostgreSQL native array acceptance.",
+        "Three native PostgreSQL/MySQL/SQLite scenarios preserve quoted physical identifiers and full complex-value INSERT/UPDATE/DELETE/read behavior; same-transaction row locks on PostgreSQL/MySQL and rollback pass. Strict Clippy, executable docs and warning-denied docs pass.",
+        "Reviewed all callers: flush factories only receive canonical model DML; get uses canonical key codecs. QuerySet filter provenance is tracked separately on pending list/lock consumers."
       ]
     },
     {
@@ -43003,138 +43025,158 @@
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::list_with_connection_inner",
       "kind": "execution-wrapper",
-      "line": 1028,
-      "fingerprint": "bb7397406018d9f3dbafa3f0d221bf3c4a1c91b57580ace008198ebe6c5f9b43",
+      "line": 686,
+      "fingerprint": "a21bff9c9389c9b090fbbceec4688cb3010973ab598b8d17b0c8bb719dc629ca",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
       "status": "pending",
-      "operation": "review-required",
+      "operation": "dml",
       "representation": "review-required",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; configured Any backend drivers through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Checked typed statements, structural Any casts and exact companion arguments replace the post-render SQL rewriter and manual binder. Completion remains pending because QuerySet WHERE lowering still constructs framework-owned custom SQL for ILIKE/regex/range/vendor predicates; those upstream producers must be migrated and re-reviewed before this terminal is classified typed.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "75 Session units and three native full-DML/transaction scenarios pass for reviewed ordinary predicates.",
+        "Reviewed complete list/nullable-lock flow through QuerySet::build_full_model_select_statement_for_backend and build_where_condition_for_backend; upstream custom predicate sites remain pending."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::list_with_connection_inner::executor#1",
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::list_with_connection_inner",
       "kind": "executor",
-      "line": 1023,
-      "fingerprint": "dbe1c94f227951798d50a62c722982099115eec47052045d30dfa024013640de",
+      "line": 686,
+      "fingerprint": "9a4b08a0b63cd1cee2900a04df1b30836fb76760c4470bc4877a772fadf43970",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
       "status": "pending",
-      "operation": "review-required",
+      "operation": "dml",
       "representation": "review-required",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; configured Any backend drivers through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Checked typed statements, structural Any casts and exact companion arguments replace the post-render SQL rewriter and manual binder. Completion remains pending because QuerySet WHERE lowering still constructs framework-owned custom SQL for ILIKE/regex/range/vendor predicates; those upstream producers must be migrated and re-reviewed before this terminal is classified typed.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "75 Session units and three native full-DML/transaction scenarios pass for reviewed ordinary predicates.",
+        "Reviewed complete list/nullable-lock flow through QuerySet::build_full_model_select_statement_for_backend and build_where_condition_for_backend; upstream custom predicate sites remain pending."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::list_with_connection_inner::sql-literal#1",
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::list_with_connection_inner",
       "kind": "sql-literal",
-      "line": 979,
-      "fingerprint": "dd60e99c6f6663b060281fc0f7f0f389d1a8219c659cf53be37a2d4be02d0677",
+      "line": 643,
+      "fingerprint": "de9f9d64972e62d3ded8d0e9e3c256a7bd9c6ba98b8a4f7404a75445ffa2b59e",
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "SELECT FOR UPDATE text appears only in backend/RIGHT JOIN validation errors returned before rendering or execution. It never becomes SQL.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete list/lock validation, source construction and generated execution flow; precise rejection and native transaction tests pass."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::list_with_connection_inner::sql-literal#2",
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::list_with_connection_inner",
       "kind": "sql-literal",
-      "line": 984,
-      "fingerprint": "f4ad0067e41f1e9b2af8917709214c693dcbf79d8799d143da1a531e4e8e5d5d",
+      "line": 648,
+      "fingerprint": "4946aa7ee108c9d106ff214dcd05b009c2b7e33d52a9683bbc1aefc2f51d3022",
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "SELECT FOR UPDATE text appears only in backend/RIGHT JOIN validation errors returned before rendering or execution. It never becomes SQL.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete list/lock validation, source construction and generated execution flow; precise rejection and native transaction tests pass."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::lock_nullable_relation_rows::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::lock_nullable_relation_rows",
       "kind": "execution-wrapper",
-      "line": 1067,
-      "fingerprint": "0540081d41b1588ca69a6f790804a4a1ae8dcd31f0de9b2fb2131ac1ca6feb36",
+      "line": 720,
+      "fingerprint": "5ff85e657212b55bcb172e30c7ebc804df7ab72c2292487ff51a064c94acd375",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
       "status": "pending",
-      "operation": "review-required",
+      "operation": "dml",
       "representation": "review-required",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; configured Any backend drivers through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Checked typed statements, structural Any casts and exact companion arguments replace the post-render SQL rewriter and manual binder. Completion remains pending because QuerySet WHERE lowering still constructs framework-owned custom SQL for ILIKE/regex/range/vendor predicates; those upstream producers must be migrated and re-reviewed before this terminal is classified typed.",
       "backends": [
-        "review-required"
+        "postgres"
       ],
-      "evidence": []
+      "evidence": [
+        "75 Session units and three native full-DML/transaction scenarios pass for reviewed ordinary predicates.",
+        "Reviewed complete list/nullable-lock flow through QuerySet::build_full_model_select_statement_for_backend and build_where_condition_for_backend; upstream custom predicate sites remain pending."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::lock_nullable_relation_rows::executor#1",
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::lock_nullable_relation_rows",
       "kind": "executor",
-      "line": 1063,
-      "fingerprint": "edd89cfe7f5af04f4d4ec6fddb59aafa66449e72d033f78eabe450dffb53adfd",
+      "line": 720,
+      "fingerprint": "057c9378eb2be7e8e24d45237fcce9557dc1cededa37e28c8a84a5e9d6708336",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
       "status": "pending",
-      "operation": "review-required",
+      "operation": "dml",
       "representation": "review-required",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; configured Any backend drivers through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Checked typed statements, structural Any casts and exact companion arguments replace the post-render SQL rewriter and manual binder. Completion remains pending because QuerySet WHERE lowering still constructs framework-owned custom SQL for ILIKE/regex/range/vendor predicates; those upstream producers must be migrated and re-reviewed before this terminal is classified typed.",
       "backends": [
-        "review-required"
+        "postgres"
       ],
-      "evidence": []
+      "evidence": [
+        "75 Session units and three native full-DML/transaction scenarios pass for reviewed ordinary predicates.",
+        "Reviewed complete list/nullable-lock flow through QuerySet::build_full_model_select_statement_for_backend and build_where_condition_for_backend; upstream custom predicate sites remain pending."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/sqlalchemy_query.rs::SelectQuery < T >::except::possible-inline-render#1",
