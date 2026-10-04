@@ -6505,9 +6505,14 @@ where
 		pattern: LikePattern,
 		case_insensitive: bool,
 	) -> SimpleExpr {
-		let operator = if case_insensitive { "ILIKE" } else { "LIKE" };
+		if !case_insensitive {
+			return SimpleExpr::LikeWithEscape(
+				Box::new(self.filter_lhs_expr(filter).into_simple_expr()),
+				Box::new(Expr::val(pattern.apply(value)).into_simple_expr()),
+			);
+		}
 		Expr::cust_with_values(
-			format!("{} {} ? ESCAPE '\\'", self.filter_lhs_sql(filter), operator),
+			format!("{} ILIKE ? ESCAPE '\\'", self.filter_lhs_sql(filter)),
 			[pattern.apply(value)],
 		)
 		.into_simple_expr()
@@ -11619,8 +11624,8 @@ fn query_values_from_sea_values(
 #[cfg(test)]
 mod tests {
 	use super::{
-		DateProjectionOrder, FilterCondition, MAX_FILTER_CONDITION_DEPTH, QueryFilterInput,
-		RowStream, StreamQueryAccounting, TimedRowStream, build_select_statement,
+		DateProjectionOrder, FilterCondition, LikePattern, MAX_FILTER_CONDITION_DEPTH,
+		QueryFilterInput, RowStream, StreamQueryAccounting, TimedRowStream, build_select_statement,
 	};
 	#[cfg(feature = "pgvector")]
 	use crate::orm::Field;
@@ -11637,8 +11642,8 @@ mod tests {
 	use reinhardt_query::{
 		QueryBuilder,
 		prelude::{
-			MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
-			TemporalTruncKind, TemporalTruncOutput,
+			ColumnRef, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
+			SqliteQueryBuilder, TemporalTruncKind, TemporalTruncOutput, Values,
 		},
 	};
 	use rstest::rstest;
@@ -14492,8 +14497,8 @@ mod tests {
 			.expect("update SQL should compile");
 
 		// HashMap iteration order is not guaranteed, so we check both possible orderings
-		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND (\"email\" LIKE $4 ESCAPE '\\'))";
-		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND (\"email\" LIKE $4 ESCAPE '\\'))";
+		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
+		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
 		assert!(
 			sql == valid_sql_1 || sql == valid_sql_2,
 			"Generated SQL '{}' does not match either expected pattern",
@@ -14540,7 +14545,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND (\"email\" LIKE $2 ESCAPE '\\'))"
+			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND \"email\" LIKE $2 ESCAPE '\\')"
 		);
 		assert_eq!(params, vec!["alice", "alice@%"]);
 	}
@@ -17237,6 +17242,48 @@ mod tests {
 		assert_eq!(sql, expected);
 	}
 
+	#[rstest]
+	#[case(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE $1 ESCAPE '\'"#
+	)]
+	#[case(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE `username` LIKE ? ESCAPE 0x5C"
+	)]
+	#[case(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE ? ESCAPE '\'"#
+	)]
+	fn case_sensitive_like_keeps_native_escape_and_bound_pattern(
+		#[case] backend: DatabaseBackend,
+		#[case] expected: &str,
+	) {
+		// Arrange: only the suffix is a wildcard; user metacharacters are literal data.
+		let query = QuerySet::<TestUser>::new();
+		let filter = Filter::new("username", FilterOperator::StartsWith, FilterValue::Null);
+		let expression = query.like_expr(
+			&filter,
+			r"tenant' ? $42:%_\",
+			LikePattern::StartsWith,
+			false,
+		);
+		let mut statement = Query::select();
+		statement
+			.column(ColumnRef::asterisk())
+			.from("test_users")
+			.and_where(expression);
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => PostgresQueryBuilder.build_select(&statement),
+			DatabaseBackend::MySql => MySqlQueryBuilder.build_select(&statement),
+			DatabaseBackend::Sqlite => SqliteQueryBuilder.build_select(&statement),
+		};
+		// Assert
+		assert_eq!(sql, expected);
+		assert_eq!(values, Values(vec![r"tenant' ? $42:\%\_\\%".into()]));
+	}
+
 	#[test]
 	fn typed_like_filters_treat_null_as_is_null() {
 		// Arrange
@@ -17446,7 +17493,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE (("username" LIKE '%lic%' ESCAPE '\') AND ("username" LIKE 'a%' ESCAPE '\') AND ("username" LIKE '%e' ESCAPE '\') AND ("username" ILIKE 'AL%' ESCAPE '\') AND ("username" ILIKE '%CE' ESCAPE '\') AND ("username" ~ '^a.*e$') AND ("username" ~* '^A.*E$'))"#
+			r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%lic%' ESCAPE '\' AND "username" LIKE 'a%' ESCAPE '\' AND "username" LIKE '%e' ESCAPE '\' AND ("username" ILIKE 'AL%' ESCAPE '\') AND ("username" ILIKE '%CE' ESCAPE '\') AND ("username" ~ '^a.*e$') AND ("username" ~* '^A.*E$'))"#
 		);
 	}
 

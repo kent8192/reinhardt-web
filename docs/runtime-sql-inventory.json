@@ -6979,349 +6979,214 @@
       "evidence": []
     },
     {
-      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend as CleanupableBackend::delete_keys_with_prefix::execution-wrapper#1",
+      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend as CleanupableBackend::count_keys_with_prefix::execution-wrapper#1",
       "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
-      "symbol": "DatabaseSessionBackend as CleanupableBackend::delete_keys_with_prefix",
+      "symbol": "DatabaseSessionBackend as CleanupableBackend::count_keys_with_prefix",
       "kind": "execution-wrapper",
       "line": 603,
-      "fingerprint": "69cb00b2cbde06600d7f64e08ee4361abc07ffad425169d7ec98051ef1771848",
+      "fingerprint": "afb0849a8ec38909ec69a0562229c150f007eda93168f9029db49049db41ca05",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-auth database; reinhardt-db canonical backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
       "backends": [
-        "review-required"
+        "postgres",
+        "cockroachdb",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "rationale": "Session persistence renders checked typed AST SQL and native Values as one owned pair before awaiting the injected ORM handle; expiration, UPSERT, prefix operations and existing error/results contracts are preserved.",
+      "evidence": [
+        "All three native PostgreSQL/MySQL/SQLite lifecycle scenarios passed quoted bound keys/JSON, UPSERT metadata preservation, deterministic cleanup, prefix counts/deletes and injected connection ownership after the supporting ORM case-sensitive LIKE repair #6547. MySQL has an explicit 180-second container initialization budget for shared Docker hosts.",
+        "Twelve database-session unit tests passed, including exact SQL/Values for PostgreSQL/MySQL/SQLite and NULL slot order. Seven focused doctests passed (one ignored); normal-feature strict production Clippy and warning-denied rustdoc passed.",
+        "The new cross-crate runtime_sql_sessions target passed strict Clippy. Normal-feature strict Auth production Clippy, seven focused doctests (one ignored) and warning-denied rustdoc passed; backend-minimal Auth warnings remain independently tracked in #6514."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend as CleanupableBackend::delete_keys_with_prefix::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
+      "symbol": "DatabaseSessionBackend as CleanupableBackend::delete_keys_with_prefix",
+      "kind": "execution-wrapper",
+      "line": 627,
+      "fingerprint": "79aba2e673a065a9d038921005d3cf8d53b813e0c3b3581e5a2530cb32f5cf00",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-auth database; reinhardt-db canonical backend features"
+      ],
+      "backends": [
+        "postgres",
+        "cockroachdb",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Session persistence renders checked typed AST SQL and native Values as one owned pair before awaiting the injected ORM handle; expiration, UPSERT, prefix operations and existing error/results contracts are preserved.",
+      "evidence": [
+        "All three native PostgreSQL/MySQL/SQLite lifecycle scenarios passed quoted bound keys/JSON, UPSERT metadata preservation, deterministic cleanup, prefix counts/deletes and injected connection ownership after the supporting ORM case-sensitive LIKE repair #6547. MySQL has an explicit 180-second container initialization budget for shared Docker hosts.",
+        "Twelve database-session unit tests passed, including exact SQL/Values for PostgreSQL/MySQL/SQLite and NULL slot order. Seven focused doctests passed (one ignored); normal-feature strict production Clippy and warning-denied rustdoc passed.",
+        "The new cross-crate runtime_sql_sessions target passed strict Clippy. Normal-feature strict Auth production Clippy, seven focused doctests (one ignored) and warning-denied rustdoc passed; backend-minimal Auth warnings remain independently tracked in #6514."
+      ]
     },
     {
       "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend as SessionBackend::delete::execution-wrapper#1",
       "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
       "symbol": "DatabaseSessionBackend as SessionBackend::delete",
       "kind": "execution-wrapper",
-      "line": 464,
-      "fingerprint": "ca49c8a8bfaf602e29819a978c703255157167c1a81c4e52ca1ad50ec228214f",
+      "line": 487,
+      "fingerprint": "6098f82d6d65adfb5283afb115e7ac7bb1b097e4b104b12e7641d59a2d021156",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-auth database; reinhardt-db canonical backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
       "backends": [
-        "review-required"
+        "postgres",
+        "cockroachdb",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "rationale": "Session persistence renders checked typed AST SQL and native Values as one owned pair before awaiting the injected ORM handle; expiration, UPSERT, prefix operations and existing error/results contracts are preserved.",
+      "evidence": [
+        "All three native PostgreSQL/MySQL/SQLite lifecycle scenarios passed quoted bound keys/JSON, UPSERT metadata preservation, deterministic cleanup, prefix counts/deletes and injected connection ownership after the supporting ORM case-sensitive LIKE repair #6547. MySQL has an explicit 180-second container initialization budget for shared Docker hosts.",
+        "Twelve database-session unit tests passed, including exact SQL/Values for PostgreSQL/MySQL/SQLite and NULL slot order. Seven focused doctests passed (one ignored); normal-feature strict production Clippy and warning-denied rustdoc passed.",
+        "The new cross-crate runtime_sql_sessions target passed strict Clippy. Normal-feature strict Auth production Clippy, seven focused doctests (one ignored) and warning-denied rustdoc passed; backend-minimal Auth warnings remain independently tracked in #6514."
+      ]
     },
     {
       "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend as SessionBackend::save::execution-wrapper#1",
       "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
       "symbol": "DatabaseSessionBackend as SessionBackend::save",
       "kind": "execution-wrapper",
-      "line": 448,
-      "fingerprint": "822898201651090843afe94f287eae2e64373f8cb36f158056f3d761af0e9f73",
+      "line": 470,
+      "fingerprint": "9a4ae74920d0d1ebdbc90f5da9b49acbbd9be92a81efa63ef184979b9f431c49",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-auth database; reinhardt-db canonical backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
       "backends": [
-        "review-required"
+        "postgres",
+        "cockroachdb",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::build_index_sql::possible-inline-render#1",
-      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
-      "symbol": "DatabaseSessionBackend::build_index_sql",
-      "kind": "possible-inline-render",
-      "line": 246,
-      "fingerprint": "8245fa47ab2e2bfa5f838d9628621e54a5c2a50b3dbb9420b518b08adc72cad5",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::build_index_sql::possible-inline-render#2",
-      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
-      "symbol": "DatabaseSessionBackend::build_index_sql",
-      "kind": "possible-inline-render",
-      "line": 247,
-      "fingerprint": "cce55576822cb55ccbb04e4398e2c0ca8e530b85a10c97ed017e6877a00798fb",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::build_index_sql::possible-inline-render#3",
-      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
-      "symbol": "DatabaseSessionBackend::build_index_sql",
-      "kind": "possible-inline-render",
-      "line": 248,
-      "fingerprint": "68adde83083f7bf772e5e5347a9f4c8bda4780a83b6d30a62e02d273dc5ae8bb",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::build_sql::possible-inline-render#1",
-      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
-      "symbol": "DatabaseSessionBackend::build_sql",
-      "kind": "possible-inline-render",
-      "line": 225,
-      "fingerprint": "8245fa47ab2e2bfa5f838d9628621e54a5c2a50b3dbb9420b518b08adc72cad5",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::build_sql::possible-inline-render#2",
-      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
-      "symbol": "DatabaseSessionBackend::build_sql",
-      "kind": "possible-inline-render",
-      "line": 226,
-      "fingerprint": "cce55576822cb55ccbb04e4398e2c0ca8e530b85a10c97ed017e6877a00798fb",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::build_sql::possible-inline-render#3",
-      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
-      "symbol": "DatabaseSessionBackend::build_sql",
-      "kind": "possible-inline-render",
-      "line": 227,
-      "fingerprint": "68adde83083f7bf772e5e5347a9f4c8bda4780a83b6d30a62e02d273dc5ae8bb",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::build_table_sql::possible-inline-render#1",
-      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
-      "symbol": "DatabaseSessionBackend::build_table_sql",
-      "kind": "possible-inline-render",
-      "line": 237,
-      "fingerprint": "8245fa47ab2e2bfa5f838d9628621e54a5c2a50b3dbb9420b518b08adc72cad5",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::build_table_sql::possible-inline-render#2",
-      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
-      "symbol": "DatabaseSessionBackend::build_table_sql",
-      "kind": "possible-inline-render",
-      "line": 238,
-      "fingerprint": "cce55576822cb55ccbb04e4398e2c0ca8e530b85a10c97ed017e6877a00798fb",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::build_table_sql::possible-inline-render#3",
-      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
-      "symbol": "DatabaseSessionBackend::build_table_sql",
-      "kind": "possible-inline-render",
-      "line": 239,
-      "fingerprint": "68adde83083f7bf772e5e5347a9f4c8bda4780a83b6d30a62e02d273dc5ae8bb",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
+      "rationale": "Session persistence renders checked typed AST SQL and native Values as one owned pair before awaiting the injected ORM handle; expiration, UPSERT, prefix operations and existing error/results contracts are preserved.",
+      "evidence": [
+        "All three native PostgreSQL/MySQL/SQLite lifecycle scenarios passed quoted bound keys/JSON, UPSERT metadata preservation, deterministic cleanup, prefix counts/deletes and injected connection ownership after the supporting ORM case-sensitive LIKE repair #6547. MySQL has an explicit 180-second container initialization budget for shared Docker hosts.",
+        "Twelve database-session unit tests passed, including exact SQL/Values for PostgreSQL/MySQL/SQLite and NULL slot order. Seven focused doctests passed (one ignored); normal-feature strict production Clippy and warning-denied rustdoc passed.",
+        "The new cross-crate runtime_sql_sessions target passed strict Clippy. Normal-feature strict Auth production Clippy, seven focused doctests (one ignored) and warning-denied rustdoc passed; backend-minimal Auth warnings remain independently tracked in #6514."
+      ]
     },
     {
       "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::cleanup_expired::execution-wrapper#1",
       "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
       "symbol": "DatabaseSessionBackend::cleanup_expired",
       "kind": "execution-wrapper",
-      "line": 284,
-      "fingerprint": "caec43006bbe111bfd814a7edb821996e5c3137ea1fca4749c42b66ca833f27f",
+      "line": 298,
+      "fingerprint": "985645d44aff673feb01b07273f81ea2d2376053fe802e14093243569d7e43be",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-auth database; reinhardt-db canonical backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
       "backends": [
-        "review-required"
+        "postgres",
+        "cockroachdb",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "rationale": "Session persistence renders checked typed AST SQL and native Values as one owned pair before awaiting the injected ORM handle; expiration, UPSERT, prefix operations and existing error/results contracts are preserved.",
+      "evidence": [
+        "All three native PostgreSQL/MySQL/SQLite lifecycle scenarios passed quoted bound keys/JSON, UPSERT metadata preservation, deterministic cleanup, prefix counts/deletes and injected connection ownership after the supporting ORM case-sensitive LIKE repair #6547. MySQL has an explicit 180-second container initialization budget for shared Docker hosts.",
+        "Twelve database-session unit tests passed, including exact SQL/Values for PostgreSQL/MySQL/SQLite and NULL slot order. Seven focused doctests passed (one ignored); normal-feature strict production Clippy and warning-denied rustdoc passed.",
+        "The new cross-crate runtime_sql_sessions target passed strict Clippy. Normal-feature strict Auth production Clippy, seven focused doctests (one ignored) and warning-denied rustdoc passed; backend-minimal Auth warnings remain independently tracked in #6514."
+      ]
     },
     {
       "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::create_table::execution-wrapper#1",
       "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
       "symbol": "DatabaseSessionBackend::create_table",
       "kind": "execution-wrapper",
-      "line": 337,
-      "fingerprint": "01286127db99bced671c5ce7fd6551d4abfe5f365b92d31a835cfcd38fc0e440",
+      "line": 354,
+      "fingerprint": "52deb77b1e840cea47a8150978f737bfb0b2269d8a92166a1f83fa13f7339bd4",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "schema",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-auth database; reinhardt-db canonical backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
       "backends": [
-        "review-required"
+        "postgres",
+        "cockroachdb",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "rationale": "Session persistence renders checked typed AST SQL and native Values as one owned pair before awaiting the injected ORM handle; expiration, UPSERT, prefix operations and existing error/results contracts are preserved.",
+      "evidence": [
+        "All three native PostgreSQL/MySQL/SQLite lifecycle scenarios passed quoted bound keys/JSON, UPSERT metadata preservation, deterministic cleanup, prefix counts/deletes and injected connection ownership after the supporting ORM case-sensitive LIKE repair #6547. MySQL has an explicit 180-second container initialization budget for shared Docker hosts.",
+        "Twelve database-session unit tests passed, including exact SQL/Values for PostgreSQL/MySQL/SQLite and NULL slot order. Seven focused doctests passed (one ignored); normal-feature strict production Clippy and warning-denied rustdoc passed.",
+        "The new cross-crate runtime_sql_sessions target passed strict Clippy. Normal-feature strict Auth production Clippy, seven focused doctests (one ignored) and warning-denied rustdoc passed; backend-minimal Auth warnings remain independently tracked in #6514."
+      ]
     },
     {
       "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend::create_table::execution-wrapper#2",
       "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
       "symbol": "DatabaseSessionBackend::create_table",
       "kind": "execution-wrapper",
-      "line": 350,
-      "fingerprint": "1251c4b45beba257e81f6f47380102f660d5d5779d94cbc9a81d689f29904d3a",
+      "line": 370,
+      "fingerprint": "52deb77b1e840cea47a8150978f737bfb0b2269d8a92166a1f83fa13f7339bd4",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "schema",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-auth database; reinhardt-db canonical backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
       "backends": [
-        "review-required"
+        "postgres",
+        "cockroachdb",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "rationale": "Session persistence renders checked typed AST SQL and native Values as one owned pair before awaiting the injected ORM handle; expiration, UPSERT, prefix operations and existing error/results contracts are preserved.",
+      "evidence": [
+        "All three native PostgreSQL/MySQL/SQLite lifecycle scenarios passed quoted bound keys/JSON, UPSERT metadata preservation, deterministic cleanup, prefix counts/deletes and injected connection ownership after the supporting ORM case-sensitive LIKE repair #6547. MySQL has an explicit 180-second container initialization budget for shared Docker hosts.",
+        "Twelve database-session unit tests passed, including exact SQL/Values for PostgreSQL/MySQL/SQLite and NULL slot order. Seven focused doctests passed (one ignored); normal-feature strict production Clippy and warning-denied rustdoc passed.",
+        "The new cross-crate runtime_sql_sessions target passed strict Clippy. Normal-feature strict Auth production Clippy, seven focused doctests (one ignored) and warning-denied rustdoc passed; backend-minimal Auth warnings remain independently tracked in #6514."
+      ]
     },
     {
       "id": "crates/reinhardt-auth/src/sessions/middleware.rs::SessionMiddleware < B > as Middleware::process::sql-literal#1",
@@ -41212,8 +41077,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::like_expr",
       "kind": "custom-fragment",
-      "line": 6509,
-      "fingerprint": "3ab07724708bf4a4d83e03841c166276f626be2b0de79ac38a99c9d279ef9b42",
+      "line": 6514,
+      "fingerprint": "8c5b965f9f37ed9c8bd2e5bfa8d31df81822662e5d67402c2765e9bbdd25533e",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -41224,11 +41089,13 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Case-sensitive LIKE now uses the native LikeWithEscape AST with typed filter LHS and bound escaped patterns (repair #6547). The remaining case-insensitive ILIKE fragment still needs a typed capability and backend-contract review.",
       "backends": [
         "review-required"
       ],
-      "evidence": []
+      "evidence": [
+        "Three dialect SQL/Values regressions, 249 QuerySet units, production strict Clippy and three native session lifecycle scenarios passed the case-sensitive typed path; redundant grouping snapshots were updated to the native AST shape."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::rows_with_db::execution-wrapper#1",
