@@ -367,7 +367,8 @@ impl MySqlQueryBuilder {
 				self.write_simple_expr(writer, expr);
 				writer.push(" LIKE ");
 				self.write_simple_expr(writer, pattern);
-				writer.push(" ESCAPE '\\\\'");
+				// A hex literal is valid with either string-literal backslash mode.
+				writer.push(" ESCAPE 0x5C");
 			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions

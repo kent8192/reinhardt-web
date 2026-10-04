@@ -282,6 +282,11 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 
 ### Query with QuerySet
 
+Case-sensitive `Contains`, `StartsWith`, and `EndsWith` lookups escape literal
+`%`, `_`, and backslash characters in their bound patterns. Column identifiers
+use the selected backend's quoting. MySQL renders the escape character as
+`ESCAPE 0x5C`; PostgreSQL and SQLite use `ESCAPE '\'`.
+
 ```rust
 use reinhardt_db::orm::Model;
 

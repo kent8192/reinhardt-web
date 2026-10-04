@@ -262,8 +262,8 @@ fn postgres_to_string_renders_byte_array_defaults_and_checks() {
 #[rstest]
 #[case::mysql(
 	MySqlQueryBuilder,
-	r"SELECT `title` LIKE ? ESCAPE '\\', `content` LIKE ? ESCAPE '\\', `suffix` LIKE ? ESCAPE '\\'",
-	r"SELECT `title` LIKE '%web%' ESCAPE '\\', `content` LIKE 'guide%' ESCAPE '\\', `suffix` LIKE '%.md' ESCAPE '\\'"
+	"SELECT `title` LIKE ? ESCAPE 0x5C, `content` LIKE ? ESCAPE 0x5C, `suffix` LIKE ? ESCAPE 0x5C",
+	"SELECT `title` LIKE '%web%' ESCAPE 0x5C, `content` LIKE 'guide%' ESCAPE 0x5C, `suffix` LIKE '%.md' ESCAPE 0x5C"
 )]
 #[case::postgres(
 	PostgresQueryBuilder,
