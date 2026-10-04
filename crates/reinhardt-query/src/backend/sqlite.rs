@@ -10,7 +10,8 @@ use crate::{
 		CreateIndexStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
 		DeleteStatement, DropIndexStatement, DropTableStatement, DropTriggerStatement,
 		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
-		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
+		RepairTableStatement, SelectStatement, SqliteDatabaseListStatement, TruncateTableStatement,
+		UpdateStatement,
 	},
 	types::{
 		BinOper, ColumnRef, GeneratedColumn, GeneratedStorage, SchemaBinOper, SchemaExpr,
@@ -50,6 +51,13 @@ use crate::{
 pub struct SqliteQueryBuilder;
 
 impl SqliteQueryBuilder {
+	pub(crate) fn build_database_list(
+		&self,
+		_stmt: &SqliteDatabaseListStatement,
+	) -> (String, Values) {
+		("PRAGMA database_list".to_owned(), Values::default())
+	}
+
 	/// Create a new SQLite query builder
 	pub fn new() -> Self {
 		Self

@@ -52,6 +52,19 @@ placeholders (`$1`, `$2`, ...) and generic literals for positional placeholders
 - **SQLite** - DML and basic DDL operations
 - **CockroachDB** - Full PostgreSQL compatibility with distributed database features
 
+### SQLite Connection Inspection
+
+`Query::sqlite_database_list().build_sqlite_checked()` generates
+`PRAGMA database_list` with no parameters. The result retains SQLite's `seq`,
+`name`, and `file` columns, including empty filenames. Execution and decoding
+remain caller-owned, and the list describes the executing connection rather
+than the entire pool. An empty filename does not prove that a pool shares its
+main database.
+
+`SqliteDatabaseListStatement` exposes only checked rendering; its PostgreSQL,
+MySQL, and CockroachDB methods return `QueryBuildError::UnsupportedBackendFeature`.
+SQL generation has P2 native/WASM parity and needs no optional feature.
+
 ## Installation
 
 Add to your `Cargo.toml`:

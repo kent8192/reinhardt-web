@@ -23,6 +23,8 @@
 //! - **Type-safe query construction** - Build SELECT, INSERT, UPDATE, DELETE statements
 //! - **Plan-only diagnostics** - Wrap typed SELECT statements in backend-aware
 //!   [`ExplainStatement`] values without exposing `ANALYZE`
+//! - **SQLite connection inspection** - Checked [`SqliteDatabaseListStatement`]
+//!   generation preserves `seq`, `name`, and `file`; execution remains caller-owned
 //! - **DCL (Data Control Language) support** - Build GRANT and REVOKE statements
 //! - **Expression system** - Rich expression API with arithmetic, comparison, and logical operators
 //! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
@@ -398,7 +400,7 @@ pub mod prelude {
 		DeleteStatement, ExplainFormat, ExplainOptions, ExplainStatement, ForeignKey,
 		ForeignKeyCreateStatement, InsertStatement, LockBehavior, LockType, OnConflict, Query,
 		QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter, SelectStatement,
-		UpdateStatement,
+		SqliteDatabaseListStatement, UpdateStatement,
 	};
 	// DDL query builders
 	pub use crate::query::{
