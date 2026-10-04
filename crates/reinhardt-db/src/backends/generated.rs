@@ -81,6 +81,12 @@ pub(crate) fn legacy_values(values: Values, backend: &str) -> Result<Vec<QueryVa
 				Value::String(v) => v.map(|v| QueryValue::String(*v)),
 				Value::Bytes(v) => v.map(|v| QueryValue::Bytes(*v)),
 				Value::ChronoDateTimeUtc(v) => v.map(|v| QueryValue::Timestamp(*v)),
+				Value::ChronoDateTimeLocal(v) => {
+					v.map(|v| QueryValue::Timestamp(v.with_timezone(&chrono::Utc)))
+				}
+				Value::ChronoDateTimeWithTimeZone(v) => {
+					v.map(|v| QueryValue::Timestamp(v.with_timezone(&chrono::Utc)))
+				}
 				Value::Uuid(v) => v.map(|v| QueryValue::Uuid(*v)),
 				_ => return Err(fail("type requires a native generated-value codec")),
 			};

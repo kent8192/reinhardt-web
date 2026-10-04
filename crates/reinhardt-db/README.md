@@ -120,6 +120,12 @@ The public `orm::execution::convert_values` function remains a legacy compatibil
 adapter with its historical lossy behavior. Explicit raw executors still accept
 `Vec<QueryValue>`, and row decoding retains its existing contract.
 
+External backends implementing only the raw executor API use a checked adapter
+for generated dispatch. It normalizes local and fixed-offset datetimes to UTC
+`QueryValue::Timestamp` values while retaining the instant and nanosecond precision;
+typed NULL datetimes become `QueryValue::Null`. Values that cannot be represented
+without loss in `QueryValue` are rejected before calling the raw executor.
+
 Model creation and updates through `Manager::create`, `Manager::create_with_conn`,
 `Manager::update`, and `Manager::update_with_conn` still serialize fields through
 JSON and convert arguments to `Vec<QueryValue>`, retaining their existing lossy

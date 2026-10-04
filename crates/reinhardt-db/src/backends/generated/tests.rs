@@ -32,6 +32,171 @@ fn legacy_fallback_rejects_loss_with_redacted_position(
 	assert_eq!(error, super::error("postgres", 2, kind, reason));
 }
 
+#[rstest]
+#[case::positive(9 * 3600, "2026-10-03T16:02:03.123456789Z")]
+#[case::negative(-7 * 3600, "2026-10-05T06:02:03.987654321Z")]
+fn legacy_fallback_preserves_zoned_timestamps_and_nulls(
+	#[case] offset_seconds: i32,
+	#[case] timestamp: &str,
+) {
+	// Arrange
+	let utc = timestamp.parse::<chrono::DateTime<chrono::Utc>>().unwrap();
+	let offset = chrono::FixedOffset::east_opt(offset_seconds).unwrap();
+	let values = Values(vec![
+		Value::Int(Some(7)),
+		Value::ChronoDateTimeLocal(Some(Box::new(chrono::DateTime::from_naive_utc_and_offset(
+			utc.naive_utc(),
+			offset,
+		)))),
+		Value::ChronoDateTimeWithTimeZone(Some(Box::new(utc.with_timezone(&offset)))),
+		Value::ChronoDateTimeLocal(None),
+		Value::ChronoDateTimeWithTimeZone(None),
+		Value::ChronoDateTimeUtc(Some(Box::new(utc))),
+	]);
+
+	// Act
+	let params = legacy_values(values, "sqlite").unwrap();
+
+	// Assert
+	assert_eq!(
+		params,
+		vec![
+			QueryValue::Int(7),
+			QueryValue::Timestamp(utc),
+			QueryValue::Timestamp(utc),
+			QueryValue::Null,
+			QueryValue::Null,
+			QueryValue::Timestamp(utc),
+		]
+	);
+}
+
+#[cfg(feature = "sqlite")]
+mod raw_only_backend {
+	use super::*;
+	use crate::backends::{
+		DatabaseBackend, DatabaseType, QueryResult, Row, SqliteBackend, TransactionExecutor,
+	};
+	use reinhardt_query::{ColumnDef, ExprTrait, QueryBuilder, SqliteQueryBuilder};
+	use rstest::fixture;
+
+	// This external-style adapter implements only the public raw executor API.
+	struct RawOnlyBackend(SqliteBackend);
+
+	#[async_trait::async_trait]
+	impl DatabaseBackend for RawOnlyBackend {
+		fn database_type(&self) -> DatabaseType {
+			self.0.database_type()
+		}
+		fn placeholder(&self, index: usize) -> String {
+			self.0.placeholder(index)
+		}
+		fn supports_returning(&self) -> bool {
+			self.0.supports_returning()
+		}
+		fn supports_on_conflict(&self) -> bool {
+			self.0.supports_on_conflict()
+		}
+		async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
+			self.0.execute(sql, params).await
+		}
+		async fn fetch_one(&self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
+			self.0.fetch_one(sql, params).await
+		}
+		async fn fetch_all(&self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
+			self.0.fetch_all(sql, params).await
+		}
+		async fn fetch_optional(&self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
+			self.0.fetch_optional(sql, params).await
+		}
+		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
+			self.0.begin().await
+		}
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+	}
+
+	#[fixture]
+	async fn backend() -> RawOnlyBackend {
+		let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+		RawOnlyBackend(SqliteBackend::new(pool))
+	}
+
+	#[rstest]
+	#[case::fixed_positive(false, 9 * 3600, Some("2026-10-03T16:02:03.123456789Z"))]
+	#[case::fixed_negative(false, -7 * 3600, Some("2026-10-05T06:02:03.987654321Z"))]
+	#[case::local_positive(true, 9 * 3600, Some("2026-10-03T16:02:03.123456789Z"))]
+	#[case::local_negative(true, -7 * 3600, Some("2026-10-05T06:02:03.987654321Z"))]
+	#[case::fixed_null(false, 0, None)]
+	#[case::local_null(true, 0, None)]
+	#[tokio::test]
+	async fn generated_defaults_preserve_zoned_timestamps(
+		#[future] backend: RawOnlyBackend,
+		#[case] local: bool,
+		#[case] offset_seconds: i32,
+		#[case] timestamp: Option<&str>,
+	) {
+		// Arrange
+		let backend = backend.await;
+		let utc =
+			timestamp.map(|timestamp| timestamp.parse::<chrono::DateTime<chrono::Utc>>().unwrap());
+		let offset = chrono::FixedOffset::east_opt(offset_seconds).unwrap();
+		let value = if local {
+			Value::ChronoDateTimeLocal(utc.map(|utc| {
+				Box::new(chrono::DateTime::from_naive_utc_and_offset(
+					utc.naive_utc(),
+					offset,
+				))
+			}))
+		} else {
+			Value::ChronoDateTimeWithTimeZone(utc.map(|utc| Box::new(utc.with_timezone(&offset))))
+		};
+		let create = Query::create_table()
+			.table("timestamp_probe")
+			.col(ColumnDef::new("id").integer().primary_key(true))
+			.col(ColumnDef::new("timestamp").timestamp())
+			.to_owned();
+		let (sql, _) = SqliteQueryBuilder.build_create_table(&create);
+		backend.execute(&sql, vec![]).await.unwrap();
+		let (insert_sql, insert_values) = Query::insert()
+			.into_table("timestamp_probe")
+			.columns(["id", "timestamp"])
+			.values_panic([Value::Int(Some(7)), value.clone()])
+			.build(SqliteQueryBuilder);
+		let (select_sql, select_values) = Query::select()
+			.from("timestamp_probe")
+			.columns(["id", "timestamp"])
+			.expr_as(Expr::val(value), "bound_timestamp")
+			.and_where(Expr::col("id").eq(7))
+			.build(SqliteQueryBuilder);
+
+		// Act: each method uses the trait's default generated-value adapter.
+		let result = backend
+			.__execute_generated(&insert_sql, insert_values)
+			.await
+			.unwrap();
+		let row = backend
+			.__fetch_one_generated(&select_sql, select_values.clone())
+			.await
+			.unwrap();
+		let rows = backend
+			.__fetch_all_generated(&select_sql, select_values)
+			.await
+			.unwrap();
+
+		// Assert
+		let expected = utc
+			.map(|utc| QueryValue::String(utc.to_rfc3339()))
+			.unwrap_or(QueryValue::Null);
+		assert_eq!(result.rows_affected, 1);
+		assert_eq!(row.data["id"], QueryValue::Int(7));
+		assert_eq!(row.data["timestamp"], expected);
+		assert_eq!(row.data["bound_timestamp"], expected);
+		assert_eq!(rows, vec![row]);
+	}
+}
+
 #[cfg(feature = "postgres")]
 #[rstest]
 #[case(
