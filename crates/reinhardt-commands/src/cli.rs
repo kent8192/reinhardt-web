@@ -1231,13 +1231,6 @@ fn is_unknown_subcommand(err: &clap::Error) -> bool {
 	matches!(err.kind(), clap::error::ErrorKind::InvalidSubcommand)
 }
 
-/// Known global options that accept a separate value argument.
-///
-/// When skipping leading flags we must also consume the following token for
-/// options that take a value (e.g. `--verbosity 2`). Without this, the value
-/// would be mistaken for the subcommand name.
-const GLOBAL_OPTIONS_WITH_VALUE: &[&str] = &["--verbosity"];
-
 /// Try to resolve raw CLI arguments into a custom command from the registry.
 ///
 /// The convention is: `manage <subcommand> [args...]`.  Global flags that
@@ -1261,7 +1254,7 @@ fn resolve_custom_command(
 		}
 		let flag = iter.next().unwrap(); // safe: peeked above
 
-		if flag == "--verbose" {
+		if flag == "--verbosity" {
 			verbosity = verbosity.saturating_add(1);
 		} else if let Some(short_flags) = flag.strip_prefix('-')
 			&& !flag.starts_with("--")
@@ -1270,19 +1263,9 @@ fn resolve_custom_command(
 			for _ in short_flags.chars() {
 				verbosity = verbosity.saturating_add(1);
 			}
-		} else if flag == "--verbosity" {
-			// Consume the next token as the value.
-			if let Some(val) = iter.peek()
-				&& !val.starts_with('-')
-			{
-				verbosity = val.parse().unwrap_or(0);
-				iter.next();
-			}
-		} else if let Some(val) = flag.strip_prefix("--verbosity=") {
-			verbosity = val.parse().unwrap_or(0);
-		} else if GLOBAL_OPTIONS_WITH_VALUE.contains(&flag.as_str()) {
-			// Skip the value for other known options that take one.
-			iter.next();
+		} else {
+			// Let clap report unsupported global flags before dispatching a command.
+			return None;
 		}
 	}
 
@@ -2070,6 +2053,81 @@ mod tests {
 		);
 	}
 
+	#[cfg(feature = "contract")]
+	struct CapabilityAudit;
+
+	#[cfg(feature = "contract")]
+	#[async_trait]
+	impl crate::CapabilityCommand for CapabilityAudit {
+		fn cli(&self) -> clap::Command {
+			clap::Command::new("audit")
+		}
+
+		fn requirements(&self, _matches: &clap::ArgMatches) -> Vec<crate::CapabilityRequirement> {
+			Vec::new()
+		}
+
+		async fn execute(
+			&self,
+			_matches: &clap::ArgMatches,
+			_context: &crate::CapabilityContext,
+		) -> crate::CommandResult<()> {
+			unreachable!("parser-only test command must not execute")
+		}
+	}
+
+	#[cfg(feature = "contract")]
+	#[rstest]
+	#[case(&["--verbosity"], 1)]
+	#[case(&["--verbosity", "--verbosity"], 2)]
+	#[case(&["-vv", "--verbosity"], 3)]
+	fn capability_parser_counts_verbosity_without_consuming_custom_command(
+		#[case] flags: &[&str],
+		#[case] expected: u8,
+	) {
+		// Arrange
+		let mut registry = CommandRegistry::new();
+		registry.register_capability(Box::new(CapabilityAudit));
+		let args: Vec<_> = std::iter::once("manage")
+			.chain(flags.iter().copied())
+			.chain(["audit", "--scope", "users"])
+			.map(std::ffi::OsString::from)
+			.collect();
+
+		// Act
+		let (command, verbosity, selection) =
+			parse_capability_cli_arguments(&args, &registry).unwrap();
+
+		// Assert
+		assert_eq!(verbosity, expected);
+		assert!(selection.is_none());
+		assert!(matches!(command, Commands::Custom { name, args }
+			if name == "audit" && args == ["--scope", "users"]));
+	}
+
+	#[cfg(feature = "contract")]
+	#[rstest]
+	#[case("--verbosity=3")]
+	#[case("--unknown-option")]
+	fn capability_parser_rejects_invalid_global_options(#[case] flag: &str) {
+		// Arrange
+		let mut registry = CommandRegistry::new();
+		registry.register_capability(Box::new(CapabilityAudit));
+		let args: Vec<_> = ["manage", flag, "audit"]
+			.into_iter()
+			.map(std::ffi::OsString::from)
+			.collect();
+		let expected = Cli::try_parse_from(&args).unwrap_err().kind();
+
+		// Act
+		let DriverParseError::Clap(error) = parse_capability_cli_arguments(&args, &registry)
+			.err()
+			.expect("invalid global option must fail before dispatch");
+
+		// Assert
+		assert_eq!(error.kind(), expected);
+	}
+
 	#[cfg(feature = "openapi")]
 	struct EnvVarGuard {
 		key: &'static str,
@@ -2222,14 +2280,22 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn resolve_cli_command_preserves_custom_args_and_verbosity() {
 		let recorded = Arc::new(Mutex::new(None));
 		let mut registry = CommandRegistry::new();
 		registry.register(Box::new(RecordingCommand::new("audit", recorded)));
 
 		let (command, verbosity) = resolve_cli_command(
-			["manage", "--verbosity", "3", "audit", "--scope", "users"],
+			[
+				"manage",
+				"--verbosity",
+				"--verbosity",
+				"--verbosity",
+				"audit",
+				"--scope",
+				"users",
+			],
 			&registry,
 		)
 		.expect("custom command resolves");
