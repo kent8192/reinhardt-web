@@ -158,6 +158,11 @@ uses its existing nested atomic scope for generated savepoints. InsertExecution
 and generic SelectExecution async methods use these owned arguments while the
 public legacy `convert_values` API retains its historical raw parameter contract.
 
+QuerySet execution, count, EXPLAIN, temporal projections, typed terminal
+aggregates, updates, deletes and borrowed iterators also consume the owned
+renderer pair. Query instrumentation keeps its existing SQL and parameter
+samples; these diagnostic samples are separate from the native driver arguments.
+
 ### Streaming QuerySets
 
 `QuerySet::iterator_with_db` and `QuerySet::iterator_with_executor` decode one

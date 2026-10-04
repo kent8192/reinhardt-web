@@ -11,7 +11,11 @@ use reinhardt_db::backends::{DatabaseConnection, DatabaseErrorKind, DatabaseType
 use reinhardt_db::orm::execution::{
 	ExecutionError, InsertExecution, QueryExecution, SelectExecution,
 };
-use reinhardt_db::orm::{DatabaseConnectionLease, Model, OrmExecutor};
+use reinhardt_db::orm::query::{FieldAssignment, Filter, UpdateValue};
+use reinhardt_db::orm::{
+	DatabaseConnectionLease, DatabaseValue, FilterOperator, FilterValue, Model, OrmExecutor,
+	QuerySet,
+};
 use reinhardt_query::{
 	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
 	SqliteQueryBuilder, Value, Values,
@@ -415,6 +419,131 @@ async fn exercise_orm_generated_capabilities(connection: &DatabaseConnection) {
 	);
 }
 
+async fn exercise_queryset_generated_capabilities(connection: &DatabaseConnection) {
+	let database = connection.database_type();
+	// Arrange: punctuation and precise decimal operands must reach the driver unchanged.
+	let precise = rust_decimal::Decimal::from_str_exact("123456789012.123456789012").unwrap();
+	let amount = if database == DatabaseType::Sqlite {
+		Value::Double(Some(1.25))
+	} else {
+		Value::Decimal(Some(Box::new(precise)))
+	};
+	connection
+		.execute_generated(
+			build(
+				database,
+				Query::insert()
+					.into_table(Alias::new("generated_rows"))
+					.columns([Alias::new("id"), Alias::new("name"), Alias::new("amount")])
+					.values_panic([Value::Int(Some(29)), "queryset' ? $9".into(), amount])
+					.take(),
+			),
+			None,
+		)
+		.await
+		.unwrap();
+	let lease = DatabaseConnectionLease::register(connection.clone()).unwrap();
+	let mut handle = lease.handle();
+	let by_id = QuerySet::<GeneratedModel>::new().filter(Filter::new(
+		"id",
+		FilterOperator::Eq,
+		FilterValue::Typed(Ok(DatabaseValue::I32(29))),
+	));
+	let mut query = by_id.clone().filter(Filter::new(
+		"name",
+		FilterOperator::Eq,
+		FilterValue::String("queryset' ? $9".into()),
+	));
+	if database != DatabaseType::Sqlite {
+		query = query.filter(Filter::new(
+			"amount",
+			FilterOperator::Eq,
+			FilterValue::Typed(Ok(DatabaseValue::Decimal(precise))),
+		));
+	}
+	let query = query.order_by(&["id"]).limit(2).offset(0);
+	let expected = GeneratedModel {
+		id: Some(29),
+		name: "queryset' ? $9".into(),
+	};
+	// Act / Assert: pool and transaction paths preserve filtering and bound pagination.
+	assert_eq!(
+		query.all_with_db(&mut handle).await.unwrap(),
+		vec![expected.clone()]
+	);
+	assert_eq!(query.rows_with_db(&mut handle).await.unwrap().len(), 1);
+	assert_eq!(by_id.count_with_db(&mut handle).await.unwrap(), 1);
+	let mut rows = query.iterator_with_db(&mut handle, 1).unwrap();
+	assert_eq!(rows.next().await.unwrap().unwrap(), expected);
+	assert!(rows.next().await.is_none());
+	drop(rows);
+	let mut transaction = connection.begin().await.unwrap();
+	assert_eq!(
+		query.all_with_executor(transaction.as_mut()).await.unwrap(),
+		vec![expected.clone()]
+	);
+	assert_eq!(
+		query
+			.rows_with_executor(transaction.as_mut())
+			.await
+			.unwrap()
+			.len(),
+		1
+	);
+	assert_eq!(
+		by_id
+			.count_with_executor(transaction.as_mut())
+			.await
+			.unwrap(),
+		1
+	);
+	let mut rows = query
+		.iterator_with_executor(transaction.as_mut(), 1)
+		.unwrap();
+	assert_eq!(rows.next().await.unwrap().unwrap(), expected);
+	drop(rows);
+	transaction.rollback().await.unwrap();
+	let updated_amount = if database == DatabaseType::Sqlite {
+		UpdateValue::Float(2.5)
+	} else {
+		UpdateValue::Typed(Ok(DatabaseValue::Decimal(
+			precise + rust_decimal::Decimal::ONE,
+		)))
+	};
+	assert_eq!(
+		by_id
+			.update_fields_with_conn(
+				&mut handle,
+				[
+					FieldAssignment::new("name", UpdateValue::String("updated' ? $4".into())),
+					FieldAssignment::new("amount", updated_amount),
+				]
+			)
+			.await
+			.unwrap(),
+		1,
+	);
+	let mut matching = by_id.clone();
+	if database != DatabaseType::Sqlite {
+		matching = matching.filter(Filter::new(
+			"amount",
+			FilterOperator::Eq,
+			FilterValue::Typed(Ok(DatabaseValue::Decimal(
+				precise + rust_decimal::Decimal::ONE,
+			))),
+		));
+	}
+	assert_eq!(
+		matching.all_with_db(&mut handle).await.unwrap(),
+		vec![GeneratedModel {
+			id: Some(29),
+			name: "updated' ? $4".into(),
+		}]
+	);
+	assert_eq!(by_id.delete_with_conn(&mut handle).await.unwrap(), 1);
+	assert_eq!(by_id.count_with_db(&mut handle).await.unwrap(), 0);
+}
+
 async fn exercise_transactions_and_streams(connection: &DatabaseConnection) {
 	let database = connection.database_type();
 	match database {
@@ -703,6 +832,7 @@ async fn postgres_generated_pool_execution_keeps_decimal_and_nullable_arrays() {
 	exercise_crud(&connection).await;
 	exercise_transactions_and_streams(&connection).await;
 	exercise_orm_generated_capabilities(&connection).await;
+	exercise_queryset_generated_capabilities(&connection).await;
 	// Arrange / Act: nullable array elements bypass the legacy Debug conversion.
 	connection
 		.execute("CREATE TABLE generated_arrays (items INTEGER[])", vec![])
@@ -754,6 +884,7 @@ async fn mysql_generated_pool_execution_keeps_decimal_and_full_unsigned_range() 
 	exercise_crud(&connection).await;
 	exercise_transactions_and_streams(&connection).await;
 	exercise_orm_generated_capabilities(&connection).await;
+	exercise_queryset_generated_capabilities(&connection).await;
 	// Arrange / Act: the native backend must bypass the signed compatibility bridge.
 	connection
 		.execute(
@@ -802,6 +933,7 @@ async fn sqlite_generated_pool_execution_keeps_text_uuid_and_rejects_lossy_value
 	exercise_crud(&connection).await;
 	exercise_transactions_and_streams(&connection).await;
 	exercise_orm_generated_capabilities(&connection).await;
+	exercise_queryset_generated_capabilities(&connection).await;
 	// Act: failed encoding must occur before an invalid SQL statement is executed.
 	let built = build(
 		DatabaseType::Sqlite,

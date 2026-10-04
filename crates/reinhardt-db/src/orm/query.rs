@@ -9,6 +9,7 @@ use super::field_codec::{
 	DatabaseField, DatabaseValue, FieldCodecError, IntoFieldValue, database_value_to_query_value,
 };
 use super::{FieldSelector, Model};
+#[cfg(test)]
 use crate::backends::types::QueryValue;
 use crate::naming::to_snake_case;
 use crate::orm::query_fields::comparison::FieldComparison;
@@ -29,6 +30,7 @@ use reinhardt_query::prelude::{
 	UpdateStatement,
 };
 use reinhardt_query::types::PgBinOper;
+#[cfg(test)]
 use reinhardt_query::value::Value;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -3071,22 +3073,27 @@ where
 	}
 
 	async fn temporal_rows_with_db<E>(
-		stmt: &SelectStatement,
+		stmt: SelectStatement,
 		conn: &mut E,
 	) -> reinhardt_core::exception::Result<Vec<crate::backends::types::Row>>
 	where
 		E: OrmExecutor,
 	{
-		let context = super::execution::pgvector_context_for_select(stmt);
-		let (sql, values) =
-			Self::build_select_for_backend(stmt, conn.backend(), conn.is_cockroachdb())?;
+		let ((sql, values), context) = {
+			let stmt = stmt;
+			let context = super::execution::pgvector_context_for_select(&stmt);
+			let built =
+				Self::build_select_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?;
+			(built, context)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let result = conn.fetch_all_with_context(&sql, params, context).await;
+		let result = conn
+			.fetch_all_generated((sql.clone(), values), context)
+			.await;
 		let duration = started_at.elapsed();
 		match result {
 			Ok(rows) => {
@@ -3105,23 +3112,26 @@ where
 	}
 
 	async fn temporal_rows_with_executor(
-		stmt: &SelectStatement,
+		stmt: SelectStatement,
 		executor: &mut dyn super::connection::TransactionExecutor,
 	) -> Result<Vec<crate::backends::types::Row>, crate::backends::error::DatabaseError> {
-		let context = super::execution::pgvector_context_for_select(stmt);
-		let (sql, values) = Self::build_select_for_backend(
-			stmt,
-			Self::executor_backend(executor),
-			executor.is_cockroachdb(),
-		)?;
+		let ((sql, values), context) = {
+			let stmt = stmt;
+			let context = super::execution::pgvector_context_for_select(&stmt);
+			let built = Self::build_select_for_backend(
+				&stmt,
+				Self::executor_backend(executor),
+				executor.is_cockroachdb(),
+			)?;
+			(built, context)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
 		let started_at = Instant::now();
 		let result = executor
-			.fetch_all_with_context(&sql, params, context)
+			.fetch_all_generated((sql.clone(), values), context)
 			.await
 			.map_err(executor_error);
 		let duration = started_at.elapsed();
@@ -7412,18 +7422,22 @@ where
 	{
 		self.ensure_explainable_shape()?;
 		self.ensure_backend_annotations_supported(conn.backend())?;
-		let select = self.build_select_statement()?;
-		let context = super::execution::pgvector_context_for_select(&select);
-		let statement = ExplainStatement::new(select, options);
-		let (sql, values, backend) =
-			Self::build_explain_for_backend(&statement, conn.backend(), conn.is_cockroachdb())?;
+		let ((sql, values, backend), context) = {
+			let select = self.build_select_statement()?;
+			let context = super::execution::pgvector_context_for_select(&select);
+			let statement = ExplainStatement::new(select, options);
+			let built =
+				Self::build_explain_for_backend(&statement, conn.backend(), conn.is_cockroachdb())?;
+			(built, context)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let result = conn.fetch_all_with_context(&sql, params, context).await;
+		let result = conn
+			.fetch_all_generated((sql.clone(), values), context)
+			.await;
 		let duration = started_at.elapsed();
 		let rows = match result {
 			Ok(rows) => {
@@ -7453,22 +7467,24 @@ where
 	) -> Result<ExplainOutput, crate::backends::error::DatabaseError> {
 		self.ensure_explainable_shape().map_err(executor_error)?;
 		self.ensure_backend_annotations_supported(Self::executor_backend(executor))?;
-		let select = self.build_select_statement().map_err(executor_error)?;
-		let context = super::execution::pgvector_context_for_select(&select);
-		let statement = ExplainStatement::new(select, options);
-		let (sql, values, backend) = Self::build_explain_for_backend(
-			&statement,
-			Self::executor_backend(executor),
-			executor.is_cockroachdb(),
-		)?;
+		let ((sql, values, backend), context) = {
+			let select = self.build_select_statement().map_err(executor_error)?;
+			let context = super::execution::pgvector_context_for_select(&select);
+			let statement = ExplainStatement::new(select, options);
+			let built = Self::build_explain_for_backend(
+				&statement,
+				Self::executor_backend(executor),
+				executor.is_cockroachdb(),
+			)?;
+			(built, context)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
 		let started_at = Instant::now();
 		let result = executor
-			.fetch_all_with_context(&sql, params, context)
+			.fetch_all_generated((sql.clone(), values), context)
 			.await
 			.map_err(executor_error);
 		let duration = started_at.elapsed();
@@ -7531,7 +7547,7 @@ where
 			None,
 			TemporalTruncOutput::Date,
 		)?;
-		let rows = Self::temporal_rows_with_db(&stmt, conn).await?;
+		let rows = Self::temporal_rows_with_db(stmt, conn).await?;
 		Self::decode_date_projection(rows).map_err(Error::from)
 	}
 
@@ -7559,7 +7575,7 @@ where
 				TemporalTruncOutput::Date,
 			)
 			.map_err(executor_error)?;
-		let rows = Self::temporal_rows_with_executor(&stmt, executor).await?;
+		let rows = Self::temporal_rows_with_executor(stmt, executor).await?;
 		Self::decode_date_projection(rows)
 	}
 
@@ -7615,7 +7631,7 @@ where
 			Some(query_time_zone),
 			TemporalTruncOutput::DateTime,
 		)?;
-		let rows = Self::temporal_rows_with_db(&stmt, conn).await?;
+		let rows = Self::temporal_rows_with_db(stmt, conn).await?;
 		Self::decode_datetime_projection(rows, time_zone).map_err(Error::from)
 	}
 
@@ -7650,7 +7666,7 @@ where
 				TemporalTruncOutput::DateTime,
 			)
 			.map_err(executor_error)?;
-		let rows = Self::temporal_rows_with_executor(&stmt, executor).await?;
+		let rows = Self::temporal_rows_with_executor(stmt, executor).await?;
 		Self::decode_datetime_projection(rows, time_zone)
 	}
 
@@ -8482,18 +8498,23 @@ where
 		}
 		self.ensure_backend_annotations_supported(conn.backend())?;
 		self.ensure_not_locking_without_transaction()?;
-		let stmt = self.build_select_statement()?;
-		let context = super::execution::pgvector_context_for_select(&stmt);
-		let (sql, values) =
-			Self::build_select_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?;
+		let ((sql, values), context) = {
+			let stmt = self.build_select_statement()?;
+			let context = super::execution::pgvector_context_for_select(&stmt);
+			(
+				Self::build_select_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?,
+				context,
+			)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = query_values_from_sea_values(values)?;
 
 		let started_at = Instant::now();
-		let query_result = conn.fetch_all_with_context(&sql, params, context).await;
+		let query_result = conn
+			.fetch_all_generated((sql.clone(), values), context)
+			.await;
 		let duration = started_at.elapsed();
 
 		let rows = match query_result {
@@ -8542,18 +8563,23 @@ where
 		}
 		self.ensure_backend_annotations_supported(conn.backend())?;
 		self.ensure_not_locking_without_transaction()?;
-		let stmt = self.build_select_statement()?;
-		let context = super::execution::pgvector_context_for_select(&stmt);
-		let (sql, values) =
-			Self::build_select_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?;
+		let ((sql, values), context) = {
+			let stmt = self.build_select_statement()?;
+			let context = super::execution::pgvector_context_for_select(&stmt);
+			(
+				Self::build_select_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?,
+				context,
+			)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
 
 		let started_at = Instant::now();
-		let query_result = conn.fetch_all_with_context(&sql, params, context).await;
+		let query_result = conn
+			.fetch_all_generated((sql.clone(), values), context)
+			.await;
 		let duration = started_at.elapsed();
 
 		match query_result {
@@ -8598,16 +8624,19 @@ where
 		}
 		self.ensure_backend_annotations_supported(conn.backend())?;
 
-		let stmt = self.build_select_statement()?;
-		let context = super::execution::pgvector_context_for_select(&stmt);
-		let (sql, values) =
-			Self::build_select_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?;
+		let ((sql, values), context) = {
+			let stmt = self.build_select_statement()?;
+			let context = super::execution::pgvector_context_for_select(&stmt);
+			(
+				Self::build_select_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?,
+				context,
+			)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
-		let rows = conn.fetch_stream_with_context(sql.clone(), params, chunk_size, context)?;
+		let rows = conn.fetch_stream_generated((sql.clone(), values), chunk_size, context)?;
 
 		Ok(Box::pin(async_stream::stream! {
 			let mut accounting = StreamQueryAccounting::new(sql.clone(), param_samples);
@@ -8672,19 +8701,23 @@ where
 		}
 		self.ensure_backend_annotations_supported(Self::executor_backend(executor))?;
 
-		let stmt = self.build_select_statement()?;
-		let context = super::execution::pgvector_context_for_select(&stmt);
-		let (sql, values) = Self::build_select_for_backend(
-			&stmt,
-			Self::executor_backend(executor),
-			executor.is_cockroachdb(),
-		)?;
+		let ((sql, values), context) = {
+			let stmt = self.build_select_statement()?;
+			let context = super::execution::pgvector_context_for_select(&stmt);
+			(
+				Self::build_select_for_backend(
+					&stmt,
+					Self::executor_backend(executor),
+					executor.is_cockroachdb(),
+				)?,
+				context,
+			)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
-		let rows = executor.fetch_stream_with_context(sql.clone(), params, chunk_size, context)?;
+		let rows = executor.fetch_stream_generated((sql.clone(), values), chunk_size, context)?;
 
 		Ok(Box::pin(async_stream::stream! {
 			let mut accounting = StreamQueryAccounting::new(sql.clone(), param_samples);
@@ -8738,21 +8771,25 @@ where
 		}
 		self.ensure_backend_annotations_supported(Self::executor_backend(executor))?;
 		self.validate_select_for_update(executor.row_lock_capabilities(), executor.backend())?;
-		let stmt = self.build_select_statement().map_err(executor_error)?;
-		let context = super::execution::pgvector_context_for_select(&stmt);
-		let (sql, values) = Self::build_select_for_backend(
-			&stmt,
-			Self::executor_backend(executor),
-			executor.is_cockroachdb(),
-		)?;
+		let ((sql, values), context) = {
+			let stmt = self.build_select_statement().map_err(executor_error)?;
+			let context = super::execution::pgvector_context_for_select(&stmt);
+			(
+				Self::build_select_for_backend(
+					&stmt,
+					Self::executor_backend(executor),
+					executor.is_cockroachdb(),
+				)?,
+				context,
+			)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
 		let started = Instant::now();
 		let result = executor
-			.fetch_all_with_context(&sql, params, context)
+			.fetch_all_generated((sql.clone(), values), context)
 			.await
 			.map_err(executor_error);
 		let duration = started.elapsed();
@@ -8783,21 +8820,25 @@ where
 		}
 		self.ensure_backend_annotations_supported(Self::executor_backend(executor))?;
 		self.validate_select_for_update(executor.row_lock_capabilities(), executor.backend())?;
-		let stmt = self.build_select_statement().map_err(executor_error)?;
-		let context = super::execution::pgvector_context_for_select(&stmt);
-		let (sql, values) = Self::build_select_for_backend(
-			&stmt,
-			Self::executor_backend(executor),
-			executor.is_cockroachdb(),
-		)?;
+		let ((sql, values), context) = {
+			let stmt = self.build_select_statement().map_err(executor_error)?;
+			let context = super::execution::pgvector_context_for_select(&stmt);
+			(
+				Self::build_select_for_backend(
+					&stmt,
+					Self::executor_backend(executor),
+					executor.is_cockroachdb(),
+				)?,
+				context,
+			)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
 		let started = Instant::now();
 		let result = executor
-			.fetch_all_with_context(&sql, params, context)
+			.fetch_all_generated((sql.clone(), values), context)
 			.await
 			.map_err(executor_error);
 		let duration = started.elapsed();
@@ -8826,16 +8867,20 @@ where
 			return Ok(0);
 		}
 		self.ensure_backend_annotations_supported(Self::executor_backend(executor))?;
-		let stmt = self.count_select_query().map_err(executor_error)?;
-		let context = super::execution::pgvector_context_for_select(&stmt);
-		let (sql, values) = Self::build_select_for_backend(
-			&stmt,
-			Self::executor_backend(executor),
-			executor.is_cockroachdb(),
-		)?;
-		let params = super::execution::convert_values(values);
+		let ((sql, values), context) = {
+			let stmt = self.count_select_query().map_err(executor_error)?;
+			let context = super::execution::pgvector_context_for_select(&stmt);
+			(
+				Self::build_select_for_backend(
+					&stmt,
+					Self::executor_backend(executor),
+					executor.is_cockroachdb(),
+				)?,
+				context,
+			)
+		};
 		let row = executor
-			.fetch_one_with_context(&sql, params, context)
+			.fetch_one_generated((sql, values), context)
 			.await
 			.map_err(executor_error)?;
 		let row = QueryRow::from_backend_row(row);
@@ -9038,17 +9083,22 @@ where
 			return Ok(0);
 		}
 		self.ensure_backend_annotations_supported(conn.backend())?;
-		let stmt = self.count_select_query()?;
-		let context = super::execution::pgvector_context_for_select(&stmt);
-		let (sql, values) =
-			Self::build_select_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?;
+		let ((sql, values), context) = {
+			let stmt = self.count_select_query()?;
+			let context = super::execution::pgvector_context_for_select(&stmt);
+			(
+				Self::build_select_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?,
+				context,
+			)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = conn.fetch_one_with_context(&sql, params, context).await;
+		let query_result = conn
+			.fetch_one_generated((sql.clone(), values), context)
+			.await;
 		let duration = started_at.elapsed();
 		let row = match query_result {
 			Ok(row) => {
@@ -9356,14 +9406,17 @@ where
 		if self.empty_result {
 			return Ok(0);
 		}
-		let stmt = self.update_fields_query(values)?;
-		let context = super::execution::pgvector_context_for_update(&stmt);
-		let (sql, values) =
-			Self::build_update_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?;
-		let params = super::execution::convert_values(values);
+		let ((sql, values), context) = {
+			let stmt = self.update_fields_query(values)?;
+			let context = super::execution::pgvector_context_for_update(&stmt);
+			(
+				Self::build_update_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?,
+				context,
+			)
+		};
 
 		Ok(conn
-			.execute_with_context(&sql, params, context)
+			.execute_generated((sql, values), context)
 			.await?
 			.rows_affected)
 	}
@@ -9715,12 +9768,15 @@ where
 		if self.empty_result {
 			return Ok(0);
 		}
-		let stmt = self.delete_query()?;
-		let (sql, values) =
-			Self::build_delete_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?;
-		let params = super::execution::convert_values(values);
+		let (sql, values) = {
+			let stmt = self.delete_query()?;
+			Self::build_delete_for_backend(&stmt, conn.backend(), conn.is_cockroachdb())?
+		};
 
-		Ok(conn.execute(&sql, params).await?.rows_affected)
+		Ok(conn
+			.execute_generated((sql, values), None)
+			.await?
+			.rows_affected)
 	}
 
 	/// Deletes sql.
@@ -9851,72 +9907,76 @@ where
 			.into());
 		}
 
-		// Build SELECT query using reinhardt-query
-		let table_name = T::table_name();
-		let mut query = Query::select();
+		let ((sql, values), context) = {
+			// Build SELECT query using reinhardt-query
+			let table_name = T::table_name();
+			let mut query = Query::select();
 
-		// Use Alias::new for table name
-		let table_alias = Alias::new(table_name);
-		query.from(table_alias).column(ColumnRef::Asterisk);
+			// Use Alias::new for table name
+			let table_alias = Alias::new(table_name);
+			query.from(table_alias).column(ColumnRef::Asterisk);
 
-		// Add WHERE conditions for each composite PK field
-		let field_metadata = T::field_metadata();
-		for field_name in composite_pk.fields() {
-			let pk_value: &super::composite_pk::PkValue = pk_values.get(field_name).unwrap();
-			let column = field_metadata
-				.iter()
-				.find(|field| field.db_column_name() == field_name)
-				.or_else(|| {
-					field_metadata
-						.iter()
-						.find(|field| field.name == *field_name)
-				})
-				.map(|field| field.db_column_name())
-				.unwrap_or(field_name);
-			let col_alias = Alias::new(column);
+			// Add WHERE conditions for each composite PK field
+			let field_metadata = T::field_metadata();
+			for field_name in composite_pk.fields() {
+				let pk_value: &super::composite_pk::PkValue = pk_values.get(field_name).unwrap();
+				let column = field_metadata
+					.iter()
+					.find(|field| field.db_column_name() == field_name)
+					.or_else(|| {
+						field_metadata
+							.iter()
+							.find(|field| field.name == *field_name)
+					})
+					.map(|field| field.db_column_name())
+					.unwrap_or(field_name);
+				let col_alias = Alias::new(column);
 
-			match pk_value {
-				&super::composite_pk::PkValue::Int(v) => {
-					let condition = Expr::col(col_alias)
-						.binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v))));
-					query.and_where(condition);
-				}
-				&super::composite_pk::PkValue::Uint(v) => {
-					let condition = Expr::col(col_alias)
-						.binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v as i64))));
-					query.and_where(condition);
-				}
-				super::composite_pk::PkValue::String(v) => {
-					let condition = Expr::col(col_alias).binary(
-						BinOper::Equal,
-						Expr::value(Value::String(Some(Box::new(v.clone())))),
-					);
-					query.and_where(condition);
-				}
-				&super::composite_pk::PkValue::Bool(v) => {
-					let condition = Expr::col(col_alias)
-						.binary(BinOper::Equal, Expr::value(Value::Bool(Some(v))));
-					query.and_where(condition);
-				}
-				super::composite_pk::PkValue::Database { value } => {
-					query.and_where(
-						Expr::col(col_alias).eq(database_value_to_query_value(value.clone())),
-					);
+				match pk_value {
+					&super::composite_pk::PkValue::Int(v) => {
+						let condition = Expr::col(col_alias)
+							.binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v))));
+						query.and_where(condition);
+					}
+					&super::composite_pk::PkValue::Uint(v) => {
+						let condition = Expr::col(col_alias)
+							.binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v as i64))));
+						query.and_where(condition);
+					}
+					super::composite_pk::PkValue::String(v) => {
+						let condition = Expr::col(col_alias).binary(
+							BinOper::Equal,
+							Expr::value(Value::String(Some(Box::new(v.clone())))),
+						);
+						query.and_where(condition);
+					}
+					&super::composite_pk::PkValue::Bool(v) => {
+						let condition = Expr::col(col_alias)
+							.binary(BinOper::Equal, Expr::value(Value::Bool(Some(v))));
+						query.and_where(condition);
+					}
+					super::composite_pk::PkValue::Database { value } => {
+						query.and_where(
+							Expr::col(col_alias).eq(database_value_to_query_value(value.clone())),
+						);
+					}
 				}
 			}
-		}
 
-		let context = super::execution::pgvector_context_for_select(&query);
-		let (sql, values) =
-			Self::build_select_for_backend(&query, conn.backend(), conn.is_cockroachdb())?;
+			let context = super::execution::pgvector_context_for_select(&query);
+			let built =
+				Self::build_select_for_backend(&query, conn.backend(), conn.is_cockroachdb())?;
+			(built, context)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
 
 		let started_at = Instant::now();
-		let query_result = conn.fetch_all_with_context(&sql, params, context).await;
+		let query_result = conn
+			.fetch_all_generated((sql.clone(), values), context)
+			.await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -11538,6 +11598,7 @@ fn build_select_statement(
 	Ok((sql, params))
 }
 
+#[cfg(test)]
 fn query_values_from_sea_values(
 	values: reinhardt_query::prelude::Values,
 ) -> reinhardt_core::exception::Result<Vec<QueryValue>> {
