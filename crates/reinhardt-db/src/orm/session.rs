@@ -13,6 +13,12 @@
 //!
 //! This module provides a Session object that manages database operations with automatic
 //! object tracking, identity mapping, and unit-of-work persistence.
+//!
+//! Model reads use checked typed SELECT statements and the shared SQLx Any text
+//! compatibility codecs. Identifier quoting, primary-key values and projection
+//! conversions remain structural until rendering; Session owns its pool and
+//! row decoding. Flush and locked query paths retain their existing transaction
+//! ownership.
 
 use crate::backends::types::{DatabaseType, RowLockCapabilities};
 use crate::orm::FieldCodecError;
@@ -21,10 +27,9 @@ use crate::orm::inspection::FieldInfo;
 use crate::orm::model::Model;
 use crate::orm::query::{OrmQuery, QuerySet};
 use crate::orm::query_types::{DbBackend, QueryStatement};
-use base64::Engine;
 use reinhardt_query::value::Value as RValue;
 use reinhardt_query::{
-	Alias, ColumnRef, Expr, ExprTrait, LockType, MySqlQueryBuilder, PostgresQueryBuilder,
+	Alias, ColumnRef, Expr, ExprTrait, IntoIden, LockType, MySqlQueryBuilder, PostgresQueryBuilder,
 	Query as RQuery, QueryStatementBuilder, SelectStatement, SimpleExpr, SqliteQueryBuilder,
 };
 use serde_json::Value;
@@ -416,50 +421,19 @@ impl Session {
 		let mut select_query = RQuery::select();
 		select_query.from(Alias::new(T::table_name()));
 
-		// Add all fields to SELECT
-		for field in &field_metadata {
-			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
-			if is_structured_field(field) {
-				select_query.expr_as(
-					Expr::cust(json_or_array_select_column_sql(
-						self.db_backend,
-						field,
-						column_name,
-					)),
-					Alias::new(column_name),
-				);
-			} else if is_temporal_field_type(&field.field_type) {
-				select_query.expr_as(
-					Expr::cust(temporal_select_column_sql_with_storage(
-						self.db_backend,
-						column_name,
-						&field.field_type,
-						field.storage_kind,
-					)),
-					Alias::new(column_name),
-				);
-			} else if field.field_type.contains("DecimalField") {
-				select_query.expr_as(
-					Expr::cust(decimal_select_column_sql(self.db_backend, column_name)),
-					Alias::new(column_name),
-				);
-			} else {
-				select_query.column(Alias::new(column_name));
-			}
-		}
-
-		// Add WHERE clause for primary key
-		select_query.and_where(Expr::col(Alias::new(pk_column)).eq(id.to_string()));
-
-		// Build SQL query based on backend
-		let sql = match self.db_backend {
-			DbBackend::Postgres => select_query.to_string(PostgresQueryBuilder),
-			DbBackend::Mysql => select_query.to_string(MySqlQueryBuilder),
-			DbBackend::Sqlite => select_query.to_string(SqliteQueryBuilder),
-		};
+		apply_any_model_projection::<T>(&mut select_query, self.db_backend, T::table_name())?;
+		let primary_key = database_value_to_query_value(T::primary_key_database_value(&id)?);
+		select_query.and_where(
+			Expr::col(Alias::new(pk_column))
+				.eq(any_parameter_expression(primary_key, self.db_backend)?),
+		);
+		let (sql, arguments) = prepare_any_select(&select_query, self.db_backend)?.into_parts();
 
 		// Execute query
-		let row = match sqlx::query(&sql).fetch_optional(&*self.pool).await {
+		let row = match sqlx::query_with(&sql, arguments)
+			.fetch_optional(&*self.pool)
+			.await
+		{
 			Ok(Some(row)) => row,
 			Ok(None) => return Ok(None),
 			Err(e) => {
@@ -470,140 +444,16 @@ impl Session {
 			}
 		};
 
-		// Build JSON object from row data
-		let mut json_map = serde_json::Map::new();
+		let obj: T = deserialize_any_row(&row, &field_metadata)?;
 		let mut sql_null_json_fields = HashSet::new();
-		for field in &field_metadata {
-			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
-
-			// Extract value from row based on field type
-			let value: serde_json::Value = match field.field_type.as_str() {
-				_ if is_structured_field(field) => match decode_json_field_value(
-					&row,
-					T::table_name(),
-					&key,
-					&field.name,
-					column_name,
-					field.nullable,
-				)? {
-					DecodedJsonFieldValue::SqlNull => {
-						sql_null_json_fields.insert(field.name.clone());
-						serde_json::Value::Null
-					}
-					DecodedJsonFieldValue::Json(value) => value,
-				},
-				typ if typ.contains("IntegerField") => {
-					if field.nullable {
-						row.try_get::<Option<i32>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
-							})
-							.unwrap_or(serde_json::Value::Null)
-					} else {
-						row.try_get::<i32, _>(column_name)
-							.map(serde_json::Value::from)
-							.unwrap_or(serde_json::Value::Null)
-					}
-				}
-				typ if typ.contains("BigIntegerField") => {
-					if field.nullable {
-						row.try_get::<Option<i64>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
-							})
-							.unwrap_or(serde_json::Value::Null)
-					} else {
-						row.try_get::<i64, _>(column_name)
-							.map(serde_json::Value::from)
-							.unwrap_or(serde_json::Value::Null)
-					}
-				}
-				typ if typ.contains("CharField") => {
-					if field.nullable {
-						row.try_get::<Option<String>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
-							})
-							.unwrap_or(serde_json::Value::Null)
-					} else {
-						row.try_get::<String, _>(column_name)
-							.map(serde_json::Value::from)
-							.unwrap_or(serde_json::Value::Null)
-					}
-				}
-				typ if typ.contains("BooleanField") => {
-					if field.nullable {
-						row.try_get::<Option<bool>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
-							})
-							.unwrap_or(serde_json::Value::Null)
-					} else {
-						row.try_get::<bool, _>(column_name)
-							.map(serde_json::Value::from)
-							.unwrap_or(serde_json::Value::Null)
-					}
-				}
-				typ if typ.contains("FloatField") => {
-					if field.nullable {
-						row.try_get::<Option<f64>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
-							})
-							.unwrap_or(serde_json::Value::Null)
-					} else {
-						row.try_get::<f64, _>(column_name)
-							.map(serde_json::Value::from)
-							.unwrap_or(serde_json::Value::Null)
-					}
-				}
-				typ if typ.contains("DecimalField") => {
-					decimal_row_value(&row, column_name, field.nullable)
-				}
-				typ if typ.contains("BinaryField") => {
-					let bytes = if field.nullable {
-						row.try_get::<Option<Vec<u8>>, _>(column_name)
-							.ok()
-							.flatten()
-					} else {
-						row.try_get::<Vec<u8>, _>(column_name).ok()
-					};
-					bytes
-						.map(|bytes| {
-							Value::String(base64::engine::general_purpose::STANDARD.encode(bytes))
-						})
-						.unwrap_or(Value::Null)
-				}
-				typ if is_temporal_field_type(typ) => {
-					temporal_row_value(&row, column_name, field.nullable)
-				}
-				// Add more type mappings as needed
-				_ => serde_json::Value::Null,
-			};
-
-			json_map.insert(field.name.clone(), value);
-		}
-
-		// Deserialize JSON to model object
-		let data = serde_json::Value::Object(json_map);
-		let json_null_fields =
-			json_null_fields_for_data(&data, &field_metadata, &sql_null_json_fields);
-		let native_json_fields = field_metadata
+		for field in field_metadata
 			.iter()
-			.filter(|field| is_structured_field(field))
-			.map(|field| field.name.clone())
-			.collect();
-		let obj: T = super::json::deserialize_model_row(
-			data.clone(),
-			json_null_fields.clone(),
-			native_json_fields,
-		)
-		.map_err(SessionError::FieldCodec)?;
+			.filter(|field| field.nullable && is_structured_field(field))
+		{
+			if any_text_value(&row, field.db_column_name())?.is_none() {
+				sql_null_json_fields.insert(field.name.clone());
+			}
+		}
 
 		// Add to identity map
 		let obj_data = serde_json::to_value(&obj)
@@ -689,203 +539,19 @@ impl Session {
 			return Ok(Vec::new());
 		}
 
-		// Build column expressions for SELECT.
-		let mut column_exprs: Vec<String> = Vec::new();
-		for field in &field_metadata {
-			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
-			let is_json = is_structured_field(field);
-
-			let expr = if is_json {
-				json_or_array_select_column_alias_sql(self.db_backend, field, column_name)
-			} else if is_temporal_field_type(&field.field_type) {
-				temporal_select_column_alias_sql_with_storage(
-					self.db_backend,
-					column_name,
-					&field.field_type,
-					field.storage_kind,
-				)
-			} else if field.field_type.contains("DecimalField") {
-				decimal_select_column_alias_sql(self.db_backend, column_name)
-			} else {
-				// Regular column
-				match self.db_backend {
-					DbBackend::Postgres | DbBackend::Sqlite => format!("\"{}\"", column_name),
-					DbBackend::Mysql => format!("`{}`", column_name),
-				}
-			};
-			column_exprs.push(expr);
-		}
-
-		// Build complete SQL query manually
-		let table_name = T::table_name();
-		let columns_sql = column_exprs.join(", ");
-		let sql = match self.db_backend {
-			DbBackend::Postgres | DbBackend::Sqlite => {
-				format!("SELECT {} FROM \"{}\"", columns_sql, table_name)
-			}
-			DbBackend::Mysql => {
-				format!("SELECT {} FROM `{}`", columns_sql, table_name)
-			}
-		};
-
-		// Execute query
-		let rows = sqlx::query(&sql)
+		let mut statement = RQuery::select();
+		statement.from(Alias::new(T::table_name()));
+		apply_any_model_projection::<T>(&mut statement, self.db_backend, T::table_name())?;
+		let (sql, arguments) = prepare_any_select(&statement, self.db_backend)?.into_parts();
+		let rows = sqlx::query_with(&sql, arguments)
 			.fetch_all(&*self.pool)
 			.await
-			.map_err(|e| SessionError::DatabaseError(format!("Failed to query database: {}", e)))?;
-
-		let mut results = Vec::with_capacity(rows.len());
-
-		let primary_key_column = primary_key_field_info(&field_metadata, T::primary_key_field())
-			.and_then(|field| field.db_column.as_deref())
-			.unwrap_or(T::primary_key_field());
-		for row in rows {
-			let row_context = describe_row_context(&row, table_name, primary_key_column);
-
-			// Build JSON object from row data
-			let mut json_map = serde_json::Map::new();
-			let mut sql_null_json_fields = HashSet::new();
-			for field in &field_metadata {
-				let column_name = field.db_column.as_deref().unwrap_or(&field.name);
-
-				// Extract value from row based on field type
-				let value: serde_json::Value = match field.field_type.as_str() {
-					_ if is_structured_field(field) => match decode_json_field_value(
-						&row,
-						table_name,
-						&row_context,
-						&field.name,
-						column_name,
-						field.nullable,
-					)? {
-						DecodedJsonFieldValue::SqlNull => {
-							sql_null_json_fields.insert(field.name.clone());
-							serde_json::Value::Null
-						}
-						DecodedJsonFieldValue::Json(value) => value,
-					},
-					typ if typ.contains("IntegerField") => {
-						if field.nullable {
-							row.try_get::<Option<i32>, _>(column_name)
-								.map(|v| {
-									v.map(serde_json::Value::from)
-										.unwrap_or(serde_json::Value::Null)
-								})
-								.unwrap_or(serde_json::Value::Null)
-						} else {
-							row.try_get::<i32, _>(column_name)
-								.map(serde_json::Value::from)
-								.unwrap_or(serde_json::Value::Null)
-						}
-					}
-					typ if typ.contains("BigIntegerField") => {
-						if field.nullable {
-							row.try_get::<Option<i64>, _>(column_name)
-								.map(|v| {
-									v.map(serde_json::Value::from)
-										.unwrap_or(serde_json::Value::Null)
-								})
-								.unwrap_or(serde_json::Value::Null)
-						} else {
-							row.try_get::<i64, _>(column_name)
-								.map(serde_json::Value::from)
-								.unwrap_or(serde_json::Value::Null)
-						}
-					}
-					typ if typ.contains("CharField") || typ.contains("TextField") => {
-						if field.nullable {
-							row.try_get::<Option<String>, _>(column_name)
-								.map(|v| {
-									v.map(serde_json::Value::from)
-										.unwrap_or(serde_json::Value::Null)
-								})
-								.unwrap_or(serde_json::Value::Null)
-						} else {
-							row.try_get::<String, _>(column_name)
-								.map(serde_json::Value::from)
-								.unwrap_or(serde_json::Value::Null)
-						}
-					}
-					typ if typ.contains("BooleanField") => {
-						if field.nullable {
-							row.try_get::<Option<bool>, _>(column_name)
-								.map(|v| {
-									v.map(serde_json::Value::from)
-										.unwrap_or(serde_json::Value::Null)
-								})
-								.unwrap_or(serde_json::Value::Null)
-						} else {
-							row.try_get::<bool, _>(column_name)
-								.map(serde_json::Value::from)
-								.unwrap_or(serde_json::Value::Null)
-						}
-					}
-					typ if typ.contains("FloatField") => {
-						if field.nullable {
-							row.try_get::<Option<f64>, _>(column_name)
-								.map(|v| {
-									v.map(serde_json::Value::from)
-										.unwrap_or(serde_json::Value::Null)
-								})
-								.unwrap_or(serde_json::Value::Null)
-						} else {
-							row.try_get::<f64, _>(column_name)
-								.map(serde_json::Value::from)
-								.unwrap_or(serde_json::Value::Null)
-						}
-					}
-					typ if typ.contains("DecimalField") => {
-						decimal_row_value(&row, column_name, field.nullable)
-					}
-					typ if typ.contains("BinaryField") => {
-						let bytes = if field.nullable {
-							row.try_get::<Option<Vec<u8>>, _>(column_name)
-								.ok()
-								.flatten()
-						} else {
-							row.try_get::<Vec<u8>, _>(column_name).ok()
-						};
-						bytes
-							.map(|bytes| {
-								Value::String(
-									base64::engine::general_purpose::STANDARD.encode(bytes),
-								)
-							})
-							.unwrap_or(Value::Null)
-					}
-					typ if is_temporal_field_type(typ) => {
-						temporal_row_value(&row, column_name, field.nullable)
-					}
-					// Default: try as string
-					_ => row
-						.try_get::<Option<String>, _>(column_name)
-						.map(|v| {
-							v.map(serde_json::Value::from)
-								.unwrap_or(serde_json::Value::Null)
-						})
-						.unwrap_or(serde_json::Value::Null),
-				};
-
-				json_map.insert(field.name.clone(), value);
-			}
-
-			// Deserialize JSON to model object
-			let data = serde_json::Value::Object(json_map);
-			let json_null_fields =
-				json_null_fields_for_data(&data, &field_metadata, &sql_null_json_fields);
-			let native_json_fields = field_metadata
-				.iter()
-				.filter(|field| is_structured_field(field))
-				.map(|field| field.name.clone())
-				.collect();
-			let obj: T =
-				super::json::deserialize_model_row(data, json_null_fields, native_json_fields)
-					.map_err(SessionError::FieldCodec)?;
-
-			results.push(obj);
-		}
-
-		Ok(results)
+			.map_err(|error| {
+				SessionError::DatabaseError(format!("Failed to query database: {error}"))
+			})?;
+		rows.iter()
+			.map(|row| deserialize_any_row(row, &field_metadata))
+			.collect()
 	}
 
 	/// Execute a model-shaped [`QuerySet`] using this session's configured pool.
@@ -1654,6 +1320,153 @@ impl Session {
 	}
 }
 
+/// Any compatibility is explicit at this consumer boundary; the companion
+/// preserves the SQL and Values produced by the checked statement.
+fn prepare_any_select(
+	statement: &SelectStatement,
+	backend: DbBackend,
+) -> Result<reinhardt_query_sqlx::PreparedQuery<sqlx::any::AnyArguments<'static>>, SessionError> {
+	let built = match backend {
+		DbBackend::Postgres => PostgresQueryBuilder.build_select_checked(statement),
+		DbBackend::Mysql => MySqlQueryBuilder.build_select_checked(statement),
+		DbBackend::Sqlite => SqliteQueryBuilder.build_select_checked(statement),
+	}
+	.map_err(|error| SessionError::DatabaseError(error.to_string()))?;
+	let backend = match backend {
+		DbBackend::Postgres => reinhardt_query_sqlx::AnyBackend::Postgres,
+		DbBackend::Mysql => reinhardt_query_sqlx::AnyBackend::MySql,
+		DbBackend::Sqlite => reinhardt_query_sqlx::AnyBackend::Sqlite,
+	};
+	reinhardt_query_sqlx::prepare_any_with_text_codecs(built, backend)
+		.map_err(|error| SessionError::DatabaseError(error.to_string()))
+}
+
+fn any_parameter_expression(value: RValue, backend: DbBackend) -> Result<SimpleExpr, SessionError> {
+	if value.is_null() {
+		return Ok(Expr::val(value).into_simple_expr());
+	}
+	let cast = if backend == DbBackend::Postgres {
+		postgres_parameter_cast(&value)
+	} else {
+		None
+	};
+	let (value, cast) = match value {
+		RValue::Array(kind, Some(values)) if backend == DbBackend::Postgres => {
+			let name = match kind {
+				reinhardt_query::value::ArrayType::String => "_text",
+				reinhardt_query::value::ArrayType::Int => "_int4",
+				reinhardt_query::value::ArrayType::BigInt => "_int8",
+				reinhardt_query::value::ArrayType::Bool => "_bool",
+				reinhardt_query::value::ArrayType::Float => "_float4",
+				reinhardt_query::value::ArrayType::Double => "_float8",
+				reinhardt_query::value::ArrayType::Uuid => "_uuid",
+				_ => {
+					return Err(SessionError::DatabaseError(
+						"unsupported PostgreSQL Any array element type".into(),
+					));
+				}
+			};
+			let literal = postgres_array_literal(&values).ok_or_else(|| {
+				SessionError::DatabaseError("unsupported PostgreSQL Any array value".into())
+			})?;
+			(literal.into(), Some(name))
+		}
+		RValue::Array(_, Some(values)) => (
+			super::execution::array_values_to_json(&values)
+				.to_string()
+				.into(),
+			None,
+		),
+		#[cfg(feature = "pgvector")]
+		RValue::Vector(Some(values)) => {
+			if values.iter().any(|value| !value.is_finite()) {
+				return Err(SessionError::DatabaseError(
+					"Any vector values must be finite".into(),
+				));
+			}
+			let literal = serde_json::to_string(&values)
+				.map_err(|error| SessionError::DatabaseError(error.to_string()))?;
+			(literal.into(), cast)
+		}
+		value => (value, cast),
+	};
+	let expression = Expr::val(value);
+	Ok(match cast {
+		Some(name) => expression.cast_as(name),
+		None => expression.into_simple_expr(),
+	})
+}
+
+fn projection_function(name: &'static str, arguments: Vec<SimpleExpr>) -> SimpleExpr {
+	SimpleExpr::FunctionCall(name.into_iden(), arguments)
+}
+
+fn any_field_projection(backend: DbBackend, field: &FieldInfo, column: SimpleExpr) -> SimpleExpr {
+	let field_type = field.field_type.as_str();
+	if is_temporal_field_type(field_type) {
+		let (function, mask, column) = match backend {
+			DbBackend::Postgres
+				if field_type.contains("DateTimeField")
+					&& field.storage_kind
+						== Some(crate::orm::DatabaseStorageKind::NaiveDateTime) =>
+			{
+				("TO_CHAR", "YYYY-MM-DD\"T\"HH24:MI:SS.US", column)
+			}
+			DbBackend::Postgres if field_type.contains("DateTimeField") => (
+				"TO_CHAR",
+				"YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"",
+				projection_function(
+					"TIMEZONE",
+					vec![Expr::val("UTC").into_simple_expr(), column],
+				),
+			),
+			DbBackend::Postgres if field_type.contains("DateField") => {
+				("TO_CHAR", "YYYY-MM-DD", column)
+			}
+			DbBackend::Postgres => ("TO_CHAR", "HH24:MI:SS.US", column),
+			DbBackend::Mysql if field_type.contains("DateTimeField") => {
+				("DATE_FORMAT", "%Y-%m-%dT%H:%i:%s.%fZ", column)
+			}
+			DbBackend::Mysql if field_type.contains("DateField") => {
+				("DATE_FORMAT", "%Y-%m-%d", column)
+			}
+			DbBackend::Mysql => ("TIME_FORMAT", "%H:%i:%s.%f", column),
+			DbBackend::Sqlite => return column,
+		};
+		return projection_function(function, vec![column, Expr::val(mask).into_simple_expr()]);
+	}
+	if backend == DbBackend::Postgres && is_array_field(field) {
+		return projection_function("ARRAY_TO_JSON", vec![column]).cast_as_text();
+	}
+	if backend == DbBackend::Postgres && is_hstore_field(field) {
+		return projection_function("HSTORE_TO_JSON", vec![column]).cast_as_text();
+	}
+	if is_structured_field(field)
+		|| field_type.contains("UuidField")
+		|| field_type.contains("UUIDField")
+		|| field_type.contains("DecimalField")
+	{
+		return column.cast_as_text();
+	}
+	if field_type.contains("BooleanField") && backend != DbBackend::Postgres {
+		return column.cast_as_signed_integer();
+	}
+	column
+}
+
+fn describe_row_context(row: &sqlx::any::AnyRow, table_name: &str, primary_key: &str) -> String {
+	if let Ok(value) = row.try_get::<i64, _>(primary_key) {
+		return format!("{table_name}:{primary_key}={value}");
+	}
+	if let Ok(value) = row.try_get::<i32, _>(primary_key) {
+		return format!("{table_name}:{primary_key}={value}");
+	}
+	if let Ok(value) = row.try_get::<String, _>(primary_key) {
+		return format!("{table_name}:{primary_key}={value}");
+	}
+	table_name.to_owned()
+}
+
 fn apply_any_model_projection<T: Model>(
 	statement: &mut SelectStatement,
 	backend: DbBackend,
@@ -1664,60 +1477,8 @@ fn apply_any_model_projection<T: Model>(
 	for field in &fields {
 		let column_name = field.db_column_name();
 		let column = Expr::col((Alias::new(root_alias), Alias::new(column_name)));
-		let quoted_column = match backend {
-			DbBackend::Mysql => format!(
-				"`{}`.`{}`",
-				root_alias.replace('`', "``"),
-				column_name.replace('`', "``")
-			),
-			DbBackend::Postgres | DbBackend::Sqlite => format!(
-				"\"{}\".\"{}\"",
-				root_alias.replace('"', "\"\""),
-				column_name.replace('"', "\"\"")
-			),
-		};
-		let field_type = field.field_type.as_str();
-		let expression: SimpleExpr = if is_temporal_field_type(field_type) {
-			Expr::cust(temporal_select_column_sql_for_root(
-				backend,
-				root_alias,
-				column_name,
-				field_type,
-				field.storage_kind,
-			))
-			.into_simple_expr()
-		} else if is_array_field(field) && backend == DbBackend::Postgres {
-			Expr::cust(format!("array_to_json({quoted_column})::text")).into_simple_expr()
-		} else if is_hstore_field(field) && backend == DbBackend::Postgres {
-			Expr::cust(format!("hstore_to_json({quoted_column})::text")).into_simple_expr()
-		} else if field_type.contains("UuidField")
-			|| field_type.contains("UUIDField")
-			|| field_type.contains("TimeField")
-			|| field_type.contains("JsonField")
-			|| field_type.contains("JSONField")
-			|| field_type.contains("JSONBField")
-			|| field_type.contains("DecimalField")
-			|| is_structured_field(field)
-		{
-			let text_type = if backend == DbBackend::Mysql {
-				"CHAR"
-			} else {
-				"TEXT"
-			};
-			Expr::cust(format!("CAST({quoted_column} AS {text_type})")).into_simple_expr()
-		} else if field_type.contains("BooleanField") {
-			match backend {
-				DbBackend::Postgres => column.into_simple_expr(),
-				DbBackend::Mysql => {
-					Expr::cust(format!("CAST({quoted_column} AS SIGNED)")).into_simple_expr()
-				}
-				DbBackend::Sqlite => {
-					Expr::cust(format!("CAST({quoted_column} AS INTEGER)")).into_simple_expr()
-				}
-			}
-		} else {
-			column.into_simple_expr()
-		};
+		let expression = any_field_projection(backend, field, column.into_simple_expr());
+
 		statement.expr_as(expression, Alias::new(column_name));
 	}
 	Ok(fields)
@@ -1768,20 +1529,25 @@ where
 				.map(|value| value.map(Value::from))
 				.map_err(|error| serialization_error(error.to_string()))?
 		} else if is_structured_field(field) {
-			let value = row
-				.try_get::<Option<String>, _>(column_name)
-				.map_err(|error| serialization_error(error.to_string()))?;
-			if value.is_none() && field.nullable {
-				sql_null_json_fields.insert(field.name.clone());
+			let primary_key = primary_key_field_info(fields, T::primary_key_field())
+				.map_or(T::primary_key_field(), FieldInfo::db_column_name);
+			let context = describe_row_context(row, T::table_name(), primary_key);
+			match decode_json_field_value(
+				row,
+				T::table_name(),
+				&context,
+				&field.name,
+				column_name,
+				field.nullable,
+			)? {
+				DecodedJsonFieldValue::SqlNull => {
+					sql_null_json_fields.insert(field.name.clone());
+					None
+				}
+				DecodedJsonFieldValue::Json(value) => Some(value),
 			}
-			value
-				.map(|value| {
-					serde_json::from_str(&value)
-						.map_err(|error| serialization_error(error.to_string()))
-				})
-				.transpose()?
 		} else {
-			row.try_get::<Option<String>, _>(column_name)
+			any_text_value(row, column_name)
 				.map(|value| value.map(Value::from))
 				.map_err(|error| serialization_error(error.to_string()))?
 		};
@@ -1803,6 +1569,33 @@ where
 		.collect();
 	super::json::deserialize_model_row(data, json_null_fields, native_json_fields)
 		.map_err(SessionError::FieldCodec)
+}
+
+/// SQLx Any may represent MySQL TEXT as bytes even after a CHAR projection.
+/// Decode the complete UTF-8 value without bounding its length or truncating it.
+fn any_text_value(row: &sqlx::any::AnyRow, column: &str) -> Result<Option<String>, SessionError> {
+	match row.try_get::<Option<String>, _>(column) {
+		Ok(value) => Ok(value),
+		Err(string_error) => {
+			let bytes = row
+				.try_get::<Option<Vec<u8>>, _>(column)
+				.map_err(|bytes_error| {
+					SessionError::SerializationError(format!(
+						"cannot decode text column {column}: string: {string_error}; bytes: {bytes_error}"
+					))
+				})?;
+			bytes
+				.map(|bytes| {
+					String::from_utf8(bytes).map_err(|error| {
+						SessionError::SerializationError(format!(
+							"invalid UTF-8 in text column {column}: {}",
+							error.utf8_error()
+						))
+					})
+				})
+				.transpose()
+		}
+	}
 }
 
 fn backend_bool_value<F>(
@@ -1830,24 +1623,6 @@ where
 				))
 			}),
 	}
-}
-
-fn describe_row_context(
-	row: &sqlx::any::AnyRow,
-	table_name: &str,
-	primary_key_field: &str,
-) -> String {
-	if let Ok(value) = row.try_get::<i64, _>(primary_key_field) {
-		return format!("{}:{}={}", table_name, primary_key_field, value);
-	}
-	if let Ok(value) = row.try_get::<i32, _>(primary_key_field) {
-		return format!("{}:{}={}", table_name, primary_key_field, value);
-	}
-	if let Ok(value) = row.try_get::<String, _>(primary_key_field) {
-		return format!("{}:{}={}", table_name, primary_key_field, value);
-	}
-
-	table_name.to_string()
 }
 
 fn find_field_info<'a>(field_metadata: &'a [FieldInfo], field_name: &str) -> Option<&'a FieldInfo> {
@@ -1967,132 +1742,6 @@ fn is_temporal_field_type(field_type: &str) -> bool {
 		|| field_type.contains("TimeField")
 }
 
-fn temporal_select_column_sql_with_storage(
-	backend: DbBackend,
-	column_name: &str,
-	field_type: &str,
-	storage_kind: Option<crate::orm::DatabaseStorageKind>,
-) -> String {
-	let quoted_column = match backend {
-		DbBackend::Mysql => format!("`{}`", column_name.replace('`', "``")),
-		DbBackend::Postgres | DbBackend::Sqlite => {
-			format!("\"{}\"", column_name.replace('"', "\"\""))
-		}
-	};
-	temporal_select_column_sql_from_quoted(backend, &quoted_column, field_type, storage_kind)
-}
-
-fn temporal_select_column_sql_for_root(
-	backend: DbBackend,
-	root_alias: &str,
-	column_name: &str,
-	field_type: &str,
-	storage_kind: Option<crate::orm::DatabaseStorageKind>,
-) -> String {
-	let quoted_column = match backend {
-		DbBackend::Mysql => format!(
-			"`{}`.`{}`",
-			root_alias.replace('`', "``"),
-			column_name.replace('`', "``")
-		),
-		DbBackend::Postgres | DbBackend::Sqlite => format!(
-			"\"{}\".\"{}\"",
-			root_alias.replace('"', "\"\""),
-			column_name.replace('"', "\"\"")
-		),
-	};
-	temporal_select_column_sql_from_quoted(backend, &quoted_column, field_type, storage_kind)
-}
-
-fn temporal_select_column_sql_from_quoted(
-	backend: DbBackend,
-	quoted_column: &str,
-	field_type: &str,
-	storage_kind: Option<crate::orm::DatabaseStorageKind>,
-) -> String {
-	match backend {
-		DbBackend::Postgres
-			if field_type.contains("DateTimeField")
-				&& storage_kind == Some(crate::orm::DatabaseStorageKind::NaiveDateTime) =>
-		{
-			format!("TO_CHAR({quoted_column}, 'YYYY-MM-DD\"T\"HH24:MI:SS.US')")
-		}
-		DbBackend::Postgres if field_type.contains("DateTimeField") => {
-			format!(
-				"TO_CHAR(({quoted_column} AT TIME ZONE 'UTC'), 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')"
-			)
-		}
-		DbBackend::Postgres if field_type.contains("DateField") => {
-			format!("TO_CHAR({quoted_column}, 'YYYY-MM-DD')")
-		}
-		DbBackend::Postgres => format!("TO_CHAR({quoted_column}, 'HH24:MI:SS.US')"),
-		DbBackend::Mysql if field_type.contains("DateTimeField") => {
-			format!("DATE_FORMAT({quoted_column}, '%Y-%m-%dT%H:%i:%s.%fZ')")
-		}
-		DbBackend::Mysql if field_type.contains("DateField") => {
-			format!("DATE_FORMAT({quoted_column}, '%Y-%m-%d')")
-		}
-		DbBackend::Mysql => format!("TIME_FORMAT({quoted_column}, '%H:%i:%s.%f')"),
-		DbBackend::Sqlite => quoted_column.to_owned(),
-	}
-}
-
-fn temporal_select_column_alias_sql_with_storage(
-	backend: DbBackend,
-	column_name: &str,
-	field_type: &str,
-	storage_kind: Option<crate::orm::DatabaseStorageKind>,
-) -> String {
-	let expression =
-		temporal_select_column_sql_with_storage(backend, column_name, field_type, storage_kind);
-	match backend {
-		DbBackend::Postgres | DbBackend::Sqlite => {
-			format!("{} AS \"{}\"", expression, column_name)
-		}
-		DbBackend::Mysql => format!("{} AS `{}`", expression, column_name),
-	}
-}
-
-fn decimal_select_column_sql(backend: DbBackend, column_name: &str) -> String {
-	match backend {
-		DbBackend::Postgres => format!("CAST(\"{}\" AS TEXT)", column_name),
-		DbBackend::Mysql => format!("CAST(`{}` AS CHAR)", column_name),
-		DbBackend::Sqlite => format!("\"{}\"", column_name),
-	}
-}
-
-fn decimal_select_column_alias_sql(backend: DbBackend, column_name: &str) -> String {
-	let expression = decimal_select_column_sql(backend, column_name);
-	match backend {
-		DbBackend::Postgres | DbBackend::Sqlite => format!("{} AS \"{}\"", expression, column_name),
-		DbBackend::Mysql => format!("{} AS `{}`", expression, column_name),
-	}
-}
-
-fn temporal_row_value(row: &sqlx::any::AnyRow, column_name: &str, nullable: bool) -> Value {
-	if nullable {
-		row.try_get::<Option<String>, _>(column_name)
-			.map(|value| value.map(Value::from).unwrap_or(Value::Null))
-			.unwrap_or(Value::Null)
-	} else {
-		row.try_get::<String, _>(column_name)
-			.map(Value::from)
-			.unwrap_or(Value::Null)
-	}
-}
-
-fn decimal_row_value(row: &sqlx::any::AnyRow, column_name: &str, nullable: bool) -> Value {
-	if nullable {
-		row.try_get::<Option<String>, _>(column_name)
-			.map(|value| value.map(Value::from).unwrap_or(Value::Null))
-			.unwrap_or(Value::Null)
-	} else {
-		row.try_get::<String, _>(column_name)
-			.map(Value::from)
-			.unwrap_or(Value::Null)
-	}
-}
-
 fn json_null_fields_for_data(
 	data: &Value,
 	field_metadata: &[FieldInfo],
@@ -2111,40 +1760,6 @@ fn json_null_fields_for_data(
 		})
 		.map(|field| field.name.clone())
 		.collect()
-}
-
-fn json_select_column_sql(db_backend: DbBackend, column_name: &str) -> String {
-	match db_backend {
-		DbBackend::Postgres => format!("\"{}\"::text", column_name),
-		DbBackend::Mysql => format!("CAST(`{}` AS CHAR)", column_name),
-		DbBackend::Sqlite => format!("\"{}\"", column_name),
-	}
-}
-
-fn json_or_array_select_column_sql(
-	db_backend: DbBackend,
-	field: &FieldInfo,
-	column_name: &str,
-) -> String {
-	if field.field_type.contains("ArrayField") && matches!(db_backend, DbBackend::Postgres) {
-		format!("array_to_json(\"{}\")::text", column_name)
-	} else {
-		json_select_column_sql(db_backend, column_name)
-	}
-}
-
-fn json_or_array_select_column_alias_sql(
-	db_backend: DbBackend,
-	field: &FieldInfo,
-	column_name: &str,
-) -> String {
-	let expression = json_or_array_select_column_sql(db_backend, field, column_name);
-	match db_backend {
-		DbBackend::Postgres | DbBackend::Sqlite => {
-			format!("{} AS \"{}\"", expression, column_name)
-		}
-		DbBackend::Mysql => format!("{} AS `{}`", expression, column_name),
-	}
 }
 
 enum DecodedJsonFieldValue {
@@ -4204,7 +3819,7 @@ mod tests {
 		assert_eq!(all, vec![expected]);
 	}
 
-	#[test]
+	#[rstest]
 	fn postgres_array_selects_are_json_text() {
 		let field = typed_test_field_info(
 			"tags",
@@ -4213,12 +3828,24 @@ mod tests {
 		);
 
 		assert_eq!(
-			json_or_array_select_column_sql(DbBackend::Postgres, &field, "tags"),
-			"array_to_json(\"tags\")::text"
+			RQuery::select()
+				.expr(any_field_projection(
+					DbBackend::Postgres,
+					&field,
+					Expr::col("tags").into_simple_expr()
+				))
+				.to_string(PostgresQueryBuilder),
+			"SELECT CAST(ARRAY_TO_JSON(\"tags\") AS TEXT)"
 		);
 		assert_eq!(
-			json_or_array_select_column_sql(DbBackend::Sqlite, &field, "tags"),
-			"\"tags\""
+			RQuery::select()
+				.expr(any_field_projection(
+					DbBackend::Sqlite,
+					&field,
+					Expr::col("tags").into_simple_expr()
+				))
+				.to_string(SqliteQueryBuilder),
+			"SELECT CAST(\"tags\" AS TEXT)"
 		);
 	}
 
@@ -4233,24 +3860,39 @@ mod tests {
 		field.storage_kind = None;
 
 		assert_eq!(
-			json_or_array_select_column_sql(DbBackend::Postgres, &field, "embedding"),
-			"\"embedding\"::text"
+			RQuery::select()
+				.expr(any_field_projection(
+					DbBackend::Postgres,
+					&field,
+					Expr::col("embedding").into_simple_expr()
+				))
+				.to_string(PostgresQueryBuilder),
+			"SELECT CAST(\"embedding\" AS TEXT)"
 		);
 	}
 
 	#[rstest]
 	fn postgres_naive_datetime_projection_preserves_wall_clock_value() {
-		let sql = temporal_select_column_sql_with_storage(
-			DbBackend::Postgres,
+		// Arrange
+		let field = typed_test_field_info(
 			"created_at",
 			"reinhardt.orm.models.DateTimeField",
-			Some(crate::orm::DatabaseStorageKind::NaiveDateTime),
+			crate::orm::DatabaseStorageKind::NaiveDateTime,
 		);
-
-		assert_eq!(
-			sql,
-			"TO_CHAR(\"created_at\", 'YYYY-MM-DD\"T\"HH24:MI:SS.US')"
-		);
+		let statement = RQuery::select()
+			.expr(any_field_projection(
+				DbBackend::Postgres,
+				&field,
+				Expr::col("created_at").into_simple_expr(),
+			))
+			.to_owned();
+		// Act
+		let (sql, values) = PostgresQueryBuilder
+			.build_select_checked(&statement)
+			.unwrap();
+		// Assert
+		assert_eq!(sql, "SELECT TO_CHAR(\"created_at\", $1)");
+		assert_eq!(values.0, vec![RValue::from("YYYY-MM-DD\"T\"HH24:MI:SS.US")]);
 	}
 
 	#[rstest]

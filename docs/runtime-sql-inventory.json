@@ -42887,280 +42887,116 @@
       "evidence": []
     },
     {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::get::custom-fragment#1",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::get",
-      "kind": "custom-fragment",
-      "line": 424,
-      "fingerprint": "55ab21db676aabae46756d8dba87f2295f228508c341ab25707e57dacf7bcd58",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::get::custom-fragment#2",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::get",
-      "kind": "custom-fragment",
-      "line": 433,
-      "fingerprint": "2365ed029fa9a7e84de5025928b26d1e58caf7a3f821a8592866d820fcb9bcfd",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::get::custom-fragment#3",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::get",
-      "kind": "custom-fragment",
-      "line": 443,
-      "fingerprint": "717e5ab2f65ed16a428151b7026e8750850d68257204a499a786556bbb0132d8",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::get::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::get",
       "kind": "execution-wrapper",
-      "line": 462,
-      "fingerprint": "844a7195955ae64d727cf72bec2ce502ddb07b65e2089626c0b64a2f00e5d01f",
+      "line": 433,
+      "fingerprint": "4abcf1d97b13687fed7d5050476b031783dfb077eb4dbdcab7f3fdee26149903",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; configured Any backend drivers through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Session-owned SELECT uses quoted structural model projections and canonical primary-key codecs. The checked dialect renderer returns the exact SQL/Values pair consumed by the companion Any adapter and query_with on the owned pool. Temporal masks are bound; no inline SQL or custom projection fragments remain on these readers.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native backend regressions preserve quoted tables/physical columns, i64 width, custom logical key codec, complete long UTF-8 text, UUID/bool/decimal/JSON/nullable arrays/temporal/binary values and identity-map hits.",
+        "66 Session units, 13 executable rustdocs, warning-denied docs and production/regression Clippy; #6591/#6592/#6593/#6594 track independent baseline findings. Session.list/locks/flush manual binders remain pending."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::get::executor#1",
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::get",
       "kind": "executor",
-      "line": 462,
-      "fingerprint": "b62d15430a0269ac62b18873523c5b50ee8aa6ccb565f7fb11667a8df198f52d",
+      "line": 433,
+      "fingerprint": "ee993c2d1de5fec4838b535b4d782de3ea15bfd0578663f33738dfab5204fab8",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; configured Any backend drivers through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Session-owned SELECT uses quoted structural model projections and canonical primary-key codecs. The checked dialect renderer returns the exact SQL/Values pair consumed by the companion Any adapter and query_with on the owned pool. Temporal masks are bound; no inline SQL or custom projection fragments remain on these readers.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::get::possible-inline-render#1",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::get",
-      "kind": "possible-inline-render",
-      "line": 456,
-      "fingerprint": "c2a16692bde02363dd1241d09162d5e3e846d98f61c1c0340f6b49fd83945bef",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::get::possible-inline-render#2",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::get",
-      "kind": "possible-inline-render",
-      "line": 457,
-      "fingerprint": "478e34f382e7ee029c2b3a887f78cbe84e091ea8af4178c32e90bf8f38816c04",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::get::possible-inline-render#3",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::get",
-      "kind": "possible-inline-render",
-      "line": 458,
-      "fingerprint": "604986fc90b87989fd36c68edecc3a1720b92042fad2928b034e94ca21b1a062",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
+      "evidence": [
+        "Three native backend regressions preserve quoted tables/physical columns, i64 width, custom logical key codec, complete long UTF-8 text, UUID/bool/decimal/JSON/nullable arrays/temporal/binary values and identity-map hits.",
+        "66 Session units, 13 executable rustdocs, warning-denied docs and production/regression Clippy; #6591/#6592/#6593/#6594 track independent baseline findings. Session.list/locks/flush manual binders remain pending."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::list_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::list_all",
       "kind": "execution-wrapper",
-      "line": 732,
-      "fingerprint": "552bb1b7f66f4c98b83a38bb8602382770a8ed87948f53c9b9d3da9e79963e5a",
+      "line": 546,
+      "fingerprint": "6b5d942b7fae061ac567236b84952406e5f59558f0bddb275ad74368353ec857",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; configured Any backend drivers through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Session-owned SELECT uses quoted structural model projections and canonical primary-key codecs. The checked dialect renderer returns the exact SQL/Values pair consumed by the companion Any adapter and query_with on the owned pool. Temporal masks are bound; no inline SQL or custom projection fragments remain on these readers.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native backend regressions preserve quoted tables/physical columns, i64 width, custom logical key codec, complete long UTF-8 text, UUID/bool/decimal/JSON/nullable arrays/temporal/binary values and identity-map hits.",
+        "66 Session units, 13 executable rustdocs, warning-denied docs and production/regression Clippy; #6591/#6592/#6593/#6594 track independent baseline findings. Session.list/locks/flush manual binders remain pending."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::list_all::executor#1",
       "path": "crates/reinhardt-db/src/orm/session.rs",
       "symbol": "Session::list_all",
       "kind": "executor",
-      "line": 732,
-      "fingerprint": "b2e27dfe484708d73b3bc29c3819776a9396a4cfb41c77caf248c9c9cb44a770",
+      "line": 546,
+      "fingerprint": "2d1651713a396f8d93b52b8aa028b0206d45893263d6f7e5a3893b6a2a40a2fe",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::list_all::macro-sql-literal#1",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::list_all",
-      "kind": "macro-sql-literal",
-      "line": 724,
-      "fingerprint": "92c3810a3e3e82b8beabe5866b9cda449fbd8071fb9fca9c22e6106e6fcd1e75",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
+      "status": "typed",
       "operation": "dml",
-      "representation": "review-required",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; configured Any backend drivers through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Session-owned SELECT uses quoted structural model projections and canonical primary-key codecs. The checked dialect renderer returns the exact SQL/Values pair consumed by the companion Any adapter and query_with on the owned pool. Temporal masks are bound; no inline SQL or custom projection fragments remain on these readers.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::Session::list_all::macro-sql-literal#2",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "Session::list_all",
-      "kind": "macro-sql-literal",
-      "line": 727,
-      "fingerprint": "ba40c3173ae716d23da0bc77ac84f4e7bf7ed2ee24ca41fb8225a842823ca7db",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
+      "evidence": [
+        "Three native backend regressions preserve quoted tables/physical columns, i64 width, custom logical key codec, complete long UTF-8 text, UUID/bool/decimal/JSON/nullable arrays/temporal/binary values and identity-map hits.",
+        "66 Session units, 13 executable rustdocs, warning-denied docs and production/regression Clippy; #6591/#6592/#6593/#6594 track independent baseline findings. Session.list/locks/flush manual binders remain pending."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::list_with_connection_inner::execution-wrapper#1",
@@ -43284,144 +43120,6 @@
       "kind": "executor",
       "line": 1063,
       "fingerprint": "edd89cfe7f5af04f4d4ec6fddb59aafa66449e72d033f78eabe450dffb53adfd",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::apply_any_model_projection::custom-fragment#1",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "apply_any_model_projection",
-      "kind": "custom-fragment",
-      "line": 1681,
-      "fingerprint": "dcac6d2cc939848bbc7846f156e720e38b527f02f21b25082c685e272ce988b2",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::apply_any_model_projection::custom-fragment#2",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "apply_any_model_projection",
-      "kind": "custom-fragment",
-      "line": 1690,
-      "fingerprint": "2589fb1bb87f9b26c5552cdfc472b4106df244877f0ee9db3d75c9e3faa7e937",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::apply_any_model_projection::custom-fragment#3",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "apply_any_model_projection",
-      "kind": "custom-fragment",
-      "line": 1692,
-      "fingerprint": "aa7a98bb87fd1b42367626d847a1e10281c666e7eacfc39c4d76d1fb3909b553",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::apply_any_model_projection::custom-fragment#4",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "apply_any_model_projection",
-      "kind": "custom-fragment",
-      "line": 1707,
-      "fingerprint": "3af224c952987c378f06fe4ed1419f00f3c7dd4ad250ac34ae1d72a2077fae8d",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::apply_any_model_projection::custom-fragment#5",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "apply_any_model_projection",
-      "kind": "custom-fragment",
-      "line": 1712,
-      "fingerprint": "e3d96b991a775bba330562b110e8e7f24d6b697d3eeec60ea027ccd36fe7b22f",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/session.rs::apply_any_model_projection::custom-fragment#6",
-      "path": "crates/reinhardt-db/src/orm/session.rs",
-      "symbol": "apply_any_model_projection",
-      "kind": "custom-fragment",
-      "line": 1715,
-      "fingerprint": "ee456ee3c15d032b56cdbfed4e827aa3c7bb18a426db9549ca98415d01838002",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
