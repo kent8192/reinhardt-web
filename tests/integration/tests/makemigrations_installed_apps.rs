@@ -7,7 +7,8 @@ use reinhardt_db::migrations::autodetector::ForeignKeyInfo;
 use reinhardt_db::migrations::model_registry::{FieldMetadata, ModelMetadata, global_registry};
 use reinhardt_db::migrations::{
 	ColumnDefinition, FieldType, FilesystemRepository, FilesystemSource, ForeignKeyAction,
-	Migration, MigrationRepository, MigrationSource, Operation,
+	Migration, MigrationRepository, MigrationSource, Operation, ProjectState, QualifiedName,
+	SequenceDefault, SequenceDefinition, SequenceKey, SequenceOperation,
 };
 use reinhardt_db::orm::Model;
 use rstest::{fixture, rstest};
@@ -47,13 +48,22 @@ struct MigrationSettings;
 
 struct ModelRegistryGuard {
 	previous: Vec<ModelMetadata>,
+	previous_sequences: Vec<SequenceDefinition>,
 }
 
 impl ModelRegistryGuard {
 	fn clear() -> Self {
 		let previous = global_registry().get_models();
+		let previous_sequences = global_registry()
+			.try_get_sequences()
+			.unwrap()
+			.into_values()
+			.collect();
 		global_registry().clear();
-		Self { previous }
+		Self {
+			previous,
+			previous_sequences,
+		}
 	}
 }
 
@@ -62,6 +72,11 @@ impl Drop for ModelRegistryGuard {
 		global_registry().clear();
 		for metadata in &self.previous {
 			global_registry().register_model(metadata.clone());
+		}
+		for sequence in &self.previous_sequences {
+			global_registry()
+				.register_sequence(sequence.clone())
+				.unwrap();
 		}
 	}
 }
@@ -874,4 +889,104 @@ async fn uninstalled_migration_conflicts_are_ignored(
 		expected.push(("identity".to_owned(), "0001_initial".to_owned()));
 	}
 	assert_eq!(names, expected);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(makemigrations_installed_apps)]
+async fn app_specific_mutual_sequence_defaults_include_all_provider_stages(project: TempDir) {
+	// Arrange
+	let _registry = ModelRegistryGuard::clear();
+	let _cwd = ProjectDirGuard::enter(project.path());
+	for (app, provider) in [("identity", "provider"), ("provider", "identity")] {
+		let key = SequenceKey::new(app, "numbers");
+		global_registry()
+			.register_sequence(SequenceDefinition::new(
+				key,
+				QualifiedName::new(format!("{app}_numbers")),
+			))
+			.unwrap();
+		let mut model = ModelMetadata::new(app, "Event", format!("{app}_events"));
+		model.add_field(
+			"n".into(),
+			FieldMetadata::new(FieldType::BigInteger).with_param(
+				"sequence_default",
+				&serde_json::to_string(&SequenceDefault::new(
+					SequenceKey::new(provider, "numbers"),
+					QualifiedName::new(format!("{provider}_numbers")),
+				))
+				.unwrap(),
+			),
+		);
+		global_registry().register_model(model);
+	}
+	let mut context = context(project.path(), Some(&["identity", "provider"]));
+	context.add_arg("identity".into());
+	// Act
+	MakeMigrationsCommand.execute(&context).await.unwrap();
+	let migrations = FilesystemSource::new(project.path().join("migrations"))
+		.all_migrations()
+		.await
+		.unwrap();
+	let mut graph = reinhardt_db::migrations::MigrationGraph::new();
+	for migration in &migrations {
+		graph.add_migration(
+			reinhardt_db::migrations::MigrationKey::new(&migration.app_label, &migration.name),
+			migration
+				.dependencies
+				.iter()
+				.map(|(app, name)| reinhardt_db::migrations::MigrationKey::new(app, name))
+				.collect(),
+		);
+	}
+	let order = graph.topological_sort().unwrap();
+	let mut replayed = ProjectState::new();
+	for key in &order {
+		let migration = migrations
+			.iter()
+			.find(|migration| migration.app_label == key.app_label && migration.name == key.name)
+			.unwrap();
+		for operation in &migration.operations {
+			operation.state_forwards(&migration.app_label, &mut replayed);
+		}
+	}
+	// Assert
+	assert_eq!(migrations.len(), 4);
+	for app in ["identity", "provider"] {
+		let table = migrations
+			.iter()
+			.find(|migration| {
+				migration.app_label == app
+					&& migration
+						.operations
+						.iter()
+						.any(|operation| matches!(operation, Operation::CreateTable { .. }))
+			})
+			.unwrap();
+		let provider = if app == "identity" {
+			"provider"
+		} else {
+			"identity"
+		};
+		let sequence = migrations
+			.iter()
+			.find(|migration| {
+				migration.app_label == provider
+					&& matches!(
+						migration.operations.as_slice(),
+						[Operation::Sequence {
+							operation: SequenceOperation::Create { .. }
+						}]
+					)
+			})
+			.unwrap();
+		assert!(
+			table
+				.dependencies
+				.contains(&(provider.into(), sequence.name.clone()))
+		);
+	}
+	replayed.validate_sequences().unwrap();
+	assert_eq!(replayed.models.len(), 2);
+	assert_eq!(replayed.sequences.len(), 2);
 }

@@ -31,10 +31,10 @@ use crate::types::{DynIden, IntoIden};
 ///     .max_value(Some(1000));
 /// ```
 #[derive(Debug, Clone)]
-// Allow dead_code: DDL definition struct for CREATE SEQUENCE; fields populated by builder but not yet consumed by backend SQL generation
-#[allow(dead_code)]
 pub struct SequenceDef {
 	pub(crate) name: DynIden,
+	pub(crate) schema: Option<DynIden>,
+	pub(crate) data_type: Option<SequenceType>,
 	pub(crate) if_not_exists: bool,
 	pub(crate) increment: Option<i64>,
 	pub(crate) min_value: Option<Option<i64>>,
@@ -45,10 +45,30 @@ pub struct SequenceDef {
 	pub(crate) owned_by: Option<OwnedBy>,
 }
 
+/// PostgreSQL sequence integer width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SequenceType {
+	/// Signed 16-bit values.
+	SmallInteger,
+	/// Signed 32-bit values.
+	Integer,
+	/// Signed 64-bit values.
+	BigInteger,
+}
+
+impl SequenceType {
+	pub(crate) fn sql(self) -> &'static str {
+		match self {
+			Self::SmallInteger => "smallint",
+			Self::Integer => "integer",
+			Self::BigInteger => "bigint",
+		}
+	}
+}
+
 /// Ownership specification for sequences
 #[derive(Debug, Clone)]
-// Allow dead_code: enum variants define OWNED BY options for sequences; not all consumed yet by backend SQL generation
-#[allow(dead_code)]
 pub enum OwnedBy {
 	/// OWNED BY table.column
 	Column {
@@ -59,6 +79,15 @@ pub enum OwnedBy {
 	},
 	/// OWNED BY NONE
 	None,
+	/// OWNED BY schema.table.column with independently quoted identifiers.
+	SchemaColumn {
+		/// Schema containing the owning table.
+		schema: DynIden,
+		/// Physical table name.
+		table: DynIden,
+		/// Physical column name.
+		column: DynIden,
+	},
 }
 
 /// Sequence option for ALTER SEQUENCE operations
@@ -80,8 +109,6 @@ pub enum OwnedBy {
 /// let opt = SequenceOption::IncrementBy(5);
 /// ```
 #[derive(Debug, Clone)]
-// Allow dead_code: enum variants define all ALTER SEQUENCE options; not all consumed yet by backend SQL generation
-#[allow(dead_code)]
 pub enum SequenceOption {
 	/// RESTART [WITH value]
 	Restart(Option<i64>),
@@ -103,9 +130,40 @@ pub enum SequenceOption {
 	NoCycle,
 	/// OWNED BY table.column or OWNED BY NONE
 	OwnedBy(OwnedBy),
+	/// Change the sequence integer width.
+	AsType(SequenceType),
+	/// Change the configured start without restarting allocation.
+	StartWith(i64),
 }
 
 impl SequenceDef {
+	/// Qualify this sequence with a separately quoted schema identifier.
+	pub fn schema<S: IntoIden>(mut self, schema: S) -> Self {
+		self.schema = Some(schema.into_iden());
+		self
+	}
+
+	/// Set the PostgreSQL sequence integer width.
+	pub fn as_type(mut self, data_type: SequenceType) -> Self {
+		self.data_type = Some(data_type);
+		self
+	}
+
+	/// Associate the sequence with a qualified physical column.
+	pub fn owned_by_schema_column<S: IntoIden, T: IntoIden, C: IntoIden>(
+		mut self,
+		schema: S,
+		table: T,
+		column: C,
+	) -> Self {
+		self.owned_by = Some(OwnedBy::SchemaColumn {
+			schema: schema.into_iden(),
+			table: table.into_iden(),
+			column: column.into_iden(),
+		});
+		self
+	}
+
 	/// Create a new sequence definition
 	///
 	/// # Examples
@@ -118,6 +176,8 @@ impl SequenceDef {
 	pub fn new<N: IntoIden>(name: N) -> Self {
 		Self {
 			name: name.into_iden(),
+			schema: None,
+			data_type: None,
 			if_not_exists: false,
 			increment: None,
 			min_value: None,

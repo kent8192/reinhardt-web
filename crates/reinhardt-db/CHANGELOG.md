@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- PostgreSQL sequence options, literal schema identifiers, and structured identity definitions (#6506).
+- Typed sequence/identity migration operations, app declarations, catalog comparison, source/JSON replay, and schema rollback.
+
 ### Fixed
 
 - Preserve unsigned composite primary keys instead of wrapping to a signed key
@@ -14,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   redacted type error before execution; MySQL binds the original `u64`.
 
 ### Breaking Changes
+
+- `Operation` gains `Sequence` and `Identity` variants. Exhaustive downstream matches need corresponding arms.
+- `ProjectState`, catalog/schema structs, and column schema payloads gain metadata fields. Prefer constructors/builders over struct literals. Legacy column JSON/source remains readable.
 
 - Add `QueryValue::Uint(u64)` for unsigned query parameters, including
   `LIMIT`/`OFFSET`. Exhaustive matches must handle the new variant. MySQL
