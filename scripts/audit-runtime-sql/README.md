@@ -15,7 +15,8 @@ cargo run --locked --manifest-path scripts/audit-runtime-sql/Cargo.toml -- compl
 ```
 
 `scan` includes SQL literals inside macros, SQL asset references, SQLx-style
-query calls (including unqualified imports), execution wrapper calls, custom
+query calls (including unqualified imports), execution wrapper calls (including
+owned Values, structural-context and row-streaming variants), custom
 expressions and possible inline query rendering. Detection is conservative:
 HTTP/process `execute` methods may be candidates too. Classify their provenance
 in the registry rather than changing detection to match today's callers.
@@ -31,7 +32,8 @@ pending framework-owned site. During incremental migration `pending` is a real
 remaining obligation, never evidence of completion.
 
 Identities use source path, module/impl/function, candidate kind and ordinal
-within that symbol; line numbers are diagnostic only. Fingerprints cover
+within that symbol; named trait defaults retain their trait/method scope too.
+Line numbers are diagnostic only. Fingerprints cover
 candidate syntax, its enclosing function body, or SQL asset contents. Changing
 how an unchanged executor call obtains its SQL also requires provenance review.
 Review semantic changes before updating an entry. Preserve existing

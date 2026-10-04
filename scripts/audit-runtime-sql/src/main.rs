@@ -231,6 +231,23 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 		});
 		self.provenance.pop();
 	}
+	fn visit_trait_item_fn(&mut self, n: &'ast syn::TraitItemFn) {
+		if let Some(body) = &n.default {
+			self.provenance
+				.push(digest(&body.to_token_stream().to_string()));
+		}
+		self.scope(n.sig.ident.to_string(), &n.attrs, |s| {
+			visit::visit_trait_item_fn(s, n)
+		});
+		if n.default.is_some() {
+			self.provenance.pop();
+		}
+	}
+	fn visit_item_trait(&mut self, n: &'ast syn::ItemTrait) {
+		self.scope(n.ident.to_string(), &n.attrs, |s| {
+			visit::visit_item_trait(s, n)
+		});
+	}
 	fn visit_item_impl(&mut self, n: &'ast syn::ItemImpl) {
 		let ty = n.self_ty.to_token_stream().to_string();
 		let name = n.trait_.as_ref().map_or(ty.clone(), |(_, tr, _)| {
@@ -289,6 +306,15 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 				"execute"
 					| "execute_raw" | "fetch_one"
 					| "fetch_all" | "fetch_optional"
+					| "execute_with_context"
+					| "fetch_one_with_context"
+					| "fetch_all_with_context"
+					| "fetch_optional_with_context"
+					| "fetch_all_with_values"
+					| "fetch_one_with_values"
+					| "fetch_optional_with_values"
+					| "fetch_stream"
+					| "fetch_stream_with_context"
 					| "query" | "query_as"
 					| "query_scalar"
 			) {
@@ -679,6 +705,46 @@ mod tests {
 		assert_eq!(shipped.len(), 2);
 		assert!(shipped.iter().all(|site| !site.test_only));
 		assert!(test_only.iter().all(|site| site.test_only));
+	}
+	#[rstest]
+	fn finds_owned_contextual_and_streaming_execution_wrappers() {
+		// Arrange: SQL is generated elsewhere, so these wrappers contain no SQL literal.
+		let source = "fn run() { engine.fetch_one_with_values(built); db.execute_with_context(sql, values, context); db.fetch_stream(sql, values, size); db.fetch_stream_with_context(sql, values, size, context); }";
+		// Act
+		let sites = scan_source("crates/example/src/lib.rs", source).unwrap();
+		// Assert: changes to the caller's provenance remain auditable.
+		assert_eq!(sites.len(), 4);
+		assert!(sites.iter().all(|site| site.kind == "execution-wrapper"));
+		assert!(sites.iter().all(|site| !site.test_only));
+		let changed = scan_source(
+			"crates/example/src/lib.rs",
+			&source.replace(
+				"engine.fetch_one_with_values(built)",
+				"engine.fetch_one_with_values(other)",
+			),
+		)
+		.unwrap();
+		assert_ne!(sites[0].fingerprint, changed[0].fingerprint);
+	}
+	#[rstest]
+	fn trait_defaults_track_named_function_provenance_and_test_conditions() {
+		// Arrange: the executor call stays identical while its generated SQL changes.
+		let source = "trait Store { fn fetch(&self) { let sql = Query::select().column(\"old\"); db.fetch_all(sql); } #[cfg(test)] fn fixture() { db.execute(sql); } }";
+		// Act
+		let sites = scan_source("crates/example/src/lib.rs", source).unwrap();
+		let changed = scan_source(
+			"crates/example/src/lib.rs",
+			&source.replace("column(\"old\")", "column(\"new\")"),
+		)
+		.unwrap();
+		// Assert
+		assert_eq!(sites.len(), 2);
+		assert_eq!(sites[0].symbol, "Store::fetch");
+		assert!(!sites[0].test_only);
+		assert_ne!(sites[0].fingerprint, changed[0].fingerprint);
+		assert_eq!(sites[1].symbol, "Store::fixture");
+		assert!(sites[1].test_only);
+		assert_eq!(sites[1].fingerprint, changed[1].fingerprint);
 	}
 	#[rstest]
 	fn detects_stale_and_changed_entries_but_allows_line_movement() {
