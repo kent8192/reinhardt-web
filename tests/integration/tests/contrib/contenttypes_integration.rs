@@ -192,9 +192,9 @@ mod orm_integration_tests {
 	/// Setup test pool fixture with table creation
 	#[fixture]
 	async fn setup_test_pool(_init_drivers: ()) -> Arc<AnyPool> {
-		// Use single connection pool for in-memory SQLite with shared cache
+		// Keep each fixture's private in-memory database on a single connection.
 		use sqlx::pool::PoolOptions;
-		let database_url = "sqlite::memory:?mode=rwc&cache=shared";
+		let database_url = "sqlite::memory:?cache=private";
 		let pool = PoolOptions::new()
 			.min_connections(1)
 			.max_connections(1)
@@ -418,9 +418,9 @@ mod combined_tests {
 		_init_drivers: (),
 		_registry_guard: TeardownGuard<ContentTypeRegistryGuard>,
 	) {
-		// Use single connection pool for in-memory SQLite with shared cache
+		// Keep this test's private in-memory database on a single connection.
 		use sqlx::pool::PoolOptions;
-		let database_url = "sqlite::memory:?mode=rwc&cache=shared";
+		let database_url = "sqlite::memory:?cache=private";
 		let pool = PoolOptions::new()
 			.min_connections(1)
 			.max_connections(1)

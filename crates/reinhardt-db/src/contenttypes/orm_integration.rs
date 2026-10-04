@@ -545,8 +545,8 @@ mod tests {
 	async fn setup_test_db() -> Arc<AnyPool> {
 		init_drivers();
 
-		// Use in-memory SQLite with shared cache mode and single connection
-		let db_url = "sqlite::memory:?mode=rwc&cache=shared";
+		// Give each fixture a private in-memory database on its single connection.
+		let db_url = "sqlite::memory:?cache=private";
 
 		// Create pool with single connection
 		use sqlx::pool::PoolOptions;
@@ -701,6 +701,38 @@ mod tests {
 		assert!(matches!(error, PersistenceError::DatabaseError(_)));
 		assert_eq!(stored, vec![created]);
 		assert_eq!(database.pool.size(), 2);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_fixtures_are_isolated() {
+		// Arrange
+		let (first_pool, second_pool) = tokio::join!(setup_test_db(), setup_test_db());
+		let first_context = ContentTypeTransaction::new(first_pool);
+		let second_context = ContentTypeTransaction::new(second_pool);
+
+		// Act
+		let (first, second) = tokio::try_join!(
+			first_context.create("isolation", "SameModel"),
+			second_context.create("isolation", "SameModel"),
+		)
+		.expect("Independent fixtures should allow the same content type");
+		let first_rows = first_context
+			.query()
+			.all()
+			.await
+			.expect("Failed to query first fixture");
+		let second_rows = second_context
+			.query()
+			.all()
+			.await
+			.expect("Failed to query second fixture");
+
+		// Assert
+		assert_eq!(first.id, Some(1));
+		assert_eq!(second.id, Some(1));
+		assert_eq!(first_rows, vec![first]);
+		assert_eq!(second_rows, vec![second]);
 	}
 
 	#[rstest]
