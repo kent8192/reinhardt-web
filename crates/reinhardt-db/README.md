@@ -1283,6 +1283,11 @@ configured pool and backend, binding filter parameters through the driver. It
 therefore keeps request-scoped queries on the connection selected by the
 caller.
 
+`Session::list_all` reads every model row from the configured pool. Its typed
+SELECT uses backend-aware identifier escaping, including table names and
+physical column names containing double quotes or backticks. It shares model
+projections and row decoding with `Session::list`.
+
 `AsyncQuery` preserves bind parameters when executing legacy `Q` filters.
 Runtime field names and operators are treated as query structure and accept
 only supported forms. `Q::from_sql` rejects unrecognized SQL, while
