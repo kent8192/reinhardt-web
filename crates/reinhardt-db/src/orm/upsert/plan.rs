@@ -305,6 +305,7 @@ mod tests {
 	use crate::orm::model::{FieldSelector, Model};
 	use crate::orm::upsert::assignment::TypedAssignment;
 	use crate::orm::{DatabaseValue, Manager};
+	#[cfg(feature = "migrations")]
 	use reinhardt_core::macros::model;
 	use rstest::*;
 	use serde::{Deserialize, Serialize};
@@ -324,6 +325,8 @@ mod tests {
 		}
 	}
 
+	// Model fixtures also generate migration metadata.
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "nullable_primary_key_articles")]
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	struct NullablePrimaryKeyArticle {
@@ -643,6 +646,7 @@ mod tests {
 		);
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn normalize_rejects_null_primary_key_from_generated_accessor() {
 		let lookup = TypedAssignment::new(NullablePrimaryKeyArticle::field_id(), None::<i64>)
