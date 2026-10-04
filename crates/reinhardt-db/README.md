@@ -176,6 +176,23 @@ repeated `LIMIT`/`OFFSET` pagination for this API.
   - `Error::database_kind()` supports category matching without driver-specific downcasts
   - `DatabaseError::code()` preserves an optional vendor code for diagnostics
 
+### Unsigned composite key lookups
+
+Unsigned composite-key lookups retain their value through
+`PkValue::Uint` and `QueryValue::Uint`. MySQL binds the full `u64` range;
+PostgreSQL and SQLite check conversion to a signed 64-bit integer and reject
+overflow before executing SQL. The resulting `DatabaseErrorKind::Type` error
+does not include the key value. Ordinary signed keys and native field codecs
+retain their existing behavior.
+
+When upgrading, add a `QueryValue::Uint(value)` arm to exhaustive matches.
+Custom executors must preserve the unsigned value or return a checked type
+error when their backend cannot represent it. Large unsigned MySQL result
+values now use `QueryValue::Uint` instead of decimal text.
+
+See the [unsigned query value migration guide](../../docs/migration/0.4.0-unsigned-query-values.md)
+for custom executor updates.
+
 ### Updating composite primary keys
 
 `Manager::update`, `update_with_conn`, and the update path of
