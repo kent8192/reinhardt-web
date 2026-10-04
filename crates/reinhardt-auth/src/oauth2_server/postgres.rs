@@ -6,12 +6,10 @@ use super::store::{
 	OAuthServerStore, PendingRecord, ResourceRegistration, StoredCode, StoredToken,
 	token_matches_code,
 };
+use crate::database_query::{json_text_path, prepare};
 use async_trait::async_trait;
 use reinhardt_db::migrations::{Migration, Operation};
-use reinhardt_query::prelude::{
-	Alias, Expr, ExprTrait, IntoIden, OnConflict, PostgresQueryBuilder, Query,
-	QueryStatementBuilder, Value,
-};
+use reinhardt_query::prelude::{Alias, Expr, ExprTrait, IntoIden, OnConflict, Query, Value};
 use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction, types::Json};
 
@@ -92,9 +90,8 @@ impl PostgresOAuthStore {
 					);
 				query.and_where(Expr::not_exists(subquery));
 			}
-			let (sql, _) = query.build(PostgresQueryBuilder);
-			deleted += sqlx::query(&sql)
-				.bind(now)
+			let (sql, arguments) = prepare(query)?;
+			deleted += sqlx::query_with(&sql, arguments)
 				.execute(&mut *tx)
 				.await
 				.map_err(|e| e.to_string())?
@@ -111,13 +108,19 @@ fn json_value<T: Serialize>(value: &T) -> Result<Value, String> {
 		.map_err(|e| e.to_string())
 }
 
-fn update_flag(table: &'static str, field: &'static str, key: &'static str, value: &str) -> String {
-	Query::update()
-		.table(Alias::new(table))
-		.value_expr(Alias::new(field), Expr::cust("TRUE"))
-		.and_where(Expr::col(Alias::new(key).into_iden()).eq(value))
-		.build(PostgresQueryBuilder)
-		.0
+fn update_flag(
+	table: &'static str,
+	field: &'static str,
+	key: &'static str,
+	value: &str,
+) -> Result<crate::database_query::Prepared, String> {
+	prepare(
+		Query::update()
+			.table(Alias::new(table))
+			.value(Alias::new(field), true)
+			.and_where(Expr::col(Alias::new(key).into_iden()).eq(value))
+			.take(),
+	)
 }
 
 async fn insert_token(
@@ -128,61 +131,49 @@ async fn insert_token(
 		TokenPrincipal::User(id) => Some(id.as_str()),
 		TokenPrincipal::Client(_) => None,
 	};
-	let (sql, _) = Query::insert()
-		.into_table(Alias::new("oauth_server_tokens"))
-		.columns([
-			"digest",
-			"payload",
-			"client_id",
-			"user_id",
-			"code_digest",
-			"expires_at",
-			"revoked",
-		])
-		.values(vec![
-			token.digest.clone().into(),
-			json_value(token)?,
-			token.client_id.clone().into(),
-			Value::String(user_id.map(|id| Box::new(id.to_owned()))),
-			Value::String(token.code_digest.clone().map(Box::new)),
-			token.expires_at.into(),
-			token.revoked.into(),
-		])?
-		.build(PostgresQueryBuilder);
-	let mut query = sqlx::query(&sql)
-		.bind(&token.digest)
-		.bind(Json(token))
-		.bind(&token.client_id);
-	if let Some(user_id) = user_id {
-		query = query.bind(user_id);
-	}
-	if let Some(code_digest) = &token.code_digest {
-		query = query.bind(code_digest);
-	}
-	query
-		.bind(token.expires_at)
-		.bind(token.revoked)
+	let (sql, arguments) = prepare(
+		Query::insert()
+			.into_table(Alias::new("oauth_server_tokens"))
+			.columns([
+				"digest",
+				"payload",
+				"client_id",
+				"user_id",
+				"code_digest",
+				"expires_at",
+				"revoked",
+			])
+			.values(vec![
+				token.digest.clone().into(),
+				json_value(token)?,
+				token.client_id.clone().into(),
+				Value::String(user_id.map(|id| Box::new(id.to_owned()))),
+				Value::String(token.code_digest.clone().map(Box::new)),
+				token.expires_at.into(),
+				token.revoked.into(),
+			])?
+			.take(),
+	)?;
+	sqlx::query_with(&sql, arguments)
 		.execute(&mut **tx)
 		.await
 		.map_err(|e| e.to_string())?;
 	Ok(())
 }
 async fn insert_code(tx: &mut Transaction<'_, Postgres>, code: &StoredCode) -> Result<(), String> {
-	let (sql, _) = Query::insert()
-		.into_table(Alias::new("oauth_server_codes"))
-		.columns(["digest", "payload", "client_id", "expires_at"])
-		.values(vec![
-			code.digest.clone().into(),
-			json_value(code)?,
-			code.client_id.clone().into(),
-			code.expires_at.into(),
-		])?
-		.build(PostgresQueryBuilder);
-	sqlx::query(&sql)
-		.bind(&code.digest)
-		.bind(Json(code))
-		.bind(&code.client_id)
-		.bind(code.expires_at)
+	let (sql, arguments) = prepare(
+		Query::insert()
+			.into_table(Alias::new("oauth_server_codes"))
+			.columns(["digest", "payload", "client_id", "expires_at"])
+			.values(vec![
+				code.digest.clone().into(),
+				json_value(code)?,
+				code.client_id.clone().into(),
+				code.expires_at.into(),
+			])?
+			.take(),
+	)?;
+	sqlx::query_with(&sql, arguments)
 		.execute(&mut **tx)
 		.await
 		.map_err(|e| e.to_string())?;
@@ -192,30 +183,30 @@ async fn insert_code(tx: &mut Transaction<'_, Postgres>, code: &StoredCode) -> R
 #[async_trait]
 impl OAuthServerStore for PostgresOAuthStore {
 	async fn put_client(&self, client: ClientRegistration) -> Result<(), String> {
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oauth_server_clients"))
-			.columns(["client_id", "payload"])
-			.values(vec![client.client_id.clone().into(), json_value(&client)?])?
-			.on_conflict(OnConflict::column("client_id").update_columns(["payload"]))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(&client.client_id)
-			.bind(Json(&client))
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new("oauth_server_clients"))
+				.columns(["client_id", "payload"])
+				.values(vec![client.client_id.clone().into(), json_value(&client)?])?
+				.on_conflict(OnConflict::column("client_id").update_columns(["payload"]))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
 		Ok(())
 	}
 	async fn insert_client_if_absent(&self, client: ClientRegistration) -> Result<bool, String> {
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oauth_server_clients"))
-			.columns(["client_id", "payload"])
-			.values(vec![client.client_id.clone().into(), json_value(&client)?])?
-			.on_conflict(OnConflict::column("client_id").do_nothing())
-			.build(PostgresQueryBuilder);
-		let result = sqlx::query(&sql)
-			.bind(&client.client_id)
-			.bind(Json(&client))
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new("oauth_server_clients"))
+				.columns(["client_id", "payload"])
+				.values(vec![client.client_id.clone().into(), json_value(&client)?])?
+				.on_conflict(OnConflict::column("client_id").do_nothing())
+				.take(),
+		)?;
+		let result = sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -230,32 +221,33 @@ impl OAuthServerStore for PostgresOAuthStore {
 			return Err("client identity cannot change".to_owned());
 		}
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_clients"))
-			.and_where(
-				Expr::col(Alias::new("client_id").into_iden()).eq(expected.client_id.as_str()),
-			)
-			.lock_exclusive()
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<ClientRegistration>,)> = sqlx::query_as(&sql)
-			.bind(&expected.client_id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_clients"))
+				.and_where(
+					Expr::col(Alias::new("client_id").into_iden()).eq(expected.client_id.as_str()),
+				)
+				.lock_exclusive()
+				.take(),
+		)?;
+		let row: Option<(Json<ClientRegistration>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
 		if row.as_ref().map(|(Json(client),)| client) != Some(expected) {
 			return Ok(false);
 		}
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_clients"))
-			.value(Alias::new("payload"), json_value(&replacement)?)
-			.and_where(
-				Expr::col(Alias::new("client_id").into_iden()).eq(expected.client_id.as_str()),
-			)
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(Json(&replacement))
-			.bind(&expected.client_id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_clients"))
+				.value(Alias::new("payload"), json_value(&replacement)?)
+				.and_where(
+					Expr::col(Alias::new("client_id").into_iden()).eq(expected.client_id.as_str()),
+				)
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -264,14 +256,15 @@ impl OAuthServerStore for PostgresOAuthStore {
 	}
 	async fn disable_client(&self, id: &str) -> Result<Option<u64>, String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_clients"))
-			.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(id))
-			.lock_exclusive()
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<ClientRegistration>,)> = sqlx::query_as(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_clients"))
+				.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(id))
+				.lock_exclusive()
+				.take(),
+		)?;
+		let row: Option<(Json<ClientRegistration>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -279,48 +272,48 @@ impl OAuthServerStore for PostgresOAuthStore {
 			return Ok(None);
 		};
 		client.enabled = false;
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_clients"))
-			.value(Alias::new("payload"), json_value(&client)?)
-			.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(id))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(Json(&client))
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_clients"))
+				.value(Alias::new("payload"), json_value(&client)?)
+				.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::delete()
-			.from_table(Alias::new("oauth_server_pending"))
-			.and_where(Expr::cust_with_values(
-				"payload->'request'->>'client_id' = ?",
-				[id],
-			))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table(Alias::new("oauth_server_pending"))
+				.and_where(json_text_path(&["request", "client_id"]).eq(id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_codes"))
-			.value_expr(Alias::new("redeemed"), Expr::cust("TRUE"))
-			.value_expr(Alias::new("replayed"), Expr::cust("TRUE"))
-			.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(id))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_codes"))
+				.value(Alias::new("redeemed"), true)
+				.value(Alias::new("replayed"), true)
+				.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_tokens"))
-			.value_expr(Alias::new("revoked"), Expr::cust("TRUE"))
-			.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(id))
-			.and_where(Expr::cust("NOT revoked"))
-			.build(PostgresQueryBuilder);
-		let result = sqlx::query(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_tokens"))
+				.value(Alias::new("revoked"), true)
+				.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(id))
+				.and_where(Expr::col("revoked").not())
+				.take(),
+		)?;
+		let result = sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -328,13 +321,14 @@ impl OAuthServerStore for PostgresOAuthStore {
 		Ok(Some(result.rows_affected()))
 	}
 	async fn client(&self, id: &str) -> Result<Option<ClientRegistration>, String> {
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_clients"))
-			.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(id))
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<ClientRegistration>,)> = sqlx::query_as(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_clients"))
+				.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(id))
+				.take(),
+		)?;
+		let row: Option<(Json<ClientRegistration>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -344,38 +338,46 @@ impl OAuthServerStore for PostgresOAuthStore {
 		&self,
 		origin: &str,
 	) -> Result<Option<ClientRegistration>, String> {
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_clients"))
-			.and_where(Expr::cust("payload->>'kind' = 'Public'"))
-			.and_where(Expr::cust("payload->>'enabled' = 'true'"))
-			.and_where(Expr::cust_with_values(
-				"payload->'browser_origins' @> ?",
-				[origin],
-			))
-			.limit(1)
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<ClientRegistration>,)> = sqlx::query_as(&sql)
-			.bind(Json(vec![origin]))
-			.bind(1_i64)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_clients"))
+				.and_where(json_text_path(&["kind"]).eq("Public"))
+				.and_where(json_text_path(&["enabled"]).eq("true"))
+				.and_where(reinhardt_query::SimpleExpr::Binary(
+					Box::new(Expr::col("payload").binary(
+						reinhardt_query::BinOper::PgOperator(
+							reinhardt_query::types::PgBinOper::JsonGetByIndex,
+						),
+						Expr::val("browser_origins").into_simple_expr(),
+					)),
+					reinhardt_query::BinOper::PgOperator(
+						reinhardt_query::types::PgBinOper::Contains,
+					),
+					Box::new(Expr::val(serde_json::json!([origin])).into_simple_expr()),
+				))
+				.limit(1)
+				.take(),
+		)?;
+		let row: Option<(Json<ClientRegistration>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
 		Ok(row.map(|(Json(client),)| client))
 	}
 	async fn put_resource(&self, resource: ResourceRegistration) -> Result<(), String> {
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oauth_server_resources"))
-			.columns(["resource_id", "payload"])
-			.values(vec![
-				resource.resource_id.clone().into(),
-				json_value(&resource)?,
-			])?
-			.on_conflict(OnConflict::column("resource_id").update_columns(["payload"]))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(&resource.resource_id)
-			.bind(Json(&resource))
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new("oauth_server_resources"))
+				.columns(["resource_id", "payload"])
+				.values(vec![
+					resource.resource_id.clone().into(),
+					json_value(&resource)?,
+				])?
+				.on_conflict(OnConflict::column("resource_id").update_columns(["payload"]))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -385,18 +387,18 @@ impl OAuthServerStore for PostgresOAuthStore {
 		&self,
 		resource: ResourceRegistration,
 	) -> Result<bool, String> {
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oauth_server_resources"))
-			.columns(["resource_id", "payload"])
-			.values(vec![
-				resource.resource_id.clone().into(),
-				json_value(&resource)?,
-			])?
-			.on_conflict(OnConflict::column("resource_id").do_nothing())
-			.build(PostgresQueryBuilder);
-		let result = sqlx::query(&sql)
-			.bind(&resource.resource_id)
-			.bind(Json(&resource))
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new("oauth_server_resources"))
+				.columns(["resource_id", "payload"])
+				.values(vec![
+					resource.resource_id.clone().into(),
+					json_value(&resource)?,
+				])?
+				.on_conflict(OnConflict::column("resource_id").do_nothing())
+				.take(),
+		)?;
+		let result = sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -413,32 +415,35 @@ impl OAuthServerStore for PostgresOAuthStore {
 			return Err("resource identity cannot change".to_owned());
 		}
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_resources"))
-			.and_where(
-				Expr::col(Alias::new("resource_id").into_iden()).eq(expected.resource_id.as_str()),
-			)
-			.lock_exclusive()
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<ResourceRegistration>,)> = sqlx::query_as(&sql)
-			.bind(&expected.resource_id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_resources"))
+				.and_where(
+					Expr::col(Alias::new("resource_id").into_iden())
+						.eq(expected.resource_id.as_str()),
+				)
+				.lock_exclusive()
+				.take(),
+		)?;
+		let row: Option<(Json<ResourceRegistration>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
 		if row.as_ref().map(|(Json(client),)| client) != Some(expected) {
 			return Ok(false);
 		}
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_resources"))
-			.value(Alias::new("payload"), json_value(&replacement)?)
-			.and_where(
-				Expr::col(Alias::new("resource_id").into_iden()).eq(expected.resource_id.as_str()),
-			)
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(Json(&replacement))
-			.bind(&expected.resource_id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_resources"))
+				.value(Alias::new("payload"), json_value(&replacement)?)
+				.and_where(
+					Expr::col(Alias::new("resource_id").into_iden())
+						.eq(expected.resource_id.as_str()),
+				)
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -446,13 +451,14 @@ impl OAuthServerStore for PostgresOAuthStore {
 		Ok(true)
 	}
 	async fn resource(&self, id: &str) -> Result<Option<ResourceRegistration>, String> {
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_resources"))
-			.and_where(Expr::col(Alias::new("resource_id").into_iden()).eq(id))
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<ResourceRegistration>,)> = sqlx::query_as(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_resources"))
+				.and_where(Expr::col(Alias::new("resource_id").into_iden()).eq(id))
+				.take(),
+		)?;
+		let row: Option<(Json<ResourceRegistration>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -462,48 +468,46 @@ impl OAuthServerStore for PostgresOAuthStore {
 		&self,
 		audience: &str,
 	) -> Result<Option<ResourceRegistration>, String> {
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_resources"))
-			.and_where(Expr::cust_with_values(
-				"payload->>'audience' = ?",
-				[audience],
-			))
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<ResourceRegistration>,)> = sqlx::query_as(&sql)
-			.bind(audience)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_resources"))
+				.and_where(json_text_path(&["audience"]).eq(audience))
+				.take(),
+		)?;
+		let row: Option<(Json<ResourceRegistration>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
 		Ok(row.map(|(Json(resource),)| resource))
 	}
 	async fn put_pending(&self, id: &str, pending: PendingRecord) -> Result<(), String> {
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oauth_server_pending"))
-			.columns(["id", "payload", "expires_at"])
-			.values(vec![
-				id.into(),
-				json_value(&pending)?,
-				pending.expires_at.into(),
-			])?
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(id)
-			.bind(Json(&pending))
-			.bind(pending.expires_at)
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new("oauth_server_pending"))
+				.columns(["id", "payload", "expires_at"])
+				.values(vec![
+					id.into(),
+					json_value(&pending)?,
+					pending.expires_at.into(),
+				])?
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
 		Ok(())
 	}
 	async fn pending(&self, id: &str) -> Result<Option<PendingRecord>, String> {
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_pending"))
-			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<PendingRecord>,)> = sqlx::query_as(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_pending"))
+				.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
+				.take(),
+		)?;
+		let row: Option<(Json<PendingRecord>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -525,14 +529,15 @@ impl OAuthServerStore for PostgresOAuthStore {
 		request: AuthorizationCommit<'_>,
 	) -> Result<bool, String> {
 		let id = &request.pending.request.id;
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_pending"))
-			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id.as_str()))
-			.lock_exclusive()
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<PendingRecord>,)> = sqlx::query_as(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_pending"))
+				.and_where(Expr::col(Alias::new("id").into_iden()).eq(id.as_str()))
+				.lock_exclusive()
+				.take(),
+		)?;
+		let row: Option<(Json<PendingRecord>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&mut **tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -544,12 +549,13 @@ impl OAuthServerStore for PostgresOAuthStore {
 		if let Some(code) = request.code {
 			insert_code(tx, code).await?;
 		}
-		let (sql, _) = Query::delete()
-			.from_table(Alias::new("oauth_server_pending"))
-			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id.as_str()))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table(Alias::new("oauth_server_pending"))
+				.and_where(Expr::col(Alias::new("id").into_iden()).eq(id.as_str()))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut **tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -563,17 +569,19 @@ impl OAuthServerStore for PostgresOAuthStore {
 		now: i64,
 	) -> Result<Option<PendingRecord>, String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (select_sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_pending"))
-			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
-			.lock_exclusive()
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<PendingRecord>,)> = sqlx::query_as(&select_sql)
-			.bind(id)
-			.fetch_optional(&mut *tx)
-			.await
-			.map_err(|e| e.to_string())?;
+		let (select_sql, select_arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_pending"))
+				.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
+				.lock_exclusive()
+				.take(),
+		)?;
+		let row: Option<(Json<PendingRecord>,)> =
+			sqlx::query_as_with(&select_sql, select_arguments)
+				.fetch_optional(&mut *tx)
+				.await
+				.map_err(|e| e.to_string())?;
 		let Some((Json(pending),)) = row else {
 			return Ok(None);
 		};
@@ -583,13 +591,14 @@ impl OAuthServerStore for PostgresOAuthStore {
 		{
 			return Ok(None);
 		}
-		let (sql, _) = Query::delete()
-			.from_table(Alias::new("oauth_server_pending"))
-			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
-			.returning(["payload"])
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table(Alias::new("oauth_server_pending"))
+				.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
+				.returning(["payload"])
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -602,13 +611,14 @@ impl OAuthServerStore for PostgresOAuthStore {
 		tx.commit().await.map_err(|e| e.to_string())
 	}
 	async fn code(&self, digest: &str) -> Result<Option<StoredCode>, String> {
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oauth_server_codes"))
-			.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<StoredCode>,)> = sqlx::query_as(&sql)
-			.bind(digest)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oauth_server_codes"))
+				.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
+				.take(),
+		)?;
+		let row: Option<(Json<StoredCode>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -619,14 +629,15 @@ impl OAuthServerStore for PostgresOAuthStore {
 		request: CodeInspection<'_>,
 	) -> Result<Option<StoredCode>, String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::select()
-			.columns(["payload", "redeemed", "expires_at"])
-			.from(Alias::new("oauth_server_codes"))
-			.and_where(Expr::col(Alias::new("digest").into_iden()).eq(request.digest))
-			.lock_exclusive()
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<StoredCode>, bool, i64)> = sqlx::query_as(&sql)
-			.bind(request.digest)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.columns(["payload", "redeemed", "expires_at"])
+				.from(Alias::new("oauth_server_codes"))
+				.and_where(Expr::col(Alias::new("digest").into_iden()).eq(request.digest))
+				.lock_exclusive()
+				.take(),
+		)?;
+		let row: Option<(Json<StoredCode>, bool, i64)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -637,26 +648,22 @@ impl OAuthServerStore for PostgresOAuthStore {
 			return Ok(None);
 		}
 		if redeemed {
-			sqlx::query(&update_flag(
-				"oauth_server_codes",
-				"replayed",
-				"digest",
-				request.digest,
-			))
-			.bind(request.digest)
-			.execute(&mut *tx)
-			.await
-			.map_err(|e| e.to_string())?;
-			sqlx::query(&update_flag(
+			let (sql, arguments) =
+				update_flag("oauth_server_codes", "replayed", "digest", request.digest)?;
+			sqlx::query_with(&sql, arguments)
+				.execute(&mut *tx)
+				.await
+				.map_err(|e| e.to_string())?;
+			let (sql, arguments) = update_flag(
 				"oauth_server_tokens",
 				"revoked",
 				"code_digest",
 				request.digest,
-			))
-			.bind(request.digest)
-			.execute(&mut *tx)
-			.await
-			.map_err(|e| e.to_string())?;
+			)?;
+			sqlx::query_with(&sql, arguments)
+				.execute(&mut *tx)
+				.await
+				.map_err(|e| e.to_string())?;
 			tx.commit().await.map_err(|e| e.to_string())?;
 			return Ok(None);
 		}
@@ -677,14 +684,15 @@ impl OAuthServerStore for PostgresOAuthStore {
 			token,
 		} = request;
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::select()
-			.columns(["payload", "redeemed", "expires_at"])
-			.from(Alias::new("oauth_server_codes"))
-			.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
-			.lock_exclusive()
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<StoredCode>, bool, i64)> = sqlx::query_as(&sql)
-			.bind(digest)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.columns(["payload", "redeemed", "expires_at"])
+				.from(Alias::new("oauth_server_codes"))
+				.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
+				.lock_exclusive()
+				.take(),
+		)?;
+		let row: Option<(Json<StoredCode>, bool, i64)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -700,42 +708,28 @@ impl OAuthServerStore for PostgresOAuthStore {
 			return Ok(CodeRedemption::Invalid);
 		}
 		if redeemed {
-			sqlx::query(&update_flag(
-				"oauth_server_codes",
-				"replayed",
-				"digest",
-				digest,
-			))
-			.bind(digest)
-			.execute(&mut *tx)
-			.await
-			.map_err(|e| e.to_string())?;
-			sqlx::query(&update_flag(
-				"oauth_server_tokens",
-				"revoked",
-				"code_digest",
-				digest,
-			))
-			.bind(digest)
-			.execute(&mut *tx)
-			.await
-			.map_err(|e| e.to_string())?;
+			let (sql, arguments) = update_flag("oauth_server_codes", "replayed", "digest", digest)?;
+			sqlx::query_with(&sql, arguments)
+				.execute(&mut *tx)
+				.await
+				.map_err(|e| e.to_string())?;
+			let (sql, arguments) =
+				update_flag("oauth_server_tokens", "revoked", "code_digest", digest)?;
+			sqlx::query_with(&sql, arguments)
+				.execute(&mut *tx)
+				.await
+				.map_err(|e| e.to_string())?;
 			tx.commit().await.map_err(|e| e.to_string())?;
 			return Ok(CodeRedemption::Replay);
 		}
 		if expiry <= now || !token_matches_code(&token, &code) {
 			return Ok(CodeRedemption::Invalid);
 		}
-		sqlx::query(&update_flag(
-			"oauth_server_codes",
-			"redeemed",
-			"digest",
-			digest,
-		))
-		.bind(digest)
-		.execute(&mut *tx)
-		.await
-		.map_err(|e| e.to_string())?;
+		let (sql, arguments) = update_flag("oauth_server_codes", "redeemed", "digest", digest)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
 		code.redeemed = true;
 		insert_token(&mut tx, &token).await?;
 		tx.commit().await.map_err(|e| e.to_string())?;
@@ -751,13 +745,14 @@ impl OAuthServerStore for PostgresOAuthStore {
 		Ok(())
 	}
 	async fn token(&self, digest: &str) -> Result<Option<StoredToken>, String> {
-		let (sql, _) = Query::select()
-			.columns(["payload", "revoked"])
-			.from(Alias::new("oauth_server_tokens"))
-			.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<StoredToken>, bool)> = sqlx::query_as(&sql)
-			.bind(digest)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.columns(["payload", "revoked"])
+				.from(Alias::new("oauth_server_tokens"))
+				.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
+				.take(),
+		)?;
+		let row: Option<(Json<StoredToken>, bool)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -767,16 +762,15 @@ impl OAuthServerStore for PostgresOAuthStore {
 		}))
 	}
 	async fn revoke_token(&self, digest: &str, client_id: &str) -> Result<(), String> {
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_tokens"))
-			.value(Alias::new("revoked"), true)
-			.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
-			.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(client_id))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(true)
-			.bind(digest)
-			.bind(client_id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_tokens"))
+				.value(Alias::new("revoked"), true)
+				.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
+				.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(client_id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -784,27 +778,27 @@ impl OAuthServerStore for PostgresOAuthStore {
 	}
 	async fn revoke_user(&self, user_id: &str) -> Result<u64, String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_codes"))
-			.value_expr(Alias::new("redeemed"), Expr::cust("TRUE"))
-			.value_expr(Alias::new("replayed"), Expr::cust("TRUE"))
-			.and_where(Expr::cust_with_values("payload->>'user_id' = ?", [user_id]))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(user_id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_codes"))
+				.value(Alias::new("redeemed"), true)
+				.value(Alias::new("replayed"), true)
+				.and_where(json_text_path(&["user_id"]).eq(user_id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_tokens"))
-			.value(Alias::new("revoked"), true)
-			.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
-			.and_where(Expr::col(Alias::new("revoked").into_iden()).eq(false))
-			.build(PostgresQueryBuilder);
-		let result = sqlx::query(&sql)
-			.bind(true)
-			.bind(user_id)
-			.bind(false)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_tokens"))
+				.value(Alias::new("revoked"), true)
+				.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
+				.and_where(Expr::col(Alias::new("revoked").into_iden()).eq(false))
+				.take(),
+		)?;
+		let result = sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -813,24 +807,26 @@ impl OAuthServerStore for PostgresOAuthStore {
 	}
 	async fn retire_user(&self, user_id: &str) -> Result<(), String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_codes"))
-			.value_expr(Alias::new("redeemed"), Expr::cust("TRUE"))
-			.value_expr(Alias::new("replayed"), Expr::cust("TRUE"))
-			.and_where(Expr::cust_with_values("payload->>'user_id' = ?", [user_id]))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(user_id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_codes"))
+				.value(Alias::new("redeemed"), true)
+				.value(Alias::new("replayed"), true)
+				.and_where(json_text_path(&["user_id"]).eq(user_id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_tokens"))
-			.value_expr(Alias::new("revoked"), Expr::cust("TRUE"))
-			.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(user_id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_tokens"))
+				.value(Alias::new("revoked"), true)
+				.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -838,16 +834,15 @@ impl OAuthServerStore for PostgresOAuthStore {
 		Ok(())
 	}
 	async fn revoke_client(&self, client_id: &str) -> Result<u64, String> {
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_tokens"))
-			.value(Alias::new("revoked"), true)
-			.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(client_id))
-			.and_where(Expr::col(Alias::new("revoked").into_iden()).eq(false))
-			.build(PostgresQueryBuilder);
-		let result = sqlx::query(&sql)
-			.bind(true)
-			.bind(client_id)
-			.bind(false)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_tokens"))
+				.value(Alias::new("revoked"), true)
+				.and_where(Expr::col(Alias::new("client_id").into_iden()).eq(client_id))
+				.and_where(Expr::col(Alias::new("revoked").into_iden()).eq(false))
+				.take(),
+		)?;
+		let result = sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;

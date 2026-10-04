@@ -3,12 +3,12 @@
 use super::store::{
 	OidcCodeContext, OidcKey, OidcPending, OidcStateStore, PublicRsaJwk, authorization_matches,
 };
+use crate::database_query::{json_text_path, prepare};
 use crate::oauth2_server::{AuthorizationCommit, OAuthServerStore};
 use async_trait::async_trait;
 use reinhardt_db::migrations::{Migration, Operation};
 use reinhardt_query::prelude::{
-	Alias, Cond, Expr, ExprTrait, IntoIden, OnConflict, Order, PostgresQueryBuilder, Query,
-	QueryStatementBuilder, Value,
+	Alias, Cond, Expr, ExprTrait, IntoIden, OnConflict, Order, Query, Value,
 };
 use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction, types::Json};
@@ -85,9 +85,8 @@ impl PostgresOidcStore {
 					);
 				query.and_where(Expr::not_exists(codes));
 			}
-			let (sql, _) = query.build(PostgresQueryBuilder);
-			deleted += sqlx::query(&sql)
-				.bind(now)
+			let (sql, arguments) = prepare(query)?;
+			deleted += sqlx::query_with(&sql, arguments)
 				.execute(&mut *tx)
 				.await
 				.map_err(|e| e.to_string())?
@@ -108,19 +107,18 @@ async fn insert_context(
 	tx: &mut Transaction<'_, Postgres>,
 	context: &OidcCodeContext,
 ) -> Result<(), String> {
-	let (sql, _) = Query::insert()
-		.into_table(Alias::new("oidc_op_codes"))
-		.columns(["digest", "payload", "expires_at"])
-		.values(vec![
-			context.digest.clone().into(),
-			json_value(context)?,
-			context.expires_at.into(),
-		])?
-		.build(PostgresQueryBuilder);
-	sqlx::query(&sql)
-		.bind(&context.digest)
-		.bind(Json(context))
-		.bind(context.expires_at)
+	let (sql, arguments) = prepare(
+		Query::insert()
+			.into_table(Alias::new("oidc_op_codes"))
+			.columns(["digest", "payload", "expires_at"])
+			.values(vec![
+				context.digest.clone().into(),
+				json_value(context)?,
+				context.expires_at.into(),
+			])?
+			.take(),
+	)?;
+	sqlx::query_with(&sql, arguments)
 		.execute(&mut **tx)
 		.await
 		.map_err(|e| e.to_string())?;
@@ -131,14 +129,15 @@ async fn insert_context(
 impl OidcStateStore for PostgresOidcStore {
 	async fn subject_or_insert(&self, user_id: &str, proposed: &str) -> Result<String, String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::select()
-			.column(Alias::new("sub"))
-			.from(Alias::new("oidc_op_subjects"))
-			.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
-			.lock_exclusive()
-			.build(PostgresQueryBuilder);
-		let existing: Option<(String,)> = sqlx::query_as(&sql)
-			.bind(user_id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("sub"))
+				.from(Alias::new("oidc_op_subjects"))
+				.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
+				.lock_exclusive()
+				.take(),
+		)?;
+		let existing: Option<(String,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -146,42 +145,44 @@ impl OidcStateStore for PostgresOidcStore {
 			tx.commit().await.map_err(|e| e.to_string())?;
 			return Ok(subject);
 		}
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oidc_op_subject_reservations"))
-			.columns(["sub"])
-			.values(vec![proposed.into()])?
-			.on_conflict(OnConflict::column("sub").do_nothing())
-			.build(PostgresQueryBuilder);
-		let reservation = sqlx::query(&sql)
-			.bind(proposed)
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new("oidc_op_subject_reservations"))
+				.columns(["sub"])
+				.values(vec![proposed.into()])?
+				.on_conflict(OnConflict::column("sub").do_nothing())
+				.take(),
+		)?;
+		let reservation = sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
 		if reservation.rows_affected() != 1 {
 			return Err("subject collision".to_owned());
 		}
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oidc_op_subjects"))
-			.columns(["user_id", "sub"])
-			.values(vec![user_id.into(), proposed.into()])?
-			.on_conflict(OnConflict::column("user_id").do_nothing())
-			.build(PostgresQueryBuilder);
-		let inserted = sqlx::query(&sql)
-			.bind(user_id)
-			.bind(proposed)
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new("oidc_op_subjects"))
+				.columns(["user_id", "sub"])
+				.values(vec![user_id.into(), proposed.into()])?
+				.on_conflict(OnConflict::column("user_id").do_nothing())
+				.take(),
+		)?;
+		let inserted = sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
 		let subject = if inserted.rows_affected() == 1 {
 			proposed.to_owned()
 		} else {
-			let (sql, _) = Query::select()
-				.column(Alias::new("sub"))
-				.from(Alias::new("oidc_op_subjects"))
-				.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
-				.build(PostgresQueryBuilder);
-			let (subject,): (String,) = sqlx::query_as(&sql)
-				.bind(user_id)
+			let (sql, arguments) = prepare(
+				Query::select()
+					.column(Alias::new("sub"))
+					.from(Alias::new("oidc_op_subjects"))
+					.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
+					.take(),
+			)?;
+			let (subject,): (String,) = sqlx::query_as_with(&sql, arguments)
 				.fetch_one(&mut *tx)
 				.await
 				.map_err(|e| e.to_string())?;
@@ -192,13 +193,14 @@ impl OidcStateStore for PostgresOidcStore {
 	}
 
 	async fn subject(&self, user_id: &str) -> Result<Option<String>, String> {
-		let (sql, _) = Query::select()
-			.column(Alias::new("sub"))
-			.from(Alias::new("oidc_op_subjects"))
-			.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
-			.build(PostgresQueryBuilder);
-		let row: Option<(String,)> = sqlx::query_as(&sql)
-			.bind(user_id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("sub"))
+				.from(Alias::new("oidc_op_subjects"))
+				.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
+				.take(),
+		)?;
+		let row: Option<(String,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -206,12 +208,13 @@ impl OidcStateStore for PostgresOidcStore {
 	}
 
 	async fn retire_subject(&self, user_id: &str) -> Result<(), String> {
-		let (sql, _) = Query::delete()
-			.from_table(Alias::new("oidc_op_subjects"))
-			.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(user_id)
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table(Alias::new("oidc_op_subjects"))
+				.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -219,42 +222,46 @@ impl OidcStateStore for PostgresOidcStore {
 	}
 	async fn retire_user(&self, user_id: &str) -> Result<(), String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_codes"))
-			.value_expr(Alias::new("redeemed"), Expr::cust("TRUE"))
-			.value_expr(Alias::new("replayed"), Expr::cust("TRUE"))
-			.and_where(Expr::cust_with_values("payload->>'user_id' = ?", [user_id]))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(user_id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_codes"))
+				.value(Alias::new("redeemed"), true)
+				.value(Alias::new("replayed"), true)
+				.and_where(json_text_path(&["user_id"]).eq(user_id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::update()
-			.table(Alias::new("oauth_server_tokens"))
-			.value_expr(Alias::new("revoked"), Expr::cust("TRUE"))
-			.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(user_id)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oauth_server_tokens"))
+				.value(Alias::new("revoked"), true)
+				.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::delete()
-			.from_table(Alias::new("oidc_op_codes"))
-			.and_where(Expr::cust_with_values("payload->>'user_id' = ?", [user_id]))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(user_id)
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table(Alias::new("oidc_op_codes"))
+				.and_where(json_text_path(&["user_id"]).eq(user_id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::delete()
-			.from_table(Alias::new("oidc_op_subjects"))
-			.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(user_id)
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table(Alias::new("oidc_op_subjects"))
+				.and_where(Expr::col(Alias::new("user_id").into_iden()).eq(user_id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -263,19 +270,18 @@ impl OidcStateStore for PostgresOidcStore {
 	}
 
 	async fn put_pending(&self, id: &str, pending: OidcPending) -> Result<(), String> {
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oidc_op_pending"))
-			.columns(["id", "payload", "expires_at"])
-			.values(vec![
-				id.into(),
-				json_value(&pending)?,
-				pending.expires_at.into(),
-			])?
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(id)
-			.bind(Json(&pending))
-			.bind(pending.expires_at)
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new("oidc_op_pending"))
+				.columns(["id", "payload", "expires_at"])
+				.values(vec![
+					id.into(),
+					json_value(&pending)?,
+					pending.expires_at.into(),
+				])?
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -283,13 +289,14 @@ impl OidcStateStore for PostgresOidcStore {
 	}
 
 	async fn pending(&self, id: &str) -> Result<Option<OidcPending>, String> {
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oidc_op_pending"))
-			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<OidcPending>,)> = sqlx::query_as(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oidc_op_pending"))
+				.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
+				.take(),
+		)?;
+		let row: Option<(Json<OidcPending>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -304,14 +311,15 @@ impl OidcStateStore for PostgresOidcStore {
 	) -> Result<bool, String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
 		let id = &request.pending.request.id;
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oidc_op_pending"))
-			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id.as_str()))
-			.lock_exclusive()
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<OidcPending>,)> = sqlx::query_as(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oidc_op_pending"))
+				.and_where(Expr::col(Alias::new("id").into_iden()).eq(id.as_str()))
+				.lock_exclusive()
+				.take(),
+		)?;
+		let row: Option<(Json<OidcPending>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -329,12 +337,13 @@ impl OidcStateStore for PostgresOidcStore {
 		if let Some(context) = context {
 			insert_context(&mut tx, context).await?;
 		}
-		let (sql, _) = Query::delete()
-			.from_table(Alias::new("oidc_op_pending"))
-			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id.as_str()))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table(Alias::new("oidc_op_pending"))
+				.and_where(Expr::col(Alias::new("id").into_iden()).eq(id.as_str()))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -348,14 +357,15 @@ impl OidcStateStore for PostgresOidcStore {
 		now: i64,
 	) -> Result<Option<OidcPending>, String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oidc_op_pending"))
-			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
-			.lock_exclusive()
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<OidcPending>,)> = sqlx::query_as(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oidc_op_pending"))
+				.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
+				.lock_exclusive()
+				.take(),
+		)?;
+		let row: Option<(Json<OidcPending>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -365,12 +375,13 @@ impl OidcStateStore for PostgresOidcStore {
 		if pending.session_digest != session_digest || pending.expires_at <= now {
 			return Ok(None);
 		}
-		let (sql, _) = Query::delete()
-			.from_table(Alias::new("oidc_op_pending"))
-			.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(id)
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table(Alias::new("oidc_op_pending"))
+				.and_where(Expr::col(Alias::new("id").into_iden()).eq(id))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -385,13 +396,14 @@ impl OidcStateStore for PostgresOidcStore {
 	}
 
 	async fn code(&self, digest: &str) -> Result<Option<OidcCodeContext>, String> {
-		let (sql, _) = Query::select()
-			.column(Alias::new("payload"))
-			.from(Alias::new("oidc_op_codes"))
-			.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<OidcCodeContext>,)> = sqlx::query_as(&sql)
-			.bind(digest)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column(Alias::new("payload"))
+				.from(Alias::new("oidc_op_codes"))
+				.and_where(Expr::col(Alias::new("digest").into_iden()).eq(digest))
+				.take(),
+		)?;
+		let row: Option<(Json<OidcCodeContext>,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -405,35 +417,32 @@ impl OidcStateStore for PostgresOidcStore {
 		retention: i64,
 	) -> Result<(), String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::update()
-			.table(Alias::new("oidc_op_keys"))
-			.value_expr(Alias::new("active"), Expr::cust("FALSE"))
-			.value(Alias::new("publish_until"), now + retention)
-			.and_where(Expr::col(Alias::new("active").into_iden()).eq(true))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(now + retention)
-			.bind(true)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oidc_op_keys"))
+				.value(Alias::new("active"), false)
+				.value(Alias::new("publish_until"), now + retention)
+				.and_where(Expr::col(Alias::new("active").into_iden()).eq(true))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
-		let (sql, _) = Query::insert()
-			.into_table(Alias::new("oidc_op_keys"))
-			.columns(["kid", "public", "activated_at", "active", "compromised"])
-			.values(vec![
-				public.kid.clone().into(),
-				json_value(&public)?,
-				now.into(),
-				true.into(),
-				false.into(),
-			])?
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(&public.kid)
-			.bind(Json(&public))
-			.bind(now)
-			.bind(true)
-			.bind(false)
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new("oidc_op_keys"))
+				.columns(["kid", "public", "activated_at", "active", "compromised"])
+				.values(vec![
+					public.kid.clone().into(),
+					json_value(&public)?,
+					now.into(),
+					true.into(),
+					false.into(),
+				])?
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
@@ -442,22 +451,24 @@ impl OidcStateStore for PostgresOidcStore {
 	}
 
 	async fn active_key(&self) -> Result<Option<OidcKey>, String> {
-		let (sql, _) = Query::select()
-			.columns([
-				"public",
-				"activated_at",
-				"active",
-				"publish_until",
-				"compromised",
-			])
-			.from(Alias::new("oidc_op_keys"))
-			.and_where(Expr::col(Alias::new("active").into_iden()).eq(true))
-			.build(PostgresQueryBuilder);
-		let row: Option<(Json<PublicRsaJwk>, i64, bool, Option<i64>, bool)> = sqlx::query_as(&sql)
-			.bind(true)
-			.fetch_optional(&self.pool)
-			.await
-			.map_err(|e| e.to_string())?;
+		let (sql, arguments) = prepare(
+			Query::select()
+				.columns([
+					"public",
+					"activated_at",
+					"active",
+					"publish_until",
+					"compromised",
+				])
+				.from(Alias::new("oidc_op_keys"))
+				.and_where(Expr::col(Alias::new("active").into_iden()).eq(true))
+				.take(),
+		)?;
+		let row: Option<(Json<PublicRsaJwk>, i64, bool, Option<i64>, bool)> =
+			sqlx::query_as_with(&sql, arguments)
+				.fetch_optional(&self.pool)
+				.await
+				.map_err(|e| e.to_string())?;
 		Ok(row.map(
 			|(Json(public), activated_at, active, publish_until, compromised)| OidcKey {
 				public,
@@ -470,30 +481,30 @@ impl OidcStateStore for PostgresOidcStore {
 	}
 
 	async fn public_keys(&self, now: i64) -> Result<Vec<OidcKey>, String> {
-		let (sql, _) = Query::select()
-			.columns([
-				"public",
-				"activated_at",
-				"active",
-				"publish_until",
-				"compromised",
-			])
-			.from(Alias::new("oidc_op_keys"))
-			.and_where(Expr::col(Alias::new("compromised").into_iden()).eq(false))
-			.cond_where(
-				Cond::any()
-					.add(Expr::col(Alias::new("active").into_iden()).eq(true))
-					.add(Expr::col(Alias::new("publish_until").into_iden()).gt(now)),
-			)
-			.order_by(Alias::new("kid"), Order::Asc)
-			.build(PostgresQueryBuilder);
-		let rows: Vec<(Json<PublicRsaJwk>, i64, bool, Option<i64>, bool)> = sqlx::query_as(&sql)
-			.bind(false)
-			.bind(true)
-			.bind(now)
-			.fetch_all(&self.pool)
-			.await
-			.map_err(|e| e.to_string())?;
+		let (sql, arguments) = prepare(
+			Query::select()
+				.columns([
+					"public",
+					"activated_at",
+					"active",
+					"publish_until",
+					"compromised",
+				])
+				.from(Alias::new("oidc_op_keys"))
+				.and_where(Expr::col(Alias::new("compromised").into_iden()).eq(false))
+				.cond_where(
+					Cond::any()
+						.add(Expr::col(Alias::new("active").into_iden()).eq(true))
+						.add(Expr::col(Alias::new("publish_until").into_iden()).gt(now)),
+				)
+				.order_by(Alias::new("kid"), Order::Asc)
+				.take(),
+		)?;
+		let rows: Vec<(Json<PublicRsaJwk>, i64, bool, Option<i64>, bool)> =
+			sqlx::query_as_with(&sql, arguments)
+				.fetch_all(&self.pool)
+				.await
+				.map_err(|e| e.to_string())?;
 		Ok(rows
 			.into_iter()
 			.map(
@@ -509,15 +520,16 @@ impl OidcStateStore for PostgresOidcStore {
 	}
 
 	async fn compromise_key(&self, kid: &str) -> Result<(), String> {
-		let (sql, _) = Query::update()
-			.table(Alias::new("oidc_op_keys"))
-			.value_expr(Alias::new("active"), Expr::cust("FALSE"))
-			.value_expr(Alias::new("publish_until"), Expr::cust("NULL"))
-			.value_expr(Alias::new("compromised"), Expr::cust("TRUE"))
-			.and_where(Expr::col(Alias::new("kid").into_iden()).eq(kid))
-			.build(PostgresQueryBuilder);
-		sqlx::query(&sql)
-			.bind(kid)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table(Alias::new("oidc_op_keys"))
+				.value(Alias::new("active"), false)
+				.value(Alias::new("publish_until"), Option::<i64>::None)
+				.value(Alias::new("compromised"), true)
+				.and_where(Expr::col(Alias::new("kid").into_iden()).eq(kid))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| e.to_string())?;

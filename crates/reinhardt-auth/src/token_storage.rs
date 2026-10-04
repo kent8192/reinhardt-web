@@ -324,11 +324,12 @@ impl TokenStorage for InMemoryTokenStorage {
 #[cfg(feature = "database")]
 mod database_storage {
 	use super::*;
+	use crate::database_query::prepare;
 	use reinhardt_query::prelude::{
 		Alias, Expr, ExprTrait, Iden, IntoIden, IntoValue, OnConflict, PostgresQueryBuilder, Query,
 		QueryStatementBuilder,
 	};
-	use sqlx::{Arguments, PgPool, postgres::PgArguments, types::Json};
+	use sqlx::PgPool;
 
 	/// Table identifier for auth_tokens
 	#[derive(Debug, Iden)]
@@ -429,51 +430,30 @@ mod database_storage {
 			let metadata_json = serde_json::to_value(&token.metadata)
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
 
-			let (sql, values) = Query::insert()
-				.into_table(AuthTokens::Table.into_iden())
-				.columns([
-					AuthTokens::Token,
-					AuthTokens::UserId,
-					AuthTokens::ExpiresAt,
-					AuthTokens::Metadata,
-				])
-				.values_panic(vec![
-					token.token.clone().into_value(),
-					token.user_id.into_value(),
-					token.expires_at.into_value(),
-					metadata_json.into_value(),
-				])
-				.on_conflict(
-					OnConflict::column(AuthTokens::Token)
-						.update_columns([AuthTokens::ExpiresAt, AuthTokens::Metadata])
-						.to_owned(),
-				)
-				.build(PostgresQueryBuilder);
-
-			// Bind exactly the values emitted by the renderer, including native JSONB.
-			// NULL expiration is rendered as SQL NULL and has no argument position.
-			let mut arguments = PgArguments::default();
-			for value in values.0 {
-				match value {
-					reinhardt_query::Value::String(value) => {
-						arguments.add(value.map(|value| *value))
-					}
-					reinhardt_query::Value::BigInt(value) => arguments.add(value),
-					reinhardt_query::Value::Json(value) => {
-						arguments.add(value.map(|value| Json(*value)))
-					}
-					_ => {
-						return Err(TokenStorageError::StorageError(
-							"Unsupported token storage argument type".into(),
-						));
-					}
-				}
-				.map_err(|_| {
-					TokenStorageError::StorageError(
-						"Failed to encode token storage argument".into(),
+			let (sql, arguments) = prepare(
+				Query::insert()
+					.into_table(AuthTokens::Table.into_iden())
+					.columns([
+						AuthTokens::Token,
+						AuthTokens::UserId,
+						AuthTokens::ExpiresAt,
+						AuthTokens::Metadata,
+					])
+					.values_panic(vec![
+						token.token.clone().into_value(),
+						token.user_id.into_value(),
+						token.expires_at.into_value(),
+						metadata_json.into_value(),
+					])
+					.on_conflict(
+						OnConflict::column(AuthTokens::Token)
+							.update_columns([AuthTokens::ExpiresAt, AuthTokens::Metadata])
+							.to_owned(),
 					)
-				})?;
-			}
+					.take(),
+			)
+			.map_err(TokenStorageError::StorageError)?;
+
 			sqlx::query_with(&sql, arguments)
 				.execute(&self.pool)
 				.await
@@ -483,22 +463,25 @@ mod database_storage {
 		}
 
 		async fn get(&self, token: &str) -> TokenStorageResult<StoredToken> {
-			let (sql, _) = Query::select()
-				.columns([
-					AuthTokens::Token.into_iden(),
-					AuthTokens::UserId.into_iden(),
-					AuthTokens::ExpiresAt.into_iden(),
-					AuthTokens::Metadata.into_iden(),
-				])
-				.from(AuthTokens::Table.into_iden())
-				.and_where(Expr::col(AuthTokens::Token.into_iden()).eq(token))
-				.build(PostgresQueryBuilder);
+			let (sql, arguments) = prepare(
+				Query::select()
+					.columns([
+						AuthTokens::Token.into_iden(),
+						AuthTokens::UserId.into_iden(),
+						AuthTokens::ExpiresAt.into_iden(),
+						AuthTokens::Metadata.into_iden(),
+					])
+					.from(AuthTokens::Table.into_iden())
+					.and_where(Expr::col(AuthTokens::Token.into_iden()).eq(token))
+					.take(),
+			)
+			.map_err(TokenStorageError::StorageError)?;
 
-			let row: Option<(String, i64, Option<i64>, serde_json::Value)> = sqlx::query_as(&sql)
-				.bind(token)
-				.fetch_optional(&self.pool)
-				.await
-				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
+			let row: Option<(String, i64, Option<i64>, serde_json::Value)> =
+				sqlx::query_as_with(&sql, arguments)
+					.fetch_optional(&self.pool)
+					.await
+					.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
 
 			match row {
 				Some((token_val, user_id, expires_at, metadata_json)) => {
@@ -516,22 +499,25 @@ mod database_storage {
 		}
 
 		async fn get_user_tokens(&self, user_id: i64) -> TokenStorageResult<Vec<StoredToken>> {
-			let (sql, _) = Query::select()
-				.columns([
-					AuthTokens::Token.into_iden(),
-					AuthTokens::UserId.into_iden(),
-					AuthTokens::ExpiresAt.into_iden(),
-					AuthTokens::Metadata.into_iden(),
-				])
-				.from(AuthTokens::Table.into_iden())
-				.and_where(Expr::col(AuthTokens::UserId.into_iden()).eq(user_id))
-				.build(PostgresQueryBuilder);
+			let (sql, arguments) = prepare(
+				Query::select()
+					.columns([
+						AuthTokens::Token.into_iden(),
+						AuthTokens::UserId.into_iden(),
+						AuthTokens::ExpiresAt.into_iden(),
+						AuthTokens::Metadata.into_iden(),
+					])
+					.from(AuthTokens::Table.into_iden())
+					.and_where(Expr::col(AuthTokens::UserId.into_iden()).eq(user_id))
+					.take(),
+			)
+			.map_err(TokenStorageError::StorageError)?;
 
-			let rows: Vec<(String, i64, Option<i64>, serde_json::Value)> = sqlx::query_as(&sql)
-				.bind(user_id)
-				.fetch_all(&self.pool)
-				.await
-				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
+			let rows: Vec<(String, i64, Option<i64>, serde_json::Value)> =
+				sqlx::query_as_with(&sql, arguments)
+					.fetch_all(&self.pool)
+					.await
+					.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
 
 			let tokens = rows
 				.into_iter()
@@ -551,13 +537,15 @@ mod database_storage {
 		}
 
 		async fn delete(&self, token: &str) -> TokenStorageResult<()> {
-			let (sql, _) = Query::delete()
-				.from_table(AuthTokens::Table.into_iden())
-				.and_where(Expr::col(AuthTokens::Token.into_iden()).eq(token))
-				.build(PostgresQueryBuilder);
+			let (sql, arguments) = prepare(
+				Query::delete()
+					.from_table(AuthTokens::Table.into_iden())
+					.and_where(Expr::col(AuthTokens::Token.into_iden()).eq(token))
+					.take(),
+			)
+			.map_err(TokenStorageError::StorageError)?;
 
-			let result = sqlx::query(&sql)
-				.bind(token)
+			let result = sqlx::query_with(&sql, arguments)
 				.execute(&self.pool)
 				.await
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
@@ -570,13 +558,15 @@ mod database_storage {
 		}
 
 		async fn delete_user_tokens(&self, user_id: i64) -> TokenStorageResult<()> {
-			let (sql, _) = Query::delete()
-				.from_table(AuthTokens::Table.into_iden())
-				.and_where(Expr::col(AuthTokens::UserId.into_iden()).eq(user_id))
-				.build(PostgresQueryBuilder);
+			let (sql, arguments) = prepare(
+				Query::delete()
+					.from_table(AuthTokens::Table.into_iden())
+					.and_where(Expr::col(AuthTokens::UserId.into_iden()).eq(user_id))
+					.take(),
+			)
+			.map_err(TokenStorageError::StorageError)?;
 
-			sqlx::query(&sql)
-				.bind(user_id)
+			sqlx::query_with(&sql, arguments)
 				.execute(&self.pool)
 				.await
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
@@ -585,14 +575,16 @@ mod database_storage {
 		}
 
 		async fn cleanup_expired(&self, current_time: i64) -> TokenStorageResult<usize> {
-			let (sql, _) = Query::delete()
-				.from_table(AuthTokens::Table.into_iden())
-				.and_where(Expr::col(AuthTokens::ExpiresAt.into_iden()).is_not_null())
-				.and_where(Expr::col(AuthTokens::ExpiresAt.into_iden()).lt(current_time))
-				.build(PostgresQueryBuilder);
+			let (sql, arguments) = prepare(
+				Query::delete()
+					.from_table(AuthTokens::Table.into_iden())
+					.and_where(Expr::col(AuthTokens::ExpiresAt.into_iden()).is_not_null())
+					.and_where(Expr::col(AuthTokens::ExpiresAt.into_iden()).lt(current_time))
+					.take(),
+			)
+			.map_err(TokenStorageError::StorageError)?;
 
-			let result = sqlx::query(&sql)
-				.bind(current_time)
+			let result = sqlx::query_with(&sql, arguments)
 				.execute(&self.pool)
 				.await
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
