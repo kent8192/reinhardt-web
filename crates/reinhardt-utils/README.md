@@ -15,7 +15,7 @@ Add `reinhardt-utils` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:1 -->
 ```toml
 [dependencies]
-reinhardt-utils = "0.3.20"
+reinhardt-utils = "0.3.21"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
