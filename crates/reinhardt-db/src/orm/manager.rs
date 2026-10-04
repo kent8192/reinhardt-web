@@ -58,6 +58,15 @@ fn build_delete_sql(stmt: &DeleteStatement, backend: DatabaseBackend) -> (String
 	}
 }
 
+fn validate_bulk_batch_size(batch_size: Option<usize>) -> reinhardt_core::exception::Result<()> {
+	if batch_size == Some(0) {
+		return Err(reinhardt_core::exception::Error::Validation(
+			"batch_size must be greater than zero".into(),
+		));
+	}
+	Ok(())
+}
+
 /// Global database connection state
 static DB: once_cell::sync::OnceCell<Arc<RwLock<Option<DatabaseConnection>>>> =
 	once_cell::sync::OnceCell::new();
@@ -1400,9 +1409,16 @@ impl<M: Model> Manager<M> {
 	/// ```
 	///
 	/// Options:
-	/// - batch_size: Split into multiple batches if needed
+	/// - batch_size: A positive size splits the input into batches; `None` uses a single batch
 	/// - ignore_conflicts: Skip records that would violate constraints
 	/// - update_conflicts: Update existing records instead of failing
+	///
+	/// Empty input returns an empty vector without accessing the database, regardless of batch size.
+	///
+	/// # Errors
+	///
+	/// Nonempty input with `batch_size: Some(0)` returns
+	/// [`reinhardt_core::exception::Error::Validation`] before accessing the database.
 	pub async fn bulk_create(
 		&self,
 		models: Vec<M>,
@@ -1414,6 +1430,7 @@ impl<M: Model> Manager<M> {
 			return Ok(vec![]);
 		}
 
+		validate_bulk_batch_size(batch_size)?;
 		let conn = get_connection().await?;
 		let batch_size = batch_size.unwrap_or(models.len());
 		let mut results = Vec::new();
@@ -1483,6 +1500,14 @@ impl<M: Model> Manager<M> {
 	///     batch_size=100
 	/// )
 	/// ```
+	///
+	/// A positive `batch_size` splits the input into batches; `None` uses a single batch.
+	/// Empty models or fields return zero without accessing the database, regardless of batch size.
+	///
+	/// # Errors
+	///
+	/// Nonempty models and fields with `batch_size: Some(0)` return
+	/// [`reinhardt_core::exception::Error::Validation`] before accessing the database.
 	pub async fn bulk_update(
 		&self,
 		models: Vec<M>,
@@ -1493,6 +1518,7 @@ impl<M: Model> Manager<M> {
 			return Ok(0);
 		}
 
+		validate_bulk_batch_size(batch_size)?;
 		let conn = get_connection().await?;
 		let batch_size = batch_size.unwrap_or(models.len());
 		let mut total_updated = 0;
@@ -1714,13 +1740,14 @@ mod tests {
 	use crate::orm::fields::{CharField, Field};
 	use crate::orm::inspection::FieldInfo;
 	use crate::orm::query::FilterValue;
-	use rstest::rstest;
+	use rstest::{fixture, rstest};
 	use serde::{Deserialize, Serialize};
+	use serial_test::serial;
 	use std::collections::HashMap;
 	use std::fmt;
 	use uuid::Uuid;
 
-	#[derive(Debug, Clone, Serialize, Deserialize)]
+	#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 	struct TestUser {
 		id: Option<i64>,
 		name: String,
@@ -1772,6 +1799,129 @@ mod tests {
 		fn new_fields() -> Self::Fields {
 			TestUserFields
 		}
+	}
+
+	#[fixture]
+	fn bulk_users() -> Vec<TestUser> {
+		vec![
+			TestUser {
+				id: Some(1),
+				name: "Alice".into(),
+				email: "alice@example.com".into(),
+			},
+			TestUser {
+				id: Some(2),
+				name: "Bob".into(),
+				email: "bob@example.com".into(),
+			},
+		]
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_bulk_create_rejects_zero_batch_size_before_database_access(
+		bulk_users: Vec<TestUser>,
+	) {
+		// Arrange
+		let manager = TestUser::objects();
+
+		// Act
+		let error = manager
+			.bulk_create(bulk_users, Some(0), false, false)
+			.await
+			.expect_err("zero batch size must be rejected");
+
+		// Assert
+		assert!(
+			matches!(error, reinhardt_core::exception::Error::Validation(ref message)
+			if message == "batch_size must be greater than zero")
+		);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_bulk_update_rejects_zero_batch_size_before_database_access(
+		bulk_users: Vec<TestUser>,
+	) {
+		// Arrange
+		let manager = TestUser::objects();
+
+		// Act
+		let error = manager
+			.bulk_update(bulk_users, vec!["name".into()], Some(0))
+			.await
+			.expect_err("zero batch size must be rejected");
+
+		// Assert
+		assert!(
+			matches!(error, reinhardt_core::exception::Error::Validation(ref message)
+			if message == "batch_size must be greater than zero")
+		);
+	}
+
+	#[rstest]
+	#[case::zero(Some(0))]
+	#[case::one(Some(1))]
+	#[case::default(None)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_bulk_create_empty_models_remain_noop(#[case] batch_size: Option<usize>) {
+		// Arrange
+		let manager = TestUser::objects();
+
+		// Act
+		let created = manager
+			.bulk_create(vec![], batch_size, false, false)
+			.await
+			.expect("empty models must succeed without a database");
+
+		// Assert
+		assert_eq!(created, Vec::<TestUser>::new());
+	}
+
+	#[rstest]
+	#[case::zero(Some(0))]
+	#[case::one(Some(1))]
+	#[case::default(None)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_bulk_update_empty_models_remain_noop(#[case] batch_size: Option<usize>) {
+		// Arrange
+		let manager = TestUser::objects();
+
+		// Act
+		let updated = manager
+			.bulk_update(vec![], vec!["name".into()], batch_size)
+			.await
+			.expect("empty models must succeed without a database");
+
+		// Assert
+		assert_eq!(updated, 0);
+	}
+
+	#[rstest]
+	#[case::zero(Some(0))]
+	#[case::one(Some(1))]
+	#[case::default(None)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_bulk_update_empty_fields_remain_noop(
+		bulk_users: Vec<TestUser>,
+		#[case] batch_size: Option<usize>,
+	) {
+		// Arrange
+		let manager = TestUser::objects();
+
+		// Act
+		let updated = manager
+			.bulk_update(bulk_users, vec![], batch_size)
+			.await
+			.expect("empty fields must succeed without a database");
+
+		// Assert
+		assert_eq!(updated, 0);
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
