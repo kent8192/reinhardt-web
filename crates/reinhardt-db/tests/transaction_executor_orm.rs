@@ -1068,7 +1068,7 @@ async fn latest_and_earliest_use_typed_ordering_with_caller_owned_executors() {
 		executor
 			.calls
 			.iter()
-			.all(|call| call.params == vec![QueryValue::Int(1)])
+			.all(|call| call.params == vec![QueryValue::Uint(1)])
 	);
 
 	let mut transaction_executor =
@@ -1120,7 +1120,7 @@ async fn latest_and_earliest_use_typed_ordering_with_caller_owned_executors() {
 		transaction_executor
 			.calls
 			.iter()
-			.all(|call| call.params == vec![QueryValue::Int(1)])
+			.all(|call| call.params == vec![QueryValue::Uint(1)])
 	);
 }
 

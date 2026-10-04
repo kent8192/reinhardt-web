@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve unsigned composite primary keys instead of wrapping to a signed key
+  or clamping to `i64::MAX`. PostgreSQL and SQLite reject overflow with a
+  redacted type error before execution; MySQL binds the original `u64`.
+
+### Breaking Changes
+
+- Add `QueryValue::Uint(u64)` for unsigned query parameters, including
+  `LIMIT`/`OFFSET`. Exhaustive matches must handle the new variant. MySQL
+  result values above `i64::MAX` now use `Uint` instead of decimal text.
+
+### Migration guide
+
+Custom executors must bind unsigned values with their native driver codec or
+check conversion to the backend's signed type and return
+`DatabaseErrorKind::Type` on overflow. See the
+[unsigned query value migration guide](../../docs/migration/0.4.0-unsigned-query-values.md)
+for a checked conversion example. No schema or stored-key migration is needed.
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.18...reinhardt-db@v0.4.0-alpha.19) - 2026-10-03
 
 ### Fixed
