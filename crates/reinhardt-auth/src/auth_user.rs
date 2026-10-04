@@ -5,8 +5,11 @@
 
 use crate::BaseUser;
 use async_trait::async_trait;
-use reinhardt_db::orm::{CustomManager, DatabaseConnection, Model};
+use reinhardt_db::orm::Model;
+#[cfg(feature = "params")]
+use reinhardt_db::orm::{CustomManager, DatabaseConnection};
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
+#[cfg(feature = "params")]
 use reinhardt_http::AuthState;
 
 /// Authenticated user extractor that loads the full user model from database.
