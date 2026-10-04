@@ -1343,6 +1343,11 @@ impl QueryBuilder for MySqlQueryBuilder {
 			}
 			first = false;
 			writer.push_identifier(&col.name.to_string(), |s| self.escape_iden(s));
+			if let Some(length) = col.prefix_length {
+				writer.push("(");
+				writer.push(&length.get().to_string());
+				writer.push(")");
+			}
 			if let Some(order) = &col.order {
 				writer.push_space();
 				match order {
@@ -5753,6 +5758,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5772,6 +5778,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "username".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5794,6 +5801,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5814,6 +5822,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "created_at".into_iden(),
 			order: Some(Order::Desc),
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5836,10 +5845,12 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "last_name".into_iden(),
 			order: Some(Order::Asc),
+			prefix_length: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
 			order: Some(Order::Asc),
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5862,6 +5873,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "id".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5884,6 +5896,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "content".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
