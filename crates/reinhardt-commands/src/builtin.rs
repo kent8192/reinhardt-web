@@ -563,7 +563,7 @@ fn dependency_ordered_rollback_records(
 		}
 	}
 	let mut replacements = HashMap::new();
-	let mut unavailable_replacement = None;
+	let mut unavailable_replacements = HashSet::new();
 	for migration in all_migrations {
 		let replacement = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
 		if !applied_by_key.contains_key(&replacement) {
@@ -581,7 +581,7 @@ fn dependency_ordered_rollback_records(
 			if let Some(replaced) = migrations_by_key.get(&key) {
 				stack.extend(replaced.replaces.iter());
 			} else {
-				unavailable_replacement.get_or_insert(key.clone());
+				unavailable_replacements.insert(key.clone());
 			}
 			replacements.insert(key, replacement.clone());
 		}
@@ -598,11 +598,14 @@ fn dependency_ordered_rollback_records(
 					.map(|(app, name)| {
 						let dependency = MigrationKey::new(app.as_str(), name.as_str());
 						let resolved = replacements.get(&dependency).cloned().unwrap_or(dependency);
-						// Missing replaced files are safe for known aliases, but may hide
-						// intermediate squashes owning otherwise unresolved dependencies.
+						// Squashes replace migrations within one app. Missing ancestry
+						// can hide aliases in that app, not unrelated pending keys.
 						if spans_apps
 							&& !applied_by_key.contains_key(&resolved)
-							&& let Some(unavailable) = &unavailable_replacement
+							&& let Some(unavailable) = unavailable_replacements
+								.iter()
+								.filter(|key| key.app_label == app.as_str())
+								.min_by(|left, right| left.name.cmp(&right.name))
 						{
 							return Err(crate::CommandError::ExecutionError(format!(
 								"Cannot determine cross-app rollback dependencies: applied migration {}:{} references unresolved dependency {}:{} while replacement definition {}:{} is unavailable",
@@ -5483,6 +5486,52 @@ mod tests {
 		assert_eq!(
 			(records[0].app.as_str(), records[0].name.as_str()),
 			("foundation", "0001_initial")
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::available_pending_definition(true)]
+	#[case::unavailable_pending_definition(false)]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_ignores_unrelated_unavailable_replacement_ancestry(
+		#[case] pending_available: bool,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: a different app's missing squash ancestry cannot own this pending key.
+		let mut archive = Migration::new("0001_squashed", "archive");
+		archive.replaces = vec![("archive".into(), "0001_pending".into())];
+		let mut migrations = vec![
+			archive,
+			Migration::new("0001_initial", "foundation"),
+			Migration::new("0001_summary", "reporting").add_dependency("consumer", "0001_pending"),
+		];
+		if pending_available {
+			migrations.push(
+				Migration::new("0001_pending", "consumer")
+					.add_dependency("foundation", "0001_initial"),
+			);
+		}
+		let applied = vec![
+			migration_record("archive", "0001_squashed"),
+			migration_record("foundation", "0001_initial"),
+			migration_record("reporting", "0001_summary"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect("unrelated missing ancestry must preserve pending dependency boundaries");
+
+		// Assert: neither the pending key nor the unrelated apps join the rollback closure.
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must reverse the recorded foundation root");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.map(|record| (record.app.as_str(), record.name.as_str()))
+				.collect::<Vec<_>>(),
+			vec![("foundation", "0001_initial")]
 		);
 	}
 

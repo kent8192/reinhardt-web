@@ -238,6 +238,127 @@ async fn applied_keys(recorder: &DatabaseMigrationRecorder) -> BTreeSet<String> 
 		.collect()
 }
 
+async fn table_exists(pool: &sqlx::PgPool, table: &str) -> bool {
+	let query = Query::select()
+		.expr(
+			SimpleExpr::FunctionCall(
+				"to_regclass".into_iden(),
+				vec![Expr::val(table).into_simple_expr()],
+			)
+			.is_not_null(),
+		)
+		.to_string(PostgresQueryBuilder);
+	sqlx::query_scalar(&query)
+		.fetch_one(pool)
+		.await
+		.expect("inspect migration table")
+}
+
+#[rstest]
+#[tokio::test]
+async fn unrelated_missing_squash_preserves_pending_dependency_boundaries(
+	#[future] migration_executor: MigrationExecutorFixture,
+	migration_project: TempDir,
+	#[values("", "fake")] mode: &str,
+) {
+	// Arrange: an unrelated squash has missing ancestry, and reporting references a pending key.
+	let root = migration_project.path();
+	write_migration_definition(
+		root,
+		"archive",
+		"0001_squashed",
+		&[],
+		&[("archive", "0002_pending")],
+		(
+			"CREATE TABLE rollback_archive (id integer PRIMARY KEY)",
+			"DROP TABLE rollback_archive",
+		),
+	);
+	write_migration(
+		root,
+		"reporting",
+		"0001_leaf",
+		&[("consumer", "0002_pending")],
+		"CREATE TABLE rollback_report (id integer PRIMARY KEY)",
+		"DROP TABLE rollback_report",
+	);
+	let (mut executor, _container, pool, _port, url) = migration_executor.await;
+	let migrations = FilesystemSource::new(root.join("migrations"))
+		.all_migrations()
+		.await
+		.expect("load migrations with unrelated missing ancestry");
+	for (app, name) in [
+		("operations", "0000_environment"),
+		("foundation", "0001_retained"),
+		("foundation", "0002_tables"),
+		("consumer", "0001_references"),
+		("reporting", "0001_leaf"),
+		("unrelated", "0002_tables"),
+		("archive", "0001_squashed"),
+	] {
+		let migration = migrations
+			.iter()
+			.find(|migration| migration.app_label == app && migration.name == name)
+			.expect("baseline migration exists");
+		let result = executor
+			.apply_migrations(std::slice::from_ref(migration))
+			.await
+			.expect("apply baseline without the pending dependency");
+		assert_eq!(result.applied.len(), 1);
+	}
+	let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+	let before = applied_keys(&recorder).await;
+	assert_eq!(before.len(), 7);
+	let expected = vec![
+		"consumer:0001_references",
+		"foundation:0002_tables",
+		"foundation:0001_retained",
+	];
+
+	// Act
+	let plan = run_migrate(root, &url, "foundation", "zero", "plan");
+	let planned: Vec<_> = plan
+		.lines()
+		.filter_map(|line| line.strip_prefix("[INFO]   - ")?.strip_suffix(" (unapply)"))
+		.collect();
+	assert_eq!(planned, expected);
+	assert_eq!(applied_keys(&recorder).await, before);
+	let output = run_migrate(root, &url, "foundation", "zero", mode);
+
+	// Assert: missing ancestry neither rejects rollback nor traverses the pending reporting edge.
+	let prefix = if mode == "fake" {
+		"[SUCCESS]   ✓ Faked rollback: "
+	} else {
+		"[SUCCESS]   ✓ Rolled back: "
+	};
+	let executed: Vec<_> = output
+		.lines()
+		.filter_map(|line| line.strip_prefix(prefix))
+		.map(|key| key.replace('.', ":"))
+		.collect();
+	assert_eq!(executed, expected);
+	let removed: BTreeSet<_> = expected.into_iter().map(str::to_owned).collect();
+	assert_eq!(
+		applied_keys(&recorder).await,
+		before.difference(&removed).cloned().collect()
+	);
+	for (table, expected) in [
+		("rollback_archive", true),
+		("rollback_report", true),
+		("rollback_unrelated", true),
+		("rollback_probe.retained", mode == "fake"),
+		("rollback_probe.parent", mode == "fake"),
+		("rollback_probe.consumer", mode == "fake"),
+		("rollback_probe.pending", false),
+	] {
+		assert_eq!(
+			table_exists(pool.as_ref(), table).await,
+			expected,
+			"{table}"
+		);
+	}
+}
+
 #[rstest]
 #[case::partial_target("foundation", "0001_retained", vec![
 	"reporting:0001_leaf", "consumer:0001_references", "foundation:0002_tables",
