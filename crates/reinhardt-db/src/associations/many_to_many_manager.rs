@@ -3,11 +3,12 @@
 //! This module provides the `ManyToManyManager` type for managing many-to-many relationships
 //! through junction tables. It abstracts CRUD operations on the intermediate table.
 
-use crate::orm::{DatabaseConnection, QueryRow};
-use reinhardt_core::exception::Result;
-use reinhardt_query::prelude::{
-	Alias, Expr, ExprTrait, Func, OnConflict, PostgresQueryBuilder, Query, QueryBuilder,
+use crate::{
+	backends::DatabaseType,
+	orm::{DatabaseConnection, QueryRow},
 };
+use reinhardt_core::exception::Result;
+use reinhardt_query::prelude::{Alias, Expr, ExprTrait, Func, OnConflict, Query};
 use std::fmt::Display;
 use std::marker::PhantomData;
 
@@ -15,6 +16,8 @@ use std::marker::PhantomData;
 ///
 /// This type handles CRUD operations on junction tables for many-to-many relationships.
 /// It uses `reinhardt_query` for type-safe SQL generation.
+/// Every operation uses the connection's backend renderer and generated-value
+/// dispatch. Primary keys retain their `Display` representation and bind as strings.
 ///
 /// # Type Parameters
 ///
@@ -161,11 +164,11 @@ where
 			.and_where(Expr::col(Alias::new(&self.source_field)).eq(self.source_pk.to_string()))
 			.and_where(Expr::col(Alias::new(&self.target_field)).eq(target_pk.to_string()));
 
-		let pg = PostgresQueryBuilder::new();
-		let (sql, _) = pg.build_delete(&stmt);
+		let (sql, values) =
+			crate::backends::sql_build_helpers::build_delete(conn.inner().database_type(), &stmt);
 
 		// Execute SQL
-		conn.execute(&sql, vec![]).await?;
+		conn.execute_generated(&sql, values).await?;
 		Ok(())
 	}
 
@@ -195,11 +198,11 @@ where
 			.and_where(Expr::col(Alias::new(&self.source_field)).eq(self.source_pk.to_string()))
 			.and_where(Expr::col(Alias::new(&self.target_field)).eq(target_pk.to_string()));
 
-		let pg = PostgresQueryBuilder::new();
-		let (sql, _) = pg.build_select(&stmt);
+		let (sql, values) =
+			crate::backends::sql_build_helpers::build_select(conn.inner().database_type(), &stmt);
 
 		// Execute SQL
-		let rows = conn.query(&sql, vec![]).await?;
+		let rows = conn.query_generated(&sql, values).await?;
 		Ok(!rows.is_empty())
 	}
 
@@ -237,11 +240,11 @@ where
 					.eq(self.source_pk.to_string()),
 			);
 
-		let pg = PostgresQueryBuilder::new();
-		let (sql, _) = pg.build_select(&stmt);
+		let (sql, values) =
+			crate::backends::sql_build_helpers::build_select(conn.inner().database_type(), &stmt);
 
 		// Execute SQL
-		conn.query(&sql, vec![])
+		conn.query_generated(&sql, values)
 			.await
 			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
 	}
@@ -263,11 +266,11 @@ where
 		stmt.from_table(Alias::new(&self.through_table))
 			.and_where(Expr::col(Alias::new(&self.source_field)).eq(self.source_pk.to_string()));
 
-		let pg = PostgresQueryBuilder::new();
-		let (sql, _) = pg.build_delete(&stmt);
+		let (sql, values) =
+			crate::backends::sql_build_helpers::build_delete(conn.inner().database_type(), &stmt);
 
 		// Execute SQL
-		conn.execute(&sql, vec![]).await?;
+		conn.execute_generated(&sql, values).await?;
 		Ok(())
 	}
 
@@ -282,31 +285,41 @@ where
 	/// * `Ok(usize)` with the count
 	/// * `Err` if database operation fails
 	pub async fn count_with_db(&self, conn: &DatabaseConnection) -> Result<usize> {
+		let backend = conn.inner().database_type();
+		let count = if backend == DatabaseType::Mysql {
+			// The legacy MySQL row decoder probes bool before integer. Project
+			// COUNT as decimal text to retain cardinalities greater than one.
+			Expr::cust("CAST(COUNT(*) AS CHAR)").into_simple_expr()
+		} else {
+			Func::count(Expr::asterisk().into_simple_expr())
+		};
 		let mut stmt = Query::select();
 		stmt.from(Alias::new(&self.through_table))
-			.expr_as(
-				Func::count(Expr::asterisk().into_simple_expr()),
-				Alias::new("count"),
-			)
+			.expr_as(count, Alias::new("count"))
 			.and_where(Expr::col(Alias::new(&self.source_field)).eq(self.source_pk.to_string()));
 
-		let pg = PostgresQueryBuilder::new();
-		let (sql, _) = pg.build_select(&stmt);
+		let (sql, values) = crate::backends::sql_build_helpers::build_select(backend, &stmt);
 
 		// Execute SQL
-		let row = conn.query_one(&sql, vec![]).await?;
+		let row = conn.query_one_generated(&sql, values).await?;
 
 		// Get count value (retrieve by column name)
-		let count_value = row
-			.get::<i64>("count")
-			.or_else(|| row.get::<i64>("COUNT"))
-			.ok_or_else(|| {
-				reinhardt_core::exception::Error::Database(
-					"Failed to extract count value from query result".to_string(),
-				)
-			})?;
+		let count_value = if backend == DatabaseType::Mysql {
+			row.get::<String>("count")
+				.or_else(|| row.get::<String>("COUNT"))
+				.and_then(|count| count.parse::<usize>().ok())
+		} else {
+			row.get::<i64>("count")
+				.or_else(|| row.get::<i64>("COUNT"))
+				.and_then(|count| usize::try_from(count).ok())
+		}
+		.ok_or_else(|| {
+			reinhardt_core::exception::Error::Database(
+				"Failed to extract count value from query result".to_string(),
+			)
+		})?;
 
-		Ok(count_value as usize)
+		Ok(count_value)
 	}
 }
 

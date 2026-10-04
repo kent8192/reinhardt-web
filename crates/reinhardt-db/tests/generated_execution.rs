@@ -1,5 +1,130 @@
 #![cfg(feature = "backends")]
 
+#[cfg(all(
+	feature = "orm",
+	feature = "associations",
+	any(feature = "sqlite", feature = "postgres", feature = "mysql")
+))]
+mod associations {
+	use reinhardt_db::{
+		associations::many_to_many_manager::ManyToManyManager,
+		backends::{QueryValue, sql_build_helpers},
+		orm::connection::DatabaseConnection,
+	};
+	use reinhardt_query::{ColumnDef, Query};
+
+	pub(super) async fn verify_manager_lifecycle(db: &DatabaseConnection) {
+		// Arrange
+		let backend = db.inner().database_type();
+		let links = Query::create_table()
+			.table("links")
+			.col(ColumnDef::new("source").string())
+			.col(ColumnDef::new("target").string())
+			.primary_key(["source", "target"])
+			.to_owned();
+		let targets = Query::create_table()
+			.table("targets")
+			.col(ColumnDef::new("id").string().primary_key(true))
+			.col(ColumnDef::new("label").string())
+			.to_owned();
+		for statement in [links, targets] {
+			let (sql, _) = sql_build_helpers::build_create_table(backend, &statement);
+			db.execute(&sql, vec![]).await.unwrap();
+		}
+		let source = "quoted \"source\",slash\\日本語";
+		let target = "target'; DROP TABLE links; --";
+		let second_target = "second \"target\",slash\\日本語";
+		for (id, label) in [(target, "first label"), (second_target, "second label")] {
+			let statement = Query::insert()
+				.into_table("targets")
+				.columns(["id", "label"])
+				.values_panic([id, label])
+				.to_owned();
+			let (sql, _) = sql_build_helpers::build_insert(backend, &statement);
+			db.execute(
+				&sql,
+				vec![
+					QueryValue::String(id.into()),
+					QueryValue::String(label.into()),
+				],
+			)
+			.await
+			.unwrap();
+		}
+		let manager = |source| {
+			ManyToManyManager::<(), (), &str>::new(
+				source,
+				"links".into(),
+				"source".into(),
+				"target".into(),
+			)
+		};
+		let current = manager(source);
+		let other = manager("unrelated source");
+		let empty = manager("empty source");
+
+		// Add and read relationships, preserving bound keys and source isolation.
+		current.add_with_db(db, target).await.unwrap();
+		current.add_with_db(db, target).await.unwrap();
+		current.add_with_db(db, second_target).await.unwrap();
+		other.add_with_db(db, target).await.unwrap();
+		assert!(current.contains_with_db(db, target).await.unwrap());
+		assert!(current.contains_with_db(db, second_target).await.unwrap());
+		assert!(
+			!current
+				.contains_with_db(db, "missing target")
+				.await
+				.unwrap()
+		);
+		assert_eq!(current.count_with_db(db).await.unwrap(), 2);
+		assert_eq!(other.count_with_db(db).await.unwrap(), 1);
+		assert_eq!(empty.count_with_db(db).await.unwrap(), 0);
+		let rows = current.all_with_db(db, "targets", "id").await.unwrap();
+		let mut actual: Vec<_> = rows
+			.iter()
+			.map(|row| {
+				(
+					row.get::<String>("id").unwrap(),
+					row.get::<String>("label").unwrap(),
+				)
+			})
+			.collect();
+		actual.sort();
+		let mut expected = vec![
+			(target.to_owned(), "first label".to_owned()),
+			(second_target.to_owned(), "second label".to_owned()),
+		];
+		expected.sort();
+		assert_eq!(actual, expected);
+
+		// Remove one relationship without deleting the other source's link.
+		current.remove_with_db(db, target).await.unwrap();
+		current.remove_with_db(db, "missing target").await.unwrap();
+		assert!(!current.contains_with_db(db, target).await.unwrap());
+		assert!(current.contains_with_db(db, second_target).await.unwrap());
+		assert_eq!(current.count_with_db(db).await.unwrap(), 1);
+		assert!(other.contains_with_db(db, target).await.unwrap());
+		let rows = current.all_with_db(db, "targets", "id").await.unwrap();
+		assert_eq!(rows.len(), 1);
+		assert_eq!(rows[0].get::<String>("id").unwrap(), second_target);
+
+		// Clear only the selected source, including repeated empty clears.
+		current.clear_with_db(db).await.unwrap();
+		current.clear_with_db(db).await.unwrap();
+		assert_eq!(current.count_with_db(db).await.unwrap(), 0);
+		assert!(!current.contains_with_db(db, second_target).await.unwrap());
+		assert!(
+			current
+				.all_with_db(db, "targets", "id")
+				.await
+				.unwrap()
+				.is_empty()
+		);
+		assert_eq!(other.count_with_db(db).await.unwrap(), 1);
+		assert!(other.contains_with_db(db, target).await.unwrap());
+	}
+}
+
 #[cfg(all(feature = "orm", feature = "associations", feature = "sqlite"))]
 mod sqlite {
 	use reinhardt_db::{
@@ -9,6 +134,15 @@ mod sqlite {
 		ColumnDef, Query, QueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
 	};
 	use rstest::rstest;
+
+	#[rstest]
+	#[tokio::test]
+	async fn association_manager_generated_operations_preserve_bound_keys() {
+		let db = DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.unwrap();
+		super::associations::verify_manager_lifecycle(&db).await;
+	}
 
 	#[rstest]
 	#[tokio::test]
@@ -76,6 +210,20 @@ mod postgres {
 		);
 		let pool = sqlx::PgPool::connect(&url).await.unwrap();
 		(container, PostgresBackend::new(pool))
+	}
+
+	#[cfg(all(feature = "orm", feature = "associations"))]
+	#[rstest]
+	#[tokio::test]
+	async fn association_manager_generated_operations_preserve_bound_keys(
+		#[future] database: (ContainerAsync<Postgres>, PostgresBackend),
+	) {
+		let (_container, backend) = database.await;
+		let db = reinhardt_db::orm::connection::DatabaseConnection::new(
+			reinhardt_db::orm::connection::DatabaseBackend::Postgres,
+			reinhardt_db::backends::DatabaseConnection::new(std::sync::Arc::new(backend)),
+		);
+		super::associations::verify_manager_lifecycle(&db).await;
 	}
 
 	#[rstest]
@@ -247,5 +395,44 @@ mod postgres {
 				.collect::<Vec<_>>(),
 			vec![QueryValue::Int(42)]
 		);
+	}
+}
+
+#[cfg(all(feature = "orm", feature = "associations", feature = "mysql"))]
+mod mysql {
+	use reinhardt_db::orm::connection::DatabaseConnection;
+	use rstest::{fixture, rstest};
+	use testcontainers::{
+		ContainerAsync, GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner,
+	};
+
+	#[fixture]
+	async fn database() -> (ContainerAsync<GenericImage>, DatabaseConnection) {
+		let container = GenericImage::new("mysql", "8.0")
+			.with_exposed_port(testcontainers::core::ContainerPort::Tcp(3306))
+			// The initialization server uses port 0; wait for the TCP server.
+			.with_wait_for(WaitFor::message_on_stderr("port: 3306"))
+			.with_env_var("MYSQL_ROOT_PASSWORD", "test")
+			.with_env_var("MYSQL_DATABASE", "test")
+			.with_startup_timeout(std::time::Duration::from_secs(180))
+			.start()
+			.await
+			.unwrap();
+		let url = format!(
+			"mysql://root:test@{}:{}/test",
+			container.get_host().await.unwrap(),
+			container.get_host_port_ipv4(3306).await.unwrap()
+		);
+		let db = DatabaseConnection::connect_mysql(&url).await.unwrap();
+		(container, db)
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn association_manager_generated_operations_preserve_bound_keys(
+		#[future] database: (ContainerAsync<GenericImage>, DatabaseConnection),
+	) {
+		let (_container, db) = database.await;
+		super::associations::verify_manager_lifecycle(&db).await;
 	}
 }

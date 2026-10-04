@@ -90,8 +90,10 @@ This crate provides the following modules:
 
 ## Generated query parameters
 
-`QuerySet` statements, `orm::execution` builders, and many-to-many operations
+`QuerySet` statements, `orm::execution` builders, `orm::many_to_many_accessor`,
+and all operations of `associations::many_to_many_manager::ManyToManyManager`
 pass the renderer's original `Values` to native SQLx codecs in built-in backends.
+`ManyToManyManager` retains its `Display` primary-key interface and binds keys as strings.
 Dedicated transaction executors support the same generated-value dispatch.
 PostgreSQL retains typed arrays (including NULL and empty arrays), JSON versus
 JSONB array types, and exact decimals. MySQL retains exact decimals and
