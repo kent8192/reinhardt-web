@@ -144,6 +144,12 @@ arrays, decimals, dates and times require a custom generated-method override.
 They never use the older ORM converter's clamping or Debug-string fallbacks.
 Consumers still own connections, transactions, row decoding and result metadata.
 
+Generated transaction methods use the same codecs on the transaction's dedicated
+connection, including write-intent executors and AtomicTransaction forwarding.
+`fetch_stream_generated` encodes before returning a cursor, borrows the executor
+and uses a bounded fetch hint; dropping a stream releases its cursor so that the
+same transaction or pool can continue. These capabilities are native-only (P0).
+
 ### Streaming QuerySets
 
 `QuerySet::iterator_with_db` and `QuerySet::iterator_with_executor` decode one

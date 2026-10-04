@@ -98,7 +98,8 @@ pub(crate) fn binding_error(error: reinhardt_query_sqlx::BindError) -> DatabaseE
 mod tests {
 	use super::*;
 	use crate::backends::backend::DatabaseBackend;
-	use crate::backends::types::{QueryResult, Row, TransactionExecutor};
+	use crate::backends::types::{QueryResult, Row, RowStream, TransactionExecutor};
+	use futures::StreamExt;
 	use rstest::rstest;
 	use std::sync::{Arc, Mutex};
 
@@ -106,6 +107,41 @@ mod tests {
 
 	struct CustomBackend {
 		calls: CapturedCalls,
+	}
+	struct CustomTransaction(CustomBackend);
+
+	#[async_trait::async_trait]
+	impl TransactionExecutor for CustomTransaction {
+		async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
+			self.0.execute(sql, params).await
+		}
+		async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
+			self.0.fetch_one(sql, params).await
+		}
+		async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
+			self.0.fetch_all(sql, params).await
+		}
+		async fn fetch_optional(
+			&mut self,
+			sql: &str,
+			params: Vec<QueryValue>,
+		) -> Result<Option<Row>> {
+			self.0.fetch_optional(sql, params).await
+		}
+		fn fetch_stream<'a>(
+			&'a mut self,
+			sql: String,
+			params: Vec<QueryValue>,
+			chunk_size: usize,
+		) -> Result<RowStream<'a>> {
+			self.0.fetch_stream(sql, params, chunk_size)
+		}
+		async fn commit(self: Box<Self>) -> Result<()> {
+			Ok(())
+		}
+		async fn rollback(self: Box<Self>) -> Result<()> {
+			Ok(())
+		}
 	}
 
 	#[async_trait::async_trait]
@@ -142,7 +178,20 @@ mod tests {
 			Ok(Some(self.fetch_one(sql, params).await?))
 		}
 		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-			panic!("custom generated-query fixture does not start transactions")
+			Ok(Box::new(CustomTransaction(CustomBackend {
+				calls: self.calls.clone(),
+			})))
+		}
+		fn fetch_stream<'a>(
+			&'a self,
+			sql: String,
+			params: Vec<QueryValue>,
+			_chunk_size: usize,
+		) -> Result<RowStream<'a>> {
+			self.calls.lock().unwrap().push((sql, params));
+			let mut row = Row::new();
+			row.insert("id".to_owned(), QueryValue::Int(7));
+			Ok(Box::pin(futures::stream::once(async move { Ok(row) })))
 		}
 		fn as_any(&self) -> &dyn std::any::Any {
 			self
@@ -206,6 +255,78 @@ mod tests {
 				);
 				4
 			]
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn existing_custom_transaction_and_stream_defaults_preserve_raw_parameters() {
+		// Arrange: no generated methods are implemented by this legacy provider.
+		let calls: CapturedCalls = Arc::new(Mutex::new(Vec::new()));
+		let connection = crate::backends::DatabaseConnection::new(Arc::new(CustomBackend {
+			calls: calls.clone(),
+		}));
+		let sql = "SELECT $1 AS id";
+		let built = || (sql.to_owned(), Values(vec![Value::Int(Some(7))]));
+		let mut transaction = connection.begin().await.unwrap();
+		// Act
+		let result = transaction.execute_generated(built(), None).await.unwrap();
+		let row = transaction
+			.fetch_one_generated(built(), None)
+			.await
+			.unwrap();
+		assert_eq!(
+			transaction
+				.fetch_all_generated(built(), None)
+				.await
+				.unwrap(),
+			vec![row.clone()]
+		);
+		assert_eq!(
+			transaction
+				.fetch_optional_generated(built(), None)
+				.await
+				.unwrap(),
+			Some(row.clone())
+		);
+		{
+			let mut stream = transaction
+				.fetch_stream_generated(built(), 1, None)
+				.unwrap();
+			assert_eq!(stream.next().await.unwrap().unwrap(), row);
+			assert!(stream.next().await.is_none());
+		}
+		let error = transaction
+			.execute_generated(
+				(
+					"private SQL".to_owned(),
+					Values(vec![Value::BigUnsigned(Some(u64::MAX))]),
+				),
+				None,
+			)
+			.await
+			.unwrap_err();
+		transaction.rollback().await.unwrap();
+		{
+			let mut stream = connection.fetch_stream_generated(built(), 1, None).unwrap();
+			assert_eq!(
+				stream
+					.next()
+					.await
+					.unwrap()
+					.unwrap()
+					.get::<i64>("id")
+					.unwrap(),
+				7
+			);
+		}
+		// Assert: failed encoding never reaches the raw provider.
+		assert_eq!(result.rows_affected, 1);
+		assert_eq!(result.last_insert_id, Some(7));
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Type));
+		assert_eq!(
+			*calls.lock().unwrap(),
+			vec![(sql.to_owned(), vec![QueryValue::Int32(7)]); 6]
 		);
 	}
 

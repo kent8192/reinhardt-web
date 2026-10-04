@@ -161,6 +161,38 @@ impl PostgresBackend {
 
 #[async_trait]
 impl DatabaseBackend for PostgresBackend {
+	fn fetch_stream_generated<'a>(
+		&'a self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		if chunk_size == 0 {
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"Row stream chunk_size must be greater than zero",
+			)
+			.into());
+		}
+		let pool = Arc::clone(&self.pool);
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		Ok(Box::pin(async_stream::stream! {
+			let rows = sqlx::query_with(&sql, arguments).fetch(pool.as_ref());
+			futures::pin_mut!(rows);
+			let rows = rows.ready_chunks(chunk_size);
+			futures::pin_mut!(rows);
+			while let Some(chunk) = rows.next().await {
+				for row in chunk {
+					yield row
+						.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))
+						.and_then(Self::convert_row);
+				}
+			}
+		}))
+	}
+
 	async fn execute_generated(
 		&self,
 		built: (String, reinhardt_query::Values),
@@ -637,6 +669,130 @@ impl PostgresBackend {
 
 #[async_trait]
 impl TransactionExecutor for PgTransactionExecutor {
+	fn fetch_stream_generated<'a>(
+		&'a mut self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		if chunk_size == 0 {
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"Row stream chunk_size must be greater than zero",
+			)
+			.into());
+		}
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
+			)
+		})?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		Ok(Box::pin(async_stream::stream! {
+			let rows = sqlx::query_with(&sql, arguments).fetch(&mut **tx);
+			futures::pin_mut!(rows);
+			let rows = rows.ready_chunks(chunk_size);
+			futures::pin_mut!(rows);
+			while let Some(chunk) = rows.next().await {
+				for row in chunk {
+					yield row
+						.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))
+						.and_then(Self::convert_row);
+				}
+			}
+		}))
+	}
+
+	async fn execute_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
+			)
+		})?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(&mut **tx)
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: None,
+		})
+	}
+
+	async fn fetch_one_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
+			)
+		})?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_one(&mut **tx)
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		Self::convert_row(result)
+	}
+
+	async fn fetch_all_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
+			)
+		})?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_all(&mut **tx)
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		result.into_iter().map(Self::convert_row).collect()
+	}
+
+	async fn fetch_optional_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		let tx = self.tx.as_mut().ok_or_else(|| {
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
+			)
+		})?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_optional(&mut **tx)
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		result.map(Self::convert_row).transpose()
+	}
+
 	fn backend(&self) -> DatabaseType {
 		DatabaseType::Postgres
 	}

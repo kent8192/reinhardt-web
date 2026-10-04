@@ -13,6 +13,21 @@ use super::{
 /// Core database backend trait
 #[async_trait]
 pub trait DatabaseBackend: Send + Sync {
+	/// Stream an owned generated pair without materializing all rows (native-only, P0).
+	///
+	/// The stream borrows this executor; dropping it releases its cursor. Native
+	/// providers encode before returning the stream. Custom defaults reject values
+	/// which the legacy raw API cannot represent.
+	fn fetch_stream_generated<'a>(
+		&'a self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.database_type())?;
+		self.fetch_stream_with_context(sql, params, chunk_size, context)
+	}
+
 	/// Returns the database type
 	fn database_type(&self) -> DatabaseType;
 

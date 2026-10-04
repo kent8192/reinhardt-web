@@ -551,6 +551,74 @@ fn validate_savepoint_name(name: &str) -> Result<(), String> {
 /// maintains connection affinity.
 #[async_trait::async_trait]
 pub trait TransactionExecutor: Send + Sync {
+	/// Stream an owned generated pair without materializing all rows (native-only, P0).
+	///
+	/// The stream borrows this executor; dropping it releases its cursor. Native
+	/// providers encode before returning the stream. Custom defaults reject values
+	/// which the legacy raw API cannot represent.
+	fn fetch_stream_generated<'a>(
+		&'a mut self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<RowStream<'a>> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.backend())?;
+		self.fetch_stream_with_context(sql, params, chunk_size, context)
+	}
+
+	/// Execute generated arguments on this transaction's connection (native-only, P0).
+	///
+	/// Native providers use owned companion codecs. The compatibility default
+	/// rejects unrepresentable values before forwarding to the existing raw API.
+	async fn execute_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<QueryResult> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.backend())?;
+		self.execute_with_context(&sql, params, context).await
+	}
+
+	/// Fetch generated arguments on this transaction's connection (native-only, P0).
+	///
+	/// Native providers use owned companion codecs. The compatibility default
+	/// rejects unrepresentable values before forwarding to the existing raw API.
+	async fn fetch_one_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Row> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.backend())?;
+		self.fetch_one_with_context(&sql, params, context).await
+	}
+
+	/// Fetch generated arguments on this transaction's connection (native-only, P0).
+	///
+	/// Native providers use owned companion codecs. The compatibility default
+	/// rejects unrepresentable values before forwarding to the existing raw API.
+	async fn fetch_all_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Vec<Row>> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.backend())?;
+		self.fetch_all_with_context(&sql, params, context).await
+	}
+
+	/// Fetch generated arguments on this transaction's connection (native-only, P0).
+	///
+	/// Native providers use owned companion codecs. The compatibility default
+	/// rejects unrepresentable values before forwarding to the existing raw API.
+	async fn fetch_optional_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Option<Row>> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.backend())?;
+		self.fetch_optional_with_context(&sql, params, context)
+			.await
+	}
+
 	/// Return the database backend used by this transaction executor.
 	///
 	/// PostgreSQL is retained as the compatibility default for executors that

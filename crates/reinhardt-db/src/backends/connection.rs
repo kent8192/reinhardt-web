@@ -111,6 +111,48 @@ struct FlavoredTransactionExecutor {
 
 #[async_trait::async_trait]
 impl TransactionExecutor for FlavoredTransactionExecutor {
+	fn fetch_stream_generated<'a>(
+		&'a mut self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		self.inner
+			.fetch_stream_generated(built, chunk_size, context)
+	}
+
+	async fn execute_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		self.inner.execute_generated(built, context).await
+	}
+
+	async fn fetch_one_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		self.inner.fetch_one_generated(built, context).await
+	}
+
+	async fn fetch_all_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		self.inner.fetch_all_generated(built, context).await
+	}
+
+	async fn fetch_optional_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		self.inner.fetch_optional_generated(built, context).await
+	}
+
 	fn backend(&self) -> DatabaseType {
 		self.inner.backend()
 	}
@@ -862,6 +904,20 @@ impl DatabaseConnection {
 		})?;
 
 		Ok(db_config.to_url())
+	}
+
+	/// Stream an owned generated pair with a bounded fetch hint (native-only, P0).
+	///
+	/// Encodes before execution, preserves structural error context and releases
+	/// the native cursor when the stream is dropped.
+	pub fn fetch_stream_generated<'a>(
+		&'a self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		self.backend
+			.fetch_stream_generated(built, chunk_size, context)
 	}
 
 	/// Execute a generated statement using its exact owned SQL/Values pair (native-only, P0).

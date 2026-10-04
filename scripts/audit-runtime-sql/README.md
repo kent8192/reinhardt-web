@@ -17,8 +17,14 @@ cargo run --locked --manifest-path scripts/audit-runtime-sql/Cargo.toml -- compl
 `scan` includes SQL literals inside macros, SQL asset references, SQLx-style
 query calls (including unqualified imports), execution wrapper calls (including
 owned Values, structural-context and row-streaming variants), custom
-expressions and possible inline query rendering. Detection is conservative:
-HTTP/process `execute` methods may be candidates too. Classify their provenance
+expressions and possible inline query rendering.
+
+The Rust bodies of `async_stream::stream!` and `async_stream::try_stream!` are
+parsed for executor calls and their enclosing function provenance, even when
+their SQL/arguments are passed in variables. Other macro bodies retain literal
+and asset discovery without general expansion.
+
+Detection is conservative: HTTP/process `execute` methods may be candidates too. Classify their provenance
 in the registry rather than changing detection to match today's callers.
 AST-proven test-only code is shown in scan output but does not need an individual
 runtime registry entry. Shipped testkit/test helper source is scanned normally.

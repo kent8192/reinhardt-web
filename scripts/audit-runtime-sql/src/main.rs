@@ -319,6 +319,7 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 					| "fetch_one_generated"
 					| "fetch_all_generated"
 					| "fetch_optional_generated"
+					| "fetch_stream_generated"
 					| "query" | "query_as"
 					| "query_scalar"
 			) {
@@ -336,6 +337,25 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 		visit::visit_expr_method_call(self, n);
 	}
 	fn visit_macro(&mut self, n: &'ast syn::Macro) {
+		let segments = n
+			.path
+			.segments
+			.iter()
+			.map(|s| s.ident.to_string())
+			.collect::<Vec<_>>();
+		if segments.first().is_some_and(|s| s == "async_stream")
+			&& segments
+				.last()
+				.is_some_and(|s| matches!(s.as_str(), "stream" | "try_stream"))
+		{
+			// These macros contain a Rust block, including yield expressions. Parse
+			// that body instead of treating its executor calls as opaque tokens.
+			let tokens = &n.tokens;
+			if let Ok(body) = syn::parse2::<syn::Block>(quote::quote!({ #tokens })) {
+				visit::visit_block(self, &body);
+				return;
+			}
+		}
 		self.macro_tokens(n.tokens.clone());
 		visit::visit_macro(self, n);
 	}
@@ -713,11 +733,11 @@ mod tests {
 	#[rstest]
 	fn finds_owned_contextual_and_streaming_execution_wrappers() {
 		// Arrange: SQL is generated elsewhere, so these wrappers contain no SQL literal.
-		let source = "fn run() { engine.fetch_one_with_values(built); db.execute_with_context(sql, values, context); db.fetch_stream(sql, values, size); db.fetch_stream_with_context(sql, values, size, context); db.execute_generated(built, context); db.fetch_one_generated(built, context); db.fetch_all_generated(built, context); db.fetch_optional_generated(built, context); }";
+		let source = "fn run() { engine.fetch_one_with_values(built); db.execute_with_context(sql, values, context); db.fetch_stream(sql, values, size); db.fetch_stream_with_context(sql, values, size, context); db.execute_generated(built, context); db.fetch_one_generated(built, context); db.fetch_all_generated(built, context); db.fetch_optional_generated(built, context); db.fetch_stream_generated(built, size, context); }";
 		// Act
 		let sites = scan_source("crates/example/src/lib.rs", source).unwrap();
 		// Assert: changes to the caller's provenance remain auditable.
-		assert_eq!(sites.len(), 8);
+		assert_eq!(sites.len(), 9);
 		assert!(sites.iter().all(|site| site.kind == "execution-wrapper"));
 		assert!(sites.iter().all(|site| !site.test_only));
 		let changed = scan_source(
@@ -728,6 +748,35 @@ mod tests {
 			),
 		)
 		.unwrap();
+		assert_ne!(sites[0].fingerprint, changed[0].fingerprint);
+	}
+	#[rstest]
+	fn async_stream_bodies_expose_executors_and_caller_provenance() {
+		// Arrange: no SQL literal is needed to expose a generated execution path.
+		let source = "fn rows(sql: String, arguments: Args) { async_stream::stream! { let query = sqlx::query_with(&sql, arguments); yield query.fetch_one(pool).await; } } #[cfg(test)] fn fixture() { async_stream::try_stream! { yield sqlx::query(\"SELECT 1\").fetch_one(pool).await?; } }";
+		// Act
+		let sites = scan_source("crates/example/src/lib.rs", source).unwrap();
+		let changed = scan_source(
+			"crates/example/src/lib.rs",
+			&source.replace("arguments);", "other);"),
+		)
+		.unwrap();
+		// Assert: runtime body, test cfg and enclosing function fingerprint survive parsing.
+		assert_eq!(sites.iter().filter(|s| s.symbol == "rows").count(), 2);
+		assert_eq!(
+			sites
+				.iter()
+				.filter(|s| s.symbol == "rows" && s.kind == "executor" && !s.test_only)
+				.count(),
+			1
+		);
+		assert_eq!(
+			sites
+				.iter()
+				.filter(|s| s.symbol == "fixture" && s.test_only)
+				.count(),
+			3
+		);
 		assert_ne!(sites[0].fingerprint, changed[0].fingerprint);
 	}
 	#[rstest]

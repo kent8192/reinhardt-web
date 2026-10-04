@@ -235,6 +235,38 @@ impl MySqlBackend {
 
 #[async_trait]
 impl DatabaseBackend for MySqlBackend {
+	fn fetch_stream_generated<'a>(
+		&'a self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		if chunk_size == 0 {
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"Row stream chunk_size must be greater than zero",
+			)
+			.into());
+		}
+		let pool = Arc::clone(&self.pool);
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		Ok(Box::pin(async_stream::stream! {
+			let rows = sqlx::query_with(&sql, arguments).fetch(pool.as_ref());
+			futures::pin_mut!(rows);
+			let rows = rows.ready_chunks(chunk_size);
+			futures::pin_mut!(rows);
+			while let Some(chunk) = rows.next().await {
+				for row in chunk {
+					yield row
+						.map_err(|error| map_sqlx_error(error).into())
+						.and_then(Self::convert_row);
+				}
+			}
+		}))
+	}
+
 	async fn execute_generated(
 		&self,
 		built: (String, reinhardt_query::Values),
@@ -518,6 +550,105 @@ impl MySqlTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for MySqlTransactionExecutor {
+	fn fetch_stream_generated<'a>(
+		&'a mut self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		if chunk_size == 0 {
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"Row stream chunk_size must be greater than zero",
+			)
+			.into());
+		}
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		Ok(Box::pin(async_stream::stream! {
+			let rows = sqlx::query_with(&sql, arguments).fetch(&mut **tx);
+			futures::pin_mut!(rows);
+			let rows = rows.ready_chunks(chunk_size);
+			futures::pin_mut!(rows);
+			while let Some(chunk) = rows.next().await {
+				for row in chunk {
+					yield row
+						.map_err(|error| map_sqlx_error(error).into())
+						.and_then(Self::convert_row);
+				}
+			}
+		}))
+	}
+
+	async fn execute_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: optional_last_insert_id(result.last_insert_id()),
+		})
+	}
+
+	async fn fetch_one_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_one(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
+		Self::convert_row(result)
+	}
+
+	async fn fetch_all_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_all(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
+		result.into_iter().map(Self::convert_row).collect()
+	}
+
+	async fn fetch_optional_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_optional(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
+		result.map(Self::convert_row).transpose()
+	}
+
 	fn backend(&self) -> DatabaseType {
 		DatabaseType::Mysql
 	}
@@ -758,6 +889,105 @@ impl Drop for MySqlRawTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for MySqlRawTransactionExecutor {
+	fn fetch_stream_generated<'a>(
+		&'a mut self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		if chunk_size == 0 {
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"Row stream chunk_size must be greater than zero",
+			)
+			.into());
+		}
+		let conn = self.connection_mut()?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		Ok(Box::pin(async_stream::stream! {
+			let rows = sqlx::query_with(&sql, arguments).fetch(&mut **conn);
+			futures::pin_mut!(rows);
+			let rows = rows.ready_chunks(chunk_size);
+			futures::pin_mut!(rows);
+			while let Some(chunk) = rows.next().await {
+				for row in chunk {
+					yield row
+						.map_err(|error| map_sqlx_error(error).into())
+						.and_then(MySqlBackend::convert_row);
+				}
+			}
+		}))
+	}
+
+	async fn execute_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let conn = self.connection_mut()?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(&mut **conn)
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: optional_last_insert_id(result.last_insert_id()),
+		})
+	}
+
+	async fn fetch_one_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let conn = self.connection_mut()?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_one(&mut **conn)
+			.await
+			.map_err(map_sqlx_error)?;
+		Self::convert_row(result)
+	}
+
+	async fn fetch_all_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let conn = self.connection_mut()?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_all(&mut **conn)
+			.await
+			.map_err(map_sqlx_error)?;
+		result.into_iter().map(Self::convert_row).collect()
+	}
+
+	async fn fetch_optional_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		let conn = self.connection_mut()?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_optional(&mut **conn)
+			.await
+			.map_err(map_sqlx_error)?;
+		result.map(Self::convert_row).transpose()
+	}
+
 	fn backend(&self) -> DatabaseType {
 		DatabaseType::Mysql
 	}

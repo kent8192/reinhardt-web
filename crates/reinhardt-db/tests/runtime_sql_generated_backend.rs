@@ -6,6 +6,7 @@
 	feature = "sqlite"
 ))]
 
+use futures::StreamExt;
 use reinhardt_db::backends::{DatabaseConnection, DatabaseErrorKind, DatabaseType};
 use reinhardt_query::{
 	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
@@ -190,6 +191,307 @@ async fn exercise_crud(connection: &DatabaseConnection) {
 	);
 }
 
+fn transaction_insert(database: DatabaseType) -> (String, Values) {
+	let amount = if database == DatabaseType::Sqlite {
+		Value::Double(Some(1.25))
+	} else {
+		Value::Decimal(Some(Box::new(
+			rust_decimal::Decimal::from_str_exact("123456789012.123456789012").unwrap(),
+		)))
+	};
+	build(
+		database,
+		Query::insert()
+			.into_table(Alias::new("generated_rows"))
+			.columns([Alias::new("id"), Alias::new("name"), Alias::new("amount")])
+			.values_panic([Value::Int(Some(19)), "transaction' ? $3".into(), amount])
+			.take(),
+	)
+}
+
+fn transaction_select(database: DatabaseType) -> (String, Values) {
+	build(
+		database,
+		Query::select()
+			.columns([Alias::new("id"), Alias::new("name")])
+			.from(Alias::new("generated_rows"))
+			.and_where(Expr::col(Alias::new("id")).eq(19_i32))
+			.take(),
+	)
+}
+
+async fn exercise_transactions_and_streams(connection: &DatabaseConnection) {
+	let database = connection.database_type();
+	match database {
+		DatabaseType::Postgres => {
+			connection
+				.execute("CREATE TABLE generated_tx_arrays (items INTEGER[])", vec![])
+				.await
+				.unwrap();
+		}
+		DatabaseType::Mysql => {
+			connection
+				.execute(
+					"CREATE TABLE generated_tx_unsigned (amount BIGINT UNSIGNED)",
+					vec![],
+				)
+				.await
+				.unwrap();
+		}
+		DatabaseType::Sqlite => {}
+	}
+	for write_intent in [false, true] {
+		// Arrange: cover ordinary SQLx and owned raw write-intent executors.
+		let mut transaction = if write_intent {
+			connection.begin_write().await.unwrap()
+		} else {
+			connection.begin().await.unwrap()
+		};
+		// Act
+		match database {
+			DatabaseType::Postgres => {
+				let built = build(
+					database,
+					Query::insert()
+						.into_table(Alias::new("generated_tx_arrays"))
+						.columns([Alias::new("items")])
+						.values_panic([Value::Array(
+							reinhardt_query::ArrayType::Int,
+							Some(Box::new(vec![Value::Int(Some(3)), Value::Int(None)])),
+						)])
+						.take(),
+				);
+				assert_eq!(
+					transaction
+						.execute_generated(built, None)
+						.await
+						.unwrap()
+						.rows_affected,
+					1
+				);
+			}
+			DatabaseType::Mysql => {
+				let built = build(
+					database,
+					Query::insert()
+						.into_table(Alias::new("generated_tx_unsigned"))
+						.columns([Alias::new("amount")])
+						.values_panic([u64::MAX])
+						.take(),
+				);
+				assert_eq!(
+					transaction
+						.execute_generated(built, None)
+						.await
+						.unwrap()
+						.rows_affected,
+					1
+				);
+			}
+			DatabaseType::Sqlite => {}
+		}
+		assert_eq!(
+			transaction
+				.execute_generated(transaction_insert(database), None)
+				.await
+				.unwrap()
+				.rows_affected,
+			1
+		);
+		let row = transaction
+			.fetch_one_generated(transaction_select(database), None)
+			.await
+			.unwrap();
+		assert_eq!(row.get::<String>("name").unwrap(), "transaction' ? $3");
+		assert_eq!(
+			transaction
+				.fetch_all_generated(transaction_select(database), None)
+				.await
+				.unwrap(),
+			vec![row.clone()]
+		);
+		assert_eq!(
+			transaction
+				.fetch_optional_generated(transaction_select(database), None)
+				.await
+				.unwrap(),
+			Some(row.clone())
+		);
+		{
+			let mut stream = transaction
+				.fetch_stream_generated(transaction_select(database), 2, None)
+				.unwrap();
+			assert_eq!(stream.next().await.unwrap().unwrap(), row);
+			// Drop without exhausting: the same transaction must remain usable.
+		}
+		assert!(
+			transaction
+				.fetch_one_generated(transaction_select(database), None)
+				.await
+				.is_ok()
+		);
+		transaction.commit().await.unwrap();
+		match database {
+			DatabaseType::Postgres => {
+				let stored: Vec<Option<i32>> =
+					sqlx::query_scalar("SELECT items FROM generated_tx_arrays")
+						.fetch_one(&connection.into_postgres().unwrap())
+						.await
+						.unwrap();
+				assert_eq!(stored, [Some(3), None]);
+				let built = build(
+					database,
+					Query::delete()
+						.from_table(Alias::new("generated_tx_arrays"))
+						.take(),
+				);
+				assert_eq!(
+					connection
+						.execute_generated(built, None)
+						.await
+						.unwrap()
+						.rows_affected,
+					1
+				);
+				let stored: rust_decimal::Decimal =
+					sqlx::query_scalar("SELECT amount FROM generated_rows WHERE id = 19")
+						.fetch_one(&connection.into_postgres().unwrap())
+						.await
+						.unwrap();
+				assert_eq!(stored.to_string(), "123456789012.123456789012");
+			}
+			DatabaseType::Mysql => {
+				let stored: u64 = sqlx::query_scalar("SELECT amount FROM generated_tx_unsigned")
+					.fetch_one(&connection.into_mysql().unwrap())
+					.await
+					.unwrap();
+				assert_eq!(stored, u64::MAX);
+				let built = build(
+					database,
+					Query::delete()
+						.from_table(Alias::new("generated_tx_unsigned"))
+						.take(),
+				);
+				assert_eq!(
+					connection
+						.execute_generated(built, None)
+						.await
+						.unwrap()
+						.rows_affected,
+					1
+				);
+				let stored: rust_decimal::Decimal =
+					sqlx::query_scalar("SELECT amount FROM generated_rows WHERE id = 19")
+						.fetch_one(&connection.into_mysql().unwrap())
+						.await
+						.unwrap();
+				assert_eq!(stored.to_string(), "123456789012.123456789012");
+			}
+			DatabaseType::Sqlite => {}
+		}
+		// Assert: committed row can stream from the pool; dropping releases its cursor.
+		{
+			let mut stream = connection
+				.fetch_stream_generated(transaction_select(database), 1, None)
+				.unwrap();
+			assert_eq!(
+				stream
+					.next()
+					.await
+					.unwrap()
+					.unwrap()
+					.get::<i64>("id")
+					.unwrap(),
+				19
+			);
+		}
+		let delete = || {
+			build(
+				database,
+				Query::delete()
+					.from_table(Alias::new("generated_rows"))
+					.and_where(Expr::col(Alias::new("id")).eq(19_i32))
+					.take(),
+			)
+		};
+		assert_eq!(
+			connection
+				.execute_generated(delete(), None)
+				.await
+				.unwrap()
+				.rows_affected,
+			1
+		);
+		let mut transaction = if write_intent {
+			connection.begin_write().await.unwrap()
+		} else {
+			connection.begin().await.unwrap()
+		};
+		transaction
+			.execute_generated(transaction_insert(database), None)
+			.await
+			.unwrap();
+		transaction.rollback().await.unwrap();
+		assert!(
+			connection
+				.fetch_optional_generated(transaction_select(database), None)
+				.await
+				.unwrap()
+				.is_none()
+		);
+		let mut transaction = if write_intent {
+			connection.begin_write().await.unwrap()
+		} else {
+			connection.begin().await.unwrap()
+		};
+		transaction
+			.execute_generated(transaction_insert(database), None)
+			.await
+			.unwrap();
+		drop(transaction);
+		assert!(
+			connection
+				.fetch_optional_generated(transaction_select(database), None)
+				.await
+				.unwrap()
+				.is_none()
+		);
+	}
+	// Invalid streaming inputs fail before a cursor or connection is acquired.
+	assert_eq!(
+		connection
+			.fetch_stream_generated(transaction_select(database), 0, None)
+			.err()
+			.unwrap()
+			.database_kind(),
+		Some(DatabaseErrorKind::Configuration)
+	);
+	if database == DatabaseType::Sqlite {
+		let invalid = (
+			"private SQL".into(),
+			Values(vec![Value::BigUnsigned(Some(u64::MAX))]),
+		);
+		assert_eq!(
+			connection
+				.fetch_stream_generated(invalid.clone(), 1, None)
+				.err()
+				.unwrap()
+				.database_kind(),
+			Some(DatabaseErrorKind::Type)
+		);
+		let mut transaction = connection.begin_write().await.unwrap();
+		assert_eq!(
+			transaction
+				.fetch_stream_generated(invalid, 1, None)
+				.err()
+				.unwrap()
+				.database_kind(),
+			Some(DatabaseErrorKind::Type)
+		);
+		transaction.rollback().await.unwrap();
+	}
+}
+
 #[rstest]
 #[tokio::test]
 async fn postgres_generated_pool_execution_keeps_decimal_and_nullable_arrays() {
@@ -204,6 +506,7 @@ async fn postgres_generated_pool_execution_keeps_decimal_and_nullable_arrays() {
 	);
 	let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 	exercise_crud(&connection).await;
+	exercise_transactions_and_streams(&connection).await;
 	// Arrange / Act: nullable array elements bypass the legacy Debug conversion.
 	connection
 		.execute("CREATE TABLE generated_arrays (items INTEGER[])", vec![])
@@ -253,6 +556,7 @@ async fn mysql_generated_pool_execution_keeps_decimal_and_full_unsigned_range() 
 	);
 	let connection = DatabaseConnection::connect_mysql(&url).await.unwrap();
 	exercise_crud(&connection).await;
+	exercise_transactions_and_streams(&connection).await;
 	// Arrange / Act: the native backend must bypass the signed compatibility bridge.
 	connection
 		.execute(
@@ -288,13 +592,18 @@ async fn mysql_generated_pool_execution_keeps_decimal_and_full_unsigned_range() 
 #[rstest]
 #[tokio::test]
 async fn sqlite_generated_pool_execution_keeps_text_uuid_and_rejects_lossy_values() {
+	let directory = tempfile::tempdir().unwrap();
+	let options = sqlx::sqlite::SqliteConnectOptions::new()
+		.filename(directory.path().join("generated.sqlite"))
+		.create_if_missing(true);
 	let pool = sqlx::sqlite::SqlitePoolOptions::new()
 		.max_connections(1)
-		.connect("sqlite::memory:")
+		.connect_with(options)
 		.await
 		.unwrap();
 	let connection = DatabaseConnection::from_sqlite_pool(pool);
 	exercise_crud(&connection).await;
+	exercise_transactions_and_streams(&connection).await;
 	// Act: failed encoding must occur before an invalid SQL statement is executed.
 	let built = build(
 		DatabaseType::Sqlite,

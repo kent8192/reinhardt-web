@@ -12773,6 +12773,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/backend.rs::DatabaseBackend::fetch_stream_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/backend.rs",
+      "symbol": "DatabaseBackend::fetch_stream_generated",
+      "kind": "execution-wrapper",
+      "line": 28,
+      "fingerprint": "1a1a3e67f311147a3b71862b9ff6124885b2e401654cad7a99820f4bc4711538",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/backend.rs::DatabaseBackend::fetch_stream_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::fetch_stream_with_context",
@@ -13265,6 +13293,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/connection.rs::DatabaseConnection::fetch_stream_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/connection.rs",
+      "symbol": "DatabaseConnection::fetch_stream_generated",
+      "kind": "execution-wrapper",
+      "line": 919,
+      "fingerprint": "b9e6bdbcaaf2b3aa52c0dbcdedca001c577863ca1aeda25565866d0aeecd0d18",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/connection.rs::DatabaseConnection::fetch_stream_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_stream_with_context",
@@ -13386,6 +13442,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/connection.rs::FlavoredTransactionExecutor as TransactionExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/connection.rs",
+      "symbol": "FlavoredTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 129,
+      "fingerprint": "442c333f456585f765e3ba1f72683902fbba00bf6ef60d8b73693d637c594e3b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/connection.rs::FlavoredTransactionExecutor as TransactionExecutor::execute_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::execute_with_context",
@@ -13430,6 +13514,34 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/connection.rs::FlavoredTransactionExecutor as TransactionExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/connection.rs",
+      "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 145,
+      "fingerprint": "d4cb8db6eb70fe7d4a07eb1fa5b3751a21ef3daa87068d8c05753c471e56c4dd",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/connection.rs::FlavoredTransactionExecutor as TransactionExecutor::fetch_all_with_context::execution-wrapper#1",
@@ -13478,6 +13590,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/connection.rs::FlavoredTransactionExecutor as TransactionExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/connection.rs",
+      "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 137,
+      "fingerprint": "4d20be059469982f72df7e5e22aee0db6dcfbad120c56240e8eac7f1df9fcdcf",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/connection.rs::FlavoredTransactionExecutor as TransactionExecutor::fetch_one_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_one_with_context",
@@ -13524,6 +13664,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/connection.rs::FlavoredTransactionExecutor as TransactionExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/connection.rs",
+      "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 153,
+      "fingerprint": "c91419b8628e3cd96ebb59701f4bf2126ddc4ae9b6e2271fe9db27b76433f194",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/connection.rs::FlavoredTransactionExecutor as TransactionExecutor::fetch_optional_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_optional_with_context",
@@ -13568,6 +13736,34 @@
       ],
       "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/connection.rs::FlavoredTransactionExecutor as TransactionExecutor::fetch_stream_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/connection.rs",
+      "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_stream_generated",
+      "kind": "execution-wrapper",
+      "line": 120,
+      "fingerprint": "80af5b4ee484fb42deee5696a926e363cdcbd9c163afa84f743a1d58d58d1359",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/connection.rs::FlavoredTransactionExecutor as TransactionExecutor::fetch_stream_with_context::execution-wrapper#1",
@@ -14085,6 +14281,60 @@
       ]
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_stream::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::fetch_stream",
+      "kind": "executor",
+      "line": 408,
+      "fingerprint": "e0a10c6577fa2941e6bc773730faa0b37aca94286f9070af061ab8b689cce3b5",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Explicit raw streaming API/provider receives its SQL and QueryValue parameters from the caller and does not construct framework SQL. The async_stream body preserves those inputs and owns only the driver cursor. Internal generated callers remain independently audited at their call sites until migrated.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+        "crates/reinhardt-db/README.md"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_stream_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::fetch_stream_generated",
+      "kind": "executor",
+      "line": 256,
+      "fingerprint": "1681331e4006830b030c0c8729b23c9c8ecff4546b128da2f90bc706a6017098",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::commit::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::commit",
@@ -14200,6 +14450,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 933,
+      "fingerprint": "48de84e8d1ead6135aabac709b6b374cc89a4f2fec9010f611b789b9a5058e6c",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::execute_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "executor",
+      "line": 933,
+      "fingerprint": "2af3091d0f3604647bd25e84a847a11dcc5b2d6e9c9dd52743f638d9d4de3e28",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_all",
@@ -14244,6 +14548,60 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 968,
+      "fingerprint": "756f45542b94c5f2c9e9c397fccf390a8b161654b5c1ba6d793b4088ef713c8d",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_all_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "executor",
+      "line": 968,
+      "fingerprint": "82fc3305959d4314c52e418f0b3af146c317aba2a5522c6b6f51774bffbd8b5f",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_one::execution-wrapper#1",
@@ -14292,6 +14650,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 952,
+      "fingerprint": "22c237f8d39ddefbadb28de3967b4afa9c2d5ddce4d571eab6d324aecde64434",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_one_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "executor",
+      "line": 952,
+      "fingerprint": "c93c66f7ae365f34639b5eb555e239345fafa614813b962f061efd001ac72c4b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_optional::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_optional",
@@ -14336,6 +14748,114 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 984,
+      "fingerprint": "7d3f971abc2a19a9e046d53bac3e9ac562413a73b1ce1025dbcf912cdb245459",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_optional_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "executor",
+      "line": 984,
+      "fingerprint": "5e850d9e55c492b08fe4eaa24bbea2c244b84c595a57d4228a05b9002d6cad61",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_stream::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_stream",
+      "kind": "executor",
+      "line": 1047,
+      "fingerprint": "e23f1f78c3811b7456f16035ed36654723774ecc5fc582c3b1ba3776a301aba4",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Explicit raw streaming API/provider receives its SQL and QueryValue parameters from the caller and does not construct framework SQL. The async_stream body preserves those inputs and owns only the driver cursor. Internal generated callers remain independently audited at their call sites until migrated.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+        "crates/reinhardt-db/README.md"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::fetch_stream_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_stream_generated",
+      "kind": "executor",
+      "line": 910,
+      "fingerprint": "1bf189e20471890f59eceb0a48e244d448b6e4322cee5e102f9afa7c9a43ef52",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::release_savepoint::executor#1",
@@ -14499,6 +15019,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 594,
+      "fingerprint": "8aa84c63d0110d3e4c8a2c9ea0951161b7d50351a5f55ff1d0ea8fbe5b03763c",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::execute_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "executor",
+      "line": 594,
+      "fingerprint": "1d5828bced337ad0997082d80b246c1d59a04e1a1a8f17b52ce8212251c1e5bb",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_all",
@@ -14543,6 +15117,60 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 629,
+      "fingerprint": "a496a871821d580bba0dfa30392cd1ec5de6cdc501467436f4841c8406c7ebde",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_all_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "executor",
+      "line": 629,
+      "fingerprint": "63f426c5600d34cbb5f4f55f99fe76e7714986ea5a757cc1a238bae882cecaf9",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_one::execution-wrapper#1",
@@ -14591,6 +15219,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 613,
+      "fingerprint": "fb9c85fb8a5af79f6c1c245860cd112f25376e5eb80dfbbc8764b3def4465a5b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_one_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "executor",
+      "line": 613,
+      "fingerprint": "adb17df2b1d4158ea739a7b18973f451fb6327b59655ccc966545ae4d43f7972",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_optional::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_optional",
@@ -14635,6 +15317,114 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 645,
+      "fingerprint": "3cc96015f8b555e9c97f12ecba5250066d9f20fb920485236276d13aa364714d",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_optional_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "executor",
+      "line": 645,
+      "fingerprint": "4a9b194329b126059fd2e34db447745016c28d0c7bd93fbdfa8fd6747322d1dd",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_stream::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_stream",
+      "kind": "executor",
+      "line": 708,
+      "fingerprint": "17e9ae8ed218718aa6864402b4e478bc6cad78cc0d495741fb1ceb537ff2788e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Explicit raw streaming API/provider receives its SQL and QueryValue parameters from the caller and does not construct framework SQL. The async_stream body preserves those inputs and owns only the driver cursor. Internal generated callers remain independently audited at their call sites until migrated.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+        "crates/reinhardt-db/README.md"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::fetch_stream_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_stream_generated",
+      "kind": "executor",
+      "line": 571,
+      "fingerprint": "22dda64cd3cbb338691948e993e4e02432f0524329fb1b1a836ef71468050e8b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::release_savepoint::executor#1",
@@ -14798,6 +15588,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PgTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 723,
+      "fingerprint": "d2e1ec81ffd84b831896d9d385f25ae9a99acfd22aa9c6666cf49ba391521b1b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::execute_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PgTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "executor",
+      "line": 723,
+      "fingerprint": "62d0b3db0e449f8160979d75adf45b8d0c71dd8014d5bf80c42728944a25755f",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::execute_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::execute_with_context",
@@ -14865,6 +15709,60 @@
       ],
       "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 768,
+      "fingerprint": "e70f7993749026fe6d565eebc6ee16df94188faf5cc81fe3818fb7e4ad74dfd1",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_all_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "executor",
+      "line": 768,
+      "fingerprint": "9aeb4d674a1fdaab7a140555ff80fa4eb784c6d0b86226f1917b88c039e2f411",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_all_with_context::execution-wrapper#1",
@@ -14936,6 +15834,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 747,
+      "fingerprint": "bea5ea8483f7d84ec934228247ac3764c289d52aaba77a410e6ca9f6b1ea27ac",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_one_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "executor",
+      "line": 747,
+      "fingerprint": "de3bcf2647c48c94c72e6e9f43c5c0234134b66e7626d3c27f660d3c10c1d424",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_one_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one_with_context",
@@ -15005,6 +15957,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 789,
+      "fingerprint": "e106a4dbb95d3ed41dfdc0cd8f0fe25b52ad25d50f191186e9f4e951e67ef1bc",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_optional_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "executor",
+      "line": 789,
+      "fingerprint": "dc37ce3a70335bce644bf6ea6d085cd4675666bb63e0ac49df64d87249fc6ca3",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_optional_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional_with_context",
@@ -15072,6 +16078,60 @@
       ],
       "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_stream_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_stream_generated",
+      "kind": "executor",
+      "line": 695,
+      "fingerprint": "8fad1c4f5055f251990e36af9497e9ca159871f89063ffb8d5d1f7933d24bede",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_stream_with_context::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_stream_with_context",
+      "kind": "executor",
+      "line": 921,
+      "fingerprint": "5a8c2b2f47113bb4ad6832f081064a72b742d1e4a87f429431184c1f44b969b6",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Explicit raw streaming API/provider receives its SQL and QueryValue parameters from the caller and does not construct framework SQL. The async_stream body preserves those inputs and owns only the driver cursor. Internal generated callers remain independently audited at their call sites until migrated.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+        "crates/reinhardt-db/README.md"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::release_savepoint::execution-wrapper#1",
@@ -15633,6 +16693,60 @@
       ],
       "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_stream_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_stream_generated",
+      "kind": "executor",
+      "line": 182,
+      "fingerprint": "64cd9a94fc9981fcedf6dd1735502e6105a1b35cf81e680b6440a0c7cebc328d",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_stream_with_context::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_stream_with_context",
+      "kind": "executor",
+      "line": 347,
+      "fingerprint": "84e64a808632f19306305d6583fe810926dd6fb51ffe0eb585e6c3ba12ba75f3",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Explicit raw streaming API/provider receives its SQL and QueryValue parameters from the caller and does not construct framework SQL. The async_stream body preserves those inputs and owns only the driver cursor. Internal generated callers remain independently audited at their call sites until migrated.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+        "crates/reinhardt-db/README.md"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend::execute_with_context::execution-wrapper#1",
@@ -16288,6 +17402,60 @@
       ]
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_stream::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteBackend as DatabaseBackend::fetch_stream",
+      "kind": "executor",
+      "line": 376,
+      "fingerprint": "e0a10c6577fa2941e6bc773730faa0b37aca94286f9070af061ab8b689cce3b5",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Explicit raw streaming API/provider receives its SQL and QueryValue parameters from the caller and does not construct framework SQL. The async_stream body preserves those inputs and owns only the driver cursor. Internal generated callers remain independently audited at their call sites until migrated.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+        "crates/reinhardt-db/README.md"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_stream_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteBackend as DatabaseBackend::fetch_stream_generated",
+      "kind": "executor",
+      "line": 225,
+      "fingerprint": "87b55a42254b5eaea293df0607f713e6fc4ff196f346a8b920ff0f06e0fce125",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::execute::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::execute",
@@ -16332,6 +17500,60 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 976,
+      "fingerprint": "d4c0e656f5b0c41dee7b1be5945dda807847c8d2c46d448f3725f8192a126d81",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::execute_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "executor",
+      "line": 976,
+      "fingerprint": "9ccc7abaf93605487e9ca984c8a3369ad9f5ec30cdffb80362a99dac6d4b3095",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_all::execution-wrapper#1",
@@ -16380,6 +17602,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 1011,
+      "fingerprint": "9b3ac8594d3cc0255a1c0d3374af7db7b9c052fb5fdf324ff5408585390e6676",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_all_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "executor",
+      "line": 1011,
+      "fingerprint": "7df980a65b52a23eb859c402127b1b5d4fa4dfa232bdad1719098e226bf72a97",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_one::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_one",
@@ -16426,6 +17702,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 995,
+      "fingerprint": "168357a344373a33d6e354213bb977ce61ab514399727e3faf2510de4a18b0be",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_one_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "executor",
+      "line": 995,
+      "fingerprint": "cc4a784a5f6db9c9141621b409a1f8162c3f65a8cb146d84904dfa1dbc45ec22",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_optional::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_optional",
@@ -16470,6 +17800,114 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 1027,
+      "fingerprint": "2f105a5534ce948c7e2398997d3a24a54af2583e642e4da0c83fe956ff361a24",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_optional_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "executor",
+      "line": 1027,
+      "fingerprint": "2de13ad11ecf7c3e4332ba1a51da97d6ba734c6dd9f4e44ffa8f0e8d390c37ac",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_stream::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_stream",
+      "kind": "executor",
+      "line": 1086,
+      "fingerprint": "65f664daf69a9ff8b38c7ea70dfce574f6a83a69d6b0e98ae19b66791b3569be",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Explicit raw streaming API/provider receives its SQL and QueryValue parameters from the caller and does not construct framework SQL. The async_stream body preserves those inputs and owns only the driver cursor. Internal generated callers remain independently audited at their call sites until migrated.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+        "crates/reinhardt-db/README.md"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::fetch_stream_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_stream_generated",
+      "kind": "executor",
+      "line": 953,
+      "fingerprint": "dcbdf805ca23011f80e5305da47ce0ca7d42d0512ee2fcf799be8776d2e3c0fc",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::release_savepoint::executor#1",
@@ -16656,6 +18094,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 661,
+      "fingerprint": "a716035da7cad43016f8e1f35ce2af294bc5de4451188031af3d25e2c385eece",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::execute_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteTransactionExecutor as TransactionExecutor::execute_generated",
+      "kind": "executor",
+      "line": 661,
+      "fingerprint": "838fbfb98b90080edd7f73d2fb45749e4a5ccb66dd6a495a94b5bc00c3fbf596",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_all",
@@ -16700,6 +18192,60 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 696,
+      "fingerprint": "bd39147e15346a0c7b35121c7dd56e900af91b979a5b23a2251e2957985dcac8",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_all_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_all_generated",
+      "kind": "executor",
+      "line": 696,
+      "fingerprint": "b35a696152ce3c3bfcdd3c4581e253791102c72a7530a294aa39ab849fd0e024",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_one::execution-wrapper#1",
@@ -16748,6 +18294,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 680,
+      "fingerprint": "f737b22e1b6229f00c5799e78d628733cc3b328918b3e0e1e00ed6e8c2c26497",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_one_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_one_generated",
+      "kind": "executor",
+      "line": 680,
+      "fingerprint": "06a2e57980be167f7243c86bca4464cd2b732c1dd041702d3e9af06fd8e9255e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_optional::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_optional",
@@ -16792,6 +18392,114 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 712,
+      "fingerprint": "09af2a2863438ba9a6f71ba7e1bbd9d77b596f108262c7a4cdcd6c93bab43805",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_optional_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_optional_generated",
+      "kind": "executor",
+      "line": 712,
+      "fingerprint": "3b28ee9caebe576479f53d930e92a4c3e87f92a721ba23517d31d87e9eca6be6",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_stream::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_stream",
+      "kind": "executor",
+      "line": 774,
+      "fingerprint": "17e9ae8ed218718aa6864402b4e478bc6cad78cc0d495741fb1ceb537ff2788e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Explicit raw streaming API/provider receives its SQL and QueryValue parameters from the caller and does not construct framework SQL. The async_stream body preserves those inputs and owns only the driver cursor. Internal generated callers remain independently audited at their call sites until migrated.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+        "crates/reinhardt-db/README.md"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::fetch_stream_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_stream_generated",
+      "kind": "executor",
+      "line": 638,
+      "fingerprint": "1657999866f61aa2f9bf6e7b49949ff9a7b87468be21e1a4c49ab4e822f16424",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteTransactionExecutor as TransactionExecutor::release_savepoint::execution-wrapper#1",
@@ -20497,6 +22205,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/types.rs::TransactionExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/types.rs",
+      "symbol": "TransactionExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 579,
+      "fingerprint": "c070f0be53d4be3551a4f8e9c132c03b1f9ff1d82ca04ac5aec6555f4a943298",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/types.rs::TransactionExecutor::execute_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/types.rs",
       "symbol": "TransactionExecutor::execute_with_context",
@@ -20518,6 +22254,34 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/types.rs::TransactionExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/types.rs",
+      "symbol": "TransactionExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 605,
+      "fingerprint": "a1e8851e570d5c5435b32bdf0710cfc2e9d76221f10289489a1fd346bcf00c01",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/types.rs::TransactionExecutor::fetch_all_with_context::execution-wrapper#1",
@@ -20543,6 +22307,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/types.rs::TransactionExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/types.rs",
+      "symbol": "TransactionExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 592,
+      "fingerprint": "160d41b460b1dd459004787e378bbf1c74ca0ae22cf32f0367c5ff54c1953ecb",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/types.rs::TransactionExecutor::fetch_one_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/types.rs",
       "symbol": "TransactionExecutor::fetch_one_with_context",
@@ -20566,6 +22358,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/types.rs::TransactionExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/types.rs",
+      "symbol": "TransactionExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 618,
+      "fingerprint": "e85e51b52584f6abdcd429f57d42a06e14511f9fb0d71c12336aca9f864e0f12",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/types.rs::TransactionExecutor::fetch_optional_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/types.rs",
       "symbol": "TransactionExecutor::fetch_optional_with_context",
@@ -20587,6 +22407,34 @@
       ],
       "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/types.rs::TransactionExecutor::fetch_stream_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/types.rs",
+      "symbol": "TransactionExecutor::fetch_stream_generated",
+      "kind": "execution-wrapper",
+      "line": 566,
+      "fingerprint": "190e7f350fb67ce0dce565585f1e2d4faf41a98b89f2ce9aad0470732b0fd8e1",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/types.rs::TransactionExecutor::fetch_stream_with_context::execution-wrapper#1",
@@ -33174,6 +35022,35 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::fetch_stream_with_context::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "DatabaseConnection as OrmExecutor::fetch_stream_with_context",
+      "kind": "execution-wrapper",
+      "line": 611,
+      "fingerprint": "7e54b10c57352f5630938a39cd39a7afebb07f874081bf951fab4bd3c21640f2",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/orm"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Explicit raw streaming API/provider receives its SQL and QueryValue parameters from the caller and does not construct framework SQL. The async_stream body preserves those inputs and owns only the driver cursor. Internal generated callers remain independently audited at their call sites until migrated.",
+      "evidence": [
+        "crates/reinhardt-db/src/orm/connection.rs",
+        "crates/reinhardt-db/README.md"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection::execute::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection::execute",
@@ -40744,6 +42621,35 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as TransactionExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as TransactionExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 1115,
+      "fingerprint": "1eeb088ec0cd77bc0e8a90907ce5ee306c78985ee5d788aa2b065ae6145bbfc5",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/orm"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as TransactionExecutor::execute_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::execute_with_context",
@@ -40788,6 +42694,35 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as TransactionExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as TransactionExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 1133,
+      "fingerprint": "a55d7fc31ded729094c74ee99d7546c1ff9180932d0145d9643d50a45e5a48ee",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/orm"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as TransactionExecutor::fetch_all_with_context::execution-wrapper#1",
@@ -40836,6 +42771,35 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as TransactionExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as TransactionExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 1123,
+      "fingerprint": "cc60bed3d0982de01b395e2f838973f54b8c319bcea7276413afc99152fc7ed5",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/orm"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as TransactionExecutor::fetch_one_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_one_with_context",
@@ -40882,6 +42846,35 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as TransactionExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as TransactionExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 1143,
+      "fingerprint": "a70dd86643bf949d54aadb3bffe95986efa47c43e49fbdf3230d441d2d080d73",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/orm"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as TransactionExecutor::fetch_optional_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_optional_with_context",
@@ -40926,6 +42919,35 @@
       ],
       "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as TransactionExecutor::fetch_stream_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as TransactionExecutor::fetch_stream_generated",
+      "kind": "execution-wrapper",
+      "line": 1154,
+      "fingerprint": "13f12a66b8287ece186325c75a866a90805f8f76b65096707326d5a30d31524e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/orm"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-db/src/backends/generated.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as TransactionExecutor::fetch_stream_with_context::execution-wrapper#1",
