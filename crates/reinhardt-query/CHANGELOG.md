@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- PostgreSQL sequence options, literal schema identifiers, and structured identity definitions (#6506).
+
+### Breaking Changes
+
+- `SequenceOption` gains `AsType`/`StartWith`; `OwnedBy` gains `SchemaColumn`. Exhaustive downstream matches need corresponding arms.
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.18...reinhardt-query@v0.4.0-alpha.19) - 2026-10-03
 
 ### Fixed

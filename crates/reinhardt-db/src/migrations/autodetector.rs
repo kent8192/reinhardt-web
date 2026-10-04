@@ -149,6 +149,23 @@ pub struct FieldState {
 }
 
 impl FieldState {
+	/// Declares a typed identity definition in migration state.
+	pub fn with_identity(mut self, identity: super::IdentityDefinition) -> Self {
+		self.params.insert(
+			"identity".into(),
+			serde_json::to_string(&identity).expect("serializable identity"),
+		);
+		self
+	}
+	/// Declares a typed nextval default in migration state.
+	pub fn with_sequence_default(mut self, default: super::SequenceDefault) -> Self {
+		self.params.insert(
+			"sequence_default".into(),
+			serde_json::to_string(&default).expect("serializable sequence default"),
+		);
+		self
+	}
+
 	/// Creates a new instance.
 	pub fn new(name: impl Into<String>, field_type: super::FieldType, nullable: bool) -> Self {
 		Self {
@@ -886,6 +903,10 @@ pub struct ProjectState {
 
 	/// Whether prior migrations contain opaque SQL that this state cannot model.
 	pub has_opaque_schema_operations: bool,
+	/// Independent app-scoped sequence declarations.
+	pub sequences: BTreeMap<super::SequenceKey, super::SequenceDefinition>,
+	/// Optional app selection; other sequences remain read-only dependency context.
+	pub sequence_scope: Option<String>,
 }
 
 impl Default for ProjectState {
@@ -961,6 +982,13 @@ impl ProjectState {
 						primary_key,
 						auto_increment,
 						generated: field_state.generated.clone(),
+						identity: super::sequences::identity_from_params(&field_state.params)
+							.expect("validated identity metadata"),
+						sequence_default: super::sequences::sequence_default_from_params(
+							&field_state.params,
+						)
+						.expect("validated sequence default metadata"),
+						observed_sequence_default: None,
 					},
 				);
 			}
@@ -1003,7 +1031,12 @@ impl ProjectState {
 			);
 		}
 
-		super::schema_diff::DatabaseSchema { tables }
+		super::schema_diff::DatabaseSchema {
+			tables,
+			sequences: self.sequences.clone(),
+			observed_sequences: Vec::new(),
+			default_schema: None,
+		}
 	}
 
 	/// Convert ProjectState to DatabaseSchema for a specific app
@@ -1053,6 +1086,13 @@ impl ProjectState {
 							primary_key,
 							auto_increment,
 							generated: field_state.generated.clone(),
+							identity: super::sequences::identity_from_params(&field_state.params)
+								.expect("validated identity metadata"),
+							sequence_default: super::sequences::sequence_default_from_params(
+								&field_state.params,
+							)
+							.expect("validated sequence default metadata"),
+							observed_sequence_default: None,
 						},
 					);
 				}
@@ -1097,7 +1137,17 @@ impl ProjectState {
 			}
 		}
 
-		super::schema_diff::DatabaseSchema { tables }
+		super::schema_diff::DatabaseSchema {
+			tables,
+			sequences: self
+				.sequences
+				.iter()
+				.filter(|(key, _)| key.app_label == app_label)
+				.map(|(key, definition)| (key.clone(), definition.clone()))
+				.collect(),
+			observed_sequences: Vec::new(),
+			default_schema: None,
+		}
 	}
 
 	/// Create a new empty ProjectState
@@ -1114,6 +1164,8 @@ impl ProjectState {
 		Self {
 			models: std::collections::BTreeMap::new(),
 			has_opaque_schema_operations: false,
+			sequences: BTreeMap::new(),
+			sequence_scope: None,
 		}
 	}
 
@@ -1305,6 +1357,9 @@ impl ProjectState {
 				filtered.add_model(model_state.clone());
 			}
 		}
+		filtered.sequences = self.sequences.clone();
+		filtered.sequence_scope = Some(app_label.into());
+		filtered.has_opaque_schema_operations = self.has_opaque_schema_operations;
 		filtered
 	}
 
@@ -1389,6 +1444,7 @@ impl ProjectState {
 			model.table_name = new_table_name.to_string();
 		}
 
+		super::sequences::rename_owned_table(self, old_table_name, new_table_name);
 		self.update_foreign_key_table_references_in_app(app_label, old_table_name, new_table_name);
 	}
 
@@ -1455,15 +1511,15 @@ impl ProjectState {
 	/// // state will contain all models registered in the global registry
 	/// ```
 	pub fn from_global_registry() -> Self {
-		use super::model_registry::global_registry;
-
-		Self::from_model_metadata(global_registry().get_models())
+		Self::try_from_global_registry().expect("global metadata registry must be available")
 	}
 
 	/// Load ProjectState from the global model registry, reporting a poisoned lock.
 	pub fn try_from_global_registry() -> super::Result<Self> {
 		let models = super::model_registry::global_registry().try_get_models()?;
-		Ok(Self::from_model_metadata(models))
+		let mut state = Self::from_model_metadata(models);
+		state.sequences = super::model_registry::global_registry().try_get_sequences()?;
+		Ok(state)
 	}
 
 	fn from_model_metadata(models_metadata: Vec<super::model_registry::ModelMetadata>) -> Self {
@@ -1701,6 +1757,8 @@ impl ProjectState {
 
 		for op in operations {
 			match op {
+				Operation::Sequence { operation } => operation.state_forwards(self),
+				Operation::Identity { operation } => operation.state_forwards(self),
 				Operation::RunSQL { .. } => {
 					self.has_opaque_schema_operations = true;
 				}
@@ -1890,6 +1948,7 @@ impl ProjectState {
 					}
 				}
 				Operation::DropTable { name } => {
+					super::sequences::remove_owned_sequences(self, name, None);
 					// Find and remove the model with this table name
 					let keys_to_remove: Vec<_> = self
 						.models
@@ -1910,6 +1969,7 @@ impl ProjectState {
 					}
 				}
 				Operation::DropColumn { table, column, .. } => {
+					super::sequences::remove_owned_sequences(self, table, Some(column));
 					// Find the model and remove the field
 					if let Some(model) = self.find_model_by_table_mut(table) {
 						let removed_names: Vec<_> = model
@@ -2105,6 +2165,7 @@ impl ProjectState {
 							}
 						}
 					}
+					super::sequences::rename_owned_column(self, table, old_name, new_name);
 				}
 				Operation::AddConstraint {
 					table,
@@ -2574,6 +2635,8 @@ impl ProjectState {
 		if let Some(default) = default {
 			params.insert("default".to_string(), default);
 		}
+
+		super::sequences::write_column_params(col, &mut params);
 
 		FieldState {
 			name: col.name.to_string(),
@@ -5095,6 +5158,9 @@ impl MigrationAutodetector {
 	/// instead of silently generating destructive add/drop operations.
 	pub fn try_detect_changes(&self) -> super::Result<DetectedChanges> {
 		self.to_state.validate_physical_index_names()?;
+		self.from_state.validate_sequences()?;
+		self.to_state.validate_sequences()?;
+		super::sequences::validate_state_transition(&self.from_state, &self.to_state)?;
 		self.detect_changes_internal(true)
 	}
 
@@ -6504,6 +6570,14 @@ impl MigrationAutodetector {
 		to_def.name = "__renamed_field__".to_string();
 		from_def.unique = from_unique;
 		to_def.unique = to_unique;
+		// A stable declaration key identifies the same default through a physical
+		// sequence rename; PostgreSQL retains that dependency by object OID.
+		if let (Some(from_default), Some(to_default)) =
+			(&mut from_def.sequence_default, &to_def.sequence_default)
+			&& from_default.key == to_default.key
+		{
+			from_default.name = to_default.name.clone();
+		}
 		from_def == to_def
 	}
 
@@ -7325,6 +7399,8 @@ impl MigrationAutodetector {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			// source_id column
 			super::ColumnDefinition {
@@ -7337,6 +7413,8 @@ impl MigrationAutodetector {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			// target_id column
 			super::ColumnDefinition {
@@ -7349,6 +7427,8 @@ impl MigrationAutodetector {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 		];
 
@@ -7503,6 +7583,7 @@ impl MigrationAutodetector {
 		sorted.extend(Self::topological_sort_create_tables(create_tables));
 		sorted.extend(operations);
 
+		super::sequences::order_operations(&mut sorted);
 		sorted
 	}
 
@@ -7941,6 +8022,7 @@ impl MigrationAutodetector {
 		// cases where the column is being added in the same migration with
 		// `column.unique = true` *and* a peer `AddConstraint` is emitted for
 		// it. See reinhardt-web#4448.
+		super::sequences::augment_operations(&self.from_state, &self.to_state, &mut by_app);
 		Self::dedup_redundant_unique_add_constraints(&mut by_app);
 		for operations in by_app.values_mut() {
 			Self::order_renamed_column_operations(operations);
@@ -8839,8 +8921,31 @@ impl MigrationAutodetector {
 	/// Generate migrations and warnings, failing on ambiguous rename-like changes.
 	pub fn try_generate_migrations_with_warnings(&self) -> super::Result<GeneratedMigrations> {
 		let changes = self.try_detect_changes()?;
+		let migrations = self.generate_migrations_from_changes(&changes);
+		if migrations
+			.iter()
+			.flat_map(|migration| &migration.operations)
+			.any(|operation| {
+				matches!(
+					operation,
+					super::Operation::Sequence { .. } | super::Operation::Identity { .. }
+				)
+			}) {
+			let mut graph = super::MigrationGraph::new();
+			for migration in &migrations {
+				graph.add_migration(
+					super::MigrationKey::new(&migration.app_label, &migration.name),
+					migration
+						.dependencies
+						.iter()
+						.map(|(app, name)| super::MigrationKey::new(app, name))
+						.collect(),
+				);
+			}
+			graph.resolve_execution_order_with_replaces()?;
+		}
 		Ok(GeneratedMigrations {
-			migrations: self.generate_migrations_from_changes(&changes),
+			migrations,
 			warnings: changes.warnings,
 		})
 	}
@@ -8937,6 +9042,8 @@ impl MigrationAutodetector {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::ColumnDefinition {
 					name: source_column.clone(),
@@ -8948,6 +9055,8 @@ impl MigrationAutodetector {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::ColumnDefinition {
 					name: target_column.clone(),
@@ -8959,6 +9068,8 @@ impl MigrationAutodetector {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			];
 
@@ -9205,28 +9316,20 @@ impl MigrationAutodetector {
 		// cases where the column is being added in the same migration with
 		// `column.unique = true` *and* a peer `AddConstraint` is emitted for
 		// it. See reinhardt-web#4448.
+		super::sequences::augment_operations(
+			&self.from_state,
+			&self.to_state,
+			&mut migrations_by_app,
+		);
 		Self::dedup_redundant_unique_add_constraints(&mut migrations_by_app);
 		for operations in migrations_by_app.values_mut() {
 			Self::order_create_tables_by_foreign_keys(operations);
 			Self::order_renamed_table_operations(operations);
 			Self::order_renamed_column_operations(operations);
+			super::sequences::order_operations(operations);
 		}
 
-		// Create Migration objects for each app
-		let mut migrations = Vec::new();
-		for (app_label, operations) in migrations_by_app {
-			// Placeholder name; the final migration name is generated by
-			// MakeMigrationsCommand using MigrationNamer::generate_name().
-			let migration_name = "autodetected".to_string();
-
-			let mut migration = super::Migration::new(&migration_name, &app_label);
-			for operation in operations {
-				migration = migration.add_operation(operation);
-			}
-			migrations.push(migration);
-		}
-
-		migrations
+		super::sequences::staged_migrations(&self.to_state, migrations_by_app)
 	}
 
 	fn remove_many_to_many_column_replacement_operations(
@@ -9922,6 +10025,28 @@ impl MigrationAutodetector {
 				{
 					apps.insert(model.app_label.clone());
 				}
+			}
+			let columns: Vec<_> = match operation {
+				super::Operation::CreateTable { columns, .. } => columns.iter().collect(),
+				super::Operation::AddColumn { column, .. } => vec![column],
+				super::Operation::AlterColumn { new_definition, .. } => vec![new_definition],
+				_ => Vec::new(),
+			};
+			for column in columns {
+				if let Some(default) = &column.sequence_default
+					&& default.key.app_label != current_app
+				{
+					apps.insert(default.key.app_label.clone());
+				}
+			}
+			if let super::Operation::Sequence {
+				operation: super::SequenceOperation::Ownership {
+					new: Some(owner), ..
+				},
+			} = operation && let Some(model) = to_state.find_model_by_table(&owner.table.name)
+				&& model.app_label != current_app
+			{
+				apps.insert(model.app_label.clone());
 			}
 			if let super::Operation::MoveModel { from_app, .. } = operation
 				&& from_app != current_app
@@ -11154,6 +11279,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -11165,6 +11292,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -11952,6 +12081,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -11963,6 +12094,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -12008,6 +12141,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -12019,6 +12154,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -17287,6 +17424,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -17298,6 +17437,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -17396,6 +17537,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "target_id".to_string(),
@@ -17407,6 +17550,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -17490,6 +17635,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "username".to_string(),
@@ -17501,6 +17648,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "email".to_string(),
@@ -17512,6 +17661,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "first_name".to_string(),
@@ -17523,6 +17674,8 @@ mod tests {
 					default: Some("''".to_string()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "last_name".to_string(),
@@ -17534,6 +17687,8 @@ mod tests {
 					default: Some("''".to_string()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_active".to_string(),
@@ -17545,6 +17700,8 @@ mod tests {
 					default: Some("true".to_string()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_staff".to_string(),
@@ -17556,6 +17713,8 @@ mod tests {
 					default: Some("false".to_string()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_superuser".to_string(),
@@ -17567,6 +17726,8 @@ mod tests {
 					default: Some("false".to_string()),
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![super::super::operations::Constraint::Unique {
@@ -17594,6 +17755,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -17605,6 +17768,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 			],
 			constraints: vec![],
@@ -18409,6 +18574,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				},
 				mysql_options: None,
 			},

@@ -22,6 +22,9 @@ fn table(name: &str, columns: &[&str]) -> TableInfo {
 					auto_increment: false,
 					identity_generation: None,
 					generated: None,
+
+					identity: None,
+					sequence_default: None,
 				},
 			)
 		})
@@ -146,7 +149,11 @@ fn render_models_module_is_stable_and_parses_as_one_rust_module() {
 	let mut tables = HashMap::new();
 	tables.insert("zebra".to_string(), table("zebra", &["zeta", "alpha"]));
 	tables.insert("alpha".to_string(), table("alpha", &["omega", "beta"]));
-	let schema = DatabaseSchema { tables };
+	let schema = DatabaseSchema {
+		tables,
+		sequences: Vec::new(),
+		default_schema: None,
+	};
 	let mut config = IntrospectConfig::default();
 	config.output.single_file = true;
 	config.imports.additional = vec![
@@ -176,6 +183,8 @@ fn canonical_generation_preserves_composite_primary_key_order() {
 		&IntrospectConfig::default(),
 		&DatabaseSchema {
 			tables: [("tenants".to_string(), composite)].into(),
+			sequences: Vec::new(),
+			default_schema: None,
 		},
 	)
 	.expect("canonical generation should succeed");
@@ -190,7 +199,11 @@ fn canonical_generation_preserves_composite_primary_key_order() {
 fn render_models_module_never_emits_database_credentials() {
 	let mut tables = HashMap::new();
 	tables.insert("accounts".to_string(), table("accounts", &["id"]));
-	let schema = DatabaseSchema { tables };
+	let schema = DatabaseSchema {
+		tables,
+		sequences: Vec::new(),
+		default_schema: None,
+	};
 	let config = IntrospectConfig::default().with_database_url(
 		"postgres://inspect_user:database-password@localhost/accounts?api_key=query-secret",
 	);
@@ -213,9 +226,13 @@ fn canonical_stdout_and_directory_output_are_fully_repeatable() {
 	second_tables.insert("zebra".to_string(), table("zebra", &["alpha", "zeta"]));
 	let first_schema = DatabaseSchema {
 		tables: first_tables,
+		sequences: Vec::new(),
+		default_schema: None,
 	};
 	let second_schema = DatabaseSchema {
 		tables: second_tables,
+		sequences: Vec::new(),
+		default_schema: None,
 	};
 	let mut config = IntrospectConfig::default();
 	config.output.directory = "/tmp/reinhardt-inspectdb-rendering".into();

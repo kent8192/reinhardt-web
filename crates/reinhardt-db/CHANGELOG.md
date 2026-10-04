@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- PostgreSQL sequence options, literal schema identifiers, and structured identity definitions (#6506).
+- Typed sequence/identity migration operations, app declarations, catalog comparison, source/JSON replay, and schema rollback.
+
+### Breaking Changes
+
+- `Operation` gains `Sequence` and `Identity` variants. Exhaustive downstream matches need corresponding arms.
+- `ProjectState`, catalog/schema structs, and column schema payloads gain metadata fields. Prefer constructors/builders over struct literals. Legacy column JSON/source remains readable.
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.18...reinhardt-db@v0.4.0-alpha.19) - 2026-10-03
 
 ### Fixed
