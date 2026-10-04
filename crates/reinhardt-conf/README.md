@@ -89,6 +89,23 @@ let settings = SettingsBuilder::new()
 let database_url = settings.get::<String>("DATABASE_URL")?;
 ```
 
+### Scoped settings resolution
+
+`SettingsBuilder::build_scoped()` syntax-checks configured sources and merges
+raw values first, preserving their priority. `ScopedSettings::require_path`
+and `optional_path` expand `${VAR}` and deserialize only the requested effective
+path. Unrelated and shadowed secrets are not expanded. A malformed selected
+value remains an error, and syntax errors in unselected TOML sections are
+reported. Custom sources opt in through `ConfigSource::load_scoped`.
+
+Runtime commands can return `PendingSettings<T>` from
+`SettingsBuilder::build_pending_composed::<T>()`. It keeps eager source loading
+and interpolation, the existing deep-merge default, and typed coercion.
+`pending.resolve()` validates required fields and deserializes the complete
+composed type; call `validate_fragments` separately for profile validation.
+`build_composed::<T>()` still performs this resolution immediately. Existing
+hand-written `ComposedSettings` implementations require no new methods.
+
 ## Configuration Sources
 
 ### TOML Interpolation

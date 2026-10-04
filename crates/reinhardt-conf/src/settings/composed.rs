@@ -23,3 +23,157 @@ pub trait ComposedSettings: Sized + DeserializeOwned {
 	/// Run all fragment `validate()` methods.
 	fn validate_fragments(&self, profile: &Profile) -> ValidationResult;
 }
+
+/// Eagerly merged settings awaiting required-field validation and deserialization.
+///
+/// Scoped management commands use [`crate::settings::scoped::ScopedSettings`] instead.
+/// Native configuration bootstrap; absent from the WASM facade (P0).
+pub struct PendingSettings<T> {
+	pub(crate) merged: super::builder::MergedSettings,
+	pub(crate) typed_coercion: bool,
+	pub(crate) marker: std::marker::PhantomData<fn() -> T>,
+}
+
+/// Required-field-validated composed settings retained for a native management invocation (P0).
+///
+/// Call [`ComposedSettings::validate_fragments`] separately for profile-specific
+/// fragment validation, as with [`super::builder::SettingsBuilder::build_composed`].
+pub struct ResolvedSettings<T> {
+	settings: T,
+}
+
+impl<T> ResolvedSettings<T> {
+	/// Borrow the fully composed settings.
+	pub fn settings(&self) -> &T {
+		&self.settings
+	}
+
+	/// Consume the wrapper and return the fully composed settings.
+	pub fn into_settings(self) -> T {
+		self.settings
+	}
+}
+
+impl<T: ComposedSettings> PendingSettings<T> {
+	/// Validate required fields and deserialize all runtime settings.
+	pub fn resolve(&self) -> Result<ResolvedSettings<T>, BuildError> {
+		T::validate_requirements(self.merged.as_map())?;
+		let settings = if self.typed_coercion {
+			let value = Value::Object(
+				self.merged
+					.as_map()
+					.iter()
+					.map(|(k, v)| (k.clone(), v.clone()))
+					.collect(),
+			);
+			T::deserialize(super::typed_deserializer::TypedSettingsDeserializer::new(
+				&value,
+			))
+			.map_err(BuildError::Coercion)?
+		} else {
+			self.merged.clone().into_typed().map_err(BuildError::from)?
+		};
+		Ok(ResolvedSettings { settings })
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::settings::builder::SettingsBuilder;
+	use crate::settings::sources::DefaultSource;
+	use rstest::rstest;
+	use serde::Deserialize;
+	use serde_json::json;
+
+	#[derive(Debug, Deserialize, PartialEq)]
+	struct RuntimeSettings {
+		port: u16,
+		nested: NestedSettings,
+	}
+
+	#[derive(Debug, Deserialize, PartialEq)]
+	struct NestedSettings {
+		host: String,
+		workers: u16,
+	}
+
+	impl ComposedSettings for RuntimeSettings {
+		fn validate_requirements(merged: &IndexMap<String, Value>) -> Result<(), BuildError> {
+			if !merged.contains_key("port") {
+				return Err(BuildError::MissingRequiredField {
+					section: "runtime",
+					field: "port",
+				});
+			}
+			Ok(())
+		}
+
+		fn validate_fragments(&self, _profile: &Profile) -> ValidationResult {
+			Ok(())
+		}
+	}
+
+	#[rstest]
+	fn pending_settings_defer_required_field_validation() {
+		// Arrange / Act
+		let pending = SettingsBuilder::new()
+			.build_pending_composed::<RuntimeSettings>()
+			.expect("merging does not require runtime fields");
+
+		// Assert
+		assert!(matches!(
+			pending.resolve(),
+			Err(BuildError::MissingRequiredField {
+				section: "runtime",
+				field: "port",
+			})
+		));
+	}
+
+	#[rstest]
+	#[case(true, json!("8080"), true)]
+	#[case(false, json!("8080"), false)]
+	#[case(false, json!(8080), true)]
+	fn pending_resolution_preserves_eager_build_semantics(
+		#[case] coerce: bool,
+		#[case] port: Value,
+		#[case] valid: bool,
+	) {
+		// Arrange
+		let builder = || {
+			SettingsBuilder::new()
+				.with_typed_coercion(coerce)
+				.add_source(
+					DefaultSource::new()
+						.with_value("port", port.clone())
+						.with_value("nested", json!({"host": "localhost", "workers": 1})),
+				)
+				.add_source(DefaultSource::new().with_value("nested", json!({"workers": 4})))
+		};
+
+		// Act
+		let eager = builder().build_composed::<RuntimeSettings>();
+		let deferred = builder()
+			.build_pending_composed::<RuntimeSettings>()
+			.unwrap()
+			.resolve();
+
+		// Assert
+		assert_eq!(eager.is_ok(), valid);
+		assert_eq!(deferred.is_ok(), valid);
+		if valid {
+			let expected = RuntimeSettings {
+				port: 8080,
+				nested: NestedSettings {
+					host: "localhost".to_owned(),
+					workers: 4,
+				},
+			};
+			assert_eq!(eager.unwrap(), expected);
+			let resolved = deferred.unwrap();
+			assert_eq!(resolved.settings(), &expected);
+			assert_eq!(resolved.into_settings(), expected);
+		}
+	}
+}

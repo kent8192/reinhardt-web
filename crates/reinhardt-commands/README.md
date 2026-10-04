@@ -70,7 +70,50 @@ details.
 
 - `migrations` - Enable migration-related commands (requires
   `reinhardt-db`)
+- `contract` - Enable the opt-in capability-aware management entry point
+  (includes `migrations`); exposed as `commands-contract` by the facade, which
+  also enables the configuration types needed by the provider. The `full`
+  preset includes `contract`
 - `routers` - Enable URL-related commands (requires `reinhardt-urls`)
+
+### Capability-aware migration bootstrap
+
+With `commands-contract`, call
+`execute_from_command_line_with_capabilities(registry, provider, None)` from the
+native management binary. The provider returns raw `ScopedSettings` for
+migration capabilities and `PendingSettings<ProjectSettings>` for existing
+runtime commands. Include `CoreSettings`, `ContactSettings`, and
+`MigrationSettings` in the project's composed settings.
+
+Enable a database backend at compile time, such as the facade's `db-sqlite` or
+`db-postgres`, as required by the stable migration engine. File-based discovery
+still runs without a database connection or credentials.
+
+`makemigrations --state-source files` and `makemigrations --check` resolve only
+migration metadata. The check implies dry-run behavior and exits unsuccessfully
+when files would be created. `--state-source database --database ALIAS` resolves
+only the named database configuration; `--state-source temporary-db` requires
+the `testcontainers` feature. `--empty` and `--merge` remain database-free. Their
+proposals also make `--check` fail, while a merge check with no conflicts succeeds.
+
+Migration dependency resolution combines `core.migration_features` with
+`migrations.migration_features`. The dedicated `migration_settings` and
+`migration_swappable_settings` maps override core swappable defaults; the
+swappable map wins within the migration fragment. Optional dependencies use
+installed app labels (including registered module paths), feature flags, and
+setting values. Plans, execution, conflict checks, and file/database state
+reconstruction share these resolved dependencies. On the stable line, declare
+conditional dependencies as literal `Migration` fields using `vec![]` or arrays,
+with dependency struct literals or `SwappableDependency::new` /
+`OptionalDependency::new` constructors. Unsupported expressions fail to load.
+
+Other existing commands retain the full settings bootstrap. Legacy entry points
+and their `Commands` variants retain their existing signatures and flags.
+
+This entry point uses the existing stable-line migration engine. It does not
+add the development line's verification or migration-visibility commands. The
+optional `CargoCheckContext` preserves launcher compatibility and is not used
+by the stable-line commands.
 
 ## Template System
 
@@ -249,7 +292,8 @@ path. New files are written under `<DIR>/<app_label>/`; existing migrations in
 that directory determine numbering and dependencies. The same directory is used
 by `--dry-run`, `--check`, and `--merge`.
 
-When composed settings supply a nonempty `CoreSettings::installed_apps` list,
+When the capability provider's core migration metadata or legacy composed
+settings supply a nonempty `CoreSettings::installed_apps` list,
 `makemigrations` resolves paths registered by `installed_apps!` to their declared
 app labels and uses those labels as the migration ownership scope. For example,
 `identity: "myproject.accounts"` selects models and migrations labeled `identity`,
@@ -261,9 +305,11 @@ Linked models from other apps remain registered but do not produce
 migrations. Foreign keys to uninstalled provider apps are rejected before any
 files are written; include those providers in `installed_apps` to generate an
 applicable dependency graph. An explicit app label must belong to the
-resolved scope; `--empty` respects the same boundary. Without
-settings, or with an empty default list, automatic discovery uses the linked
-models as before.
+resolved scope; `--empty` and `--merge` respect the same boundary. The capability
+entry point uses its resolved core metadata without requesting full runtime
+settings or secrets for file-based discovery. Legacy callers continue to use
+their composed settings. Without either source, or with an empty default list,
+automatic discovery uses the linked models as before.
 
 The full current model graph and historical state remain available for detecting
 model moves and renames. Moving a model from an old app to an installed new app

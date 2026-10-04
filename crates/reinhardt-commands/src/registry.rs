@@ -6,6 +6,8 @@ use std::collections::HashMap;
 /// Registry that stores and provides access to management commands by name.
 pub struct CommandRegistry {
 	commands: HashMap<String, Box<dyn BaseCommand>>,
+	#[cfg(feature = "contract")]
+	capability_commands: HashMap<String, Box<dyn crate::CapabilityCommand>>,
 }
 
 impl CommandRegistry {
@@ -13,6 +15,8 @@ impl CommandRegistry {
 	pub fn new() -> Self {
 		Self {
 			commands: HashMap::new(),
+			#[cfg(feature = "contract")]
+			capability_commands: HashMap::new(),
 		}
 	}
 
@@ -20,6 +24,19 @@ impl CommandRegistry {
 	pub fn register(&mut self, command: Box<dyn BaseCommand>) {
 		let name = command.name().to_string();
 		self.commands.insert(name, command);
+	}
+
+	/// Register an opt-in command whose requirements are prepared before execution.
+	#[cfg(feature = "contract")]
+	pub fn register_capability(&mut self, command: Box<dyn crate::CapabilityCommand>) {
+		self.capability_commands
+			.insert(command.cli().get_name().to_owned(), command);
+	}
+
+	/// Look up an opt-in capability command.
+	#[cfg(feature = "contract")]
+	pub fn get_capability(&self, name: &str) -> Option<&dyn crate::CapabilityCommand> {
+		self.capability_commands.get(name).map(|command| &**command)
 	}
 
 	/// Returns a reference to the command with the given name, if registered.
@@ -30,7 +47,10 @@ impl CommandRegistry {
 	/// Returns a list of all registered command names.
 	pub fn list(&self) -> Vec<&str> {
 		let mut commands: Vec<&str> = self.commands.keys().map(|name| name.as_str()).collect();
+		#[cfg(feature = "contract")]
+		commands.extend(self.capability_commands.keys().map(String::as_str));
 		commands.sort_unstable();
+		commands.dedup();
 		commands
 	}
 }
