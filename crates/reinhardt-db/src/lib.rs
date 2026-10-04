@@ -117,14 +117,22 @@
 //!
 //! Key modules in this crate:
 //!
-//! - [`backends`]: Low-level database operations, schema editor, DDL generation
-//! - [`backends_pool`]: Connection pool management with lifecycle hooks
-//! - [`pool`]: High-level pool abstraction for `ConnectionPool`
-//! - [`orm`]: Django-style model definitions, QuerySet, and field types
-//! - [`migrations`]: Schema migration system with auto-detection and rollback
-//! - [`hybrid`]: Cross-database compatible type system
-//! - [`associations`]: Relationship management (ForeignKey, ManyToMany)
-//! - [`contenttypes`]: Generic foreign key support
+//! - `backends`: Low-level database operations, schema editor, DDL generation
+//!   (requires the `backends` feature)
+//! - `backends_pool`: Connection pool management with lifecycle hooks
+//!   (requires the `backends` or `backends-pool` feature)
+//! - `pool`: High-level pool abstraction for `ConnectionPool`
+//!   (requires the `pool` feature)
+//! - `orm`: Django-style model definitions, QuerySet, and field types
+//!   (requires the `orm` feature)
+//! - `migrations`: Schema migration system with auto-detection and rollback
+//!   (requires the `migrations` feature)
+//! - `hybrid`: Cross-database compatible type system
+//!   (requires the `hybrid` feature)
+//! - `associations`: Relationship management (ForeignKey, ManyToMany)
+//!   (requires the `associations` feature)
+//! - `contenttypes`: Generic foreign key support
+//!   (requires the `contenttypes` feature)
 //!
 //! ## Feature Flags
 //!

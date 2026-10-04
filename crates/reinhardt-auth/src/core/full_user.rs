@@ -9,9 +9,12 @@ use crate::core::base_user::BaseUser;
 ///
 /// # Examples
 ///
-/// ```no_run
+/// This example requires the `argon2-hasher` feature.
+///
+/// ```rust
+/// # #[cfg(feature = "argon2-hasher")]
+/// # {
 /// use reinhardt_auth::{BaseUser, FullUser, PasswordHasher};
-/// #[cfg(feature = "argon2-hasher")]
 /// use reinhardt_auth::Argon2Hasher;
 /// use uuid::Uuid;
 /// use chrono::{DateTime, Utc};
@@ -32,7 +35,6 @@ use crate::core::base_user::BaseUser;
 ///     date_joined: DateTime<Utc>,
 /// }
 ///
-/// #[cfg(feature = "argon2-hasher")]
 /// impl BaseUser for MyUser {
 ///     type PrimaryKey = Uuid;
 ///     type Hasher = Argon2Hasher;
@@ -56,8 +58,6 @@ use crate::core::base_user::BaseUser;
 ///     fn date_joined(&self) -> DateTime<Utc> { self.date_joined }
 /// }
 ///
-/// # #[cfg(feature = "argon2-hasher")]
-/// # {
 /// let user = MyUser {
 ///     id: Uuid::now_v7(),
 ///     username: "alice".to_string(),
@@ -107,9 +107,12 @@ pub trait FullUser: BaseUser {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_auth::{BaseUser, FullUser, PasswordHasher};
+	/// This example requires the `argon2-hasher` feature.
+	///
+	/// ```rust
 	/// # #[cfg(feature = "argon2-hasher")]
+	/// # {
+	/// # use reinhardt_auth::{BaseUser, FullUser, PasswordHasher};
 	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
@@ -119,7 +122,6 @@ pub trait FullUser: BaseUser {
 	/// #   first_name: String, last_name: String, password_hash: Option<String>,
 	/// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_staff: bool,
 	/// #   is_superuser: bool, date_joined: DateTime<Utc> }
-	/// # #[cfg(feature = "argon2-hasher")]
 	/// # impl BaseUser for MyUser {
 	/// #     type PrimaryKey = Uuid;
 	/// #     type Hasher = Argon2Hasher;
@@ -141,8 +143,6 @@ pub trait FullUser: BaseUser {
 	/// #     fn date_joined(&self) -> DateTime<Utc> { self.date_joined }
 	/// # }
 	///
-	/// # #[cfg(feature = "argon2-hasher")]
-	/// # {
 	/// let user = MyUser {
 	///     id: Uuid::now_v7(),
 	///     username: "bob".to_string(),
@@ -170,9 +170,12 @@ pub trait FullUser: BaseUser {
 	///
 	/// # Examples
 	///
-	/// ```no_run
-	/// # use reinhardt_auth::{BaseUser, FullUser, PasswordHasher};
+	/// This example requires the `argon2-hasher` feature.
+	///
+	/// ```rust
 	/// # #[cfg(feature = "argon2-hasher")]
+	/// # {
+	/// # use reinhardt_auth::{BaseUser, FullUser, PasswordHasher};
 	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
@@ -182,7 +185,6 @@ pub trait FullUser: BaseUser {
 	/// #   first_name: String, last_name: String, password_hash: Option<String>,
 	/// #   last_login: Option<DateTime<Utc>>, is_active: bool, is_staff: bool,
 	/// #   is_superuser: bool, date_joined: DateTime<Utc> }
-	/// # #[cfg(feature = "argon2-hasher")]
 	/// # impl BaseUser for MyUser {
 	/// #     type PrimaryKey = Uuid;
 	/// #     type Hasher = Argon2Hasher;
@@ -204,8 +206,6 @@ pub trait FullUser: BaseUser {
 	/// #     fn date_joined(&self) -> DateTime<Utc> { self.date_joined }
 	/// # }
 	///
-	/// # #[cfg(feature = "argon2-hasher")]
-	/// # {
 	/// let user = MyUser {
 	///     id: Uuid::now_v7(),
 	///     username: "charlie".to_string(),
