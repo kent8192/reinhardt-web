@@ -676,7 +676,7 @@ async fn select_for_update_rows_with_executor_short_circuits_empty_querysets() {
 async fn select_for_update_rejects_select_related_aggregate_annotations_without_querying() {
 	// Arrange
 	let query = QuerySet::<Article>::new()
-		.select_related(&["author"])
+		.select_related(["author"])
 		.annotate(
 			reinhardt_db::orm::func::count_all::<Article>()
 				.label("article_count")
@@ -1805,8 +1805,10 @@ async fn queryset_count_and_exists_record_orm_instrumentation() {
 		FilterOperator::Eq,
 		FilterValue::Integer(7),
 	));
-	let mut config = NPlusOneConfig::default();
-	config.threshold = usize::MAX;
+	let config = NPlusOneConfig {
+		threshold: usize::MAX,
+		..Default::default()
+	};
 
 	let (result, report) = NPlusOneScope::warn("queryset-count-and-exists", config)
 		.run_with_report(async {
