@@ -7,6 +7,7 @@
 use crate::{RetryStrategy, TaskId, TaskPriority};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use reinhardt_query::Query;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sqlx::{
@@ -1181,9 +1182,10 @@ impl SqliteDurableJobStore {
 	}
 
 	async fn reject_private_in_memory_pool(&self) -> Result<(), DurableQueueError> {
-		let rows = sqlx::query("PRAGMA database_list")
-			.fetch_all(&self.pool)
-			.await?;
+		let (sql, _) = Query::sqlite_database_list()
+			.build_sqlite_checked()
+			.map_err(|error| DurableQueueError::Store(error.to_string()))?;
+		let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
 		let is_in_memory = rows.iter().any(|row| {
 			let name: String = row.get("name");
 			let file: String = row.get("file");

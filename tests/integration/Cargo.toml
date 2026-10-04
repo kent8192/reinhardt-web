@@ -49,6 +49,7 @@ reinhardt-macros = { workspace = true }
 reinhardt-views = { workspace = true, features = ["viewsets"]}
 reinhardt-i18n = { workspace = true }
 reinhardt-tasks = { workspace = true, features = [
+	"durable",
   "redis-backend",
   "rabbitmq-backend",
 ] }
