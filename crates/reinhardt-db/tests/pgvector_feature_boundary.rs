@@ -193,6 +193,7 @@ fn operation(value: Operation) {
         | Operation::CreateSchema { .. }
         | Operation::DropSchema { .. }
         | Operation::CreateExtension { .. }
+        | Operation::DropExtension { .. }
         | Operation::BulkLoad { .. }
         | Operation::SetAutoIncrementValue { .. }
         | Operation::CreateCompositePrimaryKey { .. } => {}

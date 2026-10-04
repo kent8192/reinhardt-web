@@ -1583,6 +1583,7 @@ async fn sqlite_advance_virtual_schema(
 		| Operation::CreateSchema { .. }
 		| Operation::DropSchema { .. }
 		| Operation::CreateExtension { .. }
+		| Operation::DropExtension { .. }
 		| Operation::BulkLoad { .. }
 		| Operation::SetAutoIncrementValue { .. }
 		| Operation::CreateCompositePrimaryKey { .. } => {
@@ -1631,6 +1632,7 @@ fn sqlite_forward_virtual_effect(operation: &Operation) -> SqliteVirtualEffect {
 		Operation::CreateSchema { .. } => SqliteVirtualEffect::Opaque("CreateSchema"),
 		Operation::DropSchema { .. } => SqliteVirtualEffect::Opaque("DropSchema"),
 		Operation::CreateExtension { .. } => SqliteVirtualEffect::Opaque("CreateExtension"),
+		Operation::DropExtension { .. } => SqliteVirtualEffect::Opaque("DropExtension"),
 		Operation::CreateCompositePrimaryKey { .. } => {
 			SqliteVirtualEffect::Opaque("CreateCompositePrimaryKey")
 		}
@@ -1688,6 +1690,7 @@ fn sqlite_virtual_effect(
 			| Operation::CreateSchema { .. }
 			| Operation::DropSchema { .. }
 			| Operation::CreateExtension { .. }
+			| Operation::DropExtension { .. }
 			| Operation::BulkLoad { .. }
 			| Operation::SetAutoIncrementValue { .. }
 			| Operation::CreateCompositePrimaryKey { .. } => planned_operation

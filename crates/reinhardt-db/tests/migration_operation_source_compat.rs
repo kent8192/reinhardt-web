@@ -582,6 +582,11 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			if_not_exists: true,
 			schema: None,
 		},
+		Operation::DropExtension {
+			name: "pg_trgm".into(),
+			if_exists: true,
+			cascade: false,
+		},
 		Operation::BulkLoad {
 			table: "accounts".to_string(),
 			source: BulkLoadSource::Stdin,
@@ -600,7 +605,7 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 		},
 	]);
 	let expected_variants = operations.len();
-	assert_eq!(expected_variants, 33);
+	assert_eq!(expected_variants, 34);
 	for (index, operation) in operations.into_iter().enumerate() {
 		let (kind, supported) = match &operation {
 			Operation::CreateTable { .. } => ("CreateTable", true),
@@ -633,6 +638,7 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			Operation::CreateSchema { .. } => ("CreateSchema", true),
 			Operation::DropSchema { .. } => ("DropSchema", true),
 			Operation::CreateExtension { .. } => ("CreateExtension", true),
+			Operation::DropExtension { .. } => ("DropExtension", true),
 			Operation::BulkLoad { .. } => ("BulkLoad", true),
 			Operation::SetAutoIncrementValue { .. } => ("SetAutoIncrementValue", true),
 			Operation::CreateCompositePrimaryKey { .. } => ("CreateCompositePrimaryKey", true),

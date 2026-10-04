@@ -1029,6 +1029,19 @@ impl ToTokens for Operation {
 					}
 				});
 			}
+			Operation::DropExtension {
+				name,
+				if_exists,
+				cascade,
+			} => {
+				tokens.extend(quote! {
+					Operation::DropExtension {
+						name: #name.to_string(),
+						if_exists: #if_exists,
+						cascade: #cascade,
+					}
+				});
+			}
 			Operation::BulkLoad {
 				table,
 				source,

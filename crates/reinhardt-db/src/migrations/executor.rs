@@ -4052,18 +4052,20 @@ mod cockroachdb_executor_dialect_tests {
 		));
 	}
 
+	#[rstest::rstest]
 	#[tokio::test]
-	async fn rollback_path_skips_irreversible_extension_for_cockroachdb_flavor() {
+	async fn rollback_path_rejects_conditional_extension_for_cockroachdb_flavor() {
 		let mut executor = cockroachdb_flavored_executor().await;
 
 		let result = executor
 			.rollback_migration(&create_extension_migration())
 			.await;
 
-		assert!(
-			result.is_ok(),
-			"irreversible extension rollback should be a no-op: {result:?}"
-		);
+		assert!(matches!(
+			result,
+			Err(MigrationError::IrreversibleError(message))
+				if message == "Cannot automatically reverse CREATE EXTENSION IF NOT EXISTS vector: ownership is unknown; use if_not_exists: false for a migration-owned extension"
+		));
 	}
 
 	#[tokio::test]
