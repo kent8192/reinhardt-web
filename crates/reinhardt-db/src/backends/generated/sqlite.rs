@@ -46,8 +46,8 @@ pub(in crate::backends) fn arguments(
 			Value::ChronoTime(v) => add!(v.map(|v| *v)),
 			Value::ChronoDateTime(v) => add!(v.map(|v| *v)),
 			Value::ChronoDateTimeUtc(v) => add!(v.map(|v| *v)),
-			Value::ChronoDateTimeLocal(v) => add!(v.map(|v| *v)),
-			Value::ChronoDateTimeWithTimeZone(v) => add!(v.map(|v| *v)),
+			Value::ChronoDateTimeLocal(v) => add!(v.map(|v| v.with_timezone(&chrono::Utc))),
+			Value::ChronoDateTimeWithTimeZone(v) => add!(v.map(|v| v.with_timezone(&chrono::Utc))),
 			Value::Uuid(v) => {
 				add!(v.map(|v| v.to_string()));
 			}

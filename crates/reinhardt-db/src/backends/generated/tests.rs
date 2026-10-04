@@ -267,6 +267,8 @@ async fn sqlite_codecs_round_trip_typed_values_and_nulls() {
 		json.clone().into(),
 		Value::String(None),
 		Value::Bytes(Some(Box::new(vec![0, 255]))),
+		Value::ChronoDateTimeLocal(None),
+		Value::ChronoDateTimeWithTimeZone(None),
 	] {
 		statement.expr(Expr::val(value));
 	}
@@ -291,6 +293,77 @@ async fn sqlite_codecs_round_trip_typed_values_and_nulls() {
 	);
 	assert_eq!(row.get::<Option<String>, _>(6), None);
 	assert_eq!(row.get::<Vec<u8>, _>(7), vec![0, 255]);
+	assert_eq!(row.get::<Option<chrono::DateTime<chrono::Utc>>, _>(8), None);
+	assert_eq!(row.get::<Option<chrono::DateTime<chrono::Utc>>, _>(9), None);
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[case::fixed_positive(false, 9 * 3600, "2026-10-03T16:02:03.123456789Z")]
+#[case::fixed_negative(false, -7 * 3600, "2026-10-05T06:02:03.987654321Z")]
+#[case::local_positive(true, 9 * 3600, "2026-10-03T16:02:03.123456789Z")]
+#[case::local_negative(true, -7 * 3600, "2026-10-05T06:02:03.987654321Z")]
+#[tokio::test]
+async fn sqlite_generated_datetime_filters_match_legacy_utc_storage(
+	#[case] local: bool,
+	#[case] offset_seconds: i32,
+	#[case] timestamp: &str,
+) {
+	use crate::backends::{DatabaseBackend, QueryValue, SqliteBackend};
+	use reinhardt_query::{ColumnDef, ExprTrait, QueryBuilder, SqliteQueryBuilder};
+	use sqlx::Row;
+
+	// Arrange
+	let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+	let backend = SqliteBackend::new(pool);
+	let utc = timestamp.parse::<chrono::DateTime<chrono::Utc>>().unwrap();
+	let offset = chrono::FixedOffset::east_opt(offset_seconds).unwrap();
+	let value = if local {
+		// An explicit Local offset makes this independent of the host timezone.
+		Value::ChronoDateTimeLocal(Some(Box::new(chrono::DateTime::from_naive_utc_and_offset(
+			utc.naive_utc(),
+			offset,
+		))))
+	} else {
+		Value::ChronoDateTimeWithTimeZone(Some(Box::new(utc.with_timezone(&offset))))
+	};
+	let create = Query::create_table()
+		.table("timestamp_probe")
+		.col(ColumnDef::new("id").integer().primary_key(true))
+		.col(ColumnDef::new("timestamp").timestamp())
+		.to_owned();
+	let (sql, _) = SqliteQueryBuilder.build_create_table(&create);
+	backend.execute(&sql, vec![]).await.unwrap();
+	let (sql, _) = Query::insert()
+		.into_table("timestamp_probe")
+		.columns(["id", "timestamp"])
+		.values_panic([Value::Int(Some(7)), Value::from(utc)])
+		.build(SqliteQueryBuilder);
+	// Raw Timestamp binding is the UTC storage path used by Manager saves.
+	backend
+		.execute(&sql, vec![QueryValue::Int(7), QueryValue::Timestamp(utc)])
+		.await
+		.unwrap();
+	let (sql, values) = Query::select()
+		.column("id")
+		.from("timestamp_probe")
+		.and_where(Expr::col("timestamp").eq(value.clone()))
+		.build(SqliteQueryBuilder);
+	let (encoded_sql, encoded_values) = Query::select()
+		.expr(Expr::val(value))
+		.build(SqliteQueryBuilder);
+
+	// Act
+	let rows = backend.__fetch_all_generated(&sql, values).await.unwrap();
+	let encoded = sqlx::query_with(&encoded_sql, sqlite::arguments(encoded_values).unwrap())
+		.fetch_one(backend.pool())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(rows.len(), 1);
+	assert_eq!(rows[0].get::<i64>("id").unwrap(), 7);
+	assert_eq!(encoded.get::<String, _>(0), utc.to_rfc3339());
 }
 
 #[cfg(all(feature = "sqlite", feature = "orm"))]

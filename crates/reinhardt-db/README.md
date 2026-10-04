@@ -104,6 +104,9 @@ the value. PostgreSQL and MySQL reject temporal values with sub-microsecond
 precision or leap seconds; SQLite also rejects NaN rather than storing SQL NULL.
 MySQL normalizes fixed-offset datetimes to UTC after checking their precision,
 matching its UTC and local datetime bindings; typed NULL datetimes remain SQL NULL.
+SQLite also normalizes local and fixed-offset datetimes to UTC so generated
+predicates match the UTC text used by legacy timestamp bindings and `Manager`
+saves, retaining nanosecond precision and typed NULLs.
 UUIDs keep the existing native PostgreSQL and text MySQL/SQLite representation.
 BigDecimal arguments must fit the native
 [PostgreSQL numeric range](https://www.postgresql.org/docs/16/datatype-numeric.html)
