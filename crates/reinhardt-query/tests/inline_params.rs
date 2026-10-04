@@ -3,9 +3,9 @@
 use reinhardt_query::query::traits::inline_params;
 use reinhardt_query::types::{TriggerEvent, TriggerScope, TriggerTiming};
 use reinhardt_query::{
-	Alias, ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, IntoIden, MySqlQueryBuilder,
+	Alias, ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, MySqlQueryBuilder,
 	PostgresQueryBuilder, Query, QueryBuilderTrait, QueryStatementBuilder, SelectStatement,
-	SimpleExpr, SqliteQueryBuilder, TableRef, Value, Values,
+	SimpleExpr, SqliteQueryBuilder, Value, Values,
 };
 use rstest::{fixture, rstest};
 
@@ -396,7 +396,14 @@ fn raw_bind_select() -> SelectStatement {
 	r#"SELECT 11 FROM (SELECT $1, 7) AS "source""#
 )]
 #[case::lateral(
-	|inner| Query::select().expr(Expr::val(11)).from(TableRef::LateralSubQuery(Box::new(inner), Alias::new("source").into_iden())).to_owned(),
+	|inner| {
+		use reinhardt_query::{IntoIden, TableRef};
+
+		Query::select()
+			.expr(Expr::val(11))
+			.from(TableRef::LateralSubQuery(Box::new(inner), Alias::new("source").into_iden()))
+			.to_owned()
+	},
 	r#"SELECT 11 FROM LATERAL (SELECT $1, 7) AS "source""#
 )]
 #[case::cte(
