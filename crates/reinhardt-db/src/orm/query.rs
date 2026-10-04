@@ -5519,8 +5519,17 @@ where
 					query.and_where(condition);
 				}
 				&super::composite_pk::PkValue::Uint(v) => {
+					let v = i64::try_from(v).map_err(|_| {
+						reinhardt_core::exception::Error::Database(
+							crate::backends::error::DatabaseError::TypeError(
+								"Unsigned composite primary key exceeds the supported i64 range"
+									.to_owned(),
+							)
+							.to_string(),
+						)
+					})?;
 					let condition = Expr::col(col_alias)
-						.binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v as i64))));
+						.binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v))));
 					query.and_where(condition);
 				}
 				super::composite_pk::PkValue::String(v) => {
@@ -7599,6 +7608,67 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert!(err.to_string().contains("composite primary key"));
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct CompositeItem {
+		id: i64,
+		kind: String,
+	}
+
+	impl Model for CompositeItem {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"composite_items"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn composite_primary_key() -> Option<crate::orm::composite_pk::CompositePrimaryKey> {
+			crate::orm::composite_pk::CompositePrimaryKey::new(vec![
+				"id".to_owned(),
+				"kind".to_owned(),
+			])
+			.ok()
+		}
+	}
+
+	#[rstest]
+	#[case::first_overflow(i64::MAX as u64 + 1)]
+	#[case::maximum(u64::MAX)]
+	#[tokio::test]
+	async fn get_composite_rejects_unsigned_overflow_before_connecting(#[case] value: u64) {
+		// Arrange
+		use crate::orm::composite_pk::PkValue;
+		let primary_key = HashMap::from([
+			("id".to_owned(), PkValue::Uint(value)),
+			("kind".to_owned(), PkValue::String("negative".to_owned())),
+		]);
+
+		// Act
+		let error = QuerySet::<CompositeItem>::new()
+			.get_composite(&primary_key)
+			.await
+			.expect_err("unsigned overflow must be rejected before acquiring a connection");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Database error: Type conversion error: Unsigned composite primary key exceeds the supported i64 range"
+		);
 	}
 
 	// SQL Generation Tests
