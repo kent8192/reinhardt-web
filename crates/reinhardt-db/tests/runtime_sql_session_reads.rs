@@ -418,7 +418,7 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 	let mut transaction = pool.begin().await.unwrap();
 	let inserted = Record {
 		id: original.id + 2,
-		name: "insert' $50 ? 雪".into(),
+		name: "Insert' $50 ? %_\\雪 Tail42 12.5 True".into(),
 		items: vec![Some("quote\" slash\\ dollar$8 comma,".into()), None],
 		optional_payload: None,
 		..original.clone()
@@ -444,6 +444,15 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 				.unwrap(),
 			vec![inserted.clone()]
 		);
+	}
+	assert_insensitive_matches(&reader, &mut transaction, &inserted).await;
+	if backend == DbBackend::Mysql {
+		// This connection belongs to a disposable container; its guard owns cleanup.
+		sqlx::query("SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'")
+			.execute(&mut *transaction)
+			.await
+			.unwrap();
+		assert_insensitive_matches(&reader, &mut transaction, &inserted).await;
 	}
 	let updated = Record {
 		name: "update' $70 ?".into(),
@@ -500,6 +509,69 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 			.unwrap()
 			.is_empty()
 	);
+}
+
+async fn assert_insensitive_matches(
+	reader: &Session,
+	connection: &mut sqlx::AnyConnection,
+	expected: &Record,
+) {
+	use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue};
+	// Arrange: test both ordinary and canonical values against a quoted text column.
+	let cases = [
+		(
+			FilterOperator::IContains,
+			FilterValue::String("%_\\雪".into()),
+		),
+		(
+			FilterOperator::IStartsWith,
+			FilterValue::String("INSERT' $50 ? %_\\雪".into()),
+		),
+		(
+			FilterOperator::IEndsWith,
+			FilterValue::String("TRUE".into()),
+		),
+		(
+			FilterOperator::IExact,
+			FilterValue::String(expected.name.to_ascii_uppercase()),
+		),
+		(
+			FilterOperator::IContains,
+			FilterValue::Typed(Ok(DatabaseValue::String("TAIL42".into()))),
+		),
+		(FilterOperator::IContains, FilterValue::Integer(42)),
+		(FilterOperator::IContains, FilterValue::Float(12.5)),
+		(FilterOperator::IEndsWith, FilterValue::Boolean(true)),
+		(FilterOperator::IContains, FilterValue::Null),
+	];
+	for (operator, value) in cases {
+		let query = keyed(expected.id).filter(Filter::new("name\"value`", operator.clone(), value));
+		// Act
+		let records = reader
+			.list_with_connection(&query, connection)
+			.await
+			.unwrap();
+		// Assert
+		assert_eq!(records, vec![expected.clone()], "operator: {operator:?}");
+	}
+	// A wildcard in user input must not broaden matching to the stored text.
+	for (operator, value) in [
+		(FilterOperator::IContains, "%_\\missing"),
+		(FilterOperator::IExact, "%"),
+	] {
+		let query = keyed(expected.id).filter(Filter::new(
+			"name\"value`",
+			operator,
+			FilterValue::String(value.into()),
+		));
+		assert!(
+			reader
+				.list_with_connection(&query, connection)
+				.await
+				.unwrap()
+				.is_empty()
+		);
+	}
 }
 
 #[rstest]
