@@ -326,8 +326,8 @@ mod database_storage {
 	use super::*;
 	use crate::database_query::prepare;
 	use reinhardt_query::prelude::{
-		Alias, Expr, ExprTrait, Iden, IntoIden, IntoValue, OnConflict, PostgresQueryBuilder, Query,
-		QueryStatementBuilder,
+		Alias, ColumnDef, Expr, ExprTrait, Func, Iden, IntoIden, IntoValue, OnConflict,
+		PostgresQueryBuilder, Query, QueryStatementBuilder,
 	};
 	use sqlx::PgPool;
 
@@ -377,18 +377,30 @@ mod database_storage {
 		///
 		/// Creates the auth_tokens table if it doesn't exist.
 		pub async fn initialize(&self) -> TokenStorageResult<()> {
-			// Create table
-			let sql = r#"
-				CREATE TABLE IF NOT EXISTS auth_tokens (
-					token VARCHAR(255) PRIMARY KEY,
-					user_id BIGINT NOT NULL,
-					expires_at BIGINT,
-					metadata JSONB NOT NULL DEFAULT '{}',
-					created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+			let sql = Query::create_table()
+				.if_not_exists()
+				.table("auth_tokens")
+				.col(ColumnDef::new("token").string_len(255).primary_key(true))
+				.col(ColumnDef::new("user_id").big_integer().not_null(true))
+				.col(ColumnDef::new("expires_at").big_integer())
+				.col(
+					ColumnDef::new("metadata")
+						.jsonb()
+						.not_null(true)
+						.default(Expr::val(serde_json::json!({})).into_simple_expr()),
 				)
-			"#;
+				.col(
+					ColumnDef::new("created_at")
+						.big_integer()
+						.not_null(true)
+						.default(
+							Func::pg_extract_epoch(Expr::current_timestamp().into_simple_expr())
+								.cast_as("int8"),
+						),
+				)
+				.to_string(PostgresQueryBuilder);
 
-			sqlx::query(sql)
+			sqlx::query(&sql)
 				.execute(&self.pool)
 				.await
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
@@ -615,6 +627,16 @@ mod database_storage {
 			.unwrap();
 			let storage = DatabaseTokenStorage::new(pool);
 			storage.initialize().await.unwrap();
+			storage.initialize().await.unwrap();
+			// Schema defaults preserve the previous PostgreSQL numeric epoch conversion.
+			let mut tx = storage.pool().begin().await.unwrap();
+			let (created_at, expected, metadata): (i64, i64, serde_json::Value) = sqlx::query_as(
+                "INSERT INTO auth_tokens (token, user_id) VALUES ('schema-default-probe', -1) RETURNING created_at, EXTRACT(EPOCH FROM NOW())::BIGINT, metadata",
+            ).fetch_one(&mut *tx).await.unwrap();
+			assert_eq!(created_at, expected);
+			assert_eq!(metadata, serde_json::json!({}));
+			tx.rollback().await.unwrap();
+
 			let mut token = StoredToken::new("'quoted ? $1", 42);
 			token.expires_at = expiration;
 			token
