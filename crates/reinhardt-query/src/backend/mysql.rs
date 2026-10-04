@@ -1187,6 +1187,14 @@ impl QueryBuilder for MySqlQueryBuilder {
 		// ON DUPLICATE KEY UPDATE clause (MySQL equivalent of ON CONFLICT)
 		if let Some(on_conflict) = &stmt.on_conflict {
 			use crate::query::{OnConflictAction, OnConflictTarget};
+			assert!(
+				on_conflict.constraint.is_none(),
+				"MySQL does not support ON CONFLICT ON CONSTRAINT"
+			);
+			assert!(
+				on_conflict.action_condition.is_none(),
+				"MySQL does not support ON CONFLICT DO UPDATE WHERE"
+			);
 			match &on_conflict.action {
 				OnConflictAction::DoNothing => {
 					// MySQL doesn't have DO NOTHING directly;

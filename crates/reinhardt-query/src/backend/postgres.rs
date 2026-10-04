@@ -1901,16 +1901,20 @@ impl PostgresQueryBuilder {
 		// ON CONFLICT clause
 		if let Some(on_conflict) = &stmt.on_conflict {
 			use crate::query::{OnConflictAction, OnConflictTarget};
-			let has_target =
-				!matches!(&on_conflict.target, OnConflictTarget::Columns(cols) if cols.is_empty());
+			let has_target = on_conflict.constraint.is_some()
+				|| !matches!(&on_conflict.target, OnConflictTarget::Columns(cols) if cols.is_empty());
 			assert!(
 				has_target || matches!(on_conflict.action, OnConflictAction::DoNothing),
 				"PostgreSQL ON CONFLICT DO UPDATE requires a conflict target"
 			);
 			writer.push_keyword("ON CONFLICT");
 
-			// Target columns
-			if has_target {
+			// Named constraints and column targets are mutually exclusive.
+			if let Some(constraint) = &on_conflict.constraint {
+				writer.push_keyword("ON CONSTRAINT");
+				writer.push_space();
+				writer.push_identifier(&constraint.to_string(), |s| self.escape_iden(s));
+			} else if has_target {
 				writer.push_space();
 				writer.push("(");
 				match &on_conflict.target {
@@ -1942,6 +1946,18 @@ impl PostgresQueryBuilder {
 					});
 				}
 			}
+		}
+
+		if let Some(conflict) = &stmt.on_conflict
+			&& let Some(condition) = &conflict.action_condition
+		{
+			assert!(
+				matches!(conflict.action, crate::query::OnConflictAction::DoUpdate(_)),
+				"DO NOTHING cannot have an action condition"
+			);
+			writer.push_keyword("WHERE");
+			writer.push_space();
+			self.write_simple_expr(&mut writer, condition);
 		}
 
 		// RETURNING clause (PostgreSQL specific)

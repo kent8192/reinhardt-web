@@ -1095,6 +1095,10 @@ impl QueryBuilder for SqliteQueryBuilder {
 		// ON CONFLICT clause
 		if let Some(on_conflict) = &stmt.on_conflict {
 			use crate::query::{OnConflictAction, OnConflictTarget};
+			assert!(
+				on_conflict.constraint.is_none(),
+				"SQLite does not support ON CONFLICT ON CONSTRAINT"
+			);
 			writer.push_keyword("ON CONFLICT");
 
 			// Target columns
@@ -1130,6 +1134,18 @@ impl QueryBuilder for SqliteQueryBuilder {
 					});
 				}
 			}
+		}
+
+		if let Some(conflict) = &stmt.on_conflict
+			&& let Some(condition) = &conflict.action_condition
+		{
+			assert!(
+				matches!(conflict.action, crate::query::OnConflictAction::DoUpdate(_)),
+				"DO NOTHING cannot have an action condition"
+			);
+			writer.push_keyword("WHERE");
+			writer.push_space();
+			self.write_simple_expr(&mut writer, condition);
 		}
 
 		// RETURNING clause (SQLite 3.35+)

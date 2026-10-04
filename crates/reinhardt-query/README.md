@@ -155,6 +155,14 @@ The last modifier replaces earlier modifiers, including `sqlite_or_replace()`,
 and `take()` resets the original statement. Construction and rendering are
 available with the same behavior on native and WASM targets.
 
+`OnConflict::constraint("users_pkey")` selects a quoted named unique constraint
+on PostgreSQL and CockroachDB. `action_and_where(Expr::col("version").lt(10))`
+adds a typed update predicate on those backends and SQLite; repeated predicates
+combine with AND. Condition values follow INSERT/source values in the generated
+argument list. Checked builders reject unsupported targets, MySQL update
+conditions and invalid actions; `do_nothing()` clears earlier update conditions.
+These APIs have identical native and WASM behavior.
+
 ### Row locking
 
 Use the owned query AST to configure locking reads. A single

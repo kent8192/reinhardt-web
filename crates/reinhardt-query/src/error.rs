@@ -42,6 +42,12 @@ pub enum QueryBuildError {
 		/// The requested vector dimension count.
 		dimensions: u32,
 	},
+	/// An ON CONFLICT action or target is invalid.
+	#[error("invalid ON CONFLICT clause: {reason}")]
+	InvalidOnConflict {
+		/// The invalid target or action combination.
+		reason: &'static str,
+	},
 }
 
 /// A pgvector feature found through structural query inspection.
@@ -783,6 +789,46 @@ pub(crate) fn validate_insert_for_backend(
 		return Err(QueryBuildError::UnsupportedBackendFeature { feature, backend });
 	}
 
+	if let Some(conflict) = &statement.on_conflict {
+		use crate::query::{OnConflictAction, OnConflictTarget};
+		if conflict.constraint.is_some() && !matches!(backend, "PostgreSQL" | "CockroachDB") {
+			return Err(QueryBuildError::UnsupportedBackendFeature {
+				feature: "ON CONFLICT ON CONSTRAINT",
+				backend,
+			});
+		}
+		if let OnConflictAction::DoUpdate(columns) = &conflict.action {
+			if columns.is_empty() {
+				return Err(QueryBuildError::InvalidOnConflict {
+					reason: "DO UPDATE requires update columns",
+				});
+			}
+			if matches!(backend, "PostgreSQL" | "CockroachDB")
+				&& conflict.constraint.is_none()
+				&& matches!(&conflict.target, OnConflictTarget::Columns(cols) if cols.is_empty())
+			{
+				return Err(QueryBuildError::InvalidOnConflict {
+					reason: "DO UPDATE requires a conflict target",
+				});
+			}
+		}
+		if let Some(condition) = &conflict.action_condition {
+			if matches!(conflict.action, OnConflictAction::DoNothing) {
+				return Err(QueryBuildError::InvalidOnConflict {
+					reason: "DO NOTHING cannot have an action condition",
+				});
+			}
+			if backend == "MySQL" {
+				return Err(QueryBuildError::UnsupportedBackendFeature {
+					feature: "ON CONFLICT DO UPDATE WHERE",
+					backend,
+				});
+			}
+			validate_simple_expr(condition, backend)?;
+			validate_simple_expr_lock(condition, backend, &[])?;
+		}
+	}
+
 	if let Some(table) = &statement.table {
 		validate_table_ref(table, backend)?;
 	}
@@ -1279,6 +1325,13 @@ fn collect_insert_pgvector_features(
 	statement: &InsertStatement,
 	features: &mut PgvectorFeatureSet,
 ) {
+	if let Some(condition) = statement
+		.on_conflict
+		.as_ref()
+		.and_then(|conflict| conflict.action_condition.as_ref())
+	{
+		collect_simple_expr_pgvector_features(condition, features);
+	}
 	if let Some(table) = &statement.table {
 		collect_table_ref_pgvector_features(table, features);
 	}
