@@ -28,8 +28,7 @@ use super::persistence::{PersistenceError, bind_query_values};
 /// building type-safe queries for ContentType.
 ///
 /// Only SQLite-backed pools are supported. Queries use `SqliteQueryBuilder`
-/// regardless of the `AnyPool` driver. The PostgreSQL and MySQL support in
-/// `ContentTypePersistence` does not extend to this query builder.
+/// regardless of the `AnyPool` driver. PostgreSQL and MySQL pools are unsupported.
 ///
 /// ## Example
 ///
@@ -417,8 +416,7 @@ impl ContentTypeQuery {
 /// Only SQLite-backed pools are supported. This context and its queries generate
 /// SQL with `SqliteQueryBuilder`, and [`Self::create`] retrieves the generated ID
 /// with SQLite's `last_insert_rowid()` on the same acquired connection as the
-/// insert. PostgreSQL and MySQL pools are unsupported,
-/// even though `ContentTypePersistence` supports those backends.
+/// insert. PostgreSQL and MySQL pools are unsupported.
 ///
 /// The historical name is retained for compatibility. This context stores a pool;
 /// it does not begin or own a database transaction and has no commit or rollback

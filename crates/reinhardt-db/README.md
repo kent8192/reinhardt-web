@@ -762,7 +762,7 @@ Optimize how related objects are loaded:
   - `save()`, `delete()` - Persist and remove content types
   - `load_all()` - Load all content types from database
   - `exists()` - Check content type existence
-  - Supports PostgreSQL, MySQL, and SQLite via sqlx
+  - Supports PostgreSQL and SQLite via sqlx; MySQL is currently unsupported
 
 - **Multi-Database Support**
   - `MultiDbContentTypeManager` - Manage content types across multiple databases
@@ -782,8 +782,8 @@ Optimize how related objects are loaded:
 
 `ContentTypeQuery` and `ContentTypeTransaction` currently require a SQLite-backed
 pool. They generate SQLite SQL, and `ContentTypeTransaction::create()` uses
-SQLite's `last_insert_rowid()`. Unlike `ContentTypePersistence`, these interfaces
-do not support PostgreSQL or MySQL pools.
+SQLite's `last_insert_rowid()`. These interfaces do not support PostgreSQL or
+MySQL pools.
 
 - **ContentTypeQuery** - ORM-style query builder for content types
   - `new()` - Create query builder from connection pool
