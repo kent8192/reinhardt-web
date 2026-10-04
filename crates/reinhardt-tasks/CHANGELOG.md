@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.20...reinhardt-tasks@v0.3.21) - 2026-10-04
+
+### Documentation
+
+- *(tasks)* document Kafka task backend
+- *(tasks)* document Kafka backend limitations
+- *(tasks)* document Kafka configuration dependencies
+- *(tasks)* document Kafka delivery semantics
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.3.17...reinhardt-tasks@v0.3.18) - 2026-09-16
 
 ### Fixed
