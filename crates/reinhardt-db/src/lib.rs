@@ -13,6 +13,23 @@
 //!
 //! Equivalent to Django's `django.db` package.
 //!
+//! ## Filesystem migration SQL assets
+//!
+//! With the `migrations` feature, [`migrations::FilesystemSource`] resolves
+//! literal relative `include_str!` expressions in `Operation::RunSQL.sql` and
+//! `reverse_sql`. Deploy the referenced UTF-8 files alongside the migration
+//! sources. Paths are relative to the visible source file and must remain
+//! inside the selected migration root; internal links and shared assets work.
+//! Every load rereads deployed assets, preserving comments, line endings, and
+//! procedural SQL blocks. A file cannot be both a migration source and an asset.
+//!
+//! [`migrations::SqlAssetContext`] supplies explicit filesystem coordinates for
+//! strict AST parsing and source upgrades. Pathless APIs require this context
+//! for includes instead of reading from the current directory. Source upgrades
+//! retain include expressions and asset bytes; generated and squashed sources
+//! embed resolved SQL and can be deployed without the original asset files.
+//! Applied migration history does not checksum or replay changed assets.
+//!
 //! ## Constraint violation metadata
 //!
 //! [`DatabaseError::code`] retains a driver or database code. When a backend

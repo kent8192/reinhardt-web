@@ -3,7 +3,8 @@
 //! Loads migrations from `.rs` files on disk and extracts metadata using AST parsing.
 
 use super::{Migration, MigrationError, MigrationSource, Result};
-use crate::migrations::ast_parser;
+use crate::migrations::SqlAssetContext;
+use crate::migrations::source_assets::SqlAssetScope;
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use syn::File;
@@ -18,6 +19,15 @@ use syn::File;
 /// These conversions must have no arguments or generic parameters. The parser
 /// reads literal values without evaluating variables, functions, or other Rust
 /// expressions.
+///
+/// `RunSQL.sql` and `RunSQL.reverse_sql` additionally accept literal relative
+/// `include_str!` paths with those conversions, parentheses, and an optional
+/// trailing comma. Paths resolve from the visible migration file's directory;
+/// asset targets must remain inside the canonical migration root. Internal
+/// symlinks and shared assets are supported. Include SQL assets when copying a
+/// deployment tree. Each load rereads assets, preserving exact UTF-8 contents.
+/// Referenced assets are not standalone migrations and do not emit ignored-SQL
+/// warnings. Missing assets and unsupported expressions fail the complete load.
 ///
 /// The filesystem path is authoritative for migration identity. For a path
 /// `<root>/<app>/<name>.rs`, the loaded migration uses `<app>` and `<name>` even
@@ -60,7 +70,7 @@ impl FilesystemSource {
 	/// - dependencies from `dependencies()` function
 	/// - atomic flag from `atomic()` function
 	/// - replaces from `replaces()` function
-	fn parse_migration_file(&self, path: &Path) -> Result<Migration> {
+	fn parse_migration_file(&self, path: &Path, assets: &mut SqlAssetContext) -> Result<Migration> {
 		// Read file contents
 		let content = std::fs::read_to_string(path).map_err(|e| {
 			MigrationError::IoError(std::io::Error::other(format!(
@@ -69,14 +79,20 @@ impl FilesystemSource {
 				e
 			)))
 		})?;
-		super::super::source_format::validate_source_version(&content).map_err(
-			|error| match error {
-				MigrationError::InvalidMigration(message) => MigrationError::InvalidMigration(
-					format!("Failed to parse {}: {message}", path.display()),
-				),
-				other => other,
-			},
-		)?;
+		super::super::source_format::validate_source_version_with_assets(
+			&content,
+			&mut Some(SqlAssetScope {
+				context: assets,
+				source: path,
+			}),
+		)
+		.map_err(|error| match error {
+			MigrationError::InvalidMigration(message) => MigrationError::InvalidMigration(format!(
+				"Failed to parse {}: {message}",
+				path.display()
+			)),
+			other => other,
+		})?;
 
 		// Parse with syn
 		let ast: File = syn::parse_file(&content).map_err(|e| {
@@ -88,15 +104,17 @@ impl FilesystemSource {
 		let (app_label, name) = self.extract_app_and_name(path)?;
 
 		// Extract metadata from AST using ast_parser utility
-		ast_parser::extract_migration_metadata_strict(&ast, &app_label, &name).map_err(|error| {
-			MigrationError::InvalidMigration(format!(
-				"Failed to load {} as {}.{}: {}",
-				path.display(),
-				app_label,
-				name,
-				error
-			))
-		})
+		assets
+			.extract_migration_metadata(&ast, path, &app_label, &name)
+			.map_err(|error| {
+				MigrationError::InvalidMigration(format!(
+					"Failed to load {} as {}.{}: {}",
+					path.display(),
+					app_label,
+					name,
+					error
+				))
+			})
 	}
 
 	/// Extract app_label and migration name from file path
@@ -188,7 +206,9 @@ impl MigrationSource for FilesystemSource {
 		}
 		entries.sort_by(|left, right| left.path().cmp(right.path()));
 
-		for entry in entries {
+		let mut sources = Vec::new();
+		let mut sql_files = Vec::new();
+		for entry in &entries {
 			let path = entry.path();
 
 			// Warn when .sql files are found (Reinhardt uses .rs migration files)
@@ -196,12 +216,7 @@ impl MigrationSource for FilesystemSource {
 			// Uppercase variants (".SQL", ".Sql") are not detected as SQL migration files.
 			// This is intentional - migration files should follow standard naming conventions.
 			if path.extension().and_then(|s| s.to_str()) == Some("sql") {
-				tracing::warn!(
-					path = %path.display(),
-					"Found SQL migration file but Reinhardt uses Rust (.rs) migration files. \
-					 This file will be ignored. Run `cargo run --bin manage makemigrations` \
-					 to generate Rust migration files from your model definitions."
-				);
+				sql_files.push(path.to_path_buf());
 				continue;
 			}
 
@@ -232,8 +247,27 @@ impl MigrationSource for FilesystemSource {
 				continue;
 			}
 
-			// Parse migration file
-			migrations.push(self.parse_migration_file(path)?);
+			sources.push(path.to_path_buf());
+		}
+
+		let mut assets = SqlAssetContext::new(&self.root_dir)?;
+		for path in &sources {
+			assets.register_migration_source(path)?;
+		}
+		for path in &sources {
+			migrations.push(self.parse_migration_file(path, &mut assets)?);
+		}
+		for path in &sql_files {
+			// Ignored SQL files need not be readable. Asset-read failures already
+			// abort parsing with source and field coordinates above.
+			if !assets.is_referenced_asset(path).unwrap_or(false) {
+				tracing::warn!(
+					path = %path.display(),
+					"Found SQL migration file but Reinhardt uses Rust (.rs) migration files. \
+					 This file will be ignored. Run `cargo run --bin manage makemigrations` \
+					 to generate Rust migration files from your model definitions."
+				);
+			}
 		}
 
 		// Sort by app and numeric prefix for deterministic ordering (#1335)

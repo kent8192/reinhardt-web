@@ -56,6 +56,11 @@
 //! externally re-entering ancestry.
 //! Filesystem discovery loads Rust migration implementations while ignoring
 //! Rust module entry points such as `migrations.rs`.
+//! [`FilesystemSource`] resolves literal relative `include_str!` SQL assets in
+//! forward and reverse `RunSQL` fields. Each load uses one file-identity cache,
+//! confines assets to the selected migration root, and preserves exact text.
+//! Referenced assets do not emit ignored-SQL warnings. Generation and squashing
+//! embed resolved strings; [`SqlAssetContext::upgrade_source`] retains includes.
 //! Historical state reconstruction preserves original dependency chains when
 //! the requested target is an original migration that a squash replaces.
 //!
@@ -164,6 +169,7 @@ pub mod schema_diff;
 pub mod schema_editor;
 pub mod service;
 pub mod source;
+mod source_assets;
 pub mod source_format;
 pub mod sql_plan;
 #[cfg(feature = "sqlite")]
@@ -264,6 +270,7 @@ pub use source::{
 	MigrationSource, composite::CompositeSource, filesystem::FilesystemSource,
 	registry::RegistrySource,
 };
+pub use source_assets::SqlAssetContext;
 pub use source_format::{CURRENT_SOURCE_FORMAT_VERSION, UpgradeResult, upgrade_source};
 pub use sql_plan::{
 	MigrationDirection, MigrationSqlPlan, PlannedStatement, plan_migration_sql,
