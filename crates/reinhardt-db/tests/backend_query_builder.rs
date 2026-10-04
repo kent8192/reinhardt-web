@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use rstest::rstest;
 
 use reinhardt_db::backends::query_builder::{
-	ConflictTarget, OnConflictClause, OnConflictClauseAction,
+	ConflictTarget, DeleteBuilder, OnConflictClause, OnConflictClauseAction,
 };
 use reinhardt_db::backends::types::{Savepoint, TransactionExecutor};
 use reinhardt_db::backends::{
@@ -441,10 +441,10 @@ fn test_query_value_float() {
 	// Arrange
 
 	// Act
-	let val = QueryValue::Float(3.14);
+	let val = QueryValue::Float(3.5);
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(3.14));
+	assert_eq!(val, QueryValue::Float(3.5));
 }
 
 #[rstest]
@@ -554,10 +554,10 @@ fn test_query_value_from_f64() {
 	// Arrange
 
 	// Act
-	let val: QueryValue = 2.718f64.into();
+	let val: QueryValue = 2.75f64.into();
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(2.718));
+	assert_eq!(val, QueryValue::Float(2.75));
 }
 
 #[rstest]
@@ -1869,4 +1869,249 @@ fn test_query_value_ne_different_variants() {
 	assert_ne!(QueryValue::Int(0), QueryValue::Float(0.0));
 	assert_ne!(QueryValue::String("0".to_string()), QueryValue::Int(0));
 	assert_ne!(QueryValue::Now, QueryValue::Null);
+}
+
+// ==================== DeleteBuilder IN predicate contracts ====================
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"DELETE FROM \"users\" WHERE \"id\" IN ($1, $2, $3)"
+)]
+#[case::mysql(DatabaseType::Mysql, "DELETE FROM `users` WHERE `id` IN (?, ?, ?)")]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"DELETE FROM \"users\" WHERE \"id\" IN (?, ?, ?)"
+)]
+fn test_delete_builder_where_in_groups_values(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange: include duplicate values and preserve their original order.
+	let values = vec![QueryValue::Int(2), QueryValue::Int(1), QueryValue::Int(2)];
+	let builder =
+		DeleteBuilder::new(MockBackend::new(db_type), "users").where_in("id", values.clone());
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, values);
+}
+
+#[rstest]
+#[case::postgres(DatabaseType::Postgres, "DELETE FROM \"users\" WHERE \"id\" IN ($1)")]
+#[case::mysql(DatabaseType::Mysql, "DELETE FROM `users` WHERE `id` IN (?)")]
+#[case::sqlite(DatabaseType::Sqlite, "DELETE FROM \"users\" WHERE \"id\" IN (?)")]
+fn test_delete_builder_where_in_single_value(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let builder = DeleteBuilder::new(MockBackend::new(db_type), "users")
+		.where_in("id", vec![QueryValue::Int(2)]);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(2)]);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"DELETE FROM \"users\" WHERE \"status\" = $1 AND \"id\" IN ($2, $3) AND \"tenant_id\" = $4 AND \"id\" IN ($5, $6)"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"DELETE FROM `users` WHERE `status` = ? AND `id` IN (?, ?) AND `tenant_id` = ? AND `id` IN (?, ?)"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"DELETE FROM \"users\" WHERE \"status\" = ? AND \"id\" IN (?, ?) AND \"tenant_id\" = ? AND \"id\" IN (?, ?)"
+)]
+fn test_delete_builder_where_in_repeated_with_equality(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let builder = DeleteBuilder::new(MockBackend::new(db_type), "users")
+		.where_eq("status", "inactive")
+		.where_in("id", vec![QueryValue::Int(2), QueryValue::Int(1)])
+		.where_eq("tenant_id", 9_i64)
+		.where_in("id", vec![QueryValue::Int(2), QueryValue::Int(3)]);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![
+			QueryValue::String("inactive".to_owned()),
+			QueryValue::Int(2),
+			QueryValue::Int(1),
+			QueryValue::Int(9),
+			QueryValue::Int(2),
+			QueryValue::Int(3),
+		]
+	);
+}
+
+#[rstest]
+#[case::postgres(DatabaseType::Postgres, "DELETE FROM \"users\" WHERE FALSE")]
+#[case::mysql(DatabaseType::Mysql, "DELETE FROM `users` WHERE FALSE")]
+#[case::sqlite(DatabaseType::Sqlite, "DELETE FROM \"users\" WHERE FALSE")]
+fn test_delete_builder_where_in_empty_matches_nothing(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let builder = DeleteBuilder::new(MockBackend::new(db_type), "users").where_in("id", Vec::new());
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, Vec::<QueryValue>::new());
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"DELETE FROM \"users\" WHERE \"tenant_id\" = $1 AND FALSE AND \"id\" IN ($2, $3)"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"DELETE FROM `users` WHERE `tenant_id` = ? AND FALSE AND `id` IN (?, ?)"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"DELETE FROM \"users\" WHERE \"tenant_id\" = ? AND FALSE AND \"id\" IN (?, ?)"
+)]
+fn test_delete_builder_where_in_empty_preserves_other_parameters(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let builder = DeleteBuilder::new(MockBackend::new(db_type), "users")
+		.where_eq("tenant_id", 9_i64)
+		.where_in("id", Vec::new())
+		.where_in("id", vec![QueryValue::Int(2), QueryValue::Int(1)]);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![QueryValue::Int(9), QueryValue::Int(2), QueryValue::Int(1)]
+	);
+}
+
+#[cfg(feature = "sqlite")]
+mod delete_builder_sqlite_tests {
+	use super::*;
+	use reinhardt_db::backends::dialect::SqliteBackend;
+	use reinhardt_query::prelude::{
+		ColumnDef, Iden, IntoIden, Order, Query, QueryStatementBuilder, SqliteQueryBuilder,
+	};
+	use rstest::fixture;
+	use sqlx::sqlite::SqlitePoolOptions;
+
+	#[derive(Debug, Iden)]
+	enum BuilderProbe {
+		Table,
+		Id,
+	}
+
+	// Each fixture owns an isolated memory database; dropping its pool releases it.
+	#[fixture]
+	async fn builder_probe() -> Arc<SqliteBackend> {
+		let pool = SqlitePoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("in-memory SQLite must connect");
+		let backend = Arc::new(SqliteBackend::new(pool));
+		let create = Query::create_table()
+			.table(BuilderProbe::Table.into_iden())
+			.col(
+				ColumnDef::new(BuilderProbe::Id)
+					.integer()
+					.not_null(true)
+					.primary_key(true),
+			)
+			.to_string(SqliteQueryBuilder);
+		backend
+			.execute(&create, Vec::new())
+			.await
+			.expect("probe table must be created");
+		let insert = Query::insert()
+			.into_table(BuilderProbe::Table.into_iden())
+			.columns([BuilderProbe::Id])
+			.values_panic([1_i64])
+			.values_panic([2_i64])
+			.values_panic([3_i64])
+			.to_string(SqliteQueryBuilder);
+		backend
+			.execute(&insert, Vec::new())
+			.await
+			.expect("probe rows must be inserted");
+		backend
+	}
+
+	#[rstest]
+	#[case::multiple(vec![vec![2, 1]], None, vec![3])]
+	#[case::single(vec![vec![2]], None, vec![1, 3])]
+	#[case::duplicates(vec![vec![1, 1, 2]], None, vec![3])]
+	#[case::repeated_overlap(vec![vec![1, 2], vec![2, 3]], None, vec![1, 3])]
+	#[case::repeated_disjoint(vec![vec![1], vec![2]], None, vec![1, 2, 3])]
+	#[case::empty(vec![vec![]], None, vec![1, 2, 3])]
+	#[case::empty_first(vec![vec![], vec![1]], None, vec![1, 2, 3])]
+	#[case::empty_last(vec![vec![1], vec![]], None, vec![1, 2, 3])]
+	#[case::equality(vec![vec![1, 2, 3]], Some(2), vec![1, 3])]
+	#[tokio::test]
+	async fn test_delete_builder_where_in_sqlite_execution(
+		#[future] builder_probe: Arc<SqliteBackend>,
+		#[case] sets: Vec<Vec<i64>>,
+		#[case] equal_id: Option<i64>,
+		#[case] expected_remaining: Vec<i64>,
+	) {
+		// Arrange
+		let backend = builder_probe.await;
+		let mut builder = DeleteBuilder::new(backend.clone(), "builder_probe");
+		for values in sets {
+			builder = builder.where_in("id", values.into_iter().map(QueryValue::Int).collect());
+		}
+		if let Some(id) = equal_id {
+			builder = builder.where_eq("id", id);
+		}
+
+		// Act
+		let result = builder.execute().await.expect("DELETE must execute");
+
+		// Assert
+		assert_eq!(result.rows_affected, 3 - expected_remaining.len() as u64);
+		let select = Query::select()
+			.column(BuilderProbe::Id)
+			.from(BuilderProbe::Table.into_iden())
+			.order_by(BuilderProbe::Id, Order::Asc)
+			.to_string(SqliteQueryBuilder);
+		let rows = backend
+			.fetch_all(&select, Vec::new())
+			.await
+			.expect("remaining rows must be fetched");
+		let remaining: Vec<i64> = rows
+			.iter()
+			.map(|row| row.get("id").expect("id must be an integer"))
+			.collect();
+		assert_eq!(remaining, expected_remaining);
+	}
 }
