@@ -314,6 +314,110 @@ async fn cross_app_rollback_matches_plan_and_replays_schema(
 }
 
 #[rstest]
+#[case::missing_dependent("consumer", "0001_references")]
+#[case::missing_root("foundation", "0002_tables")]
+#[tokio::test]
+async fn incomplete_cross_app_metadata_preserves_history_and_schema(
+	#[future] migration_executor: MigrationExecutorFixture,
+	migration_project: TempDir,
+	#[case] missing_app: &str,
+	#[case] missing_name: &str,
+	#[values("missing", "invalid")] metadata: &str,
+	#[values("", "fake", "plan")] mode: &str,
+) {
+	// Arrange: apply a complete baseline before losing an applied definition.
+	let (mut executor, _container, pool, _port, url) = migration_executor.await;
+	let migrations = FilesystemSource::new(migration_project.path().join("migrations"))
+		.all_migrations()
+		.await
+		.expect("load complete migration files");
+	assert_eq!(migrations.len(), 7);
+	let baseline: Vec<_> = migrations
+		.into_iter()
+		.filter(|migration| migration.name != "0002_pending")
+		.collect();
+	let result = executor
+		.apply_migrations(&baseline)
+		.await
+		.expect("apply foreign-key baseline");
+	assert_eq!(result.applied.len(), 6);
+	let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+	let before = recorder
+		.get_applied_migrations()
+		.await
+		.expect("read baseline history");
+	let definition = migration_project
+		.path()
+		.join("migrations")
+		.join(missing_app)
+		.join(format!("{missing_name}.rs"));
+	if metadata == "invalid" {
+		std::fs::write(definition, "pub fn migration( {")
+			.expect("make the applied definition unparseable");
+	} else {
+		std::fs::remove_file(definition).expect("remove the applied definition");
+	}
+	let mut ctx = CommandContext::default();
+	ctx.set_option("database".into(), url);
+	ctx.set_option(
+		"migrations-dir".into(),
+		migration_project
+			.path()
+			.join("migrations")
+			.to_string_lossy()
+			.into_owned(),
+	);
+	ctx.add_arg("foundation".into());
+	ctx.add_arg("zero".into());
+	if !mode.is_empty() {
+		ctx.set_option(mode.into(), "true".into());
+	}
+
+	// Act
+	let error = MigrateCommand
+		.execute(&ctx)
+		.await
+		.expect_err("incomplete metadata must fail before any rollback effects");
+
+	// Assert: every mode preserves the complete ledger, timestamps, and schema.
+	assert_eq!(
+		error.to_string(),
+		format!(
+			"Execution error: Cannot determine cross-app rollback dependencies: applied migration {missing_app}:{missing_name} has no available definition"
+		)
+	);
+	let after = recorder
+		.get_applied_migrations()
+		.await
+		.expect("read unchanged history");
+	assert_eq!(
+		after
+			.iter()
+			.map(|record| (&record.app, &record.name, &record.applied))
+			.collect::<Vec<_>>(),
+		before
+			.iter()
+			.map(|record| (&record.app, &record.name, &record.applied))
+			.collect::<Vec<_>>()
+	);
+	for (table, expected) in [
+		("rollback_probe.retained", true),
+		("rollback_probe.parent", true),
+		("rollback_probe.consumer", true),
+		("rollback_probe.leaf", true),
+		("rollback_unrelated", true),
+		("rollback_probe.pending", false),
+	] {
+		let exists: bool = sqlx::query_scalar("SELECT to_regclass($1) IS NOT NULL")
+			.bind(table)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("inspect unchanged schema");
+		assert_eq!(exists, expected, "table {table}");
+	}
+}
+
+#[rstest]
 #[case::squashed_zero("zero", false)]
 #[case::squashed_target("0001_retained", false)]
 #[case::nested_squash_zero("zero", true)]

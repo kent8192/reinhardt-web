@@ -545,6 +545,23 @@ fn dependency_ordered_rollback_records(
 			)
 		})
 		.collect();
+	// Cross-app dependents cannot be ruled out without every applied definition.
+	// Single-app history already supplies the complete native rollback suffix,
+	// preserving fake history repair when a selected migration file is missing.
+	let spans_apps = roots
+		.first()
+		.is_some_and(|root| applied.iter().any(|record| record.app != root.app));
+	if spans_apps {
+		for record in applied {
+			let key = MigrationKey::new(record.app.as_str(), record.name.as_str());
+			if !migrations_by_key.contains_key(&key) {
+				return Err(crate::CommandError::ExecutionError(format!(
+					"Cannot determine cross-app rollback dependencies: applied migration {}:{} has no available definition",
+					record.app, record.name
+				)));
+			}
+		}
+	}
 	let mut replacements = HashMap::new();
 	for migration in all_migrations {
 		let replacement = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
@@ -595,8 +612,8 @@ fn dependency_ordered_rollback_records(
 			continue;
 		}
 		stack.extend(applied_graph.get_dependents(&key).into_iter().cloned());
-		// Missing files keep the existing plan/fake behavior; real execution
-		// validates every selected file before invoking the rollback executor.
+		// Missing files in single-app history keep the existing plan/fake behavior;
+		// real execution validates all selected files before invoking the executor.
 		let dependencies = applied_graph
 			.get_dependencies(&key)
 			.unwrap_or_default()
@@ -5262,6 +5279,80 @@ mod tests {
 				.map(|record| format!("{}:{}", record.app, record.name))
 				.collect::<Vec<_>>(),
 			vec!["consumer:0001_references", "foundation:0001_original"]
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::missing_dependent("consumer", "0001_references")]
+	#[case::missing_root("foundation", "0001_initial")]
+	#[case::unknown_app("unrelated", "0001_initial")]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_rejects_incomplete_cross_app_metadata(
+		#[case] missing_app: &str,
+		#[case] missing_name: &str,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: an applied record cannot be resolved in the loaded definitions.
+		let mut migrations = vec![
+			Migration::new("0001_initial", "foundation"),
+			Migration::new("0001_references", "consumer")
+				.add_dependency("foundation", "0001_initial"),
+			Migration::new("0001_initial", "unrelated"),
+		];
+		migrations.retain(|migration| {
+			migration.app_label != missing_app || migration.name != missing_name
+		});
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("consumer", "0001_references"),
+			migration_record("unrelated", "0001_initial"),
+		];
+
+		// Act
+		let error = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect_err("missing applied metadata must not silently truncate the closure");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			format!(
+				"Execution error: Cannot determine cross-app rollback dependencies: applied migration {missing_app}:{missing_name} has no available definition"
+			)
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_preserves_single_app_missing_file_history_repair() {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: native app history selects the suffix even without its final file.
+		let migrations = vec![
+			Migration::new("0001_first", "myapp"),
+			Migration::new("0002_second", "myapp").add_dependency("myapp", "0001_first"),
+		];
+		let applied = vec![
+			migration_record("myapp", "0001_first"),
+			migration_record("myapp", "0002_second"),
+			migration_record("myapp", "0003_third"),
+		];
+
+		// Act
+		let plan = migration_target_plan("myapp", "0001_first", &applied, &migrations)
+			.expect("single-app fake history repair must retain its existing selection");
+
+		// Assert: fake can update these records; real execution still preflights files.
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("the recorded suffix must select rollback");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			vec!["myapp:0003_third", "myapp:0002_second"]
 		);
 	}
 
