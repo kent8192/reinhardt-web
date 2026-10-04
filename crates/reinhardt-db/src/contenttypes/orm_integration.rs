@@ -672,9 +672,15 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
-		tx.create("auth", "Group").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
+		context
+			.create("auth", "Group")
+			.await
+			.expect("Failed to create");
 
 		// Execute query
 		let query = ContentTypeQuery::new(pool);
@@ -688,9 +694,15 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
-		tx.create("blog", "Post").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
+		context
+			.create("blog", "Post")
+			.await
+			.expect("Failed to create");
 
 		// Filter query
 		let query = ContentTypeQuery::new(pool);
@@ -709,9 +721,15 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("blog", "Post").await.expect("Failed to create");
-		tx.create("auth", "User").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("blog", "Post")
+			.await
+			.expect("Failed to create");
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
 
 		// Query with sorting
 		let query = ContentTypeQuery::new(pool);
@@ -731,10 +749,19 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("app1", "Model1").await.expect("Failed to create");
-		tx.create("app2", "Model2").await.expect("Failed to create");
-		tx.create("app3", "Model3").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("app1", "Model1")
+			.await
+			.expect("Failed to create");
+		context
+			.create("app2", "Model2")
+			.await
+			.expect("Failed to create");
+		context
+			.create("app3", "Model3")
+			.await
+			.expect("Failed to create");
 
 		// Query with limit/offset
 		let query = ContentTypeQuery::new(pool);
@@ -754,8 +781,11 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
 
 		// first()
 		let query = ContentTypeQuery::new(pool);
@@ -774,10 +804,19 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
-		tx.create("auth", "Group").await.expect("Failed to create");
-		tx.create("blog", "Post").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
+		context
+			.create("auth", "Group")
+			.await
+			.expect("Failed to create");
+		context
+			.create("blog", "Post")
+			.await
+			.expect("Failed to create");
 
 		// count()
 		let query = ContentTypeQuery::new(pool);
@@ -795,8 +834,11 @@ mod tests {
 		let pool = setup_test_db().await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
 
 		// exists()
 		let query = ContentTypeQuery::new(pool.clone());
@@ -820,11 +862,11 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_content_type_transaction_create() {
+	async fn test_content_type_context_create() {
 		let pool = setup_test_db().await;
 
-		let tx = ContentTypeTransaction::new(pool.clone());
-		let ct = tx
+		let context = ContentTypeTransaction::new(pool.clone());
+		let ct = context
 			.create("shop", "Product")
 			.await
 			.expect("Failed to create");
@@ -835,15 +877,18 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_content_type_transaction_delete() {
+	async fn test_content_type_context_delete() {
 		let pool = setup_test_db().await;
 
-		let tx = ContentTypeTransaction::new(pool.clone());
-		let ct = tx.create("temp", "Model").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		let ct = context
+			.create("temp", "Model")
+			.await
+			.expect("Failed to create");
 		let id = ct.id.unwrap();
 
 		// Delete
-		tx.delete(id).await.expect("Failed to delete");
+		context.delete(id).await.expect("Failed to delete");
 
 		// Verify deletion
 		let query = ContentTypeQuery::new(pool);
@@ -856,9 +901,15 @@ mod tests {
 	async fn test_content_type_query_multiple_filters() {
 		let pool = setup_test_db().await;
 
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("auth", "User").await.expect("Failed to create");
-		tx.create("auth", "Group").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("auth", "User")
+			.await
+			.expect("Failed to create");
+		context
+			.create("auth", "Group")
+			.await
+			.expect("Failed to create");
 
 		// Multiple filters
 		let query = ContentTypeQuery::new(pool);
@@ -877,9 +928,15 @@ mod tests {
 	async fn test_content_type_query_order_desc() {
 		let pool = setup_test_db().await;
 
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("app1", "Model1").await.expect("Failed to create");
-		tx.create("app2", "Model2").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("app1", "Model1")
+			.await
+			.expect("Failed to create");
+		context
+			.create("app2", "Model2")
+			.await
+			.expect("Failed to create");
 
 		// Descending sort
 		let query = ContentTypeQuery::new(pool);
