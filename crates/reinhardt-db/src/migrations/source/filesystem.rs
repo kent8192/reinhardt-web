@@ -3,6 +3,7 @@
 //! Loads migrations from `.rs` files on disk and extracts metadata using AST parsing.
 
 use super::{Migration, MigrationError, MigrationSource, Result};
+#[cfg(any(unix, windows))]
 use crate::migrations::SqlAssetContext;
 use crate::migrations::source_assets::SqlAssetScope;
 use async_trait::async_trait;
@@ -70,7 +71,11 @@ impl FilesystemSource {
 	/// - dependencies from `dependencies()` function
 	/// - atomic flag from `atomic()` function
 	/// - replaces from `replaces()` function
-	fn parse_migration_file(&self, path: &Path, assets: &mut SqlAssetContext) -> Result<Migration> {
+	fn parse_migration_file(
+		&self,
+		path: &Path,
+		assets: &mut Option<SqlAssetScope<'_>>,
+	) -> Result<Migration> {
 		// Read file contents
 		let content = std::fs::read_to_string(path).map_err(|e| {
 			MigrationError::IoError(std::io::Error::other(format!(
@@ -79,20 +84,13 @@ impl FilesystemSource {
 				e
 			)))
 		})?;
-		super::super::source_format::validate_source_version_with_assets(
-			&content,
-			&mut Some(SqlAssetScope {
-				context: assets,
-				source: path,
-			}),
-		)
-		.map_err(|error| match error {
-			MigrationError::InvalidMigration(message) => MigrationError::InvalidMigration(format!(
-				"Failed to parse {}: {message}",
-				path.display()
-			)),
-			other => other,
-		})?;
+		super::super::source_format::validate_source_version_with_assets(&content, assets)
+			.map_err(|error| match error {
+				MigrationError::InvalidMigration(message) => MigrationError::InvalidMigration(
+					format!("Failed to parse {}: {message}", path.display()),
+				),
+				other => other,
+			})?;
 
 		// Parse with syn
 		let ast: File = syn::parse_file(&content).map_err(|e| {
@@ -104,17 +102,24 @@ impl FilesystemSource {
 		let (app_label, name) = self.extract_app_and_name(path)?;
 
 		// Extract metadata from AST using ast_parser utility
-		assets
-			.extract_migration_metadata(&ast, path, &app_label, &name)
-			.map_err(|error| {
-				MigrationError::InvalidMigration(format!(
-					"Failed to load {} as {}.{}: {}",
-					path.display(),
-					app_label,
-					name,
-					error
-				))
-			})
+		let result = (|| {
+			#[cfg(any(unix, windows))]
+			if let Some(scope) = assets.as_mut() {
+				scope.context.register_migration_source(path)?;
+			}
+			super::super::ast_parser::extract_migration_metadata_with_assets(
+				&ast, &app_label, &name, assets,
+			)
+		})();
+		result.map_err(|error| {
+			MigrationError::InvalidMigration(format!(
+				"Failed to load {} as {}.{}: {}",
+				path.display(),
+				app_label,
+				name,
+				error
+			))
+		})
 	}
 
 	/// Extract app_label and migration name from file path
@@ -250,17 +255,30 @@ impl MigrationSource for FilesystemSource {
 			sources.push(path.to_path_buf());
 		}
 
+		#[cfg(any(unix, windows))]
 		let mut assets = SqlAssetContext::new(&self.root_dir)?;
+		#[cfg(any(unix, windows))]
 		for path in &sources {
 			assets.register_migration_source(path)?;
 		}
 		for path in &sources {
-			migrations.push(self.parse_migration_file(path, &mut assets)?);
+			#[cfg(any(unix, windows))]
+			let mut scope = Some(SqlAssetScope {
+				context: &mut assets,
+				source: path,
+			});
+			#[cfg(not(any(unix, windows)))]
+			let mut scope = None;
+			migrations.push(self.parse_migration_file(path, &mut scope)?);
 		}
 		for path in &sql_files {
 			// Ignored SQL files need not be readable. Asset-read failures already
 			// abort parsing with source and field coordinates above.
-			if !assets.is_referenced_asset(path).unwrap_or(false) {
+			#[cfg(any(unix, windows))]
+			let referenced = assets.is_referenced_asset(path).unwrap_or(false);
+			#[cfg(not(any(unix, windows)))]
+			let referenced = false;
+			if !referenced {
 				tracing::warn!(
 					path = %path.display(),
 					"Found SQL migration file but Reinhardt uses Rust (.rs) migration files. \

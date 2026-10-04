@@ -23,8 +23,8 @@
 //! Every load rereads deployed assets, preserving comments, line endings, and
 //! procedural SQL blocks. A file cannot be both a migration source and an asset.
 //!
-//! [`migrations::SqlAssetContext`] supplies explicit filesystem coordinates for
-//! strict AST parsing and source upgrades. Pathless APIs require this context
+//! On Unix and Windows, `migrations::SqlAssetContext` supplies filesystem
+//! coordinates for strict AST parsing and source upgrades. Pathless APIs require this context
 //! for includes instead of reading from the current directory. Source upgrades
 //! retain include expressions and asset bytes; generated and squashed sources
 //! embed resolved SQL and can be deployed without the original asset files.

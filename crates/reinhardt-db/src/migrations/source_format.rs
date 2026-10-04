@@ -30,7 +30,7 @@ pub struct UpgradeResult {
 /// The upgrader intentionally accepts only the generated migration expression
 /// and known framework-owned struct literals. Other Rust code is left alone;
 /// malformed or ambiguous generated shapes fail closed before any write.
-/// SQL includes require [`super::SqlAssetContext::upgrade_source`]; this pathless
+/// SQL includes require native `SqlAssetContext::upgrade_source`; this pathless
 /// API never infers a root or reads assets from the current directory.
 pub fn upgrade_source(source: &str) -> Result<UpgradeResult> {
 	upgrade_source_with_assets(source, &mut None)

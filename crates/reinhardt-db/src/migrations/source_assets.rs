@@ -1,12 +1,21 @@
 //! Explicit filesystem context for migration SQL assets.
 
-use super::{Migration, MigrationError, Result, UpgradeResult};
+#[cfg(any(unix, windows))]
+use super::{Migration, UpgradeResult};
+use super::{MigrationError, Result};
+#[cfg(any(unix, windows))]
 use cap_std::{ambient_authority, fs::Dir};
+#[cfg(any(unix, windows))]
 use std::collections::{HashMap, HashSet};
+#[cfg(any(unix, windows))]
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(any(unix, windows))]
+use std::path::PathBuf;
 
+#[cfg(any(unix, windows))]
 mod file_identity;
+#[cfg(any(unix, windows))]
 use file_identity::FileIdentity;
 
 /// Native filesystem context for one migration load or source-upgrade preflight.
@@ -17,7 +26,8 @@ use file_identity::FileIdentity;
 /// Only `RunSQL.sql` and `RunSQL.reverse_sql` resolve
 /// literal, unqualified `include_str!` expressions; arbitrary Rust is not run.
 /// API parity: P0 (native filesystem only), following the existing migration
-/// filesystem boundary. This context is unavailable to browser applications.
+/// filesystem boundary. This type is available only on Unix and Windows targets
+/// and cannot be named by browser-WASM applications.
 ///
 /// ```no_run
 /// use reinhardt_db::migrations::SqlAssetContext;
@@ -32,6 +42,7 @@ use file_identity::FileIdentity;
 /// # Ok(())
 /// # }
 /// ```
+#[cfg(any(unix, windows))]
 pub struct SqlAssetContext {
 	root: PathBuf,
 	directory: Dir,
@@ -41,10 +52,12 @@ pub struct SqlAssetContext {
 }
 
 pub(crate) struct SqlAssetScope<'a> {
+	#[cfg(any(unix, windows))]
 	pub(crate) context: &'a mut SqlAssetContext,
 	pub(crate) source: &'a Path,
 }
 
+#[cfg(any(unix, windows))]
 impl SqlAssetContext {
 	/// Anchor one read scope to an existing migration directory.
 	///
@@ -256,9 +269,18 @@ pub(crate) fn parse_sql_payload(
 				return Err(unsupported());
 			}
 			let include = arguments[0].value();
-			let scope = scope.as_mut().ok_or_else(|| MigrationError::InvalidMigration(format!(
-				"{field}: include_str!({include:?}) requires an explicit source path and migration root (SqlAssetContext)")))?;
-			scope.context.read(scope.source, field, &include)
+			#[cfg(any(unix, windows))]
+			{
+				let scope = scope.as_mut().ok_or_else(|| MigrationError::InvalidMigration(format!(
+					"{field}: include_str!({include:?}) requires an explicit source path and migration root (SqlAssetContext)")))?;
+				scope.context.read(scope.source, field, &include)
+			}
+			#[cfg(not(any(unix, windows)))]
+			{
+				Err(MigrationError::InvalidMigration(format!(
+					"{coordinate}{field}: include_str!({include:?}) requires a supported native filesystem target"
+				)))
+			}
 		}
 		_ => Err(unsupported()),
 	}

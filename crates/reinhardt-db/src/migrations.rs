@@ -60,7 +60,7 @@
 //! forward and reverse `RunSQL` fields. Each load uses one file-identity cache,
 //! confines assets to the selected migration root, and preserves exact text.
 //! Referenced assets do not emit ignored-SQL warnings. Generation and squashing
-//! embed resolved strings; [`SqlAssetContext::upgrade_source`] retains includes.
+//! embed resolved strings; native `SqlAssetContext::upgrade_source` retains includes.
 //! Historical state reconstruction preserves original dependency chains when
 //! the requested target is an original migration that a squash replaces.
 //!
@@ -270,6 +270,7 @@ pub use source::{
 	MigrationSource, composite::CompositeSource, filesystem::FilesystemSource,
 	registry::RegistrySource,
 };
+#[cfg(any(unix, windows))]
 pub use source_assets::SqlAssetContext;
 pub use source_format::{CURRENT_SOURCE_FORMAT_VERSION, UpgradeResult, upgrade_source};
 pub use sql_plan::{

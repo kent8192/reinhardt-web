@@ -52,7 +52,7 @@ pub fn extract_migration_metadata(ast: &File, app_label: &str, name: &str) -> Re
 /// Swappable and optional dependencies are parsed from their constructor forms.
 /// Operation payloads that this parser cannot reconstruct exactly are rejected
 /// with an operation and field position instead of being silently discarded.
-/// Literal `RunSQL` includes require [`super::SqlAssetContext`] and its explicit
+/// Literal `RunSQL` includes require native `SqlAssetContext` and its explicit
 /// source path and migration root. This pathless API never reads SQL files.
 pub fn extract_migration_metadata_strict(
 	ast: &File,

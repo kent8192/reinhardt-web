@@ -1,4 +1,4 @@
-#![cfg(feature = "migrations")]
+#![cfg(all(feature = "migrations", any(unix, windows)))]
 
 use reinhardt_db::migrations::{
 	FilesystemRepository, FilesystemSource, Migration, MigrationRepository, MigrationSource,
