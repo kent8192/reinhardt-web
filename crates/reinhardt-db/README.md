@@ -698,10 +698,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`DatabaseMigrationExecutor` applies these operations in vector order. Rolling
-this migration back removes the model schema and indexes but deliberately
-leaves the database-level extension installed, because other applications or
-schemas may share it.
+`DatabaseMigrationExecutor` applies these operations in vector order. Automatic
+rollback rejects this migration's `CREATE EXTENSION IF NOT EXISTS` because other
+applications may own an existing extension. For a migration-owned extension, use
+`.with_if_not_exists(false)` before conversion; rollback drops the model schema
+and indexes followed by the extension.
 
 The typed distance methods map directly to PostgreSQL:
 
@@ -1388,6 +1389,32 @@ let migration = Migration::new("0001_initial")
 // Apply migration
 migration.apply(db).await?;
 ```
+
+### PostgreSQL Extension Reversal
+
+Use `Operation::CreateExtension { if_not_exists: false, .. }` or
+`CreateExtension::new("hstore").with_if_not_exists(false).into_operation()?` for
+an extension owned by a migration. Automatic reversal emits the typed
+`Operation::DropExtension` without `CASCADE`, after reversing later operations.
+Dependent objects therefore block removal rather than being deleted implicitly.
+Both operations round-trip through generated Rust migration files and JSON.
+
+`IF NOT EXISTS` cannot prove whether the migration created an extension. Its
+automatic reversal returns `MigrationError::IrreversibleError` before any
+rollback statements run; the extension and applied-migration record remain.
+For a shared extension, provision it separately from reversible application
+migrations. The low-level `CreateExtension::database_backwards` helper returns
+no statements for conditional creation.
+
+Explicit `DropExtension { name, if_exists, cascade }` is forward-only because it
+does not capture the original schema and version. The exported `DropExtension`
+struct provides `.into_operation()` with `if_exists: true` and `cascade: false`.
+
+When upgrading from earlier 0.4.0 alpha releases, add a `DropExtension` arm to
+exhaustive `Operation` matches. Direct `CreateExtension` struct literals must
+also supply `if_not_exists` (true preserves the previous creation behavior).
+Existing JSON without that field defaults to true. To retain automatic cleanup,
+choose false only for extensions whose creation belongs to the migration.
 
 ### Connection Pooling
 

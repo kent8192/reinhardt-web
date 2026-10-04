@@ -53,6 +53,14 @@ pub struct CreateExtension {
 	pub schema: Option<String>,
 	/// The version.
 	pub version: Option<String>,
+	/// Whether to tolerate an existing extension. Automatic rollback is only
+	/// safe when this is false, because then successful creation proves ownership.
+	#[serde(default = "default_if_not_exists")]
+	pub if_not_exists: bool,
+}
+
+fn default_if_not_exists() -> bool {
+	true
 }
 
 impl CreateExtension {
@@ -72,6 +80,7 @@ impl CreateExtension {
 			name: name.into(),
 			schema: None,
 			version: None,
+			if_not_exists: true,
 		}
 	}
 
@@ -88,6 +97,15 @@ impl CreateExtension {
 	/// Set a specific version of the extension
 	pub fn with_version(mut self, version: impl Into<String>) -> Self {
 		self.version = Some(version.into());
+		self
+	}
+
+	/// Choose whether to tolerate an existing extension (P0: native only).
+	///
+	/// Set this to false for a migration-owned extension that must be removed
+	/// on rollback. The default is true and cannot be automatically reversed.
+	pub fn with_if_not_exists(mut self, if_not_exists: bool) -> Self {
+		self.if_not_exists = if_not_exists;
 		self
 	}
 
@@ -122,7 +140,11 @@ impl CreateExtension {
 	/// assert!(sql[0].contains("hstore"));
 	/// ```
 	pub fn database_forwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-		let mut parts = vec!["CREATE EXTENSION IF NOT EXISTS".to_string()];
+		let mut parts = vec![if self.if_not_exists {
+			"CREATE EXTENSION IF NOT EXISTS".to_string()
+		} else {
+			"CREATE EXTENSION".to_string()
+		}];
 		parts.push(quote_postgres_identifier(&self.name));
 
 		if let Some(ref schema) = self.schema {
@@ -138,7 +160,11 @@ impl CreateExtension {
 		vec![format!("{};", parts.join(" "))]
 	}
 
-	/// Generate reverse SQL
+	/// Generate reverse SQL for a migration-owned extension.
+	///
+	/// Returns no statements when `if_not_exists` is true to protect pre-existing
+	/// extensions. Conversion to [`Operation`] instead rejects automatic rollback
+	/// in that case, leaving its applied-migration record intact.
 	///
 	/// # Example
 	///
@@ -146,7 +172,7 @@ impl CreateExtension {
 	/// use reinhardt_db::migrations::operations::postgres::CreateExtension;
 	/// use reinhardt_db::backends::schema::factory::{SchemaEditorFactory, DatabaseType};
 	///
-	/// let ext = CreateExtension::new("hstore");
+	/// let ext = CreateExtension::new("hstore").with_if_not_exists(false);
 	/// let factory = SchemaEditorFactory::new();
 	/// let editor = factory.create_for_database(DatabaseType::PostgreSQL);
 	///
@@ -155,8 +181,11 @@ impl CreateExtension {
 	/// assert!(sql[0].contains("DROP EXTENSION"));
 	/// ```
 	pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
+		if self.if_not_exists {
+			return vec![];
+		}
 		vec![format!(
-			"DROP EXTENSION IF EXISTS {};",
+			"DROP EXTENSION {};",
 			quote_postgres_identifier(&self.name)
 		)]
 	}
@@ -174,7 +203,7 @@ impl TryFrom<CreateExtension> for Operation {
 
 		Ok(Self::CreateExtension {
 			name: extension.name,
-			if_not_exists: true,
+			if_not_exists: extension.if_not_exists,
 			schema: extension.schema,
 		})
 	}
@@ -199,6 +228,13 @@ impl DropExtension {
 	/// Create a new DropExtension operation
 	pub fn new(name: impl Into<String>) -> Self {
 		Self { name: name.into() }
+	}
+
+	/// Convert to a filesystem-representable migration operation (P0: native only).
+	///
+	/// Dropping an extension is irreversible without its original schema/version.
+	pub fn into_operation(self) -> Operation {
+		self.into()
 	}
 
 	/// Apply to project state (extensions don't modify state)
@@ -227,6 +263,16 @@ impl DropExtension {
 	/// Generate reverse SQL (recreate extension)
 	pub fn database_backwards(&self, _schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
 		vec![format!("CREATE EXTENSION IF NOT EXISTS \"{}\";", self.name)]
+	}
+}
+
+impl From<DropExtension> for Operation {
+	fn from(extension: DropExtension) -> Self {
+		Self::DropExtension {
+			name: extension.name,
+			if_exists: true,
+			cascade: false,
+		}
 	}
 }
 
@@ -504,9 +550,12 @@ mod tests {
 				"CREATE EXTENSION IF NOT EXISTS \"vector\"\"; DROP TABLE documents; --\" SCHEMA \"extension\"\"schema\";"
 			]
 		);
+		assert_eq!(extension.database_backwards(&editor), Vec::<String>::new());
 		assert_eq!(
-			extension.database_backwards(&editor),
-			vec!["DROP EXTENSION IF EXISTS \"vector\"\"; DROP TABLE documents; --\";"]
+			extension
+				.with_if_not_exists(false)
+				.database_backwards(&editor),
+			vec!["DROP EXTENSION \"vector\"\"; DROP TABLE documents; --\";"]
 		);
 	}
 
