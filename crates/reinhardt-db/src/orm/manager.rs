@@ -1409,6 +1409,7 @@ impl<M: Model> Manager<M> {
 	/// models; generated keys and database defaults are not hydrated. When
 	/// `ignore_conflicts` is enabled, all backends return an empty vector. MySQL
 	/// uses `INSERT IGNORE` to skip conflicting rows.
+	/// MySQL uses field metadata for `db_column` names and raw binary bindings.
 	pub async fn bulk_create(
 		&self,
 		models: Vec<M>,
@@ -1457,7 +1458,7 @@ impl<M: Model> Manager<M> {
 				.collect();
 
 			if conn.backend() == DatabaseBackend::MySql {
-				let statement = Self::mysql_bulk_create_query(&field_names, &value_rows);
+				let statement = Self::mysql_bulk_create_query(&field_names, &value_rows)?;
 				let (sql, values) = build_insert_sql(&statement, DatabaseBackend::MySql);
 				let sql = if ignore_conflicts {
 					sql.replacen("INSERT INTO", "INSERT IGNORE INTO", 1)
@@ -1501,34 +1502,53 @@ impl<M: Model> Manager<M> {
 	fn mysql_bulk_create_query(
 		field_names: &[String],
 		value_rows: &[Vec<serde_json::Value>],
-	) -> InsertStatement {
+	) -> reinhardt_core::exception::Result<InsertStatement> {
+		let metadata = M::field_metadata();
 		let mut statement = Query::insert();
-		statement
-			.into_table(Alias::new(M::table_name()))
-			.columns(field_names.iter().map(|field| Alias::new(field.as_str())));
+		statement.into_table(Alias::new(M::table_name())).columns(
+			field_names
+				.iter()
+				.map(|field| Alias::new(Self::column_name(field, &metadata))),
+		);
 		for row in value_rows {
 			let values: Vec<reinhardt_query::value::Value> = row
 				.iter()
-				.map(|value| match value {
-					// Preserve legacy text and JSON values instead of inferring UUID
-					// or timestamp bindings from serialized strings.
-					serde_json::Value::String(text) => text.clone().into(),
-					serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-						value.to_string().into()
+				.zip(field_names)
+				.map(|(value, name)| {
+					if !value.is_null()
+						&& metadata.iter().any(|field| {
+							field.name == *name
+								&& field.field_type.rsplit('.').next() == Some("BinaryField")
+						}) {
+						let bytes =
+							serde_json::from_value::<Vec<u8>>(value.clone()).map_err(|error| {
+								reinhardt_core::exception::Error::Database(format!(
+									"Invalid binary value for field '{name}': {error}"
+								))
+							})?;
+						return Ok(reinhardt_query::value::Value::Bytes(Some(Box::new(bytes))));
 					}
-					// QueryValue has no unsigned variant; numeric text retains the
-					// full range when MySQL converts it to an unsigned column.
-					serde_json::Value::Number(number)
-						if number.is_u64() && number.as_i64().is_none() =>
-					{
-						number.to_string().into()
-					}
-					value => Self::json_to_sea_value(value),
+					Ok(match value {
+						// Preserve legacy text and JSON values instead of inferring UUID
+						// or timestamp bindings from serialized strings.
+						serde_json::Value::String(text) => text.clone().into(),
+						serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+							value.to_string().into()
+						}
+						// QueryValue has no unsigned variant; numeric text retains the
+						// full range when MySQL converts it to an unsigned column.
+						serde_json::Value::Number(number)
+							if number.is_u64() && number.as_i64().is_none() =>
+						{
+							number.to_string().into()
+						}
+						value => Self::json_to_sea_value(value),
+					})
 				})
-				.collect();
+				.collect::<reinhardt_core::exception::Result<_>>()?;
 			statement.values_panic(values);
 		}
-		statement
+		Ok(statement)
 	}
 
 	/// Bulk update multiple records efficiently (Django's bulk_update)
@@ -1770,7 +1790,7 @@ mod tests {
 	use crate::orm::FieldSelector;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
-	use crate::orm::fields::{CharField, Field};
+	use crate::orm::fields::{BigIntegerField, BinaryField, CharField, Field};
 	use crate::orm::inspection::FieldInfo;
 	use crate::orm::query::FilterValue;
 	use rstest::rstest;
@@ -1833,6 +1853,144 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+	struct TestBinaryRecord {
+		id: Option<i64>,
+		name: String,
+		payload: Vec<u8>,
+		optional_payload: Option<Vec<u8>>,
+		json_data: serde_json::Value,
+	}
+
+	impl Model for TestBinaryRecord {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"test_binary_record"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut id = BigIntegerField::new();
+			id.base.primary_key = true;
+			id.base.db_column = Some("record_id".to_owned());
+			id.set_attributes_from_name("id");
+			let mut name = CharField::new(255);
+			name.base.db_column = Some("stored_name".to_owned());
+			name.set_attributes_from_name("name");
+			let mut payload = BinaryField::new();
+			payload.set_attributes_from_name("payload");
+			let mut optional_payload = BinaryField::new();
+			optional_payload.base.null = true;
+			optional_payload.set_attributes_from_name("optional_payload");
+			vec![
+				FieldInfo::from_field(&id),
+				FieldInfo::from_field(&name),
+				FieldInfo::from_field(&payload),
+				FieldInfo::from_field(&optional_payload),
+			]
+		}
+	}
+
+	#[rstest]
+	#[case(vec![0, 255, 128, 39, 92], None)]
+	#[case(vec![], Some(vec![]))]
+	#[case(vec![0, 255], Some(vec![255, 0]))]
+	fn mysql_bulk_create_query_binds_binary_fields(
+		#[case] payload: Vec<u8>,
+		#[case] optional_payload: Option<Vec<u8>>,
+	) {
+		use crate::orm::connection::QueryValue;
+		// Arrange
+		let fields = vec![
+			"payload".to_owned(),
+			"optional_payload".to_owned(),
+			"json_data".to_owned(),
+		];
+		let rows = vec![vec![
+			serde_json::json!(&payload),
+			serde_json::json!(&optional_payload),
+			serde_json::json!([0, 255]),
+		]];
+		// Act
+		let statement =
+			Manager::<TestBinaryRecord>::mysql_bulk_create_query(&fields, &rows).unwrap();
+		let (sql, values) = super::build_insert_sql(&statement, DatabaseBackend::MySql);
+		let params: Vec<_> = values
+			.0
+			.into_iter()
+			.map(Manager::<TestBinaryRecord>::sea_value_to_query_value)
+			.collect();
+		// Assert
+		let mut expected = vec![QueryValue::Bytes(payload)];
+		let expected_sql = if let Some(optional_payload) = optional_payload {
+			expected.push(QueryValue::Bytes(optional_payload));
+			"INSERT INTO `test_binary_record` (`payload`, `optional_payload`, `json_data`) VALUES (?, ?, ?)"
+		} else {
+			"INSERT INTO `test_binary_record` (`payload`, `optional_payload`, `json_data`) VALUES (?, NULL, ?)"
+		};
+		expected.push(QueryValue::String("[0,255]".to_owned()));
+		assert_eq!(sql, expected_sql);
+		assert_eq!(params, expected);
+	}
+
+	#[rstest]
+	fn mysql_bulk_create_query_uses_physical_columns() {
+		// Arrange
+		let fields = vec!["id".to_owned(), "name".to_owned(), "json_data".to_owned()];
+		let rows = vec![vec![
+			serde_json::json!(42),
+			serde_json::json!("record"),
+			serde_json::json!([]),
+		]];
+		// Act
+		let statement =
+			Manager::<TestBinaryRecord>::mysql_bulk_create_query(&fields, &rows).unwrap();
+		let (sql, _) = super::build_insert_sql(&statement, DatabaseBackend::MySql);
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO `test_binary_record` (`record_id`, `stored_name`, `json_data`) VALUES (?, ?, ?)"
+		);
+	}
+
+	#[rstest]
+	#[case(serde_json::json!([256]))]
+	#[case(serde_json::json!([-1]))]
+	#[case(serde_json::json!([1.5]))]
+	#[case(serde_json::json!(["bytes"]))]
+	fn mysql_bulk_create_query_rejects_invalid_binary(#[case] value: serde_json::Value) {
+		// Arrange
+		let expected = serde_json::from_value::<Vec<u8>>(value.clone()).unwrap_err();
+		// Act
+		let error = Manager::<TestBinaryRecord>::mysql_bulk_create_query(
+			&["payload".to_owned()],
+			&[vec![value]],
+		)
+		.unwrap_err();
+		// Assert
+		assert!(
+			matches!(error, reinhardt_core::exception::Error::Database(message) if message == format!("Invalid binary value for field 'payload': {expected}"))
+		);
+	}
+
 	#[rstest]
 	fn mysql_bulk_create_query_preserves_text_and_numeric_values() {
 		use crate::orm::connection::QueryValue;
@@ -1863,7 +2021,7 @@ mod tests {
 			serde_json::json!(true),
 		]];
 		// Act
-		let statement = Manager::<TestUser>::mysql_bulk_create_query(&fields, &rows);
+		let statement = Manager::<TestUser>::mysql_bulk_create_query(&fields, &rows).unwrap();
 		let (sql, values) = super::build_insert_sql(&statement, DatabaseBackend::MySql);
 		let params: Vec<_> = values
 			.0
@@ -1896,6 +2054,8 @@ mod tests {
 	))]
 	mod bulk_create_backend_tests {
 		use super::{DatabaseBackend, Manager, TestUser};
+		#[cfg(feature = "mysql")]
+		use super::{Model, TestBinaryRecord};
 		use crate::orm::connection::DatabaseConnection;
 		use crate::orm::manager::DB;
 		use rstest::{fixture, rstest};
@@ -2180,6 +2340,147 @@ mod tests {
 		) {
 			let (_container, connection) = mysql_database.await;
 			assert_bulk_create_backend_cases(connection).await;
+		}
+
+		#[cfg(feature = "mysql")]
+		#[rstest]
+		#[tokio::test]
+		#[serial(orm_database)]
+		async fn bulk_create_mysql_binary_and_renamed_columns(
+			#[future] mysql_database: (
+				testcontainers::ContainerAsync<testcontainers_modules::mysql::Mysql>,
+				DatabaseConnection,
+			),
+		) {
+			use reinhardt_query::prelude::{Alias, MySqlQueryBuilder, Order, Query, QueryBuilder};
+			use reinhardt_query::types::ColumnDef;
+			// Arrange
+			let (_container, connection) = mysql_database.await;
+			let _scope = DatabaseScope::install(connection.clone()).await;
+			let table = Query::create_table()
+				.table(TestBinaryRecord::table_name())
+				.col(
+					ColumnDef::new("record_id")
+						.big_integer()
+						.primary_key(true)
+						.auto_increment(true),
+				)
+				.col(
+					ColumnDef::new("stored_name")
+						.string_len(255)
+						.not_null(true)
+						.unique(true),
+				)
+				.col(ColumnDef::new("payload").custom("BLOB").not_null(true))
+				.col(ColumnDef::new("optional_payload").custom("BLOB"))
+				.col(ColumnDef::new("json_data").json().not_null(true))
+				.to_owned();
+			let (sql, _) = MySqlQueryBuilder.build_create_table(&table);
+			connection.execute(&sql, vec![]).await.unwrap();
+			let manager = Manager::<TestBinaryRecord>::new();
+			let backend = connection.inner().backend();
+			let mysql = backend
+				.as_any()
+				.downcast_ref::<crate::backends::dialect::MySqlBackend>()
+				.unwrap();
+
+			for generated_keys in [false, true] {
+				for ignore_conflicts in [false, true] {
+					for batch_size in [None, Some(2)] {
+						let delete = Query::delete()
+							.from_table(Alias::new(TestBinaryRecord::table_name()))
+							.to_owned();
+						let (sql, _) = MySqlQueryBuilder.build_delete(&delete);
+						connection.execute(&sql, vec![]).await.unwrap();
+						let models: Vec<TestBinaryRecord> =
+							[vec![0, 255, 128, 39, 92], vec![], vec![255, 0]]
+								.into_iter()
+								.enumerate()
+								.map(|(index, payload)| TestBinaryRecord {
+									id: if generated_keys {
+										None
+									} else {
+										Some(100 + index as i64)
+									},
+									name: format!("record-{index}"),
+									payload,
+									optional_payload: match index {
+										0 => None,
+										1 => Some(vec![]),
+										_ => Some(vec![0, 255]),
+									},
+									json_data: serde_json::json!([0, 255]),
+								})
+								.collect();
+						let mut input = models.clone();
+						if ignore_conflicts {
+							let mut conflict = models[0].clone();
+							conflict.payload = vec![42];
+							input.insert(1, conflict);
+						}
+						// Act
+						let returned = manager
+							.bulk_create(input, batch_size, ignore_conflicts, false)
+							.await
+							.unwrap();
+						let select = Query::select()
+							.columns(
+								[
+									"record_id",
+									"stored_name",
+									"payload",
+									"optional_payload",
+									"json_data",
+								]
+								.into_iter()
+								.map(Alias::new),
+							)
+							.from(Alias::new(TestBinaryRecord::table_name()))
+							.order_by(Alias::new("stored_name"), Order::Asc)
+							.to_owned();
+						let (sql, _) = MySqlQueryBuilder.build_select(&select);
+						let stored = sqlx::query_as::<
+							_,
+							(
+								i64,
+								String,
+								Vec<u8>,
+								Option<Vec<u8>>,
+								sqlx::types::Json<serde_json::Value>,
+							),
+						>(&sql)
+						.fetch_all(mysql.pool())
+						.await
+						.unwrap();
+						// Assert
+						assert_eq!(
+							returned,
+							if ignore_conflicts {
+								vec![]
+							} else {
+								models.clone()
+							}
+						);
+						assert_eq!(stored.len(), models.len());
+						for ((id, name, payload, optional_payload, json_data), expected) in
+							stored.into_iter().zip(&models)
+						{
+							assert_eq!(
+								(&name, &payload, &optional_payload, &json_data.0),
+								(
+									&expected.name,
+									&expected.payload,
+									&expected.optional_payload,
+									&expected.json_data
+								)
+							);
+							if let Some(expected_id) = expected.id {
+								assert_eq!(id, expected_id);
+							}
+						}
+					}
+				}
+			}
 		}
 
 		#[cfg(feature = "postgres")]
