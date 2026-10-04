@@ -111,29 +111,6 @@ pub fn register_request_database(
 	Ok(handle)
 }
 
-fn bind_query_values<'a>(
-	mut query: sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>,
-	values: &reinhardt_query::value::Values,
-) -> std::result::Result<sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>, sqlx::Error>
-{
-	use reinhardt_query::value::Value;
-
-	for value in &values.0 {
-		query = match value {
-			Value::Bool(Some(value)) => query.bind(*value),
-			Value::BigInt(Some(value)) => query.bind(*value),
-			Value::Double(Some(value)) => query.bind(*value),
-			Value::String(Some(value)) => query.bind(value.as_ref().clone()),
-			_ => {
-				return Err(sqlx::Error::Protocol(
-					"AsyncQuery produced an unsupported bind value".to_string(),
-				));
-			}
-		};
-	}
-	Ok(query)
-}
-
 /// Database engine configuration
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -301,12 +278,33 @@ impl Engine {
 			.await
 			.map_err(map_sqlx_error)?)
 	}
+	/// Consume an exact renderer pair before creating an asynchronous SQLx query.
+	fn prepare_query(
+		&self,
+		built: (String, reinhardt_query::value::Values),
+	) -> Result<(String, sqlx::any::AnyArguments<'static>)> {
+		use reinhardt_query_sqlx::AnyBackend;
+		let backend = match self.pool.connect_options().database_url.scheme() {
+			"postgres" | "postgresql" => AnyBackend::Postgres,
+			"mysql" => AnyBackend::MySql,
+			"sqlite" => AnyBackend::Sqlite,
+			_ => {
+				return Err(map_sqlx_error(sqlx::Error::Protocol(
+					"AsyncQuery uses an unsupported database backend".to_owned(),
+				))
+				.into());
+			}
+		};
+		reinhardt_query_sqlx::prepare_any(built, backend)
+			.map(|prepared| prepared.into_parts())
+			.map_err(|error| map_sqlx_error(sqlx::Error::Protocol(error.to_string())).into())
+	}
 	pub(crate) async fn fetch_all_with_values(
 		&self,
-		sql: &str,
-		values: &reinhardt_query::value::Values,
+		built: (String, reinhardt_query::value::Values),
 	) -> Result<Vec<sqlx::any::AnyRow>> {
-		let query = bind_query_values(sqlx::query(sql), values).map_err(map_sqlx_error)?;
+		let (sql, arguments) = self.prepare_query(built)?;
+		let query = sqlx::query_with(&sql, arguments);
 		Ok(query.fetch_all(&self.pool).await.map_err(map_sqlx_error)?)
 	}
 	/// Execute a query and return a single result
@@ -323,10 +321,10 @@ impl Engine {
 	}
 	pub(crate) async fn fetch_one_with_values(
 		&self,
-		sql: &str,
-		values: &reinhardt_query::value::Values,
+		built: (String, reinhardt_query::value::Values),
 	) -> Result<sqlx::any::AnyRow> {
-		let query = bind_query_values(sqlx::query(sql), values).map_err(map_sqlx_error)?;
+		let (sql, arguments) = self.prepare_query(built)?;
+		let query = sqlx::query_with(&sql, arguments);
 		Ok(query.fetch_one(&self.pool).await.map_err(map_sqlx_error)?)
 	}
 	/// Execute a query and return an optional result
@@ -343,10 +341,10 @@ impl Engine {
 	}
 	pub(crate) async fn fetch_optional_with_values(
 		&self,
-		sql: &str,
-		values: &reinhardt_query::value::Values,
+		built: (String, reinhardt_query::value::Values),
 	) -> Result<Option<sqlx::any::AnyRow>> {
-		let query = bind_query_values(sqlx::query(sql), values).map_err(map_sqlx_error)?;
+		let (sql, arguments) = self.prepare_query(built)?;
+		let query = sqlx::query_with(&sql, arguments);
 		Ok(query
 			.fetch_optional(&self.pool)
 			.await
@@ -579,6 +577,73 @@ pub async fn create_database_engine_mysql(url: &str) -> Result<DatabaseEngine> {
 #[cfg(test)]
 mod tests {
 	use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+
+	#[cfg(feature = "sqlite")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn generated_queries_keep_scalar_types_null_omission_and_argument_order() {
+		use super::{Engine, EngineConfig};
+		use reinhardt_query::{Expr, Query, QueryStatementBuilder, SqliteQueryBuilder, Value};
+		use sqlx::Row;
+		// Arrange
+		sqlx::any::install_default_drivers();
+		let engine = Engine::from_config(EngineConfig::new("sqlite::memory:").with_pool_size(1, 1))
+			.await
+			.unwrap();
+		let text = "quoted' ? $1 secret";
+		let bytes = vec![0_u8, 39, 255];
+		let built = Query::select()
+			.expr_as(Expr::val(-7_i16), "small")
+			.expr_as(Expr::val(Value::String(None)), "absent")
+			.expr_as(Expr::val(text), "text")
+			.expr_as(Expr::val(bytes.clone()), "bytes")
+			.expr_as(Expr::val(1.25_f32), "float")
+			.build(SqliteQueryBuilder);
+		assert_eq!(built.1.0.len(), 4);
+		assert_eq!(
+			built.0,
+			"SELECT ? AS \"small\", NULL AS \"absent\", ? AS \"text\", ? AS \"bytes\", ? AS \"float\""
+		);
+		// Act
+		let row = engine.fetch_one_with_values(built).await.unwrap();
+		// Assert
+		assert_eq!(row.try_get::<i64, _>("small").unwrap(), -7);
+		assert_eq!(row.try_get::<Option<String>, _>("absent").unwrap(), None);
+		assert_eq!(row.try_get::<String, _>("text").unwrap(), text);
+		assert_eq!(row.try_get::<Vec<u8>, _>("bytes").unwrap(), bytes);
+		assert_eq!(row.try_get::<f64, _>("float").unwrap(), 1.25);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn generated_query_encoding_errors_keep_existing_error_kind_and_redact_values() {
+		use super::{Engine, EngineConfig};
+		use reinhardt_core::exception::DatabaseErrorKind;
+		use reinhardt_query::{Expr, Query, QueryStatementBuilder, SqliteQueryBuilder};
+		// Arrange
+		sqlx::any::install_default_drivers();
+		let engine = Engine::from_config(EngineConfig::new("sqlite::memory:").with_pool_size(1, 1))
+			.await
+			.unwrap();
+		let built = Query::select()
+			.expr(Expr::val("private payload"))
+			.expr(Expr::val(u64::MAX))
+			.build(SqliteQueryBuilder);
+		// Act
+		let error = engine
+			.fetch_all_with_values(built)
+			.await
+			.err()
+			.expect("overflowing arguments must fail before execution");
+		// Assert: no lossy cast, execution, SQL text or argument content is exposed.
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Connection));
+		let message = error.to_string();
+		assert!(message.contains("BigUnsigned argument 2 for sqlite/any"));
+		assert!(message.contains("unsigned integer exceeds signed 64-bit range"));
+		assert!(!message.contains("private payload"));
+		assert!(!message.contains(&u64::MAX.to_string()));
+	}
 
 	// Helper to create SQLite pool for tests
 	async fn create_test_pool() -> SqlitePool {

@@ -31194,18 +31194,22 @@
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Public formatting helper returns AST-rendered SQL to callers and is never used by the runtime AsyncQuery execution path, which calls build() instead. Repository caller search found only the definition.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/async_query.rs::AsyncQuery < T >::to_sql::possible-inline-render#2",
@@ -31217,18 +31221,22 @@
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Public formatting helper returns AST-rendered SQL to callers and is never used by the runtime AsyncQuery execution path, which calls build() instead. Repository caller search found only the definition.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/async_query.rs::AsyncQuery < T >::to_sql::possible-inline-render#3",
@@ -31240,18 +31248,22 @@
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Public formatting helper returns AST-rendered SQL to callers and is never used by the runtime AsyncQuery execution path, which calls build() instead. Repository caller search found only the definition.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/async_query.rs::AsyncQuery < T >::to_sql::possible-inline-render#4",
@@ -31263,41 +31275,49 @@
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Public formatting helper returns AST-rendered SQL to callers and is never used by the runtime AsyncQuery execution path, which calls build() instead. Repository caller search found only the definition.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/async_query.rs::AsyncSession::execute::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/async_query.rs",
       "symbol": "AsyncSession::execute",
       "kind": "execution-wrapper",
-      "line": 287,
+      "line": 286,
       "fingerprint": "cb212798c263c0a1aef77dc38c96d4b3a7ea7b1c13add4be6777c9872013fcae",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/bulk_update.rs::BulkUpdateBuilder::build::macro-sql-literal#1",
@@ -32017,414 +32037,486 @@
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "DatabaseEngine::execute",
       "kind": "execution-wrapper",
-      "line": 519,
+      "line": 517,
       "fingerprint": "74fee3704560476496b88e460e91445723ed470a53be8ed61a7d2e7e45b14c9d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::DatabaseEngine::fetch_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "DatabaseEngine::fetch_all",
       "kind": "execution-wrapper",
-      "line": 529,
+      "line": 527,
       "fingerprint": "b69310eac02d7f687c2df44ef88f837042ef6ff4a5cde5f73e54eba5f452e797",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::DatabaseEngine::fetch_one::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "DatabaseEngine::fetch_one",
       "kind": "execution-wrapper",
-      "line": 538,
+      "line": 536,
       "fingerprint": "c4adb72fe2d8ef6c18ea392aa9bc006c6726391ad12f017df5514867938bbfff",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::DatabaseEngine::fetch_optional::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "DatabaseEngine::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 547,
+      "line": 545,
       "fingerprint": "6ad6cd3df4ac4e2f1bb46a09433b3812298dc402a468cc2070e214f10402e6f7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::execute::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::execute",
       "kind": "execution-wrapper",
-      "line": 286,
+      "line": 263,
       "fingerprint": "b294d56e476588ab99b73793bd1296bf9eab0334b19d750b2b93d5595e305024",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::execute::executor#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::execute",
       "kind": "executor",
-      "line": 286,
+      "line": 263,
       "fingerprint": "15316186f6f2ea97fd228433b741bc00c52e50edaab4ed752d7a9bfc16c5a816",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_all",
       "kind": "execution-wrapper",
-      "line": 299,
+      "line": 276,
       "fingerprint": "f27492f19af6721b7bdce06a7a80c98cb902230b3ca0a82b9958f35f7c0b041a",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_all::executor#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_all",
       "kind": "executor",
-      "line": 299,
+      "line": 276,
       "fingerprint": "e605456e5ffa49cc6c44ce1d1dbdcc35724579a5e80d65d58263e8da4dc84da6",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_all_with_values::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_all_with_values",
       "kind": "execution-wrapper",
-      "line": 310,
-      "fingerprint": "f4e52e68379065f573b48f78cb0812dca9aa48bc965ee4d81866dfc2cbe20cf4",
+      "line": 308,
+      "fingerprint": "84f278671c18510352251cdec687ce904e9a420033ab3492da4b4861020a8531",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Only AsyncQuery all/first/one/count call these private methods. The exact renderer pair is consumed by the Any companion using the actual pool backend; ASTs do not cross await.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_all_with_values::executor#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_all_with_values",
       "kind": "executor",
-      "line": 309,
-      "fingerprint": "80794a2d0251ae23ffbff0ad31705e0072c93dbb4685031ba4a63f4e5980e6e2",
+      "line": 307,
+      "fingerprint": "cf286c6eefdb4c7ea09167c999199cbe0c8b6d1151db344fd750e1aa3705030c",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Only AsyncQuery all/first/one/count call these private methods. The exact renderer pair is consumed by the Any companion using the actual pool backend; ASTs do not cross await.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_one::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_one",
       "kind": "execution-wrapper",
-      "line": 319,
+      "line": 317,
       "fingerprint": "9c2b3f61db093257fb2fe9024583db9ca0bbce03b05bf3a2763ead005962d33e",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_one::executor#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_one",
       "kind": "executor",
-      "line": 319,
+      "line": 317,
       "fingerprint": "b331aef8c7ed38cf2646599bd5390bb0c2504cd073f5a3b01978a3f8a184cdb5",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_one_with_values::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_one_with_values",
       "kind": "execution-wrapper",
-      "line": 330,
-      "fingerprint": "8c416255cef83df15b77557a21d2906d2df024c4888a706315713e7968ce325c",
+      "line": 328,
+      "fingerprint": "f068059a89227b0496df48df8ce1c9fc41bf223f01e156552ea2896b87299757",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Only AsyncQuery all/first/one/count call these private methods. The exact renderer pair is consumed by the Any companion using the actual pool backend; ASTs do not cross await.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_one_with_values::executor#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_one_with_values",
       "kind": "executor",
-      "line": 329,
-      "fingerprint": "89242e88b47d454b978e122aa49a4a18244ae944cc6fa740c7608db1952cb96c",
+      "line": 327,
+      "fingerprint": "11748ae219bdeeeb5eef88501f2bf0eba82dd7ef9fe719b8f6f15fe8b03ef9a1",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Only AsyncQuery all/first/one/count call these private methods. The exact renderer pair is consumed by the Any companion using the actual pool backend; ASTs do not cross await.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_optional::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 339,
+      "line": 337,
       "fingerprint": "7f7a466bd4672e1a5ea1783441889cfa4beaddcd5afea62a104dcf109e3280aa",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_optional::executor#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_optional",
       "kind": "executor",
-      "line": 339,
+      "line": 337,
       "fingerprint": "5fdf691ffbc7b02bd87a3d67413ea6d6b43798c8d01b1efa58cb8678428a846c",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The public raw SQL API accepts an explicit sql: &str from its caller and forwards it unchanged. Framework-owned SQL sources at call sites remain individually in scope; no directory-wide exemption is inferred.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_optional_with_values::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_optional_with_values",
       "kind": "execution-wrapper",
-      "line": 350,
-      "fingerprint": "8e870705adafe584eb77735cb13e094a8dffc503c7577cdf7fd2cc21f47e2670",
+      "line": 348,
+      "fingerprint": "5a88f166ca4bd3a11f4739ed91b3389ae49ab1ddd313a988c7e1b961e2cc0aa5",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Only AsyncQuery all/first/one/count call these private methods. The exact renderer pair is consumed by the Any companion using the actual pool backend; ASTs do not cross await.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/engine.rs::Engine::fetch_optional_with_values::executor#1",
       "path": "crates/reinhardt-db/src/orm/engine.rs",
       "symbol": "Engine::fetch_optional_with_values",
       "kind": "executor",
-      "line": 349,
-      "fingerprint": "e3a8d52c500ec240cb96e5cc4a44ddcf83f47bd9a2ccf1db4b14fc060df6c7a5",
+      "line": 347,
+      "fingerprint": "a1238cadf300642cbe700bdb0a9672ef8a236fed0771caffdbe1f29b979d3814",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm; native SQLx/Any path; backend codec forwarding via reinhardt-db/postgres, mysql, sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Only AsyncQuery all/first/one/count call these private methods. The exact renderer pair is consumed by the Any companion using the actual pool backend; ASTs do not cross await.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Native PostgreSQL/MySQL AsyncQuery scenarios: 2 passed; SQLite AsyncQuery: 4 passed; owned argument order/NULL/scalar and redacted overflow: 2 passed. Library/native test Clippy and 2 AsyncQuery doctests passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/expressions.rs::Case::to_sql::possible-inline-render#1",
