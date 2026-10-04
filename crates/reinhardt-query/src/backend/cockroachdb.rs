@@ -157,6 +157,15 @@ impl QueryBuilder for CockroachDBQueryBuilder {
 	}
 
 	fn build_alter_table(&self, stmt: &AlterTableStatement) -> (String, Values) {
+		assert!(
+			!stmt.operations.iter().any(|operation| matches!(
+				operation,
+				crate::query::AlterTableOperation::AddIdentity { .. }
+					| crate::query::AlterTableOperation::SetIdentity { .. }
+					| crate::query::AlterTableOperation::DropIdentity { .. }
+			)),
+			"CockroachDB does not support these PostgreSQL identity operations"
+		);
 		self.postgres.build_alter_table(stmt)
 	}
 

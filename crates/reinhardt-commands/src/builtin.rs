@@ -390,8 +390,9 @@ impl BaseCommand for MigrateCommand {
 						to_rollback.push(migration);
 					}
 
-					let mut executor = DatabaseMigrationExecutor::new(connection);
+					let executor = DatabaseMigrationExecutor::new(connection);
 					let result = executor
+						.with_migration_history(all_migrations.clone())
 						.rollback_migrations(&to_rollback)
 						.await
 						.map_err(|e| {
@@ -474,8 +475,9 @@ impl BaseCommand for MigrateCommand {
 						to_rollback.push(migration);
 					}
 
-					let mut executor = DatabaseMigrationExecutor::new(connection);
+					let executor = DatabaseMigrationExecutor::new(connection);
 					let result = executor
+						.with_migration_history(all_migrations.clone())
 						.rollback_migrations(&to_rollback)
 						.await
 						.map_err(|e| {
@@ -1168,8 +1170,9 @@ async fn execute_migration_target_plan(
 				migrations.push(migration);
 			}
 
-			let mut executor = DatabaseMigrationExecutor::new(connection);
+			let executor = DatabaseMigrationExecutor::new(connection);
 			let result = executor
+				.with_migration_history(all_migrations.to_vec())
 				.rollback_migrations(&migrations)
 				.await
 				.map_err(|error| {
@@ -2388,7 +2391,9 @@ pub(crate) async fn execute_makemigrations_with_state(
 				// applying the conflicting graph to a database.
 				let from_state =
 					build_from_state_from_files(&migrations_dir, &dependency_context).await?;
-				let target_state = ProjectState::from_global_registry();
+				let target_state = ProjectState::try_from_global_registry().map_err(|error| {
+					CommandError::ExecutionError(format!("Failed to load model registry: {error}"))
+				})?;
 				let detector = reinhardt_db::migrations::MigrationAutodetector::new(
 					from_state,
 					target_state.clone(),
@@ -2542,7 +2547,9 @@ pub(crate) async fn execute_makemigrations_with_state(
 
 		// Keep the full graph for cross-app matching and foreign key validation.
 		// Restrict generated output below without erasing historical move sources.
-		let target_project_state = ProjectState::from_global_registry();
+		let target_project_state = ProjectState::try_from_global_registry().map_err(|error| {
+			CommandError::ExecutionError(format!("Invalid migration declarations: {error}"))
+		})?;
 
 		let is_verbose = ctx.has_option("verbose");
 
@@ -2720,6 +2727,13 @@ pub(crate) async fn execute_makemigrations_with_state(
 				.keys()
 				.chain(from_state.models.keys())
 				.map(|(app_label, _)| app_label.clone())
+				.chain(
+					target_project_state
+						.sequences
+						.keys()
+						.chain(from_state.sequences.keys())
+						.map(|key| key.app_label.clone()),
+				)
 				.collect::<std::collections::HashSet<_>>()
 				.into_iter()
 				.collect();
@@ -2817,6 +2831,8 @@ pub(crate) async fn execute_makemigrations_with_state(
 
 		let mut pending: Vec<(reinhardt_db::migrations::Migration, String, String)> = Vec::new();
 		let mut this_run_names = std::collections::BTreeMap::new();
+		let mut next_numbers = std::collections::BTreeMap::<String, u32>::new();
+		let mut stage_names = std::collections::BTreeMap::new();
 		for migration in generated_migrations {
 			if !apps_to_write.contains(&migration.app_label) {
 				continue;
@@ -2847,19 +2863,32 @@ pub(crate) async fn execute_makemigrations_with_state(
 				}
 			}
 			let app_name = migration.app_label.clone();
-			let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
+			let next = next_numbers.entry(app_name.clone()).or_insert_with(|| {
+				MigrationNumbering::next_number(&migrations_dir, &app_name)
+					.parse()
+					.expect("numeric migration number")
+			});
+			let migration_number = format!("{next:04}");
+			*next += 1;
 			let is_initial = migration_number == "0001";
 			let base_name = migration_name_opt.clone().unwrap_or_else(|| {
 				MigrationNamer::generate_name(&migration.operations, is_initial)
 			});
 			let final_name = format!("{}_{}", migration_number, base_name);
-			this_run_names.insert(app_name, final_name.clone());
+			stage_names.insert(
+				(app_name.clone(), migration.name.clone()),
+				final_name.clone(),
+			);
+			if migration.name == "autodetected" {
+				this_run_names.insert(app_name, final_name.clone());
+			}
 			pending.push((migration, migration_number, final_name));
 		}
 
+		let mut previous_generated = std::collections::BTreeMap::new();
 		for (migration, migration_number, final_name) in pending {
 			let app_name = migration.app_label.clone();
-			let dependencies = resolve_makemigrations_dependencies(
+			let mut dependencies = resolve_makemigrations_dependencies(
 				&app_name,
 				&migration_number,
 				&migration.operations,
@@ -2868,6 +2897,33 @@ pub(crate) async fn execute_makemigrations_with_state(
 				&existing_latest,
 			);
 
+			if let Some(previous) = previous_generated.insert(app_name.clone(), final_name.clone())
+			{
+				dependencies.retain(|(app, _)| app != &app_name);
+				dependencies.push((app_name.clone(), previous));
+			}
+			// Explicit staged dependencies identify the exact provider phase.
+			// Replace the generic per-app lookup to avoid linking defaults to a
+			// provider's later table stage and recreating a cross-app cycle.
+			dependencies.retain(|(app, _)| {
+				!migration
+					.dependencies
+					.iter()
+					.any(|(provider, _)| provider == app)
+			});
+			for (app, symbolic_name) in &migration.dependencies {
+				let name = stage_names
+					.get(&(app.clone(), symbolic_name.clone()))
+					.cloned()
+					.ok_or_else(|| {
+						CommandError::ExecutionError(format!(
+							"Missing generated migration stage '{app}.{symbolic_name}'"
+						))
+					})?;
+				if !dependencies.contains(&(app.clone(), name.clone())) {
+					dependencies.push((app.clone(), name));
+				}
+			}
 			let new_migration = dependencies.into_iter().fold(
 				reinhardt_db::migrations::Migration::new(final_name, app_name.clone())
 					.with_initial((migration_number == "0001").then_some(true)),
@@ -3150,16 +3206,23 @@ fn expand_apps_with_fk_providers(
 		.collect();
 	let mut stack: Vec<String> = to_write.iter().cloned().collect();
 	while let Some(app) = stack.pop() {
-		let Some(migration) = generated.iter().find(|m| m.app_label == app) else {
-			continue;
-		};
-		for provider in reinhardt_db::migrations::MigrationAutodetector::foreign_key_provider_apps(
-			to_state,
-			&migration.operations,
-			&app,
-		) {
-			if generated_apps.contains(&provider) && to_write.insert(provider.clone()) {
-				stack.push(provider);
+		for migration in generated
+			.iter()
+			.filter(|migration| migration.app_label == app)
+		{
+			let providers =
+				reinhardt_db::migrations::MigrationAutodetector::foreign_key_provider_apps(
+					to_state,
+					&migration.operations,
+					&app,
+				);
+			for provider in providers
+				.into_iter()
+				.chain(migration.dependencies.iter().map(|(app, _)| app.clone()))
+			{
+				if generated_apps.contains(&provider) && to_write.insert(provider.clone()) {
+					stack.push(provider);
+				}
 			}
 		}
 	}
@@ -8614,6 +8677,79 @@ name = "db.sqlite3"
 		);
 	}
 
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn sequence_provider_and_owner_dependencies_use_base_stages() {
+		use reinhardt_db::migrations::{
+			FieldState, FieldType, MigrationAutodetector, ModelState, ProjectState, QualifiedName,
+			SequenceDefault, SequenceDefinition, SequenceKey, SequenceOwner,
+		};
+		use std::collections::BTreeMap;
+		// Arrange
+		let key = SequenceKey::new("generators", "numbers");
+		let name = QualifiedName::new("event_numbers");
+		let mut target = ProjectState::new();
+		target
+			.add_sequence(
+				SequenceDefinition::new(key.clone(), name.clone())
+					.with_owned_by(Some(SequenceOwner::new(QualifiedName::new("events"), "n"))),
+			)
+			.unwrap();
+		let mut model = ModelState::new("runs", "Event");
+		model.table_name = "events".into();
+		model.add_field(
+			FieldState::new("n", FieldType::BigInteger, false)
+				.with_sequence_default(SequenceDefault::new(key, name)),
+		);
+		target.add_model(model);
+		let generated = MigrationAutodetector::new(ProjectState::new(), target.clone())
+			.try_generate_migrations()
+			.unwrap();
+		let base_names = BTreeMap::from([
+			("generators".into(), "0007_create_sequence".into()),
+			("runs".into(), "0003_create_event".into()),
+		]);
+		let previous = BTreeMap::from([
+			("generators".into(), "0006_previous".into()),
+			("runs".into(), "0002_previous".into()),
+		]);
+		// Act
+		let expanded = expand_apps_with_fk_providers(&["runs".into()], &generated, &target);
+		let table = generated
+			.iter()
+			.find(|migration| migration.app_label == "runs")
+			.unwrap();
+		let ownership = generated
+			.iter()
+			.find(|migration| migration.name == "autodetected_ownership")
+			.unwrap();
+		let table_dependencies = resolve_makemigrations_dependencies(
+			"runs",
+			"0003",
+			&table.operations,
+			&target,
+			&base_names,
+			&previous,
+		);
+		let ownership_dependencies = resolve_makemigrations_dependencies(
+			"generators",
+			"0008",
+			&ownership.operations,
+			&target,
+			&base_names,
+			&previous,
+		);
+		// Assert
+		assert!(expanded.contains("generators"));
+		assert!(table_dependencies.contains(&("generators".into(), "0007_create_sequence".into())));
+		assert!(ownership_dependencies.contains(&("runs".into(), "0003_create_event".into())));
+		assert!(
+			!table_dependencies
+				.iter()
+				.any(|(_, name)| name.contains("ownership"))
+		);
+	}
+
 	#[test]
 	#[cfg(feature = "migrations")]
 	fn resolve_makemigrations_dependencies_keeps_same_app_previous_migration() {
@@ -8658,6 +8794,27 @@ name = "db.sqlite3"
 				("organizations".to_string(), "0001_initial".to_string()),
 				("auth".to_string(), "0003_user_email".to_string()),
 			]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest::rstest]
+	fn provider_expansion_reads_every_generated_stage() {
+		use reinhardt_db::migrations::{Migration, ProjectState};
+		// Arrange
+		let generated = vec![
+			Migration::new("autodetected_sequences", "events"),
+			Migration::new("autodetected", "events")
+				.add_dependency("providers", "autodetected_sequences"),
+			Migration::new("autodetected_sequences", "providers"),
+		];
+		// Act
+		let expanded =
+			expand_apps_with_fk_providers(&["events".into()], &generated, &ProjectState::new());
+		// Assert
+		assert_eq!(
+			expanded,
+			std::collections::BTreeSet::from(["events".into(), "providers".into()])
 		);
 	}
 
