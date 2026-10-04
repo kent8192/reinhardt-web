@@ -1,11 +1,6 @@
 //! SelectBuilder LIMIT arguments reach the native SQLite executor in order.
 #![cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-#![cfg(all(
-	feature = "backends",
-	feature = "sqlite",
-	feature = "migrations",
-	feature = "orm"
-))]
+#![cfg(feature = "sqlite")]
 
 use std::sync::Arc;
 
@@ -14,7 +9,7 @@ use reinhardt_db::backends::{InsertBuilder, SelectBuilder};
 use reinhardt_db::migrations::{Migration, MigrationProvider};
 use reinhardt_query::QueryStatementBuilder;
 use reinhardt_query::prelude::{ColumnDef, Iden, IntoIden, Query, SqliteQueryBuilder};
-use reinhardt_testkit::fixtures::sqlite_with_migrations_from;
+use reinhardt_test::fixtures::sqlite_with_migrations_from;
 use rstest::*;
 
 struct NoMigrations;
