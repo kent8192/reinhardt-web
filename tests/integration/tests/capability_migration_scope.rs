@@ -281,6 +281,91 @@ fn write_migration(project: &Path, app: &str, name: &str, fields: &str) {
 }
 
 #[rstest]
+fn capability_check_rejects_empty_and_merge_proposals_without_writes(consumer: Consumer) {
+	// Arrange
+	let project = new_project(&consumer, "check_modes");
+	let apps = r#"["identity"]"#;
+	let before = migration_files(&project);
+
+	// Act
+	let empty = invoke(
+		&consumer,
+		&project,
+		apps,
+		&["makemigrations", "identity", "--empty", "--check"],
+	);
+
+	// Assert
+	assert_status(&empty, 1);
+	assert!(String::from_utf8_lossy(&empty.stderr).contains("1 migration(s) would be created"));
+	assert!(String::from_utf8_lossy(&empty.stdout).contains("Would create empty migration"));
+	assert_eq!(migration_files(&project), before);
+	let preview = invoke(
+		&consumer,
+		&project,
+		apps,
+		&["makemigrations", "identity", "--empty", "--dry-run"],
+	);
+	assert_status(&preview, 0);
+	assert_eq!(migration_files(&project), before);
+
+	// Arrange
+	write_migration(
+		&project,
+		"identity",
+		"0001_root",
+		"operations: Vec::new(), dependencies: Vec::new()",
+	);
+	let before = migration_files(&project);
+
+	// Act
+	let clean = invoke(
+		&consumer,
+		&project,
+		apps,
+		&["makemigrations", "--merge", "--check"],
+	);
+
+	// Assert
+	assert_status(&clean, 0);
+	assert!(String::from_utf8_lossy(&clean.stdout).contains("No conflicts detected"));
+	assert_eq!(migration_files(&project), before);
+
+	// Arrange
+	for name in ["0002_left", "0002_right"] {
+		write_migration(
+			&project,
+			"identity",
+			name,
+			r#"operations: Vec::new(), dependencies: vec![("identity", "0001_root")]"#,
+		);
+	}
+	let before = migration_files(&project);
+
+	// Act
+	let merge = invoke(
+		&consumer,
+		&project,
+		apps,
+		&["makemigrations", "--merge", "--check"],
+	);
+
+	// Assert
+	assert_status(&merge, 1);
+	assert!(String::from_utf8_lossy(&merge.stderr).contains("1 migration(s) would be created"));
+	assert!(String::from_utf8_lossy(&merge.stdout).contains("Would create merge migration"));
+	assert_eq!(migration_files(&project), before);
+	let preview = invoke(
+		&consumer,
+		&project,
+		apps,
+		&["makemigrations", "--merge", "--dry-run"],
+	);
+	assert_status(&preview, 0);
+	assert_eq!(migration_files(&project), before);
+}
+
+#[rstest]
 fn capability_dependencies_order_plans_execution_and_file_state(consumer: Consumer) {
 	// Arrange
 	let project = new_project(&consumer, "dependency_order");

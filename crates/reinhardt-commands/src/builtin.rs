@@ -1380,6 +1380,12 @@ pub(crate) async fn execute_makemigrations_with_state(
 				}
 			}
 
+			if is_check {
+				return Err(CommandError::ExecutionError(format!(
+					"{} migration(s) would be created.",
+					conflict_apps.len()
+				)));
+			}
 			return Ok(());
 		}
 
@@ -1429,6 +1435,11 @@ pub(crate) async fn execute_makemigrations_with_state(
 				ctx.info(&format!(
 					"Would create empty migration for {}: {}",
 					app_name, name
+				));
+			}
+			if is_check {
+				return Err(CommandError::ExecutionError(
+					"1 migration(s) would be created.".to_owned(),
 				));
 			}
 			return Ok(());

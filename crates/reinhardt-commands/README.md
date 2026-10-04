@@ -93,7 +93,8 @@ still runs without a database connection or credentials.
 migration metadata. The check implies dry-run behavior and exits unsuccessfully
 when files would be created. `--state-source database --database ALIAS` resolves
 only the named database configuration; `--state-source temporary-db` requires
-the `testcontainers` feature. `--empty` and `--merge` remain database-free.
+the `testcontainers` feature. `--empty` and `--merge` remain database-free. Their
+proposals also make `--check` fail, while a merge check with no conflicts succeeds.
 
 Migration dependency resolution combines `core.migration_features` with
 `migrations.migration_features`. The dedicated `migration_settings` and
