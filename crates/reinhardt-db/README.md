@@ -188,6 +188,14 @@ creates also consume native renderer Values, using PostgreSQL ON CONFLICT DO
 NOTHING, MySQL INSERT IGNORE and SQLite INSERT OR IGNORE as typed clauses.
 Existing ignored-conflict results and caller transaction ownership are retained.
 
+Backend UPDATE, SELECT and DELETE builders also execute checked SQL and native
+Values together. Current timestamps and NULL expressions consume no argument
+slots; bound LIMIT values remain paired with their SQL. Each `where_in` call
+renders one predicate for its complete set, and an empty set matches no rows.
+The public raw `build` methods retain their signatures and now return the correct
+argument order. Builder arrays retain native PostgreSQL storage and explicit
+JSON text on MySQL/SQLite.
+
 ### Streaming QuerySets
 
 `QuerySet::iterator_with_db` and `QuerySet::iterator_with_executor` decode one

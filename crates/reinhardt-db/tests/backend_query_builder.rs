@@ -500,10 +500,10 @@ fn test_query_value_float() {
 	// Arrange
 
 	// Act
-	let val = QueryValue::Float(3.14);
+	let val = QueryValue::Float(1.25);
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(3.14));
+	assert_eq!(val, QueryValue::Float(1.25));
 }
 
 #[rstest]
@@ -613,10 +613,10 @@ fn test_query_value_from_f64() {
 	// Arrange
 
 	// Act
-	let val: QueryValue = 2.718f64.into();
+	let val: QueryValue = 2.5f64.into();
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(2.718));
+	assert_eq!(val, QueryValue::Float(2.5));
 }
 
 #[rstest]
@@ -1077,12 +1077,13 @@ fn test_select_builder_with_limit() {
 	let backend = MockBackend::new(DatabaseType::Postgres);
 
 	// Act
-	let (sql, _) = SelectBuilder::new(backend).from("users").limit(10).build();
+	let (sql, params) = SelectBuilder::new(backend).from("users").limit(10).build();
 
 	// Assert
-	// LIMIT is parameterized as $1 by build_select() (commit 0c337c302)
+	// The bound LIMIT belongs to the same SQL/argument contract as WHERE values.
 	assert!(sql.contains("LIMIT"));
 	assert!(sql.contains("$1"));
+	assert_eq!(params, vec![QueryValue::Int(10)]);
 }
 
 #[rstest]
@@ -1128,9 +1129,7 @@ fn test_update_builder_set_now() {
 	// Arrange
 	let backend = MockBackend::new(DatabaseType::Postgres);
 
-	// Act: set_now stores QueryValue::Now internally, and build() uses
-	// a sentinel placeholder. SeaQuery uses parameterized queries, so the
-	// sentinel appears as a parameter value, not in the SQL string.
+	// Act: the structural current-time expression consumes no bound argument.
 	let (sql, params) = UpdateBuilder::new(backend, "users")
 		.set("name", QueryValue::String("Alice".to_string()))
 		.set_now("updated_at")
@@ -1140,6 +1139,10 @@ fn test_update_builder_set_now() {
 	// Assert: SQL contains UPDATE and SET for updated_at
 	assert!(sql.contains("UPDATE"));
 	assert!(sql.contains("updated_at"));
+	assert_eq!(
+		sql,
+		"UPDATE \"users\" SET \"name\" = $1, \"updated_at\" = CURRENT_TIMESTAMP WHERE \"id\" = $2"
+	);
 	// NOW() is excluded from params (only name and id)
 	assert_eq!(params.len(), 2);
 	assert_eq!(params[0], QueryValue::String("Alice".to_string()));

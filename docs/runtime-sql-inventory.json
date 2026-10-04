@@ -22150,23 +22150,28 @@
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "DeleteBuilder::execute",
       "kind": "execution-wrapper",
-      "line": 1383,
-      "fingerprint": "1a9d066f2780c7200ac5816318f710725bcdd8852aae52ae189c2f197bb496f1",
+      "line": 1480,
+      "fingerprint": "683145466cf9564bf690a65973254e4cc547a6e03e0adb31374e515ddbeb13c7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "backends; canonical reinhardt-db backend features; caller-selected native/custom provider"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Private typed statement factories render checked SQL and exact owned native Values before await, then use generated providers. Public raw build signatures remain separate compatibility renderers. Structural CURRENT_TIMESTAMP/NULL, bound LIMIT and grouped IN conditions preserve argument order; model-independent builder arrays explicitly retain native PostgreSQL or JSON-text MySQL/SQLite storage.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native PostgreSQL/MySQL/SQLite scenarios passed quote-bearing values, current timestamps, NULL writes, native/JSON-text arrays, bound LIMIT/zero limit, complete/empty IN sets and independent repeated IN conditions. Repairs #6548/#6549/#6550; standalone unchanged 2524516212 SQLite probe reproduces each original failure.",
+        "75 component unit tests and 128 public builder contract tests passed, including six new dialect/pattern tests. Strict production and both focused integration target Clippy passed after existing float sample lint repair #6558. Warning-denied rustdoc passed; all 13 filtered builder doctests are ignored (no executable builder docs claimed)."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_new_on_conflict_clause::sql-literal#1",
@@ -22679,69 +22684,84 @@
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "SelectBuilder::fetch_all",
       "kind": "execution-wrapper",
-      "line": 1295,
-      "fingerprint": "23ace4f4f68fc0dd1fe0d465d8447c87807e0954ed4431de3b85dcb27887847d",
+      "line": 1392,
+      "fingerprint": "c18059dd813d759ece4022f448584013c9c93911ad0218d4f5531522224d0a3a",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "backends; canonical reinhardt-db backend features; caller-selected native/custom provider"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Private typed statement factories render checked SQL and exact owned native Values before await, then use generated providers. Public raw build signatures remain separate compatibility renderers. Structural CURRENT_TIMESTAMP/NULL, bound LIMIT and grouped IN conditions preserve argument order; model-independent builder arrays explicitly retain native PostgreSQL or JSON-text MySQL/SQLite storage.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native PostgreSQL/MySQL/SQLite scenarios passed quote-bearing values, current timestamps, NULL writes, native/JSON-text arrays, bound LIMIT/zero limit, complete/empty IN sets and independent repeated IN conditions. Repairs #6548/#6549/#6550; standalone unchanged 2524516212 SQLite probe reproduces each original failure.",
+        "75 component unit tests and 128 public builder contract tests passed, including six new dialect/pattern tests. Strict production and both focused integration target Clippy passed after existing float sample lint repair #6558. Warning-denied rustdoc passed; all 13 filtered builder doctests are ignored (no executable builder docs claimed)."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::SelectBuilder::fetch_one::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "SelectBuilder::fetch_one",
       "kind": "execution-wrapper",
-      "line": 1301,
-      "fingerprint": "34ce9147228cecb5af900830134570080268865f33640509c4f4534b09e369cb",
+      "line": 1399,
+      "fingerprint": "31bf4a29dff63bdfe636ed1aa05affa5a556cdb03ebe97305e7e52e7af333a20",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "backends; canonical reinhardt-db backend features; caller-selected native/custom provider"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Private typed statement factories render checked SQL and exact owned native Values before await, then use generated providers. Public raw build signatures remain separate compatibility renderers. Structural CURRENT_TIMESTAMP/NULL, bound LIMIT and grouped IN conditions preserve argument order; model-independent builder arrays explicitly retain native PostgreSQL or JSON-text MySQL/SQLite storage.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native PostgreSQL/MySQL/SQLite scenarios passed quote-bearing values, current timestamps, NULL writes, native/JSON-text arrays, bound LIMIT/zero limit, complete/empty IN sets and independent repeated IN conditions. Repairs #6548/#6549/#6550; standalone unchanged 2524516212 SQLite probe reproduces each original failure.",
+        "75 component unit tests and 128 public builder contract tests passed, including six new dialect/pattern tests. Strict production and both focused integration target Clippy passed after existing float sample lint repair #6558. Warning-denied rustdoc passed; all 13 filtered builder doctests are ignored (no executable builder docs claimed)."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::UpdateBuilder::execute::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "UpdateBuilder::execute",
       "kind": "execution-wrapper",
-      "line": 1195,
-      "fingerprint": "1a9d066f2780c7200ac5816318f710725bcdd8852aae52ae189c2f197bb496f1",
+      "line": 1285,
+      "fingerprint": "683145466cf9564bf690a65973254e4cc547a6e03e0adb31374e515ddbeb13c7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "backends; canonical reinhardt-db backend features; caller-selected native/custom provider"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Private typed statement factories render checked SQL and exact owned native Values before await, then use generated providers. Public raw build signatures remain separate compatibility renderers. Structural CURRENT_TIMESTAMP/NULL, bound LIMIT and grouped IN conditions preserve argument order; model-independent builder arrays explicitly retain native PostgreSQL or JSON-text MySQL/SQLite storage.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native PostgreSQL/MySQL/SQLite scenarios passed quote-bearing values, current timestamps, NULL writes, native/JSON-text arrays, bound LIMIT/zero limit, complete/empty IN sets and independent repeated IN conditions. Repairs #6548/#6549/#6550; standalone unchanged 2524516212 SQLite probe reproduces each original failure.",
+        "75 component unit tests and 128 public builder contract tests passed, including six new dialect/pattern tests. Strict production and both focused integration target Clippy passed after existing float sample lint repair #6558. Warning-denied rustdoc passed; all 13 filtered builder doctests are ignored (no executable builder docs claimed)."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/schema.rs::BaseDatabaseSchemaEditor::alter_column_statement::macro-sql-literal#1",

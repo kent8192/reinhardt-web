@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use reinhardt_query::prelude::{
-	Alias, ColumnRef, Expr, ExprTrait, Query, QueryBuilder as RqQueryBuilder, SelectStatement,
-	Value,
+	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, Query, QueryBuilder as RqQueryBuilder,
+	SelectStatement, SimpleExpr, UpdateStatement, Value, Values,
 };
 
 use super::{
@@ -120,6 +120,105 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 			panic!("QueryValue::Now should be handled in build() method, not converted to Value")
 		}
 	}
+}
+
+fn query_value_expression(value: &QueryValue) -> SimpleExpr {
+	if matches!(value, QueryValue::Now) {
+		Expr::current_timestamp().into_simple_expr()
+	} else {
+		Expr::val(query_value_to_sea_value(value)).into_simple_expr()
+	}
+}
+
+fn native_builder_expression(value: &QueryValue, backend: DatabaseType) -> Result<SimpleExpr> {
+	// Preserve the raw builder's JSON-text array storage outside PostgreSQL.
+	let json = if backend != DatabaseType::Postgres {
+		match value {
+			QueryValue::StringArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::IntArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::BigIntArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::BoolArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::FloatArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::DoubleArray(values) => Some(serde_json::to_string(values)),
+			QueryValue::UuidArray(values) => Some(serde_json::to_string(values)),
+			_ => None,
+		}
+	} else {
+		None
+	};
+	if let Some(json) = json {
+		let json = json.map_err(|error| {
+			DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!("failed to encode builder array: {error}"),
+			)
+			.with_source(error)
+		})?;
+		return Ok(Expr::val(json).into_simple_expr());
+	}
+	Ok(query_value_expression(value))
+}
+
+enum BuilderPredicate {
+	Equal(String, QueryValue),
+	In(String, Vec<QueryValue>),
+}
+
+impl BuilderPredicate {
+	fn expression_with(
+		&self,
+		convert: &impl Fn(&QueryValue) -> Result<SimpleExpr>,
+	) -> Result<SimpleExpr> {
+		match self {
+			Self::Equal(column, value) => Ok(Expr::col(Alias::new(column)).eq(convert(value)?)),
+			Self::In(column, values) => Ok(Expr::col(Alias::new(column))
+				.is_in(values.iter().map(convert).collect::<Result<Vec<_>>>()?)),
+		}
+	}
+
+	fn values(&self) -> &[QueryValue] {
+		match self {
+			Self::Equal(_, value) => std::slice::from_ref(value),
+			Self::In(_, values) => values,
+		}
+	}
+}
+
+fn legacy_builder_parameters<'a>(values: impl Iterator<Item = &'a QueryValue>) -> Vec<QueryValue> {
+	values
+		.filter(|value| {
+			!matches!(value, QueryValue::Now) && !query_value_to_sea_value(value).is_null()
+		})
+		.cloned()
+		.collect()
+}
+
+enum NativeBuilderStatement {
+	Update(UpdateStatement),
+	Select(Box<SelectStatement>),
+	Delete(DeleteStatement),
+}
+
+fn native_builder_pair(
+	backend: DatabaseType,
+	statement: NativeBuilderStatement,
+) -> Result<(String, Values)> {
+	use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+	macro_rules! build {
+		($statement:expr, $method:ident) => {
+			match backend {
+				DatabaseType::Postgres => PostgresQueryBuilder.$method($statement),
+				DatabaseType::Mysql => MySqlQueryBuilder.$method($statement),
+				DatabaseType::Sqlite => SqliteQueryBuilder.$method($statement),
+			}
+		};
+	}
+	match &statement {
+		NativeBuilderStatement::Update(stmt) => build!(stmt, build_update_checked),
+		NativeBuilderStatement::Select(stmt) => build!(stmt, build_select_checked),
+		NativeBuilderStatement::Delete(stmt) => build!(stmt, build_delete_checked),
+	}
+	.map_err(|error| DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into())
 }
 
 /// Conflict target specifying which constraint or columns trigger the conflict
@@ -1101,7 +1200,7 @@ pub struct UpdateBuilder {
 	backend: Arc<dyn DatabaseBackend>,
 	table: String,
 	sets: Vec<(String, QueryValue)>,
-	wheres: Vec<(String, String, QueryValue)>,
+	wheres: Vec<BuilderPredicate>,
 }
 
 impl UpdateBuilder {
@@ -1115,84 +1214,77 @@ impl UpdateBuilder {
 		}
 	}
 
-	/// Performs the set operation.
+	/// Adds a bound SET value.
 	pub fn set(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.sets.push((column.into(), value.into()));
 		self
 	}
 
-	/// Sets the now.
+	/// Sets the column to the backend's current timestamp expression.
 	pub fn set_now(mut self, column: impl Into<String>) -> Self {
 		self.sets.push((column.into(), QueryValue::Now));
 		self
 	}
 
-	/// Performs the where eq operation.
+	/// Adds an equality predicate.
 	pub fn where_eq(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.wheres
-			.push((column.into(), "=".to_string(), value.into()));
+			.push(BuilderPredicate::Equal(column.into(), value.into()));
 		self
 	}
 
-	/// Builds the final result.
+	fn statement_with(
+		&self,
+		convert: impl Fn(&QueryValue) -> Result<SimpleExpr>,
+	) -> Result<UpdateStatement> {
+		let mut stmt = Query::update().table(Alias::new(&self.table)).to_owned();
+		for (column, value) in &self.sets {
+			stmt.value_expr(Alias::new(column), convert(value)?);
+		}
+		for predicate in &self.wheres {
+			stmt.and_where(predicate.expression_with(&convert)?);
+		}
+		Ok(stmt)
+	}
+
+	fn build_native(&self) -> Result<(String, Values)> {
+		let backend = self.backend.database_type();
+		native_builder_pair(
+			backend,
+			NativeBuilderStatement::Update(
+				self.statement_with(|value| native_builder_expression(value, backend))?,
+			),
+		)
+	}
+
+	/// Builds SQL and legacy parameters for callers of the raw API.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
-		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
 			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
 		};
-
-		// Sentinel placeholder for NOW() values (replaced in final SQL)
-		const NOW_PLACEHOLDER: &str = "__REINHARDT_NOW__";
-
-		let mut stmt = Query::update().table(Alias::new(&self.table)).to_owned();
-
-		// Add SET clauses
-		for (col, val) in &self.sets {
-			if matches!(val, QueryValue::Now) {
-				// Use a sentinel string that will be replaced with NOW() in the output
-				stmt.value(Alias::new(col), NOW_PLACEHOLDER);
-				continue;
-			}
-			stmt.value(Alias::new(col), query_value_to_sea_value(val));
-		}
-
-		// Add WHERE clauses
-		for (col, op, val) in &self.wheres {
-			if op == "=" {
-				stmt.and_where(
-					Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
-				);
-			}
-		}
-
-		// Build SQL based on database type
+		// This converter only constructs expressions and cannot return Err.
+		let stmt = self
+			.statement_with(|value| Ok(query_value_expression(value)))
+			.expect("legacy builder expressions are infallible");
 		let sql = match self.backend.database_type() {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_update(&stmt).0,
 			DatabaseType::Mysql => MySqlQueryBuilder.build_update(&stmt).0,
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_update(&stmt).0,
 		};
-
-		// Replace NOW() placeholder sentinel with actual function call
-		let sql = sql.replace(&format!("'{}'", NOW_PLACEHOLDER), "NOW()");
-
-		// Preserve parameter order: first SET values, then WHERE values
-		let mut params = Vec::new();
-		for (_, val) in &self.sets {
-			if !matches!(val, QueryValue::Now) {
-				params.push(val.clone());
-			}
-		}
-		for (_, _, val) in &self.wheres {
-			params.push(val.clone());
-		}
-
+		let params = legacy_builder_parameters(
+			self.sets
+				.iter()
+				.map(|(_, value)| value)
+				.chain(self.wheres.iter().flat_map(BuilderPredicate::values)),
+		);
 		(sql, params)
 	}
 
-	/// Executes the operation.
+	/// Executes the typed statement and exact renderer arguments.
 	pub async fn execute(&self) -> Result<QueryResult> {
-		let (sql, params) = self.build();
-		self.backend.execute(&sql, params).await
+		self.backend
+			.execute_generated(self.build_native()?, None)
+			.await
 	}
 }
 
@@ -1201,7 +1293,7 @@ pub struct SelectBuilder {
 	backend: Arc<dyn DatabaseBackend>,
 	columns: Vec<String>,
 	table: String,
-	wheres: Vec<(String, String, QueryValue)>,
+	wheres: Vec<BuilderPredicate>,
 	limit: Option<i64>,
 }
 
@@ -1210,95 +1302,103 @@ impl SelectBuilder {
 	pub fn new(backend: Arc<dyn DatabaseBackend>) -> Self {
 		Self {
 			backend,
-			columns: vec!["*".to_string()],
+			columns: vec!["*".into()],
 			table: String::new(),
 			wheres: Vec::new(),
 			limit: None,
 		}
 	}
 
-	/// Performs the columns operation.
+	/// Selects the supplied column identifiers.
 	pub fn columns(mut self, columns: Vec<&str>) -> Self {
-		self.columns = columns.iter().map(|s| s.to_string()).collect();
+		self.columns = columns.iter().map(|column| (*column).into()).collect();
 		self
 	}
 
-	/// Performs the from operation.
+	/// Selects the source table.
 	pub fn from(mut self, table: impl Into<String>) -> Self {
 		self.table = table.into();
 		self
 	}
 
-	/// Performs the where eq operation.
+	/// Adds an equality predicate.
 	pub fn where_eq(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.wheres
-			.push((column.into(), "=".to_string(), value.into()));
+			.push(BuilderPredicate::Equal(column.into(), value.into()));
 		self
 	}
 
-	/// Performs the limit operation.
+	/// Sets a bound row limit; negative limits are omitted.
 	pub fn limit(mut self, limit: i64) -> Self {
 		self.limit = Some(limit);
 		self
 	}
 
-	/// Builds the final result.
+	fn statement_with(
+		&self,
+		convert: impl Fn(&QueryValue) -> Result<SimpleExpr>,
+	) -> Result<SelectStatement> {
+		let mut stmt = Query::select().from(Alias::new(&self.table)).to_owned();
+		if self.columns.as_slice() == ["*"] {
+			stmt.column(ColumnRef::asterisk());
+		} else {
+			for column in &self.columns {
+				stmt.column(Alias::new(column));
+			}
+		}
+		for predicate in &self.wheres {
+			stmt.and_where(predicate.expression_with(&convert)?);
+		}
+		if let Some(limit) = self.limit.and_then(|limit| u64::try_from(limit).ok()) {
+			stmt.limit(limit);
+		}
+		Ok(stmt)
+	}
+
+	fn build_native(&self) -> Result<(String, Values)> {
+		let backend = self.backend.database_type();
+		native_builder_pair(
+			backend,
+			NativeBuilderStatement::Select(Box::new(
+				self.statement_with(|value| native_builder_expression(value, backend))?,
+			)),
+		)
+	}
+
+	/// Builds SQL and legacy parameters for callers of the raw API.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
-		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
 			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
 		};
-
-		let mut stmt = Query::select().from(Alias::new(&self.table)).to_owned();
-
-		// Add columns
-		if self.columns == vec!["*".to_string()] {
-			stmt.column(ColumnRef::asterisk());
-		} else {
-			for col in &self.columns {
-				stmt.column(Alias::new(col));
-			}
-		}
-
-		// Add WHERE clauses
-		for (col, op, val) in &self.wheres {
-			if op == "=" {
-				stmt.and_where(
-					Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
-				);
-			}
-		}
-
-		// Add LIMIT (only apply non-negative values)
-		if let Some(limit) = self.limit
-			&& let Ok(limit_u64) = u64::try_from(limit)
-		{
-			stmt.limit(limit_u64);
-		}
-
-		// Build parameterized SQL (consistent with InsertBuilder, UpdateBuilder, DeleteBuilder)
+		// This converter only constructs expressions and cannot return Err.
+		let stmt = self
+			.statement_with(|value| Ok(query_value_expression(value)))
+			.expect("legacy builder expressions are infallible");
 		let sql = match self.backend.database_type() {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_select(&stmt).0,
 			DatabaseType::Mysql => MySqlQueryBuilder.build_select(&stmt).0,
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_select(&stmt).0,
 		};
-
-		// Collect parameters
-		let params: Vec<QueryValue> = self.wheres.iter().map(|(_, _, val)| val.clone()).collect();
-
+		let mut params =
+			legacy_builder_parameters(self.wheres.iter().flat_map(BuilderPredicate::values));
+		if let Some(limit) = self.limit.filter(|limit| *limit >= 0) {
+			params.push(QueryValue::Int(limit));
+		}
 		(sql, params)
 	}
 
-	/// Fetches all.
+	/// Fetches all rows through the typed native provider.
 	pub async fn fetch_all(&self) -> Result<Vec<Row>> {
-		let (sql, params) = self.build();
-		self.backend.fetch_all(&sql, params).await
+		self.backend
+			.fetch_all_generated(self.build_native()?, None)
+			.await
 	}
 
-	/// Fetches one.
+	/// Fetches one row through the typed native provider.
 	pub async fn fetch_one(&self) -> Result<Row> {
-		let (sql, params) = self.build();
-		self.backend.fetch_one(&sql, params).await
+		self.backend
+			.fetch_one_generated(self.build_native()?, None)
+			.await
 	}
 }
 
@@ -1306,7 +1406,7 @@ impl SelectBuilder {
 pub struct DeleteBuilder {
 	backend: Arc<dyn DatabaseBackend>,
 	table: String,
-	wheres: Vec<(String, String, QueryValue)>,
+	wheres: Vec<BuilderPredicate>,
 }
 
 impl DeleteBuilder {
@@ -1319,68 +1419,67 @@ impl DeleteBuilder {
 		}
 	}
 
-	/// Performs the where eq operation.
+	/// Adds an equality predicate.
 	pub fn where_eq(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.wheres
-			.push((column.into(), "=".to_string(), value.into()));
+			.push(BuilderPredicate::Equal(column.into(), value.into()));
 		self
 	}
 
-	/// Performs the where in operation.
+	/// Adds one IN predicate for the complete input set.
 	pub fn where_in(mut self, column: impl Into<String> + Clone, values: Vec<QueryValue>) -> Self {
-		for value in values {
-			self.wheres
-				.push((column.clone().into(), "IN".to_string(), value));
-		}
+		self.wheres
+			.push(BuilderPredicate::In(column.into(), values));
 		self
 	}
 
-	/// Builds the final result.
-	pub fn build(&self) -> (String, Vec<QueryValue>) {
-		use super::types::DatabaseType;
-		use reinhardt_query::prelude::{
-			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
-		};
-
+	fn statement_with(
+		&self,
+		convert: impl Fn(&QueryValue) -> Result<SimpleExpr>,
+	) -> Result<DeleteStatement> {
 		let mut stmt = Query::delete()
 			.from_table(Alias::new(&self.table))
 			.to_owned();
-
-		// Add WHERE clauses
-		for (col, op, val) in &self.wheres {
-			match op.as_str() {
-				"=" => {
-					stmt.and_where(
-						Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
-					);
-				}
-				"IN" => {
-					stmt.and_where(
-						Expr::col(Alias::new(col))
-							.is_in([Expr::val(query_value_to_sea_value(val))]),
-					);
-				}
-				_ => {}
-			}
+		for predicate in &self.wheres {
+			stmt.and_where(predicate.expression_with(&convert)?);
 		}
+		Ok(stmt)
+	}
 
-		// Build SQL
+	fn build_native(&self) -> Result<(String, Values)> {
+		let backend = self.backend.database_type();
+		native_builder_pair(
+			backend,
+			NativeBuilderStatement::Delete(
+				self.statement_with(|value| native_builder_expression(value, backend))?,
+			),
+		)
+	}
+
+	/// Builds SQL and legacy parameters for callers of the raw API.
+	pub fn build(&self) -> (String, Vec<QueryValue>) {
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
+		// This converter only constructs expressions and cannot return Err.
+		let stmt = self
+			.statement_with(|value| Ok(query_value_expression(value)))
+			.expect("legacy builder expressions are infallible");
 		let sql = match self.backend.database_type() {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_delete(&stmt).0,
 			DatabaseType::Mysql => MySqlQueryBuilder.build_delete(&stmt).0,
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_delete(&stmt).0,
 		};
-
-		// Collect parameters
-		let params: Vec<QueryValue> = self.wheres.iter().map(|(_, _, val)| val.clone()).collect();
-
+		let params =
+			legacy_builder_parameters(self.wheres.iter().flat_map(BuilderPredicate::values));
 		(sql, params)
 	}
 
-	/// Executes the operation.
+	/// Executes the typed statement and exact renderer arguments.
 	pub async fn execute(&self) -> Result<QueryResult> {
-		let (sql, params) = self.build();
-		self.backend.execute(&sql, params).await
+		self.backend
+			.execute_generated(self.build_native()?, None)
+			.await
 	}
 }
 
@@ -1544,6 +1643,98 @@ mod tests {
 	use rstest::rstest;
 
 	#[rstest]
+	#[case(
+		DatabaseType::Postgres,
+		"UPDATE \"users\" SET \"name\" = $1, \"updated_at\" = CURRENT_TIMESTAMP, \"nickname\" = NULL WHERE \"id\" = $2",
+		"SELECT * FROM \"users\" WHERE \"name\" = $1 LIMIT $2",
+		"DELETE FROM \"users\" WHERE \"id\" IN ($1, $2)"
+	)]
+	#[case(
+		DatabaseType::Mysql,
+		"UPDATE `users` SET `name` = ?, `updated_at` = CURRENT_TIMESTAMP, `nickname` = NULL WHERE `id` = ?",
+		"SELECT * FROM `users` WHERE `name` = ? LIMIT ?",
+		"DELETE FROM `users` WHERE `id` IN (?, ?)"
+	)]
+	#[case(
+		DatabaseType::Sqlite,
+		"UPDATE \"users\" SET \"name\" = ?, \"updated_at\" = CURRENT_TIMESTAMP, \"nickname\" = NULL WHERE \"id\" = ?",
+		"SELECT * FROM \"users\" WHERE \"name\" = ? LIMIT ?",
+		"DELETE FROM \"users\" WHERE \"id\" IN (?, ?)"
+	)]
+	fn native_builders_keep_null_time_limit_and_in_argument_order(
+		#[case] dialect: DatabaseType,
+		#[case] expected_update: &str,
+		#[case] expected_select: &str,
+		#[case] expected_delete: &str,
+	) {
+		// Arrange: no native driver is needed to verify each dialect's exact contract.
+		let backend: Arc<dyn DatabaseBackend> = match dialect {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let name = "quoted' ? $42";
+		// Act
+		let update = UpdateBuilder::new(backend.clone(), "users")
+			.set("name", name)
+			.set_now("updated_at")
+			.set("nickname", QueryValue::Null)
+			.where_eq("id", 7_i64)
+			.build_native()
+			.unwrap();
+		let select = SelectBuilder::new(backend.clone())
+			.from("users")
+			.where_eq("name", name)
+			.limit(1)
+			.build_native()
+			.unwrap();
+		let delete = DeleteBuilder::new(backend, "users")
+			.where_in("id", vec![7_i64.into(), 8_i64.into()])
+			.build_native()
+			.unwrap();
+		// Assert: NULL and CURRENT_TIMESTAMP consume no slots; LIMIT owns its slot.
+		assert_eq!(
+			update,
+			(
+				expected_update.into(),
+				Values(vec![name.into(), 7_i64.into()])
+			)
+		);
+		assert_eq!(
+			select,
+			(
+				expected_select.into(),
+				Values(vec![name.into(), Value::BigUnsigned(Some(1))])
+			)
+		);
+		assert_eq!(
+			delete,
+			(
+				expected_delete.into(),
+				Values(vec![7_i64.into(), 8_i64.into()])
+			)
+		);
+	}
+
+	#[rstest]
+	#[case(DatabaseType::Postgres)]
+	#[case(DatabaseType::Mysql)]
+	#[case(DatabaseType::Sqlite)]
+	fn native_builder_arrays_retain_explicit_backend_storage(#[case] backend: DatabaseType) {
+		// Arrange
+		let input = QueryValue::StringArray(vec!["quoted' ? $42".into()]);
+		// Act
+		let expression = native_builder_expression(&input, backend).unwrap();
+		// Assert
+		let expected = if backend == DatabaseType::Postgres {
+			query_value_to_sea_value(&input)
+		} else {
+			Value::from(r#"["quoted' ? $42"]"#)
+		};
+		assert!(matches!(expression, SimpleExpr::Value(value) if value == expected));
+	}
+
+	#[rstest]
 	#[case::int32_min(QueryValue::Int32(i32::MIN), Value::Int(Some(i32::MIN)))]
 	#[case::int32_max(QueryValue::Int32(i32::MAX), Value::Int(Some(i32::MAX)))]
 	#[case::bigint_small(QueryValue::Int(3), Value::BigInt(Some(3)))]
@@ -1687,10 +1878,7 @@ mod tests {
 		let (sql, params) = builder.build();
 
 		// reinhardt-query uses parameterized queries with placeholders
-		assert_eq!(
-			sql,
-			"DELETE FROM \"users\" WHERE \"id\" IN ($1) AND \"id\" IN ($2)"
-		);
+		assert_eq!(sql, "DELETE FROM \"users\" WHERE \"id\" IN ($1, $2)");
 		assert_eq!(params.len(), 2);
 		assert!(matches!(params[0], QueryValue::Int(1)));
 		assert!(matches!(params[1], QueryValue::Int(2)));
