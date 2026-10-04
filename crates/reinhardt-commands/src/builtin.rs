@@ -3206,16 +3206,23 @@ fn expand_apps_with_fk_providers(
 		.collect();
 	let mut stack: Vec<String> = to_write.iter().cloned().collect();
 	while let Some(app) = stack.pop() {
-		let Some(migration) = generated.iter().find(|m| m.app_label == app) else {
-			continue;
-		};
-		for provider in reinhardt_db::migrations::MigrationAutodetector::foreign_key_provider_apps(
-			to_state,
-			&migration.operations,
-			&app,
-		) {
-			if generated_apps.contains(&provider) && to_write.insert(provider.clone()) {
-				stack.push(provider);
+		for migration in generated
+			.iter()
+			.filter(|migration| migration.app_label == app)
+		{
+			let providers =
+				reinhardt_db::migrations::MigrationAutodetector::foreign_key_provider_apps(
+					to_state,
+					&migration.operations,
+					&app,
+				);
+			for provider in providers
+				.into_iter()
+				.chain(migration.dependencies.iter().map(|(app, _)| app.clone()))
+			{
+				if generated_apps.contains(&provider) && to_write.insert(provider.clone()) {
+					stack.push(provider);
+				}
 			}
 		}
 	}
@@ -8787,6 +8794,27 @@ name = "db.sqlite3"
 				("organizations".to_string(), "0001_initial".to_string()),
 				("auth".to_string(), "0003_user_email".to_string()),
 			]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest::rstest]
+	fn provider_expansion_reads_every_generated_stage() {
+		use reinhardt_db::migrations::{Migration, ProjectState};
+		// Arrange
+		let generated = vec![
+			Migration::new("autodetected_sequences", "events"),
+			Migration::new("autodetected", "events")
+				.add_dependency("providers", "autodetected_sequences"),
+			Migration::new("autodetected_sequences", "providers"),
+		];
+		// Act
+		let expanded =
+			expand_apps_with_fk_providers(&["events".into()], &generated, &ProjectState::new());
+		// Assert
+		assert_eq!(
+			expanded,
+			std::collections::BTreeSet::from(["events".into(), "providers".into()])
 		);
 	}
 

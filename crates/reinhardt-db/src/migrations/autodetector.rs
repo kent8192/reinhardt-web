@@ -1139,7 +1139,12 @@ impl ProjectState {
 
 		super::schema_diff::DatabaseSchema {
 			tables,
-			sequences: self.sequences.clone(),
+			sequences: self
+				.sequences
+				.iter()
+				.filter(|(key, _)| key.app_label == app_label)
+				.map(|(key, definition)| (key.clone(), definition.clone()))
+				.collect(),
 			observed_sequences: Vec::new(),
 			default_schema: None,
 		}

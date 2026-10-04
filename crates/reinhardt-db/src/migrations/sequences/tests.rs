@@ -728,6 +728,41 @@ fn embedded_creation_ownership_is_rendered() {
 }
 
 #[rstest]
+fn app_schema_omits_foreign_sequence_mutations() {
+	// Arrange
+	let mut old = ProjectState::new();
+	for app in ["events", "foreign"] {
+		old.add_sequence(SequenceDefinition::new(
+			SequenceKey::new(app, "numbers"),
+			QualifiedName::new(format!("{app}_numbers")),
+		))
+		.unwrap();
+	}
+	let mut new = old.clone();
+	new.sequences
+		.get_mut(&SequenceKey::new("foreign", "numbers"))
+		.unwrap()
+		.options
+		.cache = Some(50);
+	// Act
+	let old_schema = old.to_database_schema_for_app("events");
+	let new_schema = new.to_database_schema_for_app("events");
+	let operations =
+		crate::migrations::schema_diff::SchemaDiff::new(old_schema.clone(), new_schema)
+			.try_generate_operations()
+			.unwrap();
+	// Assert
+	assert_eq!(old_schema.sequences.len(), 1);
+	assert!(
+		old_schema
+			.sequences
+			.contains_key(&SequenceKey::new("events", "numbers"))
+	);
+	assert!(operations.is_empty());
+	assert_eq!(old.to_database_schema().sequences.len(), 2);
+}
+
+#[rstest]
 #[case(false)]
 #[case(true)]
 fn relation_names_are_released_before_sequence_renames(#[case] table: bool) {
