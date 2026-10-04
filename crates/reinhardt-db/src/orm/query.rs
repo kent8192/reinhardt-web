@@ -4519,6 +4519,8 @@ where
 	///
 	/// Fetches all records from the database that match the accumulated filters.
 	/// If `select_related` fields are specified, performs JOIN queries for eager loading.
+	/// Values are bound through the active backend's native generated-value codecs,
+	/// with unsupported or lossy arguments rejected before SQL execution.
 	///
 	/// # Examples
 	///
@@ -4571,52 +4573,7 @@ where
 		T: serde::de::DeserializeOwned,
 	{
 		let conn = super::manager::get_connection().await?;
-
-		let stmt = if self.select_related_fields.is_empty() {
-			self.build_select_statement()?
-		} else {
-			// SELECT with JOINs for select_related
-			self.select_related_query()
-		};
-
-		// Convert statement to SQL with inline values (no placeholders)
-		let sql = stmt.to_string(PostgresQueryBuilder);
-
-		// Execute query and deserialize results
-		let started_at = Instant::now();
-		let query_result = conn.query(&sql, vec![]).await;
-		let duration = started_at.elapsed();
-
-		let rows = match query_result {
-			Ok(rows) => {
-				super::instrumentation::instrumentation()
-					.orm_query_end_with_params(&sql, &[], duration)
-					.await;
-				rows
-			}
-			Err(error) => {
-				super::instrumentation::instrumentation()
-					.query_error(&sql, &format!("{error:?}"), duration)
-					.await;
-				return Err(error.into());
-			}
-		};
-		rows.into_iter()
-			.map(|row| {
-				serde_json::from_value(serde_json::to_value(&row.data).map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Serialization error: {}",
-						e
-					))
-				})?)
-				.map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Deserialization error: {}",
-						e
-					))
-				})
-			})
-			.collect()
+		self.all_with_db(&conn).await
 	}
 
 	/// Execute the queryset and return the first matching record
