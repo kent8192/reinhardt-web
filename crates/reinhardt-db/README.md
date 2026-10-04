@@ -58,6 +58,10 @@ This crate provides the following modules:
   - One-to-one relationships
   - Lazy loading and eager loading
 
+- **ContentTypes**: Database-backed polymorphic relationship metadata
+  - SQLite inserts and inserted-ID lookups share one acquired connection, so
+    returned IDs identify the inserted row even with multiple pooled connections
+
 ### Implemented ✓ (Additional Features)
 
 - **Advanced Query Optimization**

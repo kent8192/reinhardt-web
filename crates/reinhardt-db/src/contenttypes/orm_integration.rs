@@ -443,8 +443,12 @@ impl ContentTypeTransaction {
 			.expect("Failed to build insert statement")
 			.to_owned();
 		let (sql, values) = stmt.build(SqliteQueryBuilder);
+		// Keep the insert and its connection-local ID lookup on the same connection.
+		let mut connection = self.pool.acquire().await.map_err(|e| {
+			PersistenceError::DatabaseError(format!("Failed to create content type: {}", e))
+		})?;
 		bind_query_values(sqlx::query(&sql), &values)
-			.execute(&*self.pool)
+			.execute(&mut *connection)
 			.await
 			.map_err(|e| {
 				PersistenceError::DatabaseError(format!("Failed to create content type: {}", e))
@@ -452,7 +456,7 @@ impl ContentTypeTransaction {
 
 		// Get the last inserted ID using SQLite's last_insert_rowid()
 		let id_row = sqlx::query("SELECT last_insert_rowid() as id")
-			.fetch_one(&*self.pool)
+			.fetch_one(&mut *connection)
 			.await
 			.map_err(|e| {
 				PersistenceError::DatabaseError(format!("Failed to get last insert ID: {}", e))
