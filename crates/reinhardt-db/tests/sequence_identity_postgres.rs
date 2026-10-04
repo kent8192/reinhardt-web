@@ -1451,6 +1451,86 @@ async fn catalog_identity_changes_keep_implicit_physical_names() {
 }
 
 #[rstest]
+#[case(false)]
+#[case(true)]
+#[tokio::test]
+async fn executor_reuses_vacated_relation_names_for_sequences(#[case] table: bool) {
+	// Arrange
+	let fixture = postgres("16-alpine").await;
+	let mut old = ProjectState::new();
+	old.add_sequence(SequenceDefinition::new(
+		SequenceKey::new("events", "counter"),
+		QualifiedName::new("counter"),
+	))
+	.unwrap();
+	if table {
+		let mut model = ModelState::new("events", "Event");
+		model.table_name = "events".into();
+		model.add_field(FieldState::new("n", FieldType::Integer, false));
+		old.add_model(model);
+	} else {
+		old.add_sequence(SequenceDefinition::new(
+			SequenceKey::new("events", "obsolete"),
+			QualifiedName::new("events"),
+		))
+		.unwrap();
+	}
+	let initial = MigrationAutodetector::new(ProjectState::new(), old.clone())
+		.try_generate_operations()
+		.unwrap()
+		.into_iter()
+		.fold(
+			Migration::new("0001_initial", "events"),
+			|migration, operation| migration.add_operation(operation),
+		);
+	let mut new = old.clone();
+	new.sequences
+		.get_mut(&SequenceKey::new("events", "counter"))
+		.unwrap()
+		.name = QualifiedName::new("events");
+	if table {
+		new.models.values_mut().next().unwrap().table_name = "archived_events".into();
+	} else {
+		new.sequences
+			.remove(&SequenceKey::new("events", "obsolete"));
+	}
+	let change = MigrationAutodetector::new(old, new)
+		.try_generate_operations()
+		.unwrap()
+		.into_iter()
+		.fold(
+			Migration::new("0002_reuse", "events").add_dependency("events", "0001_initial"),
+			|migration, operation| migration.add_operation(operation),
+		);
+	let mut executor =
+		reinhardt_db::migrations::DatabaseMigrationExecutor::new(fixture.connection.clone());
+	executor.apply_migrations(&[initial]).await.unwrap();
+	// Act
+	executor
+		.apply_migrations(std::slice::from_ref(&change))
+		.await
+		.unwrap();
+	let renamed: i64 = sqlx::query_scalar("SELECT nextval('events')")
+		.fetch_one(&fixture.pool)
+		.await
+		.unwrap();
+	executor.rollback_migrations(&[change]).await.unwrap();
+	let restored: i64 = sqlx::query_scalar("SELECT nextval('counter')")
+		.fetch_one(&fixture.pool)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(renamed, 1);
+	assert_eq!(restored, 2);
+	let kind: String =
+		sqlx::query_scalar("SELECT relkind::text FROM pg_class WHERE oid = 'events'::regclass")
+			.fetch_one(&fixture.pool)
+			.await
+			.unwrap();
+	assert_eq!(kind, if table { "r" } else { "S" });
+}
+
+#[rstest]
 #[tokio::test]
 async fn embedded_sequence_ownership_matches_catalog_and_column_lifetime() {
 	// Arrange

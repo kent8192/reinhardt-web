@@ -218,8 +218,17 @@ pub(crate) async fn preflight(
 	}
 	let _normalized = resolved_state(&current, &schema)?;
 	let mut created = BTreeSet::new();
+	let mut released = BTreeSet::new();
+	let mut reused = BTreeSet::new();
+	let mut implicit_creations = BTreeSet::new();
 	let mut deleting = Vec::new();
 	for operation in &planned {
+		if let Some(name) = super::planning::acquisition(operation) {
+			let name = resolved(&name, &schema);
+			if released.contains(&name) {
+				reused.insert(name);
+			}
+		}
 		match operation {
 			Operation::CreateTable { name, columns, .. } => {
 				created.insert(QualifiedName::new(name).with_schema(&schema));
@@ -275,6 +284,9 @@ pub(crate) async fn preflight(
 			}
 			_ => {}
 		}
+		if let Some(name) = super::planning::release(operation) {
+			released.insert(resolved(&name, &schema));
+		}
 	}
 	if direction == MigrationDirection::Backward {
 		for definition in before.sequences.values() {
@@ -284,7 +296,9 @@ pub(crate) async fn preflight(
 					.iter()
 					.any(|operation| releases(operation, &owner.table.name, &owner.column))
 			}) {
-				created.insert(resolved(&definition.name, &schema));
+				let name = resolved(&definition.name, &schema);
+				created.insert(name.clone());
+				implicit_creations.insert(name);
 				planned.push(Operation::Sequence {
 					operation: SequenceOperation::Ownership {
 						key: definition.key.clone(),
@@ -338,7 +352,10 @@ pub(crate) async fn preflight(
 			}
 		})
 		.collect();
-	let mut existing_sequences = BTreeSet::new();
+	let mut origins = std::collections::BTreeMap::<QualifiedName, Option<QualifiedName>>::new();
+	// Owned sequences are restored around reverse column/table DDL by the SQL
+	// planner, rather than appearing as explicit Create operations in this list.
+	origins.extend(implicit_creations.into_iter().map(|name| (name, None)));
 	for operation in &planned {
 		if let Operation::Sequence { operation } = operation {
 			let name = match operation {
@@ -350,22 +367,29 @@ pub(crate) async fn preflight(
 				_ => None,
 			};
 			if let Some(name) = name {
-				existing_sequences.insert(resolved(name, &schema));
+				let target = resolved(name, &schema);
+				let origin = origins.get(&target).cloned().unwrap_or(Some(target));
+				if let Some(name) = origin {
+					let metadata: Option<(String, String, bool)> = sqlx::query_as("SELECT c.relkind::text, c.relpersistence::text, EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='i') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2").bind(name.schema.as_ref().expect("resolved schema")).bind(&name.name).fetch_optional(&pool).await.map_err(error)?;
+					let Some((kind, persistence, identity)) = metadata else {
+						return invalid("sequence operation references an unknown relation");
+					};
+					if kind != "S" || persistence != "p" || identity {
+						return invalid(
+							"independent sequence operations require a permanent non-identity sequence",
+						);
+					}
+				}
 			}
 		}
-	}
-	for target in existing_sequences {
-		let name = renames.get(&target).unwrap_or(&target);
-		let metadata: Option<(String, String, bool)> = sqlx::query_as("SELECT c.relkind::text, c.relpersistence::text, EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='i') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2").bind(name.schema.as_ref().expect("resolved schema")).bind(&name.name).fetch_optional(&pool).await.map_err(error)?;
-		if metadata.is_none() && !created.contains(&target) {
-			return invalid("sequence operation references an unknown relation");
-		}
-		if let Some((kind, persistence, identity)) = metadata
-			&& (kind != "S" || persistence != "p" || identity)
-		{
-			return invalid(
-				"independent sequence operations require a permanent non-identity sequence",
-			);
+		if let Some(acquired) = super::planning::acquisition(operation) {
+			let origin = if let Some(released) = super::planning::release(operation) {
+				let released = resolved(&released, &schema);
+				origins.remove(&released).unwrap_or(Some(released))
+			} else {
+				None
+			};
+			origins.insert(resolved(&acquired, &schema), origin);
 		}
 	}
 
@@ -402,7 +426,7 @@ pub(crate) async fn preflight(
 	}
 	for name in &created {
 		let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2)").bind(name.schema.as_ref().expect("resolved schema")).bind(&name.name).fetch_one(&pool).await.map_err(error)?;
-		if exists {
+		if exists && !reused.contains(name) {
 			return invalid(format!(
 				"planned relation {} already exists; unmanaged objects cannot be adopted implicitly",
 				name.quoted()

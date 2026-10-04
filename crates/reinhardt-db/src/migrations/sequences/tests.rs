@@ -726,3 +726,50 @@ fn embedded_creation_ownership_is_rendered() {
 		"CREATE SEQUENCE \"tenant\".\"numbers\" OWNED BY \"tenant\".\"events\".\"n\""
 	);
 }
+
+#[rstest]
+#[case(false)]
+#[case(true)]
+fn relation_names_are_released_before_sequence_renames(#[case] table: bool) {
+	// Arrange
+	let rename = Operation::Sequence {
+		operation: SequenceOperation::Rename {
+			key: SequenceKey::new("events", "counter"),
+			old: QualifiedName::new("counter"),
+			new: QualifiedName::new("events"),
+		},
+	};
+	let release = if table {
+		Operation::RenameTable {
+			old_name: "events".into(),
+			new_name: "archived_events".into(),
+		}
+	} else {
+		Operation::Sequence {
+			operation: SequenceOperation::Drop {
+				definition: SequenceDefinition::new(
+					SequenceKey::new("events", "obsolete"),
+					QualifiedName::new("events"),
+				),
+			},
+		}
+	};
+	let alter = Operation::Sequence {
+		operation: SequenceOperation::Alter {
+			old: SequenceDefinition::new(
+				SequenceKey::new("events", "counter"),
+				QualifiedName::new("events"),
+			),
+			new: SequenceDefinition::new(
+				SequenceKey::new("events", "counter"),
+				QualifiedName::new("events"),
+			)
+			.with_options(SequenceOptions::new().with_cache(3)),
+		},
+	};
+	let mut operations = vec![rename.clone(), alter.clone(), release.clone()];
+	// Act
+	order_operations(&mut operations);
+	// Assert
+	assert_eq!(operations, vec![release, rename, alter]);
+}

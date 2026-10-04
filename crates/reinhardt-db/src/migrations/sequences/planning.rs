@@ -388,7 +388,104 @@ pub(crate) fn order_operations(operations: &mut Vec<Operation>) {
 	}
 	before.extend(middle);
 	before.extend(after);
-	*operations = before;
+	// Relation names are shared by tables and sequences. Keep the stable order
+	// unless a target must first be vacated, and move its consumers with it.
+	let mut remaining: Vec<_> = before.into_iter().enumerate().collect();
+	let mut ordered = Vec::new();
+	while !remaining.is_empty() {
+		let ready = remaining.iter().position(|(index, candidate)| {
+			!remaining
+				.iter()
+				.any(|(other_index, other)| index != other_index && must_precede(other, candidate))
+		});
+		let Some(ready) = ready else {
+			// Cyclic renames need explicit temporary names; preflight rejects the
+			// occupied target before executing any statement.
+			ordered.extend(remaining.into_iter().map(|(_, operation)| operation));
+			break;
+		};
+		ordered.push(remaining.remove(ready).1);
+	}
+	*operations = ordered;
+}
+
+pub(super) fn acquisition(operation: &Operation) -> Option<QualifiedName> {
+	match operation {
+		Operation::Sequence {
+			operation: SequenceOperation::Create { definition },
+		} => Some(definition.name.clone()),
+		Operation::Sequence {
+			operation: SequenceOperation::Rename { new, .. },
+		} => Some(new.clone()),
+		Operation::CreateTable { name, .. } => Some(QualifiedName::new(name)),
+		Operation::RenameTable { new_name, .. } => Some(QualifiedName::new(new_name)),
+		_ => None,
+	}
+}
+
+pub(super) fn release(operation: &Operation) -> Option<QualifiedName> {
+	match operation {
+		Operation::Sequence {
+			operation: SequenceOperation::Drop { definition },
+		} => Some(definition.name.clone()),
+		Operation::Sequence {
+			operation: SequenceOperation::Rename { old, .. },
+		} => Some(old.clone()),
+		Operation::DropTable { name } => Some(QualifiedName::new(name)),
+		Operation::RenameTable { old_name, .. } => Some(QualifiedName::new(old_name)),
+		_ => None,
+	}
+}
+
+fn same_relation(left: &QualifiedName, right: &QualifiedName) -> bool {
+	left.name == right.name
+		&& (left.schema == right.schema || left.schema.is_none() || right.schema.is_none())
+}
+
+fn must_precede(before: &Operation, after: &Operation) -> bool {
+	if let (Some(released), Some(acquired)) = (release(before), acquisition(after))
+		&& same_relation(&released, &acquired)
+	{
+		return true;
+	}
+	let Some(acquired) = acquisition(before) else {
+		return false;
+	};
+	match after {
+		Operation::Sequence { operation } => match operation {
+			SequenceOperation::Alter { old, .. } => same_relation(&acquired, &old.name),
+			SequenceOperation::Ownership { name, .. } | SequenceOperation::Restart { name, .. } => {
+				same_relation(&acquired, name)
+			}
+			_ => false,
+		},
+		Operation::CreateTable { columns, .. } => columns.iter().any(|column| {
+			column
+				.sequence_default
+				.as_ref()
+				.is_some_and(|default| same_relation(&acquired, &default.name))
+		}),
+		Operation::AddColumn { table, column, .. }
+		| Operation::AlterColumn {
+			table,
+			new_definition: column,
+			..
+		} => {
+			same_relation(&acquired, &QualifiedName::new(table))
+				|| column
+					.sequence_default
+					.as_ref()
+					.is_some_and(|default| same_relation(&acquired, &default.name))
+		}
+		Operation::RenameColumn { table, .. }
+		| Operation::Identity {
+			operation: IdentityOperation {
+				table: QualifiedName { name: table, .. },
+				..
+			},
+		} => acquired.name == *table,
+		_ => false,
+	}
 }
 
 pub(crate) fn validate_state_transition(from: &ProjectState, to: &ProjectState) -> Result<()> {
