@@ -521,6 +521,36 @@ fn normalize_legacy_drop_column_string(expression: Expr) -> Expr {
 	expression
 }
 
+fn normalize_builder_string(mut expression: Expr) -> Expr {
+	// Struct fields supply a concrete String target for into(); generic builder
+	// arguments do not. Retain literal conversion chains with explicit ownership.
+	let mut current = &mut expression;
+	loop {
+		match current {
+			Expr::Paren(paren) => current = &mut paren.expr,
+			Expr::Group(group) => current = &mut group.expr,
+			Expr::MethodCall(call)
+				if call.args.is_empty()
+					&& call
+						.turbofish
+						.as_ref()
+						.is_none_or(|args| args.args.is_empty())
+					&& (call.method == "into"
+						|| call.method == "to_owned"
+						|| call.method == "to_string") =>
+			{
+				if call.method == "into" {
+					call.method = syn::Ident::new("to_owned", call.method.span());
+					call.turbofish = None;
+				}
+				current = &mut call.receiver;
+			}
+			_ => break,
+		}
+	}
+	expression
+}
+
 fn convert_migration(expression: &ExprStruct) -> Result<TokenStream> {
 	let uses_default_rest = validate_migration_fields(
 		expression,
@@ -538,8 +568,8 @@ fn convert_migration(expression: &ExprStruct) -> Result<TokenStream> {
 			"optional_dependencies",
 		],
 	)?;
-	let name = field_expression(expression, "name")?;
-	let app_label = field_expression(expression, "app_label")?;
+	let name = normalize_builder_string(field_expression(expression, "name")?);
+	let app_label = normalize_builder_string(field_expression(expression, "app_label")?);
 	let migration_path = &expression.path;
 	let mut builder = quote! { #migration_path :: new(#name, #app_label) };
 	let operations_expression = field_expression(expression, "operations")?;
@@ -553,10 +583,14 @@ fn convert_migration(expression: &ExprStruct) -> Result<TokenStream> {
 	}
 	let dependencies = field_expression(expression, "dependencies")?;
 	for (app, migration) in tuple_pairs(dependencies, "dependencies")? {
+		let app = normalize_builder_string(app);
+		let migration = normalize_builder_string(migration);
 		builder.extend(quote! { .add_dependency(#app, #migration) });
 	}
 	if let Some(replacements) = optional_field_expression(expression, "replaces") {
 		for (app, migration) in tuple_pairs(replacements, "replaces")? {
+			let app = normalize_builder_string(app);
+			let migration = normalize_builder_string(migration);
 			builder.extend(quote! { .add_replacement(#app, #migration) });
 		}
 	}
