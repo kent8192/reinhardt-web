@@ -17,7 +17,8 @@ cargo run --locked --manifest-path scripts/audit-runtime-sql/Cargo.toml -- compl
 `scan` includes SQL literals inside macros, SQL asset references, SQLx-style
 query calls (including unqualified imports), execution wrapper calls (including
 associated/UFCS calls, raw/generated savepoint variants,
-owned Values, structural-context and row-streaming variants), custom
+owned Values, structural-context, the PostgreSQL signature-cache bypass helper
+and row-streaming variants), custom
 expressions and possible inline query rendering.
 
 The Rust bodies of `async_stream::stream!` and `async_stream::try_stream!` are

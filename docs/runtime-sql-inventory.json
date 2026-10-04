@@ -15868,7 +15868,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::execute",
       "kind": "execution-wrapper",
-      "line": 805,
+      "line": 878,
       "fingerprint": "1c2fbc4373a47b333c12a6a18411df4fde7019c93329f67a00b0448830a2ff4f",
       "conditions": [],
       "test_only": false,
@@ -15891,8 +15891,8 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::execute_generated",
       "kind": "execution-wrapper",
-      "line": 723,
-      "fingerprint": "d2e1ec81ffd84b831896d9d385f25ae9a99acfd22aa9c6666cf49ba391521b1b",
+      "line": 784,
+      "fingerprint": "6824c51ecba6514965c14812f2ced1ab7bf715b51b07a058886da3c69beed21f",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -15907,19 +15907,20 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Generated native PostgreSQL query uses the exact renderer SQL/arguments after an acquired-connection signature-cache bypass. Error context, result decoding, transaction ownership and RAII stream guards are retained.",
       "evidence": [
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: deterministic raw INT4 cache seeds before generated INT8 pool/transaction execute/fetch/stream; partial stream drop and subsequent INT4 reuse"
       ]
     },
     {
-      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::execute_generated::executor#1",
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::execute_generated::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::execute_generated",
-      "kind": "executor",
-      "line": 723,
-      "fingerprint": "62d0b3db0e449f8160979d75adf45b8d0c71dd8014d5bf80c42728944a25755f",
+      "kind": "execution-wrapper",
+      "line": 787,
+      "fingerprint": "efea07d3260ded16896ae7ed1b35bc6cf55007263f9ec7851a65b51aba4d26d9",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -15934,10 +15935,9 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Exact generated PostgreSQL SQL/owned native arguments are constructed through the signature-cache helper, with acquired connection/transaction ownership and row decoding preserved.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
       ]
     },
     {
@@ -15945,7 +15945,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 825,
+      "line": 898,
       "fingerprint": "ec4cb1cbe79858c31ed39cc439883121985853eda3fd3c182bd89173b443467b",
       "conditions": [],
       "test_only": false,
@@ -15968,7 +15968,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::execute_with_context",
       "kind": "executor",
-      "line": 821,
+      "line": 894,
       "fingerprint": "2550679bb867142c5fdf7ec4b98562934dd62751b4ff754386dd577d8b59b857",
       "conditions": [],
       "test_only": false,
@@ -15991,7 +15991,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "execution-wrapper",
-      "line": 864,
+      "line": 937,
       "fingerprint": "d9ac6103dc46f6db509db58eadbbf18273efcab79dbfc9134d6f4f9ba3b2af32",
       "conditions": [],
       "test_only": false,
@@ -16014,8 +16014,8 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_all_generated",
       "kind": "execution-wrapper",
-      "line": 768,
-      "fingerprint": "e70f7993749026fe6d565eebc6ee16df94188faf5cc81fe3818fb7e4ad74dfd1",
+      "line": 835,
+      "fingerprint": "49e927396363cb21da8d11e0cacf8977e5c6a792673069a8e2e207c983e66f1e",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16030,19 +16030,20 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Generated native PostgreSQL query uses the exact renderer SQL/arguments after an acquired-connection signature-cache bypass. Error context, result decoding, transaction ownership and RAII stream guards are retained.",
       "evidence": [
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: deterministic raw INT4 cache seeds before generated INT8 pool/transaction execute/fetch/stream; partial stream drop and subsequent INT4 reuse"
       ]
     },
     {
-      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_all_generated::executor#1",
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_all_generated::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_all_generated",
-      "kind": "executor",
-      "line": 768,
-      "fingerprint": "9aeb4d674a1fdaab7a140555ff80fa4eb784c6d0b86226f1917b88c039e2f411",
+      "kind": "execution-wrapper",
+      "line": 838,
+      "fingerprint": "3341b2099cce9777fbe5debd5843f1e650a016913150a1c5331981ab46eeb35d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16057,10 +16058,9 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Exact generated PostgreSQL SQL/owned native arguments are constructed through the signature-cache helper, with acquired connection/transaction ownership and row decoding preserved.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
       ]
     },
     {
@@ -16068,7 +16068,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 884,
+      "line": 957,
       "fingerprint": "c48e907f03dd77bfdb5f1f9181d159f16059c1ac335668f7b8b8720751636431",
       "conditions": [],
       "test_only": false,
@@ -16091,7 +16091,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_all_with_context",
       "kind": "executor",
-      "line": 880,
+      "line": 953,
       "fingerprint": "bc5288bb8e8b282b82f4edaa87bbf1340f8f465b33291f4b21f01b36a9fc4968",
       "conditions": [],
       "test_only": false,
@@ -16114,7 +16114,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "execution-wrapper",
-      "line": 836,
+      "line": 909,
       "fingerprint": "58ea16e6d864ef851e6d727891e0ae5dfa52f781b725688f963703cc8e301e6f",
       "conditions": [],
       "test_only": false,
@@ -16137,8 +16137,8 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one_generated",
       "kind": "execution-wrapper",
-      "line": 747,
-      "fingerprint": "bea5ea8483f7d84ec934228247ac3764c289d52aaba77a410e6ca9f6b1ea27ac",
+      "line": 811,
+      "fingerprint": "dee10374369f67ee9c8bf4a286a67b19a52e138ebba1d193cff81cb27e2b41da",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16153,19 +16153,20 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Generated native PostgreSQL query uses the exact renderer SQL/arguments after an acquired-connection signature-cache bypass. Error context, result decoding, transaction ownership and RAII stream guards are retained.",
       "evidence": [
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: deterministic raw INT4 cache seeds before generated INT8 pool/transaction execute/fetch/stream; partial stream drop and subsequent INT4 reuse"
       ]
     },
     {
-      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_one_generated::executor#1",
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_one_generated::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one_generated",
-      "kind": "executor",
-      "line": 747,
-      "fingerprint": "de3bcf2647c48c94c72e6e9f43c5c0234134b66e7626d3c27f660d3c10c1d424",
+      "kind": "execution-wrapper",
+      "line": 814,
+      "fingerprint": "75f9487b44b37989635a177e2596a652dc97ef675583db5fb9d862b44f2544b0",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16180,10 +16181,9 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Exact generated PostgreSQL SQL/owned native arguments are constructed through the signature-cache helper, with acquired connection/transaction ownership and row decoding preserved.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
       ]
     },
     {
@@ -16191,7 +16191,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 856,
+      "line": 929,
       "fingerprint": "c2dff1dcee3efaca1f2fe778bd9466f68a508a55646020a9a22fc5e95bc2b311",
       "conditions": [],
       "test_only": false,
@@ -16214,7 +16214,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one_with_context",
       "kind": "executor",
-      "line": 852,
+      "line": 925,
       "fingerprint": "5d6f0010030d1677d6820ced15c4f722ae8760f47f0831942164aaa9e6f367bb",
       "conditions": [],
       "test_only": false,
@@ -16237,7 +16237,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 946,
+      "line": 1019,
       "fingerprint": "ead5f875682db8c9d1d22d64e9b52dd35e94c63b7dddd437e332978c0e2b07e3",
       "conditions": [],
       "test_only": false,
@@ -16260,8 +16260,8 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional_generated",
       "kind": "execution-wrapper",
-      "line": 789,
-      "fingerprint": "e106a4dbb95d3ed41dfdc0cd8f0fe25b52ad25d50f191186e9f4e951e67ef1bc",
+      "line": 859,
+      "fingerprint": "efa61f571b9220e6455efcf679cdf91d5dfab650dc1153ab6a7fa11eb285b333",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16276,19 +16276,20 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Generated native PostgreSQL query uses the exact renderer SQL/arguments after an acquired-connection signature-cache bypass. Error context, result decoding, transaction ownership and RAII stream guards are retained.",
       "evidence": [
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: deterministic raw INT4 cache seeds before generated INT8 pool/transaction execute/fetch/stream; partial stream drop and subsequent INT4 reuse"
       ]
     },
     {
-      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_optional_generated::executor#1",
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_optional_generated::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional_generated",
-      "kind": "executor",
-      "line": 789,
-      "fingerprint": "dc37ce3a70335bce644bf6ea6d085cd4675666bb63e0ac49df64d87249fc6ca3",
+      "kind": "execution-wrapper",
+      "line": 862,
+      "fingerprint": "600290a38d7024ea237a6e0e08b1d8b09cd7d4ac3a535120088665b5ea337192",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16303,10 +16304,9 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Exact generated PostgreSQL SQL/owned native arguments are constructed through the signature-cache helper, with acquired connection/transaction ownership and row decoding preserved.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
       ]
     },
     {
@@ -16314,7 +16314,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 966,
+      "line": 1039,
       "fingerprint": "e9637df9c307fe611b40f684e293cb69c1dd819e1c1779b5e053d38e6268ecd7",
       "conditions": [],
       "test_only": false,
@@ -16337,7 +16337,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional_with_context",
       "kind": "executor",
-      "line": 962,
+      "line": 1035,
       "fingerprint": "4475743a3fc3532b86cd1fd51807541edc23c2b3281d4e1a762003b13c4d71e5",
       "conditions": [],
       "test_only": false,
@@ -16360,7 +16360,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_stream",
       "kind": "execution-wrapper",
-      "line": 897,
+      "line": 970,
       "fingerprint": "64399106c82ad6b1e4b7c7a17b806c3cfcc43755077941b5ddfdf56d6e927c99",
       "conditions": [],
       "test_only": false,
@@ -16379,12 +16379,12 @@
       "evidence": []
     },
     {
-      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_stream_generated::executor#1",
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PgTransactionExecutor as TransactionExecutor::fetch_stream_generated::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_stream_generated",
-      "kind": "executor",
-      "line": 695,
-      "fingerprint": "8fad1c4f5055f251990e36af9497e9ca159871f89063ffb8d5d1f7933d24bede",
+      "kind": "execution-wrapper",
+      "line": 747,
+      "fingerprint": "d0b1c290a6505859f218066790ea0d7e566e92ce20da8502d3f7668a9c267351",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16399,10 +16399,9 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Exact generated PostgreSQL SQL/owned native arguments are constructed through the signature-cache helper, with acquired connection/transaction ownership and row decoding preserved.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
       ]
     },
     {
@@ -16410,7 +16409,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_stream_with_context",
       "kind": "executor",
-      "line": 921,
+      "line": 994,
       "fingerprint": "5a8c2b2f47113bb4ad6832f081064a72b742d1e4a87f429431184c1f44b969b6",
       "conditions": [],
       "test_only": false,
@@ -16437,7 +16436,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::release_savepoint",
       "kind": "execution-wrapper",
-      "line": 1020,
+      "line": 1093,
       "fingerprint": "de225ebb8145ca53ff1737be2389ccc377017024dd12b7f227ddda8e534368fa",
       "conditions": [],
       "test_only": false,
@@ -16460,7 +16459,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::release_savepoint",
       "kind": "executor",
-      "line": 1020,
+      "line": 1093,
       "fingerprint": "8507ccee7398f0f80651391bf42de8dbc73ae1b016e534650d0586aceafa9de4",
       "conditions": [],
       "test_only": false,
@@ -16483,7 +16482,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
       "kind": "execution-wrapper",
-      "line": 1036,
+      "line": 1109,
       "fingerprint": "5d72c6eecd2b4c8a3b35cfe0223549a57f7cbf88cc28007c7463c67a77118423",
       "conditions": [],
       "test_only": false,
@@ -16506,7 +16505,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
       "kind": "executor",
-      "line": 1036,
+      "line": 1109,
       "fingerprint": "5d266321de185da9296f2edd4ea4a4e8c1fca512302c50f65ed66622ddadee1f",
       "conditions": [],
       "test_only": false,
@@ -16529,7 +16528,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "execution-wrapper",
-      "line": 1004,
+      "line": 1077,
       "fingerprint": "8d0569a68512fcee63097ccdcf1e1131183250b0e506c74af1c43772d4c9efeb",
       "conditions": [],
       "test_only": false,
@@ -16552,7 +16551,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "executor",
-      "line": 1004,
+      "line": 1077,
       "fingerprint": "77e4caf6e2d1f7b15326c210b112ca016719d94263e98a17fccf3db8eae15fcb",
       "conditions": [],
       "test_only": false,
@@ -16575,7 +16574,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "possible-inline-render",
-      "line": 1004,
+      "line": 1077,
       "fingerprint": "61c4e26ec93e19b8bb60e767f14e22021ca53131678df17550b00b892e087c27",
       "conditions": [],
       "test_only": false,
@@ -16598,7 +16597,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::begin_with_isolation",
       "kind": "execution-wrapper",
-      "line": 406,
+      "line": 458,
       "fingerprint": "e480cabc97fb391358a1f33fcb79576da1a27d11a5a85044d8f1efb23d1b2145",
       "conditions": [],
       "test_only": false,
@@ -16621,7 +16620,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::begin_with_isolation",
       "kind": "executor",
-      "line": 406,
+      "line": 458,
       "fingerprint": "3cc0ced6b0e8ee71c5e538fb3a9934f1f69f10730e6c32cb6d852a793adace22",
       "conditions": [],
       "test_only": false,
@@ -16644,7 +16643,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::begin_with_isolation",
       "kind": "macro-sql-literal",
-      "line": 403,
+      "line": 455,
       "fingerprint": "95ab09683368fc6d4f2e19eda489244c09f161f738dc335120997462fac31db6",
       "conditions": [],
       "test_only": false,
@@ -16667,7 +16666,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::execute",
       "kind": "execution-wrapper",
-      "line": 284,
+      "line": 336,
       "fingerprint": "1c2fbc4373a47b333c12a6a18411df4fde7019c93329f67a00b0448830a2ff4f",
       "conditions": [],
       "test_only": false,
@@ -16690,8 +16689,8 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::execute_generated",
       "kind": "execution-wrapper",
-      "line": 204,
-      "fingerprint": "ea4512d1efa41bd738d3d96e465f4147e6ef08c0aae361c1406087543dd1c64b",
+      "line": 226,
+      "fingerprint": "4210f988961576cde7fb374d1cd0e7a9289d0df716451a54bb68b8c7a65feec1",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16706,19 +16705,20 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "rationale": "Generated native PostgreSQL query uses the exact renderer SQL/arguments after an acquired-connection signature-cache bypass. Error context, result decoding, transaction ownership and RAII stream guards are retained.",
       "evidence": [
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-query-sqlx/src/tests.rs"
+        "crates/reinhardt-query-sqlx/src/tests.rs",
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: deterministic raw INT4 cache seeds before generated INT8 pool/transaction execute/fetch/stream; partial stream drop and subsequent INT4 reuse"
       ]
     },
     {
-      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::execute_generated::executor#1",
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::execute_generated::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::execute_generated",
-      "kind": "executor",
-      "line": 204,
-      "fingerprint": "fb9349749b341b165b4b207974184551899808ffc969b1630db0bfc82a9b6536",
+      "kind": "execution-wrapper",
+      "line": 229,
+      "fingerprint": "7bfbdc3cb3a44f95350fc73f1dfcfec673b149d2e38520fba05c73816da32f55",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16733,10 +16733,9 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "rationale": "Exact generated PostgreSQL SQL/owned native arguments are constructed through the signature-cache helper, with acquired connection/transaction ownership and row decoding preserved.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-query-sqlx/src/tests.rs"
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
       ]
     },
     {
@@ -16744,7 +16743,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 293,
+      "line": 345,
       "fingerprint": "466576b5dc1e81754f61dc2f1b85cd428f0853901e40f0d264d9b1c822381be8",
       "conditions": [],
       "test_only": false,
@@ -16767,7 +16766,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_all",
       "kind": "execution-wrapper",
-      "line": 310,
+      "line": 362,
       "fingerprint": "d9ac6103dc46f6db509db58eadbbf18273efcab79dbfc9134d6f4f9ba3b2af32",
       "conditions": [],
       "test_only": false,
@@ -16790,8 +16789,8 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_all_generated",
       "kind": "execution-wrapper",
-      "line": 237,
-      "fingerprint": "cde3ef9ccabd4a1e4c39cd4da59102bb1ef0edbf98886660bf2bf6746e0c7301",
+      "line": 277,
+      "fingerprint": "7b6a329abee9ad9a838dd41c2b731145e1c535722bccd9c1454bb5ef7031b64a",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16806,19 +16805,20 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "rationale": "Generated native PostgreSQL query uses the exact renderer SQL/arguments after an acquired-connection signature-cache bypass. Error context, result decoding, transaction ownership and RAII stream guards are retained.",
       "evidence": [
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-query-sqlx/src/tests.rs"
+        "crates/reinhardt-query-sqlx/src/tests.rs",
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: deterministic raw INT4 cache seeds before generated INT8 pool/transaction execute/fetch/stream; partial stream drop and subsequent INT4 reuse"
       ]
     },
     {
-      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_all_generated::executor#1",
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_all_generated::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_all_generated",
-      "kind": "executor",
-      "line": 237,
-      "fingerprint": "f232ce09b12d2806970df635469b9e1506ca76135b5705c27fd5002114442ed8",
+      "kind": "execution-wrapper",
+      "line": 280,
+      "fingerprint": "d0ec1dd9ffb7012a7b9f34e34cd1c80a6f0751d89366309b204a9071e192c504",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16833,10 +16833,9 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "rationale": "Exact generated PostgreSQL SQL/owned native arguments are constructed through the signature-cache helper, with acquired connection/transaction ownership and row decoding preserved.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-query-sqlx/src/tests.rs"
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
       ]
     },
     {
@@ -16844,7 +16843,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 319,
+      "line": 371,
       "fingerprint": "cc5e540b1480357cddfaa7c7d6554a98f5dfe1cd65844104da58783fab10084d",
       "conditions": [],
       "test_only": false,
@@ -16867,7 +16866,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_one",
       "kind": "execution-wrapper",
-      "line": 297,
+      "line": 349,
       "fingerprint": "58ea16e6d864ef851e6d727891e0ae5dfa52f781b725688f963703cc8e301e6f",
       "conditions": [],
       "test_only": false,
@@ -16890,8 +16889,8 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_one_generated",
       "kind": "execution-wrapper",
-      "line": 222,
-      "fingerprint": "4fb899cd4ccaacce69d18ec0d18e1406fb2d03fee6d016fb49e69f0d1900b965",
+      "line": 253,
+      "fingerprint": "11743890113a71188db560dc61b9459644d935919c085d529d4dc2210ef7ad6d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16906,19 +16905,20 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "rationale": "Generated native PostgreSQL query uses the exact renderer SQL/arguments after an acquired-connection signature-cache bypass. Error context, result decoding, transaction ownership and RAII stream guards are retained.",
       "evidence": [
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-query-sqlx/src/tests.rs"
+        "crates/reinhardt-query-sqlx/src/tests.rs",
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: deterministic raw INT4 cache seeds before generated INT8 pool/transaction execute/fetch/stream; partial stream drop and subsequent INT4 reuse"
       ]
     },
     {
-      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_one_generated::executor#1",
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_one_generated::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_one_generated",
-      "kind": "executor",
-      "line": 222,
-      "fingerprint": "e4c664be14b6cd204dfdd852bc876962c2d88bbe6589ad4348abba8d518614d8",
+      "kind": "execution-wrapper",
+      "line": 256,
+      "fingerprint": "73faec3ed30234fd61df782411eb606a9860b13a9c05596815fd629806d1de5d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -16933,10 +16933,9 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "rationale": "Exact generated PostgreSQL SQL/owned native arguments are constructed through the signature-cache helper, with acquired connection/transaction ownership and row decoding preserved.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-query-sqlx/src/tests.rs"
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
       ]
     },
     {
@@ -16944,7 +16943,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 306,
+      "line": 358,
       "fingerprint": "1def818ed34f6ad321c3c927c5c39f283d159c4c3a3d3aa2ae0b42521615cb4b",
       "conditions": [],
       "test_only": false,
@@ -16967,7 +16966,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 372,
+      "line": 424,
       "fingerprint": "ead5f875682db8c9d1d22d64e9b52dd35e94c63b7dddd437e332978c0e2b07e3",
       "conditions": [],
       "test_only": false,
@@ -16990,8 +16989,8 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_optional_generated",
       "kind": "execution-wrapper",
-      "line": 252,
-      "fingerprint": "d8efbb9fda43458fb2a14ce2048026dee690a405c3bcb85b806864e1d317ae5d",
+      "line": 301,
+      "fingerprint": "f0af952789eb69f785e14dd1748693ffb90bf0a3e82194d7317b8da668c0c158",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -17006,19 +17005,20 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "rationale": "Generated native PostgreSQL query uses the exact renderer SQL/arguments after an acquired-connection signature-cache bypass. Error context, result decoding, transaction ownership and RAII stream guards are retained.",
       "evidence": [
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-query-sqlx/src/tests.rs"
+        "crates/reinhardt-query-sqlx/src/tests.rs",
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: deterministic raw INT4 cache seeds before generated INT8 pool/transaction execute/fetch/stream; partial stream drop and subsequent INT4 reuse"
       ]
     },
     {
-      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_optional_generated::executor#1",
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_optional_generated::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_optional_generated",
-      "kind": "executor",
-      "line": 252,
-      "fingerprint": "9529f76a845392e13aa764fe7ee577caf61f619aa88189f8db41a3d105cb838c",
+      "kind": "execution-wrapper",
+      "line": 304,
+      "fingerprint": "7c42a03edf899faa776a89e7d2135d14cdea51b73772d2d4cc96904a43372932",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -17033,10 +17033,9 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "rationale": "Exact generated PostgreSQL SQL/owned native arguments are constructed through the signature-cache helper, with acquired connection/transaction ownership and row decoding preserved.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-query-sqlx/src/tests.rs"
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
       ]
     },
     {
@@ -17044,7 +17043,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 381,
+      "line": 433,
       "fingerprint": "93e243f0fb9e28aec792f474693aab4e0bb04f4a326246803e686e45745ff748",
       "conditions": [],
       "test_only": false,
@@ -17067,7 +17066,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_stream",
       "kind": "execution-wrapper",
-      "line": 328,
+      "line": 380,
       "fingerprint": "64399106c82ad6b1e4b7c7a17b806c3cfcc43755077941b5ddfdf56d6e927c99",
       "conditions": [],
       "test_only": false,
@@ -17086,12 +17085,12 @@
       "evidence": []
     },
     {
-      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_stream_generated::executor#1",
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_stream_generated::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_stream_generated",
-      "kind": "executor",
-      "line": 182,
-      "fingerprint": "64cd9a94fc9981fcedf6dd1735502e6105a1b35cf81e680b6440a0c7cebc328d",
+      "kind": "execution-wrapper",
+      "line": 189,
+      "fingerprint": "b6e08eabaae04123064953e7f2871b125e48622837604eddd562d6478bea1eb9",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -17106,10 +17105,9 @@
       "backends": [
         "postgres"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Exact generated PostgreSQL SQL/owned native arguments are constructed through the signature-cache helper, with acquired connection/transaction ownership and row decoding preserved.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
       ]
     },
     {
@@ -17117,7 +17115,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_stream_with_context",
       "kind": "executor",
-      "line": 347,
+      "line": 399,
       "fingerprint": "84e64a808632f19306305d6583fe810926dd6fb51ffe0eb585e6c3ba12ba75f3",
       "conditions": [],
       "test_only": false,
@@ -21651,6 +21649,40 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/generated.rs::uncached_postgres_query::executor#1",
+      "path": "crates/reinhardt-db/src/backends/generated.rs",
+      "symbol": "uncached_postgres_query",
+      "kind": "executor",
+      "line": 115,
+      "fingerprint": "47bdef7d22c493204aed923e87c16ca073d3fa6b2a7ca5893f3f79b142feaabe",
+      "conditions": [
+        "# [cfg (feature = \"postgres\")]"
+      ],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "workaround",
+      "operation": "control",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Native generated SQL/arguments remain unchanged, but SQLx 0.8 SQL-only cache lookup requires closing existing named statements and disabling persistence on the acquired connection.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_pg_statement_cache.rs: pool and transaction operations with raw cache seed, changing native integer types and partial stream drop/reuse"
+      ],
+      "workaround": {
+        "issue": "https://github.com/kent8192/reinhardt-web/issues/6533",
+        "reason": "SQLx 0.8.6 reuses a SQL-only statement cache entry before checking parameter types or persistent(false), producing 22P03 for incompatible native integer widths.",
+        "replacement": "A validated SQLx statement cache keyed or invalidated by native argument type identity, preserving the renderer SQL/Values pair and executor ownership.",
+        "removal_condition": "Selected SQLx version passes deterministic same-connection raw/generated INT4/INT8 pool, transaction and partial-stream regression without cache clearing or persistence bypass."
+      }
     },
     {
       "id": "crates/reinhardt-db/src/backends/optimization/batch_ops.rs::BatchInsertBuilder::build_sql::macro-sql-literal#1",

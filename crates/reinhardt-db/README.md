@@ -144,6 +144,15 @@ arrays, decimals, dates and times require a custom generated-method override.
 They never use the older ORM converter's clamping or Debug-string fallbacks.
 Consumers still own connections, transactions, row decoding and result metadata.
 
+Generated PostgreSQL operations use an unnamed statement after clearing any
+existing named cache entries on the acquired connection. This is a
+[tracked SQLx workaround](https://github.com/kent8192/reinhardt-web/issues/6533):
+SQLx 0.8 caches by SQL before checking argument types or persistence. It preserves
+native values and SQL text across changing signatures, at the cost of statement
+re-preparation and clearing cache entries created by raw queries. Remove the
+bypass only after a driver fix passes changing-signature pool, transaction and
+partial-stream regressions. Transaction and pool guards retain their ownership.
+
 Generated transaction methods use the same codecs on the transaction's dedicated
 connection, including write-intent executors and AtomicTransaction forwarding.
 `fetch_stream_generated` encodes before returning a cursor, borrows the executor

@@ -152,6 +152,7 @@ fn execution_wrapper_name(name: &str) -> bool {
 			| "fetch_all_in_savepoint"
 			| "execute_generated_in_savepoint"
 			| "fetch_all_generated_in_savepoint"
+			| "uncached_postgres_query"
 			| "query" | "query_as"
 			| "query_scalar"
 	)
@@ -759,6 +760,17 @@ mod tests {
 		)
 		.unwrap();
 		assert_ne!(sites[0].fingerprint, changed[0].fingerprint);
+	}
+	#[rstest]
+	fn finds_postgres_signature_bypass_in_stream_and_direct_calls() {
+		// Arrange: an unnamed query helper may supply either immediate or streaming execution.
+		let source = "async fn rows(sql: String, arguments: Args) { async_stream::stream! { let query = generated::uncached_postgres_query(connection, &sql, arguments).await; yield query.fetch(pool).await; } } async fn one(sql: String, arguments: Args) { let query = generated::uncached_postgres_query(connection, &sql, arguments).await; query.fetch_one(pool).await; }";
+		// Act
+		let sites = scan_source("crates/example/src/lib.rs", source).unwrap();
+		// Assert: helper provenance survives even when fetch has no query constructor.
+		assert_eq!(sites.len(), 3);
+		assert!(sites.iter().all(|site| site.kind == "execution-wrapper"));
+		assert!(sites.iter().all(|site| !site.test_only));
 	}
 	#[rstest]
 	fn async_stream_bodies_expose_executors_and_caller_provenance() {

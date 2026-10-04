@@ -94,6 +94,27 @@ pub(crate) fn binding_error(error: reinhardt_query_sqlx::BindError) -> DatabaseE
 	DatabaseError::new(DatabaseErrorKind::Type, error.to_string()).with_source(error)
 }
 
+/// Build an unnamed query after removing potentially incompatible named statements.
+#[cfg(feature = "postgres")]
+pub(crate) async fn uncached_postgres_query<'q>(
+	connection: &mut sqlx::PgConnection,
+	sql: &'q str,
+	arguments: sqlx::postgres::PgArguments,
+) -> std::result::Result<
+	sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>,
+	sqlx::Error,
+> {
+	use sqlx::Connection;
+	if connection.cached_statements_size() > 0 {
+		connection.clear_cached_statements().await?;
+	}
+	// Workaround: https://github.com/kent8192/reinhardt-web/issues/6533
+	// SQLx 0.8 reuses SQL-only cache entries before checking parameter types or
+	// persistence. Clear existing entries above and keep generated queries unnamed.
+	// Remove this bypass after a validated driver keys or invalidates by argument type.
+	Ok(sqlx::query_with(sql, arguments).persistent(false))
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

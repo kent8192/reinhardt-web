@@ -179,7 +179,23 @@ impl DatabaseBackend for PostgresBackend {
 			.map_err(crate::backends::generated::binding_error)?
 			.into_parts();
 		Ok(Box::pin(async_stream::stream! {
-			let rows = sqlx::query_with(&sql, arguments).fetch(pool.as_ref());
+			let mut connection = match pool.acquire().await {
+				Ok(connection) => connection,
+				Err(error) => {
+					yield Err(map_sqlx_error_with_pgvector_context(error, context));
+					return;
+				}
+			};
+			let query = match crate::backends::generated::uncached_postgres_query(
+				&mut connection, &sql, arguments,
+			).await {
+				Ok(query) => query,
+				Err(error) => {
+					yield Err(map_sqlx_error_with_pgvector_context(error, context));
+					return;
+				}
+			};
+			let rows = query.fetch(&mut *connection);
 			futures::pin_mut!(rows);
 			let rows = rows.ready_chunks(chunk_size);
 			futures::pin_mut!(rows);
@@ -201,8 +217,17 @@ impl DatabaseBackend for PostgresBackend {
 		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
 			.map_err(crate::backends::generated::binding_error)?
 			.into_parts();
-		let result = sqlx::query_with(&sql, arguments)
-			.execute(self.pool.as_ref())
+		let mut connection = self
+			.pool
+			.acquire()
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let query =
+			crate::backends::generated::uncached_postgres_query(&mut connection, &sql, arguments)
+				.await
+				.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let result = query
+			.execute(&mut *connection)
 			.await
 			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
 		Ok(QueryResult {
@@ -219,8 +244,17 @@ impl DatabaseBackend for PostgresBackend {
 		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
 			.map_err(crate::backends::generated::binding_error)?
 			.into_parts();
-		let result = sqlx::query_with(&sql, arguments)
-			.fetch_one(self.pool.as_ref())
+		let mut connection = self
+			.pool
+			.acquire()
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let query =
+			crate::backends::generated::uncached_postgres_query(&mut connection, &sql, arguments)
+				.await
+				.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let result = query
+			.fetch_one(&mut *connection)
 			.await
 			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
 		Self::convert_row(result)
@@ -234,8 +268,17 @@ impl DatabaseBackend for PostgresBackend {
 		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
 			.map_err(crate::backends::generated::binding_error)?
 			.into_parts();
-		let result = sqlx::query_with(&sql, arguments)
-			.fetch_all(self.pool.as_ref())
+		let mut connection = self
+			.pool
+			.acquire()
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let query =
+			crate::backends::generated::uncached_postgres_query(&mut connection, &sql, arguments)
+				.await
+				.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let result = query
+			.fetch_all(&mut *connection)
 			.await
 			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
 		result.into_iter().map(Self::convert_row).collect()
@@ -249,8 +292,17 @@ impl DatabaseBackend for PostgresBackend {
 		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
 			.map_err(crate::backends::generated::binding_error)?
 			.into_parts();
-		let result = sqlx::query_with(&sql, arguments)
-			.fetch_optional(self.pool.as_ref())
+		let mut connection = self
+			.pool
+			.acquire()
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let query =
+			crate::backends::generated::uncached_postgres_query(&mut connection, &sql, arguments)
+				.await
+				.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let result = query
+			.fetch_optional(&mut *connection)
 			.await
 			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
 		result.map(Self::convert_row).transpose()
@@ -692,7 +744,16 @@ impl TransactionExecutor for PgTransactionExecutor {
 			.map_err(crate::backends::generated::binding_error)?
 			.into_parts();
 		Ok(Box::pin(async_stream::stream! {
-			let rows = sqlx::query_with(&sql, arguments).fetch(&mut **tx);
+			let query = match crate::backends::generated::uncached_postgres_query(
+				tx, &sql, arguments,
+			).await {
+				Ok(query) => query,
+				Err(error) => {
+					yield Err(map_sqlx_error_with_pgvector_context(error, context));
+					return;
+				}
+			};
+			let rows = query.fetch(&mut **tx);
 			futures::pin_mut!(rows);
 			let rows = rows.ready_chunks(chunk_size);
 			futures::pin_mut!(rows);
@@ -720,7 +781,10 @@ impl TransactionExecutor for PgTransactionExecutor {
 		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
 			.map_err(crate::backends::generated::binding_error)?
 			.into_parts();
-		let result = sqlx::query_with(&sql, arguments)
+		let query = crate::backends::generated::uncached_postgres_query(tx, &sql, arguments)
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let result = query
 			.execute(&mut **tx)
 			.await
 			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
@@ -744,7 +808,10 @@ impl TransactionExecutor for PgTransactionExecutor {
 		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
 			.map_err(crate::backends::generated::binding_error)?
 			.into_parts();
-		let result = sqlx::query_with(&sql, arguments)
+		let query = crate::backends::generated::uncached_postgres_query(tx, &sql, arguments)
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let result = query
 			.fetch_one(&mut **tx)
 			.await
 			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
@@ -765,7 +832,10 @@ impl TransactionExecutor for PgTransactionExecutor {
 		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
 			.map_err(crate::backends::generated::binding_error)?
 			.into_parts();
-		let result = sqlx::query_with(&sql, arguments)
+		let query = crate::backends::generated::uncached_postgres_query(tx, &sql, arguments)
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let result = query
 			.fetch_all(&mut **tx)
 			.await
 			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
@@ -786,7 +856,10 @@ impl TransactionExecutor for PgTransactionExecutor {
 		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
 			.map_err(crate::backends::generated::binding_error)?
 			.into_parts();
-		let result = sqlx::query_with(&sql, arguments)
+		let query = crate::backends::generated::uncached_postgres_query(tx, &sql, arguments)
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		let result = query
 			.fetch_optional(&mut **tx)
 			.await
 			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
