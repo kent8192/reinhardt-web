@@ -1418,7 +1418,8 @@ impl<M: Model> Manager<M> {
 	/// models; generated keys and database defaults are not hydrated. When
 	/// `ignore_conflicts` is enabled, all backends return an empty vector. MySQL
 	/// uses `INSERT IGNORE` to skip conflicting rows.
-	/// MySQL uses field metadata for `db_column` names and raw binary bindings.
+	/// MySQL uses field metadata for `db_column` names and binary, datetime, and
+	/// JSON bindings. Serialized null values remain SQL NULL.
 	///
 	/// Empty input returns an empty vector without accessing the database, regardless of batch size.
 	///
@@ -1532,11 +1533,11 @@ impl<M: Model> Manager<M> {
 				.iter()
 				.zip(field_names)
 				.map(|(value, name)| {
-					if !value.is_null()
-						&& metadata.iter().any(|field| {
-							field.name == *name
-								&& field.field_type.rsplit('.').next() == Some("BinaryField")
-						}) {
+					let field_type = metadata
+						.iter()
+						.find(|field| field.name == *name)
+						.and_then(|field| field.field_type.rsplit('.').next());
+					if !value.is_null() && field_type == Some("BinaryField") {
 						let bytes =
 							serde_json::from_value::<Vec<u8>>(value.clone()).map_err(|error| {
 								reinhardt_core::exception::Error::Database(format!(
@@ -1544,6 +1545,28 @@ impl<M: Model> Manager<M> {
 								))
 							})?;
 						return Ok(reinhardt_query::value::Value::Bytes(Some(Box::new(bytes))));
+					}
+					if !value.is_null()
+						&& matches!(
+							field_type,
+							Some("JsonField" | "JSONField" | "JsonbField" | "JSONBField")
+						) {
+						// JSON string scalars need their quotes, even when their contents
+						// resemble booleans, numbers, UUIDs, or timestamps.
+						return Ok(value.to_string().into());
+					}
+					if field_type == Some("DateTimeField")
+						&& let serde_json::Value::String(text) = value
+					{
+						let timestamp =
+							chrono::DateTime::parse_from_rfc3339(text).map_err(|error| {
+								reinhardt_core::exception::Error::Database(format!(
+									"Invalid datetime value for field '{name}': {error}"
+								))
+							})?;
+						return Ok(reinhardt_query::value::Value::ChronoDateTimeUtc(Some(
+							Box::new(timestamp.with_timezone(&chrono::Utc)),
+						)));
 					}
 					Ok(match value {
 						// Preserve legacy text and JSON values instead of inferring UUID
@@ -1816,7 +1839,7 @@ mod tests {
 	use crate::orm::FieldSelector;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
-	use crate::orm::fields::{BigIntegerField, BinaryField, CharField, Field};
+	use crate::orm::fields::{BigIntegerField, BinaryField, CharField, DateTimeField, Field};
 	use crate::orm::inspection::FieldInfo;
 	use crate::orm::query::FilterValue;
 	use rstest::{fixture, rstest};
@@ -1887,6 +1910,9 @@ mod tests {
 		payload: Vec<u8>,
 		optional_payload: Option<Vec<u8>>,
 		json_data: serde_json::Value,
+		optional_json_data: Option<serde_json::Value>,
+		timestamp: chrono::DateTime<chrono::Utc>,
+		optional_timestamp: Option<chrono::DateTime<chrono::Utc>>,
 	}
 
 	impl Model for TestBinaryRecord {
@@ -1927,11 +1953,27 @@ mod tests {
 			let mut optional_payload = BinaryField::new();
 			optional_payload.base.null = true;
 			optional_payload.set_attributes_from_name("optional_payload");
+			let mut json_data = CharField::new(255);
+			json_data.set_attributes_from_name("json_data");
+			let mut json_data = FieldInfo::from_field(&json_data);
+			json_data.field_type = "reinhardt.orm.models.JsonField".to_owned();
+			let mut optional_json_data = json_data.clone();
+			optional_json_data.name = "optional_json_data".to_owned();
+			optional_json_data.nullable = true;
+			let mut timestamp = DateTimeField::new();
+			timestamp.set_attributes_from_name("timestamp");
+			let mut optional_timestamp = DateTimeField::new();
+			optional_timestamp.base.null = true;
+			optional_timestamp.set_attributes_from_name("optional_timestamp");
 			vec![
 				FieldInfo::from_field(&id),
 				FieldInfo::from_field(&name),
 				FieldInfo::from_field(&payload),
 				FieldInfo::from_field(&optional_payload),
+				json_data,
+				optional_json_data,
+				FieldInfo::from_field(&timestamp),
+				FieldInfo::from_field(&optional_timestamp),
 			]
 		}
 	}
@@ -2016,6 +2058,114 @@ mod tests {
 		assert!(
 			matches!(error, reinhardt_core::exception::Error::Database(message) if message == format!("Invalid binary value for field 'payload': {expected}"))
 		);
+	}
+
+	#[rstest]
+	#[case("2026-10-04T12:34:56.123456Z", None)]
+	#[case("2026-10-04T12:34:56.123456+09:00", Some("2026-10-04T00:00:00Z"))]
+	fn mysql_bulk_create_query_binds_datetime_fields(
+		#[case] timestamp: &str,
+		#[case] optional_timestamp: Option<&str>,
+	) {
+		use crate::orm::connection::QueryValue;
+		// Arrange
+		let fields = vec![
+			"timestamp".to_owned(),
+			"optional_timestamp".to_owned(),
+			"name".to_owned(),
+		];
+		let rows = vec![vec![
+			serde_json::json!(timestamp),
+			serde_json::json!(optional_timestamp),
+			serde_json::json!(timestamp),
+		]];
+		let expected_timestamp = chrono::DateTime::parse_from_rfc3339(timestamp)
+			.unwrap()
+			.with_timezone(&chrono::Utc);
+		// Act
+		let statement =
+			Manager::<TestBinaryRecord>::mysql_bulk_create_query(&fields, &rows).unwrap();
+		let (sql, values) = super::build_insert_sql(&statement, DatabaseBackend::MySql);
+		let params: Vec<_> = values
+			.0
+			.into_iter()
+			.map(Manager::<TestBinaryRecord>::sea_value_to_query_value)
+			.collect();
+		// Assert
+		let mut expected = vec![QueryValue::Timestamp(expected_timestamp)];
+		let expected_sql = if let Some(optional_timestamp) = optional_timestamp {
+			expected.push(QueryValue::Timestamp(
+				chrono::DateTime::parse_from_rfc3339(optional_timestamp)
+					.unwrap()
+					.with_timezone(&chrono::Utc),
+			));
+			"INSERT INTO `test_binary_record` (`timestamp`, `optional_timestamp`, `stored_name`) VALUES (?, ?, ?)"
+		} else {
+			"INSERT INTO `test_binary_record` (`timestamp`, `optional_timestamp`, `stored_name`) VALUES (?, NULL, ?)"
+		};
+		expected.push(QueryValue::String(timestamp.to_owned()));
+		assert_eq!(sql, expected_sql);
+		assert_eq!(params, expected);
+	}
+
+	#[rstest]
+	fn mysql_bulk_create_query_rejects_invalid_datetime() {
+		// Arrange
+		let fields = vec!["timestamp".to_owned()];
+		let rows = vec![vec![serde_json::json!("not-a-timestamp")]];
+		// Act
+		let error =
+			Manager::<TestBinaryRecord>::mysql_bulk_create_query(&fields, &rows).unwrap_err();
+		// Assert
+		assert!(
+			matches!(error, reinhardt_core::exception::Error::Database(message) if message.starts_with("Invalid datetime value for field 'timestamp': "))
+		);
+	}
+
+	#[rstest]
+	#[case(serde_json::json!("hello"), Some("\"hello\""))]
+	#[case(serde_json::json!("null"), Some("\"null\""))]
+	#[case(serde_json::json!("true"), Some("\"true\""))]
+	#[case(serde_json::json!("42"), Some("\"42\""))]
+	#[case(serde_json::json!("550e8400-e29b-41d4-a716-446655440000"), Some("\"550e8400-e29b-41d4-a716-446655440000\""))]
+	#[case(serde_json::json!("2026-10-04T00:00:00Z"), Some("\"2026-10-04T00:00:00Z\""))]
+	#[case(serde_json::json!(true), Some("true"))]
+	#[case(serde_json::json!(42), Some("42"))]
+	#[case(serde_json::json!(1.25), Some("1.25"))]
+	#[case(serde_json::json!([1, "two"]), Some("[1,\"two\"]"))]
+	#[case(serde_json::json!({"answer": 42}), Some("{\"answer\":42}"))]
+	#[case(serde_json::Value::Null, None)]
+	fn mysql_bulk_create_query_preserves_json_types(
+		#[case] json_data: serde_json::Value,
+		#[case] expected: Option<&str>,
+	) {
+		use crate::orm::connection::QueryValue;
+		// Arrange
+		let fields = vec!["json_data".to_owned(), "optional_json_data".to_owned()];
+		let rows = vec![vec![json_data, serde_json::Value::Null]];
+		// Act
+		let statement =
+			Manager::<TestBinaryRecord>::mysql_bulk_create_query(&fields, &rows).unwrap();
+		let (sql, values) = super::build_insert_sql(&statement, DatabaseBackend::MySql);
+		let params: Vec<_> = values
+			.0
+			.into_iter()
+			.map(Manager::<TestBinaryRecord>::sea_value_to_query_value)
+			.collect();
+		// Assert
+		if let Some(expected) = expected {
+			assert_eq!(
+				sql,
+				"INSERT INTO `test_binary_record` (`json_data`, `optional_json_data`) VALUES (?, NULL)"
+			);
+			assert_eq!(params, vec![QueryValue::String(expected.to_owned())]);
+		} else {
+			assert_eq!(
+				sql,
+				"INSERT INTO `test_binary_record` (`json_data`, `optional_json_data`) VALUES (NULL, NULL)"
+			);
+			assert!(params.is_empty());
+		}
 	}
 
 	#[rstest]
@@ -2373,7 +2523,7 @@ mod tests {
 		#[rstest]
 		#[tokio::test]
 		#[serial(orm_database)]
-		async fn bulk_create_mysql_binary_and_renamed_columns(
+		async fn bulk_create_mysql_typed_fields_and_renamed_columns(
 			#[future] mysql_database: (
 				testcontainers::ContainerAsync<testcontainers_modules::mysql::Mysql>,
 				DatabaseConnection,
@@ -2401,6 +2551,13 @@ mod tests {
 				.col(ColumnDef::new("payload").custom("BLOB").not_null(true))
 				.col(ColumnDef::new("optional_payload").custom("BLOB"))
 				.col(ColumnDef::new("json_data").json().not_null(true))
+				.col(ColumnDef::new("optional_json_data").json())
+				.col(
+					ColumnDef::new("timestamp")
+						.custom("DATETIME(6)")
+						.not_null(true),
+				)
+				.col(ColumnDef::new("optional_timestamp").custom("TIMESTAMP(6)"))
 				.to_owned();
 			let (sql, _) = MySqlQueryBuilder.build_create_table(&table);
 			connection.execute(&sql, vec![]).await.unwrap();
@@ -2410,6 +2567,9 @@ mod tests {
 				.as_any()
 				.downcast_ref::<crate::backends::dialect::MySqlBackend>()
 				.unwrap();
+			let timestamp = chrono::DateTime::parse_from_rfc3339("2026-10-04T12:34:56.123456Z")
+				.unwrap()
+				.with_timezone(&chrono::Utc);
 
 			for generated_keys in [false, true] {
 				for ignore_conflicts in [false, true] {
@@ -2419,26 +2579,50 @@ mod tests {
 							.to_owned();
 						let (sql, _) = MySqlQueryBuilder.build_delete(&delete);
 						connection.execute(&sql, vec![]).await.unwrap();
-						let models: Vec<TestBinaryRecord> =
-							[vec![0, 255, 128, 39, 92], vec![], vec![255, 0]]
-								.into_iter()
-								.enumerate()
-								.map(|(index, payload)| TestBinaryRecord {
-									id: if generated_keys {
-										None
-									} else {
-										Some(100 + index as i64)
-									},
-									name: format!("record-{index}"),
-									payload,
-									optional_payload: match index {
-										0 => None,
-										1 => Some(vec![]),
-										_ => Some(vec![0, 255]),
-									},
-									json_data: serde_json::json!([0, 255]),
-								})
-								.collect();
+						let models: Vec<TestBinaryRecord> = [
+							serde_json::json!("hello"),
+							serde_json::json!("null"),
+							serde_json::json!("true"),
+							serde_json::json!("42"),
+							serde_json::json!(true),
+							serde_json::json!(42),
+							serde_json::json!(1.25),
+							serde_json::json!([0, 255]),
+							serde_json::json!({"answer": 42}),
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(index, json_data)| TestBinaryRecord {
+							id: if generated_keys {
+								None
+							} else {
+								Some(100 + index as i64)
+							},
+							name: format!("record-{index}"),
+							payload: match index % 3 {
+								0 => vec![0, 255, 128, 39, 92],
+								1 => vec![],
+								_ => vec![255, 0],
+							},
+							optional_payload: match index % 3 {
+								0 => None,
+								1 => Some(vec![]),
+								_ => Some(vec![0, 255]),
+							},
+							json_data,
+							optional_json_data: if index % 2 == 0 {
+								None
+							} else {
+								Some(serde_json::json!("null"))
+							},
+							timestamp: timestamp + chrono::Duration::microseconds(index as i64),
+							optional_timestamp: if index % 2 == 0 {
+								None
+							} else {
+								Some(timestamp)
+							},
+						})
+						.collect();
 						let mut input = models.clone();
 						if ignore_conflicts {
 							let mut conflict = models[0].clone();
@@ -2458,6 +2642,9 @@ mod tests {
 									"payload",
 									"optional_payload",
 									"json_data",
+									"optional_json_data",
+									"timestamp",
+									"optional_timestamp",
 								]
 								.into_iter()
 								.map(Alias::new),
@@ -2474,6 +2661,9 @@ mod tests {
 								Vec<u8>,
 								Option<Vec<u8>>,
 								sqlx::types::Json<serde_json::Value>,
+								Option<sqlx::types::Json<serde_json::Value>>,
+								chrono::NaiveDateTime,
+								Option<chrono::DateTime<chrono::Utc>>,
 							),
 						>(&sql)
 						.fetch_all(mysql.pool())
@@ -2489,8 +2679,19 @@ mod tests {
 							}
 						);
 						assert_eq!(stored.len(), models.len());
-						for ((id, name, payload, optional_payload, json_data), expected) in
-							stored.into_iter().zip(&models)
+						for (
+							(
+								id,
+								name,
+								payload,
+								optional_payload,
+								json_data,
+								optional_json_data,
+								timestamp,
+								optional_timestamp,
+							),
+							expected,
+						) in stored.into_iter().zip(&models)
 						{
 							assert_eq!(
 								(&name, &payload, &optional_payload, &json_data.0),
@@ -2501,6 +2702,12 @@ mod tests {
 									&expected.json_data
 								)
 							);
+							assert_eq!(
+								optional_json_data.map(|value| value.0),
+								expected.optional_json_data
+							);
+							assert_eq!(timestamp, expected.timestamp.naive_utc());
+							assert_eq!(optional_timestamp, expected.optional_timestamp);
 							if let Some(expected_id) = expected.id {
 								assert_eq!(id, expected_id);
 							}
