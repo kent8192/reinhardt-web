@@ -39275,161 +39275,210 @@
       "path": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs",
       "symbol": "ManyToManyAccessor < S , T >::add_with_conn",
       "kind": "execution-wrapper",
-      "line": 222,
-      "fingerprint": "0f81fc585f83227f2c4315c82f810e88e631a7b5518810985d3bb2b29ecd8cab",
+      "line": 224,
+      "fingerprint": "44e22734cf83a6e604095ab5df0a848b20e4901cdc84643dd03de1ae66717db4",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Relationship AST is consumed into owned renderer SQL/Values before awaiting native generated ORM execution. Counts, joins, metadata columns, diagnostic samples and caller-owned transaction replacement are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: native PostgreSQL/MySQL/SQLite FK count/pagination, M2M add/contains/count/join/filter/remove/clear and committed/rolled-back replacement",
+        "crates/reinhardt-db/src/orm/many_to_many_accessor.rs: SQLite UUID-key and integer relationship regression",
+        "crates/reinhardt-db/src/orm/reverse_accessor.rs: SQL generation regression"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs::ManyToManyAccessor < S , T >::all_with_conn::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs",
       "symbol": "ManyToManyAccessor < S , T >::all_with_conn",
       "kind": "execution-wrapper",
-      "line": 496,
-      "fingerprint": "fdac1b9eba941ed627bba8f666299fb4ec50f9e3fd8b455cb6e432d23969a8ee",
+      "line": 502,
+      "fingerprint": "426f288ccdd6294451c1bc533a0505316b4bac75d7c04ed882cf0602664a6fb0",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Relationship AST is consumed into owned renderer SQL/Values before awaiting native generated ORM execution. Counts, joins, metadata columns, diagnostic samples and caller-owned transaction replacement are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: native PostgreSQL/MySQL/SQLite FK count/pagination, M2M add/contains/count/join/filter/remove/clear and committed/rolled-back replacement",
+        "crates/reinhardt-db/src/orm/many_to_many_accessor.rs: SQLite UUID-key and integer relationship regression",
+        "crates/reinhardt-db/src/orm/reverse_accessor.rs: SQL generation regression"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs::ManyToManyAccessor < S , T >::clear_with_conn::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs",
       "symbol": "ManyToManyAccessor < S , T >::clear_with_conn",
       "kind": "execution-wrapper",
-      "line": 554,
-      "fingerprint": "9d468106b72450553fc89c33df03feeaa45408caf7006a1b322cd3b2f1d2710a",
+      "line": 562,
+      "fingerprint": "62c40286653a362e06c35ae1b837a2cb3e8c875af2e75b019060d683f80c31ea",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Relationship AST is consumed into owned renderer SQL/Values before awaiting native generated ORM execution. Counts, joins, metadata columns, diagnostic samples and caller-owned transaction replacement are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: native PostgreSQL/MySQL/SQLite FK count/pagination, M2M add/contains/count/join/filter/remove/clear and committed/rolled-back replacement",
+        "crates/reinhardt-db/src/orm/many_to_many_accessor.rs: SQLite UUID-key and integer relationship regression",
+        "crates/reinhardt-db/src/orm/reverse_accessor.rs: SQL generation regression"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs::ManyToManyAccessor < S , T >::contains_with_conn::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs",
       "symbol": "ManyToManyAccessor < S , T >::contains_with_conn",
       "kind": "execution-wrapper",
-      "line": 310,
-      "fingerprint": "f4fb9d3fb18ecbb2190183dae883dcb043e691a2cb142fe023285574ecb0bfa2",
+      "line": 314,
+      "fingerprint": "1893021e24fe096514fd4bccfb4c6b1be4453e7e8706faed29706251a7a6312c",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Relationship AST is consumed into owned renderer SQL/Values before awaiting native generated ORM execution. Counts, joins, metadata columns, diagnostic samples and caller-owned transaction replacement are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: native PostgreSQL/MySQL/SQLite FK count/pagination, M2M add/contains/count/join/filter/remove/clear and committed/rolled-back replacement",
+        "crates/reinhardt-db/src/orm/many_to_many_accessor.rs: SQLite UUID-key and integer relationship regression",
+        "crates/reinhardt-db/src/orm/reverse_accessor.rs: SQL generation regression"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs::ManyToManyAccessor < S , T >::count_with_conn::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs",
       "symbol": "ManyToManyAccessor < S , T >::count_with_conn",
       "kind": "execution-wrapper",
-      "line": 394,
-      "fingerprint": "e07533ef58aa5aec5635370a177acea23ecf8f891f06959082080fc2fcf2ac55",
+      "line": 399,
+      "fingerprint": "cc14706c385f8cefb6a3c4a05dbcd44d0633f99b7099d1c802fa89f93d1440d5",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Relationship AST is consumed into owned renderer SQL/Values before awaiting native generated ORM execution. Counts, joins, metadata columns, diagnostic samples and caller-owned transaction replacement are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: native PostgreSQL/MySQL/SQLite FK count/pagination, M2M add/contains/count/join/filter/remove/clear and committed/rolled-back replacement",
+        "crates/reinhardt-db/src/orm/many_to_many_accessor.rs: SQLite UUID-key and integer relationship regression",
+        "crates/reinhardt-db/src/orm/reverse_accessor.rs: SQL generation regression"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs::ManyToManyAccessor < S , T >::filter_by_target_with_conn::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs",
       "symbol": "ManyToManyAccessor < S , T >::filter_by_target_with_conn",
       "kind": "execution-wrapper",
-      "line": 723,
-      "fingerprint": "f8772a45e4378697b28456b7924210130db570eda40290a9eb81c707663e4ab8",
+      "line": 731,
+      "fingerprint": "c060d8e8df8ecc4ac1cb8c74108861d5e24a561080b4ebb5be6213bc57cad246",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Relationship AST is consumed into owned renderer SQL/Values before awaiting native generated ORM execution. Counts, joins, metadata columns, diagnostic samples and caller-owned transaction replacement are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: native PostgreSQL/MySQL/SQLite FK count/pagination, M2M add/contains/count/join/filter/remove/clear and committed/rolled-back replacement",
+        "crates/reinhardt-db/src/orm/many_to_many_accessor.rs: SQLite UUID-key and integer relationship regression",
+        "crates/reinhardt-db/src/orm/reverse_accessor.rs: SQL generation regression"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs::ManyToManyAccessor < S , T >::remove_with_conn::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/many_to_many_accessor.rs",
       "symbol": "ManyToManyAccessor < S , T >::remove_with_conn",
       "kind": "execution-wrapper",
-      "line": 276,
-      "fingerprint": "025cd0a04ebdebb8fdffb5e568972c6da71fd1b2b00b35d93316c103dcec5993",
+      "line": 279,
+      "fingerprint": "cb283574d30d353f9ab74235bd154dd36ff54322cf268dbd71f99ce98927f379",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Relationship AST is consumed into owned renderer SQL/Values before awaiting native generated ORM execution. Counts, joins, metadata columns, diagnostic samples and caller-owned transaction replacement are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: native PostgreSQL/MySQL/SQLite FK count/pagination, M2M add/contains/count/join/filter/remove/clear and committed/rolled-back replacement",
+        "crates/reinhardt-db/src/orm/many_to_many_accessor.rs: SQLite UUID-key and integer relationship regression",
+        "crates/reinhardt-db/src/orm/reverse_accessor.rs: SQL generation regression"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/model.rs::Model::delete_with_conn::sql-literal#1",
@@ -42625,46 +42674,60 @@
       "path": "crates/reinhardt-db/src/orm/reverse_accessor.rs",
       "symbol": "ReverseAccessor < S , T >::all_with_conn",
       "kind": "execution-wrapper",
-      "line": 193,
-      "fingerprint": "8f73fde6af0f86f34efcacb08b9a55cb9092f0ba14534f2c808870c113a8a7d5",
+      "line": 194,
+      "fingerprint": "cd19f1632f3631f0904fedb7a7eda86de502313558b191200339082bee865c3f",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Relationship AST is consumed into owned renderer SQL/Values before awaiting native generated ORM execution. Counts, joins, metadata columns, diagnostic samples and caller-owned transaction replacement are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: native PostgreSQL/MySQL/SQLite FK count/pagination, M2M add/contains/count/join/filter/remove/clear and committed/rolled-back replacement",
+        "crates/reinhardt-db/src/orm/many_to_many_accessor.rs: SQLite UUID-key and integer relationship regression",
+        "crates/reinhardt-db/src/orm/reverse_accessor.rs: SQL generation regression"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/reverse_accessor.rs::ReverseAccessor < S , T >::count_with_conn::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/reverse_accessor.rs",
       "symbol": "ReverseAccessor < S , T >::count_with_conn",
       "kind": "execution-wrapper",
-      "line": 259,
-      "fingerprint": "bcf54d4171ccf01dee783f076d0b7097a5471704140c066c78eaccda431d181f",
+      "line": 261,
+      "fingerprint": "bf987e669229351bfb5911253feebd0a94033a575b59b1b13e50997e69982468",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/orm",
+        "reinhardt-db/postgres|mysql|sqlite"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Relationship AST is consumed into owned renderer SQL/Values before awaiting native generated ORM execution. Counts, joins, metadata columns, diagnostic samples and caller-owned transaction replacement are preserved.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: native PostgreSQL/MySQL/SQLite FK count/pagination, M2M add/contains/count/join/filter/remove/clear and committed/rolled-back replacement",
+        "crates/reinhardt-db/src/orm/many_to_many_accessor.rs: SQLite UUID-key and integer relationship regression",
+        "crates/reinhardt-db/src/orm/reverse_accessor.rs: SQL generation regression"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/session.rs::Session::execute_returning::execution-wrapper#1",

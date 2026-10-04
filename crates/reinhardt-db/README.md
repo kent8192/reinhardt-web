@@ -166,6 +166,9 @@ Typed `get_or_create` and `update_or_create` retain renderer Values through
 conflict recovery and nested savepoints. Their constant two-row cardinality
 limit and backend row locks are query-builder clauses; the constant preserves
 the existing SQL and argument count.
+Reverse foreign-key and many-to-many accessors also retain native arguments
+through counts, joins, pagination and writes. Caller-owned transactions still
+control atomic relationship replacement.
 
 ### Streaming QuerySets
 

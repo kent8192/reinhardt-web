@@ -13,8 +13,8 @@ use reinhardt_db::orm::execution::{
 };
 use reinhardt_db::orm::query::{FieldAssignment, Filter, UpdateValue};
 use reinhardt_db::orm::{
-	CustomManager, DatabaseConnectionLease, DatabaseValue, FilterOperator, FilterValue, Model,
-	OrmExecutor, QuerySet,
+	CustomManager, DatabaseConnectionLease, DatabaseValue, FilterOperator, FilterValue,
+	ManyToManyAccessor, Model, OrmExecutor, QuerySet, ReverseAccessor,
 };
 use reinhardt_query::{
 	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
@@ -282,6 +282,191 @@ impl Model for GeneratedModel {
 		})
 		.collect()
 	}
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct GeneratedChild {
+	id: Option<i64>,
+	parent_id: i64,
+	name: String,
+}
+impl Model for GeneratedChild {
+	type PrimaryKey = i64;
+	type Fields = GeneratedFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
+	fn table_name() -> &'static str {
+		"generated_children"
+	}
+	fn new_fields() -> Self::Fields {
+		GeneratedFields
+	}
+	fn primary_key(&self) -> Option<i64> {
+		self.id
+	}
+	fn set_primary_key(&mut self, value: i64) {
+		self.id = Some(value);
+	}
+}
+
+async fn exercise_relationship_generated_capabilities(connection: &DatabaseConnection) {
+	// Arrange: isolated test-owned tables and exact integer/quote-bearing records.
+	connection
+		.execute(
+			"CREATE TABLE generated_children (id BIGINT PRIMARY KEY, parent_id BIGINT, name TEXT)",
+			vec![],
+		)
+		.await
+		.unwrap();
+	connection.execute(
+		"CREATE TABLE generated_rows_members (from_generated_rows_id BIGINT, to_generated_rows_id BIGINT)",
+		vec![],
+	).await.unwrap();
+	let source = GeneratedModel {
+		id: Some(41),
+		name: "source' ? $9".into(),
+	};
+	let first = GeneratedModel {
+		id: Some(42),
+		name: "first' ? $10".into(),
+	};
+	let second = GeneratedModel {
+		id: Some(43),
+		name: "second' ? $11".into(),
+	};
+	for model in [&source, &first, &second] {
+		let built = build(
+			connection.database_type(),
+			Query::insert()
+				.into_table("generated_rows")
+				.columns(["id", "name"])
+				.values_panic([Value::BigInt(model.id), model.name.as_str().into()])
+				.take(),
+		);
+		connection.execute_generated(built, None).await.unwrap();
+	}
+	let children = [
+		GeneratedChild {
+			id: Some(51),
+			parent_id: 41,
+			name: "child' ? $12".into(),
+		},
+		GeneratedChild {
+			id: Some(52),
+			parent_id: 41,
+			name: "child' ? $13".into(),
+		},
+	];
+	for child in &children {
+		let built = build(
+			connection.database_type(),
+			Query::insert()
+				.into_table("generated_children")
+				.columns(["id", "parent_id", "name"])
+				.values_panic([
+					Value::BigInt(child.id),
+					child.parent_id.into(),
+					child.name.as_str().into(),
+				])
+				.take(),
+		);
+		connection.execute_generated(built, None).await.unwrap();
+	}
+	let lease = DatabaseConnectionLease::register(connection.clone()).unwrap();
+	let mut handle = lease.handle();
+	// Act / Assert: reverse FK decoding, count and bound pagination retain behavior.
+	let reverse = || ReverseAccessor::<GeneratedModel, GeneratedChild>::new(&source, "parent_id");
+	let mut loaded = reverse().all_with_conn(&mut handle).await.unwrap();
+	loaded.sort_by_key(|child| child.id);
+	assert_eq!(loaded, children);
+	assert_eq!(reverse().count_with_conn(&mut handle).await.unwrap(), 2);
+	let page = reverse()
+		.limit(1)
+		.offset(1)
+		.all_with_conn(&mut handle)
+		.await
+		.unwrap();
+	assert_eq!(page.len(), 1);
+	assert!(children.contains(&page[0]));
+	assert!(
+		reverse()
+			.limit(1)
+			.offset(2)
+			.all_with_conn(&mut handle)
+			.await
+			.unwrap()
+			.is_empty()
+	);
+	let members = ManyToManyAccessor::<GeneratedModel, GeneratedModel>::new(&source, "members");
+	members.add_with_conn(&mut handle, &first).await.unwrap();
+	assert!(
+		members
+			.contains_with_conn(&mut handle, &first)
+			.await
+			.unwrap()
+	);
+	assert!(
+		!members
+			.contains_with_conn(&mut handle, &second)
+			.await
+			.unwrap()
+	);
+	assert_eq!(members.count_with_conn(&mut handle).await.unwrap(), 1);
+	assert_eq!(
+		members.all_with_conn(&mut handle).await.unwrap(),
+		std::slice::from_ref(&first)
+	);
+	let sources = ManyToManyAccessor::<GeneratedModel, GeneratedModel>::filter_by_target_with_conn(
+		&GeneratedModel::objects(),
+		"members",
+		&first,
+		&mut handle,
+	)
+	.await
+	.unwrap();
+	assert_eq!(sources, std::slice::from_ref(&source));
+	let rollback: reinhardt_core::exception::Result<()> = handle
+		.atomic_write(async |transaction| {
+			members
+				.set_with_conn(transaction, std::slice::from_ref(&second))
+				.await?;
+			assert_eq!(
+				members.all_with_conn(transaction).await?,
+				std::slice::from_ref(&second)
+			);
+			Err(reinhardt_core::exception::Error::Conflict(
+				"rollback relationship replacement".into(),
+			))
+		})
+		.await;
+	assert!(matches!(
+		rollback,
+		Err(reinhardt_core::exception::Error::Conflict(_))
+	));
+	assert_eq!(
+		members.all_with_conn(&mut handle).await.unwrap(),
+		std::slice::from_ref(&first)
+	);
+	handle
+		.atomic_write(async |transaction| {
+			members
+				.set_with_conn(transaction, &[first.clone(), second.clone()])
+				.await
+		})
+		.await
+		.unwrap();
+	assert_eq!(members.count_with_conn(&mut handle).await.unwrap(), 2);
+	let page = ManyToManyAccessor::<GeneratedModel, GeneratedModel>::new(&source, "members")
+		.limit(1)
+		.offset(1)
+		.all_with_conn(&mut handle)
+		.await
+		.unwrap();
+	assert_eq!(page.len(), 1);
+	assert!([first.clone(), second.clone()].contains(&page[0]));
+	members.remove_with_conn(&mut handle, &first).await.unwrap();
+	assert_eq!(members.all_with_conn(&mut handle).await.unwrap(), [second]);
+	members.clear_with_conn(&mut handle).await.unwrap();
+	assert_eq!(members.count_with_conn(&mut handle).await.unwrap(), 0);
 }
 
 fn generated_id_field() -> reinhardt_db::orm::expressions::FieldRef<
@@ -951,6 +1136,7 @@ async fn postgres_generated_pool_execution_keeps_decimal_and_nullable_arrays() {
 	exercise_transactions_and_streams(&connection).await;
 	exercise_orm_generated_capabilities(&connection).await;
 	exercise_queryset_generated_capabilities(&connection).await;
+	exercise_relationship_generated_capabilities(&connection).await;
 	// Arrange / Act: nullable array elements bypass the legacy Debug conversion.
 	connection
 		.execute("CREATE TABLE generated_arrays (items INTEGER[])", vec![])
@@ -1036,6 +1222,7 @@ async fn mysql_generated_pool_execution_keeps_decimal_and_full_unsigned_range() 
 	exercise_transactions_and_streams(&connection).await;
 	exercise_orm_generated_capabilities(&connection).await;
 	exercise_queryset_generated_capabilities(&connection).await;
+	exercise_relationship_generated_capabilities(&connection).await;
 	// Arrange / Act: the native backend must bypass the signed compatibility bridge.
 	connection
 		.execute(
@@ -1085,6 +1272,7 @@ async fn sqlite_generated_pool_execution_keeps_text_uuid_and_rejects_lossy_value
 	exercise_transactions_and_streams(&connection).await;
 	exercise_orm_generated_capabilities(&connection).await;
 	exercise_queryset_generated_capabilities(&connection).await;
+	exercise_relationship_generated_capabilities(&connection).await;
 	// Act: failed encoding must occur before an invalid SQL statement is executed.
 	let built = build(
 		DatabaseType::Sqlite,
