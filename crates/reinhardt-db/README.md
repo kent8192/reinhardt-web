@@ -58,6 +58,10 @@ This crate provides the following modules:
   - One-to-one relationships
   - Lazy loading and eager loading
 
+- **ContentTypes**: Database-backed polymorphic relationship metadata
+  - SQLite inserts and inserted-ID lookups share one acquired connection, so
+    returned IDs identify the inserted row even with multiple pooled connections
+
 ### Implemented ✓ (Additional Features)
 
 - **Advanced Query Optimization**
@@ -157,6 +161,13 @@ Advanced features for specific use cases:
   - Document, Key-Value, Column-Family, Graph paradigms
   - **When to use**: Working with NoSQL databases like MongoDB
 
+### Unsigned composite key lookups
+
+Unsigned values passed to `QuerySet::get_composite` are checked before execution.
+The current parameter representation supports signed 64-bit integers, so values
+above `i64::MAX` return a type conversion error without including the key value.
+They never wrap to a negative key or clamp to the largest signed key.
+
 ### Updating composite primary keys
 
 `Manager::update` and `update_with_conn` match every component of a composite
@@ -173,6 +184,28 @@ of `Manager::get` and the manager's delete methods. For composite-key lookups,
 use `get_composite` or filter explicitly on every key component. Generated UUID
 and enum composite keys remain subject to
 [#6456](https://github.com/kent8192/reinhardt-web/issues/6456).
+
+### PostgreSQL parameter signatures
+
+PostgreSQL backend pool and transaction execute/fetch methods preserve each
+argument's native type. SQLx 0.8.6 caches prepared statements by SQL text, so an
+existing statement can have an incompatible parameter signature. For example,
+`QueryValue::Null` binds as INT4, whereas `QueryValue::Int` binds as INT8.
+
+Before execution, the backend clears existing named statements on the same
+acquired connection and disables persistence for that query. Disabling
+persistence alone does not bypass an existing cached statement. SQL text,
+values, transaction boundaries, and connection guard ownership are preserved.
+This trades statement reuse for correctness: backend queries are prepared
+again, and cache entries created through direct SQLx pool access are cleared.
+Direct SQLx calls can still cache statements before and after backend calls.
+
+Regression tests cover all pool and transaction execute/fetch methods, NULL to
+large integer transitions, both native integer widths, partially consumed
+streams, and INSERT commit/rollback. Remove the bypass only when the selected
+SQLx version safely handles changing native signatures without it. The
+dependency compatibility limitation remains tracked in
+[#6533](https://github.com/kent8192/reinhardt-web/issues/6533).
 
 ### Existence checks
 
@@ -274,6 +307,11 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 - Support for composite primary keys
 
 ### Query with QuerySet
+
+Case-sensitive `Contains`, `StartsWith`, and `EndsWith` lookups escape literal
+`%`, `_`, and backslash characters in their bound patterns. Column identifiers
+use the selected backend's quoting. MySQL renders the escape character as
+`ESCAPE 0x5C`; PostgreSQL and SQLite use `ESCAPE '\'`.
 
 ```rust
 use reinhardt_db::orm::Model;
@@ -770,7 +808,7 @@ Optimize how related objects are loaded:
   - `save()`, `delete()` - Persist and remove content types
   - `load_all()` - Load all content types from database
   - `exists()` - Check content type existence
-  - Supports PostgreSQL, MySQL, and SQLite via sqlx
+  - Supports PostgreSQL and SQLite via sqlx; MySQL is currently unsupported
 
 - **Multi-Database Support**
   - `MultiDbContentTypeManager` - Manage content types across multiple databases
@@ -788,6 +826,11 @@ Optimize how related objects are loaded:
 
 #### ORM Integration
 
+`ContentTypeQuery` and `ContentTypeTransaction` currently require a SQLite-backed
+pool. They generate SQLite SQL, and `ContentTypeTransaction::create()` uses
+SQLite's `last_insert_rowid()`. These interfaces do not support PostgreSQL or
+MySQL pools.
+
 - **ContentTypeQuery** - ORM-style query builder for content types
   - `new()` - Create query builder from connection pool
   - `filter_app_label()`, `filter_model()`, `filter_id()` - Filter by fields
@@ -800,12 +843,16 @@ Optimize how related objects are loaded:
   - `exists()` - Check if any records match
   - Django-inspired QuerySet API with method chaining
 
-- **ContentTypeTransaction** - Transaction-aware content type operations
-  - `new()` - Create transaction context
-  - `query()` - Get query builder for transaction
-  - `create()` - Create content type within transaction
-  - `delete()` - Delete content type within transaction
-  - Full ACID transaction support for content type operations
+- **ContentTypeTransaction** - Pool-backed content type operations (historical name)
+  - `new()` - Create a context without beginning or owning a database transaction
+  - `query()` - Get an independent query builder using the same pool
+  - `create()` - Create a content type using pool autocommit, keeping the insert
+    and generated-ID lookup on one acquired connection
+  - `delete()` - Delete a content type using pool autocommit
+  - Each operation executes independently; errors and dropping the context do not
+    roll back preceding writes. A transaction opened separately on a pool
+    connection does not enlist these operations. Use a transaction-aware API when
+    atomic changes are required.
 
 
 ## hybrid

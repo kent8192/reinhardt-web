@@ -12,7 +12,7 @@ use crate::value::Value;
 /// Escapes `\` -> `\\`, `%` -> `\%`, and `_` -> `\_` so that user-supplied
 /// strings are treated as literal text in LIKE patterns.
 ///
-/// This escaping relies on the `ESCAPE '\'` clause being present in the
+/// This escaping relies on an explicit backslash `ESCAPE` clause in the
 /// generated SQL. The helper functions [`ExprTrait::starts_with`],
 /// [`ExprTrait::ends_with`], and [`ExprTrait::contains`] automatically
 /// include this clause.
@@ -34,7 +34,8 @@ fn escape_like_pattern(input: &str) -> String {
 /// The explicit ESCAPE clause ensures that backslash escaping works
 /// consistently across all SQL backends, including those that do not treat
 /// `\` as a LIKE escape character by default (e.g., SQLite). Its literal is
-/// rendered by the backend: MySQL requires two backslashes in the SQL string.
+/// rendered by the backend: MySQL uses `0x5C`, which is independent of its
+/// string-literal backslash mode, while PostgreSQL and SQLite use `'\'`.
 fn like_with_escape(expr: SimpleExpr, pattern: String) -> SimpleExpr {
 	SimpleExpr::LikeWithEscape(
 		Box::new(expr),
@@ -325,9 +326,10 @@ pub trait ExprTrait: Sized {
 	///
 	/// SQL wildcard characters (`%`, `_`) and the escape character (`\`) in
 	/// user input are escaped before constructing the pattern. The generated
-	/// SQL includes an explicit `ESCAPE '\'` clause so that the backslash
+	/// SQL includes an explicit backslash `ESCAPE` clause so that the
 	/// escaping is portable across all backends (including SQLite, which does
-	/// not treat `\` as an escape character by default).
+	/// not treat `\` as an escape character by default). MySQL renders the
+	/// escape character as `0x5C`; PostgreSQL and SQLite render it as `'\'`.
 	fn starts_with<S>(self, prefix: S) -> SimpleExpr
 	where
 		S: Into<String>,
@@ -341,7 +343,7 @@ pub trait ExprTrait: Sized {
 	///
 	/// SQL wildcard characters (`%`, `_`) and the escape character (`\`) in
 	/// user input are escaped before constructing the pattern. The generated
-	/// SQL includes an explicit `ESCAPE '\'` clause for cross-backend
+	/// SQL includes an explicit backslash `ESCAPE` clause for cross-backend
 	/// portability.
 	fn ends_with<S>(self, suffix: S) -> SimpleExpr
 	where
@@ -356,7 +358,7 @@ pub trait ExprTrait: Sized {
 	///
 	/// SQL wildcard characters (`%`, `_`) and the escape character (`\`) in
 	/// user input are escaped before constructing the pattern. The generated
-	/// SQL includes an explicit `ESCAPE '\'` clause for cross-backend
+	/// SQL includes an explicit backslash `ESCAPE` clause for cross-backend
 	/// portability.
 	fn contains<S>(self, substring: S) -> SimpleExpr
 	where

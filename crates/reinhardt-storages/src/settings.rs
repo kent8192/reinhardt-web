@@ -266,6 +266,7 @@ impl StorageSettings {
 	}
 }
 
+#[cfg(any(feature = "s3", feature = "gcs", feature = "azure", feature = "local"))]
 fn missing_section(section: &str) -> StorageError {
 	StorageError::ConfigError(format!("Selected backend requires [{section}] settings"))
 }
@@ -273,6 +274,38 @@ fn missing_section(section: &str) -> StorageError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	#[case::s3("s3", cfg!(feature = "s3"))]
+	#[case::gcs("gcs", cfg!(feature = "gcs"))]
+	#[case::azure("azure", cfg!(feature = "azure"))]
+	#[case::local("local", cfg!(feature = "local"))]
+	fn missing_backend_settings_preserve_feature_specific_errors(
+		#[case] backend: &str,
+		#[case] enabled: bool,
+	) {
+		// Arrange
+		let settings: StorageSettings =
+			serde_json::from_value(serde_json::json!({ "backend": backend }))
+				.expect("settings should deserialize without a backend section");
+		let expected = if enabled {
+			format!("Selected backend requires [storage.{backend}] settings")
+		} else {
+			format!("Backend type not enabled: {:?}", settings.backend)
+		};
+
+		// Act
+		let error = settings
+			.to_config()
+			.expect_err("missing or disabled backend should reject configuration");
+
+		// Assert
+		match error {
+			StorageError::ConfigError(message) => assert_eq!(message, expected),
+			other => panic!("expected a configuration error, got {other:?}"),
+		}
+	}
 
 	// `StorageSettings::default()` must be convertible via `to_config()` for whichever
 	// backend `default_backend()` selects, including non-local builds where `local` is
