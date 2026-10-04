@@ -57,6 +57,7 @@ pub struct InsertStatement {
 	pub(crate) on_conflict: Option<super::on_conflict::OnConflict>,
 	pub(crate) overriding_system_value: bool,
 	pub(crate) default_values: bool,
+	pub(crate) sqlite_or_replace: bool,
 }
 
 impl InsertStatement {
@@ -71,6 +72,7 @@ impl InsertStatement {
 			on_conflict: None,
 			overriding_system_value: false,
 			default_values: false,
+			sqlite_or_replace: false,
 		}
 	}
 
@@ -85,6 +87,7 @@ impl InsertStatement {
 			on_conflict: self.on_conflict.take(),
 			overriding_system_value: std::mem::take(&mut self.overriding_system_value),
 			default_values: std::mem::take(&mut self.default_values),
+			sqlite_or_replace: std::mem::take(&mut self.sqlite_or_replace),
 		}
 	}
 
@@ -276,6 +279,26 @@ impl InsertStatement {
 	{
 		self.returning = None;
 		self.returning_exprs = Some(expressions.into_iter().map(Into::into).collect());
+		self
+	}
+
+	/// Use SQLite's INSERT OR REPLACE conflict algorithm.
+	///
+	/// This preserves SQLite's delete-and-insert replacement semantics, which
+	/// differ from ON CONFLICT DO UPDATE. Checked builders reject other backends;
+	/// legacy non-SQLite builders panic rather than silently discard this option.
+	/// Construction/rendering has native/WASM behavioral parity (P2).
+	///
+	/// ```
+	/// use reinhardt_query::{Query, SqliteQueryBuilder, Value, Values};
+	/// let statement = Query::insert().into_table("results").columns(["id"])
+	///     .values_panic([42]).sqlite_or_replace().take();
+	/// let (sql, values) = SqliteQueryBuilder.build_insert_checked(&statement).unwrap();
+	/// assert_eq!(sql, "INSERT OR REPLACE INTO \"results\" (\"id\") VALUES (?)");
+	/// assert_eq!(values, Values(vec![Value::Int(Some(42))]));
+	/// ```
+	pub fn sqlite_or_replace(&mut self) -> &mut Self {
+		self.sqlite_or_replace = true;
 		self
 	}
 
@@ -602,5 +625,53 @@ mod tests {
 			query.get_values().is_none(),
 			"should not have values when using subquery"
 		);
+	}
+}
+
+#[cfg(test)]
+mod sqlite_replace_tests {
+	use crate::{
+		CockroachDBQueryBuilder, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuildError,
+		SqliteQueryBuilder, Value, Values,
+	};
+	use rstest::rstest;
+	#[rstest]
+	fn checked_replace_preserves_values_and_take() {
+		// Arrange
+		let mut statement = Query::insert();
+		statement
+			.into_table("results")
+			.columns(["id", "result"])
+			.values_panic(vec![Value::Int(Some(42)), Value::String(None)])
+			.sqlite_or_replace();
+		// Act
+		let taken = statement.take();
+		let (sql, values) = SqliteQueryBuilder.build_insert_checked(&taken).unwrap();
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT OR REPLACE INTO \"results\" (\"id\", \"result\") VALUES (?, NULL)"
+		);
+		assert_eq!(values, Values(vec![Value::Int(Some(42))]));
+		assert!(!statement.sqlite_or_replace);
+		for (result, backend) in [
+			(
+				PostgresQueryBuilder.build_insert_checked(&taken),
+				"PostgreSQL",
+			),
+			(MySqlQueryBuilder.build_insert_checked(&taken), "MySQL"),
+			(
+				CockroachDBQueryBuilder::new().build_insert_checked(&taken),
+				"CockroachDB",
+			),
+		] {
+			assert_eq!(
+				result,
+				Err(QueryBuildError::UnsupportedBackendFeature {
+					feature: "SQLite INSERT OR REPLACE",
+					backend
+				})
+			);
+		}
 	}
 }

@@ -1105,6 +1105,10 @@ impl QueryBuilder for MySqlQueryBuilder {
 
 	fn build_insert(&self, stmt: &InsertStatement) -> (String, Values) {
 		use crate::query::insert::InsertSource;
+		assert!(
+			!stmt.sqlite_or_replace,
+			"SQLite INSERT OR REPLACE is unsupported by this backend"
+		);
 
 		let mut writer = SqlWriter::new();
 

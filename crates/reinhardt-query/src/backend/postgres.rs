@@ -1815,6 +1815,10 @@ impl PostgresQueryBuilder {
 		mut writer: SqlWriter,
 	) -> (String, Values) {
 		use crate::query::insert::InsertSource;
+		assert!(
+			!stmt.sqlite_or_replace,
+			"SQLite INSERT OR REPLACE is unsupported by this backend"
+		);
 
 		// INSERT INTO clause
 		writer.push("INSERT INTO");

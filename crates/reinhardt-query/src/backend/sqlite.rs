@@ -1021,7 +1021,11 @@ impl QueryBuilder for SqliteQueryBuilder {
 		let mut writer = SqlWriter::new();
 
 		// INSERT INTO clause
-		writer.push("INSERT INTO");
+		writer.push(if stmt.sqlite_or_replace {
+			"INSERT OR REPLACE INTO"
+		} else {
+			"INSERT INTO"
+		});
 		writer.push_space();
 
 		if let Some(table) = &stmt.table {

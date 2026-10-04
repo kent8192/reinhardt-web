@@ -763,6 +763,13 @@ pub(crate) fn validate_insert_for_backend(
 	statement: &InsertStatement,
 	backend: &'static str,
 ) -> Result<(), QueryBuildError> {
+	if statement.sqlite_or_replace && backend != "SQLite" {
+		return Err(QueryBuildError::UnsupportedBackendFeature {
+			feature: "SQLite INSERT OR REPLACE",
+			backend,
+		});
+	}
+
 	if let Some(table) = &statement.table {
 		validate_table_ref(table, backend)?;
 	}
