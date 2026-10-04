@@ -138,11 +138,11 @@ pub use postgres::prepare_postgres;
 #[cfg(feature = "mysql")]
 mod mysql;
 #[cfg(feature = "mysql")]
-pub use mysql::prepare_mysql;
+pub use mysql::{prepare_mysql, prepare_mysql_with_text_uuid};
 #[cfg(feature = "sqlite")]
 mod sqlite;
 #[cfg(feature = "sqlite")]
-pub use sqlite::prepare_sqlite;
+pub use sqlite::{prepare_sqlite, prepare_sqlite_with_text_uuid};
 #[cfg(feature = "any")]
 mod any;
 #[cfg(feature = "any")]

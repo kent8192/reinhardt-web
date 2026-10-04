@@ -110,6 +110,90 @@ async fn sqlite_round_trip_preserves_order_null_and_bytes(scalar_values: Values)
 	// Assert
 	assert_eq!(row, (true, 42, "'quoted ? $1".into(), vec![0, 255], None));
 }
+
+#[cfg(all(feature = "sqlite", feature = "with-uuid"))]
+#[rstest]
+#[tokio::test]
+async fn sqlite_text_uuid_mode_preserves_legacy_columns_and_native_default() {
+	use sqlx::Connection;
+	// Arrange
+	let uuid = sqlx::types::Uuid::parse_str("12345678-1234-5678-9abc-def012345678").unwrap();
+	let mut connection = sqlx::SqliteConnection::connect("sqlite::memory:")
+		.await
+		.unwrap();
+	let value = Value::Uuid(Some(Box::new(uuid)));
+	let text_sql = "SELECT typeof(?), ?, ?";
+	let (sql, arguments) = prepare_sqlite_with_text_uuid((
+		text_sql.into(),
+		Values(vec![value.clone(), value.clone(), Value::Uuid(None)]),
+	))
+	.unwrap()
+	.into_parts();
+	assert_eq!(sql, text_sql);
+	assert_eq!(arguments.len(), 3);
+	// Act
+	let text: (String, String, Option<String>) = sqlx::query_as_with(&sql, arguments)
+		.fetch_one(&mut connection)
+		.await
+		.unwrap();
+	let (sql, arguments) = prepare_sqlite((
+		"SELECT typeof(?), ?".into(),
+		Values(vec![value.clone(), value]),
+	))
+	.unwrap()
+	.into_parts();
+	let native: (String, Vec<u8>) = sqlx::query_as_with(&sql, arguments)
+		.fetch_one(&mut connection)
+		.await
+		.unwrap();
+	// Assert: choosing text mode does not change the ordinary binary UUID codec.
+	assert_eq!(text, ("text".into(), uuid.to_string(), None));
+	assert_eq!(native, ("blob".into(), uuid.as_bytes().to_vec()));
+}
+
+#[cfg(all(feature = "mysql", feature = "with-uuid"))]
+#[rstest]
+#[tokio::test]
+async fn mysql_text_uuid_mode_preserves_legacy_columns_and_native_default() {
+	use testcontainers::runners::AsyncRunner;
+	// Arrange: container and pool own cleanup across both execution paths.
+	let container = testcontainers_modules::mysql::Mysql::default()
+		.start()
+		.await
+		.unwrap();
+	let url = format!(
+		"mysql://root@{}:{}/test",
+		container.get_host().await.unwrap(),
+		container.get_host_port_ipv4(3306).await.unwrap()
+	);
+	let pool = sqlx::MySqlPool::connect(&url).await.unwrap();
+	let uuid = sqlx::types::Uuid::parse_str("12345678-1234-5678-9abc-def012345678").unwrap();
+	let value = Value::Uuid(Some(Box::new(uuid)));
+	let text_sql = "SELECT ?, ?";
+	let (sql, arguments) = prepare_mysql_with_text_uuid((
+		text_sql.into(),
+		Values(vec![value.clone(), Value::Uuid(None)]),
+	))
+	.unwrap()
+	.into_parts();
+	assert_eq!(sql, text_sql);
+	assert_eq!(arguments.len(), 2);
+	// Act
+	let text: (String, Option<String>) = sqlx::query_as_with(&sql, arguments)
+		.fetch_one(&pool)
+		.await
+		.unwrap();
+	let (sql, arguments) = prepare_mysql(("SELECT ?".into(), Values(vec![value])))
+		.unwrap()
+		.into_parts();
+	let native: (Vec<u8>,) = sqlx::query_as_with(&sql, arguments)
+		.fetch_one(&pool)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(text, (uuid.to_string(), None));
+	assert_eq!(native.0, uuid.as_bytes());
+}
 #[cfg(feature = "any")]
 #[rstest]
 #[case(AnyBackend::Postgres, "postgres/any")]

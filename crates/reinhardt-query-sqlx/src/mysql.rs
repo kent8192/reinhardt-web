@@ -7,6 +7,24 @@ use sqlx::Arguments;
 pub fn prepare_mysql(
 	built: (String, Values),
 ) -> Result<PreparedQuery<sqlx::mysql::MySqlArguments>, BindError> {
+	prepare_mysql_impl(built, false)
+}
+
+/// Adapt generated arguments for existing UUID text columns (native-only, P0).
+///
+/// UUID values use canonical hyphenated text, including an explicitly supplied
+/// typed NULL. Other values use the same native codecs and checked errors as
+/// [`prepare_mysql`]. SQL and argument order are unchanged.
+pub fn prepare_mysql_with_text_uuid(
+	built: (String, Values),
+) -> Result<PreparedQuery<sqlx::mysql::MySqlArguments>, BindError> {
+	prepare_mysql_impl(built, true)
+}
+
+fn prepare_mysql_impl(
+	built: (String, Values),
+	_text_uuid: bool,
+) -> Result<PreparedQuery<sqlx::mysql::MySqlArguments>, BindError> {
 	let (sql, values) = built;
 	let mut arguments = <sqlx::mysql::MySqlArguments>::default();
 	for (offset, value) in values.into_iter().enumerate() {
@@ -55,7 +73,13 @@ pub fn prepare_mysql(
 				return Err(fail("type has no supported codec for this backend"));
 			}
 			#[cfg(feature = "with-uuid")]
-			Value::Uuid(v) => add!(v.map(|v| *v)),
+			Value::Uuid(v) => {
+				if _text_uuid {
+					add!(v.map(|v| v.to_string()));
+				} else {
+					add!(v.map(|v| *v));
+				}
+			}
 			#[cfg(feature = "with-json")]
 			Value::Json(v) => add!(v.map(|v| sqlx::types::Json(*v))),
 			#[cfg(feature = "with-rust_decimal")]

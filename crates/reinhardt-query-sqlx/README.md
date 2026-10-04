@@ -45,3 +45,11 @@ Optional `with-*` features enable both the query Value variant and its SQLx code
 If another workspace consumer enables a query variant without enabling the
 adapter's matching codec, adaptation returns a redacted error instead of breaking
 feature-unified compilation.
+
+The native `prepare_mysql_with_text_uuid` and
+`prepare_sqlite_with_text_uuid` functions explicitly preserve existing UUID text
+columns used by db's raw QueryValue codecs. They consume the original UUID Value
+as canonical hyphenated text; an explicitly supplied UUID NULL remains a NULL
+argument. Other values retain native encoding. The ordinary prepare functions
+continue to use SQLx's native UUID codec, including SQLite's binary UUID format.
+No schema or SQL text is inferred or rewritten.
