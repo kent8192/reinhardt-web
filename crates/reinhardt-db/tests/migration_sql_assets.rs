@@ -184,6 +184,68 @@ fn one_context_caches_first_read_by_file_identity(asset_tree: TempDir) {
 	);
 }
 
+#[cfg(unix)]
+#[rstest]
+fn loads_large_tree_under_low_file_descriptor_limit(asset_tree: TempDir) {
+	// Arrange: isolate the process-wide descriptor limit from other tests.
+	if std::env::var_os("REINHARDT_SQL_ASSET_FD_CHILD").is_none() {
+		let output = std::process::Command::new("sh")
+			.args(["-c", "ulimit -n 64 && exec \"$@\"", "sql-asset-fd-check"])
+			.arg(std::env::current_exe().unwrap())
+			.args([
+				"--exact",
+				"loads_large_tree_under_low_file_descriptor_limit",
+				"--nocapture",
+			])
+			.env("REINHARDT_SQL_ASSET_FD_CHILD", "1")
+			.output()
+			.unwrap();
+		assert!(
+			output.status.success(),
+			"descriptor-limited load failed:\n{}\n{}",
+			String::from_utf8_lossy(&output.stdout),
+			String::from_utf8_lossy(&output.stderr)
+		);
+		return;
+	}
+	let count = 128;
+	for index in 0..count {
+		fs::write(
+			asset_tree.path().join(format!("example/sql/{index}.sql")),
+			format!("SELECT {index};"),
+		)
+		.unwrap();
+		fs::write(
+			asset_tree
+				.path()
+				.join(format!("example/{index:04}_guard.rs")),
+			source(&format!("include_str!(\"sql/{index}.sql\").into()"), "None"),
+		)
+		.unwrap();
+	}
+	let runtime = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.unwrap();
+
+	// Act
+	let loaded = runtime
+		.block_on(FilesystemSource::new(asset_tree.path()).all_migrations())
+		.expect("sources and assets must not accumulate open handles");
+
+	// Assert
+	assert_eq!(loaded.len(), count);
+	for (index, migration) in loaded.iter().enumerate() {
+		assert_eq!(
+			migration.operations,
+			vec![Operation::RunSQL {
+				sql: format!("SELECT {index};"),
+				reverse_sql: None,
+			}]
+		);
+	}
+}
+
 #[rstest]
 #[case(false)]
 #[case(true)]

@@ -2,16 +2,19 @@
 
 use super::{Migration, MigrationError, Result, UpgradeResult};
 use cap_std::{ambient_authority, fs::Dir};
-use same_file::Handle;
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+mod file_identity;
+use file_identity::FileIdentity;
+
 /// Native filesystem context for one migration load or source-upgrade preflight.
 ///
 /// SQL assets are confined to the selected root and cached by file identity for
-/// this context's lifetime. Create a new context for the next load to observe
-/// deployed asset changes. Only `RunSQL.sql` and `RunSQL.reverse_sql` resolve
+/// this context's lifetime without retaining source or asset file handles.
+/// Create a new context for the next load to observe deployed asset changes.
+/// Only `RunSQL.sql` and `RunSQL.reverse_sql` resolve
 /// literal, unqualified `include_str!` expressions; arbitrary Rust is not run.
 /// API parity: P0 (native filesystem only), following the existing migration
 /// filesystem boundary. This context is unavailable to browser applications.
@@ -32,9 +35,9 @@ use std::path::{Path, PathBuf};
 pub struct SqlAssetContext {
 	root: PathBuf,
 	directory: Dir,
-	assets: HashMap<Handle, String>,
+	assets: HashMap<FileIdentity, String>,
 	asset_paths: HashSet<PathBuf>,
-	sources: HashSet<Handle>,
+	sources: HashSet<FileIdentity>,
 }
 
 pub(crate) struct SqlAssetScope<'a> {
@@ -64,7 +67,7 @@ impl SqlAssetContext {
 	/// A file cannot serve as both a migration source and an SQL asset, including
 	/// symlink and hard-link aliases of the same file.
 	pub fn register_migration_source(&mut self, path: &Path) -> Result<()> {
-		let identity = Handle::from_path(path).map_err(|error| {
+		let identity = FileIdentity::from_path(path).map_err(|error| {
 			MigrationError::IoError(std::io::Error::other(format!(
 				"Failed to register migration source {}: {error}",
 				path.display()
@@ -92,7 +95,7 @@ impl SqlAssetContext {
 				.iter()
 				.any(|asset| asset.starts_with(&canonical)));
 		}
-		Ok(self.assets.contains_key(&Handle::from_path(path)?))
+		Ok(self.assets.contains_key(&FileIdentity::from_path(path)?))
 	}
 
 	/// Reconstruct strict migration semantics using explicit source coordinates.
@@ -169,19 +172,18 @@ impl SqlAssetContext {
 		{
 			return Err(failure("asset must be a regular UTF-8 text file".into()));
 		}
-		let file = self
+		let mut file = self
 			.directory
 			.open(anchored)
 			.map_err(|error| failure(format!("cannot open asset: {error}")))?;
-		if !file
+		let metadata = file
 			.metadata()
-			.map_err(|error| failure(error.to_string()))?
-			.is_file()
-		{
+			.map_err(|error| failure(error.to_string()))?;
+		if !metadata.is_file() {
 			return Err(failure("asset must be a regular UTF-8 text file".into()));
 		}
-		let mut identity =
-			Handle::from_file(file.into_std()).map_err(|error| failure(error.to_string()))?;
+		let identity =
+			FileIdentity::from_metadata(&metadata).map_err(|error| failure(error.to_string()))?;
 		if self.sources.contains(&identity) {
 			return Err(failure(
 				"file is both a migration source and an SQL asset".into(),
@@ -192,9 +194,7 @@ impl SqlAssetContext {
 			return Ok(contents.clone());
 		}
 		let mut contents = String::new();
-		identity
-			.as_file_mut()
-			.read_to_string(&mut contents)
+		file.read_to_string(&mut contents)
 			.map_err(|error| failure(format!("cannot read UTF-8 asset: {error}")))?;
 		self.asset_paths.insert(target);
 		self.assets.insert(identity, contents.clone());
