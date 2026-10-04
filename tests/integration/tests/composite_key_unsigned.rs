@@ -1,11 +1,6 @@
 //! Native unsigned composite-key binding and lookup regressions.
 
-#![cfg(all(
-	feature = "orm",
-	feature = "sqlite",
-	feature = "mysql",
-	feature = "postgres"
-))]
+#![cfg(native)]
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -21,7 +16,7 @@ use reinhardt_query::prelude::{
 	ColumnDef, Iden, IntoIden, MySqlQueryBuilder, PostgresQueryBuilder, Query,
 	QueryStatementBuilder, SqliteQueryBuilder, Value,
 };
-use reinhardt_testkit::fixtures::{mysql_container, postgres_container};
+use reinhardt_test::fixtures::{mysql_container, postgres_container};
 use rstest::{fixture, rstest};
 use serde::{Deserialize, Serialize};
 use testcontainers::{ContainerAsync, GenericImage};
