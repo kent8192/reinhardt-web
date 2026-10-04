@@ -2097,6 +2097,9 @@ Register them through `global_registry().register_sequence(...)`, and use typed
 Names have separate literal schema/name components; dots inside a component are
 preserved. `makemigrations` creates sequences before defaults and establishes
 `OWNED BY` after the owner exists, including staged cross-app dependencies.
+An explicitly authored `SequenceOperation::Create` with `owned_by` applies that
+ownership immediately, so its owning column must already exist. Relation renames
+wait for earlier table renames or sequence drops that release the target name.
 
 `IdentityDefinition` belongs to a column. The model macro accepts
 `identity_always = true` or `identity_by_default = true` together with nested
@@ -2110,11 +2113,20 @@ Complete before/after sequence options support ALTER and physical rename without
 restarting allocation. Logical declaration changes use explicit
 `SequenceOperation::RenameDeclaration` in a state-only migration. Catalog
 introspection matches managed physical objects; unmanaged sequences are retained.
+Identity alterations preserve the observed sequence name when the target omits
+it, and retain both column widths for reversible integer type changes. Identity
+state and preflight lookups respect the table schema. Schema inspection fetches
+the sequence catalog once and indexes identity sequences by owning column.
+App-specific schema conversion includes only that app's managed declarations;
+sequence removals are reported as destructive changes.
 Opaque defaults retain their SQL and require explicit migration dependencies.
 
 Rollback restores schema definitions, not rows or consumed numbers. Provide full
-history with `DatabaseMigrationExecutor::with_migration_history` when rolling back
-a subset containing destructive operations. Dropping an owning column/table
+history with `DatabaseMigrationExecutor::with_migration_history` when a new
+executor applies or rolls back a subset requiring earlier schema snapshots.
+An executor retains migration definitions across incremental calls and rebuilds
+state from recorded applications, selecting the applied replacement path and
+excluding pending files. Dropping an owning column/table
 implicitly deletes its sequence; reverse planning recreates it before restoring
 its default and ownership. Explicit `Restart` requires a reverse target or is
 irreversible. `START WITH` updates the recorded start without moving the cursor.
