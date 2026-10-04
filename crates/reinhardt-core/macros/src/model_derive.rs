@@ -1203,6 +1203,8 @@ struct FieldConfig {
 	identity_always: Option<bool>,
 	#[cfg(feature = "db-postgres")]
 	identity_by_default: Option<bool>,
+	#[cfg(feature = "db-postgres")]
+	identity_options: Option<String>,
 	/// Auto-increment for integer primary keys.
 	/// Available for all databases. When set to true on an integer primary key,
 	/// the field is excluded from required builder inputs and uses 0 as default value.
@@ -1504,6 +1506,121 @@ impl FieldConfig {
 							"identity_by_default is only available with db-postgres feature",
 						))
 					}
+				} else if meta.path.is_ident("identity_options") {
+					#[cfg(feature = "db-postgres")]
+					{
+						let mut options = serde_json::Map::new();
+						meta.parse_nested_meta(|option| {
+							let name = option
+								.path
+								.get_ident()
+								.ok_or_else(|| {
+									option.error("identity option must be a simple name")
+								})?
+								.to_string();
+							if options.contains_key(&name) {
+								return Err(option.error("duplicate identity option"));
+							}
+							let value = match name.as_str() {
+								"sequence_name" | "sequence_schema" => {
+									let value: syn::LitStr = option.value()?.parse()?;
+									serde_json::Value::String(value.value())
+								}
+								"cycle" => {
+									let value: syn::LitBool = option.value()?.parse()?;
+									serde_json::Value::Bool(value.value)
+								}
+								"no_min_value" | "no_max_value" => {
+									let value: syn::LitBool = option.value()?.parse()?;
+									if !value.value {
+										return Err(option.error(
+											"bound resets must be true; omit the option for an unspecified bound",
+										));
+									}
+									serde_json::Value::Bool(true)
+								}
+								"start" | "increment" | "min_value" | "max_value" | "cache" => {
+									let expression: syn::Expr = option.value()?.parse()?;
+									let value = match expression {
+										syn::Expr::Lit(syn::ExprLit {
+											lit: syn::Lit::Int(value),
+											..
+										}) => value.base10_parse::<i64>()?,
+										syn::Expr::Unary(syn::ExprUnary {
+											op: syn::UnOp::Neg(_),
+											expr,
+											..
+										}) => {
+											let syn::Expr::Lit(syn::ExprLit {
+												lit: syn::Lit::Int(value),
+												..
+											}) = *expr
+											else {
+												return Err(option.error(
+													"identity option must be an integer literal",
+												));
+											};
+											let magnitude = value.base10_parse::<i128>()?;
+											i64::try_from(-magnitude).map_err(|_| {
+												option.error("identity option exceeds i64")
+											})?
+										}
+										_ => {
+											return Err(option.error(
+												"identity option must be an integer literal",
+											));
+										}
+									};
+									serde_json::json!(value)
+								}
+								_ => return Err(option.error("unknown identity option")),
+							};
+							options.insert(name, value);
+							Ok(())
+						})?;
+						if options.contains_key("min_value") && options.contains_key("no_min_value")
+							|| options.contains_key("max_value")
+								&& options.contains_key("no_max_value")
+						{
+							return Err(meta.error("a bound cannot have both a value and a reset"));
+						}
+						if options.contains_key("sequence_schema")
+							&& !options.contains_key("sequence_name")
+						{
+							return Err(meta.error("sequence_schema requires sequence_name"));
+						}
+						for bound in ["min_value", "max_value"] {
+							if let Some(value) = options.remove(bound) {
+								options.insert(bound.into(), serde_json::json!({"Value": value}));
+							}
+							if options.remove(&format!("no_{bound}")).is_some() {
+								options.insert(
+									bound.into(),
+									serde_json::Value::String("Default".into()),
+								);
+							}
+						}
+						if options
+							.get("increment")
+							.is_some_and(|value| value.as_i64() == Some(0))
+							|| options
+								.get("cache")
+								.and_then(serde_json::Value::as_i64)
+								.is_some_and(|value| value <= 0)
+						{
+							return Err(meta.error(
+								"identity increment must be nonzero and cache must be positive",
+							));
+						}
+						config.identity_options =
+							Some(serde_json::Value::Object(options).to_string());
+						Ok(())
+					}
+					#[cfg(not(feature = "db-postgres"))]
+					{
+						Err(meta
+							.error("identity_options is only available with db-postgres feature"))
+					}
 				} else if meta.path.is_ident("auto_increment") {
 					// auto_increment is available for all databases
 					// Integer primary keys are treated as auto_increment by default
@@ -1772,6 +1889,26 @@ impl FieldConfig {
 			return Err(syn::Error::new(
 				proc_macro2::Span::call_site(),
 				"Only one auto-increment attribute (identity_always, identity_by_default, auto_increment, autoincrement) can be specified per field",
+			));
+		}
+
+		#[cfg(feature = "db-postgres")]
+		if self.identity_options.is_some()
+			&& self.identity_always != Some(true)
+			&& self.identity_by_default != Some(true)
+		{
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"identity_options requires identity_always = true or identity_by_default = true",
+			));
+		}
+		#[cfg(feature = "db-postgres")]
+		if (self.identity_always == Some(true) || self.identity_by_default == Some(true))
+			&& (self.default.is_some() || self.null == Some(true))
+		{
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"identity columns cannot be nullable or have another default",
 			));
 		}
 
@@ -9484,6 +9621,11 @@ fn generate_field_metadata(
 				);
 			});
 		}
+		#[cfg(feature = "db-postgres")]
+		if let Some(options) = &config.identity_options {
+			attrs.push(quote! { attributes.insert("identity_options".to_string(), #orm_crate::fields::FieldKwarg::String(#options.to_string())); });
+		}
+
 		#[cfg(feature = "db-mysql")]
 		if let Some(auto_increment) = config.auto_increment {
 			attrs.push(quote! {
@@ -9848,6 +9990,19 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 			.unwrap_or_else(|| field_name.clone());
 
 		let mut params = Vec::new();
+		#[cfg(feature = "db-postgres")]
+		{
+			if let Some(value) = config.identity_always {
+				params.push(quote! { .with_param("identity_always", #value.to_string()) });
+			}
+			if let Some(value) = config.identity_by_default {
+				params.push(quote! { .with_param("identity_by_default", #value.to_string()) });
+			}
+			if let Some(value) = &config.identity_options {
+				params.push(quote! { .with_param("identity_options", #value) });
+			}
+		}
+
 		#[cfg(feature = "db-mysql")]
 		if let Some(unsigned) = config.unsigned {
 			params.push(quote! { .with_param("unsigned", #unsigned.to_string()) });
@@ -16172,5 +16327,48 @@ mod tests {
 		assert_eq!(zero, 0);
 		assert_eq!(boundary, 2147483647);
 		assert_eq!(negative, -5);
+	}
+}
+
+#[cfg(all(test, feature = "db-postgres"))]
+mod sequence_identity_tests {
+	use super::*;
+	use rstest::rstest;
+	#[rstest]
+	fn identity_options_reach_both_metadata_surfaces() {
+		// Arrange
+		let input = quote! {
+			#[model(app_label = "events", table_name = "event_values")]
+			struct Event {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(db_column = "event_no", identity_always = true, identity_options(sequence_name = "event_numbers", start = -10, increment = -2, cache = 5, no_max_value = true))]
+				sequence: i64,
+			}
+		};
+		// Act
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.unwrap()
+			.to_string()
+			.replace(' ', "");
+		// Assert
+		assert!(output.contains("with_param(\"identity_options\""));
+		assert!(output.contains("with_param(\"identity_always\""));
+		assert!(output.contains("attributes.insert(\"identity_options\""));
+		assert!(output.contains("event_no"));
+	}
+	#[rstest]
+	#[case(quote! { #[field(identity_always = true, identity_options(increment = 0))] })]
+	#[case(quote! { #[field(identity_always = true, identity_options(cache = 0))] })]
+	#[case(quote! { #[field(identity_options(start = 1))] })]
+	#[case(quote! { #[field(identity_always = true, identity_options(start = 1, start = 2))] })]
+	#[case(quote! { #[field(identity_always = true, identity_options(min_value = 1, no_min_value = true))] })]
+	fn invalid_identity_options_rejected(#[case] attribute: TokenStream) {
+		let attr: syn::Attribute = syn::parse_quote!(#attribute);
+		assert!(
+			FieldConfig::from_attrs(&[attr])
+				.and_then(|config| config.validate())
+				.is_err()
+		);
 	}
 }

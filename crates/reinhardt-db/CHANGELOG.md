@@ -7,14 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- PostgreSQL sequence options, literal schema identifiers, and structured identity definitions (#6506).
+- Typed sequence/identity migration operations, app declarations, catalog comparison, source/JSON replay, and schema rollback.
+
 ### Fixed
 
 - Preserve NULL element positions when decoding supported PostgreSQL scalar
   arrays, including the distinction between SQL NULL and empty arrays.
 
-### Changed
+### Breaking Changes
 
-- **Breaking:** `QueryValue` adds seven `Nullable*Array(Vec<Option<T>>)` variants.
+- `Operation` gains `Sequence` and `Identity` variants. Exhaustive downstream matches need corresponding arms.
+- `ProjectState`, catalog/schema structs, and column schema payloads gain metadata fields. Prefer constructors/builders over struct literals. Legacy column JSON/source remains readable.
+- `QueryValue` adds seven `Nullable*Array(Vec<Option<T>>)` variants.
   Update exhaustive matches to handle the new variants. Existing non-nullable
   array constructors and payload types are unchanged.
 
