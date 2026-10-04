@@ -1536,6 +1536,11 @@ impl QueryBuilder for MySqlQueryBuilder {
 					}
 					writer.push_identifier(&name.to_string(), |s| self.escape_iden(s));
 				}
+				AlterTableOperation::AddIdentity { .. }
+				| AlterTableOperation::SetIdentity { .. }
+				| AlterTableOperation::DropIdentity { .. } => {
+					panic!("mysql does not support PostgreSQL identity operations");
+				}
 				AlterTableOperation::RenameTable(new_name) => {
 					writer.push("RENAME TO");
 					writer.push_space();
@@ -6061,6 +6066,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -6073,6 +6079,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -6100,6 +6107,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -6197,6 +6205,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -6209,6 +6218,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::ForeignKey {
@@ -6407,6 +6417,7 @@ mod tests {
 				default: None,
 				check: None,
 				generated: None,
+				identity: None,
 				comment: None,
 			}));
 
@@ -6496,6 +6507,7 @@ mod tests {
 				default: None,
 				check: None,
 				generated: None,
+				identity: None,
 				comment: None,
 			}));
 

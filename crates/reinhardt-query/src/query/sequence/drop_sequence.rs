@@ -35,12 +35,19 @@ use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatem
 #[derive(Debug, Clone)]
 pub struct DropSequenceStatement {
 	pub(crate) name: DynIden,
+	pub(crate) schema: Option<DynIden>,
 	pub(crate) if_exists: bool,
 	pub(crate) cascade: bool,
 	pub(crate) restrict: bool,
 }
 
 impl DropSequenceStatement {
+	/// Qualify the sequence with a separately quoted schema identifier.
+	pub fn schema<S: IntoIden>(&mut self, schema: S) -> &mut Self {
+		self.schema = Some(schema.into_iden());
+		self
+	}
+
 	/// Create a new DROP SEQUENCE statement
 	///
 	/// # Examples
@@ -53,6 +60,7 @@ impl DropSequenceStatement {
 	pub fn new() -> Self {
 		Self {
 			name: "".into_iden(),
+			schema: None,
 			if_exists: false,
 			cascade: false,
 			restrict: false,
@@ -63,6 +71,7 @@ impl DropSequenceStatement {
 	pub fn take(&mut self) -> Self {
 		let taken = Self {
 			name: self.name.clone(),
+			schema: self.schema.take(),
 			if_exists: self.if_exists,
 			cascade: self.cascade,
 			restrict: self.restrict,

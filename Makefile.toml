@@ -642,7 +642,7 @@ echo "=== All sub-crate checks passed ==="
 '''
 
 [tasks.feature-test-critical]
-description = "Run cargo test for critical feature combinations (4 patterns)"
+description = "Run cargo test for critical feature combinations (5 patterns)"
 script_runner = "bash"
 script = '''
 set -e
@@ -653,6 +653,7 @@ combos=(
 	"full|reinhardt-web|--no-default-features -F full"
 	"api-only|reinhardt-web|--no-default-features -F api-only"
 	"admin-forms|reinhardt-web|--no-default-features -F minimal,admin,database,db-postgres,auth"
+	"db-orm-sqlite|reinhardt-db|--no-default-features -F orm,sqlite"
 )
 
 for combo in "${combos[@]}"; do

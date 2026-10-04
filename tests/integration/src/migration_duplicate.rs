@@ -77,6 +77,7 @@ mod tests {
 		// Create a schema with user tables and system table
 		let mut current_schema = DatabaseSchema {
 			tables: BTreeMap::new(),
+			..Default::default()
 		};
 
 		// Add system table (reinhardt_migrations)
@@ -104,6 +105,7 @@ mod tests {
 		// Target schema has only the user table (no system tables)
 		let mut target_schema = DatabaseSchema {
 			tables: BTreeMap::new(),
+			..Default::default()
 		};
 		target_schema.tables.insert(
 			"users".to_string(),
@@ -148,6 +150,7 @@ mod tests {
 		// Create identical schemas
 		let mut schema = DatabaseSchema {
 			tables: BTreeMap::new(),
+			..Default::default()
 		};
 
 		schema.tables.insert(
@@ -185,6 +188,7 @@ mod tests {
 		// Create identical schemas
 		let schema = DatabaseSchema {
 			tables: BTreeMap::new(),
+			..Default::default()
 		};
 
 		let repository: Arc<tokio::sync::Mutex<dyn MigrationRepository>> =
@@ -224,10 +228,12 @@ mod tests {
 		// Step 1: Empty current schema, target has tables
 		let current_schema = DatabaseSchema {
 			tables: BTreeMap::new(),
+			..Default::default()
 		};
 
 		let mut target_schema = DatabaseSchema {
 			tables: BTreeMap::new(),
+			..Default::default()
 		};
 
 		// Add a table to target schema
@@ -240,6 +246,9 @@ mod tests {
 				nullable: false,
 				default: None,
 				generated: None,
+				identity: None,
+				sequence_default: None,
+				observed_sequence_default: None,
 				primary_key: true,
 				auto_increment: true,
 			},
