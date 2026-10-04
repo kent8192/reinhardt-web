@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.19...reinhardt-web@v0.4.0-alpha.20) - 2026-10-04
+
+### Fixed
+
+- *(commands)* honor capability migration app scope
+- *(conf)* support standalone database settings feature
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.18...reinhardt-web@v0.4.0-alpha.19) - 2026-10-03
 
 ### Documentation
