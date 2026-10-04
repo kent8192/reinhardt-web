@@ -423,19 +423,6 @@ fn error_status(error: OAuthError) -> StatusCode {
 	}
 }
 
-#[cfg(test)]
-mod status_tests {
-	use super::*;
-	use rstest::rstest;
-
-	#[rstest]
-	#[case(OAuthError::InvalidRequest, StatusCode::BAD_REQUEST)]
-	#[case(OAuthError::InvalidClient, StatusCode::UNAUTHORIZED)]
-	#[case(OAuthError::ServerError, StatusCode::INTERNAL_SERVER_ERROR)]
-	fn oauth_errors_use_their_http_status(#[case] error: OAuthError, #[case] expected: StatusCode) {
-		assert_eq!(error_status(error), expected);
-	}
-}
 fn parse_params(bytes: &[u8]) -> Result<HashMap<String, String>, OAuthError> {
 	let input = std::str::from_utf8(bytes).map_err(|_| OAuthError::InvalidRequest)?;
 	let mut out = HashMap::new();
@@ -528,4 +515,18 @@ fn redirect(location: &str) -> Response {
 }
 fn method_not_allowed(allowed: &'static str) -> Response {
 	no_store(Response::new(StatusCode::METHOD_NOT_ALLOWED).with_header("Allow", allowed))
+}
+
+#[cfg(test)]
+mod status_tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	#[case(OAuthError::InvalidRequest, StatusCode::BAD_REQUEST)]
+	#[case(OAuthError::InvalidClient, StatusCode::UNAUTHORIZED)]
+	#[case(OAuthError::ServerError, StatusCode::INTERNAL_SERVER_ERROR)]
+	fn oauth_errors_use_their_http_status(#[case] error: OAuthError, #[case] expected: StatusCode) {
+		assert_eq!(error_status(error), expected);
+	}
 }
