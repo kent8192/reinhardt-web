@@ -32,6 +32,10 @@ This crate provides the following modules:
     constraints are unchanged. Existing migration files are not rewritten;
     regenerate unapplied migrations with oversized generated names.
   - Forward and backward migrations
+  - PostgreSQL and CockroachDB `AlterColumn` rollback restores the previous
+    database default, including removing a newly added sequence default. Changed
+    defaults are removed before reverting the type and restored afterward.
+    Generated migration files preserve the historical column definition.
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
   - State management and autodetection

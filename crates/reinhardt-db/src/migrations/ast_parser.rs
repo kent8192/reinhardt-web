@@ -344,11 +344,13 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 				let column = extract_string_field(&expr_struct.fields, "column")?;
 				let new_definition =
 					extract_column_definition_field(&expr_struct.fields, "new_definition")?;
+				let old_definition =
+					extract_optional_column_definition_field(&expr_struct.fields, "old_definition");
 				return Some(super::Operation::AlterColumn {
 					table,
 					column,
 					new_definition,
-					old_definition: None,
+					old_definition,
 					mysql_options: None,
 				});
 			}
@@ -1012,6 +1014,24 @@ fn extract_column_definition_field(
 	None
 }
 
+/// Extract a historical column definition wrapped in `Some(...)`.
+fn extract_optional_column_definition_field(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+	field_name: &str,
+) -> Option<super::ColumnDefinition> {
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == field_name
+			&& let Expr::Call(call) = &field.expr
+			&& matches!(&*call.func, Expr::Path(path) if path.path.is_ident("Some"))
+			&& call.args.len() == 1
+		{
+			return parse_column_definition(&call.args[0]);
+		}
+	}
+	None
+}
+
 /// Parse `Vec<ColumnDefinition>` from expression
 fn parse_columns_vec(expr: &Expr) -> Vec<super::ColumnDefinition> {
 	let mut columns = Vec::new();
@@ -1308,6 +1328,40 @@ fn extract_field_type(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use quote::ToTokens;
+
+	#[rstest::rstest]
+	#[case::no_default(None)]
+	#[case::literal_default(Some("42"))]
+	#[case::sequence_default(Some("nextval('public.old_sequence'::regclass)"))]
+	fn alter_column_source_preserves_historical_default(#[case] default: Option<&str>) {
+		// Arrange
+		let old_definition = super::super::ColumnDefinition {
+			default: default.map(str::to_owned),
+			..super::super::ColumnDefinition::new("id", super::super::FieldType::BigInteger)
+		};
+		let operation = super::super::Operation::AlterColumn {
+			table: "example".into(),
+			column: "id".into(),
+			old_definition: Some(old_definition),
+			new_definition: super::super::ColumnDefinition::new(
+				"id",
+				super::super::FieldType::Integer,
+			),
+			mysql_options: None,
+		};
+		let tokens = operation.to_token_stream();
+		let ast = syn::parse_file(&format!(
+			"fn migration() -> Migration {{ Migration {{ operations: vec![{tokens}] }} }}"
+		))
+		.unwrap();
+
+		// Act
+		let migration = extract_migration_metadata(&ast, "probe", "0002_default").unwrap();
+
+		// Assert
+		assert_eq!(migration.operations, vec![operation]);
+	}
 
 	#[rstest::rstest]
 	#[case(r#"vec![SwappableDependency::new("AUTH_USER_MODEL", "auth", "User", "0001_initial")]"#,
