@@ -47,6 +47,63 @@ pub trait DatabaseBackend: Send + Sync {
 		self.database_type().supports_transactional_ddl()
 	}
 
+	/// Execute a generated statement from the exact owned renderer pair (native-only, P0).
+	///
+	/// SQLx backends consume native companion arguments. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported/overflowing
+	/// values before calling the raw API; custom backends can override this method.
+	async fn execute_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.database_type())?;
+		self.execute_with_context(&sql, params, context).await
+	}
+
+	/// Fetch one generated row from the exact owned renderer pair (native-only, P0).
+	///
+	/// SQLx backends consume native companion arguments. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported/overflowing
+	/// values before calling the raw API; custom backends can override this method.
+	async fn fetch_one_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.database_type())?;
+		self.fetch_one_with_context(&sql, params, context).await
+	}
+
+	/// Fetch all generated rows from the exact owned renderer pair (native-only, P0).
+	///
+	/// SQLx backends consume native companion arguments. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported/overflowing
+	/// values before calling the raw API; custom backends can override this method.
+	async fn fetch_all_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.database_type())?;
+		self.fetch_all_with_context(&sql, params, context).await
+	}
+
+	/// Fetch an optional generated row from the exact owned renderer pair (native-only, P0).
+	///
+	/// SQLx backends consume native companion arguments. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported/overflowing
+	/// values before calling the raw API; custom backends can override this method.
+	async fn fetch_optional_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.database_type())?;
+		self.fetch_optional_with_context(&sql, params, context)
+			.await
+	}
+
 	/// Executes a query that modifies the database
 	async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult>;
 

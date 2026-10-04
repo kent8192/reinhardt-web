@@ -235,6 +235,69 @@ impl MySqlBackend {
 
 #[async_trait]
 impl DatabaseBackend for MySqlBackend {
+	async fn execute_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: optional_last_insert_id(result.last_insert_id()),
+		})
+	}
+
+	async fn fetch_one_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_one(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		Self::convert_row(result)
+	}
+
+	async fn fetch_all_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_all(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		result.into_iter().map(Self::convert_row).collect()
+	}
+
+	async fn fetch_optional_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql_with_text_uuid(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_optional(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		result.map(Self::convert_row).transpose()
+	}
+
 	fn database_type(&self) -> DatabaseType {
 		DatabaseType::Mysql
 	}

@@ -161,6 +161,69 @@ impl PostgresBackend {
 
 #[async_trait]
 impl DatabaseBackend for PostgresBackend {
+	async fn execute_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(self.pool.as_ref())
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: None,
+		})
+	}
+
+	async fn fetch_one_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_one(self.pool.as_ref())
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		Self::convert_row(result)
+	}
+
+	async fn fetch_all_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_all(self.pool.as_ref())
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		result.into_iter().map(Self::convert_row).collect()
+	}
+
+	async fn fetch_optional_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(built)
+			.map_err(crate::backends::generated::binding_error)?
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.fetch_optional(self.pool.as_ref())
+			.await
+			.map_err(|error| map_sqlx_error_with_pgvector_context(error, context))?;
+		result.map(Self::convert_row).transpose()
+	}
+
 	fn database_type(&self) -> DatabaseType {
 		DatabaseType::Postgres
 	}

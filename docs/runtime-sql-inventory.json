@@ -12569,6 +12569,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/backend.rs::DatabaseBackend::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/backend.rs",
+      "symbol": "DatabaseBackend::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 61,
+      "fingerprint": "65d24b92dcbdf71e393e2c7812be610ff4a18940b5a43d615c9a765ef5af1e11",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated connection/default-provider wrapper forwards the renderer pair or its checked compatibility arguments to the existing context-aware executor. Native providers preserve full codecs; custom provider defaults reject unrepresentable or overflowing values before raw execution.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/backend.rs::DatabaseBackend::execute_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::execute_with_context",
@@ -12590,6 +12618,34 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/backend.rs::DatabaseBackend::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/backend.rs",
+      "symbol": "DatabaseBackend::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 89,
+      "fingerprint": "bf4e88257a0269cec30f0c299e1ec987cbbf373443af802f2c48f5013c5210e1",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated connection/default-provider wrapper forwards the renderer pair or its checked compatibility arguments to the existing context-aware executor. Native providers preserve full codecs; custom provider defaults reject unrepresentable or overflowing values before raw execution.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/backend.rs::DatabaseBackend::fetch_all_with_context::execution-wrapper#1",
@@ -12615,6 +12671,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/backend.rs::DatabaseBackend::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/backend.rs",
+      "symbol": "DatabaseBackend::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 75,
+      "fingerprint": "57c87b3ec0fda05567eb45ac36027919c2dbed4b7284f57ab3363a799855f85b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated connection/default-provider wrapper forwards the renderer pair or its checked compatibility arguments to the existing context-aware executor. Native providers preserve full codecs; custom provider defaults reject unrepresentable or overflowing values before raw execution.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/backend.rs::DatabaseBackend::fetch_one_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::fetch_one_with_context",
@@ -12636,6 +12720,34 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/backend.rs::DatabaseBackend::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/backend.rs",
+      "symbol": "DatabaseBackend::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 103,
+      "fingerprint": "8b1e2fca1bc39b0c0c142677dfb3af5b9fecdfeae7fec754f81d93e0386c49c6",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated connection/default-provider wrapper forwards the renderer pair or its checked compatibility arguments to the existing context-aware executor. Native providers preserve full codecs; custom provider defaults reject unrepresentable or overflowing values before raw execution.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/backend.rs::DatabaseBackend::fetch_optional_with_context::execution-wrapper#1",
@@ -12857,6 +12969,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/connection.rs::DatabaseConnection::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/connection.rs",
+      "symbol": "DatabaseConnection::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 876,
+      "fingerprint": "76bbe81173a1dbc00630ec8ab065717312e25c2a5b1a7e6e272d7e83b12f59a3",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated connection/default-provider wrapper forwards the renderer pair or its checked compatibility arguments to the existing context-aware executor. Native providers preserve full codecs; custom provider defaults reject unrepresentable or overflowing values before raw execution.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/connection.rs::DatabaseConnection::execute_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::execute_with_context",
@@ -12901,6 +13041,34 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/connection.rs::DatabaseConnection::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/connection.rs",
+      "symbol": "DatabaseConnection::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 900,
+      "fingerprint": "da65e2f4725a6f3590caf45ca907fe4f1fd9fd5a9299be5a544fe7b8e10db40f",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated connection/default-provider wrapper forwards the renderer pair or its checked compatibility arguments to the existing context-aware executor. Native providers preserve full codecs; custom provider defaults reject unrepresentable or overflowing values before raw execution.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/connection.rs::DatabaseConnection::fetch_all_with_context::execution-wrapper#1",
@@ -12949,6 +13117,34 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/connection.rs::DatabaseConnection::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/connection.rs",
+      "symbol": "DatabaseConnection::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 888,
+      "fingerprint": "894bff7400358bd24c90b519469778921581667b383c21af3eb438d16b6b2489",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated connection/default-provider wrapper forwards the renderer pair or its checked compatibility arguments to the existing context-aware executor. Native providers preserve full codecs; custom provider defaults reject unrepresentable or overflowing values before raw execution.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/connection.rs::DatabaseConnection::fetch_one_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_one_with_context",
@@ -12993,6 +13189,34 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/connection.rs::DatabaseConnection::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/connection.rs",
+      "symbol": "DatabaseConnection::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 912,
+      "fingerprint": "7b9113d89d153f74ff19ef990d67a24919274578d2271553086e13e4e89f29f6",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Generated connection/default-provider wrapper forwards the renderer pair or its checked compatibility arguments to the existing context-aware executor. Native providers preserve full codecs; custom provider defaults reject unrepresentable or overflowing values before raw execution.",
+      "evidence": [
+        "crates/reinhardt-db/src/backends/generated.rs",
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/connection.rs::DatabaseConnection::fetch_optional_with_context::execution-wrapper#1",
@@ -13507,6 +13731,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 246,
+      "fingerprint": "5db7097f1058069ba999f14af2a34eed2e638284c2d376717d24d28069ee8612",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::execute_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::execute_generated",
+      "kind": "executor",
+      "line": 246,
+      "fingerprint": "e9b8f357f72ec277bae2a1957ef21a7eeadddfecbe0267e8ef028df9a78a2537",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_all",
@@ -13551,6 +13829,60 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 279,
+      "fingerprint": "26e5d1ef1980f3d6ef51df9bd9caff99905956178708690c88af74a0cc025cc8",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_all_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::fetch_all_generated",
+      "kind": "executor",
+      "line": 279,
+      "fingerprint": "ba5dc56e506a15a1cd96917bde5f32e39f77ed235e6061b358a0550a3e8c6e45",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_one::execution-wrapper#1",
@@ -13599,6 +13931,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 264,
+      "fingerprint": "f2c45c2a926700274eb5856bf7961b428ff77f2f5fbd60f16f1bb4eb95358c12",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_one_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::fetch_one_generated",
+      "kind": "executor",
+      "line": 264,
+      "fingerprint": "ee59be4c333e20543f48f825785dda1f5d55df12b30fe2d541803fc922df7989",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_optional::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_optional",
@@ -13643,6 +14029,60 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 294,
+      "fingerprint": "d41ec469a40f172331868325fbaedf4ecfdb35089d55d2dabb682b5d79e70db2",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::fetch_optional_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::fetch_optional_generated",
+      "kind": "executor",
+      "line": 294,
+      "fingerprint": "c5e2ede0b04bfedc3eec8dd27f4f701a76368dac09ba3fdd972c2705d7bac804",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/mysql"
+      ],
+      "backends": [
+        "mysql"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::commit::execution-wrapper#1",
@@ -14887,6 +15327,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 172,
+      "fingerprint": "ea4512d1efa41bd738d3d96e465f4147e6ef08c0aae361c1406087543dd1c64b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::execute_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::execute_generated",
+      "kind": "executor",
+      "line": 172,
+      "fingerprint": "fb9349749b341b165b4b207974184551899808ffc969b1630db0bfc82a9b6536",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_all",
@@ -14908,6 +15402,60 @@
       ],
       "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 205,
+      "fingerprint": "cde3ef9ccabd4a1e4c39cd4da59102bb1ef0edbf98886660bf2bf6746e0c7301",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_all_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_all_generated",
+      "kind": "executor",
+      "line": 205,
+      "fingerprint": "f232ce09b12d2806970df635469b9e1506ca76135b5705c27fd5002114442ed8",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_one::execution-wrapper#1",
@@ -14933,6 +15481,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 190,
+      "fingerprint": "4fb899cd4ccaacce69d18ec0d18e1406fb2d03fee6d016fb49e69f0d1900b965",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_one_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_one_generated",
+      "kind": "executor",
+      "line": 190,
+      "fingerprint": "e4c664be14b6cd204dfdd852bc876962c2d88bbe6589ad4348abba8d518614d8",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_optional::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_optional",
@@ -14954,6 +15556,60 @@
       ],
       "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 220,
+      "fingerprint": "d8efbb9fda43458fb2a14ce2048026dee690a405c3bcb85b806864e1d317ae5d",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_optional_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_optional_generated",
+      "kind": "executor",
+      "line": 220,
+      "fingerprint": "9529f76a845392e13aa764fe7ee577caf61f619aa88189f8db41a3d105cb838c",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/postgres"
+      ],
+      "backends": [
+        "postgres"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_stream::execution-wrapper#1",
@@ -15278,6 +15934,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteBackend as DatabaseBackend::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 215,
+      "fingerprint": "271da5b39aac1da4d397e3cd1fb7bf46cfc9ca9f1ddc6f7856fcc16d1a3ec9bf",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::execute_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteBackend as DatabaseBackend::execute_generated",
+      "kind": "executor",
+      "line": 215,
+      "fingerprint": "e6a2bb450ce42e5508fb1d8e61dd24d92912df96c6af279f8e51c6594e1a911c",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_all",
@@ -15322,6 +16032,60 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteBackend as DatabaseBackend::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 248,
+      "fingerprint": "ddf3437941f2ec89761c089ee5c0474f3d226f144a29cb8541606d3b11507c3d",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_all_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteBackend as DatabaseBackend::fetch_all_generated",
+      "kind": "executor",
+      "line": 248,
+      "fingerprint": "e08fff9fcac5b6ea03b4a4f34a644c1e54de2ee6434ca0479a60cd5e68b8e09c",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_one::execution-wrapper#1",
@@ -15370,6 +16134,60 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteBackend as DatabaseBackend::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 233,
+      "fingerprint": "321777916e81376268ff46692eb0cdb2d7a48a9f6ad7e105e49fb000d19e4759",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_one_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteBackend as DatabaseBackend::fetch_one_generated",
+      "kind": "executor",
+      "line": 233,
+      "fingerprint": "6f93dffef94a835fdf136e95fb766a65b6aca46e123397c78cb8eb545d7f5d83",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_optional::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_optional",
@@ -15414,6 +16232,60 @@
         "review-required"
       ],
       "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteBackend as DatabaseBackend::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 263,
+      "fingerprint": "aa46c158626535e70247ce88287750ad5af074623ce3a671b05f5bac7641abaa",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteBackend as DatabaseBackend::fetch_optional_generated::executor#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteBackend as DatabaseBackend::fetch_optional_generated",
+      "kind": "executor",
+      "line": 263,
+      "fingerprint": "502a641cf8ac07c4ae10e4270f98e57b5f15f34cc7b342c03355d5ddf0013946",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-db/backends",
+        "reinhardt-db/sqlite"
+      ],
+      "backends": [
+        "sqlite"
+      ],
+      "rationale": "Generated pool executor consumes the exact owned renderer pair through native companion arguments; SQL and Values order are unchanged, existing row decoding and metadata are retained.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
+        "crates/reinhardt-query-sqlx/src/tests.rs"
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::execute::execution-wrapper#1",

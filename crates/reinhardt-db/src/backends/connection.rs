@@ -864,6 +864,54 @@ impl DatabaseConnection {
 		Ok(db_config.to_url())
 	}
 
+	/// Execute a generated statement using its exact owned SQL/Values pair (native-only, P0).
+	///
+	/// Native SQLx backend codecs preserve argument types and return redacted
+	/// conversion errors before execution. Caller-owned raw APIs remain separate.
+	pub async fn execute_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		self.backend.execute_generated(built, context).await
+	}
+
+	/// Fetch one generated row using its exact owned SQL/Values pair (native-only, P0).
+	///
+	/// Native SQLx backend codecs preserve argument types and return redacted
+	/// conversion errors before execution. Caller-owned raw APIs remain separate.
+	pub async fn fetch_one_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		self.backend.fetch_one_generated(built, context).await
+	}
+
+	/// Fetch all generated rows using its exact owned SQL/Values pair (native-only, P0).
+	///
+	/// Native SQLx backend codecs preserve argument types and return redacted
+	/// conversion errors before execution. Caller-owned raw APIs remain separate.
+	pub async fn fetch_all_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		self.backend.fetch_all_generated(built, context).await
+	}
+
+	/// Fetch an optional generated row using its exact owned SQL/Values pair (native-only, P0).
+	///
+	/// Native SQLx backend codecs preserve argument types and return redacted
+	/// conversion errors before execution. Caller-owned raw APIs remain separate.
+	pub async fn fetch_optional_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		self.backend.fetch_optional_generated(built, context).await
+	}
+
 	/// Executes the operation.
 	pub async fn execute(
 		&self,

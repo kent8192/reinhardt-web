@@ -126,6 +126,24 @@ application dependency and validate compilation, migration application, and
   - Only/Defer field optimization for reduced data transfer
   - Aggregate pushdown optimization
 
+### Generated Backend Arguments
+
+The backend `DatabaseConnection` and `DatabaseBackend` expose
+`execute_generated`, `fetch_one_generated`, `fetch_all_generated` and
+`fetch_optional_generated` for an owned `(String, reinhardt_query::Values)` pair.
+Build that pair from one statement and consume its AST before awaiting. The
+native SQLx backends use the companion's generated arguments, preserving decimal
+precision, PostgreSQL nullable array elements and MySQL unsigned integers.
+MySQL and SQLite explicitly retain their existing UUID text-column encoding.
+Conversion errors identify the backend, argument index and type without values.
+
+These native-only APIs have P0 parity. Existing raw methods and custom backend
+implementations remain available. The generated trait defaults forward only data
+representable by the existing QueryValue contract, with checked integer ranges;
+arrays, decimals, dates and times require a custom generated-method override.
+They never use the older ORM converter's clamping or Debug-string fallbacks.
+Consumers still own connections, transactions, row decoding and result metadata.
+
 ### Streaming QuerySets
 
 `QuerySet::iterator_with_db` and `QuerySet::iterator_with_executor` decode one

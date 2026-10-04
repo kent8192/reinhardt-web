@@ -315,6 +315,10 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 					| "fetch_optional_with_values"
 					| "fetch_stream"
 					| "fetch_stream_with_context"
+					| "execute_generated"
+					| "fetch_one_generated"
+					| "fetch_all_generated"
+					| "fetch_optional_generated"
 					| "query" | "query_as"
 					| "query_scalar"
 			) {
@@ -709,11 +713,11 @@ mod tests {
 	#[rstest]
 	fn finds_owned_contextual_and_streaming_execution_wrappers() {
 		// Arrange: SQL is generated elsewhere, so these wrappers contain no SQL literal.
-		let source = "fn run() { engine.fetch_one_with_values(built); db.execute_with_context(sql, values, context); db.fetch_stream(sql, values, size); db.fetch_stream_with_context(sql, values, size, context); }";
+		let source = "fn run() { engine.fetch_one_with_values(built); db.execute_with_context(sql, values, context); db.fetch_stream(sql, values, size); db.fetch_stream_with_context(sql, values, size, context); db.execute_generated(built, context); db.fetch_one_generated(built, context); db.fetch_all_generated(built, context); db.fetch_optional_generated(built, context); }";
 		// Act
 		let sites = scan_source("crates/example/src/lib.rs", source).unwrap();
 		// Assert: changes to the caller's provenance remain auditable.
-		assert_eq!(sites.len(), 4);
+		assert_eq!(sites.len(), 8);
 		assert!(sites.iter().all(|site| site.kind == "execution-wrapper"));
 		assert!(sites.iter().all(|site| !site.test_only));
 		let changed = scan_source(
