@@ -414,10 +414,20 @@ The resolution rules are:
 - `<target>` is **not** applied — apply `<target>` and its intra-app dependency
   closure (forward), skipping anything already applied.
 
+Both rollback forms also unapply every applied migration in other apps that
+transitively depends on the selected migrations. Dependents are reversed before
+their prerequisites, regardless of recorder timestamps. An applied target and
+prerequisites outside this reverse closure stay applied, as do unrelated apps.
+Unapplied dependents are excluded. For example, if `consumer:0001_references`
+depends on `foundation:0001_tables`, `migrate foundation zero` reverses the
+consumer migration before reversing the foundation migration.
+
 `--plan` never mutates the database, including the migration bookkeeping table:
 on a fresh database a dry-run leaves it uncreated. Apply plans are displayed in
 the same dependency-resolved order used by real migration execution, including
-cross-app dependencies.
+cross-app dependencies. Rollback previews, real execution, and `--fake` use the
+same reverse dependency plan; fake rollback only removes the selected ledger
+records without executing reverse SQL.
 
 ### `collect_migrations!` Macro and `linkme` Dependency
 

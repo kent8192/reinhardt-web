@@ -203,6 +203,8 @@ impl BaseCommand for MigrateCommand {
 			//                            applied AFTER it (backward).
 			//   * `<target>` is NOT applied        -> apply `<target>` and its
 			//                            intra-app dependency closure (forward).
+			// Backward plans include applied dependents across apps and reverse
+			// them before their prerequisites.
 			//
 			// `--plan` previews the action without touching the database. On a fresh
 			// database the bookkeeping table is created lazily for real execution but
@@ -429,7 +431,11 @@ fn migration_target_plan(
 			Ok(MigrationTargetPlan::Rollback {
 				app: app.to_string(),
 				target: None,
-				records: applied_for_app,
+				records: dependency_ordered_rollback_records(
+					&applied_for_app,
+					applied,
+					all_migrations,
+				)?,
 			})
 		};
 	}
@@ -438,7 +444,7 @@ fn migration_target_plan(
 		.iter()
 		.position(|record| record.name == target)
 	{
-		let records = applied_for_app[position + 1..].to_vec();
+		let records = &applied_for_app[position + 1..];
 		return if records.is_empty() {
 			Ok(MigrationTargetPlan::Noop {
 				message: format!("Already at {}:{}; nothing to do.", app, target),
@@ -447,7 +453,7 @@ fn migration_target_plan(
 			Ok(MigrationTargetPlan::Rollback {
 				app: app.to_string(),
 				target: Some(target.to_string()),
-				records,
+				records: dependency_ordered_rollback_records(records, applied, all_migrations)?,
 			})
 		};
 	}
@@ -509,6 +515,72 @@ fn migration_target_plan(
 			pending,
 		})
 	}
+}
+
+/// Expand rollback roots through applied dependents and order prerequisites first.
+#[cfg(feature = "migrations")]
+fn dependency_ordered_rollback_records(
+	roots: &[reinhardt_db::migrations::recorder::MigrationRecord],
+	applied: &[reinhardt_db::migrations::recorder::MigrationRecord],
+	all_migrations: &[reinhardt_db::migrations::Migration],
+) -> CommandResult<Vec<reinhardt_db::migrations::recorder::MigrationRecord>> {
+	use reinhardt_db::migrations::{MigrationGraph, MigrationKey};
+	use std::collections::{HashMap, HashSet};
+
+	let applied_by_key: HashMap<_, _> = applied
+		.iter()
+		.map(|record| {
+			(
+				MigrationKey::new(record.app.as_str(), record.name.as_str()),
+				record,
+			)
+		})
+		.collect();
+	let mut applied_graph = MigrationGraph::new();
+	for migration in all_migrations {
+		let key = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
+		if applied_by_key.contains_key(&key) {
+			applied_graph.add_migration(
+				key,
+				migration
+					.dependencies
+					.iter()
+					.map(|(app, name)| MigrationKey::new(app.as_str(), name.as_str()))
+					.collect(),
+			);
+		}
+	}
+
+	let mut selected = HashSet::new();
+	let mut rollback_graph = MigrationGraph::new();
+	let mut stack: Vec<_> = roots
+		.iter()
+		.map(|record| MigrationKey::new(record.app.as_str(), record.name.as_str()))
+		.collect();
+	while let Some(key) = stack.pop() {
+		if !selected.insert(key.clone()) {
+			continue;
+		}
+		stack.extend(applied_graph.get_dependents(&key).into_iter().cloned());
+		// Missing files keep the existing plan/fake behavior; real execution
+		// validates every selected file before invoking the rollback executor.
+		let dependencies = applied_graph
+			.get_dependencies(&key)
+			.unwrap_or_default()
+			.to_vec();
+		rollback_graph.add_migration(key, dependencies);
+	}
+
+	let ordered = rollback_graph.topological_sort().map_err(|error| {
+		crate::CommandError::ExecutionError(format!(
+			"Failed to sort migration plan by dependencies: {}",
+			error
+		))
+	})?;
+	Ok(ordered
+		.into_iter()
+		.map(|key| (*applied_by_key[&key]).clone())
+		.collect())
 }
 
 /// Apply a [`MigrationTargetPlan`] while preserving `--plan`, `--fake`, and real execution.
@@ -4953,6 +5025,151 @@ mod tests {
 				"accounts:0003_audit".to_string(),
 				"accounts:0002_profile".to_string(),
 			]
+		);
+	}
+
+	#[rstest::rstest]
+	#[case("zero", vec![
+		"reporting:0001_summary",
+		"consumer:0002_references",
+		"foundation:0002_tables",
+		"consumer:0001_retained",
+		"foundation:0001_initial",
+	])]
+	#[case("0001_initial", vec![
+		"reporting:0001_summary",
+		"consumer:0002_references",
+		"foundation:0002_tables",
+	])]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_rolls_back_transitive_applied_dependents_across_apps(
+		#[case] target: &str,
+		#[case] expected: Vec<&str>,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: cross-app recorder order deliberately differs from dependency order.
+		let migrations = vec![
+			Migration::new("0001_environment", "operations"),
+			Migration::new("0001_initial", "foundation")
+				.add_dependency("operations", "0001_environment"),
+			Migration::new("0002_tables", "foundation")
+				.add_dependency("foundation", "0001_initial"),
+			Migration::new("0001_retained", "consumer")
+				.add_dependency("foundation", "0001_initial"),
+			Migration::new("0002_references", "consumer")
+				.add_dependency("foundation", "0002_tables"),
+			Migration::new("0001_summary", "reporting")
+				.add_dependency("consumer", "0002_references"),
+			Migration::new("0003_pending", "consumer")
+				.add_dependency("consumer", "0002_references"),
+			Migration::new("0002_tables", "unrelated").add_dependency("unrelated", "0002_tables"),
+		];
+		let applied = vec![
+			migration_record("operations", "0001_environment"),
+			migration_record("foundation", "0001_initial"),
+			migration_record("reporting", "0001_summary"),
+			migration_record("consumer", "0002_references"),
+			migration_record("foundation", "0002_tables"),
+			migration_record("consumer", "0001_retained"),
+			migration_record("unrelated", "0002_tables"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", target, &applied, &migrations)
+			.expect("rollback must expand applied dependents across apps");
+
+		// Assert: target/prerequisites, pending records, and unrelated cycles stay outside the plan.
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("an applied target with later records must select rollback");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			expected
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_keeps_dependents_of_the_latest_applied_target() {
+		// Arrange
+		let migrations = vec![
+			reinhardt_db::migrations::Migration::new("0001_initial", "foundation"),
+			reinhardt_db::migrations::Migration::new("0001_references", "consumer")
+				.add_dependency("foundation", "0001_initial"),
+		];
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("consumer", "0001_references"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "0001_initial", &applied, &migrations)
+			.expect("latest applied target must keep its dependents");
+
+		// Assert
+		let MigrationTargetPlan::Noop { message } = plan else {
+			panic!("latest applied target must remain a no-op");
+		};
+		assert_eq!(
+			message,
+			"Already at foundation:0001_initial; nothing to do."
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_does_not_traverse_unapplied_dependents() {
+		// Arrange: only the root and a descendant beyond an unapplied dependency are recorded.
+		let migrations = vec![
+			reinhardt_db::migrations::Migration::new("0001_initial", "foundation"),
+			reinhardt_db::migrations::Migration::new("0001_pending", "consumer")
+				.add_dependency("foundation", "0001_initial"),
+			reinhardt_db::migrations::Migration::new("0001_summary", "reporting")
+				.add_dependency("consumer", "0001_pending"),
+		];
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("reporting", "0001_summary"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect("unapplied dependents must not expand the rollback plan");
+
+		// Assert
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must roll back the applied root");
+		};
+		assert_eq!(records.len(), 1);
+		assert_eq!(
+			(records[0].app.as_str(), records[0].name.as_str()),
+			("foundation", "0001_initial")
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_rejects_cyclic_rollback_dependencies() {
+		// Arrange
+		let migrations = vec![
+			reinhardt_db::migrations::Migration::new("0001_initial", "foundation")
+				.add_dependency("foundation", "0001_initial"),
+		];
+		let applied = vec![migration_record("foundation", "0001_initial")];
+
+		// Act
+		let error = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect_err("cyclic rollback dependencies must fail before execution");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Execution error: Failed to sort migration plan by dependencies: Circular dependency detected: Circular dependency detected: foundation.0001_initial"
 		);
 	}
 
