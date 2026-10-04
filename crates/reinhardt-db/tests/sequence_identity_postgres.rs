@@ -563,8 +563,12 @@ async fn unknown_sequence_dependency_rejects_whole_plan_before_ddl() {
 }
 
 #[rstest]
+#[case(false)]
+#[case(true)]
 #[tokio::test]
-async fn executor_restores_owned_sequence_from_complete_history_with_one_connection() {
+async fn executor_restores_owned_sequence_from_complete_history_with_one_connection(
+	#[case] replacement: bool,
+) {
 	// Arrange
 	let fixture = postgres("16-alpine").await;
 	let desired = six_named_sequences_state();
@@ -587,12 +591,36 @@ async fn executor_restores_owned_sequence_from_complete_history_with_one_connect
 				&before.models[&("runs".into(), "run_inputs".into())].fields["seq"],
 			)),
 		});
+	let mut squash = initial.clone();
+	squash.name = "0001_squashed".into();
+	squash.replaces = vec![("runs".into(), "0001_initial".into())];
+	let mut pending =
+		Migration::new("0001_pending", "pending").add_operation(Operation::Sequence {
+			operation: SequenceOperation::Create {
+				definition: SequenceDefinition::new(
+					SequenceKey::new("pending", "ghost"),
+					QualifiedName::new("ghost"),
+				)
+				.with_owned_by(Some(SequenceOwner::new(
+					QualifiedName::new("run_inputs"),
+					"seq",
+				))),
+			},
+		});
+	// Every known file is supplied, including a pending independent app and
+	// both sides of the replacement. Only recorded migrations may be replayed.
+	pending.dependencies = vec![("runs".into(), "0001_initial".into())];
 	let mut executor =
 		reinhardt_db::migrations::DatabaseMigrationExecutor::new(fixture.connection.clone())
-			.with_migration_history(vec![initial.clone(), deletion.clone()]);
+			.with_migration_history(vec![
+				initial.clone(),
+				squash.clone(),
+				pending,
+				deletion.clone(),
+			]);
 	// Act
 	executor
-		.apply_migrations(&[initial, deletion.clone()])
+		.apply_migrations(&[if replacement { squash } else { initial }, deletion.clone()])
 		.await
 		.unwrap();
 	executor.rollback_migrations(&[deletion]).await.unwrap();
@@ -604,7 +632,27 @@ async fn executor_restores_owned_sequence_from_complete_history_with_one_connect
 	assert_eq!(value, 1);
 	let recorder =
 		reinhardt_db::migrations::DatabaseMigrationRecorder::new(fixture.connection.clone());
-	assert!(recorder.is_applied("runs", "0001_initial").await.unwrap());
+	assert!(
+		recorder
+			.is_applied(
+				"runs",
+				if replacement {
+					"0001_squashed"
+				} else {
+					"0001_initial"
+				}
+			)
+			.await
+			.unwrap()
+	);
+	assert!(
+		!PostgresIntrospector::new(fixture.pool.clone())
+			.read_sequences()
+			.await
+			.unwrap()
+			.iter()
+			.any(|sequence| sequence.name.name == "ghost")
+	);
 	assert!(!recorder.is_applied("runs", "0002_delete").await.unwrap());
 }
 
@@ -1095,4 +1143,125 @@ async fn renamed_owner_and_sequence_reverse_without_recreating_allocation(#[case
 		"original_values"
 	);
 	assert_eq!(sequences[0].owned_by.as_ref().unwrap().column, "n");
+}
+
+#[rstest]
+#[tokio::test]
+async fn incremental_executor_applies_and_reverses_identity_lifecycle() {
+	// Arrange
+	let fixture = postgres("16-alpine").await;
+	let plain = ColumnDefinition::new("n", FieldType::Integer).with_not_null(true);
+	let always = IdentityDefinition::new(IdentityGeneration::Always)
+		.with_options(SequenceOptions::new().with_start(20));
+	let by_default = IdentityDefinition::new(IdentityGeneration::ByDefault)
+		.with_options(SequenceOptions::new().with_start(20).with_cache(3));
+	let initial = Migration::new("0001_initial", "events").add_operation(Operation::CreateTable {
+		name: "events".into(),
+		columns: vec![plain],
+		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	});
+	let add = Migration::new("0002_add", "events")
+		.add_dependency("events", "0001_initial")
+		.add_operation(Operation::Identity {
+			operation: IdentityOperation::new(
+				QualifiedName::new("events"),
+				"n",
+				FieldType::Integer,
+				None,
+				Some(always.clone()),
+			),
+		});
+	let alter = Migration::new("0003_alter", "events")
+		.add_dependency("events", "0002_add")
+		.add_operation(Operation::Identity {
+			operation: IdentityOperation::new(
+				QualifiedName::new("events"),
+				"n",
+				FieldType::Integer,
+				Some(always),
+				Some(by_default.clone()),
+			),
+		});
+	let drop = Migration::new("0004_drop", "events")
+		.add_dependency("events", "0003_alter")
+		.add_operation(Operation::Identity {
+			operation: IdentityOperation::new(
+				QualifiedName::new("events"),
+				"n",
+				FieldType::Integer,
+				Some(by_default),
+				None,
+			),
+		});
+	let mut executor =
+		reinhardt_db::migrations::DatabaseMigrationExecutor::new(fixture.connection.clone());
+	// Act
+	for migration in [&initial, &add, &alter, &drop] {
+		executor
+			.apply_migrations(std::slice::from_ref(migration))
+			.await
+			.unwrap();
+	}
+	let introspector = PostgresIntrospector::new(fixture.pool.clone());
+	assert!(
+		introspector
+			.read_table("events")
+			.await
+			.unwrap()
+			.unwrap()
+			.columns["n"]
+			.identity
+			.is_none()
+	);
+	executor
+		.rollback_migrations(std::slice::from_ref(&drop))
+		.await
+		.unwrap();
+	let restored = introspector
+		.read_table("events")
+		.await
+		.unwrap()
+		.unwrap()
+		.columns["n"]
+		.identity
+		.clone()
+		.unwrap();
+	executor
+		.rollback_migrations(std::slice::from_ref(&alter))
+		.await
+		.unwrap();
+	let previous = introspector
+		.read_table("events")
+		.await
+		.unwrap()
+		.unwrap()
+		.columns["n"]
+		.identity
+		.clone()
+		.unwrap();
+	executor
+		.rollback_migrations(std::slice::from_ref(&add))
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(restored.generation, IdentityGeneration::ByDefault);
+	assert_eq!(restored.options.cache, Some(3));
+	assert_eq!(previous.generation, IdentityGeneration::Always);
+	assert_eq!(previous.options.cache, Some(1));
+	assert!(
+		introspector
+			.read_table("events")
+			.await
+			.unwrap()
+			.unwrap()
+			.columns["n"]
+			.identity
+			.is_none()
+	);
+	let recorder =
+		reinhardt_db::migrations::DatabaseMigrationRecorder::new(fixture.connection.clone());
+	assert_eq!(recorder.get_applied_migrations().await.unwrap().len(), 1);
 }
