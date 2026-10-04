@@ -441,10 +441,10 @@ fn test_query_value_float() {
 	// Arrange
 
 	// Act
-	let val = QueryValue::Float(3.14);
+	let val = QueryValue::Float(1.25);
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(3.14));
+	assert_eq!(val, QueryValue::Float(1.25));
 }
 
 #[rstest]
@@ -554,10 +554,10 @@ fn test_query_value_from_f64() {
 	// Arrange
 
 	// Act
-	let val: QueryValue = 2.718f64.into();
+	let val: QueryValue = 2.5f64.into();
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(2.718));
+	assert_eq!(val, QueryValue::Float(2.5));
 }
 
 #[rstest]
@@ -1166,26 +1166,232 @@ fn test_update_builder_basic_postgres() {
 }
 
 #[rstest]
-fn test_update_builder_set_now() {
+#[case::postgres(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"name\" = $1, \"updated_at\" = CURRENT_TIMESTAMP WHERE \"id\" = $2"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `name` = ?, `updated_at` = CURRENT_TIMESTAMP WHERE `id` = ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"name\" = ?, \"updated_at\" = CURRENT_TIMESTAMP WHERE \"id\" = ?"
+)]
+fn test_update_builder_set_now(#[case] db_type: DatabaseType, #[case] expected_sql: &str) {
 	// Arrange
-	let backend = MockBackend::new(DatabaseType::Postgres);
+	let backend = MockBackend::new(db_type);
 
-	// Act: set_now stores QueryValue::Now internally, and build() uses
-	// a sentinel placeholder. SeaQuery uses parameterized queries, so the
-	// sentinel appears as a parameter value, not in the SQL string.
+	// Act
 	let (sql, params) = UpdateBuilder::new(backend, "users")
-		.set("name", QueryValue::String("Alice".to_string()))
+		.set("name", "Alice")
 		.set_now("updated_at")
-		.where_eq("id", QueryValue::Int(1))
+		.where_eq("id", 1_i64)
 		.build();
 
-	// Assert: SQL contains UPDATE and SET for updated_at
-	assert!(sql.contains("UPDATE"));
-	assert!(sql.contains("updated_at"));
-	// NOW() is excluded from params (only name and id)
-	assert_eq!(params.len(), 2);
-	assert_eq!(params[0], QueryValue::String("Alice".to_string()));
-	assert_eq!(params[1], QueryValue::Int(1));
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::from("Alice"), QueryValue::Int(1)]);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"updated_at\" = CURRENT_TIMESTAMP WHERE \"id\" = $1"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `updated_at` = CURRENT_TIMESTAMP WHERE `id` = ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"updated_at\" = CURRENT_TIMESTAMP WHERE \"id\" = ?"
+)]
+fn test_update_builder_set_now_only(#[case] db_type: DatabaseType, #[case] expected_sql: &str) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+
+	// Act
+	let (sql, params) = UpdateBuilder::new(backend, "users")
+		.set_now("updated_at")
+		.where_eq("id", 1_i64)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(1)]);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"updated_at\" = CURRENT_TIMESTAMP, \"name\" = $1, \"touched_at\" = CURRENT_TIMESTAMP, \"age\" = $2 WHERE \"id\" = $3 AND \"active\" = $4"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `updated_at` = CURRENT_TIMESTAMP, `name` = ?, `touched_at` = CURRENT_TIMESTAMP, `age` = ? WHERE `id` = ? AND `active` = ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"updated_at\" = CURRENT_TIMESTAMP, \"name\" = ?, \"touched_at\" = CURRENT_TIMESTAMP, \"age\" = ? WHERE \"id\" = ? AND \"active\" = ?"
+)]
+fn test_update_builder_set_now_preserves_parameter_order(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let name = "'__REINHARDT_NOW__' ? $42";
+
+	// Act
+	let (sql, params) = UpdateBuilder::new(backend, "users")
+		.set_now("updated_at")
+		.set("name", name)
+		.set_now("touched_at")
+		.set("age", 25_i64)
+		.where_eq("id", 1_i64)
+		.where_eq("active", true)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![
+			QueryValue::from(name),
+			QueryValue::Int(25),
+			QueryValue::Int(1),
+			QueryValue::Bool(true),
+		]
+	);
+}
+
+#[rstest]
+#[case::bool(QueryValue::Bool(true))]
+#[case::int(QueryValue::Int(i64::MAX))]
+#[case::float(QueryValue::Float(5.25))]
+#[case::string(QueryValue::from("'__REINHARDT_NOW__' ? $42"))]
+#[case::bytes(QueryValue::Bytes(vec![0, 255]))]
+#[case::timestamp(QueryValue::Timestamp(chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap()))]
+#[case::uuid(QueryValue::Uuid(uuid::Uuid::from_u128(1)))]
+#[case::null(QueryValue::Null)]
+fn test_update_builder_set_now_preserves_value_types(
+	#[values(DatabaseType::Postgres, DatabaseType::Mysql, DatabaseType::Sqlite)]
+	db_type: DatabaseType,
+	#[case] value: QueryValue,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let is_null = value == QueryValue::Null;
+	let (assignment, predicate) = match (db_type, is_null) {
+		(DatabaseType::Postgres, false) => ("$1", "$2"),
+		(DatabaseType::Postgres, true) => ("NULL", "$1"),
+		(_, false) => ("?", "?"),
+		(_, true) => ("NULL", "?"),
+	};
+	let expected_sql = if db_type == DatabaseType::Mysql {
+		format!(
+			"UPDATE `users` SET `updated_at` = CURRENT_TIMESTAMP, `value` = {assignment} WHERE `id` = {predicate}"
+		)
+	} else {
+		format!(
+			"UPDATE \"users\" SET \"updated_at\" = CURRENT_TIMESTAMP, \"value\" = {assignment} WHERE \"id\" = {predicate}"
+		)
+	};
+	let expected_params = if is_null {
+		vec![QueryValue::Int(1)]
+	} else {
+		vec![value.clone(), QueryValue::Int(1)]
+	};
+
+	// Act
+	let (sql, params) = UpdateBuilder::new(backend, "users")
+		.set_now("updated_at")
+		.set("value", value)
+		.where_eq("id", 1_i64)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, expected_params);
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest::fixture]
+async fn timestamp_connection() -> reinhardt_db::backends::DatabaseConnection {
+	use reinhardt_db::backends::DatabaseConnection;
+	use reinhardt_query::prelude::{
+		ColumnDef, Iden, IntoIden, Query, QueryBuilder, SqliteQueryBuilder,
+	};
+
+	#[derive(Debug, Iden)]
+	enum BuilderProbe {
+		Table,
+		Id,
+		Touched,
+	}
+
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.unwrap();
+	let create = Query::create_table()
+		.table(BuilderProbe::Table.into_iden())
+		.col(
+			ColumnDef::new(BuilderProbe::Id)
+				.big_integer()
+				.primary_key(true),
+		)
+		.col(ColumnDef::new(BuilderProbe::Touched).timestamp())
+		.to_owned();
+	let (sql, _) = SqliteQueryBuilder.build_create_table(&create);
+	connection.execute(&sql, vec![]).await.unwrap();
+	for id in [1_i64, 2_i64] {
+		InsertBuilder::new(connection.backend(), "builder_probe")
+			.value("id", id)
+			.execute()
+			.await
+			.unwrap();
+	}
+	connection
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_update_builder_set_now_updates_sqlite_row(
+	#[future] timestamp_connection: reinhardt_db::backends::DatabaseConnection,
+) {
+	use reinhardt_query::prelude::{
+		Alias, Expr, ExprTrait, Query, QueryBuilder, SqliteQueryBuilder,
+	};
+
+	// Arrange
+	let connection = timestamp_connection.await;
+	let builder = UpdateBuilder::new(connection.backend(), "builder_probe")
+		.set_now("touched")
+		.where_eq("id", 1_i64);
+
+	// Act
+	let result = builder.execute().await.unwrap();
+
+	// Assert
+	assert_eq!(result.rows_affected, 1);
+	let mut select = Query::select();
+	select
+		.expr_as(Expr::col("touched").is_not_null(), Alias::new("is_touched"))
+		.from("builder_probe")
+		.and_where(Expr::col("id").eq(1_i64));
+	let (sql, _) = SqliteQueryBuilder.build_select(&select);
+	let updated = connection
+		.fetch_one(&sql, vec![QueryValue::Int(1)])
+		.await
+		.unwrap();
+	assert_eq!(updated.get::<i64>("is_touched").unwrap(), 1);
+	let untouched = connection
+		.fetch_one(&sql, vec![QueryValue::Int(2)])
+		.await
+		.unwrap();
+	assert_eq!(untouched.get::<i64>("is_touched").unwrap(), 0);
 }
 
 #[rstest]
