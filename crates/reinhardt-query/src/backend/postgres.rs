@@ -1027,6 +1027,13 @@ impl PostgresQueryBuilder {
 				self.write_binary_operand(writer, pattern, BinOper::Like, true, false);
 				writer.push(" ESCAPE '\\'");
 			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(");
+				self.write_binary_operand(writer, expr, BinOper::ILike, false, false);
+				writer.push(" ILIKE ");
+				self.write_binary_operand(writer, pattern, BinOper::ILike, true, false);
+				writer.push(" ESCAPE '\\')");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');
@@ -1209,6 +1216,13 @@ impl PostgresQueryBuilder {
 				writer.push(" LIKE ");
 				self.write_binary_operand(writer, pattern, BinOper::Like, true, true);
 				writer.push(" ESCAPE '\\'");
+			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(");
+				self.write_binary_operand(writer, expr, BinOper::ILike, false, true);
+				writer.push(" ILIKE ");
+				self.write_binary_operand(writer, pattern, BinOper::ILike, true, true);
+				writer.push(" ESCAPE '\\')");
 			}
 			SimpleExpr::Binary(left, op, right) => match (op, right.as_ref()) {
 				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))

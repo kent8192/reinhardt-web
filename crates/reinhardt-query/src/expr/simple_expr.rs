@@ -237,6 +237,14 @@ pub enum SimpleExpr {
 
 	/// Cast to a signed integer: BIGINT, SIGNED, or INTEGER for the selected backend.
 	SignedIntegerCast(Box<SimpleExpr>),
+
+	/// Case-insensitive LIKE with a fixed backslash escape character (P2).
+	///
+	/// PostgreSQL/CockroachDB use ILIKE; MySQL/SQLite compare LOWER expressions
+	/// using LIKE. Case folding follows the backend's locale/collation and LOWER
+	/// behavior; SQLite's built-in LOWER folds ASCII only. The pattern is already
+	/// escaped and may retain deliberate `%`/`_` wildcards.
+	InsensitiveLikeWithEscape(Box<SimpleExpr>, Box<SimpleExpr>),
 }
 
 /// SQL keywords that can appear as constants.

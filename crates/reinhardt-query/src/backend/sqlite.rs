@@ -550,6 +550,13 @@ impl SqliteQueryBuilder {
 				self.write_simple_expr(writer, pattern);
 				writer.push(" ESCAPE '\\'");
 			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(LOWER(");
+				self.write_simple_expr(writer, expr);
+				writer.push(") LIKE LOWER(");
+				self.write_simple_expr(writer, pattern);
+				writer.push(") ESCAPE '\\')");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');

@@ -447,7 +447,9 @@ fn contains_aggregate(expr: &SimpleExpr) -> bool {
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => contains_aggregate(expression),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			contains_aggregate(left) || contains_aggregate(right)
 		}
 		SimpleExpr::Tuple(expressions) | SimpleExpr::CustomWithExpr(_, expressions) => {
@@ -492,7 +494,9 @@ fn contains_window(expr: &SimpleExpr) -> bool {
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => contains_window(expression),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			contains_window(left) || contains_window(right)
 		}
 		SimpleExpr::FunctionCall(_, arguments)
@@ -678,7 +682,9 @@ fn validate_simple_expr_lock(
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => validate_simple_expr_lock(expression, backend, visible_cte_names),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			validate_simple_expr_lock(left, backend, visible_cte_names)?;
 			validate_simple_expr_lock(right, backend, visible_cte_names)
 		}
@@ -1219,7 +1225,8 @@ fn validate_simple_expr(expr: &SimpleExpr, backend: &'static str) -> Result<(), 
 			}
 			validate_simple_expr(expr, backend)
 		}
-		SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			validate_simple_expr(left, backend)?;
 			validate_simple_expr(right, backend)
 		}
@@ -1488,7 +1495,8 @@ fn collect_simple_expr_pgvector_features_with_values(
 				collect_vector_values,
 			);
 		}
-		SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			collect_simple_expr_pgvector_features_with_values(
 				left,
 				features,

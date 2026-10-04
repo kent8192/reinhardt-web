@@ -603,6 +603,13 @@ impl MySqlQueryBuilder {
 				self.write_simple_expr(writer, pattern);
 				writer.push(" ESCAPE 0x5C");
 			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(LOWER(");
+				self.write_simple_expr(writer, expr);
+				writer.push(") LIKE LOWER(");
+				self.write_simple_expr(writer, pattern);
+				writer.push(") ESCAPE 0x5C)");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				let template = if template == "? LIKE ? ESCAPE '\\'" {
 					"? LIKE ? ESCAPE 0x5C"

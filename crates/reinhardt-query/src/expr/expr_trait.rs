@@ -309,6 +309,39 @@ pub trait ExprTrait: Sized {
 		)
 	}
 
+	/// Portable case-insensitive LIKE with a fixed backslash escape character.
+	///
+	/// The supplied pattern is already escaped: `%` and `_` remain wildcards
+	/// unless preceded by `\`, and a literal backslash requires `\\`. Ordinary
+	/// values are bound by the renderer. PostgreSQL/CockroachDB use ILIKE;
+	/// MySQL/SQLite use LOWER on both operands with LIKE. Case folding follows
+	/// each backend's locale/collation and LOWER behavior; SQLite's built-in
+	/// LOWER only folds ASCII. MySQL renders the escape as a hex literal, which
+	/// is independent of NO_BACKSLASH_ESCAPES. Native/WASM behavioral parity (P2).
+	///
+	/// # Example
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, ExprTrait, PostgresQueryBuilder, Query};
+	/// let statement = Query::select()
+	///     .column("name")
+	///     .from("users")
+	///     .and_where(Expr::col("name").ilike_with_escape("%Alice\\_%"))
+	///     .to_owned();
+	/// let (sql, values) = PostgresQueryBuilder.build_select_checked(&statement).unwrap();
+	/// assert_eq!(sql, "SELECT \"name\" FROM \"users\" WHERE (\"name\" ILIKE $1 ESCAPE '\\')");
+	/// assert_eq!(values.0, vec!["%Alice\\_%".into()]);
+	/// ```
+	fn ilike_with_escape<V>(self, pattern: V) -> SimpleExpr
+	where
+		V: Into<SimpleExpr>,
+	{
+		SimpleExpr::InsensitiveLikeWithEscape(
+			Box::new(self.into_simple_expr()),
+			Box::new(pattern.into()),
+		)
+	}
+
 	/// NOT ILIKE (PostgreSQL).
 	fn not_ilike<V>(self, pattern: V) -> SimpleExpr
 	where

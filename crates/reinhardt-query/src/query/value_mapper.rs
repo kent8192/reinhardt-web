@@ -153,7 +153,9 @@ impl<E> ValueMapper<'_, E> {
 			| SimpleExpr::PgExtractEpoch(inner)
 			| SimpleExpr::TemporalTrunc { expr: inner, .. }
 			| SimpleExpr::WindowNamed { func: inner, .. } => self.expression(inner)?,
-			SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+			SimpleExpr::Binary(left, _, right)
+			| SimpleExpr::LikeWithEscape(left, right)
+			| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 				self.expression(left)?;
 				self.expression(right)?;
 			}
