@@ -245,6 +245,11 @@ pub enum SimpleExpr {
 	/// behavior; SQLite's built-in LOWER folds ASCII only. The pattern is already
 	/// escaped and may retain deliberate `%`/`_` wildcards.
 	InsensitiveLikeWithEscape(Box<SimpleExpr>, Box<SimpleExpr>),
+
+	/// An explicitly parenthesized expression (P2 native/WASM behavioral parity).
+	///
+	/// Retains grouping through every backend renderer without custom SQL text.
+	Grouped(Box<SimpleExpr>),
 }
 
 /// SQL keywords that can appear as constants.

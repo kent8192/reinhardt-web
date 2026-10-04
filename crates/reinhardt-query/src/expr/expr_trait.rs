@@ -68,6 +68,27 @@ pub trait ExprTrait: Sized {
 	/// Build the final SimpleExpr.
 	fn into_simple_expr(self) -> SimpleExpr;
 
+	/// Preserve explicit parentheses around this expression on every backend.
+	///
+	/// Grouping is structural; nested parameters keep their renderer order and
+	/// validators inspect the inner expression. This supports native/WASM
+	/// behavioral parity (P2).
+	///
+	/// # Example
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, ExprTrait, MySqlQueryBuilder, Query};
+	/// let statement = Query::select()
+	///     .expr(Expr::val(3_i64).add(5_i64).grouped().mul(2_i64))
+	///     .to_owned();
+	/// let (sql, values) = MySqlQueryBuilder.build_select_checked(&statement).unwrap();
+	/// assert_eq!(sql, "SELECT (? + ?) * ?");
+	/// assert_eq!(values.0, vec![3_i64.into(), 5_i64.into(), 2_i64.into()]);
+	/// ```
+	fn grouped(self) -> SimpleExpr {
+		SimpleExpr::Grouped(Box::new(self.into_simple_expr()))
+	}
+
 	// =========================================================================
 	// Comparison operations
 	// =========================================================================

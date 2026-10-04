@@ -148,6 +148,7 @@ impl<E> ValueMapper<'_, E> {
 			| SimpleExpr::AsEnum(_, inner)
 			| SimpleExpr::ExprAlias(inner, _)
 			| SimpleExpr::Cast(inner, _)
+			| SimpleExpr::Grouped(inner)
 			| SimpleExpr::TextCast(inner)
 			| SimpleExpr::SignedIntegerCast(inner)
 			| SimpleExpr::PgExtractEpoch(inner)

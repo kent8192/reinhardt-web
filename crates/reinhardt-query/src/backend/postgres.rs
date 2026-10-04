@@ -864,6 +864,11 @@ impl PostgresQueryBuilder {
 	/// Write a simple expression
 	fn write_simple_expr(&self, writer: &mut SqlWriter, expr: &SimpleExpr) {
 		match expr {
+			SimpleExpr::Grouped(expr) => {
+				writer.push("(");
+				self.write_simple_expr(writer, expr);
+				writer.push(")");
+			}
 			SimpleExpr::Column(col_ref) => {
 				self.write_column_ref(writer, col_ref);
 			}
@@ -1210,6 +1215,11 @@ impl PostgresQueryBuilder {
 						writer.push("NULL");
 					}
 				}
+			}
+			SimpleExpr::Grouped(expr) => {
+				writer.push("(");
+				self.write_simple_expr_unquoted(writer, expr);
+				writer.push(")");
 			}
 			SimpleExpr::LikeWithEscape(expr, pattern) => {
 				self.write_binary_operand(writer, expr, BinOper::Like, false, true);
