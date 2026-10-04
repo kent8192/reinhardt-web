@@ -1575,6 +1575,12 @@ impl QueryBuilder for MySqlQueryBuilder {
 	}
 
 	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
+		assert!(
+			stmt.columns
+				.iter()
+				.all(|column| column.expression.is_none()),
+			"typed expression indexes are not supported by MySQL"
+		);
 		let mut writer = SqlWriter::new();
 
 		// CREATE [UNIQUE] INDEX
@@ -6242,6 +6248,7 @@ mod tests {
 		stmt.table("users");
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 		});
@@ -6262,6 +6269,7 @@ mod tests {
 		stmt.unique = true;
 		stmt.columns.push(IndexColumn {
 			name: "username".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 		});
@@ -6285,6 +6293,7 @@ mod tests {
 		stmt.if_not_exists = true;
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 		});
@@ -6306,6 +6315,7 @@ mod tests {
 		stmt.table("users");
 		stmt.columns.push(IndexColumn {
 			name: "created_at".into_iden(),
+			expression: None,
 			order: Some(Order::Desc),
 			operator_class: None,
 		});
@@ -6329,11 +6339,13 @@ mod tests {
 		stmt.table("users");
 		stmt.columns.push(IndexColumn {
 			name: "last_name".into_iden(),
+			expression: None,
 			order: Some(Order::Asc),
 			operator_class: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
+			expression: None,
 			order: Some(Order::Asc),
 			operator_class: None,
 		});
@@ -6357,6 +6369,7 @@ mod tests {
 		stmt.using = Some(IndexMethod::BTree);
 		stmt.columns.push(IndexColumn {
 			name: "id".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 		});
@@ -6380,6 +6393,7 @@ mod tests {
 		stmt.using = Some(IndexMethod::FullText);
 		stmt.columns.push(IndexColumn {
 			name: "content".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 		});

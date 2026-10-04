@@ -43,6 +43,7 @@ pub struct CreateIndexStatement {
 #[derive(Debug, Clone)]
 pub struct IndexColumn {
 	pub(crate) name: DynIden,
+	pub(crate) expression: Option<SimpleExpr>,
 	pub(crate) order: Option<Order>,
 	pub(crate) operator_class: Option<String>,
 }
@@ -191,6 +192,7 @@ impl CreateIndexStatement {
 	{
 		self.columns.push(IndexColumn {
 			name: column.into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 		});
@@ -205,6 +207,7 @@ impl CreateIndexStatement {
 	{
 		self.columns.push(IndexColumn {
 			name: column.into_iden(),
+			expression: None,
 			order: None,
 			operator_class: Some(operator_class.into()),
 		});
@@ -230,12 +233,35 @@ impl CreateIndexStatement {
 	{
 		self.columns.push(IndexColumn {
 			name: column.into_iden(),
+			expression: None,
 			order: Some(order),
 			operator_class: None,
 		});
 		self
 	}
 
+	/// Add a typed expression to a PostgreSQL or SQLite index (P2 native/WASM parity).
+	///
+	/// Use `to_string` for schema constants: these backends do not permit bound
+	/// parameters in index definitions. Checked MySQL builders reject expression
+	/// indexes until their version-specific syntax is represented explicitly.
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder};
+	/// let sql = Query::create_index().name("idx_lower_name").table("users")
+	///     .expr(Expr::col("name").cast_as("text"))
+	///     .to_string(PostgresQueryBuilder);
+	/// assert_eq!(sql, "CREATE INDEX \"idx_lower_name\" ON \"users\" ((CAST(\"name\" AS \"text\")))");
+	/// ```
+	pub fn expr<E: Into<SimpleExpr>>(&mut self, expression: E) -> &mut Self {
+		self.columns.push(IndexColumn {
+			name: crate::types::Alias::new("").into_iden(),
+			expression: Some(expression.into()),
+			order: None,
+			operator_class: None,
+		});
+		self
+	}
 	/// Add multiple columns to the index
 	///
 	/// # Examples
@@ -345,6 +371,18 @@ impl CreateIndexStatement {
 		backend: &'static str,
 		supports_approximate_vector_indexes: bool,
 	) -> Result<(), crate::QueryBuildError> {
+		if backend != "PostgreSQL"
+			&& backend != "SQLite"
+			&& self
+				.columns
+				.iter()
+				.any(|column| column.expression.is_some())
+		{
+			return Err(crate::QueryBuildError::UnsupportedBackendFeature {
+				feature: "typed expression indexes",
+				backend,
+			});
+		}
 		let approximate_method =
 			matches!(self.using, Some(IndexMethod::Hnsw | IndexMethod::Ivfflat));
 
@@ -941,5 +979,37 @@ mod tests {
 				backend: "PostgreSQL",
 			})
 		));
+	}
+}
+
+#[cfg(test)]
+mod expression_index_tests {
+	use crate::{
+		Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuildError,
+		QueryStatementBuilder, SqliteQueryBuilder,
+	};
+	use rstest::rstest;
+
+	#[rstest]
+	fn typed_index_expressions_preserve_column_order_and_inline_schema_constants() {
+		// Arrange
+		let statement = Query::create_index()
+			.name("idx_attempt")
+			.table("jobs")
+			.col("queue")
+			.expr(Expr::col("attempt_count").add(1_i64))
+			.take();
+		// Act / Assert
+		let expected =
+			"CREATE INDEX \"idx_attempt\" ON \"jobs\" (\"queue\", (\"attempt_count\" + 1))";
+		assert_eq!(statement.to_string(PostgresQueryBuilder), expected);
+		assert_eq!(statement.to_string(SqliteQueryBuilder), expected);
+		assert_eq!(
+			MySqlQueryBuilder.build_create_index_checked(&statement),
+			Err(QueryBuildError::UnsupportedBackendFeature {
+				feature: "typed expression indexes",
+				backend: "MySQL"
+			})
+		);
 	}
 }

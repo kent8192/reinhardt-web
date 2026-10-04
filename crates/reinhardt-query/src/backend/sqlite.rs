@@ -1477,7 +1477,13 @@ impl QueryBuilder for SqliteQueryBuilder {
 				writer.push(", ");
 			}
 			first = false;
-			writer.push_identifier(&col.name.to_string(), |s| self.escape_iden(s));
+			if let Some(expression) = &col.expression {
+				writer.push("(");
+				self.write_simple_expr(&mut writer, expression);
+				writer.push(")");
+			} else {
+				writer.push_identifier(&col.name.to_string(), |s| self.escape_iden(s));
+			}
 			if let Some(order) = &col.order {
 				writer.push_space();
 				match order {
@@ -4775,6 +4781,7 @@ mod tests {
 		stmt.table("users");
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 		});
@@ -4798,6 +4805,7 @@ mod tests {
 		stmt.unique = true;
 		stmt.columns.push(IndexColumn {
 			name: "username".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 		});
@@ -4821,6 +4829,7 @@ mod tests {
 		stmt.if_not_exists = true;
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 		});
@@ -4844,6 +4853,7 @@ mod tests {
 		stmt.table("users");
 		stmt.columns.push(IndexColumn {
 			name: "created_at".into_iden(),
+			expression: None,
 			order: Some(Order::Desc),
 			operator_class: None,
 		});
@@ -4867,11 +4877,13 @@ mod tests {
 		stmt.table("users");
 		stmt.columns.push(IndexColumn {
 			name: "last_name".into_iden(),
+			expression: None,
 			order: Some(Order::Asc),
 			operator_class: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
+			expression: None,
 			order: Some(Order::Asc),
 			operator_class: None,
 		});
@@ -4894,6 +4906,7 @@ mod tests {
 		stmt.table("users");
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 		});
