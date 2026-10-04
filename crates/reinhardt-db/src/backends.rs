@@ -144,7 +144,7 @@ pub mod dialect;
 /// Database-specific driver implementations (PostgreSQL, MySQL, SQLite, CockroachDB).
 pub mod drivers;
 pub mod error;
-mod generated;
+pub(crate) mod generated;
 pub mod optimization;
 pub mod query_builder;
 /// Database schema editing and DDL generation.

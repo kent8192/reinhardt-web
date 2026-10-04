@@ -126,6 +126,36 @@ fn query_name(name: &str) -> bool {
 			| "raw_sql"
 	)
 }
+fn execution_wrapper_name(name: &str) -> bool {
+	matches!(
+		name,
+		"execute"
+			| "execute_raw"
+			| "fetch_one"
+			| "fetch_all"
+			| "fetch_optional"
+			| "execute_with_context"
+			| "fetch_one_with_context"
+			| "fetch_all_with_context"
+			| "fetch_optional_with_context"
+			| "fetch_all_with_values"
+			| "fetch_one_with_values"
+			| "fetch_optional_with_values"
+			| "fetch_stream"
+			| "fetch_stream_with_context"
+			| "execute_generated"
+			| "fetch_one_generated"
+			| "fetch_all_generated"
+			| "fetch_optional_generated"
+			| "fetch_stream_generated"
+			| "execute_in_savepoint"
+			| "fetch_all_in_savepoint"
+			| "execute_generated_in_savepoint"
+			| "fetch_all_generated_in_savepoint"
+			| "query" | "query_as"
+			| "query_scalar"
+	)
+}
 fn imported_query_aliases(tree: &syn::UseTree, aliases: &mut BTreeSet<String>) {
 	match tree {
 		syn::UseTree::Path(path) => imported_query_aliases(&path.tree, aliases),
@@ -283,6 +313,8 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 				.unwrap_or_default();
 			if query_name(&name) || self.query_aliases.contains(&name) {
 				self.record("executor", n.span(), n, "review-required");
+			} else if execution_wrapper_name(&name) {
+				self.record("execution-wrapper", n.span(), n, "review-required");
 			} else if matches!(
 				name.as_str(),
 				"cust" | "cust_with_values" | "cust_with_expr" | "cust_with_exprs"
@@ -300,29 +332,7 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 					.to_token_stream()
 					.to_string()
 					.contains("QueryBuilder"));
-		if renderer
-			|| matches!(
-				name.as_str(),
-				"execute"
-					| "execute_raw" | "fetch_one"
-					| "fetch_all" | "fetch_optional"
-					| "execute_with_context"
-					| "fetch_one_with_context"
-					| "fetch_all_with_context"
-					| "fetch_optional_with_context"
-					| "fetch_all_with_values"
-					| "fetch_one_with_values"
-					| "fetch_optional_with_values"
-					| "fetch_stream"
-					| "fetch_stream_with_context"
-					| "execute_generated"
-					| "fetch_one_generated"
-					| "fetch_all_generated"
-					| "fetch_optional_generated"
-					| "fetch_stream_generated"
-					| "query" | "query_as"
-					| "query_scalar"
-			) {
+		if renderer || execution_wrapper_name(&name) {
 			self.record(
 				if renderer {
 					"possible-inline-render"
@@ -777,6 +787,26 @@ mod tests {
 				.count(),
 			3
 		);
+		assert_ne!(sites[0].fingerprint, changed[0].fingerprint);
+	}
+	#[rstest]
+	fn associated_execution_and_savepoint_calls_remain_auditable() {
+		// Arrange: UFCS and method syntax describe the same execution responsibility.
+		let source = "fn run() { OrmExecutor::execute_generated(db, built, context); db.execute_generated_in_savepoint(built, context); OrmExecutor::fetch_all_in_savepoint(db, sql, values); db.fetch_all_generated_in_savepoint(built, context); }";
+		// Act
+		let sites = scan_source("crates/example/src/lib.rs", source).unwrap();
+		// Assert
+		assert_eq!(sites.len(), 4);
+		assert!(
+			sites
+				.iter()
+				.all(|s| s.kind == "execution-wrapper" && !s.test_only)
+		);
+		let changed = scan_source(
+			"crates/example/src/lib.rs",
+			&source.replace("db, built", "db, other"),
+		)
+		.unwrap();
 		assert_ne!(sites[0].fingerprint, changed[0].fingerprint);
 	}
 	#[rstest]

@@ -150,6 +150,14 @@ connection, including write-intent executors and AtomicTransaction forwarding.
 and uses a bounded fetch hint; dropping a stream releases its cursor so that the
 same transaction or pool can continue. These capabilities are native-only (P0).
 
+`OrmExecutor` exposes the same generated operations, plus generated savepoint
+execution and fetch methods. Native connection handles preserve their registry
+lease rules; a resolved stream captures its owner before it is returned, and
+encoding failures become stream items before driver execution. AtomicTransaction
+uses its existing nested atomic scope for generated savepoints. InsertExecution
+and generic SelectExecution async methods use these owned arguments while the
+public legacy `convert_values` API retains its historical raw parameter contract.
+
 ### Streaming QuerySets
 
 `QuerySet::iterator_with_db` and `QuerySet::iterator_with_executor` decode one

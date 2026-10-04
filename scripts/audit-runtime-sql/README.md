@@ -16,6 +16,7 @@ cargo run --locked --manifest-path scripts/audit-runtime-sql/Cargo.toml -- compl
 
 `scan` includes SQL literals inside macros, SQL asset references, SQLx-style
 query calls (including unqualified imports), execution wrapper calls (including
+associated/UFCS calls, raw/generated savepoint variants,
 owned Values, structural-context and row-streaming variants), custom
 expressions and possible inline query rendering.
 

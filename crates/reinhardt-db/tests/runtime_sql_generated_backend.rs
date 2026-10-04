@@ -8,11 +8,16 @@
 
 use futures::StreamExt;
 use reinhardt_db::backends::{DatabaseConnection, DatabaseErrorKind, DatabaseType};
+use reinhardt_db::orm::execution::{
+	ExecutionError, InsertExecution, QueryExecution, SelectExecution,
+};
+use reinhardt_db::orm::{DatabaseConnectionLease, Model, OrmExecutor};
 use reinhardt_query::{
 	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
 	SqliteQueryBuilder, Value, Values,
 };
 use rstest::rstest;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use testcontainers::runners::AsyncRunner;
 
@@ -218,6 +223,196 @@ fn transaction_select(database: DatabaseType) -> (String, Values) {
 			.and_where(Expr::col(Alias::new("id")).eq(19_i32))
 			.take(),
 	)
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct GeneratedModel {
+	id: Option<i64>,
+	name: String,
+}
+#[derive(Clone)]
+struct GeneratedFields;
+impl reinhardt_db::orm::model::FieldSelector for GeneratedFields {
+	fn with_alias(self, _alias: &str) -> Self {
+		self
+	}
+}
+impl Model for GeneratedModel {
+	type PrimaryKey = i64;
+	type Fields = GeneratedFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
+	fn table_name() -> &'static str {
+		"generated_rows"
+	}
+	fn new_fields() -> Self::Fields {
+		GeneratedFields
+	}
+	fn primary_key(&self) -> Option<i64> {
+		self.id
+	}
+	fn set_primary_key(&mut self, value: i64) {
+		self.id = Some(value);
+	}
+}
+
+async fn exercise_orm_generated_capabilities(connection: &DatabaseConnection) {
+	let database = connection.database_type();
+	// Arrange: the lease owns the registry slot; typed execution receives its handle.
+	let lease = DatabaseConnectionLease::register(connection.clone()).unwrap();
+	let mut handle = lease.handle();
+	let amount = if database == DatabaseType::Sqlite {
+		Value::Double(Some(1.25))
+	} else {
+		Value::Decimal(Some(Box::new(
+			rust_decimal::Decimal::from_str_exact("123456789012.123456789012").unwrap(),
+		)))
+	};
+	let insert = InsertExecution::new(
+		Query::insert()
+			.into_table(Alias::new("generated_rows"))
+			.columns([Alias::new("id"), Alias::new("name"), Alias::new("amount")])
+			.values_panic([Value::Int(Some(19)), "transaction' ? $3".into(), amount])
+			.take(),
+	);
+	let query = SelectExecution::<GeneratedModel>::new(
+		Query::select()
+			.columns([Alias::new("id"), Alias::new("name")])
+			.from(Alias::new("generated_rows"))
+			.and_where(Expr::col(Alias::new("id")).eq(19_i32))
+			.take(),
+	);
+	let expected = GeneratedModel {
+		id: Some(19),
+		name: "transaction' ? $3".into(),
+	};
+	// Act / Assert: generic execution uses the native pair and keeps cardinality contracts.
+	assert_eq!(
+		insert
+			.execute_async(&mut handle)
+			.await
+			.unwrap()
+			.rows_affected,
+		1
+	);
+	assert_eq!(
+		query.all_async(&mut handle).await.unwrap(),
+		vec![expected.clone()]
+	);
+	assert_eq!(
+		query.first_async(&mut handle).await.unwrap(),
+		Some(expected.clone())
+	);
+	assert_eq!(query.one_async(&mut handle).await.unwrap(), expected);
+	assert_eq!(
+		query.one_or_none_async(&mut handle).await.unwrap(),
+		Some(expected.clone())
+	);
+	assert_eq!(query.get_async(&mut handle, &19).await.unwrap(), expected);
+	assert_eq!(query.count_async(&mut handle).await.unwrap(), 1);
+	match database {
+		DatabaseType::Postgres => assert!(query.exists_async(&mut handle).await.unwrap()),
+		DatabaseType::Mysql | DatabaseType::Sqlite => {
+			// Workaround: https://github.com/kent8192/reinhardt-web/issues/6530
+			// Native integer EXISTS results need backend-aware decoding. Assert the
+			// existing error until that repair permits the same boolean assertion.
+			let error = query.exists_async(&mut handle).await.unwrap_err();
+			assert!(matches!(&error, ExecutionError::Deserialization(_)));
+			assert!(error.to_string().contains("expected a boolean"));
+		}
+	}
+	let mut stream =
+		OrmExecutor::fetch_stream_generated(&mut handle, transaction_select(database), 1, None)
+			.unwrap();
+	assert_eq!(
+		stream
+			.next()
+			.await
+			.unwrap()
+			.unwrap()
+			.get::<i64>("id")
+			.unwrap(),
+		19
+	);
+	drop(stream);
+	let delete = || {
+		build(
+			database,
+			Query::delete()
+				.from_table(Alias::new("generated_rows"))
+				.and_where(Expr::col(Alias::new("id")).eq(19_i32))
+				.take(),
+		)
+	};
+	assert_eq!(
+		OrmExecutor::execute_generated(&mut handle, delete(), None)
+			.await
+			.unwrap()
+			.rows_affected,
+		1
+	);
+	handle
+		.atomic(async |transaction| {
+			assert_eq!(
+				insert
+					.execute_async(transaction)
+					.await
+					.unwrap()
+					.rows_affected,
+				1
+			);
+			let duplicate = OrmExecutor::execute_generated_in_savepoint(
+				transaction,
+				transaction_insert(database),
+				None,
+			)
+			.await;
+			assert!(duplicate.is_err());
+			let rows = OrmExecutor::fetch_all_generated_in_savepoint(
+				transaction,
+				transaction_select(database),
+				None,
+			)
+			.await?;
+			assert_eq!(rows.len(), 1);
+			assert_eq!(query.one_async(transaction).await.unwrap(), expected);
+			Ok::<_, reinhardt_core::exception::Error>(())
+		})
+		.await
+		.unwrap();
+	assert_eq!(
+		OrmExecutor::execute_generated(&mut handle, delete(), None)
+			.await
+			.unwrap()
+			.rows_affected,
+		1
+	);
+	// A resolved stream retains its owner across lease expiry; new operations reject expiry.
+	let built = build(
+		database,
+		Query::select()
+			.expr_as(Expr::val(19_i32), Alias::new("id"))
+			.take(),
+	);
+	let mut stream = OrmExecutor::fetch_stream_generated(&mut handle, built, 1, None).unwrap();
+	drop(lease);
+	assert_eq!(
+		stream
+			.next()
+			.await
+			.unwrap()
+			.unwrap()
+			.get::<i64>("id")
+			.unwrap(),
+		19
+	);
+	drop(stream);
+	assert_eq!(
+		OrmExecutor::fetch_all_generated(&mut handle, transaction_select(database), None)
+			.await
+			.unwrap_err()
+			.database_kind(),
+		Some(DatabaseErrorKind::ConnectionHandleExpired)
+	);
 }
 
 async fn exercise_transactions_and_streams(connection: &DatabaseConnection) {
@@ -507,6 +702,7 @@ async fn postgres_generated_pool_execution_keeps_decimal_and_nullable_arrays() {
 	let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 	exercise_crud(&connection).await;
 	exercise_transactions_and_streams(&connection).await;
+	exercise_orm_generated_capabilities(&connection).await;
 	// Arrange / Act: nullable array elements bypass the legacy Debug conversion.
 	connection
 		.execute("CREATE TABLE generated_arrays (items INTEGER[])", vec![])
@@ -557,6 +753,7 @@ async fn mysql_generated_pool_execution_keeps_decimal_and_full_unsigned_range() 
 	let connection = DatabaseConnection::connect_mysql(&url).await.unwrap();
 	exercise_crud(&connection).await;
 	exercise_transactions_and_streams(&connection).await;
+	exercise_orm_generated_capabilities(&connection).await;
 	// Arrange / Act: the native backend must bypass the signed compatibility bridge.
 	connection
 		.execute(
@@ -604,6 +801,7 @@ async fn sqlite_generated_pool_execution_keeps_text_uuid_and_rejects_lossy_value
 	let connection = DatabaseConnection::from_sqlite_pool(pool);
 	exercise_crud(&connection).await;
 	exercise_transactions_and_streams(&connection).await;
+	exercise_orm_generated_capabilities(&connection).await;
 	// Act: failed encoding must occur before an invalid SQL statement is executed.
 	let built = build(
 		DatabaseType::Sqlite,

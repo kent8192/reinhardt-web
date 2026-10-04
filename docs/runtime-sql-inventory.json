@@ -1319,6 +1319,52 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-admin/src/core/database.rs::AdminDatabase::update_admin_query_batch_with::execution-wrapper#1",
+      "path": "crates/reinhardt-admin/src/core/database.rs",
+      "symbol": "AdminDatabase::update_admin_query_batch_with",
+      "kind": "execution-wrapper",
+      "line": 3029,
+      "fingerprint": "db8bd56ac45f08f220efcbc2e79733148e4b6431bd199ebed33b82674dc0dd8a",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-admin/src/core/database.rs::AdminDatabase::update_admin_query_batch_with::execution-wrapper#2",
+      "path": "crates/reinhardt-admin/src/core/database.rs",
+      "symbol": "AdminDatabase::update_admin_query_batch_with",
+      "kind": "execution-wrapper",
+      "line": 3038,
+      "fingerprint": "81e0a0117627aadb54e0f5638a47091314da0b5067121e680843606ad9a6d19e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-admin/src/core/database.rs::AdminDatabase::update_with_executor::execution-wrapper#1",
       "path": "crates/reinhardt-admin/src/core/database.rs",
       "symbol": "AdminDatabase::update_with_executor",
@@ -8574,6 +8620,29 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-commands/src/cli.rs::execute_prepared_collectstatic::execution-wrapper#1",
+      "path": "crates/reinhardt-commands/src/cli.rs",
+      "symbol": "execute_prepared_collectstatic",
+      "kind": "execution-wrapper",
+      "line": 4083,
+      "fingerprint": "3f91984f635f573e240294e471cc0f5927da911122fe23a2399da8fb6876e9fc",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-commands/src/cli.rs::execute_runserver::execution-wrapper#1",
       "path": "crates/reinhardt-commands/src/cli.rs",
       "symbol": "execute_runserver",
@@ -8840,6 +8909,29 @@
     },
     {
       "id": "crates/reinhardt-commands/src/cli.rs::run_command_core_with_contract_state::execution-wrapper#4",
+      "path": "crates/reinhardt-commands/src/cli.rs",
+      "symbol": "run_command_core_with_contract_state",
+      "kind": "execution-wrapper",
+      "line": 2867,
+      "fingerprint": "9796f8e893d6ff52ccbe917e9c73fb4bd89b17aaad59932f0903379dcaf32e0e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-commands/src/cli.rs::run_command_core_with_contract_state::execution-wrapper#5",
       "path": "crates/reinhardt-commands/src/cli.rs",
       "symbol": "run_command_core_with_contract_state",
       "kind": "execution-wrapper",
@@ -12573,7 +12665,7 @@
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::execute_generated",
       "kind": "execution-wrapper",
-      "line": 61,
+      "line": 76,
       "fingerprint": "65d24b92dcbdf71e393e2c7812be610ff4a18940b5a43d615c9a765ef5af1e11",
       "conditions": [],
       "test_only": false,
@@ -12601,7 +12693,7 @@
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 60,
+      "line": 132,
       "fingerprint": "6c5c8c7ea18864fd87e9131efbf563b296bc0fc35b9534198bfdc0823d6d6baf",
       "conditions": [],
       "test_only": false,
@@ -12624,7 +12716,7 @@
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::fetch_all_generated",
       "kind": "execution-wrapper",
-      "line": 89,
+      "line": 104,
       "fingerprint": "bf4e88257a0269cec30f0c299e1ec987cbbf373443af802f2c48f5013c5210e1",
       "conditions": [],
       "test_only": false,
@@ -12652,7 +12744,7 @@
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 98,
+      "line": 170,
       "fingerprint": "e1a60d4a8bbfa8fa3dcdab957ca7cee7a6ab9c88ec54233ac7bd839ee26dfaac",
       "conditions": [],
       "test_only": false,
@@ -12675,7 +12767,7 @@
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::fetch_one_generated",
       "kind": "execution-wrapper",
-      "line": 75,
+      "line": 90,
       "fingerprint": "57c87b3ec0fda05567eb45ac36027919c2dbed4b7284f57ab3363a799855f85b",
       "conditions": [],
       "test_only": false,
@@ -12703,7 +12795,7 @@
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 79,
+      "line": 151,
       "fingerprint": "1d065dec1d9c6aa8bee394965e09d13d52a4bb86a6151e19123e4041a76f37e8",
       "conditions": [],
       "test_only": false,
@@ -12726,7 +12818,7 @@
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::fetch_optional_generated",
       "kind": "execution-wrapper",
-      "line": 103,
+      "line": 118,
       "fingerprint": "8b1e2fca1bc39b0c0c142677dfb3af5b9fecdfeae7fec754f81d93e0386c49c6",
       "conditions": [],
       "test_only": false,
@@ -12754,7 +12846,7 @@
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 156,
+      "line": 228,
       "fingerprint": "0ed4458dda8a93829b40cae0d1a8199a0e0cfa6d9c35f474aa8c3d9bfab0ca45",
       "conditions": [],
       "test_only": false,
@@ -12805,7 +12897,7 @@
       "path": "crates/reinhardt-db/src/backends/backend.rs",
       "symbol": "DatabaseBackend::fetch_stream_with_context",
       "kind": "execution-wrapper",
-      "line": 134,
+      "line": 206,
       "fingerprint": "238605e9d13d77e729b825e2c6078c3ab6490aa9a09f1d3939dcbc309eff83ab",
       "conditions": [],
       "test_only": false,
@@ -12828,7 +12920,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::connect_mysql",
       "kind": "execution-wrapper",
-      "line": 747,
+      "line": 789,
       "fingerprint": "4ff30a4dda8ec6dec78f3cd293adffb230a121a0cee290ba1f742481e989fd8f",
       "conditions": [
         "# [cfg (feature = \"mysql\")]"
@@ -12853,7 +12945,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::connect_mysql",
       "kind": "executor",
-      "line": 747,
+      "line": 789,
       "fingerprint": "7b5b4036df17a389ce324f240d2b0413c4af7804e9d00f8a846ec58ba789dfd6",
       "conditions": [
         "# [cfg (feature = \"mysql\")]"
@@ -12878,7 +12970,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::connect_mysql",
       "kind": "sql-literal",
-      "line": 747,
+      "line": 789,
       "fingerprint": "07a073d0110222e31768f918b2cc92b0e0b007ab656d19f160b47b98d829fab9",
       "conditions": [
         "# [cfg (feature = \"mysql\")]"
@@ -12903,7 +12995,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::connect_postgres_or_create_with_pool_size",
       "kind": "execution-wrapper",
-      "line": 543,
+      "line": 585,
       "fingerprint": "8ec28684be78a1c27fa0258d8ff4713c22af4594e4688c3b429d2c23db500047",
       "conditions": [
         "# [cfg (feature = \"postgres\")]"
@@ -12928,7 +13020,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::connect_postgres_or_create_with_pool_size",
       "kind": "executor",
-      "line": 543,
+      "line": 585,
       "fingerprint": "d68c28e990717d8015da08e87e377e7b0d1b4a9999cb078dfe2217fdb6480b76",
       "conditions": [
         "# [cfg (feature = \"postgres\")]"
@@ -12953,7 +13045,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::connect_postgres_or_create_with_pool_size",
       "kind": "macro-sql-literal",
-      "line": 542,
+      "line": 584,
       "fingerprint": "b54f255c7ae4312e40429d2158cf5351f73f3f8e9f060eb1c0544bd54d05e53c",
       "conditions": [
         "# [cfg (feature = \"postgres\")]"
@@ -12978,7 +13070,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::execute",
       "kind": "execution-wrapper",
-      "line": 873,
+      "line": 977,
       "fingerprint": "d65df05c2291f2f56d4ebc3ff254532d5797bcd2c84ba4e970046fbc607c5cd5",
       "conditions": [],
       "test_only": false,
@@ -13001,7 +13093,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::execute_generated",
       "kind": "execution-wrapper",
-      "line": 876,
+      "line": 932,
       "fingerprint": "76bbe81173a1dbc00630ec8ab065717312e25c2a5b1a7e6e272d7e83b12f59a3",
       "conditions": [],
       "test_only": false,
@@ -13029,7 +13121,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 882,
+      "line": 986,
       "fingerprint": "c9b6c9fb23710b8f330ebe655e826fc7923ddd009801e7bc75750dee70ef0b21",
       "conditions": [],
       "test_only": false,
@@ -13052,7 +13144,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_all",
       "kind": "execution-wrapper",
-      "line": 913,
+      "line": 1017,
       "fingerprint": "5619b280a363a1c2531a71443bd8ff3e1839bade94ac021991a1c90beb2ab7a0",
       "conditions": [],
       "test_only": false,
@@ -13075,7 +13167,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_all_generated",
       "kind": "execution-wrapper",
-      "line": 900,
+      "line": 956,
       "fingerprint": "da65e2f4725a6f3590caf45ca907fe4f1fd9fd5a9299be5a544fe7b8e10db40f",
       "conditions": [],
       "test_only": false,
@@ -13103,7 +13195,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 947,
+      "line": 1051,
       "fingerprint": "e6d89fbe3497c9f344c4129745c4204821e1a80f64b61effe932a30445109f8f",
       "conditions": [],
       "test_only": false,
@@ -13126,7 +13218,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_one",
       "kind": "execution-wrapper",
-      "line": 893,
+      "line": 997,
       "fingerprint": "ec98954e29439f11d8cf7e54d189ce11a6d8f99b0cf9be1fdf6d92f66afc473c",
       "conditions": [],
       "test_only": false,
@@ -13149,7 +13241,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_one_generated",
       "kind": "execution-wrapper",
-      "line": 888,
+      "line": 944,
       "fingerprint": "894bff7400358bd24c90b519469778921581667b383c21af3eb438d16b6b2489",
       "conditions": [],
       "test_only": false,
@@ -13177,7 +13269,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 902,
+      "line": 1006,
       "fingerprint": "130f6133053e400e7f190e0eadbb23a3d21d458fee18824c97a0b0d5a123e80e",
       "conditions": [],
       "test_only": false,
@@ -13200,7 +13292,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 958,
+      "line": 1062,
       "fingerprint": "77c00296ae5d563ffdc121fe1740409adf1eb2d7dcdff1f6c76c388950dda215",
       "conditions": [],
       "test_only": false,
@@ -13223,7 +13315,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_optional_generated",
       "kind": "execution-wrapper",
-      "line": 912,
+      "line": 968,
       "fingerprint": "7b9113d89d153f74ff19ef990d67a24919274578d2271553086e13e4e89f29f6",
       "conditions": [],
       "test_only": false,
@@ -13251,7 +13343,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 967,
+      "line": 1071,
       "fingerprint": "d4ca7c31d62c39d4959bb27e72fd4339d76415bc9155304bfa2650b8593eeff9",
       "conditions": [],
       "test_only": false,
@@ -13274,7 +13366,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_stream",
       "kind": "execution-wrapper",
-      "line": 923,
+      "line": 1027,
       "fingerprint": "38aadbcc94aaf7026491485dd1741f4e10a3ca643b6716d2a77d9d385e2e603f",
       "conditions": [],
       "test_only": false,
@@ -13325,7 +13417,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::fetch_stream_with_context",
       "kind": "execution-wrapper",
-      "line": 933,
+      "line": 1037,
       "fingerprint": "8d2a22ea6c53293ac24238382b58f33ab2745b13b34dc4e3ee25b26a4d596fa1",
       "conditions": [],
       "test_only": false,
@@ -13348,7 +13440,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::probe_postgres_version",
       "kind": "execution-wrapper",
-      "line": 421,
+      "line": 463,
       "fingerprint": "328d43697794318034bb7908c00423993a6683c3c728aca3aee47dc664aefb2c",
       "conditions": [
         "# [cfg (feature = \"postgres\")]"
@@ -13373,7 +13465,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::probe_postgres_version",
       "kind": "executor",
-      "line": 421,
+      "line": 463,
       "fingerprint": "c28963d6f0a7802b3f2fa586a586cd12c88a9f9947aa58c6572d4d1d7fd877e1",
       "conditions": [
         "# [cfg (feature = \"postgres\")]"
@@ -13398,7 +13490,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "DatabaseConnection::probe_postgres_version",
       "kind": "sql-literal",
-      "line": 421,
+      "line": 463,
       "fingerprint": "cfee382bd72f53be211800b0b63b668840de51f5d407f03e0a828b8900b5c029",
       "conditions": [
         "# [cfg (feature = \"postgres\")]"
@@ -13423,7 +13515,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::execute",
       "kind": "execution-wrapper",
-      "line": 132,
+      "line": 174,
       "fingerprint": "febd4bf3b95cf2bc747695a5a9c46301556b84c8c76bdfa3e59dccabadc8a7b6",
       "conditions": [],
       "test_only": false,
@@ -13474,7 +13566,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 141,
+      "line": 183,
       "fingerprint": "8fc3d20cfe1ed893a99b11c4c89d492378b38d93c64eb2a10c290824d2594b1e",
       "conditions": [],
       "test_only": false,
@@ -13497,7 +13589,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "execution-wrapper",
-      "line": 160,
+      "line": 202,
       "fingerprint": "e2dc237cf3201e6ec839d28f7f9ac53ef4bcdd8342b3d5b5efd6d85d2a7942e0",
       "conditions": [],
       "test_only": false,
@@ -13548,7 +13640,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 169,
+      "line": 211,
       "fingerprint": "fbfce5e209774144f8f49d9dfc3edeac4865c89e5a38fb89e3d3546dd8c5577a",
       "conditions": [],
       "test_only": false,
@@ -13571,7 +13663,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "execution-wrapper",
-      "line": 145,
+      "line": 187,
       "fingerprint": "ec2dabb503643106f98bb5945a4cacb44a1cf060a0cce5cb58a4d964c2f219c6",
       "conditions": [],
       "test_only": false,
@@ -13622,7 +13714,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 154,
+      "line": 196,
       "fingerprint": "ae13c76149f0a926cd145cc3f71199f32f1a675962c3262ef9a320af38970dba",
       "conditions": [],
       "test_only": false,
@@ -13645,7 +13737,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 195,
+      "line": 237,
       "fingerprint": "1507467549f834f3bced3f1d3dad54b787d210d1841279e4bb303ccf0e4f414a",
       "conditions": [],
       "test_only": false,
@@ -13696,7 +13788,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 204,
+      "line": 246,
       "fingerprint": "8f872593b241b1913870b55d5af347e1994e7134052f2507bf752f1b74c1ae98",
       "conditions": [],
       "test_only": false,
@@ -13719,7 +13811,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_stream",
       "kind": "execution-wrapper",
-      "line": 180,
+      "line": 222,
       "fingerprint": "154db9505e93f66dc3d781506f26d7eb1680096d424cd9e399ae0764fbd90900",
       "conditions": [],
       "test_only": false,
@@ -13770,7 +13862,7 @@
       "path": "crates/reinhardt-db/src/backends/connection.rs",
       "symbol": "FlavoredTransactionExecutor as TransactionExecutor::fetch_stream_with_context",
       "kind": "execution-wrapper",
-      "line": 190,
+      "line": 232,
       "fingerprint": "27892617027cccaa7574eac92053a88d16a433414658b30f4e6167765328bcb9",
       "conditions": [],
       "test_only": false,
@@ -13789,11 +13881,57 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::begin_with_isolation::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::begin_with_isolation",
+      "kind": "execution-wrapper",
+      "line": 476,
+      "fingerprint": "5323b5bc9f448828f41b0cd4b46f8d996aaefd0cb62dfecb92bf8908ba1e8aac",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::begin_with_isolation::execution-wrapper#2",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlBackend as DatabaseBackend::begin_with_isolation",
+      "kind": "execution-wrapper",
+      "line": 479,
+      "fingerprint": "b51b0397e2835f3e8407a11c9f7d197c60d031361848cb45cfbf22d1e13577f7",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlBackend as DatabaseBackend::begin_with_isolation::executor#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::begin_with_isolation",
       "kind": "executor",
-      "line": 381,
+      "line": 476,
       "fingerprint": "4e3068e5db0f8bd9cbce0232ea0d361858c2b6c3389233d1c6b61dbafdd83249",
       "conditions": [],
       "test_only": false,
@@ -13816,7 +13954,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::begin_with_isolation",
       "kind": "executor",
-      "line": 384,
+      "line": 479,
       "fingerprint": "8ebe8cab7174cba856b0743d905689135db13bb74c666da0ae1a0e276da3e386",
       "conditions": [],
       "test_only": false,
@@ -13839,7 +13977,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::begin_with_isolation",
       "kind": "macro-sql-literal",
-      "line": 377,
+      "line": 472,
       "fingerprint": "5de4ca8ecbdeeb34a3faf9cd5378706d2be7f5f5fafe5ba3c8d86d7d9c95b0c7",
       "conditions": [],
       "test_only": false,
@@ -13862,7 +14000,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::begin_with_isolation",
       "kind": "sql-literal",
-      "line": 384,
+      "line": 479,
       "fingerprint": "be6004c2d12b873e3380f523185a575ff82578cdca187b497f5d5cd2ece158da",
       "conditions": [],
       "test_only": false,
@@ -13885,7 +14023,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::execute",
       "kind": "execution-wrapper",
-      "line": 263,
+      "line": 358,
       "fingerprint": "3ccccf33695843e960ea6966e42859a3b75bb27deb0b94d59d76ab3abde1a819",
       "conditions": [],
       "test_only": false,
@@ -13908,7 +14046,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::execute",
       "kind": "executor",
-      "line": 259,
+      "line": 354,
       "fingerprint": "695ef95aeb059be0e12d6ef7c3e869ec69311fcf20bd25c4cb41dfa32a940861",
       "conditions": [],
       "test_only": false,
@@ -13931,7 +14069,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::execute_generated",
       "kind": "execution-wrapper",
-      "line": 246,
+      "line": 278,
       "fingerprint": "5db7097f1058069ba999f14af2a34eed2e638284c2d376717d24d28069ee8612",
       "conditions": [],
       "test_only": false,
@@ -13958,7 +14096,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::execute_generated",
       "kind": "executor",
-      "line": 246,
+      "line": 278,
       "fingerprint": "e9b8f357f72ec277bae2a1957ef21a7eeadddfecbe0267e8ef028df9a78a2537",
       "conditions": [],
       "test_only": false,
@@ -13985,7 +14123,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_all",
       "kind": "execution-wrapper",
-      "line": 291,
+      "line": 386,
       "fingerprint": "8352fc425a766255572dc19acc8f028f82fd7ab95addea65eb5596aea70e727b",
       "conditions": [],
       "test_only": false,
@@ -14008,7 +14146,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_all",
       "kind": "executor",
-      "line": 287,
+      "line": 382,
       "fingerprint": "775d9ecd6dacb59ed0a3de4dce89f9ba9b8eb9c3f4817930e4e6cf710100fbe7",
       "conditions": [],
       "test_only": false,
@@ -14031,7 +14169,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_all_generated",
       "kind": "execution-wrapper",
-      "line": 279,
+      "line": 311,
       "fingerprint": "26e5d1ef1980f3d6ef51df9bd9caff99905956178708690c88af74a0cc025cc8",
       "conditions": [],
       "test_only": false,
@@ -14058,7 +14196,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_all_generated",
       "kind": "executor",
-      "line": 279,
+      "line": 311,
       "fingerprint": "ba5dc56e506a15a1cd96917bde5f32e39f77ed235e6061b358a0550a3e8c6e45",
       "conditions": [],
       "test_only": false,
@@ -14085,7 +14223,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_one",
       "kind": "execution-wrapper",
-      "line": 279,
+      "line": 374,
       "fingerprint": "5ad84e2317000f6ff5e3279a7d2094caef9b8faa0ddc8a7cd66c78a21ff1fa08",
       "conditions": [],
       "test_only": false,
@@ -14108,7 +14246,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_one",
       "kind": "executor",
-      "line": 275,
+      "line": 370,
       "fingerprint": "4ca783240fef58025cd2c74422cf8c682ee5569920ba2331c2483444340f4b4d",
       "conditions": [],
       "test_only": false,
@@ -14131,7 +14269,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_one_generated",
       "kind": "execution-wrapper",
-      "line": 264,
+      "line": 296,
       "fingerprint": "f2c45c2a926700274eb5856bf7961b428ff77f2f5fbd60f16f1bb4eb95358c12",
       "conditions": [],
       "test_only": false,
@@ -14158,7 +14296,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_one_generated",
       "kind": "executor",
-      "line": 264,
+      "line": 296,
       "fingerprint": "ee59be4c333e20543f48f825785dda1f5d55df12b30fe2d541803fc922df7989",
       "conditions": [],
       "test_only": false,
@@ -14185,7 +14323,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 342,
+      "line": 437,
       "fingerprint": "97a8af655d26b05e8f1cc062790734a4a8fa579a8910050697bc9fbb60667a28",
       "conditions": [],
       "test_only": false,
@@ -14208,7 +14346,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_optional",
       "kind": "executor",
-      "line": 338,
+      "line": 433,
       "fingerprint": "d51690a88a1b6a092d38d8b369bb86d9baef5ac21fbc6d2f0dfa489645be8bca",
       "conditions": [],
       "test_only": false,
@@ -14231,7 +14369,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_optional_generated",
       "kind": "execution-wrapper",
-      "line": 294,
+      "line": 326,
       "fingerprint": "d41ec469a40f172331868325fbaedf4ecfdb35089d55d2dabb682b5d79e70db2",
       "conditions": [],
       "test_only": false,
@@ -14258,7 +14396,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlBackend as DatabaseBackend::fetch_optional_generated",
       "kind": "executor",
-      "line": 294,
+      "line": 326,
       "fingerprint": "c5e2ede0b04bfedc3eec8dd27f4f701a76368dac09ba3fdd972c2705d7bac804",
       "conditions": [],
       "test_only": false,
@@ -14339,7 +14477,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::commit",
       "kind": "execution-wrapper",
-      "line": 794,
+      "line": 1087,
       "fingerprint": "eac22ffdfe1d38cc9bb96abbef3c5f6613113eaf808be31e78c15a5d1a15f216",
       "conditions": [],
       "test_only": false,
@@ -14362,7 +14500,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::commit",
       "kind": "executor",
-      "line": 794,
+      "line": 1087,
       "fingerprint": "e8094cf3a4f9fa0d7d25f26eebda16b8bd30438659c8259891427de934d20a6d",
       "conditions": [],
       "test_only": false,
@@ -14385,7 +14523,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::commit",
       "kind": "sql-literal",
-      "line": 794,
+      "line": 1087,
       "fingerprint": "52a425d4fdb34cdeeb522cae5eb84ab1cd22b3c6230240936a1c229a89f37897",
       "conditions": [],
       "test_only": false,
@@ -14408,7 +14546,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::execute",
       "kind": "execution-wrapper",
-      "line": 709,
+      "line": 1002,
       "fingerprint": "ff829ecf0b3df7dd7f730103e5827a6ec53c89b129895947bb1261e75d2b51a2",
       "conditions": [],
       "test_only": false,
@@ -14431,7 +14569,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::execute",
       "kind": "executor",
-      "line": 705,
+      "line": 998,
       "fingerprint": "a3dbf5e15894f920f0e27a06d18abdef1a50040fcbac7c84f5c628ba61fd4741",
       "conditions": [],
       "test_only": false,
@@ -14508,7 +14646,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "execution-wrapper",
-      "line": 735,
+      "line": 1028,
       "fingerprint": "127eadbbd025b3b154b2803d10f2f149a1594928c67f35255f85b73dc57f91e6",
       "conditions": [],
       "test_only": false,
@@ -14531,7 +14669,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "executor",
-      "line": 731,
+      "line": 1024,
       "fingerprint": "825e332e4e27563222356df525b7f6ef554c1fe2a3a573db20ef1c45f227bc1b",
       "conditions": [],
       "test_only": false,
@@ -14608,7 +14746,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "execution-wrapper",
-      "line": 724,
+      "line": 1017,
       "fingerprint": "4cc41510584a34296f3623476f6bbeb182fbae61fbdffa6a9147faf9b5e7666c",
       "conditions": [],
       "test_only": false,
@@ -14631,7 +14769,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "executor",
-      "line": 720,
+      "line": 1013,
       "fingerprint": "7f95d46738b6663e4f7683da5d1347e36b219f57b94323e770dd296e6111648c",
       "conditions": [],
       "test_only": false,
@@ -14708,7 +14846,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 785,
+      "line": 1078,
       "fingerprint": "53326fedf13fc81a94fbef6785e63f9e73f27db66b7a572deb4f62ef5cf6c654",
       "conditions": [],
       "test_only": false,
@@ -14731,7 +14869,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "executor",
-      "line": 781,
+      "line": 1074,
       "fingerprint": "c4fbea2161dbd60522c52e96851f3a9fe462d8142b2dcfa365aa74cc3ceac556",
       "conditions": [],
       "test_only": false,
@@ -14858,12 +14996,58 @@
       ]
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::release_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::release_savepoint",
+      "kind": "execution-wrapper",
+      "line": 1128,
+      "fingerprint": "bb86c4af898f1c40b5cd195eb29103e8695b2d76e6167c830e3bd8d52fa19d43",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::release_savepoint::executor#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::release_savepoint",
       "kind": "executor",
-      "line": 835,
+      "line": 1128,
       "fingerprint": "ec08ae2a438cbac7c2c27fc874e5015f64f533d1b7b5244ab86338ff15ea7f65",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::rollback::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::rollback",
+      "kind": "execution-wrapper",
+      "line": 1103,
+      "fingerprint": "d96f04fcbd77982601eda96ef8493d40822335c32e952ac513fed69f52e2b976",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -14885,7 +15069,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::rollback",
       "kind": "executor",
-      "line": 810,
+      "line": 1103,
       "fingerprint": "75d54110313d20ba124ca29dca6096ac0b113981b0be706644c4900d72b5cfd5",
       "conditions": [],
       "test_only": false,
@@ -14908,7 +15092,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::rollback",
       "kind": "sql-literal",
-      "line": 810,
+      "line": 1103,
       "fingerprint": "c377ece8399abd7b08fd88706615953d3973412fbf3ee5bfaa76abbce402dc9d",
       "conditions": [],
       "test_only": false,
@@ -14927,12 +15111,58 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::rollback_to_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
+      "kind": "execution-wrapper",
+      "line": 1138,
+      "fingerprint": "041150b616e0b4c91971e079543b7bdc5cde98cb0cbd1084b7959be79c6835fc",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::rollback_to_savepoint::executor#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
       "kind": "executor",
-      "line": 845,
+      "line": 1138,
       "fingerprint": "ecd85ce428bc3a90862eab6196c719069c80a4e94b617b1b0dfbc6fc86c85943",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlRawTransactionExecutor as TransactionExecutor::savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::savepoint",
+      "kind": "execution-wrapper",
+      "line": 1118,
+      "fingerprint": "c0bd0233451e4d334fd8e2642f513d22947c89f7f0a641613394a874230f3eb0",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -14954,7 +15184,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlRawTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "executor",
-      "line": 825,
+      "line": 1118,
       "fingerprint": "7598e04d5e62bd57706842fd129a55e960eebbb60c8a1f8a1908b42d69a965ef",
       "conditions": [],
       "test_only": false,
@@ -14977,7 +15207,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::execute",
       "kind": "execution-wrapper",
-      "line": 469,
+      "line": 663,
       "fingerprint": "06882f56477c43aa631a3140bfdd30e17d429d5fda70303fbaf06bb4ac7ee1c5",
       "conditions": [],
       "test_only": false,
@@ -15000,7 +15230,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::execute",
       "kind": "executor",
-      "line": 465,
+      "line": 659,
       "fingerprint": "ccbaf28b722dd7daf0875b82985536c1a410331bc5a09dac0806ecac8f40e7e0",
       "conditions": [],
       "test_only": false,
@@ -15077,7 +15307,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "execution-wrapper",
-      "line": 495,
+      "line": 689,
       "fingerprint": "29ae267959933db8e0dc3e362e18d85b3ff590df99d24e28dc0064a5ea963b95",
       "conditions": [],
       "test_only": false,
@@ -15100,7 +15330,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "executor",
-      "line": 491,
+      "line": 685,
       "fingerprint": "0559ea210dcc7666a1e7000d7b0c0c9d92b1a0262d89b1b5ed082dbf2156ab88",
       "conditions": [],
       "test_only": false,
@@ -15177,7 +15407,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "execution-wrapper",
-      "line": 484,
+      "line": 678,
       "fingerprint": "87a3f262e2acb44c747a65dc97fe4993a937aea435bdef771504de6850a4ad5f",
       "conditions": [],
       "test_only": false,
@@ -15200,7 +15430,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "executor",
-      "line": 480,
+      "line": 674,
       "fingerprint": "85f5757e0cbe1c4e9ef928975e860c1b8d3ee9eacd5b94bbe84db9d1ec36acf8",
       "conditions": [],
       "test_only": false,
@@ -15277,7 +15507,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 545,
+      "line": 739,
       "fingerprint": "c06ed37018ff2797b82d56f91412d39b9662f3d4508676d78225edc1822771c5",
       "conditions": [],
       "test_only": false,
@@ -15300,7 +15530,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "executor",
-      "line": 541,
+      "line": 735,
       "fingerprint": "89dd928abc9f0f4b26513ad6b7f9dba920d9f206a34ee0305c10c40ce967f39c",
       "conditions": [],
       "test_only": false,
@@ -15427,12 +15657,58 @@
       ]
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::release_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::release_savepoint",
+      "kind": "execution-wrapper",
+      "line": 772,
+      "fingerprint": "b91790fe4d6e6e07d35d45ef22e22bd00090e32a5f32651f78eb9a3e25ec6342",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::release_savepoint::executor#1",
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::release_savepoint",
       "kind": "executor",
-      "line": 578,
+      "line": 772,
       "fingerprint": "4af0f8dca866e716503f8fa3d51995c4374b099881fadea75910d456b4b6e737",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::rollback_to_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
+      "kind": "execution-wrapper",
+      "line": 782,
+      "fingerprint": "06be645c565ce1b208cb4138f55ce9aa1cb4ddd70e2b2f969ace76c4a0b197a9",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -15454,8 +15730,31 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
       "kind": "executor",
-      "line": 588,
+      "line": 782,
       "fingerprint": "af7decc49b4660dc81adb4ef41450570aba1d1221023d159c9b7524cb8cafe72",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/mysql.rs::MySqlTransactionExecutor as TransactionExecutor::savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
+      "symbol": "MySqlTransactionExecutor as TransactionExecutor::savepoint",
+      "kind": "execution-wrapper",
+      "line": 762,
+      "fingerprint": "39e0408919d5bbd9524aa5cabdd79009b40a377d5a64795180e06486de14637c",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -15477,7 +15776,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/mysql.rs",
       "symbol": "MySqlTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "executor",
-      "line": 568,
+      "line": 762,
       "fingerprint": "7957f804d82f859f9c34e48e98023d05b44ead9696e77e8c5c25337431fbbcd7",
       "conditions": [],
       "test_only": false,
@@ -15569,7 +15868,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::execute",
       "kind": "execution-wrapper",
-      "line": 586,
+      "line": 805,
       "fingerprint": "1c2fbc4373a47b333c12a6a18411df4fde7019c93329f67a00b0448830a2ff4f",
       "conditions": [],
       "test_only": false,
@@ -15646,7 +15945,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 606,
+      "line": 825,
       "fingerprint": "ec4cb1cbe79858c31ed39cc439883121985853eda3fd3c182bd89173b443467b",
       "conditions": [],
       "test_only": false,
@@ -15669,7 +15968,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::execute_with_context",
       "kind": "executor",
-      "line": 602,
+      "line": 821,
       "fingerprint": "2550679bb867142c5fdf7ec4b98562934dd62751b4ff754386dd577d8b59b857",
       "conditions": [],
       "test_only": false,
@@ -15692,7 +15991,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "execution-wrapper",
-      "line": 645,
+      "line": 864,
       "fingerprint": "d9ac6103dc46f6db509db58eadbbf18273efcab79dbfc9134d6f4f9ba3b2af32",
       "conditions": [],
       "test_only": false,
@@ -15769,7 +16068,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 665,
+      "line": 884,
       "fingerprint": "c48e907f03dd77bfdb5f1f9181d159f16059c1ac335668f7b8b8720751636431",
       "conditions": [],
       "test_only": false,
@@ -15792,7 +16091,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_all_with_context",
       "kind": "executor",
-      "line": 661,
+      "line": 880,
       "fingerprint": "bc5288bb8e8b282b82f4edaa87bbf1340f8f465b33291f4b21f01b36a9fc4968",
       "conditions": [],
       "test_only": false,
@@ -15815,7 +16114,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "execution-wrapper",
-      "line": 617,
+      "line": 836,
       "fingerprint": "58ea16e6d864ef851e6d727891e0ae5dfa52f781b725688f963703cc8e301e6f",
       "conditions": [],
       "test_only": false,
@@ -15892,7 +16191,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 637,
+      "line": 856,
       "fingerprint": "c2dff1dcee3efaca1f2fe778bd9466f68a508a55646020a9a22fc5e95bc2b311",
       "conditions": [],
       "test_only": false,
@@ -15915,7 +16214,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_one_with_context",
       "kind": "executor",
-      "line": 633,
+      "line": 852,
       "fingerprint": "5d6f0010030d1677d6820ced15c4f722ae8760f47f0831942164aaa9e6f367bb",
       "conditions": [],
       "test_only": false,
@@ -15938,7 +16237,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 727,
+      "line": 946,
       "fingerprint": "ead5f875682db8c9d1d22d64e9b52dd35e94c63b7dddd437e332978c0e2b07e3",
       "conditions": [],
       "test_only": false,
@@ -16015,7 +16314,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 747,
+      "line": 966,
       "fingerprint": "e9637df9c307fe611b40f684e293cb69c1dd819e1c1779b5e053d38e6268ecd7",
       "conditions": [],
       "test_only": false,
@@ -16038,7 +16337,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_optional_with_context",
       "kind": "executor",
-      "line": 743,
+      "line": 962,
       "fingerprint": "4475743a3fc3532b86cd1fd51807541edc23c2b3281d4e1a762003b13c4d71e5",
       "conditions": [],
       "test_only": false,
@@ -16061,7 +16360,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::fetch_stream",
       "kind": "execution-wrapper",
-      "line": 678,
+      "line": 897,
       "fingerprint": "64399106c82ad6b1e4b7c7a17b806c3cfcc43755077941b5ddfdf56d6e927c99",
       "conditions": [],
       "test_only": false,
@@ -16138,7 +16437,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::release_savepoint",
       "kind": "execution-wrapper",
-      "line": 801,
+      "line": 1020,
       "fingerprint": "de225ebb8145ca53ff1737be2389ccc377017024dd12b7f227ddda8e534368fa",
       "conditions": [],
       "test_only": false,
@@ -16161,7 +16460,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::release_savepoint",
       "kind": "executor",
-      "line": 801,
+      "line": 1020,
       "fingerprint": "8507ccee7398f0f80651391bf42de8dbc73ae1b016e534650d0586aceafa9de4",
       "conditions": [],
       "test_only": false,
@@ -16184,7 +16483,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
       "kind": "execution-wrapper",
-      "line": 817,
+      "line": 1036,
       "fingerprint": "5d72c6eecd2b4c8a3b35cfe0223549a57f7cbf88cc28007c7463c67a77118423",
       "conditions": [],
       "test_only": false,
@@ -16207,7 +16506,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
       "kind": "executor",
-      "line": 817,
+      "line": 1036,
       "fingerprint": "5d266321de185da9296f2edd4ea4a4e8c1fca512302c50f65ed66622ddadee1f",
       "conditions": [],
       "test_only": false,
@@ -16230,7 +16529,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "execution-wrapper",
-      "line": 785,
+      "line": 1004,
       "fingerprint": "8d0569a68512fcee63097ccdcf1e1131183250b0e506c74af1c43772d4c9efeb",
       "conditions": [],
       "test_only": false,
@@ -16253,7 +16552,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "executor",
-      "line": 785,
+      "line": 1004,
       "fingerprint": "77e4caf6e2d1f7b15326c210b112ca016719d94263e98a17fccf3db8eae15fcb",
       "conditions": [],
       "test_only": false,
@@ -16276,7 +16575,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PgTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "possible-inline-render",
-      "line": 785,
+      "line": 1004,
       "fingerprint": "61c4e26ec93e19b8bb60e767f14e22021ca53131678df17550b00b892e087c27",
       "conditions": [],
       "test_only": false,
@@ -16299,7 +16598,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::begin_with_isolation",
       "kind": "execution-wrapper",
-      "line": 311,
+      "line": 406,
       "fingerprint": "e480cabc97fb391358a1f33fcb79576da1a27d11a5a85044d8f1efb23d1b2145",
       "conditions": [],
       "test_only": false,
@@ -16322,7 +16621,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::begin_with_isolation",
       "kind": "executor",
-      "line": 311,
+      "line": 406,
       "fingerprint": "3cc0ced6b0e8ee71c5e538fb3a9934f1f69f10730e6c32cb6d852a793adace22",
       "conditions": [],
       "test_only": false,
@@ -16345,7 +16644,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::begin_with_isolation",
       "kind": "macro-sql-literal",
-      "line": 308,
+      "line": 403,
       "fingerprint": "95ab09683368fc6d4f2e19eda489244c09f161f738dc335120997462fac31db6",
       "conditions": [],
       "test_only": false,
@@ -16368,7 +16667,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::execute",
       "kind": "execution-wrapper",
-      "line": 189,
+      "line": 284,
       "fingerprint": "1c2fbc4373a47b333c12a6a18411df4fde7019c93329f67a00b0448830a2ff4f",
       "conditions": [],
       "test_only": false,
@@ -16391,7 +16690,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::execute_generated",
       "kind": "execution-wrapper",
-      "line": 172,
+      "line": 204,
       "fingerprint": "ea4512d1efa41bd738d3d96e465f4147e6ef08c0aae361c1406087543dd1c64b",
       "conditions": [],
       "test_only": false,
@@ -16418,7 +16717,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::execute_generated",
       "kind": "executor",
-      "line": 172,
+      "line": 204,
       "fingerprint": "fb9349749b341b165b4b207974184551899808ffc969b1630db0bfc82a9b6536",
       "conditions": [],
       "test_only": false,
@@ -16441,11 +16740,34 @@
       ]
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::execute_with_context::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::execute_with_context",
+      "kind": "execution-wrapper",
+      "line": 293,
+      "fingerprint": "466576b5dc1e81754f61dc2f1b85cd428f0853901e40f0d264d9b1c822381be8",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_all",
       "kind": "execution-wrapper",
-      "line": 215,
+      "line": 310,
       "fingerprint": "d9ac6103dc46f6db509db58eadbbf18273efcab79dbfc9134d6f4f9ba3b2af32",
       "conditions": [],
       "test_only": false,
@@ -16468,7 +16790,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_all_generated",
       "kind": "execution-wrapper",
-      "line": 205,
+      "line": 237,
       "fingerprint": "cde3ef9ccabd4a1e4c39cd4da59102bb1ef0edbf98886660bf2bf6746e0c7301",
       "conditions": [],
       "test_only": false,
@@ -16495,7 +16817,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_all_generated",
       "kind": "executor",
-      "line": 205,
+      "line": 237,
       "fingerprint": "f232ce09b12d2806970df635469b9e1506ca76135b5705c27fd5002114442ed8",
       "conditions": [],
       "test_only": false,
@@ -16518,11 +16840,34 @@
       ]
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_all_with_context::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_all_with_context",
+      "kind": "execution-wrapper",
+      "line": 319,
+      "fingerprint": "cc5e540b1480357cddfaa7c7d6554a98f5dfe1cd65844104da58783fab10084d",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_one::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_one",
       "kind": "execution-wrapper",
-      "line": 202,
+      "line": 297,
       "fingerprint": "58ea16e6d864ef851e6d727891e0ae5dfa52f781b725688f963703cc8e301e6f",
       "conditions": [],
       "test_only": false,
@@ -16545,7 +16890,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_one_generated",
       "kind": "execution-wrapper",
-      "line": 190,
+      "line": 222,
       "fingerprint": "4fb899cd4ccaacce69d18ec0d18e1406fb2d03fee6d016fb49e69f0d1900b965",
       "conditions": [],
       "test_only": false,
@@ -16572,7 +16917,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_one_generated",
       "kind": "executor",
-      "line": 190,
+      "line": 222,
       "fingerprint": "e4c664be14b6cd204dfdd852bc876962c2d88bbe6589ad4348abba8d518614d8",
       "conditions": [],
       "test_only": false,
@@ -16595,11 +16940,34 @@
       ]
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_one_with_context::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_one_with_context",
+      "kind": "execution-wrapper",
+      "line": 306,
+      "fingerprint": "1def818ed34f6ad321c3c927c5c39f283d159c4c3a3d3aa2ae0b42521615cb4b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_optional::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 277,
+      "line": 372,
       "fingerprint": "ead5f875682db8c9d1d22d64e9b52dd35e94c63b7dddd437e332978c0e2b07e3",
       "conditions": [],
       "test_only": false,
@@ -16622,7 +16990,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_optional_generated",
       "kind": "execution-wrapper",
-      "line": 220,
+      "line": 252,
       "fingerprint": "d8efbb9fda43458fb2a14ce2048026dee690a405c3bcb85b806864e1d317ae5d",
       "conditions": [],
       "test_only": false,
@@ -16649,7 +17017,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_optional_generated",
       "kind": "executor",
-      "line": 220,
+      "line": 252,
       "fingerprint": "9529f76a845392e13aa764fe7ee577caf61f619aa88189f8db41a3d105cb838c",
       "conditions": [],
       "test_only": false,
@@ -16672,11 +17040,34 @@
       ]
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_optional_with_context::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
+      "symbol": "PostgresBackend as DatabaseBackend::fetch_optional_with_context",
+      "kind": "execution-wrapper",
+      "line": 381,
+      "fingerprint": "93e243f0fb9e28aec792f474693aab4e0bb04f4a326246803e686e45745ff748",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/postgres.rs::PostgresBackend as DatabaseBackend::fetch_stream::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/dialect/postgres.rs",
       "symbol": "PostgresBackend as DatabaseBackend::fetch_stream",
       "kind": "execution-wrapper",
-      "line": 233,
+      "line": 328,
       "fingerprint": "64399106c82ad6b1e4b7c7a17b806c3cfcc43755077941b5ddfdf56d6e927c99",
       "conditions": [],
       "test_only": false,
@@ -16933,6 +17324,29 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::PoolConnection < Sqlite > as SqliteTransactionControl::execute_control::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "PoolConnection < Sqlite > as SqliteTransactionControl::execute_control",
+      "kind": "execution-wrapper",
+      "line": 39,
+      "fingerprint": "a886f70d63112d733a3df4ca5cc1a2ccb321cb236016c40fe389e9cc502911a1",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::PoolConnection < Sqlite > as SqliteTransactionControl::execute_control::executor#1",
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "PoolConnection < Sqlite > as SqliteTransactionControl::execute_control",
@@ -17006,7 +17420,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::execute",
       "kind": "execution-wrapper",
-      "line": 232,
+      "line": 327,
       "fingerprint": "35cbb4fad5cf936de3d937f02280a50cb7364109c0958ea57d8a5d25d8a0269e",
       "conditions": [],
       "test_only": false,
@@ -17029,7 +17443,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::execute",
       "kind": "executor",
-      "line": 228,
+      "line": 323,
       "fingerprint": "eb8a134c2528d199edd8dad5a3e4569a29fdf3a5db0d9c6117e3bbfa5dd7ee76",
       "conditions": [],
       "test_only": false,
@@ -17052,7 +17466,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::execute_generated",
       "kind": "execution-wrapper",
-      "line": 215,
+      "line": 247,
       "fingerprint": "271da5b39aac1da4d397e3cd1fb7bf46cfc9ca9f1ddc6f7856fcc16d1a3ec9bf",
       "conditions": [],
       "test_only": false,
@@ -17079,7 +17493,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::execute_generated",
       "kind": "executor",
-      "line": 215,
+      "line": 247,
       "fingerprint": "e6a2bb450ce42e5508fb1d8e61dd24d92912df96c6af279f8e51c6594e1a911c",
       "conditions": [],
       "test_only": false,
@@ -17106,7 +17520,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_all",
       "kind": "execution-wrapper",
-      "line": 259,
+      "line": 354,
       "fingerprint": "dfd152f6123df0e0be1c8e329e04532d7721d376630615bf77ee8ebfa27f1bae",
       "conditions": [],
       "test_only": false,
@@ -17129,7 +17543,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_all",
       "kind": "executor",
-      "line": 255,
+      "line": 350,
       "fingerprint": "52bae5d0a8c5212a2d61bc7371839e5531d0e5e88c56e2a38d47354eb79659ad",
       "conditions": [],
       "test_only": false,
@@ -17152,7 +17566,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_all_generated",
       "kind": "execution-wrapper",
-      "line": 248,
+      "line": 280,
       "fingerprint": "ddf3437941f2ec89761c089ee5c0474f3d226f144a29cb8541606d3b11507c3d",
       "conditions": [],
       "test_only": false,
@@ -17179,7 +17593,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_all_generated",
       "kind": "executor",
-      "line": 248,
+      "line": 280,
       "fingerprint": "e08fff9fcac5b6ea03b4a4f34a644c1e54de2ee6434ca0479a60cd5e68b8e09c",
       "conditions": [],
       "test_only": false,
@@ -17206,7 +17620,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_one",
       "kind": "execution-wrapper",
-      "line": 247,
+      "line": 342,
       "fingerprint": "e60faae4cc71bddee74110d59a00278e6a72c7a37acb0e904d6e09fbaf63a296",
       "conditions": [],
       "test_only": false,
@@ -17229,7 +17643,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_one",
       "kind": "executor",
-      "line": 243,
+      "line": 338,
       "fingerprint": "3c2a18afa0dcd31fdae61ee563b34a8b88616098cb43ae914dc6ab51d6cc1b0b",
       "conditions": [],
       "test_only": false,
@@ -17252,7 +17666,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_one_generated",
       "kind": "execution-wrapper",
-      "line": 233,
+      "line": 265,
       "fingerprint": "321777916e81376268ff46692eb0cdb2d7a48a9f6ad7e105e49fb000d19e4759",
       "conditions": [],
       "test_only": false,
@@ -17279,7 +17693,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_one_generated",
       "kind": "executor",
-      "line": 233,
+      "line": 265,
       "fingerprint": "6f93dffef94a835fdf136e95fb766a65b6aca46e123397c78cb8eb545d7f5d83",
       "conditions": [],
       "test_only": false,
@@ -17306,7 +17720,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 310,
+      "line": 405,
       "fingerprint": "f7207667417a3b06a8b3067ed0acb72d952468c8fa72192875f3d272ef6fd4c6",
       "conditions": [],
       "test_only": false,
@@ -17329,7 +17743,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_optional",
       "kind": "executor",
-      "line": 306,
+      "line": 401,
       "fingerprint": "acd291c25ed491d3f80b71492bbeda5a132b8261882a681aa2a9dc251ef84987",
       "conditions": [],
       "test_only": false,
@@ -17352,7 +17766,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_optional_generated",
       "kind": "execution-wrapper",
-      "line": 263,
+      "line": 295,
       "fingerprint": "aa46c158626535e70247ce88287750ad5af074623ce3a671b05f5bac7641abaa",
       "conditions": [],
       "test_only": false,
@@ -17379,7 +17793,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteBackend as DatabaseBackend::fetch_optional_generated",
       "kind": "executor",
-      "line": 263,
+      "line": 295,
       "fingerprint": "502a641cf8ac07c4ae10e4270f98e57b5f15f34cc7b342c03355d5ddf0013946",
       "conditions": [],
       "test_only": false,
@@ -17460,7 +17874,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::execute",
       "kind": "execution-wrapper",
-      "line": 751,
+      "line": 1044,
       "fingerprint": "40492c3e2f252894f230395bb10906fe404842bc4d6bfbfd41fc2de9fe0e05c6",
       "conditions": [],
       "test_only": false,
@@ -17483,7 +17897,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::execute",
       "kind": "executor",
-      "line": 747,
+      "line": 1040,
       "fingerprint": "17e94002b094a31c493b5976de7718495e06850ced2227157c250a2026591d8e",
       "conditions": [],
       "test_only": false,
@@ -17560,7 +17974,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "execution-wrapper",
-      "line": 774,
+      "line": 1067,
       "fingerprint": "e21f86ccb1edbfec8dd9453505b8c507aea403c5d1804ca3fb129b7e178d0e98",
       "conditions": [],
       "test_only": false,
@@ -17583,7 +17997,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "executor",
-      "line": 770,
+      "line": 1063,
       "fingerprint": "e95479d180a0782cc3370d1ec261e32cb8f2d65f4c23dea63076e3bb9fdde232",
       "conditions": [],
       "test_only": false,
@@ -17660,7 +18074,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "execution-wrapper",
-      "line": 764,
+      "line": 1057,
       "fingerprint": "277913b7e255522d927c9536cf7c94859be780324873db2e1bb35182add8d37f",
       "conditions": [],
       "test_only": false,
@@ -17683,7 +18097,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "executor",
-      "line": 760,
+      "line": 1053,
       "fingerprint": "44ebdd0c298beb52380a5011e24f7982a1e6043bc42dfe931f9b0d98f20183b3",
       "conditions": [],
       "test_only": false,
@@ -17760,7 +18174,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 823,
+      "line": 1116,
       "fingerprint": "b48495543fe6b7d4f06a96f0200bcc5c13ac21f2834b6358e64958a53f0f6a1a",
       "conditions": [],
       "test_only": false,
@@ -17783,7 +18197,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "executor",
-      "line": 819,
+      "line": 1112,
       "fingerprint": "67bf4490bca140b16df959349d608ce2f85fee6211b1572fe48e7a90e07fea67",
       "conditions": [],
       "test_only": false,
@@ -17910,12 +18324,58 @@
       ]
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::release_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::release_savepoint",
+      "kind": "execution-wrapper",
+      "line": 1153,
+      "fingerprint": "9b64222b576ea8d1e0261785c007d0b0ce4bd7418e717f45476fe23471d277d1",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::release_savepoint::executor#1",
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::release_savepoint",
       "kind": "executor",
-      "line": 860,
+      "line": 1153,
       "fingerprint": "fe412d282837ca70fa5b652cef46bc7f435500e8357d26327eff5229aa02ddc6",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::rollback::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::rollback",
+      "kind": "execution-wrapper",
+      "line": 1133,
+      "fingerprint": "eb0ec80e432214c06eb977ce67ca57ef3be2668cbdb4d6f5295758ba37c5ee1d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -17937,7 +18397,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::rollback",
       "kind": "executor",
-      "line": 840,
+      "line": 1133,
       "fingerprint": "f7cf0c972992cfd8567769d5790f87bb8b798c9195b84605d47223b5dc4c3695",
       "conditions": [],
       "test_only": false,
@@ -17960,7 +18420,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::rollback",
       "kind": "sql-literal",
-      "line": 840,
+      "line": 1133,
       "fingerprint": "0a1229d49f341333ee636315d94cd04dcce2e3d33e0ae0d415c4df3c5895e020",
       "conditions": [],
       "test_only": false,
@@ -17979,12 +18439,58 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::rollback_to_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
+      "kind": "execution-wrapper",
+      "line": 1162,
+      "fingerprint": "a1e0d257affa5ea82f425504e785cce61da4766524daa128a4fd84f7c88d53f1",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
       "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::rollback_to_savepoint::executor#1",
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
       "kind": "executor",
-      "line": 869,
+      "line": 1162,
       "fingerprint": "83be2cef7452d82d57203ee79466c88813194a0888d7f16cfb409b9b65db3f3c",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/dialect/sqlite.rs::SqliteRawTransactionExecutor as TransactionExecutor::savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
+      "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::savepoint",
+      "kind": "execution-wrapper",
+      "line": 1144,
+      "fingerprint": "947b9d544928a3f580164e0a0c0e704d11a04f40998a37ae14879ea0542a74b1",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -18006,7 +18512,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "executor",
-      "line": 851,
+      "line": 1144,
       "fingerprint": "77a264c1d09a2f2c21dc78bfe36a552ee398e4cc66470dc3d77b84339423c6dd",
       "conditions": [],
       "test_only": false,
@@ -18029,7 +18535,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteRawTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "possible-inline-render",
-      "line": 849,
+      "line": 1142,
       "fingerprint": "96c4e6668afd1cae34d2b301f4dbc623fccc6b125b06e4216392666052986257",
       "conditions": [],
       "test_only": false,
@@ -18052,7 +18558,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::execute",
       "kind": "execution-wrapper",
-      "line": 536,
+      "line": 730,
       "fingerprint": "941b63935ec41372732ebd0179682b7e6a6af7370d30fa11336f18980b9c39b8",
       "conditions": [],
       "test_only": false,
@@ -18075,7 +18581,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::execute",
       "kind": "executor",
-      "line": 532,
+      "line": 726,
       "fingerprint": "a243e43736b029c7fbabf2c13d17cffcf5cd7f093e47a1b8128bafffe5de952e",
       "conditions": [],
       "test_only": false,
@@ -18152,7 +18658,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "execution-wrapper",
-      "line": 561,
+      "line": 755,
       "fingerprint": "29ae267959933db8e0dc3e362e18d85b3ff590df99d24e28dc0064a5ea963b95",
       "conditions": [],
       "test_only": false,
@@ -18175,7 +18681,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_all",
       "kind": "executor",
-      "line": 557,
+      "line": 751,
       "fingerprint": "0559ea210dcc7666a1e7000d7b0c0c9d92b1a0262d89b1b5ed082dbf2156ab88",
       "conditions": [],
       "test_only": false,
@@ -18252,7 +18758,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "execution-wrapper",
-      "line": 550,
+      "line": 744,
       "fingerprint": "87a3f262e2acb44c747a65dc97fe4993a937aea435bdef771504de6850a4ad5f",
       "conditions": [],
       "test_only": false,
@@ -18275,7 +18781,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_one",
       "kind": "executor",
-      "line": 546,
+      "line": 740,
       "fingerprint": "85f5757e0cbe1c4e9ef928975e860c1b8d3ee9eacd5b94bbe84db9d1ec36acf8",
       "conditions": [],
       "test_only": false,
@@ -18352,7 +18858,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 611,
+      "line": 805,
       "fingerprint": "c06ed37018ff2797b82d56f91412d39b9662f3d4508676d78225edc1822771c5",
       "conditions": [],
       "test_only": false,
@@ -18375,7 +18881,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::fetch_optional",
       "kind": "executor",
-      "line": 607,
+      "line": 801,
       "fingerprint": "89dd928abc9f0f4b26513ad6b7f9dba920d9f206a34ee0305c10c40ce967f39c",
       "conditions": [],
       "test_only": false,
@@ -18506,7 +19012,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::release_savepoint",
       "kind": "execution-wrapper",
-      "line": 645,
+      "line": 839,
       "fingerprint": "7bafb44ffc8ad0e8672fda4b2bb22bab83c53126ced0ba66e60fc121bc49d067",
       "conditions": [],
       "test_only": false,
@@ -18529,7 +19035,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::release_savepoint",
       "kind": "executor",
-      "line": 645,
+      "line": 839,
       "fingerprint": "940e27680d77fc700025d7922ed03332ccb5f0f1486f96172ca50c4018517734",
       "conditions": [],
       "test_only": false,
@@ -18552,7 +19058,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
       "kind": "execution-wrapper",
-      "line": 656,
+      "line": 850,
       "fingerprint": "eafa54e8c9f614af1f303d7b8121ddd4855755e9d4c32484942f9b125378d2c1",
       "conditions": [],
       "test_only": false,
@@ -18575,7 +19081,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::rollback_to_savepoint",
       "kind": "executor",
-      "line": 656,
+      "line": 850,
       "fingerprint": "c6403f5471f66c8b3cd9af41cb8527f9b186997119e1085bd246e6d1e253127c",
       "conditions": [],
       "test_only": false,
@@ -18598,7 +19104,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "execution-wrapper",
-      "line": 634,
+      "line": 828,
       "fingerprint": "b3a1355e56d7aeac9c243fbe82379009614377f9beae26e0a4de77cdc2a8f1cd",
       "conditions": [],
       "test_only": false,
@@ -18621,7 +19127,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "executor",
-      "line": 634,
+      "line": 828,
       "fingerprint": "d97ab3e477433cf3aefc69963b03baf58fcbaad2192393b44a4b6589769792ac",
       "conditions": [],
       "test_only": false,
@@ -18644,7 +19150,7 @@
       "path": "crates/reinhardt-db/src/backends/dialect/sqlite.rs",
       "symbol": "SqliteTransactionExecutor as TransactionExecutor::savepoint",
       "kind": "possible-inline-render",
-      "line": 634,
+      "line": 828,
       "fingerprint": "ff122a9d9a17b8ed992bc27ab5bfe9190761593885d001f0c6c775eb95ed6c3e",
       "conditions": [],
       "test_only": false,
@@ -22237,7 +22743,7 @@
       "path": "crates/reinhardt-db/src/backends/types.rs",
       "symbol": "TransactionExecutor::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 600,
+      "line": 668,
       "fingerprint": "ebe19f0169682ad795e8eeab9911fb9962bf8e219e50d45259cfa01c0fbc4810",
       "conditions": [],
       "test_only": false,
@@ -22288,7 +22794,7 @@
       "path": "crates/reinhardt-db/src/backends/types.rs",
       "symbol": "TransactionExecutor::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 642,
+      "line": 710,
       "fingerprint": "7989c8124d7292b9b854b66950ce08ed0a8cabda867a47f1a2d9d8b23c75b208",
       "conditions": [],
       "test_only": false,
@@ -22339,7 +22845,7 @@
       "path": "crates/reinhardt-db/src/backends/types.rs",
       "symbol": "TransactionExecutor::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 619,
+      "line": 687,
       "fingerprint": "8e7c15e839a6b31b3fb0c420b2da4ae162f6ab4f05527febc5861ae2344e03b4",
       "conditions": [],
       "test_only": false,
@@ -22390,7 +22896,7 @@
       "path": "crates/reinhardt-db/src/backends/types.rs",
       "symbol": "TransactionExecutor::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 704,
+      "line": 772,
       "fingerprint": "af80d8c917ad420b4519477852f24a12242a450cd82ad23165ad6bf89a801d77",
       "conditions": [],
       "test_only": false,
@@ -22441,7 +22947,7 @@
       "path": "crates/reinhardt-db/src/backends/types.rs",
       "symbol": "TransactionExecutor::fetch_stream_with_context",
       "kind": "execution-wrapper",
-      "line": 678,
+      "line": 746,
       "fingerprint": "82d72f9d8837f39428e857188c9d5b3352ee7cdb294b284f5af92c0d8632057d",
       "conditions": [],
       "test_only": false,
@@ -34819,7 +35325,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection as OrmExecutor::execute",
       "kind": "execution-wrapper",
-      "line": 543,
+      "line": 758,
       "fingerprint": "1f870a8da9ba6b291394813a6d24271f0ce0e6b8b00042440cee755d6758db7d",
       "conditions": [],
       "test_only": false,
@@ -34838,11 +35344,73 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "DatabaseConnection as OrmExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 667,
+      "fingerprint": "12cb782d51b3d0c61efb51a49b3777a918dea99f66dc888faae84e9f02fa1ac1",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::execute_generated_in_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "DatabaseConnection as OrmExecutor::execute_generated_in_savepoint",
+      "kind": "execution-wrapper",
+      "line": 701,
+      "fingerprint": "9d4f4731413cd53bc596f73c0a5d6853b8ea5ed8ce729f3eb046fbd170f22363",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::execute_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection as OrmExecutor::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 553,
+      "line": 768,
       "fingerprint": "fdf08170deb7f920e1c2aaf5173679ff87f42f189d59c045bb2b6b56a7174e0f",
       "conditions": [],
       "test_only": false,
@@ -34865,7 +35433,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection as OrmExecutor::fetch_all",
       "kind": "execution-wrapper",
-      "line": 573,
+      "line": 788,
       "fingerprint": "eb14a4851cb6a27064decd8c764f64b0d4e6b959aae68e453c461a14b01c59bb",
       "conditions": [],
       "test_only": false,
@@ -34884,11 +35452,73 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "DatabaseConnection as OrmExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 683,
+      "fingerprint": "9e026024e814f12bbc970f15a7e5cfba92b846b2a74daf107a4c1933c00dda71",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::fetch_all_generated_in_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "DatabaseConnection as OrmExecutor::fetch_all_generated_in_savepoint",
+      "kind": "execution-wrapper",
+      "line": 709,
+      "fingerprint": "2c6f8a030d7699a27f7bc5973e51fce6be93f3370a8d8721ab5b24ca8b2d3217",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::fetch_all_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection as OrmExecutor::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 583,
+      "line": 798,
       "fingerprint": "596be095c54f968f4b74be87a5d8b3198eaaf4909a5b7dd859f3fbe22fd1b64c",
       "conditions": [],
       "test_only": false,
@@ -34911,7 +35541,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection as OrmExecutor::fetch_one",
       "kind": "execution-wrapper",
-      "line": 558,
+      "line": 773,
       "fingerprint": "8d6260859646b64f5ee3dee386e888181aa90581cd6fdb0e5d9d31aebec819e4",
       "conditions": [],
       "test_only": false,
@@ -34930,11 +35560,42 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "DatabaseConnection as OrmExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 675,
+      "fingerprint": "3ea8fcad78d08e28b3af604fac48172238ba9f352741c902110a6daa97af3fbe",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::fetch_one_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection as OrmExecutor::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 568,
+      "line": 783,
       "fingerprint": "5d51c7e9031f86063de8aa76c6f5927abeaf379785ecf4e8d22d3e0214f16035",
       "conditions": [],
       "test_only": false,
@@ -34957,7 +35618,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection as OrmExecutor::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 627,
+      "line": 842,
       "fingerprint": "82c3efeb34c16d32720e50047671f7ae3527722f1188066dff0ea4046fda0d5a",
       "conditions": [],
       "test_only": false,
@@ -34976,11 +35637,42 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "DatabaseConnection as OrmExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 691,
+      "fingerprint": "d57fb3c2d8a522a60124574cc239560832c8584b8d6b4a11873d8bc1015e2b0d",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::fetch_optional_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection as OrmExecutor::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 637,
+      "line": 852,
       "fingerprint": "75d19c300d6c0e69382f6125d6e675b3f8d4b41aac23dec669568106c6792270",
       "conditions": [],
       "test_only": false,
@@ -35003,7 +35695,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection as OrmExecutor::fetch_stream",
       "kind": "execution-wrapper",
-      "line": 592,
+      "line": 807,
       "fingerprint": "64399106c82ad6b1e4b7c7a17b806c3cfcc43755077941b5ddfdf56d6e927c99",
       "conditions": [],
       "test_only": false,
@@ -35022,11 +35714,42 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::fetch_stream_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "DatabaseConnection as OrmExecutor::fetch_stream_generated",
+      "kind": "execution-wrapper",
+      "line": 729,
+      "fingerprint": "4235fdbab60f4c9e7aaf930e615e93563f4d68889758bd63e5c6eabadb72c520",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::DatabaseConnection as OrmExecutor::fetch_stream_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection as OrmExecutor::fetch_stream_with_context",
       "kind": "execution-wrapper",
-      "line": 611,
+      "line": 826,
       "fingerprint": "7e54b10c57352f5630938a39cd39a7afebb07f874081bf951fab4bd3c21640f2",
       "conditions": [],
       "test_only": false,
@@ -35055,7 +35778,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection::execute",
       "kind": "execution-wrapper",
-      "line": 439,
+      "line": 579,
       "fingerprint": "488973381cf65648e12998c8ee08e2c08e98ece3261f2bccea56df4901ad1bb8",
       "conditions": [],
       "test_only": false,
@@ -35078,7 +35801,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection::query",
       "kind": "execution-wrapper",
-      "line": 446,
+      "line": 586,
       "fingerprint": "e1849ca21bab50669f0aa9eb7209b1e8a40bf6db3a79aff417d4da4ab1f30a8b",
       "conditions": [],
       "test_only": false,
@@ -35101,7 +35824,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection::query_one",
       "kind": "execution-wrapper",
-      "line": 421,
+      "line": 561,
       "fingerprint": "3e03d8e423d92d3b1491529a57d378157ff759045b50204c16d3238392c8e486",
       "conditions": [],
       "test_only": false,
@@ -35124,7 +35847,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "DatabaseConnection::query_optional",
       "kind": "execution-wrapper",
-      "line": 432,
+      "line": 572,
       "fingerprint": "015892ddd04e79dce1d658821d0110632ef6aba7dc16e038c0ff8c4945225e85",
       "conditions": [],
       "test_only": false,
@@ -35143,11 +35866,73 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "OrmExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 218,
+      "fingerprint": "12766ab9e7e968150d51a47bffe6cb4638a66c16d9884b48f68fbc6b293cafe0",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::execute_generated_in_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "OrmExecutor::execute_generated_in_savepoint",
+      "kind": "execution-wrapper",
+      "line": 291,
+      "fingerprint": "be2ba62d50621bdf1b242fceffb12fd0a48cb82d1ea27ec20d4725ed5a70bd70",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::execute_in_savepoint::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "OrmExecutor::execute_in_savepoint",
       "kind": "execution-wrapper",
-      "line": 240,
+      "line": 380,
       "fingerprint": "39d30b46321edb46e35a9554e3c00c6a855a1ceb6dba45e866f1a0dc7441c8c2",
       "conditions": [],
       "test_only": false,
@@ -35170,7 +35955,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "OrmExecutor::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 250,
+      "line": 390,
       "fingerprint": "638990db0acfdf50c606ee6b2ed255220ad7d3e314b1925c61453a2c874ecef7",
       "conditions": [],
       "test_only": false,
@@ -35189,11 +35974,73 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "OrmExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 254,
+      "fingerprint": "65cdc75db6d72f898c424fa560852522d3fb5f167f8bfeac1345a9f2513a053c",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::fetch_all_generated_in_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "OrmExecutor::fetch_all_generated_in_savepoint",
+      "kind": "execution-wrapper",
+      "line": 316,
+      "fingerprint": "4a32728ef0af5e4a7995b14c9460559102e4f7829433fd1f9471763538e0ef00",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::fetch_all_in_savepoint::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "OrmExecutor::fetch_all_in_savepoint",
       "kind": "execution-wrapper",
-      "line": 289,
+      "line": 429,
       "fingerprint": "0dfb081818b7e0511c8570fb0a8b32e640544e8a9df2aef915471d7f2b609153",
       "conditions": [],
       "test_only": false,
@@ -35216,7 +36063,7 @@
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "OrmExecutor::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 299,
+      "line": 439,
       "fingerprint": "654218e6ee4e41add8244200fd71935b38c15999103a5247909e8b5fe02fbad1",
       "conditions": [],
       "test_only": false,
@@ -35235,11 +36082,42 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "OrmExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 236,
+      "fingerprint": "c1cc992f328308d0b2ef7670e912a9ced27a9d3078e0bb3b0b47f99d52339b49",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::fetch_one_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "OrmExecutor::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 270,
+      "line": 410,
       "fingerprint": "e055ce76bb6fd664dd02b9dbde24b8a73aa2e8a1c2ac6d65673c89539781c303",
       "conditions": [],
       "test_only": false,
@@ -35258,11 +36136,42 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "OrmExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 272,
+      "fingerprint": "07a7efd02bb6b45f4839ec54ae998a79efc7a21298d42b5e5fec410546bd02d0",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::fetch_optional_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "OrmExecutor::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 355,
+      "line": 495,
       "fingerprint": "d74f2339b1e41674d1c2c5add39b5cddc89cf43aa8e5a76fb4557c2898f9d2fe",
       "conditions": [],
       "test_only": false,
@@ -35281,11 +36190,42 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::fetch_stream_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/connection.rs",
+      "symbol": "OrmExecutor::fetch_stream_generated",
+      "kind": "execution-wrapper",
+      "line": 340,
+      "fingerprint": "a6bb42b4ec5e5c0615a94f0273461c8b5f818d804912a4528958c817bf678687",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/connection.rs::OrmExecutor::fetch_stream_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/connection.rs",
       "symbol": "OrmExecutor::fetch_stream_with_context",
       "kind": "execution-wrapper",
-      "line": 333,
+      "line": 473,
       "fingerprint": "7ed791abef30f502ae1a086c9d0f8e23bf955d44c6269a5ba24b4ef75a932e84",
       "conditions": [],
       "test_only": false,
@@ -36162,230 +37102,310 @@
       "path": "crates/reinhardt-db/src/orm/execution.rs",
       "symbol": "InsertExecution::execute_async",
       "kind": "execution-wrapper",
-      "line": 344,
-      "fingerprint": "934eeadb8e04a73cc7bbd5ab0e155bbdf0364e33d78522cf45e78e8807fbc3e9",
+      "line": 348,
+      "fingerprint": "a1def860f3c87ba9b3f6bd4ecaaa54be69047131562928f7fdf6aa3f7b5d6bb0",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/execution.rs::InsertExecution::fetch_one_async::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/execution.rs",
       "symbol": "InsertExecution::fetch_one_async",
       "kind": "execution-wrapper",
-      "line": 357,
-      "fingerprint": "cb28d375a67677394586b245d0461a4ed6c12479f103c3d762bbc78622c510e4",
+      "line": 359,
+      "fingerprint": "8e3b6275adf82b1fa9f705e278e1d676b8a43181821a0d43a6209bad319715cf",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/execution.rs::SelectExecution < T > as QueryExecution < T >::all_async::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/execution.rs",
       "symbol": "SelectExecution < T > as QueryExecution < T >::all_async",
       "kind": "execution-wrapper",
-      "line": 684,
-      "fingerprint": "1b226a6db70d5c6e885bbcead38e4f52b0cced9e1e27212eb7a7c19faae8d338",
+      "line": 688,
+      "fingerprint": "62c1373b6b1d8b231966feb5336ef235b5f52317b9b7a4a70083f023e8985c8d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/execution.rs::SelectExecution < T > as QueryExecution < T >::count_async::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/execution.rs",
       "symbol": "SelectExecution < T > as QueryExecution < T >::count_async",
       "kind": "execution-wrapper",
-      "line": 800,
-      "fingerprint": "a21d7b8d6948c96864642c562fb797b652fdb066c48415835dcd090c0dd6ded6",
+      "line": 808,
+      "fingerprint": "b6daa00a43af17a840f8ebe8bed2672940a794ca9fe2a9bc6bca79c6edfa3c29",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/execution.rs::SelectExecution < T > as QueryExecution < T >::exists_async::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/execution.rs",
       "symbol": "SelectExecution < T > as QueryExecution < T >::exists_async",
       "kind": "execution-wrapper",
-      "line": 827,
-      "fingerprint": "9ca907119b51f9457c1767d76642e15e730e02f427e398089a0c72e1cce71d81",
+      "line": 836,
+      "fingerprint": "046275c812c669c31ffb1726131019099f6c5f10288b7b65050e905e6c500d4d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/execution.rs::SelectExecution < T > as QueryExecution < T >::first_async::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/execution.rs",
       "symbol": "SelectExecution < T > as QueryExecution < T >::first_async",
       "kind": "execution-wrapper",
-      "line": 704,
-      "fingerprint": "454054c49f6b8e0055fc0f5d7df3150c0c9fcc80ee436440ff8828549dffcdf1",
+      "line": 709,
+      "fingerprint": "f5d313c17ab1b9422f35498bc99b742bf939ff5d52a3cf3ddb4333e64024cac7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/execution.rs::SelectExecution < T > as QueryExecution < T >::get_async::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/execution.rs",
       "symbol": "SelectExecution < T > as QueryExecution < T >::get_async",
       "kind": "execution-wrapper",
-      "line": 668,
-      "fingerprint": "0da38688e6089211eabb2795caa35c3e349564614c3a85f318ad174fad69d00c",
+      "line": 671,
+      "fingerprint": "459535f0a0bbd9f7cacf1e819a0e2882859793b7c1a697ff4979fdbaca7fcfac",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/execution.rs::SelectExecution < T > as QueryExecution < T >::one_async::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/execution.rs",
       "symbol": "SelectExecution < T > as QueryExecution < T >::one_async",
       "kind": "execution-wrapper",
-      "line": 725,
-      "fingerprint": "a6c26b2fa8e82fe515ae2aface196597c7a74e0d196971602eaa43b3bb248ee5",
+      "line": 730,
+      "fingerprint": "d57e430c0bb172aaf863ee871ae8fffffe4fb843426895459df214d628297062",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/execution.rs::SelectExecution < T > as QueryExecution < T >::one_or_none_async::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/execution.rs",
       "symbol": "SelectExecution < T > as QueryExecution < T >::one_or_none_async",
       "kind": "execution-wrapper",
-      "line": 748,
-      "fingerprint": "4fa7a7a97dfa291e1819924fff2c3dcd9763e38087d922ea675eae12a9b65f98",
+      "line": 754,
+      "fingerprint": "5512f6abcd08dd1e14f1d275e998b989f433b4d093222a614f2a4dc4b3714ad5",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/execution.rs::SelectExecution < T > as QueryExecution < T >::scalar_async::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/execution.rs",
       "symbol": "SelectExecution < T > as QueryExecution < T >::scalar_async",
       "kind": "execution-wrapper",
-      "line": 771,
-      "fingerprint": "ba75f198a1de38ea63fd0e6409473d9010a465c77ba5a3341e36389b946db025",
+      "line": 778,
+      "fingerprint": "7b45572566b8b8d6b4f6fc3c9e74d9b0fc807703887a0e0598b19c963a3e7702",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/expressions.rs::Case::to_sql::possible-inline-render#1",
@@ -37406,6 +38426,52 @@
       "kind": "custom-fragment",
       "line": 1050,
       "fingerprint": "851e3ae371d4915329a7981fcb59b775aaaa48687c7aff6a92e13756d81c5d28",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/manager.rs",
+      "symbol": "Manager < M >::bulk_create",
+      "kind": "execution-wrapper",
+      "line": 2810,
+      "fingerprint": "bec69aa08efe7809c9919ebdab8ef664eb80e9bc006aaf65a6a77b63af7f4a64",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create::execution-wrapper#2",
+      "path": "crates/reinhardt-db/src/orm/manager.rs",
+      "symbol": "Manager < M >::bulk_create",
+      "kind": "execution-wrapper",
+      "line": 2815,
+      "fingerprint": "9ddb689d581de0759bc64117cd866642e4e5230a0581ef6fad87c6cb36a3a203",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -42372,7 +43438,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as OrmExecutor::execute",
       "kind": "execution-wrapper",
-      "line": 994,
+      "line": 1064,
       "fingerprint": "110c381a12e26bac4765b3effba568bea44656dc40d725f3ec15026ca9408c82",
       "conditions": [],
       "test_only": false,
@@ -42391,11 +43457,102 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::execute_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as OrmExecutor::execute_generated",
+      "kind": "execution-wrapper",
+      "line": 965,
+      "fingerprint": "1eeb088ec0cd77bc0e8a90907ce5ee306c78985ee5d788aa2b065ae6145bbfc5",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::execute_generated_in_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as OrmExecutor::execute_generated_in_savepoint",
+      "kind": "execution-wrapper",
+      "line": 1004,
+      "fingerprint": "1ab6da2f563051c0a0b104c6ab3ed499223d4c1d38b130207d8dc2b20918164b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::execute_in_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as OrmExecutor::execute_in_savepoint",
+      "kind": "execution-wrapper",
+      "line": 1073,
+      "fingerprint": "f87e292cde482475397dc9c275acd47192f20f5d18ac5a7e9b1b505598744a43",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends"
+      ],
+      "rationale": "Legacy raw savepoint override forwards caller-supplied SQL/QueryValue arguments into an existing nested atomic scope; it does not construct framework SQL. Internal generated callers are inventoried separately.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "Manual provenance review of AtomicTransaction raw savepoint overrides; SQL is accepted as a method parameter, owned for the async scope, and forwarded unchanged."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::execute_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as OrmExecutor::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 1013,
+      "line": 1083,
       "fingerprint": "e0e2983f99b831e13d10ba8adff770649652e4d2ff381cb7b6dead87871320d7",
       "conditions": [],
       "test_only": false,
@@ -42418,7 +43575,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as OrmExecutor::fetch_all",
       "kind": "execution-wrapper",
-      "line": 1042,
+      "line": 1112,
       "fingerprint": "496b9a3bba9692906af0ca8777116d51e5c3d64435bdd1a20e7ff0056d60c981",
       "conditions": [],
       "test_only": false,
@@ -42437,11 +43594,102 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::fetch_all_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as OrmExecutor::fetch_all_generated",
+      "kind": "execution-wrapper",
+      "line": 983,
+      "fingerprint": "a55d7fc31ded729094c74ee99d7546c1ff9180932d0145d9643d50a45e5a48ee",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::fetch_all_generated_in_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as OrmExecutor::fetch_all_generated_in_savepoint",
+      "kind": "execution-wrapper",
+      "line": 1015,
+      "fingerprint": "01ac949072e8523bdf9bd3a7378c5f8feee71849886f243dc6fdcbe36ddf7e47",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::fetch_all_in_savepoint::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as OrmExecutor::fetch_all_in_savepoint",
+      "kind": "execution-wrapper",
+      "line": 1121,
+      "fingerprint": "93fca5b5d1ef772fdbdc5419e4a8368a2b6a119b2c467bafcb4ffe947a32c9b7",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends"
+      ],
+      "rationale": "Legacy raw savepoint override forwards caller-supplied SQL/QueryValue arguments into an existing nested atomic scope; it does not construct framework SQL. Internal generated callers are inventoried separately.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "Manual provenance review of AtomicTransaction raw savepoint overrides; SQL is accepted as a method parameter, owned for the async scope, and forwarded unchanged."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::fetch_all_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as OrmExecutor::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 1061,
+      "line": 1131,
       "fingerprint": "d7cd9129354a6ea68c93b9a103e2fa34361bdefb60d85dc0a6c68deef7361f09",
       "conditions": [],
       "test_only": false,
@@ -42464,7 +43712,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as OrmExecutor::fetch_one",
       "kind": "execution-wrapper",
-      "line": 1023,
+      "line": 1093,
       "fingerprint": "6934bec997a2133f2128851f0a738e97abce3e15977e8958c3c23d73532b73da",
       "conditions": [],
       "test_only": false,
@@ -42483,11 +43731,42 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::fetch_one_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as OrmExecutor::fetch_one_generated",
+      "kind": "execution-wrapper",
+      "line": 973,
+      "fingerprint": "cc60bed3d0982de01b395e2f838973f54b8c319bcea7276413afc99152fc7ed5",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::fetch_one_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as OrmExecutor::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 1032,
+      "line": 1102,
       "fingerprint": "653064133391bae650d1314a00544f3493f97695b69e31d92af647dfc4189835",
       "conditions": [],
       "test_only": false,
@@ -42510,7 +43789,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as OrmExecutor::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 1091,
+      "line": 1161,
       "fingerprint": "e74b51cc9e2fd6557818bee3a5061921ce66b52b5b479904d2518592954b0e23",
       "conditions": [],
       "test_only": false,
@@ -42529,11 +43808,42 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::fetch_optional_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as OrmExecutor::fetch_optional_generated",
+      "kind": "execution-wrapper",
+      "line": 993,
+      "fingerprint": "a70dd86643bf949d54aadb3bffe95986efa47c43e49fbdf3230d441d2d080d73",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::fetch_optional_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as OrmExecutor::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 1100,
+      "line": 1170,
       "fingerprint": "27966755f3a7603d6ccd77e3040bbbcf3b9aac10dc18f61642c1d7a29eaea3ae",
       "conditions": [],
       "test_only": false,
@@ -42556,7 +43866,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as OrmExecutor::fetch_stream",
       "kind": "execution-wrapper",
-      "line": 1072,
+      "line": 1142,
       "fingerprint": "87cb993facb99a4ed89390690dba7cf362d8d260339d799fd3e3202da9c4bc5e",
       "conditions": [],
       "test_only": false,
@@ -42575,11 +43885,42 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::fetch_stream_generated::execution-wrapper#1",
+      "path": "crates/reinhardt-db/src/orm/transaction.rs",
+      "symbol": "AtomicTransaction as OrmExecutor::fetch_stream_generated",
+      "kind": "execution-wrapper",
+      "line": 1026,
+      "fingerprint": "13f12a66b8287ece186325c75a866a90805f8f76b65096707326d5a30d31524e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
+        "reinhardt-db/backends",
+        "postgres, mysql or sqlite backend"
+      ],
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
+      "backends": [
+        "postgres",
+        "mysql",
+        "sqlite"
+      ],
+      "evidence": [
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
+      ]
+    },
+    {
       "id": "crates/reinhardt-db/src/orm/transaction.rs::AtomicTransaction as OrmExecutor::fetch_stream_with_context::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as OrmExecutor::fetch_stream_with_context",
       "kind": "execution-wrapper",
-      "line": 1082,
+      "line": 1152,
       "fingerprint": "894bab00f6679a8cf3107fcd1e98388d1a54ccf66c42d2d7994e25e179f374e5",
       "conditions": [],
       "test_only": false,
@@ -42602,7 +43943,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::execute",
       "kind": "execution-wrapper",
-      "line": 1144,
+      "line": 1262,
       "fingerprint": "110c381a12e26bac4765b3effba568bea44656dc40d725f3ec15026ca9408c82",
       "conditions": [],
       "test_only": false,
@@ -42625,7 +43966,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::execute_generated",
       "kind": "execution-wrapper",
-      "line": 1115,
+      "line": 1185,
       "fingerprint": "1eeb088ec0cd77bc0e8a90907ce5ee306c78985ee5d788aa2b065ae6145bbfc5",
       "conditions": [],
       "test_only": false,
@@ -42635,18 +43976,20 @@
       "operation": "dml",
       "representation": "typed-query",
       "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
         "reinhardt-db/backends",
-        "reinhardt-db/orm"
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
         "postgres",
         "mysql",
         "sqlite"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
       ]
     },
     {
@@ -42654,7 +43997,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::execute_with_context",
       "kind": "execution-wrapper",
-      "line": 1153,
+      "line": 1271,
       "fingerprint": "e0e2983f99b831e13d10ba8adff770649652e4d2ff381cb7b6dead87871320d7",
       "conditions": [],
       "test_only": false,
@@ -42677,7 +44020,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_all",
       "kind": "execution-wrapper",
-      "line": 1182,
+      "line": 1300,
       "fingerprint": "496b9a3bba9692906af0ca8777116d51e5c3d64435bdd1a20e7ff0056d60c981",
       "conditions": [],
       "test_only": false,
@@ -42700,7 +44043,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_all_generated",
       "kind": "execution-wrapper",
-      "line": 1133,
+      "line": 1203,
       "fingerprint": "a55d7fc31ded729094c74ee99d7546c1ff9180932d0145d9643d50a45e5a48ee",
       "conditions": [],
       "test_only": false,
@@ -42710,18 +44053,20 @@
       "operation": "dml",
       "representation": "typed-query",
       "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
         "reinhardt-db/backends",
-        "reinhardt-db/orm"
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
         "postgres",
         "mysql",
         "sqlite"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
       ]
     },
     {
@@ -42729,7 +44074,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_all_with_context",
       "kind": "execution-wrapper",
-      "line": 1191,
+      "line": 1309,
       "fingerprint": "d7cd9129354a6ea68c93b9a103e2fa34361bdefb60d85dc0a6c68deef7361f09",
       "conditions": [],
       "test_only": false,
@@ -42752,7 +44097,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_one",
       "kind": "execution-wrapper",
-      "line": 1163,
+      "line": 1281,
       "fingerprint": "6934bec997a2133f2128851f0a738e97abce3e15977e8958c3c23d73532b73da",
       "conditions": [],
       "test_only": false,
@@ -42775,7 +44120,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_one_generated",
       "kind": "execution-wrapper",
-      "line": 1123,
+      "line": 1193,
       "fingerprint": "cc60bed3d0982de01b395e2f838973f54b8c319bcea7276413afc99152fc7ed5",
       "conditions": [],
       "test_only": false,
@@ -42785,18 +44130,20 @@
       "operation": "dml",
       "representation": "typed-query",
       "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
         "reinhardt-db/backends",
-        "reinhardt-db/orm"
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
         "postgres",
         "mysql",
         "sqlite"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
       ]
     },
     {
@@ -42804,7 +44151,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_one_with_context",
       "kind": "execution-wrapper",
-      "line": 1172,
+      "line": 1290,
       "fingerprint": "653064133391bae650d1314a00544f3493f97695b69e31d92af647dfc4189835",
       "conditions": [],
       "test_only": false,
@@ -42827,7 +44174,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_optional",
       "kind": "execution-wrapper",
-      "line": 1221,
+      "line": 1339,
       "fingerprint": "e74b51cc9e2fd6557818bee3a5061921ce66b52b5b479904d2518592954b0e23",
       "conditions": [],
       "test_only": false,
@@ -42850,7 +44197,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_optional_generated",
       "kind": "execution-wrapper",
-      "line": 1143,
+      "line": 1213,
       "fingerprint": "a70dd86643bf949d54aadb3bffe95986efa47c43e49fbdf3230d441d2d080d73",
       "conditions": [],
       "test_only": false,
@@ -42860,18 +44207,20 @@
       "operation": "dml",
       "representation": "typed-query",
       "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
         "reinhardt-db/backends",
-        "reinhardt-db/orm"
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
         "postgres",
         "mysql",
         "sqlite"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
       ]
     },
     {
@@ -42879,7 +44228,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_optional_with_context",
       "kind": "execution-wrapper",
-      "line": 1230,
+      "line": 1348,
       "fingerprint": "27966755f3a7603d6ccd77e3040bbbcf3b9aac10dc18f61642c1d7a29eaea3ae",
       "conditions": [],
       "test_only": false,
@@ -42902,7 +44251,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_stream",
       "kind": "execution-wrapper",
-      "line": 1202,
+      "line": 1320,
       "fingerprint": "87cb993facb99a4ed89390690dba7cf362d8d260339d799fd3e3202da9c4bc5e",
       "conditions": [],
       "test_only": false,
@@ -42925,7 +44274,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_stream_generated",
       "kind": "execution-wrapper",
-      "line": 1154,
+      "line": 1224,
       "fingerprint": "13f12a66b8287ece186325c75a866a90805f8f76b65096707326d5a30d31524e",
       "conditions": [],
       "test_only": false,
@@ -42935,18 +44284,20 @@
       "operation": "dml",
       "representation": "typed-query",
       "feature_reachability": [
+        "native target",
+        "reinhardt-db/orm",
         "reinhardt-db/backends",
-        "reinhardt-db/orm"
+        "postgres, mysql or sqlite backend"
       ],
       "backends": [
         "postgres",
         "mysql",
         "sqlite"
       ],
-      "rationale": "Generated transaction/stream executor or forwarding wrapper consumes the exact owned renderer pair through native companion arguments or checked custom-provider defaults. Dedicated transaction connection, structural error context, row metadata and borrowed cursor lifetime are preserved; streams encode before native execution and release their cursor on drop.",
+      "rationale": "Consumes the exact owned renderer SQL/Values pair through native generated arguments. Custom-provider defaults use checked compatibility arguments; generated savepoints preserve the existing nested atomic scope and streams retain the resolved lease owner.",
       "evidence": [
-        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs",
-        "crates/reinhardt-db/src/backends/generated.rs"
+        "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: three native ORM execution, savepoint recovery and lease/stream scenarios passed; SQLite/MySQL EXISTS decoding remains tracked by #6530.",
+        "38 pgvector-enabled execution unit tests and 10 ORM connection tests passed; production/native-test Clippy and warning-denied rustdoc passed; unmodified 012e07fabb SemVer comparison passed 196 checks with 49 skips."
       ]
     },
     {
@@ -42954,7 +44305,7 @@
       "path": "crates/reinhardt-db/src/orm/transaction.rs",
       "symbol": "AtomicTransaction as TransactionExecutor::fetch_stream_with_context",
       "kind": "execution-wrapper",
-      "line": 1212,
+      "line": 1330,
       "fingerprint": "894bab00f6679a8cf3107fcd1e98388d1a54ccf66c42d2d7994e25e179f374e5",
       "conditions": [],
       "test_only": false,
@@ -43460,6 +44811,29 @@
       "path": "crates/reinhardt-db/src/orm/upsert/execution.rs",
       "symbol": "execute_get_or_create",
       "kind": "execution-wrapper",
+      "line": 48,
+      "fingerprint": "26ec5c1f807208d2da452be31ff674f4be2d06628a25b826bda67b35c0e36621",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/upsert/execution.rs::execute_get_or_create::execution-wrapper#3",
+      "path": "crates/reinhardt-db/src/orm/upsert/execution.rs",
+      "symbol": "execute_get_or_create",
+      "kind": "execution-wrapper",
       "line": 59,
       "fingerprint": "8d2e85ed513cafa7274b08c9165aa9c6bc78d238e5d00c55c5afe6647347884c",
       "conditions": [],
@@ -43479,7 +44853,7 @@
       "evidence": []
     },
     {
-      "id": "crates/reinhardt-db/src/orm/upsert/execution.rs::execute_get_or_create::execution-wrapper#3",
+      "id": "crates/reinhardt-db/src/orm/upsert/execution.rs::execute_get_or_create::execution-wrapper#4",
       "path": "crates/reinhardt-db/src/orm/upsert/execution.rs",
       "symbol": "execute_get_or_create",
       "kind": "execution-wrapper",
@@ -43736,6 +45110,29 @@
       "path": "crates/reinhardt-db/src/orm/upsert/execution.rs",
       "symbol": "update_locked",
       "kind": "execution-wrapper",
+      "line": 357,
+      "fingerprint": "a5ddf492ec13400472075ab0043fcfbdd00c74fb2b202e72aa3c1eec24efcf7e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-db/src/orm/upsert/execution.rs::update_locked::execution-wrapper#2",
+      "path": "crates/reinhardt-db/src/orm/upsert/execution.rs",
+      "symbol": "update_locked",
+      "kind": "execution-wrapper",
       "line": 361,
       "fingerprint": "12af7d417ee76e7de0edefc06fc6f5dff24e82a9b5f37cc0d5e92def0909b0d4",
       "conditions": [],
@@ -43755,7 +45152,7 @@
       "evidence": []
     },
     {
-      "id": "crates/reinhardt-db/src/orm/upsert/execution.rs::update_locked::execution-wrapper#2",
+      "id": "crates/reinhardt-db/src/orm/upsert/execution.rs::update_locked::execution-wrapper#3",
       "path": "crates/reinhardt-db/src/orm/upsert/execution.rs",
       "symbol": "update_locked",
       "kind": "execution-wrapper",
@@ -59303,6 +60700,29 @@
       "ownership": "framework",
       "status": "pending",
       "operation": "control",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-views/src/viewsets/handler/model_view_set_handler.rs::execute_mysql_control_statement::execution-wrapper#1",
+      "path": "crates/reinhardt-views/src/viewsets/handler/model_view_set_handler.rs",
+      "symbol": "execute_mysql_control_statement",
+      "kind": "execution-wrapper",
+      "line": 449,
+      "fingerprint": "c2b9b6ea4f3983e6b18b8f8d41f058b41b58c59d9bf543ec82f5cdc6b2612825",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "review-required",
       "representation": "review-required",
       "feature_reachability": [
         "review-required"

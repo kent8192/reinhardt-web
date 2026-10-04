@@ -182,6 +182,10 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 
 /// Convert reinhardt_query Values (`Vec<Value>`) to `Vec<QueryValue>`
 ///
+/// This legacy raw-parameter converter retains historical clamping and fallback
+/// encodings for compatibility. Generated executor methods consume owned Values
+/// through native codecs instead; see the [conversion tracking issue](https://github.com/kent8192/reinhardt-web/issues/6525).
+///
 /// An `i32` value retains its width as `QueryValue::Int32`, so PostgreSQL can
 /// resolve functions accepting `integer` without an explicit cast. An `i64`
 /// remains `QueryValue::Int` and binds as `bigint`, even if it fits in an `i32`.
@@ -341,9 +345,7 @@ impl InsertExecution {
 		let context = pgvector_context_for_insert(&self.stmt);
 		let (sql, values) =
 			build_insert_for_backend(&self.stmt, db.backend(), db.is_cockroachdb())?;
-		Ok(db
-			.execute_with_context(&sql, convert_values(values), context)
-			.await?)
+		Ok(db.execute_generated((sql, values), context).await?)
 	}
 
 	/// Executes an INSERT with a RETURNING clause and fetches its row.
@@ -354,9 +356,7 @@ impl InsertExecution {
 		let context = pgvector_context_for_insert(&self.stmt);
 		let (sql, values) =
 			build_insert_for_backend(&self.stmt, db.backend(), db.is_cockroachdb())?;
-		let row = db
-			.fetch_one_with_context(&sql, convert_values(values), context)
-			.await?;
+		let row = db.fetch_one_generated((sql, values), context).await?;
 		Ok(QueryRow::from_backend_row(row))
 	}
 }
@@ -660,14 +660,15 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 		E: OrmExecutor,
 	{
-		let stmt = self.get(pk);
-		let context = pgvector_context_for_select(&stmt);
-		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
-
-		let query_values = convert_values(values);
-		let row = db
-			.fetch_one_with_context(&sql, query_values, context)
-			.await?;
+		let ((sql, values), context) = {
+			let stmt = self.get(pk);
+			let context = pgvector_context_for_select(&stmt);
+			(
+				build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?,
+				context,
+			)
+		};
+		let row = db.fetch_one_generated((sql, values), context).await?;
 		Ok(QueryRow::from_backend_row(row).deserialize_model::<T>()?)
 	}
 
@@ -676,14 +677,15 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 		E: OrmExecutor,
 	{
-		let stmt = self.all();
-		let context = pgvector_context_for_select(&stmt);
-		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
-
-		let query_values = convert_values(values);
-		let rows = db
-			.fetch_all_with_context(&sql, query_values, context)
-			.await?;
+		let ((sql, values), context) = {
+			let stmt = self.all();
+			let context = pgvector_context_for_select(&stmt);
+			(
+				build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?,
+				context,
+			)
+		};
+		let rows = db.fetch_all_generated((sql, values), context).await?;
 		let mut results = Vec::with_capacity(rows.len());
 		for row in rows {
 			results.push(QueryRow::from_backend_row(row).deserialize_model::<T>()?);
@@ -696,15 +698,15 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 		E: OrmExecutor,
 	{
-		let stmt = self.first();
-		let context = pgvector_context_for_select(&stmt);
-		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
-
-		let query_values = convert_values(values);
-		match db
-			.fetch_optional_with_context(&sql, query_values, context)
-			.await?
-		{
+		let ((sql, values), context) = {
+			let stmt = self.first();
+			let context = pgvector_context_for_select(&stmt);
+			(
+				build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?,
+				context,
+			)
+		};
+		match db.fetch_optional_generated((sql, values), context).await? {
 			Some(row) => Ok(Some(
 				QueryRow::from_backend_row(row).deserialize_model::<T>()?,
 			)),
@@ -717,14 +719,15 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 		E: OrmExecutor,
 	{
-		let stmt = self.one();
-		let context = pgvector_context_for_select(&stmt);
-		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
-
-		let query_values = convert_values(values);
-		let rows = db
-			.fetch_all_with_context(&sql, query_values, context)
-			.await?;
+		let ((sql, values), context) = {
+			let stmt = self.one();
+			let context = pgvector_context_for_select(&stmt);
+			(
+				build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?,
+				context,
+			)
+		};
+		let rows = db.fetch_all_generated((sql, values), context).await?;
 		match rows.len() {
 			0 => Err(ExecutionError::NoResultFound),
 			1 => Ok(QueryRow::from_backend_row(
@@ -740,14 +743,15 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 		E: OrmExecutor,
 	{
-		let stmt = self.one_or_none();
-		let context = pgvector_context_for_select(&stmt);
-		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
-
-		let query_values = convert_values(values);
-		let rows = db
-			.fetch_all_with_context(&sql, query_values, context)
-			.await?;
+		let ((sql, values), context) = {
+			let stmt = self.one_or_none();
+			let context = pgvector_context_for_select(&stmt);
+			(
+				build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?,
+				context,
+			)
+		};
+		let rows = db.fetch_all_generated((sql, values), context).await?;
 		match rows.len() {
 			0 => Ok(None),
 			1 => Ok(Some(
@@ -763,14 +767,15 @@ where
 		S: for<'de> serde::Deserialize<'de>,
 		E: OrmExecutor,
 	{
-		let stmt = self.scalar();
-		let context = pgvector_context_for_select(&stmt);
-		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
-
-		let query_values = convert_values(values);
-		let rows = db
-			.fetch_all_with_context(&sql, query_values, context)
-			.await?;
+		let ((sql, values), context) = {
+			let stmt = self.scalar();
+			let context = pgvector_context_for_select(&stmt);
+			(
+				build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?,
+				context,
+			)
+		};
+		let rows = db.fetch_all_generated((sql, values), context).await?;
 		match rows.into_iter().next() {
 			Some(row) => {
 				// Get the first column value
@@ -791,15 +796,16 @@ where
 	where
 		E: OrmExecutor,
 	{
-		let stmt = self.count();
-		let context = pgvector_context_for_select(&stmt);
-		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
-
-		let query_values = convert_values(values);
-		let query_row = QueryRow::from_backend_row(
-			db.fetch_one_with_context(&sql, query_values, context)
-				.await?,
-		);
+		let ((sql, values), context) = {
+			let stmt = self.count();
+			let context = pgvector_context_for_select(&stmt);
+			(
+				build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?,
+				context,
+			)
+		};
+		let query_row =
+			QueryRow::from_backend_row(db.fetch_one_generated((sql, values), context).await?);
 
 		// Extract count from the result (usually the first column)
 		if let Some(obj) = query_row.data.as_object()
@@ -818,15 +824,16 @@ where
 	where
 		E: OrmExecutor,
 	{
-		let stmt = self.exists();
-		let context = pgvector_context_for_select(&stmt);
-		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
-
-		let query_values = convert_values(values);
-		let query_row = QueryRow::from_backend_row(
-			db.fetch_one_with_context(&sql, query_values, context)
-				.await?,
-		);
+		let ((sql, values), context) = {
+			let stmt = self.exists();
+			let context = pgvector_context_for_select(&stmt);
+			(
+				build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?,
+				context,
+			)
+		};
+		let query_row =
+			QueryRow::from_backend_row(db.fetch_one_generated((sql, values), context).await?);
 
 		// Extract exists from the result (usually the first column)
 		if let Some(obj) = query_row.data.as_object()

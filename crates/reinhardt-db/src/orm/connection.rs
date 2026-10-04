@@ -200,6 +200,146 @@ impl QueryRow {
 #[async_trait]
 /// Typed capability for executing ORM statements against one backend.
 pub trait OrmExecutor: Send {
+	/// Execute an owned renderer pair with native arguments (native-only, P0).
+	///
+	/// Native providers preserve the complete codecs; legacy custom providers
+	/// default to the raw API only for representable values, with checked ranges.
+	async fn execute_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => DatabaseType::Postgres,
+			DatabaseBackend::MySql => DatabaseType::Mysql,
+			DatabaseBackend::Sqlite => DatabaseType::Sqlite,
+		};
+		let (sql, params) = crate::backends::generated::compatibility_arguments(built, backend)?;
+		self.execute_with_context(&sql, params, context).await
+	}
+
+	/// Execute an owned renderer pair with native arguments (native-only, P0).
+	///
+	/// Native providers preserve the complete codecs; legacy custom providers
+	/// default to the raw API only for representable values, with checked ranges.
+	async fn fetch_one_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => DatabaseType::Postgres,
+			DatabaseBackend::MySql => DatabaseType::Mysql,
+			DatabaseBackend::Sqlite => DatabaseType::Sqlite,
+		};
+		let (sql, params) = crate::backends::generated::compatibility_arguments(built, backend)?;
+		self.fetch_one_with_context(&sql, params, context).await
+	}
+
+	/// Execute an owned renderer pair with native arguments (native-only, P0).
+	///
+	/// Native providers preserve the complete codecs; legacy custom providers
+	/// default to the raw API only for representable values, with checked ranges.
+	async fn fetch_all_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => DatabaseType::Postgres,
+			DatabaseBackend::MySql => DatabaseType::Mysql,
+			DatabaseBackend::Sqlite => DatabaseType::Sqlite,
+		};
+		let (sql, params) = crate::backends::generated::compatibility_arguments(built, backend)?;
+		self.fetch_all_with_context(&sql, params, context).await
+	}
+
+	/// Execute an owned renderer pair with native arguments (native-only, P0).
+	///
+	/// Native providers preserve the complete codecs; legacy custom providers
+	/// default to the raw API only for representable values, with checked ranges.
+	async fn fetch_optional_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => DatabaseType::Postgres,
+			DatabaseBackend::MySql => DatabaseType::Mysql,
+			DatabaseBackend::Sqlite => DatabaseType::Sqlite,
+		};
+		let (sql, params) = crate::backends::generated::compatibility_arguments(built, backend)?;
+		self.fetch_optional_with_context(&sql, params, context)
+			.await
+	}
+
+	/// Run generated execution inside the provider's savepoint (native-only, P0).
+	///
+	/// Native providers preserve the complete codecs; legacy custom providers
+	/// default to the raw API only for representable values, with checked ranges.
+	async fn execute_generated_in_savepoint(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => DatabaseType::Postgres,
+			DatabaseBackend::MySql => DatabaseType::Mysql,
+			DatabaseBackend::Sqlite => DatabaseType::Sqlite,
+		};
+		let (sql, params) = crate::backends::generated::compatibility_arguments(built, backend)?;
+		let result = self.execute_in_savepoint(&sql, params).await;
+		if self.backend() == DatabaseBackend::Postgres && self.supports_pgvector_error_hints() {
+			result.map_err(|error| {
+				crate::backends::error::decorate_error_with_pgvector_context(error, context)
+			})
+		} else {
+			result
+		}
+	}
+
+	/// Run generated execution inside the provider's savepoint (native-only, P0).
+	///
+	/// Native providers preserve the complete codecs; legacy custom providers
+	/// default to the raw API only for representable values, with checked ranges.
+	async fn fetch_all_generated_in_savepoint(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => DatabaseType::Postgres,
+			DatabaseBackend::MySql => DatabaseType::Mysql,
+			DatabaseBackend::Sqlite => DatabaseType::Sqlite,
+		};
+		let (sql, params) = crate::backends::generated::compatibility_arguments(built, backend)?;
+		let result = self.fetch_all_in_savepoint(&sql, params).await;
+		if self.backend() == DatabaseBackend::Postgres && self.supports_pgvector_error_hints() {
+			result.map_err(|error| {
+				crate::backends::error::decorate_error_with_pgvector_context(error, context)
+			})
+		} else {
+			result
+		}
+	}
+
+	/// Stream an owned renderer pair with a borrowed cursor (native-only, P0).
+	/// Codec errors occur before driver execution and preserve structural context.
+	fn fetch_stream_generated<'a>(
+		&'a mut self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => DatabaseType::Postgres,
+			DatabaseBackend::MySql => DatabaseType::Mysql,
+			DatabaseBackend::Sqlite => DatabaseType::Sqlite,
+		};
+		let (sql, params) = crate::backends::generated::compatibility_arguments(built, backend)?;
+		self.fetch_stream_with_context(sql, params, chunk_size, context)
+	}
+
 	/// Returns the backend used to generate SQL for this executor.
 	fn backend(&self) -> DatabaseBackend;
 
@@ -519,6 +659,81 @@ impl DatabaseConnection {
 
 #[async_trait]
 impl OrmExecutor for DatabaseConnection {
+	async fn execute_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		self.resolve()?.execute_generated(built, context).await
+	}
+
+	async fn fetch_one_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		self.resolve()?.fetch_one_generated(built, context).await
+	}
+
+	async fn fetch_all_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		self.resolve()?.fetch_all_generated(built, context).await
+	}
+
+	async fn fetch_optional_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		self.resolve()?
+			.fetch_optional_generated(built, context)
+			.await
+	}
+
+	async fn execute_generated_in_savepoint(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		OrmExecutor::execute_generated(self, built, context).await
+	}
+
+	async fn fetch_all_generated_in_savepoint(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		OrmExecutor::fetch_all_generated(self, built, context).await
+	}
+
+	fn fetch_stream_generated<'a>(
+		&'a mut self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		let owner = self.resolve()?;
+		if !owner.supports_row_streaming() {
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"Row streaming is not supported by this database backend",
+			)
+			.into());
+		}
+		// Capture the resolved lease before returning; cursor creation borrows that
+		// owner inside the stream and errors become items before driver execution.
+		Ok(Box::pin(async_stream::stream! {
+			let mut rows = match owner.fetch_stream_generated(built, chunk_size, context) {
+				Ok(rows) => rows,
+				Err(error) => { yield Err(error); return; }
+			};
+			while let Some(row) = rows.next().await { yield row; }
+		}))
+	}
+
 	fn backend(&self) -> DatabaseBackend {
 		self.resolve()
 			.map(|owner| DatabaseBackend::from(owner.database_type()))
