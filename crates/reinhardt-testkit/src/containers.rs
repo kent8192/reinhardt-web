@@ -87,6 +87,9 @@
 //! let temp_url = sqlite::temp_file_url("my_test");
 //! ```
 
+use reinhardt_query::{
+	Expr, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
+};
 use testcontainers::core::WaitFor;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
@@ -213,7 +216,13 @@ impl TestDatabase for PostgresContainer {
 		// Try to connect to ensure database is ready
 		let url = self.connection_url();
 		let pool = sqlx::postgres::PgPool::connect(&url).await?;
-		sqlx::query("SELECT 1").execute(&pool).await?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_postgres(
+			Query::select()
+				.expr(Expr::val(1_i32))
+				.build(PostgresQueryBuilder),
+		)?
+		.into_parts();
+		sqlx::query_with(&sql, arguments).execute(&pool).await?;
 		pool.close().await;
 		Ok(())
 	}
@@ -284,7 +293,13 @@ impl TestDatabase for MySqlContainer {
 		// Try to connect to ensure database is ready
 		let url = self.connection_url();
 		let pool = sqlx::mysql::MySqlPool::connect(&url).await?;
-		sqlx::query("SELECT 1").execute(&pool).await?;
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_mysql(
+			Query::select()
+				.expr(Expr::val(1_i32))
+				.build(MySqlQueryBuilder),
+		)?
+		.into_parts();
+		sqlx::query_with(&sql, arguments).execute(&pool).await?;
 		pool.close().await;
 		Ok(())
 	}
