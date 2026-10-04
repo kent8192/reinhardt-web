@@ -1086,7 +1086,29 @@ impl QueryBuilder for SqliteQueryBuilder {
 			}
 			InsertSource::Subquery(select) => {
 				writer.push_space();
-				let (select_sql, select_values) = self.build_select(select);
+				// A trailing SELECT FROM without WHERE makes ON CONFLICT
+				// ambiguous to SQLite's parser. Keep the guard in the typed AST.
+				let needs_guard = stmt.on_conflict.is_some()
+					&& (!select.unions.is_empty()
+						|| (!select.from.is_empty() && select.r#where.conditions.is_empty()));
+				let guarded;
+				let source = if needs_guard {
+					guarded = if select.unions.is_empty() {
+						let mut source = select.as_ref().clone();
+						source.and_where(crate::Expr::val(true));
+						source
+					} else {
+						crate::Query::select()
+							.column(ColumnRef::Asterisk)
+							.from_subquery(select.as_ref().clone(), "__reinhardt_insert_source")
+							.and_where(crate::Expr::val(true))
+							.to_owned()
+					};
+					&guarded
+				} else {
+					select.as_ref()
+				};
+				let (select_sql, select_values) = self.build_select(source);
 				writer.push(&select_sql);
 				writer.append_values(&select_values);
 			}

@@ -163,6 +163,11 @@ argument list. Checked builders reject unsupported targets, MySQL update
 conditions and invalid actions; `do_nothing()` clears earlier update conditions.
 These APIs have identical native and WASM behavior.
 
+SQLite INSERT SELECT with an UPSERT adds a typed always-true WHERE when a
+source FROM without WHERE would make ON CONFLICT ambiguous. Compound sources
+use a derived table for that guard. Guard values remain part of the exact
+generated arguments; ordinary SELECT rendering is unchanged.
+
 ### Row locking
 
 Use the owned query AST to configure locking reads. A single

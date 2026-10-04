@@ -71,6 +71,20 @@ This crate provides the following modules:
     - Avoid direct database introspection for schema detection
     - Ensure consistency between migration files and actual schema state
 
+Backend `InsertBuilder` and `InsertFromSelectBuilder` execute checked typed
+statements with their exact generated Values. NULL and current-time expressions
+consume no arguments; native arrays remain PostgreSQL arrays and use the existing
+JSON-text builder storage on MySQL/SQLite. Conflict actions precede RETURNING,
+and converting an INSERT builder to a SELECT source retains its fluent conflict
+configuration. Unsupported named targets or MySQL conditional updates return
+errors instead of discarding configuration. SQLite DO UPDATE requires a nonempty
+column target in this backend API.
+
+The public INSERT VALUES `build()` retains its SQL/legacy-parameter result;
+INSERT SELECT `build()` remains a standalone inline renderer with an empty
+legacy parameter list. Runtime methods use bound source Values. Explicit
+`OnConflictClause::where_clause` accepts caller-owned trusted SQL conditions.
+
 Generated migration sources start with `// reinhardt-migration-source: 1` and
 use constructors/builders for framework-owned values. Upgrade legacy generated
 files offline with:

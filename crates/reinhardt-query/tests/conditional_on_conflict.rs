@@ -170,3 +170,34 @@ fn checked_invalid_conflict_returns_error(
 	// Assert
 	assert_eq!(error, QueryBuildError::InvalidOnConflict { reason });
 }
+
+#[rstest]
+fn sqlite_insert_select_guard_retains_value_order() {
+	// Arrange
+	let statement = Query::insert()
+		.into_table("users")
+		.columns(["name"])
+		.from_subquery(
+			Query::select()
+				.expr(Expr::val("source' ? $9"))
+				.from("source")
+				.to_owned(),
+		)
+		.on_conflict(
+			OnConflict::column("name")
+				.update_columns(["name"])
+				.action_and_where(Expr::col("name").ne("blocked' ? $10")),
+		)
+		.to_owned();
+	// Act
+	let (sql, values) = SqliteQueryBuilder.build_insert_checked(&statement).unwrap();
+	// Assert
+	assert_eq!(
+		sql,
+		"INSERT INTO \"users\" (\"name\") SELECT ? FROM \"source\" WHERE ? ON CONFLICT (\"name\") DO UPDATE SET \"name\" = EXCLUDED.\"name\" WHERE \"name\" <> ?"
+	);
+	assert_eq!(
+		values.0,
+		vec!["source' ? $9".into(), true.into(), "blocked' ? $10".into()]
+	);
+}

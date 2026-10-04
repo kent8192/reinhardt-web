@@ -22174,510 +22174,194 @@
       ]
     },
     {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_new_on_conflict_clause::sql-literal#1",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertBuilder::apply_new_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 717,
-      "fingerprint": "504a9f8c05af9707f091fb6ab2943b591d069b9023b34d8f175ed3bce0329de4",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_new_on_conflict_clause::sql-literal#2",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertBuilder::apply_new_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 717,
-      "fingerprint": "756260e0190648d359fb449fb6938b528b6e1111f76f20c38643859fb29f854a",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_new_on_conflict_clause::sql-literal#3",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertBuilder::apply_new_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 738,
-      "fingerprint": "504a9f8c05af9707f091fb6ab2943b591d069b9023b34d8f175ed3bce0329de4",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_new_on_conflict_clause::sql-literal#4",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertBuilder::apply_new_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 738,
-      "fingerprint": "451883c82b0111c8d65c1719af088d0b296bd3312f02959f64b36ba418309e22",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_new_on_conflict_clause::sql-literal#5",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertBuilder::apply_new_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 776,
-      "fingerprint": "2123febaa0fd43080cc7df3ae59e2500c8d0ad6a10e9d78bed2a19ce812e6a98",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_on_conflict_clause::sql-literal#1",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertBuilder::apply_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 565,
-      "fingerprint": "10234f9382189d02e8c9e74775b5ec5ac556d15b2edabc5f92256d8f776213c0",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_on_conflict_clause::sql-literal#2",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertBuilder::apply_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 565,
-      "fingerprint": "1325febd96c989e6117fe2ec35b3b9013629bc4d6b5b98bb323528dc921dc779",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_on_conflict_clause::sql-literal#3",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertBuilder::apply_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 589,
-      "fingerprint": "10234f9382189d02e8c9e74775b5ec5ac556d15b2edabc5f92256d8f776213c0",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_on_conflict_clause::sql-literal#4",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertBuilder::apply_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 589,
-      "fingerprint": "4366cbfc2ba8a2d162ddd1b4f948919b0a9e27eaba7cdb3eb56087927dbcb3c7",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::apply_on_conflict_clause::sql-literal#5",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertBuilder::apply_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 618,
-      "fingerprint": "10977f52160e048e5d19e1c379182e7bf26702014dc774fe76be86688fc9b21c",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::execute::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "InsertBuilder::execute",
       "kind": "execution-wrapper",
-      "line": 811,
-      "fingerprint": "380c51e2349fc22051eff444251e966157a652f6cf4c455acc2df34cd5699295",
+      "line": 706,
+      "fingerprint": "683145466cf9564bf690a65973254e4cc547a6e03e0adb31374e515ddbeb13c7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/backends; native codecs through postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Checked typed INSERT values/source/conflict/RETURNING AST produces the exact owned SQL/Values consumed by generated execution on the injected native executor. NULL/time expressions consume no slots, source Values remain bound and unsupported conflict options fail explicitly.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native PostgreSQL/MySQL/SQLite scenarios pass: quote-bearing scalar/source/array payloads, NULL/time slot order, retained array storage, RETURNING/upsert order, ignore behavior, false conditions and fluent conversion.",
+        "Exact dialect SQL/Values regressions and focused public compatibility gates; #6560/#6569/#6570/#6571/#6572/#6577/#6578 track independent baseline findings."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertBuilder::fetch_one::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "InsertBuilder::fetch_one",
       "kind": "execution-wrapper",
-      "line": 817,
-      "fingerprint": "bea43b928a23694aaaa032bb2a40da641b422df7a444605944d745a60c31627b",
+      "line": 713,
+      "fingerprint": "31bf4a29dff63bdfe636ed1aa05affa5a556cdb03ebe97305e7e52e7af333a20",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertFromSelectBuilder::apply_on_conflict_clause::sql-literal#1",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertFromSelectBuilder::apply_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 1035,
-      "fingerprint": "6eb564233bfa8d7a4dc49e389eac38988f95c3d332a1e1939bc774098be5a120",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
+      "status": "typed",
       "operation": "dml",
-      "representation": "review-required",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/backends; native codecs through postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Checked typed INSERT values/source/conflict/RETURNING AST produces the exact owned SQL/Values consumed by generated execution on the injected native executor. NULL/time expressions consume no slots, source Values remain bound and unsupported conflict options fail explicitly.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertFromSelectBuilder::apply_on_conflict_clause::sql-literal#2",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertFromSelectBuilder::apply_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 1035,
-      "fingerprint": "ba8d6098a3050486ada308a2e49f7b12e2ffd03650778f6056b005ed0efb3671",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertFromSelectBuilder::apply_on_conflict_clause::sql-literal#3",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertFromSelectBuilder::apply_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 1051,
-      "fingerprint": "6eb564233bfa8d7a4dc49e389eac38988f95c3d332a1e1939bc774098be5a120",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertFromSelectBuilder::apply_on_conflict_clause::sql-literal#4",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertFromSelectBuilder::apply_on_conflict_clause",
-      "kind": "sql-literal",
-      "line": 1051,
-      "fingerprint": "7e2c895ddfa374ffaa335250c42f1eafecdf719421deda7a2e56e942f0e8f0ca",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertFromSelectBuilder::build::macro-sql-literal#1",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "InsertFromSelectBuilder::build",
-      "kind": "macro-sql-literal",
-      "line": 964,
-      "fingerprint": "f5640977e9758807d6e0ab475a004798ba812df226192e680f51788dff3b45f8",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
+      "evidence": [
+        "Three native PostgreSQL/MySQL/SQLite scenarios pass: quote-bearing scalar/source/array payloads, NULL/time slot order, retained array storage, RETURNING/upsert order, ignore behavior, false conditions and fluent conversion.",
+        "Exact dialect SQL/Values regressions and focused public compatibility gates; #6560/#6569/#6570/#6571/#6572/#6577/#6578 track independent baseline findings."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertFromSelectBuilder::build::possible-inline-render#1",
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "InsertFromSelectBuilder::build",
       "kind": "possible-inline-render",
-      "line": 958,
-      "fingerprint": "9f76b576ff040c8a473b1c3f72238c5a39f07b4363781b6f22b5c0cdc3834cda",
+      "line": 891,
+      "fingerprint": "99387333075286315c2e4e0b77c6bf751d971614ad0c72a563c076ca6f52b715",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/backends; explicit public standalone rendering"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Public infallible standalone renderer preserves its inline SQL/empty legacy argument result. Reviewed execute/fetch_one use a separate checked AST/Values factory; repository call inventory has no framework runtime use of this build result. Explicit external callers own rendered SQL.",
       "backends": [
-        "review-required"
+        "renderer-selected"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed full build/statement/build_native/execute/fetch_one bodies and repository InsertBuilder/InsertFromSelectBuilder constructors and conversion callers.",
+        "Three native source/conflict/RETURNING scenarios and exact source argument-order plus public inline compatibility regressions."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertFromSelectBuilder::build::possible-inline-render#2",
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "InsertFromSelectBuilder::build",
       "kind": "possible-inline-render",
-      "line": 959,
-      "fingerprint": "394bf724076c04ec4822b6d722dd27a44d5f957152be0d74ff9a3cd6bd1efedb",
+      "line": 892,
+      "fingerprint": "ffbefd642db2b35721e13b97bec635e82968b5b1af86a97bf544f0d54cc23c50",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/backends; explicit public standalone rendering"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Public infallible standalone renderer preserves its inline SQL/empty legacy argument result. Reviewed execute/fetch_one use a separate checked AST/Values factory; repository call inventory has no framework runtime use of this build result. Explicit external callers own rendered SQL.",
       "backends": [
-        "review-required"
+        "renderer-selected"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed full build/statement/build_native/execute/fetch_one bodies and repository InsertBuilder/InsertFromSelectBuilder constructors and conversion callers.",
+        "Three native source/conflict/RETURNING scenarios and exact source argument-order plus public inline compatibility regressions."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertFromSelectBuilder::build::possible-inline-render#3",
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "InsertFromSelectBuilder::build",
       "kind": "possible-inline-render",
-      "line": 960,
-      "fingerprint": "2a28c631c8f68646df4c719365527ee11123886515196f0ac576e65a3ab5fad0",
+      "line": 893,
+      "fingerprint": "65fa871c27693c1e11a5e484d6670344be3ed83a3461d75ecb84b0ad64742787",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/backends; explicit public standalone rendering"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Public infallible standalone renderer preserves its inline SQL/empty legacy argument result. Reviewed execute/fetch_one use a separate checked AST/Values factory; repository call inventory has no framework runtime use of this build result. Explicit external callers own rendered SQL.",
       "backends": [
-        "review-required"
+        "renderer-selected"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed full build/statement/build_native/execute/fetch_one bodies and repository InsertBuilder/InsertFromSelectBuilder constructors and conversion callers.",
+        "Three native source/conflict/RETURNING scenarios and exact source argument-order plus public inline compatibility regressions."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertFromSelectBuilder::execute::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "InsertFromSelectBuilder::execute",
       "kind": "execution-wrapper",
-      "line": 1089,
-      "fingerprint": "1a9d066f2780c7200ac5816318f710725bcdd8852aae52ae189c2f197bb496f1",
+      "line": 900,
+      "fingerprint": "683145466cf9564bf690a65973254e4cc547a6e03e0adb31374e515ddbeb13c7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/backends; native codecs through postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Checked typed INSERT values/source/conflict/RETURNING AST produces the exact owned SQL/Values consumed by generated execution on the injected native executor. NULL/time expressions consume no slots, source Values remain bound and unsupported conflict options fail explicitly.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native PostgreSQL/MySQL/SQLite scenarios pass: quote-bearing scalar/source/array payloads, NULL/time slot order, retained array storage, RETURNING/upsert order, ignore behavior, false conditions and fluent conversion.",
+        "Exact dialect SQL/Values regressions and focused public compatibility gates; #6560/#6569/#6570/#6571/#6572/#6577/#6578 track independent baseline findings."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::InsertFromSelectBuilder::fetch_one::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "InsertFromSelectBuilder::fetch_one",
       "kind": "execution-wrapper",
-      "line": 1095,
-      "fingerprint": "34ce9147228cecb5af900830134570080268865f33640509c4f4534b09e369cb",
+      "line": 907,
+      "fingerprint": "31bf4a29dff63bdfe636ed1aa05affa5a556cdb03ebe97305e7e52e7af333a20",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/backends; native codecs through postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Checked typed INSERT values/source/conflict/RETURNING AST produces the exact owned SQL/Values consumed by generated execution on the injected native executor. NULL/time expressions consume no slots, source Values remain bound and unsupported conflict options fail explicitly.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Three native PostgreSQL/MySQL/SQLite scenarios pass: quote-bearing scalar/source/array payloads, NULL/time slot order, retained array storage, RETURNING/upsert order, ignore behavior, false conditions and fluent conversion.",
+        "Exact dialect SQL/Values regressions and focused public compatibility gates; #6560/#6569/#6570/#6571/#6572/#6577/#6578 track independent baseline findings."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::SelectBuilder::fetch_all::execution-wrapper#1",
@@ -22761,6 +22445,58 @@
       "evidence": [
         "Three native PostgreSQL/MySQL/SQLite scenarios passed quote-bearing values, current timestamps, NULL writes, native/JSON-text arrays, bound LIMIT/zero limit, complete/empty IN sets and independent repeated IN conditions. Repairs #6548/#6549/#6550; standalone unchanged 2524516212 SQLite probe reproduces each original failure.",
         "75 component unit tests and 128 public builder contract tests passed, including six new dialect/pattern tests. Strict production and both focused integration target Clippy passed after existing float sample lint repair #6558. Warning-denied rustdoc passed; all 13 filtered builder doctests are ignored (no executable builder docs claimed)."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/query_builder.rs::apply_insert_conflict::custom-fragment#1",
+      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
+      "symbol": "apply_insert_conflict",
+      "kind": "custom-fragment",
+      "line": 524,
+      "fingerprint": "699a00b9af1499987d120be110789e8ed52e0908ef92713f2c47103a9549554a",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "application-raw",
+      "status": "excluded",
+      "operation": "caller-defined",
+      "representation": "caller-raw",
+      "backends": [
+        "postgres",
+        "sqlite"
+      ],
+      "feature_reachability": [
+        "reinhardt-db/backends; explicit public OnConflictClause::where_clause API"
+      ],
+      "rationale": "Only the explicit trusted caller-owned where_condition string enters Expr::cust. Framework conflict keywords, targets, excluded assignments and return clauses are structural typed AST; MySQL rejects this unsupported condition before execution.",
+      "evidence": [
+        "Reviewed fluent public setter, private shared conflict lowering and runtime factories.",
+        "Native false-condition preservation/rejection and exact PostgreSQL/SQLite conflict tests; no framework SQL template reaches this custom fragment."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-db/src/backends/query_builder.rs::apply_insert_conflict::sql-literal#1",
+      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
+      "symbol": "apply_insert_conflict",
+      "kind": "sql-literal",
+      "line": 508,
+      "fingerprint": "3761f4815a59d848c452f448aae3430f4a85925415f9bb6a91f02ad08231fc0e",
+      "conditions": [],
+      "test_only": false,
+      "category": "dml",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "backends": [
+        "not-applicable"
+      ],
+      "feature_reachability": [
+        "reinhardt-db/backends"
+      ],
+      "rationale": "The DO UPDATE token occurs only in an empty-update-columns validation error passed to DatabaseError; it never becomes an executed statement.",
+      "evidence": [
+        "Reviewed complete apply_insert_conflict function and the validation error return."
       ]
     },
     {
@@ -52103,7 +51839,7 @@
       "symbol": "MySqlQueryBuilder as QueryBuilder::build_insert",
       "kind": "sql-literal",
       "line": 1127,
-      "fingerprint": "4996204b648089dfd9a09a3727d8f6ec6e569a5e2bb02f43af20a22af6adcf54",
+      "fingerprint": "37767212cce54b17340081bec0c3d2947ca5d7a38d454040f336e7e26109be7d",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -52119,9 +51855,7 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
-        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
-        "Independent native and WASM consumers compile the new public builder methods without optional query features."
+        "Executor-independent typed INSERT renderer; named constraints and conditional values use quoted structural AST. Native/WASM consumers, checked dialect/order regressions, query units, docs, Clippy and SemVer verified. SQLite guard uses a bound true expression without SQL text patching."
       ]
     },
     {
@@ -52130,7 +51864,7 @@
       "symbol": "MySqlQueryBuilder as QueryBuilder::build_insert",
       "kind": "sql-literal",
       "line": 1129,
-      "fingerprint": "d584d3dc62cf5438fbf9b09afd22294cc60bab76b380b1732c799c81e3994709",
+      "fingerprint": "ecf785d67ca94827b88e4c1adbde06a34b0e52eb83382c7a5e95db53f60965b5",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -52146,9 +51880,7 @@
       ],
       "rationale": "Executor-independent typed INSERT prefix rendering. MySQL IGNORE and SQLite OR IGNORE/OR REPLACE modifiers are mutually exclusive; generated Values and source semantics are retained. Runtime consumers are audited independently.",
       "evidence": [
-        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
-        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
-        "Independent native and WASM consumers compile the new public builder methods without optional query features."
+        "Executor-independent typed INSERT renderer; named constraints and conditional values use quoted structural AST. Native/WASM consumers, checked dialect/order regressions, query units, docs, Clippy and SemVer verified. SQLite guard uses a bound true expression without SQL text patching."
       ]
     },
     {
@@ -54632,7 +54364,7 @@
       "symbol": "PostgresQueryBuilder::build_insert_with_writer",
       "kind": "sql-literal",
       "line": 1839,
-      "fingerprint": "337f7f379f0419202b35dff048e32637558a0ab44406f37d179d9cde7274f708",
+      "fingerprint": "44679e260b43b1178751634f45f0fc85550dc448ca4b5e3dd7384feeea3ef353",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -54648,9 +54380,7 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
-        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
-        "Independent native and WASM consumers compile the new public builder methods without optional query features."
+        "Executor-independent typed INSERT renderer; named constraints and conditional values use quoted structural AST. Native/WASM consumers, checked dialect/order regressions, query units, docs, Clippy and SemVer verified. SQLite guard uses a bound true expression without SQL text patching."
       ]
     },
     {
@@ -55284,7 +55014,7 @@
       "symbol": "SqliteQueryBuilder as QueryBuilder::build_insert",
       "kind": "sql-literal",
       "line": 1032,
-      "fingerprint": "07597e323ea475bcebe6c3fbb98265e716ca6e72136d7bc8ac92b5af60981fa4",
+      "fingerprint": "853d25f0109e17fb0209ae8d329c9a8e5bda1fd77c3e0660e6f127e5297e7518",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -55300,9 +55030,7 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
-        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
-        "Independent native and WASM consumers compile the new public builder methods without optional query features."
+        "Executor-independent typed INSERT renderer; named constraints and conditional values use quoted structural AST. Native/WASM consumers, checked dialect/order regressions, query units, docs, Clippy and SemVer verified. SQLite guard uses a bound true expression without SQL text patching."
       ]
     },
     {
@@ -55311,7 +55039,7 @@
       "symbol": "SqliteQueryBuilder as QueryBuilder::build_insert",
       "kind": "sql-literal",
       "line": 1033,
-      "fingerprint": "3ff35734e9f4ff4e928727afb0156326ab605cbd11128558602d8a711689f48a",
+      "fingerprint": "52b675e004dedd44f978c69a851692944671d51e32aca70e7c77c334f5b010b6",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -55327,9 +55055,7 @@
         "renderer-selected"
       ],
       "evidence": [
-        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
-        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
-        "Independent native and WASM consumers compile the new public builder methods without optional query features."
+        "Executor-independent typed INSERT renderer; named constraints and conditional values use quoted structural AST. Native/WASM consumers, checked dialect/order regressions, query units, docs, Clippy and SemVer verified. SQLite guard uses a bound true expression without SQL text patching."
       ]
     },
     {
@@ -55338,7 +55064,7 @@
       "symbol": "SqliteQueryBuilder as QueryBuilder::build_insert",
       "kind": "sql-literal",
       "line": 1034,
-      "fingerprint": "9dcc57d53ce9a044e01e629569acb33106a46798032f82b95b7d6d9e490016e2",
+      "fingerprint": "84d504e26e0bafe396cc608ff0df1fe20e1358030d6e4665de1e4596d3cb0341",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -55354,9 +55080,7 @@
       ],
       "rationale": "Executor-independent typed INSERT prefix rendering. MySQL IGNORE and SQLite OR IGNORE/OR REPLACE modifiers are mutually exclusive; generated Values and source semantics are retained. Runtime consumers are audited independently.",
       "evidence": [
-        "Seven focused INSERT modifier tests passed exact SQL/Values, literal NULL, take/reset, last-call selection, checked rejection across PostgreSQL/MySQL/SQLite/CockroachDB and legacy rejection.",
-        "2028 default query unit tests and 562 doctests passed (305 ignored); warning-denied docs, Clippy, WASM and all-feature SemVer against unchanged 59615db45c passed (196 checks / 49 skips).",
-        "Independent native and WASM consumers compile the new public builder methods without optional query features."
+        "Executor-independent typed INSERT renderer; named constraints and conditional values use quoted structural AST. Native/WASM consumers, checked dialect/order regressions, query units, docs, Clippy and SemVer verified. SQLite guard uses a bound true expression without SQL text patching."
       ]
     },
     {
