@@ -53,6 +53,8 @@ use crate::backends::{
 #[cfg(feature = "sqlite")]
 use futures::FutureExt;
 #[cfg(feature = "sqlite")]
+use reinhardt_query::Query;
+#[cfg(feature = "sqlite")]
 use sqlx::{Row as SqlxRow, Sqlite, pool::PoolConnection};
 
 /// Owns the physical SQLite connection used by atomic and non-atomic recreation.
@@ -116,6 +118,14 @@ fn sqlite_rollback_succeeded_or_inactive<T>(result: std::result::Result<T, sqlx:
 			false
 		}
 	}
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_foreign_keys_sql(enabled: bool) -> Result<String> {
+	Query::sqlite_foreign_keys(enabled)
+		.build_sqlite_checked()
+		.map(|(sql, _)| sql)
+		.map_err(|error| MigrationError::InvalidMigration(error.to_string()))
 }
 
 #[cfg(feature = "sqlite")]
@@ -183,14 +193,16 @@ impl Drop for SqliteRecreationSession {
 				true
 			};
 			let restore_succeeded = match previous_foreign_keys {
-				Some(true) => sqlx::query("PRAGMA foreign_keys = ON")
-					.execute(&mut **cleanup.connection_mut())
-					.await
-					.is_ok(),
-				Some(false) => sqlx::query("PRAGMA foreign_keys = OFF")
-					.execute(&mut **cleanup.connection_mut())
-					.await
-					.is_ok(),
+				Some(enabled) => match sqlite_foreign_keys_sql(enabled) {
+					Ok(sql) => sqlx::query(&sql)
+						.execute(&mut **cleanup.connection_mut())
+						.await
+						.is_ok(),
+					Err(error) => {
+						tracing::error!("failed to build SQLite foreign-key restoration: {error}");
+						false
+					}
+				},
 				None => true,
 			};
 			if rollback_succeeded && restore_succeeded {
@@ -604,7 +616,8 @@ impl SchemaEditor {
 		}
 
 		tracing::debug!("Disabling SQLite foreign key checks");
-		self.execute("PRAGMA foreign_keys = OFF").await?;
+		let sql = sqlite_foreign_keys_sql(false)?;
+		self.execute(&sql).await?;
 		Ok(())
 	}
 
@@ -624,7 +637,8 @@ impl SchemaEditor {
 		}
 
 		tracing::debug!("Enabling SQLite foreign key checks");
-		self.execute("PRAGMA foreign_keys = ON").await?;
+		let sql = sqlite_foreign_keys_sql(true)?;
+		self.execute(&sql).await?;
 		Ok(())
 	}
 
@@ -990,12 +1004,152 @@ fn merge_foreign_key_scope_results<T>(
 
 #[cfg(test)]
 mod tests {
+	#[cfg(feature = "sqlite")]
+	use reinhardt_query::{ColumnDef, QueryStatementBuilder, SqliteQueryBuilder};
+	#[cfg(feature = "sqlite")]
+	use rstest::*;
 	#[cfg(all(feature = "pgvector", feature = "sqlite"))]
 	use std::borrow::Cow;
 	#[cfg(all(feature = "pgvector", feature = "sqlite"))]
 	use std::fmt;
 
 	use super::*;
+
+	#[cfg(feature = "sqlite")]
+	#[fixture]
+	async fn sqlite_foreign_key_rebuild_connection(
+		#[default(true)] previous_foreign_keys: bool,
+	) -> DatabaseConnection {
+		let pool = sqlx::sqlite::SqlitePoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("connect to single-connection SQLite database");
+		let connection = DatabaseConnection::from_sqlite_pool(pool);
+		connection
+			.execute(
+				&sqlite_foreign_keys_sql(previous_foreign_keys).unwrap(),
+				vec![],
+			)
+			.await
+			.expect("set previous foreign-key enforcement");
+		let create = Query::create_table()
+			.table("tracked_foreign_keys")
+			.col(ColumnDef::new("id").integer().primary_key(true))
+			.col(ColumnDef::new("obsolete").integer())
+			.to_string(SqliteQueryBuilder);
+		connection
+			.execute(&create, vec![])
+			.await
+			.expect("create original table");
+		let insert = Query::insert()
+			.into_table("tracked_foreign_keys")
+			.columns(["id", "obsolete"])
+			.values_panic([1, 99])
+			.to_string(SqliteQueryBuilder);
+		connection
+			.execute(&insert, vec![])
+			.await
+			.expect("insert original row");
+		connection
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[tokio::test]
+	async fn sqlite_rebuild_preserves_foreign_key_setting_after_success_or_error(
+		#[values(true, false)] previous_foreign_keys: bool,
+		#[values(true, false)] atomic: bool,
+		#[values(true, false)] fail: bool,
+		#[with(previous_foreign_keys)]
+		#[future]
+		sqlite_foreign_key_rebuild_connection: DatabaseConnection,
+	) {
+		use crate::migrations::{ColumnDefinition, FieldType, operations::SqliteTableRecreation};
+
+		// Arrange
+		let connection = sqlite_foreign_key_rebuild_connection.await;
+		let mut editor =
+			SchemaEditor::new_for_migration(connection.clone(), atomic, DatabaseType::Sqlite, true)
+				.await
+				.expect("create recreation editor");
+		let recreation = SqliteTableRecreation::for_drop_column(
+			"tracked_foreign_keys",
+			vec![
+				ColumnDefinition::new("id", FieldType::Integer).with_primary_key(true),
+				ColumnDefinition::new("obsolete", FieldType::Integer),
+			],
+			"obsolete",
+			vec![],
+		);
+
+		// Act
+		let result = editor
+			.with_foreign_keys_disabled(move |editor| {
+				Box::pin(async move {
+					for sql in recreation.to_sql_statements() {
+						editor.execute(&sql).await?;
+					}
+					if fail {
+						return Err(MigrationError::InvalidMigration(
+							"rebuild failed".to_owned(),
+						));
+					}
+					Ok(())
+				})
+			})
+			.await;
+		if result.is_ok() {
+			editor.finish().await.expect("finish table reconstruction");
+		}
+
+		// Assert
+		assert_eq!(
+			result.map_err(|error| error.to_string()),
+			if fail {
+				Err("Invalid migration: rebuild failed".to_owned())
+			} else {
+				Ok(())
+			}
+		);
+		let foreign_keys = connection
+			.fetch_one("PRAGMA foreign_keys", vec![])
+			.await
+			.expect("read restored setting")
+			.get::<i64>("foreign_keys")
+			.unwrap();
+		assert_eq!(foreign_keys, i64::from(previous_foreign_keys));
+		let columns = connection
+			.fetch_all("PRAGMA table_info(tracked_foreign_keys)", vec![])
+			.await
+			.expect("inspect rebuilt table")
+			.iter()
+			.map(|row| row.get::<String>("name").unwrap())
+			.collect::<Vec<_>>();
+		assert_eq!(
+			columns,
+			if fail {
+				vec!["id", "obsolete"]
+			} else {
+				vec!["id"]
+			}
+		);
+		let select = Query::select()
+			.column("id")
+			.from("tracked_foreign_keys")
+			.to_string(SqliteQueryBuilder);
+		let rows = connection
+			.fetch_all(&select, vec![])
+			.await
+			.expect("read original data");
+		assert_eq!(rows.len(), 1);
+		assert_eq!(rows[0].get::<i64>("id").unwrap(), 1);
+		let replacement = connection
+			.fetch_all("PRAGMA table_info(tracked_foreign_keys_new)", vec![])
+			.await
+			.expect("inspect replacement table");
+		assert_eq!(replacement.len(), 0);
+	}
 
 	#[cfg(all(feature = "pgvector", feature = "sqlite"))]
 	#[derive(Debug)]
@@ -1453,8 +1607,11 @@ mod tests {
 	}
 
 	#[cfg(feature = "sqlite")]
+	#[rstest]
 	#[tokio::test]
-	async fn atomic_sqlite_recreation_abort_restores_connection_and_schema() {
+	async fn atomic_sqlite_recreation_abort_restores_connection_and_schema(
+		#[values(true, false)] previous_foreign_keys: bool,
+	) {
 		use sqlx::sqlite::SqlitePoolOptions;
 		use tokio::sync::oneshot;
 
@@ -1466,9 +1623,12 @@ mod tests {
 			.expect("connect to in-memory SQLite");
 		let connection = DatabaseConnection::from_sqlite_pool(pool);
 		connection
-			.execute("PRAGMA foreign_keys = ON", vec![])
+			.execute(
+				&sqlite_foreign_keys_sql(previous_foreign_keys).unwrap(),
+				vec![],
+			)
 			.await
-			.expect("enable foreign key enforcement");
+			.expect("set previous foreign-key enforcement");
 		connection
 			.execute(
 				"CREATE TABLE atomic_cleanup_parent (id INTEGER PRIMARY KEY)",
@@ -1510,7 +1670,11 @@ mod tests {
 			.expect("read restored foreign key state")
 			.get("foreign_keys")
 			.expect("foreign_keys should be an integer");
-		assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+		assert_eq!(
+			foreign_keys,
+			i64::from(previous_foreign_keys),
+			"the previous foreign-key setting must be restored"
+		);
 		let original_rows: i64 = assertion_connection
 			.fetch_one(
 				"SELECT COUNT(*) AS count FROM atomic_cleanup_parent",
@@ -1648,14 +1812,24 @@ mod tests {
 	}
 
 	#[cfg(feature = "sqlite")]
+	#[rstest]
 	#[tokio::test]
-	async fn non_atomic_sqlite_recreation_abort_preserves_in_memory_database() {
+	async fn non_atomic_sqlite_recreation_abort_preserves_in_memory_database(
+		#[values(true, false)] previous_foreign_keys: bool,
+	) {
 		use tokio::sync::oneshot;
 
 		// Arrange
 		let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 			.await
 			.expect("connect to in-memory SQLite");
+		connection
+			.execute(
+				&sqlite_foreign_keys_sql(previous_foreign_keys).unwrap(),
+				vec![],
+			)
+			.await
+			.expect("set previous foreign-key enforcement");
 		connection
 			.execute("CREATE TABLE kept (id INTEGER PRIMARY KEY)", vec![])
 			.await
@@ -1700,7 +1874,11 @@ mod tests {
 			.expect("read foreign key state after cancellation")
 			.get("foreign_keys")
 			.expect("foreign_keys should be an integer");
-		assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+		assert_eq!(
+			foreign_keys,
+			i64::from(previous_foreign_keys),
+			"the previous foreign-key setting must be restored"
+		);
 		let original_rows: i64 = assertion_connection
 			.fetch_one("SELECT COUNT(*) AS count FROM kept", vec![])
 			.await
