@@ -61,7 +61,7 @@ pub enum FilterOperator {
 	Regex,
 	/// Case-insensitive regular expression match.
 	IRegex,
-	/// BETWEEN range lookup.
+	/// Inclusive BETWEEN lookup with bound endpoints and backend-quoted columns.
 	Range,
 	// PostgreSQL array operators
 	/// Array contains all elements (@>)
@@ -3283,14 +3283,10 @@ where
 					[pattern.clone()],
 				)
 				.into_simple_expr(),
-				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
-					format!("{} BETWEEN ? AND ?", Self::filter_lhs_sql(filter)),
-					[
-						Self::filter_value_to_sea_value(start),
-						Self::filter_value_to_sea_value(end),
-					],
-				)
-				.into_simple_expr(),
+				(FilterOperator::Range, FilterValue::Range(start, end)) => col.between(
+					Self::filter_value_to_sea_value(start),
+					Self::filter_value_to_sea_value(end),
+				),
 				// Handle Integer, Float, Boolean for text operators
 				(FilterOperator::Contains, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("%{}%", i))
@@ -8806,6 +8802,90 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE "quoted""id`" BETWEEN $1 AND $2"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE `quoted\"id``` BETWEEN ? AND ?"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE "quoted""id`" BETWEEN ? AND ?"#
+	)]
+	fn range_filter_preserves_quoted_column_and_bound_endpoint_order(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let lower = "bound' ? $71";
+		let upper = "upper' ? $19";
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"quoted\"id`",
+			FilterOperator::Range,
+			FilterValue::Range(
+				Box::new(FilterValue::String(lower.into())),
+				Box::new(FilterValue::String(upper.into())),
+			),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: exact SQL excludes payload interpolation and fixes identifier escaping.
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(vec![lower.into(), upper.into()]));
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE "test_users"."id" BETWEEN $1 AND $2"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE `test_users`.`id` BETWEEN ? AND ?"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE "test_users"."id" BETWEEN ? AND ?"#
+	)]
+	fn range_filter_preserves_qualified_column_and_wide_integer_endpoints(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let lower = 9_007_199_254_740_993_i64;
+		let upper = lower + 1;
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"test_users.id",
+			FilterOperator::Range,
+			FilterValue::Range(
+				Box::new(FilterValue::Integer(lower)),
+				Box::new(FilterValue::Int(upper)),
+			),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(vec![lower.into(), upper.into()]));
+	}
+
+	#[rstest]
 	fn test_django_style_date_part_filter_expression() {
 		// Arrange
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::expression(
@@ -8911,7 +8991,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("email" IS NOT NULL AND "id" NOT IN (10, 20) AND ("id" BETWEEN 100 AND 200))"#
+			r#"SELECT * FROM "test_users" WHERE ("email" IS NOT NULL AND "id" NOT IN (10, 20) AND "id" BETWEEN 100 AND 200)"#
 		);
 	}
 
@@ -9001,7 +9081,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT DISTINCT * FROM "test_users" WHERE (("email" ILIKE '%example.com%' ESCAPE '\') AND "username" IS NOT NULL AND (EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026)) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
+			r#"SELECT DISTINCT * FROM "test_users" WHERE (("email" ILIKE '%example.com%' ESCAPE '\') AND "username" IS NOT NULL AND EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
 		);
 	}
 
