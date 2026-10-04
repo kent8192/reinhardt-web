@@ -157,6 +157,13 @@ Advanced features for specific use cases:
   - Document, Key-Value, Column-Family, Graph paradigms
   - **When to use**: Working with NoSQL databases like MongoDB
 
+### Unsigned composite key lookups
+
+Unsigned values passed to `QuerySet::get_composite` are checked before execution.
+The current parameter representation supports signed 64-bit integers, so values
+above `i64::MAX` return a type conversion error without including the key value.
+They never wrap to a negative key or clamp to the largest signed key.
+
 ### Updating composite primary keys
 
 `Manager::update` and `update_with_conn` match every component of a composite
@@ -173,6 +180,14 @@ of `Manager::get` and the manager's delete methods. For composite-key lookups,
 use `get_composite` or filter explicitly on every key component. Generated UUID
 and enum composite keys remain subject to
 [#6456](https://github.com/kent8192/reinhardt-web/issues/6456).
+
+### Existence checks
+
+`SelectExecution::exists_async` returns `true` when the selected query matches
+at least one row and `false` otherwise. It renders the query for the connection's
+backend and decodes PostgreSQL boolean results and SQLite/MySQL integer `0`/`1`
+results. This conversion is limited to existence checks; other result types and
+integers outside `0`/`1` remain deserialization errors.
 
 ## Installation
 
@@ -266,6 +281,11 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 - Support for composite primary keys
 
 ### Query with QuerySet
+
+Case-sensitive `Contains`, `StartsWith`, and `EndsWith` lookups escape literal
+`%`, `_`, and backslash characters in their bound patterns. Column identifiers
+use the selected backend's quoting. MySQL renders the escape character as
+`ESCAPE 0x5C`; PostgreSQL and SQLite use `ESCAPE '\'`.
 
 ```rust
 use reinhardt_db::orm::Model;

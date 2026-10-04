@@ -68,6 +68,8 @@ pub mod hot_reload;
 pub mod config;
 /// Database connection configuration types and helpers.
 pub mod database_config;
+#[cfg(feature = "dynamic-database")]
+mod database_index;
 /// Settings documentation and introspection utilities.
 pub mod docs;
 /// Test utilities for settings configuration.
