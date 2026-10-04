@@ -887,6 +887,29 @@ pub(crate) fn validate_alter_table_for_backend(
 			AlterTableOperation::AddColumn(column) | AlterTableOperation::ModifyColumn(column) => {
 				validate_column_def(column, backend)?;
 			}
+			AlterTableOperation::AddIdentity { identity, .. }
+			| AlterTableOperation::SetIdentity { identity, .. } => {
+				if backend != "PostgreSQL" {
+					return Err(unsupported("PostgreSQL identity columns", backend));
+				}
+				if identity.schema.is_some() && identity.name.is_none() {
+					return Err(unsupported(
+						"identity schema without sequence name",
+						backend,
+					));
+				}
+				if matches!(operation, AlterTableOperation::SetIdentity { .. })
+					&& (identity.name.is_some() || identity.schema.is_some())
+				{
+					return Err(unsupported(
+						"identity sequence rename through SET IDENTITY",
+						backend,
+					));
+				}
+			}
+			AlterTableOperation::DropIdentity { .. } if backend != "PostgreSQL" => {
+				return Err(unsupported("PostgreSQL identity columns", backend));
+			}
 			AlterTableOperation::AddConstraint(constraint) => {
 				validate_table_constraint(constraint, backend)?;
 			}
@@ -949,6 +972,30 @@ fn unsupported(feature: &'static str, backend: &'static str) -> QueryBuildError 
 }
 
 fn validate_column_def(column: &ColumnDef, backend: &'static str) -> Result<(), QueryBuildError> {
+	if let Some(identity) = &column.identity {
+		if backend != "PostgreSQL" {
+			return Err(unsupported("PostgreSQL identity columns", backend));
+		}
+		if identity.schema.is_some() && identity.name.is_none() {
+			return Err(unsupported(
+				"identity schema without sequence name",
+				backend,
+			));
+		}
+		if column.default.is_some() || column.generated.is_some() {
+			return Err(unsupported(
+				"identity combined with default or generated expression",
+				backend,
+			));
+		}
+		if !matches!(
+			column.column_type,
+			Some(ColumnType::SmallInteger | ColumnType::Integer | ColumnType::BigInteger)
+		) {
+			return Err(unsupported("identity on a noninteger column", backend));
+		}
+	}
+
 	if let Some(column_type) = &column.column_type {
 		validate_column_type(column_type, backend)?;
 	}
