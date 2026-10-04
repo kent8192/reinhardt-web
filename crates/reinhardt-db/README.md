@@ -800,7 +800,8 @@ do not support PostgreSQL or MySQL pools.
 - **ContentTypeTransaction** - Pool-backed content type operations (historical name)
   - `new()` - Create a context without beginning or owning a database transaction
   - `query()` - Get an independent query builder using the same pool
-  - `create()` - Create a content type using pool autocommit
+  - `create()` - Create a content type using pool autocommit, keeping the insert
+    and generated-ID lookup on one acquired connection
   - `delete()` - Delete a content type using pool autocommit
   - Each operation executes independently; errors and dropping the context do not
     roll back preceding writes. A transaction opened separately on a pool

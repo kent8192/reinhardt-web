@@ -416,7 +416,8 @@ impl ContentTypeQuery {
 ///
 /// Only SQLite-backed pools are supported. This context and its queries generate
 /// SQL with `SqliteQueryBuilder`, and [`Self::create`] retrieves the generated ID
-/// with SQLite's `last_insert_rowid()`. PostgreSQL and MySQL pools are unsupported,
+/// with SQLite's `last_insert_rowid()` on the same acquired connection as the
+/// insert. PostgreSQL and MySQL pools are unsupported,
 /// even though `ContentTypePersistence` supports those backends.
 ///
 /// The historical name is retained for compatibility. This context stores a pool;
@@ -451,6 +452,9 @@ impl ContentTypeTransaction {
 
 	/// Create a ContentType through the SQLite pool using autocommit.
 	///
+	/// The insert and generated-ID lookup use one acquired connection, including
+	/// when the pool allows multiple connections or callers create concurrently.
+	///
 	/// Successful writes are not rolled back when the context is dropped or a
 	/// subsequent operation fails. This method does not provide atomicity with
 	/// other context operations.
@@ -469,8 +473,12 @@ impl ContentTypeTransaction {
 			.expect("Failed to build insert statement")
 			.to_owned();
 		let (sql, values) = stmt.build(SqliteQueryBuilder);
+		// Keep the insert and its connection-local ID lookup on the same connection.
+		let mut connection = self.pool.acquire().await.map_err(|e| {
+			PersistenceError::DatabaseError(format!("Failed to create content type: {}", e))
+		})?;
 		bind_query_values(sqlx::query(&sql), &values)
-			.execute(&*self.pool)
+			.execute(&mut *connection)
 			.await
 			.map_err(|e| {
 				PersistenceError::DatabaseError(format!("Failed to create content type: {}", e))
@@ -478,7 +486,7 @@ impl ContentTypeTransaction {
 
 		// Get the last inserted ID using SQLite's last_insert_rowid()
 		let id_row = sqlx::query("SELECT last_insert_rowid() as id")
-			.fetch_one(&*self.pool)
+			.fetch_one(&mut *connection)
 			.await
 			.map_err(|e| {
 				PersistenceError::DatabaseError(format!("Failed to get last insert ID: {}", e))
@@ -557,6 +565,142 @@ mod tests {
 			.expect("Failed to create table");
 
 		pool.into()
+	}
+
+	struct MultiConnectionTestDb {
+		persistence: ContentTypePersistence,
+		pool: Arc<AnyPool>,
+		_directory: tempfile::TempDir,
+	}
+
+	#[fixture]
+	async fn setup_multi_connection_db() -> MultiConnectionTestDb {
+		init_drivers();
+		let directory = tempfile::tempdir().expect("Failed to create SQLite directory");
+		let path = directory.path().join("contenttypes.sqlite");
+		let url = format!("sqlite://{}?mode=rwc", path.display());
+		let pool = Arc::new(
+			sqlx::any::AnyPoolOptions::new()
+				.min_connections(2)
+				.max_connections(2)
+				.acquire_timeout(std::time::Duration::from_secs(5))
+				.connect(&url)
+				.await
+				.expect("Failed to open two-connection SQLite pool"),
+		);
+		let persistence = ContentTypePersistence::from_pool(pool.clone(), &url);
+		persistence
+			.create_table()
+			.await
+			.expect("Failed to create content type table");
+		MultiConnectionTestDb {
+			persistence,
+			pool,
+			_directory: directory,
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_create_ids_with_two_connections(
+		#[future] setup_multi_connection_db: MultiConnectionTestDb,
+	) {
+		// Arrange
+		let database = setup_multi_connection_db.await;
+		let context = ContentTypeTransaction::new(database.pool.clone());
+		let mut created = Vec::new();
+
+		// Act
+		for index in 0..8 {
+			created.push(
+				context
+					.create("affinity", format!("Sequential{index}"))
+					.await
+					.expect("Failed to create content type"),
+			);
+		}
+		let stored = database
+			.persistence
+			.load_all()
+			.await
+			.expect("Failed to load content types");
+
+		// Assert
+		assert_eq!(created, stored);
+		assert_eq!(
+			created
+				.iter()
+				.map(|content_type| content_type.id)
+				.collect::<Vec<_>>(),
+			(1..=8).map(Some).collect::<Vec<_>>(),
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_concurrent_create_ids_with_two_connections(
+		#[future] setup_multi_connection_db: MultiConnectionTestDb,
+	) {
+		// Arrange
+		let database = setup_multi_connection_db.await;
+		let context = ContentTypeTransaction::new(database.pool.clone());
+
+		// Act
+		let (first, second) = tokio::try_join!(
+			context.create("affinity", "First"),
+			context.create("affinity", "Second"),
+		)
+		.expect("Failed to create content types concurrently");
+		let mut stored = database
+			.persistence
+			.load_all()
+			.await
+			.expect("Failed to load content types");
+		stored.sort_by(|left, right| left.model.cmp(&right.model));
+
+		// Assert
+		let mut ids = [first.id, second.id];
+		ids.sort();
+		assert_eq!(ids, [Some(1), Some(2)]);
+		assert_eq!(stored, vec![first, second]);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_content_type_context_duplicate_returns_both_connections(
+		#[future] setup_multi_connection_db: MultiConnectionTestDb,
+	) {
+		// Arrange
+		let database = setup_multi_connection_db.await;
+		let context = ContentTypeTransaction::new(database.pool.clone());
+		let created = context
+			.create("affinity", "Unique")
+			.await
+			.expect("Failed to create content type");
+
+		// Act
+		let error = context
+			.create("affinity", "Unique")
+			.await
+			.expect_err("Duplicate content type should fail");
+		let stored = database
+			.persistence
+			.load_all()
+			.await
+			.expect("Failed to load content types");
+		let _connections = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+			let first = database.pool.acquire().await?;
+			let second = database.pool.acquire().await?;
+			Ok::<_, sqlx::Error>((first, second))
+		})
+		.await
+		.expect("Both connections should return to the pool after an error")
+		.expect("Failed to acquire returned connections");
+
+		// Assert
+		assert!(matches!(error, PersistenceError::DatabaseError(_)));
+		assert_eq!(stored, vec![created]);
+		assert_eq!(database.pool.size(), 2);
 	}
 
 	#[rstest]
