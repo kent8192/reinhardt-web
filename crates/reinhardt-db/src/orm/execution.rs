@@ -6,8 +6,10 @@
 
 use crate::backends::types::QueryValue;
 use crate::orm::Model;
+use crate::orm::connection::DatabaseBackend;
 use reinhardt_query::prelude::{
-	Alias, ColumnRef, Expr, ExprTrait, Func, Query, QueryStatementBuilder, SelectStatement,
+	Alias, ColumnRef, Expr, ExprTrait, Func, MySqlQueryBuilder, PostgresQueryBuilder, Query,
+	QueryStatementBuilder, SelectStatement, SqliteQueryBuilder,
 };
 use rust_decimal::prelude::ToPrimitive;
 use std::marker::PhantomData;
@@ -54,6 +56,15 @@ pub enum ExecutionError {
 	/// Generic error from anyhow
 	#[error("Generic error: {0}")]
 	Generic(#[from] anyhow::Error),
+}
+
+fn decode_exists_value(value: &serde_json::Value) -> Result<bool, ExecutionError> {
+	// PostgreSQL returns a boolean; SQLite and MySQL return the integers 0 or 1.
+	match value.as_i64() {
+		Some(0) => Ok(false),
+		Some(1) => Ok(true),
+		_ => Ok(serde_json::from_value(value.clone())?),
+	}
 }
 
 /// Convert reinhardt_query Value to QueryValue for parameter binding
@@ -618,18 +629,20 @@ where
 		db: &super::connection::DatabaseConnection,
 	) -> Result<bool, ExecutionError> {
 		let stmt = self.exists();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = match db.backend() {
+			DatabaseBackend::Postgres => stmt.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => stmt.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => stmt.build(SqliteQueryBuilder),
+		};
 
 		let query_values = convert_values(values);
 		let row = db.query_one(&sql, query_values).await?;
-		let json = serde_json::to_value(&row)?;
 
-		// Extract exists from the result (usually the first column)
-		if let Some(obj) = json.as_object()
+		// Extract the EXISTS value from the row data, without serializing its wrapper.
+		if let Some(obj) = row.data.as_object()
 			&& let Some((_, value)) = obj.iter().next()
 		{
-			let exists: bool = serde_json::from_value(value.clone())?;
-			return Ok(exists);
+			return decode_exists_value(value);
 		}
 
 		Err(ExecutionError::QueryBuild(
@@ -907,6 +920,31 @@ mod tests {
 		let result_stmt = exec.exists();
 		let sql = result_stmt.to_string(PostgresQueryBuilder);
 		assert!(sql.contains("EXISTS"));
+	}
+
+	#[rstest]
+	#[case::boolean_false(serde_json::json!(false), false)]
+	#[case::boolean_true(serde_json::json!(true), true)]
+	#[case::integer_zero(serde_json::json!(0), false)]
+	#[case::integer_one(serde_json::json!(1), true)]
+	fn test_decode_exists_value(#[case] value: serde_json::Value, #[case] expected: bool) {
+		assert_eq!(decode_exists_value(&value).unwrap(), expected);
+	}
+
+	#[rstest]
+	#[case::negative_integer(serde_json::json!(-1))]
+	#[case::other_integer(serde_json::json!(2))]
+	#[case::large_unsigned_integer(serde_json::json!(u64::MAX))]
+	#[case::float_zero(serde_json::json!(0.0))]
+	#[case::float_one(serde_json::json!(1.0))]
+	#[case::null(serde_json::Value::Null)]
+	#[case::boolean_string(serde_json::json!("true"))]
+	#[case::integer_string(serde_json::json!("1"))]
+	#[case::array(serde_json::json!([true]))]
+	#[case::object(serde_json::json!({"exists": true}))]
+	fn test_decode_exists_value_rejects_invalid_results(#[case] value: serde_json::Value) {
+		let error = decode_exists_value(&value).unwrap_err();
+		assert!(matches!(error, ExecutionError::Deserialization(_)));
 	}
 
 	#[test]
