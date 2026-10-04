@@ -3,9 +3,9 @@
 use reinhardt_query::query::traits::inline_params;
 use reinhardt_query::types::{TriggerEvent, TriggerScope, TriggerTiming};
 use reinhardt_query::{
-	Alias, ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, IntoIden, MySqlQueryBuilder,
+	Alias, ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, MySqlQueryBuilder,
 	PostgresQueryBuilder, Query, QueryBuilderTrait, QueryStatementBuilder, SelectStatement,
-	SimpleExpr, SqliteQueryBuilder, TableRef, Value, Values,
+	SimpleExpr, SqliteQueryBuilder, Value, Values,
 };
 use rstest::{fixture, rstest};
 
