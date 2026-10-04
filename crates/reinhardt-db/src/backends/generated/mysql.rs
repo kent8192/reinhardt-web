@@ -37,8 +37,8 @@ pub(in crate::backends) fn arguments(values: Values) -> Result<sqlx::mysql::MySq
 			Value::ChronoDateTime(v) => add!(v.map(|v| *v)),
 			Value::ChronoDateTimeUtc(v) => add!(v.map(|v| *v)),
 			Value::ChronoDateTimeLocal(v) => add!(v.map(|v| *v)),
-			Value::ChronoDateTimeWithTimeZone(_v) => {
-				return Err(fail("type has no supported codec for this backend"));
+			Value::ChronoDateTimeWithTimeZone(v) => {
+				add!(v.map(|v| v.with_timezone(&chrono::Utc)));
 			}
 			Value::Uuid(v) => {
 				add!(v.map(|v| v.to_string()));

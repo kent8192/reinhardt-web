@@ -179,24 +179,68 @@ fn postgres_rejects_temporal_precision_loss(
 }
 
 #[cfg(feature = "mysql")]
+fn fixed_offset_datetime_value(nanos: u32) -> Value {
+	use chrono::Timelike;
+
+	Value::ChronoDateTimeWithTimeZone(Some(Box::new(
+		chrono::DateTime::parse_from_rfc3339("2026-10-04T01:02:59+09:00")
+			.unwrap()
+			.with_nanosecond(nanos)
+			.unwrap(),
+	)))
+}
+
+#[cfg(feature = "mysql")]
 #[rstest]
-fn mysql_rejects_temporal_precision_loss() {
+fn mysql_accepts_fixed_offset_datetime_and_null() {
 	// Arrange
-	let values = Values(vec![temporal_value(4)]);
+	let values = Values(vec![
+		fixed_offset_datetime_value(123_456_000),
+		Value::ChronoDateTimeWithTimeZone(None),
+	]);
+
+	// Act
+	let arguments = mysql::arguments(values).unwrap();
+
+	// Assert
+	assert_eq!(sqlx::Arguments::len(&arguments), 2);
+}
+
+#[cfg(feature = "mysql")]
+#[rstest]
+#[case(
+	temporal_value(4),
+	"ChronoTime",
+	"sub-microsecond precision is unsupported"
+)]
+#[case(
+	temporal_value(1_000_000_000),
+	"ChronoTime",
+	"leap seconds are unsupported"
+)]
+#[case(
+	fixed_offset_datetime_value(4),
+	"ChronoDateTimeWithTimeZone",
+	"sub-microsecond precision is unsupported"
+)]
+#[case(
+	fixed_offset_datetime_value(1_000_000_000),
+	"ChronoDateTimeWithTimeZone",
+	"leap seconds are unsupported"
+)]
+fn mysql_rejects_temporal_precision_loss(
+	#[case] value: Value,
+	#[case] kind: &str,
+	#[case] reason: &str,
+) {
+	// Arrange
+	let values = Values(vec![Value::Int(Some(7)), value]);
 
 	// Act
 	let error = mysql::arguments(values).err().unwrap();
 
 	// Assert
-	assert_eq!(
-		error,
-		super::error(
-			"mysql",
-			1,
-			"ChronoTime",
-			"sub-microsecond precision is unsupported"
-		)
-	);
+	assert_eq!(error, super::error("mysql", 2, kind, reason));
 }
 
 #[cfg(feature = "sqlite")]
@@ -286,7 +330,7 @@ async fn generated_fetch_errors_propagate_through_orm_connection() {
 #[cfg(feature = "mysql")]
 #[rstest]
 #[tokio::test]
-async fn mysql_codecs_round_trip_decimal_precision_and_unsigned_range() {
+async fn mysql_codecs_round_trip_native_values() {
 	use crate::backends::{DatabaseBackend, MySqlBackend};
 	use reinhardt_query::{ColumnDef, MySqlQueryBuilder, QueryBuilder};
 	use sqlx::Row;
@@ -326,6 +370,26 @@ async fn mysql_codecs_round_trip_decimal_precision_and_unsigned_range() {
 		.values_panic([Value::from(decimal), big_decimal.clone().into()])
 		.to_owned();
 	let (sql, values) = statement.build(MySqlQueryBuilder);
+	let datetimes = [
+		(
+			"2026-10-04T01:02:03.123456+09:00",
+			"2026-10-03T16:02:03.123456Z",
+		),
+		(
+			"2026-10-04T23:02:03.654321-07:00",
+			"2026-10-05T06:02:03.654321Z",
+		),
+		(
+			"2026-10-04T12:02:03.000001+00:00",
+			"2026-10-04T12:02:03.000001Z",
+		),
+	]
+	.map(|(input, expected)| {
+		(
+			chrono::DateTime::parse_from_rfc3339(input).unwrap(),
+			expected.parse::<chrono::DateTime<chrono::Utc>>().unwrap(),
+		)
+	});
 
 	// Act
 	let result = backend.__execute_generated(&sql, values).await.unwrap();
@@ -341,6 +405,20 @@ async fn mysql_codecs_round_trip_decimal_precision_and_unsigned_range() {
 		.fetch_one(backend.pool())
 		.await
 		.unwrap();
+	let mut datetime_rows = Vec::with_capacity(datetimes.len());
+	for (datetime, _) in &datetimes {
+		let (sql, values) = Query::select()
+			.expr(Expr::val(*datetime))
+			.expr(Expr::val(datetime.with_timezone(&chrono::Utc)))
+			.expr(Expr::val(datetime.with_timezone(&chrono::Local)))
+			.expr(Expr::val(Value::ChronoDateTimeWithTimeZone(None)))
+			.build(MySqlQueryBuilder);
+		let row = sqlx::query_with(&sql, mysql::arguments(values).unwrap())
+			.fetch_one(backend.pool())
+			.await
+			.unwrap();
+		datetime_rows.push(row);
+	}
 
 	// Assert
 	assert_eq!(result.rows_affected, 1);
@@ -350,4 +428,10 @@ async fn mysql_codecs_round_trip_decimal_precision_and_unsigned_range() {
 		big_decimal
 	);
 	assert_eq!(unsigned_row.get::<u64, _>(0), u64::MAX);
+	for (row, (_, expected)) in datetime_rows.iter().zip(datetimes) {
+		assert_eq!(row.get::<chrono::DateTime<chrono::Utc>, _>(0), expected);
+		assert_eq!(row.get::<chrono::DateTime<chrono::Utc>, _>(1), expected);
+		assert_eq!(row.get::<chrono::DateTime<chrono::Utc>, _>(2), expected);
+		assert_eq!(row.get::<Option<chrono::DateTime<chrono::Utc>>, _>(3), None);
+	}
 }
