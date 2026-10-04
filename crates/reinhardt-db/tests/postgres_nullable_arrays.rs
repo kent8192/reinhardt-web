@@ -4,12 +4,19 @@
 
 use futures::TryStreamExt;
 use reinhardt_db::backends::{DatabaseBackend, PostgresBackend, QueryValue};
-use reinhardt_db::orm::QueryRow;
+use reinhardt_db::orm::connection::BackendsConnection;
+use reinhardt_db::orm::{
+	DatabaseArrayType, DatabaseConnectionLease, DatabaseScalar, DatabaseStorageKind, DatabaseValue,
+	FieldCodecError, FieldSelector, Manager, Model, QueryRow,
+};
 use reinhardt_query::{
-	ArrayType, Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
+	ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, PostgresQueryBuilder, Query,
+	QueryStatementBuilder, Value,
 };
 use rstest::*;
+use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
+use std::{collections::BTreeMap, sync::Arc};
 use testcontainers::{ContainerAsync, ImageExt, runners::AsyncRunner};
 use testcontainers_modules::postgres::Postgres;
 
@@ -266,6 +273,190 @@ async fn scalar_arrays_preserve_values_and_null_positions<T>(
 		}
 	}
 	transaction.rollback().await.unwrap();
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct NullableArrayModel<T> {
+	id: i64,
+	items: Vec<Option<T>>,
+}
+
+#[derive(Clone)]
+struct NullableArrayFields;
+
+impl FieldSelector for NullableArrayFields {
+	fn with_alias(self, _alias: &str) -> Self {
+		self
+	}
+}
+
+impl<T> Model for NullableArrayModel<T>
+where
+	T: DatabaseScalar + Clone + Serialize + for<'de> Deserialize<'de> + Send + Sync + 'static,
+{
+	type PrimaryKey = i64;
+	type Fields = NullableArrayFields;
+	type Objects = Manager<Self>;
+
+	fn table_name() -> &'static str {
+		"nullable_array_models"
+	}
+
+	fn primary_key(&self) -> Option<Self::PrimaryKey> {
+		Some(self.id)
+	}
+
+	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+		self.id = value;
+	}
+
+	fn new_fields() -> Self::Fields {
+		NullableArrayFields
+	}
+
+	fn encode_database_fields(&self) -> Result<BTreeMap<String, DatabaseValue>, FieldCodecError> {
+		let element_type = match T::STORAGE_KIND {
+			DatabaseStorageKind::String => DatabaseArrayType::String,
+			DatabaseStorageKind::I32 => DatabaseArrayType::I32,
+			DatabaseStorageKind::I64 => DatabaseArrayType::I64,
+			DatabaseStorageKind::Bool => DatabaseArrayType::Bool,
+			DatabaseStorageKind::F32 => DatabaseArrayType::F32,
+			DatabaseStorageKind::F64 => DatabaseArrayType::F64,
+			DatabaseStorageKind::Uuid => DatabaseArrayType::Uuid,
+			_ => panic!("test model requires a supported scalar array type"),
+		};
+		Ok(BTreeMap::from([
+			("id".to_owned(), DatabaseValue::I64(self.id)),
+			(
+				"items".to_owned(),
+				DatabaseValue::Array {
+					element_type,
+					values: self
+						.items
+						.iter()
+						.cloned()
+						.map(|value| value.map_or(DatabaseValue::Null, T::into_database_value))
+						.collect(),
+				},
+			),
+		]))
+	}
+}
+
+#[rstest]
+#[case::string(ColumnType::Text, ["kept".to_owned(), "tail".to_owned()])]
+#[case::int(ColumnType::Integer, [i32::MIN, i32::MAX])]
+#[case::bigint(ColumnType::BigInteger, [i64::MIN, i64::MAX])]
+#[case::bool(ColumnType::Boolean, [true, false])]
+#[case::float(ColumnType::Float, [1.5_f32, -2.5_f32])]
+#[case::double(ColumnType::Double, [3.5_f64, -4.5_f64])]
+#[case::uuid(ColumnType::Uuid, [uuid::Uuid::nil(), uuid::Uuid::from_u128(1)])]
+#[tokio::test]
+async fn manager_writes_preserve_nullable_array_elements<T>(
+	#[future] postgres_arrays: ArrayFixture,
+	#[case] column_type: ColumnType,
+	#[case] values: [T; 2],
+) where
+	T: DatabaseScalar
+		+ Clone
+		+ std::fmt::Debug
+		+ PartialEq
+		+ Serialize
+		+ for<'de> Deserialize<'de>
+		+ sqlx::Type<sqlx::Postgres>
+		+ sqlx::postgres::PgHasArrayType
+		+ for<'r> sqlx::Decode<'r, sqlx::Postgres>
+		+ Send
+		+ Sync
+		+ Unpin
+		+ 'static,
+{
+	// Arrange
+	let fixture = postgres_arrays.await;
+	let schema = Query::create_table()
+		.table(NullableArrayModel::<T>::table_name())
+		.col(ColumnDef::new("id").big_integer().primary_key(true))
+		.col(ColumnDef::new("items").array(column_type))
+		.to_string(PostgresQueryBuilder);
+	fixture.backend.execute(&schema, vec![]).await.unwrap();
+	let owner = BackendsConnection::new(Arc::new(PostgresBackend::new(
+		fixture.backend.pool().clone(),
+	)));
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let mut connection = lease.handle();
+	let manager = Manager::<NullableArrayModel<T>>::new();
+	let shapes = [
+		vec![
+			None,
+			Some(values[0].clone()),
+			None,
+			Some(values[1].clone()),
+			None,
+		],
+		vec![None, None],
+		values.iter().cloned().map(Some).collect(),
+		vec![],
+	];
+	let mut transaction = fixture.backend.begin().await.unwrap();
+	let mut updated_models = Vec::new();
+
+	for (index, items) in shapes.iter().enumerate() {
+		let model = NullableArrayModel {
+			id: index as i64 + 1,
+			items: items.clone(),
+		};
+
+		// Act
+		let created = manager
+			.create_with_conn(&mut connection, &model)
+			.await
+			.unwrap();
+		let transaction_model = NullableArrayModel {
+			id: model.id + 100,
+			items: model.items.clone(),
+		};
+		let transaction_created = manager
+			.insert_with_executor(transaction.as_mut(), &transaction_model)
+			.await
+			.unwrap();
+		let updated_model = NullableArrayModel {
+			id: model.id,
+			items: shapes[(index + 1) % shapes.len()].clone(),
+		};
+		let updated = manager
+			.update_with_conn(&mut connection, &updated_model)
+			.await
+			.unwrap();
+		let transaction_updated_model = NullableArrayModel {
+			id: transaction_model.id,
+			items: updated_model.items.clone(),
+		};
+		let transaction_updated = manager
+			.save_with_executor(transaction.as_mut(), &transaction_updated_model)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(created, model);
+		assert_eq!(transaction_created, transaction_model);
+		assert_eq!(updated, updated_model);
+		assert_eq!(transaction_updated, transaction_updated_model);
+		updated_models.extend([updated_model, transaction_updated_model]);
+	}
+	transaction.commit().await.unwrap();
+
+	for model in updated_models {
+		let sql = Query::select()
+			.column("items")
+			.from(NullableArrayModel::<T>::table_name())
+			.and_where(Expr::col("id").eq(model.id))
+			.to_string(PostgresQueryBuilder);
+		let stored: Vec<Option<T>> = sqlx::query_scalar(&sql)
+			.fetch_one(fixture.backend.pool())
+			.await
+			.unwrap();
+		assert_eq!(stored, model.items, "SQLx oracle for model {}", model.id);
+	}
 }
 
 #[cfg(feature = "sqlite")]

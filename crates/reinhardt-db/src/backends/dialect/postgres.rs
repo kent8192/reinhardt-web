@@ -14,24 +14,11 @@ use crate::backends::{
 	},
 	types::{
 		DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, RowStream, Savepoint,
-		TransactionExecutor,
+		TransactionExecutor, array_query_value,
 	},
 };
 #[cfg(feature = "pgvector")]
 use crate::orm::vector::PgVectorValue;
-
-/// Retain legacy array variants when no element is NULL.
-fn array_query_value<T>(
-	values: Option<Vec<Option<T>>>,
-	non_nullable: impl FnOnce(Vec<T>) -> QueryValue,
-	nullable: impl FnOnce(Vec<Option<T>>) -> QueryValue,
-) -> QueryValue {
-	match values {
-		Some(values) if values.iter().any(Option::is_none) => nullable(values),
-		Some(values) => non_nullable(values.into_iter().flatten().collect()),
-		None => QueryValue::Null,
-	}
-}
 
 #[cfg(not(feature = "pgvector"))]
 fn vector_support_disabled_error() -> DatabaseError {

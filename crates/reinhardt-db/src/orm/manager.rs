@@ -2189,71 +2189,109 @@ impl<M: Model> Manager<M> {
 			#[cfg(feature = "pgvector")]
 			reinhardt_query::value::Value::Vector(None) => QueryValue::Vector(None),
 			reinhardt_query::value::Value::Array(array_type, Some(values)) => {
+				use crate::backends::types::array_query_value;
 				use reinhardt_query::value::Value as SeaValue;
 
+				// DatabaseValue::Null becomes Int(None), regardless of the array's
+				// element type. Retain both these NULLs and typed NULL elements.
 				match array_type {
-					reinhardt_query::value::ArrayType::String => QueryValue::StringArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::String(Some(value)) => Some((**value).clone()),
-								_ => None,
-							})
-							.collect(),
+					reinhardt_query::value::ArrayType::String => array_query_value(
+						Some(
+							(*values)
+								.into_iter()
+								.filter_map(|value| match value {
+									SeaValue::String(value) => Some(value.map(|value| *value)),
+									value if value.is_null() => Some(None),
+									_ => None,
+								})
+								.collect(),
+						),
+						QueryValue::StringArray,
+						QueryValue::NullableStringArray,
 					),
-					reinhardt_query::value::ArrayType::Int => QueryValue::IntArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Int(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
+					reinhardt_query::value::ArrayType::Int => array_query_value(
+						Some(
+							(*values)
+								.into_iter()
+								.filter_map(|value| match value {
+									SeaValue::Int(value) => Some(value),
+									value if value.is_null() => Some(None),
+									_ => None,
+								})
+								.collect(),
+						),
+						QueryValue::IntArray,
+						QueryValue::NullableIntArray,
 					),
-					reinhardt_query::value::ArrayType::BigInt => QueryValue::BigIntArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::BigInt(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
+					reinhardt_query::value::ArrayType::BigInt => array_query_value(
+						Some(
+							(*values)
+								.into_iter()
+								.filter_map(|value| match value {
+									SeaValue::BigInt(value) => Some(value),
+									value if value.is_null() => Some(None),
+									_ => None,
+								})
+								.collect(),
+						),
+						QueryValue::BigIntArray,
+						QueryValue::NullableBigIntArray,
 					),
-					reinhardt_query::value::ArrayType::Bool => QueryValue::BoolArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Bool(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
+					reinhardt_query::value::ArrayType::Bool => array_query_value(
+						Some(
+							(*values)
+								.into_iter()
+								.filter_map(|value| match value {
+									SeaValue::Bool(value) => Some(value),
+									value if value.is_null() => Some(None),
+									_ => None,
+								})
+								.collect(),
+						),
+						QueryValue::BoolArray,
+						QueryValue::NullableBoolArray,
 					),
-					reinhardt_query::value::ArrayType::Float => QueryValue::FloatArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Float(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
+					reinhardt_query::value::ArrayType::Float => array_query_value(
+						Some(
+							(*values)
+								.into_iter()
+								.filter_map(|value| match value {
+									SeaValue::Float(value) => Some(value),
+									value if value.is_null() => Some(None),
+									_ => None,
+								})
+								.collect(),
+						),
+						QueryValue::FloatArray,
+						QueryValue::NullableFloatArray,
 					),
-					reinhardt_query::value::ArrayType::Double => QueryValue::DoubleArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Double(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
+					reinhardt_query::value::ArrayType::Double => array_query_value(
+						Some(
+							(*values)
+								.into_iter()
+								.filter_map(|value| match value {
+									SeaValue::Double(value) => Some(value),
+									value if value.is_null() => Some(None),
+									_ => None,
+								})
+								.collect(),
+						),
+						QueryValue::DoubleArray,
+						QueryValue::NullableDoubleArray,
 					),
-					reinhardt_query::value::ArrayType::Uuid => QueryValue::UuidArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Uuid(Some(value)) => Some(**value),
-								_ => None,
-							})
-							.collect(),
+					reinhardt_query::value::ArrayType::Uuid => array_query_value(
+						Some(
+							(*values)
+								.into_iter()
+								.filter_map(|value| match value {
+									SeaValue::Uuid(value) => Some(value.map(|value| *value)),
+									value if value.is_null() => Some(None),
+									_ => None,
+								})
+								.collect(),
+						),
+						QueryValue::UuidArray,
+						QueryValue::NullableUuidArray,
 					),
 					_ => QueryValue::Json(Some(Box::new(super::execution::array_values_to_json(
 						&values,
@@ -3272,14 +3310,16 @@ impl<M: Model> Default for Manager<M> {
 #[cfg(test)]
 mod tests {
 	use super::{Manager, build_delete_sql, field_codec_error};
-	#[cfg(feature = "pgvector")]
 	use crate::backends::types::QueryValue;
 	use crate::orm::Json;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
 	use crate::orm::inspection::FieldInfo;
 	use crate::orm::query::FilterValue;
-	use crate::orm::{DatabaseValue, FieldCodecContext, FieldCodecError, FieldSelector};
+	use crate::orm::{
+		DatabaseArrayType, DatabaseScalar, DatabaseValue, FieldCodecContext, FieldCodecError,
+		FieldSelector,
+	};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
@@ -4297,6 +4337,79 @@ mod tests {
 			));
 
 		assert_eq!(value, crate::orm::connection::QueryValue::IntArray(vec![7]));
+	}
+
+	#[rstest]
+	#[case::string(DatabaseArrayType::String, ["kept".to_owned(), "tail".to_owned()], QueryValue::StringArray, QueryValue::NullableStringArray, |value: Option<String>| reinhardt_query::Value::String(value.map(Box::new)))]
+	#[case::int(DatabaseArrayType::I32, [i32::MIN, i32::MAX], QueryValue::IntArray, QueryValue::NullableIntArray, reinhardt_query::Value::Int)]
+	#[case::bigint(DatabaseArrayType::I64, [i64::MIN, i64::MAX], QueryValue::BigIntArray, QueryValue::NullableBigIntArray, reinhardt_query::Value::BigInt)]
+	#[case::bool(DatabaseArrayType::Bool, [true, false], QueryValue::BoolArray, QueryValue::NullableBoolArray, reinhardt_query::Value::Bool)]
+	#[case::float(DatabaseArrayType::F32, [1.5_f32, -2.5_f32], QueryValue::FloatArray, QueryValue::NullableFloatArray, reinhardt_query::Value::Float)]
+	#[case::double(DatabaseArrayType::F64, [3.5_f64, -4.5_f64], QueryValue::DoubleArray, QueryValue::NullableDoubleArray, reinhardt_query::Value::Double)]
+	#[case::uuid(DatabaseArrayType::Uuid, [Uuid::nil(), Uuid::from_u128(1)], QueryValue::UuidArray, QueryValue::NullableUuidArray, |value: Option<Uuid>| reinhardt_query::Value::Uuid(value.map(Box::new)))]
+	fn manager_preserves_nullable_array_elements<T>(
+		#[case] element_type: DatabaseArrayType,
+		#[case] values: [T; 2],
+		#[case] non_nullable: fn(Vec<T>) -> QueryValue,
+		#[case] nullable: fn(Vec<Option<T>>) -> QueryValue,
+		#[case] encode: fn(Option<T>) -> reinhardt_query::Value,
+	) where
+		T: DatabaseScalar + Clone,
+	{
+		// Arrange
+		let mixed = vec![
+			None,
+			Some(values[0].clone()),
+			None,
+			Some(values[1].clone()),
+			None,
+		];
+		let all_null = vec![None, None];
+		let shapes = [
+			("mixed", mixed.clone(), nullable(mixed)),
+			("all_null", all_null.clone(), nullable(all_null)),
+			(
+				"non_null",
+				values.iter().cloned().map(Some).collect(),
+				non_nullable(values.to_vec()),
+			),
+			("empty", vec![], non_nullable(vec![])),
+		];
+		for (shape, elements, expected) in shapes {
+			let database_value = DatabaseValue::Array {
+				element_type,
+				values: elements
+					.iter()
+					.cloned()
+					.map(|value| value.map_or(DatabaseValue::Null, T::into_database_value))
+					.collect(),
+			};
+			let query_value = crate::orm::database_value_to_query_value(database_value);
+			let reinhardt_query::Value::Array(array_type, _) = &query_value else {
+				panic!("database array should retain its array type");
+			};
+			let typed_nulls = reinhardt_query::Value::Array(
+				array_type.clone(),
+				Some(Box::new(elements.into_iter().map(encode).collect())),
+			);
+			let whole_null = reinhardt_query::Value::Array(array_type.clone(), None);
+
+			// Act
+			let database_bound = Manager::<TestUser>::sea_value_to_query_value(query_value);
+			let typed_bound = Manager::<TestUser>::sea_value_to_query_value(typed_nulls);
+			let null_bound = Manager::<TestUser>::sea_value_to_query_value(whole_null);
+
+			// Assert
+			assert_eq!(
+				database_bound, expected,
+				"{element_type:?}: {shape} database values"
+			);
+			assert_eq!(
+				typed_bound, expected,
+				"{element_type:?}: {shape} typed NULLs"
+			);
+			assert_eq!(null_bound, QueryValue::Null, "{element_type:?}: whole NULL");
+		}
 	}
 
 	#[test]

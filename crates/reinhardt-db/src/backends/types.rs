@@ -118,6 +118,20 @@ pub enum QueryValue {
 	NullableUuidArray(Vec<Option<Uuid>>),
 }
 
+/// Retain legacy array variants when no element is NULL.
+#[cfg(any(feature = "postgres", feature = "orm"))]
+pub(crate) fn array_query_value<T>(
+	values: Option<Vec<Option<T>>>,
+	non_nullable: impl FnOnce(Vec<T>) -> QueryValue,
+	nullable: impl FnOnce(Vec<Option<T>>) -> QueryValue,
+) -> QueryValue {
+	match values {
+		Some(values) if values.iter().any(Option::is_none) => nullable(values),
+		Some(values) => non_nullable(values.into_iter().flatten().collect()),
+		None => QueryValue::Null,
+	}
+}
+
 impl From<&str> for QueryValue {
 	fn from(s: &str) -> Self {
 		QueryValue::String(s.to_string())
