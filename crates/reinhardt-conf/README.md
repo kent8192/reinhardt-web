@@ -73,6 +73,11 @@ Available features:
 - `secret-rotation`: Automatic secret rotation
 - `encryption`: Built-in encryption for sensitive settings
 
+When depending directly on `reinhardt-conf`, `dynamic-database` supports
+`default-features = false` without enabling `settings`. The settings module and
+its types remain available through `reinhardt_conf::settings`; the `settings`
+feature enables convenience re-exports at the crate root.
+
 ## Usage
 
 ```rust
