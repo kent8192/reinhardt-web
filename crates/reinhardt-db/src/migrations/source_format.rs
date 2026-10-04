@@ -1,5 +1,6 @@
 //! Versioned, source-preserving migration-file upgrades.
 
+use super::source_assets::SqlAssetScope;
 use super::{MigrationError, Result};
 use proc_macro2::{LineColumn, Span, TokenStream};
 use quote::quote;
@@ -29,7 +30,16 @@ pub struct UpgradeResult {
 /// The upgrader intentionally accepts only the generated migration expression
 /// and known framework-owned struct literals. Other Rust code is left alone;
 /// malformed or ambiguous generated shapes fail closed before any write.
+/// SQL includes require native `SqlAssetContext::upgrade_source`; this pathless
+/// API never infers a root or reads assets from the current directory.
 pub fn upgrade_source(source: &str) -> Result<UpgradeResult> {
+	upgrade_source_with_assets(source, &mut None)
+}
+
+pub(crate) fn upgrade_source_with_assets(
+	source: &str,
+	assets: &mut Option<SqlAssetScope<'_>>,
+) -> Result<UpgradeResult> {
 	let marker = parse_marker(source)?;
 	if let Some(version) = marker
 		&& version > CURRENT_SOURCE_FORMAT_VERSION
@@ -51,7 +61,9 @@ pub fn upgrade_source(source: &str) -> Result<UpgradeResult> {
 		let file = syn::parse_file(&current).map_err(|error| {
 			MigrationError::InvalidMigration(format!("failed to parse migration source: {error}"))
 		})?;
-		super::ast_parser::extract_migration_metadata_strict(&file, "<app>", "<name>")?;
+		super::ast_parser::extract_migration_metadata_with_assets(
+			&file, "<app>", "<name>", assets,
+		)?;
 	}
 
 	let needs_marker = marker != Some(CURRENT_SOURCE_FORMAT_VERSION);
@@ -60,7 +72,7 @@ pub fn upgrade_source(source: &str) -> Result<UpgradeResult> {
 	}
 
 	if converted {
-		validate_semantics(source, &current)?;
+		validate_semantics(source, &current, assets)?;
 	}
 
 	Ok(UpgradeResult {
@@ -170,6 +182,13 @@ pub fn has_source_format_marker(source: &str) -> Result<bool> {
 }
 
 pub(crate) fn validate_source_version(source: &str) -> Result<()> {
+	validate_source_version_with_assets(source, &mut None)
+}
+
+pub(crate) fn validate_source_version_with_assets(
+	source: &str,
+	assets: &mut Option<SqlAssetScope<'_>>,
+) -> Result<()> {
 	let marker = parse_marker(source)?;
 	if let Some(version) = marker
 		&& version > CURRENT_SOURCE_FORMAT_VERSION
@@ -180,7 +199,7 @@ pub(crate) fn validate_source_version(source: &str) -> Result<()> {
 		)));
 	}
 	if marker == Some(CURRENT_SOURCE_FORMAT_VERSION) {
-		upgrade_source(source)?;
+		upgrade_source_with_assets(source, assets)?;
 	}
 	Ok(())
 }
@@ -502,6 +521,36 @@ fn normalize_legacy_drop_column_string(expression: Expr) -> Expr {
 	expression
 }
 
+fn normalize_builder_string(mut expression: Expr) -> Expr {
+	// Struct fields supply a concrete String target for into(); generic builder
+	// arguments do not. Retain literal conversion chains with explicit ownership.
+	let mut current = &mut expression;
+	loop {
+		match current {
+			Expr::Paren(paren) => current = &mut paren.expr,
+			Expr::Group(group) => current = &mut group.expr,
+			Expr::MethodCall(call)
+				if call.args.is_empty()
+					&& call
+						.turbofish
+						.as_ref()
+						.is_none_or(|args| args.args.is_empty())
+					&& (call.method == "into"
+						|| call.method == "to_owned"
+						|| call.method == "to_string") =>
+			{
+				if call.method == "into" {
+					call.method = syn::Ident::new("to_owned", call.method.span());
+					call.turbofish = None;
+				}
+				current = &mut call.receiver;
+			}
+			_ => break,
+		}
+	}
+	expression
+}
+
 fn convert_migration(expression: &ExprStruct) -> Result<TokenStream> {
 	let uses_default_rest = validate_migration_fields(
 		expression,
@@ -519,8 +568,8 @@ fn convert_migration(expression: &ExprStruct) -> Result<TokenStream> {
 			"optional_dependencies",
 		],
 	)?;
-	let name = field_expression(expression, "name")?;
-	let app_label = field_expression(expression, "app_label")?;
+	let name = normalize_builder_string(field_expression(expression, "name")?);
+	let app_label = normalize_builder_string(field_expression(expression, "app_label")?);
 	let migration_path = &expression.path;
 	let mut builder = quote! { #migration_path :: new(#name, #app_label) };
 	let operations_expression = field_expression(expression, "operations")?;
@@ -534,10 +583,14 @@ fn convert_migration(expression: &ExprStruct) -> Result<TokenStream> {
 	}
 	let dependencies = field_expression(expression, "dependencies")?;
 	for (app, migration) in tuple_pairs(dependencies, "dependencies")? {
+		let app = normalize_builder_string(app);
+		let migration = normalize_builder_string(migration);
 		builder.extend(quote! { .add_dependency(#app, #migration) });
 	}
 	if let Some(replacements) = optional_field_expression(expression, "replaces") {
 		for (app, migration) in tuple_pairs(replacements, "replaces")? {
+			let app = normalize_builder_string(app);
+			let migration = normalize_builder_string(migration);
 			builder.extend(quote! { .add_replacement(#app, #migration) });
 		}
 	}
@@ -1084,7 +1137,11 @@ fn raw_string_end(source: &str, start: usize) -> Option<usize> {
 	None
 }
 
-fn validate_semantics(before: &str, after: &str) -> Result<()> {
+fn validate_semantics(
+	before: &str,
+	after: &str,
+	assets: &mut Option<SqlAssetScope<'_>>,
+) -> Result<()> {
 	let before = convert_legacy_source(before)?.0;
 	let before_file = syn::parse_file(&before).map_err(|error| {
 		MigrationError::InvalidMigration(format!(
@@ -1096,10 +1153,18 @@ fn validate_semantics(before: &str, after: &str) -> Result<()> {
 			"failed to parse upgraded migration source: {error}"
 		))
 	})?;
-	let before =
-		super::ast_parser::extract_migration_metadata_strict(&before_file, "<app>", "<name>")?;
-	let after =
-		super::ast_parser::extract_migration_metadata_strict(&after_file, "<app>", "<name>")?;
+	let before = super::ast_parser::extract_migration_metadata_with_assets(
+		&before_file,
+		"<app>",
+		"<name>",
+		assets,
+	)?;
+	let after = super::ast_parser::extract_migration_metadata_with_assets(
+		&after_file,
+		"<app>",
+		"<name>",
+		assets,
+	)?;
 	if !super::ast_parser::same_migration_semantics(&before, &after) {
 		return Err(invalid_shape(
 			"migration source upgrade changed migration semantics",

@@ -4,6 +4,7 @@
 //! from parsed Rust ASTs. Cross-app `MoveModel` literals retain app labels,
 //! the table-rename flag, and optional table names through filesystem round trips.
 
+use super::source_assets::{SqlAssetScope, parse_sql_payload};
 use super::{Migration, MigrationError, Result};
 use quote::ToTokens;
 use reinhardt_query::value::Value as QueryValue;
@@ -51,18 +52,31 @@ pub fn extract_migration_metadata(ast: &File, app_label: &str, name: &str) -> Re
 /// Swappable and optional dependencies are parsed from their constructor forms.
 /// Operation payloads that this parser cannot reconstruct exactly are rejected
 /// with an operation and field position instead of being silently discarded.
+/// Literal `RunSQL` includes require native `SqlAssetContext` and its explicit
+/// source path and migration root. This pathless API never reads SQL files.
 pub fn extract_migration_metadata_strict(
 	ast: &File,
 	app_label: &str,
 	name: &str,
 ) -> Result<Migration> {
+	extract_migration_metadata_with_assets(ast, app_label, name, &mut None)
+}
+
+pub(crate) fn extract_migration_metadata_with_assets(
+	ast: &File,
+	app_label: &str,
+	name: &str,
+	assets: &mut Option<SqlAssetScope<'_>>,
+) -> Result<Migration> {
 	let mut expressions = migration_functions(ast).map(migration_expression);
 	let migration_expr = expressions.next().transpose()?.ok_or_else(|| {
 		MigrationError::InvalidMigration("Missing migration() entrypoint".to_string())
 	})?;
-	let migration = extract_migration_expression_strict(ast, migration_expr, app_label, name)?;
+	let migration =
+		extract_migration_expression_strict(ast, migration_expr, app_label, name, assets)?;
 	for expression in expressions {
-		let variant = extract_migration_expression_strict(ast, expression?, app_label, name)?;
+		let variant =
+			extract_migration_expression_strict(ast, expression?, app_label, name, assets)?;
 		if !same_migration_semantics(&migration, &variant) {
 			return Err(MigrationError::InvalidMigration(
 				"migration() entrypoints have different semantics before cfg expansion".to_string(),
@@ -105,9 +119,11 @@ fn extract_migration_expression_strict(
 	migration_expr: &Expr,
 	app_label: &str,
 	name: &str,
+	assets: &mut Option<SqlAssetScope<'_>>,
 ) -> Result<Migration> {
 	if matches!(migration_expr, Expr::Call(_) | Expr::MethodCall(_)) {
-		let mut migration = parse_migration_builder_strict(migration_expr, app_label, name)?;
+		let mut migration =
+			parse_migration_builder_strict(migration_expr, app_label, name, assets)?;
 		if let Some(standalone_atomic) = extract_atomic(ast)? {
 			if builder_declares_atomic(migration_expr) && migration.atomic != standalone_atomic {
 				return Err(MigrationError::InvalidMigration(
@@ -148,7 +164,7 @@ fn extract_migration_expression_strict(
 			)
 		})?;
 	let dependencies = parse_tuple_vec_expr_strict(&dependencies_expr, "dependencies")?;
-	let operations = parse_operations_vec_strict(&operations_expr)?;
+	let operations = parse_operations_vec_strict(&operations_expr, assets)?;
 	let replaces = extract_field_from_migration_struct(migration_expr, "replaces")
 		.map(|expression| parse_tuple_vec_expr_strict(&expression, "replaces"))
 		.transpose()?
@@ -201,7 +217,12 @@ fn builder_declares_atomic(mut expr: &Expr) -> bool {
 	false
 }
 
-fn parse_migration_builder_strict(expr: &Expr, app_label: &str, name: &str) -> Result<Migration> {
+fn parse_migration_builder_strict(
+	expr: &Expr,
+	app_label: &str,
+	name: &str,
+	assets: &mut Option<SqlAssetScope<'_>>,
+) -> Result<Migration> {
 	// Collect borrowed calls from the outside in, then apply them in source order.
 	// Recursing through receivers consumes stack space for every migration operation.
 	let mut calls = Vec::new();
@@ -225,9 +246,11 @@ fn parse_migration_builder_strict(expr: &Expr, app_label: &str, name: &str) -> R
 		match call.method.to_string().as_str() {
 			"add_operation" if call.args.len() == 1 => {
 				let index = migration.operations.len();
-				migration
-					.operations
-					.push(parse_single_operation_strict(&call.args[0], index)?);
+				migration.operations.push(parse_single_operation_strict(
+					&call.args[0],
+					index,
+					assets,
+				)?);
 			}
 			"add_dependency" if call.args.len() == 2 => {
 				let dependency_app = extract_string_expr(&call.args[0]).ok_or_else(|| {
@@ -645,16 +668,23 @@ fn parse_operations_vec(expr: &Expr) -> Vec<super::Operation> {
 	operations
 }
 
-fn parse_operations_vec_strict(expr: &Expr) -> Result<Vec<super::Operation>> {
+fn parse_operations_vec_strict(
+	expr: &Expr,
+	assets: &mut Option<SqlAssetScope<'_>>,
+) -> Result<Vec<super::Operation>> {
 	let expressions = parse_vec_expressions(expr, "operations")?;
 	expressions
 		.iter()
 		.enumerate()
-		.map(|(index, expression)| parse_single_operation_strict(expression, index))
+		.map(|(index, expression)| parse_single_operation_strict(expression, index, assets))
 		.collect()
 }
 
-fn parse_single_operation_strict(expr: &Expr, index: usize) -> Result<super::Operation> {
+fn parse_single_operation_strict(
+	expr: &Expr,
+	index: usize,
+	assets: &mut Option<SqlAssetScope<'_>>,
+) -> Result<super::Operation> {
 	let operation_name = match expr {
 		Expr::Struct(operation) => operation
 			.path
@@ -903,14 +933,27 @@ fn parse_single_operation_strict(expr: &Expr, index: usize) -> Result<super::Ope
 			}
 			"RunSQL" => {
 				validate_exact_named_fields(&operation.fields, &["sql", "reverse_sql"], &context)?;
-				return Ok(super::Operation::RunSQL {
-					sql: parse_string_field_strict(&operation.fields, "sql", &context)?,
-					reverse_sql: parse_optional_string_field_strict(
-						&operation.fields,
-						"reverse_sql",
-						&context,
-					)?,
-				});
+				let sql = strict_field_expression(&operation.fields, "sql")
+					.ok_or_else(|| strict_payload_error(&context, "sql"))?;
+				let sql = parse_sql_payload(sql, &format!("{context}.sql"), assets)?;
+				let reverse = strict_field_expression(&operation.fields, "reverse_sql")
+					.ok_or_else(|| strict_payload_error(&context, "reverse_sql"))?;
+				let reverse_sql = if is_none_expression(reverse) {
+					None
+				} else if let Expr::Call(call) = reverse
+					&& let Expr::Path(path) = &*call.func
+					&& path.path.is_ident("Some")
+					&& call.args.len() == 1
+				{
+					Some(parse_sql_payload(
+						&call.args[0],
+						&format!("{context}.reverse_sql"),
+						assets,
+					)?)
+				} else {
+					return Err(strict_payload_error(&context, "reverse_sql"));
+				};
+				return Ok(super::Operation::RunSQL { sql, reverse_sql });
 			}
 			"RunRust" => {
 				validate_exact_named_fields(
@@ -5686,7 +5729,7 @@ mod parser_tests {
 			syn::parse_str(&tokens).expect("generated operation tokens must parse");
 
 		assert_eq!(
-			super::parse_single_operation_strict(&expression, 0).unwrap(),
+			super::parse_single_operation_strict(&expression, 0, &mut None).unwrap(),
 			operation,
 			"generated operation tokens must preserve CreateTable backend options: {tokens}"
 		);
@@ -6144,7 +6187,7 @@ mod parser_tests {
 			Some(operation.clone())
 		);
 		assert_eq!(
-			super::parse_single_operation_strict(&expression, 0)
+			super::parse_single_operation_strict(&expression, 0, &mut None)
 				.expect("generated DropNamedIndex should pass strict parsing"),
 			operation
 		);
