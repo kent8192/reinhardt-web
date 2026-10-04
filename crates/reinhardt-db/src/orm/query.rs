@@ -3628,68 +3628,9 @@ where
 		}
 	}
 
-	/// Convert FilterValue to reinhardt_query::value::Value
-	/// Convert Expression to reinhardt-query Expr for use in WHERE clauses
-	///
-	/// Uses Expr::cust() for arithmetic operations as reinhardt-query doesn't provide
-	/// multiply/divide/etc. methods. SQL injection risk is low since F() only
-	/// accepts field names.
+	// Filters and updates share the runtime expression lowering path.
 	fn expression_to_query_expr(expr: &super::annotation::Expression) -> Expr {
-		use crate::orm::annotation::Expression;
-
-		match expr {
-			Expression::Add(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} + {})", left_sql, right_sql))
-			}
-			Expression::Subtract(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} - {})", left_sql, right_sql))
-			}
-			Expression::Multiply(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} * {})", left_sql, right_sql))
-			}
-			Expression::Divide(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} / {})", left_sql, right_sql))
-			}
-			Expression::Case { whens, default } => {
-				let mut case_sql = "CASE".to_string();
-				for when in whens.iter() {
-					// Use When::to_sql() which generates "WHEN condition THEN value"
-					case_sql.push_str(&format!(" {}", when.to_sql()));
-				}
-				if let Some(default_val) = default {
-					case_sql.push_str(&format!(
-						" ELSE {}",
-						Self::annotation_value_to_sql(default_val)
-					));
-				}
-				case_sql.push_str(" END");
-				Expr::cust(case_sql)
-			}
-			Expression::Coalesce(values) => {
-				let value_sqls = values
-					.iter()
-					.map(|v| Self::annotation_value_to_sql(v))
-					.collect::<Vec<_>>()
-					.join(", ");
-				Expr::cust(format!("COALESCE({})", value_sqls))
-			}
-		}
-	}
-
-	/// Convert AnnotationValue to SQL string for custom expressions
-	///
-	/// Delegates to the `AnnotationValue::to_sql()` method which provides
-	/// complete SQL generation for all annotation value types.
-	fn annotation_value_to_sql(value: &super::annotation::AnnotationValue) -> String {
-		value.to_sql()
+		expr.to_query_expr()
 	}
 
 	fn filter_lhs_expr(filter: &Filter) -> Expr {
@@ -4451,10 +4392,13 @@ where
 		}
 
 		for annotation in &self.annotations {
-			stmt.expr_as(
-				Expr::cust(annotation.value.to_sql_expr()),
-				Alias::new(&annotation.alias),
-			);
+			let expression = match &annotation.value {
+				super::annotation::AnnotationValue::Expression(expression) => {
+					expression.to_query_expr()
+				}
+				value => Expr::cust(value.to_sql_expr()),
+			};
+			stmt.expr_as(expression, Alias::new(&annotation.alias));
 		}
 
 		for cte in self.ctes.iter() {
@@ -7048,6 +6992,58 @@ mod tests {
 		id: Option<i64>,
 		username: String,
 		email: String,
+	}
+
+	#[rstest]
+	#[case::empty_and(crate::orm::expressions::Q::empty(), "TRUE", "TRUE")]
+	#[case::empty_or(crate::orm::expressions::Q::Combined {
+		operator: crate::orm::expressions::QOperator::Or,
+		conditions: vec![],
+	}, "FALSE", "FALSE")]
+	#[case::empty_not(crate::orm::expressions::Q::Combined {
+		operator: crate::orm::expressions::QOperator::Not,
+		conditions: vec![],
+	}, "NOT (TRUE)", "NOT ((TRUE))")]
+	#[case::negated_and(crate::orm::expressions::Q::empty().not(), "NOT (TRUE)", "NOT ((TRUE))")]
+	#[case::nested(crate::orm::expressions::Q::empty().or(
+		crate::orm::expressions::Q::empty().not()
+	).and(crate::orm::expressions::Q::empty()), "((TRUE OR NOT (TRUE)) AND TRUE)", "(((TRUE OR NOT ((TRUE)))) AND TRUE)")]
+	fn case_empty_conditions_render_for_each_backend(
+		#[case] condition: crate::orm::expressions::Q,
+		#[case] expected_condition: &str,
+		#[case] expected_postgres_condition: &str,
+		#[values(
+			DatabaseBackend::Postgres,
+			DatabaseBackend::MySql,
+			DatabaseBackend::Sqlite
+		)]
+		backend: DatabaseBackend,
+	) {
+		use crate::orm::annotation::{AnnotationValue, Expression, Value, When};
+		// Arrange
+		let expression = Expression::Case {
+			whens: vec![When::new(condition, AnnotationValue::Value(Value::Int(1)))],
+			default: Some(Box::new(AnnotationValue::Value(Value::Int(0)))),
+		};
+		let mut statement = reinhardt_query::Query::select();
+		statement.expr(QuerySet::<TestUser>::expression_to_query_expr(&expression));
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+		// Assert: identities are SQL constants, independent of placeholders or backend.
+		// PostgreSQL also groups custom AST operands in its renderer.
+		let expected_condition = match backend {
+			DatabaseBackend::Postgres => expected_postgres_condition,
+			DatabaseBackend::MySql | DatabaseBackend::Sqlite => expected_condition,
+		};
+		assert_eq!(
+			sql,
+			format!("SELECT CASE WHEN {expected_condition} THEN 1 ELSE 0 END")
+		);
+		assert_eq!(values, Values(vec![]));
 	}
 
 	impl TestUser {

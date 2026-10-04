@@ -308,6 +308,13 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 
 ### Query with QuerySet
 
+Runtime `Expression::Case` conditions treat `Q::empty()` (empty AND) as TRUE
+and an empty OR as FALSE. NOT negates the entire condition, including these
+identities, so a negated empty AND is FALSE. This applies to expression filters,
+updates, and annotations, including nested expressions. The standalone
+compatibility renderers `Q::to_sql()`, `When::to_sql()`, and
+`Expression::to_sql()` retain their existing output.
+
 Case-sensitive `Contains`, `StartsWith`, and `EndsWith` lookups escape literal
 `%`, `_`, and backslash characters in their bound patterns. Column identifiers
 use the selected backend's quoting. MySQL renders the escape character as
