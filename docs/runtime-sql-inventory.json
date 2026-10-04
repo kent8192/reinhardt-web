@@ -19284,275 +19284,280 @@
       "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
       "symbol": "ContentTypeQuery::all",
       "kind": "execution-wrapper",
-      "line": 279,
-      "fingerprint": "90d4cf0838043fe6ab0a268ed383b985e781b5bc4e6742e9a3c1985579047773",
+      "line": 281,
+      "fingerprint": "5edfe06fbc7f8e6b42e907cbaf50327b65c4c12c12e02b06dccc95825d39ae2e",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/orm_integration.rs::ContentTypeQuery::all::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
       "symbol": "ContentTypeQuery::all",
       "kind": "executor",
-      "line": 279,
-      "fingerprint": "235d870db755c12be0179fd765ce2f72a1f15c57395eef05d60fe5bca72b5f2b",
+      "line": 281,
+      "fingerprint": "8ee04057e1f008b9c46ad76baa7dee9236efb20cd42c7d0d32e842cf5d0b9fbe",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/orm_integration.rs::ContentTypeQuery::count::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
       "symbol": "ContentTypeQuery::count",
       "kind": "execution-wrapper",
-      "line": 374,
-      "fingerprint": "d69a610a014c0bd0a5eb46ba883cfd36b91b5871c97ba5e58322438a765fed32",
+      "line": 376,
+      "fingerprint": "6fce6fc61baf6a63e87cbe45160c3302994f6a7cb0a2095fb5c9c1dd521f8b37",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/orm_integration.rs::ContentTypeQuery::count::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
       "symbol": "ContentTypeQuery::count",
       "kind": "executor",
-      "line": 374,
-      "fingerprint": "a56f9b2c25c409c417086d8c7f4f971e02dff7029fe485e8698c4b97aaf66023",
+      "line": 376,
+      "fingerprint": "e0bf3c5db79a04a14897e0ec6625f9ecf0b4ee9d417ac9f311a2ae74e52b2d82",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/orm_integration.rs::ContentTypeTransaction::create::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
       "symbol": "ContentTypeTransaction::create",
       "kind": "execution-wrapper",
-      "line": 446,
-      "fingerprint": "305c8ad94f043216ca3bb519e3d5803b3fb6f18da8174a2276d2f113750e6cf4",
+      "line": 448,
+      "fingerprint": "4b98424be24dbcb9032604254c862869ab26ad7367d6a68caed0f7ae0973de65",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/orm_integration.rs::ContentTypeTransaction::create::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
       "symbol": "ContentTypeTransaction::create",
       "kind": "execution-wrapper",
-      "line": 454,
-      "fingerprint": "8d5fcc593d9047d285ccf547ed2fdc9a1aff4131c13b7d7f81223736f444e256",
+      "line": 467,
+      "fingerprint": "7f4460f8439ea847a200ee07ce98bde67757b39f196812c93fee71aef3f0de4c",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/orm_integration.rs::ContentTypeTransaction::create::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
       "symbol": "ContentTypeTransaction::create",
       "kind": "executor",
-      "line": 446,
-      "fingerprint": "fa4d656955878701c3e0c292450d03796a7462f72cd6af833c84b5a0cbcc2d89",
+      "line": 448,
+      "fingerprint": "e03051decf3e46242c104431f8a253607a156dc0c4a458b93c052903a576436f",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/orm_integration.rs::ContentTypeTransaction::create::executor#2",
       "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
       "symbol": "ContentTypeTransaction::create",
       "kind": "executor",
-      "line": 454,
-      "fingerprint": "39b9fe58a365d275d00a2900d8120acfb5527c174602c196d468049fe13d86fd",
+      "line": 467,
+      "fingerprint": "e03051decf3e46242c104431f8a253607a156dc0c4a458b93c052903a576436f",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/contenttypes/orm_integration.rs::ContentTypeTransaction::create::sql-literal#1",
-      "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
-      "symbol": "ContentTypeTransaction::create",
-      "kind": "sql-literal",
-      "line": 454,
-      "fingerprint": "af138899e5b926cf63bc88e78849da9a617c3adc2764dd8e2163a82d662548da",
-      "conditions": [
-        "# [cfg (feature = \"database\")]"
-      ],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
+      "status": "typed",
       "operation": "dml",
-      "representation": "review-required",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/orm_integration.rs::ContentTypeTransaction::delete::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
       "symbol": "ContentTypeTransaction::delete",
       "kind": "execution-wrapper",
-      "line": 481,
-      "fingerprint": "d3f4707af092a6446e1c7272bf43fe7d0f9dc9cae13326fc74b4ad97b9c4cbac",
+      "line": 494,
+      "fingerprint": "46ec24d13159e5e26700d10f57ce1b57052dc613abbf4fbf2e26e10f1047995c",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/orm_integration.rs::ContentTypeTransaction::delete::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/orm_integration.rs",
       "symbol": "ContentTypeTransaction::delete",
       "kind": "executor",
-      "line": 481,
-      "fingerprint": "58aecd7efe5bd81cb84c6b2a4477772d08e05a51659f59138f2a09a5c6c80960",
+      "line": 494,
+      "fingerprint": "b9cc11390909df7b2532dcf3379bbf87e3b880205f7e852a9568947c0bfe51da",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/permissions.rs::PermissionAction as FromStr::from_str::sql-literal#1",
@@ -19605,875 +19610,754 @@
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::delete",
       "kind": "execution-wrapper",
-      "line": 708,
-      "fingerprint": "12f57ad3132dcf4905a4309f9c8fa3ba114a4bfa857bcb7e0068fb3cb0692c8c",
+      "line": 704,
+      "fingerprint": "31adec1d8d045920b1b6f7334afff10a0112bae7884c29f894b8e681c5e86a67",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::delete::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::delete",
       "kind": "executor",
-      "line": 708,
-      "fingerprint": "f94d4dc3e74c05aadcae2880c1d1dee2b0ab6763a98df9ec91d6cd27c69f6b1e",
+      "line": 704,
+      "fingerprint": "123419988b85c66dc835ade37bd48075313a8ebb423be15fdbfe12de91e1f088",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::exists::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::exists",
       "kind": "execution-wrapper",
-      "line": 731,
-      "fingerprint": "d37aed1974a24305aa9a9fd075861f0d9228565e34009e79a32326ee26d96a99",
+      "line": 727,
+      "fingerprint": "57475a839d88829375ec2e9d79e5c737e0558a279121d1d6b5d416887468a319",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::exists::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::exists",
       "kind": "executor",
-      "line": 731,
-      "fingerprint": "25b8613951575154977e7d126634322a8b93eb93dfd0cfb67e297cacda1414d1",
+      "line": 727,
+      "fingerprint": "eaa4870cb55d322079fe5d9e914558d70eeb3013823ba097bd98c9cc3e30aac0",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::get::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::get",
       "kind": "execution-wrapper",
-      "line": 478,
-      "fingerprint": "a7ae97719cb90ff57592365d24bd89e10c4cd363f8cb7bfca2fc19940a71ad16",
+      "line": 463,
+      "fingerprint": "d144ef821f6a9d3070a9f3b5a6e4d1c7d8f4eaadbd8219da20d27e0c5a09dea8",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::get::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::get",
       "kind": "executor",
-      "line": 478,
-      "fingerprint": "91594266bf9468ce76ff5c24dc8652f60cb84634bb92cc5d01b604027bedca0b",
+      "line": 463,
+      "fingerprint": "7f345bf673c9fee11779a0e55fbce84425ca4c2c32cfbad30f30ca974eb9011c",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::get_by_id::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::get_by_id",
       "kind": "execution-wrapper",
-      "line": 520,
-      "fingerprint": "d7bda7f65375f0dff6a4fe3ee87aa2d7f93fbd44b9c7f1c0c7589fa7c7955e7a",
+      "line": 505,
+      "fingerprint": "53e44c777e7c2e1b86e3bbbf7b1d17c66587e966c9904ca89533a35d1493b4da",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::get_by_id::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::get_by_id",
       "kind": "executor",
-      "line": 520,
-      "fingerprint": "2bde6490fd54d085de81959bbc9724b9e3fcdd0bffe846b9e7d6e1f78834c315",
+      "line": 505,
+      "fingerprint": "bc0ef343d2394e40657b3d69fc94875ed68bdb38c75524f5a17c3431c3508b7e",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::load_all::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::load_all",
       "kind": "execution-wrapper",
-      "line": 576,
-      "fingerprint": "18bf946f7c548ec2aa5fc01ea0f557c4fc922ddbfd63b7b21f270ac8c15324f7",
+      "line": 561,
+      "fingerprint": "20bb0ef2b8d581262c46bc3aaecb9c1637aa0c794f61920804581fe1950dbd8d",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::load_all::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::load_all",
       "kind": "executor",
-      "line": 576,
-      "fingerprint": "96365d362ad90850d126cccb17a416d7ba71a947d09fc17e6f51c8d515cd85cd",
+      "line": 561,
+      "fingerprint": "1441ecfe4dc72251b82a1451e946ec706c3a7283cda752413e7ffd146dcae98b",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::save::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::save",
       "kind": "execution-wrapper",
-      "line": 618,
-      "fingerprint": "4db895d5272d3c9350df379d0fd7ce4a385a963392a7dbdb5cada20179478257",
+      "line": 603,
+      "fingerprint": "3f9c342006f60abe9501effda9882e731e3c0cb9e92ec301bb0377de3fc768a0",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::save::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::save",
       "kind": "execution-wrapper",
-      "line": 638,
-      "fingerprint": "4d7857cc2d7dfb149f6f3492dacbf1b9f360d90eac86fec15c6ee312c2ecd05c",
+      "line": 623,
+      "fingerprint": "83e9fb96b97ee560933754b43ab50e6e861f7614d31ebd5a63a693418f100874",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::save::execution-wrapper#3",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::save",
       "kind": "execution-wrapper",
-      "line": 666,
-      "fingerprint": "4db895d5272d3c9350df379d0fd7ce4a385a963392a7dbdb5cada20179478257",
+      "line": 651,
+      "fingerprint": "3f9c342006f60abe9501effda9882e731e3c0cb9e92ec301bb0377de3fc768a0",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::save::execution-wrapper#4",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::save",
       "kind": "execution-wrapper",
-      "line": 677,
-      "fingerprint": "7eb1c36c96382cd8afb8d359395cd6eb6ac447700570c6c7d296c57f67a35f11",
+      "line": 673,
+      "fingerprint": "83e9fb96b97ee560933754b43ab50e6e861f7614d31ebd5a63a693418f100874",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::save::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::save",
       "kind": "executor",
-      "line": 618,
-      "fingerprint": "3634a6546e62a3d9a82b03b62aa12acca812ca3a44c2116daf7a5084008e98d7",
+      "line": 603,
+      "fingerprint": "6f282049a8ef4274ff02741d592c4c15bbcbd417d764486570641262ffa7cb4d",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::save::executor#2",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::save",
       "kind": "executor",
-      "line": 638,
-      "fingerprint": "3634a6546e62a3d9a82b03b62aa12acca812ca3a44c2116daf7a5084008e98d7",
+      "line": 623,
+      "fingerprint": "6f282049a8ef4274ff02741d592c4c15bbcbd417d764486570641262ffa7cb4d",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::save::executor#3",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::save",
       "kind": "executor",
-      "line": 666,
-      "fingerprint": "3634a6546e62a3d9a82b03b62aa12acca812ca3a44c2116daf7a5084008e98d7",
+      "line": 651,
+      "fingerprint": "6f282049a8ef4274ff02741d592c4c15bbcbd417d764486570641262ffa7cb4d",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::save::executor#4",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::save",
       "kind": "executor",
-      "line": 677,
-      "fingerprint": "274c3e2918f944e874ddbb2d04f09373dd7505e39a4f437f9784704afa095d4a",
+      "line": 673,
+      "fingerprint": "6f282049a8ef4274ff02741d592c4c15bbcbd417d764486570641262ffa7cb4d",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence as ContentTypePersistenceBackend::save::sql-literal#1",
-      "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
-      "symbol": "ContentTypePersistence as ContentTypePersistenceBackend::save",
-      "kind": "sql-literal",
-      "line": 677,
-      "fingerprint": "741fb6e8ebcc622361fbed90d6fca7aa57959a7ec27157386baaff34147bbaed",
-      "conditions": [
-        "# [cfg (feature = \"database\")]"
-      ],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
+      "status": "typed",
       "operation": "dml",
-      "representation": "review-required",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. Identifiers, predicates and last_insert_rowid() are structural AST nodes; no handwritten bind loop remains.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence::create_table",
       "kind": "execution-wrapper",
-      "line": 338,
-      "fingerprint": "69ca15edb9d3fa585cd095b2880551565129a0fbd82a69a2fa7594026db607ec",
+      "line": 334,
+      "fingerprint": "56d746db28075f01b62f1ab013a67daea970068f249c1150d68015af5d93b8bc",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "schema",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. DDL has structural constant columns/indexes and no runtime interpolation.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence::create_table",
       "kind": "execution-wrapper",
-      "line": 357,
-      "fingerprint": "69ca15edb9d3fa585cd095b2880551565129a0fbd82a69a2fa7594026db607ec",
+      "line": 352,
+      "fingerprint": "56d746db28075f01b62f1ab013a67daea970068f249c1150d68015af5d93b8bc",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "schema",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. DDL has structural constant columns/indexes and no runtime interpolation.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::execution-wrapper#3",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence::create_table",
       "kind": "execution-wrapper",
-      "line": 374,
-      "fingerprint": "69ca15edb9d3fa585cd095b2880551565129a0fbd82a69a2fa7594026db607ec",
+      "line": 368,
+      "fingerprint": "56d746db28075f01b62f1ab013a67daea970068f249c1150d68015af5d93b8bc",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "schema",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. DDL has structural constant columns/indexes and no runtime interpolation.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::execution-wrapper#4",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence::create_table",
       "kind": "execution-wrapper",
-      "line": 391,
-      "fingerprint": "69ca15edb9d3fa585cd095b2880551565129a0fbd82a69a2fa7594026db607ec",
+      "line": 384,
+      "fingerprint": "56d746db28075f01b62f1ab013a67daea970068f249c1150d68015af5d93b8bc",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "schema",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. DDL has structural constant columns/indexes and no runtime interpolation.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::executor#1",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence::create_table",
       "kind": "executor",
-      "line": 338,
-      "fingerprint": "2ce5100b71dc25235b62ee84d8616ae13bd508045921a946cfc94e2801b9859f",
+      "line": 334,
+      "fingerprint": "9b3b9fcef0f2fabe9959ea0f38412cddded6416cb7703ef8a8373c6f78ea7747",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "schema",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. DDL has structural constant columns/indexes and no runtime interpolation.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::executor#2",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence::create_table",
       "kind": "executor",
-      "line": 357,
-      "fingerprint": "2ce5100b71dc25235b62ee84d8616ae13bd508045921a946cfc94e2801b9859f",
+      "line": 352,
+      "fingerprint": "9b3b9fcef0f2fabe9959ea0f38412cddded6416cb7703ef8a8373c6f78ea7747",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "schema",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. DDL has structural constant columns/indexes and no runtime interpolation.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::executor#3",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence::create_table",
       "kind": "executor",
-      "line": 374,
-      "fingerprint": "2ce5100b71dc25235b62ee84d8616ae13bd508045921a946cfc94e2801b9859f",
+      "line": 368,
+      "fingerprint": "9b3b9fcef0f2fabe9959ea0f38412cddded6416cb7703ef8a8373c6f78ea7747",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "schema",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. DDL has structural constant columns/indexes and no runtime interpolation.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::executor#4",
       "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
       "symbol": "ContentTypePersistence::create_table",
       "kind": "executor",
-      "line": 391,
-      "fingerprint": "2ce5100b71dc25235b62ee84d8616ae13bd508045921a946cfc94e2801b9859f",
+      "line": 384,
+      "fingerprint": "9b3b9fcef0f2fabe9959ea0f38412cddded6416cb7703ef8a8373c6f78ea7747",
       "conditions": [
         "# [cfg (feature = \"database\")]"
       ],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "schema",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/contenttypes + database; backend codecs forwarded by reinhardt-db backend features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "The consumed statement produces the exact SQL/Values pair adapted into owned Any arguments before awaiting the unchanged pool executor. DDL has structural constant columns/indexes and no runtime interpolation.",
       "backends": [
-        "review-required"
+        "postgres",
+        "sqlite"
       ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::possible-inline-render#1",
-      "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
-      "symbol": "ContentTypePersistence::create_table",
-      "kind": "possible-inline-render",
-      "line": 334,
-      "fingerprint": "e560e138d3f900bb58e9b280fd82bd5c74481afc5af7a4651b639709c6ac1f55",
-      "conditions": [
-        "# [cfg (feature = \"database\")]"
-      ],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::possible-inline-render#2",
-      "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
-      "symbol": "ContentTypePersistence::create_table",
-      "kind": "possible-inline-render",
-      "line": 336,
-      "fingerprint": "a44849efb4cbda8b812a04376fff41913c2baa224094a2c15a85d6c2f0ab5b24",
-      "conditions": [
-        "# [cfg (feature = \"database\")]"
-      ],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::possible-inline-render#3",
-      "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
-      "symbol": "ContentTypePersistence::create_table",
-      "kind": "possible-inline-render",
-      "line": 353,
-      "fingerprint": "0224a8a9856ff7bdc89739990fb02964ac8230f60c204353ba176086d7e80d2b",
-      "conditions": [
-        "# [cfg (feature = \"database\")]"
-      ],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::possible-inline-render#4",
-      "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
-      "symbol": "ContentTypePersistence::create_table",
-      "kind": "possible-inline-render",
-      "line": 355,
-      "fingerprint": "7fe4700bf53d4cbfc6bde6d10689b5ea5e07c1ec84daabd1c740053068cfd404",
-      "conditions": [
-        "# [cfg (feature = \"database\")]"
-      ],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::possible-inline-render#5",
-      "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
-      "symbol": "ContentTypePersistence::create_table",
-      "kind": "possible-inline-render",
-      "line": 370,
-      "fingerprint": "0224a8a9856ff7bdc89739990fb02964ac8230f60c204353ba176086d7e80d2b",
-      "conditions": [
-        "# [cfg (feature = \"database\")]"
-      ],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::possible-inline-render#6",
-      "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
-      "symbol": "ContentTypePersistence::create_table",
-      "kind": "possible-inline-render",
-      "line": 372,
-      "fingerprint": "7fe4700bf53d4cbfc6bde6d10689b5ea5e07c1ec84daabd1c740053068cfd404",
-      "conditions": [
-        "# [cfg (feature = \"database\")]"
-      ],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::possible-inline-render#7",
-      "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
-      "symbol": "ContentTypePersistence::create_table",
-      "kind": "possible-inline-render",
-      "line": 387,
-      "fingerprint": "0224a8a9856ff7bdc89739990fb02964ac8230f60c204353ba176086d7e80d2b",
-      "conditions": [
-        "# [cfg (feature = \"database\")]"
-      ],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/contenttypes/persistence.rs::ContentTypePersistence::create_table::possible-inline-render#8",
-      "path": "crates/reinhardt-db/src/contenttypes/persistence.rs",
-      "symbol": "ContentTypePersistence::create_table",
-      "kind": "possible-inline-render",
-      "line": 389,
-      "fingerprint": "7fe4700bf53d4cbfc6bde6d10689b5ea5e07c1ec84daabd1c740053068cfd404",
-      "conditions": [
-        "# [cfg (feature = \"database\")]"
-      ],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
+      "evidence": [
+        "Final SQLite contenttypes suite: 223 passed serially; native PostgreSQL persistence CRUD: 1 passed; focused native-backend library/test Clippy passed.",
+        "Existing connection-local ID and transaction-ownership defects are tracked separately in #6520/#6521; parallel global-registry race #6522 and default dependency Clippy #6523 do not establish green broader gates."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/migrations/ast_parser.rs::parse_alter_table_options_expr::sql-literal#1",

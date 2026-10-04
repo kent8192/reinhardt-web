@@ -41,11 +41,11 @@ use serde::{Deserialize, Serialize};
 use async_trait::async_trait;
 #[cfg(feature = "database")]
 use reinhardt_query::prelude::{
-	Alias, BinOper, ColumnDef, Cond, Expr, Order, PostgresQueryBuilder, Query,
-	QueryStatementBuilder, SqliteQueryBuilder,
+	Alias, BinOper, ColumnDef, Cond, Expr, IntoIden, Order, PostgresQueryBuilder, Query,
+	QueryStatementBuilder, SimpleExpr, SqliteQueryBuilder,
 };
 #[cfg(feature = "database")]
-use reinhardt_query::value::{Value, Values};
+use reinhardt_query::value::Values;
 #[cfg(feature = "database")]
 use sqlx::{AnyPool, Row};
 #[cfg(feature = "database")]
@@ -330,14 +330,13 @@ impl ContentTypePersistence {
 			.to_owned();
 
 		// Select appropriate QueryBuilder based on database URL
-		let sql = if self.database_url.starts_with("postgres") {
-			stmt.to_string(PostgresQueryBuilder)
-		} else {
-			stmt.to_string(SqliteQueryBuilder)
-		};
-		sqlx::raw_sql(&sql).execute(&mut *conn).await.map_err(|e| {
-			PersistenceError::DatabaseError(format!("Failed to create table: {}", e))
-		})?;
+		let (sql, arguments) = self.prepare_statement(stmt)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut *conn)
+			.await
+			.map_err(|e| {
+				PersistenceError::DatabaseError(format!("Failed to create table: {}", e))
+			})?;
 
 		// Create unique index on (app_label, model)
 		let idx = Query::create_index()
@@ -349,14 +348,13 @@ impl ContentTypePersistence {
 			.col(Alias::new("model"))
 			.to_owned();
 		// Use same QueryBuilder as table creation
-		let sql = if self.database_url.starts_with("postgres") {
-			idx.to_string(PostgresQueryBuilder)
-		} else {
-			idx.to_string(SqliteQueryBuilder)
-		};
-		sqlx::raw_sql(&sql).execute(&mut *conn).await.map_err(|e| {
-			PersistenceError::DatabaseError(format!("Failed to create unique index: {}", e))
-		})?;
+		let (sql, arguments) = self.prepare_statement(idx)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut *conn)
+			.await
+			.map_err(|e| {
+				PersistenceError::DatabaseError(format!("Failed to create unique index: {}", e))
+			})?;
 
 		// Create index on app_label
 		let idx = Query::create_index()
@@ -366,14 +364,13 @@ impl ContentTypePersistence {
 			.col(Alias::new("app_label"))
 			.to_owned();
 		// Use same QueryBuilder as table creation
-		let sql = if self.database_url.starts_with("postgres") {
-			idx.to_string(PostgresQueryBuilder)
-		} else {
-			idx.to_string(SqliteQueryBuilder)
-		};
-		sqlx::raw_sql(&sql).execute(&mut *conn).await.map_err(|e| {
-			PersistenceError::DatabaseError(format!("Failed to create app_label index: {}", e))
-		})?;
+		let (sql, arguments) = self.prepare_statement(idx)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut *conn)
+			.await
+			.map_err(|e| {
+				PersistenceError::DatabaseError(format!("Failed to create app_label index: {}", e))
+			})?;
 
 		// Create index on model
 		let idx = Query::create_index()
@@ -383,14 +380,13 @@ impl ContentTypePersistence {
 			.col(Alias::new("model"))
 			.to_owned();
 		// Use same QueryBuilder as table creation
-		let sql = if self.database_url.starts_with("postgres") {
-			idx.to_string(PostgresQueryBuilder)
-		} else {
-			idx.to_string(SqliteQueryBuilder)
-		};
-		sqlx::raw_sql(&sql).execute(&mut *conn).await.map_err(|e| {
-			PersistenceError::DatabaseError(format!("Failed to create model index: {}", e))
-		})?;
+		let (sql, arguments) = self.prepare_statement(idx)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut *conn)
+			.await
+			.map_err(|e| {
+				PersistenceError::DatabaseError(format!("Failed to create model index: {}", e))
+			})?;
 
 		Ok(())
 	}
@@ -400,55 +396,44 @@ impl ContentTypePersistence {
 		self.database_url.starts_with("postgres")
 	}
 
-	/// Helper method to build parameterized SQL with appropriate QueryBuilder
-	///
-	/// Returns a tuple of (SQL string with placeholders, bound values).
-	fn build_sql_with_values<T>(&self, builder: T) -> (String, Values)
-	where
-		T: QueryStatementBuilder,
-	{
+	/// Prepare generated arguments and consume the statement before execution.
+	fn prepare_statement<T: QueryStatementBuilder>(
+		&self,
+		statement: T,
+	) -> Result<(String, sqlx::any::AnyArguments<'static>), PersistenceError> {
 		if self.is_postgres() {
-			builder.build(PostgresQueryBuilder)
+			prepare_query(
+				statement.build(PostgresQueryBuilder),
+				reinhardt_query_sqlx::AnyBackend::Postgres,
+			)
 		} else {
-			builder.build(SqliteQueryBuilder)
+			prepare_sqlite_statement(statement)
 		}
 	}
 }
 
-/// Bind a reinhardt-query Value to a sqlx Any query
+/// Consume an exact renderer pair before any asynchronous execution.
 #[cfg(feature = "database")]
-pub(crate) fn bind_query_value<'a>(
-	query: sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>,
-	value: &Value,
-) -> sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>> {
-	match value {
-		Value::Bool(Some(b)) => query.bind(*b),
-		Value::TinyInt(Some(i)) => query.bind(*i as i32),
-		Value::SmallInt(Some(i)) => query.bind(*i as i32),
-		Value::Int(Some(i)) => query.bind(*i),
-		Value::BigInt(Some(i)) => query.bind(*i),
-		Value::TinyUnsigned(Some(i)) => query.bind(*i as i32),
-		Value::SmallUnsigned(Some(i)) => query.bind(*i as i32),
-		Value::Unsigned(Some(i)) => query.bind(*i as i64),
-		Value::BigUnsigned(Some(i)) => query.bind(*i as i64),
-		Value::Float(Some(f)) => query.bind(*f),
-		Value::Double(Some(f)) => query.bind(*f),
-		Value::String(Some(s)) => query.bind(s.as_ref().clone()),
-		Value::Bytes(Some(b)) => query.bind(b.as_ref().clone()),
-		_ => query.bind(None::<i32>), // NULL values
-	}
+pub(crate) fn prepare_query(
+	built: (String, Values),
+	backend: reinhardt_query_sqlx::AnyBackend,
+) -> Result<(String, sqlx::any::AnyArguments<'static>), PersistenceError> {
+	reinhardt_query_sqlx::prepare_any(built, backend)
+		.map(|prepared| prepared.into_parts())
+		.map_err(|error| {
+			PersistenceError::DatabaseError(format!("Failed to encode query arguments: {error}"))
+		})
 }
 
-/// Bind all values from a reinhardt-query Values collection to a sqlx Any query
+/// Consume a SQLite statement so its AST does not cross an await boundary.
 #[cfg(feature = "database")]
-pub(crate) fn bind_query_values<'a>(
-	mut query: sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>,
-	values: &Values,
-) -> sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>> {
-	for value in values.iter() {
-		query = bind_query_value(query, value);
-	}
-	query
+pub(crate) fn prepare_sqlite_statement<T: QueryStatementBuilder>(
+	statement: T,
+) -> Result<(String, sqlx::any::AnyArguments<'static>), PersistenceError> {
+	prepare_query(
+		statement.build(SqliteQueryBuilder),
+		reinhardt_query_sqlx::AnyBackend::Sqlite,
+	)
 }
 
 #[cfg(feature = "database")]
@@ -474,8 +459,8 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.add(Expr::col(Alias::new("model")).binary(BinOper::Equal, Expr::val(model))),
 			)
 			.to_owned();
-		let (sql, values) = self.build_sql_with_values(stmt);
-		let row = bind_query_values(sqlx::query(&sql), &values)
+		let (sql, arguments) = self.prepare_statement(stmt)?;
+		let row = sqlx::query_with(&sql, arguments)
 			.fetch_optional(&*self.pool)
 			.await
 			.map_err(|e| {
@@ -516,8 +501,8 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 				Cond::all().add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
 			)
 			.to_owned();
-		let (sql, values) = self.build_sql_with_values(stmt);
-		let row = bind_query_values(sqlx::query(&sql), &values)
+		let (sql, arguments) = self.prepare_statement(stmt)?;
+		let row = sqlx::query_with(&sql, arguments)
 			.fetch_optional(&*self.pool)
 			.await
 			.map_err(|e| {
@@ -572,8 +557,8 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 			.order_by(Alias::new("app_label"), Order::Asc)
 			.order_by(Alias::new("model"), Order::Asc)
 			.to_owned();
-		let (sql, values) = self.build_sql_with_values(stmt);
-		let rows = bind_query_values(sqlx::query(&sql), &values)
+		let (sql, arguments) = self.prepare_statement(stmt)?;
+		let rows = sqlx::query_with(&sql, arguments)
 			.fetch_all(&*self.pool)
 			.await
 			.map_err(|e| {
@@ -614,8 +599,8 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 						.add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
 				)
 				.to_owned();
-			let (sql, values) = self.build_sql_with_values(stmt);
-			bind_query_values(sqlx::query(&sql), &values)
+			let (sql, arguments) = self.prepare_statement(stmt)?;
+			sqlx::query_with(&sql, arguments)
 				.execute(&*self.pool)
 				.await
 				.map_err(|e| {
@@ -634,8 +619,8 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.expect("Failed to build insert statement")
 					.returning([Alias::new("id")])
 					.to_owned();
-				let (sql, values) = self.build_sql_with_values(stmt);
-				let id_row = bind_query_values(sqlx::query(&sql), &values)
+				let (sql, arguments) = self.prepare_statement(stmt)?;
+				let id_row = sqlx::query_with(&sql, arguments)
 					.fetch_one(&*self.pool)
 					.await
 					.map_err(|e| {
@@ -662,8 +647,8 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.values(vec![ct.app_label.clone().into(), ct.model.clone().into()])
 					.expect("Failed to build insert statement")
 					.to_owned();
-				let (sql, values) = self.build_sql_with_values(stmt);
-				bind_query_values(sqlx::query(&sql), &values)
+				let (sql, arguments) = self.prepare_statement(stmt)?;
+				sqlx::query_with(&sql, arguments)
 					.execute(&*self.pool)
 					.await
 					.map_err(|e| {
@@ -674,7 +659,18 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					})?;
 
 				// Get the last inserted ID using SQLite's last_insert_rowid()
-				let id_row = sqlx::query("SELECT last_insert_rowid() as id")
+				let (sql, arguments) = prepare_sqlite_statement(
+					Query::select()
+						.expr_as(
+							SimpleExpr::FunctionCall(
+								Alias::new("last_insert_rowid").into_iden(),
+								Vec::new(),
+							),
+							"id",
+						)
+						.take(),
+				)?;
+				let id_row = sqlx::query_with(&sql, arguments)
 					.fetch_one(&*self.pool)
 					.await
 					.map_err(|e| {
@@ -704,8 +700,8 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 				Cond::all().add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
 			)
 			.to_owned();
-		let (sql, values) = self.build_sql_with_values(stmt);
-		bind_query_values(sqlx::query(&sql), &values)
+		let (sql, arguments) = self.prepare_statement(stmt)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&*self.pool)
 			.await
 			.map_err(|e| {
@@ -727,8 +723,8 @@ impl ContentTypePersistenceBackend for ContentTypePersistence {
 					.add(Expr::col(Alias::new("model")).binary(BinOper::Equal, Expr::val(model))),
 			)
 			.to_owned();
-		let (sql, values) = self.build_sql_with_values(stmt);
-		let row = bind_query_values(sqlx::query(&sql), &values)
+		let (sql, arguments) = self.prepare_statement(stmt)?;
+		let row = sqlx::query_with(&sql, arguments)
 			.fetch_optional(&*self.pool)
 			.await
 			.map_err(|e| {
@@ -798,6 +794,58 @@ mod tests {
 			.create_table()
 			.await
 			.expect("Failed to create table second time");
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn generated_bindings_preserve_quoted_content_type_crud_and_filters() {
+		use crate::contenttypes::{ContentTypeQuery, ContentTypeTransaction};
+		// Arrange: one connection matches the existing SQLite persistence contract.
+		let persistence = create_test_persistence().await;
+		let app = "quoted' ? $3";
+		let model = "Book' ? $1";
+		// Act
+		let mut content_type = persistence
+			.save(&ContentType::new(app, model))
+			.await
+			.unwrap();
+		let id = content_type.id.unwrap();
+		// Assert: generated filter arguments retain their original values and order.
+		assert_eq!(
+			persistence.get(app, model).await.unwrap(),
+			Some(content_type.clone())
+		);
+		assert_eq!(
+			persistence.get_by_id(id).await.unwrap(),
+			Some(content_type.clone())
+		);
+		assert!(persistence.exists(app, model).await.unwrap());
+		assert_eq!(
+			persistence.load_all().await.unwrap(),
+			vec![content_type.clone()]
+		);
+		let query = ContentTypeQuery::new(persistence.pool.clone())
+			.filter_app_label(app)
+			.filter_model(model);
+		assert_eq!(query.count().await.unwrap(), 1);
+		assert_eq!(query.all().await.unwrap(), vec![content_type.clone()]);
+		// Act / Assert: update, transaction-helper insert/delete and final deletion.
+		content_type.model = "Updated' ? $5".to_owned();
+		assert_eq!(persistence.save(&content_type).await.unwrap(), content_type);
+		assert_eq!(persistence.get_by_id(id).await.unwrap(), Some(content_type));
+		let context = ContentTypeTransaction::new(persistence.pool.clone());
+		let second = context.create(app, "Other' ? $4").await.unwrap();
+		assert!(second.id.unwrap() > id);
+		context.delete(second.id.unwrap()).await.unwrap();
+		assert!(
+			persistence
+				.get_by_id(second.id.unwrap())
+				.await
+				.unwrap()
+				.is_none()
+		);
+		persistence.delete(id).await.unwrap();
+		assert!(persistence.load_all().await.unwrap().is_empty());
 	}
 
 	#[tokio::test]
