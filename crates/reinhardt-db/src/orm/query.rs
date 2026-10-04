@@ -3706,13 +3706,14 @@ where
 		pattern: LikePattern,
 		case_insensitive: bool,
 	) -> SimpleExpr {
-		let operator = if case_insensitive { "ILIKE" } else { "LIKE" };
+		if !case_insensitive {
+			return SimpleExpr::LikeWithEscape(
+				Box::new(Self::filter_lhs_expr(filter).into_simple_expr()),
+				Box::new(Expr::val(pattern.apply(value)).into_simple_expr()),
+			);
+		}
 		Expr::cust_with_values(
-			format!(
-				"{} {} ? ESCAPE '\\'",
-				Self::filter_lhs_sql(filter),
-				operator
-			),
+			format!("{} ILIKE ? ESCAPE '\\'", Self::filter_lhs_sql(filter)),
 			[pattern.apply(value)],
 		)
 		.into_simple_expr()
@@ -5519,8 +5520,17 @@ where
 					query.and_where(condition);
 				}
 				&super::composite_pk::PkValue::Uint(v) => {
+					let v = i64::try_from(v).map_err(|_| {
+						reinhardt_core::exception::Error::Database(
+							crate::backends::error::DatabaseError::TypeError(
+								"Unsigned composite primary key exceeds the supported i64 range"
+									.to_owned(),
+							)
+							.to_string(),
+						)
+					})?;
 					let condition = Expr::col(col_alias)
-						.binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v as i64))));
+						.binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v))));
 					query.and_where(condition);
 				}
 				super::composite_pk::PkValue::String(v) => {
@@ -6963,7 +6973,10 @@ mod tests {
 	use crate::orm::connection::DatabaseBackend;
 	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
-	use reinhardt_query::prelude::{ExprTrait, PostgresQueryBuilder, QueryStatementBuilder};
+	use reinhardt_query::prelude::{
+		ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder,
+		SqliteQueryBuilder, Values,
+	};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
@@ -7601,6 +7614,67 @@ mod tests {
 		assert!(err.to_string().contains("composite primary key"));
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct CompositeItem {
+		id: i64,
+		kind: String,
+	}
+
+	impl Model for CompositeItem {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"composite_items"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn composite_primary_key() -> Option<crate::orm::composite_pk::CompositePrimaryKey> {
+			crate::orm::composite_pk::CompositePrimaryKey::new(vec![
+				"id".to_owned(),
+				"kind".to_owned(),
+			])
+			.ok()
+		}
+	}
+
+	#[rstest]
+	#[case::first_overflow(i64::MAX as u64 + 1)]
+	#[case::maximum(u64::MAX)]
+	#[tokio::test]
+	async fn get_composite_rejects_unsigned_overflow_before_connecting(#[case] value: u64) {
+		// Arrange
+		use crate::orm::composite_pk::PkValue;
+		let primary_key = HashMap::from([
+			("id".to_owned(), PkValue::Uint(value)),
+			("kind".to_owned(), PkValue::String("negative".to_owned())),
+		]);
+
+		// Act
+		let error = QuerySet::<CompositeItem>::new()
+			.get_composite(&primary_key)
+			.await
+			.expect_err("unsigned overflow must be rejected before acquiring a connection");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Database error: Type conversion error: Unsigned composite primary key exceeds the supported i64 range"
+		);
+	}
+
 	// SQL Generation Tests
 
 	#[test]
@@ -7625,7 +7699,7 @@ mod tests {
 		assert_eq!(params, vec!["alice", "1"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_sql_multiple_fields_multiple_filters() {
 		let queryset = QuerySet::<TestUser>::new()
 			.filter(Filter::new(
@@ -7651,8 +7725,8 @@ mod tests {
 		let (sql, params) = queryset.update_sql(&updates);
 
 		// HashMap iteration order is not guaranteed, so we check both possible orderings
-		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND (\"email\" LIKE $4 ESCAPE '\\'))";
-		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND (\"email\" LIKE $4 ESCAPE '\\'))";
+		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
+		let valid_sql_2 = "UPDATE \"test_users\" SET \"email\" = $1, \"username\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
 		assert!(
 			sql == valid_sql_1 || sql == valid_sql_2,
 			"Generated SQL '{}' does not match either expected pattern",
@@ -7681,7 +7755,7 @@ mod tests {
 		assert_eq!(params, vec!["1"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_sql_multiple_filters() {
 		let queryset = QuerySet::<TestUser>::new()
 			.filter(Filter::new(
@@ -7699,7 +7773,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND (\"email\" LIKE $2 ESCAPE '\\'))"
+			"DELETE FROM \"test_users\" WHERE (\"username\" = $1 AND \"email\" LIKE $2 ESCAPE '\\')"
 		);
 		assert_eq!(params, vec!["alice", "alice@%"]);
 	}
@@ -8633,6 +8707,67 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE $1 ESCAPE '\'"#,
+		r#"SELECT * FROM "test_users" WHERE "tenant""`?"."username" LIKE $1 ESCAPE '\'"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE `username` LIKE ? ESCAPE 0x5C",
+		"SELECT * FROM `test_users` WHERE `tenant\"``?`.`username` LIKE ? ESCAPE 0x5C"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE ? ESCAPE '\'"#,
+		r#"SELECT * FROM "test_users" WHERE "tenant""`?"."username" LIKE ? ESCAPE '\'"#
+	)]
+	fn case_sensitive_like_native_sql_and_values(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_column_sql: &str,
+		#[case] expected_qualified_sql: &str,
+		#[values(
+			(FilterOperator::Contains, r"%tenant' ? $42:\%\_\\%"),
+			(FilterOperator::StartsWith, r"tenant' ? $42:\%\_\\%"),
+			(FilterOperator::EndsWith, r"%tenant' ? $42:\%\_\\")
+		)]
+		lookup: (FilterOperator, &str),
+		#[values(false, true)] qualified: bool,
+	) {
+		// Arrange: quotes and placeholder-like text must remain identifier or value data.
+		let field = if qualified {
+			r#"tenant"`?.username"#
+		} else {
+			"username"
+		};
+		let (operator, expected_pattern) = lookup;
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			field,
+			operator,
+			FilterValue::String(r"tenant' ? $42:%_\".into()),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: only the lookup's own wildcards are unescaped.
+		assert_eq!(
+			sql,
+			if qualified {
+				expected_qualified_sql
+			} else {
+				expected_column_sql
+			}
+		);
+		assert_eq!(values, Values(vec![expected_pattern.into()]));
+	}
+
+	#[rstest]
 	fn test_django_style_is_in_filter_accepts_typed_values() {
 		// Arrange
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
@@ -8798,7 +8933,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE (("username" LIKE '%lic%' ESCAPE '\') AND ("username" LIKE 'a%' ESCAPE '\') AND ("username" LIKE '%e' ESCAPE '\') AND ("username" ILIKE 'AL%' ESCAPE '\') AND ("username" ILIKE '%CE' ESCAPE '\') AND ("username" ~ '^a.*e$') AND ("username" ~* '^A.*E$'))"#
+			r#"SELECT * FROM "test_users" WHERE ("username" LIKE '%lic%' ESCAPE '\' AND "username" LIKE 'a%' ESCAPE '\' AND "username" LIKE '%e' ESCAPE '\' AND ("username" ILIKE 'AL%' ESCAPE '\') AND ("username" ILIKE '%CE' ESCAPE '\') AND ("username" ~ '^a.*e$') AND ("username" ~* '^A.*E$'))"#
 		);
 	}
 
