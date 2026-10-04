@@ -3,12 +3,12 @@
 use super::store::{
 	OidcCodeContext, OidcKey, OidcPending, OidcStateStore, PublicRsaJwk, authorization_matches,
 };
-use crate::database_query::{json_text_path, prepare};
+use crate::database_query::{json_text_path, prepare, schema_operation};
 use crate::oauth2_server::{AuthorizationCommit, OAuthServerStore};
 use async_trait::async_trait;
-use reinhardt_db::migrations::{Migration, Operation};
+use reinhardt_db::migrations::Migration;
 use reinhardt_query::prelude::{
-	Alias, Cond, Expr, ExprTrait, IntoIden, OnConflict, Order, Query, Value,
+	Alias, ColumnDef, Cond, Expr, ExprTrait, IntoIden, OnConflict, Order, Query, Value,
 };
 use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction, types::Json};
@@ -27,34 +27,93 @@ impl PostgresOidcStore {
 
 	/// Return the OIDC migration to register after the OAuth server migration.
 	pub fn migration() -> Migration {
-		const REVERSE: [&str; 8] = [
-			"DROP TABLE oidc_op_subject_reservations",
-			"DROP TABLE oidc_op_subjects",
-			"DROP TABLE oidc_op_pending",
-			"DROP INDEX oidc_op_pending_expiry",
-			"DROP TABLE oidc_op_codes",
-			"DROP INDEX oidc_op_codes_expiry",
-			"DROP TABLE oidc_op_keys",
-			"DROP INDEX oidc_op_one_active_key",
-		];
-		let statements: Vec<_> = include_str!("../../migrations/0002_oidc_op.sql")
-			.split(';')
-			.map(str::trim)
-			.filter(|sql| !sql.is_empty())
-			.collect();
-		assert_eq!(
-			statements.len(),
-			REVERSE.len(),
-			"OIDC migration reverse count must match"
-		);
-		statements.into_iter().zip(REVERSE).fold(
+		// Keep the published identity and one statement per operation: PostgreSQL
+		// prepares RunSQL operations individually, and rollback runs in reverse order.
+		[
+			schema_operation(
+				Query::create_table()
+					.table("oidc_op_subject_reservations")
+					.col(ColumnDef::new("sub").text().primary_key(true))
+					.take(),
+				Query::drop_table()
+					.table("oidc_op_subject_reservations")
+					.take(),
+			),
+			schema_operation(
+				Query::create_table()
+					.table("oidc_op_subjects")
+					.col(ColumnDef::new("user_id").text().primary_key(true))
+					.col(ColumnDef::new("sub").text().not_null(true).unique(true))
+					.foreign_key(["sub"], "oidc_op_subject_reservations", ["sub"], None, None)
+					.take(),
+				Query::drop_table().table("oidc_op_subjects").take(),
+			),
+			schema_operation(
+				Query::create_table()
+					.table("oidc_op_pending")
+					.col(ColumnDef::new("id").text().primary_key(true))
+					.col(ColumnDef::new("payload").jsonb().not_null(true))
+					.col(ColumnDef::new("expires_at").big_integer().not_null(true))
+					.take(),
+				Query::drop_table().table("oidc_op_pending").take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oidc_op_pending_expiry")
+					.table("oidc_op_pending")
+					.col("expires_at")
+					.take(),
+				Query::drop_index().name("oidc_op_pending_expiry").take(),
+			),
+			schema_operation(
+				Query::create_table()
+					.table("oidc_op_codes")
+					.col(ColumnDef::new("digest").text().primary_key(true))
+					.col(ColumnDef::new("payload").jsonb().not_null(true))
+					.col(ColumnDef::new("expires_at").big_integer().not_null(true))
+					.take(),
+				Query::drop_table().table("oidc_op_codes").take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oidc_op_codes_expiry")
+					.table("oidc_op_codes")
+					.col("expires_at")
+					.take(),
+				Query::drop_index().name("oidc_op_codes_expiry").take(),
+			),
+			schema_operation(
+				Query::create_table()
+					.table("oidc_op_keys")
+					.col(ColumnDef::new("kid").text().primary_key(true))
+					.col(ColumnDef::new("public").jsonb().not_null(true))
+					.col(ColumnDef::new("activated_at").big_integer().not_null(true))
+					.col(ColumnDef::new("active").boolean().not_null(true))
+					.col(ColumnDef::new("publish_until").big_integer())
+					.col(
+						ColumnDef::new("compromised")
+							.boolean()
+							.not_null(true)
+							.default(Expr::constant_false().into_simple_expr()),
+					)
+					.take(),
+				Query::drop_table().table("oidc_op_keys").take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oidc_op_one_active_key")
+					.table("oidc_op_keys")
+					.unique()
+					.col("active")
+					.r#where(Expr::col("active").eq(Expr::constant_true()))
+					.take(),
+				Query::drop_index().name("oidc_op_one_active_key").take(),
+			),
+		]
+		.into_iter()
+		.fold(
 			Migration::new("0002_oidc_op", "oidc_op"),
-			|migration, (sql, reverse_sql)| {
-				migration.add_operation(Operation::RunSQL {
-					sql: sql.to_owned(),
-					reverse_sql: Some(reverse_sql.to_owned()),
-				})
-			},
+			|migration, operation| migration.add_operation(operation),
 		)
 	}
 

@@ -9,6 +9,18 @@ pub(crate) fn prepare(statement: impl QueryStatementBuilder) -> Result<Prepared,
 		.map_err(|error| error.to_string())
 }
 
+/// Render a built-in schema operation while preserving its migration boundary.
+#[cfg(feature = "oauth")]
+pub(crate) fn schema_operation(
+	forward: impl QueryStatementBuilder,
+	reverse: impl QueryStatementBuilder,
+) -> reinhardt_db::migrations::Operation {
+	reinhardt_db::migrations::Operation::RunSQL {
+		sql: forward.to_string(PostgresQueryBuilder),
+		reverse_sql: Some(reverse.to_string(PostgresQueryBuilder)),
+	}
+}
+
 /// Extract a JSONB text field using typed PostgreSQL operators and bound keys.
 #[cfg(feature = "oauth")]
 pub(crate) fn json_text_path(keys: &[&str]) -> reinhardt_query::SimpleExpr {

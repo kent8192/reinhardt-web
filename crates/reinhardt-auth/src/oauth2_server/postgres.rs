@@ -6,10 +6,12 @@ use super::store::{
 	OAuthServerStore, PendingRecord, ResourceRegistration, StoredCode, StoredToken,
 	token_matches_code,
 };
-use crate::database_query::{json_text_path, prepare};
+use crate::database_query::{json_text_path, prepare, schema_operation};
 use async_trait::async_trait;
-use reinhardt_db::migrations::{Migration, Operation};
-use reinhardt_query::prelude::{Alias, Expr, ExprTrait, IntoIden, OnConflict, Query, Value};
+use reinhardt_db::migrations::Migration;
+use reinhardt_query::prelude::{
+	Alias, ColumnDef, Expr, ExprTrait, IntoIden, OnConflict, Query, Value,
+};
 use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction, types::Json};
 
@@ -25,42 +27,156 @@ impl PostgresOAuthStore {
 	}
 	/// Return the initial PostgreSQL migration for the host's migration graph.
 	pub fn migration() -> Migration {
-		// Reinhardt's PostgreSQL schema editor prepares each RunSQL operation.
-		// Keep one statement per operation; prepared statements reject SQL batches.
-		const REVERSE: [&str; 12] = [
-			"DROP TABLE oauth_server_clients",
-			"DROP TABLE oauth_server_resources",
-			"DROP INDEX oauth_server_resource_audience",
-			"DROP TABLE oauth_server_pending",
-			"DROP INDEX oauth_server_pending_expiry",
-			"DROP TABLE oauth_server_codes",
-			"DROP INDEX oauth_server_codes_expiry",
-			"DROP TABLE oauth_server_tokens",
-			"DROP INDEX oauth_server_tokens_client",
-			"DROP INDEX oauth_server_tokens_user",
-			"DROP INDEX oauth_server_tokens_expiry",
-			"DROP INDEX oauth_server_tokens_code",
-		];
-		let statements: Vec<_> = include_str!("../../migrations/0001_oauth_server.sql")
-			.split(';')
-			.map(str::trim)
-			.filter(|sql| !sql.is_empty())
-			.collect();
-		assert_eq!(
-			statements.len(),
-			REVERSE.len(),
-			"OAuth migration and reverse statements must match"
-		);
-		statements.into_iter().zip(REVERSE).fold(
+		// Keep the published identity and one statement per operation: PostgreSQL
+		// prepares RunSQL operations individually, and rollback runs in reverse order.
+		[
+			schema_operation(
+				Query::create_table()
+					.table("oauth_server_clients")
+					.col(ColumnDef::new("client_id").text().primary_key(true))
+					.col(ColumnDef::new("payload").jsonb().not_null(true))
+					.take(),
+				Query::drop_table().table("oauth_server_clients").take(),
+			),
+			schema_operation(
+				Query::create_table()
+					.table("oauth_server_resources")
+					.col(ColumnDef::new("resource_id").text().primary_key(true))
+					.col(ColumnDef::new("payload").jsonb().not_null(true))
+					.take(),
+				Query::drop_table().table("oauth_server_resources").take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_resource_audience")
+					.table("oauth_server_resources")
+					.unique()
+					.expr(json_text_path(&["audience"]))
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_resource_audience")
+					.take(),
+			),
+			schema_operation(
+				Query::create_table()
+					.table("oauth_server_pending")
+					.col(ColumnDef::new("id").text().primary_key(true))
+					.col(ColumnDef::new("payload").jsonb().not_null(true))
+					.col(ColumnDef::new("expires_at").big_integer().not_null(true))
+					.take(),
+				Query::drop_table().table("oauth_server_pending").take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_pending_expiry")
+					.table("oauth_server_pending")
+					.col("expires_at")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_pending_expiry")
+					.take(),
+			),
+			schema_operation(
+				Query::create_table()
+					.table("oauth_server_codes")
+					.col(ColumnDef::new("digest").text().primary_key(true))
+					.col(ColumnDef::new("payload").jsonb().not_null(true))
+					.col(ColumnDef::new("client_id").text().not_null(true))
+					.col(ColumnDef::new("expires_at").big_integer().not_null(true))
+					.col(
+						ColumnDef::new("redeemed")
+							.boolean()
+							.not_null(true)
+							.default(Expr::constant_false().into_simple_expr()),
+					)
+					.col(
+						ColumnDef::new("replayed")
+							.boolean()
+							.not_null(true)
+							.default(Expr::constant_false().into_simple_expr()),
+					)
+					.take(),
+				Query::drop_table().table("oauth_server_codes").take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_codes_expiry")
+					.table("oauth_server_codes")
+					.col("expires_at")
+					.take(),
+				Query::drop_index().name("oauth_server_codes_expiry").take(),
+			),
+			schema_operation(
+				Query::create_table()
+					.table("oauth_server_tokens")
+					.col(ColumnDef::new("digest").text().primary_key(true))
+					.col(ColumnDef::new("payload").jsonb().not_null(true))
+					.col(ColumnDef::new("client_id").text().not_null(true))
+					.col(ColumnDef::new("user_id").text())
+					.col(ColumnDef::new("code_digest").text())
+					.col(ColumnDef::new("expires_at").big_integer().not_null(true))
+					.col(
+						ColumnDef::new("revoked")
+							.boolean()
+							.not_null(true)
+							.default(Expr::constant_false().into_simple_expr()),
+					)
+					.foreign_key(
+						["code_digest"],
+						"oauth_server_codes",
+						["digest"],
+						None,
+						None,
+					)
+					.take(),
+				Query::drop_table().table("oauth_server_tokens").take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_tokens_client")
+					.table("oauth_server_tokens")
+					.col("client_id")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_tokens_client")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_tokens_user")
+					.table("oauth_server_tokens")
+					.col("user_id")
+					.r#where(Expr::col("user_id").is_not_null())
+					.take(),
+				Query::drop_index().name("oauth_server_tokens_user").take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_tokens_expiry")
+					.table("oauth_server_tokens")
+					.col("expires_at")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_tokens_expiry")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_tokens_code")
+					.table("oauth_server_tokens")
+					.col("code_digest")
+					.r#where(Expr::col("code_digest").is_not_null())
+					.take(),
+				Query::drop_index().name("oauth_server_tokens_code").take(),
+			),
+		]
+		.into_iter()
+		.fold(
 			Migration::new("0001_oauth_server", "oauth_server"),
-			|migration, (sql, reverse_sql)| {
-				migration.add_operation(Operation::RunSQL {
-					sql: sql.to_owned(),
-					reverse_sql: Some(reverse_sql.to_owned()),
-				})
-			},
+			|migration, operation| migration.add_operation(operation),
 		)
 	}
+
 	/// Access the underlying pool for host-managed migrations and operations.
 	pub fn pool(&self) -> &PgPool {
 		&self.pool
