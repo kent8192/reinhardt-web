@@ -62,6 +62,15 @@ This crate provides the following modules:
   - SQLite inserts and inserted-ID lookups share one acquired connection, so
     returned IDs identify the inserted row even with multiple pooled connections
 
+### SQLite INSERT FROM SELECT upserts
+
+`InsertFromSelectBuilder::on_conflict_do_update` wraps the SQLite SELECT source
+in a typed derived table with an always-true outer `WHERE`. This avoids SQLite's
+[INSERT SELECT parsing ambiguity](https://www.sqlite.org/lang_upsert.html#parsing_ambiguity)
+when `ON CONFLICT` follows a source without a `WHERE` clause. The original source's
+filters, ordering, limits, and compound SELECTs remain inside the derived table.
+The same behavior applies when converting `InsertBuilder` with `from_select`.
+
 ### Implemented ✓ (Additional Features)
 
 - **Advanced Query Optimization**
