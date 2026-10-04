@@ -1,0 +1,36 @@
+[package]
+name = "reinhardt-query-sqlx"
+version = "0.4.0-alpha.19"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Owned SQLx arguments for reinhardt-query statements"
+readme = "README.md"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reinhardt-query = { workspace = true, default-features = false }
+sqlx = { version = "0.8", default-features = false }
+thiserror = { workspace = true }
+pgvector = { version = "0.4.2", default-features = false, features = ["sqlx"], optional = true }
+
+[features]
+default = []
+postgres = ["sqlx/postgres"]
+mysql = ["sqlx/mysql"]
+sqlite = ["sqlx/sqlite"]
+any = ["sqlx/any"]
+with-chrono = ["reinhardt-query/with-chrono", "sqlx/chrono"]
+with-uuid = ["reinhardt-query/with-uuid", "sqlx/uuid"]
+with-json = ["reinhardt-query/with-json", "sqlx/json"]
+with-rust_decimal = ["reinhardt-query/with-rust_decimal", "sqlx/rust_decimal"]
+with-bigdecimal = ["reinhardt-query/with-bigdecimal", "sqlx/bigdecimal"]
+pgvector = ["postgres", "reinhardt-query/pgvector", "dep:pgvector"]
+
+[dev-dependencies]
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio"] }
+rstest = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true, features = ["postgres", "mysql"] }

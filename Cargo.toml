@@ -501,6 +501,7 @@ resolver = "3"
 members = [
   # Core framework (always included)
   "crates/reinhardt-query",
+  "crates/reinhardt-query-sqlx",
   "crates/reinhardt-query/macros",
   "crates/reinhardt-apps",
   "crates/reinhardt-conf",
@@ -643,7 +644,8 @@ reinhardt-graphql-macros = { path = "crates/reinhardt-graphql/macros", version =
 reinhardt-commands = { path = "crates/reinhardt-commands", version = "0.4.0-alpha.19", default-features = false }
 reinhardt-db = { path = "crates/reinhardt-db", version = "0.4.0-alpha.19", default-features = false }
 reinhardt-db-macros = { path = "crates/reinhardt-db-macros", version = "0.4.0-alpha.19" }
-reinhardt-query = { path = "crates/reinhardt-query", version = "0.4.0-alpha.19" }
+reinhardt-query = { path = "crates/reinhardt-query", version = "0.4.0-alpha.19", default-features = false }
+reinhardt-query-sqlx = { path = "crates/reinhardt-query-sqlx", version = "0.4.0-alpha.19", default-features = false }
 reinhardt-shortcuts = { path = "crates/reinhardt-shortcuts", version = "0.4.0-alpha.19" }
 reinhardt-dispatch = { path = "crates/reinhardt-dispatch", version = "0.4.0-alpha.19" }
 reinhardt-i18n = { path = "crates/reinhardt-i18n", version = "0.4.0-alpha.19" }
