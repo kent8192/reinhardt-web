@@ -356,14 +356,14 @@ proptest! {
 			tampered_bytes[tamper_index] ^= 0x01;
 
 			// Try to convert back to string and verify
-			if let Ok(tampered_token) = String::from_utf8(tampered_bytes) {
-				if tampered_token != token {
-					let result = jwt_auth.verify_token(&tampered_token);
-					prop_assert!(
-						result.is_err(),
-						"Tampered token should not verify successfully"
-					);
-				}
+			if let Ok(tampered_token) = String::from_utf8(tampered_bytes)
+				&& tampered_token != token
+			{
+				let result = jwt_auth.verify_token(&tampered_token);
+				prop_assert!(
+					result.is_err(),
+					"Tampered token should not verify successfully"
+				);
 			}
 		}
 	}
