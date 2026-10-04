@@ -705,3 +705,24 @@ fn qualified_identity_replay_changes_only_the_requested_schema() {
 		IdentityGeneration::Always
 	);
 }
+
+#[rstest]
+fn embedded_creation_ownership_is_rendered() {
+	// Arrange
+	let definition = SequenceDefinition::new(
+		SequenceKey::new("events", "numbers"),
+		QualifiedName::new("numbers").with_schema("tenant"),
+	)
+	.with_owned_by(Some(SequenceOwner::new(
+		QualifiedName::new("events").with_schema("tenant"),
+		"n",
+	)));
+	// Act
+	let operation = SequenceOperation::Create { definition };
+	// Assert
+	operation.validate().unwrap();
+	assert_eq!(
+		operation.to_sql(),
+		"CREATE SEQUENCE \"tenant\".\"numbers\" OWNED BY \"tenant\".\"events\".\"n\""
+	);
+}

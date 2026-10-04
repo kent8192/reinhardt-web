@@ -1452,6 +1452,60 @@ async fn catalog_identity_changes_keep_implicit_physical_names() {
 
 #[rstest]
 #[tokio::test]
+async fn embedded_sequence_ownership_matches_catalog_and_column_lifetime() {
+	// Arrange
+	let fixture = postgres("16-alpine").await;
+	let definition = SequenceDefinition::new(
+		SequenceKey::new("events", "counter"),
+		QualifiedName::new("counter"),
+	)
+	.with_owned_by(Some(SequenceOwner::new(QualifiedName::new("events"), "n")));
+	let initial = Migration::new("0001_initial", "events")
+		.add_operation(Operation::CreateTable {
+			name: "events".into(),
+			columns: vec![ColumnDefinition::new("n", FieldType::Integer).with_not_null(true)],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		})
+		.add_operation(Operation::Sequence {
+			operation: SequenceOperation::Create { definition },
+		});
+	let drop = Migration::new("0002_drop", "events")
+		.add_dependency("events", "0001_initial")
+		.add_operation(Operation::DropColumn {
+			table: "events".into(),
+			column: "n".into(),
+			old_definition: Some(
+				ColumnDefinition::new("n", FieldType::Integer).with_not_null(true),
+			),
+		});
+	let mut executor =
+		reinhardt_db::migrations::DatabaseMigrationExecutor::new(fixture.connection.clone());
+	// Act
+	executor.apply_migrations(&[initial]).await.unwrap();
+	let sequences = PostgresIntrospector::new(fixture.pool.clone())
+		.read_sequences()
+		.await
+		.unwrap();
+	executor.apply_migrations(&[drop]).await.unwrap();
+	let remaining = PostgresIntrospector::new(fixture.pool.clone())
+		.read_sequences()
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(sequences[0].owned_by.as_ref().unwrap().table.name, "events");
+	assert_eq!(sequences[0].owned_by.as_ref().unwrap().column, "n");
+	assert!(
+		!remaining
+			.iter()
+			.any(|sequence| sequence.name.name == "counter")
+	);
+}
+
+#[rstest]
+#[tokio::test]
 async fn qualified_identity_preflight_and_rollback_use_the_requested_schema() {
 	use reinhardt_query::prelude::{
 		Alias, ColumnDef, ColumnType, PostgresQueryBuilder, Query, QueryStatementBuilder,

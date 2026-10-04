@@ -405,6 +405,17 @@ impl SequenceDefinition {
 		if let Some(value) = options.cycle {
 			statement.cycle(value);
 		}
+		if let Some(owner) = &self.owned_by {
+			if let Some(schema) = &owner.table.schema {
+				statement.owned_by_schema_column(
+					Alias::new(schema),
+					Alias::new(&owner.table.name),
+					Alias::new(&owner.column),
+				);
+			} else {
+				statement.owned_by_column(Alias::new(&owner.table.name), Alias::new(&owner.column));
+			}
+		}
 		statement.to_string(PostgresQueryBuilder)
 	}
 }
@@ -561,7 +572,7 @@ impl IdentityDefinition {
 // These schema operations are constructed during migration planning, outside hot paths.
 #[allow(clippy::large_enum_variant)]
 pub enum SequenceOperation {
-	/// Creates an independent sequence (ownership must be a later operation).
+	/// Creates a sequence, applying ownership when its owning column already exists.
 	Create {
 		/// Complete declaration.
 		definition: SequenceDefinition,
