@@ -174,9 +174,7 @@ impl TestSavepoint {
 // raw string interpolation to prevent SQL injection.
 /// Test database utilities for common operations.
 pub mod utils {
-	use reinhardt_query::{
-		Alias, ColumnRef, Expr, Iden, PostgresQueryBuilder, Query, QueryStatementBuilder,
-	};
+	use reinhardt_query::{Alias, Expr, Iden, PostgresQueryBuilder, Query, QueryStatementBuilder};
 
 	/// Quote an identifier for PostgreSQL using `reinhardt_query::Iden`.
 	fn quote_ident(name: &str) -> String {
@@ -191,33 +189,17 @@ pub mod utils {
 	/// This is useful for cleaning up between tests when not using
 	/// transaction rollback.
 	///
-	/// Note: reinhardt-query does not natively support TRUNCATE, so this uses
-	/// properly quoted identifiers via `Alias`.
+	/// Uses the typed PostgreSQL TRUNCATE builder, preserving table order,
+	/// identifier quoting, identity restart and cascade.
 	pub fn truncate_tables_sql(tables: &[&str]) -> String {
 		if tables.is_empty() {
 			return String::new();
 		}
-
-		let quoted_tables: Vec<String> = tables
-			.iter()
-			.map(|t| {
-				// Use a SELECT query to get the properly quoted identifier
-				let query = Query::select()
-					.column(ColumnRef::asterisk())
-					.from(Alias::new(*t))
-					.to_string(PostgresQueryBuilder);
-				// Extract quoted table name from "SELECT * FROM <table>"
-				query
-					.strip_prefix("SELECT * FROM ")
-					.unwrap_or(t)
-					.to_string()
-			})
-			.collect();
-
-		format!(
-			"TRUNCATE TABLE {} RESTART IDENTITY CASCADE",
-			quoted_tables.join(", ")
-		)
+		Query::truncate_table()
+			.tables(tables.iter().map(|table| Alias::new(*table)))
+			.restart_identity()
+			.cascade()
+			.to_string(PostgresQueryBuilder)
 	}
 
 	/// Generate a DELETE statement for cleaning up a table.
@@ -376,19 +358,15 @@ impl<F: FnOnce()> Drop for CleanupGuard<F> {
 mod tests {
 	use super::*;
 
-	#[test]
-	fn test_truncate_tables_sql() {
-		let sql = utils::truncate_tables_sql(&["users", "posts"]);
-		assert!(sql.contains("TRUNCATE TABLE"));
-		assert!(sql.contains("\"users\""));
-		assert!(sql.contains("\"posts\""));
-		assert!(sql.contains("CASCADE"));
-	}
-
-	#[test]
-	fn test_truncate_tables_sql_empty() {
-		let sql = utils::truncate_tables_sql(&[]);
-		assert!(sql.is_empty());
+	#[rstest::rstest]
+	#[case(&["users", "posts"], "TRUNCATE TABLE \"users\", \"posts\" RESTART IDENTITY CASCADE")]
+	#[case(&["user\"data", "order"], "TRUNCATE TABLE \"user\"\"data\", \"order\" RESTART IDENTITY CASCADE")]
+	#[case(&[], "")]
+	fn test_truncate_tables_sql(#[case] tables: &[&str], #[case] expected: &str) {
+		// Act
+		let sql = utils::truncate_tables_sql(tables);
+		// Assert
+		assert_eq!(sql, expected);
 	}
 
 	#[test]
