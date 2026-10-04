@@ -1191,14 +1191,46 @@ impl Drop for SqliteSchemaProbe {
 	fn drop(&mut self) {
 		if let Some(mut connection) = self.connection.take() {
 			let drop_statement = std::mem::take(&mut self.drop_statement);
-			// The cleanup task owns the connection until DROP completes. Detaching
-			// its handle lets cleanup outlive a canceled probe, including a canceled
-			// CREATE or explicit cleanup, without returning a dirty connection.
-			let _cleanup = self.runtime.spawn(async move {
-				if let Err(error) = sqlx::query(&drop_statement).execute(&mut *connection).await {
-					tracing::warn!(%error, "failed to remove SQLite pool schema probe");
-				}
-			});
+			// Quarantine the connection if starting cleanup fails. Entering the
+			// original handle lets SQLx dispose of it even when no runtime is current.
+			connection.close_on_drop();
+			let _entered = self.runtime.enter();
+			let original_runtime = self.runtime.clone();
+			// An ordinary Tokio task can be discarded during runtime shutdown.
+			// This thread owns cleanup and a separate runtime until DROP and the
+			// explicit pool return finish; dropping its handle detaches that work.
+			let cleanup = std::thread::Builder::new()
+				.name("reinhardt-sqlite-probe-cleanup".to_string())
+				.spawn(move || {
+					let _entered = original_runtime.enter();
+					let mut connection = connection;
+					let runtime = match tokio::runtime::Builder::new_current_thread()
+						.enable_all()
+						.build()
+					{
+						Ok(runtime) => runtime,
+						Err(error) => {
+							tracing::warn!(%error, "failed to start SQLite schema probe cleanup runtime");
+							return;
+						}
+					};
+					runtime.block_on(async move {
+						if let Err(error) =
+							sqlx::query(&drop_statement).execute(&mut *connection).await
+						{
+							tracing::warn!(%error, "failed to remove SQLite pool schema probe");
+							if let Err(error) = connection.close().await {
+								tracing::warn!(%error, "failed to close SQLite schema probe connection");
+							}
+						} else {
+							// Eagerly return the clean connection before this runtime shuts down.
+							connection.return_to_pool().await;
+						}
+					});
+				});
+			if let Err(error) = cleanup {
+				tracing::warn!(%error, "failed to start SQLite schema probe cleanup thread");
+			}
 		}
 	}
 }
@@ -1219,8 +1251,9 @@ impl SqliteDurableJobStore {
 	/// Creates a store from an existing SQLite pool and creates required tables.
 	///
 	/// Multi-connection in-memory pools must share their schema. The sharing check
-	/// removes its probe table on success and error; canceling the check schedules
-	/// cleanup while retaining the probe connection until the table is removed.
+	/// removes its probe table on success and error. Cancellation cleanup runs
+	/// independently of the caller's runtime while retaining the probe connection
+	/// until the table is removed.
 	pub async fn from_pool(pool: SqlitePool) -> Result<Self, DurableQueueError> {
 		let store = Self { pool };
 		store.reject_private_in_memory_pool().await?;
@@ -2547,6 +2580,54 @@ mod tests {
 
 		// Assert
 		assert_no_probe_tables(&pool).await;
+	}
+
+	#[rstest]
+	#[case::cancel_before_shutdown(false)]
+	#[case::cancel_after_shutdown(true)]
+	fn from_pool_schema_probe_cleans_up_after_runtime_shutdown(#[case] shutdown_first: bool) {
+		// Arrange
+		let runtime = tokio::runtime::Builder::new_current_thread()
+			.enable_all()
+			.build()
+			.unwrap();
+		let (pool, held, construction, queue, enqueued) = runtime.block_on(async {
+			let pool = probe_pool().await;
+			let store = SqliteDurableJobStore::from_pool(pool.clone())
+				.await
+				.unwrap();
+			let queue = DurableQueue::new(store);
+			let enqueued = queue.enqueue(JobSpec::new("retained_job")).await.unwrap();
+			let enqueued = queue.status(enqueued.id).await.unwrap();
+			let mut held = pool.acquire().await.unwrap();
+			let mut construction = Box::pin(SqliteDurableJobStore::from_pool(pool.clone()));
+			tokio::select! {
+				result = construction.as_mut() => panic!("probe ended before table creation: {result:?}"),
+				() = wait_for_probe_table(&mut held) => {}
+			}
+			(pool, held, construction, queue, enqueued)
+		});
+
+		// Act: a current-thread runtime cannot poll cleanup between these drops.
+		if shutdown_first {
+			drop(runtime);
+			drop(construction);
+		} else {
+			drop(construction);
+			drop(runtime);
+		}
+
+		// Assert: reuse the retained pool and its data on an independent runtime.
+		let runtime = tokio::runtime::Builder::new_current_thread()
+			.enable_all()
+			.build()
+			.unwrap();
+		runtime.block_on(async {
+			drop(held);
+			assert_no_probe_tables(&pool).await;
+			assert_eq!(queue.status(enqueued.id).await.unwrap(), enqueued);
+			pool.close().await;
+		});
 	}
 
 	#[rstest]
