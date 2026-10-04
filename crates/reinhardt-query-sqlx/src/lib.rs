@@ -133,6 +133,8 @@ fn error(
 
 #[cfg(feature = "postgres")]
 mod postgres;
+#[cfg(feature = "pgvector")]
+mod vector;
 #[cfg(feature = "postgres")]
 pub use postgres::prepare_postgres;
 #[cfg(feature = "mysql")]

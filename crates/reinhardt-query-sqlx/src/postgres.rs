@@ -63,7 +63,11 @@ pub fn prepare_postgres(
 			#[cfg(feature = "with-bigdecimal")]
 			Value::BigDecimal(v) => add!(v.map(|v| *v)),
 			#[cfg(feature = "pgvector")]
-			Value::Vector(v) => add!(v.map(|v| pgvector::Vector::from(*v))),
+			Value::Vector(v) => add!(
+				v.map(|v| crate::vector::VectorArgument::new(*v))
+					.transpose()
+					.map_err(fail)?
+			),
 			Value::Array(ty, values) => add_array(&mut arguments, ty, values.map(|v| *v), index)?,
 			_ => return Err(fail("value codec feature is disabled")),
 		}

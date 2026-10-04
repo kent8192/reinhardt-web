@@ -1,5 +1,13 @@
 # reinhardt-query-sqlx
 
+The PostgreSQL dense-vector codec uses a private SQLx-version-local binary
+encoder as a [tracked workaround](https://github.com/kent8192/reinhardt-web/issues/6526).
+pgvector 0.4.2's broad SQLx range can select incompatible traits in fresh consumers.
+This encoder checks the dense-vector dimension and finite elements before binding,
+including native nullable vector parameters. Replace it with the upstream codec
+once its feature/version selection or a coordinated SQLx upgrade guarantees
+compatible traits independently of the workspace lockfile.
+
 Owned SQLx arguments for the exact `(String, Values)` returned by
 `reinhardt-query`. This crate does not execute queries, select pools, own
 transactions, decode rows, rewrite placeholders or infer binds from columns.

@@ -280,6 +280,73 @@ async fn postgres_native_round_trip() {
 	);
 }
 
+#[cfg(feature = "pgvector")]
+#[rstest]
+#[case(vec![])]
+#[case(vec![1.0; 16_001])]
+#[case(vec![f32::NAN])]
+#[case(vec![f32::INFINITY])]
+fn postgres_rejects_invalid_vectors_before_execution(#[case] values: Vec<f32>) {
+	// Arrange
+	let values = Values(vec![Value::Vector(Some(Box::new(values)))]);
+	// Act
+	let error = failure(prepare_postgres(("private SQL".into(), values)));
+	// Assert
+	assert_eq!(error.index, 1);
+	assert_eq!(error.value_type, "Vector");
+	assert_eq!(error.backend, "postgres");
+	assert!(!error.to_string().contains("private SQL"));
+}
+
+#[cfg(feature = "pgvector")]
+#[rstest]
+#[tokio::test]
+async fn postgres_vector_codec_round_trips_native_extension_and_null() {
+	use testcontainers::{
+		GenericImage, ImageExt,
+		core::{IntoContainerPort, WaitFor},
+		runners::AsyncRunner,
+	};
+	// Arrange: container and pool own database/extension resources through RAII.
+	let container = GenericImage::new("pgvector/pgvector", "pg16")
+		.with_exposed_port(5432.tcp())
+		.with_wait_for(WaitFor::message_on_stderr(
+			"database system is ready to accept connections",
+		))
+		.with_env_var("POSTGRES_PASSWORD", "postgres")
+		.start()
+		.await
+		.unwrap();
+	let url = format!(
+		"postgres://postgres:postgres@{}:{}/postgres",
+		container.get_host().await.unwrap(),
+		container.get_host_port_ipv4(5432).await.unwrap()
+	);
+	let pool = sqlx::PgPool::connect(&url).await.unwrap();
+	sqlx::query("CREATE EXTENSION vector")
+		.execute(&pool)
+		.await
+		.unwrap();
+	let sql = "SELECT $1::vector::text, ($2::vector IS NULL)";
+	let (actual_sql, arguments) = prepare_postgres((
+		sql.into(),
+		Values(vec![
+			Value::Vector(Some(Box::new(vec![1.0, -2.5, 3.25]))),
+			Value::Vector(None),
+		]),
+	))
+	.unwrap()
+	.into_parts();
+	// Act: native PostgreSQL decodes the binary vector, then renders its text.
+	let row: (String, bool) = sqlx::query_as_with(&actual_sql, arguments)
+		.fetch_one(&pool)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(actual_sql, sql);
+	assert_eq!(row, ("[1,-2.5,3.25]".into(), true));
+}
+
 #[cfg(feature = "mysql")]
 #[rstest]
 #[tokio::test]
