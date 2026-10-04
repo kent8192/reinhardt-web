@@ -290,6 +290,63 @@ struct GeneratedChild {
 	parent_id: i64,
 	name: String,
 }
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct GeneratedBulkArrayModel {
+	id: i64,
+	items: Vec<Option<String>>,
+}
+
+impl Model for GeneratedBulkArrayModel {
+	type PrimaryKey = i64;
+	type Fields = GeneratedFields;
+	type Objects = reinhardt_db::orm::Manager<Self>;
+	fn table_name() -> &'static str {
+		"generated_bulk_arrays"
+	}
+	fn new_fields() -> Self::Fields {
+		GeneratedFields
+	}
+	fn primary_key(&self) -> Option<i64> {
+		Some(self.id)
+	}
+	fn set_primary_key(&mut self, value: i64) {
+		self.id = value;
+	}
+	fn field_metadata() -> Vec<reinhardt_db::orm::inspection::FieldInfo> {
+		use reinhardt_db::orm::field_codec::DatabaseStorageKind;
+		let mut fields = GeneratedModel::field_metadata();
+		fields[0].nullable = false;
+		fields[1].name = "items".into();
+		fields[1].field_type = "ArrayField".into();
+		fields[1].storage_kind = Some(DatabaseStorageKind::Json);
+		fields
+	}
+	fn encode_database_fields(
+		&self,
+	) -> Result<std::collections::BTreeMap<String, DatabaseValue>, reinhardt_db::orm::FieldCodecError>
+	{
+		Ok(std::collections::BTreeMap::from([
+			("id".into(), DatabaseValue::I64(self.id)),
+			(
+				"items".into(),
+				DatabaseValue::Array {
+					element_type: reinhardt_db::orm::DatabaseArrayType::String,
+					values: self
+						.items
+						.iter()
+						.map(|value| {
+							value
+								.clone()
+								.map(DatabaseValue::String)
+								.unwrap_or(DatabaseValue::Null)
+						})
+						.collect(),
+				},
+			),
+		]))
+	}
+}
 impl Model for GeneratedChild {
 	type PrimaryKey = i64;
 	type Fields = GeneratedFields;
@@ -467,6 +524,199 @@ async fn exercise_manager_generated_capabilities(connection: &DatabaseConnection
 		manager.delete_with_conn(&mut handle, id).await.unwrap();
 	}
 	assert_eq!(manager.count_with_conn(&mut handle).await.unwrap(), before);
+	// Bulk INSERT keeps duplicate-ignore semantics without rewriting rendered SQL.
+	let inserted = vec![
+		GeneratedModel {
+			id: Some(71),
+			name: "bulk create' ? $18".into(),
+		},
+		GeneratedModel {
+			id: Some(72),
+			name: "bulk create' ? $19".into(),
+		},
+	];
+	assert_eq!(
+		manager
+			.bulk_create_with_conn(&mut handle, inserted.clone(), Some(1), false, false)
+			.await
+			.unwrap(),
+		inserted
+	);
+	let last = GeneratedModel {
+		id: Some(73),
+		name: "bulk remaining' ? $20".into(),
+	};
+	let ignored = manager
+		.bulk_create_with_conn(
+			&mut handle,
+			vec![
+				GeneratedModel {
+					name: "duplicate must keep original".into(),
+					..inserted[0].clone()
+				},
+				last.clone(),
+			],
+			None,
+			true,
+			false,
+		)
+		.await
+		.unwrap();
+	assert!(ignored.is_empty());
+	let created = QuerySet::<GeneratedModel>::new()
+		.filter(Filter::new(
+			"id",
+			FilterOperator::In,
+			FilterValue::List(vec![
+				FilterValue::Integer(71),
+				FilterValue::Integer(72),
+				FilterValue::Integer(73),
+			]),
+		))
+		.order_by(&["id"])
+		.all_with_db(&mut handle)
+		.await
+		.unwrap();
+	assert_eq!(created, [inserted[0].clone(), inserted[1].clone(), last]);
+	let rollback: reinhardt_core::exception::Result<()> = handle
+		.atomic_write(async |transaction| {
+			let model = GeneratedModel {
+				id: Some(74),
+				name: "rolled back bulk insert".into(),
+			};
+			assert_eq!(
+				manager
+					.bulk_create_with_conn(transaction, vec![model.clone()], None, false, false)
+					.await?,
+				vec![model]
+			);
+			Err(reinhardt_core::exception::Error::Conflict(
+				"rollback bulk insert".into(),
+			))
+		})
+		.await;
+	assert!(matches!(
+		rollback,
+		Err(reinhardt_core::exception::Error::Conflict(_))
+	));
+	assert_eq!(
+		manager.count_with_conn(&mut handle).await.unwrap(),
+		before + 3
+	);
+	assert!(
+		manager
+			.bulk_create_with_conn(&mut handle, Vec::new(), None, false, false)
+			.await
+			.unwrap()
+			.is_empty()
+	);
+	for id in [71, 72, 73] {
+		manager.delete_with_conn(&mut handle, id).await.unwrap();
+	}
+	assert_eq!(manager.count_with_conn(&mut handle).await.unwrap(), before);
+	// Model arrays retain their native PostgreSQL or explicit JSON column encoding.
+	let array_schema = if connection.database_type() == DatabaseType::Postgres {
+		"CREATE TABLE generated_bulk_arrays (id BIGINT PRIMARY KEY, items TEXT[])"
+	} else {
+		"CREATE TABLE generated_bulk_arrays (id BIGINT PRIMARY KEY, items TEXT)"
+	};
+	connection.execute(array_schema, Vec::new()).await.unwrap();
+	let arrays = vec![
+		GeneratedBulkArrayModel {
+			id: 1,
+			items: vec![Some("array' ? $21".into()), None],
+		},
+		GeneratedBulkArrayModel {
+			id: 2,
+			items: Vec::new(),
+		},
+	];
+	assert!(
+		GeneratedBulkArrayModel::objects()
+			.bulk_create_with_conn(&mut handle, arrays, None, true, false)
+			.await
+			.unwrap()
+			.is_empty()
+	);
+	if connection.database_type() == DatabaseType::Postgres {
+		let rows: Vec<Vec<Option<String>>> =
+			sqlx::query_scalar("SELECT items FROM generated_bulk_arrays ORDER BY id")
+				.fetch_all(&connection.into_postgres().unwrap())
+				.await
+				.unwrap();
+		assert_eq!(
+			rows,
+			vec![vec![Some("array' ? $21".into()), None], Vec::new()]
+		);
+	} else {
+		let rows = connection
+			.fetch_all(
+				"SELECT items FROM generated_bulk_arrays ORDER BY id",
+				Vec::new(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(
+			rows.iter()
+				.map(|row| row.get::<String>("items").unwrap())
+				.collect::<Vec<_>>(),
+			vec!["[\"array' ? $21\",null]", "[]"]
+		);
+	}
+	// Ordinary CRUD uses the same model-array encoding through both executor families.
+	let array_manager = GeneratedBulkArrayModel::objects();
+	let model = GeneratedBulkArrayModel {
+		id: 3,
+		items: vec![Some("CRUD array' ? $22".into())],
+	};
+	assert_eq!(
+		array_manager
+			.create_with_conn(&mut handle, &model)
+			.await
+			.unwrap(),
+		model
+	);
+	let updated = GeneratedBulkArrayModel {
+		items: Vec::new(),
+		..model.clone()
+	};
+	assert_eq!(
+		array_manager
+			.update_with_conn(&mut handle, &updated)
+			.await
+			.unwrap(),
+		updated
+	);
+	array_manager
+		.delete_with_conn(&mut handle, 3)
+		.await
+		.unwrap();
+	let mut transaction = connection.begin_write().await.unwrap();
+	assert_eq!(
+		array_manager
+			.insert_with_executor(&mut *transaction, &model)
+			.await
+			.unwrap(),
+		model
+	);
+	assert_eq!(
+		array_manager
+			.save_with_executor(&mut *transaction, &updated)
+			.await
+			.unwrap(),
+		updated
+	);
+	transaction.commit().await.unwrap();
+	let loaded = QuerySet::<GeneratedBulkArrayModel>::new()
+		.filter(Filter::new(
+			"id",
+			FilterOperator::Eq,
+			FilterValue::Integer(3),
+		))
+		.all_with_db(&mut handle)
+		.await
+		.unwrap();
+	assert_eq!(loaded, [updated]);
 }
 
 async fn exercise_relationship_generated_capabilities(connection: &DatabaseConnection) {

@@ -38479,138 +38479,64 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create",
       "kind": "execution-wrapper",
-      "line": 2799,
-      "fingerprint": "bec69aa08efe7809c9919ebdab8ef664eb80e9bc006aaf65a6a77b63af7f4a64",
+      "line": 2559,
+      "fingerprint": "d2399c3d03adf034ced00a37c2456bb57481044948922e2c2dd568c4c72517a4",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "orm; native configured backend feature; pgvector when enabled"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Bulk INSERT uses typed conflict-ignore clauses and consumes the exact owned rendered SQL/Values, preserving batching, ignored results, caller transactions and pgvector context. Model arrays retain native PostgreSQL types or explicit JSON column encoding on MySQL/SQLite. No rendered SQL is rewritten.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite",
+        "cockroachdb (checked PostgreSQL renderer)"
       ],
-      "evidence": []
+      "evidence": [
+        "Native three-backend bulk create regression passed batching, hydrated/input result contracts, duplicate ignore, bound quote-bearing strings, empty input and atomic rollback before the expanded ordinary CRUD array check.",
+        "Nullable/empty native PostgreSQL and JSON-backed MySQL/SQLite bulk arrays passed after companion canonical NULL repair ae39903071.",
+        "68 focused Manager tests and eight Manager doctests passed (25 ignored); focused Clippy passed. Existing zero batch panic #6535 and global MySQL RETURNING panic #6536 are separately reported and remain unchanged.",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create",
       "kind": "execution-wrapper",
-      "line": 2804,
-      "fingerprint": "9ddb689d581de0759bc64117cd866642e4e5230a0581ef6fad87c6cb36a3a203",
+      "line": 2564,
+      "fingerprint": "f27927fdd00e001c07e50ed6ef073723c6b66d183096d1583ba5b26425e66621",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create::sql-literal#1",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::bulk_create",
-      "kind": "sql-literal",
-      "line": 2784,
-      "fingerprint": "5025c969f263e829f8f95e963088c263a6ade885597842366dcf9d53788c3156",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
+      "status": "typed",
       "operation": "dml",
-      "representation": "review-required",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "orm; native configured backend feature; pgvector when enabled"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Bulk INSERT uses typed conflict-ignore clauses and consumes the exact owned rendered SQL/Values, preserving batching, ignored results, caller transactions and pgvector context. Model arrays retain native PostgreSQL types or explicit JSON column encoding on MySQL/SQLite. No rendered SQL is rewritten.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite",
+        "cockroachdb (checked PostgreSQL renderer)"
       ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create::sql-literal#2",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::bulk_create",
-      "kind": "sql-literal",
-      "line": 2784,
-      "fingerprint": "192bbf4573f6824beadf6f7e912a88217c9943ade1200514af9ba3f2be362b76",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create::sql-literal#3",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::bulk_create",
-      "kind": "sql-literal",
-      "line": 2786,
-      "fingerprint": "5025c969f263e829f8f95e963088c263a6ade885597842366dcf9d53788c3156",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create::sql-literal#4",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::bulk_create",
-      "kind": "sql-literal",
-      "line": 2786,
-      "fingerprint": "a17c1614ffd9f9a9af05f98a108b5f897a93965aa1a53579ec1ff477ecda6b9f",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
+      "evidence": [
+        "Native three-backend bulk create regression passed batching, hydrated/input result contracts, duplicate ignore, bound quote-bearing strings, empty input and atomic rollback before the expanded ordinary CRUD array check.",
+        "Nullable/empty native PostgreSQL and JSON-backed MySQL/SQLite bulk arrays passed after companion canonical NULL repair ae39903071.",
+        "68 focused Manager tests and eight Manager doctests passed (25 ignored); focused Clippy passed. Existing zero batch panic #6535 and global MySQL RETURNING panic #6536 are separately reported and remain unchanged.",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create_sql_detailed::macro-sql-literal#1",
@@ -38622,156 +38548,85 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm public SQL generation utility; CustomManager forwarding default"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Public compatibility SQL-string generator with explicitly supplied caller JSON data. Reviewed repository callers are CustomManager SQL-returning forwarding defaults and unit tests; framework bulk create/update now use separate typed AST builders and never execute this renderer output.",
       "backends": [
-        "review-required"
+        "postgres (legacy SQL syntax; no execution)"
       ],
-      "evidence": []
+      "evidence": [
+        "rg over all repository Rust callers found only CustomManager forwarding methods and Manager unit tests. Reviewed functions return String and contain no executor; framework runtime bulk_create/bulk_update call typed canonical builders instead.",
+        "68 focused Manager tests passed the retained SQL-renderer compatibility tests."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create_with_conn::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create_with_conn",
       "kind": "execution-wrapper",
-      "line": 2865,
-      "fingerprint": "727d624b3f1b56dcad9c166447cddb1d016b94f7a3d27093ca105ea01db3fb00",
+      "line": 2614,
+      "fingerprint": "6f9e745e0969e61c20e4691f8d09e34dd834198ceb516e963b359b989c686fc7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "orm; native configured backend feature; pgvector when enabled"
       ],
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite",
+        "cockroachdb (checked PostgreSQL renderer)"
       ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
+      "rationale": "Bulk INSERT uses typed conflict-ignore clauses and consumes the exact owned rendered SQL/Values, preserving batching, ignored results, caller transactions and pgvector context. Model arrays retain native PostgreSQL types or explicit JSON column encoding on MySQL/SQLite. No rendered SQL is rewritten.",
+      "evidence": [
+        "Native three-backend bulk create regression passed batching, hydrated/input result contracts, duplicate ignore, bound quote-bearing strings, empty input and atomic rollback before the expanded ordinary CRUD array check.",
+        "Nullable/empty native PostgreSQL and JSON-backed MySQL/SQLite bulk arrays passed after companion canonical NULL repair ae39903071.",
+        "68 focused Manager tests and eight Manager doctests passed (25 ignored); focused Clippy passed. Existing zero batch panic #6535 and global MySQL RETURNING panic #6536 are separately reported and remain unchanged.",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create_with_conn::execution-wrapper#2",
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::bulk_create_with_conn",
       "kind": "execution-wrapper",
-      "line": 2872,
-      "fingerprint": "7e8cd4c0a10fdf74e69d817e258b80b6ad14cec0041fdde8393b2d0f459c2757",
+      "line": 2621,
+      "fingerprint": "23d1c923f1c4cc1af9934644dfa9bbf178caeaa828912afc328b77e811d2ec56",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "backends": [
-        "review-required"
-      ],
-      "rationale": "Contextual/streaming/owned wrapper detection added this conservative candidate. Caller ownership, inherited feature reachability and generated argument provenance remain a slice review obligation.",
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create_with_conn::sql-literal#1",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::bulk_create_with_conn",
-      "kind": "sql-literal",
-      "line": 2850,
-      "fingerprint": "bdcb7fd90acea635e1edd33e18d1cacbc7962af9113b75603e3ff244a1ce7781",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
+      "status": "typed",
       "operation": "dml",
-      "representation": "review-required",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "orm; native configured backend feature; pgvector when enabled"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite",
+        "cockroachdb (checked PostgreSQL renderer)"
       ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create_with_conn::sql-literal#2",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::bulk_create_with_conn",
-      "kind": "sql-literal",
-      "line": 2850,
-      "fingerprint": "78ff51b5688aebd0a2a1ec0e8acb68be79cbfd83767fb81f5184aa011dc6c625",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create_with_conn::sql-literal#3",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::bulk_create_with_conn",
-      "kind": "sql-literal",
-      "line": 2852,
-      "fingerprint": "bdcb7fd90acea635e1edd33e18d1cacbc7962af9113b75603e3ff244a1ce7781",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_create_with_conn::sql-literal#4",
-      "path": "crates/reinhardt-db/src/orm/manager.rs",
-      "symbol": "Manager < M >::bulk_create_with_conn",
-      "kind": "sql-literal",
-      "line": 2852,
-      "fingerprint": "a8ba1b80b6eeed3f2bc98fabc5e71193318dc748cf703de8abe23bc77d02fdcb",
-      "conditions": [],
-      "test_only": false,
-      "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
+      "rationale": "Bulk INSERT uses typed conflict-ignore clauses and consumes the exact owned rendered SQL/Values, preserving batching, ignored results, caller transactions and pgvector context. Model arrays retain native PostgreSQL types or explicit JSON column encoding on MySQL/SQLite. No rendered SQL is rewritten.",
+      "evidence": [
+        "Native three-backend bulk create regression passed batching, hydrated/input result contracts, duplicate ignore, bound quote-bearing strings, empty input and atomic rollback before the expanded ordinary CRUD array check.",
+        "Nullable/empty native PostgreSQL and JSON-backed MySQL/SQLite bulk arrays passed after companion canonical NULL repair ae39903071.",
+        "68 focused Manager tests and eight Manager doctests passed (25 ignored); focused Clippy passed. Existing zero batch panic #6535 and global MySQL RETURNING panic #6536 are separately reported and remain unchanged.",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_update::execution-wrapper#1",
@@ -38800,7 +38655,8 @@
       "evidence": [
         "Three native PostgreSQL/MySQL/SQLite scenarios passed bound quoted CASE values, affected-row counts, one-row batches, rollback and empty input/fields.",
         "77 focused Manager tests passed, including exact CASE SQL/argument order, literal NULL without a bound slot, exact Decimal carrier, nullable/empty native arrays, JSON array encoding, physical primary-key aliases and pgvector context.",
-        "Focused production/native Clippy and eight Manager doctests passed (25 ignored). Zero batch-size validation defect independently reproduced on unchanged baseline and tracked in #6535; not repaired here."
+        "Focused production/native Clippy and eight Manager doctests passed (25 ignored). Zero batch-size validation defect independently reproduced on unchanged baseline and tracked in #6535; not repaired here.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -38813,18 +38669,21 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm public SQL generation utility; CustomManager forwarding default"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Public compatibility SQL-string generator with explicitly supplied caller JSON data. Reviewed repository callers are CustomManager SQL-returning forwarding defaults and unit tests; framework bulk create/update now use separate typed AST builders and never execute this renderer output.",
       "backends": [
-        "review-required"
+        "postgres (legacy SQL syntax; no execution)"
       ],
-      "evidence": []
+      "evidence": [
+        "rg over all repository Rust callers found only CustomManager forwarding methods and Manager unit tests. Reviewed functions return String and contain no executor; framework runtime bulk_create/bulk_update call typed canonical builders instead.",
+        "68 focused Manager tests passed the retained SQL-renderer compatibility tests."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/manager.rs::Manager < M >::bulk_update_with_conn::execution-wrapper#1",
@@ -38853,7 +38712,8 @@
       "evidence": [
         "Three native PostgreSQL/MySQL/SQLite scenarios passed bound quoted CASE values, affected-row counts, one-row batches, rollback and empty input/fields.",
         "77 focused Manager tests passed, including exact CASE SQL/argument order, literal NULL without a bound slot, exact Decimal carrier, nullable/empty native arrays, JSON array encoding, physical primary-key aliases and pgvector context.",
-        "Focused production/native Clippy and eight Manager doctests passed (25 ignored). Zero batch-size validation defect independently reproduced on unchanged baseline and tracked in #6535; not repaired here."
+        "Focused production/native Clippy and eight Manager doctests passed (25 ignored). Zero batch-size validation defect independently reproduced on unchanged baseline and tracked in #6535; not repaired here.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -38892,8 +38752,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_conn_outcome",
       "kind": "execution-wrapper",
-      "line": 1941,
-      "fingerprint": "589450d9ae246c287ed48a374be34756bbff1f4f9c67f4962496383c2a905573",
+      "line": 1933,
+      "fingerprint": "2fe49fc50ad1d624238220d2986f31085ff8eff05daed17cc589d35741437bb1",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -38915,7 +38775,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -38923,8 +38785,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_conn_outcome",
       "kind": "execution-wrapper",
-      "line": 1995,
-      "fingerprint": "237ae1435ca549687bb299e1a5ada6e657bd98893df70242d3b3559ab8e86173",
+      "line": 1987,
+      "fingerprint": "ef10338b17f9a7e0af2203c7f3bc333d8139c35bc6b145534f79e34c5214cbb0",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -38946,7 +38808,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -38954,8 +38818,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_conn_outcome",
       "kind": "execution-wrapper",
-      "line": 2012,
-      "fingerprint": "60020050945edacc1536fc1ff34e65cb07be9266bdab9940ab0d3c320d62ff77",
+      "line": 2004,
+      "fingerprint": "f207377381507d4b73f6f69234a7e404d0f5d93309f6fa72f7bdddaacb59a9c3",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -38977,7 +38841,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -38985,8 +38851,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1770,
-      "fingerprint": "ade050c5cfb7af1f486c3786592ed9473b37962c025e26945d58fd4684268e70",
+      "line": 1762,
+      "fingerprint": "d0bb441616fd2b1e8bf853dc1a9d95e09afdd7f9ffb23056c87cd145bf98338c",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39008,8 +38874,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1775,
-      "fingerprint": "0d7eceda5e207ed11bb2c37210225133a2a6f2dbac2245da0964c572d0d32df4",
+      "line": 1767,
+      "fingerprint": "bf8bc875c0e864f1acee925bfba3d1ca3afd1207365bcad1b3f7f933030e0d3e",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39031,7 +38897,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -39039,8 +38907,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1783,
-      "fingerprint": "fc655e69c351dda77dd082f1ef8d966099d58a97cf9049096d5819c4a9feccac",
+      "line": 1775,
+      "fingerprint": "c4877cfca01b9a1754cdfe133b3b2b135ca260217c46461733918a6a9efe90e8",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39062,8 +38930,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1813,
-      "fingerprint": "15d33a21e02d9f82af9111dd39db664f704697576879cedd190220f702db0169",
+      "line": 1805,
+      "fingerprint": "2a0c74be5ad81e9648d77a541cf29edec0421a7ebda60573ab027502a16a053d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39085,7 +38953,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -39093,8 +38963,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "execution-wrapper",
-      "line": 1820,
-      "fingerprint": "7005b943d96b5a22a31d81b17daac9e1b6ffcf5878f734324c29f1345b1d9162",
+      "line": 1812,
+      "fingerprint": "d21824798224f63d22ef21f4633de337950f28c1d2f2c69805e2a54ef68fe7ce",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39116,7 +38986,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -39124,8 +38996,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "sql-literal",
-      "line": 1771,
-      "fingerprint": "d2239d903c5a932fbd25d7c592bcba6bb4ade52b8766a019e2f5d2a30e95f9a1",
+      "line": 1763,
+      "fingerprint": "61e15556e09983e1928b93c89ca313c9cc1cb04c8cc53e3db953d84bf48cd59e",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -39147,8 +39019,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::create_with_executor",
       "kind": "sql-literal",
-      "line": 1785,
-      "fingerprint": "3e8a78f78d020f59bd40d2b311958b882acc618060b55f8aecf5ea9cb59979e6",
+      "line": 1777,
+      "fingerprint": "fd01e9d8498b05f56a788d8de2ac0e8dbd3f6aba2339c2248899e7e2a1240dfd",
       "conditions": [],
       "test_only": false,
       "category": "dml",
@@ -39232,8 +39104,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_conn",
       "kind": "execution-wrapper",
-      "line": 2471,
-      "fingerprint": "bfe579edf54e97d3470d23adc030014bb54bfaa823428e7b4bdde5e07534950b",
+      "line": 2226,
+      "fingerprint": "c6ca391f8d2ed92f5b07d3c6650a473783e69a28d5e8a29246dba873b959ddc2",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39255,7 +39127,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -39263,8 +39137,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_conn",
       "kind": "execution-wrapper",
-      "line": 2484,
-      "fingerprint": "daceb233dcc40b8d31a206646d945f680411ded8c3751175832a9e002e234c6b",
+      "line": 2239,
+      "fingerprint": "f99495872b4baf1795f1c529868bdaf7125194f83f46bacd5a7e0510ee3ef9a5",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39286,7 +39160,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -39294,8 +39170,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_conn",
       "kind": "execution-wrapper",
-      "line": 2490,
-      "fingerprint": "48211b4f30b7844cbcc23748ed2517df4d1192685951abed7236c8a27edbd45e",
+      "line": 2245,
+      "fingerprint": "fd9980a34f2da5318bcd8bb897784917c8b9ed55b692147fd77691d8ff374b5f",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39317,7 +39193,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -39325,8 +39203,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_executor",
       "kind": "execution-wrapper",
-      "line": 2383,
-      "fingerprint": "db72ac8331764868334d90557ad40f39290444a14b96c5daf8c17647b3543f0c",
+      "line": 2138,
+      "fingerprint": "409e813d1f903c55bdd50aed686c2a0dad94e22a7aa9750e619c348cf5540911",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39348,7 +39226,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -39356,8 +39236,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_executor",
       "kind": "execution-wrapper",
-      "line": 2400,
-      "fingerprint": "9de1348075a3d5ab7decfe72ae792941737863d1c2f69319267480afe9c05ae3",
+      "line": 2155,
+      "fingerprint": "05e7dd70c37fd7d2d34af4dc254662845de38ed6a879b54d6c4ec856f36961a2",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39379,7 +39259,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {
@@ -39387,8 +39269,8 @@
       "path": "crates/reinhardt-db/src/orm/manager.rs",
       "symbol": "Manager < M >::update_with_executor",
       "kind": "execution-wrapper",
-      "line": 2407,
-      "fingerprint": "b481c78fc1f731292cf2f49142f24672667fe7bf8d645fb74ed6730841ee94e0",
+      "line": 2162,
+      "fingerprint": "b3d36aa4aa0e91d6656791d385c8f71fef36eab2fa7a7f4d3ac404065a4b2071",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -39410,7 +39292,9 @@
         "crates/reinhardt-db/tests/runtime_sql_generated_backend.rs: PostgreSQL/MySQL/SQLite Manager pool CRUD, transaction insert/update/delete with commit/rollback and quote-bearing model hydration",
         "crates/reinhardt-db/tests/transaction_executor_orm.rs: 45 custom executor contracts, physical/composite keys, hydration and caller-owned transaction semantics",
         "crates/reinhardt-db/tests/pgvector_orm.rs: native vector model and typed-distance workflow",
-        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests"
+        "crates/reinhardt-db/src/orm/manager.rs: 88 focused unit tests and executable Manager doctests",
+        "Expanded three native-backend scenarios passed ordinary create/update through leased ORM and dedicated transaction executors, with JSON-backed model arrays on MySQL/SQLite and native PostgreSQL arrays, empty-array updates and quote-bearing strings. Shared model encoding repairs unreleased migration regression #6538; direct SQL arrays remain rejected on MySQL/SQLite.",
+        "Final caller-owned executor regression target: 45 tests passed after checking exact CASE Values instead of inline payload text; strict focused Clippy passed after the two pre-existing test lint repairs tracked in #6541. Production/native Clippy, eight executable Manager doctests and warning-denied rustdoc also passed."
       ]
     },
     {

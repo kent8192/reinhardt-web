@@ -1,5 +1,3 @@
-#[cfg(test)]
-use super::connection::QueryValue;
 use super::connection::{
 	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, OrmExecutor, QueryRow, Row,
 };
@@ -53,6 +51,42 @@ fn executor_field_codec_error(error: FieldCodecError) -> crate::backends::error:
 
 fn executor_error(error: Error) -> crate::backends::error::DatabaseError {
 	crate::backends::error::into_database_error(error)
+}
+
+fn model_database_value(
+	value: DatabaseValue,
+	backend: Option<DatabaseBackend>,
+) -> Result<DatabaseValue, FieldCodecError> {
+	// Model arrays use JSON columns on backends without native SQL arrays.
+	if matches!(
+		backend,
+		Some(DatabaseBackend::MySql | DatabaseBackend::Sqlite)
+	) && matches!(&value, DatabaseValue::Array { .. })
+	{
+		Ok(DatabaseValue::Json(value.into_json_value()?))
+	} else {
+		Ok(value)
+	}
+}
+
+fn model_query_value(
+	value: DatabaseValue,
+	backend: Option<DatabaseBackend>,
+) -> Result<reinhardt_query::value::Value, FieldCodecError> {
+	model_database_value(value, backend).map(database_value_to_query_value)
+}
+
+fn model_fields_for_backend<M: Model>(
+	model: &M,
+	backend: DatabaseBackend,
+) -> Result<std::collections::BTreeMap<String, DatabaseValue>, FieldCodecError> {
+	model
+		.encode_database_fields()?
+		.into_iter()
+		.map(|(field, value)| {
+			model_database_value(value, Some(backend)).map(|value| (field, value))
+		})
+		.collect()
 }
 
 /// Build SQL with values from an INSERT statement based on database backend
@@ -1699,10 +1733,8 @@ impl<M: Model> Manager<M> {
 		executor: &mut dyn super::connection::TransactionExecutor,
 		model: &M,
 	) -> Result<M, crate::backends::error::DatabaseError> {
-		let obj = model
-			.encode_database_fields()
-			.map_err(executor_field_codec_error)?;
 		let backend = Self::executor_backend(executor);
+		let obj = model_fields_for_backend(model, backend).map_err(executor_field_codec_error)?;
 		let (sql, values, context) = {
 			let mut stmt =
 				Self::build_insert_statement_from_object(&obj, |field| model.field_is_none(field))
@@ -1857,13 +1889,13 @@ impl<M: Model> Manager<M> {
 	where
 		E: OrmExecutor + ?Sized,
 	{
-		let obj = match model.encode_database_fields().map_err(field_codec_error) {
+		let backend = conn.backend();
+		let obj = match model_fields_for_backend(model, backend).map_err(field_codec_error) {
 			Ok(obj) => obj,
 			Err(error) => {
 				return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
 			}
 		};
-		let backend = conn.backend();
 		let (sql, values, context) = {
 			let mut stmt = match Self::build_insert_statement_from_object(&obj, |field| {
 				model.field_is_none(field)
@@ -2071,241 +2103,6 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
-	/// Convert reinhardt_query::value::Value to QueryValue for database parameter binding
-	pub(crate) fn sea_value_to_query_value(
-		v: reinhardt_query::value::Value,
-	) -> super::connection::QueryValue {
-		use super::connection::QueryValue;
-
-		match v {
-			reinhardt_query::value::Value::Bool(Some(b)) => QueryValue::Bool(b),
-			reinhardt_query::value::Value::Bool(None) => QueryValue::Null,
-
-			reinhardt_query::value::Value::TinyInt(Some(i)) => QueryValue::Int(i as i64),
-			reinhardt_query::value::Value::TinyInt(None) => QueryValue::Null,
-			reinhardt_query::value::Value::SmallInt(Some(i)) => QueryValue::Int(i as i64),
-			reinhardt_query::value::Value::SmallInt(None) => QueryValue::Null,
-			reinhardt_query::value::Value::Int(Some(i)) => QueryValue::Int32(i),
-			reinhardt_query::value::Value::Int(None) => QueryValue::Null,
-			reinhardt_query::value::Value::BigInt(Some(i)) => QueryValue::Int(i),
-			reinhardt_query::value::Value::BigInt(None) => QueryValue::Null,
-
-			reinhardt_query::value::Value::TinyUnsigned(Some(u)) => QueryValue::Int(u as i64),
-			reinhardt_query::value::Value::TinyUnsigned(None) => QueryValue::Null,
-			reinhardt_query::value::Value::SmallUnsigned(Some(u)) => QueryValue::Int(u as i64),
-			reinhardt_query::value::Value::SmallUnsigned(None) => QueryValue::Null,
-			reinhardt_query::value::Value::Unsigned(Some(u)) => QueryValue::Int(u as i64),
-			reinhardt_query::value::Value::Unsigned(None) => QueryValue::Null,
-			reinhardt_query::value::Value::BigUnsigned(Some(u)) => QueryValue::Int(u as i64),
-			reinhardt_query::value::Value::BigUnsigned(None) => QueryValue::Null,
-
-			reinhardt_query::value::Value::Float(Some(f)) => QueryValue::Float(f as f64),
-			reinhardt_query::value::Value::Float(None) => QueryValue::Null,
-			reinhardt_query::value::Value::Double(Some(f)) => QueryValue::Float(f),
-			reinhardt_query::value::Value::Double(None) => QueryValue::Null,
-			// QueryValue has no dedicated decimal variant. Preserve the exact
-			// decimal spelling as text so the backend can coerce it to DECIMAL
-			// without losing precision through an intermediate float.
-			reinhardt_query::value::Value::Decimal(Some(value)) => {
-				QueryValue::String(value.to_string())
-			}
-			reinhardt_query::value::Value::Decimal(None) => QueryValue::Null,
-
-			reinhardt_query::value::Value::String(Some(s)) => QueryValue::String((*s).clone()),
-			reinhardt_query::value::Value::String(None) => QueryValue::Null,
-
-			reinhardt_query::value::Value::Bytes(Some(b)) => QueryValue::Bytes((*b).clone()),
-			reinhardt_query::value::Value::Bytes(None) => QueryValue::Null,
-
-			// Timestamp handling
-			reinhardt_query::value::Value::ChronoDateTime(Some(dt)) => {
-				QueryValue::NaiveTimestamp(*dt)
-			}
-			reinhardt_query::value::Value::ChronoDateTime(None) => QueryValue::Null,
-			reinhardt_query::value::Value::ChronoDateTimeUtc(Some(dt)) => {
-				QueryValue::Timestamp(*dt)
-			}
-			reinhardt_query::value::Value::ChronoDateTimeUtc(None) => QueryValue::Null,
-			reinhardt_query::value::Value::ChronoDate(Some(date)) => {
-				QueryValue::String(date.to_string())
-			}
-			reinhardt_query::value::Value::ChronoDate(None) => QueryValue::Null,
-			reinhardt_query::value::Value::ChronoTime(Some(time)) => {
-				QueryValue::String(time.to_string())
-			}
-			reinhardt_query::value::Value::ChronoTime(None) => QueryValue::Null,
-
-			// UUID handling
-			reinhardt_query::value::Value::Uuid(Some(u)) => QueryValue::Uuid(*u),
-			reinhardt_query::value::Value::Uuid(None) => QueryValue::Null,
-
-			// JSON types - serialize to string
-			reinhardt_query::value::Value::Json(json) => QueryValue::Json(json),
-			#[cfg(feature = "pgvector")]
-			reinhardt_query::value::Value::Vector(Some(values)) => {
-				QueryValue::Vector(Some((*values).clone()))
-			}
-			#[cfg(feature = "pgvector")]
-			reinhardt_query::value::Value::Vector(None) => QueryValue::Vector(None),
-			reinhardt_query::value::Value::Array(array_type, Some(values)) => {
-				use reinhardt_query::value::Value as SeaValue;
-
-				match array_type {
-					reinhardt_query::value::ArrayType::String => QueryValue::StringArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::String(Some(value)) => Some((**value).clone()),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::Int => QueryValue::IntArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Int(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::BigInt => QueryValue::BigIntArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::BigInt(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::Bool => QueryValue::BoolArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Bool(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::Float => QueryValue::FloatArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Float(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::Double => QueryValue::DoubleArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Double(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::Uuid => QueryValue::UuidArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Uuid(Some(value)) => Some(**value),
-								_ => None,
-							})
-							.collect(),
-					),
-					_ => QueryValue::Json(Some(Box::new(super::execution::array_values_to_json(
-						&values,
-					)))),
-				}
-			}
-			reinhardt_query::value::Value::Array(_, None) => QueryValue::Null,
-
-			// For complex types or unsupported types, convert to null
-			// This is a safe fallback that won't cause runtime errors
-			_ => QueryValue::Null,
-		}
-	}
-
-	#[cfg(test)]
-	fn query_value_to_sea_value(value: QueryValue) -> reinhardt_query::value::Value {
-		match value {
-			QueryValue::Null => reinhardt_query::value::Value::Int(None),
-			QueryValue::Bool(value) => reinhardt_query::value::Value::Bool(Some(value)),
-			QueryValue::Int32(value) => reinhardt_query::value::Value::Int(Some(value)),
-			QueryValue::Int(value) => reinhardt_query::value::Value::BigInt(Some(value)),
-			QueryValue::Float(value) => reinhardt_query::value::Value::Double(Some(value)),
-			QueryValue::String(value) => {
-				reinhardt_query::value::Value::String(Some(Box::new(value)))
-			}
-			QueryValue::Bytes(value) => reinhardt_query::value::Value::Bytes(Some(Box::new(value))),
-			QueryValue::Timestamp(value) => {
-				reinhardt_query::value::Value::ChronoDateTimeUtc(Some(Box::new(value)))
-			}
-			QueryValue::NaiveTimestamp(value) => {
-				reinhardt_query::value::Value::ChronoDateTime(Some(Box::new(value)))
-			}
-			QueryValue::Uuid(value) => reinhardt_query::value::Value::Uuid(Some(Box::new(value))),
-			QueryValue::Json(value) => reinhardt_query::value::Value::Json(value),
-			#[cfg(feature = "pgvector")]
-			QueryValue::Vector(values) => reinhardt_query::value::Value::Vector(values.map(Box::new)),
-			QueryValue::StringArray(values) => {
-				reinhardt_query::value::Value::Json(Some(Box::new(serde_json::Value::Array(
-					values.into_iter().map(serde_json::Value::String).collect(),
-				))))
-			}
-			QueryValue::IntArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
-				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
-			))),
-			QueryValue::BigIntArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
-				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
-			))),
-			QueryValue::BoolArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
-				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
-			))),
-			QueryValue::FloatArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
-				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
-			))),
-			QueryValue::DoubleArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
-				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
-			))),
-			QueryValue::UuidArray(values) => {
-				reinhardt_query::value::Value::Json(Some(Box::new(serde_json::Value::Array(
-					values
-						.into_iter()
-						.map(|value| serde_json::Value::String(value.to_string()))
-						.collect(),
-				))))
-			}
-			QueryValue::Now => reinhardt_query::value::Value::Int(None),
-		}
-	}
-
-	/// Serialize a JSON value to SQL-compatible string representation
-	// Allow dead_code: internal helper for JSON-to-SQL serialization in manager operations
-	#[allow(dead_code)]
-	fn serialize_value(v: &serde_json::Value) -> String {
-		match v {
-			serde_json::Value::Null => "NULL".to_string(),
-			serde_json::Value::Bool(b) => b.to_string().to_uppercase(),
-			serde_json::Value::Number(n) => n.to_string(),
-			serde_json::Value::String(s) => {
-				// Escape single quotes and wrap in quotes
-				format!("'{}'", s.replace('\'', "''"))
-			}
-			serde_json::Value::Array(arr) => {
-				// Convert to PostgreSQL array syntax: ARRAY['a', 'b', 'c']
-				let items: Vec<String> = arr.iter().map(Self::serialize_value).collect();
-				format!("ARRAY[{}]", items.join(", "))
-			}
-			serde_json::Value::Object(obj) => {
-				// Convert to JSON string for JSONB columns
-				let json_str = serde_json::to_string(obj).unwrap_or_else(|_| "{}".to_string());
-				format!("'{}'::jsonb", json_str.replace('\'', "''"))
-			}
-		}
-	}
-
 	/// Update an existing record using reinhardt-query for SQL injection protection
 	pub async fn update(&self, model: &M) -> reinhardt_core::exception::Result<M> {
 		let mut conn = get_connection().await?;
@@ -2323,10 +2120,8 @@ impl<M: Model> Manager<M> {
 				"Model must have primary key",
 			)
 		})?;
-		let obj = model
-			.encode_database_fields()
-			.map_err(executor_field_codec_error)?;
 		let backend = Self::executor_backend(executor);
+		let obj = model_fields_for_backend(model, backend).map_err(executor_field_codec_error)?;
 		let (sql, values, context) = {
 			let stmt = Self::build_update_statement_from_object_with_returning(
 				&obj,
@@ -2412,8 +2207,8 @@ impl<M: Model> Manager<M> {
 			))
 		})?;
 
-		let obj = model.encode_database_fields().map_err(field_codec_error)?;
 		let backend = conn.backend();
+		let obj = model_fields_for_backend(model, backend).map_err(field_codec_error)?;
 		let (sql, values, context) = {
 			let stmt = if backend == DatabaseBackend::MySql {
 				Self::build_update_statement_from_object_with_returning(&obj, false)
@@ -2586,12 +2381,13 @@ impl<M: Model> Manager<M> {
 
 	/// Bulk create multiple records using reinhardt-query (similar to Django's bulk_create())
 	pub fn bulk_create_query(&self, models: &[M]) -> Option<InsertStatement> {
-		self.try_bulk_create_query(models).ok().flatten()
+		self.try_bulk_create_query(models, None).ok().flatten()
 	}
 
 	fn try_bulk_create_query(
 		&self,
 		models: &[M],
+		backend: Option<DatabaseBackend>,
 	) -> Result<Option<InsertStatement>, FieldCodecError> {
 		if models.is_empty() {
 			return Ok(None);
@@ -2639,16 +2435,17 @@ impl<M: Model> Manager<M> {
 
 		// Add value rows for each model
 		for obj in &database_values {
-			let values: Vec<reinhardt_query::value::Value> = field_names
+			let values = field_names
 				.iter()
 				.map(|field| {
-					obj.get(field.as_str())
-						.cloned()
-						.map(database_value_to_query_value)
-							// Use untyped NULL for missing fields
-							.unwrap_or(reinhardt_query::value::Value::Int(None))
+					model_query_value(
+						obj.get(field.as_str())
+							.cloned()
+							.unwrap_or(DatabaseValue::Null),
+						backend,
+					)
 				})
-				.collect();
+				.collect::<Result<Vec<_>, _>>()?;
 			stmt.values_panic(values);
 		}
 
@@ -2666,6 +2463,20 @@ impl<M: Model> Manager<M> {
 			insert_to_string(&stmt, backend)
 		} else {
 			String::new()
+		}
+	}
+
+	fn apply_bulk_insert_ignore(statement: &mut InsertStatement, backend: DatabaseBackend) {
+		match backend {
+			DatabaseBackend::Postgres => {
+				statement.on_conflict(reinhardt_query::query::OnConflict::new().do_nothing());
+			}
+			DatabaseBackend::MySql => {
+				statement.mysql_ignore();
+			}
+			DatabaseBackend::Sqlite => {
+				statement.sqlite_or_ignore();
+			}
 		}
 	}
 
@@ -2726,42 +2537,31 @@ impl<M: Model> Manager<M> {
 		let mut results = Vec::new();
 
 		for chunk in models.chunks(batch_size) {
-			let Some(mut statement) = self
-				.try_bulk_create_query(chunk)
-				.map_err(field_codec_error)?
-			else {
-				continue;
-			};
-			if !ignore_conflicts {
-				statement.returning_all();
-			}
-			let context = super::execution::pgvector_context_for_insert(&statement);
-			let (sql, values) =
-				build_insert_sql_checked(&statement, conn.backend(), conn.is_cockroachdb())?;
-			let sql = if ignore_conflicts {
-				match conn.backend() {
-					DatabaseBackend::Postgres => format!("{sql} ON CONFLICT DO NOTHING"),
-					DatabaseBackend::MySql => sql.replacen("INSERT INTO", "INSERT IGNORE INTO", 1),
-					DatabaseBackend::Sqlite => {
-						sql.replacen("INSERT INTO", "INSERT OR IGNORE INTO", 1)
-					}
+			let (sql, values, context) = {
+				let Some(mut statement) = self
+					.try_bulk_create_query(chunk, Some(conn.backend()))
+					.map_err(field_codec_error)?
+				else {
+					continue;
+				};
+				if ignore_conflicts {
+					Self::apply_bulk_insert_ignore(&mut statement, conn.backend());
+				} else {
+					statement.returning_all();
 				}
-			} else {
-				sql
+				let context = super::execution::pgvector_context_for_insert(&statement);
+				let (sql, values) =
+					build_insert_sql_checked(&statement, conn.backend(), conn.is_cockroachdb())?;
+				(sql, values, context)
 			};
-			let values = values
-				.0
-				.into_iter()
-				.map(Self::sea_value_to_query_value)
-				.collect();
 
 			if ignore_conflicts {
-				OrmExecutor::execute_with_context(&mut conn, &sql, values, context).await?;
+				OrmExecutor::execute_generated(&mut conn, (sql, values), context).await?;
 				// Note: Can't get RETURNING with DO NOTHING, skip results
 				// Return empty vec for ignored conflicts
 			} else {
 				let rows =
-					OrmExecutor::fetch_all_with_context(&mut conn, &sql, values, context).await?;
+					OrmExecutor::fetch_all_generated(&mut conn, (sql, values), context).await?;
 				for row in rows {
 					let model = decode_model_row(row)?;
 					results.push(model);
@@ -2791,45 +2591,34 @@ impl<M: Model> Manager<M> {
 		let batch_size = batch_size.unwrap_or(models.len());
 		let mut results = Vec::new();
 		for chunk in models.chunks(batch_size) {
-			let Some(mut statement) = self
-				.try_bulk_create_query(chunk)
-				.map_err(field_codec_error)?
-			else {
-				continue;
-			};
 			let backend = conn.backend();
-			if !ignore_conflicts && backend != DatabaseBackend::MySql {
-				statement.returning_all();
-			}
-			let context = super::execution::pgvector_context_for_insert(&statement);
-			let (sql, values) =
-				build_insert_sql_checked(&statement, backend, conn.is_cockroachdb())?;
-			let sql = if ignore_conflicts {
-				match backend {
-					DatabaseBackend::Postgres => format!("{sql} ON CONFLICT DO NOTHING"),
-					DatabaseBackend::MySql => sql.replacen("INSERT INTO", "INSERT IGNORE INTO", 1),
-					DatabaseBackend::Sqlite => {
-						sql.replacen("INSERT INTO", "INSERT OR IGNORE INTO", 1)
-					}
+			let (sql, values, context) = {
+				let Some(mut statement) = self
+					.try_bulk_create_query(chunk, Some(backend))
+					.map_err(field_codec_error)?
+				else {
+					continue;
+				};
+				if ignore_conflicts {
+					Self::apply_bulk_insert_ignore(&mut statement, backend);
+				} else if backend != DatabaseBackend::MySql {
+					statement.returning_all();
 				}
-			} else {
-				sql
+				let context = super::execution::pgvector_context_for_insert(&statement);
+				let (sql, values) =
+					build_insert_sql_checked(&statement, backend, conn.is_cockroachdb())?;
+				(sql, values, context)
 			};
-			let values = values
-				.0
-				.into_iter()
-				.map(Self::sea_value_to_query_value)
-				.collect();
 
 			if ignore_conflicts || backend == DatabaseBackend::MySql {
-				conn.execute_with_context(&sql, values, context).await?;
+				conn.execute_generated((sql, values), context).await?;
 				if !ignore_conflicts {
 					results.extend(chunk.iter().cloned());
 				}
 				continue;
 			}
 
-			for row in conn.fetch_all_with_context(&sql, values, context).await? {
+			for row in conn.fetch_all_generated((sql, values), context).await? {
 				results.push(decode_model_row(row)?);
 			}
 		}
@@ -3087,17 +2876,7 @@ impl<M: Model> Manager<M> {
 		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
 		let mut statement = Query::update();
 		statement.table(Alias::new(M::table_name()));
-		let query_value = |value: DatabaseValue| {
-			// Non-PostgreSQL model arrays retain their existing JSON column encoding.
-			let value = if backend != DatabaseBackend::Postgres
-				&& matches!(&value, DatabaseValue::Array { .. })
-			{
-				DatabaseValue::Json(value.into_json_value()?)
-			} else {
-				value
-			};
-			Ok::<_, FieldCodecError>(database_value_to_query_value(value))
-		};
+		let query_value = |value| model_query_value(value, Some(backend));
 		let mut has_values = false;
 
 		for field in fields
@@ -3544,38 +3323,6 @@ mod tests {
 			source.downcast_ref::<FieldCodecError>(),
 			Some(FieldCodecError::FieldPolicyMismatch { .. })
 		));
-	}
-
-	#[test]
-	#[cfg(feature = "pgvector")]
-	fn manager_preserves_vector_query_values() {
-		let value =
-			Manager::<JsonManagerModel>::query_value_to_sea_value(QueryValue::Vector(Some(vec![
-				1.0, 2.0, 3.0,
-			])));
-
-		assert_eq!(
-			value,
-			reinhardt_query::value::Value::Vector(Some(Box::new(vec![1.0, 2.0, 3.0])))
-		);
-		assert_eq!(
-			Manager::<JsonManagerModel>::query_value_to_sea_value(QueryValue::Vector(None)),
-			reinhardt_query::value::Value::Vector(None)
-		);
-	}
-
-	#[test]
-	#[cfg(feature = "pgvector")]
-	fn manager_binds_vector_values_natively() {
-		let value = Manager::<JsonManagerModel>::sea_value_to_query_value(
-			reinhardt_query::value::Value::Vector(Some(Box::new(vec![1.0, 2.0, 3.0]))),
-		);
-		let null_value = Manager::<JsonManagerModel>::sea_value_to_query_value(
-			reinhardt_query::value::Value::Vector(None),
-		);
-
-		assert_eq!(value, QueryValue::Vector(Some(vec![1.0, 2.0, 3.0])));
-		assert_eq!(null_value, QueryValue::Vector(None));
 	}
 
 	#[cfg(feature = "pgvector")]
@@ -4245,51 +3992,6 @@ mod tests {
 				)))]
 			);
 		}
-	}
-
-	#[rstest::rstest]
-	#[case(i32::MIN)]
-	#[case(0)]
-	#[case(i32::MAX)]
-	fn manager_preserves_int32_parameters(#[case] input: i32) {
-		// Arrange
-		let value = reinhardt_query::value::Value::Int(Some(input));
-
-		// Act
-		let bound = Manager::<TestUser>::sea_value_to_query_value(value.clone());
-		let restored = Manager::<TestUser>::query_value_to_sea_value(bound.clone());
-
-		// Assert
-		assert_eq!(bound, crate::backends::QueryValue::Int32(input));
-		assert_eq!(restored, value);
-	}
-
-	#[test]
-	fn manager_binds_integer_arrays_natively() {
-		let value =
-			Manager::<TestUser>::sea_value_to_query_value(reinhardt_query::value::Value::Array(
-				reinhardt_query::value::ArrayType::Int,
-				Some(Box::new(vec![reinhardt_query::value::Value::Int(Some(7))])),
-			));
-
-		assert_eq!(value, crate::orm::connection::QueryValue::IntArray(vec![7]));
-	}
-
-	#[test]
-	fn manager_binds_naive_datetimes_without_converting_them_to_utc() {
-		let value = chrono::NaiveDate::from_ymd_opt(2026, 7, 26)
-			.expect("valid date")
-			.and_hms_opt(9, 15, 30)
-			.expect("valid time");
-
-		let bound = Manager::<TestUser>::sea_value_to_query_value(
-			reinhardt_query::value::Value::ChronoDateTime(Some(Box::new(value))),
-		);
-
-		assert_eq!(
-			bound,
-			crate::orm::connection::QueryValue::NaiveTimestamp(value)
-		);
 	}
 
 	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -5284,24 +4986,5 @@ mod tests {
 		// Object should be converted (typically to JSON string)
 		let debug_str = format!("{:?}", sea_value);
 		assert!(!debug_str.is_empty());
-	}
-
-	#[test]
-	fn test_serialize_value_string() {
-		use serde_json::json;
-		let value = json!("test_string");
-		let serialized = super::Manager::<TestUser>::serialize_value(&value);
-
-		// Should return the string representation
-		assert!(serialized.contains("test_string"));
-	}
-
-	#[test]
-	fn test_serialize_value_number() {
-		use serde_json::json;
-		let value = json!(123);
-		let serialized = super::Manager::<TestUser>::serialize_value(&value);
-
-		assert!(serialized.contains("123"));
 	}
 }

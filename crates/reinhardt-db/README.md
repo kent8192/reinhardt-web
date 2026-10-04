@@ -183,7 +183,10 @@ arguments through ORM and dedicated transaction executors while preserving
 hydration and write-outcome reporting. Bulk updates use typed CASE expressions
 and native arguments with the same batching, generated-field exclusions and
 physical column names. PostgreSQL arrays retain native element types; arrays
-stored in JSON columns on other backends keep that explicit encoding.
+stored in JSON columns on other backends keep that explicit encoding. Bulk
+creates also consume native renderer Values, using PostgreSQL ON CONFLICT DO
+NOTHING, MySQL INSERT IGNORE and SQLite INSERT OR IGNORE as typed clauses.
+Existing ignored-conflict results and caller transaction ownership are retained.
 
 ### Streaming QuerySets
 

@@ -5196,8 +5196,8 @@ mod tests {
 		.expect("metadata-less string primary keys must preserve string bindings");
 
 		assert_eq!(
-			Manager::<FixtureMetadataLessTextPost>::sea_value_to_query_value(value),
-			QueryValue::String("123e4567-e89b-12d3-a456-426614174000".to_string())
+			value,
+			reinhardt_query::value::Value::from("123e4567-e89b-12d3-a456-426614174000")
 		);
 	}
 
@@ -6016,12 +6016,12 @@ mod tests {
 		);
 
 		assert_eq!(
-			Manager::<FixtureTextM2mPost>::sea_value_to_query_value(source_value),
-			QueryValue::String("123e4567-e89b-12d3-a456-426614174000".to_string())
+			source_value,
+			reinhardt_query::value::Value::from("123e4567-e89b-12d3-a456-426614174000")
 		);
 		assert_eq!(
-			Manager::<FixtureTextM2mPost>::sea_value_to_query_value(target_value),
-			QueryValue::String("2026-07-13T08:25:26+00:00".to_string())
+			target_value,
+			reinhardt_query::value::Value::from("2026-07-13T08:25:26+00:00")
 		);
 	}
 
