@@ -2,6 +2,7 @@
 //!
 //! Values retain their type and order until native SQLx encoding. Encoding errors
 //! contain only the backend, type, one-based argument index, and a fixed reason.
+//! BigDecimal values use a normalized representation for range checks and encoding.
 
 use reinhardt_query::{Value, Values};
 
@@ -120,6 +121,8 @@ fn codec_loss(value: &Value, backend: &str) -> Option<&'static str> {
 			return values.iter().find_map(|value| codec_loss(value, backend));
 		}
 		Value::BigDecimal(Some(decimal)) => {
+			// Zero and redundant trailing digits do not enlarge the numeric value.
+			let decimal = decimal.normalized();
 			let scale = decimal.fractional_digit_count();
 			let fractional = u64::try_from(scale).unwrap_or(0);
 			let integer = if scale < 0 {

@@ -45,7 +45,7 @@ pub(in crate::backends) fn arguments(values: Values) -> Result<sqlx::mysql::MySq
 			}
 			Value::Json(v) => add!(v.map(|v| sqlx::types::Json(*v))),
 			Value::Decimal(v) => add!(v.map(|v| *v)),
-			Value::BigDecimal(v) => add!(v.map(|v| *v)),
+			Value::BigDecimal(v) => add!(v.map(|v| v.normalized())),
 			Value::Array(..) => return Err(fail("arrays require a PostgreSQL native codec")),
 		}
 	}

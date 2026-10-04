@@ -111,6 +111,8 @@ UUIDs keep the existing native PostgreSQL and text MySQL/SQLite representation.
 BigDecimal arguments must fit the native
 [PostgreSQL numeric range](https://www.postgresql.org/docs/16/datatype-numeric.html)
 or [MySQL decimal precision and scale](https://dev.mysql.com/doc/refman/8.0/en/precision-math-decimal-characteristics.html).
+Range checks and native encoding use a normalized BigDecimal representation,
+so scaled zeros and redundant trailing zeros preserve their numeric value.
 
 The public `orm::execution::convert_values` function remains a legacy compatibility
 adapter with its historical lossy behavior. Explicit raw executors still accept

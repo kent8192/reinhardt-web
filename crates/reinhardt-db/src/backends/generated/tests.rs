@@ -1,6 +1,6 @@
 use super::*;
 use reinhardt_query::ArrayType;
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
+#[cfg(any(feature = "sqlite", feature = "mysql", feature = "postgres"))]
 use reinhardt_query::{Expr, Query, QueryStatementBuilder};
 use rstest::rstest;
 
@@ -42,6 +42,14 @@ fn legacy_fallback_rejects_loss_with_redacted_position(
 #[case(Value::Array(ArrayType::Int, Some(Box::new(vec!["private payload".into()]))), "Array", "array element does not match declared element type")]
 #[case(Value::Array(ArrayType::BigUnsigned, Some(Box::new(vec![Value::BigUnsigned(Some(u64::MAX))]))), "Array", "unsigned array element exceeds signed 64-bit range")]
 #[case(Value::BigDecimal(Some(Box::new("1e-40000".parse().unwrap()))), "BigDecimal", "decimal exceeds PostgreSQL numeric range")]
+#[case(Value::BigDecimal(Some(Box::new("1e131072".parse().unwrap()))), "BigDecimal", "decimal exceeds PostgreSQL numeric range")]
+#[case(Value::BigDecimal(Some(Box::new("100e-16386".parse().unwrap()))), "BigDecimal", "decimal exceeds PostgreSQL numeric range")]
+#[case(
+	Value::Array(ArrayType::BigDecimal, Some(Box::new(vec![Value::from(
+		"100e-16386".parse::<sqlx::types::BigDecimal>().unwrap()
+	)]))),
+	"Array", "decimal exceeds PostgreSQL numeric range"
+)]
 fn postgres_arguments_reject_loss_before_execution(
 	#[case] value: Value,
 	#[case] kind: &str,
@@ -121,8 +129,55 @@ fn mysql_rejects_arrays_and_retains_unsigned_range() {
 
 #[cfg(feature = "mysql")]
 #[rstest]
+#[case("0e65")]
+#[case("0e-65")]
+#[case("-0e65")]
+#[case("1.2300000000000000000000000000000000")]
+#[case("100e-32")]
+#[case("1e64")]
+#[case("1e-30")]
+fn mysql_accepts_equivalent_big_decimal_representations(#[case] input: &str) {
+	// Arrange
+	let value = Value::BigDecimal(Some(Box::new(input.parse().unwrap())));
+
+	// Act
+	let arguments = mysql::arguments(Values(vec![value])).unwrap();
+
+	// Assert
+	assert_eq!(sqlx::Arguments::len(&arguments), 1);
+}
+
+#[cfg(feature = "postgres")]
+#[rstest]
+#[case("0e131072")]
+#[case("0e-40000")]
+#[case("-0e131072")]
+#[case(&format!("1.23{}", "0".repeat(40000)))]
+#[case("1e131071")]
+#[case("1e-16383")]
+fn postgres_accepts_equivalent_big_decimal_representations(#[case] input: &str) {
+	// Arrange
+	let decimal: sqlx::types::BigDecimal = input.parse().unwrap();
+	let values = Values(vec![
+		decimal.clone().into(),
+		Value::Array(
+			ArrayType::BigDecimal,
+			Some(Box::new(vec![decimal.into(), Value::BigDecimal(None)])),
+		),
+	]);
+
+	// Act
+	let arguments = postgres::arguments(values).unwrap();
+
+	// Assert
+	assert_eq!(sqlx::Arguments::len(&arguments), 2);
+}
+
+#[cfg(feature = "mysql")]
+#[rstest]
 #[case(Value::BigDecimal(Some(Box::new("1e65".parse().unwrap()))), "BigDecimal", "decimal exceeds MySQL precision or scale")]
 #[case(Value::BigDecimal(Some(Box::new("1e-31".parse().unwrap()))), "BigDecimal", "decimal exceeds MySQL precision or scale")]
+#[case(Value::BigDecimal(Some(Box::new("100e-33".parse().unwrap()))), "BigDecimal", "decimal exceeds MySQL precision or scale")]
 #[case(
 	Value::Double(Some(f64::INFINITY)),
 	"Double",
@@ -400,6 +455,63 @@ async fn generated_fetch_errors_propagate_through_orm_connection() {
 	assert_eq!(all_error.to_string(), expected.to_string());
 }
 
+#[cfg(feature = "postgres")]
+#[rstest]
+#[tokio::test]
+async fn postgres_round_trips_normalized_big_decimal_scalars_and_arrays() {
+	use sqlx::Row;
+	use testcontainers::{ImageExt, runners::AsyncRunner};
+	use testcontainers_modules::postgres::Postgres;
+
+	// Arrange
+	let container = Postgres::default()
+		.with_tag("16-alpine")
+		.start()
+		.await
+		.unwrap();
+	let url = format!(
+		"postgres://postgres:postgres@{}:{}/postgres",
+		container.get_host().await.unwrap(),
+		container.get_host_port_ipv4(5432).await.unwrap()
+	);
+	let pool = sqlx::PgPool::connect(&url).await.unwrap();
+	let inputs = [
+		"0e131072".to_owned(),
+		"0e-40000".to_owned(),
+		"-0e131072".to_owned(),
+		format!("1.23{}", "0".repeat(40000)),
+	];
+	for input in inputs {
+		let decimal: sqlx::types::BigDecimal = input.parse().unwrap();
+		let array = Value::Array(
+			ArrayType::BigDecimal,
+			Some(Box::new(vec![
+				decimal.clone().into(),
+				Value::BigDecimal(None),
+			])),
+		);
+		let (sql, values) = Query::select()
+			.expr(Expr::val(decimal.clone()))
+			.expr(Expr::val(array))
+			.expr(Expr::val(Value::BigDecimal(None)))
+			.build(reinhardt_query::PostgresQueryBuilder);
+
+		// Act
+		let row = sqlx::query_with(&sql, postgres::arguments(values).unwrap())
+			.fetch_one(&pool)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(row.get::<sqlx::types::BigDecimal, _>(0), decimal);
+		assert_eq!(
+			row.get::<Vec<Option<sqlx::types::BigDecimal>>, _>(1),
+			vec![Some(decimal), None]
+		);
+		assert_eq!(row.get::<Option<sqlx::types::BigDecimal>, _>(2), None);
+	}
+}
+
 #[cfg(feature = "mysql")]
 #[rstest]
 #[tokio::test]
@@ -506,5 +618,32 @@ async fn mysql_codecs_round_trip_native_values() {
 		assert_eq!(row.get::<chrono::DateTime<chrono::Utc>, _>(1), expected);
 		assert_eq!(row.get::<chrono::DateTime<chrono::Utc>, _>(2), expected);
 		assert_eq!(row.get::<Option<chrono::DateTime<chrono::Utc>>, _>(3), None);
+	}
+
+	for (input, expected) in [
+		("0e65", "0"),
+		("0e-65", "0"),
+		("-0e65", "0"),
+		("1.2300000000000000000000000000000000", "1.23"),
+		("100e-32", "1e-30"),
+	] {
+		// Arrange
+		let decimal: sqlx::types::BigDecimal = input.parse().unwrap();
+		let expected: sqlx::types::BigDecimal = expected.parse().unwrap();
+		let (sql, values) = Query::update()
+			.table("bind_probe")
+			.value("big_decimal", decimal)
+			.build(MySqlQueryBuilder);
+
+		// Act
+		backend.__execute_generated(&sql, values).await.unwrap();
+		let (sql, _) = Query::select()
+			.from("bind_probe")
+			.column("big_decimal")
+			.build(MySqlQueryBuilder);
+		let row = sqlx::query(&sql).fetch_one(backend.pool()).await.unwrap();
+
+		// Assert
+		assert_eq!(row.get::<sqlx::types::BigDecimal, _>(0), expected);
 	}
 }

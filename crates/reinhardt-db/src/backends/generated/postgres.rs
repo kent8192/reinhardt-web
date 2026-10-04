@@ -45,7 +45,7 @@ pub(in crate::backends) fn arguments(values: Values) -> Result<sqlx::postgres::P
 			Value::Uuid(v) => add!(v.map(|v| *v)),
 			Value::Json(v) => add!(v.map(|v| sqlx::types::Json(*v))),
 			Value::Decimal(v) => add!(v.map(|v| *v)),
-			Value::BigDecimal(v) => add!(v.map(|v| *v)),
+			Value::BigDecimal(v) => add!(v.map(|v| v.normalized())),
 			Value::Array(ty, values) => add_array(&mut arguments, ty, values.map(|v| *v), index)?,
 		}
 	}
@@ -120,7 +120,9 @@ fn add_array(
 			v.map(|v| sqlx::types::Json(*v))
 		)),
 		ArrayType::Decimal => array!(Decimal, |v: Option<Box<_>>| Ok(v.map(|v| *v))),
-		ArrayType::BigDecimal => array!(BigDecimal, |v: Option<Box<_>>| Ok(v.map(|v| *v))),
+		ArrayType::BigDecimal => array!(BigDecimal, |v: Option<Box<sqlx::types::BigDecimal>>| Ok(
+			v.map(|v| v.normalized())
+		)),
 	}
 	Ok(())
 }
