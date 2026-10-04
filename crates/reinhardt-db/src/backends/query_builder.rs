@@ -1216,11 +1216,16 @@ impl SelectBuilder {
 	}
 }
 
+enum DeletePredicate {
+	Equal(String, QueryValue),
+	In(String, Vec<QueryValue>),
+}
+
 /// DELETE query builder
 pub struct DeleteBuilder {
 	backend: Arc<dyn DatabaseBackend>,
 	table: String,
-	wheres: Vec<(String, String, QueryValue)>,
+	wheres: Vec<DeletePredicate>,
 }
 
 impl DeleteBuilder {
@@ -1236,16 +1241,40 @@ impl DeleteBuilder {
 	/// Performs the where eq operation.
 	pub fn where_eq(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.wheres
-			.push((column.into(), "=".to_string(), value.into()));
+			.push(DeletePredicate::Equal(column.into(), value.into()));
 		self
 	}
 
-	/// Performs the where in operation.
+	/// Adds one IN predicate containing the complete input set.
+	///
+	/// Repeated calls and equality predicates are combined with AND.
+	/// An empty set adds a false predicate, so no rows are deleted.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// # #[cfg(feature = "sqlite")]
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// use reinhardt_db::backends::{DatabaseConnection, QueryValue};
+	///
+	/// let db = DatabaseConnection::connect_sqlite("sqlite::memory:").await?;
+	/// let (sql, params) = db.delete("users")
+	///     .where_in("status", vec!["inactive".into(), "archived".into()])
+	///     .build();
+	///
+	/// assert_eq!(sql, "DELETE FROM \"users\" WHERE \"status\" IN (?, ?)");
+	/// assert_eq!(params, vec![
+	///     QueryValue::String("inactive".into()),
+	///     QueryValue::String("archived".into()),
+	/// ]);
+	/// # Ok(())
+	/// # }
+	/// # #[cfg(not(feature = "sqlite"))]
+	/// # fn main() {}
+	/// ```
 	pub fn where_in(mut self, column: impl Into<String> + Clone, values: Vec<QueryValue>) -> Self {
-		for value in values {
-			self.wheres
-				.push((column.clone().into(), "IN".to_string(), value));
-		}
+		self.wheres.push(DeletePredicate::In(column.into(), values));
 		self
 	}
 
@@ -1259,22 +1288,27 @@ impl DeleteBuilder {
 		let mut stmt = Query::delete()
 			.from_table(Alias::new(&self.table))
 			.to_owned();
+		let mut params = Vec::new();
 
 		// Add WHERE clauses
-		for (col, op, val) in &self.wheres {
-			match op.as_str() {
-				"=" => {
+		for predicate in &self.wheres {
+			match predicate {
+				DeletePredicate::Equal(col, val) => {
 					stmt.and_where(
 						Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
 					);
+					params.push(val.clone());
 				}
-				"IN" => {
+				DeletePredicate::In(col, values) => {
 					stmt.and_where(
-						Expr::col(Alias::new(col))
-							.is_in([Expr::val(query_value_to_sea_value(val))]),
+						Expr::col(Alias::new(col)).is_in(
+							values
+								.iter()
+								.map(|value| Expr::val(query_value_to_sea_value(value))),
+						),
 					);
+					params.extend(values.iter().cloned());
 				}
-				_ => {}
 			}
 		}
 
@@ -1284,9 +1318,6 @@ impl DeleteBuilder {
 			DatabaseType::Mysql => MySqlQueryBuilder.build_delete(&stmt).0,
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_delete(&stmt).0,
 		};
-
-		// Collect parameters
-		let params: Vec<QueryValue> = self.wheres.iter().map(|(_, _, val)| val.clone()).collect();
 
 		(sql, params)
 	}
@@ -1563,21 +1594,19 @@ mod tests {
 		assert!(matches!(params[0], QueryValue::Int(1)));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_builder_where_in() {
+		// Arrange
 		let backend = Arc::new(MockBackend);
 		let builder = DeleteBuilder::new(backend, "users")
 			.where_in("id", vec![QueryValue::Int(1), QueryValue::Int(2)]);
+
+		// Act
 		let (sql, params) = builder.build();
 
-		// reinhardt-query uses parameterized queries with placeholders
-		assert_eq!(
-			sql,
-			"DELETE FROM \"users\" WHERE \"id\" IN ($1) AND \"id\" IN ($2)"
-		);
-		assert_eq!(params.len(), 2);
-		assert!(matches!(params[0], QueryValue::Int(1)));
-		assert!(matches!(params[1], QueryValue::Int(2)));
+		// Assert
+		assert_eq!(sql, "DELETE FROM \"users\" WHERE \"id\" IN ($1, $2)");
+		assert_eq!(params, vec![QueryValue::Int(1), QueryValue::Int(2)]);
 	}
 
 	#[test]
