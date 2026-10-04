@@ -780,6 +780,11 @@ Optimize how related objects are loaded:
 
 #### ORM Integration
 
+`ContentTypeQuery` and `ContentTypeTransaction` currently require a SQLite-backed
+pool. They generate SQLite SQL, and `ContentTypeTransaction::create()` uses
+SQLite's `last_insert_rowid()`. Unlike `ContentTypePersistence`, these interfaces
+do not support PostgreSQL or MySQL pools.
+
 - **ContentTypeQuery** - ORM-style query builder for content types
   - `new()` - Create query builder from connection pool
   - `filter_app_label()`, `filter_model()`, `filter_id()` - Filter by fields

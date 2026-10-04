@@ -1,7 +1,9 @@
 //! ORM Integration Module
 //!
 //! This module provides integration between ContentTypes and reinhardt-orm.
-//! It provides an ORM-style query builder and pool-backed ContentType operations.
+//! It provides an ORM-style query builder and pool-backed ContentType operations
+//! for SQLite. These interfaces generate SQLite SQL regardless of the `AnyPool`
+//! driver; PostgreSQL and MySQL pools are not supported.
 //! These interfaces execute through the pool and do not own a database transaction.
 
 #[cfg(feature = "database")]
@@ -24,6 +26,10 @@ use super::persistence::{PersistenceError, bind_query_values};
 ///
 /// Provides an API similar to reinhardt-orm's Query interface,
 /// building type-safe queries for ContentType.
+///
+/// Only SQLite-backed pools are supported. Queries use `SqliteQueryBuilder`
+/// regardless of the `AnyPool` driver. The PostgreSQL and MySQL support in
+/// `ContentTypePersistence` does not extend to this query builder.
 ///
 /// ## Example
 ///
@@ -81,7 +87,7 @@ enum OrderDirection {
 
 #[cfg(feature = "database")]
 impl ContentTypeQuery {
-	/// Create a new query builder
+	/// Create a new query builder for a SQLite-backed pool.
 	///
 	/// # Example
 	///
@@ -408,6 +414,11 @@ impl ContentTypeQuery {
 
 /// Pool-backed ContentType operations without transaction ownership.
 ///
+/// Only SQLite-backed pools are supported. This context and its queries generate
+/// SQL with `SqliteQueryBuilder`, and [`Self::create`] retrieves the generated ID
+/// with SQLite's `last_insert_rowid()`. PostgreSQL and MySQL pools are unsupported,
+/// even though `ContentTypePersistence` supports those backends.
+///
 /// The historical name is retained for compatibility. This context stores a pool;
 /// it does not begin or own a database transaction and has no commit or rollback
 /// boundary. Each operation executes independently through the pool, using its
@@ -425,12 +436,12 @@ pub struct ContentTypeTransaction {
 
 #[cfg(feature = "database")]
 impl ContentTypeTransaction {
-	/// Create a pool-backed context without acquiring a connection or beginning a transaction.
+	/// Create a SQLite pool-backed context without acquiring a connection or beginning a transaction.
 	pub fn new(pool: Arc<AnyPool>) -> Self {
 		Self { pool }
 	}
 
-	/// Get an independent query builder using the same pool.
+	/// Get an independent SQLite query builder using the same pool.
 	///
 	/// The builder does not share a transaction or snapshot with this context and
 	/// can be used after the context is dropped.
@@ -438,7 +449,7 @@ impl ContentTypeTransaction {
 		ContentTypeQuery::new(self.pool.clone())
 	}
 
-	/// Create a ContentType through the pool using autocommit.
+	/// Create a ContentType through the SQLite pool using autocommit.
 	///
 	/// Successful writes are not rolled back when the context is dropped or a
 	/// subsequent operation fails. This method does not provide atomicity with
@@ -484,7 +495,7 @@ impl ContentTypeTransaction {
 		})
 	}
 
-	/// Delete a ContentType through the pool using autocommit.
+	/// Delete a ContentType through the SQLite pool using autocommit.
 	///
 	/// Successful deletes are not rolled back when the context is dropped or a
 	/// subsequent operation fails.
