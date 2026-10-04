@@ -328,7 +328,7 @@ mod database_storage {
 		Alias, Expr, ExprTrait, Iden, IntoIden, IntoValue, OnConflict, PostgresQueryBuilder, Query,
 		QueryStatementBuilder,
 	};
-	use sqlx::PgPool;
+	use sqlx::{Arguments, PgPool, postgres::PgArguments, types::Json};
 
 	/// Table identifier for auth_tokens
 	#[derive(Debug, Iden)]
@@ -429,7 +429,7 @@ mod database_storage {
 			let metadata_json = serde_json::to_value(&token.metadata)
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
 
-			let (sql, _values) = Query::insert()
+			let (sql, values) = Query::insert()
 				.into_table(AuthTokens::Table.into_iden())
 				.columns([
 					AuthTokens::Token,
@@ -441,7 +441,7 @@ mod database_storage {
 					token.token.clone().into_value(),
 					token.user_id.into_value(),
 					token.expires_at.into_value(),
-					metadata_json.to_string().into_value(),
+					metadata_json.into_value(),
 				])
 				.on_conflict(
 					OnConflict::column(AuthTokens::Token)
@@ -450,7 +450,31 @@ mod database_storage {
 				)
 				.build(PostgresQueryBuilder);
 
-			sqlx::query(&sql)
+			// Bind exactly the values emitted by the renderer, including native JSONB.
+			// NULL expiration is rendered as SQL NULL and has no argument position.
+			let mut arguments = PgArguments::default();
+			for value in values.0 {
+				match value {
+					reinhardt_query::Value::String(value) => {
+						arguments.add(value.map(|value| *value))
+					}
+					reinhardt_query::Value::BigInt(value) => arguments.add(value),
+					reinhardt_query::Value::Json(value) => {
+						arguments.add(value.map(|value| Json(*value)))
+					}
+					_ => {
+						return Err(TokenStorageError::StorageError(
+							"Unsupported token storage argument type".into(),
+						));
+					}
+				}
+				.map_err(|_| {
+					TokenStorageError::StorageError(
+						"Failed to encode token storage argument".into(),
+					)
+				})?;
+			}
+			sqlx::query_with(&sql, arguments)
 				.execute(&self.pool)
 				.await
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
@@ -574,6 +598,133 @@ mod database_storage {
 				.map_err(|e| TokenStorageError::StorageError(e.to_string()))?;
 
 			Ok(result.rows_affected() as usize)
+		}
+	}
+
+	#[cfg(test)]
+	mod database_tests {
+		use super::*;
+		use reinhardt_testkit::fixtures::postgres_container;
+		use rstest::*;
+		use testcontainers::{ContainerAsync, GenericImage};
+
+		#[fixture]
+		async fn storage(
+			#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+		) -> (DatabaseTokenStorage, ContainerAsync<GenericImage>) {
+			let (container, pool, _port, _url) = postgres_container.await;
+			let storage = DatabaseTokenStorage::new(pool.as_ref().clone());
+			storage.initialize().await.unwrap();
+			(storage, container)
+		}
+
+		#[rstest]
+		#[case::no_expiration_empty_metadata(None, false)]
+		#[case::no_expiration_json_metadata(None, true)]
+		#[case::expiration_empty_metadata(Some(1_900_000_000), false)]
+		#[case::expiration_json_metadata(Some(1_900_000_000), true)]
+		#[tokio::test]
+		async fn round_trips_token_expiration_and_metadata(
+			#[future] storage: (DatabaseTokenStorage, ContainerAsync<GenericImage>),
+			#[case] expiration: Option<i64>,
+			#[case] with_metadata: bool,
+		) {
+			// Arrange
+			let (storage, _container) = storage.await;
+			let mut token = StoredToken::new("'quoted ? $1", 42);
+			token.expires_at = expiration;
+			if with_metadata {
+				token
+					.metadata
+					.insert("provider".into(), "'quoted \"json\" ? $2 日本語\n".into());
+			}
+
+			// Act
+			storage.store(token.clone()).await.unwrap();
+
+			// Assert
+			assert_eq!(storage.get(&token.token).await.unwrap(), token);
+			assert_eq!(storage.get_user_tokens(42).await.unwrap(), vec![token]);
+		}
+
+		#[rstest]
+		#[case::remains_without_expiration(None, None)]
+		#[case::adds_expiration(None, Some(2_000_000_000))]
+		#[case::removes_expiration(Some(1_900_000_000), None)]
+		#[case::changes_expiration(Some(1_900_000_000), Some(2_000_000_000))]
+		#[tokio::test]
+		async fn upsert_replaces_expiration_and_metadata(
+			#[future] storage: (DatabaseTokenStorage, ContainerAsync<GenericImage>),
+			#[case] original_expiration: Option<i64>,
+			#[case] updated_expiration: Option<i64>,
+		) {
+			// Arrange
+			let (storage, _container) = storage.await;
+			let mut original = StoredToken::new("'quoted ? $1", 42)
+				.with_metadata("provider", "original")
+				.with_metadata("obsolete", "removed on conflict");
+			original.expires_at = original_expiration;
+			storage.store(original).await.unwrap();
+			let mut replacement = StoredToken::new("'quoted ? $1", 42);
+			replacement.expires_at = updated_expiration;
+			if updated_expiration.is_some() {
+				replacement
+					.metadata
+					.insert("provider".into(), "'updated \"json\" ? $2 日本語\n".into());
+			}
+
+			// Act
+			storage.store(replacement.clone()).await.unwrap();
+
+			// Assert
+			assert_eq!(storage.get(&replacement.token).await.unwrap(), replacement);
+			assert_eq!(
+				storage.get_user_tokens(42).await.unwrap(),
+				vec![replacement]
+			);
+		}
+
+		#[rstest]
+		#[case(None)]
+		#[case(Some(1_900_000_000))]
+		#[tokio::test]
+		async fn stores_bound_token_and_native_json_metadata(
+			#[future] storage: (DatabaseTokenStorage, ContainerAsync<GenericImage>),
+			#[case] expiration: Option<i64>,
+		) {
+			// Arrange: the fixture owns the container and pool through RAII.
+			let (storage, _container) = storage.await;
+			let mut token = StoredToken::new("'quoted ? $1", 42);
+			token.expires_at = expiration;
+			token
+				.metadata
+				.insert("provider".into(), "'quoted \"json\" ? $2".into());
+			// Act
+			storage.store(token.clone()).await.unwrap();
+			// Assert: native JSON and NULL/Some expiration survive get/list and conflict update.
+			assert_eq!(storage.get(&token.token).await.unwrap(), token);
+			assert_eq!(
+				storage.get_user_tokens(42).await.unwrap(),
+				vec![token.clone()]
+			);
+			token.expires_at = Some(2_000_000_000);
+			token.metadata.insert("provider".into(), "updated".into());
+			storage.store(token.clone()).await.unwrap();
+			assert_eq!(storage.get(&token.token).await.unwrap(), token);
+			assert_eq!(storage.cleanup_expired(2_000_000_001).await.unwrap(), 1);
+			assert_eq!(
+				storage.get(&token.token).await,
+				Err(TokenStorageError::NotFound)
+			);
+			storage.store(token.clone()).await.unwrap();
+			storage.delete(&token.token).await.unwrap();
+			assert_eq!(
+				storage.delete(&token.token).await,
+				Err(TokenStorageError::NotFound)
+			);
+			storage.store(token.clone()).await.unwrap();
+			storage.delete_user_tokens(42).await.unwrap();
+			assert_eq!(storage.get_user_tokens(42).await.unwrap(), vec![]);
 		}
 	}
 }
