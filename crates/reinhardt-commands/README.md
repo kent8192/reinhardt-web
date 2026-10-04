@@ -422,6 +422,10 @@ Unapplied dependents are excluded. For example, if `consumer:0001_references`
 depends on `foundation:0001_tables`, `migrate foundation zero` reverses the
 consumer migration before reversing the foundation migration.
 
+Dependencies on replaced migration keys resolve to their recorded squash before
+building the rollback closure, including nested squashes. Unapplied squash
+alternatives do not redirect dependencies away from the recorded migration path.
+
 `--plan` never mutates the database, including the migration bookkeeping table:
 on a fresh database a dry-run leaves it uncreated. Apply plans are displayed in
 the same dependency-resolved order used by real migration execution, including

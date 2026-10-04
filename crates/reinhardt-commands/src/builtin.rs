@@ -536,6 +536,36 @@ fn dependency_ordered_rollback_records(
 			)
 		})
 		.collect();
+	let migrations_by_key: HashMap<_, _> = all_migrations
+		.iter()
+		.map(|migration| {
+			(
+				MigrationKey::new(migration.app_label.as_str(), migration.name.as_str()),
+				migration,
+			)
+		})
+		.collect();
+	let mut replacements = HashMap::new();
+	for migration in all_migrations {
+		let replacement = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
+		if !applied_by_key.contains_key(&replacement) {
+			continue;
+		}
+		// Only recorded replacements own aliases. Intermediate definitions supply
+		// nested squash metadata without adding unapplied nodes to the graph.
+		let mut seen = HashSet::new();
+		let mut stack: Vec<_> = migration.replaces.iter().collect();
+		while let Some((app, name)) = stack.pop() {
+			let key = MigrationKey::new(app.as_str(), name.as_str());
+			if applied_by_key.contains_key(&key) || !seen.insert(key.clone()) {
+				continue;
+			}
+			if let Some(replaced) = migrations_by_key.get(&key) {
+				stack.extend(replaced.replaces.iter());
+			}
+			replacements.insert(key, replacement.clone());
+		}
+	}
 	let mut applied_graph = MigrationGraph::new();
 	for migration in all_migrations {
 		let key = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
@@ -545,7 +575,10 @@ fn dependency_ordered_rollback_records(
 				migration
 					.dependencies
 					.iter()
-					.map(|(app, name)| MigrationKey::new(app.as_str(), name.as_str()))
+					.map(|(app, name)| {
+						let dependency = MigrationKey::new(app.as_str(), name.as_str());
+						replacements.get(&dependency).cloned().unwrap_or(dependency)
+					})
 					.collect(),
 			);
 		}
@@ -5118,6 +5151,117 @@ mod tests {
 		assert_eq!(
 			message,
 			"Already at foundation:0001_initial; nothing to do."
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::squashed_zero("zero", false)]
+	#[case::squashed_target("0001_initial", false)]
+	#[case::nested_squash_zero("zero", true)]
+	#[case::nested_squash_target("0001_initial", true)]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_resolves_applied_replacement_dependencies(
+		#[case] target: &str,
+		#[case] nested: bool,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: only the final squash is applied; dependents retain the original key.
+		let mut intermediate = Migration::new("0002_intermediate", "foundation");
+		intermediate.replaces = vec![("foundation".into(), "0002_old".into())];
+		let mut squashed = Migration::new("0002_squashed", "foundation")
+			.add_dependency("foundation", "0001_initial");
+		squashed.replaces = vec![(
+			"foundation".into(),
+			if nested {
+				"0002_intermediate"
+			} else {
+				"0002_old"
+			}
+			.into(),
+		)];
+		let mut future = Migration::new("0003_future_squash", "foundation");
+		future.replaces = vec![("foundation".into(), "0002_old".into())];
+		let migrations = vec![
+			Migration::new("0001_initial", "foundation"),
+			Migration::new("0002_old", "foundation"),
+			intermediate,
+			squashed,
+			future,
+			Migration::new("0001_references", "consumer").add_dependency("foundation", "0002_old"),
+			Migration::new("0001_summary", "reporting")
+				.add_dependency("consumer", "0001_references"),
+			Migration::new("0002_pending", "consumer").add_dependency("foundation", "0002_old"),
+			Migration::new("0002_old", "unrelated"),
+		];
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("reporting", "0001_summary"),
+			migration_record("foundation", "0002_squashed"),
+			migration_record("consumer", "0001_references"),
+			migration_record("unrelated", "0002_old"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", target, &applied, &migrations)
+			.expect("applied replacements must connect their original-key dependents");
+
+		// Assert: pending alternatives and same-name keys in other apps stay excluded.
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("the applied squash must select rollback");
+		};
+		let mut expected = vec![
+			"reporting:0001_summary",
+			"consumer:0001_references",
+			"foundation:0002_squashed",
+		];
+		if target == "zero" {
+			expected.push("foundation:0001_initial");
+		}
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			expected
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_keeps_recorded_keys_with_unapplied_replacements() {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: the original path is recorded and the squash is only on disk.
+		let mut squashed = Migration::new("0001_squashed", "foundation");
+		squashed.replaces = vec![("foundation".into(), "0001_original".into())];
+		let migrations = vec![
+			Migration::new("0001_original", "foundation"),
+			squashed,
+			Migration::new("0001_references", "consumer")
+				.add_dependency("foundation", "0001_original"),
+		];
+		let applied = vec![
+			migration_record("consumer", "0001_references"),
+			migration_record("foundation", "0001_original"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect("pending replacement metadata must preserve the recorded path");
+
+		// Assert
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must reverse the recorded original path");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			vec!["consumer:0001_references", "foundation:0001_original"]
 		);
 	}
 

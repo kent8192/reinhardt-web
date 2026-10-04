@@ -18,13 +18,28 @@ fn write_migration(
 	sql: &str,
 	reverse_sql: &str,
 ) {
+	write_migration_definition(root, app, name, dependencies, &[], (sql, reverse_sql));
+}
+
+fn write_migration_definition(
+	root: &Path,
+	app: &str,
+	name: &str,
+	dependencies: &[(&str, &str)],
+	replaces: &[(&str, &str)],
+	statements: (&str, &str),
+) {
 	let directory = root.join("migrations").join(app);
 	std::fs::create_dir_all(&directory).expect("create migration directory");
-	let dependencies = dependencies
-		.iter()
-		.map(|(app, name)| format!("({app:?}.to_string(), {name:?}.to_string())"))
-		.collect::<Vec<_>>()
-		.join(", ");
+	let format_keys = |keys: &[(&str, &str)]| {
+		keys.iter()
+			.map(|(app, name)| format!("({app:?}.to_string(), {name:?}.to_string())"))
+			.collect::<Vec<_>>()
+			.join(", ")
+	};
+	let dependencies = format_keys(dependencies);
+	let replaces = format_keys(replaces);
+	let (sql, reverse_sql) = statements;
 	std::fs::write(
 		directory.join(format!("{name}.rs")),
 		format!(
@@ -39,7 +54,7 @@ pub fn migration() -> Migration {{
         }}],
         dependencies: vec![{dependencies}],
         atomic: true,
-        replaces: vec![],
+        replaces: vec![{replaces}],
         initial: None,
         state_only: false,
         database_only: true,
@@ -295,5 +310,167 @@ async fn cross_app_rollback_matches_plan_and_replays_schema(
 				.expect("inspect replayed schema");
 			assert!(exists, "replay restores {table}");
 		}
+	}
+}
+
+#[rstest]
+#[case::squashed_zero("zero", false)]
+#[case::squashed_target("0001_retained", false)]
+#[case::nested_squash_zero("zero", true)]
+#[case::nested_squash_target("0001_retained", true)]
+#[tokio::test]
+async fn squashed_cross_app_rollback_matches_plan_and_replays_schema(
+	#[future] migration_executor: MigrationExecutorFixture,
+	temp_dir: TempDir,
+	#[case] target: &str,
+	#[case] nested: bool,
+	#[values("", "fake")] mode: &str,
+) {
+	// Arrange: replace the parent migration while consumers retain its historic key.
+	let project = migration_project(temp_dir);
+	let root = project.path();
+	std::fs::remove_file(root.join("migrations/foundation/0002_tables.rs"))
+		.expect("replace the original fixture migration");
+	let statements = (
+		"CREATE TABLE rollback_probe.parent (id integer PRIMARY KEY)",
+		"DROP TABLE rollback_probe.parent",
+	);
+	write_migration_definition(
+		root,
+		"foundation",
+		"0002_intermediate",
+		&[("foundation", "0001_retained")],
+		&[("foundation", "0002_tables")],
+		statements,
+	);
+	write_migration_definition(
+		root,
+		"foundation",
+		"0002_squashed",
+		&[("foundation", "0001_retained")],
+		&[(
+			"foundation",
+			if nested {
+				"0002_intermediate"
+			} else {
+				"0002_tables"
+			},
+		)],
+		statements,
+	);
+	write_migration_definition(
+		root,
+		"foundation",
+		"0003_future_squash",
+		&[("foundation", "0001_retained")],
+		&[("foundation", "0002_tables")],
+		statements,
+	);
+	let (mut executor, _container, pool, _port, url) = migration_executor.await;
+	let migrations = FilesystemSource::new(root.join("migrations"))
+		.all_migrations()
+		.await
+		.expect("load squashed migration files");
+	assert_eq!(migrations.len(), 9);
+	let baseline_keys = [
+		("operations", "0000_environment"),
+		("foundation", "0001_retained"),
+		("foundation", "0002_squashed"),
+		("consumer", "0001_references"),
+		("reporting", "0001_leaf"),
+		("unrelated", "0002_tables"),
+	];
+	let baseline: Vec<_> = baseline_keys
+		.iter()
+		.map(|(app, name)| {
+			migrations
+				.iter()
+				.find(|migration| migration.app_label == *app && migration.name == *name)
+				.expect("baseline migration exists")
+		})
+		.collect();
+	// Apply the recorded path in order without rewriting historic on-disk dependencies.
+	for migration in &baseline {
+		let result = executor
+			.apply_migrations(std::slice::from_ref(*migration))
+			.await
+			.expect("apply squashed foreign-key baseline");
+		assert_eq!(result.applied.len(), 1);
+	}
+	let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+	let before = applied_keys(&recorder).await;
+	assert_eq!(before.len(), 6);
+	let mut expected = vec![
+		"reporting:0001_leaf",
+		"consumer:0001_references",
+		"foundation:0002_squashed",
+	];
+	if target == "zero" {
+		expected.push("foundation:0001_retained");
+	}
+
+	// Act: compare preview with real or fake rollback of the applied squash.
+	let plan = run_migrate(root, &url, "foundation", target, "plan");
+	let planned: Vec<_> = plan
+		.lines()
+		.filter_map(|line| line.strip_prefix("[INFO]   - ")?.strip_suffix(" (unapply)"))
+		.collect();
+	assert_eq!(planned, expected);
+	assert_eq!(applied_keys(&recorder).await, before);
+	let output = run_migrate(root, &url, "foundation", target, mode);
+
+	// Assert: aliases connect dependents without recording or executing pending squashes.
+	let prefix = if mode == "fake" {
+		"[SUCCESS]   ✓ Faked rollback: "
+	} else {
+		"[SUCCESS]   ✓ Rolled back: "
+	};
+	let executed: Vec<_> = output
+		.lines()
+		.filter_map(|line| line.strip_prefix(prefix))
+		.map(|key| key.replace('.', ":"))
+		.collect();
+	assert_eq!(executed, expected);
+	let removed: BTreeSet<_> = expected.iter().map(|key| (*key).to_owned()).collect();
+	assert_eq!(
+		applied_keys(&recorder).await,
+		before.difference(&removed).cloned().collect()
+	);
+	for (table, key) in [
+		("rollback_probe.retained", "foundation:0001_retained"),
+		("rollback_probe.parent", "foundation:0002_squashed"),
+		("rollback_probe.consumer", "consumer:0001_references"),
+		("rollback_probe.leaf", "reporting:0001_leaf"),
+		("rollback_unrelated", "unrelated:0002_tables"),
+		("rollback_probe.pending", "consumer:0002_pending"),
+	] {
+		let exists: bool = sqlx::query_scalar("SELECT to_regclass($1) IS NOT NULL")
+			.bind(table)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("inspect squashed rollback schema");
+		assert_eq!(
+			exists,
+			before.contains(key) && (mode == "fake" || !removed.contains(key))
+		);
+	}
+	if mode.is_empty() {
+		let mut applied_count = 0;
+		for migration in baseline {
+			applied_count += executor
+				.apply_migrations(std::slice::from_ref(migration))
+				.await
+				.expect("replay squashed baseline")
+				.applied
+				.len();
+		}
+		assert_eq!(applied_count, expected.len());
+		assert_eq!(applied_keys(&recorder).await, before);
+		let parent_exists: bool =
+			sqlx::query_scalar("SELECT to_regclass('rollback_probe.parent') IS NOT NULL")
+				.fetch_one(pool.as_ref())
+				.await
+				.expect("inspect replayed parent");
+		assert!(parent_exists);
 	}
 }
