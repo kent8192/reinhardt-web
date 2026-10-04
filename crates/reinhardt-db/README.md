@@ -1550,6 +1550,20 @@ cargo test --package reinhardt-db --all-features
 cargo test --package reinhardt-db --test orm_integration_tests
 ```
 
+The ORM-only SQLite library tests also support disabling default features:
+
+```bash
+cargo test -p reinhardt-db --no-default-features --features orm,sqlite --lib
+```
+
+Library-test fixtures using `#[model]` generate migration metadata and require
+the `migrations` feature. Their tests run when it is enabled, while tests that
+do not use those fixtures remain available in the ORM-only configuration:
+
+```bash
+cargo test -p reinhardt-db --no-default-features --features orm,sqlite,migrations --lib
+```
+
 ### TestContainers Integration
 
 Database tests automatically use TestContainers to:
