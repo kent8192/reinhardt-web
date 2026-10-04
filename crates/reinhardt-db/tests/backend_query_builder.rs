@@ -905,6 +905,80 @@ fn test_insert_builder_sqlite_basic() {
 }
 
 #[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	r#"INSERT INTO "insert_probe" ("created", "touched") SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"#
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"INSERT INTO `insert_probe` (`created`, `touched`) SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	r#"INSERT INTO "insert_probe" ("created", "touched") SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"#
+)]
+fn test_insert_builder_now_without_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = InsertBuilder::new(backend, "insert_probe")
+		.value("created", QueryValue::Now)
+		.value("touched", QueryValue::Now);
+
+	// Act
+	let (sql, params) = builder
+		.build()
+		.expect("current-time expressions must build");
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, Vec::<QueryValue>::new());
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	r#"INSERT INTO "insert_probe" ("created", "nullable", "id", "touched", "payload", "updated") SELECT CURRENT_TIMESTAMP, NULL, $1, CURRENT_TIMESTAMP, $2, CURRENT_TIMESTAMP"#
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"INSERT INTO `insert_probe` (`created`, `nullable`, `id`, `touched`, `payload`, `updated`) SELECT CURRENT_TIMESTAMP, NULL, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	r#"INSERT INTO "insert_probe" ("created", "nullable", "id", "touched", "payload", "updated") SELECT CURRENT_TIMESTAMP, NULL, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP"#
+)]
+fn test_insert_builder_now_preserves_binding_order(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let payload = "literal CURRENT_TIMESTAMP '__REINHARDT_NOW__' $9 ?";
+	let builder = InsertBuilder::new(backend, "insert_probe")
+		.value("created", QueryValue::Now)
+		.value("nullable", QueryValue::Null)
+		.value("id", 2_i64)
+		.value("touched", QueryValue::Now)
+		.value("payload", payload)
+		.value("updated", QueryValue::Now);
+
+	// Act
+	let (sql, params) = builder
+		.build()
+		.expect("mixed current-time values must build");
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![QueryValue::Int(2), QueryValue::String(payload.to_owned())]
+	);
+}
+
+#[rstest]
 fn test_insert_builder_with_on_conflict_do_nothing_postgres() {
 	// Arrange
 	let backend = MockBackend::new(DatabaseType::Postgres);
@@ -2113,5 +2187,118 @@ mod delete_builder_sqlite_tests {
 			.map(|row| row.get("id").expect("id must be an integer"))
 			.collect();
 		assert_eq!(remaining, expected_remaining);
+	}
+}
+
+#[cfg(feature = "sqlite")]
+mod insert_builder_sqlite_tests {
+	use super::*;
+	use reinhardt_db::backends::dialect::SqliteBackend;
+	use reinhardt_query::prelude::{
+		ColumnDef, Iden, IntoIden, Query, QueryStatementBuilder, SqliteQueryBuilder,
+	};
+	use rstest::fixture;
+	use sqlx::sqlite::SqlitePoolOptions;
+
+	#[derive(Debug, Iden)]
+	enum InsertProbe {
+		Table,
+		Id,
+		Created,
+		Touched,
+		Payload,
+	}
+
+	// Each fixture owns an isolated memory database; dropping its pool releases it.
+	#[fixture]
+	async fn insert_probe() -> Arc<SqliteBackend> {
+		let pool = SqlitePoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("in-memory SQLite must connect");
+		let backend = Arc::new(SqliteBackend::new(pool));
+		let create = Query::create_table()
+			.table(InsertProbe::Table.into_iden())
+			.col(ColumnDef::new(InsertProbe::Id).integer().primary_key(true))
+			.col(ColumnDef::new(InsertProbe::Created).text().not_null(true))
+			.col(ColumnDef::new(InsertProbe::Touched).text().not_null(true))
+			.col(ColumnDef::new(InsertProbe::Payload).text())
+			.to_string(SqliteQueryBuilder);
+		backend
+			.execute(&create, Vec::new())
+			.await
+			.expect("probe table must be created");
+		backend
+	}
+
+	#[rstest]
+	#[case::mixed_execute(false, false)]
+	#[case::mixed_returning(false, true)]
+	#[case::only_now_execute(true, false)]
+	#[case::only_now_returning(true, true)]
+	#[tokio::test]
+	async fn test_insert_builder_now_sqlite_execution(
+		#[future] insert_probe: Arc<SqliteBackend>,
+		#[case] only_now: bool,
+		#[case] returning: bool,
+	) {
+		// Arrange
+		let backend = insert_probe.await;
+		let payload = "literal CURRENT_TIMESTAMP '__REINHARDT_NOW__' $9 ?";
+		let mut builder =
+			InsertBuilder::new(backend.clone(), "insert_probe").value("created", QueryValue::Now);
+		if !only_now {
+			builder = builder.value("id", 2_i64).value("payload", payload);
+		}
+		builder = builder.value("touched", QueryValue::Now);
+		let before = chrono::Utc::now().timestamp();
+
+		// Act
+		let (row, rows_affected) = if returning {
+			let row = builder
+				.returning(vec!["id", "created", "touched", "payload"])
+				.fetch_one()
+				.await
+				.expect("INSERT RETURNING must execute");
+			(row, None)
+		} else {
+			let result = builder.execute().await.expect("INSERT must execute");
+			let select = Query::select()
+				.columns([
+					InsertProbe::Id,
+					InsertProbe::Created,
+					InsertProbe::Touched,
+					InsertProbe::Payload,
+				])
+				.from(InsertProbe::Table.into_iden())
+				.to_string(SqliteQueryBuilder);
+			let row = backend
+				.fetch_one(&select, Vec::new())
+				.await
+				.expect("inserted row must be fetched");
+			(row, Some(result.rows_affected))
+		};
+		let after = chrono::Utc::now().timestamp();
+
+		// Assert
+		if let Some(rows_affected) = rows_affected {
+			assert_eq!(rows_affected, 1);
+		}
+		assert_eq!(row.get::<i64>("id").unwrap(), if only_now { 1 } else { 2 });
+		if only_now {
+			assert_eq!(row.data.get("payload"), Some(&QueryValue::Null));
+		} else {
+			assert_eq!(row.get::<String>("payload").unwrap(), payload);
+		}
+		let created: String = row.get("created").unwrap();
+		let touched: String = row.get("touched").unwrap();
+		assert_eq!(created, touched);
+		let timestamp = chrono::NaiveDateTime::parse_from_str(&touched, "%Y-%m-%d %H:%M:%S")
+			.expect("SQLite must store the database CURRENT_TIMESTAMP format")
+			.and_utc()
+			.timestamp();
+		assert!(timestamp >= before, "stored timestamp predates INSERT");
+		assert!(timestamp <= after, "stored timestamp follows INSERT");
 	}
 }

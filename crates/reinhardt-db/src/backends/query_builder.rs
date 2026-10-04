@@ -396,15 +396,39 @@ impl InsertBuilder {
 		let column_refs: Vec<Alias> = self.columns.iter().map(Alias::new).collect();
 		stmt.columns(column_refs);
 
-		// Add values
-		if !self.values.is_empty() {
-			let sea_values: Vec<Value> = self.values.iter().map(query_value_to_sea_value).collect();
-			stmt.values(sea_values).map_err(|e| {
-				super::error::DatabaseError::QueryError(format!(
-					"failed to set insert values (column/value count mismatch): {e}"
-				))
-			})?;
-		}
+		let params = if self
+			.values
+			.iter()
+			.any(|value| matches!(value, QueryValue::Now))
+		{
+			// A scalar SELECT source supports typed expressions in the INSERT row.
+			let mut source = Query::select();
+			let mut params = Vec::with_capacity(self.values.len());
+			for value in &self.values {
+				let expr = match value {
+					QueryValue::Now => Expr::current_timestamp(),
+					QueryValue::Null => Expr::null(),
+					_ => {
+						params.push(value.clone());
+						Expr::val(query_value_to_sea_value(value))
+					}
+				};
+				source.expr(expr);
+			}
+			stmt.from_subquery(source);
+			params
+		} else {
+			if !self.values.is_empty() {
+				let sea_values: Vec<Value> =
+					self.values.iter().map(query_value_to_sea_value).collect();
+				stmt.values(sea_values).map_err(|e| {
+					super::error::DatabaseError::QueryError(format!(
+						"failed to set insert values (column/value count mismatch): {e}"
+					))
+				})?;
+			}
+			self.values.clone()
+		};
 
 		// Add RETURNING clause if supported
 		if let Some(ref cols) = self.returning {
@@ -427,7 +451,7 @@ impl InsertBuilder {
 			sql = self.apply_on_conflict_clause(sql, on_conflict)?;
 		}
 
-		Ok((sql, self.values.clone()))
+		Ok((sql, params))
 	}
 
 	/// Apply ON CONFLICT clause to SQL string based on database type
