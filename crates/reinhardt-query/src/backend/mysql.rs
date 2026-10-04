@@ -173,6 +173,17 @@ impl MySqlQueryBuilder {
 		});
 	}
 
+	/// Build a typed ANALYZE statement after checking backend capabilities.
+	///
+	/// Native and WASM construction/rendering behavior is identical.
+	pub fn build_analyze_checked(
+		&self,
+		statement: &crate::query::AnalyzeStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_analyze_for_backend(statement, "MySQL")?;
+		Ok(self.build_analyze(statement))
+	}
+
 	/// Build a SELECT statement after rejecting PostgreSQL-only vector features.
 	pub fn build_select_checked(
 		&self,
@@ -3219,8 +3230,24 @@ impl QueryBuilder for MySqlQueryBuilder {
 		);
 	}
 
-	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-		panic!("MySQL uses ANALYZE TABLE, not ANALYZE statement. Not supported via this builder.");
+	fn build_analyze(&self, statement: &crate::query::AnalyzeStatement) -> (String, Values) {
+		assert!(
+			!statement.verbose
+				&& statement
+					.tables
+					.iter()
+					.all(|table| table.columns.is_empty()),
+			"MySQL ANALYZE does not support verbose or column options"
+		);
+		let mut writer = SqlWriter::new();
+		writer.push_keyword("ANALYZE TABLE");
+		if !statement.tables.is_empty() {
+			writer.push_space();
+			writer.push_list(&statement.tables, ", ", |writer, table| {
+				writer.push_identifier(&table.table.to_string(), |name| self.escape_iden(name));
+			});
+		}
+		writer.finish()
 	}
 
 	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {

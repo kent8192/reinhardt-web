@@ -22008,142 +22008,32 @@
       "evidence": []
     },
     {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::AnalyzeBuilder::build_mysql::macro-sql-literal#1",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "AnalyzeBuilder::build_mysql",
-      "kind": "macro-sql-literal",
-      "line": 1513,
-      "fingerprint": "2b32ff50eba277fa6d3a52cad02f9ac32c4083e58ae42bb8c765ca2fd4d37ac0",
-      "conditions": [],
-      "test_only": false,
-      "category": "vendor-administration",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "vendor-administration",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::AnalyzeBuilder::build_mysql::sql-literal#1",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "AnalyzeBuilder::build_mysql",
-      "kind": "sql-literal",
-      "line": 1518,
-      "fingerprint": "bf0fc4d80d1bdbf908532de51578d5085754b973c773064ceae0325432de677d",
-      "conditions": [],
-      "test_only": false,
-      "category": "vendor-administration",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "vendor-administration",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::AnalyzeBuilder::build_postgres::sql-literal#1",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "AnalyzeBuilder::build_postgres",
-      "kind": "sql-literal",
-      "line": 1488,
-      "fingerprint": "b7383a9a52bb3bf675c77fcf4927d806563301e8f140d0e6d6e121cfa5c89678",
-      "conditions": [],
-      "test_only": false,
-      "category": "vendor-administration",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "vendor-administration",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::AnalyzeBuilder::build_sqlite::macro-sql-literal#1",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "AnalyzeBuilder::build_sqlite",
-      "kind": "macro-sql-literal",
-      "line": 1524,
-      "fingerprint": "c81c22085ee4d77d853a3c8ac43aae81ad67d342b6404663a3acc82f9099746e",
-      "conditions": [],
-      "test_only": false,
-      "category": "vendor-administration",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "vendor-administration",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-db/src/backends/query_builder.rs::AnalyzeBuilder::build_sqlite::sql-literal#1",
-      "path": "crates/reinhardt-db/src/backends/query_builder.rs",
-      "symbol": "AnalyzeBuilder::build_sqlite",
-      "kind": "sql-literal",
-      "line": 1527,
-      "fingerprint": "1fe2dfbff8fe411d998041b6d5bb15bc6ec1264d0d14ea018d3f21388bdca492",
-      "conditions": [],
-      "test_only": false,
-      "category": "vendor-administration",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "vendor-administration",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::AnalyzeBuilder::execute::execution-wrapper#1",
       "path": "crates/reinhardt-db/src/backends/query_builder.rs",
       "symbol": "AnalyzeBuilder::execute",
       "kind": "execution-wrapper",
-      "line": 1534,
-      "fingerprint": "33d8b441067884f2e527801d5a9b0f97f7abb1219dc87e1fb7408356555d2f6c",
+      "line": 1335,
+      "fingerprint": "683145466cf9564bf690a65973254e4cc547a6e03e0adb31374e515ddbeb13c7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
       "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
+      "status": "typed",
+      "operation": "vendor-administration",
+      "representation": "typed-query",
       "feature_reachability": [
-        "review-required"
+        "reinhardt-db/backends; native execution codecs through canonical postgres/mysql/sqlite features"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "ANALYZE target and PostgreSQL column/VERBOSE options use typed identifier escaping and checked backend capabilities; generated execution consumes the exact owned empty Values on the injected executor. Existing documented non-PostgreSQL option behavior and public raw build signature are retained.",
       "backends": [
-        "review-required"
+        "postgres",
+        "mysql",
+        "sqlite"
       ],
-      "evidence": []
+      "evidence": [
+        "Four native regressions pass: PostgreSQL/MySQL/SQLite quoted table/column targets, database-wide capability and SQLite additional-statement boundary rejection.",
+        "83 component tests, strict production/native-target Clippy and warning-denied documentation with associations enabled pass."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/backends/query_builder.rs::DeleteBuilder::execute::execution-wrapper#1",
@@ -50959,6 +50849,32 @@
       ]
     },
     {
+      "id": "crates/reinhardt-query/src/backend/mysql.rs::MySqlQueryBuilder as QueryBuilder::build_analyze::sql-literal#1",
+      "path": "crates/reinhardt-query/src/backend/mysql.rs",
+      "symbol": "MySqlQueryBuilder as QueryBuilder::build_analyze",
+      "kind": "sql-literal",
+      "line": 3243,
+      "fingerprint": "56b1048ccf8116cc8d0aaa1c0e95bbdc5087e4cbdd27e3d6754fa10468e78663",
+      "conditions": [],
+      "test_only": false,
+      "category": "vendor-administration",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "backends": [
+        "renderer-selected"
+      ],
+      "feature_reachability": [
+        "reinhardt-query native and WASM; optional query feature selections"
+      ],
+      "rationale": "Executor-independent structural maintenance renderer emits ANALYZE keywords and escaped identifier targets, without database execution. Checked public builders reject unsupported target/option configurations.",
+      "evidence": [
+        "19 exact target/quoting/capability tests, 2116 query units and six focused executable docs pass.",
+        "Strict query production/target Clippy, all-feature WASM, no-default native/WASM consumers and semver (196 pass /49 skip) pass."
+      ]
+    },
+    {
       "id": "crates/reinhardt-query/src/backend/mysql.rs::MySqlQueryBuilder as QueryBuilder::build_create_database::sql-literal#1",
       "path": "crates/reinhardt-query/src/backend/mysql.rs",
       "symbol": "MySqlQueryBuilder as QueryBuilder::build_create_database",
@@ -54609,6 +54525,32 @@
       ]
     },
     {
+      "id": "crates/reinhardt-query/src/backend/sqlite.rs::SqliteQueryBuilder as QueryBuilder::build_analyze::sql-literal#1",
+      "path": "crates/reinhardt-query/src/backend/sqlite.rs",
+      "symbol": "SqliteQueryBuilder as QueryBuilder::build_analyze",
+      "kind": "sql-literal",
+      "line": 2055,
+      "fingerprint": "6dd33317a8759722d26b46368ee96f14835a144d27eb3341fe8153f0f25a366e",
+      "conditions": [],
+      "test_only": false,
+      "category": "vendor-administration",
+      "ownership": "renderer",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "backends": [
+        "renderer-selected"
+      ],
+      "feature_reachability": [
+        "reinhardt-query native and WASM; optional query feature selections"
+      ],
+      "rationale": "Executor-independent structural maintenance renderer emits ANALYZE keywords and escaped identifier targets, without database execution. Checked public builders reject unsupported target/option configurations.",
+      "evidence": [
+        "19 exact target/quoting/capability tests, 2116 query units and six focused executable docs pass.",
+        "Strict query production/target Clippy, all-feature WASM, no-default native/WASM consumers and semver (196 pass /49 skip) pass."
+      ]
+    },
+    {
       "id": "crates/reinhardt-query/src/backend/sqlite.rs::SqliteQueryBuilder as QueryBuilder::build_create_index::sql-literal#1",
       "path": "crates/reinhardt-query/src/backend/sqlite.rs",
       "symbol": "SqliteQueryBuilder as QueryBuilder::build_create_index",
@@ -55456,6 +55398,31 @@
       ],
       "evidence": [
         "Reviewed reinhardt-query dependency/renderer boundary; query unit and executable rustdoc coverage."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-query/src/error.rs::validate_analyze_for_backend::sql-literal#1",
+      "path": "crates/reinhardt-query/src/error.rs",
+      "symbol": "validate_analyze_for_backend",
+      "kind": "sql-literal",
+      "line": 786,
+      "fingerprint": "ef0f570f68ff5c4d0d0e1bc1f1150f53267a176860a7bd2318c2304f80c29abc",
+      "conditions": [],
+      "test_only": false,
+      "category": "vendor-administration",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
+      "backends": [
+        "not-applicable"
+      ],
+      "feature_reachability": [
+        "reinhardt-query native and WASM"
+      ],
+      "rationale": "ANALYZE VERBOSE appears as a capability label returned in QueryBuildError; this validator never constructs or executes SQL.",
+      "evidence": [
+        "Complete capability-validation body reviewed; explicit UnsupportedBackendFeature regression assertions pass for MySQL/SQLite/CockroachDB options."
       ]
     },
     {

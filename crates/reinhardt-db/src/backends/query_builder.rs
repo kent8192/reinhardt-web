@@ -1243,7 +1243,8 @@ pub struct AnalyzeBuilder {
 impl AnalyzeBuilder {
 	/// Create a new ANALYZE builder
 	///
-	/// Without specifying a table, this will analyze all tables in the database.
+	/// Without a table, PostgreSQL and SQLite analyze the entire database.
+	/// MySQL runtime execution requires an explicit table and otherwise returns an error.
 	pub fn new(backend: Arc<dyn DatabaseBackend>) -> Self {
 		Self {
 			backend,
@@ -1285,67 +1286,56 @@ impl AnalyzeBuilder {
 		self
 	}
 
-	/// Build the ANALYZE SQL statement
-	///
-	/// Returns the SQL string appropriate for the database backend.
-	pub fn build(&self) -> String {
-		use super::types::DatabaseType;
-
-		match self.backend.database_type() {
-			DatabaseType::Postgres => self.build_postgres(),
-			DatabaseType::Mysql => self.build_mysql(),
-			DatabaseType::Sqlite => self.build_sqlite(),
-		}
-	}
-
-	fn build_postgres(&self) -> String {
-		let mut sql = String::from("ANALYZE");
-
-		if self.verbose {
-			sql.push_str(" VERBOSE");
-		}
-
-		if let Some(ref table) = self.table {
-			sql.push_str(&format!(" \"{}\"", table));
-
-			if !self.columns.is_empty() {
-				let cols = self
-					.columns
-					.iter()
-					.map(|c| format!("\"{}\"", c))
-					.collect::<Vec<_>>()
-					.join(", ");
-				sql.push_str(&format!(" ({})", cols));
+	fn statement(&self) -> reinhardt_query::query::AnalyzeStatement {
+		let mut statement = Query::analyze().to_owned();
+		if let Some(table) = &self.table {
+			if self.backend.database_type() == DatabaseType::Postgres && !self.columns.is_empty() {
+				statement.table_columns(Alias::new(table), self.columns.iter().map(Alias::new));
+			} else {
+				statement.table(Alias::new(table));
 			}
 		}
-
-		sql
+		// Preserve this backend API's documented non-PostgreSQL option behavior.
+		if self.backend.database_type() == DatabaseType::Postgres && self.verbose {
+			statement.verbose();
+		}
+		statement
 	}
 
-	fn build_mysql(&self) -> String {
-		if let Some(ref table) = self.table {
-			format!("ANALYZE TABLE `{}`", table)
-		} else {
-			// MySQL requires at least one table; analyze all tables requires
-			// querying information_schema first. Return empty for database-wide.
-			// Users should call with specific tables.
-			String::from("ANALYZE TABLE")
+	fn build_native(&self) -> Result<(String, Values)> {
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
+		let statement = self.statement();
+		let built = match self.backend.database_type() {
+			DatabaseType::Postgres => PostgresQueryBuilder.build_analyze_checked(&statement),
+			DatabaseType::Mysql => MySqlQueryBuilder.build_analyze_checked(&statement),
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_analyze_checked(&statement),
+		};
+		built.map_err(|error| {
+			DatabaseError::new(DatabaseErrorKind::Unsupported, error.to_string()).into()
+		})
+	}
+
+	/// Render standalone ANALYZE SQL with typed identifier escaping.
+	/// Runtime execution also checks that the selected backend supports its target.
+	pub fn build(&self) -> String {
+		use reinhardt_query::prelude::{
+			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
+		};
+		let statement = self.statement();
+		match self.backend.database_type() {
+			DatabaseType::Postgres => PostgresQueryBuilder.build_analyze(&statement).0,
+			DatabaseType::Mysql => MySqlQueryBuilder.build_analyze(&statement).0,
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_analyze(&statement).0,
 		}
 	}
 
-	fn build_sqlite(&self) -> String {
-		if let Some(ref table) = self.table {
-			format!("ANALYZE \"{}\"", table)
-		} else {
-			// SQLite: ANALYZE without arguments analyzes the entire database
-			String::from("ANALYZE")
-		}
-	}
-
-	/// Execute the ANALYZE statement
+	/// Execute the checked typed ANALYZE statement and owned renderer arguments.
 	pub async fn execute(&self) -> Result<QueryResult> {
-		let sql = self.build();
-		self.backend.execute(&sql, Vec::new()).await
+		self.backend
+			.execute_generated(self.build_native()?, None)
+			.await
 	}
 }
 

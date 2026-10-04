@@ -61,6 +61,17 @@ impl CockroachDBQueryBuilder {
 		}
 	}
 
+	/// Build a typed ANALYZE statement after checking backend capabilities.
+	///
+	/// Native and WASM construction/rendering behavior is identical.
+	pub fn build_analyze_checked(
+		&self,
+		statement: &crate::query::AnalyzeStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_analyze_for_backend(statement, "CockroachDB")?;
+		Ok(self.build_analyze(statement))
+	}
+
 	/// Build a SELECT statement through the checked query-building API.
 	pub fn build_select_checked(
 		&self,

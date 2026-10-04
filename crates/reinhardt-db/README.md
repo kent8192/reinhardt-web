@@ -80,6 +80,11 @@ configuration. Unsupported named targets or MySQL conditional updates return
 errors instead of discarding configuration. SQLite DO UPDATE requires a nonempty
 column target in this backend API.
 
+`AnalyzeBuilder` uses typed identifier escaping and checked generated execution.
+PostgreSQL column/VERBOSE options and the documented ignored options on other
+backends retain their behavior. PostgreSQL/SQLite accept no target; MySQL runtime
+execution requires a table and returns an explicit error otherwise.
+
 The public INSERT VALUES `build()` retains its SQL/legacy-parameter result;
 INSERT SELECT `build()` remains a standalone inline renderer with an empty
 legacy parameter list. Runtime methods use bound source Values. Explicit

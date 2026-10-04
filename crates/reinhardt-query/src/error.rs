@@ -774,6 +774,32 @@ pub(crate) fn validate_create_index_for_backend(
 	Ok(())
 }
 
+pub(crate) fn validate_analyze_for_backend(
+	statement: &crate::query::AnalyzeStatement,
+	backend: &'static str,
+) -> Result<(), QueryBuildError> {
+	let feature = if matches!(backend, "MySQL" | "CockroachDB") && statement.tables.is_empty() {
+		Some("tableless ANALYZE")
+	} else if matches!(backend, "SQLite" | "CockroachDB") && statement.tables.len() > 1 {
+		Some("multi-table ANALYZE")
+	} else if backend != "PostgreSQL" && statement.verbose {
+		Some("ANALYZE VERBOSE")
+	} else if backend != "PostgreSQL"
+		&& statement
+			.tables
+			.iter()
+			.any(|table| !table.columns.is_empty())
+	{
+		Some("column-level ANALYZE")
+	} else {
+		None
+	};
+	if let Some(feature) = feature {
+		return Err(QueryBuildError::UnsupportedBackendFeature { feature, backend });
+	}
+	Ok(())
+}
+
 pub(crate) fn validate_insert_for_backend(
 	statement: &InsertStatement,
 	backend: &'static str,

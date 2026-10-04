@@ -45,6 +45,10 @@ placeholders (`$1`, `$2`, ...) and generic literals for positional placeholders
 - **Events** - CREATE/ALTER/DROP EVENT (MySQL)
 - **Comments** - COMMENT ON for all database objects (PostgreSQL, CockroachDB)
 - **Maintenance** - VACUUM, ANALYZE, OPTIMIZE/REPAIR/CHECK TABLE
+  - Checked ANALYZE: PostgreSQL table/column lists and VERBOSE; MySQL table
+    lists; SQLite optional single table/index/schema target; CockroachDB single
+    table. Unsupported configurations return QueryBuildError. Identifier
+    escaping and generated empty Values are identical on native and WASM.
 
 ### Multi-Backend Support
 - **PostgreSQL** - Full DDL and DML support with advanced features

@@ -134,6 +134,17 @@ impl SqliteQueryBuilder {
 		}
 	}
 
+	/// Build a typed ANALYZE statement after checking backend capabilities.
+	///
+	/// Native and WASM construction/rendering behavior is identical.
+	pub fn build_analyze_checked(
+		&self,
+		statement: &crate::query::AnalyzeStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_analyze_for_backend(statement, "SQLite")?;
+		Ok(self.build_analyze(statement))
+	}
+
 	/// Build a SELECT statement after rejecting PostgreSQL-only vector features.
 	pub fn build_select_checked(
 		&self,
@@ -2030,8 +2041,23 @@ impl QueryBuilder for SqliteQueryBuilder {
 		);
 	}
 
-	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-		panic!("SQLite ANALYZE has different syntax. Not supported via this builder.");
+	fn build_analyze(&self, statement: &crate::query::AnalyzeStatement) -> (String, Values) {
+		assert!(
+			statement.tables.len() <= 1
+				&& !statement.verbose
+				&& statement
+					.tables
+					.iter()
+					.all(|table| table.columns.is_empty()),
+			"SQLite ANALYZE supports one target without verbose or column options"
+		);
+		let mut writer = SqlWriter::new();
+		writer.push_keyword("ANALYZE");
+		if let Some(table) = statement.tables.first() {
+			writer.push_space();
+			writer.push_identifier(&table.table.to_string(), |name| self.escape_iden(name));
+		}
+		writer.finish()
 	}
 
 	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
