@@ -67,7 +67,8 @@ pub enum OnConflictAction {
 	},
 	/// Update on conflict (PostgreSQL: ON CONFLICT DO UPDATE, MySQL: ON DUPLICATE KEY UPDATE)
 	DoUpdate {
-		/// Conflict columns (PostgreSQL only)
+		/// Conflict columns (PostgreSQL and SQLite). SQLite 3.35.0+ accepts
+		/// `None` to match any unique constraint.
 		conflict_columns: Option<Vec<String>>,
 		/// Columns to update on conflict
 		update_columns: Vec<String>,
@@ -167,14 +168,18 @@ impl OnConflictClause {
 
 	/// Create a new ON CONFLICT clause with no specific target
 	///
-	/// This matches any unique constraint violation. Note that for SQLite
-	/// with DO UPDATE, a target is required.
+	/// This matches any unique constraint violation. SQLite 3.35.0+ supports
+	/// targetless `DO UPDATE`; PostgreSQL requires a target for `DO UPDATE`.
+	/// See the [SQLite UPSERT documentation](https://www.sqlite.org/lang_upsert.html).
 	///
 	/// # Example
 	///
-	/// ```rust,ignore
-	/// OnConflictClause::any()
-	///     .do_nothing()
+	/// ```rust
+	/// use reinhardt_db::backends::query_builder::OnConflictClause;
+	///
+	/// let ignore = OnConflictClause::any().do_nothing();
+	/// // Update on any unique constraint violation on SQLite 3.35.0+.
+	/// let upsert = OnConflictClause::any().do_update(vec!["name"]);
 	/// ```
 	pub fn any() -> Self {
 		Self {
@@ -321,7 +326,8 @@ impl InsertBuilder {
 	///
 	/// # Arguments
 	///
-	/// * `conflict_columns` - Columns to check for conflict (PostgreSQL only)
+	/// * `conflict_columns` - Columns to check for conflict (PostgreSQL and SQLite).
+	///   `None` matches any unique constraint on SQLite 3.35.0+.
 	/// * `update_columns` - Columns to update on conflict
 	///
 	/// # Example
@@ -516,7 +522,7 @@ impl InsertBuilder {
 						conflict_columns,
 						update_columns,
 					} => {
-						// SQLite: ON CONFLICT DO UPDATE (SQLite 3.24.0+)
+						// SQLite 3.35.0+ permits targetless DO UPDATE.
 						let conflict_str = if let Some(cols) = conflict_columns {
 							if cols.is_empty() {
 								return Err(super::error::DatabaseError::SyntaxError(
@@ -528,10 +534,9 @@ impl InsertBuilder {
 								.map(|c| quote_ident(c, db_type))
 								.collect::<Vec<_>>()
 								.join(", ");
-							format!("({})", quoted)
+							format!(" ({})", quoted)
 						} else {
-							// SQLite requires conflict target - skip ON CONFLICT clause
-							return Ok(sql);
+							String::new()
 						};
 
 						if update_columns.is_empty() {
@@ -552,7 +557,7 @@ impl InsertBuilder {
 							.join(", ");
 
 						sql.push_str(&format!(
-							" ON CONFLICT {} DO UPDATE SET {}",
+							" ON CONFLICT{} DO UPDATE SET {}",
 							conflict_str, update_str
 						));
 					}
@@ -658,7 +663,7 @@ impl InsertBuilder {
 						sql = sql.replacen("INSERT", "INSERT OR IGNORE", 1);
 					}
 					OnConflictClauseAction::DoUpdate { update_columns } => {
-						// SQLite requires conflict columns for DO UPDATE
+						// SQLite 3.35.0+ permits targetless DO UPDATE.
 						let conflict_str = match &clause.target {
 							Some(ConflictTarget::Columns(cols)) => {
 								if cols.is_empty() {
@@ -671,7 +676,7 @@ impl InsertBuilder {
 									.map(|c| quote_ident(c, db_type))
 									.collect::<Vec<_>>()
 									.join(", ");
-								format!("({})", quoted)
+								format!(" ({})", quoted)
 							}
 							Some(ConflictTarget::Constraint(_)) => {
 								// SQLite doesn't support ON CONSTRAINT syntax
@@ -680,10 +685,7 @@ impl InsertBuilder {
 										.to_string(),
 								));
 							}
-							None => {
-								// SQLite requires conflict target for DO UPDATE
-								return Ok(sql);
-							}
+							None => String::new(),
 						};
 
 						if update_columns.is_empty() {
@@ -703,7 +705,7 @@ impl InsertBuilder {
 							.join(", ");
 
 						let mut clause_str =
-							format!(" ON CONFLICT {} DO UPDATE SET {}", conflict_str, update_str);
+							format!(" ON CONFLICT{} DO UPDATE SET {}", conflict_str, update_str);
 
 						// Add WHERE clause if specified
 						if let Some(ref where_cond) = clause.where_condition {
@@ -838,7 +840,13 @@ impl InsertFromSelectBuilder {
 		self
 	}
 
-	/// Performs the on conflict do update operation.
+	/// Set ON CONFLICT DO UPDATE behavior.
+	///
+	/// On SQLite 3.35.0+, `None` or an empty conflict column list matches any
+	/// unique constraint. PostgreSQL requires a conflict target.
+	/// For SQLite SELECT sources with a FROM clause, include a WHERE clause
+	/// (such as `WHERE true`) to avoid the
+	/// [UPSERT parsing ambiguity](https://www.sqlite.org/lang_upsert.html#parsing_ambiguity).
 	pub fn on_conflict_do_update(
 		mut self,
 		conflict_columns: Option<Vec<String>>,
@@ -975,9 +983,9 @@ impl InsertFromSelectBuilder {
 								.map(|c| quote_ident(c, db_type))
 								.collect::<Vec<_>>()
 								.join(", ");
-							format!("({})", quoted)
+							format!(" ({})", quoted)
 						}
-						_ => return sql,
+						_ => String::new(),
 					};
 					let update_str = update_columns
 						.iter()
@@ -988,7 +996,7 @@ impl InsertFromSelectBuilder {
 						.collect::<Vec<_>>()
 						.join(", ");
 					sql.push_str(&format!(
-						" ON CONFLICT {} DO UPDATE SET {}",
+						" ON CONFLICT{} DO UPDATE SET {}",
 						conflict_str, update_str
 					));
 				}

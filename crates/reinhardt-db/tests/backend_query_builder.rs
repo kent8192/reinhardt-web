@@ -10,7 +10,8 @@ use async_trait::async_trait;
 use rstest::rstest;
 
 use reinhardt_db::backends::query_builder::{
-	ConflictTarget, DeleteBuilder, OnConflictClause, OnConflictClauseAction,
+	ConflictTarget, DeleteBuilder, InsertFromSelectBuilder, OnConflictClause,
+	OnConflictClauseAction,
 };
 use reinhardt_db::backends::types::{Savepoint, TransactionExecutor};
 use reinhardt_db::backends::{
@@ -1048,6 +1049,117 @@ fn test_insert_builder_sqlite_on_conflict_do_update() {
 }
 
 #[rstest]
+#[case::legacy(None, "")]
+#[case::fluent(Some(OnConflictClause::any().do_update(vec!["version"])), "")]
+#[case::conditional(
+	Some(OnConflictClause::any().do_update(vec!["version"]).where_clause("upsert_probe.version < excluded.version")),
+	" WHERE upsert_probe.version < excluded.version"
+)]
+fn test_sqlite_targetless_insert_sql(
+	#[case] clause: Option<OnConflictClause>,
+	#[case] condition: &str,
+) {
+	// Arrange
+	let builder = InsertBuilder::new(MockBackend::new(DatabaseType::Sqlite), "upsert_probe")
+		.value("id", 3_i64)
+		.value("email", "first@example.com")
+		.value("version", 2_i64);
+	let builder = match clause {
+		Some(clause) => builder.on_conflict(clause),
+		None => builder.on_conflict_do_update(None, vec!["version".into()]),
+	};
+
+	// Act
+	let (sql, params) = builder.build().expect("targetless UPSERT must build");
+
+	// Assert
+	assert_eq!(
+		sql,
+		format!(
+			"INSERT INTO \"upsert_probe\" (\"id\", \"email\", \"version\") VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET \"version\" = excluded.\"version\"{condition}"
+		)
+	);
+	assert_eq!(
+		params,
+		vec![
+			QueryValue::Int(3),
+			QueryValue::String("first@example.com".into()),
+			QueryValue::Int(2)
+		]
+	);
+}
+
+#[rstest]
+#[case::targetless(None, "")]
+#[case::empty_target(Some(vec![]), "")]
+#[case::explicit_target(Some(vec!["email".into()]), " (\"email\")")]
+fn test_sqlite_targetless_insert_select_sql(
+	#[case] conflict_columns: Option<Vec<String>>,
+	#[case] target: &str,
+	#[values(false, true)] converted: bool,
+) {
+	use reinhardt_query::prelude::{Alias, Expr, Query};
+
+	// Arrange
+	let backend = MockBackend::new(DatabaseType::Sqlite);
+	let select = Query::select()
+		.columns([Alias::new("id"), Alias::new("version")])
+		.from(Alias::new("source_table"))
+		.and_where(Expr::val(true))
+		.to_owned();
+	let builder = if converted {
+		InsertBuilder::new(backend, "upsert_probe")
+			.on_conflict_do_update(conflict_columns, vec!["version".into()])
+			.from_select(vec!["id", "version"], select)
+	} else {
+		InsertFromSelectBuilder::new(backend, "upsert_probe", vec!["id", "version"], select)
+			.on_conflict_do_update(conflict_columns, vec!["version".into()])
+	};
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(
+		sql,
+		format!(
+			"INSERT INTO \"upsert_probe\" (\"id\", \"version\") SELECT \"id\", \"version\" FROM \"source_table\" WHERE TRUE ON CONFLICT{target} DO UPDATE SET \"version\" = excluded.\"version\""
+		)
+	);
+	assert!(params.is_empty());
+}
+
+#[rstest]
+#[case::legacy(false)]
+#[case::fluent(true)]
+fn test_sqlite_targetless_insert_rejects_empty_updates(#[case] fluent: bool) {
+	// Arrange
+	let builder = InsertBuilder::new(MockBackend::new(DatabaseType::Sqlite), "upsert_probe")
+		.value("id", 3_i64);
+	let builder = if fluent {
+		builder.on_conflict(OnConflictClause::any().do_update(Vec::<String>::new()))
+	} else {
+		builder.on_conflict_do_update(None, vec![])
+	};
+
+	// Act
+	let error = builder.build().expect_err("empty update columns must fail");
+
+	// Assert
+	let action = if fluent {
+		"OnConflictClauseAction"
+	} else {
+		"OnConflictAction"
+	};
+	assert_eq!(
+		error,
+		DatabaseError::SyntaxError(format!(
+			"update_columns cannot be empty for {action}::DoUpdate"
+		))
+	);
+}
+
+#[rstest]
 fn test_insert_builder_returning_clause_postgres() {
 	// Arrange
 	let backend = MockBackend::new(DatabaseType::Postgres);
@@ -2013,6 +2125,209 @@ fn test_delete_builder_where_in_empty_preserves_other_parameters(
 		params,
 		vec![QueryValue::Int(9), QueryValue::Int(2), QueryValue::Int(1)]
 	);
+}
+
+#[cfg(feature = "sqlite")]
+mod targetless_insert_sqlite_tests {
+	use super::*;
+	use reinhardt_db::backends::dialect::SqliteBackend;
+	use reinhardt_query::prelude::{
+		ColumnDef, Expr, ExprTrait, Iden, IntoIden, Order, Query, QueryStatementBuilder,
+		SqliteQueryBuilder,
+	};
+	use rstest::fixture;
+	use sqlx::sqlite::SqlitePoolOptions;
+
+	#[derive(Debug, Iden)]
+	enum UpsertProbe {
+		Table,
+		Id,
+		Email,
+		Version,
+	}
+
+	#[derive(Debug, Clone, Copy)]
+	enum InsertApi {
+		Fluent,
+		Legacy,
+		Select,
+	}
+
+	// The fixture owns an isolated memory database, released when its pool drops.
+	#[fixture]
+	async fn upsert_probe() -> Arc<SqliteBackend> {
+		let pool = SqlitePoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("in-memory SQLite must connect");
+		let backend = Arc::new(SqliteBackend::new(pool));
+		let create = Query::create_table()
+			.table(UpsertProbe::Table.into_iden())
+			.col(
+				ColumnDef::new(UpsertProbe::Id)
+					.integer()
+					.not_null(true)
+					.primary_key(true),
+			)
+			.col(
+				ColumnDef::new(UpsertProbe::Email)
+					.text()
+					.not_null(true)
+					.unique(true),
+			)
+			.col(
+				ColumnDef::new(UpsertProbe::Version)
+					.integer()
+					.not_null(true),
+			)
+			.to_string(SqliteQueryBuilder);
+		backend
+			.execute(&create, Vec::new())
+			.await
+			.expect("probe table must be created");
+		for (id, email, version) in [
+			(1_i64, "first@example.com", 1_i64),
+			(2, "other@example.com", 5),
+		] {
+			InsertBuilder::new(backend.clone(), "upsert_probe")
+				.value("id", id)
+				.value("email", email)
+				.value("version", version)
+				.execute()
+				.await
+				.expect("probe rows must be inserted");
+		}
+		backend
+	}
+
+	#[rstest]
+	#[case::primary_key(1, "first@example.com", vec![(1, "first@example.com", 2), (2, "other@example.com", 5)])]
+	#[case::unique(3, "first@example.com", vec![(1, "first@example.com", 2), (2, "other@example.com", 5)])]
+	#[case::no_conflict(3, "new@example.com", vec![(1, "first@example.com", 1), (2, "other@example.com", 5), (3, "new@example.com", 2)])]
+	#[tokio::test]
+	async fn test_sqlite_targetless_insert_execution(
+		#[future] upsert_probe: Arc<SqliteBackend>,
+		#[values(InsertApi::Fluent, InsertApi::Legacy, InsertApi::Select)] api: InsertApi,
+		#[case] id: i64,
+		#[case] email: &str,
+		#[case] expected_rows: Vec<(i64, &str, i64)>,
+	) {
+		// Arrange
+		let backend = upsert_probe.await;
+		let builder = InsertBuilder::new(backend.clone(), "upsert_probe")
+			.value("id", id)
+			.value("email", email)
+			.value("version", 2_i64);
+
+		// Act
+		let result = match api {
+			InsertApi::Fluent => {
+				builder
+					.on_conflict(OnConflictClause::any().do_update(vec!["version"]))
+					.execute()
+					.await
+			}
+			InsertApi::Legacy => {
+				builder
+					.on_conflict_do_update(None, vec!["version".into()])
+					.execute()
+					.await
+			}
+			InsertApi::Select => {
+				let select = Query::select()
+					.expr(Expr::val(id))
+					.expr(Expr::val(email))
+					.expr(Expr::val(2_i64))
+					.from(UpsertProbe::Table.into_iden())
+					.and_where(Expr::col(UpsertProbe::Id).eq(2_i64))
+					.to_owned();
+				InsertFromSelectBuilder::new(
+					backend.clone(),
+					"upsert_probe",
+					vec!["id", "email", "version"],
+					select,
+				)
+				.on_conflict_do_update(None, vec!["version".into()])
+				.execute()
+				.await
+			}
+		}
+		.expect("targetless UPSERT must execute");
+
+		// Assert
+		assert_eq!(result.rows_affected, 1);
+		let select = Query::select()
+			.columns([UpsertProbe::Id, UpsertProbe::Email, UpsertProbe::Version])
+			.from(UpsertProbe::Table.into_iden())
+			.order_by(UpsertProbe::Id, Order::Asc)
+			.to_string(SqliteQueryBuilder);
+		let rows = backend
+			.fetch_all(&select, Vec::new())
+			.await
+			.expect("probe rows must be fetched");
+		let actual: Vec<(i64, String, i64)> = rows
+			.iter()
+			.map(|row| {
+				(
+					row.get("id").expect("id must be an integer"),
+					row.get("email").expect("email must be text"),
+					row.get("version").expect("version must be an integer"),
+				)
+			})
+			.collect();
+		let expected: Vec<_> = expected_rows
+			.into_iter()
+			.map(|(id, email, version)| (id, email.to_owned(), version))
+			.collect();
+		assert_eq!(actual, expected);
+	}
+
+	#[rstest]
+	#[case::newer(2, 1, 2)]
+	#[case::older(0, 0, 1)]
+	#[tokio::test]
+	async fn test_sqlite_targetless_insert_conditional_execution(
+		#[future] upsert_probe: Arc<SqliteBackend>,
+		#[case] version: i64,
+		#[case] affected: u64,
+		#[case] expected_version: i64,
+	) {
+		// Arrange
+		let backend = upsert_probe.await;
+		let builder = InsertBuilder::new(backend.clone(), "upsert_probe")
+			.value("id", 1_i64)
+			.value("email", "first@example.com")
+			.value("version", version)
+			.on_conflict(
+				OnConflictClause::any()
+					.do_update(vec!["version"])
+					.where_clause("upsert_probe.version < excluded.version"),
+			);
+
+		// Act
+		let result = builder
+			.execute()
+			.await
+			.expect("conditional UPSERT must execute");
+
+		// Assert
+		assert_eq!(result.rows_affected, affected);
+		let select = Query::select()
+			.column(UpsertProbe::Version)
+			.from(UpsertProbe::Table.into_iden())
+			.and_where(Expr::col(UpsertProbe::Id).eq(1_i64))
+			.to_string(SqliteQueryBuilder);
+		let row = backend
+			.fetch_one(&select, Vec::new())
+			.await
+			.expect("updated row must exist");
+		assert_eq!(
+			row.get::<i64>("version")
+				.expect("version must be an integer"),
+			expected_version
+		);
+	}
 }
 
 #[cfg(feature = "sqlite")]
