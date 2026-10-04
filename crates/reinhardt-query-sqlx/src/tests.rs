@@ -244,6 +244,54 @@ fn any_requires_explicit_complex_text_codec() {
 
 #[cfg(feature = "postgres")]
 #[rstest]
+#[case(ArrayType::String, Value::String(Some(Box::new("text".into()))))]
+#[case(ArrayType::Bool, Value::Bool(Some(true)))]
+#[case(ArrayType::Int, Value::Int(Some(7)))]
+#[case(ArrayType::BigInt, Value::BigInt(Some(7)))]
+#[case(ArrayType::Float, Value::Float(Some(1.25)))]
+#[case(ArrayType::Double, Value::Double(Some(1.25)))]
+fn postgres_arrays_accept_canonical_null_elements(
+	#[case] element_type: ArrayType,
+	#[case] element: Value,
+) {
+	// Arrange: canonical ORM values use the untyped Int(None) NULL carrier.
+	let values = Values(vec![Value::Array(
+		element_type,
+		Some(Box::new(vec![element, Value::Int(None)])),
+	)]);
+	// Act
+	let (sql, arguments) = prepare_postgres(("SELECT $1".into(), values))
+		.unwrap()
+		.into_parts();
+	// Assert
+	assert_eq!(sql, "SELECT $1");
+	assert_eq!(arguments.len(), 1);
+}
+
+#[cfg(all(feature = "postgres", feature = "with-uuid"))]
+#[rstest]
+fn postgres_uuid_array_accepts_canonical_null_elements() {
+	// Arrange
+	let values = Values(vec![Value::Array(
+		ArrayType::Uuid,
+		Some(Box::new(vec![
+			Value::Uuid(Some(Box::new(sqlx::types::Uuid::from_u128(42)))),
+			Value::Int(None),
+		])),
+	)]);
+	// Act / Assert
+	assert_eq!(
+		prepare_postgres(("SELECT $1".into(), values))
+			.unwrap()
+			.into_parts()
+			.1
+			.len(),
+		1
+	);
+}
+
+#[cfg(feature = "postgres")]
+#[rstest]
 #[tokio::test]
 async fn postgres_native_round_trip() {
 	// Arrange: container and pool guards clean up even on assertion failure.
@@ -264,19 +312,51 @@ async fn postgres_native_round_trip() {
 			ArrayType::Int,
 			Some(Box::new(vec![Value::Int(Some(7)), Value::Int(None)])),
 		),
+		Value::Array(
+			ArrayType::String,
+			Some(Box::new(vec![
+				"text".into(),
+				Value::Int(None),
+				Value::String(None),
+			])),
+		),
+		Value::Array(
+			ArrayType::Bool,
+			Some(Box::new(vec![Value::Bool(Some(true)), Value::Int(None)])),
+		),
+		Value::Array(
+			ArrayType::Double,
+			Some(Box::new(vec![Value::Double(Some(1.25)), Value::Int(None)])),
+		),
 	]);
-	let (sql, arguments) = prepare_postgres(("SELECT $1, $2, $3, $4".into(), values))
+	let (sql, arguments) = prepare_postgres(("SELECT $1, $2, $3, $4, $5, $6, $7".into(), values))
 		.unwrap()
 		.into_parts();
 	// Act
-	let row: (i32, String, Vec<u8>, Vec<Option<i32>>) = sqlx::query_as_with(&sql, arguments)
+	use sqlx::Row;
+	let row = sqlx::query_with(&sql, arguments)
 		.fetch_one(&pool)
 		.await
 		.unwrap();
-	// Assert
+	// Assert: declared array types retain both typed and canonical NULL elements.
+	assert_eq!(row.try_get::<i32, _>(0).unwrap(), 42);
+	assert_eq!(row.try_get::<String, _>(1).unwrap(), "'quoted ? $1");
+	assert_eq!(row.try_get::<Vec<u8>, _>(2).unwrap(), vec![0, 255]);
 	assert_eq!(
-		row,
-		(42, "'quoted ? $1".into(), vec![0, 255], vec![Some(7), None])
+		row.try_get::<Vec<Option<i32>>, _>(3).unwrap(),
+		vec![Some(7), None]
+	);
+	assert_eq!(
+		row.try_get::<Vec<Option<String>>, _>(4).unwrap(),
+		vec![Some("text".into()), None, None]
+	);
+	assert_eq!(
+		row.try_get::<Vec<Option<bool>>, _>(5).unwrap(),
+		vec![Some(true), None]
+	);
+	assert_eq!(
+		row.try_get::<Vec<Option<f64>>, _>(6).unwrap(),
+		vec![Some(1.25), None]
 	);
 }
 

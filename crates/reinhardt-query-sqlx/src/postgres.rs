@@ -89,6 +89,9 @@ fn add_array(
 					values
 						.into_iter()
 						.map(|value| match value {
+							// The canonical untyped NULL uses Int(None); the array
+							// declaration supplies its SQLx element type.
+							Value::Int(None) => Ok(None),
 							Value::$variant(v) => ($convert)(v),
 							_ => Err(fail("array element does not match declared element type")),
 						})

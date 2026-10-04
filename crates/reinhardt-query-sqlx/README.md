@@ -26,7 +26,9 @@ Values are consumed in renderer order. Every supplied Value creates one argument
 including a typed NULL if supplied. Renderers normally emit literal NULL and omit
 it from Values; the adapter never reconstructs that omitted argument. Errors
 identify the backend, one-based argument position, type and redacted reason.
-Unsupported types, mismatched array elements and integer overflow fail before
+PostgreSQL arrays accept the canonical `Value::Int(None)` NULL carrier using
+the declared array element type, alongside matching typed NULL elements.
+Unsupported types, mismatched non-NULL array elements and integer overflow fail before
 execution; no debug-string fallback or floating-point decimal coercion exists.
 
 | Value | PostgreSQL | MySQL | SQLite | SQLx Any |
