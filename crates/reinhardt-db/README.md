@@ -157,6 +157,13 @@ Advanced features for specific use cases:
   - Document, Key-Value, Column-Family, Graph paradigms
   - **When to use**: Working with NoSQL databases like MongoDB
 
+### Unsigned composite key lookups
+
+Unsigned values passed to `QuerySet::get_composite` are checked before execution.
+The current parameter representation supports signed 64-bit integers, so values
+above `i64::MAX` return a type conversion error without including the key value.
+They never wrap to a negative key or clamp to the largest signed key.
+
 ### Updating composite primary keys
 
 `Manager::update` and `update_with_conn` match every component of a composite
