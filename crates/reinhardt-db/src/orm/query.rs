@@ -476,7 +476,10 @@ pub enum FilterValue {
 	Range(Box<FilterValue>, Box<FilterValue>),
 	/// Field reference for field-to-field comparisons (e.g., WHERE discount_price < total_price)
 	FieldRef(super::expressions::F),
-	/// Arithmetic expression (e.g., WHERE total != unit_price * quantity)
+	/// Arithmetic expression (e.g., WHERE total != unit_price * quantity).
+	///
+	/// Arithmetic and COALESCE constants use ordered bind values; parentheses
+	/// remain structural across backend renderers.
 	Expression(super::annotation::Expression),
 	/// Outer query reference for correlated subqueries (e.g., WHERE books.author_id = OuterRef("authors.id"))
 	OuterRef(super::expressions::OuterRef),
@@ -868,7 +871,10 @@ pub enum UpdateValue {
 	Uuid(Uuid),
 	/// Field reference for field-to-field updates (e.g., SET discount_price = total_price)
 	FieldRef(super::expressions::F),
-	/// Arithmetic expression (e.g., SET total = unit_price * quantity)
+	/// Arithmetic expression (e.g., SET total = unit_price * quantity).
+	///
+	/// Nested operations retain parentheses and resolve model fields to their
+	/// physical columns. Arithmetic and COALESCE constants remain bind values.
 	Expression(super::annotation::Expression),
 }
 
@@ -2405,12 +2411,7 @@ where
 
 	fn apply_annotations_to_select(&self, stmt: &mut SelectStatement) {
 		for annotation in &self.annotations {
-			let expression = self
-				.annotation_value_to_select_expr(&annotation.value)
-				.unwrap_or_else(|| {
-					Expr::cust(self.annotation_value_to_select_sql(&annotation.value))
-						.into_simple_expr()
-				});
+			let expression = self.annotation_value_to_select_expr(&annotation.value);
 			stmt.expr_as(expression, Alias::new(&annotation.alias));
 		}
 		for annotation in &self.backend_annotations {
@@ -6213,174 +6214,94 @@ where
 		}
 	}
 
-	/// Convert FilterValue to reinhardt_query::value::Value
-	/// Convert Expression to reinhardt-query Expr for use in WHERE clauses
+	/// Lower legacy expression values before the selected backend renders SQL.
 	///
-	/// Uses Expr::cust() for arithmetic operations as reinhardt-query doesn't provide
-	/// multiply/divide/etc. methods. SQL injection risk is low since F() only
-	/// accepts field names.
-	fn expression_to_query_expr(expr: &super::annotation::Expression) -> Expr {
-		use crate::orm::annotation::Expression;
+	/// Every arithmetic node retains the parentheses in the legacy expression
+	/// tree. Constants remain typed values and legacy scalar-subquery inputs
+	/// retain their SQL. The condition mapper isolates the legacy
+	/// Q predicate rendering still used by CASE from the typed result values.
+	fn annotation_value_to_query_expr(
+		value: &super::annotation::AnnotationValue,
+		column: &impl Fn(&str) -> ColumnRef,
+		condition: &impl Fn(&super::expressions::Q) -> SimpleExpr,
+	) -> SimpleExpr {
+		use super::annotation::{AnnotationValue, Value};
 
-		match expr {
-			Expression::Add(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} + {})", left_sql, right_sql))
+		match value {
+			AnnotationValue::Value(value) => match value {
+				Value::String(value) => Expr::val(value.clone()).into_simple_expr(),
+				Value::Int(value) => Expr::val(*value).into_simple_expr(),
+				Value::Float(value) => Expr::val(*value).into_simple_expr(),
+				Value::Bool(value) => Expr::val(*value).into_simple_expr(),
+				Value::Null => Expr::null().into_simple_expr(),
+			},
+			AnnotationValue::Field(field) => Expr::col(column(&field.field)).into_simple_expr(),
+			AnnotationValue::Expression(expression) => {
+				Self::annotation_expression_to_query_expr(expression, column, condition)
 			}
-			Expression::Subtract(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} - {})", left_sql, right_sql))
-			}
-			Expression::Multiply(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} * {})", left_sql, right_sql))
-			}
-			Expression::Divide(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} / {})", left_sql, right_sql))
-			}
+			// This carrier holds both explicit raw input and legacy framework subqueries.
+			// Framework construction remains tracked for structural migration.
+			AnnotationValue::Subquery(sql) => Expr::cust(sql.clone()).into_simple_expr(),
+		}
+	}
+
+	fn annotation_expression_to_query_expr(
+		expression: &super::annotation::Expression,
+		column: &impl Fn(&str) -> ColumnRef,
+		condition: &impl Fn(&super::expressions::Q) -> SimpleExpr,
+	) -> SimpleExpr {
+		use super::annotation::Expression;
+
+		let value = |value: &super::annotation::AnnotationValue| {
+			Self::annotation_value_to_query_expr(value, column, condition)
+		};
+		match expression {
+			Expression::Add(left, right) => value(left).add(value(right)).grouped(),
+			Expression::Subtract(left, right) => value(left).sub(value(right)).grouped(),
+			Expression::Multiply(left, right) => value(left).mul(value(right)).grouped(),
+			Expression::Divide(left, right) => value(left).div(value(right)).grouped(),
 			Expression::Case { whens, default } => {
-				let mut case_sql = "CASE".to_string();
-				for when in whens.iter() {
-					// Use When::to_sql() which generates "WHEN condition THEN value"
-					case_sql.push_str(&format!(" {}", when.to_sql()));
+				let mut case = Expr::case();
+				for when in whens {
+					case = case.when(condition(&when.condition), value(&when.then));
 				}
-				if let Some(default_val) = default {
-					case_sql.push_str(&format!(
-						" ELSE {}",
-						Self::annotation_value_to_sql(default_val)
-					));
+				match default {
+					Some(default) => case.else_result(value(default)),
+					None => case.build(),
 				}
-				case_sql.push_str(" END");
-				Expr::cust(case_sql)
+				.into_simple_expr()
 			}
-			Expression::Coalesce(values) => {
-				let value_sqls = values
-					.iter()
-					.map(|v| Self::annotation_value_to_sql(v))
-					.collect::<Vec<_>>()
-					.join(", ");
-				Expr::cust(format!("COALESCE({})", value_sqls))
-			}
+			Expression::Coalesce(values) => Func::coalesce(values.iter().map(value).collect()),
 		}
 	}
 
-	fn filter_expression_to_query_expr(&self, expr: &super::annotation::Expression) -> Expr {
-		if self.has_joined_tables() {
-			Expr::cust(self.annotation_expression_to_select_sql(expr))
-		} else {
-			Self::expression_to_query_expr(expr)
-		}
+	fn filter_expression_to_query_expr(&self, expression: &super::annotation::Expression) -> Expr {
+		Self::annotation_expression_to_query_expr(
+			expression,
+			&|field| self.root_column_reference(field),
+			&|condition| self.annotation_condition_to_select_expr(condition),
+		)
+		.into()
 	}
 
-	/// Convert AnnotationValue to SQL string for custom expressions
-	///
-	/// Delegates to the `AnnotationValue::to_sql()` method which provides
-	/// complete SQL generation for all annotation value types.
-	fn annotation_value_to_sql(value: &super::annotation::AnnotationValue) -> String {
-		value.to_sql()
-	}
-
-	/// Builds the annotation forms represented by the query AST structurally.
-	///
-	/// Field and standard aggregate annotations must remain AST nodes so the
-	/// selected backend, rather than PostgreSQL-style pre-rendered SQL, quotes
-	/// their identifiers. Other legacy annotation forms still require their
-	/// established SQL rendering path.
 	fn annotation_value_to_select_expr(
 		&self,
 		value: &super::annotation::AnnotationValue,
-	) -> Option<SimpleExpr> {
-		match value {
-			super::annotation::AnnotationValue::Field(field) => {
-				Some(Expr::col(self.root_column_reference(&field.field)).into_simple_expr())
-			}
-			_ => None,
-		}
+	) -> SimpleExpr {
+		Self::annotation_value_to_query_expr(
+			value,
+			&|field| self.root_column_reference(field),
+			&|condition| self.annotation_condition_to_select_expr(condition),
+		)
 	}
 
-	fn annotation_value_to_select_sql(&self, value: &super::annotation::AnnotationValue) -> String {
-		if self.has_joined_tables() {
-			match value {
-				super::annotation::AnnotationValue::Field(field) => {
-					return self.annotation_field_to_select_sql(field);
-				}
-				super::annotation::AnnotationValue::Expression(expression) => {
-					return self.annotation_expression_to_select_sql(expression);
-				}
-				_ => {}
-			}
-		}
-
-		value.to_sql_expr()
-	}
-
-	fn annotation_field_to_select_sql(&self, field: &super::expressions::F) -> String {
-		if field.field.contains('.') {
-			field.to_sql()
+	fn annotation_condition_to_select_expr(&self, condition: &super::expressions::Q) -> SimpleExpr {
+		let sql = if self.has_joined_tables() {
+			self.annotation_condition_to_select_sql(condition)
 		} else {
-			quote_identifier(&format!("{}.{}", self.root_alias(), field.field))
-		}
-	}
-
-	fn annotation_expression_to_select_sql(
-		&self,
-		expression: &super::annotation::Expression,
-	) -> String {
-		use super::annotation::Expression;
-
-		match expression {
-			Expression::Add(left, right) => format!(
-				"({} + {})",
-				self.annotation_value_to_select_sql(left),
-				self.annotation_value_to_select_sql(right)
-			),
-			Expression::Subtract(left, right) => format!(
-				"({} - {})",
-				self.annotation_value_to_select_sql(left),
-				self.annotation_value_to_select_sql(right)
-			),
-			Expression::Multiply(left, right) => format!(
-				"({} * {})",
-				self.annotation_value_to_select_sql(left),
-				self.annotation_value_to_select_sql(right)
-			),
-			Expression::Divide(left, right) => format!(
-				"({} / {})",
-				self.annotation_value_to_select_sql(left),
-				self.annotation_value_to_select_sql(right)
-			),
-			Expression::Case { whens, default } => {
-				let mut case_sql = "CASE".to_string();
-				for when in whens {
-					case_sql.push_str(&format!(
-						" WHEN {} THEN {}",
-						self.annotation_condition_to_select_sql(&when.condition),
-						self.annotation_value_to_select_sql(&when.then)
-					));
-				}
-				if let Some(default_value) = default {
-					case_sql.push_str(&format!(
-						" ELSE {}",
-						self.annotation_value_to_select_sql(default_value)
-					));
-				}
-				case_sql.push_str(" END");
-				case_sql
-			}
-			Expression::Coalesce(values) => format!(
-				"COALESCE({})",
-				values
-					.iter()
-					.map(|value| self.annotation_value_to_select_sql(value))
-					.collect::<Vec<_>>()
-					.join(", ")
-			),
-		}
+			condition.to_sql()
+		};
+		Expr::cust(sql).into_simple_expr()
 	}
 
 	fn annotation_condition_to_select_sql(&self, condition: &super::expressions::Q) -> String {
@@ -9591,7 +9512,7 @@ where
 			UpdateValue::Integer(i) => Expr::val(*i),
 			UpdateValue::Float(f) => Expr::val(*f),
 			UpdateValue::Boolean(b) => Expr::val(*b),
-			UpdateValue::Null => Expr::cust("NULL"),
+			UpdateValue::Null => Expr::null(),
 			UpdateValue::Timestamp(dt) => Expr::val(
 				reinhardt_query::value::Value::ChronoDateTimeUtc(Some(Box::new(*dt))),
 			),
@@ -9604,7 +9525,12 @@ where
 			UpdateValue::Expression(expression) => {
 				let mut expression = expression.clone();
 				Self::resolve_write_expression_fields(&mut expression);
-				Self::expression_to_query_expr(&expression)
+				Self::annotation_expression_to_query_expr(
+					&expression,
+					&parse_column_reference,
+					&|condition| Expr::cust(condition.to_sql()).into_simple_expr(),
+				)
+				.into()
 			}
 		};
 		Ok(expr)
@@ -13290,8 +13216,34 @@ mod tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn mysql_explain_rejects_unchecked_field_annotations() {
+	async fn mysql_explain_accepts_typed_field_and_constant_annotations() {
 		use crate::orm::annotation::{Annotation, AnnotationValue, Value};
+		use crate::orm::expressions::F;
+		// Arrange: these annotations contain no unchecked SQL or subqueries.
+		let queryset = QuerySet::<TestUser>::new()
+			.annotate_legacy(Annotation::new(
+				"username_copy",
+				AnnotationValue::Field(F::new("username")),
+			))
+			.annotate_legacy(Annotation::new(
+				"user_count",
+				AnnotationValue::Value(Value::Int(0)),
+			));
+		let mut executor = ExplainRecordingExecutor::new(DatabaseBackend::MySql, Vec::new());
+		// Act
+		let output = queryset
+			.explain_with_db(&mut executor, super::ExplainOptions::default())
+			.await
+			.unwrap();
+		// Assert
+		assert_eq!(output.backend, super::ExplainBackend::MySql);
+		assert_eq!(executor.calls, vec![("EXPLAIN SELECT *, `username` AS `username_copy`, ? AS `user_count` FROM `test_users`".into(), vec![crate::orm::QueryValue::Int(0)])]);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn mysql_explain_rejects_caller_subquery_annotations() {
+		use crate::orm::annotation::{Annotation, AnnotationValue};
 		use crate::orm::expressions::F;
 
 		let queryset = QuerySet::<TestUser>::new()
@@ -13301,7 +13253,7 @@ mod tests {
 			))
 			.annotate_legacy(Annotation::new(
 				"user_count",
-				AnnotationValue::Value(Value::Int(0)),
+				AnnotationValue::Subquery("(SELECT 0)".into()),
 			));
 		let mut executor = ExplainRecordingExecutor::new(DatabaseBackend::MySql, Vec::new());
 
@@ -17384,6 +17336,83 @@ mod tests {
 			sql,
 			r#"SELECT * FROM "test_users" WHERE "username" IS NULL"#
 		);
+	}
+
+	#[rstest]
+	#[case(DatabaseBackend::Postgres, "\"quoted\"\"id`\"", ["$1", "$2", "$3", "$4", "$5"])]
+	#[case(DatabaseBackend::MySql, "`quoted\"id```", ["?", "?", "?", "?", "?"])]
+	#[case(DatabaseBackend::Sqlite, "\"quoted\"\"id`\"", ["?", "?", "?", "?", "?"])]
+	fn legacy_annotation_values_keep_grouping_types_and_renderer_order(
+		#[case] backend: DatabaseBackend,
+		#[case] field: &str,
+		#[case] slots: [&str; 5],
+	) {
+		use crate::orm::annotation::{AnnotationValue as AV, Expression, Value as Scalar};
+		use crate::orm::expressions::F;
+		// Arrange: arithmetic nesting and every scalar type are lowered together.
+		let arithmetic = AV::Expression(Expression::Multiply(
+			Box::new(AV::Expression(Expression::Add(
+				Box::new(AV::Field(F::new("quoted\"id`"))),
+				Box::new(AV::Value(Scalar::Int(9))),
+			))),
+			Box::new(AV::Value(Scalar::Float(2.5))),
+		));
+		let payload = "parameter' ? $72\\雪";
+		let text = AV::Expression(Expression::Coalesce(vec![
+			AV::Value(Scalar::Null),
+			AV::Value(Scalar::String(payload.into())),
+		]));
+		let queryset = QuerySet::<TestUser>::new();
+		let statement = Query::select()
+			.expr(queryset.annotation_value_to_select_expr(&arithmetic))
+			.expr(queryset.annotation_value_to_select_expr(&text))
+			.expr(queryset.annotation_value_to_select_expr(&AV::Value(Scalar::Bool(false))))
+			.expr(queryset.annotation_value_to_select_expr(&AV::Value(Scalar::Int(1_i64 << 40))))
+			.to_owned();
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => PostgresQueryBuilder.build_select_checked(&statement),
+			DatabaseBackend::MySql => MySqlQueryBuilder.build_select_checked(&statement),
+			DatabaseBackend::Sqlite => SqliteQueryBuilder.build_select_checked(&statement),
+		}
+		.unwrap();
+		// Assert: quotes and placeholder order belong to the selected renderer.
+		assert_eq!(
+			sql,
+			format!(
+				"SELECT (({field} + {}) * {}), COALESCE(NULL, {}), {}, {}",
+				slots[0], slots[1], slots[2], slots[3], slots[4]
+			)
+		);
+		assert_eq!(
+			values,
+			Values(vec![
+				9_i64.into(),
+				2.5_f64.into(),
+				payload.into(),
+				false.into(),
+				(1_i64 << 40).into()
+			])
+		);
+		assert!(!sql.contains(payload));
+	}
+
+	#[rstest]
+	fn legacy_subquery_annotations_retain_explicit_caller_sql() {
+		use crate::orm::annotation::{AnnotationValue as AV, Expression, Value as Scalar};
+		// Arrange: only the public caller-owned subquery remains custom SQL.
+		let value = AV::Expression(Expression::Add(
+			Box::new(AV::Subquery("(SELECT 11)".into())),
+			Box::new(AV::Value(Scalar::Int(4))),
+		));
+		let expression = QuerySet::<TestUser>::new().annotation_value_to_select_expr(&value);
+		// Act
+		let (sql, values) = PostgresQueryBuilder
+			.build_select_checked(&Query::select().expr(expression).to_owned())
+			.unwrap();
+		// Assert
+		assert_eq!(sql, "SELECT ((SELECT 11) + $1)");
+		assert_eq!(values, Values(vec![4_i64.into()]));
 	}
 
 	#[rstest]

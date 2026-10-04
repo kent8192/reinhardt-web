@@ -447,6 +447,7 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 	}
 	assert_insensitive_matches(&reader, &mut transaction, &inserted).await;
 	assert_range_matches(&reader, &mut transaction, &inserted).await;
+	assert_expression_matches(&reader, &mut transaction, backend, &inserted).await;
 	if backend == DbBackend::Mysql {
 		// This connection belongs to a disposable container; its guard owns cleanup.
 		sqlx::query("SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'")
@@ -455,6 +456,12 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 			.unwrap();
 		assert_insensitive_matches(&reader, &mut transaction, &inserted).await;
 		assert_range_matches(&reader, &mut transaction, &inserted).await;
+		assert_expression_matches(&reader, &mut transaction, backend, &inserted).await;
+		sqlx::query("SET SESSION sql_mode = ''")
+			.execute(&mut *transaction)
+			.await
+			.unwrap();
+		assert_expression_matches(&reader, &mut transaction, backend, &inserted).await;
 	}
 	let updated = Record {
 		name: "update' $70 ?".into(),
@@ -511,6 +518,140 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 			.unwrap()
 			.is_empty()
 	);
+}
+
+async fn assert_expression_matches(
+	reader: &Session,
+	connection: &mut sqlx::AnyConnection,
+	backend: DbBackend,
+	expected: &Record,
+) {
+	use reinhardt_db::orm::annotation::{AnnotationValue as AV, Expression, Value as Scalar};
+	use reinhardt_db::orm::expressions::F;
+	use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue, UpdateValue};
+	// Arrange: nested AST operations must preserve arithmetic scope and quoted columns.
+	let field = || Box::new(AV::Field(F::new("pk\"key`")));
+	let number = |value| Box::new(AV::Value(Scalar::Int(value)));
+	let nested = || {
+		Expression::Divide(
+			Box::new(AV::Expression(Expression::Multiply(
+				Box::new(AV::Expression(Expression::Add(field(), number(7)))),
+				number(2),
+			))),
+			number(2),
+		)
+	};
+	for (expression, matched) in [
+		(Expression::Add(field(), number(0)), true),
+		(Expression::Subtract(field(), number(0)), true),
+		(Expression::Multiply(field(), number(1)), true),
+		(Expression::Divide(field(), number(1)), true),
+		(
+			Expression::Subtract(Box::new(AV::Expression(nested())), number(7)),
+			true,
+		),
+		(Expression::Add(field(), number(1)), false),
+		(
+			Expression::Coalesce(vec![AV::Value(Scalar::Null), *field()]),
+			true,
+		),
+	] {
+		// Act / Assert: the same transaction connection executes generated SQL/Values.
+		let query = keyed(expected.id).filter(Filter::new(
+			"pk\"key`",
+			FilterOperator::Eq,
+			FilterValue::Expression(expression),
+		));
+		let records = reader
+			.list_with_connection(&query, connection)
+			.await
+			.unwrap();
+		assert_eq!(
+			records,
+			if matched {
+				vec![expected.clone()]
+			} else {
+				vec![]
+			}
+		);
+	}
+	let text_query = keyed(expected.id).filter(Filter::new(
+		"name\"value`",
+		FilterOperator::Eq,
+		FilterValue::Expression(Expression::Coalesce(vec![
+			AV::Value(Scalar::Null),
+			AV::Value(Scalar::String(expected.name.clone())),
+		])),
+	));
+	assert_eq!(
+		reader
+			.list_with_connection(&text_query, connection)
+			.await
+			.unwrap(),
+		vec![expected.clone()]
+	);
+
+	// Logical UPDATE fields resolve to physical db_column names before lowering.
+	for name in [
+		format!("{} updated' ? $89\\雪", expected.name),
+		expected.name.clone(),
+	] {
+		let updates = HashMap::from([
+			(
+				"id".into(),
+				UpdateValue::Expression(Expression::Divide(
+					Box::new(AV::Expression(Expression::Multiply(
+						Box::new(AV::Field(F::new("id"))),
+						number(2),
+					))),
+					number(2),
+				)),
+			),
+			(
+				"name".into(),
+				UpdateValue::Expression(Expression::Coalesce(vec![
+					AV::Value(Scalar::Null),
+					AV::Value(Scalar::String(name.clone())),
+				])),
+			),
+		]);
+		let statement = keyed(expected.id).update_query(&updates).unwrap();
+		let (built, adapter) = match backend {
+			DbBackend::Postgres => (
+				PostgresQueryBuilder
+					.build_update_checked(&statement)
+					.unwrap(),
+				AnyBackend::Postgres,
+			),
+			DbBackend::Mysql => (
+				MySqlQueryBuilder.build_update_checked(&statement).unwrap(),
+				AnyBackend::MySql,
+			),
+			DbBackend::Sqlite => (
+				SqliteQueryBuilder.build_update_checked(&statement).unwrap(),
+				AnyBackend::Sqlite,
+			),
+		};
+		assert!(!built.0.contains(&name));
+		let (sql, arguments) = prepare_any_with_text_codecs(built, adapter)
+			.unwrap()
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(&mut *connection)
+			.await
+			.unwrap();
+		assert_eq!(result.rows_affected(), 1);
+		assert_eq!(
+			reader
+				.list_with_connection(&keyed(expected.id), connection)
+				.await
+				.unwrap(),
+			vec![Record {
+				name,
+				..expected.clone()
+			}]
+		);
+	}
 }
 
 async fn assert_range_matches(
