@@ -183,6 +183,31 @@ impl Model for MappedKey {
 	}
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CaseMarker {
+	id: i64,
+}
+impl Model for CaseMarker {
+	type PrimaryKey = i64;
+	type Fields = Fields;
+	type Objects = Manager<Self>;
+	fn table_name() -> &'static str {
+		"case_marker"
+	}
+	fn new_fields() -> Self::Fields {
+		Fields
+	}
+	fn primary_key(&self) -> Option<i64> {
+		Some(self.id)
+	}
+	fn set_primary_key(&mut self, id: i64) {
+		self.id = id;
+	}
+	fn field_metadata() -> Vec<FieldInfo> {
+		MappedKey::field_metadata().into_iter().take(1).collect()
+	}
+}
+
 fn quoted(backend: DbBackend, name: &str) -> String {
 	match backend {
 		DbBackend::Mysql => format!("`{}`", name.replace('`', "``")),
@@ -363,6 +388,19 @@ async fn exercise_reads(pool: AnyPool, backend: DbBackend) {
 		.execute(&pool)
 		.await
 		.unwrap();
+	// Independent fixed fixtures exercise the public safe JOIN API.
+	sqlx::query("INSERT INTO mapped_keys VALUES (106, 'second')")
+		.execute(&pool)
+		.await
+		.unwrap();
+	sqlx::query("CREATE TABLE case_marker (id BIGINT PRIMARY KEY)")
+		.execute(&pool)
+		.await
+		.unwrap();
+	sqlx::query("INSERT INTO case_marker VALUES (105), (106)")
+		.execute(&pool)
+		.await
+		.unwrap();
 	let pool = Arc::new(pool);
 	let mut session = Session::new(pool.clone(), backend).await.unwrap();
 	// Act / Assert: direct reads and identity hits retain all projected types.
@@ -399,6 +437,7 @@ async fn exercise_reads(pool: AnyPool, backend: DbBackend) {
 			name: "codec".into()
 		})
 	);
+	assert_joined_case_matches(&session).await;
 	exercise_writes(pool, backend, expected).await;
 }
 
@@ -448,6 +487,7 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 	assert_insensitive_matches(&reader, &mut transaction, &inserted).await;
 	assert_range_matches(&reader, &mut transaction, &inserted).await;
 	assert_expression_matches(&reader, &mut transaction, backend, &inserted).await;
+	assert_case_matches(&reader, &mut transaction, backend, &inserted).await;
 	if backend == DbBackend::Mysql {
 		// This connection belongs to a disposable container; its guard owns cleanup.
 		sqlx::query("SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'")
@@ -457,11 +497,13 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 		assert_insensitive_matches(&reader, &mut transaction, &inserted).await;
 		assert_range_matches(&reader, &mut transaction, &inserted).await;
 		assert_expression_matches(&reader, &mut transaction, backend, &inserted).await;
+		assert_case_matches(&reader, &mut transaction, backend, &inserted).await;
 		sqlx::query("SET SESSION sql_mode = ''")
 			.execute(&mut *transaction)
 			.await
 			.unwrap();
 		assert_expression_matches(&reader, &mut transaction, backend, &inserted).await;
+		assert_case_matches(&reader, &mut transaction, backend, &inserted).await;
 	}
 	let updated = Record {
 		name: "update' $70 ?".into(),
@@ -518,6 +560,147 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 			.unwrap()
 			.is_empty()
 	);
+}
+
+async fn assert_joined_case_matches(reader: &Session) {
+	use reinhardt_db::orm::annotation::{AnnotationValue as AV, Expression, Value as Scalar, When};
+	use reinhardt_db::orm::expressions::{F, Q, QOperator};
+	use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue};
+	// Arrange: runtime text must remain one value across CASE and a framework-owned join.
+	let cases = [
+		(Q::new("name", "=", "missing"), vec![]),
+		(Q::new("name", "=", "x' OR 1=1 OR 'x"), vec![]),
+		(Q::new("name", "=", "codec"), vec![105]),
+		(Q::new("name", "=", "'codec'"), vec![105]),
+		(Q::empty(), vec![105, 106]),
+		(
+			Q::new("name", "=", "codec")
+				.or(Q::new("name", "=", "second"))
+				.and(Q::new("id", "=", "105")),
+			vec![105],
+		),
+		(
+			Q::Combined {
+				operator: QOperator::Not,
+				conditions: vec![Q::new("name", "=", "codec"), Q::new("id", "=", "106")],
+			},
+			vec![105, 106],
+		),
+		(Q::new("name", "=", "NULL"), vec![]),
+		(Q::new("name", "IS NULL", "ignored"), vec![]),
+		(Q::from_raw_sql("1 = 1"), vec![105, 106]),
+	];
+	for (condition, expected_ids) in cases {
+		let query = reinhardt_db::orm::QuerySet::<MappedKey>::new()
+			.inner_join::<CaseMarker>("id", "id")
+			.filter(Filter::new(
+				"id",
+				FilterOperator::Eq,
+				FilterValue::Expression(Expression::Case {
+					whens: vec![When::new(condition.clone(), AV::Field(F::new("id")))],
+					default: Some(Box::new(AV::Value(Scalar::Int(0)))),
+				}),
+			));
+		// Act
+		let mut ids = reader
+			.list(&query)
+			.await
+			.unwrap()
+			.iter()
+			.map(|record| record.id)
+			.collect::<Vec<_>>();
+		ids.sort();
+		// Assert: compare complete row identity, including both benign controls.
+		assert_eq!(ids, expected_ids, "CASE condition: {condition:?}");
+	}
+}
+
+async fn assert_case_matches(
+	reader: &Session,
+	connection: &mut sqlx::AnyConnection,
+	backend: DbBackend,
+	expected: &Record,
+) {
+	use reinhardt_db::orm::annotation::{AnnotationValue as AV, Expression, Value as Scalar, When};
+	use reinhardt_db::orm::expressions::{F, Q};
+	use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue, UpdateValue};
+	// Arrange: logical condition fields and physical result fields share the quoted root.
+	for condition in [
+		Q::new("name", "=", &expected.name),
+		Q::new("name\"value`", "=", &expected.name),
+		Q::new("amount", "=", expected.amount.to_string()),
+		Q::new("enabled", "=", "true"),
+		Q::new("optional_payload", "IS NULL", "unused"),
+	] {
+		let query = keyed(expected.id).filter(Filter::new(
+			"pk\"key`",
+			FilterOperator::Eq,
+			FilterValue::Expression(Expression::Case {
+				whens: vec![When::new(condition, AV::Field(F::new("pk\"key`")))],
+				default: Some(Box::new(AV::Value(Scalar::Int(0)))),
+			}),
+		));
+		// Act / Assert: generated values, including Decimal, use the caller-owned connection.
+		assert_eq!(
+			reader
+				.list_with_connection(&query, connection)
+				.await
+				.unwrap(),
+			vec![expected.clone()]
+		);
+	}
+	// Logical UPDATE condition/result fields resolve before backend quoting and binding.
+	for name in [
+		format!("{} case' ? $73\\雪", expected.name),
+		expected.name.clone(),
+	] {
+		let updates = HashMap::from([(
+			"name".into(),
+			UpdateValue::Expression(Expression::Case {
+				whens: vec![When::new(
+					Q::new("id", "=", expected.id.to_string()),
+					AV::Value(Scalar::String(name.clone())),
+				)],
+				default: Some(Box::new(AV::Field(F::new("name")))),
+			}),
+		)]);
+		let statement = keyed(expected.id).update_query(&updates).unwrap();
+		let (built, adapter) = match backend {
+			DbBackend::Postgres => (
+				PostgresQueryBuilder
+					.build_update_checked(&statement)
+					.unwrap(),
+				AnyBackend::Postgres,
+			),
+			DbBackend::Mysql => (
+				MySqlQueryBuilder.build_update_checked(&statement).unwrap(),
+				AnyBackend::MySql,
+			),
+			DbBackend::Sqlite => (
+				SqliteQueryBuilder.build_update_checked(&statement).unwrap(),
+				AnyBackend::Sqlite,
+			),
+		};
+		assert!(!built.0.contains(&name));
+		let (sql, arguments) = prepare_any_with_text_codecs(built, adapter)
+			.unwrap()
+			.into_parts();
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(&mut *connection)
+			.await
+			.unwrap();
+		assert_eq!(result.rows_affected(), 1);
+		assert_eq!(
+			reader
+				.list_with_connection(&keyed(expected.id), connection)
+				.await
+				.unwrap(),
+			vec![Record {
+				name,
+				..expected.clone()
+			}]
+		);
+	}
 }
 
 async fn assert_expression_matches(

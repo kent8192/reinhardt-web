@@ -478,7 +478,7 @@ pub enum FilterValue {
 	FieldRef(super::expressions::F),
 	/// Arithmetic expression (e.g., WHERE total != unit_price * quantity).
 	///
-	/// Arithmetic and COALESCE constants use ordered bind values; parentheses
+	/// Arithmetic, COALESCE and CASE constants use ordered bind values; parentheses
 	/// remain structural across backend renderers.
 	Expression(super::annotation::Expression),
 	/// Outer query reference for correlated subqueries (e.g., WHERE books.author_id = OuterRef("authors.id"))
@@ -874,7 +874,7 @@ pub enum UpdateValue {
 	/// Arithmetic expression (e.g., SET total = unit_price * quantity).
 	///
 	/// Nested operations retain parentheses and resolve model fields to their
-	/// physical columns. Arithmetic and COALESCE constants remain bind values.
+	/// physical columns. Arithmetic, COALESCE and CASE constants remain bind values.
 	Expression(super::annotation::Expression),
 }
 
@@ -6218,8 +6218,8 @@ where
 	///
 	/// Every arithmetic node retains the parentheses in the legacy expression
 	/// tree. Constants remain typed values and legacy scalar-subquery inputs
-	/// retain their SQL. The condition mapper isolates the legacy
-	/// Q predicate rendering still used by CASE from the typed result values.
+	/// retain their SQL. CASE conditions use the same structural field and value
+	/// lowering as their results, with explicitly raw Q inputs kept separate.
 	fn annotation_value_to_query_expr(
 		value: &super::annotation::AnnotationValue,
 		column: &impl Fn(&str) -> ColumnRef,
@@ -6296,15 +6296,15 @@ where
 	}
 
 	fn annotation_condition_to_select_expr(&self, condition: &super::expressions::Q) -> SimpleExpr {
-		let sql = if self.has_joined_tables() {
-			self.annotation_condition_to_select_sql(condition)
-		} else {
-			condition.to_sql()
-		};
-		Expr::cust(sql).into_simple_expr()
+		Self::annotation_condition_to_query_expr(condition, &|field| {
+			self.root_column_reference(&Self::database_column_for_field(field))
+		})
 	}
 
-	fn annotation_condition_to_select_sql(&self, condition: &super::expressions::Q) -> String {
+	fn annotation_condition_to_query_expr(
+		condition: &super::expressions::Q,
+		column: &impl Fn(&str) -> ColumnRef,
+	) -> SimpleExpr {
 		use super::expressions::{Q, QOperator};
 
 		match condition {
@@ -6314,82 +6314,130 @@ where
 				value,
 			} => {
 				if field.is_empty() && operator.is_empty() {
-					return value.clone();
+					// Explicit raw Q input retains its established trust boundary.
+					return Expr::cust(value.clone()).into_simple_expr();
 				}
-
-				format!(
-					"{} {} {}",
-					self.annotation_root_field_to_select_sql(field),
-					operator,
-					Self::annotation_condition_value_to_sql(value)
-				)
+				let Some(left) = Self::annotation_condition_field_expr(field, column) else {
+					return Expr::constant_false().into_simple_expr();
+				};
+				let scalar = || Self::annotation_condition_value_expr(value);
+				match operator.to_ascii_uppercase().as_str() {
+					"=" => left.eq(scalar()),
+					"!=" | "<>" => left.ne(scalar()),
+					">" => left.gt(scalar()),
+					">=" => left.gte(scalar()),
+					"<" => left.lt(scalar()),
+					"<=" => left.lte(scalar()),
+					"LIKE" => left.like(scalar()),
+					"IS NULL" => left.is_null(),
+					"IS NOT NULL" => left.is_not_null(),
+					"IN" | "NOT IN" => {
+						let values = value
+							.trim()
+							.trim_start_matches('(')
+							.trim_end_matches(')')
+							.split(',')
+							.map(Self::annotation_condition_value_expr);
+						if operator.eq_ignore_ascii_case("IN") {
+							left.is_in(values)
+						} else {
+							left.is_not_in(values)
+						}
+					}
+					_ => Expr::constant_false().into_simple_expr(),
+				}
 			}
 			Q::Combined {
 				operator,
 				conditions,
 			} => {
-				let sql_conditions: Vec<_> = conditions
+				let mut children = conditions
 					.iter()
-					.map(|condition| self.annotation_condition_to_select_sql(condition))
-					.collect();
-
-				match operator {
-					QOperator::Not => {
-						if sql_conditions.len() == 1 {
-							format!("NOT ({})", sql_conditions[0])
-						} else {
-							format!("NOT ({})", sql_conditions.join(" AND "))
-						}
-					}
-					QOperator::And => {
-						if sql_conditions.len() == 1 {
-							sql_conditions[0].clone()
-						} else {
-							format!("({})", sql_conditions.join(" AND "))
-						}
-					}
-					QOperator::Or => {
-						if sql_conditions.len() == 1 {
-							sql_conditions[0].clone()
-						} else {
-							format!("({})", sql_conditions.join(" OR "))
-						}
-					}
+					.map(|condition| Self::annotation_condition_to_query_expr(condition, column));
+				let first = children.next().unwrap_or_else(|| match operator {
+					QOperator::Or => Expr::constant_false().into_simple_expr(),
+					QOperator::And | QOperator::Not => Expr::constant_true().into_simple_expr(),
+				});
+				let combined = children.fold(first, |left, right| match operator {
+					QOperator::Or => left.or(right).grouped(),
+					QOperator::And | QOperator::Not => left.and(right).grouped(),
+				});
+				if matches!(operator, QOperator::Not) {
+					combined.grouped().not()
+				} else {
+					combined
 				}
 			}
 		}
 	}
 
-	fn annotation_condition_value_to_sql(value: &str) -> String {
-		if value.parse::<f64>().is_ok()
-			|| value.eq_ignore_ascii_case("TRUE")
-			|| value.eq_ignore_ascii_case("FALSE")
-			|| value.eq_ignore_ascii_case("NULL")
-			|| value.starts_with("COUNT(")
-			|| value.starts_with("SUM(")
-			|| value.starts_with("AVG(")
-			|| value.starts_with("MAX(")
-			|| value.starts_with("MIN(")
-			|| (value.starts_with('\'') && value.ends_with('\''))
-		{
-			value.to_string()
-		} else {
-			format!("'{}'", value)
+	fn annotation_condition_field_expr(
+		field: &str,
+		column: &impl Fn(&str) -> ColumnRef,
+	) -> Option<SimpleExpr> {
+		let identifier = |field: &str| {
+			let valid = !field.is_empty()
+				&& field.split('.').all(|part| {
+					!part.is_empty()
+						&& part
+							.chars()
+							.all(|character| character.is_ascii_alphanumeric() || character == '_')
+				});
+			// Model-defined physical columns can contain quoted identifier characters.
+			(valid
+				|| T::field_metadata()
+					.iter()
+					.any(|metadata| metadata.name == field || metadata.db_column_name() == field))
+			.then(|| Expr::col(column(field)).into_simple_expr())
+		};
+		for function in ["COUNT", "SUM", "AVG", "MAX", "MIN"] {
+			if let Some(argument) = field
+				.strip_prefix(function)
+				.and_then(|suffix| suffix.strip_prefix('('))
+				.and_then(|suffix| suffix.strip_suffix(')'))
+			{
+				let argument = if argument == "*" {
+					Expr::asterisk().into_simple_expr()
+				} else {
+					identifier(argument)?
+				};
+				return Some(match function {
+					"COUNT" => Func::count(argument),
+					"SUM" => Func::sum(argument),
+					"AVG" => Func::avg(argument),
+					"MAX" => Func::max(argument),
+					"MIN" => Func::min(argument),
+					_ => unreachable!("closed aggregate function list"),
+				});
+			}
 		}
+		identifier(field)
 	}
 
-	fn annotation_root_field_to_select_sql(&self, field: &str) -> String {
-		let mut characters = field.chars();
-		let Some(first) = characters.next() else {
-			return field.to_string();
-		};
-		if !(first.is_ascii_alphabetic() || first == '_')
-			|| !characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
-		{
-			return field.to_string();
+	fn annotation_condition_value_expr(value: &str) -> SimpleExpr {
+		let value = value.trim();
+		if value.eq_ignore_ascii_case("NULL") {
+			return Expr::null().into_simple_expr();
 		}
-
-		quote_identifier(&format!("{}.{}", self.root_alias(), field))
+		if value.eq_ignore_ascii_case("TRUE") || value.eq_ignore_ascii_case("FALSE") {
+			return Expr::val(value.eq_ignore_ascii_case("TRUE")).into_simple_expr();
+		}
+		if let Ok(number) = value.parse::<i64>() {
+			return Expr::val(number).into_simple_expr();
+		}
+		// Exact decimal literals and integers outside i64 stay native decimal values;
+		// generated execution never routes them through the legacy f64 converter.
+		if let Ok(number) = value.parse() {
+			return Expr::val(reinhardt_query::Value::BigDecimal(Some(Box::new(number))))
+				.into_simple_expr();
+		}
+		// Preserve the legacy Q scalar convention: optional outer quotes are data
+		// delimiters; inner quotes are retained as supplied and never become SQL.
+		let value = value
+			.strip_prefix('\'')
+			.and_then(|value| value.strip_suffix('\''))
+			.unwrap_or(value);
+		Expr::val(value.to_owned()).into_simple_expr()
 	}
 
 	fn has_joined_tables(&self) -> bool {
@@ -9528,7 +9576,11 @@ where
 				Self::annotation_expression_to_query_expr(
 					&expression,
 					&parse_column_reference,
-					&|condition| Expr::cust(condition.to_sql()).into_simple_expr(),
+					&|condition| {
+						Self::annotation_condition_to_query_expr(condition, &|field| {
+							parse_column_reference(&Self::database_column_for_field(field))
+						})
+					},
 				)
 				.into()
 			}
@@ -17395,6 +17447,153 @@ mod tests {
 			])
 		);
 		assert!(!sql.contains(payload));
+	}
+
+	#[rstest]
+	#[case(DatabaseBackend::Postgres, false)]
+	#[case(DatabaseBackend::Postgres, true)]
+	#[case(DatabaseBackend::MySql, false)]
+	#[case(DatabaseBackend::Sqlite, false)]
+	fn case_conditions_keep_bound_values_and_boolean_scope(
+		#[case] backend: DatabaseBackend,
+		#[case] cockroach: bool,
+	) {
+		use crate::orm::annotation::{AnnotationValue as AV, Expression, Value as Scalar, When};
+		use crate::orm::expressions::{Q, QOperator};
+		// Arrange: NOT covers every child, and nested OR retains its own scope.
+		let payload = "x' OR 1=1 OR 'x ? $41\\雪";
+		let condition = Q::new("username", "=", payload)
+			.or(Q::new("id", ">=", (1_i64 << 40).to_string()))
+			.and(Q::Combined {
+				operator: QOperator::Not,
+				conditions: vec![Q::new("enabled", "=", "true"), Q::new("id", "<", "23")],
+			});
+		let value = AV::Expression(Expression::Case {
+			whens: vec![When::new(
+				condition,
+				AV::Value(Scalar::String("then' ? $4".into())),
+			)],
+			default: Some(Box::new(AV::Value(Scalar::Null))),
+		});
+		let queryset = QuerySet::<TestUser>::new();
+		let statement = Query::select()
+			.expr(queryset.annotation_value_to_select_expr(&value))
+			.to_owned();
+		// Act
+		let (sql, values) =
+			QuerySet::<TestUser>::build_select_for_backend(&statement, backend, cockroach).unwrap();
+		// Assert: exact SQL makes grouping independent of boolean precedence inference.
+		let (name, id, enabled, slots) = if backend == DatabaseBackend::MySql {
+			("`username`", "`id`", "`enabled`", ["?", "?", "?", "?", "?"])
+		} else if backend == DatabaseBackend::Sqlite {
+			(
+				"\"username\"",
+				"\"id\"",
+				"\"enabled\"",
+				["?", "?", "?", "?", "?"],
+			)
+		} else {
+			(
+				"\"username\"",
+				"\"id\"",
+				"\"enabled\"",
+				["$1", "$2", "$3", "$4", "$5"],
+			)
+		};
+		assert_eq!(
+			sql,
+			format!(
+				"SELECT CASE WHEN (({name} = {} OR {id} >= {}) AND NOT (({enabled} = {} AND {id} < {}))) THEN {} ELSE NULL END",
+				slots[0], slots[1], slots[2], slots[3], slots[4]
+			)
+		);
+		assert_eq!(
+			values,
+			Values(vec![
+				payload.into(),
+				(1_i64 << 40).into(),
+				true.into(),
+				23_i64.into(),
+				"then' ? $4".into()
+			])
+		);
+		assert!(!sql.contains(payload));
+	}
+
+	#[rstest]
+	fn case_condition_scalar_contracts_keep_null_and_exact_numbers() {
+		use crate::orm::expressions::Q;
+		// Arrange: quoted numeric/NULL inputs remain strings; NULL comparisons stay distinct.
+		let decimal = "9007199254740993.000000000001";
+		let integer = "18446744073709551615";
+		let queryset = QuerySet::<TestUser>::new();
+		let conditions = [
+			Q::new("username", "=", "'NULL'"),
+			Q::new("id", "=", "NULL"),
+			Q::new("id", "IS NULL", "ignored"),
+			Q::new("enabled", "=", "false"),
+			Q::new("id", ">", decimal),
+			Q::new("id", "<", integer),
+			Q::new("username", "IN", "('text', '42', NULL, 5)"),
+		];
+		let mut statement = Query::select();
+		for condition in conditions {
+			statement.expr(queryset.annotation_condition_to_select_expr(&condition));
+		}
+		// Act
+		let (sql, values) = PostgresQueryBuilder
+			.build_select_checked(&statement)
+			.unwrap();
+		// Assert
+		assert_eq!(
+			sql,
+			"SELECT \"username\" = $1, \"id\" = NULL, \"id\" IS NULL, \"enabled\" = $2, \"id\" > $3, \"id\" < $4, \"username\" IN ($5, $6, NULL, $7)"
+		);
+		assert_eq!(
+			values,
+			Values(vec![
+				"NULL".into(),
+				false.into(),
+				reinhardt_query::Value::BigDecimal(Some(Box::new(decimal.parse().unwrap()))),
+				reinhardt_query::Value::BigDecimal(Some(Box::new(integer.parse().unwrap()))),
+				"text".into(),
+				"42".into(),
+				5_i64.into()
+			])
+		);
+	}
+
+	#[rstest]
+	fn case_conditions_keep_closed_grammar_and_explicit_raw_boundary() {
+		use crate::orm::expressions::{Q, QOperator};
+		// Arrange: invalid safe input cannot introduce raw SQL; trusted raw Q remains explicit.
+		let queryset = QuerySet::<TestUser>::new();
+		let conditions = [
+			Q::empty(),
+			Q::Combined {
+				operator: QOperator::Or,
+				conditions: vec![],
+			},
+			Q::empty().not(),
+			Q::new("id; DROP TABLE test_users", "=", "1"),
+			Q::new("id", "OR 1=1", "1"),
+			Q::new("COUNT(*)", ">", "0"),
+			Q::from_raw_sql("trusted_function()"),
+		];
+		let mut statement = Query::select();
+		for condition in conditions {
+			statement.expr(queryset.annotation_condition_to_select_expr(&condition));
+		}
+		// Act
+		let (sql, values) = PostgresQueryBuilder
+			.build_select_checked(&statement)
+			.unwrap();
+		// Assert
+		assert_eq!(
+			sql,
+			"SELECT TRUE, FALSE, NOT (TRUE), FALSE, FALSE, COUNT(*) > $1, trusted_function()"
+		);
+		assert_eq!(values, Values(vec![0_i64.into()]));
 	}
 
 	#[rstest]
