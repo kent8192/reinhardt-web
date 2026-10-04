@@ -873,6 +873,12 @@ impl QueryBuilder for MySqlQueryBuilder {
 				w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 			});
 			writer.push(")");
+		} else if matches!(
+			&stmt.source,
+			InsertSource::Values(rows) if !rows.is_empty() && rows.iter().all(Vec::is_empty)
+		) {
+			// MySQL requires an explicit empty column list for default-only rows.
+			writer.push(" ()");
 		}
 
 		// VALUES clause or SELECT subquery
@@ -3494,6 +3500,23 @@ mod tests {
 			"INSERT INTO `users` (`name`, `email`) VALUES (?, ?), (?, ?)"
 		);
 		assert_eq!(values.len(), 4);
+	}
+
+	#[rstest::rstest]
+	#[case(1, "INSERT INTO `users` () VALUES ()")]
+	#[case(3, "INSERT INTO `users` () VALUES (), (), ()")]
+	fn insert_default_only_rows(#[case] rows: usize, #[case] expected: &str) {
+		// Arrange
+		let mut statement = Query::insert();
+		statement.into_table("users");
+		for _ in 0..rows {
+			statement.values_panic(Vec::<crate::value::Value>::new());
+		}
+		// Act
+		let (sql, values) = MySqlQueryBuilder::new().build_insert(&statement);
+		// Assert
+		assert_eq!(sql, expected);
+		assert!(values.is_empty());
 	}
 
 	#[test]
