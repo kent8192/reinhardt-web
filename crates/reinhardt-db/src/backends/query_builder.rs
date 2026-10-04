@@ -9,7 +9,7 @@ use reinhardt_query::prelude::{
 
 use super::{
 	backend::DatabaseBackend,
-	error::Result,
+	error::{DatabaseError, Result},
 	types::{DatabaseType, QueryResult, QueryValue, Row},
 };
 
@@ -1339,16 +1339,18 @@ impl DeleteBuilder {
 /// | Database | Syntax | Notes |
 /// |----------|--------|-------|
 /// | PostgreSQL | `ANALYZE [VERBOSE] [table [(columns...)]]` | Supports verbose mode and column-level analysis |
-/// | MySQL | `ANALYZE TABLE table [, ...]` | Supports multiple tables |
+/// | MySQL | `ANALYZE TABLE table` | Requires an explicit, non-empty table name |
 /// | SQLite | `ANALYZE [table_or_index]` | Analyzes entire database if no target specified |
 /// | CockroachDB | `ANALYZE table` | PostgreSQL-compatible syntax |
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_db::backends::AnalyzeBuilder;
+/// ```rust,no_run
+/// use reinhardt_db::backends::{AnalyzeBuilder, DatabaseBackend, DatabaseError};
+/// use std::sync::Arc;
+/// # async fn example(backend: Arc<dyn DatabaseBackend>) -> Result<(), DatabaseError> {
 ///
-/// // Analyze all tables
+/// // Analyze all tables (PostgreSQL and SQLite only)
 /// let builder = AnalyzeBuilder::new(backend.clone());
 /// builder.execute().await?;
 ///
@@ -1363,6 +1365,8 @@ impl DeleteBuilder {
 ///     .columns(vec!["email", "created_at"])
 ///     .verbose(true);
 /// builder.execute().await?;
+/// # Ok(())
+/// # }
 /// ```
 pub struct AnalyzeBuilder {
 	backend: Arc<dyn DatabaseBackend>,
@@ -1374,7 +1378,9 @@ pub struct AnalyzeBuilder {
 impl AnalyzeBuilder {
 	/// Create a new ANALYZE builder
 	///
-	/// Without specifying a table, this will analyze all tables in the database.
+	/// Without a table, PostgreSQL and SQLite analyze the entire database.
+	/// MySQL requires an explicit, non-empty table name set with [`Self::table`];
+	/// [`Self::execute`] returns [`DatabaseError::NotSupported`] otherwise.
 	pub fn new(backend: Arc<dyn DatabaseBackend>) -> Self {
 		Self {
 			backend,
@@ -1419,6 +1425,8 @@ impl AnalyzeBuilder {
 	/// Build the ANALYZE SQL statement
 	///
 	/// Returns the SQL string appropriate for the database backend.
+	/// This rendering method does not validate the target. On MySQL, specify a
+	/// non-empty table with [`Self::table`] before executing the statement.
 	pub fn build(&self) -> String {
 		use super::types::DatabaseType;
 
@@ -1457,9 +1465,7 @@ impl AnalyzeBuilder {
 		if let Some(ref table) = self.table {
 			format!("ANALYZE TABLE `{}`", table)
 		} else {
-			// MySQL requires at least one table; analyze all tables requires
-			// querying information_schema first. Return empty for database-wide.
-			// Users should call with specific tables.
+			// Preserve standalone rendering; execute rejects the unsupported target.
 			String::from("ANALYZE TABLE")
 		}
 	}
@@ -1474,7 +1480,38 @@ impl AnalyzeBuilder {
 	}
 
 	/// Execute the ANALYZE statement
+	///
+	/// # Errors
+	///
+	/// Returns [`DatabaseError::NotSupported`] before SQL execution if MySQL has
+	/// no explicit, non-empty table name. Other backend errors are propagated.
+	///
+	/// # Example
+	///
+	/// A missing MySQL target is rejected without connecting to a database:
+	///
+	/// ```rust
+	/// # #[cfg(feature = "mysql")]
+	/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+	/// use reinhardt_db::backends::{AnalyzeBuilder, DatabaseError, MySqlBackend};
+	/// use std::sync::Arc;
+	///
+	/// let pool = sqlx::mysql::MySqlPoolOptions::new()
+	///     .connect_lazy("mysql://localhost/app")
+	///     .unwrap();
+	/// let builder = AnalyzeBuilder::new(Arc::new(MySqlBackend::new(pool)));
+	/// let error = builder.execute().await.unwrap_err();
+	/// assert!(matches!(error, DatabaseError::NotSupported(_)));
+	/// # });
+	/// ```
 	pub async fn execute(&self) -> Result<QueryResult> {
+		if self.backend.database_type() == DatabaseType::Mysql
+			&& self.table.as_deref().is_none_or(str::is_empty)
+		{
+			return Err(DatabaseError::NotSupported(
+				"MySQL ANALYZE requires an explicit table; use AnalyzeBuilder::table()".into(),
+			));
+		}
 		let sql = self.build();
 		self.backend.execute(&sql, Vec::new()).await
 	}
@@ -2375,6 +2412,78 @@ mod tests {
 		let builder = AnalyzeBuilder::new(backend);
 		let sql = builder.build();
 		assert_eq!(sql, "ANALYZE TABLE");
+	}
+
+	#[cfg(feature = "mysql")]
+	#[rstest]
+	#[case::unspecified(None)]
+	#[case::empty(Some(""))]
+	#[tokio::test]
+	async fn test_analyze_builder_mysql_rejects_missing_table_before_execution(
+		#[case] table: Option<&str>,
+	) {
+		// Arrange: a closed native pool would fail if SQL execution were attempted.
+		let pool = sqlx::mysql::MySqlPoolOptions::new()
+			.connect_lazy("mysql://localhost/analyze_test")
+			.unwrap();
+		pool.close().await;
+		let backend = Arc::new(crate::backends::MySqlBackend::new(pool));
+		let mut builder = AnalyzeBuilder::new(backend);
+		if let Some(table) = table {
+			builder = builder.table(table);
+		}
+
+		// Act
+		let error = builder.execute().await.unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error,
+			DatabaseError::NotSupported(
+				"MySQL ANALYZE requires an explicit table; use AnalyzeBuilder::table()".into()
+			)
+		);
+	}
+
+	#[cfg(feature = "mysql")]
+	#[rstest]
+	#[tokio::test]
+	async fn test_analyze_builder_mysql_explicit_table_reaches_executor() {
+		// Arrange
+		let pool = sqlx::mysql::MySqlPoolOptions::new()
+			.connect_lazy("mysql://localhost/analyze_test")
+			.unwrap();
+		pool.close().await;
+		let backend = Arc::new(crate::backends::MySqlBackend::new(pool));
+
+		// Act
+		let error = AnalyzeBuilder::new(backend)
+			.table("users")
+			.execute()
+			.await
+			.unwrap_err();
+
+		// Assert: a valid target passes validation and reaches the closed pool.
+		assert_eq!(error, DatabaseError::from(sqlx::Error::PoolClosed));
+	}
+
+	#[rstest]
+	#[case::postgres(DatabaseType::Postgres)]
+	#[case::sqlite(DatabaseType::Sqlite)]
+	#[tokio::test]
+	async fn test_analyze_builder_database_wide_supported_backends(#[case] database: DatabaseType) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match database {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+			DatabaseType::Mysql => unreachable!("covered by MySQL target tests"),
+		};
+
+		// Act
+		let result = AnalyzeBuilder::new(backend).execute().await.unwrap();
+
+		// Assert
+		assert_eq!(result.rows_affected, 1);
 	}
 
 	#[test]
