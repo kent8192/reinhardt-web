@@ -19,10 +19,11 @@ proc-macro-crate = "3.1"
 nom = { workspace = true }
 ctor = { workspace = true }
 inventory = { workspace = true }
+serde_json = { workspace = true, optional = true }
 
 [features]
 full = []
-db-postgres = []
+db-postgres = ["dep:serde_json"]
 db-mysql = []
 db-sqlite = []
 pgvector = []
