@@ -367,7 +367,8 @@ impl MySqlQueryBuilder {
 				self.write_simple_expr(writer, expr);
 				writer.push(" LIKE ");
 				self.write_simple_expr(writer, pattern);
-				writer.push(" ESCAPE '\\\\'");
+				// A hex literal is valid with either string-literal backslash mode.
+				writer.push(" ESCAPE 0x5C");
 			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
@@ -872,6 +873,12 @@ impl QueryBuilder for MySqlQueryBuilder {
 				w.push_identifier(&col.to_string(), |s| self.escape_iden(s));
 			});
 			writer.push(")");
+		} else if matches!(
+			&stmt.source,
+			InsertSource::Values(rows) if !rows.is_empty() && rows.iter().all(Vec::is_empty)
+		) {
+			// MySQL requires an explicit empty column list for default-only rows.
+			writer.push(" ()");
 		}
 
 		// VALUES clause or SELECT subquery
@@ -1342,6 +1349,11 @@ impl QueryBuilder for MySqlQueryBuilder {
 			}
 			first = false;
 			writer.push_identifier(&col.name.to_string(), |s| self.escape_iden(s));
+			if let Some(length) = col.prefix_length {
+				writer.push("(");
+				writer.push(&length.get().to_string());
+				writer.push(")");
+			}
 			if let Some(order) = &col.order {
 				writer.push_space();
 				match order {
@@ -3488,6 +3500,23 @@ mod tests {
 			"INSERT INTO `users` (`name`, `email`) VALUES (?, ?), (?, ?)"
 		);
 		assert_eq!(values.len(), 4);
+	}
+
+	#[rstest::rstest]
+	#[case(1, "INSERT INTO `users` () VALUES ()")]
+	#[case(3, "INSERT INTO `users` () VALUES (), (), ()")]
+	fn insert_default_only_rows(#[case] rows: usize, #[case] expected: &str) {
+		// Arrange
+		let mut statement = Query::insert();
+		statement.into_table("users");
+		for _ in 0..rows {
+			statement.values_panic(Vec::<crate::value::Value>::new());
+		}
+		// Act
+		let (sql, values) = MySqlQueryBuilder::new().build_insert(&statement);
+		// Assert
+		assert_eq!(sql, expected);
+		assert!(values.is_empty());
 	}
 
 	#[test]
@@ -5752,6 +5781,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5771,6 +5801,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "username".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5793,6 +5824,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5813,6 +5845,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "created_at".into_iden(),
 			order: Some(Order::Desc),
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5835,10 +5868,12 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "last_name".into_iden(),
 			order: Some(Order::Asc),
+			prefix_length: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
 			order: Some(Order::Asc),
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5861,6 +5896,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "id".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5883,6 +5919,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "content".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
