@@ -171,9 +171,9 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 
 /// Convert renderer values to the legacy raw-executor representation.
 ///
-/// This compatibility API retains its historical lossy conversions. ORM-generated
-/// execution uses native backend codecs instead; callers needing exact decimal,
-/// array, or date/time types must not use this adapter.
+/// This compatibility API retains its historical lossy conversions. `QuerySet`
+/// and the execution builders use native backend codecs instead; callers needing
+/// exact decimal, array, or date/time types must not use this adapter.
 pub fn convert_values(values: reinhardt_query::prelude::Values) -> Vec<QueryValue> {
 	values
 		.0

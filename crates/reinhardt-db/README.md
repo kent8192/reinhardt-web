@@ -90,9 +90,11 @@ This crate provides the following modules:
 
 ## Generated query parameters
 
-ORM-generated statements pass the renderer's original `Values` to native SQLx
-codecs. PostgreSQL retains typed arrays (including NULL and empty arrays), JSON
-versus JSONB array types, and exact decimals. MySQL retains exact decimals and
+`QuerySet` statements, `orm::execution` builders, and many-to-many operations
+pass the renderer's original `Values` to native SQLx codecs in built-in backends.
+Dedicated transaction executors support the same generated-value dispatch.
+PostgreSQL retains typed arrays (including NULL and empty arrays), JSON versus
+JSONB array types, and exact decimals. MySQL retains exact decimals and
 the full unsigned integer range. SQLite rejects decimal and array arguments
 because it has no corresponding native codec.
 
@@ -100,6 +102,8 @@ Arguments that cannot be encoded without loss fail before SQL execution. Errors
 report the backend, value type, and one-based argument position without exposing
 the value. PostgreSQL and MySQL reject temporal values with sub-microsecond
 precision or leap seconds; SQLite also rejects NaN rather than storing SQL NULL.
+MySQL normalizes fixed-offset datetimes to UTC after checking their precision,
+matching its UTC and local datetime bindings; typed NULL datetimes remain SQL NULL.
 UUIDs keep the existing native PostgreSQL and text MySQL/SQLite representation.
 BigDecimal arguments must fit the native
 [PostgreSQL numeric range](https://www.postgresql.org/docs/16/datatype-numeric.html)
@@ -107,9 +111,16 @@ or [MySQL decimal precision and scale](https://dev.mysql.com/doc/refman/8.0/en/p
 
 The public `orm::execution::convert_values` function remains a legacy compatibility
 adapter with its historical lossy behavior. Explicit raw executors still accept
-`Vec<QueryValue>`, and row decoding retains its existing contract. Custom backends
-that implement only the raw executor receive checked, representable values and
-reject types requiring a native codec.
+`Vec<QueryValue>`, and row decoding retains its existing contract.
+
+Model creation and updates through `Manager::create`, `Manager::create_with_conn`,
+`Manager::update`, and `Manager::update_with_conn` still serialize fields through
+JSON and convert arguments to `Vec<QueryValue>`, retaining their existing lossy
+conversion behavior. These model-save methods are outside the native-codec
+guarantees above.
+
+Custom backends that implement only the raw executor receive checked,
+representable values and reject types requiring a native codec.
 
 ## Module Architecture
 
