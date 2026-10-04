@@ -26,6 +26,11 @@ use uuid::Uuid;
 // Django QuerySet API types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Defines possible filter operator values.
+///
+/// Case-insensitive string lookups use native ILIKE on PostgreSQL and
+/// LOWER/LIKE on MySQL/SQLite, with bound escaped patterns. Folding follows
+/// backend locale/collation and LOWER behavior; SQLite's built-in LOWER
+/// folds ASCII only. These text lookups require a text-compatible field.
 pub enum FilterOperator {
 	/// Eq variant.
 	Eq,
@@ -3296,62 +3301,56 @@ where
 					col.like(format!("%{}%", i))
 				}
 				(FilterOperator::IContains, FilterValue::Integer(i) | FilterValue::Int(i)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", i)))
+					col.ilike_with_escape(format!("%{}%", i))
 				}
 				(FilterOperator::Contains, FilterValue::Float(f)) => col.like(format!("%{}%", f)),
 				(FilterOperator::IContains, FilterValue::Float(f)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", f)))
+					col.ilike_with_escape(format!("%{}%", f))
 				}
 				(FilterOperator::Contains, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("%{}%", b))
 				}
 				(FilterOperator::IContains, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", b)))
+					col.ilike_with_escape(format!("%{}%", b))
 				}
 				(FilterOperator::Contains, FilterValue::Null) => col.like("%"),
-				(FilterOperator::IContains, FilterValue::Null) => {
-					col.binary(BinOper::ILike, SimpleExpr::from("%"))
-				}
+				(FilterOperator::IContains, FilterValue::Null) => col.ilike_with_escape("%"),
 				(FilterOperator::StartsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("{}%", i))
 				}
 				(FilterOperator::IStartsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", i)))
+					col.ilike_with_escape(format!("{}%", i))
 				}
 				(FilterOperator::StartsWith, FilterValue::Float(f)) => col.like(format!("{}%", f)),
 				(FilterOperator::IStartsWith, FilterValue::Float(f)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", f)))
+					col.ilike_with_escape(format!("{}%", f))
 				}
 				(FilterOperator::StartsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("{}%", b))
 				}
 				(FilterOperator::IStartsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", b)))
+					col.ilike_with_escape(format!("{}%", b))
 				}
 				(FilterOperator::StartsWith, FilterValue::Null) => col.like("%"),
-				(FilterOperator::IStartsWith, FilterValue::Null) => {
-					col.binary(BinOper::ILike, SimpleExpr::from("%"))
-				}
+				(FilterOperator::IStartsWith, FilterValue::Null) => col.ilike_with_escape("%"),
 				(FilterOperator::EndsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("%{}", i))
 				}
 				(FilterOperator::IEndsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", i)))
+					col.ilike_with_escape(format!("%{}", i))
 				}
 				(FilterOperator::EndsWith, FilterValue::Float(f)) => col.like(format!("%{}", f)),
 				(FilterOperator::IEndsWith, FilterValue::Float(f)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", f)))
+					col.ilike_with_escape(format!("%{}", f))
 				}
 				(FilterOperator::EndsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("%{}", b))
 				}
 				(FilterOperator::IEndsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", b)))
+					col.ilike_with_escape(format!("%{}", b))
 				}
 				(FilterOperator::EndsWith, FilterValue::Null) => col.like("%"),
-				(FilterOperator::IEndsWith, FilterValue::Null) => {
-					col.binary(BinOper::ILike, SimpleExpr::from("%"))
-				}
+				(FilterOperator::IEndsWith, FilterValue::Null) => col.ilike_with_escape("%"),
 				// Handle In/NotIn for non-String types
 				(FilterOperator::In, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.is_in(vec![*i])
@@ -3712,11 +3711,7 @@ where
 				Box::new(Expr::val(pattern.apply(value)).into_simple_expr()),
 			);
 		}
-		Expr::cust_with_values(
-			format!("{} ILIKE ? ESCAPE '\\'", Self::filter_lhs_sql(filter)),
-			[pattern.apply(value)],
-		)
-		.into_simple_expr()
+		Self::filter_lhs_expr(filter).ilike_with_escape(pattern.apply(value))
 	}
 
 	pub(crate) fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
@@ -8494,19 +8489,19 @@ mod tests {
 	#[rstest]
 	#[case(
 		Filter::new("username", FilterOperator::IExact, FilterValue::String("Alice".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'Alice' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'Alice' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("email", FilterOperator::IContains, FilterValue::String("example.com".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%example.com%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IStartsWith, FilterValue::String("ali".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'ali%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'ali%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IEndsWith, FilterValue::String("ice".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE '%ice' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE '%ice' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::Regex, FilterValue::String("^a".to_string())),
@@ -8659,11 +8654,11 @@ mod tests {
 	#[rstest]
 	#[case(
 		Filter::new("email", FilterOperator::IContains, FilterValue::String("100%_match\\".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%100\%\_match\\%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("email" ILIKE '%100\%\_match\\%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IExact, FilterValue::String("alice_admin".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'alice\_admin' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'alice\_admin' ESCAPE '\')"#
 	)]
 	fn test_django_style_case_insensitive_like_filters_escape_metacharacters(
 		#[case] filter: Filter,
@@ -8730,6 +8725,68 @@ mod tests {
 			(FilterOperator::Contains, r"%tenant' ? $42:\%\_\\%"),
 			(FilterOperator::StartsWith, r"tenant' ? $42:\%\_\\%"),
 			(FilterOperator::EndsWith, r"%tenant' ? $42:\%\_\\")
+		)]
+		lookup: (FilterOperator, &str),
+		#[values(false, true)] qualified: bool,
+	) {
+		// Arrange: quotes and placeholder-like text must remain identifier or value data.
+		let field = if qualified {
+			r#"tenant"`?.username"#
+		} else {
+			"username"
+		};
+		let (operator, expected_pattern) = lookup;
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			field,
+			operator,
+			FilterValue::String(r"tenant' ? $42:%_\".into()),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: only the lookup's own wildcards are unescaped.
+		assert_eq!(
+			sql,
+			if qualified {
+				expected_qualified_sql
+			} else {
+				expected_column_sql
+			}
+		);
+		assert_eq!(values, Values(vec![expected_pattern.into()]));
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE $1 ESCAPE '\')"#,
+		r#"SELECT * FROM "test_users" WHERE ("tenant""`?"."username" ILIKE $1 ESCAPE '\')"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE (LOWER(`username`) LIKE LOWER(?) ESCAPE 0x5C)",
+		"SELECT * FROM `test_users` WHERE (LOWER(`tenant\"``?`.`username`) LIKE LOWER(?) ESCAPE 0x5C)"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE (LOWER("username") LIKE LOWER(?) ESCAPE '\')"#,
+		r#"SELECT * FROM "test_users" WHERE (LOWER("tenant""`?"."username") LIKE LOWER(?) ESCAPE '\')"#
+	)]
+	fn case_insensitive_like_native_sql_and_values(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_column_sql: &str,
+		#[case] expected_qualified_sql: &str,
+		#[values(
+			(FilterOperator::IContains, r"%tenant' ? $42:\%\_\\%"),
+			(FilterOperator::IStartsWith, r"tenant' ? $42:\%\_\\%"),
+			(FilterOperator::IEndsWith, r"%tenant' ? $42:\%\_\\"),
+			(FilterOperator::IExact, r"tenant' ? $42:\%\_\\")
 		)]
 		lookup: (FilterOperator, &str),
 		#[values(false, true)] qualified: bool,
