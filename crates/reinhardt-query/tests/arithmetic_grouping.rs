@@ -1,0 +1,249 @@
+//! MySQL and SQLite regression coverage for nested typed arithmetic.
+
+use std::sync::Arc;
+
+use reinhardt_query::{
+	Expr, ExprTrait, MySqlQueryBuilder, Query, QueryStatementBuilder, SimpleExpr,
+	SqliteQueryBuilder, Value, Values,
+};
+use rstest::*;
+use sqlx::{Arguments, Connection};
+
+mod common;
+use common::{MySqlContainer, mysql_container};
+
+struct ArithmeticCase {
+	expr: SimpleExpr,
+	sql: &'static str,
+	control: &'static str,
+	operands: Vec<i64>,
+	result: i64,
+}
+
+#[fixture]
+fn arithmetic_cases() -> Vec<ArithmeticCase> {
+	vec![
+		ArithmeticCase {
+			expr: Expr::val(3_i64).add(5_i64).mul(2_i64),
+			sql: "(? + ?) * ?",
+			control: "(? + ?) * ?",
+			operands: vec![3, 5, 2],
+			result: 16,
+		},
+		ArithmeticCase {
+			expr: Expr::val(3_i64).mul(Expr::val(5_i64).add(2_i64)),
+			sql: "? * (? + ?)",
+			control: "? * (? + ?)",
+			operands: vec![3, 5, 2],
+			result: 21,
+		},
+		ArithmeticCase {
+			expr: Expr::val(12_i64).sub(Expr::val(5_i64).sub(2_i64)),
+			sql: "? - (? - ?)",
+			control: "? - (? - ?)",
+			operands: vec![12, 5, 2],
+			result: 9,
+		},
+		ArithmeticCase {
+			expr: Expr::val(24_i64).div(Expr::val(6_i64).div(2_i64)),
+			sql: "? / (? / ?)",
+			control: "? / (? / ?)",
+			operands: vec![24, 6, 2],
+			result: 8,
+		},
+		ArithmeticCase {
+			expr: Expr::val(64_i64).div(Expr::val(8_i64).mul(2_i64)),
+			sql: "? / (? * ?)",
+			control: "? / (? * ?)",
+			operands: vec![64, 8, 2],
+			result: 4,
+		},
+		ArithmeticCase {
+			expr: Expr::val(12_i64).sub(Expr::val(5_i64).add(2_i64)),
+			sql: "? - (? + ?)",
+			control: "? - (? + ?)",
+			operands: vec![12, 5, 2],
+			result: 5,
+		},
+		ArithmeticCase {
+			expr: Expr::val(20_i64).modulo(Expr::val(7_i64).modulo(4_i64)),
+			sql: "? % (? % ?)",
+			control: "? % (? % ?)",
+			operands: vec![20, 7, 4],
+			result: 2,
+		},
+		ArithmeticCase {
+			expr: Expr::val(12_i64).sub(5_i64).sub(2_i64),
+			sql: "? - ? - ?",
+			control: "(? - ?) - ?",
+			operands: vec![12, 5, 2],
+			result: 5,
+		},
+		ArithmeticCase {
+			expr: Expr::val(3_i64).add(Expr::val(5_i64).add(2_i64)),
+			sql: "? + (? + ?)",
+			control: "? + (? + ?)",
+			operands: vec![3, 5, 2],
+			result: 10,
+		},
+		ArithmeticCase {
+			expr: Expr::val(3_i64).mul(Expr::val(5_i64).mul(2_i64)),
+			sql: "? * (? * ?)",
+			control: "? * (? * ?)",
+			operands: vec![3, 5, 2],
+			result: 30,
+		},
+		ArithmeticCase {
+			expr: Expr::val(3_i64).add(Expr::val(5_i64).mul(2_i64)),
+			sql: "? + ? * ?",
+			control: "? + (? * ?)",
+			operands: vec![3, 5, 2],
+			result: 13,
+		},
+		ArithmeticCase {
+			expr: Expr::val(20_i64).div(5_i64).modulo(3_i64),
+			sql: "? / ? % ?",
+			control: "(? / ?) % ?",
+			operands: vec![20, 5, 3],
+			result: 1,
+		},
+		ArithmeticCase {
+			expr: Expr::val(3_i64).add(5_i64).mul(Expr::val(9_i64).sub(7_i64)),
+			sql: "(? + ?) * (? - ?)",
+			control: "(? + ?) * (? - ?)",
+			operands: vec![3, 5, 9, 7],
+			result: 16,
+		},
+	]
+}
+
+#[rstest]
+fn arithmetic_sql_retains_grouping_and_bind_order(
+	arithmetic_cases: Vec<ArithmeticCase>,
+	#[values(false, true)] mysql: bool,
+) {
+	for case in arithmetic_cases {
+		// Arrange
+		let query = Query::select().expr_as(case.expr, "computed").to_owned();
+		let alias = if mysql { "`computed`" } else { "\"computed\"" };
+		let expected_values = Values(case.operands.iter().copied().map(Value::from).collect());
+
+		// Act
+		let (sql, values) = if mysql {
+			query.build(MySqlQueryBuilder)
+		} else {
+			query.build(SqliteQueryBuilder)
+		};
+		let inlined = if mysql {
+			query.to_string(MySqlQueryBuilder)
+		} else {
+			query.to_string(SqliteQueryBuilder)
+		};
+
+		// Assert
+		assert_eq!(sql, format!("SELECT {} AS {alias}", case.sql));
+		assert_eq!(values, expected_values, "{}", case.sql);
+		let mut operands = case.operands.iter();
+		let expected_inlined = case
+			.sql
+			.chars()
+			.map(|character| {
+				if character == '?' {
+					operands.next().unwrap().to_string()
+				} else {
+					character.to_string()
+				}
+			})
+			.collect::<String>();
+		assert_eq!(inlined, format!("SELECT {expected_inlined} AS {alias}"));
+	}
+}
+
+fn sqlite_arguments(values: Values) -> sqlx::sqlite::SqliteArguments<'static> {
+	let mut arguments = sqlx::sqlite::SqliteArguments::default();
+	for value in values.0 {
+		let Value::BigInt(Some(value)) = value else {
+			panic!("unexpected arithmetic argument: {value:?}");
+		};
+		arguments.add(value).unwrap();
+	}
+	arguments
+}
+
+fn mysql_arguments(values: Values) -> sqlx::mysql::MySqlArguments {
+	let mut arguments = sqlx::mysql::MySqlArguments::default();
+	for value in values.0 {
+		let Value::BigInt(Some(value)) = value else {
+			panic!("unexpected arithmetic argument: {value:?}");
+		};
+		arguments.add(value).unwrap();
+	}
+	arguments
+}
+
+#[rstest]
+#[tokio::test]
+async fn sqlite_arithmetic_matches_explicitly_grouped_control(
+	arithmetic_cases: Vec<ArithmeticCase>,
+) {
+	// Arrange
+	let mut connection = sqlx::SqliteConnection::connect("sqlite::memory:")
+		.await
+		.unwrap();
+	for case in arithmetic_cases {
+		let query = Query::select().expr_as(case.expr, "computed").to_owned();
+		let (sql, values) = query.build(SqliteQueryBuilder);
+		let control_sql = format!("SELECT {} AS computed", case.control);
+		assert_eq!(
+			values,
+			Values(case.operands.into_iter().map(Value::from).collect())
+		);
+
+		// Act
+		let result = sqlx::query_scalar_with::<_, i64, _>(&sql, sqlite_arguments(values.clone()))
+			.fetch_one(&mut connection)
+			.await
+			.unwrap();
+		let control = sqlx::query_scalar_with::<_, i64, _>(&control_sql, sqlite_arguments(values))
+			.fetch_one(&mut connection)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(result, case.result, "{sql}");
+		assert_eq!(control, case.result, "{control_sql}");
+	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn mysql_arithmetic_matches_explicitly_grouped_control(
+	#[future] mysql_container: (MySqlContainer, Arc<sqlx::MySqlPool>, u16, String),
+	arithmetic_cases: Vec<ArithmeticCase>,
+) {
+	// Arrange: the container guard owns cleanup, including assertion failures.
+	let (_container, pool, _, _) = mysql_container.await;
+	for case in arithmetic_cases {
+		let query = Query::select().expr_as(case.expr, "computed").to_owned();
+		let (sql, values) = query.build(MySqlQueryBuilder);
+		let control_sql = format!("SELECT {} AS computed", case.control);
+		assert_eq!(
+			values,
+			Values(case.operands.into_iter().map(Value::from).collect())
+		);
+
+		// Act: MySQL exposes these prepared arithmetic projections as DOUBLE.
+		let result = sqlx::query_scalar_with::<_, f64, _>(&sql, mysql_arguments(values.clone()))
+			.fetch_one(pool.as_ref())
+			.await
+			.unwrap();
+		let control = sqlx::query_scalar_with::<_, f64, _>(&control_sql, mysql_arguments(values))
+			.fetch_one(pool.as_ref())
+			.await
+			.unwrap();
+
+		// Assert: every expected value is a small, exactly representable integer.
+		assert_eq!(result, case.result as f64, "{sql}");
+		assert_eq!(control, case.result as f64, "{control_sql}");
+	}
+}
