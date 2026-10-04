@@ -728,6 +728,32 @@ fn embedded_creation_ownership_is_rendered() {
 }
 
 #[rstest]
+fn sequence_only_removal_is_destructive() {
+	// Arrange
+	let mut current = ProjectState::new();
+	current
+		.add_sequence(SequenceDefinition::new(
+			SequenceKey::new("events", "numbers"),
+			QualifiedName::new("numbers"),
+		))
+		.unwrap();
+	let diff = crate::migrations::schema_diff::SchemaDiff::new(
+		current.to_database_schema(),
+		ProjectState::new().to_database_schema(),
+	);
+	// Act
+	let operations = diff.try_generate_operations().unwrap();
+	// Assert
+	assert!(diff.has_destructive_changes());
+	assert!(matches!(
+		operations.as_slice(),
+		[Operation::Sequence {
+			operation: SequenceOperation::Drop { .. }
+		}]
+	));
+}
+
+#[rstest]
 fn app_schema_omits_foreign_sequence_mutations() {
 	// Arrange
 	let mut old = ProjectState::new();

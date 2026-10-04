@@ -1567,6 +1567,11 @@ impl SchemaDiff {
 			|| !diff.columns_to_modify.is_empty()
 			|| !diff.indexes_to_remove.is_empty()
 			|| !diff.constraints_to_remove.is_empty()
+			|| self
+				.current_schema
+				.sequences
+				.keys()
+				.any(|key| !self.target_schema.sequences.contains_key(key))
 	}
 
 	/// Check if a column has a unique constraint or index in a given schema
