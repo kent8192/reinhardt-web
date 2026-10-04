@@ -196,6 +196,14 @@ SQLx version safely handles changing native signatures without it. The
 dependency compatibility limitation remains tracked in
 [#6533](https://github.com/kent8192/reinhardt-web/issues/6533).
 
+### Existence checks
+
+`SelectExecution::exists_async` returns `true` when the selected query matches
+at least one row and `false` otherwise. It renders the query for the connection's
+backend and decodes PostgreSQL boolean results and SQLite/MySQL integer `0`/`1`
+results. This conversion is limited to existence checks; other result types and
+integers outside `0`/`1` remain deserialization errors.
+
 ## Installation
 
 Add this to your `Cargo.toml`:
