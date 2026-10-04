@@ -381,7 +381,9 @@ impl InsertBuilder {
 		self
 	}
 
-	/// Builds the final result.
+	/// Builds the SQL and its bound arguments.
+	///
+	/// `QueryValue::Null` is rendered as literal `NULL` and consumes no argument slot.
 	pub fn build(&self) -> Result<(String, Vec<QueryValue>)> {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
@@ -427,7 +429,14 @@ impl InsertBuilder {
 			sql = self.apply_on_conflict_clause(sql, on_conflict)?;
 		}
 
-		Ok((sql, self.values.clone()))
+		// Match the renderer's literal NULLs without shifting later bindings.
+		let params = self
+			.values
+			.iter()
+			.filter(|value| !matches!(value, QueryValue::Null))
+			.cloned()
+			.collect();
+		Ok((sql, params))
 	}
 
 	/// Apply ON CONFLICT clause to SQL string based on database type
@@ -1048,7 +1057,9 @@ impl UpdateBuilder {
 		self
 	}
 
-	/// Builds the final result.
+	/// Builds the SQL and its bound arguments.
+	///
+	/// `QueryValue::Null` is rendered as literal `NULL` and consumes no argument slot.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
@@ -1089,15 +1100,17 @@ impl UpdateBuilder {
 		// Replace NOW() placeholder sentinel with actual function call
 		let sql = sql.replace(&format!("'{}'", NOW_PLACEHOLDER), "NOW()");
 
-		// Preserve parameter order: first SET values, then WHERE values
+		// Preserve SET/WHERE parameter order, excluding literal NULLs.
 		let mut params = Vec::new();
 		for (_, val) in &self.sets {
-			if !matches!(val, QueryValue::Now) {
+			if !matches!(val, QueryValue::Now | QueryValue::Null) {
 				params.push(val.clone());
 			}
 		}
 		for (_, _, val) in &self.wheres {
-			params.push(val.clone());
+			if !matches!(val, QueryValue::Null) {
+				params.push(val.clone());
+			}
 		}
 
 		(sql, params)
@@ -2111,7 +2124,7 @@ mod tests {
 		assert!(sql.contains("ON CONFLICT"));
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_null_value() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2124,9 +2137,11 @@ mod tests {
 		let (sql, params) = builder.build().unwrap();
 
 		// Assert
-		assert!(sql.contains("ON CONFLICT (\"email\") DO UPDATE SET"));
-		assert_eq!(params.len(), 2);
-		assert!(matches!(params[1], QueryValue::Null));
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\", \"name\") VALUES ($1, NULL) ON CONFLICT (\"email\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
+		);
+		assert_eq!(params, vec![QueryValue::from("test@example.com")]);
 	}
 
 	#[test]

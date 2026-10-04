@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rstest::rstest;
+use rstest::*;
 
 use reinhardt_db::backends::query_builder::{
 	ConflictTarget, OnConflictClause, OnConflictClauseAction,
@@ -854,6 +854,115 @@ fn test_query_cache_eviction_on_max_size() {
 
 // ==================== InsertBuilder SQL generation tests ====================
 
+#[cfg(feature = "sqlite")]
+#[fixture]
+async fn builder_probe_connection() -> reinhardt_db::backends::DatabaseConnection {
+	let db = reinhardt_db::backends::DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.unwrap();
+	db.execute(
+		"CREATE TABLE builder_probe (id BIGINT PRIMARY KEY, name TEXT)",
+		vec![],
+	)
+	.await
+	.unwrap();
+	db
+}
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"INSERT INTO \"users\" (\"name\", \"id\", \"notes\", \"email\", \"deleted_at\") VALUES (NULL, $1, NULL, $2, NULL)"
+)]
+#[case(
+	DatabaseType::Mysql,
+	"INSERT INTO `users` (`name`, `id`, `notes`, `email`, `deleted_at`) VALUES (NULL, ?, NULL, ?, NULL)"
+)]
+#[case(
+	DatabaseType::Sqlite,
+	"INSERT INTO \"users\" (\"name\", \"id\", \"notes\", \"email\", \"deleted_at\") VALUES (NULL, ?, NULL, ?, NULL)"
+)]
+fn test_insert_builder_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = InsertBuilder::new(backend, "users")
+		.value("name", QueryValue::Null)
+		.value("id", 2_i64)
+		.value("notes", QueryValue::Null)
+		.value("email", "two@example.com")
+		.value("deleted_at", QueryValue::Null);
+
+	// Act
+	let (sql, params) = builder.build().unwrap();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![QueryValue::Int(2), QueryValue::from("two@example.com")]
+	);
+}
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"INSERT INTO \"users\" (\"name\", \"notes\") VALUES (NULL, NULL)"
+)]
+#[case(
+	DatabaseType::Mysql,
+	"INSERT INTO `users` (`name`, `notes`) VALUES (NULL, NULL)"
+)]
+#[case(
+	DatabaseType::Sqlite,
+	"INSERT INTO \"users\" (\"name\", \"notes\") VALUES (NULL, NULL)"
+)]
+fn test_insert_builder_all_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = InsertBuilder::new(backend, "users")
+		.value("name", QueryValue::Null)
+		.value("notes", QueryValue::Null);
+
+	// Act
+	let (sql, params) = builder.build().unwrap();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, Vec::<QueryValue>::new());
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_insert_builder_executes_inline_null_before_id(
+	#[future] builder_probe_connection: reinhardt_db::backends::DatabaseConnection,
+) {
+	// Arrange
+	let db = builder_probe_connection.await;
+	let builder = InsertBuilder::new(db.backend(), "builder_probe")
+		.value("name", QueryValue::Null)
+		.value("id", 1_i64);
+
+	// Act
+	let result = builder.execute().await.unwrap();
+
+	// Assert
+	assert_eq!(result.rows_affected, 1);
+	let rows = db
+		.fetch_all("SELECT id, name FROM builder_probe", vec![])
+		.await
+		.unwrap();
+	assert_eq!(rows.len(), 1);
+	assert_eq!(rows[0].get::<i64>("id").unwrap(), 1);
+	assert_eq!(rows[0].data.get("name"), Some(&QueryValue::Null));
+}
+
 #[rstest]
 fn test_insert_builder_postgres_basic() {
 	// Arrange
@@ -1145,6 +1254,142 @@ fn test_select_builder_mysql() {
 }
 
 // ==================== UpdateBuilder SQL generation tests ====================
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"name\" = NULL WHERE \"id\" = $1"
+)]
+#[case(DatabaseType::Mysql, "UPDATE `users` SET `name` = NULL WHERE `id` = ?")]
+#[case(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"name\" = NULL WHERE \"id\" = ?"
+)]
+fn test_update_builder_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = UpdateBuilder::new(backend, "users")
+		.set("name", QueryValue::Null)
+		.where_eq("id", 2_i64);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(2)]);
+}
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"name\" = NULL, \"active\" = $1, \"notes\" = NULL, \"age\" = $2, \"deleted_at\" = NULL WHERE \"id\" = $3"
+)]
+#[case(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `name` = NULL, `active` = ?, `notes` = NULL, `age` = ?, `deleted_at` = NULL WHERE `id` = ?"
+)]
+#[case(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"name\" = NULL, \"active\" = ?, \"notes\" = NULL, \"age\" = ?, \"deleted_at\" = NULL WHERE \"id\" = ?"
+)]
+fn test_update_builder_mixed_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = UpdateBuilder::new(backend, "users")
+		.set("name", QueryValue::Null)
+		.set("active", true)
+		.set("notes", QueryValue::Null)
+		.set("age", 30_i64)
+		.set("deleted_at", QueryValue::Null)
+		.where_eq("id", 2_i64);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![
+			QueryValue::Bool(true),
+			QueryValue::Int(30),
+			QueryValue::Int(2)
+		]
+	);
+}
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"name\" = $1 WHERE \"deleted_at\" = NULL AND \"id\" = $2"
+)]
+#[case(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `name` = ? WHERE `deleted_at` = NULL AND `id` = ?"
+)]
+#[case(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"name\" = ? WHERE \"deleted_at\" = NULL AND \"id\" = ?"
+)]
+fn test_update_builder_where_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = UpdateBuilder::new(backend, "users")
+		.set("name", "two")
+		.where_eq("deleted_at", QueryValue::Null)
+		.where_eq("id", 2_i64);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::from("two"), QueryValue::Int(2)]);
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_update_builder_executes_inline_null_before_id(
+	#[future] builder_probe_connection: reinhardt_db::backends::DatabaseConnection,
+) {
+	// Arrange
+	let db = builder_probe_connection.await;
+	db.execute(
+		"INSERT INTO builder_probe (id, name) VALUES (1, 'one'), (2, 'two')",
+		vec![],
+	)
+	.await
+	.unwrap();
+	let builder = UpdateBuilder::new(db.backend(), "builder_probe")
+		.set("name", QueryValue::Null)
+		.where_eq("id", 2_i64);
+
+	// Act
+	let result = builder.execute().await.unwrap();
+
+	// Assert
+	assert_eq!(result.rows_affected, 1);
+	let rows = db
+		.fetch_all("SELECT id, name FROM builder_probe ORDER BY id", vec![])
+		.await
+		.unwrap();
+	assert_eq!(rows.len(), 2);
+	assert_eq!(rows[0].get::<i64>("id").unwrap(), 1);
+	assert_eq!(rows[0].get::<String>("name").unwrap(), "one");
+	assert_eq!(rows[1].get::<i64>("id").unwrap(), 2);
+	assert_eq!(rows[1].data.get("name"), Some(&QueryValue::Null));
+}
 
 #[rstest]
 fn test_update_builder_basic_postgres() {
