@@ -425,6 +425,10 @@ consumer migration before reversing the foundation migration.
 Dependencies on replaced migration keys resolve to their recorded squash before
 building the rollback closure, including nested squashes. Unapplied squash
 alternatives do not redirect dependencies away from the recorded migration path.
+If replacement definitions are unavailable and an applied dependency cannot be
+resolved to a recorded migration or squash alias, cross-app rollback fails before
+any effects. Restore the intermediate replacement definitions before retrying.
+Directly resolvable aliases still work when the replaced files have been removed.
 
 When applied history spans multiple apps, all applied migration definitions must
 be available to check cross-app dependents. Missing definitions, including files

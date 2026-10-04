@@ -563,6 +563,7 @@ fn dependency_ordered_rollback_records(
 		}
 	}
 	let mut replacements = HashMap::new();
+	let mut unavailable_replacement = None;
 	for migration in all_migrations {
 		let replacement = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
 		if !applied_by_key.contains_key(&replacement) {
@@ -579,6 +580,8 @@ fn dependency_ordered_rollback_records(
 			}
 			if let Some(replaced) = migrations_by_key.get(&key) {
 				stack.extend(replaced.replaces.iter());
+			} else {
+				unavailable_replacement.get_or_insert(key.clone());
 			}
 			replacements.insert(key, replacement.clone());
 		}
@@ -594,9 +597,22 @@ fn dependency_ordered_rollback_records(
 					.iter()
 					.map(|(app, name)| {
 						let dependency = MigrationKey::new(app.as_str(), name.as_str());
-						replacements.get(&dependency).cloned().unwrap_or(dependency)
+						let resolved = replacements.get(&dependency).cloned().unwrap_or(dependency);
+						// Missing replaced files are safe for known aliases, but may hide
+						// intermediate squashes owning otherwise unresolved dependencies.
+						if spans_apps
+							&& !applied_by_key.contains_key(&resolved)
+							&& let Some(unavailable) = &unavailable_replacement
+						{
+							return Err(crate::CommandError::ExecutionError(format!(
+								"Cannot determine cross-app rollback dependencies: applied migration {}:{} references unresolved dependency {}:{} while replacement definition {}:{} is unavailable",
+								migration.app_label, migration.name, app, name,
+								unavailable.app_label, unavailable.name
+							)));
+						}
+						Ok(resolved)
 					})
-					.collect(),
+					.collect::<CommandResult<Vec<_>>>()?,
 			);
 		}
 	}
@@ -5242,6 +5258,89 @@ mod tests {
 				.map(|record| format!("{}:{}", record.app, record.name))
 				.collect::<Vec<_>>(),
 			expected
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::zero_without_original("zero", false)]
+	#[case::zero_with_original("zero", true)]
+	#[case::target_without_original("0001_initial", false)]
+	#[case::target_with_original("0001_initial", true)]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_rejects_unresolved_nested_replacement_dependencies(
+		#[case] target: &str,
+		#[case] original_available: bool,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: a recorded squash lost the intermediate definition linking its old key.
+		let mut squashed = Migration::new("0002_squashed", "foundation")
+			.add_dependency("foundation", "0001_initial");
+		squashed.replaces = vec![("foundation".into(), "0002_intermediate".into())];
+		let mut pending = Migration::new("0003_future_squash", "foundation");
+		pending.replaces = vec![("foundation".into(), "0002_old".into())];
+		let mut migrations = vec![
+			Migration::new("0001_initial", "foundation"),
+			squashed,
+			pending,
+			Migration::new("0001_references", "consumer").add_dependency("foundation", "0002_old"),
+		];
+		if original_available {
+			migrations.push(Migration::new("0002_old", "foundation"));
+		}
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("foundation", "0002_squashed"),
+			migration_record("consumer", "0001_references"),
+		];
+
+		// Act
+		let error = migration_target_plan("foundation", target, &applied, &migrations)
+			.expect_err("an unresolved historic dependency must fail before rollback");
+
+		// Assert: an on-disk original or pending alternative cannot prove alias ownership.
+		assert_eq!(
+			error.to_string(),
+			"Execution error: Cannot determine cross-app rollback dependencies: applied migration consumer:0001_references references unresolved dependency foundation:0002_old while replacement definition foundation:0002_intermediate is unavailable"
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::intermediate_key("0002_intermediate")]
+	#[case::recorded_key("0002_squashed")]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_keeps_resolvable_dependencies_without_replaced_definitions(
+		#[case] dependency: &str,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: the applied dependency is explicit even though replaced metadata is absent.
+		let mut squashed = Migration::new("0002_squashed", "foundation");
+		squashed.replaces = vec![("foundation".into(), "0002_intermediate".into())];
+		let migrations = vec![
+			squashed,
+			Migration::new("0001_references", "consumer").add_dependency("foundation", dependency),
+		];
+		let applied = vec![
+			migration_record("foundation", "0002_squashed"),
+			migration_record("consumer", "0001_references"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect("directly resolvable aliases do not need their replaced definitions");
+
+		// Assert
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must reverse the applied dependency chain");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			vec!["consumer:0001_references", "foundation:0002_squashed"]
 		);
 	}
 

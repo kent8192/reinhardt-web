@@ -2,6 +2,9 @@
 
 use reinhardt_commands::{BaseCommand, CommandContext, MigrateCommand};
 use reinhardt_db::migrations::{DatabaseMigrationRecorder, FilesystemSource, MigrationSource};
+use reinhardt_query::{
+	Expr, ExprTrait, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder, SimpleExpr,
+};
 use reinhardt_test::fixtures::migrations::{MigrationExecutorFixture, migration_executor};
 use reinhardt_test::fixtures::temp_dir;
 use rstest::{fixture, rstest};
@@ -127,6 +130,50 @@ fn migration_project(temp_dir: TempDir) -> TempDir {
 		"DROP TABLE rollback_unrelated",
 	);
 	temp_dir
+}
+
+#[fixture]
+fn squashed_migration_project(temp_dir: TempDir, #[default(false)] nested: bool) -> TempDir {
+	let project = migration_project(temp_dir);
+	let root = project.path();
+	std::fs::remove_file(root.join("migrations/foundation/0002_tables.rs"))
+		.expect("replace the original fixture migration");
+	let statements = (
+		"CREATE TABLE rollback_probe.parent (id integer PRIMARY KEY)",
+		"DROP TABLE rollback_probe.parent",
+	);
+	write_migration_definition(
+		root,
+		"foundation",
+		"0002_intermediate",
+		&[("foundation", "0001_retained")],
+		&[("foundation", "0002_tables")],
+		statements,
+	);
+	write_migration_definition(
+		root,
+		"foundation",
+		"0002_squashed",
+		&[("foundation", "0001_retained")],
+		&[(
+			"foundation",
+			if nested {
+				"0002_intermediate"
+			} else {
+				"0002_tables"
+			},
+		)],
+		statements,
+	);
+	write_migration_definition(
+		root,
+		"foundation",
+		"0003_future_squash",
+		&[("foundation", "0001_retained")],
+		&[("foundation", "0002_tables")],
+		statements,
+	);
+	project
 }
 
 fn run_migrate(project: &Path, url: &str, app: &str, target: &str, mode: &str) -> String {
@@ -431,45 +478,8 @@ async fn squashed_cross_app_rollback_matches_plan_and_replays_schema(
 	#[values("", "fake")] mode: &str,
 ) {
 	// Arrange: replace the parent migration while consumers retain its historic key.
-	let project = migration_project(temp_dir);
+	let project = squashed_migration_project(temp_dir, nested);
 	let root = project.path();
-	std::fs::remove_file(root.join("migrations/foundation/0002_tables.rs"))
-		.expect("replace the original fixture migration");
-	let statements = (
-		"CREATE TABLE rollback_probe.parent (id integer PRIMARY KEY)",
-		"DROP TABLE rollback_probe.parent",
-	);
-	write_migration_definition(
-		root,
-		"foundation",
-		"0002_intermediate",
-		&[("foundation", "0001_retained")],
-		&[("foundation", "0002_tables")],
-		statements,
-	);
-	write_migration_definition(
-		root,
-		"foundation",
-		"0002_squashed",
-		&[("foundation", "0001_retained")],
-		&[(
-			"foundation",
-			if nested {
-				"0002_intermediate"
-			} else {
-				"0002_tables"
-			},
-		)],
-		statements,
-	);
-	write_migration_definition(
-		root,
-		"foundation",
-		"0003_future_squash",
-		&[("foundation", "0001_retained")],
-		&[("foundation", "0002_tables")],
-		statements,
-	);
 	let (mut executor, _container, pool, _port, url) = migration_executor.await;
 	let migrations = FilesystemSource::new(root.join("migrations"))
 		.all_migrations()
@@ -576,5 +586,116 @@ async fn squashed_cross_app_rollback_matches_plan_and_replays_schema(
 				.await
 				.expect("inspect replayed parent");
 		assert!(parent_exists);
+	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn incomplete_nested_squash_preserves_history_and_schema(
+	#[future] migration_executor: MigrationExecutorFixture,
+	temp_dir: TempDir,
+	#[values("missing", "invalid")] metadata: &str,
+	#[values("zero", "0001_retained")] target: &str,
+	#[values("", "fake", "plan")] mode: &str,
+) {
+	// Arrange: apply the final squash and consumers, then lose only intermediate metadata.
+	let (mut executor, _container, pool, _port, url) = migration_executor.await;
+	let project = squashed_migration_project(temp_dir, true);
+	let root = project.path();
+	let migrations = FilesystemSource::new(root.join("migrations"))
+		.all_migrations()
+		.await
+		.expect("load complete nested squash metadata");
+	assert_eq!(migrations.len(), 9);
+	for (app, name) in [
+		("operations", "0000_environment"),
+		("foundation", "0001_retained"),
+		("foundation", "0002_squashed"),
+		("consumer", "0001_references"),
+		("reporting", "0001_leaf"),
+		("unrelated", "0002_tables"),
+	] {
+		let migration = migrations
+			.iter()
+			.find(|migration| migration.app_label == app && migration.name == name)
+			.expect("recorded baseline definition exists");
+		let result = executor
+			.apply_migrations(std::slice::from_ref(migration))
+			.await
+			.expect("apply squashed foreign-key baseline");
+		assert_eq!(result.applied.len(), 1);
+	}
+	let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+	let before = recorder
+		.get_applied_migrations()
+		.await
+		.expect("read complete applied history");
+	assert_eq!(before.len(), 6);
+	let definition = root.join("migrations/foundation/0002_intermediate.rs");
+	if metadata == "invalid" {
+		std::fs::write(definition, "pub fn migration( {")
+			.expect("make intermediate metadata unparseable");
+	} else {
+		std::fs::remove_file(definition).expect("remove intermediate metadata");
+	}
+	let mut ctx = CommandContext::default();
+	ctx.set_option("database".into(), url);
+	ctx.set_option(
+		"migrations-dir".into(),
+		root.join("migrations").to_string_lossy().into_owned(),
+	);
+	ctx.add_arg("foundation".into());
+	ctx.add_arg(target.into());
+	if !mode.is_empty() {
+		ctx.set_option(mode.into(), "true".into());
+	}
+
+	// Act
+	let error = MigrateCommand
+		.execute(&ctx)
+		.await
+		.expect_err("unresolved nested aliases must fail before any rollback effects");
+
+	// Assert: preview, fake, and real preserve all ledger rows, timestamps, and tables.
+	assert_eq!(
+		error.to_string(),
+		"Execution error: Cannot determine cross-app rollback dependencies: applied migration consumer:0001_references references unresolved dependency foundation:0002_tables while replacement definition foundation:0002_intermediate is unavailable"
+	);
+	let after = recorder
+		.get_applied_migrations()
+		.await
+		.expect("read unchanged applied history");
+	assert_eq!(
+		after
+			.iter()
+			.map(|record| (&record.app, &record.name, &record.applied))
+			.collect::<Vec<_>>(),
+		before
+			.iter()
+			.map(|record| (&record.app, &record.name, &record.applied))
+			.collect::<Vec<_>>()
+	);
+	for (table, expected) in [
+		("rollback_probe.retained", true),
+		("rollback_probe.parent", true),
+		("rollback_probe.consumer", true),
+		("rollback_probe.leaf", true),
+		("rollback_unrelated", true),
+		("rollback_probe.pending", false),
+	] {
+		let query = Query::select()
+			.expr(
+				SimpleExpr::FunctionCall(
+					"to_regclass".into_iden(),
+					vec![Expr::val(table).into_simple_expr()],
+				)
+				.is_not_null(),
+			)
+			.to_string(PostgresQueryBuilder);
+		let exists: bool = sqlx::query_scalar(&query)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("inspect unchanged schema");
+		assert_eq!(exists, expected, "table {table}");
 	}
 }
