@@ -119,6 +119,8 @@ impl FilesystemRepository {
 		use crate::migrations::Operation;
 
 		match operation {
+			Operation::Sequence { .. } => "Sequence",
+			Operation::Identity { .. } => "Identity",
 			Operation::CreateTable { .. } => "CreateTable",
 			Operation::DropTable { .. } => "DropTable",
 			Operation::AddColumn { .. } => "AddColumn",

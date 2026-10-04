@@ -99,8 +99,11 @@ fn rendered_data_bearing_source_compiles_with_its_own_imports() {
 	use reinhardt_db::migrations::{
 		AlterTableOptions, ColumnDefinition, Constraint, DeferrableOption, FieldType,
 		FilesystemRepository, ForeignKeyAction, GeneratedColumnDefinition, GeneratedStorage,
-		IndexType, InterleaveSpec, Migration, MigrationRenderOptions, MySqlAlgorithm, MySqlLock,
-		Operation, PartitionDef, PartitionOptions, PartitionType, PartitionValues, SchemaExpr,
+		IdentityDefinition, IdentityGeneration, IdentityOperation, IndexType, InterleaveSpec,
+		Migration, MigrationRenderOptions, MySqlAlgorithm, MySqlLock, Operation, PartitionDef,
+		PartitionOptions, PartitionType, PartitionValues, QualifiedName, SchemaExpr, SequenceBound,
+		SequenceDataType, SequenceDefault, SequenceDefinition, SequenceKey, SequenceOperation,
+		SequenceOptions, SequenceOwner,
 	};
 	use std::{fs, process::Command};
 	use tempfile::TempDir;
@@ -118,6 +121,17 @@ fn rendered_data_bearing_source_compiles_with_its_own_imports() {
 			columns: vec![
 				ColumnDefinition::new("id", FieldType::Integer),
 				generated_column,
+				ColumnDefinition::new("number", FieldType::BigInteger)
+					.with_not_null(true)
+					.with_identity(Some(
+						IdentityDefinition::new(IdentityGeneration::Always)
+							.with_sequence_name(QualifiedName::new("identity_numbers")),
+					)),
+				ColumnDefinition::new("sequence_value", FieldType::SmallInteger)
+					.with_sequence_default(Some(SequenceDefault::new(
+						SequenceKey::new("accounts", "numbers"),
+						QualifiedName::new("account_numbers"),
+					))),
 			],
 			constraints: vec![Constraint::ForeignKey {
 				name: "accounts_owner_fk".to_string(),
@@ -156,6 +170,37 @@ fn rendered_data_bearing_source_compiles_with_its_own_imports() {
 					.with_lock(MySqlLock::Shared),
 			),
 			operator_class: None,
+		},
+		Operation::Sequence {
+			operation: SequenceOperation::Create {
+				definition: SequenceDefinition::new(
+					SequenceKey::new("accounts", "numbers"),
+					QualifiedName::new("account_numbers"),
+				)
+				.with_options(
+					SequenceOptions::new()
+						.with_data_type(SequenceDataType::SmallInteger)
+						.with_increment(-2)
+						.with_start(-10)
+						.with_max_value(SequenceBound::Default)
+						.with_min_value(SequenceBound::Value(-100))
+						.with_cache(5)
+						.with_cycle(false),
+				)
+				.with_owned_by(Some(SequenceOwner::new(
+					QualifiedName::new("accounts"),
+					"sequence_value",
+				))),
+			},
+		},
+		Operation::Identity {
+			operation: IdentityOperation::new(
+				QualifiedName::new("accounts"),
+				"number",
+				FieldType::BigInteger,
+				Some(IdentityDefinition::new(IdentityGeneration::Always)),
+				Some(IdentityDefinition::new(IdentityGeneration::ByDefault)),
+			),
 		},
 	];
 	let source = FilesystemRepository::new("/unused")
@@ -365,8 +410,9 @@ fn migration_renderer_round_trips_supported_operation_source() {
 async fn migration_renderer_compatibility_matrix_covers_every_operation_variant() {
 	use reinhardt_db::migrations::{
 		BulkLoadFormat, BulkLoadOptions, BulkLoadSource, ColumnDefinition, Constraint, FieldType,
-		FilesystemRepository, Migration, MigrationError, MigrationRenderOptions, MigrationSource,
-		Operation,
+		FilesystemRepository, IdentityDefinition, IdentityGeneration, IdentityOperation, Migration,
+		MigrationError, MigrationRenderOptions, MigrationSource, Operation, QualifiedName,
+		SequenceDefinition, SequenceKey, SequenceOperation,
 	};
 	use std::collections::HashMap;
 	use tempfile::TempDir;
@@ -603,9 +649,26 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			columns: vec!["tenant_id".to_string(), "id".to_string()],
 			constraint_name: Some("accounts_pkey".to_string()),
 		},
+		Operation::Sequence {
+			operation: SequenceOperation::Create {
+				definition: SequenceDefinition::new(
+					SequenceKey::new("accounts", "numbers"),
+					QualifiedName::new("account_numbers"),
+				),
+			},
+		},
+		Operation::Identity {
+			operation: IdentityOperation::new(
+				QualifiedName::new("accounts"),
+				"value",
+				FieldType::Integer,
+				None,
+				Some(IdentityDefinition::new(IdentityGeneration::Always)),
+			),
+		},
 	]);
 	let expected_variants = operations.len();
-	assert_eq!(expected_variants, 34);
+	assert_eq!(expected_variants, 36);
 	for (index, operation) in operations.into_iter().enumerate() {
 		let (kind, supported) = match &operation {
 			Operation::CreateTable { .. } => ("CreateTable", true),
@@ -642,6 +705,8 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			Operation::BulkLoad { .. } => ("BulkLoad", true),
 			Operation::SetAutoIncrementValue { .. } => ("SetAutoIncrementValue", true),
 			Operation::CreateCompositePrimaryKey { .. } => ("CreateCompositePrimaryKey", true),
+			Operation::Sequence { .. } => ("Sequence", true),
+			Operation::Identity { .. } => ("Identity", true),
 		};
 		let temp_dir = TempDir::new().unwrap();
 		let repository = FilesystemRepository::new(temp_dir.path());

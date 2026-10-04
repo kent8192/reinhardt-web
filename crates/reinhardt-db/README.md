@@ -1577,6 +1577,20 @@ cargo test --package reinhardt-db --all-features
 cargo test --package reinhardt-db --test orm_integration_tests
 ```
 
+The ORM-only SQLite library tests also support disabling default features:
+
+```bash
+cargo test -p reinhardt-db --no-default-features --features orm,sqlite --lib
+```
+
+Library-test fixtures using `#[model]` generate migration metadata and require
+the `migrations` feature. Their tests run when it is enabled, while tests that
+do not use those fixtures remain available in the ORM-only configuration:
+
+```bash
+cargo test -p reinhardt-db --no-default-features --features orm,sqlite,migrations --lib
+```
+
 ### TestContainers Integration
 
 Database tests automatically use TestContainers to:
@@ -2114,3 +2128,53 @@ Optimize how related objects are loaded:
 ## License
 
 Licensed under the BSD 3-Clause License.
+
+## PostgreSQL sequence and identity migrations
+
+The `migrations::sequences` API represents independent generators with
+`SequenceDefinition`/`SequenceMetadata` and stable `(app_label, logical_name)` keys.
+Register them through `global_registry().register_sequence(...)`, and use typed
+`SequenceDefault` field metadata for dependency-aware `nextval` defaults.
+Names have separate literal schema/name components; dots inside a component are
+preserved. `makemigrations` creates sequences before defaults and establishes
+`OWNED BY` after the owner exists, including staged cross-app dependencies.
+An explicitly authored `SequenceOperation::Create` with `owned_by` applies that
+ownership immediately, so its owning column must already exist. Relation renames
+wait for earlier table renames or sequence drops that release the target name.
+
+`IdentityDefinition` belongs to a column. The model macro accepts
+`identity_always = true` or `identity_by_default = true` together with nested
+`identity_options(sequence_name = "events_sequence_seq", start = 1, increment = 1,
+no_min_value = true, no_max_value = true, cache = 1, cycle = false)`.
+Identity takes precedence over inferred auto-increment metadata, preserves
+`db_column`, and does not make a column a primary key. The PostgreSQL macro
+feature (`db-postgres` on the facade) is required for these attributes.
+
+Complete before/after sequence options support ALTER and physical rename without
+restarting allocation. Logical declaration changes use explicit
+`SequenceOperation::RenameDeclaration` in a state-only migration. Catalog
+introspection matches managed physical objects; unmanaged sequences are retained.
+Identity alterations preserve the observed sequence name when the target omits
+it, and retain both column widths for reversible integer type changes. Identity
+state and preflight lookups respect the table schema. Schema inspection fetches
+the sequence catalog once and indexes identity sequences by owning column.
+App-specific schema conversion includes only that app's managed declarations;
+sequence removals are reported as destructive changes.
+Opaque defaults retain their SQL and require explicit migration dependencies.
+
+Rollback restores schema definitions, not rows or consumed numbers. Provide full
+history with `DatabaseMigrationExecutor::with_migration_history` when a new
+executor applies or rolls back a subset requiring earlier schema snapshots.
+An executor retains migration definitions across incremental calls and rebuilds
+state from recorded applications, selecting the applied replacement path and
+excluding pending files. Dropping an owning column/table
+implicitly deletes its sequence; reverse planning recreates it before restoring
+its default and ownership. Explicit `Restart` requires a reverse target or is
+irreversible. `START WITH` updates the recorded start without moving the cursor.
+
+This feature supports permanent PostgreSQL sequences only. MySQL, SQLite,
+CockroachDB, temporary/unlogged generators, schema moves, and role changes are
+rejected for the new operations. Existing `auto_increment` migrations retain
+their backend behavior. See the crate changelog for intentional alpha API changes;
+non-exhaustive hardening of existing types is tracked separately in
+[#6511](https://github.com/kent8192/reinhardt-web/issues/6511).

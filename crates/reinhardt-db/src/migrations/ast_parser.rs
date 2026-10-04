@@ -698,6 +698,23 @@ fn parse_single_operation_strict(
 
 	if let Expr::Struct(operation) = expr {
 		match operation_name.as_str() {
+			"Sequence" | "Identity" => {
+				validate_exact_named_fields(&operation.fields, &["operation"], &context)?;
+				let expression = strict_field_expression(&operation.fields, "operation")
+					.ok_or_else(|| strict_payload_error(&context, "operation"))?;
+				return if operation_name == "Sequence" {
+					let operation: super::SequenceOperation =
+						sequences::parse(expression, &context)?;
+					operation.validate()?;
+					Ok(super::Operation::Sequence { operation })
+				} else {
+					let operation: super::IdentityOperation =
+						sequences::parse(expression, &context)?;
+					operation.validate()?;
+					Ok(super::Operation::Identity { operation })
+				};
+			}
+
 			"CreateTable" => {
 				validate_exact_named_fields(
 					&operation.fields,
@@ -3108,6 +3125,8 @@ fn parse_column_definition(expr: &Expr) -> Option<super::ColumnDefinition> {
 			default,
 			generated,
 			domain,
+			identity: None,
+			sequence_default: None,
 		});
 	}
 
@@ -3172,6 +3191,8 @@ fn parse_column_definition_strict(expr: &Expr, context: &str) -> Result<super::C
 		default,
 		generated,
 		domain,
+		identity: None,
+		sequence_default: None,
 	})
 }
 
@@ -3199,6 +3220,14 @@ fn parse_column_definition_builder_strict(
 				return Err(strict_payload_error(context, &call.method.to_string()));
 			}
 			match call.method.to_string().as_str() {
+				"with_identity" => {
+					column.identity = sequences::parse(argument, &format!("{context}.identity"))?;
+				}
+				"with_sequence_default" => {
+					column.sequence_default =
+						sequences::parse(argument, &format!("{context}.sequence_default"))?;
+				}
+
 				"with_not_null" => {
 					column.not_null = parse_bool_expression(argument)
 						.ok_or_else(|| strict_payload_error(context, "not_null"))?
@@ -3288,7 +3317,7 @@ fn parse_i64_expression(expression: &Expr) -> Option<i64> {
 			else {
 				return None;
 			};
-			value.base10_parse::<i64>().ok()?.checked_neg()
+			i64::try_from(value.base10_parse::<i128>().ok()?.checked_neg()?).ok()
 		}
 		_ => None,
 	}
@@ -7485,3 +7514,5 @@ mod tests {
 		);
 	}
 }
+
+mod sequences;

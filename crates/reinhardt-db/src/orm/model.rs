@@ -1283,11 +1283,14 @@ mod tests {
 	use crate::orm::fields::{BinaryField, CharField, Field};
 	use crate::orm::inspection::FieldInfo;
 	use crate::orm::{DatabaseStorageKind, DatabaseValue, FieldSelector, Manager};
+	#[cfg(feature = "migrations")]
 	use reinhardt_core::macros::{ModelEnum, model};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
+	// Model fixtures also generate migration metadata.
+	#[cfg(feature = "migrations")]
 	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 	#[model_enum(repr = "string")]
 	#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -1298,6 +1301,7 @@ mod tests {
 		Running,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 	#[model_enum(repr = "i32")]
 	enum Priority {
@@ -1307,6 +1311,7 @@ mod tests {
 		Normal,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "field_map_records")]
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	struct FieldMapRecord {
@@ -1317,6 +1322,7 @@ mod tests {
 		priority: Priority,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "decimal_primary_key_records")]
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	struct DecimalPrimaryKeyRecord {
@@ -1324,6 +1330,7 @@ mod tests {
 		id: rust_decimal::Decimal,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "datetime_primary_key_records")]
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	struct DateTimePrimaryKeyRecord {
@@ -1441,6 +1448,7 @@ mod tests {
 		"manual_datetime_keys"
 	);
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn string_enum_database_value_survives_field_map_round_trip() {
 		// Arrange
@@ -1468,6 +1476,7 @@ mod tests {
 		assert_eq!(status, Status::Queued);
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn i32_enum_database_value_survives_field_map_round_trip() {
 		// Arrange
@@ -1588,6 +1597,7 @@ mod tests {
 		assert_eq!(value, DatabaseValue::Bytes(vec![0, 1, 255, 255]));
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn generated_datetime_primary_key_accepts_display_format() {
 		let filter =
@@ -1630,6 +1640,7 @@ mod tests {
 		));
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn generated_decimal_primary_key_preserves_route_precision() {
 		let route_value = "9007199254740993.123456789";

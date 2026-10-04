@@ -377,6 +377,8 @@ mod tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				})
 				.collect(),
 			constraints: vec![],
@@ -400,6 +402,8 @@ mod tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		}
@@ -907,6 +911,8 @@ mod build_state_from_files_tests {
 					default: None,
 					generated: None,
 					domain: None,
+					identity: None,
+					sequence_default: None,
 				})
 				.collect(),
 			constraints: vec![],
@@ -930,6 +936,8 @@ mod build_state_from_files_tests {
 				default: None,
 				generated: None,
 				domain: None,
+				identity: None,
+				sequence_default: None,
 			},
 			mysql_options: None,
 		}
@@ -1301,6 +1309,8 @@ mod build_state_from_files_tests {
 							default: None,
 							generated: None,
 							domain: None,
+							identity: None,
+							sequence_default: None,
 						}),
 						new_definition: ColumnDefinition {
 							name: "email".to_string(),
@@ -1312,6 +1322,8 @@ mod build_state_from_files_tests {
 							default: None,
 							generated: None,
 							domain: None,
+							identity: None,
+							sequence_default: None,
 						},
 						mysql_options: None,
 					}],

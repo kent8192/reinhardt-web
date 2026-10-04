@@ -378,6 +378,7 @@ pub mod nosql;
 /// use reinhardt_query::prelude::*;
 /// ```
 pub mod prelude {
+	pub use crate::types::{IdentityDef, IdentityGeneration, SequenceType};
 	// Backend builders
 	pub use crate::backend::{
 		CockroachDBQueryBuilder, MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqlWriter,

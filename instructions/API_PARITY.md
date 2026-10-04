@@ -17,6 +17,7 @@ The level applies per symbol. A type can be P1 while selected methods are P0.
 
 | API | Native behavior | WASM behavior |
 |---|---|---|
+| Reinhardt Query sequence/identity ASTs and builders | Construct literal qualified sequence identifiers, options, ownership, and identity clauses. | Construct and render the same driver-free SQL ASTs. |
 | Generated `ModelFormPatchPayload::clean_and_validate_patch` implementation with native forms support | Requires `reinhardt-forms` or facade `forms`; validates submitted values through the native forms engine. | Core `macros` and `validators` or facade `pages` validate the same submitted values without persistence dependencies. |
 | `QueryHandle::is_invalidated` | Reports whether an explicit invalidation still needs a successful completion, independently of hydration staleness. | Reports the same reactive invalidation state. |
 | `WebSocketEventError` | Represents the same payload-free error categories. | Represents the same payload-free error categories. |
