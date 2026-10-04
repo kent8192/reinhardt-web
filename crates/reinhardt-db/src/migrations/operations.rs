@@ -1711,6 +1711,9 @@ pub enum Operation {
 	///
 	/// Creates a PostgreSQL extension like PostGIS, uuid-ossp, etc.
 	/// This operation is only executed on PostgreSQL databases.
+	/// With `if_not_exists: false`, reversal drops the extension without CASCADE.
+	/// With `if_not_exists: true`, automatic reversal fails because migration
+	/// history cannot distinguish an existing extension from one it created.
 	CreateExtension {
 		/// Name of the extension to create
 		name: String,
@@ -1824,6 +1827,21 @@ pub enum Operation {
 	Identity {
 		/// Structured operation.
 		operation: super::IdentityOperation,
+	},
+	/// Drop a PostgreSQL extension without implicitly deleting dependent objects.
+	///
+	/// This native-only operation has P0 target parity. It is irreversible because
+	/// the extension's schema and version are not captured. Use `cascade` only
+	/// when dependent objects are also intended to be removed.
+	DropExtension {
+		/// Name of the extension to drop.
+		name: String,
+		/// Whether to tolerate a missing extension.
+		#[serde(default = "default_true")]
+		if_exists: bool,
+		/// Whether to remove dependent objects as well.
+		#[serde(default)]
+		cascade: bool,
 	},
 }
 
@@ -2510,7 +2528,8 @@ impl Operation {
 			// Schema operations don't affect ProjectState (models/fields only)
 			Operation::CreateSchema { .. }
 			| Operation::DropSchema { .. }
-			| Operation::CreateExtension { .. } => {
+			| Operation::CreateExtension { .. }
+			| Operation::DropExtension { .. } => {
 				// No state changes for schema/extension operations
 			}
 			// BulkLoad is a data operation that doesn't affect model structure
@@ -3826,6 +3845,16 @@ impl Operation {
 					schema_clause
 				)
 			}
+			Operation::DropExtension {
+				name,
+				if_exists,
+				cascade,
+			} => format!(
+				"DROP EXTENSION{} {}{};",
+				if *if_exists { " IF EXISTS" } else { "" },
+				Self::quote_schema_identifier(name, dialect),
+				if *cascade { " CASCADE" } else { "" },
+			),
 			Operation::BulkLoad {
 				table,
 				source,
@@ -4104,7 +4133,7 @@ impl Operation {
 					column.type_definition.try_to_sql_for_dialect(dialect)?;
 				}
 			}
-			Self::CreateExtension { .. } => {
+			Self::CreateExtension { .. } | Self::DropExtension { .. } => {
 				let backend = match dialect {
 					SqlDialect::Postgres => None,
 					SqlDialect::Mysql => Some("mysql"),
@@ -4512,6 +4541,12 @@ impl Operation {
 		project_state: &ProjectState,
 	) -> super::Result<Option<Vec<String>>> {
 		match self {
+			Operation::CreateExtension { .. } | Operation::DropExtension { .. } => {
+				self.try_to_sql(dialect)?;
+				self.to_reverse_operation(project_state)?
+					.map(|operation| operation.try_to_sql(dialect).map(|sql| vec![sql]))
+					.transpose()
+			}
 			Operation::Sequence { operation } => {
 				super::sequences::validate_backend(dialect)?;
 				let inverse = operation.reverse()?;
@@ -6627,6 +6662,27 @@ impl Operation {
 		project_state: &ProjectState,
 	) -> super::Result<Option<Operation>> {
 		match self {
+			Operation::CreateExtension {
+				name,
+				if_not_exists: false,
+				..
+			} => Ok(Some(Operation::DropExtension {
+				name: name.clone(),
+				if_exists: false,
+				cascade: false,
+			})),
+			Operation::CreateExtension {
+				name,
+				if_not_exists: true,
+				..
+			} => Err(super::MigrationError::IrreversibleError(format!(
+				"Cannot automatically reverse CREATE EXTENSION IF NOT EXISTS {name}: ownership is unknown; use if_not_exists: false for a migration-owned extension"
+			))),
+			Operation::DropExtension { name, .. } => {
+				Err(super::MigrationError::IrreversibleError(format!(
+					"Cannot automatically reverse DROP EXTENSION {name}: the original schema and version are unknown"
+				)))
+			}
 			Operation::Sequence { operation } => Ok(Some(Operation::Sequence {
 				operation: operation.reverse()?,
 			})),
@@ -7356,6 +7412,9 @@ impl Operation {
 				);
 				OperationStatement::RawSql(sql)
 			}
+			Operation::DropExtension { .. } => {
+				OperationStatement::RawSql(self.to_sql(&SqlDialect::Postgres))
+			}
 			Operation::BulkLoad {
 				table,
 				source,
@@ -7931,6 +7990,9 @@ impl MigrationOperation for Operation {
 			Operation::CreateExtension { name, .. } => {
 				Some(format!("create_extension_{}", name.to_lowercase()))
 			}
+			Operation::DropExtension { name, .. } => {
+				Some(format!("drop_extension_{}", name.to_lowercase()))
+			}
 			Operation::BulkLoad { table, .. } => {
 				Some(format!("bulk_load_{}", table.to_lowercase()))
 			}
@@ -8045,6 +8107,7 @@ impl MigrationOperation for Operation {
 			Operation::CreateSchema { name, .. } => format!("Create schema {}", name),
 			Operation::DropSchema { name, .. } => format!("Drop schema {}", name),
 			Operation::CreateExtension { name, .. } => format!("Create extension {}", name),
+			Operation::DropExtension { name, .. } => format!("Drop extension {}", name),
 			Operation::BulkLoad { table, source, .. } => {
 				let source_desc = match source {
 					BulkLoadSource::File(path) => format!("file '{}'", path),
@@ -12196,7 +12259,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn create_extension_migration_quotes_identifiers_and_does_not_auto_drop_on_reverse() {
 		let operation = Operation::CreateExtension {
 			name: "vector\"; DROP TABLE documents; --".to_string(),
@@ -12210,12 +12273,10 @@ mod tests {
 				.expect("PostgreSQL supports extension migrations"),
 			"CREATE EXTENSION IF NOT EXISTS \"vector\"\"; DROP TABLE documents; --\" SCHEMA \"extension\"\"schema\";"
 		);
-		assert_eq!(
-			operation
-				.to_reverse_sql(&SqlDialect::Postgres, &ProjectState::new())
-				.expect("reverse SQL generation should succeed"),
-			None
-		);
+		assert!(matches!(
+			operation.to_reverse_sql(&SqlDialect::Postgres, &ProjectState::new()),
+			Err(super::super::MigrationError::IrreversibleError(_))
+		));
 	}
 
 	#[cfg(feature = "pgvector")]

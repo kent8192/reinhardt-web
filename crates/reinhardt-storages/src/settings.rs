@@ -394,6 +394,10 @@ fn storage_config_from_parts(
 	#[cfg(feature = "local")] local: Option<&LocalStorageSettings>,
 	section_prefix: &str,
 ) -> Result<StorageConfig> {
+	// Without a backend, conversion reports a disabled backend instead of a missing section.
+	#[cfg(not(any(feature = "s3", feature = "gcs", feature = "azure", feature = "local")))]
+	let _ = section_prefix;
+
 	match backend {
 		#[cfg(feature = "s3")]
 		BackendType::S3 => s3
@@ -446,6 +450,7 @@ fn storage_config_from_parts(
 	}
 }
 
+#[cfg(any(feature = "s3", feature = "gcs", feature = "azure", feature = "local"))]
 fn missing_section(section: &str) -> StorageError {
 	StorageError::ConfigError(format!("Selected backend requires [{section}] settings"))
 }
@@ -453,6 +458,49 @@ fn missing_section(section: &str) -> StorageError {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	#[case::s3("s3", cfg!(feature = "s3"))]
+	#[case::gcs("gcs", cfg!(feature = "gcs"))]
+	#[case::azure("azure", cfg!(feature = "azure"))]
+	#[case::local("local", cfg!(feature = "local"))]
+	fn missing_backend_settings_preserve_feature_specific_errors(
+		#[case] backend: &str,
+		#[case] enabled: bool,
+	) {
+		// Arrange
+		let settings: StorageSettings =
+			serde_json::from_value(serde_json::json!({ "backend": backend }))
+				.expect("settings should deserialize without a backend section");
+		let named: NamedStorageSettings =
+			serde_json::from_value(serde_json::json!({ "backend": backend }))
+				.expect("named settings should deserialize without a backend section");
+
+		// Act
+		let results = [
+			("storage", settings.to_config()),
+			(
+				"storage.named.uploads",
+				named.to_config_for_alias("uploads"),
+			),
+		];
+
+		// Assert
+		for (section, result) in results {
+			let error =
+				result.expect_err("missing or disabled backend should reject configuration");
+			let expected = if enabled {
+				format!("Selected backend requires [{section}.{backend}] settings")
+			} else {
+				format!("Backend type not enabled: {:?}", settings.backend)
+			};
+			match error {
+				StorageError::ConfigError(message) => assert_eq!(message, expected),
+				other => panic!("expected a configuration error, got {other:?}"),
+			}
+		}
+	}
 
 	// `StorageSettings::default()` must be convertible via `to_config()` for whichever
 	// backend `default_backend()` selects, including non-local builds where `local` is

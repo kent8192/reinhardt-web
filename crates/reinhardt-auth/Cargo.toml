@@ -17,6 +17,10 @@ name = "createsuperuser"
 path = "src/bin/createsuperuser.rs"
 doc = false
 
+[[test]]
+name = "hasher_boundary_value"
+required-features = ["argon2-hasher"]
+
 [features]
 default = ["params", "basic"]
 

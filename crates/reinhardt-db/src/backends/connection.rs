@@ -34,6 +34,7 @@ fn map_postgres_initial_connect_error(error: sqlx::Error) -> DatabaseError {
 	}
 }
 
+#[cfg(any(feature = "postgres", feature = "mysql", test))]
 fn parse_server_version(version: &str) -> Option<(u16, u16, u16)> {
 	let start = version.find(|character: char| character.is_ascii_digit())?;
 	let mut parts = version[start..]
@@ -46,6 +47,7 @@ fn parse_server_version(version: &str) -> Option<(u16, u16, u16)> {
 	))
 }
 
+#[cfg(any(feature = "postgres", test))]
 fn postgres_row_lock_capabilities(
 	version: Option<&str>,
 	is_cockroachdb: bool,

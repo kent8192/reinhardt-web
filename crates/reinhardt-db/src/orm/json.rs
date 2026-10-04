@@ -436,12 +436,16 @@ impl<'de> Deserializer<'de> for ModelFieldValue {
 
 #[cfg(test)]
 mod tests {
-	use super::{Json, database_value_from_json, deserialize_model_row};
+	#[cfg(feature = "migrations")]
+	use super::deserialize_model_row;
+	use super::{Json, database_value_from_json};
 	use crate::orm::{DatabaseStorageKind, DatabaseValue};
+	#[cfg(feature = "migrations")]
 	use reinhardt_core::macros::model;
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use serde_json::json;
+	#[cfg(feature = "migrations")]
 	use std::collections::HashSet;
 
 	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -450,6 +454,8 @@ mod tests {
 		theme: String,
 	}
 
+	// Model fixtures also generate migration metadata.
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "byte_row_models")]
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	struct ByteRowModel {
@@ -458,6 +464,7 @@ mod tests {
 		payload: Vec<u8>,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "decimal_float_row_models")]
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	struct DecimalFloatRowModel {
@@ -466,11 +473,13 @@ mod tests {
 		amount: f64,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 	struct NullablePayload {
 		enabled: bool,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "nullable_json_row_models")]
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	struct NullableJsonRowModel {
@@ -615,6 +624,7 @@ mod tests {
 		);
 	}
 
+	#[cfg(feature = "migrations")]
 	#[test]
 	fn model_rows_decode_byte_vectors_from_base64_without_json_parsing() {
 		// Arrange
@@ -629,6 +639,7 @@ mod tests {
 		assert_eq!(model.payload, vec![1, 2, 3]);
 	}
 
+	#[cfg(feature = "migrations")]
 	#[test]
 	fn model_rows_decode_decimal_strings_as_f64() {
 		// Arrange
@@ -644,6 +655,7 @@ mod tests {
 		assert_eq!(model.amount, 99.99);
 	}
 
+	#[cfg(feature = "migrations")]
 	#[test]
 	fn model_rows_keep_sql_null_as_none_for_typed_json_fields() {
 		// Arrange

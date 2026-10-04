@@ -211,17 +211,27 @@ fn field_codec_error(error: FieldCodecError) -> Error {
 
 #[cfg(test)]
 mod tests {
-	use super::{TypedAssignment, UpsertCreate, field_codec_error};
+	use super::field_codec_error;
+	#[cfg(feature = "migrations")]
+	use super::{TypedAssignment, UpsertCreate};
+	#[cfg(feature = "migrations")]
+	use crate::orm::field_codec::DatabaseArrayType;
 	use crate::orm::field_codec::{
-		DatabaseArrayType, DatabaseStorageKind, DatabaseValue, FieldCodecContext, FieldCodecError,
-		ModelEnumRepr, ModelEnumValue,
+		DatabaseStorageKind, DatabaseValue, FieldCodecContext, FieldCodecError, ModelEnumRepr,
+		ModelEnumValue,
 	};
+	#[cfg(feature = "migrations")]
 	use chrono::{TimeZone, Utc};
+	#[cfg(feature = "migrations")]
 	use reinhardt_core::macros::{ModelEnum, model};
 	use rstest::*;
+	#[cfg(feature = "migrations")]
 	use rust_decimal::Decimal;
+	#[cfg(feature = "migrations")]
 	use serde::{Deserialize, Serialize};
 
+	// Model fixtures also generate migration metadata.
+	#[cfg(feature = "migrations")]
 	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 	#[model_enum(repr = "string")]
 	enum Status {
@@ -229,6 +239,7 @@ mod tests {
 		Queued,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "assignment_models")]
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	struct AssignmentModel {
@@ -289,6 +300,7 @@ mod tests {
 		sequence: i64,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn typed_assignment_encodes_every_supported_value_family() {
 		let uuid = uuid::Uuid::from_u128(1);
@@ -408,6 +420,7 @@ mod tests {
 		);
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn create_view_reads_lookup_and_mutable_values() {
 		let lookup = vec![
@@ -442,6 +455,7 @@ mod tests {
 		);
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn create_view_sets_mutable_values_and_rejects_lookup_fields() {
 		let lookup = vec![
@@ -487,6 +501,7 @@ mod tests {
 		}
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn unsigned_assignment_rejects_values_larger_than_i64() {
 		let error = TypedAssignment::new(AssignmentModel::field_sequence(), u64::MAX)

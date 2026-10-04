@@ -384,9 +384,10 @@
 //! ```
 //!
 //! `DatabaseMigrationExecutor` applies these operations in vector order.
-//! Rolling this migration back removes the model schema and indexes but
-//! deliberately leaves the database-level extension installed, because other
-//! applications or schemas may share it.
+//! Automatic rollback rejects this migration's `CREATE EXTENSION IF NOT EXISTS`
+//! because other applications may own an existing extension. For an extension
+//! owned by this migration, use `.with_if_not_exists(false)` before conversion;
+//! rollback then drops the model schema and indexes followed by the extension.
 //!
 //! The distance methods map directly to PostgreSQL operators:
 //!
