@@ -804,7 +804,7 @@ Optimize how related objects are loaded:
   - `save()`, `delete()` - Persist and remove content types
   - `load_all()` - Load all content types from database
   - `exists()` - Check content type existence
-  - Supports PostgreSQL, MySQL, and SQLite via sqlx
+  - Supports PostgreSQL and SQLite via sqlx; MySQL is currently unsupported
 
 - **Multi-Database Support**
   - `MultiDbContentTypeManager` - Manage content types across multiple databases
@@ -822,6 +822,11 @@ Optimize how related objects are loaded:
 
 #### ORM Integration
 
+`ContentTypeQuery` and `ContentTypeTransaction` currently require a SQLite-backed
+pool. They generate SQLite SQL, and `ContentTypeTransaction::create()` uses
+SQLite's `last_insert_rowid()`. These interfaces do not support PostgreSQL or
+MySQL pools.
+
 - **ContentTypeQuery** - ORM-style query builder for content types
   - `new()` - Create query builder from connection pool
   - `filter_app_label()`, `filter_model()`, `filter_id()` - Filter by fields
@@ -834,12 +839,16 @@ Optimize how related objects are loaded:
   - `exists()` - Check if any records match
   - Django-inspired QuerySet API with method chaining
 
-- **ContentTypeTransaction** - Transaction-aware content type operations
-  - `new()` - Create transaction context
-  - `query()` - Get query builder for transaction
-  - `create()` - Create content type within transaction
-  - `delete()` - Delete content type within transaction
-  - Full ACID transaction support for content type operations
+- **ContentTypeTransaction** - Pool-backed content type operations (historical name)
+  - `new()` - Create a context without beginning or owning a database transaction
+  - `query()` - Get an independent query builder using the same pool
+  - `create()` - Create a content type using pool autocommit, keeping the insert
+    and generated-ID lookup on one acquired connection
+  - `delete()` - Delete a content type using pool autocommit
+  - Each operation executes independently; errors and dropping the context do not
+    roll back preceding writes. A transaction opened separately on a pool
+    connection does not enlist these operations. Use a transaction-aware API when
+    atomic changes are required.
 
 
 ## hybrid

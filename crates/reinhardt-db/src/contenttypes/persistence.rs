@@ -193,7 +193,8 @@ pub trait ContentTypePersistenceBackend: Send + Sync {
 /// Database-backed ContentType persistence
 ///
 /// Provides persistent storage for ContentType instances using a database backend.
-/// Supports PostgreSQL, MySQL, and SQLite through sqlx's `Any` driver.
+/// Supports PostgreSQL and SQLite through sqlx's `Any` driver. MySQL is unsupported
+/// because non-PostgreSQL connections use SQLite SQL and generated-ID handling.
 ///
 /// ## Example
 ///
@@ -224,7 +225,7 @@ pub struct ContentTypePersistence {
 
 #[cfg(feature = "database")]
 impl ContentTypePersistence {
-	/// Create a new ContentType persistence backend
+	/// Create a new ContentType persistence backend for PostgreSQL or SQLite.
 	///
 	/// # Examples
 	///
@@ -234,9 +235,6 @@ impl ContentTypePersistence {
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// // PostgreSQL
 	/// let persistence = ContentTypePersistence::new("postgres://localhost/mydb").await?;
-	///
-	/// // MySQL
-	/// let persistence = ContentTypePersistence::new("mysql://localhost/mydb").await?;
 	///
 	/// // SQLite
 	/// let persistence = ContentTypePersistence::new("sqlite::memory:").await?;
@@ -270,7 +268,7 @@ impl ContentTypePersistence {
 		})
 	}
 
-	/// Create a new backend from an existing pool
+	/// Create a new backend from an existing PostgreSQL or SQLite pool.
 	///
 	/// # Examples
 	///
