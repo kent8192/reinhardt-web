@@ -104,33 +104,19 @@ impl PostgresIntrospector {
 			})
 			.collect()
 	}
-	pub(super) async fn column_identity(
+	pub(super) fn column_identity(
 		&self,
+		schema: &str,
+		catalog: &IdentitySequenceCatalog<'_>,
 		table: &str,
 		column: &str,
 		generation: &str,
 	) -> Result<IdentityDefinition> {
-		let schema: String = sqlx::query_scalar("SELECT current_schema()")
-			.fetch_one(&self.pool)
-			.await
-			.map_err(|error| MigrationError::IntrospectionError(error.to_string()))?;
-		let sequence = self
-			.read_sequences()
-			.await?
-			.into_iter()
-			.find(|sequence| {
-				sequence.identity
-					&& sequence.owned_by.as_ref().is_some_and(|owner| {
-						owner.table.schema.as_deref() == Some(schema.as_str())
-							&& owner.table.name == table
-							&& owner.column == column
-					})
-			})
-			.ok_or_else(|| {
-				MigrationError::IntrospectionError(format!(
-					"identity sequence not found for {table}.{column}"
-				))
-			})?;
+		let sequence = catalog.get(&(schema, table, column)).ok_or_else(|| {
+			MigrationError::IntrospectionError(format!(
+				"identity sequence not found for {schema}.{table}.{column}"
+			))
+		})?;
 		if !sequence.supported {
 			return Err(MigrationError::IntrospectionError(
 				"unsupported identity sequence persistence".into(),
@@ -146,8 +132,8 @@ impl PostgresIntrospector {
 			}
 		};
 		Ok(IdentityDefinition::new(mode)
-			.with_sequence_name(sequence.name)
-			.with_options(sequence.options))
+			.with_sequence_name(sequence.name.clone())
+			.with_options(sequence.options.clone()))
 	}
 	pub(super) async fn default_sequence(
 		&self,
@@ -181,5 +167,75 @@ impl PostgresIntrospector {
 			))
 		})
 		.transpose()
+	}
+}
+
+#[cfg(feature = "postgres")]
+pub(super) type IdentitySequenceCatalog<'a> =
+	std::collections::HashMap<(&'a str, &'a str, &'a str), &'a SequenceInfo>;
+
+#[cfg(feature = "postgres")]
+pub(super) fn identity_catalog(sequences: &[SequenceInfo]) -> IdentitySequenceCatalog<'_> {
+	sequences
+		.iter()
+		.filter(|sequence| sequence.identity)
+		.filter_map(|sequence| {
+			let owner = sequence.owned_by.as_ref()?;
+			Some((
+				(
+					owner.table.schema.as_deref()?,
+					owner.table.name.as_str(),
+					owner.column.as_str(),
+				),
+				sequence,
+			))
+		})
+		.collect()
+}
+
+#[cfg(all(test, feature = "postgres"))]
+mod tests {
+	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	#[tokio::test]
+	async fn catalog_indexes_identity_sequences_by_qualified_owner() {
+		// Arrange
+		let sequences: Vec<_> = ["alpha", "beta"]
+			.into_iter()
+			.map(|schema| SequenceInfo {
+				name: QualifiedName::new("events_n_seq").with_schema(schema),
+				options: SequenceOptions::new().with_cache(if schema == "alpha" { 2 } else { 3 }),
+				owned_by: Some(SequenceOwner::new(
+					QualifiedName::new("events").with_schema(schema),
+					"n",
+				)),
+				identity: true,
+				role: "postgres".into(),
+				supported: true,
+			})
+			.collect();
+		let catalog = identity_catalog(&sequences);
+		let introspector = PostgresIntrospector::new(
+			sqlx::postgres::PgPoolOptions::new()
+				.connect_lazy("postgres://unused/unused")
+				.unwrap(),
+		);
+		// Act
+		let identity = introspector
+			.column_identity("beta", &catalog, "events", "n", "BY DEFAULT")
+			.unwrap();
+		// Assert
+		assert_eq!(
+			identity.sequence_name.unwrap().schema.as_deref(),
+			Some("beta")
+		);
+		assert_eq!(identity.options.cache, Some(3));
+		assert!(
+			introspector
+				.column_identity("missing", &catalog, "events", "n", "ALWAYS")
+				.is_err()
+		);
 	}
 }

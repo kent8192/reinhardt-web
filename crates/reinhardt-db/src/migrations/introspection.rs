@@ -594,7 +594,12 @@ impl PostgresIntrospector {
 
 	/// Introspects a single table using direct SQL queries against
 	/// information_schema and pg_catalog
-	async fn introspect_table(&self, table_name: &str) -> Result<TableInfo> {
+	async fn introspect_table(
+		&self,
+		table_name: &str,
+		schema: &str,
+		identities: &sequences::IdentitySequenceCatalog<'_>,
+	) -> Result<TableInfo> {
 		use sqlx::Row;
 
 		// Fetch columns
@@ -723,16 +728,15 @@ impl PostgresIntrospector {
 			);
 
 			let identity = if is_identity == "YES" {
-				Some(
-					self.column_identity(
-						table_name,
-						&column_name,
-						identity_generation.as_deref().ok_or_else(|| {
-							MigrationError::IntrospectionError("identity mode missing".into())
-						})?,
-					)
-					.await?,
-				)
+				Some(self.column_identity(
+					schema,
+					identities,
+					table_name,
+					&column_name,
+					identity_generation.as_deref().ok_or_else(|| {
+						MigrationError::IntrospectionError("identity mode missing".into())
+					})?,
+				)?)
 			} else {
 				None
 			};
@@ -1078,12 +1082,18 @@ impl PostgresIntrospector {
 
 		Ok(indexes)
 	}
-}
+	async fn current_schema(&self) -> Result<String> {
+		sqlx::query_scalar("SELECT current_schema()::text")
+			.fetch_one(&self.pool)
+			.await
+			.map_err(|error| MigrationError::IntrospectionError(error.to_string()))
+	}
 
-#[cfg(feature = "postgres")]
-#[async_trait]
-impl DatabaseIntrospector for PostgresIntrospector {
-	async fn read_schema(&self) -> Result<DatabaseSchema> {
+	async fn read_schema_with_sequences(
+		&self,
+		schema: &str,
+		sequences: &[SequenceInfo],
+	) -> Result<DatabaseSchema> {
 		use sqlx::Row;
 
 		let table_query = r#"
@@ -1097,26 +1107,29 @@ impl DatabaseIntrospector for PostgresIntrospector {
 				MigrationError::IntrospectionError(format!("Failed to fetch table list: {}", e))
 			})?;
 
+		let identities = sequences::identity_catalog(sequences);
 		let mut tables = HashMap::new();
 		for row in &table_rows {
 			let table_name: String = row.try_get("table_name").unwrap_or_default();
-			let table_info = self.introspect_table(&table_name).await?;
+			let table_info = self
+				.introspect_table(&table_name, schema, &identities)
+				.await?;
 			tables.insert(table_name, table_info);
 		}
 
 		Ok(DatabaseSchema {
 			tables,
-			sequences: self.read_sequences().await?,
-			default_schema: Some(
-				sqlx::query_scalar("SELECT current_schema()::text")
-					.fetch_one(&self.pool)
-					.await
-					.map_err(|error| MigrationError::IntrospectionError(error.to_string()))?,
-			),
+			sequences: sequences.to_vec(),
+			default_schema: Some(schema.to_owned()),
 		})
 	}
 
-	async fn read_table(&self, table_name: &str) -> Result<Option<TableInfo>> {
+	async fn read_table_with_sequences(
+		&self,
+		table_name: &str,
+		schema: &str,
+		identities: &sequences::IdentitySequenceCatalog<'_>,
+	) -> Result<Option<TableInfo>> {
 		// Check if table exists
 		let exists_query = r#"
 			SELECT table_name FROM information_schema.tables
@@ -1134,10 +1147,34 @@ impl DatabaseIntrospector for PostgresIntrospector {
 			})?;
 
 		if exists.is_some() {
-			Ok(Some(self.introspect_table(table_name).await?))
+			Ok(Some(
+				self.introspect_table(table_name, schema, identities)
+					.await?,
+			))
 		} else {
 			Ok(None)
 		}
+	}
+}
+
+#[cfg(feature = "postgres")]
+#[async_trait]
+impl DatabaseIntrospector for PostgresIntrospector {
+	async fn read_schema(&self) -> Result<DatabaseSchema> {
+		let sequences = self.read_sequences().await?;
+		let schema = self.current_schema().await?;
+		self.read_schema_with_sequences(&schema, &sequences).await
+	}
+
+	async fn read_table(&self, table_name: &str) -> Result<Option<TableInfo>> {
+		let sequences = self.read_sequences().await?;
+		let schema = self.current_schema().await?;
+		self.read_table_with_sequences(
+			table_name,
+			&schema,
+			&sequences::identity_catalog(&sequences),
+		)
+		.await
 	}
 }
 
@@ -2572,12 +2609,20 @@ async fn read_postgres_schema(
 	use sqlx::Row;
 
 	let introspector = PostgresIntrospector::new(pool.clone());
+	let sequences = introspector.read_sequences().await?;
+	let default_schema = introspector.current_schema().await?;
+	let identities = sequences::identity_catalog(&sequences);
 	let mut schema = if options.tables.is_empty() {
-		introspector.read_schema().await?
+		introspector
+			.read_schema_with_sequences(&default_schema, &sequences)
+			.await?
 	} else {
 		let mut tables = HashMap::new();
 		for name in &options.tables {
-			let table = match introspector.read_table(name).await? {
+			let table = match introspector
+				.read_table_with_sequences(name, &default_schema, &identities)
+				.await?
+			{
 				Some(table) => table,
 				None if options.include_views => {
 					let view_exists = sqlx::query(
@@ -2594,7 +2639,9 @@ async fn read_postgres_schema(
 							"Table or view `{name}` was not found"
 						)));
 					}
-					introspector.introspect_table(name).await?
+					introspector
+						.introspect_table(name, &default_schema, &identities)
+						.await?
 				}
 				None => {
 					return Err(MigrationError::IntrospectionError(format!(
@@ -2606,8 +2653,8 @@ async fn read_postgres_schema(
 		}
 		DatabaseSchema {
 			tables,
-			sequences: Vec::new(),
-			default_schema: None,
+			sequences: sequences.clone(),
+			default_schema: Some(default_schema.clone()),
 		}
 	};
 	let partition_names = read_postgres_partition_names(&pool).await?;
@@ -2624,7 +2671,9 @@ async fn read_postgres_schema(
 			let name: String = row.try_get("table_name").map_err(|error| {
 				MigrationError::IntrospectionError(format!("Failed to read view name: {error}"))
 			})?;
-			let table = introspector.introspect_table(&name).await?;
+			let table = introspector
+				.introspect_table(&name, &default_schema, &identities)
+				.await?;
 			schema.tables.insert(name, table);
 		}
 	}

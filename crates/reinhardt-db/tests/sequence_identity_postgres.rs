@@ -23,11 +23,20 @@ struct PostgresFixture {
 	connection: DatabaseConnection,
 }
 async fn postgres(tag: &str) -> PostgresFixture {
-	let container = Postgres::default()
-		.with_tag(tag)
-		.start()
-		.await
-		.expect("Docker PostgreSQL");
+	postgres_options(tag, false).await
+}
+async fn postgres_options(tag: &str, catalog_stats: bool) -> PostgresFixture {
+	let image = Postgres::default().with_tag(tag);
+	let image = if catalog_stats {
+		image.with_cmd(vec![
+			"postgres",
+			"-c",
+			"shared_preload_libraries=pg_stat_statements",
+		])
+	} else {
+		image
+	};
+	let container = image.start().await.expect("Docker PostgreSQL");
 	let host = container.get_host().await.expect("container host");
 	let port = container
 		.get_host_port_ipv4(5432)
@@ -1582,6 +1591,63 @@ async fn embedded_sequence_ownership_matches_catalog_and_column_lifetime() {
 			.iter()
 			.any(|sequence| sequence.name.name == "counter")
 	);
+}
+
+#[rstest]
+#[case(false)]
+#[case(true)]
+#[tokio::test]
+async fn schema_inspection_reads_the_sequence_catalog_once(#[case] selected: bool) {
+	// Arrange
+	let fixture = postgres_options("16-alpine", true).await;
+	// Server statistics measure catalog queries across both introspector pools.
+	sqlx::query("CREATE EXTENSION pg_stat_statements")
+		.execute(&fixture.pool)
+		.await
+		.unwrap();
+	let columns = (0..16)
+		.map(|n| {
+			ColumnDefinition::new(format!("n{n}"), FieldType::Integer)
+				.with_not_null(true)
+				.with_identity(Some(IdentityDefinition::new(IdentityGeneration::Always)))
+		})
+		.collect();
+	let initial = Migration::new("0001_initial", "events").add_operation(Operation::CreateTable {
+		name: "events".into(),
+		columns,
+		constraints: vec![],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	});
+	let mut executor =
+		reinhardt_db::migrations::DatabaseMigrationExecutor::new(fixture.connection.clone());
+	executor.apply_migrations(&[initial]).await.unwrap();
+	sqlx::query("SELECT pg_stat_statements_reset()")
+		.execute(&fixture.pool)
+		.await
+		.unwrap();
+	let mut options = reinhardt_db::migrations::introspection::InspectDbOptions::default();
+	if selected {
+		options.tables = vec!["events".into()];
+	}
+	// Act
+	let schema =
+		reinhardt_db::migrations::introspection::inspect_database(&fixture.connection, &options)
+			.await
+			.unwrap();
+	let calls: i64 = sqlx::query_scalar("SELECT calls::bigint FROM pg_stat_statements WHERE query LIKE '%FROM pg_sequence s%' AND query NOT LIKE '%pg_stat_statements%'").fetch_one(&fixture.pool).await.unwrap();
+	// Assert
+	assert_eq!(schema.tables["events"].columns.len(), 16);
+	assert_eq!(
+		schema.tables["events"]
+			.columns
+			.values()
+			.filter(|column| column.identity.is_some())
+			.count(),
+		16
+	);
+	assert_eq!(calls, 1);
 }
 
 #[rstest]
