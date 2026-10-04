@@ -329,6 +329,11 @@ impl Session {
 
 	/// Get an object by primary key
 	///
+	/// On an identity-map miss, the logical key is encoded with
+	/// [`Model::primary_key_database_value`] and bound as a query parameter.
+	/// Codec errors are returned before database access; identity-map entries
+	/// remain keyed by the logical key.
+	///
 	/// # Examples
 	///
 	/// ```no_run
@@ -448,18 +453,19 @@ impl Session {
 			}
 		}
 
-		// Add WHERE clause for primary key
-		select_query.and_where(Expr::col(Alias::new(pk_column)).eq(id.to_string()));
+		// Bind the model's canonical database key instead of its display value.
+		let primary_key = database_value_to_query_value(T::primary_key_database_value(&id)?);
+		select_query.and_where(Expr::col(Alias::new(pk_column)).eq(primary_key));
 
-		// Build SQL query based on backend
-		let sql = match self.db_backend {
-			DbBackend::Postgres => select_query.to_string(PostgresQueryBuilder),
-			DbBackend::Mysql => select_query.to_string(MySqlQueryBuilder),
-			DbBackend::Sqlite => select_query.to_string(SqliteQueryBuilder),
-		};
+		let (sql, values) = QueryStatement::Select(select_query).build(self.db_backend);
+		let sql = sql_with_postgres_parameter_casts(self.db_backend, &sql, &values);
+		let mut query = sqlx::query(sql.as_ref());
+		for value in &values.0 {
+			query = bind_reinhardt_query_value(query, value, self.db_backend)?;
+		}
 
 		// Execute query
-		let row = match sqlx::query(&sql).fetch_optional(&*self.pool).await {
+		let row = match query.fetch_optional(&*self.pool).await {
 			Ok(Some(row)) => row,
 			Ok(None) => return Ok(None),
 			Err(e) => {
@@ -2883,6 +2889,264 @@ mod tests {
 		let mut field = test_field_info(name, field_type, false, false);
 		field.storage_kind = Some(storage_kind);
 		field
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct CodecSessionModel<const ALIASED: bool> {
+		id: i64,
+		name: String,
+	}
+
+	impl<const ALIASED: bool> Model for CodecSessionModel<ALIASED> {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"codec_session_models"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<i64> {
+			Some(self.id - 100)
+		}
+
+		fn set_primary_key(&mut self, value: i64) {
+			self.id = value + 100;
+		}
+
+		fn primary_key_database_value(
+			value: &i64,
+		) -> Result<crate::orm::DatabaseValue, FieldCodecError> {
+			if *value < 0 {
+				return Err(FieldCodecError::Serialization(
+					"negative logical key".to_owned(),
+				));
+			}
+			Ok(crate::orm::DatabaseValue::I64(value + 100))
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut id = test_field_info("id", "BigIntegerField", false, true);
+			id.storage_kind = Some(crate::orm::DatabaseStorageKind::I64);
+			if ALIASED {
+				id.db_column = Some("stored_id".to_owned());
+			}
+			vec![id, test_field_info("name", "CharField", false, false)]
+		}
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct TextCodecSessionModel {
+		id: String,
+	}
+
+	impl Model for TextCodecSessionModel {
+		type PrimaryKey = String;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"text_codec_session_models"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<String> {
+			self.id.strip_prefix("stored:").map(str::to_owned)
+		}
+
+		fn set_primary_key(&mut self, value: String) {
+			self.id = format!("stored:{value}");
+		}
+
+		fn primary_key_database_value(
+			value: &String,
+		) -> Result<crate::orm::DatabaseValue, FieldCodecError> {
+			Ok(crate::orm::DatabaseValue::String(format!("stored:{value}")))
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![test_field_info("id", "CharField", false, true)]
+		}
+	}
+
+	#[fixture]
+	async fn codec_session_pool() -> Arc<AnyPool> {
+		sqlx::any::install_default_drivers();
+		Arc::new(
+			sqlx::any::AnyPoolOptions::new()
+				.max_connections(1)
+				.connect("sqlite::memory:")
+				.await
+				.expect("isolated SQLite pool"),
+		)
+	}
+
+	#[rstest]
+	#[case::logical_column(false)]
+	#[case::physical_column(true)]
+	#[tokio::test]
+	async fn get_uses_primary_key_codec(
+		#[future] codec_session_pool: Arc<AnyPool>,
+		#[case] aliased: bool,
+	) {
+		if aliased {
+			exercise_primary_key_codec::<true>(codec_session_pool.await).await;
+		} else {
+			exercise_primary_key_codec::<false>(codec_session_pool.await).await;
+		}
+	}
+
+	async fn exercise_primary_key_codec<const ALIASED: bool>(pool: Arc<AnyPool>) {
+		// Arrange: the stored-value control uses a different Session from get.
+		let column = if ALIASED { "stored_id" } else { "id" };
+		sqlx::query(&format!(
+			"CREATE TABLE codec_session_models ({column} INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+		))
+		.execute(&*pool)
+		.await
+		.unwrap();
+		sqlx::query("INSERT INTO codec_session_models VALUES (?, ?)")
+			.bind(105_i64)
+			.bind("stored row")
+			.execute(&*pool)
+			.await
+			.unwrap();
+		let expected = CodecSessionModel::<ALIASED> {
+			id: 105,
+			name: "stored row".to_owned(),
+		};
+		let control = Session::new(Arc::clone(&pool), DbBackend::Sqlite)
+			.await
+			.unwrap();
+		assert_eq!(
+			control
+				.list(&QuerySet::<CodecSessionModel<ALIASED>>::new())
+				.await
+				.unwrap(),
+			vec![expected.clone()]
+		);
+		let mut session = Session::new(Arc::clone(&pool), DbBackend::Sqlite)
+			.await
+			.unwrap();
+
+		// Act
+		let actual = session.get::<CodecSessionModel<ALIASED>>(5).await.unwrap();
+
+		// Assert: logical keys select encoded keys and remain identity-map keys.
+		assert_eq!(actual, Some(expected.clone()));
+		assert_eq!(session.identity_count(), 1);
+		assert_eq!(
+			session.get::<CodecSessionModel<ALIASED>>(6).await.unwrap(),
+			None
+		);
+		assert_eq!(session.identity_count(), 1);
+		sqlx::query("DELETE FROM codec_session_models")
+			.execute(&*pool)
+			.await
+			.unwrap();
+		assert_eq!(
+			session.get::<CodecSessionModel<ALIASED>>(5).await.unwrap(),
+			Some(expected)
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn get_uses_default_primary_key_codec(#[future] codec_session_pool: Arc<AnyPool>) {
+		// Arrange
+		let pool = codec_session_pool.await;
+		sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)")
+			.execute(&*pool)
+			.await
+			.unwrap();
+		sqlx::query("INSERT INTO users VALUES (5, 'default key', 'default@example.com')")
+			.execute(&*pool)
+			.await
+			.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let actual = session.get::<TestUser>(5).await.unwrap();
+
+		// Assert
+		assert_eq!(
+			actual,
+			Some(TestUser {
+				id: Some(5),
+				name: "default key".to_owned(),
+				email: "default@example.com".to_owned(),
+			})
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn get_propagates_primary_key_codec_error(#[future] codec_session_pool: Arc<AnyPool>) {
+		// Arrange: a closed pool proves codec validation precedes database access.
+		let pool = codec_session_pool.await;
+		let mut session = Session::new(Arc::clone(&pool), DbBackend::Sqlite)
+			.await
+			.unwrap();
+		pool.close().await;
+
+		// Act
+		let error = session
+			.get::<CodecSessionModel<false>>(-1)
+			.await
+			.unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error,
+			SessionError::FieldCodec(FieldCodecError::Serialization(
+				"negative logical key".to_owned()
+			))
+		);
+		assert_eq!(session.identity_count(), 0);
+	}
+
+	#[rstest]
+	#[case::numeric_text("005")]
+	#[case::sql_metacharacters("key' OR 1=1 -- ? $1 雪")]
+	#[tokio::test]
+	async fn get_uses_text_primary_key_codec(
+		#[future] codec_session_pool: Arc<AnyPool>,
+		#[case] logical_key: &str,
+	) {
+		// Arrange
+		let pool = codec_session_pool.await;
+		sqlx::query("CREATE TABLE text_codec_session_models (id TEXT PRIMARY KEY)")
+			.execute(&*pool)
+			.await
+			.unwrap();
+		let expected = TextCodecSessionModel {
+			id: format!("stored:{logical_key}"),
+		};
+		for key in [&expected.id, "unrelated"] {
+			sqlx::query("INSERT INTO text_codec_session_models VALUES (?)")
+				.bind(key)
+				.execute(&*pool)
+				.await
+				.unwrap();
+		}
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let actual = session
+			.get::<TextCodecSessionModel>(logical_key.to_owned())
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(actual, Some(expected));
+		assert_eq!(session.identity_count(), 1);
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
