@@ -94,6 +94,18 @@ migration metadata. The check implies dry-run behavior and exits unsuccessfully
 when files would be created. `--state-source database --database ALIAS` resolves
 only the named database configuration; `--state-source temporary-db` requires
 the `testcontainers` feature. `--empty` and `--merge` remain database-free.
+
+Migration dependency resolution combines `core.migration_features` with
+`migrations.migration_features`. The dedicated `migration_settings` and
+`migration_swappable_settings` maps override core swappable defaults; the
+swappable map wins within the migration fragment. Optional dependencies use
+installed app labels (including registered module paths), feature flags, and
+setting values. Plans, execution, conflict checks, and file/database state
+reconstruction share these resolved dependencies. On the stable line, declare
+conditional dependencies as literal `Migration` fields using `vec![]` or arrays,
+with dependency struct literals or `SwappableDependency::new` /
+`OptionalDependency::new` constructors. Unsupported expressions fail to load.
+
 Other existing commands retain the full settings bootstrap. Legacy entry points
 and their `Commands` variants retain their existing signatures and flags.
 

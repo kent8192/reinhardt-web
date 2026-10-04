@@ -622,6 +622,7 @@ pub async fn execute_from_command_line_with_capabilities<P: crate::CapabilityPro
 		} else {
 			Some(
 				crate::builtin::prepare_makemigrations_state(
+					&ctx,
 					selection.source,
 					migration_dir,
 					database_url.as_deref(),

@@ -14,6 +14,10 @@ pub fn extract_migration_metadata(ast: &File, app_label: &str, name: &str) -> Re
 	let replaces = extract_replaces(ast).unwrap_or_default();
 	let operations = extract_operations(ast).unwrap_or_default();
 	let initial = extract_initial(ast);
+	let swappable_dependencies =
+		extract_dependency_metadata(ast, "swappable_dependencies", parse_swappable_dependency)?;
+	let optional_dependencies =
+		extract_dependency_metadata(ast, "optional_dependencies", parse_optional_dependency)?;
 
 	Ok(Migration {
 		app_label: app_label.to_string(),
@@ -25,9 +29,138 @@ pub fn extract_migration_metadata(ast: &File, app_label: &str, name: &str) -> Re
 		initial,
 		state_only: false,
 		database_only: false,
-		swappable_dependencies: vec![],
-		optional_dependencies: vec![],
+		swappable_dependencies,
+		optional_dependencies,
 	})
+}
+
+/// Keep conditional dependency literals instead of silently discarding them.
+fn extract_dependency_metadata<T>(
+	ast: &File,
+	field_name: &str,
+	parse: fn(&Expr) -> Option<T>,
+) -> Result<Vec<T>> {
+	let expression = ast.items.iter().find_map(|item| {
+		if let Item::Fn(func) = item
+			&& func.sig.ident == "migration"
+			&& let Some(Stmt::Expr(expr, _)) = func.block.stmts.last()
+		{
+			extract_field_from_migration_struct(expr, field_name)
+		} else {
+			None
+		}
+	});
+	let Some(expression) = expression else {
+		return Ok(Vec::new());
+	};
+	let invalid = || {
+		super::MigrationError::InvalidMigration(format!(
+			"Unsupported {field_name} metadata; use literal dependency values"
+		))
+	};
+	let expressions = match expression {
+		Expr::Array(array) => array.elems,
+		Expr::Macro(mac) if mac.mac.path.is_ident("vec") => {
+			let tokens = mac.mac.tokens;
+			syn::parse2::<syn::ExprArray>(quote::quote! { [#tokens] })
+				.map_err(|_| invalid())?
+				.elems
+		}
+		Expr::Call(call) if dependency_constructor(&call, "Vec") && call.args.is_empty() => {
+			return Ok(Vec::new());
+		}
+		_ => return Err(invalid()),
+	};
+	expressions
+		.iter()
+		.map(|expression| parse(expression).ok_or_else(invalid))
+		.collect()
+}
+
+fn dependency_constructor(call: &syn::ExprCall, type_name: &str) -> bool {
+	let Expr::Path(path) = call.func.as_ref() else {
+		return false;
+	};
+	let mut segments = path.path.segments.iter().rev();
+	segments
+		.next()
+		.is_some_and(|segment| segment.ident == "new")
+		&& segments
+			.next()
+			.is_some_and(|segment| segment.ident == type_name)
+}
+
+fn parse_swappable_dependency(expr: &Expr) -> Option<super::dependency::SwappableDependency> {
+	use super::dependency::SwappableDependency;
+	match expr {
+		Expr::Call(call)
+			if dependency_constructor(call, "SwappableDependency") && call.args.len() == 4 =>
+		{
+			Some(SwappableDependency::new(
+				extract_string_literal(&call.args[0])?,
+				extract_string_literal(&call.args[1])?,
+				extract_string_literal(&call.args[2])?,
+				extract_string_literal(&call.args[3])?,
+			))
+		}
+		Expr::Struct(value) if value.path.segments.last()?.ident == "SwappableDependency" => {
+			Some(SwappableDependency {
+				setting_key: extract_string_field(&value.fields, "setting_key")?,
+				default_app: extract_string_field(&value.fields, "default_app")?,
+				default_model: extract_string_field(&value.fields, "default_model")?,
+				migration_name: extract_string_field(&value.fields, "migration_name")?,
+			})
+		}
+		_ => None,
+	}
+}
+
+fn parse_optional_dependency(expr: &Expr) -> Option<super::dependency::OptionalDependency> {
+	use super::dependency::OptionalDependency;
+	match expr {
+		Expr::Call(call)
+			if dependency_constructor(call, "OptionalDependency") && call.args.len() == 3 =>
+		{
+			Some(OptionalDependency::new(
+				extract_string_literal(&call.args[0])?,
+				extract_string_literal(&call.args[1])?,
+				parse_dependency_condition(&call.args[2])?,
+			))
+		}
+		Expr::Struct(value) if value.path.segments.last()?.ident == "OptionalDependency" => {
+			let condition = value.fields.iter().find_map(|field| {
+				if matches!(&field.member, syn::Member::Named(name) if name == "condition") {
+					parse_dependency_condition(&field.expr)
+				} else {
+					None
+				}
+			})?;
+			Some(OptionalDependency::new(
+				extract_string_field(&value.fields, "app_label")?,
+				extract_string_field(&value.fields, "migration_name")?,
+				condition,
+			))
+		}
+		_ => None,
+	}
+}
+
+fn parse_dependency_condition(expr: &Expr) -> Option<super::dependency::DependencyCondition> {
+	use super::dependency::DependencyCondition;
+	let Expr::Call(call) = expr else { return None };
+	let Expr::Path(path) = call.func.as_ref() else {
+		return None;
+	};
+	if call.args.len() != 1 {
+		return None;
+	}
+	let value = extract_string_literal(&call.args[0])?;
+	match path.path.segments.last()?.ident.to_string().as_str() {
+		"AppInstalled" => Some(DependencyCondition::AppInstalled(value)),
+		"SettingEnabled" => Some(DependencyCondition::SettingEnabled(value)),
+		"FeatureEnabled" => Some(DependencyCondition::FeatureEnabled(value)),
+		_ => None,
+	}
 }
 
 /// Extract dependencies from `migration()` function
@@ -1175,6 +1308,70 @@ fn extract_field_type(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[rstest::rstest]
+	#[case(r#"vec![SwappableDependency::new("AUTH_USER_MODEL", "auth", "User", "0001_initial")]"#,
+		r#"vec![OptionalDependency::new("audit", "0002_tables", DependencyCondition::FeatureEnabled("audit".to_string()))]"#)]
+	#[case(r#"[SwappableDependency { setting_key: "AUTH_USER_MODEL".to_string(), default_app: "auth".to_string(), default_model: "User".to_string(), migration_name: "0001_initial".to_string() }]"#,
+		r#"[OptionalDependency { app_label: "audit".to_string(), migration_name: "0002_tables".to_string(), condition: DependencyCondition::FeatureEnabled("audit".to_string()) }]"#)]
+	fn preserves_conditional_dependency_metadata(#[case] swappable: &str, #[case] optional: &str) {
+		// Arrange
+		let ast = syn::parse_file(&format!(
+			r#"fn migration() -> Migration {{
+			Migration {{ swappable_dependencies: {swappable}, optional_dependencies: {optional} }}
+		}}"#
+		))
+		.unwrap();
+
+		// Act
+		let migration = extract_migration_metadata(&ast, "profiles", "0001_initial").unwrap();
+
+		// Assert
+		assert_eq!(
+			migration.swappable_dependencies,
+			[super::super::dependency::SwappableDependency::new(
+				"AUTH_USER_MODEL",
+				"auth",
+				"User",
+				"0001_initial",
+			)]
+		);
+		assert_eq!(
+			migration.optional_dependencies,
+			[super::super::dependency::OptionalDependency::new(
+				"audit",
+				"0002_tables",
+				super::super::dependency::DependencyCondition::FeatureEnabled("audit".to_string()),
+			)]
+		);
+	}
+
+	#[rstest::rstest]
+	#[case("optional_dependencies", "dynamic_dependencies()")]
+	#[case(
+		"optional_dependencies",
+		"vec![OptionalDependency::new(\"audit\", \"0001\", condition)]"
+	)]
+	#[case(
+		"swappable_dependencies",
+		"vec![SwappableDependency::new(key, \"auth\", \"User\", \"0001\")]"
+	)]
+	fn rejects_unsupported_conditional_dependencies(#[case] field: &str, #[case] value: &str) {
+		// Arrange
+		let ast = syn::parse_file(&format!(
+			"fn migration() -> Migration {{ Migration {{ {field}: {value} }} }}"
+		))
+		.unwrap();
+
+		// Act
+		let error = extract_migration_metadata(&ast, "profiles", "0001_initial").unwrap_err();
+
+		// Assert
+		assert!(
+			matches!(error, super::super::MigrationError::InvalidMigration(ref message) if message.contains(field)),
+			"{error}"
+		);
+	}
 
 	fn parse_expr(source: &str) -> Expr {
 		syn::parse_str(source).expect("test expression must parse")

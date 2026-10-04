@@ -6,6 +6,8 @@ use crate::{BaseCommand, CommandArgument, CommandContext, CommandOption, Command
 use async_trait::async_trait;
 
 #[cfg(feature = "migrations")]
+use crate::showmigrations::CommandMigrationSource;
+#[cfg(feature = "migrations")]
 use reinhardt_db::migrations::DatabaseMigrationExecutor;
 
 #[cfg(feature = "migrations")]
@@ -95,9 +97,7 @@ impl BaseCommand for MigrateCommand {
 		// Use reinhardt-migrations for migration execution
 		#[cfg(feature = "migrations")]
 		{
-			use reinhardt_db::migrations::{
-				FilesystemRepository, FilesystemSource, MigrationService,
-			};
+			use reinhardt_db::migrations::{FilesystemRepository, MigrationService};
 			use std::path::PathBuf;
 			use std::sync::Arc;
 			use tokio::sync::Mutex;
@@ -108,7 +108,7 @@ impl BaseCommand for MigrateCommand {
 				.map(PathBuf::from)
 				.unwrap_or_else(|| PathBuf::from("migrations"));
 
-			let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
+			let source = Arc::new(CommandMigrationSource::new(&migrations_dir, ctx));
 			let repository: Arc<Mutex<dyn reinhardt_db::migrations::MigrationRepository>> =
 				Arc::new(Mutex::new(FilesystemRepository::new(migrations_dir)));
 			let service = MigrationService::new(source, repository);
@@ -797,12 +797,13 @@ async fn plan_applied_migrations(
 /// Build from_state from database history (preferred approach)
 #[cfg(feature = "migrations")]
 async fn build_from_state_from_db(
+	ctx: &CommandContext,
 	migrations_dir: &std::path::Path,
 	database_url: &str,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	use reinhardt_db::DatabaseConnection;
 	use reinhardt_db::migrations::{
-		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
+		DatabaseMigrationRecorder, MigrationSource, MigrationStateLoader,
 	};
 	eprintln!("[DEBUG] Database URL: {}", database_url);
 
@@ -827,7 +828,7 @@ async fn build_from_state_from_db(
 		eprintln!("[DEBUG]   - {}/{}", record.app, record.name);
 	}
 
-	let source = FilesystemSource::new(migrations_dir);
+	let source = CommandMigrationSource::new(migrations_dir, ctx);
 	let all_migrations = source.all_migrations().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to load migrations from disk: {}", e))
 	})?;
@@ -855,12 +856,13 @@ async fn build_from_state_from_db(
 /// Note: TestContainers integration requires the 'testcontainers' feature to be enabled.
 #[cfg(all(feature = "migrations", feature = "testcontainers"))]
 async fn build_from_state_from_testcontainers(
+	ctx: &CommandContext,
 	migrations_dir: &std::path::Path,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_db::migrations::{
-		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
+		DatabaseMigrationRecorder, MigrationSource, MigrationStateLoader,
 	};
 	use reinhardt_test::fixtures::postgres_container;
 
@@ -875,7 +877,7 @@ async fn build_from_state_from_testcontainers(
 		})?;
 
 	// 3. Load all existing migrations
-	let source = FilesystemSource::new(migrations_dir);
+	let source = CommandMigrationSource::new(migrations_dir, ctx);
 	let all_migrations = source.all_migrations().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to load migrations: {}", e))
 	})?;
@@ -906,6 +908,7 @@ async fn build_from_state_from_testcontainers(
 /// Build from_state from TestContainers (stub when feature not enabled)
 #[cfg(all(feature = "migrations", not(feature = "testcontainers")))]
 async fn build_from_state_from_testcontainers(
+	_ctx: &CommandContext,
 	_migrations_dir: &std::path::Path,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	Err(crate::CommandError::ExecutionError(
@@ -920,11 +923,12 @@ async fn build_from_state_from_testcontainers(
 /// to reconstruct the current `ProjectState`.
 #[cfg(feature = "migrations")]
 async fn build_from_state_from_files(
+	ctx: &CommandContext,
 	migrations_dir: &std::path::Path,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
-	use reinhardt_db::migrations::{FilesystemSource, MigrationSource, build_state_from_files};
+	use reinhardt_db::migrations::{MigrationSource, build_state_from_files};
 
-	let source = FilesystemSource::new(migrations_dir);
+	let source = CommandMigrationSource::new(migrations_dir, ctx);
 
 	// Check if there are any migrations on disk
 	let all_migrations = source.all_migrations().await.map_err(|e| {
@@ -964,14 +968,15 @@ pub(crate) enum MigrationStateSource {
 
 #[cfg(feature = "contract")]
 pub(crate) async fn prepare_makemigrations_state(
+	ctx: &CommandContext,
 	source: MigrationStateSource,
 	migrations_dir: &std::path::Path,
 	database_url: Option<&str>,
 ) -> CommandResult<reinhardt_db::migrations::ProjectState> {
 	match source {
-		MigrationStateSource::Files => build_from_state_from_files(migrations_dir).await,
+		MigrationStateSource::Files => build_from_state_from_files(ctx, migrations_dir).await,
 		MigrationStateSource::TemporaryDb => {
-			build_from_state_from_testcontainers(migrations_dir).await
+			build_from_state_from_testcontainers(ctx, migrations_dir).await
 		}
 		MigrationStateSource::Database => {
 			let url = database_url.ok_or_else(|| {
@@ -979,7 +984,7 @@ pub(crate) async fn prepare_makemigrations_state(
 					"database state source requires a selected database URL".to_owned(),
 				)
 			})?;
-			build_from_state_from_db(migrations_dir, url).await
+			build_from_state_from_db(ctx, migrations_dir, url).await
 		}
 		MigrationStateSource::Empty => Ok(reinhardt_db::migrations::ProjectState::new()),
 	}
@@ -1206,8 +1211,8 @@ pub(crate) async fn execute_makemigrations_with_state(
 	{
 		use crate::CommandError;
 		use reinhardt_db::migrations::{
-			FilesystemRepository, FilesystemSource, MigrationGraph, MigrationKey, MigrationNamer,
-			MigrationNumbering, MigrationService, autodetector::ProjectState,
+			FilesystemRepository, MigrationGraph, MigrationKey, MigrationNamer, MigrationNumbering,
+			MigrationService, autodetector::ProjectState,
 		};
 		use std::sync::Arc;
 		use tokio::sync::Mutex;
@@ -1229,7 +1234,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 			graph
 		}
 
-		let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
+		let source = Arc::new(CommandMigrationSource::new(&migrations_dir, ctx));
 		let repository = Arc::new(Mutex::new(FilesystemRepository::new(
 			migrations_dir.clone(),
 		)));
@@ -1277,7 +1282,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 					// Merging must include historical apps needed by a selected move,
 					// even when those apps are no longer installed. Replay files without
 					// applying the conflicting graph to a database.
-					let from_state = build_from_state_from_files(&migrations_dir).await?;
+					let from_state = build_from_state_from_files(ctx, &migrations_dir).await?;
 					let target_state = ProjectState::from_global_registry();
 					let detector = reinhardt_db::migrations::MigrationAutodetector::new(
 						from_state,
@@ -1499,7 +1504,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 			ProjectState::new()
 		} else if from_db_flag {
 			// When --from-db flag is specified: prioritize database history
-			match build_from_state_from_db(&migrations_dir, &database_url).await {
+			match build_from_state_from_db(ctx, &migrations_dir, &database_url).await {
 				Ok(state) => {
 					ctx.verbose("Built state from database history");
 					state
@@ -1507,7 +1512,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 				Err(e) => {
 					ctx.warning(&format!("Failed to connect to database: {}", e));
 					ctx.info("Falling back to TestContainers...");
-					match build_from_state_from_testcontainers(&migrations_dir).await {
+					match build_from_state_from_testcontainers(ctx, &migrations_dir).await {
 						Ok(state) => {
 							ctx.verbose("Built state from TestContainers");
 							state
@@ -1515,7 +1520,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 						Err(e) => {
 							ctx.warning(&format!("Failed to use TestContainers: {}", e));
 							ctx.info("Falling back to file-based state reconstruction...");
-							match build_from_state_from_files(&migrations_dir).await {
+							match build_from_state_from_files(ctx, &migrations_dir).await {
 								Ok(state) => {
 									ctx.verbose("Built state from migration files (offline)");
 									state
@@ -1551,7 +1556,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 			}
 		} else {
 			// Default: prioritize TestContainers
-			match build_from_state_from_testcontainers(&migrations_dir).await {
+			match build_from_state_from_testcontainers(ctx, &migrations_dir).await {
 				Ok(state) => {
 					ctx.verbose("Built state from TestContainers");
 					state
@@ -1559,7 +1564,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 				Err(e) => {
 					ctx.warning(&format!("Failed to use TestContainers: {}", e));
 					ctx.info("Falling back to database history...");
-					match build_from_state_from_db(&migrations_dir, &database_url).await {
+					match build_from_state_from_db(ctx, &migrations_dir, &database_url).await {
 						Ok(state) => {
 							ctx.verbose("Built state from database history");
 							state
@@ -1567,7 +1572,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 						Err(e) => {
 							ctx.warning(&format!("Failed to connect to database: {}", e));
 							ctx.info("Falling back to file-based state reconstruction...");
-							match build_from_state_from_files(&migrations_dir).await {
+							match build_from_state_from_files(ctx, &migrations_dir).await {
 								Ok(state) => {
 									ctx.verbose("Built state from migration files (offline)");
 									state
