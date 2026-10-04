@@ -39,6 +39,7 @@ redis = { workspace = true, features = [
 ], optional = true }
 sqlx = { workspace = true, features = ["any", "runtime-tokio", "tls-rustls", "postgres", "mysql"], optional = true }
 reinhardt-query = { workspace = true, optional = true }
+reinhardt-query-sqlx = { workspace = true, optional = true, features = ["any"] }
 reqwest = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 aws-config = { version = "1.5", optional = true }
@@ -66,7 +67,7 @@ settings = []
 # Async and runtime features
 async = ["async-trait", "tokio"]
 dynamic-redis = ["async", "redis"]
-dynamic-database = ["async", "reinhardt-query", "sqlx"]
+dynamic-database = ["async", "reinhardt-query", "sqlx", "dep:reinhardt-query-sqlx"]
 vault = ["async", "reqwest"]
 aws-secrets = ["async", "aws-config", "aws-sdk-secretsmanager", "aws-smithy-runtime", "time"]
 azure-keyvault = ["async", "azure_identity", "azure_security_keyvault_secrets", "futures"]
