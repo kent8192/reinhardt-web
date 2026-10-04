@@ -195,3 +195,6 @@ infra/github-runners/lambda-src/*/coverage/
 docs/specs/
 
 **/reviews/
+
+# Pin the standalone runtime SQL audit tool used by CI.
+!scripts/audit-runtime-sql/Cargo.lock
