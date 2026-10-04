@@ -1597,7 +1597,7 @@ fn apply_any_model_projection_for_source<T: Model>(
 	}
 	for annotation in annotations {
 		statement.expr_as(
-			Expr::cust(annotation.value.to_sql_expr()),
+			QuerySet::<T>::annotation_value_to_query_expr(&annotation.value),
 			Alias::new(&annotation.alias),
 		);
 	}
