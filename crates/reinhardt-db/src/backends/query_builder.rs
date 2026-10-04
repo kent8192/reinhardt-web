@@ -1042,7 +1042,9 @@ impl UpdateBuilder {
 		self
 	}
 
-	/// Sets the now.
+	/// Sets the column to the database's `CURRENT_TIMESTAMP` expression.
+	///
+	/// This expression does not consume a bound parameter.
 	pub fn set_now(mut self, column: impl Into<String>) -> Self {
 		self.sets.push((column.into(), QueryValue::Now));
 		self
@@ -1055,23 +1057,19 @@ impl UpdateBuilder {
 		self
 	}
 
-	/// Builds the final result.
+	/// Builds the SQL and bound parameters in renderer order.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
 			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
 		};
 
-		// Sentinel placeholder for NOW() values (replaced in final SQL)
-		const NOW_PLACEHOLDER: &str = "__REINHARDT_NOW__";
-
 		let mut stmt = Query::update().table(Alias::new(&self.table)).to_owned();
 
 		// Add SET clauses
 		for (col, val) in &self.sets {
 			if matches!(val, QueryValue::Now) {
-				// Use a sentinel string that will be replaced with NOW() in the output
-				stmt.value(Alias::new(col), NOW_PLACEHOLDER);
+				stmt.value_expr(Alias::new(col), Expr::current_timestamp());
 				continue;
 			}
 			stmt.value(Alias::new(col), query_value_to_sea_value(val));
@@ -1087,25 +1085,27 @@ impl UpdateBuilder {
 		}
 
 		// Build SQL based on database type
-		let sql = match self.backend.database_type() {
-			DatabaseType::Postgres => PostgresQueryBuilder.build_update(&stmt).0,
-			DatabaseType::Mysql => MySqlQueryBuilder.build_update(&stmt).0,
-			DatabaseType::Sqlite => SqliteQueryBuilder.build_update(&stmt).0,
+		let (sql, values) = match self.backend.database_type() {
+			DatabaseType::Postgres => PostgresQueryBuilder.build_update(&stmt),
+			DatabaseType::Mysql => MySqlQueryBuilder.build_update(&stmt),
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_update(&stmt),
 		};
 
-		// Replace NOW() placeholder sentinel with actual function call
-		let sql = sql.replace(&format!("'{}'", NOW_PLACEHOLDER), "NOW()");
-
-		// Preserve parameter order: first SET values, then WHERE values
-		let mut params = Vec::new();
-		for (_, val) in &self.sets {
-			if !matches!(val, QueryValue::Now) {
-				params.push(val.clone());
-			}
-		}
-		for (_, _, val) in &self.wheres {
-			params.push(val.clone());
-		}
+		// Consume the renderer's bindings: CURRENT_TIMESTAMP and NULL have no slots.
+		// Every bound value originates from query_value_to_sea_value above.
+		let params = values
+			.into_iter()
+			.map(|value| match value {
+				Value::Bool(Some(value)) => QueryValue::Bool(value),
+				Value::BigInt(Some(value)) => QueryValue::Int(value),
+				Value::Double(Some(value)) => QueryValue::Float(value),
+				Value::String(Some(value)) => QueryValue::String(*value),
+				Value::Bytes(Some(value)) => QueryValue::Bytes(*value),
+				Value::ChronoDateTimeUtc(Some(value)) => QueryValue::Timestamp(*value),
+				Value::Uuid(Some(value)) => QueryValue::Uuid(*value),
+				_ => unreachable!("UPDATE bindings must originate from QueryValue conversions"),
+			})
+			.collect();
 
 		(sql, params)
 	}
