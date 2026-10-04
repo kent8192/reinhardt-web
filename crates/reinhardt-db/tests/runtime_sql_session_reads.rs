@@ -446,6 +446,7 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 		);
 	}
 	assert_insensitive_matches(&reader, &mut transaction, &inserted).await;
+	assert_range_matches(&reader, &mut transaction, &inserted).await;
 	if backend == DbBackend::Mysql {
 		// This connection belongs to a disposable container; its guard owns cleanup.
 		sqlx::query("SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'")
@@ -453,6 +454,7 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 			.await
 			.unwrap();
 		assert_insensitive_matches(&reader, &mut transaction, &inserted).await;
+		assert_range_matches(&reader, &mut transaction, &inserted).await;
 	}
 	let updated = Record {
 		name: "update' $70 ?".into(),
@@ -509,6 +511,40 @@ async fn exercise_writes(pool: Arc<AnyPool>, backend: DbBackend, original: Recor
 			.unwrap()
 			.is_empty()
 	);
+}
+
+async fn assert_range_matches(
+	reader: &Session,
+	connection: &mut sqlx::AnyConnection,
+	expected: &Record,
+) {
+	use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue};
+	// Arrange / Act / Assert: inclusive boundaries use the same caller-owned transaction.
+	for (lower, upper, matched) in [
+		(expected.id, expected.id, true),
+		(expected.id - 1, expected.id, true),
+		(expected.id, expected.id + 1, true),
+		(expected.id + 1, expected.id + 2, false),
+	] {
+		let query = keyed(expected.id).filter(Filter::new(
+			"pk\"key`",
+			FilterOperator::Range,
+			FilterValue::Range(
+				Box::new(FilterValue::Typed(Ok(DatabaseValue::I64(lower)))),
+				Box::new(FilterValue::Integer(upper)),
+			),
+		));
+		let records = reader
+			.list_with_connection(&query, connection)
+			.await
+			.unwrap();
+		let expected_rows = if matched {
+			vec![expected.clone()]
+		} else {
+			vec![]
+		};
+		assert_eq!(records, expected_rows, "range: {lower}..={upper}");
+	}
 }
 
 async fn assert_insensitive_matches(

@@ -40102,7 +40102,7 @@
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
       "line": 5777,
-      "fingerprint": "968938072df8cb2dd4cba6b28a6664e506734976f1cdedfea6ae36d8d4e80e35",
+      "fingerprint": "a79b2a7ade223611deaa862bb921dda1641e5795be648e7629f5541671e2defd",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40113,12 +40113,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40126,8 +40126,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6025,
-      "fingerprint": "fb378b532f66e4bce8fdf604c09669848bfcfeb51d09afa7832ad77054fde678",
+      "line": 6029,
+      "fingerprint": "448b29e3a00f6c7c3a0ca2b85d34b271ae70ffd30799b5e7a6421078890b9e7d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40138,12 +40138,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40151,8 +40151,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6033,
-      "fingerprint": "9b8d1a643535a9d0598a2dbd0ed572da964e0677022dc9ceb1552fdfde025388",
+      "line": 6039,
+      "fingerprint": "648fdbb5f836d030ad2c786dd4ac6c864a1c6d2c0aa659481f09904cd1510db6",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40163,12 +40163,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40176,8 +40176,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6043,
-      "fingerprint": "d3ef43900250303668bfde61c215e9317bc8f24d50e7949b8e18186a010e194a",
+      "line": 6044,
+      "fingerprint": "448b29e3a00f6c7c3a0ca2b85d34b271ae70ffd30799b5e7a6421078890b9e7d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40188,12 +40188,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40201,8 +40201,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6048,
-      "fingerprint": "9b8d1a643535a9d0598a2dbd0ed572da964e0677022dc9ceb1552fdfde025388",
+      "line": 6054,
+      "fingerprint": "648fdbb5f836d030ad2c786dd4ac6c864a1c6d2c0aa659481f09904cd1510db6",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40213,12 +40213,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40226,8 +40226,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6058,
-      "fingerprint": "d3ef43900250303668bfde61c215e9317bc8f24d50e7949b8e18186a010e194a",
+      "line": 6059,
+      "fingerprint": "448b29e3a00f6c7c3a0ca2b85d34b271ae70ffd30799b5e7a6421078890b9e7d",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40238,12 +40238,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40251,8 +40251,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6063,
-      "fingerprint": "9b8d1a643535a9d0598a2dbd0ed572da964e0677022dc9ceb1552fdfde025388",
+      "line": 6068,
+      "fingerprint": "72afad83e7c6ea1b0b687784f02dd42192fdbb2db8e07df792929c0c528aeef7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40263,12 +40263,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40276,8 +40276,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6072,
-      "fingerprint": "0c56606000e247806549d99589829204458f7197bb6eb635b64dbbe1a591cb8f",
+      "line": 6077,
+      "fingerprint": "c6a9dd852ff3c6c71f5c1e52f1be48d5209973c8359e9f0e950b02962e335715",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40288,12 +40288,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40301,8 +40301,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6081,
-      "fingerprint": "fcc57a58be2ca0fb839cae89fcb6f91f437d91013dc16af71f41eb480400a0f9",
+      "line": 6085,
+      "fingerprint": "112566521b4a78f512d39c3a58949a4fed495c6ba165c5a6594d18a0bbb2db90",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40313,12 +40313,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40326,8 +40326,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6089,
-      "fingerprint": "d80c0a21d3b438e37626ffcdbf73baf29c6e4587f64d27f3d3f65a7c5917f4bb",
+      "line": 6093,
+      "fingerprint": "aef9299922f016be39207052943ede2f5d45322bcf543c0a98d23dfb8621a36c",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40338,12 +40338,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40351,8 +40351,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6097,
-      "fingerprint": "2668cdbc4ac29c8c3550cb0503fc88b5ba205ca26a2f7bab2babf9b73c7aff10",
+      "line": 6124,
+      "fingerprint": "8ab7605f068fb5f35b1b863a11cba942ca1d08e622237cb1fd3d2c986622bf3a",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40363,12 +40363,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40377,7 +40377,7 @@
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
       "line": 5877,
-      "fingerprint": "bbd19f1c04c3f3b8396ed8283f7787b3b1441f548899d7ff5be00cda40701078",
+      "fingerprint": "430f504a842fde7066128353268a9a28cc4e4a0e1ff1f1d37b6d8474c755a67a",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40388,12 +40388,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40401,8 +40401,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6128,
-      "fingerprint": "48cbb3063750cb2ee3b6f8075db97b581760abe6ce4a7992c52fce0834604458",
+      "line": 6135,
+      "fingerprint": "453d810a0e25aca3e6e2bbfc2d7322d86d59d9eb5809945dbd62f0b5c8755553",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40413,12 +40413,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40426,8 +40426,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6139,
-      "fingerprint": "9529bc9678c7ea3f9191c90769f94107cfeb29c98498af64b3eb81f3dccef430",
+      "line": 6144,
+      "fingerprint": "f20b1eb8650b383a2e46d990621d39408a03c1bd5c7e9608e4699d19a44e39ed",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40438,12 +40438,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40451,8 +40451,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6148,
-      "fingerprint": "553d7ea82643580d37ab5a89759cdf3916162d533bcd44cdf34ccf4bdad14859",
+      "line": 6149,
+      "fingerprint": "271064a7f8fd42677b9b8f28b5da7f3c53a62de0812a3a2a648c6058dc423030",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40463,37 +40463,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::build_where_condition_for_backend::custom-fragment#23",
-      "path": "crates/reinhardt-db/src/orm/query.rs",
-      "symbol": "QuerySet < T >::build_where_condition_for_backend",
-      "kind": "custom-fragment",
-      "line": 6153,
-      "fingerprint": "5601bdc59dfada6b16f4bc60a64149790ae3ecd522cf8a1c4230a5397e675826",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40502,7 +40477,7 @@
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
       "line": 5882,
-      "fingerprint": "c418d10a76bbd90379ae5b9b9d7bcd3d3b4445bef92d2d211e6d455bc74abc5c",
+      "fingerprint": "d1b6f680dc14307fa8aa2d730e33e60cf7b04017a5315c0af8d0651a8999a1e4",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40513,12 +40488,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40526,8 +40501,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 5887,
-      "fingerprint": "c376536a99dfa396870bc8a764a0f63076f42b7f7514169ad6033ab0f8b00baa",
+      "line": 5974,
+      "fingerprint": "9c5bc261a8da2727a8783b18b777ba617a596d3ee6820a0c9c57e995d69f5f83",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40538,12 +40513,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40551,8 +40526,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 5978,
-      "fingerprint": "0d25ed95af4cb5e790471562d4229c6d36d52f1642a51780a3e184fc1e330e3d",
+      "line": 5983,
+      "fingerprint": "bda3443f63c652a85eebf6956a66ce75b230a876a692933d642862ff43c39997",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40563,12 +40538,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40576,8 +40551,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 5987,
-      "fingerprint": "d9f00dc290346c84ede566d3867dcfe2de3230ccb2867a733a43eb7d744cebed",
+      "line": 5992,
+      "fingerprint": "dbf76a799b88a02a78aed7a24eb07678a065efb7ec1b388146f9a008a3d998bf",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40588,12 +40563,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40601,8 +40576,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 5996,
-      "fingerprint": "2e8d317b8d57a5c088ce2f090e401957cfa5ee44e1f87f0b86a6808caa021038",
+      "line": 6001,
+      "fingerprint": "48c5232cdcbfb3ee96c84f2796e807e96474dc242347293b0ccdaaaf81a27c85",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40613,12 +40588,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40626,8 +40601,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6005,
-      "fingerprint": "d94bdbdf5ab14d9cf06e1112c8f1498ae6fea505829134616064e26d4b372fe1",
+      "line": 6013,
+      "fingerprint": "5087fb165d63c09e9f27d7af042adddc7b55e5122566573c032e0d17b17099c3",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40638,12 +40613,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
@@ -40651,8 +40626,8 @@
       "path": "crates/reinhardt-db/src/orm/query.rs",
       "symbol": "QuerySet < T >::build_where_condition_for_backend",
       "kind": "custom-fragment",
-      "line": 6017,
-      "fingerprint": "08b6b2bbdc65826d1faabd079a6868dba8a2a228c81ac4e16af867f129c07f4a",
+      "line": 6021,
+      "fingerprint": "3340d13b4cf914652397913657a0c9283b0b24dee5634530398f713da820afc9",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -40663,12 +40638,12 @@
       "feature_reachability": [
         "review-required"
       ],
-      "rationale": "Insensitivity lowering now uses the portable typed predicate (#6597). This unchanged custom construction still handles regex/range/array/full-text/JSON/subquery SQL and remains pending; no complete WHERE migration is claimed.",
+      "rationale": "Insensitive matching and inclusive BETWEEN now use typed expressions (#6597, #6598). This unchanged regex/array/full-text/JSON/range-operator/subquery custom construction remains pending; the complete WHERE migration is not claimed.",
       "backends": [
         "review-required"
       ],
       "evidence": [
-        "Reviewed the complete remaining custom construction in build_where_condition_for_backend after the typed insensitive predicate change; native PostgreSQL/MySQL/SQLite lookup and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
+        "Matched the unchanged custom call after removing the Range fragment; reviewed the complete remaining function. Native PostgreSQL/MySQL/SQLite lookup, inclusive-range boundary and transaction regressions pass, including MySQL NO_BACKSLASH_ESCAPES."
       ]
     },
     {
