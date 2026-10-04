@@ -41129,18 +41129,20 @@
       "conditions": [],
       "test_only": false,
       "category": "vendor-administration",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "vendor-administration",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::delete_query::macro-sql-literal#1",
@@ -41152,18 +41154,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::delete_query::macro-sql-literal#2",
@@ -41175,18 +41179,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::delete_with_conn::execution-wrapper#1",
@@ -41230,18 +41236,20 @@
       "conditions": [],
       "test_only": false,
       "category": "vendor-administration",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "vendor-administration",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::ensure_not_locking_without_transaction::sql-literal#1",
@@ -41253,18 +41261,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::explain_with_db::execution-wrapper#1",
@@ -42058,18 +42068,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::validate_select_for_update::sql-literal#1",
@@ -42081,18 +42093,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::validate_select_for_update::sql-literal#2",
@@ -42104,18 +42118,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::validate_select_for_update::sql-literal#3",
@@ -42127,18 +42143,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::validate_select_for_update::sql-literal#4",
@@ -42150,18 +42168,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::validate_select_for_update::sql-literal#5",
@@ -42173,18 +42193,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::validate_select_for_update::sql-literal#6",
@@ -42196,18 +42218,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::validate_select_for_update::sql-literal#7",
@@ -42219,18 +42243,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::validate_select_for_update::sql-literal#8",
@@ -42242,18 +42268,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::validate_select_for_update::sql-literal#9",
@@ -42265,18 +42293,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::QuerySet < T >::value_to_string::possible-inline-render#1",
@@ -42311,18 +42341,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::SelectForUpdate < M , Behavior >::of_model::sql-literal#1",
@@ -42334,18 +42366,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::SelectForUpdate < M , Behavior >::of_relation::sql-literal#1",
@@ -42357,18 +42391,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::SelectForUpdate < M , Blocking >::nowait::sql-literal#1",
@@ -42380,18 +42416,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::SelectForUpdate < M , Blocking >::skip_locked::sql-literal#1",
@@ -42403,18 +42441,20 @@
       "conditions": [],
       "test_only": false,
       "category": "dml",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "dml",
-      "representation": "review-required",
+      "ownership": "non-sql",
+      "status": "excluded",
+      "operation": "not-executed",
+      "representation": "not-executed",
       "feature_reachability": [
-        "review-required"
+        "orm; QuerySet validation, row-lock builder invariants and EXPLAIN output decoding"
       ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "rationale": "Reviewed candidate strings are explicit error/panic/expect messages in QuerySet validation, row-lock builder invariant checks or EXPLAIN JSON decoding. They are not SQL expressions or query arguments; actual locking, DELETE and EXPLAIN statements remain independently audited.",
       "backends": [
-        "review-required"
+        "not-applicable"
       ],
-      "evidence": []
+      "evidence": [
+        "Reviewed complete validation and locking builder bodies, both delete_query panic branches, and the EXPLAIN JSON decoder: each candidate is passed only to an error, panic or expect message. Typed statement construction and executor calls were not excluded by this review."
+      ]
     },
     {
       "id": "crates/reinhardt-db/src/orm/query.rs::filter_lhs_expr::custom-fragment#1",
