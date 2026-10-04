@@ -152,6 +152,9 @@ native values and SQL text across changing signatures, at the cost of statement
 re-preparation and clearing cache entries created by raw queries. Remove the
 bypass only after a driver fix passes changing-signature pool, transaction and
 partial-stream regressions. Transaction and pool guards retain their ownership.
+Component regressions also check INT4-to-INT8 and INT8-to-INT4 transitions with
+native type assertions, values outside the INT4 range, connection reuse after
+dropping a stream with unread rows, and actual INSERT commit/rollback behavior.
 
 Generated transaction methods use the same codecs on the transaction's dedicated
 connection, including write-intent executors and AtomicTransaction forwarding.
