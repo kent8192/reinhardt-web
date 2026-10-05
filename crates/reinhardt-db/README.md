@@ -129,6 +129,10 @@ Low-level database connectivity and connection management:
   - PostgreSQL, MySQL, SQLite support
   - Query execution and schema operations
   - reinhardt-query integration for query building
+  - INSERT builders combine conflict actions with `RETURNING` on PostgreSQL
+    and SQLite, placing conflict actions before `RETURNING` for both VALUES
+    and SELECT sources. MySQL retains `INSERT IGNORE` and
+    `ON DUPLICATE KEY UPDATE` without `RETURNING`.
   - **When to use**: Need direct database access or custom queries
 
 - **`pool` module**: Connection pooling implementation

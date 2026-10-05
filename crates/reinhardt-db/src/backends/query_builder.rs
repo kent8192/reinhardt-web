@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use reinhardt_query::backend::SqlWriter;
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, Expr, ExprTrait, Query, QueryBuilder as RqQueryBuilder, SelectStatement,
 	Value,
@@ -25,6 +26,17 @@ fn quote_ident(name: &str, db_type: DatabaseType) -> String {
 			format!("`{}`", name.replace('`', "``"))
 		}
 	}
+}
+
+fn append_returning_clause(sql: &mut String, columns: &[String], db_type: DatabaseType) {
+	let mut writer = SqlWriter::new();
+	writer.push_keyword("RETURNING");
+	writer.push_space();
+	writer.push_list(columns, ", ", |writer, column| {
+		writer.push_identifier(column, |name| quote_ident(name, db_type));
+	});
+	sql.push(' ');
+	sql.push_str(&writer.into_string());
 }
 
 /// Convert QueryValue to reinhardt-query Value
@@ -406,14 +418,9 @@ impl InsertBuilder {
 			})?;
 		}
 
-		// Add RETURNING clause if supported
-		if let Some(ref cols) = self.returning {
-			let col_refs: Vec<Alias> = cols.iter().map(Alias::new).collect();
-			stmt.returning(col_refs);
-		}
-
 		// Build SQL based on database type
-		let mut sql = match self.backend.database_type() {
+		let db_type = self.backend.database_type();
+		let mut sql = match db_type {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_insert(&stmt).0,
 			DatabaseType::Mysql => MySqlQueryBuilder.build_insert(&stmt).0,
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_insert(&stmt).0,
@@ -425,6 +432,11 @@ impl InsertBuilder {
 			sql = self.apply_new_on_conflict_clause(sql, clause)?;
 		} else if let Some(ref on_conflict) = self.on_conflict {
 			sql = self.apply_on_conflict_clause(sql, on_conflict)?;
+		}
+
+		// PostgreSQL and SQLite require conflict actions before RETURNING.
+		if let Some(ref columns) = self.returning {
+			append_returning_clause(&mut sql, columns, db_type);
 		}
 
 		Ok((sql, self.values.clone()))
@@ -899,18 +911,13 @@ impl InsertFromSelectBuilder {
 			select_sql
 		);
 
-		// Add RETURNING clause if supported
-		if let Some(ref cols) = self.returning {
-			let returning_str = cols
-				.iter()
-				.map(|c| quote_ident(c, db_type))
-				.collect::<Vec<_>>()
-				.join(", ");
-			sql.push_str(&format!(" RETURNING {}", returning_str));
-		}
-
 		if let Some(ref on_conflict) = self.on_conflict {
 			sql = self.apply_on_conflict_clause(sql, on_conflict);
+		}
+
+		// PostgreSQL and SQLite require conflict actions before RETURNING.
+		if let Some(ref columns) = self.returning {
+			append_returning_clause(&mut sql, columns, db_type);
 		}
 
 		(sql, Vec::new())
@@ -2141,7 +2148,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_returning() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2153,9 +2160,11 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
 		let (sql, _) = builder.build().unwrap();
 
-		// Assert - RETURNING should come before ON CONFLICT in reinhardt-query output
-		assert!(sql.contains("RETURNING"));
-		assert!(sql.contains("ON CONFLICT"));
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\") VALUES ($1) ON CONFLICT (\"email\") DO UPDATE SET \"name\" = EXCLUDED.\"name\" RETURNING \"id\", \"created_at\""
+		);
 	}
 
 	#[test]
