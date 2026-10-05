@@ -1211,13 +1211,32 @@ impl SelectBuilder {
 		self
 	}
 
-	/// Performs the limit operation.
+	/// Sets a bound row limit. Negative limits are omitted; zero returns no rows.
 	pub fn limit(mut self, limit: i64) -> Self {
 		self.limit = Some(limit);
 		self
 	}
 
-	/// Builds the final result.
+	/// Builds parameterized SQL and its ordered bind values.
+	///
+	/// The values include the LIMIT after any WHERE arguments. Inline NULL
+	/// expressions do not consume a bind slot.
+	///
+	/// # Example
+	///
+	/// ```no_run
+	/// use std::sync::Arc;
+	/// use reinhardt_db::backends::{DatabaseBackend, QueryValue, SelectBuilder};
+	///
+	/// fn active_users(backend: Arc<dyn DatabaseBackend>) -> (String, Vec<QueryValue>) {
+	///     SelectBuilder::new(backend)
+	///         .columns(vec!["id", "name"])
+	///         .from("users")
+	///         .where_eq("active", true)
+	///         .limit(20)
+	///         .build()
+	/// }
+	/// ```
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
@@ -1245,21 +1264,31 @@ impl SelectBuilder {
 		}
 
 		// Add LIMIT (only apply non-negative values)
-		if let Some(limit) = self.limit
-			&& let Ok(limit_u64) = u64::try_from(limit)
-		{
-			stmt.limit(limit_u64);
+		if let Some(limit) = self.limit.filter(|limit| *limit >= 0) {
+			stmt.limit(limit);
 		}
 
-		// Build parameterized SQL (consistent with InsertBuilder, UpdateBuilder, DeleteBuilder)
-		let sql = match self.backend.database_type() {
-			DatabaseType::Postgres => PostgresQueryBuilder.build_select(&stmt).0,
-			DatabaseType::Mysql => MySqlQueryBuilder.build_select(&stmt).0,
-			DatabaseType::Sqlite => SqliteQueryBuilder.build_select(&stmt).0,
+		let (sql, values) = match self.backend.database_type() {
+			DatabaseType::Postgres => PostgresQueryBuilder.build_select(&stmt),
+			DatabaseType::Mysql => MySqlQueryBuilder.build_select(&stmt),
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_select(&stmt),
 		};
 
-		// Collect parameters
-		let params: Vec<QueryValue> = self.wheres.iter().map(|(_, _, val)| val.clone()).collect();
+		// Retain renderer order, including LIMIT and excluding inline NULLs.
+		// This statement only emits query_value_to_sea_value types and an i64 LIMIT.
+		let params = values
+			.into_iter()
+			.map(|value| match value {
+				Value::Bool(Some(value)) => QueryValue::Bool(value),
+				Value::BigInt(Some(value)) => QueryValue::Int(value),
+				Value::Double(Some(value)) => QueryValue::Float(value),
+				Value::String(Some(value)) => QueryValue::String(*value),
+				Value::Bytes(Some(value)) => QueryValue::Bytes(*value),
+				Value::ChronoDateTimeUtc(Some(value)) => QueryValue::Timestamp(*value),
+				Value::Uuid(Some(value)) => QueryValue::Uuid(*value),
+				_ => unreachable!("SelectBuilder only emits supported non-NULL bind values"),
+			})
+			.collect();
 
 		(sql, params)
 	}

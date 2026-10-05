@@ -1567,17 +1567,171 @@ fn test_select_builder_with_where_clause() {
 }
 
 #[rstest]
-fn test_select_builder_with_limit() {
+#[case::postgres(DatabaseType::Postgres, "SELECT * FROM \"users\" LIMIT $1")]
+#[case::mysql(DatabaseType::Mysql, "SELECT * FROM `users` LIMIT ?")]
+#[case::sqlite(DatabaseType::Sqlite, "SELECT * FROM \"users\" LIMIT ?")]
+fn test_select_builder_with_limit(#[case] database_type: DatabaseType, #[case] expected_sql: &str) {
 	// Arrange
-	let backend = MockBackend::new(DatabaseType::Postgres);
+	let backend = MockBackend::new(database_type);
 
 	// Act
-	let (sql, _) = SelectBuilder::new(backend).from("users").limit(10).build();
+	let (sql, params) = SelectBuilder::new(backend).from("users").limit(10).build();
 
 	// Assert
-	// LIMIT is parameterized as $1 by build_select() (commit 0c337c302)
-	assert!(sql.contains("LIMIT"));
-	assert!(sql.contains("$1"));
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(10)]);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"SELECT * FROM \"users\" WHERE \"active\" = $1 AND \"name\" = $2 LIMIT $3"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"SELECT * FROM `users` WHERE `active` = ? AND `name` = ? LIMIT ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"SELECT * FROM \"users\" WHERE \"active\" = ? AND \"name\" = ? LIMIT ?"
+)]
+fn test_select_builder_limit_follows_where_parameters(
+	#[case] database_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(database_type);
+	let name = "quoted' ? $42";
+
+	// Act
+	let (sql, params) = SelectBuilder::new(backend)
+		.from("users")
+		.where_eq("active", true)
+		.where_eq("name", name)
+		.limit(1)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![
+			QueryValue::Bool(true),
+			QueryValue::String(name.into()),
+			QueryValue::Int(1)
+		]
+	);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"SELECT * FROM \"users\" WHERE \"id\" = $1",
+	" LIMIT $2"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"SELECT * FROM `users` WHERE `id` = ?",
+	" LIMIT ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"SELECT * FROM \"users\" WHERE \"id\" = ?",
+	" LIMIT ?"
+)]
+fn test_select_builder_limit_boundaries(
+	#[case] database_type: DatabaseType,
+	#[case] base_sql: &str,
+	#[case] limit_sql: &str,
+	#[values(None, Some(-1), Some(i64::MIN), Some(0), Some(i64::MAX))] limit: Option<i64>,
+) {
+	// Arrange
+	let mut builder = SelectBuilder::new(MockBackend::new(database_type))
+		.from("users")
+		.where_eq("id", 7_i64);
+	if let Some(limit) = limit {
+		builder = builder.limit(limit);
+	}
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	let (expected_sql, expected_params) = match limit {
+		Some(limit) if limit >= 0 => (
+			format!("{base_sql}{limit_sql}"),
+			vec![QueryValue::Int(7), QueryValue::Int(limit)],
+		),
+		_ => (base_sql.into(), vec![QueryValue::Int(7)]),
+	};
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, expected_params);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"SELECT * FROM \"users\" WHERE \"deleted_at\" = NULL AND \"id\" = $1 LIMIT $2"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"SELECT * FROM `users` WHERE `deleted_at` = NULL AND `id` = ? LIMIT ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"SELECT * FROM \"users\" WHERE \"deleted_at\" = NULL AND \"id\" = ? LIMIT ?"
+)]
+fn test_select_builder_null_does_not_shift_limit_parameters(
+	#[case] database_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(database_type);
+
+	// Act
+	let (sql, params) = SelectBuilder::new(backend)
+		.from("users")
+		.where_eq("deleted_at", QueryValue::Null)
+		.where_eq("id", 7_i64)
+		.limit(1)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(7), QueryValue::Int(1)]);
+}
+
+#[rstest]
+#[case::boolean(QueryValue::Bool(true))]
+#[case::integer(QueryValue::Int(-17))]
+#[case::float(QueryValue::Float(1.25))]
+#[case::string(QueryValue::String("quoted' ? $42".into()))]
+#[case::bytes(QueryValue::Bytes(vec![0, 0x27, 0xff]))]
+#[case::timestamp(QueryValue::Timestamp(chrono::DateTime::from_timestamp(1_700_000_000, 123_456_789).unwrap()))]
+#[case::uuid(QueryValue::Uuid(uuid::Uuid::from_u128(7)))]
+fn test_select_builder_preserves_where_value_types_with_limit(
+	#[case] value: QueryValue,
+	#[values(DatabaseType::Postgres, DatabaseType::Mysql, DatabaseType::Sqlite)]
+	database_type: DatabaseType,
+) {
+	// Arrange
+	let backend = MockBackend::new(database_type);
+	let expected_sql = match database_type {
+		DatabaseType::Postgres => "SELECT * FROM \"users\" WHERE \"payload\" = $1 LIMIT $2",
+		DatabaseType::Mysql => "SELECT * FROM `users` WHERE `payload` = ? LIMIT ?",
+		DatabaseType::Sqlite => "SELECT * FROM \"users\" WHERE \"payload\" = ? LIMIT ?",
+	};
+
+	// Act
+	let (sql, params) = SelectBuilder::new(backend)
+		.from("users")
+		.where_eq("payload", value.clone())
+		.limit(1)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![value, QueryValue::Int(1)]);
 }
 
 #[rstest]

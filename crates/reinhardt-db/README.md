@@ -186,6 +186,10 @@ Low-level database connectivity and connection management:
   - PostgreSQL, MySQL, SQLite support
   - Query execution and schema operations
   - reinhardt-query integration for query building
+  - `SelectBuilder::build()` returns SQL with the renderer's ordered bind values,
+    including non-negative LIMIT values after WHERE arguments. Inline NULLs do
+    not consume bind slots. `fetch_all()` and `fetch_one()` execute this pair;
+    a zero limit returns no rows and negative limits are omitted.
   - INSERT builders combine conflict actions with `RETURNING` on PostgreSQL
     and SQLite, placing conflict actions before `RETURNING` for both VALUES
     and SELECT sources. MySQL retains `INSERT IGNORE` and
