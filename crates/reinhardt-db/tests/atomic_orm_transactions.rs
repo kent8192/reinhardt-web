@@ -553,11 +553,10 @@ async fn verify_atomic_lifecycle(
 		"atomic_tags_id".to_string(),
 	);
 	assert_eq!(committed_relations.count_with_db(connection).await?, 1);
-	assert_eq!(
+	assert!(
 		committed_relations
 			.contains_with_db(connection, committed_tag_id)
-			.await?,
-		true
+			.await?
 	);
 
 	let outer_error = connection
@@ -790,7 +789,7 @@ async fn verify_mysql_generated_id_reloads(
 		.await?;
 	assert_eq!(explicit.id, Some(5));
 	assert_eq!(explicit.title, "explicit-five");
-	assert_eq!(explicit.is_enabled, false);
+	assert!(!explicit.is_enabled);
 
 	let direct = manager
 		.create_with_conn(
@@ -804,7 +803,7 @@ async fn verify_mysql_generated_id_reloads(
 		.await?;
 	assert_eq!(direct.id, Some(10));
 	assert_eq!(direct.title, "direct-generated");
-	assert_eq!(direct.is_enabled, true);
+	assert!(direct.is_enabled);
 	let direct_reloaded = Manager::<GeneratedIdArticle>::new()
 		.get(10)
 		.get_with_db(connection)
@@ -831,7 +830,7 @@ async fn verify_mysql_generated_id_reloads(
 		.await?;
 	assert_eq!(nested.id, Some(11));
 	assert_eq!(nested.title, "nested-generated");
-	assert_eq!(nested.is_enabled, false);
+	assert!(!nested.is_enabled);
 	let nested_reloaded = Manager::<GeneratedIdArticle>::new()
 		.get(generated_id(&nested, "nested generated id")?)
 		.get_with_db(connection)

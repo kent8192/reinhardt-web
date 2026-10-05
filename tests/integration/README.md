@@ -468,6 +468,19 @@ cargo test --test serializer_model_integration_tests
 cargo test --test server_integration_tests
 ```
 
+### Unsigned Composite Keys
+
+The `composite_key_unsigned` target verifies unsigned composite-key binding and
+lookup across the ORM, query builder, and database backends. It covers pooled and
+atomic transaction execution on SQLite, PostgreSQL, and MySQL. PostgreSQL and
+MySQL use disposable Docker containers through the `reinhardt-test` fixtures.
+
+From the project root, enable all three required backend features:
+
+```bash
+cargo test -p reinhardt-integration-tests --features mysql,postgres,sqlite --test composite_key_unsigned -- --test-threads=2
+```
+
 ### Run Specific Tests
 
 ```bash
