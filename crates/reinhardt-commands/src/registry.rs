@@ -48,6 +48,7 @@ impl CommandRegistry {
 		let mut commands: Vec<&str> = self.commands.keys().map(|name| name.as_str()).collect();
 		commands.extend(self.capability_commands.keys().map(String::as_str));
 		commands.sort_unstable();
+		commands.dedup();
 		commands
 	}
 }

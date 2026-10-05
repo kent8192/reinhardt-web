@@ -1,7 +1,7 @@
 //! Migration settings fragment.
 //!
 //! Provides migration dependency resolution configuration independently of
-//! [`CoreSettings`](super::core_settings::CoreSettings).
+//! [`CoreSettings`](crate::settings::core_settings::CoreSettings).
 
 use reinhardt_core::macros::settings;
 use serde::{Deserialize, Serialize};
@@ -9,9 +9,11 @@ use std::collections::HashMap;
 
 /// Configuration used to resolve conditional migration dependencies.
 ///
+/// Native management configuration; absent from the WASM facade (P0).
+///
 /// These values live in the `[migrations]` section of composed project
 /// settings. Keeping them in a dedicated fragment lets migration-aware command
-/// entry points opt in without expanding the public [`CoreSettings`](super::core_settings::CoreSettings)
+/// entry points opt in without expanding the public [`CoreSettings`](crate::settings::core_settings::CoreSettings)
 /// struct.
 #[settings(fragment = true, section = "migrations")]
 #[non_exhaustive]

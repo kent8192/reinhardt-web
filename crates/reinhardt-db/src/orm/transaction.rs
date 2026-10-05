@@ -957,6 +957,59 @@ impl Drop for AtomicTransaction {
 
 #[async_trait::async_trait]
 impl OrmExecutor for AtomicTransaction {
+	async fn fetch_optional_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Option<Row>> {
+		Ok(
+			OrmExecutor::fetch_all_generated_with_context(self, sql, values, context)
+				.await?
+				.into_iter()
+				.next(),
+		)
+	}
+
+	async fn execute_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<QueryResult> {
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		self.executor_mut()?
+			.execute_generated_with_context(sql, values, context)
+			.await
+	}
+
+	async fn fetch_one_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Row> {
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		self.executor_mut()?
+			.fetch_one_generated_with_context(sql, values, context)
+			.await
+	}
+
+	async fn fetch_all_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Vec<Row>> {
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		self.executor_mut()?
+			.fetch_all_generated_with_context(sql, values, context)
+			.await
+	}
+
 	fn backend(&self) -> DatabaseBackend {
 		self.executor_ref()
 			.map(|executor| DatabaseBackend::from(executor.backend()))

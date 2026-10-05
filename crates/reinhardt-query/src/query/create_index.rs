@@ -9,6 +9,7 @@ use crate::{
 };
 
 use super::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter};
+use std::num::NonZeroU32;
 
 /// CREATE INDEX statement builder
 ///
@@ -39,12 +40,14 @@ pub struct CreateIndexStatement {
 
 /// Index column specification
 ///
-/// This struct represents a column in an index, including its name and sort order.
+/// This struct represents a column in an index, including its name, sort order,
+/// and optional MySQL prefix length.
 #[derive(Debug, Clone)]
 pub struct IndexColumn {
 	pub(crate) name: DynIden,
 	pub(crate) order: Option<Order>,
 	pub(crate) operator_class: Option<String>,
+	pub(crate) prefix_length: Option<NonZeroU32>,
 }
 
 /// Index method (PostgreSQL and MySQL)
@@ -193,6 +196,7 @@ impl CreateIndexStatement {
 			name: column.into_iden(),
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 		self
 	}
@@ -207,6 +211,46 @@ impl CreateIndexStatement {
 			name: column.into_iden(),
 			order: None,
 			operator_class: Some(operator_class.into()),
+			prefix_length: None,
+		});
+		self
+	}
+
+	/// Add a column with a MySQL index prefix length.
+	///
+	/// MySQL requires a prefix length when indexing `TEXT` or `BLOB` columns.
+	/// The length counts characters for nonbinary strings and bytes for binary
+	/// strings. A nonzero length is required; the database validates its maximum.
+	///
+	/// This API has P2 parity: native and WASM callers build the same SQL.
+	///
+	/// # Panics
+	///
+	/// Rendering this statement with PostgreSQL or SQLite panics because those
+	/// databases do not support index column prefixes.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::prelude::*;
+	/// use std::num::NonZeroU32;
+	///
+	/// let sql = Query::create_index()
+	///     .name("idx_user")
+	///     .table("audit_events")
+	///     .col_prefix("user", NonZeroU32::new(191).unwrap())
+	///     .to_string(MySqlQueryBuilder);
+	/// assert_eq!(sql, "CREATE INDEX `idx_user` ON `audit_events` (`user`(191))");
+	/// ```
+	pub fn col_prefix<C>(&mut self, column: C, length: NonZeroU32) -> &mut Self
+	where
+		C: IntoIden,
+	{
+		self.columns.push(IndexColumn {
+			name: column.into_iden(),
+			order: None,
+			prefix_length: Some(length),
+			operator_class: None,
 		});
 		self
 	}
@@ -232,6 +276,7 @@ impl CreateIndexStatement {
 			name: column.into_iden(),
 			order: Some(order),
 			operator_class: None,
+			prefix_length: None,
 		});
 		self
 	}

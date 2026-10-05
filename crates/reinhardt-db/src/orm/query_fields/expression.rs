@@ -46,11 +46,15 @@ fn qualify_model_root_in_place(expr: &mut SimpleExpr, root_alias: &str) {
 		| SimpleExpr::WindowNamed {
 			func: expression, ..
 		} => qualify_model_root_in_place(expression, root_alias),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			qualify_model_root_in_place(left, root_alias);
 			qualify_model_root_in_place(right, root_alias);
 		}
-		SimpleExpr::FunctionCall(_, expressions) | SimpleExpr::Tuple(expressions) => {
+		SimpleExpr::FunctionCall(_, expressions)
+		| SimpleExpr::Tuple(expressions)
+		| SimpleExpr::CustomWithExpr(_, expressions) => {
 			for expression in expressions {
 				qualify_model_root_in_place(expression, root_alias);
 			}
@@ -629,12 +633,22 @@ mod tests {
 	use reinhardt_query::prelude::{PostgresQueryBuilder, Query, QueryStatementBuilder};
 
 	#[rstest::rstest]
-	fn escaped_like_qualifies_both_model_operands() {
+	#[case(false, r#"SELECT "root"."name" LIKE "root"."pattern" ESCAPE '\'"#)]
+	#[case(true, r#"SELECT ("root"."name" ILIKE "root"."pattern" ESCAPE '\')"#)]
+	fn escaped_like_qualifies_both_model_operands(
+		#[case] insensitive: bool,
+		#[case] expected: &str,
+	) {
 		// Arrange
-		let expression = SimpleExpr::LikeWithEscape(
+		let operands = (
 			Box::new(Expr::col("name").into()),
 			Box::new(Expr::col("pattern").into()),
 		);
+		let expression = if insensitive {
+			SimpleExpr::InsensitiveLikeWithEscape(operands.0, operands.1)
+		} else {
+			SimpleExpr::LikeWithEscape(operands.0, operands.1)
+		};
 
 		// Act
 		let qualified = qualify_model_root(&expression, "root");
@@ -643,10 +657,7 @@ mod tests {
 			.to_string(PostgresQueryBuilder);
 
 		// Assert
-		assert_eq!(
-			sql,
-			r#"SELECT "root"."name" LIKE "root"."pattern" ESCAPE '\'"#
-		);
+		assert_eq!(sql, expected);
 	}
 
 	#[derive(Clone)]

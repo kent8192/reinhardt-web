@@ -1,6 +1,12 @@
 //! Database audit backend
 //!
 //! This backend stores audit logs in a SQL database.
+//!
+//! Indexed columns remain `TEXT` to preserve existing data. MySQL indexes
+//! prefixes of 64 timestamp characters, 32 event-type characters, and 191 user
+//! characters. User values are not truncated, and filters compare the full value.
+//! Initialization repairs missing indexes on existing tables, accepts existing
+//! indexes on repeated calls, and returns any other index-creation error.
 
 use crate::settings::audit::{AuditBackend, AuditEvent, ChangeRecord, EventFilter, EventType};
 use crate::settings::database_config::validate_database_url_scheme;
@@ -141,32 +147,28 @@ impl DatabaseAuditBackend {
 			.map_err(|e| format!("Failed to create audit_events table: {}", e))?;
 
 		// Create indexes for common queries
-		let idx = Query::create_index()
-			.if_not_exists()
-			.name("idx_events_timestamp")
-			.table(Alias::new("audit_events"))
-			.col(Alias::new("timestamp"))
-			.to_owned();
-		let idx_sql = self.build_index_sql(&idx);
-		let _ = sqlx::query(&idx_sql).execute(self.pool.as_ref()).await;
-
-		let idx = Query::create_index()
-			.if_not_exists()
-			.name("idx_events_type")
-			.table(Alias::new("audit_events"))
-			.col(Alias::new("event_type"))
-			.to_owned();
-		let idx_sql = self.build_index_sql(&idx);
-		let _ = sqlx::query(&idx_sql).execute(self.pool.as_ref()).await;
-
-		let idx = Query::create_index()
-			.if_not_exists()
-			.name("idx_events_user")
-			.table(Alias::new("audit_events"))
-			.col(Alias::new("user"))
-			.to_owned();
-		let idx_sql = self.build_index_sql(&idx);
-		let _ = sqlx::query(&idx_sql).execute(self.pool.as_ref()).await;
+		for (name, column, prefix_length) in [
+			("idx_events_timestamp", "timestamp", 64),
+			("idx_events_type", "event_type", 32),
+			("idx_events_user", "user", 191),
+		] {
+			let mut idx = Query::create_index();
+			idx.if_not_exists()
+				.name(name)
+				.table(Alias::new("audit_events"));
+			if self.detect_backend() == "mysql" {
+				idx.col_prefix(
+					Alias::new(column),
+					std::num::NonZeroU32::new(prefix_length).unwrap(),
+				);
+			} else {
+				idx.col(Alias::new(column));
+			}
+			let idx_sql = self.build_index_sql(&idx);
+			crate::settings::database_index::create_index(self.pool.as_ref(), &idx_sql)
+				.await
+				.map_err(|e| format!("Failed to create audit index {}: {}", name, e))?;
+		}
 
 		Ok(())
 	}

@@ -148,7 +148,6 @@ where
 }
 
 /// Retain legacy array variants when no element is NULL.
-#[cfg(any(feature = "postgres", feature = "orm"))]
 pub(crate) fn array_query_value<T>(
 	values: Option<Vec<Option<T>>>,
 	non_nullable: impl FnOnce(Vec<T>) -> QueryValue,
@@ -664,6 +663,73 @@ fn validate_savepoint_name(name: &str) -> Result<(), String> {
 /// maintains connection affinity.
 #[async_trait::async_trait]
 pub trait TransactionExecutor: Send + Sync {
+	/// Native generated-value row dispatch on the dedicated connection.
+	#[doc(hidden)]
+	async fn __fetch_one_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		backend: DatabaseType,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Row> {
+		let params =
+			super::generated::legacy_values(values, super::generated::backend_name(backend))?;
+		self.fetch_one_with_context(sql, params, context).await
+	}
+
+	/// Native generated-value row dispatch on the dedicated connection.
+	#[doc(hidden)]
+	async fn __fetch_all_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		backend: DatabaseType,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Vec<Row>> {
+		let params =
+			super::generated::legacy_values(values, super::generated::backend_name(backend))?;
+		self.fetch_all_with_context(sql, params, context).await
+	}
+
+	/// Preserve native renderer arguments and structural operation context.
+	#[doc(hidden)]
+	async fn execute_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<QueryResult> {
+		let backend = self.backend();
+		self.__execute_generated(sql, values, backend, context)
+			.await
+	}
+
+	/// Preserve native renderer arguments and structural operation context.
+	#[doc(hidden)]
+	async fn fetch_one_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Row> {
+		let backend = self.backend();
+		self.__fetch_one_generated(sql, values, backend, context)
+			.await
+	}
+
+	/// Preserve native renderer arguments and structural operation context.
+	#[doc(hidden)]
+	async fn fetch_all_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Vec<Row>> {
+		let backend = self.backend();
+		self.__fetch_all_generated(sql, values, backend, context)
+			.await
+	}
+
 	/// Return the database backend used by this transaction executor.
 	///
 	/// PostgreSQL is retained as the compatibility default for executors that
@@ -694,6 +760,20 @@ pub trait TransactionExecutor: Send + Sync {
 	/// Returns whether contextual pgvector error hints are supported.
 	fn supports_pgvector_error_hints(&self) -> bool {
 		false
+	}
+
+	/// Internal generated-SQL dispatch on this transaction's dedicated connection.
+	#[doc(hidden)]
+	async fn __execute_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		backend: DatabaseType,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<QueryResult> {
+		let params =
+			super::generated::legacy_values(values, super::generated::backend_name(backend))?;
+		self.execute_with_context(sql, params, context).await
 	}
 
 	/// Execute a query that modifies the database within the transaction

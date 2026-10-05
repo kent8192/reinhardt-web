@@ -607,6 +607,12 @@ impl DatabaseConnection {
 	}
 
 	/// Connects to a SQLite database at the given URL.
+	///
+	/// Absolute Unix URLs such as `sqlite:///tmp/example.sqlite` preserve the
+	/// filesystem's leading slash. Relative paths in `sqlite://example.sqlite`,
+	/// `sqlite:example.sqlite`, or a bare filename resolve against the current
+	/// working directory. Missing parent directories and database files are
+	/// created automatically. Use `sqlite::memory:` for an in-memory database.
 	#[cfg(feature = "sqlite")]
 	pub async fn connect_sqlite(url: &str) -> Result<Self> {
 		use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -633,7 +639,14 @@ impl DatabaseConnection {
 		// Extract file path from URL and convert to absolute path
 		let file_path = if url.starts_with("sqlite:///") {
 			// Absolute path: sqlite:///path/to/db.sqlite3
-			url.trim_start_matches("sqlite:///").to_string()
+			// Unix URLs retain the filesystem slash; Windows drive-letter URLs
+			// keep the existing sqlite:///C:/path interpretation.
+			let prefix = if cfg!(windows) {
+				"sqlite:///"
+			} else {
+				"sqlite://"
+			};
+			url.trim_start_matches(prefix).to_string()
 		} else if url.starts_with("sqlite://") {
 			// Relative path: sqlite://path/to/db.sqlite3
 			// Convert to absolute path
@@ -710,10 +723,10 @@ impl DatabaseConnection {
 			})?;
 		}
 
-		// Use absolute path with sqlite:/// format
+		// The normalized path already contains its filesystem root.
 		// On Windows, we need to handle the path separator
 		let path_str = normalized_path.to_string_lossy().replace('\\', "/");
-		let absolute_url = format!("sqlite:///{}", path_str);
+		let absolute_url = format!("sqlite://{path_str}");
 
 		// Use SqliteConnectOptions with create_if_missing enabled
 		let options = SqliteConnectOptions::from_str(&absolute_url)
@@ -864,6 +877,33 @@ impl DatabaseConnection {
 		})?;
 
 		Ok(db_config.to_url())
+	}
+
+	#[cfg(any(feature = "orm", feature = "associations"))]
+	pub(crate) async fn execute_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<super::types::QueryResult> {
+		self.backend.__execute_generated(sql, values).await
+	}
+
+	#[cfg(feature = "orm")]
+	pub(crate) async fn fetch_one_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<super::types::Row> {
+		self.backend.__fetch_one_generated(sql, values).await
+	}
+
+	#[cfg(feature = "orm")]
+	pub(crate) async fn fetch_all_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Vec<super::types::Row>> {
+		self.backend.__fetch_all_generated(sql, values).await
 	}
 
 	/// Executes the operation.

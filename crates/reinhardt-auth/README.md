@@ -899,6 +899,16 @@ let rotation_manager = TokenRotationManager::new(blacklist, refresh_store);
 let new_token = rotation_manager.rotate_token("old_refresh_token", "user123").await?;
 ```
 
+### Token Storage
+
+`DatabaseTokenStorage` persists `StoredToken` values in PostgreSQL when `database`
+and either `token` or `jwt` are enabled. Call `initialize()` before storing tokens.
+Tokens support an optional expiration timestamp and string metadata, stored as
+JSONB, including an empty metadata map.
+
+Storing an existing token replaces its expiration and metadata while preserving
+its user association. Setting `expires_at` to `None` removes an existing expiration.
+
 ### Remote User Authentication
 
 #### Header-Based Authentication

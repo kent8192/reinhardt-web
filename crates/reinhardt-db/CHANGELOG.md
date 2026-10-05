@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Preserve targetless SQLite `ON CONFLICT DO UPDATE` in value and SELECT INSERT
+  builders instead of silently issuing an ordinary INSERT. Targetless updates
+  require SQLite 3.35.0 or later. Preserve `RETURNING` after the conflict action
+  and disambiguate targetless SELECT sources, including compound queries.
+
 - Preserve NULL element positions when decoding supported PostgreSQL scalar
   arrays, including the distinction between SQL NULL and empty arrays.
 - Preserve unsigned composite primary keys instead of wrapping to a signed key

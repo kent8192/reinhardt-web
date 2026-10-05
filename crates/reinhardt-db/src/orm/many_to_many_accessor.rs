@@ -219,7 +219,7 @@ where
 			.to_owned();
 
 		let (sql, values) = build_insert_sql(&query, conn.backend());
-		conn.execute(&sql, super::execution::convert_values(values))
+		conn.execute_generated_with_context(&sql, values, None)
 			.await?;
 
 		Ok(())
@@ -273,7 +273,7 @@ where
 			.to_owned();
 
 		let (sql, values) = build_delete_sql(&query, conn.backend());
-		conn.execute(&sql, super::execution::convert_values(values))
+		conn.execute_generated_with_context(&sql, values, None)
 			.await?;
 
 		Ok(())
@@ -389,9 +389,10 @@ where
 		let query = query.to_owned();
 		let (sql, values) = build_select_sql(&query, conn.backend());
 		let params = value_samples(&values);
-		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = conn.fetch_all(&sql, query_values).await;
+		let query_result = conn
+			.fetch_all_generated_with_context(&sql, values, None)
+			.await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -491,9 +492,10 @@ where
 		let query = query.to_owned();
 		let (sql, values) = build_select_sql(&query, conn.backend());
 		let params = value_samples(&values);
-		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = conn.fetch_all(&sql, query_values).await;
+		let query_result = conn
+			.fetch_all_generated_with_context(&sql, values, None)
+			.await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -551,7 +553,7 @@ where
 			.to_owned();
 
 		let (sql, values) = build_delete_sql(&query, conn.backend());
-		conn.execute(&sql, super::execution::convert_values(values))
+		conn.execute_generated_with_context(&sql, values, None)
 			.await?;
 
 		Ok(())
@@ -718,9 +720,10 @@ where
 
 		let (sql, values) = build_select_sql(&query, conn.backend());
 		let params = value_samples(&values);
-		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = conn.fetch_all(&sql, query_values).await;
+		let query_result = conn
+			.fetch_all_generated_with_context(&sql, values, None)
+			.await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {

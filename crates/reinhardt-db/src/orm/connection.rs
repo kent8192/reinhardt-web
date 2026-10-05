@@ -292,6 +292,74 @@ pub trait OrmExecutor: Send {
 		None
 	}
 
+	/// Dispatch renderer values without discarding their native type.
+	#[doc(hidden)]
+	async fn execute_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => "postgres",
+			DatabaseBackend::MySql => "mysql",
+			DatabaseBackend::Sqlite => "sqlite",
+		};
+		let params = crate::backends::generated::legacy_values(values, backend)?;
+		self.execute_with_context(sql, params, context).await
+	}
+
+	/// Dispatch renderer values without discarding their native type.
+	#[doc(hidden)]
+	async fn fetch_one_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => "postgres",
+			DatabaseBackend::MySql => "mysql",
+			DatabaseBackend::Sqlite => "sqlite",
+		};
+		let params = crate::backends::generated::legacy_values(values, backend)?;
+		self.fetch_one_with_context(sql, params, context).await
+	}
+
+	/// Dispatch renderer values without discarding their native type.
+	#[doc(hidden)]
+	async fn fetch_all_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => "postgres",
+			DatabaseBackend::MySql => "mysql",
+			DatabaseBackend::Sqlite => "sqlite",
+		};
+		let params = crate::backends::generated::legacy_values(values, backend)?;
+		self.fetch_all_with_context(sql, params, context).await
+	}
+
+	/// Dispatch an optional generated row with structural operation context.
+	#[doc(hidden)]
+	async fn fetch_optional_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		let backend = match self.backend() {
+			DatabaseBackend::Postgres => "postgres",
+			DatabaseBackend::MySql => "mysql",
+			DatabaseBackend::Sqlite => "sqlite",
+		};
+		let params = crate::backends::generated::legacy_values(values, backend)?;
+		self.fetch_optional_with_context(sql, params, context).await
+	}
+
 	/// Executes a SQL statement and preserves backend-specific result metadata.
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult>;
 
@@ -583,6 +651,73 @@ impl DatabaseConnection {
 
 #[async_trait]
 impl OrmExecutor for DatabaseConnection {
+	async fn fetch_optional_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		Ok(self
+			.fetch_all_generated_with_context(sql, values, context)
+			.await?
+			.into_iter()
+			.next())
+	}
+
+	async fn execute_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let values = super::execution::prepare_generated_values(values, self.backend())?;
+		let owner = self.resolve()?;
+		let result = owner.execute_generated(sql, values).await;
+		if self.backend() == DatabaseBackend::Postgres && self.supports_pgvector_error_hints() {
+			result.map_err(|error| {
+				crate::backends::error::decorate_error_with_pgvector_context(error, context)
+			})
+		} else {
+			result
+		}
+	}
+
+	async fn fetch_one_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let values = super::execution::prepare_generated_values(values, self.backend())?;
+		let owner = self.resolve()?;
+		let result = owner.fetch_one_generated(sql, values).await;
+		if self.backend() == DatabaseBackend::Postgres && self.supports_pgvector_error_hints() {
+			result.map_err(|error| {
+				crate::backends::error::decorate_error_with_pgvector_context(error, context)
+			})
+		} else {
+			result
+		}
+	}
+
+	async fn fetch_all_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let values = super::execution::prepare_generated_values(values, self.backend())?;
+		let owner = self.resolve()?;
+		let result = owner.fetch_all_generated(sql, values).await;
+		if self.backend() == DatabaseBackend::Postgres && self.supports_pgvector_error_hints() {
+			result.map_err(|error| {
+				crate::backends::error::decorate_error_with_pgvector_context(error, context)
+			})
+		} else {
+			result
+		}
+	}
+
 	fn backend(&self) -> DatabaseBackend {
 		self.resolve()
 			.map(|owner| DatabaseBackend::from(owner.database_type()))

@@ -7,12 +7,13 @@ use crate::{
 use async_trait::async_trait;
 use reinhardt_conf::MigrationSettings;
 use reinhardt_db::migrations::{
-	DatabaseMigrationRecorder, DependencyResolutionContext, FilesystemSource, MigrationCatalog,
-	MigrationKey, MigrationSnapshot,
+	DatabaseMigrationRecorder, DependencyResolutionContext, DependencyResolver, FilesystemSource,
+	Migration, MigrationCatalog, MigrationDependency, MigrationKey, MigrationSnapshot,
+	MigrationSource,
 };
 use std::collections::BTreeMap;
 use std::io::{self, Write as _};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 const MIGRATION_FEATURES_OPTION: &str = "__reinhardt_migration_features";
@@ -356,5 +357,58 @@ impl BaseCommand for ShowMigrationsCommand {
 			.map_err(CommandError::IoError)
 			.map_err(|error| with_command_context(error, &command_context))?;
 		Ok(())
+	}
+}
+
+pub(crate) struct CommandMigrationSource {
+	source: FilesystemSource,
+	context: DependencyResolutionContext,
+}
+
+impl CommandMigrationSource {
+	pub(crate) fn new(path: &Path, ctx: &CommandContext) -> Self {
+		Self {
+			source: FilesystemSource::new(path),
+			context: migration_dependency_context(ctx),
+		}
+	}
+}
+
+#[async_trait]
+impl MigrationSource for CommandMigrationSource {
+	async fn all_migrations(&self) -> reinhardt_db::migrations::Result<Vec<Migration>> {
+		let mut migrations = self.source.all_migrations().await?;
+		let mut context = self.context.clone();
+		if context.installed_apps.is_empty() {
+			// Empty installed-app defaults retain automatic discovery.
+			context.installed_apps.extend(
+				migrations
+					.iter()
+					.map(|migration| migration.app_label.clone()),
+			);
+		}
+		let resolver = DependencyResolver::new(&context);
+		for migration in &mut migrations {
+			let dependencies = migration
+				.swappable_dependencies
+				.iter()
+				.cloned()
+				.map(MigrationDependency::Swappable)
+				.chain(
+					migration
+						.optional_dependencies
+						.iter()
+						.cloned()
+						.map(MigrationDependency::Optional),
+				);
+			for dependency in dependencies {
+				if let Some(resolved) = resolver.resolve(&dependency)
+					&& !migration.dependencies.contains(&resolved)
+				{
+					migration.dependencies.push(resolved);
+				}
+			}
+		}
+		Ok(migrations)
 	}
 }

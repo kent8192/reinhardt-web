@@ -381,7 +381,9 @@ fn expression_has_window_feature(
 		| SimpleExpr::AsEnum(_, func)
 		| SimpleExpr::ExprAlias(func, _)
 		| SimpleExpr::Cast(func, _) => expression_has_window_feature(func, predicate),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			expression_has_window_feature(left, predicate)
 				|| expression_has_window_feature(right, predicate)
 		}
@@ -507,7 +509,7 @@ fn expression_matches(expression: &SimpleExpr, predicate: &impl Fn(&SimpleExpr) 
 				})
 		}
 			SimpleExpr::SubQuery(_, query) => statement_has_expression(query, predicate),
-			SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+			SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) | SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 				expression_matches(left, predicate) || expression_matches(right, predicate)
 			}
 			SimpleExpr::FunctionCall(_, expressions)
@@ -558,7 +560,7 @@ fn expression_has_select(
 		| SimpleExpr::WindowNamed {
 			func: expression, ..
 		} => expression_has_select(expression, predicate),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) | SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			expression_has_select(left, predicate) || expression_has_select(right, predicate)
 		}
 		SimpleExpr::FunctionCall(_, expressions)
@@ -660,9 +662,9 @@ fn unsafe_expr(expression: &SimpleExpr) -> bool {
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => unsafe_expr(expression),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
-			unsafe_expr(left) || unsafe_expr(right)
-		}
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => unsafe_expr(left) || unsafe_expr(right),
 		SimpleExpr::Tuple(expressions) => expressions.iter().any(unsafe_expr),
 		SimpleExpr::Case(statement) => {
 			statement
@@ -839,7 +841,9 @@ fn quote_mysql_like_template_expr(expression: &mut SimpleExpr) {
 		| SimpleExpr::WindowNamed {
 			func: expression, ..
 		} => quote_mysql_like_template_expr(expression),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			quote_mysql_like_template_expr(left);
 			quote_mysql_like_template_expr(right);
 		}

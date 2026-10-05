@@ -32,6 +32,7 @@
 //!
 //! ### DDL (Data Definition Language)
 //! - **Typed generated columns** - DDL-safe [`types::SchemaExpr`] builders for generated column bodies
+//! - **Indexes** - CREATE/DROP INDEX, including typed MySQL `TEXT`/`BLOB` column prefixes
 //! - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
 //! - **Sequence operations** - CREATE/ALTER/DROP SEQUENCE (PostgreSQL, CockroachDB)
 //! - **Database operations** - CREATE/DROP DATABASE (PostgreSQL, MySQL, CockroachDB); ALTER DATABASE (PostgreSQL, CockroachDB)
@@ -50,6 +51,8 @@
 //! - **SQLite** - DML and basic DDL operations
 //! - **CockroachDB** - Full PostgreSQL compatibility with distributed database features
 //! - **Parameterized queries** - Automatic placeholder generation (`$1` for PostgreSQL, `?` for MySQL/SQLite)
+//! - **Portable escaped case-insensitive matching** - `ExprTrait::ilike_with_escape`
+//!   uses ILIKE on PostgreSQL/CockroachDB and LOWER/LIKE on MySQL/SQLite.
 //!
 //! ## Architecture
 //!
@@ -154,6 +157,27 @@
 //! // LIKE pattern matching
 //! let like_expr = Expr::col("email").like("%@example.com");
 //! ```
+//!
+//! Nested typed arithmetic retains the AST's grouping, including a lower
+//! precedence operand and a right operand with equal precedence. Parentheses
+//! do not change the order of bound values. For example, adding a fee before
+//! multiplying by the quantity works with both MySQL and SQLite:
+//!
+//! ```rust
+//! use reinhardt_query::{Expr, ExprTrait, MySqlQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder};
+//!
+//! let query = Query::select()
+//!     .expr(Expr::col("price").add(Expr::col("fee")).mul(Expr::col("quantity")))
+//!     .to_owned();
+//!
+//! assert_eq!(query.to_string(MySqlQueryBuilder), "SELECT (`price` + `fee`) * `quantity`");
+//! assert_eq!(query.to_string(SqliteQueryBuilder), "SELECT (\"price\" + \"fee\") * \"quantity\"");
+//! ```
+//!
+//! When a grouped arithmetic operand contains a possible `--` line comment,
+//! MySQL and SQLite insert a newline before the closing parenthesis so the
+//! comment cannot consume it. MySQL also recognizes possible `#` line comments.
+//! This also covers nested custom SQL expressions.
 //!
 //! ## DDL Examples
 //!

@@ -333,6 +333,62 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case::citext(crate::migrations::FieldType::CIText, "CITEXT")]
+	#[case::hstore(crate::migrations::FieldType::HStore, "HSTORE")]
+	#[case::range(crate::migrations::FieldType::Int4Range, "INT4RANGE")]
+	#[case::nested_array(
+		crate::migrations::FieldType::Array(Box::new(crate::migrations::FieldType::Array(
+			Box::new(crate::migrations::FieldType::CIText)
+		))),
+		"CITEXT[][]"
+	)]
+	#[tokio::test]
+	#[serial(filesystem_source)]
+	async fn test_filesystem_alter_column_restores_historical_type(
+		#[case] field_type: crate::migrations::FieldType,
+		#[case] sql_type: &str,
+	) {
+		use crate::migrations::{ColumnDefinition, Operation, ProjectState, SqlDialect};
+		use quote::ToTokens;
+
+		// Arrange
+		let temp_dir = TempDir::new().unwrap();
+		let operation = Operation::AlterColumn {
+			table: "example".into(),
+			column: "value".into(),
+			old_definition: Some(ColumnDefinition::new("value", field_type)),
+			new_definition: ColumnDefinition::new("value", crate::migrations::FieldType::Text),
+			mysql_options: None,
+		};
+		let tokens = operation.to_token_stream();
+		create_migration_file(
+			temp_dir.path(),
+			"probe",
+			"0002_types",
+			&format!(
+				"fn migration() -> Migration {{ Migration {{ dependencies: vec![], operations: vec![{tokens}] }} }}"
+			),
+		);
+		let source = FilesystemSource::new(temp_dir.path());
+
+		// Act
+		let migration = source.get_migration("probe", "0002_types").await.unwrap();
+		let statements = migration.operations[0]
+			.to_reverse_sql(&SqlDialect::Postgres, &ProjectState::new())
+			.unwrap();
+
+		// Assert
+		assert_eq!(migration.operations, vec![operation]);
+		assert_eq!(
+			statements,
+			Some(vec![
+				format!("ALTER TABLE example ALTER COLUMN value TYPE {sql_type};"),
+				"ALTER TABLE example ALTER COLUMN value DROP NOT NULL;".into(),
+			])
+		);
+	}
+
+	#[rstest]
 	#[tokio::test]
 	#[serial(filesystem_source)]
 	async fn test_filesystem_source_new() {

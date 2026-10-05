@@ -174,9 +174,7 @@ impl TestSavepoint {
 // raw string interpolation to prevent SQL injection.
 /// Test database utilities for common operations.
 pub mod utils {
-	use reinhardt_query::{
-		Alias, ColumnRef, Expr, Iden, PostgresQueryBuilder, Query, QueryStatementBuilder,
-	};
+	use reinhardt_query::{Alias, Expr, Iden, PostgresQueryBuilder, Query, QueryStatementBuilder};
 
 	/// Quote an identifier for PostgreSQL using `reinhardt_query::Iden`.
 	fn quote_ident(name: &str) -> String {
@@ -191,33 +189,18 @@ pub mod utils {
 	/// This is useful for cleaning up between tests when not using
 	/// transaction rollback.
 	///
-	/// Note: reinhardt-query does not natively support TRUNCATE, so this uses
-	/// properly quoted identifiers via `Alias`.
+	/// Builds a PostgreSQL `TRUNCATE TABLE` statement with `RESTART IDENTITY`
+	/// and `CASCADE`. Returns an empty string when `tables` is empty.
 	pub fn truncate_tables_sql(tables: &[&str]) -> String {
 		if tables.is_empty() {
 			return String::new();
 		}
 
-		let quoted_tables: Vec<String> = tables
-			.iter()
-			.map(|t| {
-				// Use a SELECT query to get the properly quoted identifier
-				let query = Query::select()
-					.column(ColumnRef::asterisk())
-					.from(Alias::new(*t))
-					.to_string(PostgresQueryBuilder);
-				// Extract quoted table name from "SELECT * FROM <table>"
-				query
-					.strip_prefix("SELECT * FROM ")
-					.unwrap_or(t)
-					.to_string()
-			})
-			.collect();
-
-		format!(
-			"TRUNCATE TABLE {} RESTART IDENTITY CASCADE",
-			quoted_tables.join(", ")
-		)
+		Query::truncate_table()
+			.tables(tables.iter().copied().map(Alias::new))
+			.restart_identity()
+			.cascade()
+			.to_string(PostgresQueryBuilder)
 	}
 
 	/// Generate a DELETE statement for cleaning up a table.
@@ -375,42 +358,66 @@ impl<F: FnOnce()> Drop for CleanupGuard<F> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::*;
 
-	#[test]
-	fn test_truncate_tables_sql() {
-		let sql = utils::truncate_tables_sql(&["users", "posts"]);
-		assert!(sql.contains("TRUNCATE TABLE"));
-		assert!(sql.contains("\"users\""));
-		assert!(sql.contains("\"posts\""));
-		assert!(sql.contains("CASCADE"));
+	#[rstest]
+	#[case::empty(&[], "")]
+	#[case::single_table(&["users"], r#"TRUNCATE TABLE "users" RESTART IDENTITY CASCADE"#)]
+	#[case::multiple_tables(
+		&["users", "posts"],
+		r#"TRUNCATE TABLE "users", "posts" RESTART IDENTITY CASCADE"#
+	)]
+	#[case::table_order(
+		&["posts", "users", "comments"],
+		r#"TRUNCATE TABLE "posts", "users", "comments" RESTART IDENTITY CASCADE"#
+	)]
+	#[case::special_identifiers(
+		&["user-data", "user data", "schema.table", "select"],
+		r#"TRUNCATE TABLE "user-data", "user data", "schema.table", "select" RESTART IDENTITY CASCADE"#
+	)]
+	#[case::quoted_identifiers(
+		&["user\"data", "\"already_quoted\""],
+		r#"TRUNCATE TABLE "user""data", """already_quoted""" RESTART IDENTITY CASCADE"#
+	)]
+	#[case::unicode_identifiers(
+		&["利用者", "café"],
+		r#"TRUNCATE TABLE "利用者", "café" RESTART IDENTITY CASCADE"#
+	)]
+	fn test_truncate_tables_sql(#[case] tables: &[&str], #[case] expected: &str) {
+		let sql = utils::truncate_tables_sql(tables);
+		assert_eq!(sql, expected);
 	}
 
-	#[test]
-	fn test_truncate_tables_sql_empty() {
-		let sql = utils::truncate_tables_sql(&[]);
-		assert!(sql.is_empty());
+	#[rstest]
+	#[case::without_where(None, r#"DELETE FROM "users""#)]
+	#[case::simple_where(Some("id = 1"), r#"DELETE FROM "users" WHERE id = 1"#)]
+	#[case::raw_subquery(
+		Some("id IN (SELECT user_id FROM posts WHERE published = TRUE)"),
+		r#"DELETE FROM "users" WHERE id IN (SELECT user_id FROM posts WHERE published = TRUE)"#
+	)]
+	fn test_delete_from_sql(#[case] where_clause: Option<&str>, #[case] expected: &str) {
+		let sql = utils::delete_from_sql("users", where_clause);
+		assert_eq!(sql, expected);
 	}
 
-	#[test]
-	fn test_delete_from_sql() {
-		let sql = utils::delete_from_sql("users", None);
-		assert_eq!(sql, "DELETE FROM \"users\"");
-
-		let sql_with_where = utils::delete_from_sql("users", Some("id = 1"));
-		assert_eq!(sql_with_where, "DELETE FROM \"users\" WHERE id = 1");
-	}
-
-	#[test]
-	fn test_insert_test_data_sql() {
-		let sql = utils::insert_test_data_sql(
-			"users",
-			&["name", "email"],
-			&["'Alice'", "'alice@example.com'"],
-		);
-		assert!(sql.contains("INSERT INTO \"users\""));
-		assert!(sql.contains("\"name\""));
-		assert!(sql.contains("\"email\""));
-		assert!(sql.contains("'Alice'"));
+	#[rstest]
+	#[case::string_literals(
+		&["name", "email"],
+		&["'Alice'", "'alice@example.com'"],
+		r#"INSERT INTO "users" ("name", "email") VALUES ('Alice', 'alice@example.com')"#
+	)]
+	#[case::raw_expressions(
+		&["created_at", "counter"],
+		&["NOW()", "1 + 2"],
+		r#"INSERT INTO "users" ("created_at", "counter") VALUES (NOW(), 1 + 2)"#
+	)]
+	fn test_insert_test_data_sql(
+		#[case] columns: &[&str],
+		#[case] values: &[&str],
+		#[case] expected: &str,
+	) {
+		let sql = utils::insert_test_data_sql("users", columns, values);
+		assert_eq!(sql, expected);
 	}
 
 	#[test]

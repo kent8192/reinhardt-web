@@ -208,7 +208,9 @@ fn count_unqualified_columns(expression: &SimpleExpr) -> Option<usize> {
 	match expression {
 		SimpleExpr::Column(reinhardt_query::prelude::ColumnRef::Column(_)) => Some(1),
 		SimpleExpr::Column(_) | SimpleExpr::TableColumn(_, _) => Some(0),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			Some(count_unqualified_columns(left)? + count_unqualified_columns(right)?)
 		}
 		SimpleExpr::Unary(_, value)
@@ -292,7 +294,9 @@ fn qualify_related_columns(expression: &mut SimpleExpr, alias: &str) -> bool {
 			true
 		}
 		SimpleExpr::Column(_) | SimpleExpr::TableColumn(_, _) => true,
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			qualify_related_columns(left, alias) && qualify_related_columns(right, alias)
 		}
 		SimpleExpr::Unary(_, value)
