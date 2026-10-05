@@ -5118,6 +5118,7 @@ mod tests {
 	#[case(&["--verbosity"], 1)]
 	#[case(&["--verbosity", "--verbosity"], 2)]
 	#[case(&["-vv", "--verbosity"], 3)]
+	#[case(&["--verbosity=3"], 3)]
 	fn capability_parser_counts_verbosity_without_consuming_custom_command(
 		#[case] flags: &[&str],
 		#[case] expected: u8,
@@ -5144,7 +5145,7 @@ mod tests {
 
 	#[cfg(feature = "contract")]
 	#[rstest]
-	#[case("--verbosity=3")]
+	#[case("--verbosity=invalid")]
 	#[case("--unknown-option")]
 	fn capability_parser_rejects_invalid_global_options(#[case] flag: &str) {
 		// Arrange
