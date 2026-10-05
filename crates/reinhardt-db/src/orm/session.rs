@@ -4109,7 +4109,7 @@ mod tests {
 
 		let loaded: JsonScalarModel = session.get(1).await.unwrap().unwrap();
 		assert_eq!(loaded.name_json.as_inner(), "draft");
-		assert_eq!(*loaded.flag_json.as_inner(), true);
+		assert!(*loaded.flag_json.as_inner());
 		assert_eq!(loaded.external_id, "external-1");
 		assert_eq!(
 			loaded.optional_json.unwrap().as_inner(),

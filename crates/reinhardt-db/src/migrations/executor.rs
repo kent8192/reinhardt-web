@@ -4544,12 +4544,11 @@ mod rollback_orchestration_tests {
 		// Assert
 		assert_eq!(result.applied, vec![add_column.id()]);
 		let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
-		assert_eq!(
-			recorder
+		assert!(
+			!recorder
 				.is_applied(&replacement.app_label, &replacement.name)
 				.await
-				.expect("query replacement recorder state"),
-			false
+				.expect("query replacement recorder state")
 		);
 	}
 
@@ -5075,7 +5074,7 @@ mod rollback_orchestration_tests {
 			.await
 			.expect("read recreated index")
 			.is_some();
-		assert_eq!(index_exists, true);
+		assert!(index_exists);
 	}
 
 	#[rstest]

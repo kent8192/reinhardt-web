@@ -3340,7 +3340,7 @@ mod tests {
 			.expect("schema should be introspected");
 
 		// Assert
-		assert_eq!(schema.tables["users"].columns["id"].auto_increment, false);
+		assert!(!schema.tables["users"].columns["id"].auto_increment);
 	}
 
 	#[cfg(feature = "sqlite")]
@@ -3367,7 +3367,7 @@ mod tests {
 			.expect("schema should be introspected");
 
 		// Assert
-		assert_eq!(schema.tables["users"].columns["id"].auto_increment, true);
+		assert!(schema.tables["users"].columns["id"].auto_increment);
 	}
 
 	#[cfg(feature = "sqlite")]

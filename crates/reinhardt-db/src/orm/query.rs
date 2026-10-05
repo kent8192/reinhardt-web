@@ -12993,7 +12993,7 @@ mod tests {
 
 	#[rstest]
 	fn model_shaped_session_accepts_prefetch_plan() {
-		let queryset = QuerySet::<TestUser>::new().prefetch_related(&["posts"]);
+		let queryset = QuerySet::<TestUser>::new().prefetch_related(["posts"]);
 
 		let statement = queryset
 			.build_full_model_select_statement()
@@ -14209,7 +14209,7 @@ mod tests {
 	#[test]
 	fn test_select_related_query_preserves_typed_codec_error() {
 		let queryset = QuerySet::<TestUser>::new()
-			.select_related(&["profile"])
+			.select_related(["profile"])
 			.filter(rejecting_typed_filter());
 
 		let error = queryset
@@ -14308,7 +14308,7 @@ mod tests {
 		let manager = std::sync::Arc::new(TestUser::objects());
 		let queryset = QuerySet::with_manager(manager);
 
-		let selected = queryset.select_related(&["profile", "posts"]);
+		let selected = queryset.select_related(["profile", "posts"]);
 
 		// Verify manager is preserved after select_related
 		assert!(selected.manager.is_some());
@@ -14317,7 +14317,7 @@ mod tests {
 
 	#[test]
 	fn test_string_select_related_still_records_field() {
-		let queryset = QuerySet::<TestUser>::new().select_related(&["profile"]);
+		let queryset = QuerySet::<TestUser>::new().select_related(["profile"]);
 
 		assert_eq!(queryset.select_related_fields, vec!["profile"]);
 	}
@@ -14344,7 +14344,7 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "invalid relation path passed to select_related")]
 	fn test_string_select_related_rejects_invalid_path() {
-		let _ = QuerySet::<TestUser>::new().select_related(&["missing__field"]);
+		let _ = QuerySet::<TestUser>::new().select_related(["missing__field"]);
 	}
 
 	#[test]
@@ -14352,7 +14352,7 @@ mod tests {
 		let manager = std::sync::Arc::new(TestUser::objects());
 		let queryset = QuerySet::with_manager(manager);
 
-		let prefetched = queryset.prefetch_related(&["comments", "likes"]);
+		let prefetched = queryset.prefetch_related(["comments", "likes"]);
 
 		// Verify manager is preserved after prefetch_related
 		assert!(prefetched.manager.is_some());
@@ -14588,7 +14588,7 @@ mod tests {
 	#[test]
 	fn test_select_related_query_generation() {
 		// Test that select_related_query() generates SelectStatement correctly
-		let queryset = QuerySet::<TestUser>::new().select_related(&["profile", "department"]);
+		let queryset = QuerySet::<TestUser>::new().select_related(["profile", "department"]);
 
 		let stmt = queryset
 			.select_related_query()
@@ -14606,7 +14606,7 @@ mod tests {
 	#[test]
 	fn select_related_qualifies_root_ordering_columns() {
 		// Arrange
-		let mut queryset = QuerySet::<TestUser>::new().select_related(&["profile"]);
+		let mut queryset = QuerySet::<TestUser>::new().select_related(["profile"]);
 		queryset.order_by_fields.push("id".to_string());
 
 		// Act
@@ -14626,7 +14626,7 @@ mod tests {
 
 		// Arrange
 		let queryset = QuerySet::<TestUser>::new()
-			.select_related(&["profile"])
+			.select_related(["profile"])
 			.annotate_legacy(Annotation::new(
 				"relation_marker",
 				AnnotationValue::Value(Value::Int(1)),
@@ -14648,7 +14648,7 @@ mod tests {
 		use reinhardt_query::prelude::MySqlQueryBuilder;
 
 		let statement = QuerySet::<TestUser>::new()
-			.select_related(&["profile"])
+			.select_related(["profile"])
 			.annotate_legacy(Annotation::field(
 				"user_id",
 				AnnotationValue::Field(F::new("id")),
@@ -14851,7 +14851,7 @@ mod tests {
 	fn nullable_filter_relations_for_lock_tracks_outer_join_targets() {
 		let queryset = QuerySet::<TestUser>::new().filter(nested_project_name_filter());
 
-		assert_eq!(queryset.requires_serializable_transaction(), true);
+		assert!(queryset.requires_serializable_transaction());
 		assert_eq!(
 			queryset.nullable_filter_relations_for_lock(),
 			vec![(
@@ -15130,7 +15130,7 @@ mod tests {
 		>();
 
 		let sql = QuerySet::<TestUser>::new()
-			.select_related(&["corpus_file"])
+			.select_related(["corpus_file"])
 			.select_related(path)
 			.to_sql()
 			.expect("query SQL should compile");
@@ -15155,7 +15155,7 @@ mod tests {
 			.eq("/docs/index.md");
 
 		let sql = QuerySet::<TestUser>::new()
-			.select_related(&["corpus_file"])
+			.select_related(["corpus_file"])
 			.filter(filter)
 			.to_sql()
 			.expect("query SQL should compile");
@@ -15200,7 +15200,7 @@ mod tests {
 
 		let sql = QuerySet::<TestUser>::new()
 			.from_as("corpus_file")
-			.select_related(&["corpus_file"])
+			.select_related(["corpus_file"])
 			.select_related(path)
 			.to_sql()
 			.expect("query SQL should compile");
@@ -16264,7 +16264,7 @@ mod tests {
 
 		let queryset = QuerySet::<TestProjects>::new()
 			.prefetch_related(path)
-			.prefetch_related(&["projects"]);
+			.prefetch_related(["projects"]);
 		let queries = queryset.prefetch_related_queries(&[1, 2]);
 		let sql = queries[0].1.to_string(PostgresQueryBuilder);
 
@@ -16300,7 +16300,7 @@ mod tests {
 		>();
 		let queryset = QuerySet::<TestUser>::new()
 			.prefetch_related(path)
-			.prefetch_related(&["comments"]);
+			.prefetch_related(["comments"]);
 
 		let queries = queryset.prefetch_related_queries(&[1, 2]);
 		let fields: Vec<_> = queries.iter().map(|(field, _)| field.as_str()).collect();
@@ -16318,8 +16318,8 @@ mod tests {
 		);
 
 		let queryset = QuerySet::<TestCorpusFile>::new()
-			.select_related(&["owner"])
-			.prefetch_related(&["documents"]);
+			.select_related(["owner"])
+			.prefetch_related(["documents"]);
 
 		assert_eq!(queryset.select_related_fields, vec!["owner"]);
 		assert_eq!(queryset.prefetch_related_fields, vec!["documents"]);
@@ -16470,7 +16470,7 @@ mod tests {
 	#[test]
 	fn test_prefetch_related_queries_generation() {
 		// Test that prefetch_related_queries() generates correct queries
-		let queryset = QuerySet::<TestUser>::new().prefetch_related(&["posts", "comments"]);
+		let queryset = QuerySet::<TestUser>::new().prefetch_related(["posts", "comments"]);
 		let pk_values = vec![1, 2, 3];
 
 		let queries = queryset.prefetch_related_queries(&pk_values);
@@ -16485,7 +16485,7 @@ mod tests {
 
 	#[test]
 	fn test_prefetch_related_queries_empty_pk_values() {
-		let queryset = QuerySet::<TestUser>::new().prefetch_related(&["posts", "comments"]);
+		let queryset = QuerySet::<TestUser>::new().prefetch_related(["posts", "comments"]);
 		let pk_values = vec![];
 
 		let queries = queryset.prefetch_related_queries(&pk_values);
@@ -16498,8 +16498,8 @@ mod tests {
 	fn test_select_related_and_prefetch_together() {
 		// Test that both can be used together
 		let queryset = QuerySet::<TestUser>::new()
-			.select_related(&["profile"])
-			.prefetch_related(&["posts", "comments"]);
+			.select_related(["profile"])
+			.prefetch_related(["posts", "comments"]);
 
 		// Check select_related generates query
 		let select_stmt = queryset
