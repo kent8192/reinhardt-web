@@ -525,6 +525,11 @@ scope.
 
 ### Create Migrations
 
+Model fields using `Vec<u8>` or `Option<Vec<u8>>` generate the generic
+`FieldType::Binary` migration type. PostgreSQL and CockroachDB render this type
+as `BYTEA`, so byte-vector models do not require an explicit database field type.
+The generic SQL spelling and the MySQL/SQLite rendering remain `BINARY`.
+
 ```rust
 use reinhardt_db::migrations::{Migration, CreateModel, AddField};
 
