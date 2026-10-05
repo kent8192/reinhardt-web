@@ -160,6 +160,10 @@
 //! assert_eq!(query.to_string(SqliteQueryBuilder), "SELECT (\"price\" + \"fee\") * \"quantity\"");
 //! ```
 //!
+//! When a grouped arithmetic operand contains a possible `--` line comment,
+//! MySQL and SQLite insert a newline before the closing parenthesis so the
+//! comment cannot consume it. This also covers nested custom SQL expressions.
+//!
 //! ## DDL Examples
 //!
 //! ```rust,ignore

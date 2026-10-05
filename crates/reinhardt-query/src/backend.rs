@@ -62,8 +62,14 @@ fn write_arithmetic_operand(
 	if parenthesized {
 		writer.push("(");
 	}
+	let expression_start = writer.len();
 	write_expr(writer, expr);
 	if parenthesized {
+		// Inspect the whole operand to include nested custom expressions, and
+		// conservatively terminate possible line comments without parsing SQL.
+		if writer.sql()[expression_start..].contains("--") {
+			writer.push("\n");
+		}
 		writer.push(")");
 	}
 }

@@ -7,7 +7,7 @@ use reinhardt_query::{
 	SqliteQueryBuilder, Value, Values,
 };
 use rstest::*;
-use sqlx::{Arguments, Connection};
+use sqlx::{Arguments, Column, Connection, Row, TypeInfo};
 
 mod common;
 use common::{MySqlContainer, mysql_container};
@@ -114,6 +114,36 @@ fn arithmetic_cases() -> Vec<ArithmeticCase> {
 			operands: vec![3, 5, 9, 7],
 			result: 16,
 		},
+		ArithmeticCase {
+			expr: Expr::val(1_i64).add(Expr::val(2_i64).add(Expr::cust("3 -- note"))),
+			sql: "? + (? + 3 -- note\n)",
+			control: "? + (? + 3)",
+			operands: vec![1, 2],
+			result: 6,
+		},
+		ArithmeticCase {
+			expr: Expr::val(1_i64).add(Expr::cust("2 -- note")).mul(3_i64),
+			sql: "(? + 2 -- note\n) * ?",
+			control: "(? + 2) * ?",
+			operands: vec![1, 3],
+			result: 9,
+		},
+		ArithmeticCase {
+			expr: Expr::val(1_i64)
+				.add(Expr::val(2_i64).add(Expr::cust_with_values("? -- note", [3_i64]))),
+			sql: "? + (? + ? -- note\n)",
+			control: "? + (? + ?)",
+			operands: vec![1, 2, 3],
+			result: 6,
+		},
+		ArithmeticCase {
+			expr: Expr::val(1_i64)
+				.add(Expr::val(2_i64).add(Expr::val(3_i64).add(Expr::cust("4 -- note")))),
+			sql: "? + (? + (? + 4 -- note\n)\n)",
+			control: "? + (? + (? + 4))",
+			operands: vec![1, 2, 3],
+			result: 10,
+		},
 	]
 }
 
@@ -181,6 +211,15 @@ fn mysql_arguments(values: Values) -> sqlx::mysql::MySqlArguments {
 	arguments
 }
 
+fn mysql_arithmetic_result(row: sqlx::mysql::MySqlRow) -> f64 {
+	// Literal operands can make MySQL report BIGINT instead of DOUBLE.
+	match row.column(0).type_info().name() {
+		"BIGINT" => row.get::<i64, _>(0) as f64,
+		"DOUBLE" => row.get(0),
+		data_type => panic!("unexpected arithmetic result type: {data_type}"),
+	}
+}
+
 #[rstest]
 #[tokio::test]
 async fn sqlite_arithmetic_matches_explicitly_grouped_control(
@@ -232,18 +271,22 @@ async fn mysql_arithmetic_matches_explicitly_grouped_control(
 			Values(case.operands.into_iter().map(Value::from).collect())
 		);
 
-		// Act: MySQL exposes these prepared arithmetic projections as DOUBLE.
-		let result = sqlx::query_scalar_with::<_, f64, _>(&sql, mysql_arguments(values.clone()))
+		// Act
+		let result = sqlx::query_with(&sql, mysql_arguments(values.clone()))
 			.fetch_one(pool.as_ref())
 			.await
 			.unwrap();
-		let control = sqlx::query_scalar_with::<_, f64, _>(&control_sql, mysql_arguments(values))
+		let control = sqlx::query_with(&control_sql, mysql_arguments(values))
 			.fetch_one(pool.as_ref())
 			.await
 			.unwrap();
 
 		// Assert: every expected value is a small, exactly representable integer.
-		assert_eq!(result, case.result as f64, "{sql}");
-		assert_eq!(control, case.result as f64, "{control_sql}");
+		assert_eq!(mysql_arithmetic_result(result), case.result as f64, "{sql}");
+		assert_eq!(
+			mysql_arithmetic_result(control),
+			case.result as f64,
+			"{control_sql}"
+		);
 	}
 }
