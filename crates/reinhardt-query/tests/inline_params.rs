@@ -3,9 +3,9 @@
 use reinhardt_query::query::traits::inline_params;
 use reinhardt_query::types::{TriggerEvent, TriggerScope, TriggerTiming};
 use reinhardt_query::{
-	Alias, ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, IntoIden, MySqlQueryBuilder,
+	Alias, ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, MySqlQueryBuilder,
 	PostgresQueryBuilder, Query, QueryBuilderTrait, QueryStatementBuilder, SelectStatement,
-	SimpleExpr, SqliteQueryBuilder, TableRef, Value, Values,
+	SimpleExpr, SqliteQueryBuilder, Value, Values,
 };
 use rstest::{fixture, rstest};
 
@@ -262,8 +262,8 @@ fn postgres_to_string_renders_byte_array_defaults_and_checks() {
 #[rstest]
 #[case::mysql(
 	MySqlQueryBuilder,
-	r"SELECT `title` LIKE ? ESCAPE '\\', `content` LIKE ? ESCAPE '\\', `suffix` LIKE ? ESCAPE '\\'",
-	r"SELECT `title` LIKE '%web%' ESCAPE '\\', `content` LIKE 'guide%' ESCAPE '\\', `suffix` LIKE '%.md' ESCAPE '\\'"
+	"SELECT `title` LIKE ? ESCAPE 0x5C, `content` LIKE ? ESCAPE 0x5C, `suffix` LIKE ? ESCAPE 0x5C",
+	"SELECT `title` LIKE '%web%' ESCAPE 0x5C, `content` LIKE 'guide%' ESCAPE 0x5C, `suffix` LIKE '%.md' ESCAPE 0x5C"
 )]
 #[case::postgres(
 	PostgresQueryBuilder,
@@ -396,7 +396,14 @@ fn raw_bind_select() -> SelectStatement {
 	r#"SELECT 11 FROM (SELECT $1, 7) AS "source""#
 )]
 #[case::lateral(
-	|inner| Query::select().expr(Expr::val(11)).from(TableRef::LateralSubQuery(Box::new(inner), Alias::new("source").into_iden())).to_owned(),
+	|inner| {
+		use reinhardt_query::{IntoIden, TableRef};
+
+		Query::select()
+			.expr(Expr::val(11))
+			.from(TableRef::LateralSubQuery(Box::new(inner), Alias::new("source").into_iden()))
+			.to_owned()
+	},
 	r#"SELECT 11 FROM LATERAL (SELECT $1, 7) AS "source""#
 )]
 #[case::cte(

@@ -188,7 +188,7 @@ mod sqlite {
 mod postgres {
 	use reinhardt_db::backends::{DatabaseBackend, DatabaseType, PostgresBackend, QueryValue};
 	use reinhardt_query::{
-		ColumnDef, ColumnType, Expr, PostgresQueryBuilder, Query, QueryBuilder,
+		ColumnDef, ColumnType, Expr, ExprTrait, PostgresQueryBuilder, Query, QueryBuilder,
 		QueryStatementBuilder, Value,
 	};
 	use rstest::{fixture, rstest};
@@ -208,8 +208,103 @@ mod postgres {
 			container.get_host().await.unwrap(),
 			container.get_host_port_ipv4(5432).await.unwrap()
 		);
-		let pool = sqlx::PgPool::connect(&url).await.unwrap();
+		let pool = sqlx::postgres::PgPoolOptions::new()
+			.max_connections(1)
+			.connect(&url)
+			.await
+			.unwrap();
 		(container, PostgresBackend::new(pool))
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn generated_execution_preserves_changing_parameter_signatures(
+		#[future] database: (ContainerAsync<Postgres>, PostgresBackend),
+		#[values("execute", "fetch_one", "fetch_all", "transaction")] operation: &str,
+	) {
+		// Arrange: one pooled connection makes statement-cache reuse deterministic.
+		let (_container, backend) = database.await;
+		let table = Query::create_table()
+			.table("signature_probe")
+			.col(ColumnDef::new("value").big_integer())
+			.to_owned();
+		let (sql, _) = PostgresQueryBuilder.build_create_table(&table);
+		backend.execute(&sql, vec![]).await.unwrap();
+		let wide = 1_i64 << 40;
+		let (insert_sql, _) = Query::insert()
+			.into_table("signature_probe")
+			.columns(["value"])
+			.values_panic([7])
+			.build(PostgresQueryBuilder);
+		let (select_sql, _) = Query::select()
+			.column("value")
+			.from("signature_probe")
+			.and_where(Expr::col("value").eq(7))
+			.build(PostgresQueryBuilder);
+		let values = || reinhardt_query::Values(vec![Value::BigInt(Some(wide))]);
+
+		// Act and Assert: every generated path must replace a cached INT4 signature.
+		match operation {
+			"execute" => {
+				sqlx::query(&insert_sql)
+					.bind(7_i32)
+					.execute(backend.pool())
+					.await
+					.unwrap();
+				let result = backend
+					.__execute_generated(&insert_sql, values())
+					.await
+					.unwrap();
+				assert_eq!(result.rows_affected, 1);
+			}
+			"fetch_one" | "fetch_all" => {
+				sqlx::query(&insert_sql)
+					.bind(wide)
+					.execute(backend.pool())
+					.await
+					.unwrap();
+				let initial = sqlx::query(&select_sql)
+					.bind(7_i32)
+					.fetch_all(backend.pool())
+					.await
+					.unwrap();
+				assert_eq!(initial.len(), 0);
+				let rows = if operation == "fetch_one" {
+					vec![
+						backend
+							.__fetch_one_generated(&select_sql, values())
+							.await
+							.unwrap(),
+					]
+				} else {
+					backend
+						.__fetch_all_generated(&select_sql, values())
+						.await
+						.unwrap()
+				};
+				assert_eq!(rows.len(), 1);
+				assert_eq!(rows[0].data["value"], QueryValue::Int(wide));
+			}
+			"transaction" => {
+				let mut transaction = backend.begin().await.unwrap();
+				let first = transaction
+					.__execute_generated(
+						&insert_sql,
+						reinhardt_query::Values(vec![Value::Int(Some(7))]),
+						DatabaseType::Postgres,
+					)
+					.await
+					.unwrap();
+				assert_eq!(first.rows_affected, 1);
+				let result = transaction
+					.__execute_generated(&insert_sql, values(), DatabaseType::Postgres)
+					.await
+					.unwrap();
+				assert_eq!(result.rows_affected, 1);
+				transaction.rollback().await.unwrap();
+			}
+			_ => panic!("unknown generated operation"),
+		}
 	}
 
 	#[cfg(all(feature = "orm", feature = "associations"))]
