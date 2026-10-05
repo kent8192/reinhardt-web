@@ -393,7 +393,9 @@ impl InsertBuilder {
 		self
 	}
 
-	/// Builds the final result.
+	/// Builds the SQL and its bound arguments.
+	///
+	/// `QueryValue::Null` is rendered as literal `NULL` and consumes no argument slot.
 	pub fn build(&self) -> Result<(String, Vec<QueryValue>)> {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
@@ -439,7 +441,12 @@ impl InsertBuilder {
 					))
 				})?;
 			}
-			self.values.clone()
+			// Match the renderer's literal NULLs without shifting later bindings.
+			self.values
+				.iter()
+				.filter(|value| !matches!(value, QueryValue::Null))
+				.cloned()
+				.collect()
 		};
 
 		// Build SQL based on database type
@@ -1092,7 +1099,7 @@ impl UpdateBuilder {
 		self
 	}
 
-	/// Performs the where eq operation.
+	/// Adds an equality predicate, using `IS NULL` for `QueryValue::Null`.
 	pub fn where_eq(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.wheres
 			.push((column.into(), "=".to_string(), value.into()));
@@ -1100,6 +1107,8 @@ impl UpdateBuilder {
 	}
 
 	/// Builds the SQL and bound parameters in renderer order.
+	///
+	/// `QueryValue::Null` is rendered as literal `NULL` and consumes no argument slot.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
@@ -1120,9 +1129,12 @@ impl UpdateBuilder {
 		// Add WHERE clauses
 		for (col, op, val) in &self.wheres {
 			if op == "=" {
-				stmt.and_where(
-					Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
-				);
+				let column = Expr::col(Alias::new(col));
+				if matches!(val, QueryValue::Null) {
+					stmt.and_where(column.is_null());
+				} else {
+					stmt.and_where(column.eq(Expr::val(query_value_to_sea_value(val))));
+				}
 			}
 		}
 
@@ -2228,7 +2240,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_null_value() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2241,9 +2253,11 @@ mod tests {
 		let (sql, params) = builder.build().unwrap();
 
 		// Assert
-		assert!(sql.contains("ON CONFLICT (\"email\") DO UPDATE SET"));
-		assert_eq!(params.len(), 2);
-		assert!(matches!(params[1], QueryValue::Null));
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\", \"name\") VALUES ($1, NULL) ON CONFLICT (\"email\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
+		);
+		assert_eq!(params, vec![QueryValue::from("test@example.com")]);
 	}
 
 	#[test]
