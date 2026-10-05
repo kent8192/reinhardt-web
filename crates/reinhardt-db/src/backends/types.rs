@@ -474,6 +474,19 @@ fn validate_savepoint_name(name: &str) -> Result<(), String> {
 /// maintains connection affinity.
 #[async_trait::async_trait]
 pub trait TransactionExecutor: Send + Sync {
+	/// Internal generated-SQL dispatch on this transaction's dedicated connection.
+	#[doc(hidden)]
+	async fn __execute_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		backend: DatabaseType,
+	) -> super::error::Result<QueryResult> {
+		let params =
+			super::generated::legacy_values(values, super::generated::backend_name(backend))?;
+		self.execute(sql, params).await
+	}
+
 	/// Execute a query that modifies the database within the transaction
 	async fn execute(
 		&mut self,

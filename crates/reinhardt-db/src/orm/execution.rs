@@ -6,11 +6,7 @@
 
 use crate::backends::types::QueryValue;
 use crate::orm::Model;
-use crate::orm::connection::DatabaseBackend;
-use reinhardt_query::prelude::{
-	Alias, ColumnRef, Expr, ExprTrait, Func, MySqlQueryBuilder, PostgresQueryBuilder, Query,
-	QueryStatementBuilder, SelectStatement, SqliteQueryBuilder,
-};
+use reinhardt_query::prelude::{Alias, ColumnRef, Expr, ExprTrait, Func, Query, SelectStatement};
 use rust_decimal::prelude::ToPrimitive;
 use std::marker::PhantomData;
 
@@ -182,7 +178,11 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 	}
 }
 
-/// Convert reinhardt_query Values (`Vec<Value>`) to `Vec<QueryValue>`
+/// Convert renderer values to the legacy raw-executor representation.
+///
+/// This compatibility API retains its historical lossy conversions. `QuerySet`
+/// and the execution builders use native backend codecs instead; callers needing
+/// exact decimal, array, or date/time types must not use this adapter.
 pub fn convert_values(values: reinhardt_query::prelude::Values) -> Vec<QueryValue> {
 	values
 		.0
@@ -474,10 +474,9 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.get(pk);
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let row = db.query_one(&sql, query_values).await?;
+		let row = db.query_one_generated(&sql, values).await?;
 		let json = serde_json::to_value(&row)?;
 		let result = serde_json::from_value(json)?;
 		Ok(result)
@@ -491,10 +490,9 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.all();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.query_generated(&sql, values).await?;
 		let mut results = Vec::with_capacity(rows.len());
 		for row in rows {
 			let json = serde_json::to_value(&row)?;
@@ -512,10 +510,9 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.first();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.query_generated(&sql, values).await?;
 		match rows.first() {
 			Some(row) => {
 				let json = serde_json::to_value(row)?;
@@ -534,10 +531,9 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.one();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.query_generated(&sql, values).await?;
 		match rows.len() {
 			0 => Err(ExecutionError::NoResultFound),
 			1 => {
@@ -557,10 +553,9 @@ where
 		T: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.one_or_none();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.query_generated(&sql, values).await?;
 		match rows.len() {
 			0 => Ok(None),
 			1 => {
@@ -580,10 +575,9 @@ where
 		S: for<'de> serde::Deserialize<'de>,
 	{
 		let stmt = self.scalar();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.query_generated(&sql, values).await?;
 		match rows.first() {
 			Some(row) => {
 				// Get the first column value
@@ -605,10 +599,9 @@ where
 		db: &super::connection::DatabaseConnection,
 	) -> Result<i64, ExecutionError> {
 		let stmt = self.count();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let row = db.query_one(&sql, query_values).await?;
+		let row = db.query_one_generated(&sql, values).await?;
 		let json = serde_json::to_value(&row)?;
 
 		// Extract count from the result (usually the first column)
@@ -629,14 +622,9 @@ where
 		db: &super::connection::DatabaseConnection,
 	) -> Result<bool, ExecutionError> {
 		let stmt = self.exists();
-		let (sql, values) = match db.backend() {
-			DatabaseBackend::Postgres => stmt.build(PostgresQueryBuilder),
-			DatabaseBackend::MySql => stmt.build(MySqlQueryBuilder),
-			DatabaseBackend::Sqlite => stmt.build(SqliteQueryBuilder),
-		};
+		let (sql, values) = db.build_select(&stmt);
 
-		let query_values = convert_values(values);
-		let row = db.query_one(&sql, query_values).await?;
+		let row = db.query_one_generated(&sql, values).await?;
 
 		// Extract the EXISTS value from the row data, without serializing its wrapper.
 		if let Some(obj) = row.data.as_object()
@@ -799,6 +787,8 @@ impl Default for QueryOptions {
 mod tests {
 	use super::*;
 	use crate::orm::Manager;
+	#[cfg(feature = "sqlite")]
+	use crate::orm::connection::DatabaseConnection;
 	use reinhardt_core::validators::TableName;
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
@@ -839,6 +829,34 @@ mod tests {
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = Some(value);
 		}
+	}
+
+	#[rstest::rstest]
+	fn legacy_converter_retains_public_raw_representation() {
+		use reinhardt_query::{ArrayType, Value, Values};
+
+		// Arrange
+		let values = Values(vec![
+			Value::BigUnsigned(Some(u64::MAX)),
+			Value::Decimal(Some(Box::new("42.5".parse().unwrap()))),
+			Value::Array(
+				ArrayType::String,
+				Some(Box::new(vec!["quoted element".into()])),
+			),
+		]);
+
+		// Act
+		let converted = convert_values(values);
+
+		// Assert
+		assert_eq!(
+			converted,
+			vec![
+				QueryValue::Int(i64::MAX),
+				QueryValue::Float(42.5),
+				QueryValue::String("Some([String(Some(\"quoted element\"))])".to_owned()),
+			]
+		);
 	}
 
 	#[test]
@@ -920,6 +938,83 @@ mod tests {
 		let result_stmt = exec.exists();
 		let sql = result_stmt.to_string(PostgresQueryBuilder);
 		assert!(sql.contains("EXISTS"));
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest::fixture]
+	async fn sqlite_database() -> DatabaseConnection {
+		DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.unwrap()
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[case::matching(7, true)]
+	#[case::missing(8, false)]
+	#[tokio::test]
+	async fn exists_async_decodes_native_results_with_generated_arguments(
+		#[future] sqlite_database: DatabaseConnection,
+		#[case] id: i64,
+		#[case] expected: bool,
+	) {
+		use reinhardt_query::{ColumnDef, QueryBuilder, QueryStatementBuilder, SqliteQueryBuilder};
+
+		// Arrange
+		let db = sqlite_database.await;
+		let table = Query::create_table()
+			.table(User::table_name())
+			.col(ColumnDef::new("id").integer())
+			.to_owned();
+		let (sql, _) = SqliteQueryBuilder.build_create_table(&table);
+		db.execute(&sql, vec![]).await.unwrap();
+		let (sql, values) = Query::insert()
+			.into_table(User::table_name())
+			.columns(["id"])
+			.values_panic([7])
+			.build(SqliteQueryBuilder);
+		db.execute_generated(&sql, values).await.unwrap();
+		let statement = Query::select()
+			.column("id")
+			.from(User::table_name())
+			.and_where(Expr::col("id").eq(id))
+			.to_owned();
+
+		// Act
+		let actual = SelectExecution::<User>::new(statement)
+			.exists_async(&db)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(actual, expected);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[tokio::test]
+	async fn exists_async_rejects_generated_overflow_before_sql(
+		#[future] sqlite_database: DatabaseConnection,
+	) {
+		// Arrange: the absent table makes accidental SQL execution observable.
+		let db = sqlite_database.await;
+		let statement = Query::select()
+			.column("id")
+			.from(User::table_name())
+			.and_where(Expr::col("id").eq(Expr::val(reinhardt_query::Value::from(u64::MAX))))
+			.to_owned();
+
+		// Act
+		let error = SelectExecution::<User>::new(statement)
+			.exists_async(&db)
+			.await
+			.unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Generic error: Type conversion error: cannot encode BigUnsigned argument 1 for sqlite: unsigned integer exceeds signed 64-bit range"
+		);
 	}
 
 	#[rstest]
