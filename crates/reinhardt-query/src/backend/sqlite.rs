@@ -329,6 +329,13 @@ impl SqliteQueryBuilder {
 				self.write_simple_expr(writer, pattern);
 				writer.push(" ESCAPE '\\'");
 			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(LOWER(");
+				self.write_simple_expr(writer, expr);
+				writer.push(") LIKE LOWER(");
+				self.write_simple_expr(writer, pattern);
+				writer.push(") ESCAPE '\\')");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');
@@ -1193,6 +1200,13 @@ impl QueryBuilder for SqliteQueryBuilder {
 	}
 
 	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
+		assert!(
+			stmt.columns
+				.iter()
+				.all(|column| column.prefix_length.is_none()),
+			"SQLite does not support index column prefixes"
+		);
+
 		let mut writer = SqlWriter::new();
 
 		// CREATE UNIQUE INDEX IF NOT EXISTS
@@ -4425,6 +4439,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4447,6 +4462,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "username".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4469,6 +4485,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4491,6 +4508,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "created_at".into_iden(),
 			order: Some(Order::Desc),
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4513,10 +4531,12 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "last_name".into_iden(),
 			order: Some(Order::Asc),
+			prefix_length: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
 			order: Some(Order::Asc),
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4538,6 +4558,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 		stmt.r#where = Some(Expr::col("active").eq(true).into_simple_expr());
 

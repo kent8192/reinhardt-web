@@ -22,6 +22,7 @@
 //! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
 //!
 //! ### DDL (Data Definition Language)
+//! - **Indexes** - CREATE/DROP INDEX, including typed MySQL `TEXT`/`BLOB` column prefixes
 //! - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
 //! - **Sequence operations** - CREATE/ALTER/DROP SEQUENCE (PostgreSQL, CockroachDB)
 //! - **Database operations** - CREATE/DROP DATABASE (PostgreSQL, MySQL, CockroachDB); ALTER DATABASE (PostgreSQL, CockroachDB)
@@ -38,6 +39,8 @@
 //! - **SQLite** - DML and basic DDL operations
 //! - **CockroachDB** - Full PostgreSQL compatibility with distributed database features
 //! - **Parameterized queries** - Automatic placeholder generation (`$1` for PostgreSQL, `?` for MySQL/SQLite)
+//! - **Portable escaped case-insensitive matching** - `ExprTrait::ilike_with_escape`
+//!   uses ILIKE on PostgreSQL/CockroachDB and LOWER/LIKE on MySQL/SQLite.
 //!
 //! ## Architecture
 //!
