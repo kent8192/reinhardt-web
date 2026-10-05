@@ -257,7 +257,9 @@ impl<S: MigrationSource> MigrationStateLoader<S> {
 ///
 /// This function loads all migrations from the given source, builds a
 /// dependency graph from ALL of them (not just applied ones), topologically
-/// sorts them, and replays their operations to reconstruct the full schema state.
+/// sorts them, and replays their state-changing operations to reconstruct model state.
+/// Migrations marked `database_only` remain in the dependency graph, but their
+/// operations do not update `ProjectState`. State-only migrations are replayed normally.
 ///
 /// This is the offline fallback for `makemigrations` when neither a
 /// database nor TestContainers is available. It assumes all migration files
@@ -283,6 +285,9 @@ pub async fn build_state_from_files<S: MigrationSource>(source: &S) -> Result<Pr
 
 /// Reconstruct file-backed migration state using the project's conditional
 /// and swappable dependency settings.
+///
+/// Database-only migrations participate in dependency and replacement resolution
+/// without changing model state. State-only migrations contribute model state.
 pub async fn build_state_from_files_with_context<S: MigrationSource>(
 	source: &S,
 	context: &super::DependencyResolutionContext,
@@ -304,7 +309,7 @@ pub async fn build_state_from_files_with_context<S: MigrationSource>(
 	// 3. Select one valid replacement history before ordering migrations.
 	let sorted_keys = graph.resolve_execution_order_with_replaces()?;
 
-	// 4. Build ProjectState by replaying all migrations in order
+	// 4. Build ProjectState by replaying state-changing migrations in order
 	let mut state = ProjectState::default();
 
 	for key in sorted_keys {
@@ -312,6 +317,9 @@ pub async fn build_state_from_files_with_context<S: MigrationSource>(
 			.iter()
 			.find(|m| m.app_label == key.app_label && m.name == key.name)
 		{
+			if migration.database_only {
+				continue;
+			}
 			state.apply_migration_operations(&migration.operations, &migration.app_label);
 		}
 	}
@@ -980,6 +988,103 @@ mod build_state_from_files_tests {
 		assert_eq!(model.fields.len(), 2);
 		assert!(model.fields.contains_key("id"));
 		assert!(model.fields.contains_key("username"));
+	}
+
+	/// Physical-only tables must not appear in the logical model snapshot.
+	#[rstest]
+	#[tokio::test]
+	async fn database_only_migration_does_not_create_model_state() {
+		// Arrange
+		let source = MockMigrationSource {
+			migrations: vec![
+				create_migration(
+					"sample",
+					"0001_database_only",
+					vec![create_table_operation("physical_only", vec!["id"])],
+					vec![],
+				)
+				.database_only(true),
+			],
+		};
+
+		// Act
+		let state = build_state_from_files(&source).await.unwrap();
+
+		// Assert
+		assert_eq!(state.models.len(), 0);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn database_only_dependency_bridge_preserves_state_replay_order() {
+		// Arrange
+		let snapshot = create_migration(
+			"sample",
+			"0001_snapshot",
+			vec![create_table_operation("sample_item", vec!["id"])],
+			vec![],
+		)
+		.state_only(true);
+		let physical = create_migration(
+			"sample",
+			"0002_physical",
+			vec![create_table_operation("physical_only", vec!["id"])],
+			vec![("sample", "0001_snapshot")],
+		)
+		.database_only(true);
+		let follow_up = create_migration(
+			"sample",
+			"0003_follow_up",
+			vec![add_column_operation("sample_item", "email")],
+			vec![("sample", "0002_physical")],
+		);
+		let source = MockMigrationSource {
+			migrations: vec![follow_up, physical, snapshot],
+		};
+
+		// Act
+		let state = build_state_from_files(&source).await.unwrap();
+
+		// Assert
+		assert_eq!(state.models.len(), 1);
+		let model = state.find_model_by_table("sample_item").unwrap();
+		assert_eq!(
+			model.fields.keys().map(String::as_str).collect::<Vec<_>>(),
+			vec!["email", "id"]
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn database_only_migrations_still_participate_in_cycle_validation() {
+		// Arrange
+		let source = MockMigrationSource {
+			migrations: vec![
+				create_migration(
+					"sample",
+					"0001_physical",
+					vec![],
+					vec![("sample", "0002_snapshot")],
+				)
+				.database_only(true),
+				create_migration(
+					"sample",
+					"0002_snapshot",
+					vec![],
+					vec![("sample", "0001_physical")],
+				)
+				.state_only(true),
+			],
+		};
+
+		// Act
+		let error = build_state_from_files(&source).await.unwrap_err();
+
+		// Assert
+		assert!(matches!(
+			error,
+			super::super::MigrationError::CircularDependency { .. }
+		));
 	}
 
 	/// Chained migrations: CreateTable then AddColumn produces correct state
@@ -1674,9 +1779,14 @@ mod build_state_from_files_tests {
 #[cfg(test)]
 mod filesystem_integration_tests {
 	use super::*;
-	use crate::migrations::FilesystemSource;
-	use rstest::rstest;
+	use crate::migrations::{FieldType, FilesystemSource, MigrationAutodetector};
+	use rstest::*;
 	use tempfile::TempDir;
+
+	#[fixture]
+	fn migration_directory() -> TempDir {
+		TempDir::new().unwrap()
+	}
 
 	/// Helper to write a migration file to the expected directory structure
 	fn write_migration_file(base: &std::path::Path, app: &str, name: &str, content: &str) {
@@ -1684,6 +1794,140 @@ mod filesystem_integration_tests {
 		std::fs::create_dir_all(&dir).unwrap();
 		let file_path = dir.join(format!("{}.rs", name));
 		std::fs::write(file_path, content).unwrap();
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn database_only_builder_file_does_not_create_model_state(migration_directory: TempDir) {
+		// Arrange
+		write_migration_file(
+			migration_directory.path(),
+			"sample",
+			"0001_database_only",
+			r#"
+use reinhardt::db::migrations::prelude::*;
+
+pub fn migration() -> Migration {
+	Migration::new("0001_database_only", "sample")
+		.database_only(true)
+		.add_operation(Operation::CreateTable {
+			name: "physical_only".to_string(),
+			columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		})
+}
+"#,
+		);
+		let source = FilesystemSource::new(migration_directory.path());
+		let loaded = source.all_migrations().await.unwrap();
+		assert_eq!(loaded.len(), 1);
+		assert!(loaded[0].database_only);
+		assert_eq!(loaded[0].operations.len(), 1);
+
+		// Act
+		let state = build_state_from_files(&source).await.unwrap();
+
+		// Assert
+		assert_eq!(state.models.len(), 0);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn database_only_file_after_snapshot_does_not_propose_model_changes(
+		migration_directory: TempDir,
+	) {
+		// Arrange
+		write_migration_file(
+			migration_directory.path(),
+			"sample",
+			"0001_snapshot",
+			r#"
+use reinhardt::db::migrations::prelude::*;
+
+pub fn migration() -> Migration {
+	Migration::new("0001_snapshot", "sample")
+		.state_only(true)
+		.add_operation(Operation::CreateTable {
+			name: "sample_item".to_string(),
+			columns: vec![ColumnDefinition::new("id", FieldType::Integer)],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		})
+}
+"#,
+		);
+		write_migration_file(
+			migration_directory.path(),
+			"sample",
+			"0002_physical",
+			r#"
+use reinhardt::db::migrations::prelude::*;
+
+pub fn migration() -> Migration {
+	Migration::new("0002_physical", "sample")
+		.database_only(true)
+		.add_dependency("sample", "0001_snapshot")
+		.add_operation(Operation::AlterColumn {
+			table: "sample_item".to_string(),
+			column: "id".to_string(),
+			old_definition: None,
+			new_definition: ColumnDefinition::new("id", FieldType::BigInteger),
+			mysql_options: None,
+		})
+		.add_operation(Operation::CreateIndex {
+			table: "sample_item".to_string(),
+			columns: vec!["id".to_string()],
+			unique: false,
+			index_type: None,
+			where_clause: None,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		})
+		.add_operation(Operation::AddConstraint {
+			table: "sample_item".to_string(),
+			constraint_sql: "CONSTRAINT positive_id CHECK (id > 0)".to_string(),
+		})
+}
+"#,
+		);
+		let source = FilesystemSource::new(migration_directory.path());
+		let loaded = source.all_migrations().await.unwrap();
+		assert_eq!(loaded.len(), 2);
+		let snapshot = loaded.iter().find(|m| m.name == "0001_snapshot").unwrap();
+		assert!(snapshot.state_only);
+		let physical = loaded.iter().find(|m| m.name == "0002_physical").unwrap();
+		assert!(physical.database_only);
+		assert_eq!(physical.operations.len(), 3);
+		assert_eq!(
+			physical.dependencies,
+			vec![("sample".to_string(), "0001_snapshot".to_string())]
+		);
+		let mut expected = ProjectState::default();
+		expected.apply_migration_operations(&snapshot.operations, "sample");
+
+		// Act
+		let state = build_state_from_files(&source).await.unwrap();
+
+		// Assert
+		assert_eq!(state.models.len(), 1);
+		let model = state.find_model_by_table("sample_item").unwrap();
+		assert_eq!(model.fields.len(), 1);
+		assert_eq!(model.fields["id"].field_type, FieldType::Integer);
+		assert_eq!(model.indexes, vec![]);
+		assert_eq!(model.constraints, vec![]);
+		assert_eq!(
+			MigrationAutodetector::new(state, expected)
+				.try_generate_operations()
+				.unwrap(),
+			vec![]
+		);
 	}
 
 	/// Single app with one initial migration file on disk
