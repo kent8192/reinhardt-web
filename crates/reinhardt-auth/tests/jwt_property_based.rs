@@ -11,6 +11,8 @@
 //! - Token structure (always has 3 parts separated by dots)
 //! - Expiration is always in the future when generated
 
+#![cfg(feature = "jwt")]
+
 use proptest::prelude::*;
 use reinhardt_auth::jwt::{Claims, JwtAuth};
 
@@ -354,14 +356,14 @@ proptest! {
 			tampered_bytes[tamper_index] ^= 0x01;
 
 			// Try to convert back to string and verify
-			if let Ok(tampered_token) = String::from_utf8(tampered_bytes) {
-				if tampered_token != token {
-					let result = jwt_auth.verify_token(&tampered_token);
-					prop_assert!(
-						result.is_err(),
-						"Tampered token should not verify successfully"
-					);
-				}
+			if let Ok(tampered_token) = String::from_utf8(tampered_bytes)
+				&& tampered_token != token
+			{
+				let result = jwt_auth.verify_token(&tampered_token);
+				prop_assert!(
+					result.is_err(),
+					"Tampered token should not verify successfully"
+				);
 			}
 		}
 	}

@@ -13,7 +13,7 @@ use crate::core::hasher::PasswordHasher;
 /// # Type Parameters
 ///
 /// * `PrimaryKey` - The type of the user's primary key (e.g., `Uuid`, `i64`)
-/// * `Hasher` - The password hasher implementation (default: `Argon2Hasher`)
+/// * `Hasher` - The password hasher implementation (e.g., `Argon2Hasher` with `argon2-hasher`)
 ///
 /// # Examples
 ///
@@ -250,10 +250,13 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// This example requires the `argon2-hasher` feature.
+	///
+	/// ```rust
+	/// # #[cfg(feature = "argon2-hasher")]
+	/// # {
 	/// # use reinhardt_auth::BaseUser;
 	/// # use reinhardt_auth::PasswordHasher;
-	/// # #[cfg(feature = "argon2-hasher")]
 	/// # use reinhardt_auth::Argon2Hasher;
 	/// # use uuid::Uuid;
 	/// # use chrono::{DateTime, Utc};
@@ -261,7 +264,6 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 	/// # #[derive(Serialize, Deserialize)]
 	/// # struct MyUser { id: Uuid, email: String, password_hash: Option<String>,
 	/// #   last_login: Option<DateTime<Utc>>, is_active: bool }
-	/// # #[cfg(feature = "argon2-hasher")]
 	/// # impl BaseUser for MyUser {
 	/// #     type PrimaryKey = Uuid;
 	/// #     type Hasher = Argon2Hasher;
@@ -284,6 +286,7 @@ pub trait BaseUser: Send + Sync + Serialize + for<'de> Deserialize<'de> {
 	///
 	/// user.set_unusable_password();
 	/// assert!(!user.has_usable_password());
+	/// # }
 	/// ```
 	fn set_unusable_password(&mut self) {
 		self.set_password_hash("!".to_string());
