@@ -203,6 +203,10 @@ name = "reinhardt-query-macros"
 version_group = "reinhardt"
 
 [[package]]
+name = "reinhardt-query-sqlx"
+version_group = "reinhardt"
+
+[[package]]
 name = "reinhardt-rest"
 version_group = "reinhardt"
 
