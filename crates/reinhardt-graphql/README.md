@@ -112,11 +112,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.20", features = ["graphql"] }
+reinhardt = { version = "0.3.21", features = ["graphql"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.20", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.20", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.21", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.21", features = ["full"] }      # All features
 ```
 
 Then import GraphQL features:
@@ -133,10 +133,10 @@ use reinhardt::graphql::types::{UserStorage, UserEvent};
 <!-- reinhardt-version-sync:2 -->
 ```toml
 # With dependency injection
-reinhardt = { version = "0.3.20", features = ["graphql", "di"] }
+reinhardt = { version = "0.3.21", features = ["graphql", "di"] }
 
 # With gRPC transport
-reinhardt = { version = "0.3.20", features = ["graphql", "grpc"] }
+reinhardt = { version = "0.3.21", features = ["graphql", "grpc"] }
 ```
 
 ## Examples
