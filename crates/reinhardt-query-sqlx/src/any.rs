@@ -2,14 +2,24 @@ use crate::{BindError, PreparedQuery, error, value_type};
 use reinhardt_query::{Value, Values};
 use sqlx::Arguments;
 /// Explicit backend for the SQLx Any compatibility codecs.
+///
+/// # API parity
+///
+/// P0 (native-only): absent on `wasm32` targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AnyBackend {
 	/// PostgreSQL protocol, including compatible CockroachDB callers.
+	///
+	/// P0 (native-only): absent on `wasm32` targets.
 	Postgres,
 	/// MySQL protocol.
+	///
+	/// P0 (native-only): absent on `wasm32` targets.
 	MySql,
 	/// SQLite protocol.
+	///
+	/// P0 (native-only): absent on `wasm32` targets.
 	Sqlite,
 }
 impl AnyBackend {
@@ -24,6 +34,10 @@ impl AnyBackend {
 /// Adapt an owned renderer result without changing SQL or argument order.
 ///
 /// Unsupported types and overflowing integer conversions fail before execution.
+///
+/// # API parity
+///
+/// P0 (native-only): absent on `wasm32` targets.
 pub fn prepare_any(
 	built: (String, Values),
 	backend: AnyBackend,
@@ -36,6 +50,10 @@ pub fn prepare_any(
 /// UUID, JSON, decimals and chrono values use their documented textual encodings.
 /// PostgreSQL callers must provide typed casts when targeting native columns;
 /// this function does not change SQL. Arrays and vectors remain unsupported.
+///
+/// # API parity
+///
+/// P0 (native-only): absent on `wasm32` targets.
 pub fn prepare_any_with_text_codecs(
 	built: (String, Values),
 	backend: AnyBackend,
