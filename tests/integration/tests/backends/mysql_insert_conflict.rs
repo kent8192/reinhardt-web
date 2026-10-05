@@ -1,6 +1,6 @@
 //! Native MySQL coverage for conflict clauses that must fail before execution.
 
-#![cfg(all(feature = "backends", feature = "mysql"))]
+#![cfg(feature = "mysql")]
 #![cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 
 use std::sync::Arc;

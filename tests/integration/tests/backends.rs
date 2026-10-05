@@ -3,3 +3,6 @@
 
 #[path = "backends/analyze_statement_integration.rs"]
 mod analyze_statement_integration;
+
+#[path = "backends/mysql_insert_conflict.rs"]
+mod mysql_insert_conflict;
