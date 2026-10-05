@@ -2688,6 +2688,16 @@ fn is_byte_vector(ty: &Type) -> bool {
 	matches!(arguments.args.first(), Some(GenericArgument::Type(Type::Path(element))) if element.path.is_ident("u8"))
 }
 
+/// Macro type arguments can wrap scalar paths in transparent delimiter groups.
+#[cfg(feature = "db-postgres")]
+fn ungroup_array_element_type(ty: &Type) -> &Type {
+	match ty {
+		Type::Group(group) => ungroup_array_element_type(&group.elem),
+		Type::Paren(paren) => ungroup_array_element_type(&paren.elem),
+		_ => ty,
+	}
+}
+
 /// Map `Vec<T>` and `Vec<Option<T>>` to PostgreSQL Array type
 #[cfg(feature = "db-postgres")]
 fn map_vec_to_array_type(
@@ -2708,7 +2718,8 @@ fn map_vec_to_array_type(
 	// Try to infer the element type from Vec<T>
 	if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(element_type)) = args.args.first()
-		&& let (_, Type::Path(inner_path)) = extract_option_type(element_type)
+		&& let (_, element_type) = extract_option_type(ungroup_array_element_type(element_type))
+		&& let Type::Path(inner_path) = ungroup_array_element_type(element_type)
 		&& let Some(inner_segment) = inner_path.path.segments.last()
 	{
 		let inner_type_name = inner_segment.ident.to_string();
