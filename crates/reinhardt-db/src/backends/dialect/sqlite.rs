@@ -86,6 +86,9 @@ impl SqliteBackend {
 			QueryValue::Bool(b) => query.bind(b),
 			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
+			QueryValue::Uint(i) => query.bind(crate::backends::types::checked_unsigned_integer(
+				*i, "SQLite",
+			)?),
 			QueryValue::Float(f) => query.bind(f),
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),
@@ -408,6 +411,9 @@ impl SqliteTransactionExecutor {
 			QueryValue::Bool(b) => query.bind(b),
 			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
+			QueryValue::Uint(i) => query.bind(crate::backends::types::checked_unsigned_integer(
+				*i, "SQLite",
+			)?),
 			QueryValue::Float(f) => query.bind(f),
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),

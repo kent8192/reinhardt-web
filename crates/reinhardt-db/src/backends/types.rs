@@ -97,6 +97,25 @@ pub enum QueryValue {
 	Now,
 	/// Signed 32-bit integer parameter.
 	Int32(i32),
+	/// Unsigned 64-bit integer parameter (P0: native database execution).
+	///
+	/// MySQL binds the original value. PostgreSQL and SQLite perform a checked
+	/// conversion to their signed integer type and reject overflow before execution.
+	Uint(u64),
+}
+
+pub(crate) fn checked_unsigned_integer(
+	value: u64,
+	backend: &str,
+) -> std::result::Result<i64, DatabaseError> {
+	i64::try_from(value).map_err(|_| {
+		DatabaseError::new(
+			DatabaseErrorKind::Type,
+			format!(
+				"Unsigned integer parameter exceeds the signed 64-bit range supported by {backend}"
+			),
+		)
+	})
 }
 
 impl From<&str> for QueryValue {
@@ -209,6 +228,7 @@ impl TryFrom<QueryValue> for i64 {
 		match value {
 			QueryValue::Int32(i) => Ok(i64::from(i)),
 			QueryValue::Int(i) => Ok(i),
+			QueryValue::Uint(i) => checked_unsigned_integer(i, "i64"),
 			_ => Err(DatabaseError::new(
 				DatabaseErrorKind::Type,
 				format!("Cannot convert {:?} to i64", value),
@@ -223,6 +243,12 @@ impl TryFrom<QueryValue> for i32 {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Int32(i) => Ok(i),
+			QueryValue::Uint(i) => i32::try_from(i).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					"Unsigned integer value exceeds the i32 range",
+				)
+			}),
 			QueryValue::Int(i) => i32::try_from(i).map_err(|_| {
 				DatabaseError::new(
 					DatabaseErrorKind::Type,
@@ -243,6 +269,7 @@ impl TryFrom<QueryValue> for u64 {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Int32(i) => Self::try_from(QueryValue::Int(i64::from(i))),
+			QueryValue::Uint(i) => Ok(i),
 			QueryValue::Int(i) => u64::try_from(i).map_err(|_| {
 				DatabaseError::new(
 					DatabaseErrorKind::Type,
@@ -263,6 +290,12 @@ impl TryFrom<QueryValue> for u32 {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Int32(i) => Self::try_from(QueryValue::Int(i64::from(i))),
+			QueryValue::Uint(i) => u32::try_from(i).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					"Unsigned integer value exceeds the u32 range",
+				)
+			}),
 			QueryValue::Int(i) => u32::try_from(i).map_err(|_| {
 				DatabaseError::new(
 					DatabaseErrorKind::Type,
