@@ -725,7 +725,7 @@ mod tests {
 				QueryValue::String(quote_bearing_slug.to_owned()),
 			]
 		);
-		assert_eq!(compiled.sql.contains(quote_bearing_slug), false);
+		assert!(!compiled.sql.contains(quote_bearing_slug));
 	}
 
 	#[rstest]
@@ -826,7 +826,7 @@ mod tests {
 				QueryValue::Int(9),
 			]
 		);
-		assert_eq!(compiled.sql.contains(quote_bearing_headline), false);
+		assert!(!compiled.sql.contains(quote_bearing_headline));
 	}
 
 	#[test]

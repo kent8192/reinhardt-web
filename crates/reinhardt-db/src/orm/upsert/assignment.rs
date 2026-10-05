@@ -240,7 +240,8 @@ mod tests {
 	}
 
 	#[cfg(feature = "migrations")]
-	#[model(app_label = "tests", table_name = "assignment_models")]
+	// Typed assignment tests use field selectors, without an Info companion.
+	#[model(app_label = "tests", table_name = "assignment_models", info = false)]
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	struct AssignmentModel {
 		#[field(primary_key = true)]

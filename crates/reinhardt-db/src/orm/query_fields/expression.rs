@@ -716,7 +716,7 @@ mod tests {
 
 	#[test]
 	fn label_rejects_invalid_identifier_forms() {
-		assert!(typed_i64_expression().label(&"a".repeat(64)).is_err());
+		assert!(typed_i64_expression().label("a".repeat(64)).is_err());
 		assert!(typed_i64_expression().label("total-value").is_err());
 		assert!(typed_i64_expression().label("合計").is_err());
 	}

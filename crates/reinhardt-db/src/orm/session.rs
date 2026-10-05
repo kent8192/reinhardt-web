@@ -3996,10 +3996,8 @@ mod tests {
 	fn test_bind_bigunsigned_overflow_clamps_to_i64_max() {
 		// Arrange
 		let overflow_value: u64 = u64::MAX; // exceeds i64::MAX
-		let result = i64::try_from(overflow_value).unwrap_or_else(|_| {
-			// Simulate the same fallback logic used in bind_reinhardt_query_value
-			i64::MAX
-		});
+		// Simulate the same fallback logic used in bind_reinhardt_query_value.
+		let result = i64::try_from(overflow_value).unwrap_or(i64::MAX);
 
 		// Assert
 		assert_eq!(result, i64::MAX);
@@ -4009,7 +4007,7 @@ mod tests {
 	fn test_bind_bigunsigned_within_range_does_not_clamp() {
 		// Arrange
 		let value: u64 = 42;
-		let result = i64::try_from(value).unwrap_or_else(|_| i64::MAX);
+		let result = i64::try_from(value).unwrap_or(i64::MAX);
 
 		// Assert
 		assert_eq!(result, 42);
@@ -4019,7 +4017,7 @@ mod tests {
 	fn test_bind_bigunsigned_at_i64_max_boundary() {
 		// Arrange
 		let value: u64 = i64::MAX as u64;
-		let result = i64::try_from(value).unwrap_or_else(|_| i64::MAX);
+		let result = i64::try_from(value).unwrap_or(i64::MAX);
 
 		// Assert
 		assert_eq!(result, i64::MAX);
@@ -4029,7 +4027,7 @@ mod tests {
 	fn test_bind_bigunsigned_just_above_i64_max_clamps() {
 		// Arrange
 		let value: u64 = (i64::MAX as u64) + 1;
-		let result = i64::try_from(value).unwrap_or_else(|_| i64::MAX);
+		let result = i64::try_from(value).unwrap_or(i64::MAX);
 
 		// Assert
 		assert_eq!(result, i64::MAX);
@@ -4125,7 +4123,7 @@ mod tests {
 
 		let loaded: JsonScalarModel = session.get(1).await.unwrap().unwrap();
 		assert_eq!(loaded.name_json.as_inner(), "draft");
-		assert_eq!(*loaded.flag_json.as_inner(), true);
+		assert!(*loaded.flag_json.as_inner());
 		assert_eq!(loaded.external_id, "external-1");
 		assert_eq!(
 			loaded.optional_json.unwrap().as_inner(),
