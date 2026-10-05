@@ -395,19 +395,17 @@ impl Session {
 						None => return Err(serialization_error("unexpected SQL NULL".to_owned())),
 					}
 				}
-				typ if typ.contains("CharField") => {
-					if field.nullable {
-						row.try_get::<Option<String>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
-							})
-							.unwrap_or(serde_json::Value::Null)
-					} else {
-						row.try_get::<String, _>(column_name)
-							.map(serde_json::Value::from)
-							.unwrap_or(serde_json::Value::Null)
-					}
+				typ if typ.contains("CharField") || typ.contains("TextField") => {
+					any_text_value(&row, column_name, |detail| {
+						SessionError::SerializationError(format!(
+							"table `{}`, field `{}`, column `{}`: {detail}",
+							T::table_name(),
+							field.name,
+							column_name
+						))
+					})?
+					.map(Value::from)
+					.unwrap_or(Value::Null)
 				}
 				typ if typ.contains("BooleanField") => {
 					if field.nullable {
@@ -1717,6 +1715,39 @@ where
 		.map_err(|error| serialization_error(error.to_string()))
 }
 
+// SQLx 0.8.6 Any exposes MySQL TEXT as BLOB metadata, even after CAST AS CHAR
+// (#6594). Preserve the complete value and validate UTF-8. If Any consistently
+// exposes these columns as text, this fallback can become a direct
+// row.try_get::<Option<String>, _>(column_name) with the same error context.
+fn any_text_value<F>(
+	row: &sqlx::any::AnyRow,
+	column_name: &str,
+	serialization_error: F,
+) -> Result<Option<String>, SessionError>
+where
+	F: Fn(String) -> SessionError,
+{
+	match row.try_get::<Option<String>, _>(column_name) {
+		Ok(value) => Ok(value),
+		Err(string_error) => {
+			let bytes = row
+				.try_get::<Option<Vec<u8>>, _>(column_name)
+				.map_err(|bytes_error| {
+					serialization_error(format!(
+						"cannot decode text: string: {string_error}; bytes: {bytes_error}"
+					))
+				})?;
+			bytes
+				.map(|bytes| {
+					String::from_utf8(bytes).map_err(|error| {
+						serialization_error(format!("invalid UTF-8: {}", error.utf8_error()))
+					})
+				})
+				.transpose()
+		}
+	}
+}
+
 fn deserialize_any_row<T>(row: &sqlx::any::AnyRow, fields: &[FieldInfo]) -> Result<T, SessionError>
 where
 	T: Model + serde::de::DeserializeOwned,
@@ -1786,9 +1817,7 @@ where
 					value
 				})
 		} else {
-			row.try_get::<Option<String>, _>(column_name)
-				.map(|value| value.map(Value::from))
-				.map_err(|error| serialization_error(error.to_string()))?
+			any_text_value(row, column_name, serialization_error)?.map(Value::from)
 		};
 
 		let value = match value {
@@ -3172,6 +3201,64 @@ mod tests {
 	#[fixture]
 	fn init_drivers() {
 		sqlx::any::install_default_drivers();
+	}
+
+	#[rstest]
+	#[case::utf8(Some("stored' ? $55 日本語 🦀".as_bytes().to_vec()), Some("stored' ? $55 日本語 🦀"))]
+	#[case::empty(Some(Vec::new()), Some(""))]
+	#[case::sql_null(None, None)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn any_text_decodes_bytes_without_losing_null_or_empty_values(
+		_init_drivers: (),
+		#[case] bytes: Option<Vec<u8>>,
+		#[case] expected: Option<&str>,
+	) {
+		// Arrange
+		let pool = sqlx::any::AnyPoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.unwrap();
+		let row = sqlx::query("SELECT ? AS text_value")
+			.bind(bytes)
+			.fetch_one(&pool)
+			.await
+			.unwrap();
+
+		// Act
+		let result = any_text_value(&row, "text_value", SessionError::SerializationError);
+
+		// Assert
+		assert_eq!(result.unwrap().as_deref(), expected);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn any_text_rejects_incompatible_column_types(_init_drivers: ()) {
+		// Arrange
+		let pool = sqlx::any::AnyPoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.unwrap();
+		let row = sqlx::query("SELECT 42 AS text_value")
+			.fetch_one(&pool)
+			.await
+			.unwrap();
+
+		// Act
+		let error =
+			any_text_value(&row, "text_value", SessionError::SerializationError).unwrap_err();
+
+		// Assert
+		let SessionError::SerializationError(message) = error else {
+			panic!("Expected a text serialization error: {error}");
+		};
+		assert!(message.contains("cannot decode text: string:"), "{message}");
+		assert!(message.contains("; bytes:"), "{message}");
+		assert!(message.contains("text_value"), "{message}");
 	}
 
 	#[rstest]

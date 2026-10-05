@@ -414,10 +414,43 @@ The resolution rules are:
 - `<target>` is **not** applied — apply `<target>` and its intra-app dependency
   closure (forward), skipping anything already applied.
 
+Both rollback forms also unapply every applied migration in other apps that
+transitively depends on the selected migrations. Dependents are reversed before
+their prerequisites, regardless of recorder timestamps. An applied target and
+prerequisites outside this reverse closure stay applied, as do unrelated apps.
+Unapplied dependents are excluded. For example, if `consumer:0001_references`
+depends on `foundation:0001_tables`, `migrate foundation zero` reverses the
+consumer migration before reversing the foundation migration.
+
+Dependencies on replaced migration keys resolve to their recorded squash before
+building the rollback closure, including nested squashes. Unapplied squash
+alternatives do not redirect dependencies away from the recorded migration path.
+When an applied migration depends on an unapplied squash key, that dependency
+resolves through its `replaces` metadata to the recorded old path, including
+recorded intermediate squashes. The unapplied squash does not enter the plan.
+If replacement definitions in the dependency's app are unavailable and an applied
+dependency cannot be resolved to a recorded migration or squash alias, cross-app
+rollback fails before any effects. Restore the intermediate replacement definitions
+before retrying. Missing replacement ancestry in unrelated apps does not block
+rollback or make unapplied dependency keys part of the rollback closure.
+Directly resolvable aliases still work when the replaced files have been removed.
+Missing intermediate definitions in a referenced unapplied squash path also stop
+rollback before any effects, even when another branch resolves successfully.
+
+When applied history spans multiple apps, all applied migration definitions must
+be available to check cross-app dependents. Missing definitions, including files
+skipped because they could not be parsed, stop rollback before changing schema or
+recorder rows in real, fake, and preview modes. Restore those definitions before
+retrying. Single-app history retains preview and fake rollback for missing selected
+files, using reverse recorder order for the selected suffix. Real execution always
+requires every selected migration definition.
+
 `--plan` never mutates the database, including the migration bookkeeping table:
 on a fresh database a dry-run leaves it uncreated. Apply plans are displayed in
 the same dependency-resolved order used by real migration execution, including
-cross-app dependencies.
+cross-app dependencies. Rollback previews, real execution, and `--fake` use the
+same reverse dependency plan; fake rollback only removes the selected ledger
+records without executing reverse SQL.
 
 ### `collect_migrations!` Macro and `linkme` Dependency
 
