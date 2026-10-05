@@ -26,6 +26,11 @@ use uuid::Uuid;
 // Django QuerySet API types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Defines possible filter operator values.
+///
+/// Case-insensitive string lookups use native ILIKE on PostgreSQL and
+/// LOWER/LIKE on MySQL/SQLite, with bound escaped patterns. Folding follows
+/// backend locale/collation and LOWER behavior; SQLite's built-in LOWER
+/// folds ASCII only. These text lookups require a text-compatible field.
 pub enum FilterOperator {
 	/// Eq variant.
 	Eq,
@@ -61,7 +66,7 @@ pub enum FilterOperator {
 	Regex,
 	/// Case-insensitive regular expression match.
 	IRegex,
-	/// BETWEEN range lookup.
+	/// Inclusive BETWEEN lookup with bound endpoints and backend-quoted columns.
 	Range,
 	// PostgreSQL array operators
 	/// Array contains all elements (@>)
@@ -136,7 +141,10 @@ pub enum FilterValue {
 	Range(Box<FilterValue>, Box<FilterValue>),
 	/// Field reference for field-to-field comparisons (e.g., WHERE discount_price < total_price)
 	FieldRef(super::expressions::F),
-	/// Arithmetic expression (e.g., WHERE total != unit_price * quantity)
+	/// Arithmetic expression (e.g., WHERE total != unit_price * quantity).
+	///
+	/// Arithmetic and COALESCE field references use backend-quoted columns, and
+	/// scalar constants remain typed bind values. Nested arithmetic retains its parentheses.
 	Expression(super::annotation::Expression),
 	/// Outer query reference for correlated subqueries (e.g., WHERE books.author_id = OuterRef("authors.id"))
 	OuterRef(super::expressions::OuterRef),
@@ -293,7 +301,10 @@ pub enum UpdateValue {
 	Uuid(Uuid),
 	/// Field reference for field-to-field updates (e.g., SET discount_price = total_price)
 	FieldRef(super::expressions::F),
-	/// Arithmetic expression (e.g., SET total = unit_price * quantity)
+	/// Arithmetic expression (e.g., SET total = unit_price * quantity).
+	///
+	/// Arithmetic and COALESCE field references use backend-quoted columns, and
+	/// scalar constants remain typed bind values. Nested arithmetic retains its parentheses.
 	Expression(super::annotation::Expression),
 }
 
@@ -3283,75 +3294,65 @@ where
 					[pattern.clone()],
 				)
 				.into_simple_expr(),
-				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
-					format!("{} BETWEEN ? AND ?", Self::filter_lhs_sql(filter)),
-					[
-						Self::filter_value_to_sea_value(start),
-						Self::filter_value_to_sea_value(end),
-					],
-				)
-				.into_simple_expr(),
+				(FilterOperator::Range, FilterValue::Range(start, end)) => col.between(
+					Self::filter_value_to_sea_value(start),
+					Self::filter_value_to_sea_value(end),
+				),
 				// Handle Integer, Float, Boolean for text operators
 				(FilterOperator::Contains, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("%{}%", i))
 				}
 				(FilterOperator::IContains, FilterValue::Integer(i) | FilterValue::Int(i)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", i)))
+					col.ilike_with_escape(format!("%{}%", i))
 				}
 				(FilterOperator::Contains, FilterValue::Float(f)) => col.like(format!("%{}%", f)),
 				(FilterOperator::IContains, FilterValue::Float(f)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", f)))
+					col.ilike_with_escape(format!("%{}%", f))
 				}
 				(FilterOperator::Contains, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("%{}%", b))
 				}
 				(FilterOperator::IContains, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}%", b)))
+					col.ilike_with_escape(format!("%{}%", b))
 				}
 				(FilterOperator::Contains, FilterValue::Null) => col.like("%"),
-				(FilterOperator::IContains, FilterValue::Null) => {
-					col.binary(BinOper::ILike, SimpleExpr::from("%"))
-				}
+				(FilterOperator::IContains, FilterValue::Null) => col.ilike_with_escape("%"),
 				(FilterOperator::StartsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("{}%", i))
 				}
 				(FilterOperator::IStartsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", i)))
+					col.ilike_with_escape(format!("{}%", i))
 				}
 				(FilterOperator::StartsWith, FilterValue::Float(f)) => col.like(format!("{}%", f)),
 				(FilterOperator::IStartsWith, FilterValue::Float(f)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", f)))
+					col.ilike_with_escape(format!("{}%", f))
 				}
 				(FilterOperator::StartsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("{}%", b))
 				}
 				(FilterOperator::IStartsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("{}%", b)))
+					col.ilike_with_escape(format!("{}%", b))
 				}
 				(FilterOperator::StartsWith, FilterValue::Null) => col.like("%"),
-				(FilterOperator::IStartsWith, FilterValue::Null) => {
-					col.binary(BinOper::ILike, SimpleExpr::from("%"))
-				}
+				(FilterOperator::IStartsWith, FilterValue::Null) => col.ilike_with_escape("%"),
 				(FilterOperator::EndsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.like(format!("%{}", i))
 				}
 				(FilterOperator::IEndsWith, FilterValue::Integer(i) | FilterValue::Int(i)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", i)))
+					col.ilike_with_escape(format!("%{}", i))
 				}
 				(FilterOperator::EndsWith, FilterValue::Float(f)) => col.like(format!("%{}", f)),
 				(FilterOperator::IEndsWith, FilterValue::Float(f)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", f)))
+					col.ilike_with_escape(format!("%{}", f))
 				}
 				(FilterOperator::EndsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
 					col.like(format!("%{}", b))
 				}
 				(FilterOperator::IEndsWith, FilterValue::Boolean(b) | FilterValue::Bool(b)) => {
-					col.binary(BinOper::ILike, SimpleExpr::from(format!("%{}", b)))
+					col.ilike_with_escape(format!("%{}", b))
 				}
 				(FilterOperator::EndsWith, FilterValue::Null) => col.like("%"),
-				(FilterOperator::IEndsWith, FilterValue::Null) => {
-					col.binary(BinOper::ILike, SimpleExpr::from("%"))
-				}
+				(FilterOperator::IEndsWith, FilterValue::Null) => col.ilike_with_escape("%"),
 				// Handle In/NotIn for non-String types
 				(FilterOperator::In, FilterValue::Integer(i) | FilterValue::Int(i)) => {
 					col.is_in(vec![*i])
@@ -3628,68 +3629,15 @@ where
 		}
 	}
 
-	/// Convert FilterValue to reinhardt_query::value::Value
-	/// Convert Expression to reinhardt-query Expr for use in WHERE clauses
-	///
-	/// Uses Expr::cust() for arithmetic operations as reinhardt-query doesn't provide
-	/// multiply/divide/etc. methods. SQL injection risk is low since F() only
-	/// accepts field names.
-	fn expression_to_query_expr(expr: &super::annotation::Expression) -> Expr {
-		use crate::orm::annotation::Expression;
-
-		match expr {
-			Expression::Add(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} + {})", left_sql, right_sql))
-			}
-			Expression::Subtract(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} - {})", left_sql, right_sql))
-			}
-			Expression::Multiply(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} * {})", left_sql, right_sql))
-			}
-			Expression::Divide(left, right) => {
-				let left_sql = Self::annotation_value_to_sql(left);
-				let right_sql = Self::annotation_value_to_sql(right);
-				Expr::cust(format!("({} / {})", left_sql, right_sql))
-			}
-			Expression::Case { whens, default } => {
-				let mut case_sql = "CASE".to_string();
-				for when in whens.iter() {
-					// Use When::to_sql() which generates "WHEN condition THEN value"
-					case_sql.push_str(&format!(" {}", when.to_sql()));
-				}
-				if let Some(default_val) = default {
-					case_sql.push_str(&format!(
-						" ELSE {}",
-						Self::annotation_value_to_sql(default_val)
-					));
-				}
-				case_sql.push_str(" END");
-				Expr::cust(case_sql)
-			}
-			Expression::Coalesce(values) => {
-				let value_sqls = values
-					.iter()
-					.map(|v| Self::annotation_value_to_sql(v))
-					.collect::<Vec<_>>()
-					.join(", ");
-				Expr::cust(format!("COALESCE({})", value_sqls))
-			}
-		}
+	/// Lower arithmetic operands before the selected backend quotes columns and binds values.
+	pub(super) fn annotation_value_to_query_expr(
+		value: &super::annotation::AnnotationValue,
+	) -> SimpleExpr {
+		value.to_query_expr()
 	}
 
-	/// Convert AnnotationValue to SQL string for custom expressions
-	///
-	/// Delegates to the `AnnotationValue::to_sql()` method which provides
-	/// complete SQL generation for all annotation value types.
-	fn annotation_value_to_sql(value: &super::annotation::AnnotationValue) -> String {
-		value.to_sql()
+	fn expression_to_query_expr(expression: &super::annotation::Expression) -> Expr {
+		expression.to_query_expr()
 	}
 
 	fn filter_lhs_expr(filter: &Filter) -> Expr {
@@ -3712,11 +3660,7 @@ where
 				Box::new(Expr::val(pattern.apply(value)).into_simple_expr()),
 			);
 		}
-		Expr::cust_with_values(
-			format!("{} ILIKE ? ESCAPE '\\'", Self::filter_lhs_sql(filter)),
-			[pattern.apply(value)],
-		)
-		.into_simple_expr()
+		Self::filter_lhs_expr(filter).ilike_with_escape(pattern.apply(value))
 	}
 
 	pub(crate) fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
@@ -4452,7 +4396,7 @@ where
 
 		for annotation in &self.annotations {
 			stmt.expr_as(
-				Expr::cust(annotation.value.to_sql_expr()),
+				Self::annotation_value_to_query_expr(&annotation.value),
 				Alias::new(&annotation.alias),
 			);
 		}
@@ -5981,17 +5925,11 @@ where
 			self.select_related_query()
 		};
 
-		// Add annotations to SELECT clause if any using reinhardt-query API
-		// Collect annotation SQL strings first to handle lifetime issues
-		// Note: Use to_sql_expr() to get expression without alias (reinhardt-query adds alias via expr_as)
-		let annotation_exprs: Vec<_> = self
-			.annotations
-			.iter()
-			.map(|a| (a.value.to_sql_expr(), a.alias.clone()))
-			.collect();
-
-		for (value_sql, alias) in annotation_exprs {
-			stmt.expr_as(Expr::cust(value_sql), Alias::new(alias));
+		for annotation in &self.annotations {
+			stmt.expr_as(
+				Self::annotation_value_to_query_expr(&annotation.value),
+				Alias::new(&annotation.alias),
+			);
 		}
 
 		use reinhardt_query::prelude::PostgresQueryBuilder;
@@ -6974,8 +6912,8 @@ mod tests {
 	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
 	use reinhardt_query::prelude::{
-		ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder,
-		SqliteQueryBuilder, Values,
+		ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder,
+		QueryStatementBuilder, SqliteQueryBuilder, Values,
 	};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
@@ -7048,6 +6986,104 @@ mod tests {
 		id: Option<i64>,
 		username: String,
 		email: String,
+	}
+
+	#[rstest]
+	#[case::empty_and(crate::orm::expressions::Q::empty(), "TRUE", "TRUE")]
+	#[case::empty_or(crate::orm::expressions::Q::Combined {
+		operator: crate::orm::expressions::QOperator::Or,
+		conditions: vec![],
+	}, "FALSE", "FALSE")]
+	#[case::empty_not(crate::orm::expressions::Q::Combined {
+		operator: crate::orm::expressions::QOperator::Not,
+		conditions: vec![],
+	}, "NOT (TRUE)", "NOT ((TRUE))")]
+	#[case::negated_and(crate::orm::expressions::Q::empty().not(), "NOT (TRUE)", "NOT ((TRUE))")]
+	#[case::nested(crate::orm::expressions::Q::empty().or(
+		crate::orm::expressions::Q::empty().not()
+	).and(crate::orm::expressions::Q::empty()), "((TRUE OR NOT (TRUE)) AND TRUE)", "(((TRUE OR NOT ((TRUE)))) AND TRUE)")]
+	fn case_empty_conditions_render_for_each_backend(
+		#[case] condition: crate::orm::expressions::Q,
+		#[case] expected_condition: &str,
+		#[case] expected_postgres_condition: &str,
+		#[values(
+			DatabaseBackend::Postgres,
+			DatabaseBackend::MySql,
+			DatabaseBackend::Sqlite
+		)]
+		backend: DatabaseBackend,
+	) {
+		use crate::orm::annotation::{AnnotationValue, Expression, Value, When};
+		// Arrange
+		let expression = Expression::Case {
+			whens: vec![When::new(condition, AnnotationValue::Value(Value::Int(1)))],
+			default: Some(Box::new(AnnotationValue::Value(Value::Int(0)))),
+		};
+		let mut statement = reinhardt_query::Query::select();
+		statement.expr(QuerySet::<TestUser>::expression_to_query_expr(&expression));
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+		// Assert: identities are SQL constants, independent of placeholders or backend.
+		// PostgreSQL also groups custom AST operands in its renderer.
+		let expected_condition = match backend {
+			DatabaseBackend::Postgres => expected_postgres_condition,
+			DatabaseBackend::MySql | DatabaseBackend::Sqlite => expected_condition,
+		};
+		assert_eq!(
+			sql,
+			format!("SELECT CASE WHEN {expected_condition} THEN 1 ELSE 0 END")
+		);
+		assert_eq!(values, Values(vec![]));
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		"SELECT CASE WHEN TRUE THEN (\"id\" + $1) ELSE 0 END"
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT CASE WHEN TRUE THEN (`id` + ?) ELSE 0 END"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		"SELECT CASE WHEN TRUE THEN (\"id\" + ?) ELSE 0 END"
+	)]
+	fn case_arithmetic_preserves_native_operands_and_empty_condition(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		use crate::orm::annotation::{AnnotationValue, Expression, Value, When};
+		use crate::orm::expressions::{F, Q};
+
+		// Arrange: CASE identities and nested arithmetic share runtime lowering.
+		let expression = Expression::Case {
+			whens: vec![When::new(
+				Q::empty(),
+				AnnotationValue::Expression(Expression::Add(
+					Box::new(AnnotationValue::Field(F::new("id"))),
+					Box::new(AnnotationValue::Value(Value::Int(0))),
+				)),
+			)],
+			default: Some(Box::new(AnnotationValue::Value(Value::Int(0)))),
+		};
+		let mut statement = Query::select();
+		statement.expr(QuerySet::<TestUser>::expression_to_query_expr(&expression));
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: the identity stays constant while arithmetic operands are typed binds.
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(vec![0_i64.into()]));
 	}
 
 	impl TestUser {
@@ -7142,6 +7178,149 @@ mod tests {
 			queryset.subquery_fields().collect::<Vec<_>>(),
 			vec!["username_column", "email_column"]
 		);
+	}
+
+	#[rstest::rstest]
+	#[case(DatabaseBackend::Postgres, "\"users\".\"pk\"\"key`?\"", ["$1", "$2", "$3", "$4", "$5"])]
+	#[case(DatabaseBackend::MySql, "`users`.`pk\"key``?`", ["?", "?", "?", "?", "?"])]
+	#[case(DatabaseBackend::Sqlite, "\"users\".\"pk\"\"key`?\"", ["?", "?", "?", "?", "?"])]
+	fn legacy_arithmetic_preserves_native_quotes_grouping_and_scalar_types(
+		#[case] backend: DatabaseBackend,
+		#[case] field: &str,
+		#[case] slots: [&str; 5],
+	) {
+		use super::super::annotation::{AnnotationValue as AV, Expression, Value as Scalar};
+		use super::super::expressions::F;
+		use reinhardt_query::prelude::Values;
+		// Arrange
+		let payload = "quotes' \\ ? $9 雪";
+		let nested = AV::Expression(Expression::Multiply(
+			Box::new(AV::Expression(Expression::Add(
+				Box::new(AV::Field(F::new("users.pk\"key`?"))),
+				Box::new(AV::Value(Scalar::Int(1_i64 << 40))),
+			))),
+			Box::new(AV::Value(Scalar::Float(2.5))),
+		));
+		let statement = Query::select()
+			.expr(QuerySet::<TestUser>::annotation_value_to_query_expr(
+				&nested,
+			))
+			.expr(QuerySet::<TestUser>::annotation_value_to_query_expr(
+				&AV::Expression(Expression::Coalesce(vec![
+					AV::Value(Scalar::Null),
+					AV::Value(Scalar::String(payload.into())),
+				])),
+			))
+			.expr(QuerySet::<TestUser>::annotation_value_to_query_expr(
+				&AV::Value(Scalar::Bool(false)),
+			))
+			.expr(QuerySet::<TestUser>::annotation_value_to_query_expr(
+				&AV::Value(Scalar::Int(-7)),
+			))
+			.to_owned();
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => PostgresQueryBuilder.build_select(&statement),
+			DatabaseBackend::MySql => MySqlQueryBuilder.build_select(&statement),
+			DatabaseBackend::Sqlite => SqliteQueryBuilder.build_select(&statement),
+		};
+		// Assert
+		assert_eq!(
+			sql,
+			format!(
+				"SELECT (({field} + {}) * {}), COALESCE(NULL, {}), {}, {}",
+				slots[0], slots[1], slots[2], slots[3], slots[4]
+			)
+		);
+		assert_eq!(
+			values,
+			Values(vec![
+				(1_i64 << 40).into(),
+				2.5_f64.into(),
+				payload.into(),
+				false.into(),
+				(-7_i64).into()
+			])
+		);
+	}
+
+	#[rstest::rstest]
+	#[case(DatabaseBackend::Postgres)]
+	#[case(DatabaseBackend::MySql)]
+	#[case(DatabaseBackend::Sqlite)]
+	fn legacy_expressions_bind_annotation_update_and_filter_operands(
+		#[case] backend: DatabaseBackend,
+	) {
+		use super::super::annotation::{
+			Annotation, AnnotationValue as AV, Expression, Value as Scalar,
+		};
+		use super::super::expressions::F;
+		use reinhardt_query::prelude::Values;
+		// Arrange
+		let identity = Expression::Add(
+			Box::new(AV::Field(F::new("id"))),
+			Box::new(AV::Value(Scalar::Int(0))),
+		);
+		let queryset = QuerySet::<TestUser>::new()
+			.annotate(Annotation::new(
+				"fallback",
+				AV::Expression(Expression::Coalesce(vec![
+					AV::Value(Scalar::Null),
+					AV::Value(Scalar::Int(9)),
+				])),
+			))
+			.filter(Filter::new(
+				"id",
+				FilterOperator::Eq,
+				FilterValue::Integer(1),
+			))
+			.filter(Filter::new(
+				"id",
+				FilterOperator::Eq,
+				FilterValue::Expression(identity.clone()),
+			));
+		let select = queryset.build_full_model_select_statement().unwrap();
+		let update = queryset.update_query(&HashMap::from([(
+			"id".into(),
+			UpdateValue::Expression(identity.clone()),
+		)]));
+		let partial_update = queryset
+			.update_fields_query([FieldAssignment::new(
+				"id",
+				UpdateValue::Expression(identity),
+			)])
+			.unwrap();
+		// Act
+		let (selected, updated, partial) = match backend {
+			DatabaseBackend::Postgres => (
+				PostgresQueryBuilder.build_select(&select),
+				PostgresQueryBuilder.build_update(&update),
+				PostgresQueryBuilder.build_update(&partial_update),
+			),
+			DatabaseBackend::MySql => (
+				MySqlQueryBuilder.build_select(&select),
+				MySqlQueryBuilder.build_update(&update),
+				MySqlQueryBuilder.build_update(&partial_update),
+			),
+			DatabaseBackend::Sqlite => (
+				SqliteQueryBuilder.build_select(&select),
+				SqliteQueryBuilder.build_update(&update),
+				SqliteQueryBuilder.build_update(&partial_update),
+			),
+		};
+		// Assert: SELECT expressions precede WHERE binds; UPDATE operands precede WHERE binds.
+		assert_eq!(
+			selected.1,
+			Values(vec![9_i64.into(), 1_i64.into(), 0_i64.into()])
+		);
+		assert_eq!(
+			updated.1,
+			Values(vec![0_i64.into(), 1_i64.into(), 0_i64.into()])
+		);
+		assert_eq!(updated, partial);
+		assert!(selected.0.contains("COALESCE(NULL,"));
+		assert!(selected.0.contains(" + "));
+		assert!(updated.0.contains(" + "));
 	}
 
 	#[test]
@@ -8494,19 +8673,19 @@ mod tests {
 	#[rstest]
 	#[case(
 		Filter::new("username", FilterOperator::IExact, FilterValue::String("Alice".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'Alice' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'Alice' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("email", FilterOperator::IContains, FilterValue::String("example.com".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%example.com%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IStartsWith, FilterValue::String("ali".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'ali%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'ali%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IEndsWith, FilterValue::String("ice".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE '%ice' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE '%ice' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::Regex, FilterValue::String("^a".to_string())),
@@ -8659,11 +8838,11 @@ mod tests {
 	#[rstest]
 	#[case(
 		Filter::new("email", FilterOperator::IContains, FilterValue::String("100%_match\\".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "email" ILIKE '%100\%\_match\\%' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("email" ILIKE '%100\%\_match\\%' ESCAPE '\')"#
 	)]
 	#[case(
 		Filter::new("username", FilterOperator::IExact, FilterValue::String("alice_admin".to_string())),
-		r#"SELECT * FROM "test_users" WHERE "username" ILIKE 'alice\_admin' ESCAPE '\'"#
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE 'alice\_admin' ESCAPE '\')"#
 	)]
 	fn test_django_style_case_insensitive_like_filters_escape_metacharacters(
 		#[case] filter: Filter,
@@ -8768,6 +8947,68 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE $1 ESCAPE '\')"#,
+		r#"SELECT * FROM "test_users" WHERE ("tenant""`?"."username" ILIKE $1 ESCAPE '\')"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE (LOWER(`username`) LIKE LOWER(?) ESCAPE 0x5C)",
+		"SELECT * FROM `test_users` WHERE (LOWER(`tenant\"``?`.`username`) LIKE LOWER(?) ESCAPE 0x5C)"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE (LOWER("username") LIKE LOWER(?) ESCAPE '\')"#,
+		r#"SELECT * FROM "test_users" WHERE (LOWER("tenant""`?"."username") LIKE LOWER(?) ESCAPE '\')"#
+	)]
+	fn case_insensitive_like_native_sql_and_values(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_column_sql: &str,
+		#[case] expected_qualified_sql: &str,
+		#[values(
+			(FilterOperator::IContains, r"%tenant' ? $42:\%\_\\%"),
+			(FilterOperator::IStartsWith, r"tenant' ? $42:\%\_\\%"),
+			(FilterOperator::IEndsWith, r"%tenant' ? $42:\%\_\\"),
+			(FilterOperator::IExact, r"tenant' ? $42:\%\_\\")
+		)]
+		lookup: (FilterOperator, &str),
+		#[values(false, true)] qualified: bool,
+	) {
+		// Arrange: quotes and placeholder-like text must remain identifier or value data.
+		let field = if qualified {
+			r#"tenant"`?.username"#
+		} else {
+			"username"
+		};
+		let (operator, expected_pattern) = lookup;
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			field,
+			operator,
+			FilterValue::String(r"tenant' ? $42:%_\".into()),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: only the lookup's own wildcards are unescaped.
+		assert_eq!(
+			sql,
+			if qualified {
+				expected_qualified_sql
+			} else {
+				expected_column_sql
+			}
+		);
+		assert_eq!(values, Values(vec![expected_pattern.into()]));
+	}
+
+	#[rstest]
 	fn test_django_style_is_in_filter_accepts_typed_values() {
 		// Arrange
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
@@ -8803,6 +9044,90 @@ mod tests {
 			sql,
 			r#"SELECT * FROM "test_users" WHERE "id" BETWEEN 10 AND 20"#
 		);
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE "quoted""id`" BETWEEN $1 AND $2"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE `quoted\"id``` BETWEEN ? AND ?"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE "quoted""id`" BETWEEN ? AND ?"#
+	)]
+	fn range_filter_preserves_quoted_column_and_bound_endpoint_order(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let lower = "bound' ? $71";
+		let upper = "upper' ? $19";
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"quoted\"id`",
+			FilterOperator::Range,
+			FilterValue::Range(
+				Box::new(FilterValue::String(lower.into())),
+				Box::new(FilterValue::String(upper.into())),
+			),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: exact SQL excludes payload interpolation and fixes identifier escaping.
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(vec![lower.into(), upper.into()]));
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE "test_users"."id" BETWEEN $1 AND $2"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE `test_users`.`id` BETWEEN ? AND ?"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE "test_users"."id" BETWEEN ? AND ?"#
+	)]
+	fn range_filter_preserves_qualified_column_and_wide_integer_endpoints(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let lower = 9_007_199_254_740_993_i64;
+		let upper = lower + 1;
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"test_users.id",
+			FilterOperator::Range,
+			FilterValue::Range(
+				Box::new(FilterValue::Integer(lower)),
+				Box::new(FilterValue::Int(upper)),
+			),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(vec![lower.into(), upper.into()]));
 	}
 
 	#[rstest]
@@ -8911,7 +9236,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM "test_users" WHERE ("email" IS NOT NULL AND "id" NOT IN (10, 20) AND ("id" BETWEEN 100 AND 200))"#
+			r#"SELECT * FROM "test_users" WHERE ("email" IS NOT NULL AND "id" NOT IN (10, 20) AND "id" BETWEEN 100 AND 200)"#
 		);
 	}
 
@@ -9001,7 +9326,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT DISTINCT * FROM "test_users" WHERE (("email" ILIKE '%example.com%' ESCAPE '\') AND "username" IS NOT NULL AND (EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026)) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
+			r#"SELECT DISTINCT * FROM "test_users" WHERE (("email" ILIKE '%example.com%' ESCAPE '\') AND "username" IS NOT NULL AND EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
 		);
 	}
 

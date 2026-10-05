@@ -39,6 +39,8 @@
 //! - **SQLite** - DML and basic DDL operations
 //! - **CockroachDB** - Full PostgreSQL compatibility with distributed database features
 //! - **Parameterized queries** - Automatic placeholder generation (`$1` for PostgreSQL, `?` for MySQL/SQLite)
+//! - **Portable escaped case-insensitive matching** - `ExprTrait::ilike_with_escape`
+//!   uses ILIKE on PostgreSQL/CockroachDB and LOWER/LIKE on MySQL/SQLite.
 //!
 //! ## Architecture
 //!

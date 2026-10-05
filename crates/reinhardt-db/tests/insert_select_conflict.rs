@@ -307,6 +307,87 @@ async fn test_fluent_do_nothing_propagates_unhandled_constraints(
 }
 
 #[rstest]
+#[case::existing(4, 2, 0, vec![(4, 1)])]
+#[case::new(5, 2, 1, vec![(4, 1), (5, 2)])]
+#[tokio::test]
+async fn test_values_do_nothing_executes_with_returning(
+	#[future] conflict_rows: Arc<SqliteBackend>,
+	#[case] id: i64,
+	#[case] revision: i64,
+	#[case] expected_affected: u64,
+	#[case] expected_rows: Vec<(i64, i64)>,
+	#[values(false, true)] any_target: bool,
+) {
+	// Arrange
+	let backend = conflict_rows.await;
+	let clause = if any_target {
+		OnConflictClause::any().do_nothing()
+	} else {
+		OnConflictClause::columns(vec!["id"]).do_nothing()
+	};
+	let builder = InsertBuilder::new(backend.clone(), "conflict_rows")
+		.value("id", QueryValue::Int(id))
+		.value("revision", QueryValue::Int(revision))
+		.on_conflict(clause)
+		.returning(vec!["id", "revision"]);
+
+	// Act
+	let result = builder
+		.execute()
+		.await
+		.expect("DO NOTHING with RETURNING must execute");
+
+	// Assert
+	assert_eq!(result.rows_affected, expected_affected);
+	let select = Query::select()
+		.columns([ConflictRows::Id, ConflictRows::Revision])
+		.from(ConflictRows::Table.into_iden())
+		.order_by(ConflictRows::Id, Order::Asc)
+		.to_string(SqliteQueryBuilder);
+	let rows = backend.fetch_all(&select, Vec::new()).await.unwrap();
+	let actual_rows: Vec<(i64, i64)> = rows
+		.iter()
+		.map(|row| {
+			(
+				row.get::<i64>("id").unwrap(),
+				row.get::<i64>("revision").unwrap(),
+			)
+		})
+		.collect();
+	assert_eq!(actual_rows, expected_rows);
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_values_do_nothing_fetches_with_returning(
+	#[future] conflict_rows: Arc<SqliteBackend>,
+	#[values(false, true)] any_target: bool,
+) {
+	// Arrange
+	let backend = conflict_rows.await;
+	let clause = if any_target {
+		OnConflictClause::any().do_nothing()
+	} else {
+		OnConflictClause::columns(vec!["id"]).do_nothing()
+	};
+	let builder = InsertBuilder::new(backend, "conflict_rows")
+		.value("id", QueryValue::Int(5))
+		.value("revision", QueryValue::Int(2))
+		.on_conflict(clause)
+		.returning(vec!["id", "revision"]);
+
+	// Act
+	let row = builder
+		.fetch_one()
+		.await
+		.expect("inserted row must be returned");
+
+	// Assert
+	assert_eq!(row.get::<i64>("id").unwrap(), 5);
+	assert_eq!(row.get::<i64>("revision").unwrap(), 2);
+}
+
+#[rstest]
 #[case::empty_target(
 	OnConflictClause::columns(Vec::<String>::new()).do_update(vec!["revision"]),
 	DatabaseError::SyntaxError("SQLite ON CONFLICT requires non-empty conflict_columns for DO UPDATE".into())
