@@ -883,7 +883,25 @@ impl InsertFromSelectBuilder {
 		let select_sql = match db_type {
 			DatabaseType::Postgres => self.select_stmt.to_string(PostgresQueryBuilder),
 			DatabaseType::Mysql => self.select_stmt.to_string(MySqlQueryBuilder),
-			DatabaseType::Sqlite => self.select_stmt.to_string(SqliteQueryBuilder),
+			DatabaseType::Sqlite => {
+				if matches!(
+					self.on_conflict.as_ref(),
+					Some(OnConflictAction::DoUpdate {
+						conflict_columns: Some(columns),
+						..
+					}) if !columns.is_empty()
+				) {
+					// SQLite can parse ON CONFLICT as a SELECT join clause. Guard
+					// the complete source so compound SELECTs also end with WHERE.
+					Query::select()
+						.column(ColumnRef::Asterisk)
+						.from_subquery(self.select_stmt.clone(), "__reinhardt_insert_source")
+						.and_where(Expr::val(true))
+						.to_string(SqliteQueryBuilder)
+				} else {
+					self.select_stmt.to_string(SqliteQueryBuilder)
+				}
+			}
 		};
 
 		let mut sql = format!(
@@ -2405,6 +2423,42 @@ mod tests {
 	// ==========================================
 	// INSERT FROM SELECT Tests
 	// ==========================================
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseType::Postgres,
+		"INSERT INTO \"target_table\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"source_table\" ON CONFLICT (\"id\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
+	)]
+	#[case::mysql(
+		DatabaseType::Mysql,
+		"INSERT INTO `target_table` (`id`, `name`) SELECT `id`, `name` FROM `source_table` ON DUPLICATE KEY UPDATE `name` = VALUES(`name`)"
+	)]
+	#[case::sqlite(
+		DatabaseType::Sqlite,
+		"INSERT INTO \"target_table\" (\"id\", \"name\") SELECT * FROM (SELECT \"id\", \"name\" FROM \"source_table\") AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT (\"id\") DO UPDATE SET \"name\" = excluded.\"name\""
+	)]
+	fn insert_from_select_upsert_sql(#[case] db_type: DatabaseType, #[case] expected_sql: &str) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match db_type {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let source = Query::select()
+			.columns(["id", "name"])
+			.from("source_table")
+			.to_owned();
+		let builder =
+			InsertFromSelectBuilder::new(backend, "target_table", vec!["id", "name"], source)
+				.on_conflict_do_update(Some(vec!["id".into()]), vec!["name".into()]);
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(params, vec![]);
+	}
 
 	#[test]
 	fn test_insert_from_select_basic_postgres() {
