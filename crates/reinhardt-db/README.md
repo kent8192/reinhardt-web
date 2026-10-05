@@ -362,6 +362,11 @@ annotations, related loading, joins, grouping, CTEs, and alternate sources are
 not model-shaped and return an error. Array filter parameters are not supported
 through `sqlx::Any` on the main line.
 
+`Session::list_all` executes an unfiltered model query through the same pool,
+projection, and row decoding path. Table names and physical column names,
+including embedded double quotes or backticks, are escaped by the backend query
+renderer.
+
 `AsyncQuery` preserves bind parameters when executing legacy `Q` filters.
 Runtime field names and operators are treated as query structure and accept
 only supported forms. `Q::from_sql` rejects unrecognized SQL, while
