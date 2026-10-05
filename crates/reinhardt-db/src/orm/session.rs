@@ -1591,10 +1591,13 @@ fn apply_any_model_projection_for_source<T: Model>(
 		statement.expr_as(expression, Alias::new(column_name));
 	}
 	for annotation in annotations {
-		statement.expr_as(
-			Expr::cust(annotation.value.to_sql_expr()),
-			Alias::new(&annotation.alias),
-		);
+		let expression = match &annotation.value {
+			crate::orm::annotation::AnnotationValue::Expression(expression) => {
+				expression.to_query_expr()
+			}
+			value => Expr::cust(value.to_sql_expr()),
+		};
+		statement.expr_as(expression, Alias::new(&annotation.alias));
 	}
 
 	Ok(fields)
@@ -3481,6 +3484,215 @@ mod tests {
 
 		let name: String = row.try_get("name").unwrap();
 		assert_eq!(name, "Alice");
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn sqlite_case_empty_conditions_preserve_boolean_semantics(_init_drivers: ()) {
+		use crate::orm::annotation::{Annotation, AnnotationValue, Expression, Value, When};
+		use crate::orm::expressions::{F, Q, QOperator};
+		use crate::orm::query::{Filter, FilterOperator, FilterValue, UpdateValue};
+
+		// Arrange: one connection owns the private in-memory database and its tables.
+		let pool = sqlx::pool::PoolOptions::<Any>::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.unwrap();
+		sqlx::query("CREATE TABLE assigned_id_records (id BIGINT PRIMARY KEY, name TEXT NOT NULL)")
+			.execute(&pool)
+			.await
+			.unwrap();
+		sqlx::query("INSERT INTO assigned_id_records VALUES (1, 'first'), (2, 'second')")
+			.execute(&pool)
+			.await
+			.unwrap();
+		let pool = Arc::new(pool);
+		let session = Session::new(pool.clone(), DbBackend::Sqlite).await.unwrap();
+		let empty_or = Q::Combined {
+			operator: QOperator::Or,
+			conditions: vec![],
+		};
+		let empty_not = Q::Combined {
+			operator: QOperator::Not,
+			conditions: vec![],
+		};
+		let cases = [
+			(Q::empty(), vec![1, 2]),
+			(empty_or.clone(), vec![]),
+			(empty_not, vec![]),
+			(Q::empty().not(), vec![]),
+			(empty_or.clone().not(), vec![1, 2]),
+			(Q::empty().not().not(), vec![1, 2]),
+			(Q::empty().and(Q::new("id", "=", "1")), vec![1]),
+			(empty_or.clone().or(Q::new("id", "=", "2")), vec![2]),
+			(Q::empty().or(Q::new("id", "=", "1")), vec![1, 2]),
+			(empty_or.clone().and(Q::new("id", "=", "1")), vec![]),
+			(Q::empty().and(Q::new("id", "=", "1")).not(), vec![2]),
+			(empty_or.or(Q::new("id", "=", "1")).and(Q::empty()), vec![1]),
+			(
+				Q::Combined {
+					operator: QOperator::Not,
+					conditions: vec![Q::empty(), Q::new("id", "=", "1")],
+				},
+				vec![2],
+			),
+		];
+		for (condition, expected_ids) in cases {
+			let expression = Expression::Case {
+				whens: vec![When::new(
+					condition.clone(),
+					AnnotationValue::Field(F::new("id")),
+				)],
+				default: Some(Box::new(AnnotationValue::Value(Value::Int(0)))),
+			};
+			let nested = AnnotationValue::Expression(expression.clone());
+			let expressions = [
+				expression,
+				Expression::Case {
+					whens: vec![When::new(
+						condition.clone(),
+						AnnotationValue::Field(F::new("id")),
+					)],
+					default: None,
+				},
+				Expression::Case {
+					whens: vec![When::new(Q::empty(), nested.clone())],
+					default: None,
+				},
+				Expression::Case {
+					whens: vec![When::new(
+						Q::empty().not(),
+						AnnotationValue::Value(Value::Int(0)),
+					)],
+					default: Some(Box::new(nested.clone())),
+				},
+				Expression::Coalesce(vec![nested.clone(), AnnotationValue::Value(Value::Int(0))]),
+				Expression::Add(
+					Box::new(nested.clone()),
+					Box::new(AnnotationValue::Value(Value::Int(0))),
+				),
+				Expression::Subtract(
+					Box::new(nested.clone()),
+					Box::new(AnnotationValue::Value(Value::Int(0))),
+				),
+				Expression::Multiply(
+					Box::new(nested.clone()),
+					Box::new(AnnotationValue::Value(Value::Int(1))),
+				),
+				Expression::Divide(
+					Box::new(nested),
+					Box::new(AnnotationValue::Value(Value::Int(1))),
+				),
+			];
+			let expected = expected_ids
+				.iter()
+				.copied()
+				.map(|id| AssignedIdRecord {
+					id,
+					name: if id == 1 { "first" } else { "second" }.into(),
+				})
+				.collect::<Vec<_>>();
+			for expression in expressions {
+				let query = QuerySet::<AssignedIdRecord>::new()
+					.filter(Filter::new(
+						"id",
+						FilterOperator::Eq,
+						FilterValue::Expression(expression.clone()),
+					))
+					.order_by(&["id"]);
+				// Act
+				let records = session.list(&query).await.unwrap();
+				// Assert: compare the complete result, including the row rejected by a predicate.
+				assert_eq!(records, expected, "CASE expression: {expression:?}");
+			}
+
+			// Act: Session rebuilds annotation projections before executing the query.
+			let annotated = QuerySet::<AssignedIdRecord>::new()
+				.annotate(Annotation::new(
+					"rank",
+					AnnotationValue::Expression(Expression::Case {
+						whens: vec![When::new(
+							condition.clone(),
+							AnnotationValue::Field(F::new("id")),
+						)],
+						default: Some(Box::new(AnnotationValue::Expression(Expression::Subtract(
+							Box::new(AnnotationValue::Value(Value::Int(0))),
+							Box::new(AnnotationValue::Field(F::new("id"))),
+						)))),
+					}),
+				))
+				.order_by(&["rank"]);
+			let records = session.list(&annotated).await.unwrap();
+			// Assert: the annotation's CASE value determines the exact row order.
+			let mut expected_order = [1, 2];
+			expected_order.sort_by_key(|id| if expected_ids.contains(id) { *id } else { -*id });
+			assert_eq!(
+				records,
+				expected_order.map(|id| AssignedIdRecord {
+					id,
+					name: if id == 1 { "first" } else { "second" }.into(),
+				}),
+				"annotation condition: {condition:?}"
+			);
+
+			// Act: UPDATE expressions share the same runtime condition lowering.
+			let updates = HashMap::from([(
+				"name".into(),
+				UpdateValue::Expression(Expression::Case {
+					whens: vec![When::new(
+						condition.clone(),
+						AnnotationValue::Value(Value::String("updated".into())),
+					)],
+					default: Some(Box::new(AnnotationValue::Field(F::new("name")))),
+				}),
+			)]);
+			let update = QuerySet::<AssignedIdRecord>::new()
+				.filter(Filter::new(
+					"id",
+					FilterOperator::Eq,
+					FilterValue::Integer(1),
+				))
+				.update_query(&updates);
+			let sql = update.to_string(SqliteQueryBuilder);
+			assert_eq!(
+				sqlx::query(&sql)
+					.execute(&*pool)
+					.await
+					.unwrap()
+					.rows_affected(),
+				1
+			);
+			let records = session
+				.list(&QuerySet::<AssignedIdRecord>::new().order_by(&["id"]))
+				.await
+				.unwrap();
+			// Assert: only the targeted row may change; the CASE identity selects its value.
+			assert_eq!(
+				records,
+				vec![
+					AssignedIdRecord {
+						id: 1,
+						name: if expected_ids.contains(&1) {
+							"updated"
+						} else {
+							"first"
+						}
+						.into()
+					},
+					AssignedIdRecord {
+						id: 2,
+						name: "second".into()
+					},
+				],
+				"update condition: {condition:?}"
+			);
+			sqlx::query("UPDATE assigned_id_records SET name = 'first' WHERE id = 1")
+				.execute(&*pool)
+				.await
+				.unwrap();
+		}
 	}
 
 	#[rstest]
