@@ -38,4 +38,5 @@ before running the suite in a fresh environment.
 The middleware suite checks component-only CORS, compression, security, rate-limit,
 and JWT imports, CORS with API and umbrella presets, and the WASM dependency
 boundary. Each consumer disables default features and has no direct middleware
-dependency.
+dependency. Cargo commands run offline first and retry once online only when a
+registry dependency is missing from the cache, including WASM-only dependencies.

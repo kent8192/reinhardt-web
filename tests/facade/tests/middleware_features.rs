@@ -55,13 +55,34 @@ reinhardt = {{ package = "reinhardt-web", path = {repository}, default-features 
 	}
 
 	fn cargo(&self, arguments: &[&str]) -> Output {
-		Command::new(env!("CARGO"))
+		let output = self.cargo_once(arguments, true);
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		// Native CI builds do not cache every WASM-only dependency. Retry once
+		// online for a registry cache miss, while preserving compilation errors.
+		let missing_cache = stderr
+			.contains("attempting to make an HTTP request, but --offline was specified")
+			|| (stderr.contains("no matching package named")
+				&& stderr.contains("location searched: crates.io index"));
+		if !output.status.success() && missing_cache {
+			self.cargo_once(arguments, false)
+		} else {
+			output
+		}
+	}
+
+	fn cargo_once(&self, arguments: &[&str], offline: bool) -> Output {
+		let mut command = Command::new(env!("CARGO"));
+		command
 			.args(arguments)
-			.args(["--offline", "--manifest-path"])
+			.arg("--manifest-path")
 			.arg(self.root.path().join("Cargo.toml"))
 			.current_dir(self.root.path())
 			.env("CARGO_TARGET_DIR", self.root.path().join("target"))
-			.env("CARGO_BUILD_BUILD_DIR", self.root.path().join("build"))
+			.env("CARGO_BUILD_BUILD_DIR", self.root.path().join("build"));
+		if offline {
+			command.arg("--offline");
+		}
+		command
 			.output()
 			.expect("run isolated consumer Cargo command")
 	}
