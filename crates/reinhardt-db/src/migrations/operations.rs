@@ -4519,8 +4519,9 @@ impl Operation {
 	///   one statement per payload). Operations that revert to a single payload (e.g.
 	///   `DropTable`, `AddColumn`) return a one-element `Vec`; operations that need
 	///   multiple payloads to round-trip cleanly (e.g. `AlterColumn` on PostgreSQL and
-	///   CockroachDB, which split type reversion and NOT NULL restoration into two
-	///   statements) return a multi-element `Vec`.
+	///   CockroachDB, which dispatch type, nullability, and changed defaults separately)
+	///   return a multi-element `Vec`. Changed defaults are dropped before reverting
+	///   the type, then the old default (if any) is restored.
 	/// * `Ok(None)` - Operation is not reversible (see Design Limitation below)
 	/// * `Err(_)` - Error generating reverse SQL
 	///
@@ -4807,7 +4808,18 @@ impl Operation {
 						} else {
 							"DROP NOT NULL"
 						};
-						vec![
+						let mut statements = Vec::new();
+						let default_changed = old_def.default != new_definition.default;
+						if default_changed {
+							// A default for the new type may not cast to the old type.
+							// Remove it before TYPE, including sequence dependencies.
+							statements.push(format!(
+								"ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT;",
+								quote_identifier(table),
+								quote_identifier(column),
+							));
+						}
+						statements.extend([
 							format!(
 								"ALTER TABLE {table} ALTER COLUMN {column} TYPE {type_sql};",
 								table = quote_identifier(table),
@@ -4820,7 +4832,16 @@ impl Operation {
 								column = quote_identifier(column),
 								nullability_clause = nullability_clause,
 							),
-						]
+						]);
+						if default_changed && let Some(default) = &old_def.default {
+							statements.push(format!(
+								"ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {};",
+								quote_identifier(table),
+								quote_identifier(column),
+								default,
+							));
+						}
+						statements
 					}
 					SqlDialect::Mysql => vec![format!(
 						"ALTER TABLE {} MODIFY COLUMN {} {}{};",
@@ -10761,6 +10782,84 @@ mod tests {
 			"MySQL reverse SQL should restore VARCHAR(50), got: {}",
 			sql
 		);
+	}
+
+	#[rstest]
+	#[case::added_sequence(None, Some("nextval('public.example_seq'::regclass)"), None)]
+	#[case::removed_literal(Some("42"), None, Some("42"))]
+	#[case::changed_literal(Some("42"), Some("7"), Some("42"))]
+	#[case::removed_sequence(
+		Some("nextval('public.example_seq'::regclass)"),
+		None,
+		Some("nextval('public.example_seq'::regclass)")
+	)]
+	#[case::replaced_sequence(
+		Some("nextval('public.example_seq'::regclass)"),
+		Some("42"),
+		Some("nextval('public.example_seq'::regclass)")
+	)]
+	fn test_reverse_alter_column_restores_default(
+		#[case] old_default: Option<&str>,
+		#[case] new_default: Option<&str>,
+		#[case] restored_default: Option<&str>,
+		#[values(SqlDialect::Postgres, SqlDialect::Cockroachdb)] dialect: SqlDialect,
+		#[values(false, true)] not_null: bool,
+		#[values(false, true)] use_snapshot: bool,
+	) {
+		// Arrange
+		let old_definition = ColumnDefinition {
+			name: "id".into(),
+			type_definition: FieldType::BigInteger,
+			not_null,
+			unique: false,
+			primary_key: false,
+			auto_increment: false,
+			default: old_default.map(str::to_owned),
+			generated: None,
+			domain: None,
+			identity: None,
+			sequence_default: None,
+		};
+		let mut state = ProjectState::default();
+		let mut model = ModelState::new("probe", "Example");
+		model.table_name = "example".into();
+		let mut field = FieldState::new("id", FieldType::BigInteger, !not_null);
+		if let Some(default) = old_default {
+			field.params.insert("default".into(), default.into());
+		}
+		model.add_field(field);
+		state.add_model(model);
+		let operation = Operation::AlterColumn {
+			table: "example".into(),
+			column: "id".into(),
+			old_definition: (!use_snapshot).then_some(old_definition.clone()),
+			new_definition: ColumnDefinition {
+				default: new_default.map(str::to_owned),
+				not_null: !not_null,
+				type_definition: FieldType::Integer,
+				..old_definition
+			},
+			mysql_options: None,
+		};
+		let mut expected = vec![
+			"ALTER TABLE example ALTER COLUMN id DROP DEFAULT;".to_owned(),
+			"ALTER TABLE example ALTER COLUMN id TYPE BIGINT;".to_owned(),
+			format!(
+				"ALTER TABLE example ALTER COLUMN id {} NOT NULL;",
+				if not_null { "SET" } else { "DROP" }
+			),
+		];
+		if let Some(default) = restored_default {
+			expected.push(format!(
+				"ALTER TABLE example ALTER COLUMN id SET DEFAULT {default};"
+			));
+		}
+
+		// Act
+		let statements = operation.to_reverse_sql(&dialect, &state).unwrap();
+
+		// Assert
+		assert_eq!(statements, Some(expected));
 	}
 
 	#[rstest]

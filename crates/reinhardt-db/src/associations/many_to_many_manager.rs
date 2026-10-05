@@ -88,7 +88,7 @@ where
 			);
 
 		let (sql, values) = build_insert_sql(&statement, conn.backend());
-		conn.execute(&sql, crate::orm::execution::convert_values(values))
+		conn.execute_generated_with_context(&sql, values, None)
 			.await?;
 		Ok(())
 	}
@@ -116,7 +116,7 @@ where
 			DatabaseBackend::MySql => MySqlQueryBuilder.build_delete(&statement),
 			DatabaseBackend::Sqlite => SqliteQueryBuilder.build_delete(&statement),
 		};
-		conn.execute(&sql, crate::orm::execution::convert_values(values))
+		conn.execute_generated_with_context(&sql, values, None)
 			.await?;
 		Ok(())
 	}
@@ -204,7 +204,7 @@ where
 			DatabaseBackend::MySql => MySqlQueryBuilder.build_delete(&statement),
 			DatabaseBackend::Sqlite => SqliteQueryBuilder.build_delete(&statement),
 		};
-		conn.execute(&sql, crate::orm::execution::convert_values(values))
+		conn.execute_generated_with_context(&sql, values, None)
 			.await?;
 		Ok(())
 	}
@@ -228,7 +228,7 @@ where
 
 		let (sql, values) = build_select_sql(&statement, conn.backend());
 		let row = QueryRow::from_backend_row(
-			conn.fetch_one(&sql, crate::orm::execution::convert_values(values))
+			conn.fetch_one_generated_with_context(&sql, values, None)
 				.await?,
 		);
 		let count = row.get::<i64>("count").ok_or_else(|| {

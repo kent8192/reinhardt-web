@@ -57,7 +57,7 @@ fn is_boolean_type(type_name: &str) -> bool {
 /// includes the upstream lifetime fix.
 ///
 /// Ideal implementation (without workaround):
-/// `sqlx::raw_sql(&sql).execute(&mut **tx).await?;`
+/// `sqlx::raw_sql(&sql).execute(&mut **tx).await.map_err(map_sqlx_error)?;`
 ///
 /// SQLx 0.8's convenience method cannot be used in this `async_trait` path.
 /// Calling [`Executor::execute`] directly still selects MySQL's non-prepared
@@ -258,6 +258,47 @@ impl MySqlBackend {
 
 #[async_trait]
 impl DatabaseBackend for MySqlBackend {
+	async fn __execute_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::mysql::arguments(values)?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: optional_last_insert_id(result.last_insert_id()),
+		})
+	}
+
+	async fn __fetch_one_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Row> {
+		let arguments = crate::backends::generated::mysql::arguments(values)?;
+		let row = sqlx::query_with(sql, arguments)
+			.fetch_one(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		Self::convert_row(row)
+	}
+
+	async fn __fetch_all_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Vec<Row>> {
+		let arguments = crate::backends::generated::mysql::arguments(values)?;
+		let rows = sqlx::query_with(sql, arguments)
+			.fetch_all(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		rows.into_iter().map(Self::convert_row).collect()
+	}
 	fn database_type(&self) -> DatabaseType {
 		DatabaseType::Mysql
 	}
@@ -501,10 +542,62 @@ impl MySqlTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for MySqlTransactionExecutor {
+	async fn __fetch_one_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let arguments = crate::backends::generated::mysql::arguments(values)?;
+		let connection = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let query = sqlx::query_with(sql, arguments);
+		let row = query
+			.fetch_one(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		Self::convert_row(row)
+	}
+
+	async fn __fetch_all_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let arguments = crate::backends::generated::mysql::arguments(values)?;
+		let connection = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let query = sqlx::query_with(sql, arguments);
+		let rows = query
+			.fetch_all(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		rows.into_iter().map(Self::convert_row).collect()
+	}
+
 	fn backend(&self) -> DatabaseType {
 		DatabaseType::Mysql
 	}
 
+	async fn __execute_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::mysql::arguments(values)?;
+		let connection = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: optional_last_insert_id(result.last_insert_id()),
+		})
+	}
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
@@ -741,10 +834,62 @@ impl Drop for MySqlRawTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for MySqlRawTransactionExecutor {
+	async fn __fetch_one_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let arguments = crate::backends::generated::mysql::arguments(values)?;
+		let connection = self.connection_mut()?;
+		let query = sqlx::query_with(sql, arguments);
+		let row = query
+			.fetch_one(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		Self::convert_row(row)
+	}
+
+	async fn __fetch_all_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let arguments = crate::backends::generated::mysql::arguments(values)?;
+		let connection = self.connection_mut()?;
+		let query = sqlx::query_with(sql, arguments);
+		let rows = query
+			.fetch_all(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		rows.into_iter().map(Self::convert_row).collect()
+	}
+
 	fn backend(&self) -> DatabaseType {
 		DatabaseType::Mysql
 	}
 
+	async fn __execute_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::mysql::arguments(values)?;
+		let connection = self.connection_mut()?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: optional_last_insert_id(result.last_insert_id()),
+		})
+	}
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let conn = self.connection_mut()?;
 

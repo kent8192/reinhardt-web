@@ -290,6 +290,11 @@ name = "database_connection_di"
 path = "tests/database_connection_di.rs"
 required-features = ["orm", "di", "sqlite"]
 
+[[test]]
+name = "contenttypes_connection_affinity"
+path = "tests/contenttypes_connection_affinity.rs"
+required-features = ["database", "contenttypes", "sqlite"]
+
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 tokio-test = "0.4"
 sqlx = { workspace = true, features = ["runtime-tokio", "postgres"] }

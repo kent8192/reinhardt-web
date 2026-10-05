@@ -3,9 +3,9 @@
 use reinhardt_query::query::traits::inline_params;
 use reinhardt_query::types::{TriggerEvent, TriggerScope, TriggerTiming};
 use reinhardt_query::{
-	Alias, ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, IntoIden, MySqlQueryBuilder,
+	Alias, ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, MySqlQueryBuilder,
 	PostgresQueryBuilder, Query, QueryBuilderTrait, QueryStatementBuilder, SelectStatement,
-	SimpleExpr, SqliteQueryBuilder, TableRef, Value, Values,
+	SimpleExpr, SqliteQueryBuilder, Value, Values,
 };
 use rstest::{fixture, rstest};
 
@@ -262,8 +262,8 @@ fn postgres_to_string_renders_byte_array_defaults_and_checks() {
 #[rstest]
 #[case::mysql(
 	MySqlQueryBuilder,
-	r"SELECT `title` LIKE ? ESCAPE 0x5C, `content` LIKE ? ESCAPE 0x5C, `suffix` LIKE ? ESCAPE 0x5C",
-	r"SELECT `title` LIKE '%web%' ESCAPE 0x5C, `content` LIKE 'guide%' ESCAPE 0x5C, `suffix` LIKE '%.md' ESCAPE 0x5C"
+	"SELECT `title` LIKE ? ESCAPE 0x5C, `content` LIKE ? ESCAPE 0x5C, `suffix` LIKE ? ESCAPE 0x5C",
+	"SELECT `title` LIKE '%web%' ESCAPE 0x5C, `content` LIKE 'guide%' ESCAPE 0x5C, `suffix` LIKE '%.md' ESCAPE 0x5C"
 )]
 #[case::postgres(
 	PostgresQueryBuilder,

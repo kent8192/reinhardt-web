@@ -139,7 +139,7 @@ compressed-parsers = ["core", "reinhardt-core/compressed-parsers", "reinhardt-re
 # profile's `debug_assertions` setting. Off by default — production
 # builds incur zero overhead. Refs #4221.
 pages-nav-diag-dom = ["pages", "reinhardt-pages/nav-diag-dom"]
-uuid = ["reinhardt-pages/uuid"]
+uuid = ["reinhardt-pages/uuid", "reinhardt-di?/uuid"]
 chrono = ["reinhardt-pages/chrono"]
 websockets = [
   "routing",
@@ -560,6 +560,7 @@ members = [
   # Integration tests
   "tests",
   "tests/integration",
+  "tests/facade",
   # Benchmark tests
   "tests/bench",
 ]

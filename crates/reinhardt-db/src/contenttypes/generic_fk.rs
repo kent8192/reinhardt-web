@@ -291,6 +291,10 @@ pub mod constraints {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::contenttypes::CONTENT_TYPE_REGISTRY;
+	use crate::contenttypes::contenttypes::ContentTypeRegistryGuard;
+	use rstest::rstest;
+	use serial_test::serial;
 
 	#[test]
 	fn test_generic_fk_field_new() {
@@ -349,24 +353,21 @@ mod tests {
 		assert!(!gfk.is_set());
 	}
 
-	#[test]
+	#[rstest]
+	#[serial(content_type_registry)]
 	fn test_generic_fk_field_get_content_type() {
-		use crate::contenttypes::CONTENT_TYPE_REGISTRY;
-
-		// Clear registry first
-		CONTENT_TYPE_REGISTRY.clear();
-
+		// Arrange
+		let _registry_guard = ContentTypeRegistryGuard::new();
 		let ct = CONTENT_TYPE_REGISTRY.register(ContentType::new("test", "Model"));
 		let mut gfk = GenericForeignKeyField::new();
 
 		gfk.set(&ct, 42);
+
+		// Act
 		let retrieved = gfk.get_content_type();
 
-		assert!(retrieved.is_some());
-		assert_eq!(retrieved.unwrap().model, "Model");
-
-		// Clean up
-		CONTENT_TYPE_REGISTRY.clear();
+		// Assert
+		assert_eq!(retrieved, Some(ct));
 	}
 
 	#[test]

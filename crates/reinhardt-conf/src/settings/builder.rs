@@ -267,7 +267,6 @@ impl SettingsBuilder {
 		if self.merge_strategy.is_none() {
 			self.merge_strategy = Some(MergeStrategy::Deep);
 		}
-		// Capture the flag before `self.build()` consumes self.
 		let typed_coercion = self.typed_coercion;
 		let merged = self.build()?;
 		Ok(PendingSettings {

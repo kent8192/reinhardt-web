@@ -2,7 +2,7 @@
 //!
 //! This module implements the SQL generation backend for SQLite.
 
-use super::{QueryBuilder, SqlWriter};
+use super::{QueryBuilder, SqlWriter, write_arithmetic_operand};
 use crate::{
 	expr::{Condition, SimpleExpr, TemporalTruncKind, TemporalTruncOutput},
 	query::{
@@ -25,6 +25,7 @@ use crate::{
 /// This struct implements SQL generation for SQLite, using the following conventions:
 /// - Identifiers: Double quotes (`"table_name"`)
 /// - Placeholders: Question marks (`?`)
+/// - Arithmetic: Parentheses preserve nested operand precedence and associativity
 ///
 /// # Examples
 ///
@@ -436,11 +437,15 @@ impl SqliteQueryBuilder {
 					writer.push(")");
 				}
 				_ => {
-					self.write_simple_expr(writer, left);
+					write_arithmetic_operand(writer, left, *op, false, &["--"], |w, expr| {
+						self.write_simple_expr(w, expr);
+					});
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr(writer, right);
+					write_arithmetic_operand(writer, right, *op, true, &["--"], |w, expr| {
+						self.write_simple_expr(w, expr);
+					});
 				}
 			},
 			SimpleExpr::Unary(op, expr) => {
@@ -558,6 +563,13 @@ impl SqliteQueryBuilder {
 				writer.push(" LIKE ");
 				self.write_simple_expr(writer, pattern);
 				writer.push(" ESCAPE '\\'");
+			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(LOWER(");
+				self.write_simple_expr(writer, expr);
+				writer.push(") LIKE LOWER(");
+				self.write_simple_expr(writer, pattern);
+				writer.push(") ESCAPE '\\')");
 			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
@@ -1460,6 +1472,13 @@ impl QueryBuilder for SqliteQueryBuilder {
 	}
 
 	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
+		assert!(
+			stmt.columns
+				.iter()
+				.all(|column| column.prefix_length.is_none()),
+			"SQLite does not support index column prefixes"
+		);
+
 		let mut writer = SqlWriter::new();
 
 		// CREATE UNIQUE INDEX IF NOT EXISTS
@@ -4803,6 +4822,7 @@ mod tests {
 			name: "email".into_iden(),
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4826,6 +4846,7 @@ mod tests {
 			name: "username".into_iden(),
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4849,6 +4870,7 @@ mod tests {
 			name: "email".into_iden(),
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4872,6 +4894,7 @@ mod tests {
 			name: "created_at".into_iden(),
 			order: Some(Order::Desc),
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4895,11 +4918,13 @@ mod tests {
 			name: "last_name".into_iden(),
 			order: Some(Order::Asc),
 			operator_class: None,
+			prefix_length: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
 			order: Some(Order::Asc),
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4922,6 +4947,7 @@ mod tests {
 			name: "email".into_iden(),
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 		stmt.r#where = Some(Expr::col("active").eq(true).into_simple_expr());
 

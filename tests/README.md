@@ -16,3 +16,19 @@ Comprehensive integration test suite for testing interactions between multiple R
 - Serializer and ORM integration tests
 - Template rendering integration tests
 - End-to-end API workflow tests
+
+## Facade Feature Regression Tests
+
+The `reinhardt-facade-tests` package checks downstream feature contracts without
+building the full integration-test dependency graph. Its temporary consumers live
+outside the framework workspace and depend only on the facade and `uuid`, so
+workspace feature unification cannot enable a missing extractor implementation.
+
+```bash
+cargo test -p reinhardt-facade-tests --test uuid_path
+```
+
+The UUID suite checks single and tuple path injection with `di`, `minimal`, and
+`api-only`, optional DI activation on native targets, and the WASM dependency
+boundary. Consumer Cargo commands run offline; populate the dependency cache
+before running the suite in a fresh environment.

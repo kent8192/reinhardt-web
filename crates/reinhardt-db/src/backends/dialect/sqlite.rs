@@ -229,6 +229,47 @@ impl SqliteBackend {
 
 #[async_trait]
 impl DatabaseBackend for SqliteBackend {
+	async fn __execute_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: None,
+		})
+	}
+
+	async fn __fetch_one_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Row> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let row = sqlx::query_with(sql, arguments)
+			.fetch_one(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		Self::convert_row(row)
+	}
+
+	async fn __fetch_all_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Vec<Row>> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let rows = sqlx::query_with(sql, arguments)
+			.fetch_all(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
+		rows.into_iter().map(Self::convert_row).collect()
+	}
 	fn database_type(&self) -> DatabaseType {
 		DatabaseType::Sqlite
 	}
@@ -572,10 +613,62 @@ impl SqliteTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for SqliteTransactionExecutor {
+	async fn __fetch_one_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let query = sqlx::query_with(sql, arguments);
+		let row = query
+			.fetch_one(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		Self::convert_row(row)
+	}
+
+	async fn __fetch_all_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let query = sqlx::query_with(sql, arguments);
+		let rows = query
+			.fetch_all(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		rows.into_iter().map(Self::convert_row).collect()
+	}
+
 	fn backend(&self) -> DatabaseType {
 		DatabaseType::Sqlite
 	}
 
+	async fn __execute_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: None,
+		})
+	}
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
@@ -788,6 +881,58 @@ impl Drop for SqliteRawTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for SqliteRawTransactionExecutor {
+	async fn __fetch_one_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.connection_mut()?;
+		let query = sqlx::query_with(sql, arguments);
+		let row = query
+			.fetch_one(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		SqliteBackend::convert_row(row)
+	}
+
+	async fn __fetch_all_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.connection_mut()?;
+		let query = sqlx::query_with(sql, arguments);
+		let rows = query
+			.fetch_all(&mut **connection)
+			.await
+			.map_err(map_sqlx_error)?;
+		rows.into_iter().map(SqliteBackend::convert_row).collect()
+	}
+
+	async fn __execute_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+		_context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(&mut **self.connection_mut()?)
+			.await
+			.map_err(map_sqlx_error)?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+			last_insert_id: None,
+		})
+	}
+
 	fn backend(&self) -> DatabaseType {
 		DatabaseType::Sqlite
 	}

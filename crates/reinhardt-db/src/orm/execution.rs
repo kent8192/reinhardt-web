@@ -58,6 +58,15 @@ pub enum ExecutionError {
 	QueryBuild(String),
 }
 
+fn decode_exists_value(value: &serde_json::Value) -> Result<bool, ExecutionError> {
+	// PostgreSQL returns a boolean; SQLite and MySQL return the integers 0 or 1.
+	match value.as_i64() {
+		Some(0) => Ok(false),
+		Some(1) => Ok(true),
+		_ => Ok(serde_json::from_value(value.clone())?),
+	}
+}
+
 /// Convert reinhardt_query Value to QueryValue for parameter binding
 fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryValue {
 	use reinhardt_query::value::Value as SV;
@@ -197,6 +206,66 @@ pub fn convert_values(values: reinhardt_query::prelude::Values) -> Vec<QueryValu
 		.into_iter()
 		.map(convert_value_to_query_value)
 		.collect()
+}
+
+/// Preserve the ORM's JSON array representation outside PostgreSQL.
+pub(crate) fn prepare_generated_values(
+	values: reinhardt_query::Values,
+	backend: super::connection::DatabaseBackend,
+) -> reinhardt_core::exception::Result<reinhardt_query::Values> {
+	if backend == super::connection::DatabaseBackend::Postgres {
+		return Ok(values);
+	}
+	let converted = values
+		.into_iter()
+		.enumerate()
+		.map(|(offset, value)| {
+			let SV::Array(ty, elements) = value else {
+				return Ok(value);
+			};
+			let fail = || {
+				reinhardt_core::exception::Error::from(
+					reinhardt_core::exception::DatabaseError::new(
+						reinhardt_core::exception::DatabaseErrorKind::Type,
+						format!(
+							"cannot encode Array argument {}: element is not representable as JSON",
+							offset + 1
+						),
+					),
+				)
+			};
+			let Some(elements) = elements else {
+				return Ok(SV::Json(None));
+			};
+			// The declared type and null positions remain checked by the raw adapter.
+			crate::backends::generated::legacy_values(
+				reinhardt_query::Values(vec![SV::Array(ty, Some(elements.clone()))]),
+				"orm",
+			)?;
+			let elements = elements
+				.into_iter()
+				.map(|value| {
+					Ok(match value {
+						SV::Bool(Some(value)) => serde_json::Value::Bool(value),
+						SV::Int(Some(value)) => value.into(),
+						SV::BigInt(Some(value)) => value.into(),
+						SV::Float(Some(value)) => serde_json::Number::from_f64(f64::from(value))
+							.map(serde_json::Value::Number)
+							.ok_or_else(fail)?,
+						SV::Double(Some(value)) => serde_json::Number::from_f64(value)
+							.map(serde_json::Value::Number)
+							.ok_or_else(fail)?,
+						SV::String(Some(value)) => serde_json::Value::String(*value),
+						SV::Uuid(Some(value)) => serde_json::Value::String(value.to_string()),
+						value if value.is_null() => serde_json::Value::Null,
+						_ => return Err(fail()),
+					})
+				})
+				.collect::<reinhardt_core::exception::Result<Vec<_>>>()?;
+			Ok(SV::Json(Some(Box::new(serde_json::Value::Array(elements)))))
+		})
+		.collect::<reinhardt_core::exception::Result<Vec<_>>>()?;
+	Ok(reinhardt_query::Values(converted))
 }
 
 /// Preserves typed native arrays and NULL positions for every ORM binding path.
@@ -776,9 +845,8 @@ where
 		let context = pgvector_context_for_select(&stmt);
 		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
 
-		let query_values = convert_values(values);
 		let row = db
-			.fetch_one_with_context(&sql, query_values, context)
+			.fetch_one_generated_with_context(&sql, values, context)
 			.await?;
 		Ok(QueryRow::from_backend_row(row).deserialize_model::<T>()?)
 	}
@@ -792,9 +860,8 @@ where
 		let context = pgvector_context_for_select(&stmt);
 		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
 
-		let query_values = convert_values(values);
 		let rows = db
-			.fetch_all_with_context(&sql, query_values, context)
+			.fetch_all_generated_with_context(&sql, values, context)
 			.await?;
 		let mut results = Vec::with_capacity(rows.len());
 		for row in rows {
@@ -812,9 +879,8 @@ where
 		let context = pgvector_context_for_select(&stmt);
 		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
 
-		let query_values = convert_values(values);
 		match db
-			.fetch_optional_with_context(&sql, query_values, context)
+			.fetch_optional_generated_with_context(&sql, values, context)
 			.await?
 		{
 			Some(row) => Ok(Some(
@@ -833,9 +899,8 @@ where
 		let context = pgvector_context_for_select(&stmt);
 		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
 
-		let query_values = convert_values(values);
 		let rows = db
-			.fetch_all_with_context(&sql, query_values, context)
+			.fetch_all_generated_with_context(&sql, values, context)
 			.await?;
 		match rows.len() {
 			0 => Err(ExecutionError::NoResultFound),
@@ -856,9 +921,8 @@ where
 		let context = pgvector_context_for_select(&stmt);
 		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
 
-		let query_values = convert_values(values);
 		let rows = db
-			.fetch_all_with_context(&sql, query_values, context)
+			.fetch_all_generated_with_context(&sql, values, context)
 			.await?;
 		match rows.len() {
 			0 => Ok(None),
@@ -879,9 +943,8 @@ where
 		let context = pgvector_context_for_select(&stmt);
 		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
 
-		let query_values = convert_values(values);
 		let rows = db
-			.fetch_all_with_context(&sql, query_values, context)
+			.fetch_all_generated_with_context(&sql, values, context)
 			.await?;
 		match rows.into_iter().next() {
 			Some(row) => {
@@ -907,9 +970,8 @@ where
 		let context = pgvector_context_for_select(&stmt);
 		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
 
-		let query_values = convert_values(values);
 		let query_row = QueryRow::from_backend_row(
-			db.fetch_one_with_context(&sql, query_values, context)
+			db.fetch_one_generated_with_context(&sql, values, context)
 				.await?,
 		);
 
@@ -934,9 +996,8 @@ where
 		let context = pgvector_context_for_select(&stmt);
 		let (sql, values) = build_select_for_backend(&stmt, db.backend(), db.is_cockroachdb())?;
 
-		let query_values = convert_values(values);
 		let query_row = QueryRow::from_backend_row(
-			db.fetch_one_with_context(&sql, query_values, context)
+			db.fetch_one_generated_with_context(&sql, values, context)
 				.await?,
 		);
 
@@ -944,8 +1005,7 @@ where
 		if let Some(obj) = query_row.data.as_object()
 			&& let Some((_, value)) = obj.iter().next()
 		{
-			let exists: bool = serde_json::from_value(value.clone())?;
-			return Ok(exists);
+			return decode_exists_value(value);
 		}
 
 		Err(ExecutionError::QueryBuild(
@@ -1101,6 +1161,7 @@ impl Default for QueryOptions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::orm::test_connection::TestConnection as DatabaseConnection;
 	use crate::orm::{DatabaseArrayType, DatabaseScalar, DatabaseValue, Manager};
 	use reinhardt_core::validators::TableName;
 	use rstest::rstest;
@@ -2069,6 +2130,108 @@ mod tests {
 		let result_stmt = exec.exists();
 		let sql = result_stmt.to_string(PostgresQueryBuilder);
 		assert!(sql.contains("EXISTS"));
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest::fixture]
+	async fn sqlite_database() -> DatabaseConnection {
+		DatabaseConnection::connect("sqlite::memory:")
+			.await
+			.unwrap()
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[case::matching(7, true)]
+	#[case::missing(8, false)]
+	#[tokio::test]
+	async fn exists_async_decodes_native_results_with_generated_arguments(
+		#[future] sqlite_database: DatabaseConnection,
+		#[case] id: i64,
+		#[case] expected: bool,
+	) {
+		use reinhardt_query::{ColumnDef, QueryBuilder, QueryStatementBuilder, SqliteQueryBuilder};
+
+		// Arrange
+		let mut db = sqlite_database.await;
+		let table = Query::create_table()
+			.table(User::table_name())
+			.col(ColumnDef::new("id").integer())
+			.to_owned();
+		let (sql, _) = SqliteQueryBuilder.build_create_table(&table);
+		db.execute(&sql, vec![]).await.unwrap();
+		let (sql, values) = Query::insert()
+			.into_table(User::table_name())
+			.columns(["id"])
+			.values_panic([7])
+			.build(SqliteQueryBuilder);
+		db.execute_generated(&sql, values).await.unwrap();
+		let statement = Query::select()
+			.column("id")
+			.from(User::table_name())
+			.and_where(Expr::col("id").eq(id))
+			.to_owned();
+
+		// Act
+		let actual = SelectExecution::<User>::new(statement)
+			.exists_async(&mut *db)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(actual, expected);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[tokio::test]
+	async fn exists_async_rejects_generated_overflow_before_sql(
+		#[future] sqlite_database: DatabaseConnection,
+	) {
+		// Arrange: the absent table makes accidental SQL execution observable.
+		let mut db = sqlite_database.await;
+		let statement = Query::select()
+			.column("id")
+			.from(User::table_name())
+			.and_where(Expr::col("id").eq(Expr::val(reinhardt_query::Value::from(u64::MAX))))
+			.to_owned();
+
+		// Act
+		let error = SelectExecution::<User>::new(statement)
+			.exists_async(&mut *db)
+			.await
+			.unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Framework error: Database error: cannot encode BigUnsigned argument 1 for sqlite: unsigned integer exceeds signed 64-bit range"
+		);
+	}
+
+	#[rstest]
+	#[case::boolean_false(serde_json::json!(false), false)]
+	#[case::boolean_true(serde_json::json!(true), true)]
+	#[case::integer_zero(serde_json::json!(0), false)]
+	#[case::integer_one(serde_json::json!(1), true)]
+	fn test_decode_exists_value(#[case] value: serde_json::Value, #[case] expected: bool) {
+		assert_eq!(decode_exists_value(&value).unwrap(), expected);
+	}
+
+	#[rstest]
+	#[case::negative_integer(serde_json::json!(-1))]
+	#[case::other_integer(serde_json::json!(2))]
+	#[case::large_unsigned_integer(serde_json::json!(u64::MAX))]
+	#[case::float_zero(serde_json::json!(0.0))]
+	#[case::float_one(serde_json::json!(1.0))]
+	#[case::null(serde_json::Value::Null)]
+	#[case::boolean_string(serde_json::json!("true"))]
+	#[case::integer_string(serde_json::json!("1"))]
+	#[case::array(serde_json::json!([true]))]
+	#[case::object(serde_json::json!({"exists": true}))]
+	fn test_decode_exists_value_rejects_invalid_results(#[case] value: serde_json::Value) {
+		let error = decode_exists_value(&value).unwrap_err();
+		assert!(matches!(error, ExecutionError::Deserialization(_)));
 	}
 
 	#[test]

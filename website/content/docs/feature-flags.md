@@ -318,6 +318,7 @@ reinhardt-utils = { version = "LATEST_VERSION", features = ["redis-sentinel"] }
 | Feature | Description | Auto-enables |
 |---------|-------------|--------------|
 | `di` | Full DI system | `reinhardt-di/params`, `reinhardt-db?/di` |
+| `uuid` | UUID support, including native UUID path extraction when DI is enabled | `reinhardt-pages/uuid`, `reinhardt-di?/uuid` |
 
 The `di` feature enables FastAPI-style dependency injection with parameter extraction:
 
@@ -336,6 +337,12 @@ async fn handler(
 ```
 
 **Note**: The `minimal` and `standard` bundles automatically include the `di` feature, so parameter types (`Body`, `Cookie`, `Header`, `Json`, `Path`, `Query`) are available without explicit configuration.
+
+Enable `uuid` alongside `di`, `minimal`, `standard`, or `api-only` to use
+`Path<uuid::Uuid>` and `Path<(uuid::Uuid, uuid::Uuid)>` as native injectable
+extractors through the facade. A direct `reinhardt-di` dependency is unnecessary.
+The `uuid` feature preserves Pages UUID support and does not enable the facade's
+`di` feature by itself. The facade's direct DI dependency remains native-only.
 
 ---
 

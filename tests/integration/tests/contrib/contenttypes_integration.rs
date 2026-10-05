@@ -192,9 +192,9 @@ mod orm_integration_tests {
 	/// Setup test pool fixture with table creation
 	#[fixture]
 	async fn setup_test_pool(_init_drivers: ()) -> Arc<AnyPool> {
-		// Use single connection pool for in-memory SQLite with shared cache
+		// Keep each fixture's private in-memory database on a single connection.
 		use sqlx::pool::PoolOptions;
-		let database_url = "sqlite::memory:?mode=rwc&cache=shared";
+		let database_url = "sqlite::memory:?cache=private";
 		let pool = PoolOptions::new()
 			.min_connections(1)
 			.max_connections(1)
@@ -215,22 +215,24 @@ mod orm_integration_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_query_with_transaction(#[future] setup_test_pool: Arc<AnyPool>) {
+	async fn test_query_with_pool_backed_context(#[future] setup_test_pool: Arc<AnyPool>) {
 		let pool = setup_test_pool.await;
 
-		// Create ContentType within transaction
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("txn_test", "Model1")
+		// Create ContentTypes through the SQLite pool-backed context
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("context_test", "Model1")
 			.await
 			.expect("Failed to create");
-		tx.create("txn_test", "Model2")
+		context
+			.create("context_test", "Model2")
 			.await
 			.expect("Failed to create");
 
 		// Retrieve with query
 		let query = ContentTypeQuery::new(pool);
 		let results = query
-			.filter_app_label("txn_test")
+			.filter_app_label("context_test")
 			.order_by_model()
 			.all()
 			.await
@@ -247,9 +249,10 @@ mod orm_integration_tests {
 		let pool = setup_test_pool.await;
 
 		// Create test data
-		let tx = ContentTypeTransaction::new(pool.clone());
+		let context = ContentTypeTransaction::new(pool.clone());
 		for i in 1..=5 {
-			tx.create("chain", &format!("Model{}", i))
+			context
+				.create("chain", &format!("Model{}", i))
 				.await
 				.expect("Failed to create");
 		}
@@ -275,14 +278,17 @@ mod orm_integration_tests {
 	async fn test_query_count_and_exists(#[future] setup_test_pool: Arc<AnyPool>) {
 		let pool = setup_test_pool.await;
 
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("count_test", "A")
+		let context = ContentTypeTransaction::new(pool.clone());
+		context
+			.create("count_test", "A")
 			.await
 			.expect("Failed to create");
-		tx.create("count_test", "B")
+		context
+			.create("count_test", "B")
 			.await
 			.expect("Failed to create");
-		tx.create("count_test", "C")
+		context
+			.create("count_test", "C")
 			.await
 			.expect("Failed to create");
 
@@ -318,19 +324,19 @@ mod orm_integration_tests {
 
 	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_delete(#[future] setup_test_pool: Arc<AnyPool>) {
+	async fn test_pool_backed_context_delete(#[future] setup_test_pool: Arc<AnyPool>) {
 		let pool = setup_test_pool.await;
 
 		// Create
-		let tx = ContentTypeTransaction::new(pool.clone());
-		let ct = tx
+		let context = ContentTypeTransaction::new(pool.clone());
+		let ct = context
 			.create("delete_test", "ToBeDeleted")
 			.await
 			.expect("Failed to create");
 		let id = ct.id.unwrap();
 
 		// Delete
-		tx.delete(id).await.expect("Failed to delete");
+		context.delete(id).await.expect("Failed to delete");
 
 		// Verify deletion
 		let query = ContentTypeQuery::new(pool);
@@ -343,10 +349,10 @@ mod orm_integration_tests {
 	async fn test_query_multiple_order_by(#[future] setup_test_pool: Arc<AnyPool>) {
 		let pool = setup_test_pool.await;
 
-		let tx = ContentTypeTransaction::new(pool.clone());
-		tx.create("app1", "Z").await.expect("Failed to create");
-		tx.create("app2", "A").await.expect("Failed to create");
-		tx.create("app1", "A").await.expect("Failed to create");
+		let context = ContentTypeTransaction::new(pool.clone());
+		context.create("app1", "Z").await.expect("Failed to create");
+		context.create("app2", "A").await.expect("Failed to create");
+		context.create("app1", "A").await.expect("Failed to create");
 
 		// Multiple order_by
 		let query = ContentTypeQuery::new(pool);
@@ -408,13 +414,13 @@ mod combined_tests {
 	#[rstest]
 	#[serial(content_type_registry)]
 	#[tokio::test]
-	async fn test_transaction_with_multi_db(
+	async fn test_pool_backed_context_with_multi_db(
 		_init_drivers: (),
 		_registry_guard: TeardownGuard<ContentTypeRegistryGuard>,
 	) {
-		// Use single connection pool for in-memory SQLite with shared cache
+		// Keep this test's private in-memory database on a single connection.
 		use sqlx::pool::PoolOptions;
-		let database_url = "sqlite::memory:?mode=rwc&cache=shared";
+		let database_url = "sqlite::memory:?cache=private";
 		let pool = PoolOptions::new()
 			.min_connections(1)
 			.max_connections(1)
@@ -432,10 +438,16 @@ mod combined_tests {
 
 		let pool_arc = Arc::new(pool);
 
-		// Transaction operations
-		let tx = ContentTypeTransaction::new(pool_arc.clone());
-		tx.create("multi", "A").await.expect("Failed to create");
-		tx.create("multi", "B").await.expect("Failed to create");
+		// Independent operations through the SQLite pool-backed context
+		let context = ContentTypeTransaction::new(pool_arc.clone());
+		context
+			.create("multi", "A")
+			.await
+			.expect("Failed to create");
+		context
+			.create("multi", "B")
+			.await
+			.expect("Failed to create");
 
 		// Verify with query
 		let query = ContentTypeQuery::new(pool_arc);

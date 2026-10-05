@@ -6497,8 +6497,8 @@ mod tests {
 			params,
 			vec![
 				reinhardt_db::backends::types::QueryValue::String("2024-01-01".to_string()),
-				reinhardt_db::backends::types::QueryValue::Int(25),
-				reinhardt_db::backends::types::QueryValue::Int(0),
+				reinhardt_db::backends::types::QueryValue::Uint(25),
+				reinhardt_db::backends::types::QueryValue::Uint(0),
 			]
 		);
 	}
@@ -6588,8 +6588,8 @@ mod tests {
 			vec![
 				reinhardt_db::backends::types::QueryValue::String("10000-01-01".to_string()),
 				reinhardt_db::backends::types::QueryValue::String("0001-01-01 BC".to_string()),
-				reinhardt_db::backends::types::QueryValue::Int(25),
-				reinhardt_db::backends::types::QueryValue::Int(0),
+				reinhardt_db::backends::types::QueryValue::Uint(25),
+				reinhardt_db::backends::types::QueryValue::Uint(0),
 			]
 		);
 	}

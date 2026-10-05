@@ -561,17 +561,33 @@
 //!
 //! ## Architecture
 //!
+//! `QuerySet` statements, `orm::execution` builders, and many-to-many operations
+//! use native backend codecs, preserving supported decimal and array types.
+//! This includes the ordinary `QuerySet::all`, `first`, and `get` accessors.
+//! Dedicated transaction executors support the same generated-value dispatch.
+//! Unsupported or lossy generated arguments fail before execution with a redacted
+//! backend/type/position error. `Manager` model creation and updates retain their
+//! JSON-to-`QueryValue` conversion. Explicit raw executors and the legacy
+//! `orm::execution::convert_values` adapter retain their existing contracts.
+//!
 //! Key modules in this crate:
 //!
-//! - [`backends`]: Low-level database operations, schema editor, DDL generation
-//! - [`backends_pool`]: Connection pool management with lifecycle hooks
-//! - [`pool`]: High-level pool abstraction for `ConnectionPool`
-//! - [`orm`]: Django-style model definitions, QuerySet, field types, and
-//!   model-level fixture support
-//! - [`migrations`]: Schema migration system with auto-detection and rollback
-//! - [`hybrid`]: Cross-database compatible type system
-//! - [`associations`]: Relationship management (ForeignKey, ManyToMany)
+//! - `backends`: Low-level database operations, schema editor, DDL generation
+//!   (requires the `backends` feature)
+//! - `backends_pool`: Connection pool management with lifecycle hooks
+//!   (requires the `backends` or `backends-pool` feature)
+//! - `pool`: High-level pool abstraction for `ConnectionPool`
+//!   (requires the `pool` feature)
+//! - `orm`: Django-style model definitions, QuerySet, and field types
+//!   (requires the `orm` feature)
+//! - `migrations`: Schema migration system with auto-detection and rollback
+//!   (requires the `migrations` feature)
+//! - `hybrid`: Cross-database compatible type system
+//!   (requires the `hybrid` feature)
+//! - `associations`: Relationship management (ForeignKey, ManyToMany)
+//!   (requires the `associations` feature)
 //! - `contenttypes`: Generic foreign key support
+//!   (requires the `contenttypes` feature)
 //!
 //! ## Feature Flags
 //!
