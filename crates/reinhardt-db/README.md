@@ -8,6 +8,11 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+`InsertBuilder::value` accepts `QueryValue::Now` as a database current-time
+expression. PostgreSQL, MySQL, and SQLite render it as `CURRENT_TIMESTAMP`.
+Rows containing `Now` use a typed `INSERT ... SELECT` source: current time and
+SQL `NULL` consume no bind arguments, and other values keep their column order.
+
 ## Features
 
 ### Implemented ✓
