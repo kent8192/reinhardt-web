@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.20...reinhardt-views@v0.3.21) - 2026-10-05
+
+### Fixed
+
+- *(views)* parse generic list filters using model field types
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.15...reinhardt-views@v0.3.16) - 2026-09-08
 
 ### Fixed
