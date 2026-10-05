@@ -33,14 +33,17 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use reinhardt_di::{DiError, DiResult, Injectable, InjectionContext};
+#[cfg(feature = "params")]
 use reinhardt_http::AuthState;
 
-use crate::core::{Permission, PermissionContext};
+use crate::core::Permission;
+#[cfg(feature = "params")]
+use crate::core::PermissionContext;
 
 /// Permission guard that checks a [`Permission`] during DI resolution.
 ///
 /// When injected, `Guard<P>` extracts the `AuthState` from the HTTP request
-/// extensions, constructs a [`PermissionContext`], and calls
+/// extensions, constructs a [`PermissionContext`](crate::core::PermissionContext), and calls
 /// `P::has_permission()`. If the check fails, injection returns
 /// `DiError::Authorization` which maps to HTTP 403 Forbidden.
 ///
