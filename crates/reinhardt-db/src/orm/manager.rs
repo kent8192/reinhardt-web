@@ -2188,117 +2188,12 @@ impl<M: Model> Manager<M> {
 			}
 			#[cfg(feature = "pgvector")]
 			reinhardt_query::value::Value::Vector(None) => QueryValue::Vector(None),
-			reinhardt_query::value::Value::Array(array_type, Some(values)) => {
-				use crate::backends::types::array_query_value;
-				use reinhardt_query::value::Value as SeaValue;
-
-				// DatabaseValue::Null becomes Int(None), regardless of the array's
-				// element type. Retain both these NULLs and typed NULL elements.
-				match array_type {
-					reinhardt_query::value::ArrayType::String => array_query_value(
-						Some(
-							(*values)
-								.into_iter()
-								.filter_map(|value| match value {
-									SeaValue::String(value) => Some(value.map(|value| *value)),
-									value if value.is_null() => Some(None),
-									_ => None,
-								})
-								.collect(),
-						),
-						QueryValue::StringArray,
-						QueryValue::NullableStringArray,
-					),
-					reinhardt_query::value::ArrayType::Int => array_query_value(
-						Some(
-							(*values)
-								.into_iter()
-								.filter_map(|value| match value {
-									SeaValue::Int(value) => Some(value),
-									value if value.is_null() => Some(None),
-									_ => None,
-								})
-								.collect(),
-						),
-						QueryValue::IntArray,
-						QueryValue::NullableIntArray,
-					),
-					reinhardt_query::value::ArrayType::BigInt => array_query_value(
-						Some(
-							(*values)
-								.into_iter()
-								.filter_map(|value| match value {
-									SeaValue::BigInt(value) => Some(value),
-									value if value.is_null() => Some(None),
-									_ => None,
-								})
-								.collect(),
-						),
-						QueryValue::BigIntArray,
-						QueryValue::NullableBigIntArray,
-					),
-					reinhardt_query::value::ArrayType::Bool => array_query_value(
-						Some(
-							(*values)
-								.into_iter()
-								.filter_map(|value| match value {
-									SeaValue::Bool(value) => Some(value),
-									value if value.is_null() => Some(None),
-									_ => None,
-								})
-								.collect(),
-						),
-						QueryValue::BoolArray,
-						QueryValue::NullableBoolArray,
-					),
-					reinhardt_query::value::ArrayType::Float => array_query_value(
-						Some(
-							(*values)
-								.into_iter()
-								.filter_map(|value| match value {
-									SeaValue::Float(value) => Some(value),
-									value if value.is_null() => Some(None),
-									_ => None,
-								})
-								.collect(),
-						),
-						QueryValue::FloatArray,
-						QueryValue::NullableFloatArray,
-					),
-					reinhardt_query::value::ArrayType::Double => array_query_value(
-						Some(
-							(*values)
-								.into_iter()
-								.filter_map(|value| match value {
-									SeaValue::Double(value) => Some(value),
-									value if value.is_null() => Some(None),
-									_ => None,
-								})
-								.collect(),
-						),
-						QueryValue::DoubleArray,
-						QueryValue::NullableDoubleArray,
-					),
-					reinhardt_query::value::ArrayType::Uuid => array_query_value(
-						Some(
-							(*values)
-								.into_iter()
-								.filter_map(|value| match value {
-									SeaValue::Uuid(value) => Some(value.map(|value| *value)),
-									value if value.is_null() => Some(None),
-									_ => None,
-								})
-								.collect(),
-						),
-						QueryValue::UuidArray,
-						QueryValue::NullableUuidArray,
-					),
-					_ => QueryValue::Json(Some(Box::new(super::execution::array_values_to_json(
-						&values,
-					)))),
-				}
+			reinhardt_query::value::Value::Array(array_type, values) => {
+				super::execution::array_value_to_query_value(
+					array_type,
+					values.map(|values| *values),
+				)
 			}
-			reinhardt_query::value::Value::Array(_, None) => QueryValue::Null,
 
 			// For complex types or unsupported types, convert to null
 			// This is a safe fallback that won't cause runtime errors
