@@ -371,6 +371,11 @@ annotations, related loading, joins, grouping, CTEs, and alternate sources are
 not model-shaped and return an error. Array filter parameters are not supported
 through `sqlx::Any` on the main line.
 
+`Session::get`, `Session::list`, and `Session::list_all` preserve the full i64
+range of `BigIntegerField` values, including nullable fields. Integer decoding
+failures return `SessionError::SerializationError`; only a stored SQL NULL in a
+nullable integer field becomes `None`.
+
 `AsyncQuery` preserves bind parameters when executing legacy `Q` filters.
 Runtime field names and operators are treated as query structure and accept
 only supported forms. `Q::from_sql` rejects unrecognized SQL, while
