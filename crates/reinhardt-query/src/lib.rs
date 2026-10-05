@@ -146,6 +146,27 @@
 //! let like_expr = Expr::col("email").like("%@example.com");
 //! ```
 //!
+//! Nested typed arithmetic retains the AST's grouping, including a lower
+//! precedence operand and a right operand with equal precedence. Parentheses
+//! do not change the order of bound values. For example, adding a fee before
+//! multiplying by the quantity works with both MySQL and SQLite:
+//!
+//! ```rust
+//! use reinhardt_query::{Expr, ExprTrait, MySqlQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder};
+//!
+//! let query = Query::select()
+//!     .expr(Expr::col("price").add(Expr::col("fee")).mul(Expr::col("quantity")))
+//!     .to_owned();
+//!
+//! assert_eq!(query.to_string(MySqlQueryBuilder), "SELECT (`price` + `fee`) * `quantity`");
+//! assert_eq!(query.to_string(SqliteQueryBuilder), "SELECT (\"price\" + \"fee\") * \"quantity\"");
+//! ```
+//!
+//! When a grouped arithmetic operand contains a possible `--` line comment,
+//! MySQL and SQLite insert a newline before the closing parenthesis so the
+//! comment cannot consume it. MySQL also recognizes possible `#` line comments.
+//! This also covers nested custom SQL expressions.
+//!
 //! ## DDL Examples
 //!
 //! ```rust,ignore

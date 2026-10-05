@@ -10,6 +10,7 @@ use crate::{
 		RenameUserStatement, ResetRoleStatement, RevokeRoleStatement, RevokeStatement,
 		SetDefaultRoleStatement, SetRoleStatement,
 	},
+	expr::SimpleExpr,
 	query::{
 		AlterDatabaseStatement, AlterFunctionStatement, AlterIndexStatement,
 		AlterMaterializedViewStatement, AlterProcedureStatement, AlterSchemaStatement,
@@ -25,6 +26,7 @@ use crate::{
 		RefreshMaterializedViewStatement, ReindexStatement, RepairTableStatement, SelectStatement,
 		TruncateTableStatement, UpdateStatement, VacuumStatement,
 	},
+	types::BinOper,
 	value::Values,
 };
 
@@ -39,6 +41,43 @@ pub use mysql::MySqlQueryBuilder;
 pub use postgres::PostgresQueryBuilder;
 pub use sql_writer::SqlWriter;
 pub use sqlite::SqliteQueryBuilder;
+
+// Arithmetic has the same precedence in MySQL and SQLite. Restrict inference
+// to arithmetic parents; other operator levels differ between SQL dialects.
+fn write_arithmetic_operand(
+	writer: &mut SqlWriter,
+	expr: &SimpleExpr,
+	parent: BinOper,
+	right_operand: bool,
+	line_comment_markers: &[&str],
+	write_expr: impl FnOnce(&mut SqlWriter, &SimpleExpr),
+) {
+	let parenthesized = matches!(
+		parent,
+		BinOper::Add | BinOper::Sub | BinOper::Mul | BinOper::Div | BinOper::Mod
+	) && matches!(expr, SimpleExpr::Binary(_, child, _) if
+		child.precedence() < parent.precedence()
+			// Equal-precedence right operands retain their grouping even for
+			// addition and multiplication: reassociation can change rounding.
+			|| (right_operand && child.precedence() == parent.precedence()));
+	if parenthesized {
+		writer.push("(");
+	}
+	let expression_start = writer.len();
+	write_expr(writer, expr);
+	if parenthesized {
+		// Inspect the whole operand to include nested custom expressions, and
+		// conservatively terminate possible line comments without parsing SQL.
+		let operand_sql = &writer.sql()[expression_start..];
+		if line_comment_markers
+			.iter()
+			.any(|marker| operand_sql.contains(*marker))
+		{
+			writer.push("\n");
+		}
+		writer.push(")");
+	}
+}
 
 /// Query builder trait for generating SQL from query statements
 ///
