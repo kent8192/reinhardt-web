@@ -6,3 +6,6 @@ mod analyze_statement_integration;
 
 #[path = "backends/mysql_insert_conflict.rs"]
 mod mysql_insert_conflict;
+
+#[path = "backends/insert_select_conflict.rs"]
+mod insert_select_conflict;

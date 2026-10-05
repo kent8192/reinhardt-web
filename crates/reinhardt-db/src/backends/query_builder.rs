@@ -429,7 +429,7 @@ impl InsertBuilder {
 		// Add ON CONFLICT clause if specified
 		// Prefer the new OnConflictClause over the legacy OnConflictAction
 		if let Some(ref clause) = self.on_conflict_clause {
-			sql = self.apply_new_on_conflict_clause(sql, clause)?;
+			sql = Self::apply_new_on_conflict_clause(sql, clause, db_type)?;
 		} else if let Some(ref on_conflict) = self.on_conflict {
 			sql = self.apply_on_conflict_clause(sql, on_conflict)?;
 		}
@@ -582,12 +582,10 @@ impl InsertBuilder {
 	/// - Constraint-based conflict targets (PostgreSQL only)
 	/// - WHERE clauses for conditional updates
 	fn apply_new_on_conflict_clause(
-		&self,
 		mut sql: String,
 		clause: &OnConflictClause,
+		db_type: DatabaseType,
 	) -> Result<String> {
-		let db_type = self.backend.database_type();
-
 		match db_type {
 			DatabaseType::Postgres => {
 				// Build conflict target with quoted identifiers
@@ -751,6 +749,7 @@ impl InsertBuilder {
 	/// This method is mutually exclusive with `value()`. When `from_select()` is
 	/// called, all previously added values are discarded and the SELECT statement
 	/// is used as the source of data.
+	/// Conflict settings are preserved, including fluent targets and conditions.
 	///
 	/// # Arguments
 	///
@@ -775,6 +774,7 @@ impl InsertBuilder {
 		InsertFromSelectBuilder::new(self.backend, &self.table, columns, select_stmt)
 			.with_returning(self.returning)
 			.with_on_conflict(self.on_conflict)
+			.with_on_conflict_clause(self.on_conflict_clause)
 	}
 }
 
@@ -809,6 +809,7 @@ pub struct InsertFromSelectBuilder {
 	select_stmt: SelectStatement,
 	returning: Option<Vec<String>>,
 	on_conflict: Option<OnConflictAction>,
+	on_conflict_clause: Option<OnConflictClause>,
 }
 
 impl InsertFromSelectBuilder {
@@ -826,6 +827,7 @@ impl InsertFromSelectBuilder {
 			select_stmt,
 			returning: None,
 			on_conflict: None,
+			on_conflict_clause: None,
 		}
 	}
 
@@ -836,6 +838,11 @@ impl InsertFromSelectBuilder {
 
 	fn with_on_conflict(mut self, on_conflict: Option<OnConflictAction>) -> Self {
 		self.on_conflict = on_conflict;
+		self
+	}
+
+	fn with_on_conflict_clause(mut self, clause: Option<OnConflictClause>) -> Self {
+		self.on_conflict_clause = clause;
 		self
 	}
 
@@ -867,7 +874,19 @@ impl InsertFromSelectBuilder {
 	}
 
 	/// Builds the final result.
+	///
+	/// # Panics
+	///
+	/// Panics if a fluent conflict clause inherited through
+	/// [`InsertBuilder::from_select`] is unsupported by the backend or invalid.
+	/// Use [`Self::execute`] or [`Self::fetch_one`] to receive these failures as
+	/// [`DatabaseError`] values before the backend is called.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
+		self.build_checked()
+			.expect("invalid INSERT FROM SELECT conflict clause")
+	}
+
+	fn build_checked(&self) -> Result<(String, Vec<QueryValue>)> {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
 			MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
@@ -887,13 +906,22 @@ impl InsertFromSelectBuilder {
 			DatabaseType::Postgres => self.select_stmt.to_string(PostgresQueryBuilder),
 			DatabaseType::Mysql => self.select_stmt.to_string(MySqlQueryBuilder),
 			DatabaseType::Sqlite => {
-				if matches!(
-					self.on_conflict.as_ref(),
-					Some(OnConflictAction::DoUpdate {
-						conflict_columns: Some(columns),
-						..
-					}) if !columns.is_empty()
-				) {
+				let has_update_target = if let Some(clause) = &self.on_conflict_clause {
+					matches!(
+						(&clause.target, &clause.action),
+						(Some(ConflictTarget::Columns(columns)), OnConflictClauseAction::DoUpdate { .. })
+							if !columns.is_empty()
+					)
+				} else {
+					matches!(
+						self.on_conflict.as_ref(),
+						Some(OnConflictAction::DoUpdate {
+							conflict_columns: Some(columns),
+							..
+						}) if !columns.is_empty()
+					)
+				};
+				if has_update_target {
 					// SQLite can parse ON CONFLICT as a SELECT join clause. Guard
 					// the complete source so compound SELECTs also end with WHERE.
 					Query::select()
@@ -914,7 +942,9 @@ impl InsertFromSelectBuilder {
 			select_sql
 		);
 
-		if let Some(ref on_conflict) = self.on_conflict {
+		if let Some(ref clause) = self.on_conflict_clause {
+			sql = InsertBuilder::apply_new_on_conflict_clause(sql, clause, db_type)?;
+		} else if let Some(ref on_conflict) = self.on_conflict {
 			sql = self.apply_on_conflict_clause(sql, on_conflict);
 		}
 
@@ -923,7 +953,7 @@ impl InsertFromSelectBuilder {
 			append_returning_clause(&mut sql, columns, db_type);
 		}
 
-		(sql, Vec::new())
+		Ok((sql, Vec::new()))
 	}
 
 	fn apply_on_conflict_clause(&self, mut sql: String, action: &OnConflictAction) -> String {
@@ -1027,13 +1057,13 @@ impl InsertFromSelectBuilder {
 
 	/// Executes the operation.
 	pub async fn execute(&self) -> Result<QueryResult> {
-		let (sql, params) = self.build();
+		let (sql, params) = self.build_checked()?;
 		self.backend.execute(&sql, params).await
 	}
 
 	/// Fetches one.
 	pub async fn fetch_one(&self) -> Result<Row> {
-		let (sql, params) = self.build();
+		let (sql, params) = self.build_checked()?;
 		self.backend.fetch_one(&sql, params).await
 	}
 }

@@ -38,6 +38,7 @@ async fn mysql_backend() -> (ContainerAsync<Mysql>, Arc<MySqlBackend>) {
 #[tokio::test]
 async fn unsupported_conflict_preserves_existing_mysql_row(
 	#[future] mysql_backend: (ContainerAsync<Mysql>, Arc<MySqlBackend>),
+	#[values(false, true)] select_source: bool,
 ) {
 	// Arrange: the container owns the disposable database for this test.
 	let (_container, backend) = mysql_backend.await;
@@ -78,13 +79,23 @@ async fn unsupported_conflict_preserves_existing_mysql_row(
 			"MySQL does not support named conflict targets",
 		),
 	] {
-		let error = InsertBuilder::new(backend.clone(), "options")
+		let builder = InsertBuilder::new(backend.clone(), "options")
 			.value("id", QueryValue::Int(1))
 			.value("name", QueryValue::String("replacement".into()))
-			.on_conflict(clause)
-			.execute()
-			.await
-			.unwrap_err();
+			.on_conflict(clause);
+		let result = if select_source {
+			let source = Query::select()
+				.expr(Expr::val(1_i64))
+				.expr(Expr::val("replacement"))
+				.to_owned();
+			builder
+				.from_select(vec!["id", "name"], source)
+				.execute()
+				.await
+		} else {
+			builder.execute().await
+		};
+		let error = result.unwrap_err();
 		assert_eq!(error, DatabaseError::NotSupported(message.into()));
 		let row = backend.fetch_one(&select_name, vec![]).await.unwrap();
 		assert_eq!(row.get::<String>("name").unwrap(), "original");
@@ -95,13 +106,23 @@ async fn unsupported_conflict_preserves_existing_mysql_row(
 		(OnConflictClause::any().do_update(vec!["name"]), "updated"),
 		(OnConflictClause::any().do_nothing(), "ignored"),
 	] {
-		InsertBuilder::new(backend.clone(), "options")
+		let builder = InsertBuilder::new(backend.clone(), "options")
 			.value("id", QueryValue::Int(1))
 			.value("name", QueryValue::String(name.into()))
-			.on_conflict(clause)
-			.execute()
-			.await
-			.unwrap();
+			.on_conflict(clause);
+		let result = if select_source {
+			let source = Query::select()
+				.expr(Expr::val(1_i64))
+				.expr(Expr::val(name))
+				.to_owned();
+			builder
+				.from_select(vec!["id", "name"], source)
+				.execute()
+				.await
+		} else {
+			builder.execute().await
+		};
+		result.unwrap();
 		let row = backend.fetch_one(&select_name, vec![]).await.unwrap();
 		assert_eq!(row.get::<String>("name").unwrap(), "updated");
 	}
