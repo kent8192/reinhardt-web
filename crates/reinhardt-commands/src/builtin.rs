@@ -240,7 +240,7 @@ impl BaseCommand for MigrateCommand {
 				// `plan_applied_migrations` probes for it: a missing table on a fresh DB
 				// degrades to an empty set, while a genuine DB error fails fast so the
 				// preview never misreports the applied state.
-				let mut applied = if is_plan {
+				let applied = if is_plan {
 					plan_applied_migrations(&connection, &recorder).await?
 				} else {
 					recorder.ensure_schema_table().await.map_err(|e| {
@@ -274,44 +274,20 @@ impl BaseCommand for MigrateCommand {
 					.await;
 				}
 				let stale_records = stale_replacement_records(&all_migrations, app, &applied);
-				if is_plan {
-					for record in &stale_records {
-						ctx.info(&format!(
-							"[plan] Would unapply superseded record {}:{} before resolving the target",
-							record.app, record.name
-						));
-					}
-				} else if !stale_records.is_empty() {
-					for record in &stale_records {
-						recorder
-							.unapply(&record.app, &record.name)
-							.await
-							.map_err(|error| {
-								crate::CommandError::ExecutionError(format!(
-									"Failed to reconcile superseded replacement record {}:{}: {}",
-									record.app, record.name, error
-								))
-							})?;
-					}
-					applied = recorder.get_applied_migrations().await.map_err(|error| {
-						crate::CommandError::ExecutionError(format!(
-							"Failed to re-read reconciled migration history: {}",
-							error
-						))
-					})?;
-				}
 				let stale_record_names: HashSet<_> = stale_records
 					.iter()
 					.map(|record| (record.app.as_str(), record.name.as_str()))
 					.collect();
-				let applied_for_app: Vec<_> = applied
+				let reconciled_applied: Vec<_> = applied
 					.iter()
 					.filter(|record| {
-						record.app == *app
-							&& (!is_plan
-								|| !stale_record_names
-									.contains(&(record.app.as_str(), record.name.as_str())))
+						!stale_record_names.contains(&(record.app.as_str(), record.name.as_str()))
 					})
+					.cloned()
+					.collect();
+				let applied_for_app: Vec<_> = reconciled_applied
+					.iter()
+					.filter(|record| record.app == *app)
 					.cloned()
 					.collect();
 				let target_name = if target_name == "zero"
@@ -342,20 +318,15 @@ impl BaseCommand for MigrateCommand {
 						.iter()
 						.any(|record| record.name == target_name)
 				{
-					let reconciled_applied: Vec<_> = applied
-						.iter()
-						.filter(|record| {
-							!stale_record_names
-								.contains(&(record.app.as_str(), record.name.as_str()))
-						})
-						.cloned()
-						.collect();
 					let target_plan = migration_target_plan(
 						app,
 						&target_name,
 						&reconciled_applied,
 						&all_migrations,
 					)?;
+					// Validate against the reconciled view before changing persistent history.
+					reconcile_stale_replacement_records(&recorder, &stale_records, is_plan, ctx)
+						.await?;
 					return execute_migration_target_plan(
 						target_plan,
 						&all_migrations,
@@ -461,7 +432,7 @@ impl BaseCommand for MigrateCommand {
 					.filter(|m| selection_keys.contains(&(m.app_label.clone(), m.name.clone())))
 					.cloned()
 					.collect();
-				let applied_keys = applied
+				let applied_keys = reconciled_applied
 					.iter()
 					.map(|record| MigrationKey::new(&record.app, &record.name))
 					.collect();
@@ -496,6 +467,9 @@ impl BaseCommand for MigrateCommand {
 					&all_migrations,
 					&applied_for_app,
 				)?;
+
+				reconcile_stale_replacement_records(&recorder, &stale_records, is_plan, ctx)
+					.await?;
 
 				if pending.is_empty() && replacement_adoptions.is_empty() {
 					ctx.info(&format!(
@@ -1718,6 +1692,34 @@ fn stale_replacement_records(
 		.filter(|record| stale_names.contains(&(record.app.as_str(), record.name.as_str())))
 		.cloned()
 		.collect()
+}
+
+#[cfg(feature = "migrations")]
+async fn reconcile_stale_replacement_records(
+	recorder: &reinhardt_db::migrations::DatabaseMigrationRecorder,
+	stale_records: &[reinhardt_db::migrations::recorder::MigrationRecord],
+	is_plan: bool,
+	ctx: &CommandContext,
+) -> CommandResult<()> {
+	for record in stale_records {
+		if is_plan {
+			ctx.info(&format!(
+				"[plan] Would unapply superseded record {}:{} before executing the target",
+				record.app, record.name
+			));
+		} else {
+			recorder
+				.unapply(&record.app, &record.name)
+				.await
+				.map_err(|error| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to reconcile superseded replacement record {}:{}: {}",
+						record.app, record.name, error
+					))
+				})?;
+		}
+	}
+	Ok(())
 }
 
 #[cfg(feature = "migrations")]

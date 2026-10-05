@@ -1141,3 +1141,98 @@ async fn incomplete_nested_squash_preserves_history_and_schema(
 	}
 	assert_eq!(parent_code_exists(pool.as_ref()).await, originals_recorded);
 }
+
+#[rstest]
+#[tokio::test]
+async fn invalid_reconciled_rollback_preserves_all_records(
+	#[future] migration_executor: MigrationExecutorFixture,
+	temp_dir: TempDir,
+	#[values("", "fake", "plan")] mode: &str,
+	#[values("zero", "0001_squashed")] target: &str,
+) {
+	// Arrange: a recorded squash coexists with superseded rows, while another
+	// applied app has lost its definition. Reconciliation must stay in memory
+	// until the cross-app plan has passed validation.
+	let (mut executor, _container, _pool, _port, url) = migration_executor.await;
+	write_migration_definition(
+		temp_dir.path(),
+		"foundation",
+		"0001_squashed",
+		&[],
+		&[
+			("foundation", "0001_original"),
+			("foundation", "0002_original"),
+		],
+		("SELECT 1", "SELECT 1"),
+	);
+	write_migration(
+		temp_dir.path(),
+		"foundation",
+		"0003_later",
+		&[("foundation", "0001_squashed")],
+		"SELECT 1",
+		"SELECT 1",
+	);
+	let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
+	recorder
+		.ensure_schema_table()
+		.await
+		.expect("ensure recorder");
+	for (app, name) in [
+		("foundation", "0001_squashed"),
+		("foundation", "0001_original"),
+		("foundation", "0002_original"),
+		("foundation", "0003_later"),
+		("consumer", "0001_missing"),
+	] {
+		executor
+			.record_migration(app, name)
+			.await
+			.expect("record applied migration");
+	}
+	let before = recorder
+		.get_applied_migrations()
+		.await
+		.expect("read complete ledger");
+	let mut ctx = CommandContext::default();
+	ctx.set_option("database".into(), url);
+	ctx.set_option(
+		"migrations-dir".into(),
+		temp_dir
+			.path()
+			.join("migrations")
+			.to_string_lossy()
+			.into_owned(),
+	);
+	ctx.add_arg("foundation".into());
+	ctx.add_arg(target.into());
+	if !mode.is_empty() {
+		ctx.set_option(mode.into(), "true".into());
+	}
+
+	// Act
+	let error = MigrateCommand
+		.execute(&ctx)
+		.await
+		.expect_err("missing cross-app metadata must reject the plan");
+
+	// Assert: preserve every row and its timestamp, including superseded history.
+	assert_eq!(
+		error.to_string(),
+		"Execution error: Cannot determine cross-app rollback dependencies: applied migration consumer:0001_missing has no available definition"
+	);
+	let after = recorder
+		.get_applied_migrations()
+		.await
+		.expect("read unchanged ledger");
+	assert_eq!(
+		after
+			.iter()
+			.map(|record| (&record.app, &record.name, &record.applied))
+			.collect::<Vec<_>>(),
+		before
+			.iter()
+			.map(|record| (&record.app, &record.name, &record.applied))
+			.collect::<Vec<_>>()
+	);
+}
