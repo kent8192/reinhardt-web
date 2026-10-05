@@ -236,9 +236,10 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// Encodes a primary key into its canonical database representation.
 	///
 	/// Macro-generated models route this through the primary-key field's
-	/// [`DatabaseField`] implementation. Manual model
-	/// implementations retain the legacy numeric, UUID, or string fallback and
-	/// can override this method for custom primary-key codecs.
+	/// [`DatabaseField`] implementation. Manual models with `CharField` or
+	/// `TextField` primary keys preserve the exact string, including numeric text
+	/// such as `"005"`. Other manual models retain the legacy numeric, UUID, or
+	/// string fallback and can override this method for custom primary-key codecs.
 	fn primary_key_database_value(pk: &Self::PrimaryKey) -> Result<DatabaseValue, FieldCodecError> {
 		let value = pk.to_string();
 		let field_type = Self::field_metadata()
@@ -250,6 +251,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			.as_deref()
 			.and_then(|value| value.rsplit('.').next())
 		{
+			Some("CharField") | Some("TextField") => DatabaseValue::String(value),
 			Some("AutoField")
 			| Some("IntegerField")
 			| Some("BigAutoField")

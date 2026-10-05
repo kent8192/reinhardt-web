@@ -2976,6 +2976,42 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct DefaultTextSessionModel<const QUALIFIED: bool> {
+		id: String,
+	}
+
+	impl<const QUALIFIED: bool> Model for DefaultTextSessionModel<QUALIFIED> {
+		type PrimaryKey = String;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"default_text_session_models"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<String> {
+			Some(self.id.clone())
+		}
+
+		fn set_primary_key(&mut self, value: String) {
+			self.id = value;
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let field_type = if QUALIFIED {
+				"reinhardt.orm.models.CharField"
+			} else {
+				"CharField"
+			};
+			vec![test_field_info("id", field_type, false, true)]
+		}
+	}
+
 	#[fixture]
 	async fn codec_session_pool() -> Arc<AnyPool> {
 		sqlx::any::install_default_drivers();
@@ -3084,6 +3120,84 @@ mod tests {
 				email: "default@example.com".to_owned(),
 			})
 		);
+	}
+
+	#[rstest]
+	#[case::leading_zeroes("005")]
+	#[case::positive_sign("+005")]
+	#[case::negative_sign("-005")]
+	#[tokio::test]
+	async fn get_preserves_default_text_primary_keys(
+		#[future] codec_session_pool: Arc<AnyPool>,
+		#[values(false, true)] qualified: bool,
+		#[case] key: &str,
+	) {
+		if qualified {
+			exercise_default_text_primary_key::<true>(codec_session_pool.await, key).await;
+		} else {
+			exercise_default_text_primary_key::<false>(codec_session_pool.await, key).await;
+		}
+	}
+
+	async fn exercise_default_text_primary_key<const QUALIFIED: bool>(
+		pool: Arc<AnyPool>,
+		key: &str,
+	) {
+		use crate::orm::query::{Filter, FilterOperator};
+		use reinhardt_query::ColumnDef;
+
+		// Arrange
+		let table = DefaultTextSessionModel::<QUALIFIED>::table_name();
+		let schema = RQuery::create_table()
+			.table(Alias::new(table))
+			.col(ColumnDef::new(Alias::new("id")).string().primary_key(true))
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&schema).execute(&*pool).await.unwrap();
+		for stored_key in [key, "5"] {
+			let insert = RQuery::insert()
+				.into_table(Alias::new(table))
+				.columns([Alias::new("id")])
+				.values(vec![stored_key.into()])
+				.unwrap()
+				.to_string(SqliteQueryBuilder);
+			sqlx::query(&insert).execute(&*pool).await.unwrap();
+		}
+		let expected = DefaultTextSessionModel::<QUALIFIED> { id: key.to_owned() };
+		let control = Session::new(Arc::clone(&pool), DbBackend::Sqlite)
+			.await
+			.unwrap();
+		assert_eq!(
+			control
+				.list(
+					&QuerySet::<DefaultTextSessionModel<QUALIFIED>>::new().filter(Filter::new(
+						"id",
+						FilterOperator::Eq,
+						key.into(),
+					))
+				)
+				.await
+				.unwrap(),
+			vec![expected.clone()]
+		);
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let actual = session
+			.get::<DefaultTextSessionModel<QUALIFIED>>(key.to_owned())
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(actual, Some(expected));
+		assert_eq!(session.identity_count(), 1);
+		assert_eq!(
+			session
+				.get::<DefaultTextSessionModel<QUALIFIED>>("5".to_owned())
+				.await
+				.unwrap(),
+			Some(DefaultTextSessionModel::<QUALIFIED> { id: "5".to_owned() })
+		);
+		assert_eq!(session.identity_count(), 2);
 	}
 
 	#[rstest]
