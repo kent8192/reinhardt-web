@@ -169,6 +169,31 @@ impl Annotation {
 }
 
 impl AnnotationValue {
+	// Runtime operands retain native column quoting and scalar bind types.
+	pub(crate) fn to_query_expr(&self) -> SimpleExpr {
+		match self {
+			Self::Value(value) => match value {
+				Value::String(value) => Expr::val(value.clone()).into_simple_expr(),
+				Value::Int(value) => Expr::val(*value).into_simple_expr(),
+				Value::Float(value) => Expr::val(*value).into_simple_expr(),
+				Value::Bool(value) => Expr::val(*value).into_simple_expr(),
+				Value::Null => Expr::null().into_simple_expr(),
+			},
+			Self::Field(field) => {
+				Expr::col(super::query::parse_column_reference(&field.field)).into_simple_expr()
+			}
+			Self::Expression(expression) => expression.to_query_expr().into_simple_expr(),
+			// Legacy aggregates and subquery SQL retain their rendering paths.
+			Self::Aggregate(_)
+			| Self::Subquery(_)
+			| Self::ArrayAgg(_)
+			| Self::StringAgg(_)
+			| Self::JsonbAgg(_)
+			| Self::JsonbBuildObject(_)
+			| Self::TsRank(_) => Expr::cust(self.to_sql_expr()).into_simple_expr(),
+		}
+	}
+
 	/// Documentation for `to_sql`
 	///
 	pub fn to_sql(&self) -> String {
@@ -208,13 +233,15 @@ impl AnnotationValue {
 impl Expression {
 	// Runtime lowering is separate from the standalone compatibility SQL renderers.
 	pub(crate) fn to_query_expr(&self) -> Expr {
-		let value = Self::value_to_query_expr;
+		let value = AnnotationValue::to_query_expr;
 		match self {
 			Self::Add(left, right) => Self::grouped(value(left).add(value(right))).into(),
 			Self::Subtract(left, right) => Self::grouped(value(left).sub(value(right))).into(),
 			Self::Multiply(left, right) => Self::grouped(value(left).mul(value(right))).into(),
 			Self::Divide(left, right) => Self::grouped(value(left).div(value(right))).into(),
 			Self::Case { whens, default } => {
+				// Preserve CASE's scalar result grammar while recursively lowering expressions.
+				let value = Self::value_to_query_expr;
 				let mut case = Expr::case();
 				for when in whens {
 					case = case.when(
@@ -227,13 +254,7 @@ impl Expression {
 					None => case.build(),
 				}
 			}
-			Self::Coalesce(values) => Func::coalesce(
-				values
-					.iter()
-					.map(|item| value(item).into_simple_expr())
-					.collect(),
-			)
-			.into(),
+			Self::Coalesce(values) => Func::coalesce(values.iter().map(value).collect()).into(),
 		}
 	}
 
