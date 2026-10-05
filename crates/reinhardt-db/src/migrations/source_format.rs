@@ -1842,7 +1842,7 @@ fn unrelated() -> u32 {{ 7 }}
 			)
 			.unwrap();
 
-			assert_eq!(upgraded.changed, true);
+			assert!(upgraded.changed);
 			assert_eq!(upgraded.from_version, from_version);
 			assert_eq!(upgraded.to_version, 1);
 			assert_eq!(
@@ -1875,7 +1875,7 @@ fn unrelated() -> u32 {{ 7 }}
 				Some("fn unrelated() -> u32 { 7 }")
 			);
 			let repeated = upgrade_source(&upgraded.source).unwrap();
-			assert_eq!(repeated.changed, false);
+			assert!(!repeated.changed);
 			assert_eq!(repeated.source, upgraded.source);
 		}
 	}
@@ -1920,7 +1920,7 @@ fn unrelated() -> u32 {{ 7 }}
 				}]
 			);
 			let repeated = upgrade_source(&upgraded.source).unwrap();
-			assert_eq!(repeated.changed, false);
+			assert!(!repeated.changed);
 			assert_eq!(repeated.source, upgraded.source);
 		}
 	}
@@ -1940,7 +1940,7 @@ fn unrelated() -> u32 {{ 7 }}
 				"fn migration() -> Migration {{ Migration::new(\"0002\", \"app\")\
              .add_operation(Operation::DropColumn {{ {fields} }}) }}"
 			);
-			assert_eq!(upgrade_source(&source).is_err(), true, "{source}");
+			assert!(upgrade_source(&source).is_err(), "{source}");
 		}
 		let incomplete = r#"fn migration() -> Migration {
         Migration::new("0002", "app").add_operation(Operation::DropColumn {
@@ -1953,14 +1953,14 @@ fn unrelated() -> u32 {{ 7 }}
 			"Invalid migration: source format marker is current but legacy struct-literal syntax remains"
 		);
 		let unknown_path = incomplete.replace("Operation::DropColumn", "application::DropColumn");
-		assert_eq!(upgrade_source(&unknown_path).is_err(), true);
+		assert!(upgrade_source(&unknown_path).is_err());
 		for unsupported in [
 			"#[cfg(any())] Operation::DropColumn",
 			"Operation::<()>::DropColumn",
 			"<Operation as Trait>::DropColumn",
 		] {
 			let source = incomplete.replace("Operation::DropColumn", unsupported);
-			assert_eq!(upgrade_source(&source).is_err(), true, "{source}");
+			assert!(upgrade_source(&source).is_err(), "{source}");
 		}
 	}
 }

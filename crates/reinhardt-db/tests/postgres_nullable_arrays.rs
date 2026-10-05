@@ -6,11 +6,9 @@ use futures::TryStreamExt;
 use reinhardt_db::backends::{DatabaseBackend, PostgresBackend, QueryValue};
 use reinhardt_db::orm::QueryRow;
 use reinhardt_query::{
-	ArrayType, ColumnDef, ColumnType, Expr, ExprTrait, PostgresQueryBuilder, Query,
-	QueryStatementBuilder, Value,
+	ArrayType, Expr, ExprTrait, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
 use rstest::*;
-use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{ContainerAsync, ImageExt, runners::AsyncRunner};
 use testcontainers_modules::postgres::Postgres;
@@ -282,6 +280,8 @@ mod derived_models {
 	use reinhardt_db::orm::{
 		DatabaseConnectionLease, DatabaseField, DatabaseScalar, Manager, Model,
 	};
+	use reinhardt_query::{ColumnDef, ColumnType};
+	use serde::{Deserialize, Serialize};
 	use std::{marker::PhantomData, sync::Arc};
 
 	trait NullableArrayRecord<T>: Model<PrimaryKey = i64> {

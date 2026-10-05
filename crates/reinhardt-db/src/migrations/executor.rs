@@ -4271,18 +4271,20 @@ mod cockroachdb_executor_dialect_tests {
 		));
 	}
 
+	#[rstest::rstest]
 	#[tokio::test]
-	async fn rollback_path_skips_irreversible_extension_for_cockroachdb_flavor() {
+	async fn rollback_path_rejects_conditional_extension_for_cockroachdb_flavor() {
 		let mut executor = cockroachdb_flavored_executor().await;
 
 		let result = executor
 			.rollback_migration(&create_extension_migration())
 			.await;
 
-		assert!(
-			result.is_ok(),
-			"irreversible extension rollback should be a no-op: {result:?}"
-		);
+		assert!(matches!(
+			result,
+			Err(MigrationError::IrreversibleError(message))
+				if message == "Cannot automatically reverse CREATE EXTENSION IF NOT EXISTS vector: ownership is unknown; use if_not_exists: false for a migration-owned extension"
+		));
 	}
 
 	#[tokio::test]
@@ -4542,12 +4544,11 @@ mod rollback_orchestration_tests {
 		// Assert
 		assert_eq!(result.applied, vec![add_column.id()]);
 		let recorder = DatabaseMigrationRecorder::new(executor.connection().clone());
-		assert_eq!(
-			recorder
+		assert!(
+			!recorder
 				.is_applied(&replacement.app_label, &replacement.name)
 				.await
-				.expect("query replacement recorder state"),
-			false
+				.expect("query replacement recorder state")
 		);
 	}
 
@@ -5073,7 +5074,7 @@ mod rollback_orchestration_tests {
 			.await
 			.expect("read recreated index")
 			.is_some();
-		assert_eq!(index_exists, true);
+		assert!(index_exists);
 	}
 
 	#[rstest]

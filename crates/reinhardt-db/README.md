@@ -212,6 +212,23 @@ repeated `LIMIT`/`OFFSET` pagination for this API.
   - `Error::database_kind()` supports category matching without driver-specific downcasts
   - `DatabaseError::code()` preserves an optional vendor code for diagnostics
 
+### Unsigned composite key lookups
+
+Unsigned composite-key lookups retain their value through
+`PkValue::Uint` and `QueryValue::Uint`. MySQL binds the full `u64` range;
+PostgreSQL and SQLite check conversion to a signed 64-bit integer and reject
+overflow before executing SQL. The resulting `DatabaseErrorKind::Type` error
+does not include the key value. Ordinary signed keys and native field codecs
+retain their existing behavior.
+
+When upgrading, add a `QueryValue::Uint(value)` arm to exhaustive matches.
+Custom executors must preserve the unsigned value or return a checked type
+error when their backend cannot represent it. Large unsigned MySQL result
+values now use `QueryValue::Uint` instead of decimal text.
+
+See the [unsigned query value migration guide](../../docs/migration/0.4.0-unsigned-query-values.md)
+for custom executor updates.
+
 ### Updating composite primary keys
 
 `Manager::update`, `update_with_conn`, and the update path of
@@ -734,10 +751,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`DatabaseMigrationExecutor` applies these operations in vector order. Rolling
-this migration back removes the model schema and indexes but deliberately
-leaves the database-level extension installed, because other applications or
-schemas may share it.
+`DatabaseMigrationExecutor` applies these operations in vector order. Automatic
+rollback rejects this migration's `CREATE EXTENSION IF NOT EXISTS` because other
+applications may own an existing extension. For a migration-owned extension, use
+`.with_if_not_exists(false)` before conversion; rollback drops the model schema
+and indexes followed by the extension.
 
 The typed distance methods map directly to PostgreSQL:
 
@@ -1318,6 +1336,11 @@ configured pool and backend, binding filter parameters through the driver. It
 therefore keeps request-scoped queries on the connection selected by the
 caller.
 
+`Session::list_all` reads every model row from the configured pool. Its typed
+SELECT uses backend-aware identifier escaping, including table names and
+physical column names containing double quotes or backticks. It shares model
+projections and row decoding with `Session::list`.
+
 `AsyncQuery` preserves bind parameters when executing legacy `Q` filters.
 Runtime field names and operators are treated as query structure and accept
 only supported forms. `Q::from_sql` rejects unrecognized SQL, while
@@ -1424,6 +1447,32 @@ let migration = Migration::new("0001_initial")
 // Apply migration
 migration.apply(db).await?;
 ```
+
+### PostgreSQL Extension Reversal
+
+Use `Operation::CreateExtension { if_not_exists: false, .. }` or
+`CreateExtension::new("hstore").with_if_not_exists(false).into_operation()?` for
+an extension owned by a migration. Automatic reversal emits the typed
+`Operation::DropExtension` without `CASCADE`, after reversing later operations.
+Dependent objects therefore block removal rather than being deleted implicitly.
+Both operations round-trip through generated Rust migration files and JSON.
+
+`IF NOT EXISTS` cannot prove whether the migration created an extension. Its
+automatic reversal returns `MigrationError::IrreversibleError` before any
+rollback statements run; the extension and applied-migration record remain.
+For a shared extension, provision it separately from reversible application
+migrations. The low-level `CreateExtension::database_backwards` helper returns
+no statements for conditional creation.
+
+Explicit `DropExtension { name, if_exists, cascade }` is forward-only because it
+does not capture the original schema and version. The exported `DropExtension`
+struct provides `.into_operation()` with `if_exists: true` and `cascade: false`.
+
+When upgrading from earlier 0.4.0 alpha releases, add a `DropExtension` arm to
+exhaustive `Operation` matches. Direct `CreateExtension` struct literals must
+also supply `if_not_exists` (true preserves the previous creation behavior).
+Existing JSON without that field defaults to true. To retain automatic cleanup,
+choose false only for extensions whose creation belongs to the migration.
 
 ### Connection Pooling
 

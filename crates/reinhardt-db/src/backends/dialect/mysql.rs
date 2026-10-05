@@ -107,6 +107,7 @@ impl MySqlBackend {
 			QueryValue::Bool(b) => query.bind(b),
 			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
+			QueryValue::Uint(i) => query.bind(i),
 			QueryValue::Float(f) => query.bind(f),
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),
@@ -211,7 +212,7 @@ impl MySqlBackend {
 			} else if let Ok(value) = mysql_row.try_get::<u64, _>(column_name) {
 				let value = match i64::try_from(value) {
 					Ok(value) => QueryValue::Int(value),
-					Err(_) => QueryValue::String(value.to_string()),
+					Err(_) => QueryValue::Uint(value),
 				};
 				row.insert(column_name.to_string(), value);
 			} else if let Ok(value) = mysql_row.try_get::<i64, _>(column_name) {
@@ -434,6 +435,7 @@ impl MySqlTransactionExecutor {
 			QueryValue::Bool(b) => query.bind(b),
 			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
+			QueryValue::Uint(i) => query.bind(i),
 			QueryValue::Float(f) => query.bind(f),
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),

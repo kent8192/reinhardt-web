@@ -108,6 +108,7 @@ fn query_value(value: QueryValue) {
         | QueryValue::NullableBigIntArray(_) | QueryValue::NullableBoolArray(_)
         | QueryValue::NullableFloatArray(_) | QueryValue::NullableDoubleArray(_)
         | QueryValue::NullableUuidArray(_)
+        | QueryValue::Uint(_)
         | QueryValue::Now => {}
     }
 }
@@ -197,11 +198,12 @@ fn operation(value: Operation) {
         | Operation::CreateSchema { .. }
         | Operation::DropSchema { .. }
         | Operation::CreateExtension { .. }
+        | Operation::DropExtension { .. }
         | Operation::BulkLoad { .. }
         | Operation::SetAutoIncrementValue { .. }
+        | Operation::CreateCompositePrimaryKey { .. }
         | Operation::Sequence { .. }
-        | Operation::Identity { .. }
-        | Operation::CreateCompositePrimaryKey { .. } => {}
+        | Operation::Identity { .. } => {}
     }
 }
 

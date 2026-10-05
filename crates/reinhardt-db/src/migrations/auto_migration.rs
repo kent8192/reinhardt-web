@@ -392,6 +392,14 @@ impl AutoMigrationGenerator {
 					})
 				}
 
+				Operation::CreateExtension {
+					if_not_exists: false,
+					..
+				} => op
+					.to_reverse_operation(&super::ProjectState::new())
+					.ok()
+					.flatten(),
+
 				// Other operations - no rollback
 				Operation::AlterTableComment { .. }
 				| Operation::AlterUniqueTogether { .. }
@@ -402,6 +410,7 @@ impl AutoMigrationGenerator {
 				| Operation::CreateSchema { .. }
 				| Operation::DropSchema { .. }
 				| Operation::CreateExtension { .. }
+				| Operation::DropExtension { .. }
 				| Operation::BulkLoad { .. }
 				| Operation::SetAutoIncrementValue { .. }
 				| Operation::CreateCompositePrimaryKey { .. } => None, // Cannot rollback - data loading / counter / constraint ops are not auto-reversible
@@ -619,6 +628,29 @@ mod tests {
 		let rollback = generator.generate_rollback(&operations);
 		assert_eq!(rollback.len(), 1);
 		assert!(matches!(rollback[0], Operation::DropTable { .. }));
+	}
+
+	#[rstest::rstest]
+	#[case::owned(false, vec![Operation::DropExtension {
+		name: "hstore".into(),
+		if_exists: false,
+		cascade: false,
+	}])]
+	#[case::shared(true, vec![])]
+	fn extension_rollback_preserves_ownership_policy(
+		#[case] if_not_exists: bool,
+		#[case] expected: Vec<Operation>,
+	) {
+		let generator = rollback_generator();
+		let operation = Operation::CreateExtension {
+			name: "hstore".into(),
+			if_not_exists,
+			schema: Some("public".into()),
+		};
+
+		let rollback = generator.generate_rollback(&[operation]);
+
+		assert_eq!(rollback, expected);
 	}
 
 	#[test]

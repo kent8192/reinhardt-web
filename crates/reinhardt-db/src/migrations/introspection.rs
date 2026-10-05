@@ -293,20 +293,20 @@ pub async fn inspect_database(
 ) -> Result<DatabaseSchema> {
 	validate_partition_option(connection.database_type(), options.include_partitions)?;
 
-	let mut schema = match connection.database_type() {
+	let mut schema: DatabaseSchema = match connection.database_type() {
 		DatabaseType::Postgres => {
 			#[cfg(feature = "postgres")]
 			{
 				let pool = connection.into_postgres().ok_or_else(|| {
 					MigrationError::UnsupportedDatabase("PostgreSQL connection".to_string())
 				})?;
-				read_postgres_schema(pool, options).await?
+				read_postgres_schema(pool, options).await
 			}
 			#[cfg(not(feature = "postgres"))]
 			{
-				return Err(MigrationError::UnsupportedDatabase(
+				Err(MigrationError::UnsupportedDatabase(
 					"PostgreSQL".to_string(),
-				));
+				))
 			}
 		}
 		DatabaseType::Mysql => {
@@ -315,11 +315,11 @@ pub async fn inspect_database(
 				let pool = connection.into_mysql().ok_or_else(|| {
 					MigrationError::UnsupportedDatabase("MySQL connection".to_string())
 				})?;
-				read_mysql_schema(pool, options).await?
+				read_mysql_schema(pool, options).await
 			}
 			#[cfg(not(feature = "mysql"))]
 			{
-				return Err(MigrationError::UnsupportedDatabase("MySQL".to_string()));
+				Err(MigrationError::UnsupportedDatabase("MySQL".to_string()))
 			}
 		}
 		DatabaseType::Sqlite => {
@@ -328,14 +328,14 @@ pub async fn inspect_database(
 				let pool = connection.into_sqlite().ok_or_else(|| {
 					MigrationError::UnsupportedDatabase("SQLite connection".to_string())
 				})?;
-				read_sqlite_schema(pool, options).await?
+				read_sqlite_schema(pool, options).await
 			}
 			#[cfg(not(feature = "sqlite"))]
 			{
-				return Err(MigrationError::UnsupportedDatabase("SQLite".to_string()));
+				Err(MigrationError::UnsupportedDatabase("SQLite".to_string()))
 			}
 		}
-	};
+	}?;
 
 	if options.tables.is_empty() {
 		return Ok(schema);
@@ -369,6 +369,7 @@ fn validate_partition_option(database_type: DatabaseType, include_partitions: bo
 	Ok(())
 }
 
+#[cfg(feature = "postgres")]
 fn filter_postgres_partitions(
 	schema: &mut DatabaseSchema,
 	partition_names: &HashSet<String>,
@@ -3339,7 +3340,7 @@ mod tests {
 			.expect("schema should be introspected");
 
 		// Assert
-		assert_eq!(schema.tables["users"].columns["id"].auto_increment, false);
+		assert!(!schema.tables["users"].columns["id"].auto_increment);
 	}
 
 	#[cfg(feature = "sqlite")]
@@ -3366,7 +3367,7 @@ mod tests {
 			.expect("schema should be introspected");
 
 		// Assert
-		assert_eq!(schema.tables["users"].columns["id"].auto_increment, true);
+		assert!(schema.tables["users"].columns["id"].auto_increment);
 	}
 
 	#[cfg(feature = "sqlite")]

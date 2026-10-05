@@ -100,18 +100,11 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 		SV::Int(Some(v)) => QueryValue::Int32(v),
 		SV::BigInt(Some(v)) => QueryValue::Int(v),
 
-		// Unsigned integers (convert to i64 with checked conversion for large values)
+		// Keep the full u64 range until the selected backend validates the bind.
 		SV::TinyUnsigned(Some(v)) => QueryValue::Int(v as i64),
 		SV::SmallUnsigned(Some(v)) => QueryValue::Int(v as i64),
 		SV::Unsigned(Some(v)) => QueryValue::Int(v as i64),
-		SV::BigUnsigned(Some(v)) => QueryValue::Int(i64::try_from(v).unwrap_or_else(|_| {
-			tracing::warn!(
-				value = v,
-				"BigUnsigned value {} exceeds i64::MAX, clamping to i64::MAX",
-				v
-			);
-			i64::MAX
-		})),
+		SV::BigUnsigned(Some(v)) => QueryValue::Uint(v),
 
 		// Floating point
 		SV::Float(Some(v)) => QueryValue::Float(v as f64),
@@ -2109,11 +2102,12 @@ mod tests {
 	}
 
 	#[rstest]
-	#[case::zero(0u64, 0i64)]
-	#[case::one(1u64, 1i64)]
-	#[case::i64_max(i64::MAX as u64, i64::MAX)]
-	#[test]
-	fn test_big_unsigned_to_query_value_within_range(#[case] input: u64, #[case] expected: i64) {
+	#[case::zero(0)]
+	#[case::one(1)]
+	#[case::i64_max(i64::MAX as u64)]
+	#[case::i64_max_plus_one(i64::MAX as u64 + 1)]
+	#[case::u64_max(u64::MAX)]
+	fn test_big_unsigned_to_query_value_preserves_value(#[case] input: u64) {
 		// Arrange
 		let value = reinhardt_query::value::Value::BigUnsigned(Some(input));
 
@@ -2121,22 +2115,7 @@ mod tests {
 		let result = convert_value_to_query_value(value);
 
 		// Assert
-		assert!(matches!(result, QueryValue::Int(v) if v == expected));
-	}
-
-	#[rstest]
-	#[case::i64_max_plus_one(i64::MAX as u64 + 1)]
-	#[case::u64_max(u64::MAX)]
-	#[test]
-	fn test_big_unsigned_overflow_clamps_to_i64_max(#[case] input: u64) {
-		// Arrange
-		let value = reinhardt_query::value::Value::BigUnsigned(Some(input));
-
-		// Act
-		let result = convert_value_to_query_value(value);
-
-		// Assert: Should clamp to i64::MAX instead of wrapping to negative
-		assert!(matches!(result, QueryValue::Int(v) if v == i64::MAX));
+		assert_eq!(result, QueryValue::Uint(input));
 	}
 
 	#[rstest]

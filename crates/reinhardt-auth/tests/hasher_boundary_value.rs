@@ -573,10 +573,9 @@ fn test_verify_modified_hash(argon2_hasher: Argon2Hasher) {
 
 	let result = argon2_hasher.verify(password, &hash);
 
-	// Should either error or return false
-	match result {
-		Ok(verified) => assert!(!verified, "Modified hash should not verify"),
-		Err(_) => (), // Error is also acceptable
+	// A modified hash must either fail verification or return an error.
+	if let Ok(verified) = result {
+		assert!(!verified, "Modified hash should not verify");
 	}
 }
 
