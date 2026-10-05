@@ -43,7 +43,7 @@ use crate::core::PermissionContext;
 /// Permission guard that checks a [`Permission`] during DI resolution.
 ///
 /// When injected, `Guard<P>` extracts the `AuthState` from the HTTP request
-/// extensions, constructs a [`PermissionContext`](crate::core::PermissionContext), and calls
+/// extensions, constructs a [permission context](crate::core::PermissionContext), and calls
 /// `P::has_permission()`. If the check fails, injection returns
 /// `DiError::Authorization` which maps to HTTP 403 Forbidden.
 ///
