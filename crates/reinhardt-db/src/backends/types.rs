@@ -148,7 +148,6 @@ where
 }
 
 /// Retain legacy array variants when no element is NULL.
-#[cfg(any(feature = "postgres", feature = "orm"))]
 pub(crate) fn array_query_value<T>(
 	values: Option<Vec<Option<T>>>,
 	non_nullable: impl FnOnce(Vec<T>) -> QueryValue,
