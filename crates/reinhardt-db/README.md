@@ -8,6 +8,11 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+`InsertBuilder::value` accepts `QueryValue::Now` as a database current-time
+expression. PostgreSQL, MySQL, and SQLite render it as `CURRENT_TIMESTAMP`.
+Rows containing `Now` use a typed `INSERT ... SELECT` source: current time and
+SQL `NULL` consume no bind arguments, and other values keep their column order.
+
 ## Features
 
 ### Implemented ✓
@@ -32,6 +37,11 @@ This crate provides the following modules:
     constraints are unchanged. Existing migration files are not rewritten;
     regenerate unapplied migrations with oversized generated names.
   - Forward and backward migrations
+  - PostgreSQL and CockroachDB `AlterColumn` rollback restores the previous
+    database default, including removing a newly added sequence default. Changed
+    defaults are removed before reverting the type and restored afterward.
+    Generated migration files preserve every historical field type, including
+    nested arrays, enum/set values, and relationship metadata.
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
   - State management and autodetection
@@ -386,6 +396,11 @@ through `sqlx::Any` on the main line.
 projection, and row decoding path. Table names and physical column names,
 including embedded double quotes or backticks, are escaped by the backend query
 renderer.
+
+Session text reads accept both SQLx Any strings and complete UTF-8 byte values,
+including MySQL TEXT columns reported as BLOB. Values are not truncated or
+decoded lossily. Invalid UTF-8 returns a serialization error identifying the
+table, model field, and physical column; nullable text preserves SQL NULL.
 
 `Session::get`, `Session::list`, and `Session::list_all` preserve the full i64
 range of `BigIntegerField` values, including nullable fields. Integer decoding
