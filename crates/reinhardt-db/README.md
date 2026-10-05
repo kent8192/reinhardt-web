@@ -8,6 +8,11 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+`InsertBuilder::value` accepts `QueryValue::Now` as a database current-time
+expression. PostgreSQL, MySQL, and SQLite render it as `CURRENT_TIMESTAMP`.
+Rows containing `Now` use a typed `INSERT ... SELECT` source: current time and
+SQL `NULL` consume no bind arguments, and other values keep their column order.
+
 ## Features
 
 ### Implemented ✓
@@ -32,6 +37,11 @@ This crate provides the following modules:
     constraints are unchanged. Existing migration files are not rewritten;
     regenerate unapplied migrations with oversized generated names.
   - Forward and backward migrations
+  - PostgreSQL and CockroachDB `AlterColumn` rollback restores the previous
+    database default, including removing a newly added sequence default. Changed
+    defaults are removed before reverting the type and restored afterward.
+    Generated migration files preserve every historical field type, including
+    nested arrays, enum/set values, and relationship metadata.
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
   - State management and autodetection
@@ -61,6 +71,18 @@ This crate provides the following modules:
 - **ContentTypes**: Database-backed polymorphic relationship metadata
   - SQLite inserts and inserted-ID lookups share one acquired connection, so
     returned IDs identify the inserted row even with multiple pooled connections
+
+### SQLite INSERT FROM SELECT upserts
+
+`InsertFromSelectBuilder::on_conflict_do_update` wraps the SQLite SELECT source
+in a typed derived table with an always-true outer `WHERE`. This avoids SQLite's
+[INSERT SELECT parsing ambiguity](https://www.sqlite.org/lang_upsert.html#parsing_ambiguity)
+when `ON CONFLICT` follows a source without a `WHERE` clause. The original source's
+filters, ordering, limits, and compound SELECTs remain inside the derived table.
+The same behavior applies when converting `InsertBuilder` with `from_select`,
+including targetless updates with `None` or an empty conflict-column list on
+SQLite 3.35.0+. Conflict actions precede `RETURNING`, so targetless upserts can
+return the inserted or updated row.
 
 ### Implemented ✓ (Additional Features)
 
@@ -120,6 +142,10 @@ Low-level database connectivity and connection management:
   - PostgreSQL, MySQL, SQLite support
   - Query execution and schema operations
   - reinhardt-query integration for query building
+  - INSERT builders combine conflict actions with `RETURNING` on PostgreSQL
+    and SQLite, placing conflict actions before `RETURNING` for both VALUES
+    and SELECT sources. MySQL retains `INSERT IGNORE` and
+    `ON DUPLICATE KEY UPDATE` without `RETURNING`.
   - **When to use**: Need direct database access or custom queries
 
 - **`pool` module**: Connection pooling implementation
@@ -308,6 +334,13 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 
 ### Query with QuerySet
 
+Runtime `Expression::Case` conditions treat `Q::empty()` (empty AND) as TRUE
+and an empty OR as FALSE. NOT negates the entire condition, including these
+identities, so a negated empty AND is FALSE. This applies to expression filters,
+updates, and annotations, including nested expressions. The standalone
+compatibility renderers `Q::to_sql()`, `When::to_sql()`, and
+`Expression::to_sql()` retain their existing output.
+
 Case-sensitive `Contains`, `StartsWith`, and `EndsWith` lookups escape literal
 `%`, `_`, and backslash characters in their bound patterns. Column identifiers
 use the selected backend's quoting. MySQL renders the escape character as
@@ -353,6 +386,20 @@ let updated = User::objects()
     .await?;
 ```
 
+### Arithmetic expressions
+
+Legacy `FilterValue::Expression`, `UpdateValue::Expression`, and arithmetic
+annotations lower field references and constants through the query AST. The
+selected PostgreSQL, MySQL, or SQLite renderer quotes the columns and binds the
+constants in expression order. For example, `F("id") + 0` compares or updates the
+column value on MySQL in both strict and non-strict SQL modes. Arithmetic nested
+in CASE results uses the same operand lowering and preserves the runtime empty
+condition identities described above. Nested operations retain their parentheses,
+and COALESCE operands use the same typed lowering.
+
+Scalar CASE result values, aggregate SQL, and subquery SQL retain their
+existing SQL rendering paths.
+
 ### Execute a QuerySet with Session
 
 `Session::list` executes a model-shaped `QuerySet` through the session's
@@ -361,6 +408,16 @@ supports filters, ordering, distinct, limits, and offsets. Projections,
 annotations, related loading, joins, grouping, CTEs, and alternate sources are
 not model-shaped and return an error. Array filter parameters are not supported
 through `sqlx::Any` on the main line.
+
+Session text reads accept both SQLx Any strings and complete UTF-8 byte values,
+including MySQL TEXT columns reported as BLOB. Values are not truncated or
+decoded lossily. Invalid UTF-8 returns a serialization error identifying the
+table, model field, and physical column; nullable text preserves SQL NULL.
+
+`Session::get`, `Session::list`, and `Session::list_all` preserve the full i64
+range of `BigIntegerField` values, including nullable fields. Integer decoding
+failures return `SessionError::SerializationError`; only a stored SQL NULL in a
+nullable integer field becomes `None`.
 
 `AsyncQuery` preserves bind parameters when executing legacy `Q` filters.
 Runtime field names and operators are treated as query structure and accept

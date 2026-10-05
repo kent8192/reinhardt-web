@@ -442,10 +442,10 @@ fn test_query_value_float() {
 	// Arrange
 
 	// Act
-	let val = QueryValue::Float(3.5);
+	let val = QueryValue::Float(1.25);
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(3.5));
+	assert_eq!(val, QueryValue::Float(1.25));
 }
 
 #[rstest]
@@ -552,13 +552,13 @@ fn test_query_value_from_i32() {
 
 #[rstest]
 fn test_query_value_from_f64() {
-	// Arrange
+	// Arrange: 1.1 loses precision if the conversion narrows through f32.
 
 	// Act
-	let val: QueryValue = 2.75f64.into();
+	let val: QueryValue = 1.1f64.into();
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(2.75));
+	assert_eq!(val, QueryValue::Float(1.1));
 }
 
 #[rstest]
@@ -906,6 +906,124 @@ fn test_insert_builder_sqlite_basic() {
 }
 
 #[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	r#"INSERT INTO "insert_probe" ("created", "touched") SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"#
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"INSERT INTO `insert_probe` (`created`, `touched`) SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	r#"INSERT INTO "insert_probe" ("created", "touched") SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"#
+)]
+fn test_insert_builder_now_without_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = InsertBuilder::new(backend, "insert_probe")
+		.value("created", QueryValue::Now)
+		.value("touched", QueryValue::Now);
+
+	// Act
+	let (sql, params) = builder
+		.build()
+		.expect("current-time expressions must build");
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, Vec::<QueryValue>::new());
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	r#"INSERT INTO "insert_probe" ("created", "nullable", "id", "touched", "payload", "updated") SELECT CURRENT_TIMESTAMP, NULL, $1, CURRENT_TIMESTAMP, $2, CURRENT_TIMESTAMP"#
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"INSERT INTO `insert_probe` (`created`, `nullable`, `id`, `touched`, `payload`, `updated`) SELECT CURRENT_TIMESTAMP, NULL, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	r#"INSERT INTO "insert_probe" ("created", "nullable", "id", "touched", "payload", "updated") SELECT CURRENT_TIMESTAMP, NULL, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP"#
+)]
+fn test_insert_builder_now_preserves_binding_order(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let payload = "literal CURRENT_TIMESTAMP '__REINHARDT_NOW__' $9 ?";
+	let builder = InsertBuilder::new(backend, "insert_probe")
+		.value("created", QueryValue::Now)
+		.value("nullable", QueryValue::Null)
+		.value("id", 2_i64)
+		.value("touched", QueryValue::Now)
+		.value("payload", payload)
+		.value("updated", QueryValue::Now);
+
+	// Act
+	let (sql, params) = builder
+		.build()
+		.expect("mixed current-time values must build");
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![QueryValue::Int(2), QueryValue::String(payload.to_owned())]
+	);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	r#"INSERT INTO "insert_probe" ("created", "id", "touched", "payload") SELECT CURRENT_TIMESTAMP, $1, CURRENT_TIMESTAMP, $2 ON CONFLICT ("id") DO UPDATE SET "touched" = EXCLUDED."touched", "payload" = EXCLUDED."payload" RETURNING "id", "touched", "payload""#
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	r#"INSERT INTO "insert_probe" ("created", "id", "touched", "payload") SELECT CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ? ON CONFLICT ("id") DO UPDATE SET "touched" = excluded."touched", "payload" = excluded."payload" RETURNING "id", "touched", "payload""#
+)]
+fn test_insert_builder_now_conflict_returning_preserves_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+	#[values(false, true)] fluent: bool,
+) {
+	// Arrange
+	let payload = "literal CURRENT_TIMESTAMP '__REINHARDT_NOW__' $9 ?";
+	let builder = InsertBuilder::new(MockBackend::new(db_type), "insert_probe")
+		.value("created", QueryValue::Now)
+		.value("id", 2_i64)
+		.value("touched", QueryValue::Now)
+		.value("payload", payload)
+		.returning(vec!["id", "touched", "payload"]);
+	let builder = if fluent {
+		builder.on_conflict(
+			OnConflictClause::columns(vec!["id"]).do_update(vec!["touched", "payload"]),
+		)
+	} else {
+		builder.on_conflict_do_update(
+			Some(vec!["id".into()]),
+			vec!["touched".into(), "payload".into()],
+		)
+	};
+
+	// Act
+	let (sql, params) = builder.build().expect("current-time upsert must build");
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![QueryValue::Int(2), QueryValue::String(payload.to_owned())]
+	);
+}
+
+#[rstest]
 fn test_insert_builder_with_on_conflict_do_nothing_postgres() {
 	// Arrange
 	let backend = MockBackend::new(DatabaseType::Postgres);
@@ -1058,12 +1176,21 @@ fn test_insert_builder_sqlite_on_conflict_do_update() {
 fn test_sqlite_targetless_insert_sql(
 	#[case] clause: Option<OnConflictClause>,
 	#[case] condition: &str,
+	#[values(false, true)] returning: bool,
 ) {
 	// Arrange
-	let builder = InsertBuilder::new(MockBackend::new(DatabaseType::Sqlite), "upsert_probe")
+	let mut builder = InsertBuilder::new(MockBackend::new(DatabaseType::Sqlite), "upsert_probe")
 		.value("id", 3_i64)
 		.value("email", "first@example.com")
 		.value("version", 2_i64);
+	if returning {
+		builder = builder.returning(vec!["id", "email", "version"]);
+	}
+	let returning_sql = if returning {
+		" RETURNING \"id\", \"email\", \"version\""
+	} else {
+		""
+	};
 	let builder = match clause {
 		Some(clause) => builder.on_conflict(clause),
 		None => builder.on_conflict_do_update(None, vec!["version".into()]),
@@ -1076,7 +1203,7 @@ fn test_sqlite_targetless_insert_sql(
 	assert_eq!(
 		sql,
 		format!(
-			"INSERT INTO \"upsert_probe\" (\"id\", \"email\", \"version\") VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET \"version\" = excluded.\"version\"{condition}"
+			"INSERT INTO \"upsert_probe\" (\"id\", \"email\", \"version\") VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET \"version\" = excluded.\"version\"{condition}{returning_sql}"
 		)
 	);
 	assert_eq!(
@@ -1097,6 +1224,7 @@ fn test_sqlite_targetless_insert_select_sql(
 	#[case] conflict_columns: Option<Vec<String>>,
 	#[case] target: &str,
 	#[values(false, true)] converted: bool,
+	#[values(false, true)] returning: bool,
 ) {
 	use reinhardt_query::prelude::{Alias, Expr, Query};
 
@@ -1116,6 +1244,17 @@ fn test_sqlite_targetless_insert_select_sql(
 			.on_conflict_do_update(conflict_columns, vec!["version".into()])
 	};
 
+	let builder = if returning {
+		builder.returning(vec!["id", "version"])
+	} else {
+		builder
+	};
+	let returning_sql = if returning {
+		" RETURNING \"id\", \"version\""
+	} else {
+		""
+	};
+
 	// Act
 	let (sql, params) = builder.build();
 
@@ -1123,7 +1262,7 @@ fn test_sqlite_targetless_insert_select_sql(
 	assert_eq!(
 		sql,
 		format!(
-			"INSERT INTO \"upsert_probe\" (\"id\", \"version\") SELECT \"id\", \"version\" FROM \"source_table\" WHERE TRUE ON CONFLICT{target} DO UPDATE SET \"version\" = excluded.\"version\""
+			"INSERT INTO \"upsert_probe\" (\"id\", \"version\") SELECT * FROM (SELECT \"id\", \"version\" FROM \"source_table\" WHERE TRUE) AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT{target} DO UPDATE SET \"version\" = excluded.\"version\"{returning_sql}"
 		)
 	);
 	assert!(params.is_empty());
@@ -1173,6 +1312,181 @@ fn test_insert_builder_returning_clause_postgres() {
 
 	// Assert
 	assert!(sql.contains("RETURNING"));
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"INSERT INTO \"users\" (\"id\") VALUES ($1) ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\" RETURNING \"id\""
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"INSERT INTO \"users\" (\"id\") VALUES (?) ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\" RETURNING \"id\""
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"INSERT INTO `users` (`id`) VALUES (?) ON DUPLICATE KEY UPDATE `id` = VALUES(`id`)"
+)]
+fn test_insert_conflict_update_before_returning(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+	#[values(false, true)] fluent: bool,
+) {
+	// Arrange
+	let builder = InsertBuilder::new(MockBackend::new(db_type), "users")
+		.value("id", 3_i64)
+		.returning(vec!["id"]);
+	let builder = if fluent {
+		builder.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["id"]))
+	} else {
+		builder.on_conflict_do_update(Some(vec!["id".into()]), vec!["id".into()])
+	};
+
+	// Act
+	let (sql, params) = builder.build().expect("upsert must build");
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(3)]);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"INSERT INTO \"users\" (\"id\") VALUES ($1) ON CONFLICT DO NOTHING RETURNING \"id\""
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"INSERT OR IGNORE INTO \"users\" (\"id\") VALUES (?) RETURNING \"id\""
+)]
+#[case::mysql(DatabaseType::Mysql, "INSERT IGNORE INTO `users` (`id`) VALUES (?)")]
+fn test_insert_conflict_do_nothing_with_returning(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+	#[values(false, true)] fluent: bool,
+) {
+	// Arrange
+	let builder = InsertBuilder::new(MockBackend::new(db_type), "users")
+		.value("id", 3_i64)
+		.returning(vec!["id"]);
+	let builder = if fluent {
+		builder.on_conflict(OnConflictClause::any().do_nothing())
+	} else {
+		builder.on_conflict_do_nothing(None)
+	};
+
+	// Act
+	let (sql, params) = builder.build().expect("conflict ignore must build");
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(3)]);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"INSERT INTO \"users\" (\"id\") VALUES ($1) ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\" WHERE users.id = 3 RETURNING \"id\", \"return\"\"ing\""
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"INSERT INTO \"users\" (\"id\") VALUES (?) ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\" WHERE users.id = 3 RETURNING \"id\", \"return\"\"ing\""
+)]
+fn test_insert_conflict_condition_before_returning(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let builder = InsertBuilder::new(MockBackend::new(db_type), "users")
+		.value("id", 3_i64)
+		.returning(vec!["id", "return\"ing"])
+		.on_conflict_do_nothing(None)
+		.on_conflict(
+			OnConflictClause::columns(vec!["id"])
+				.do_update(vec!["id"])
+				.where_clause("users.id = 3"),
+		);
+
+	// Act
+	let (sql, params) = builder.build().expect("conditional upsert must build");
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(3)]);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"INSERT INTO \"users\" (\"id\") SELECT 3 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\" RETURNING \"id\""
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"INSERT INTO \"users\" (\"id\") SELECT * FROM (SELECT 3) AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\" RETURNING \"id\""
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"INSERT INTO `users` (`id`) SELECT 3 ON DUPLICATE KEY UPDATE `id` = VALUES(`id`)"
+)]
+fn test_insert_select_conflict_update_before_returning(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+	#[values(false, true)] configure_before_conversion: bool,
+) {
+	use reinhardt_query::prelude::{Expr, Query};
+
+	// Arrange
+	let select = Query::select().expr(Expr::val(3_i64)).to_owned();
+	let builder = InsertBuilder::new(MockBackend::new(db_type), "users");
+	let builder = if configure_before_conversion {
+		builder
+			.returning(vec!["id"])
+			.on_conflict_do_update(Some(vec!["id".into()]), vec!["id".into()])
+			.from_select(vec!["id"], select)
+	} else {
+		builder
+			.from_select(vec!["id"], select)
+			.on_conflict_do_update(Some(vec!["id".into()]), vec!["id".into()])
+			.returning(vec!["id"])
+	};
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, Vec::<QueryValue>::new());
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"INSERT INTO \"users\" (\"id\") SELECT 3 ON CONFLICT DO NOTHING RETURNING \"id\""
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"INSERT OR IGNORE INTO \"users\" (\"id\") SELECT 3 RETURNING \"id\""
+)]
+#[case::mysql(DatabaseType::Mysql, "INSERT IGNORE INTO `users` (`id`) SELECT 3")]
+fn test_insert_select_conflict_do_nothing_with_returning(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	use reinhardt_query::prelude::{Expr, Query};
+
+	// Arrange
+	let select = Query::select().expr(Expr::val(3_i64)).to_owned();
+	let builder = InsertBuilder::new(MockBackend::new(db_type), "users")
+		.from_select(vec!["id"], select)
+		.returning(vec!["id"])
+		.on_conflict_do_nothing(None);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, Vec::<QueryValue>::new());
 }
 
 // ==================== SelectBuilder SQL generation tests ====================
@@ -1278,26 +1592,232 @@ fn test_update_builder_basic_postgres() {
 }
 
 #[rstest]
-fn test_update_builder_set_now() {
+#[case::postgres(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"name\" = $1, \"updated_at\" = CURRENT_TIMESTAMP WHERE \"id\" = $2"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `name` = ?, `updated_at` = CURRENT_TIMESTAMP WHERE `id` = ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"name\" = ?, \"updated_at\" = CURRENT_TIMESTAMP WHERE \"id\" = ?"
+)]
+fn test_update_builder_set_now(#[case] db_type: DatabaseType, #[case] expected_sql: &str) {
 	// Arrange
-	let backend = MockBackend::new(DatabaseType::Postgres);
+	let backend = MockBackend::new(db_type);
 
-	// Act: set_now stores QueryValue::Now internally, and build() uses
-	// a sentinel placeholder. SeaQuery uses parameterized queries, so the
-	// sentinel appears as a parameter value, not in the SQL string.
+	// Act
 	let (sql, params) = UpdateBuilder::new(backend, "users")
-		.set("name", QueryValue::String("Alice".to_string()))
+		.set("name", "Alice")
 		.set_now("updated_at")
-		.where_eq("id", QueryValue::Int(1))
+		.where_eq("id", 1_i64)
 		.build();
 
-	// Assert: SQL contains UPDATE and SET for updated_at
-	assert!(sql.contains("UPDATE"));
-	assert!(sql.contains("updated_at"));
-	// NOW() is excluded from params (only name and id)
-	assert_eq!(params.len(), 2);
-	assert_eq!(params[0], QueryValue::String("Alice".to_string()));
-	assert_eq!(params[1], QueryValue::Int(1));
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::from("Alice"), QueryValue::Int(1)]);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"updated_at\" = CURRENT_TIMESTAMP WHERE \"id\" = $1"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `updated_at` = CURRENT_TIMESTAMP WHERE `id` = ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"updated_at\" = CURRENT_TIMESTAMP WHERE \"id\" = ?"
+)]
+fn test_update_builder_set_now_only(#[case] db_type: DatabaseType, #[case] expected_sql: &str) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+
+	// Act
+	let (sql, params) = UpdateBuilder::new(backend, "users")
+		.set_now("updated_at")
+		.where_eq("id", 1_i64)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(1)]);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"updated_at\" = CURRENT_TIMESTAMP, \"name\" = $1, \"touched_at\" = CURRENT_TIMESTAMP, \"age\" = $2 WHERE \"id\" = $3 AND \"active\" = $4"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `updated_at` = CURRENT_TIMESTAMP, `name` = ?, `touched_at` = CURRENT_TIMESTAMP, `age` = ? WHERE `id` = ? AND `active` = ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"updated_at\" = CURRENT_TIMESTAMP, \"name\" = ?, \"touched_at\" = CURRENT_TIMESTAMP, \"age\" = ? WHERE \"id\" = ? AND \"active\" = ?"
+)]
+fn test_update_builder_set_now_preserves_parameter_order(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let name = "'__REINHARDT_NOW__' ? $42";
+
+	// Act
+	let (sql, params) = UpdateBuilder::new(backend, "users")
+		.set_now("updated_at")
+		.set("name", name)
+		.set_now("touched_at")
+		.set("age", 25_i64)
+		.where_eq("id", 1_i64)
+		.where_eq("active", true)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![
+			QueryValue::from(name),
+			QueryValue::Int(25),
+			QueryValue::Int(1),
+			QueryValue::Bool(true),
+		]
+	);
+}
+
+#[rstest]
+#[case::bool(QueryValue::Bool(true))]
+#[case::int(QueryValue::Int(i64::MAX))]
+#[case::float(QueryValue::Float(5.25))]
+#[case::string(QueryValue::from("'__REINHARDT_NOW__' ? $42"))]
+#[case::bytes(QueryValue::Bytes(vec![0, 255]))]
+#[case::timestamp(QueryValue::Timestamp(chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap()))]
+#[case::uuid(QueryValue::Uuid(uuid::Uuid::from_u128(1)))]
+#[case::null(QueryValue::Null)]
+fn test_update_builder_set_now_preserves_value_types(
+	#[values(DatabaseType::Postgres, DatabaseType::Mysql, DatabaseType::Sqlite)]
+	db_type: DatabaseType,
+	#[case] value: QueryValue,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let is_null = value == QueryValue::Null;
+	let (assignment, predicate) = match (db_type, is_null) {
+		(DatabaseType::Postgres, false) => ("$1", "$2"),
+		(DatabaseType::Postgres, true) => ("NULL", "$1"),
+		(_, false) => ("?", "?"),
+		(_, true) => ("NULL", "?"),
+	};
+	let expected_sql = if db_type == DatabaseType::Mysql {
+		format!(
+			"UPDATE `users` SET `updated_at` = CURRENT_TIMESTAMP, `value` = {assignment} WHERE `id` = {predicate}"
+		)
+	} else {
+		format!(
+			"UPDATE \"users\" SET \"updated_at\" = CURRENT_TIMESTAMP, \"value\" = {assignment} WHERE \"id\" = {predicate}"
+		)
+	};
+	let expected_params = if is_null {
+		vec![QueryValue::Int(1)]
+	} else {
+		vec![value.clone(), QueryValue::Int(1)]
+	};
+
+	// Act
+	let (sql, params) = UpdateBuilder::new(backend, "users")
+		.set_now("updated_at")
+		.set("value", value)
+		.where_eq("id", 1_i64)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, expected_params);
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest::fixture]
+async fn timestamp_connection() -> reinhardt_db::backends::DatabaseConnection {
+	use reinhardt_db::backends::DatabaseConnection;
+	use reinhardt_query::prelude::{
+		ColumnDef, Iden, IntoIden, Query, QueryBuilder, SqliteQueryBuilder,
+	};
+
+	#[derive(Debug, Iden)]
+	enum BuilderProbe {
+		Table,
+		Id,
+		Touched,
+	}
+
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.unwrap();
+	let create = Query::create_table()
+		.table(BuilderProbe::Table.into_iden())
+		.col(
+			ColumnDef::new(BuilderProbe::Id)
+				.big_integer()
+				.primary_key(true),
+		)
+		.col(ColumnDef::new(BuilderProbe::Touched).timestamp())
+		.to_owned();
+	let (sql, _) = SqliteQueryBuilder.build_create_table(&create);
+	connection.execute(&sql, vec![]).await.unwrap();
+	for id in [1_i64, 2_i64] {
+		InsertBuilder::new(connection.backend(), "builder_probe")
+			.value("id", id)
+			.execute()
+			.await
+			.unwrap();
+	}
+	connection
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_update_builder_set_now_updates_sqlite_row(
+	#[future] timestamp_connection: reinhardt_db::backends::DatabaseConnection,
+) {
+	use reinhardt_query::prelude::{
+		Alias, Expr, ExprTrait, Query, QueryBuilder, SqliteQueryBuilder,
+	};
+
+	// Arrange
+	let connection = timestamp_connection.await;
+	let builder = UpdateBuilder::new(connection.backend(), "builder_probe")
+		.set_now("touched")
+		.where_eq("id", 1_i64);
+
+	// Act
+	let result = builder.execute().await.unwrap();
+
+	// Assert
+	assert_eq!(result.rows_affected, 1);
+	let mut select = Query::select();
+	select
+		.expr_as(Expr::col("touched").is_not_null(), Alias::new("is_touched"))
+		.from("builder_probe")
+		.and_where(Expr::col("id").eq(1_i64));
+	let (sql, _) = SqliteQueryBuilder.build_select(&select);
+	let updated = connection
+		.fetch_one(&sql, vec![QueryValue::Int(1)])
+		.await
+		.unwrap();
+	assert_eq!(updated.get::<i64>("is_touched").unwrap(), 1);
+	let untouched = connection
+		.fetch_one(&sql, vec![QueryValue::Int(2)])
+		.await
+		.unwrap();
+	assert_eq!(untouched.get::<i64>("is_touched").unwrap(), 0);
 }
 
 #[rstest]
@@ -2127,6 +2647,103 @@ fn test_delete_builder_where_in_empty_preserves_other_parameters(
 	);
 }
 
+#[cfg(feature = "postgres")]
+mod insert_builder_postgres_tests {
+	use super::*;
+	use reinhardt_db::backends::dialect::PostgresBackend;
+	use reinhardt_query::prelude::{
+		ColumnDef, Expr, Iden, IntoIden, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	};
+	use rstest::fixture;
+	use testcontainers::{ContainerAsync, ImageExt, runners::AsyncRunner};
+	use testcontainers_modules::postgres::Postgres;
+
+	#[derive(Debug, Iden)]
+	enum InsertProbe {
+		Table,
+		Id,
+		Name,
+	}
+
+	#[fixture]
+	async fn insert_probe() -> (ContainerAsync<Postgres>, Arc<PostgresBackend>) {
+		let container = Postgres::default()
+			.with_tag("17-alpine")
+			.start()
+			.await
+			.expect("PostgreSQL container must start");
+		let host = container.get_host().await.expect("host must be available");
+		let port = container
+			.get_host_port_ipv4(5432)
+			.await
+			.expect("port must be available");
+		let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+		let pool = sqlx::PgPool::connect(&url)
+			.await
+			.expect("PostgreSQL must connect");
+		let backend = Arc::new(PostgresBackend::new(pool));
+		let create = Query::create_table()
+			.table(InsertProbe::Table.into_iden())
+			.col(
+				ColumnDef::new(InsertProbe::Id)
+					.big_integer()
+					.primary_key(true),
+			)
+			.col(ColumnDef::new(InsertProbe::Name).string())
+			.to_string(PostgresQueryBuilder);
+		backend
+			.execute(&create, Vec::new())
+			.await
+			.expect("table must be created");
+		InsertBuilder::new(backend.clone(), "insert_probe")
+			.value("id", 3_i64)
+			.value("name", "original")
+			.execute()
+			.await
+			.expect("original row must be inserted");
+		(container, backend)
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_insert_conflict_returning_postgres_execution(
+		#[future] insert_probe: (ContainerAsync<Postgres>, Arc<PostgresBackend>),
+		#[values(false, true)] select_source: bool,
+	) {
+		// Arrange
+		let (_container, backend) = insert_probe.await;
+		let builder = InsertBuilder::new(backend, "insert_probe")
+			.returning(vec!["id", "name"])
+			.on_conflict_do_update(Some(vec!["id".into()]), vec!["name".into()]);
+
+		// Act
+		let row = if select_source {
+			let select = Query::select()
+				.expr(Expr::val(3_i64))
+				.expr(Expr::val("updated"))
+				.to_owned();
+			builder
+				.from_select(vec!["id", "name"], select)
+				.fetch_one()
+				.await
+		} else {
+			builder
+				.value("id", 3_i64)
+				.value("name", "updated")
+				.fetch_one()
+				.await
+		}
+		.expect("upsert must return the updated row");
+
+		// Assert
+		assert_eq!(row.get::<i64>("id").expect("id must be returned"), 3);
+		assert_eq!(
+			row.get::<String>("name").expect("name must be returned"),
+			"updated"
+		);
+	}
+}
+
 #[cfg(feature = "sqlite")]
 mod targetless_insert_sqlite_tests {
 	use super::*;
@@ -2284,6 +2901,77 @@ mod targetless_insert_sqlite_tests {
 	}
 
 	#[rstest]
+	#[case::primary_key(1, "first@example.com", 1)]
+	#[case::unique(3, "first@example.com", 1)]
+	#[case::no_conflict(3, "new@example.com", 3)]
+	#[tokio::test]
+	async fn test_sqlite_targetless_insert_returning_execution(
+		#[future] upsert_probe: Arc<SqliteBackend>,
+		#[values(InsertApi::Fluent, InsertApi::Legacy, InsertApi::Select)] api: InsertApi,
+		#[case] id: i64,
+		#[case] email: &str,
+		#[case] expected_id: i64,
+	) {
+		// Arrange
+		let backend = upsert_probe.await;
+		let builder = InsertBuilder::new(backend.clone(), "upsert_probe")
+			.value("id", id)
+			.value("email", email)
+			.value("version", 2_i64)
+			.returning(vec!["id", "email", "version"]);
+
+		// Act
+		let row = match api {
+			InsertApi::Fluent => {
+				builder
+					.on_conflict(OnConflictClause::any().do_update(vec!["version"]))
+					.fetch_one()
+					.await
+			}
+			InsertApi::Legacy => {
+				builder
+					.on_conflict_do_update(None, vec!["version".into()])
+					.fetch_one()
+					.await
+			}
+			InsertApi::Select => {
+				let select = Query::select()
+					.expr(Expr::val(id))
+					.expr(Expr::val(email))
+					.expr(Expr::val(2_i64))
+					.from(UpsertProbe::Table.into_iden())
+					.and_where(Expr::col(UpsertProbe::Id).eq(2_i64))
+					.to_owned();
+				InsertFromSelectBuilder::new(
+					backend,
+					"upsert_probe",
+					vec!["id", "email", "version"],
+					select,
+				)
+				.returning(vec!["id", "email", "version"])
+				.on_conflict_do_update(None, vec!["version".into()])
+				.fetch_one()
+				.await
+			}
+		}
+		.expect("targetless UPSERT must return the affected row");
+
+		// Assert
+		assert_eq!(
+			row.get::<i64>("id").expect("id must be returned"),
+			expected_id
+		);
+		assert_eq!(
+			row.get::<String>("email").expect("email must be returned"),
+			email
+		);
+		assert_eq!(
+			row.get::<i64>("version").expect("version must be returned"),
+			2
+		);
+	}
+
+	#[rstest]
 	#[case::newer(2, 1, 2)]
 	#[case::older(0, 0, 1)]
 	#[tokio::test]
@@ -2331,11 +3019,11 @@ mod targetless_insert_sqlite_tests {
 }
 
 #[cfg(feature = "sqlite")]
-mod delete_builder_sqlite_tests {
+mod builder_sqlite_tests {
 	use super::*;
 	use reinhardt_db::backends::dialect::SqliteBackend;
 	use reinhardt_query::prelude::{
-		ColumnDef, Iden, IntoIden, Order, Query, QueryStatementBuilder, SqliteQueryBuilder,
+		ColumnDef, Expr, Iden, IntoIden, Order, Query, QueryStatementBuilder, SqliteQueryBuilder,
 	};
 	use rstest::fixture;
 	use sqlx::sqlite::SqlitePoolOptions;
@@ -2380,6 +3068,55 @@ mod delete_builder_sqlite_tests {
 			.await
 			.expect("probe rows must be inserted");
 		backend
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_insert_conflict_returning_sqlite_execution(
+		#[future] builder_probe: Arc<SqliteBackend>,
+		#[values(3_i64, 4_i64)] id: i64,
+		#[values(false, true)] fluent: bool,
+	) {
+		// Arrange
+		let backend = builder_probe.await;
+		let builder = InsertBuilder::new(backend, "builder_probe")
+			.value("id", id)
+			.returning(vec!["id"]);
+		let builder = if fluent {
+			builder.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["id"]))
+		} else {
+			builder.on_conflict_do_update(Some(vec!["id".into()]), vec!["id".into()])
+		};
+
+		// Act
+		let row = builder.fetch_one().await.expect("upsert must return a row");
+
+		// Assert
+		assert_eq!(row.get::<i64>("id").expect("id must be returned"), id);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_insert_select_conflict_returning_sqlite_execution(
+		#[future] builder_probe: Arc<SqliteBackend>,
+		#[values(3_i64, 4_i64)] id: i64,
+	) {
+		// Arrange
+		let backend = builder_probe.await;
+		let select = Query::select().expr(Expr::val(id)).to_owned();
+		let builder = InsertBuilder::new(backend, "builder_probe")
+			.returning(vec!["id"])
+			.on_conflict_do_update(Some(vec!["id".into()]), vec!["id".into()])
+			.from_select(vec!["id"], select);
+
+		// Act
+		let row = builder
+			.fetch_one()
+			.await
+			.expect("select upsert must return a row");
+
+		// Assert
+		assert_eq!(row.get::<i64>("id").expect("id must be returned"), id);
 	}
 
 	#[rstest]
@@ -2428,5 +3165,136 @@ mod delete_builder_sqlite_tests {
 			.map(|row| row.get("id").expect("id must be an integer"))
 			.collect();
 		assert_eq!(remaining, expected_remaining);
+	}
+}
+
+#[cfg(feature = "sqlite")]
+mod insert_builder_sqlite_tests {
+	use super::*;
+	use reinhardt_db::backends::dialect::SqliteBackend;
+	use reinhardt_query::prelude::{
+		ColumnDef, Iden, IntoIden, Query, QueryStatementBuilder, SqliteQueryBuilder,
+	};
+	use rstest::fixture;
+	use sqlx::sqlite::SqlitePoolOptions;
+
+	#[derive(Debug, Iden)]
+	enum InsertProbe {
+		Table,
+		Id,
+		Created,
+		Touched,
+		Payload,
+	}
+
+	// Each fixture owns an isolated memory database; dropping its pool releases it.
+	#[fixture]
+	async fn insert_probe() -> Arc<SqliteBackend> {
+		let pool = SqlitePoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("in-memory SQLite must connect");
+		let backend = Arc::new(SqliteBackend::new(pool));
+		let create = Query::create_table()
+			.table(InsertProbe::Table.into_iden())
+			.col(ColumnDef::new(InsertProbe::Id).integer().primary_key(true))
+			.col(ColumnDef::new(InsertProbe::Created).text().not_null(true))
+			.col(ColumnDef::new(InsertProbe::Touched).text().not_null(true))
+			.col(ColumnDef::new(InsertProbe::Payload).text())
+			.to_string(SqliteQueryBuilder);
+		backend
+			.execute(&create, Vec::new())
+			.await
+			.expect("probe table must be created");
+		backend
+	}
+
+	#[rstest]
+	#[case::mixed_execute(false, false, false)]
+	#[case::mixed_returning(false, true, false)]
+	#[case::mixed_upsert_returning(false, true, true)]
+	#[case::only_now_execute(true, false, false)]
+	#[case::only_now_returning(true, true, false)]
+	#[tokio::test]
+	async fn test_insert_builder_now_sqlite_execution(
+		#[future] insert_probe: Arc<SqliteBackend>,
+		#[case] only_now: bool,
+		#[case] returning: bool,
+		#[case] upsert: bool,
+	) {
+		// Arrange
+		let backend = insert_probe.await;
+		let payload = "literal CURRENT_TIMESTAMP '__REINHARDT_NOW__' $9 ?";
+		if upsert {
+			InsertBuilder::new(backend.clone(), "insert_probe")
+				.value("id", 2_i64)
+				.value("created", "2000-01-01 00:00:00")
+				.value("touched", "2000-01-01 00:00:00")
+				.value("payload", "old")
+				.execute()
+				.await
+				.expect("existing row must be inserted");
+		}
+		let mut builder =
+			InsertBuilder::new(backend.clone(), "insert_probe").value("created", QueryValue::Now);
+		if !only_now {
+			builder = builder.value("id", 2_i64).value("payload", payload);
+		}
+		builder = builder.value("touched", QueryValue::Now);
+		if upsert {
+			builder = builder.on_conflict(
+				OnConflictClause::columns(vec!["id"])
+					.do_update(vec!["created", "touched", "payload"]),
+			);
+		}
+		let before = chrono::Utc::now().timestamp();
+
+		// Act
+		let (row, rows_affected) = if returning {
+			let row = builder
+				.returning(vec!["id", "created", "touched", "payload"])
+				.fetch_one()
+				.await
+				.expect("INSERT RETURNING must execute");
+			(row, None)
+		} else {
+			let result = builder.execute().await.expect("INSERT must execute");
+			let select = Query::select()
+				.columns([
+					InsertProbe::Id,
+					InsertProbe::Created,
+					InsertProbe::Touched,
+					InsertProbe::Payload,
+				])
+				.from(InsertProbe::Table.into_iden())
+				.to_string(SqliteQueryBuilder);
+			let row = backend
+				.fetch_one(&select, Vec::new())
+				.await
+				.expect("inserted row must be fetched");
+			(row, Some(result.rows_affected))
+		};
+		let after = chrono::Utc::now().timestamp();
+
+		// Assert
+		if let Some(rows_affected) = rows_affected {
+			assert_eq!(rows_affected, 1);
+		}
+		assert_eq!(row.get::<i64>("id").unwrap(), if only_now { 1 } else { 2 });
+		if only_now {
+			assert_eq!(row.data.get("payload"), Some(&QueryValue::Null));
+		} else {
+			assert_eq!(row.get::<String>("payload").unwrap(), payload);
+		}
+		let created: String = row.get("created").unwrap();
+		let touched: String = row.get("touched").unwrap();
+		assert_eq!(created, touched);
+		let timestamp = chrono::NaiveDateTime::parse_from_str(&touched, "%Y-%m-%d %H:%M:%S")
+			.expect("SQLite must store the database CURRENT_TIMESTAMP format")
+			.and_utc()
+			.timestamp();
+		assert!(timestamp >= before, "stored timestamp predates INSERT");
+		assert!(timestamp <= after, "stored timestamp follows INSERT");
 	}
 }
