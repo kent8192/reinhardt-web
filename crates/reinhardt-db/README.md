@@ -148,6 +148,10 @@ using the migration file's directory and the configured migration root as
 files alongside their migration sources; saving a later migration preserves
 existing source and asset files. Each repository read observes current asset
 contents, and duplicate checks compare the resolved SQL contents.
+Source discovery rejects incomplete scans, directory cycles, and directory
+symlinks resolving outside the migration root. Internal directory links remain
+usable for SQL assets; source identities are collected through the root's real
+directories.
 
 Pre-0.4 generated `DropColumn` operations without `old_definition` are upgraded
 with `old_definition: None`. Explicit definitions retain their meaning; the

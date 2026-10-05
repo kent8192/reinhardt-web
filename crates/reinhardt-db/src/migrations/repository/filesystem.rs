@@ -1002,16 +1002,52 @@ impl FilesystemRepository {
 	#[cfg(any(unix, windows))]
 	fn sql_asset_context(&self) -> Result<SqlAssetContext> {
 		let mut context = SqlAssetContext::new(&self.root_dir)?;
+		let canonical_root = self.root_dir.canonicalize()?;
+		let scan_error = |error: std::io::Error| {
+			MigrationError::IoError(std::io::Error::other(format!(
+				"Failed to scan migration sources under {}: {error}",
+				self.root_dir.display()
+			)))
+		};
 		// Register source identities across the root without parsing unrelated
 		// history. Includes must not consume another migration or its aliases.
 		for entry in walkdir::WalkDir::new(&self.root_dir)
-			.min_depth(2)
-			.follow_links(true)
-			.into_iter()
-			.filter_map(|entry| entry.ok())
+			.min_depth(1)
+			.follow_links(false)
 		{
+			let entry = entry.map_err(|error| scan_error(std::io::Error::other(error)))?;
 			let path = entry.path();
-			if entry.file_type().is_file()
+			let file_type = if entry.file_type().is_symlink() {
+				let target = path.canonicalize().map_err(scan_error)?;
+				let metadata = std::fs::metadata(&target).map_err(scan_error)?;
+				if metadata.is_dir() && !target.starts_with(&canonical_root) {
+					return Err(MigrationError::InvalidMigration(format!(
+						"Migration directory {} resolves outside migration root {}",
+						path.display(),
+						canonical_root.display()
+					)));
+				}
+				if metadata.is_dir()
+					&& path
+						.parent()
+						.unwrap_or(&self.root_dir)
+						.canonicalize()
+						.map_err(scan_error)?
+						.starts_with(&target)
+				{
+					return Err(scan_error(std::io::Error::other(format!(
+						"Directory link {} creates a cycle",
+						path.display()
+					))));
+				}
+				// Internal directory targets are already scanned through the root's
+				// real directories. Never open a directory through a symlink.
+				metadata.file_type()
+			} else {
+				entry.file_type()
+			};
+			if entry.depth() >= 2
+				&& file_type.is_file()
 				&& path.extension().and_then(|extension| extension.to_str()) == Some("rs")
 				&& path
 					.file_stem()
@@ -1849,6 +1885,129 @@ fn migration() -> Migration {{
 			message.contains("both a migration source and an SQL asset"),
 			"{message}"
 		);
+	}
+
+	#[cfg(unix)]
+	#[rstest]
+	#[case::broken_link(false)]
+	#[case::directory_loop(true)]
+	#[tokio::test]
+	async fn repository_rejects_incomplete_source_scans(#[case] directory_loop: bool) {
+		// Arrange
+		let root = TempDir::new().unwrap();
+		write_sql_asset_history(root.path(), "", "query.sql", "reverse.sql");
+		let app_dir = root.path().join("sample");
+		std::fs::write(app_dir.join("query.sql"), "SELECT 1;").unwrap();
+		std::fs::write(app_dir.join("reverse.sql"), "SELECT 0;").unwrap();
+		let other_app = root.path().join("other");
+		std::fs::create_dir(&other_app).unwrap();
+		let target = if directory_loop {
+			other_app.clone()
+		} else {
+			root.path().join("missing")
+		};
+		std::os::unix::fs::symlink(target, other_app.join("unreadable")).unwrap();
+		let mut repo = FilesystemRepository::new(root.path());
+		let next = create_test_migration("sample", "0002_next");
+
+		// Act
+		let errors = [
+			repo.get("sample", "0001_initial").await.unwrap_err(),
+			repo.list("sample").await.unwrap_err(),
+			repo.save(&next).await.unwrap_err(),
+		];
+
+		// Assert
+		for error in errors {
+			let MigrationError::IoError(error) = error else {
+				panic!("expected source scan I/O error, got {error}");
+			};
+			let message = error.to_string();
+			assert!(
+				message.contains("Failed to scan migration sources"),
+				"{message}"
+			);
+		}
+		assert!(!app_dir.join("0002_next.rs").exists());
+	}
+
+	#[cfg(unix)]
+	#[rstest]
+	#[case::app_link(false)]
+	#[case::nested_link(true)]
+	#[tokio::test]
+	async fn repository_rejects_directory_links_outside_root(#[case] nested: bool) {
+		// Arrange
+		let root = TempDir::new().unwrap();
+		let outside = TempDir::new().unwrap();
+		write_sql_asset_history(root.path(), "", "query.sql", "reverse.sql");
+		let app_dir = root.path().join("sample");
+		std::fs::write(app_dir.join("query.sql"), "SELECT 1;").unwrap();
+		std::fs::write(app_dir.join("reverse.sql"), "SELECT 0;").unwrap();
+		// An external traversal would encounter this loop. The boundary error
+		// must identify the directory link before attempting to enumerate it.
+		std::os::unix::fs::symlink(outside.path(), outside.path().join("loop")).unwrap();
+		let link = if nested {
+			app_dir.join("external")
+		} else {
+			root.path().join("external")
+		};
+		std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+		let mut repo = FilesystemRepository::new(root.path());
+		let next = create_test_migration("sample", "0002_next");
+
+		// Act
+		let errors = [
+			repo.get("sample", "0001_initial").await.unwrap_err(),
+			repo.list("sample").await.unwrap_err(),
+			repo.save(&next).await.unwrap_err(),
+		];
+
+		// Assert
+		for error in errors {
+			let MigrationError::InvalidMigration(message) = error else {
+				panic!("expected directory boundary error, got {error}");
+			};
+			assert_eq!(
+				message,
+				format!(
+					"Migration directory {} resolves outside migration root {}",
+					link.display(),
+					root.path().canonicalize().unwrap().display()
+				)
+			);
+		}
+		assert!(!app_dir.join("0002_next.rs").exists());
+	}
+
+	#[cfg(unix)]
+	#[rstest]
+	#[tokio::test]
+	async fn repository_supports_directory_links_inside_root() {
+		// Arrange
+		let root = TempDir::new().unwrap();
+		let assets = root.path().join("assets");
+		std::fs::create_dir(&assets).unwrap();
+		std::fs::write(assets.join("query.sql"), "SELECT 1;").unwrap();
+		std::fs::write(assets.join("reverse.sql"), "SELECT 0;").unwrap();
+		write_sql_asset_history(root.path(), "", "linked/query.sql", "linked/reverse.sql");
+		std::os::unix::fs::symlink(&assets, root.path().join("sample/linked")).unwrap();
+		let repo = FilesystemRepository::new(root.path());
+
+		// Act
+		let migration = repo.get("sample", "0001_initial").await.unwrap();
+		let listed = repo.list("sample").await.unwrap();
+
+		// Assert
+		assert_eq!(
+			migration.operations,
+			vec![Operation::RunSQL {
+				sql: "SELECT 1;".to_string(),
+				reverse_sql: Some("SELECT 0;".to_string()),
+			}]
+		);
+		assert_eq!(listed.len(), 1);
+		assert_eq!(listed[0].operations, migration.operations);
 	}
 
 	#[rstest]
