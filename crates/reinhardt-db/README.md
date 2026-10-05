@@ -141,6 +141,14 @@ Filesystem loading walks migration builder chains iteratively, preserving
 operation and dependency order and applying later flag values last. Adding
 operations does not add recursive frames to the migration builder parser.
 
+On Unix and Windows, `FilesystemRepository` reads and duplicate checks resolve
+literal relative `include_str!` paths in `RunSQL.sql` and `RunSQL.reverse_sql`,
+using the migration file's directory and the configured migration root as
+`FilesystemSource` does. Assets must remain inside that root. Deploy the SQL
+files alongside their migration sources; saving a later migration preserves
+existing source and asset files. Each repository read observes current asset
+contents, and duplicate checks compare the resolved SQL contents.
+
 Pre-0.4 generated `DropColumn` operations without `old_definition` are upgraded
 with `old_definition: None`. Explicit definitions retain their meaning; the
 existing rollback path can recover a missing definition from prior migration

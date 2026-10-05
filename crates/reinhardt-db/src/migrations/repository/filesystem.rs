@@ -3,8 +3,11 @@
 //! Persists migrations as `.rs` files on disk.
 
 use super::{Migration, MigrationError, MigrationRepository, Result};
+#[cfg(any(unix, windows))]
+use crate::migrations::SqlAssetContext;
 use crate::migrations::ast_parser;
 use crate::migrations::dependency::DependencyCondition;
+use crate::migrations::source_assets::SqlAssetScope;
 use async_trait::async_trait;
 use cap_std::ambient_authority;
 use cap_std::fs::{Dir, File, OpenOptions};
@@ -967,6 +970,60 @@ impl FilesystemRepository {
 	fn has_identical_operations(&self, m1: &Migration, m2: &Migration) -> bool {
 		m1.operations == m2.operations
 	}
+
+	async fn read_migration(
+		&self,
+		path: &Path,
+		app_label: &str,
+		name: &str,
+		assets: &mut Option<SqlAssetScope<'_>>,
+	) -> Result<Migration> {
+		if !path.exists() {
+			return Err(MigrationError::NotFound(format!("{}.{}", app_label, name)));
+		}
+		#[cfg(any(unix, windows))]
+		if let Some(scope) = assets.as_mut() {
+			scope.context.register_migration_source(path)?;
+		}
+
+		let content = tokio::fs::read_to_string(path).await.map_err(|error| {
+			MigrationError::IoError(std::io::Error::other(format!(
+				"Failed to read {}: {error}",
+				path.display()
+			)))
+		})?;
+		crate::migrations::source_format::validate_source_version_with_assets(&content, assets)?;
+		let ast: syn::File = syn::parse_file(&content).map_err(|error| {
+			MigrationError::InvalidMigration(format!("Failed to parse {}: {error}", path.display()))
+		})?;
+		ast_parser::extract_migration_metadata_with_assets(&ast, app_label, name, assets)
+	}
+
+	#[cfg(any(unix, windows))]
+	fn sql_asset_context(&self) -> Result<SqlAssetContext> {
+		let mut context = SqlAssetContext::new(&self.root_dir)?;
+		// Register source identities across the root without parsing unrelated
+		// history. Includes must not consume another migration or its aliases.
+		for entry in walkdir::WalkDir::new(&self.root_dir)
+			.min_depth(2)
+			.follow_links(true)
+			.into_iter()
+			.filter_map(|entry| entry.ok())
+		{
+			let path = entry.path();
+			if entry.file_type().is_file()
+				&& path.extension().and_then(|extension| extension.to_str()) == Some("rs")
+				&& path
+					.file_stem()
+					.and_then(|stem| stem.to_str())
+					.is_some_and(|stem| {
+						stem.starts_with(|character: char| character.is_ascii_digit())
+					}) {
+				context.register_migration_source(path)?;
+			}
+		}
+		Ok(context)
+	}
 }
 
 #[async_trait]
@@ -1031,23 +1088,17 @@ impl MigrationRepository for FilesystemRepository {
 			return Err(MigrationError::NotFound(format!("{}.{}", app_label, name)));
 		}
 
-		// Read and parse file
-		let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
-			MigrationError::IoError(std::io::Error::other(format!(
-				"Failed to read {}: {}",
-				path.display(),
-				e
-			)))
-		})?;
-		crate::migrations::source_format::validate_source_version(&content)?;
-
-		// Parse with syn
-		let ast: syn::File = syn::parse_file(&content).map_err(|e| {
-			MigrationError::InvalidMigration(format!("Failed to parse {}: {}", path.display(), e))
-		})?;
-
-		// Extract migration data from AST using ast_parser utility
-		ast_parser::extract_migration_metadata(&ast, app_label, name)
+		#[cfg(any(unix, windows))]
+		let mut context = self.sql_asset_context()?;
+		#[cfg(any(unix, windows))]
+		let mut assets = Some(SqlAssetScope {
+			context: &mut context,
+			source: &path,
+		});
+		#[cfg(not(any(unix, windows)))]
+		let mut assets = None;
+		self.read_migration(&path, app_label, name, &mut assets)
+			.await
 	}
 
 	async fn list(&self, app_label: &str) -> Result<Vec<Migration>> {
@@ -1068,6 +1119,8 @@ impl MigrationRepository for FilesystemRepository {
 				e
 			)))
 		})?;
+		#[cfg(any(unix, windows))]
+		let mut context = self.sql_asset_context()?;
 
 		while let Some(entry) = entries.next_entry().await.map_err(|e| {
 			MigrationError::IoError(std::io::Error::other(format!(
@@ -1090,7 +1143,18 @@ impl MigrationRepository for FilesystemRepository {
 			if !name.starts_with(|character: char| character.is_ascii_digit()) {
 				continue;
 			}
-			migrations.push(self.get(app_label, name).await?);
+			let path = self.migration_path(app_label, name)?;
+			#[cfg(any(unix, windows))]
+			let mut assets = Some(SqlAssetScope {
+				context: &mut context,
+				source: &path,
+			});
+			#[cfg(not(any(unix, windows)))]
+			let mut assets = None;
+			migrations.push(
+				self.read_migration(&path, app_label, name, &mut assets)
+					.await?,
+			);
 		}
 
 		Ok(migrations)
@@ -1498,6 +1562,293 @@ mod tests {
 		// Assert
 		assert_eq!(retrieved.app_label, "polls");
 		assert_eq!(retrieved.name, "0001_initial");
+	}
+
+	#[cfg(any(unix, windows))]
+	fn write_sql_asset_history(root: &Path, header: &str, sql: &str, reverse_sql: &str) -> PathBuf {
+		let app_dir = root.join("sample");
+		std::fs::create_dir_all(&app_dir).unwrap();
+		let path = app_dir.join("0001_initial.rs");
+		std::fs::write(
+			&path,
+			format!(
+				r#"{header}use reinhardt::db::migrations::prelude::*;
+fn migration() -> Migration {{
+    Migration::new("0001_initial", "sample")
+        .add_operation(Operation::RunSQL {{
+            sql: include_str!({sql:?}).to_owned(),
+            reverse_sql: Some(include_str!({reverse_sql:?}).into()),
+        }})
+}}
+"#
+			),
+		)
+		.unwrap();
+		path
+	}
+
+	#[cfg(any(unix, windows))]
+	#[rstest]
+	#[case::unmarked("")]
+	#[case::current("// reinhardt-migration-source: 1\n")]
+	#[tokio::test]
+	async fn repository_reads_sql_asset_history(#[case] header: &str) {
+		// Arrange
+		let temp_dir = TempDir::new().unwrap();
+		write_sql_asset_history(temp_dir.path(), header, "query.sql", "../reverse.sql");
+		let sql = "-- café\r\nSELECT 1;\r\n";
+		let reverse_sql = "-- reverse\nSELECT 0;\n";
+		let asset = temp_dir.path().join("sample/query.sql");
+		std::fs::write(&asset, sql).unwrap();
+		std::fs::write(temp_dir.path().join("reverse.sql"), reverse_sql).unwrap();
+		let repo = FilesystemRepository::new(temp_dir.path());
+		let loaded = FilesystemSource::new(temp_dir.path())
+			.all_migrations()
+			.await
+			.unwrap();
+
+		// Act
+		let retrieved = repo.get("sample", "0001_initial").await.unwrap();
+		let listed = repo.list("sample").await.unwrap();
+
+		// Assert
+		let expected = vec![Operation::RunSQL {
+			sql: sql.into(),
+			reverse_sql: Some(reverse_sql.into()),
+		}];
+		assert_eq!(loaded.len(), 1);
+		assert_eq!(retrieved.app_label, "sample");
+		assert_eq!(retrieved.name, "0001_initial");
+		assert_eq!(retrieved.operations, expected);
+		assert_eq!(retrieved.operations, loaded[0].operations);
+		assert_eq!(listed.len(), 1);
+		assert_eq!(listed[0].operations, expected);
+
+		// A later read must observe deployed asset changes.
+		std::fs::write(&asset, "SELECT 3;\n").unwrap();
+		assert_eq!(
+			repo.get("sample", "0001_initial").await.unwrap().operations,
+			vec![Operation::RunSQL {
+				sql: "SELECT 3;\n".into(),
+				reverse_sql: Some(reverse_sql.into()),
+			}]
+		);
+	}
+
+	#[cfg(any(unix, windows))]
+	#[rstest]
+	#[tokio::test]
+	async fn repository_saves_after_sql_asset_history() {
+		// Arrange
+		let temp_dir = TempDir::new().unwrap();
+		let history = write_sql_asset_history(
+			temp_dir.path(),
+			"// reinhardt-migration-source: 1\n",
+			"query.sql",
+			"reverse.sql",
+		);
+		let original = std::fs::read(&history).unwrap();
+		let app_dir = temp_dir.path().join("sample");
+		std::fs::write(app_dir.join("query.sql"), "SELECT 1;\n").unwrap();
+		std::fs::write(app_dir.join("reverse.sql"), "SELECT 0;\n").unwrap();
+		let mut repo = FilesystemRepository::new(temp_dir.path());
+		let migration = Migration::new("0002_next", "sample")
+			.add_dependency("sample", "0001_initial")
+			.add_operation(Operation::RunSQL {
+				sql: "SELECT 2;".into(),
+				reverse_sql: Some("SELECT 0;".into()),
+			});
+
+		// Act
+		repo.save(&migration).await.unwrap();
+		let saved = repo.get("sample", "0002_next").await.unwrap();
+
+		// Assert
+		assert_eq!(saved.operations, migration.operations);
+		assert_eq!(saved.dependencies, migration.dependencies);
+		assert_eq!(repo.list("sample").await.unwrap().len(), 2);
+		assert_eq!(std::fs::read(&history).unwrap(), original);
+		assert_eq!(
+			std::fs::read(app_dir.join("query.sql")).unwrap(),
+			b"SELECT 1;\n"
+		);
+		assert_eq!(
+			std::fs::read(app_dir.join("reverse.sql")).unwrap(),
+			b"SELECT 0;\n"
+		);
+	}
+
+	#[cfg(any(unix, windows))]
+	#[rstest]
+	#[tokio::test]
+	async fn repository_detects_duplicate_sql_asset_operations() {
+		// Arrange
+		let temp_dir = TempDir::new().unwrap();
+		write_sql_asset_history(
+			temp_dir.path(),
+			"// reinhardt-migration-source: 1\n",
+			"query.sql",
+			"reverse.sql",
+		);
+		let app_dir = temp_dir.path().join("sample");
+		std::fs::write(app_dir.join("query.sql"), "SELECT 1;\n").unwrap();
+		std::fs::write(app_dir.join("reverse.sql"), "SELECT 0;\n").unwrap();
+		let mut repo = FilesystemRepository::new(temp_dir.path());
+		let duplicate =
+			Migration::new("0002_duplicate", "sample").add_operation(Operation::RunSQL {
+				sql: "SELECT 1;\n".into(),
+				reverse_sql: Some("SELECT 0;\n".into()),
+			});
+
+		// Act
+		let error = repo.save(&duplicate).await.unwrap_err();
+
+		// Assert
+		let MigrationError::DuplicateOperations(message) = error else {
+			panic!("expected duplicate operations error, got {error}");
+		};
+		assert!(message.contains("0001_initial"), "{message}");
+		assert!(message.contains("0002_duplicate"), "{message}");
+		assert!(!app_dir.join("0002_duplicate.rs").exists());
+	}
+
+	#[cfg(any(unix, windows))]
+	#[rstest]
+	#[case::missing_sql("missing.sql", "reverse.sql", "RunSQL.sql", "cannot resolve asset")]
+	#[case::missing_reverse(
+		"query.sql",
+		"missing.sql",
+		"RunSQL.reverse_sql",
+		"cannot resolve asset"
+	)]
+	#[case::source_as_sql(
+		"0001_initial.rs",
+		"reverse.sql",
+		"RunSQL.sql",
+		"both a migration source and an SQL asset"
+	)]
+	#[case::source_as_reverse(
+		"query.sql",
+		"0001_initial.rs",
+		"RunSQL.reverse_sql",
+		"both a migration source and an SQL asset"
+	)]
+	#[tokio::test]
+	async fn repository_rejects_invalid_sql_assets(
+		#[case] sql: &str,
+		#[case] reverse_sql: &str,
+		#[case] field: &str,
+		#[case] reason: &str,
+	) {
+		// Arrange
+		let temp_dir = TempDir::new().unwrap();
+		let history = write_sql_asset_history(
+			temp_dir.path(),
+			"// reinhardt-migration-source: 1\n",
+			sql,
+			reverse_sql,
+		);
+		let app_dir = temp_dir.path().join("sample");
+		std::fs::write(app_dir.join("query.sql"), "SELECT 1;").unwrap();
+		std::fs::write(app_dir.join("reverse.sql"), "SELECT 0;").unwrap();
+		let mut repo = FilesystemRepository::new(temp_dir.path());
+		let next = create_test_migration("sample", "0002_next");
+
+		// Act
+		let read_error = repo.get("sample", "0001_initial").await.unwrap_err();
+		let save_error = repo.save(&next).await.unwrap_err();
+
+		// Assert
+		for error in [read_error, save_error] {
+			let MigrationError::InvalidMigration(message) = error else {
+				panic!("expected invalid migration error, got {error}");
+			};
+			assert!(
+				message.contains(&history.display().to_string()),
+				"{message}"
+			);
+			assert!(message.contains(field), "{message}");
+			assert!(message.contains(reason), "{message}");
+		}
+		assert!(!app_dir.join("0002_next.rs").exists());
+	}
+
+	#[cfg(unix)]
+	#[rstest]
+	#[tokio::test]
+	async fn repository_rejects_sql_asset_symlink_escaping_root() {
+		// Arrange
+		let temp_dir = TempDir::new().unwrap();
+		let outside = TempDir::new().unwrap();
+		let history = write_sql_asset_history(
+			temp_dir.path(),
+			"// reinhardt-migration-source: 1\n",
+			"query.sql",
+			"reverse.sql",
+		);
+		let app_dir = temp_dir.path().join("sample");
+		let external_asset = outside.path().join("query.sql");
+		std::fs::write(&external_asset, "SELECT 1;").unwrap();
+		std::os::unix::fs::symlink(&external_asset, app_dir.join("query.sql")).unwrap();
+		std::fs::write(app_dir.join("reverse.sql"), "SELECT 0;").unwrap();
+		let repo = FilesystemRepository::new(temp_dir.path());
+
+		// Act
+		let error = repo.get("sample", "0001_initial").await.unwrap_err();
+
+		// Assert
+		let MigrationError::InvalidMigration(message) = error else {
+			panic!("expected invalid migration error, got {error}");
+		};
+		assert!(
+			message.contains(&history.display().to_string()),
+			"{message}"
+		);
+		assert!(message.contains("RunSQL.sql"), "{message}");
+		assert!(message.contains("escapes migration root"), "{message}");
+	}
+
+	#[cfg(any(unix, windows))]
+	#[rstest]
+	#[case::direct(false)]
+	#[case::hard_link(true)]
+	#[tokio::test]
+	async fn repository_rejects_sql_asset_aliasing_another_migration_source(#[case] alias: bool) {
+		// Arrange
+		let temp_dir = TempDir::new().unwrap();
+		let other_app = temp_dir.path().join("other");
+		std::fs::create_dir(&other_app).unwrap();
+		let other_source = other_app.join("0001_other.rs");
+		std::fs::write(&other_source, "malformed sibling migration").unwrap();
+		write_sql_asset_history(
+			temp_dir.path(),
+			"// reinhardt-migration-source: 1\n",
+			if alias {
+				"query.sql"
+			} else {
+				"../other/0001_other.rs"
+			},
+			"reverse.sql",
+		);
+		let app_dir = temp_dir.path().join("sample");
+		if alias {
+			std::fs::hard_link(&other_source, app_dir.join("query.sql")).unwrap();
+		}
+		std::fs::write(app_dir.join("reverse.sql"), "SELECT 0;").unwrap();
+		let repo = FilesystemRepository::new(temp_dir.path());
+
+		// Act
+		let error = repo.get("sample", "0001_initial").await.unwrap_err();
+
+		// Assert
+		let MigrationError::InvalidMigration(message) = error else {
+			panic!("expected invalid migration error, got {error}");
+		};
+		assert!(message.contains("RunSQL.sql"), "{message}");
+		assert!(
+			message.contains("both a migration source and an SQL asset"),
+			"{message}"
+		);
 	}
 
 	#[rstest]
