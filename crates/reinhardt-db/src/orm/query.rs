@@ -9883,7 +9883,7 @@ where
 				}
 				&super::composite_pk::PkValue::Uint(v) => {
 					let condition = Expr::col(col_alias)
-						.binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v as i64))));
+						.binary(BinOper::Equal, Expr::value(Value::BigUnsigned(Some(v))));
 					query.and_where(condition);
 				}
 				super::composite_pk::PkValue::String(v) => {
