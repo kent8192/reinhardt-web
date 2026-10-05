@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.19...reinhardt-query@v0.4.0-alpha.20) - 2026-10-05
+
+### Added
+
+- *(query)* add typed MySQL index column prefixes
+
+### Fixed
+
+- *(orm)* preserve MySQL bulk row semantics
+- *(query)* preserve MySQL and SQLite arithmetic grouping
+- *(query)* terminate line comments in arithmetic groups
+- *(query)* terminate MySQL hash comments in arithmetic groups
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
 ### Added
 
 - PostgreSQL sequence options, literal schema identifiers, and structured identity definitions (#6506).

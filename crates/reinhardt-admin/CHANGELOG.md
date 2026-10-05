@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.19...reinhardt-admin@v0.4.0-alpha.20) - 2026-10-05
+
+### Fixed
+
+- *(admin)* preserve null elements in scalar array updates
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.18...reinhardt-admin@v0.4.0-alpha.19) - 2026-10-03
 
 ### Documentation

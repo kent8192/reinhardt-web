@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.19...reinhardt-web@v0.4.0-alpha.20) - 2026-10-05
+
+### Added
+
+- *(conf)* backport deferred management settings bootstrap
+- *(commands)* backport scoped migration dispatch
+
+### Changed
+
+- *(testkit)* use typed truncate statements for table cleanup
+
+### Documentation
+
+- *(db)* clarify the insert builder NULL parameter contract
+
+### Fixed
+
+- *(commands)* honor capability migration app scope
+- *(commands)* include capability contract in full preset
+- *(commands)* count global verbosity before custom dispatch
+- *(commands)* resolve conditional migration dependencies
+- *(commands)* fail checks for manual migration proposals
+- *(commands)* omit credential-bearing database URL logs
+- *(orm)* avoid RETURNING in MySQL bulk create
+- *(orm)* apply field metadata to MySQL bulk inserts
+- *(orm)* preserve MySQL datetime and JSON bindings
+- *(orm)* preserve MySQL bulk row semantics
+- *(db)* preserve wide Session integer values
+- *(sync)* reconcile migration and query regressions
+- *(db)* keep generated array conversion available in minimal builds
+- *(db)* preserve query builder parameter variants
+- *(commands)* validate targets before reconciling migration history
+
+### Maintenance
+
+- *(ui-tests)* fetch dependencies before offline consumer checks
+- *(orm)* merge main into MySQL bulk insert repair
+- *(db)* merge main into insert-select conflict fix
+- *(sync)* merge main into develop/0.4.0
+- *(sync)* merge updated main into develop/0.4.0
+
+### Testing
+
+- *(db)* align standalone predicate SQL expectations
+- *(cli)* align capability verbosity regression with main
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.18...reinhardt-web@v0.4.0-alpha.19) - 2026-10-03
 
 ### Documentation

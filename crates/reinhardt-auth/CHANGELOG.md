@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.19...reinhardt-auth@v0.4.0-alpha.20) - 2026-10-05
+
+### Changed
+
+- *(auth)* simplify mock authentication result types
+
+### Fixed
+
+- *(auth)* validate params feature combinations
+- *(auth)* gate optional integration test targets
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.17...reinhardt-auth@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation

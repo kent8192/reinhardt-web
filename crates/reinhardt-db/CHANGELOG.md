@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.19...reinhardt-db@v0.4.0-alpha.20) - 2026-10-05
+
+### Documentation
+
+- *(db)* clarify the insert builder NULL parameter contract
+
+### Fixed
+
+- *(commands)* resolve conditional migration dependencies
+- *(orm)* avoid RETURNING in MySQL bulk create
+- *(orm)* apply field metadata to MySQL bulk inserts
+- *(orm)* preserve MySQL datetime and JSON bindings
+- *(orm)* preserve MySQL bulk row semantics
+- *(db)* preserve wide Session integer values
+- *(sync)* reconcile migration and query regressions
+- *(db)* keep generated array conversion available in minimal builds
+- *(db)* preserve query builder parameter variants
+
+### Maintenance
+
+- *(orm)* merge main into MySQL bulk insert repair
+- *(db)* merge main into insert-select conflict fix
+- *(db)* reconcile MySQL conflict validation with main
+- *(sync)* merge main into develop/0.4.0
+
+### Testing
+
+- *(db)* align standalone predicate SQL expectations
+
 ### Added
 
 - PostgreSQL sequence options, literal schema identifiers, and structured identity definitions (#6506).

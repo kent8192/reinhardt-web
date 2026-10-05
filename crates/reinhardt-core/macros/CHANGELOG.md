@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.19...reinhardt-macros@v0.4.0-alpha.20) - 2026-10-05
+
+### Added
+
+- *(macros)* preserve PostgreSQL identity options in model metadata
+
+### Fixed
+
+- *(macros)* infer PostgreSQL arrays through nullable elements
+- *(macros)* infer grouped nullable array element types
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.18...reinhardt-macros@v0.4.0-alpha.19) - 2026-10-03
 
 ### Fixed
