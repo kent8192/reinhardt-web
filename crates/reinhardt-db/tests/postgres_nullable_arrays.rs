@@ -278,7 +278,7 @@ mod derived_models {
 	use reinhardt_db::orm::custom_manager::CustomManager;
 	use reinhardt_db::orm::expressions::{FieldRef, GeneratedModelField};
 	use reinhardt_db::orm::{
-		DatabaseConnectionLease, DatabaseField, DatabaseScalar, Manager, Model,
+		DatabaseConnectionLease, DatabaseField, DatabaseScalar, Manager, Model, QuerySet,
 	};
 	use reinhardt_query::{ColumnDef, ColumnType};
 	use serde::{Deserialize, Serialize};
@@ -327,6 +327,205 @@ mod derived_models {
 	nullable_array_model!(FloatArrayModel, f32, "nullable_float_arrays");
 	nullable_array_model!(DoubleArrayModel, f64, "nullable_double_arrays");
 	nullable_array_model!(UuidArrayModel, uuid::Uuid, "nullable_uuid_arrays");
+
+	trait OptionalArrayRecord<T>: Model<PrimaryKey = i64> {
+		fn new(id: i64, items: Option<Vec<Option<T>>>) -> Self;
+		fn items(&self) -> &Option<Vec<Option<T>>>;
+		fn id_field() -> FieldRef<Self, i64, GeneratedModelField>;
+		fn items_field() -> FieldRef<Self, Option<Vec<Option<T>>>, GeneratedModelField>;
+	}
+
+	macro_rules! optional_array_model {
+		($name:ident, $element:ty, $table:literal) => {
+			#[derive(
+				reinhardt_core::macros::Model, Debug, Clone, PartialEq, Serialize, Deserialize,
+			)]
+			#[model(app_label = "optional_arrays", table_name = $table)]
+			struct $name {
+				#[field(primary_key = true)]
+				id: i64,
+				items: Option<Vec<Option<$element>>>,
+			}
+			impl OptionalArrayRecord<$element> for $name {
+				fn new(id: i64, items: Option<Vec<Option<$element>>>) -> Self {
+					Self { id, items }
+				}
+				fn items(&self) -> &Option<Vec<Option<$element>>> {
+					&self.items
+				}
+				fn id_field() -> FieldRef<Self, i64, GeneratedModelField> {
+					Self::field_id()
+				}
+				fn items_field()
+				-> FieldRef<Self, Option<Vec<Option<$element>>>, GeneratedModelField> {
+					Self::field_items()
+				}
+			}
+		};
+	}
+	optional_array_model!(OptionalStringArray, String, "optional_string_arrays");
+	optional_array_model!(OptionalIntArray, i32, "optional_int_arrays");
+	optional_array_model!(OptionalBigIntArray, i64, "optional_bigint_arrays");
+	optional_array_model!(OptionalBoolArray, bool, "optional_bool_arrays");
+	optional_array_model!(OptionalFloatArray, f32, "optional_float_arrays");
+	optional_array_model!(OptionalDoubleArray, f64, "optional_double_arrays");
+	optional_array_model!(OptionalUuidArray, uuid::Uuid, "optional_uuid_arrays");
+
+	#[rstest]
+	#[case::string(PhantomData::<OptionalStringArray>, ColumnType::Text, "kept".to_owned())]
+	#[case::int(PhantomData::<OptionalIntArray>, ColumnType::Integer, 42_i32)]
+	#[case::bigint(PhantomData::<OptionalBigIntArray>, ColumnType::BigInteger, 42_i64)]
+	#[case::bool(PhantomData::<OptionalBoolArray>, ColumnType::Boolean, true)]
+	#[case::float(PhantomData::<OptionalFloatArray>, ColumnType::Float, 1.5_f32)]
+	#[case::double(PhantomData::<OptionalDoubleArray>, ColumnType::Double, 2.5_f64)]
+	#[case::uuid(PhantomData::<OptionalUuidArray>, ColumnType::Uuid, uuid::Uuid::nil())]
+	#[tokio::test]
+	async fn optional_arrays_preserve_whole_column_null<M, T>(
+		#[future] postgres_arrays: ArrayFixture,
+		#[case] _model: PhantomData<M>,
+		#[case] column_type: ColumnType,
+		#[case] value: T,
+	) where
+		M: OptionalArrayRecord<T> + std::fmt::Debug + PartialEq,
+		Option<Vec<Option<T>>>: DatabaseField<Storage = Option<Vec<Option<T>>>>,
+		Vec<Option<T>>: DatabaseScalar,
+		T: Clone
+			+ std::fmt::Debug
+			+ PartialEq
+			+ Send
+			+ Sync
+			+ 'static
+			+ sqlx::Type<sqlx::Postgres>
+			+ sqlx::postgres::PgHasArrayType
+			+ for<'r> sqlx::Decode<'r, sqlx::Postgres>
+			+ Unpin,
+	{
+		// Arrange
+		let fixture = postgres_arrays.await;
+		let schema = Query::create_table()
+			.table(M::table_name())
+			.col(ColumnDef::new("id").big_integer().primary_key(true))
+			.col(ColumnDef::new("items").array(column_type))
+			.to_string(PostgresQueryBuilder);
+		fixture.backend.execute(&schema, vec![]).await.unwrap();
+		let owner = BackendsConnection::new(Arc::new(PostgresBackend::new(
+			fixture.backend.pool().clone(),
+		)));
+		let lease = DatabaseConnectionLease::register(owner).unwrap();
+		let mut connection = lease.handle();
+		let manager = Manager::<M>::new();
+		let shapes = [
+			None,
+			Some(vec![]),
+			Some(vec![None, None]),
+			Some(vec![Some(value), None]),
+		];
+		// SQL NULL consumes no bind slot, so no integer-typed NULL reaches PostgreSQL.
+		let absent: Option<Vec<Option<T>>> = None;
+		let absent = absent.encode_database().unwrap().into_database_value();
+		let (insert_sql, insert_params) = Query::insert()
+			.into_table(M::table_name())
+			.columns(["id", "items"])
+			.values(vec![
+				Value::from(1_i64),
+				reinhardt_db::orm::database_value_to_query_value(absent),
+			])
+			.unwrap()
+			.build(PostgresQueryBuilder);
+		assert!(insert_sql.contains("NULL"), "{insert_sql}");
+		assert_eq!(insert_params.0, vec![Value::from(1_i64)]);
+		let (update_sql, update_params) = QuerySet::<M>::new()
+			.filter(M::id_field().eq(1_i64))
+			.update_fields_sql([M::items_field().assign(None::<Vec<Option<T>>>)])
+			.unwrap();
+		assert!(update_sql.contains("\"items\" = NULL"), "{update_sql}");
+		assert_eq!(update_params, vec!["1"]);
+
+		let mut expected_models = Vec::new();
+		let mut transaction = fixture.backend.begin().await.unwrap();
+		for (index, items) in shapes.iter().enumerate() {
+			let id = index as i64 + 1;
+			let model = M::new(id, items.clone());
+			let inserted = M::new(id + 100, items.clone());
+			// Act: Manager pool and transaction writes, including whole-column None.
+			manager
+				.create_with_conn(&mut connection, &model)
+				.await
+				.unwrap();
+			manager
+				.insert_with_executor(transaction.as_mut(), &inserted)
+				.await
+				.unwrap();
+			manager
+				.update_with_conn(&mut connection, &M::new(id, Some(vec![])))
+				.await
+				.unwrap();
+			manager
+				.update_with_conn(&mut connection, &model)
+				.await
+				.unwrap();
+			manager
+				.save_with_executor(transaction.as_mut(), &inserted)
+				.await
+				.unwrap();
+			let ((created, was_created), (updated, was_updated_created), (got, was_got_created)) =
+				connection
+					.atomic_write(async |executor| {
+						let created = Manager::<M>::new()
+							.update_or_create()
+							.lookup(M::id_field(), id + 200)
+							.set(M::items_field(), items.clone())
+							.execute_with(executor)
+							.await?;
+						let updated = Manager::<M>::new()
+							.update_or_create()
+							.lookup(M::id_field(), id + 200)
+							.set(M::items_field(), None::<Vec<Option<T>>>)
+							.execute_with(executor)
+							.await?;
+						let got = Manager::<M>::new()
+							.get_or_create()
+							.lookup(M::id_field(), id + 300)
+							.default(M::items_field(), items.clone())
+							.execute_with(executor)
+							.await?;
+						Ok::<_, reinhardt_core::exception::Error>((created, updated, got))
+					})
+					.await
+					.unwrap();
+			// Assert
+			assert!(was_created);
+			assert!(!was_updated_created);
+			assert!(was_got_created);
+			assert_eq!(created, M::new(id + 200, items.clone()));
+			assert_eq!(updated, M::new(id + 200, None));
+			assert_eq!(got, M::new(id + 300, items.clone()));
+			expected_models.extend([model, inserted, updated, got]);
+		}
+		transaction.commit().await.unwrap();
+		// Assert: independent typed SQLx reads distinguish SQL NULL and empty arrays.
+		for model in expected_models {
+			let sql = Query::select()
+				.column("items")
+				.from(M::table_name())
+				.and_where(Expr::col("id").eq(model.primary_key().unwrap()))
+				.to_string(PostgresQueryBuilder);
+			let stored: Option<Vec<Option<T>>> = sqlx::query_scalar(&sql)
+				.fetch_one(fixture.backend.pool())
+				.await
+				.unwrap();
+			assert_eq!(&stored, model.items());
+		}
+		let mut transaction = fixture.backend.begin().await.unwrap();
+		let nulls = QuerySet::<M>::new()
+			.filter(M::items_field().eq(None::<Vec<Option<T>>>))
+			.all_with_executor(transaction.as_mut())
+			.await
+			.unwrap();
+		transaction.rollback().await.unwrap();
+		assert_eq!(nulls.len(), 7);
+		assert!(nulls.iter().all(|model| model.items().is_none()));
+	}
 
 	type FloatArrayConversions<T> = (
 		fn(Vec<T>) -> QueryValue,

@@ -28,7 +28,8 @@ These JSON backends reject non-finite float/double array elements with a type
 error before binding, for both legacy and nullable array carriers.
 
 Derived ORM models support `Vec<Option<T>>` fields for all seven scalar types,
-and `Option<Vec<Option<T>>>` when the entire column can be SQL NULL. Manager
+and `Option<Vec<Option<T>>>` when the entire column can be SQL NULL. Whole-column
+`None` is emitted as a SQL `NULL` literal and consumes no bind parameter. Manager
 writes, typed QuerySet filters, and `get_or_create` / `update_or_create` share
 native array conversion, including arrays whose elements are all NULL. Empty
 arrays and arrays without NULL elements retain their existing typed carriers.
