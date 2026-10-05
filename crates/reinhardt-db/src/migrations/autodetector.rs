@@ -11661,7 +11661,7 @@ mod tests {
 		// generate_migrations() output.
 		for op in &ops {
 			assert!(
-				mig_ops.iter().any(|m| *m == op),
+				mig_ops.contains(&op),
 				"generate_operations() produced {:?} but generate_migrations() did not",
 				op
 			);

@@ -211,7 +211,7 @@ where
 		let (sql, values) = build_insert_sql(&query, self.db.backend());
 
 		self.db
-			.execute(&sql, super::execution::convert_values(values))
+			.execute_generated(&sql, values)
 			.await
 			.map_err(|e| e.to_string())?;
 
@@ -257,7 +257,7 @@ where
 		let (sql, values) = build_delete_sql(&query, self.db.backend());
 
 		self.db
-			.execute(&sql, super::execution::convert_values(values))
+			.execute_generated(&sql, values)
 			.await
 			.map_err(|e| e.to_string())?;
 
@@ -338,10 +338,7 @@ where
 		let (sql, values) = build_select_sql(&query, self.db.backend());
 		let params = value_samples(&values);
 		let started_at = Instant::now();
-		let query_result = self
-			.db
-			.query(&sql, super::execution::convert_values(values))
-			.await;
+		let query_result = self.db.query_generated(&sql, values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -428,10 +425,7 @@ where
 		let (sql, values) = build_select_sql(&query, self.db.backend());
 		let params = value_samples(&values);
 		let started_at = Instant::now();
-		let query_result = self
-			.db
-			.query(&sql, super::execution::convert_values(values))
-			.await;
+		let query_result = self.db.query_generated(&sql, values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -473,7 +467,7 @@ where
 		let (sql, values) = build_delete_sql(&query, self.db.backend());
 
 		self.db
-			.execute(&sql, super::execution::convert_values(values))
+			.execute_generated(&sql, values)
 			.await
 			.map_err(|e| e.to_string())?;
 
@@ -513,7 +507,7 @@ where
 			))
 			.to_owned();
 		let (clear_sql, clear_values) = build_delete_sql(&clear_query, backend);
-		tx.execute(&clear_sql, super::execution::convert_values(clear_values))
+		tx.__execute_generated(&clear_sql, clear_values, self.db.inner().database_type())
 			.await
 			.map_err(|e| e.to_string())?;
 
@@ -536,7 +530,7 @@ where
 				.to_owned();
 
 			let (insert_sql, insert_values) = build_insert_sql(&insert_query, backend);
-			tx.execute(&insert_sql, super::execution::convert_values(insert_values))
+			tx.__execute_generated(&insert_sql, insert_values, self.db.inner().database_type())
 				.await
 				.map_err(|e| e.to_string())?;
 		}
@@ -662,9 +656,7 @@ where
 		let (sql, values) = build_select_sql(&query, db.backend());
 		let params = value_samples(&values);
 		let started_at = Instant::now();
-		let query_result = db
-			.query(&sql, super::execution::convert_values(values))
-			.await;
+		let query_result = db.query_generated(&sql, values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
