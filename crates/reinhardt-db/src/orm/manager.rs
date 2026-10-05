@@ -193,8 +193,11 @@ fn database_value_sql_literal(
 	value: DatabaseValue,
 	backend: DatabaseBackend,
 ) -> Result<String, FieldCodecError> {
-	if let DatabaseValue::Array { element_type, .. } = &value
-		&& backend == DatabaseBackend::Postgres
+	if backend == DatabaseBackend::Postgres
+		&& let DatabaseValue::Array {
+			element_type,
+			values,
+		} = value
 	{
 		let element_type = match element_type {
 			DatabaseArrayType::String => "text",
@@ -205,11 +208,22 @@ fn database_value_sql_literal(
 			DatabaseArrayType::Bool => "boolean",
 			DatabaseArrayType::Uuid => "uuid",
 		};
-		// CASE branches with only NULLs or quoted UUIDs otherwise infer text[].
-		return Ok(format!(
-			"{}::{element_type}[]",
-			database_value_to_query_value(value).to_sql_literal()
-		));
+		let literals = values
+			.into_iter()
+			.map(|value| match value {
+				DatabaseValue::F32(value) if !value.is_finite() => {
+					postgres_special_float_literal(f64::from(value), "real")
+				}
+				DatabaseValue::F64(value) if !value.is_finite() => {
+					postgres_special_float_literal(value, "double precision")
+				}
+				value => database_value_to_query_value(value).to_sql_literal(),
+			})
+			.collect::<Vec<_>>()
+			.join(",");
+		// CASE branches need the array type, and special floats must be quoted
+		// typed literals rather than identifiers such as NaN or inf.
+		return Ok(format!("ARRAY[{literals}]::{element_type}[]"));
 	}
 
 	if backend == DatabaseBackend::Postgres || !matches!(&value, DatabaseValue::Array { .. }) {
@@ -218,6 +232,17 @@ fn database_value_sql_literal(
 
 	let json = value.into_json_value()?;
 	Ok(format!("'{}'", json.to_string().replace('\'', "''")))
+}
+
+fn postgres_special_float_literal(value: f64, sql_type: &str) -> String {
+	let literal = if value.is_nan() {
+		"NaN"
+	} else if value.is_sign_positive() {
+		"Infinity"
+	} else {
+		"-Infinity"
+	};
+	format!("'{literal}'::{sql_type}")
 }
 
 fn quote_identifier(identifier: &str, backend: DatabaseBackend) -> String {
