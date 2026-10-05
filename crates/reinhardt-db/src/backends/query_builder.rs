@@ -526,8 +526,7 @@ impl InsertBuilder {
 	/// Builds the INSERT SQL and its bound values.
 	///
 	/// Conflict handling is rendered before `RETURNING` on supported backends.
-	/// Bound values retain their original `QueryValue` variants. SQL NULL values
-	/// render as literal `NULL` and consume no argument slot.
+	/// `QueryValue::Null` is rendered as literal `NULL` and consumes no argument slot.
 	pub fn build(&self) -> Result<(String, Vec<QueryValue>)> {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
