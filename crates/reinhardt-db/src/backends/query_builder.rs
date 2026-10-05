@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use reinhardt_query::backend::SqlWriter;
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, Expr, ExprTrait, Query, QueryBuilder as RqQueryBuilder, SelectStatement,
 	Value,
@@ -25,6 +26,17 @@ fn quote_ident(name: &str, db_type: DatabaseType) -> String {
 			format!("`{}`", name.replace('`', "``"))
 		}
 	}
+}
+
+fn append_returning_clause(sql: &mut String, columns: &[String], db_type: DatabaseType) {
+	let mut writer = SqlWriter::new();
+	writer.push_keyword("RETURNING");
+	writer.push_space();
+	writer.push_list(columns, ", ", |writer, column| {
+		writer.push_identifier(column, |name| quote_ident(name, db_type));
+	});
+	sql.push(' ');
+	sql.push_str(&writer.into_string());
 }
 
 /// Convert QueryValue to reinhardt-query Value
@@ -406,14 +418,9 @@ impl InsertBuilder {
 			})?;
 		}
 
-		// Add RETURNING clause if supported
-		if let Some(ref cols) = self.returning {
-			let col_refs: Vec<Alias> = cols.iter().map(Alias::new).collect();
-			stmt.returning(col_refs);
-		}
-
 		// Build SQL based on database type
-		let mut sql = match self.backend.database_type() {
+		let db_type = self.backend.database_type();
+		let mut sql = match db_type {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_insert(&stmt).0,
 			DatabaseType::Mysql => MySqlQueryBuilder.build_insert(&stmt).0,
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_insert(&stmt).0,
@@ -425,6 +432,11 @@ impl InsertBuilder {
 			sql = self.apply_new_on_conflict_clause(sql, clause)?;
 		} else if let Some(ref on_conflict) = self.on_conflict {
 			sql = self.apply_on_conflict_clause(sql, on_conflict)?;
+		}
+
+		// PostgreSQL and SQLite require conflict actions before RETURNING.
+		if let Some(ref columns) = self.returning {
+			append_returning_clause(&mut sql, columns, db_type);
 		}
 
 		Ok((sql, self.values.clone()))
@@ -871,7 +883,25 @@ impl InsertFromSelectBuilder {
 		let select_sql = match db_type {
 			DatabaseType::Postgres => self.select_stmt.to_string(PostgresQueryBuilder),
 			DatabaseType::Mysql => self.select_stmt.to_string(MySqlQueryBuilder),
-			DatabaseType::Sqlite => self.select_stmt.to_string(SqliteQueryBuilder),
+			DatabaseType::Sqlite => {
+				if matches!(
+					self.on_conflict.as_ref(),
+					Some(OnConflictAction::DoUpdate {
+						conflict_columns: Some(columns),
+						..
+					}) if !columns.is_empty()
+				) {
+					// SQLite can parse ON CONFLICT as a SELECT join clause. Guard
+					// the complete source so compound SELECTs also end with WHERE.
+					Query::select()
+						.column(ColumnRef::Asterisk)
+						.from_subquery(self.select_stmt.clone(), "__reinhardt_insert_source")
+						.and_where(Expr::val(true))
+						.to_string(SqliteQueryBuilder)
+				} else {
+					self.select_stmt.to_string(SqliteQueryBuilder)
+				}
+			}
 		};
 
 		let mut sql = format!(
@@ -881,18 +911,13 @@ impl InsertFromSelectBuilder {
 			select_sql
 		);
 
-		// Add RETURNING clause if supported
-		if let Some(ref cols) = self.returning {
-			let returning_str = cols
-				.iter()
-				.map(|c| quote_ident(c, db_type))
-				.collect::<Vec<_>>()
-				.join(", ");
-			sql.push_str(&format!(" RETURNING {}", returning_str));
-		}
-
 		if let Some(ref on_conflict) = self.on_conflict {
 			sql = self.apply_on_conflict_clause(sql, on_conflict);
+		}
+
+		// PostgreSQL and SQLite require conflict actions before RETURNING.
+		if let Some(ref columns) = self.returning {
+			append_returning_clause(&mut sql, columns, db_type);
 		}
 
 		(sql, Vec::new())
@@ -1035,7 +1060,9 @@ impl UpdateBuilder {
 		self
 	}
 
-	/// Sets the now.
+	/// Sets the column to the database's `CURRENT_TIMESTAMP` expression.
+	///
+	/// This expression does not consume a bound parameter.
 	pub fn set_now(mut self, column: impl Into<String>) -> Self {
 		self.sets.push((column.into(), QueryValue::Now));
 		self
@@ -1048,23 +1075,19 @@ impl UpdateBuilder {
 		self
 	}
 
-	/// Builds the final result.
+	/// Builds the SQL and bound parameters in renderer order.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
 			MySqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder,
 		};
 
-		// Sentinel placeholder for NOW() values (replaced in final SQL)
-		const NOW_PLACEHOLDER: &str = "__REINHARDT_NOW__";
-
 		let mut stmt = Query::update().table(Alias::new(&self.table)).to_owned();
 
 		// Add SET clauses
 		for (col, val) in &self.sets {
 			if matches!(val, QueryValue::Now) {
-				// Use a sentinel string that will be replaced with NOW() in the output
-				stmt.value(Alias::new(col), NOW_PLACEHOLDER);
+				stmt.value_expr(Alias::new(col), Expr::current_timestamp());
 				continue;
 			}
 			stmt.value(Alias::new(col), query_value_to_sea_value(val));
@@ -1080,25 +1103,27 @@ impl UpdateBuilder {
 		}
 
 		// Build SQL based on database type
-		let sql = match self.backend.database_type() {
-			DatabaseType::Postgres => PostgresQueryBuilder.build_update(&stmt).0,
-			DatabaseType::Mysql => MySqlQueryBuilder.build_update(&stmt).0,
-			DatabaseType::Sqlite => SqliteQueryBuilder.build_update(&stmt).0,
+		let (sql, values) = match self.backend.database_type() {
+			DatabaseType::Postgres => PostgresQueryBuilder.build_update(&stmt),
+			DatabaseType::Mysql => MySqlQueryBuilder.build_update(&stmt),
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_update(&stmt),
 		};
 
-		// Replace NOW() placeholder sentinel with actual function call
-		let sql = sql.replace(&format!("'{}'", NOW_PLACEHOLDER), "NOW()");
-
-		// Preserve parameter order: first SET values, then WHERE values
-		let mut params = Vec::new();
-		for (_, val) in &self.sets {
-			if !matches!(val, QueryValue::Now) {
-				params.push(val.clone());
-			}
-		}
-		for (_, _, val) in &self.wheres {
-			params.push(val.clone());
-		}
+		// Consume the renderer's bindings: CURRENT_TIMESTAMP and NULL have no slots.
+		// Every bound value originates from query_value_to_sea_value above.
+		let params = values
+			.into_iter()
+			.map(|value| match value {
+				Value::Bool(Some(value)) => QueryValue::Bool(value),
+				Value::BigInt(Some(value)) => QueryValue::Int(value),
+				Value::Double(Some(value)) => QueryValue::Float(value),
+				Value::String(Some(value)) => QueryValue::String(*value),
+				Value::Bytes(Some(value)) => QueryValue::Bytes(*value),
+				Value::ChronoDateTimeUtc(Some(value)) => QueryValue::Timestamp(*value),
+				Value::Uuid(Some(value)) => QueryValue::Uuid(*value),
+				_ => unreachable!("UPDATE bindings must originate from QueryValue conversions"),
+			})
+			.collect();
 
 		(sql, params)
 	}
@@ -2123,7 +2148,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_returning() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2135,9 +2160,11 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_update(vec!["name"]));
 		let (sql, _) = builder.build().unwrap();
 
-		// Assert - RETURNING should come before ON CONFLICT in reinhardt-query output
-		assert!(sql.contains("RETURNING"));
-		assert!(sql.contains("ON CONFLICT"));
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\") VALUES ($1) ON CONFLICT (\"email\") DO UPDATE SET \"name\" = EXCLUDED.\"name\" RETURNING \"id\", \"created_at\""
+		);
 	}
 
 	#[test]
@@ -2396,6 +2423,42 @@ mod tests {
 	// ==========================================
 	// INSERT FROM SELECT Tests
 	// ==========================================
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseType::Postgres,
+		"INSERT INTO \"target_table\" (\"id\", \"name\") SELECT \"id\", \"name\" FROM \"source_table\" ON CONFLICT (\"id\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
+	)]
+	#[case::mysql(
+		DatabaseType::Mysql,
+		"INSERT INTO `target_table` (`id`, `name`) SELECT `id`, `name` FROM `source_table` ON DUPLICATE KEY UPDATE `name` = VALUES(`name`)"
+	)]
+	#[case::sqlite(
+		DatabaseType::Sqlite,
+		"INSERT INTO \"target_table\" (\"id\", \"name\") SELECT * FROM (SELECT \"id\", \"name\" FROM \"source_table\") AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT (\"id\") DO UPDATE SET \"name\" = excluded.\"name\""
+	)]
+	fn insert_from_select_upsert_sql(#[case] db_type: DatabaseType, #[case] expected_sql: &str) {
+		// Arrange
+		let backend: Arc<dyn DatabaseBackend> = match db_type {
+			DatabaseType::Postgres => Arc::new(MockBackend),
+			DatabaseType::Mysql => Arc::new(MockMysqlBackend),
+			DatabaseType::Sqlite => Arc::new(MockSqliteBackend),
+		};
+		let source = Query::select()
+			.columns(["id", "name"])
+			.from("source_table")
+			.to_owned();
+		let builder =
+			InsertFromSelectBuilder::new(backend, "target_table", vec!["id", "name"], source)
+				.on_conflict_do_update(Some(vec!["id".into()]), vec!["name".into()]);
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(params, vec![]);
+	}
 
 	#[test]
 	fn test_insert_from_select_basic_postgres() {

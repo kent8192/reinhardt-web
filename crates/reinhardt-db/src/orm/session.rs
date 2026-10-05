@@ -373,31 +373,26 @@ impl Session {
 			// Extract value from row based on field type
 			let value: serde_json::Value = match field.field_type.as_str() {
 				typ if typ.contains("IntegerField") => {
-					if field.nullable {
-						row.try_get::<Option<i32>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
-							})
-							.unwrap_or(serde_json::Value::Null)
-					} else {
-						row.try_get::<i32, _>(column_name)
-							.map(serde_json::Value::from)
-							.unwrap_or(serde_json::Value::Null)
-					}
-				}
-				typ if typ.contains("BigIntegerField") => {
-					if field.nullable {
+					// BigIntegerField contains IntegerField; select the wider codec first.
+					let value = if typ.contains("BigIntegerField") {
 						row.try_get::<Option<i64>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
-							})
-							.unwrap_or(serde_json::Value::Null)
+							.map(|value| value.map(serde_json::Value::from))
 					} else {
-						row.try_get::<i64, _>(column_name)
-							.map(serde_json::Value::from)
-							.unwrap_or(serde_json::Value::Null)
+						row.try_get::<Option<i32>, _>(column_name)
+							.map(|value| value.map(serde_json::Value::from))
+					};
+					let serialization_error = |detail: String| {
+						SessionError::SerializationError(format!(
+							"table `{}`, field `{}`, column `{}`: {detail}",
+							T::table_name(),
+							field.name,
+							column_name
+						))
+					};
+					match value.map_err(|error| serialization_error(error.to_string()))? {
+						Some(value) => value,
+						None if field.nullable => serde_json::Value::Null,
+						None => return Err(serialization_error("unexpected SQL NULL".to_owned())),
 					}
 				}
 				typ if typ.contains("CharField") => {
@@ -2505,8 +2500,11 @@ fn postgres_array_quote(value: &str) -> String {
 mod tests {
 	use super::*;
 	use crate::orm::Manager;
-	use crate::orm::fields::{AutoField, BigIntegerField, CharField, Field, FloatField};
+	use crate::orm::fields::{
+		AutoField, BigIntegerField, CharField, Field, FloatField, IntegerField,
+	};
 	use reinhardt_query::value::Values;
+	use reinhardt_query::{ColumnDef, ColumnType, Iden, IntoIden};
 	use rstest::*;
 	use serde::{Deserialize, Serialize};
 	use serial_test::serial;
@@ -2567,6 +2565,218 @@ mod tests {
 				FieldInfo::from_field(&email),
 			]
 		}
+	}
+
+	#[derive(Debug, Iden, Clone, Copy)]
+	enum WideIntegers {
+		Table,
+		Id,
+		Name,
+		OptionalWide,
+		Count,
+		OptionalCount,
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct WideIntegerModel {
+		id: i64,
+		name: String,
+		optional_wide: Option<i64>,
+		count: i32,
+		optional_count: Option<i32>,
+	}
+
+	impl Model for WideIntegerModel {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"wide_integers"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut id = BigIntegerField::new();
+			id.base.primary_key = true;
+			id.set_attributes_from_name("id");
+			let mut name = CharField::new(255);
+			name.set_attributes_from_name("name");
+			let mut optional_wide = BigIntegerField::new();
+			optional_wide.base.null = true;
+			optional_wide.set_attributes_from_name("optional_wide");
+			let mut count = IntegerField::new();
+			count.set_attributes_from_name("count");
+			let mut optional_count = IntegerField::new();
+			optional_count.base.null = true;
+			optional_count.set_attributes_from_name("optional_count");
+			vec![
+				FieldInfo::from_field(&id),
+				FieldInfo::from_field(&name),
+				FieldInfo::from_field(&optional_wide),
+				FieldInfo::from_field(&count),
+				FieldInfo::from_field(&optional_count),
+			]
+		}
+	}
+
+	#[fixture]
+	async fn wide_integer_pool() -> Arc<AnyPool> {
+		sqlx::any::install_default_drivers();
+		// One connection owns this isolated in-memory database for the test's lifetime.
+		let pool = sqlx::pool::PoolOptions::<Any>::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.unwrap();
+		let sql = RQuery::create_table()
+			.table(WideIntegers::Table.into_iden())
+			.col(
+				ColumnDef::new(WideIntegers::Id)
+					.column_type(ColumnType::BigInteger)
+					.primary_key(true),
+			)
+			.col(
+				ColumnDef::new(WideIntegers::Name)
+					.column_type(ColumnType::Text)
+					.not_null(true),
+			)
+			.col(ColumnDef::new(WideIntegers::OptionalWide).column_type(ColumnType::BigInteger))
+			.col(
+				ColumnDef::new(WideIntegers::Count)
+					.column_type(ColumnType::Integer)
+					.not_null(true),
+			)
+			.col(ColumnDef::new(WideIntegers::OptionalCount).column_type(ColumnType::Integer))
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&sql).execute(&pool).await.unwrap();
+		Arc::new(pool)
+	}
+
+	async fn insert_wide_integer_model(pool: &AnyPool, model: &WideIntegerModel) {
+		let sql = RQuery::insert()
+			.into_table(WideIntegers::Table.into_iden())
+			.columns([
+				WideIntegers::Id,
+				WideIntegers::Name,
+				WideIntegers::OptionalWide,
+				WideIntegers::Count,
+				WideIntegers::OptionalCount,
+			])
+			.values(vec![
+				model.id.into(),
+				model.name.as_str().into(),
+				RValue::BigInt(model.optional_wide),
+				model.count.into(),
+				RValue::Int(model.optional_count),
+			])
+			.unwrap()
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&sql).execute(pool).await.unwrap();
+	}
+
+	#[rstest]
+	#[case::positive_wide(1_i64 << 40)]
+	#[case::negative_wide(-(1_i64 << 40))]
+	#[case::maximum(i64::MAX)]
+	#[case::minimum(i64::MIN)]
+	#[case::small(7)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn session_integer_readers_preserve_wide_values(
+		#[future] wide_integer_pool: Arc<AnyPool>,
+		#[case] id: i64,
+		#[values(false, true)] nullable_values: bool,
+	) {
+		// Arrange
+		let pool = wide_integer_pool.await;
+		let expected = WideIntegerModel {
+			id,
+			name: "Wide integer".to_owned(),
+			optional_wide: nullable_values.then_some(id),
+			count: i32::MAX,
+			optional_count: nullable_values.then_some(i32::MIN),
+		};
+		insert_wide_integer_model(&pool, &expected).await;
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let control = session.list(&QuerySet::<WideIntegerModel>::new()).await;
+		let fetched = session.get::<WideIntegerModel>(id).await;
+		let all = session.list_all::<WideIntegerModel>().await;
+
+		// Assert
+		assert_eq!(control.unwrap(), vec![expected.clone()]);
+		assert_eq!(fetched.unwrap(), Some(expected.clone()));
+		assert_eq!(all.unwrap(), vec![expected.clone()]);
+		assert_eq!(
+			session.get::<WideIntegerModel>(id).await.unwrap(),
+			Some(expected)
+		);
+		assert_eq!(session.get::<WideIntegerModel>(0).await.unwrap(), None);
+	}
+
+	#[rstest]
+	#[case::nullable_wide(WideIntegers::OptionalWide, "optional_wide")]
+	#[case::required_narrow(WideIntegers::Count, "count")]
+	#[case::nullable_narrow(WideIntegers::OptionalCount, "optional_count")]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn session_integer_decode_errors_are_not_null(
+		#[future] wide_integer_pool: Arc<AnyPool>,
+		#[case] column: WideIntegers,
+		#[case] field_name: &str,
+	) {
+		// Arrange
+		let pool = wide_integer_pool.await;
+		let model = WideIntegerModel {
+			id: 7,
+			name: "Invalid integer".to_owned(),
+			optional_wide: Some(7),
+			count: 7,
+			optional_count: Some(7),
+		};
+		insert_wide_integer_model(&pool, &model).await;
+		// SQLite permits text in an integer-affinity column, exposing driver decode errors.
+		let sql = RQuery::update()
+			.table(WideIntegers::Table.into_iden())
+			.value(column, "invalid integer")
+			.and_where(Expr::col(WideIntegers::Id).eq(model.id))
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&sql).execute(&*pool).await.unwrap();
+		let sql = RQuery::select()
+			.column(column)
+			.from(WideIntegers::Table.into_iden())
+			.to_string(SqliteQueryBuilder);
+		let row = sqlx::query(&sql).fetch_one(&*pool).await.unwrap();
+		let driver_error = match column {
+			WideIntegers::OptionalWide => row.try_get::<Option<i64>, _>(field_name).unwrap_err(),
+			_ => row.try_get::<Option<i32>, _>(field_name).unwrap_err(),
+		};
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let error = session.get::<WideIntegerModel>(model.id).await.unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error,
+			SessionError::SerializationError(format!(
+				"table `wide_integers`, field `{field_name}`, column `{field_name}`: {driver_error}"
+			))
+		);
+		assert_eq!(session.identity_map.len(), 0);
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

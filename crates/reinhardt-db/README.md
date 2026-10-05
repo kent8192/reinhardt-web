@@ -62,6 +62,15 @@ This crate provides the following modules:
   - SQLite inserts and inserted-ID lookups share one acquired connection, so
     returned IDs identify the inserted row even with multiple pooled connections
 
+### SQLite INSERT FROM SELECT upserts
+
+`InsertFromSelectBuilder::on_conflict_do_update` wraps the SQLite SELECT source
+in a typed derived table with an always-true outer `WHERE`. This avoids SQLite's
+[INSERT SELECT parsing ambiguity](https://www.sqlite.org/lang_upsert.html#parsing_ambiguity)
+when `ON CONFLICT` follows a source without a `WHERE` clause. The original source's
+filters, ordering, limits, and compound SELECTs remain inside the derived table.
+The same behavior applies when converting `InsertBuilder` with `from_select`.
+
 ### Implemented ✓ (Additional Features)
 
 - **Advanced Query Optimization**
@@ -120,6 +129,10 @@ Low-level database connectivity and connection management:
   - PostgreSQL, MySQL, SQLite support
   - Query execution and schema operations
   - reinhardt-query integration for query building
+  - INSERT builders combine conflict actions with `RETURNING` on PostgreSQL
+    and SQLite, placing conflict actions before `RETURNING` for both VALUES
+    and SELECT sources. MySQL retains `INSERT IGNORE` and
+    `ON DUPLICATE KEY UPDATE` without `RETURNING`.
   - **When to use**: Need direct database access or custom queries
 
 - **`pool` module**: Connection pooling implementation
@@ -368,6 +381,11 @@ supports filters, ordering, distinct, limits, and offsets. Projections,
 annotations, related loading, joins, grouping, CTEs, and alternate sources are
 not model-shaped and return an error. Array filter parameters are not supported
 through `sqlx::Any` on the main line.
+
+`Session::get`, `Session::list`, and `Session::list_all` preserve the full i64
+range of `BigIntegerField` values, including nullable fields. Integer decoding
+failures return `SessionError::SerializationError`; only a stored SQL NULL in a
+nullable integer field becomes `None`.
 
 `AsyncQuery` preserves bind parameters when executing legacy `Q` filters.
 Runtime field names and operators are treated as query structure and accept
