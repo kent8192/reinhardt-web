@@ -1025,7 +1025,10 @@ fn test_insert_builder_sqlite_on_conflict_do_nothing() {
 		.unwrap();
 
 	// Assert
-	assert!(sql.contains("INSERT OR IGNORE"));
+	assert_eq!(
+		sql,
+		"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT (\"email\") DO NOTHING"
+	);
 }
 
 #[rstest]

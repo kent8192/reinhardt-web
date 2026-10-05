@@ -186,6 +186,10 @@ impl OnConflictClause {
 
 	/// Set the action to DO NOTHING on conflict
 	///
+	/// PostgreSQL and SQLite preserve the specified uniqueness target. With
+	/// `any()`, any uniqueness conflict is ignored. SQLite still reports NOT NULL,
+	/// CHECK, and foreign-key violations. MySQL uses `INSERT IGNORE`.
+	///
 	/// # Example
 	///
 	/// ```rust,ignore
@@ -653,7 +657,33 @@ impl InsertBuilder {
 				// SQLite uses similar syntax to PostgreSQL but with lowercase 'excluded'
 				match &clause.action {
 					OnConflictClauseAction::DoNothing => {
-						sql = sql.replacen("INSERT", "INSERT OR IGNORE", 1);
+						let target_str = match &clause.target {
+							Some(ConflictTarget::Columns(cols)) => {
+								if cols.is_empty() {
+									return Err(super::error::DatabaseError::SyntaxError(
+										"SQLite ON CONFLICT requires non-empty conflict_columns for DO NOTHING".to_string(),
+									));
+								}
+								let quoted = cols
+									.iter()
+									.map(|c| quote_ident(c, db_type))
+									.collect::<Vec<_>>()
+									.join(", ");
+								format!("({})", quoted)
+							}
+							Some(ConflictTarget::Constraint(_)) => {
+								return Err(super::error::DatabaseError::NotSupported(
+									"SQLite does not support ON CONFLICT ON CONSTRAINT syntax"
+										.to_string(),
+								));
+							}
+							None => String::new(),
+						};
+						if target_str.is_empty() {
+							sql.push_str(" ON CONFLICT DO NOTHING");
+						} else {
+							sql.push_str(&format!(" ON CONFLICT {} DO NOTHING", target_str));
+						}
 					}
 					OnConflictClauseAction::DoUpdate { update_columns } => {
 						// SQLite requires conflict columns for DO UPDATE
@@ -737,6 +767,10 @@ impl InsertBuilder {
 	/// settings are retained. A fluent `OnConflictClause` takes precedence over
 	/// legacy conflict settings, as it does for a VALUES insert.
 	///
+	/// SQLite UPSERT sources are wrapped in a derived table with `WHERE TRUE` to
+	/// disambiguate the conflict clause while preserving SELECT filters, ordering,
+	/// limits, and compound queries.
+	///
 	/// # Arguments
 	///
 	/// * `columns` - Columns to insert into
@@ -762,7 +796,7 @@ impl InsertBuilder {
 	///     .on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["id"]))
 	///     .from_select(vec!["id"], select)
 	///     .build();
-	/// assert_eq!(sql, "INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\"");
+	/// assert_eq!(sql, "INSERT INTO \"users\" (\"id\") SELECT * FROM (SELECT 4) AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\"");
 	/// assert!(params.is_empty());
 	/// # Ok(())
 	/// # }
@@ -906,6 +940,25 @@ impl InsertFromSelectBuilder {
 		let select_sql = match db_type {
 			DatabaseType::Postgres => self.select_stmt.to_string(PostgresQueryBuilder),
 			DatabaseType::Mysql => self.select_stmt.to_string(MySqlQueryBuilder),
+			DatabaseType::Sqlite
+				if self.on_conflict_clause.is_some()
+					|| matches!(
+						&self.on_conflict,
+						Some(OnConflictAction::DoUpdate { conflict_columns: Some(cols), .. })
+							if !cols.is_empty()
+					) =>
+			{
+				// An outer WHERE disambiguates SQLite UPSERT even after a UNION's
+				// final SELECT. Keep the original source query intact inside it.
+				Query::select()
+					.column(ColumnRef::Asterisk)
+					.from_subquery(
+						self.select_stmt.clone(),
+						Alias::new("__reinhardt_insert_source"),
+					)
+					.and_where(Expr::val(true))
+					.to_string(SqliteQueryBuilder)
+			}
 			DatabaseType::Sqlite => self.select_stmt.to_string(SqliteQueryBuilder),
 		};
 
@@ -1992,10 +2045,10 @@ mod tests {
 			.on_conflict(OnConflictClause::columns(vec!["email"]).do_nothing());
 		let (sql, _) = builder.build().unwrap();
 
-		// Assert - SQLite uses INSERT OR IGNORE syntax (reinhardt-query uses parameterized queries)
+		// Assert - the fluent API retains its SQLite conflict target.
 		assert_eq!(
 			sql,
-			"INSERT OR IGNORE INTO \"users\" (\"email\") VALUES (?)"
+			"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT (\"email\") DO NOTHING"
 		);
 	}
 
@@ -2071,10 +2124,10 @@ mod tests {
 			.on_conflict(OnConflictClause::any().do_nothing());
 		let (sql, _) = builder.build().unwrap();
 
-		// Assert - SQLite uses INSERT OR IGNORE even with any() target (reinhardt-query uses parameterized queries)
+		// Assert - an omitted target handles any uniqueness conflict.
 		assert_eq!(
 			sql,
-			"INSERT OR IGNORE INTO \"users\" (\"email\") VALUES (?)"
+			"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT DO NOTHING"
 		);
 	}
 
@@ -2736,18 +2789,23 @@ mod tests {
 	#[case::sqlite_update(
 		DatabaseType::Sqlite,
 		OnConflictClause::columns(vec!["id"]).do_update(vec!["id"]),
-		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\""
+		"INSERT INTO \"users\" (\"id\") SELECT * FROM (SELECT 4) AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\""
 	)]
 	#[case::sqlite_condition(
 		DatabaseType::Sqlite,
 		OnConflictClause::columns(vec!["id"]).do_update(vec!["id"])
 			.where_clause("users.id < excluded.id"),
-		"INSERT INTO \"users\" (\"id\") SELECT 4 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\" WHERE users.id < excluded.id"
+		"INSERT INTO \"users\" (\"id\") SELECT * FROM (SELECT 4) AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\" WHERE users.id < excluded.id"
 	)]
 	#[case::sqlite_nothing(
 		DatabaseType::Sqlite,
 		OnConflictClause::any().do_nothing(),
-		"INSERT OR IGNORE INTO \"users\" (\"id\") SELECT 4"
+		"INSERT INTO \"users\" (\"id\") SELECT * FROM (SELECT 4) AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT DO NOTHING"
+	)]
+	#[case::sqlite_targeted_nothing(
+		DatabaseType::Sqlite,
+		OnConflictClause::columns(vec!["id"]).do_nothing(),
+		"INSERT INTO \"users\" (\"id\") SELECT * FROM (SELECT 4) AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT (\"id\") DO NOTHING"
 	)]
 	fn test_insert_builder_from_select_preserves_fluent_conflict(
 		#[case] db_type: DatabaseType,
