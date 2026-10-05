@@ -144,20 +144,24 @@ fn long_builder_chains_preserve_standalone_atomic_validation(
 #[rstest]
 #[case(
 	".customize(true)",
-	"Migration builder method 'customize' is unsupported or malformed"
+	"Migration builder method 'customize' is unsupported or malformed",
+	false
 )]
 #[case(
 	".add_operation()",
-	"Migration builder method 'add_operation' is unsupported or malformed"
+	"Migration builder method 'add_operation' is unsupported or malformed",
+	false
 )]
 #[case(
 	".add_operation(Operation::RunSQL { sql: 42, reverse_sql: None })",
-	"operations[256].RunSQL.sql is unsupported or malformed"
+	"operations[256].RunSQL.sql is unsupported or malformed",
+	true
 )]
 fn long_builder_chains_reject_invalid_calls(
 	migration_directory: TempDir,
 	#[case] suffix: &str,
 	#[case] expected_message: &str,
+	#[case] includes_source_coordinate: bool,
 ) {
 	// Arrange
 	let source = builder_source(256, "", suffix);
@@ -168,10 +172,15 @@ fn long_builder_chains_reject_invalid_calls(
 	let error = load_on_normal_stack(migration_directory.path()).unwrap_err();
 
 	// Assert
+	let coordinate = if includes_source_coordinate {
+		format!("{}: ", path.display())
+	} else {
+		String::new()
+	};
 	assert_eq!(
 		error.to_string(),
 		format!(
-			"Invalid migration: Failed to parse {}: {expected_message}",
+			"Invalid migration: Failed to parse {}: {coordinate}{expected_message}",
 			path.display()
 		)
 	);

@@ -181,10 +181,6 @@ pub fn has_source_format_marker(source: &str) -> Result<bool> {
 	Ok(!leading_marker_lines(source, syntax_offset).is_empty())
 }
 
-pub(crate) fn validate_source_version(source: &str) -> Result<()> {
-	validate_source_version_with_assets(source, &mut None)
-}
-
 pub(crate) fn validate_source_version_with_assets(
 	source: &str,
 	assets: &mut Option<SqlAssetScope<'_>>,
