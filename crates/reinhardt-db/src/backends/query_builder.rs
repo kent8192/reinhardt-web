@@ -526,7 +526,8 @@ impl InsertBuilder {
 	/// Builds the INSERT SQL and its bound values.
 	///
 	/// Conflict handling is rendered before `RETURNING` on supported backends.
-	/// `QueryValue::Null` is rendered as literal `NULL` and consumes no argument slot.
+	/// Bound values retain their original `QueryValue` variants. SQL NULL values
+	/// render as literal `NULL` and consume no argument slot.
 	pub fn build(&self) -> Result<(String, Vec<QueryValue>)> {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
@@ -1327,7 +1328,8 @@ impl UpdateBuilder {
 
 	/// Builds the SQL and bound parameters in renderer order.
 	///
-	/// `QueryValue::Null` is rendered as literal `NULL` and consumes no argument slot.
+	/// Bound values retain their original `QueryValue` variants. SQL NULL values
+	/// render as literal `NULL` and consume no argument slot.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
@@ -1335,6 +1337,7 @@ impl UpdateBuilder {
 		};
 
 		let mut stmt = Query::update().table(Alias::new(&self.table)).to_owned();
+		let mut params = Vec::new();
 
 		// Add SET clauses
 		for (col, val) in &self.sets {
@@ -1342,7 +1345,11 @@ impl UpdateBuilder {
 				stmt.value_expr(Alias::new(col), Expr::current_timestamp());
 				continue;
 			}
-			stmt.value(Alias::new(col), query_value_to_sea_value(val));
+			let value = query_value_to_sea_value(val);
+			if !value.is_null() {
+				params.push(val.clone());
+			}
+			stmt.value(Alias::new(col), value);
 		}
 
 		// Add WHERE clauses
@@ -1352,33 +1359,21 @@ impl UpdateBuilder {
 				if matches!(val, QueryValue::Null) {
 					stmt.and_where(column.is_null());
 				} else {
-					stmt.and_where(column.eq(Expr::val(query_value_to_sea_value(val))));
+					let value = query_value_to_sea_value(val);
+					if !value.is_null() {
+						params.push(val.clone());
+					}
+					stmt.and_where(column.eq(Expr::val(value)));
 				}
 			}
 		}
 
 		// Build SQL based on database type
-		let (sql, values) = match self.backend.database_type() {
+		let (sql, _) = match self.backend.database_type() {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_update(&stmt),
 			DatabaseType::Mysql => MySqlQueryBuilder.build_update(&stmt),
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_update(&stmt),
 		};
-
-		// Consume the renderer's bindings: CURRENT_TIMESTAMP and NULL have no slots.
-		// Every bound value originates from query_value_to_sea_value above.
-		let params = values
-			.into_iter()
-			.map(|value| match value {
-				Value::Bool(Some(value)) => QueryValue::Bool(value),
-				Value::BigInt(Some(value)) => QueryValue::Int(value),
-				Value::Double(Some(value)) => QueryValue::Float(value),
-				Value::String(Some(value)) => QueryValue::String(*value),
-				Value::Bytes(Some(value)) => QueryValue::Bytes(*value),
-				Value::ChronoDateTimeUtc(Some(value)) => QueryValue::Timestamp(*value),
-				Value::Uuid(Some(value)) => QueryValue::Uuid(*value),
-				_ => unreachable!("UPDATE bindings must originate from QueryValue conversions"),
-			})
-			.collect();
 
 		(sql, params)
 	}
@@ -1439,7 +1434,8 @@ impl SelectBuilder {
 	/// Builds parameterized SQL and its ordered bind values.
 	///
 	/// The values include the LIMIT after any WHERE arguments. Inline NULL
-	/// expressions do not consume a bind slot.
+	/// expressions do not consume a bind slot. Bound values retain their original
+	/// `QueryValue` variants.
 	///
 	/// # Example
 	///
@@ -1463,6 +1459,7 @@ impl SelectBuilder {
 		};
 
 		let mut stmt = Query::select().from(Alias::new(&self.table)).to_owned();
+		let mut params = Vec::new();
 
 		// Add columns
 		if self.columns == vec!["*".to_string()] {
@@ -1476,38 +1473,25 @@ impl SelectBuilder {
 		// Add WHERE clauses
 		for (col, op, val) in &self.wheres {
 			if op == "=" {
-				stmt.and_where(
-					Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
-				);
+				let value = query_value_to_sea_value(val);
+				if !value.is_null() {
+					params.push(val.clone());
+				}
+				stmt.and_where(Expr::col(Alias::new(col)).eq(Expr::val(value)));
 			}
 		}
 
 		// Add LIMIT (only apply non-negative values)
 		if let Some(limit) = self.limit.filter(|limit| *limit >= 0) {
 			stmt.limit(limit);
+			params.push(QueryValue::Int(limit));
 		}
 
-		let (sql, values) = match self.backend.database_type() {
+		let (sql, _) = match self.backend.database_type() {
 			DatabaseType::Postgres => PostgresQueryBuilder.build_select(&stmt),
 			DatabaseType::Mysql => MySqlQueryBuilder.build_select(&stmt),
 			DatabaseType::Sqlite => SqliteQueryBuilder.build_select(&stmt),
 		};
-
-		// Retain renderer order, including LIMIT and excluding inline NULLs.
-		// This statement only emits query_value_to_sea_value types and an i64 LIMIT.
-		let params = values
-			.into_iter()
-			.map(|value| match value {
-				Value::Bool(Some(value)) => QueryValue::Bool(value),
-				Value::BigInt(Some(value)) => QueryValue::Int(value),
-				Value::Double(Some(value)) => QueryValue::Float(value),
-				Value::String(Some(value)) => QueryValue::String(*value),
-				Value::Bytes(Some(value)) => QueryValue::Bytes(*value),
-				Value::ChronoDateTimeUtc(Some(value)) => QueryValue::Timestamp(*value),
-				Value::Uuid(Some(value)) => QueryValue::Uuid(*value),
-				_ => unreachable!("SelectBuilder only emits supported non-NULL bind values"),
-			})
-			.collect();
 
 		(sql, params)
 	}

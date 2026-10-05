@@ -1966,6 +1966,96 @@ fn test_select_builder_preserves_where_value_types_with_limit(
 	assert_eq!(params, vec![value, QueryValue::Int(1)]);
 }
 
+#[rstest::fixture]
+fn bound_query_values() -> Vec<QueryValue> {
+	let mut values = vec![
+		QueryValue::Bool(true),
+		QueryValue::Int32(i32::MAX),
+		QueryValue::Int(i64::MAX),
+		QueryValue::Uint(u64::MAX),
+		QueryValue::Float(1.25),
+		QueryValue::String("quoted' ? $42".into()),
+		QueryValue::Bytes(vec![0, 255]),
+		QueryValue::Timestamp(chrono::DateTime::from_timestamp(1_700_000_000, 123).unwrap()),
+		QueryValue::NaiveTimestamp(
+			chrono::DateTime::from_timestamp(1_700_000_000, 123)
+				.unwrap()
+				.naive_utc(),
+		),
+		QueryValue::Uuid(uuid::Uuid::from_u128(7)),
+		QueryValue::Json(Some(Box::new(serde_json::json!({"key": [1, null]})))),
+		QueryValue::Json(Some(Box::new(serde_json::Value::Null))),
+		QueryValue::StringArray(vec!["text".into()]),
+		QueryValue::IntArray(vec![i32::MAX]),
+		QueryValue::BigIntArray(vec![i64::MAX]),
+		QueryValue::BoolArray(vec![true]),
+		QueryValue::FloatArray(vec![1.25]),
+		QueryValue::DoubleArray(vec![2.5]),
+		QueryValue::UuidArray(vec![uuid::Uuid::from_u128(7)]),
+		QueryValue::NullableStringArray(vec![Some("text".into()), None]),
+		QueryValue::NullableIntArray(vec![Some(i32::MAX), None]),
+		QueryValue::NullableBigIntArray(vec![Some(i64::MAX), None]),
+		QueryValue::NullableBoolArray(vec![Some(true), None]),
+		QueryValue::NullableFloatArray(vec![Some(1.25), None]),
+		QueryValue::NullableDoubleArray(vec![Some(2.5), None]),
+		QueryValue::NullableUuidArray(vec![Some(uuid::Uuid::from_u128(7)), None]),
+	];
+	// Empty arrays retain their element type even without values.
+	values.push(QueryValue::IntArray(vec![]));
+	#[cfg(feature = "pgvector")]
+	values.push(QueryValue::Vector(Some(vec![1.25, 2.5])));
+	values
+}
+
+#[rstest]
+fn test_builders_preserve_original_parameter_variants(
+	bound_query_values: Vec<QueryValue>,
+	#[values(DatabaseType::Postgres, DatabaseType::Mysql, DatabaseType::Sqlite)]
+	database_type: DatabaseType,
+) {
+	// Arrange
+	let backend = MockBackend::new(database_type);
+	let (update_sql, select_sql) = match database_type {
+		DatabaseType::Postgres => (
+			"UPDATE \"users\" SET \"updated\" = CURRENT_TIMESTAMP, \"empty\" = NULL, \"payload\" = $1 WHERE \"payload\" = $2 AND \"id\" = $3",
+			"SELECT * FROM \"users\" WHERE \"empty\" = NULL AND \"payload\" = $1 LIMIT $2",
+		),
+		DatabaseType::Mysql => (
+			"UPDATE `users` SET `updated` = CURRENT_TIMESTAMP, `empty` = NULL, `payload` = ? WHERE `payload` = ? AND `id` = ?",
+			"SELECT * FROM `users` WHERE `empty` = NULL AND `payload` = ? LIMIT ?",
+		),
+		DatabaseType::Sqlite => (
+			"UPDATE \"users\" SET \"updated\" = CURRENT_TIMESTAMP, \"empty\" = NULL, \"payload\" = ? WHERE \"payload\" = ? AND \"id\" = ?",
+			"SELECT * FROM \"users\" WHERE \"empty\" = NULL AND \"payload\" = ? LIMIT ?",
+		),
+	};
+	for value in bound_query_values {
+		// Act
+		let update = UpdateBuilder::new(backend.clone(), "users")
+			.set_now("updated")
+			.set("empty", QueryValue::Json(None))
+			.set("payload", value.clone())
+			.where_eq("payload", value.clone())
+			.where_eq("id", 1_i32)
+			.build();
+		let select = SelectBuilder::new(backend.clone())
+			.from("users")
+			.where_eq("empty", QueryValue::Json(None))
+			.where_eq("payload", value.clone())
+			.limit(2)
+			.build();
+
+		// Assert
+		assert_eq!(update.0, update_sql);
+		assert_eq!(
+			update.1,
+			vec![value.clone(), value.clone(), QueryValue::Int32(1)]
+		);
+		assert_eq!(select.0, select_sql);
+		assert_eq!(select.1, vec![value, QueryValue::Int(2)]);
+	}
+}
+
 #[rstest]
 fn test_select_builder_mysql() {
 	// Arrange
