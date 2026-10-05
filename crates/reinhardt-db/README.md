@@ -38,6 +38,11 @@ PostgreSQL `bulk_update` and `bulk_update_with_conn` cast array CASE literals to
 their declared scalar element type, including all-NULL and empty arrays. Special
 floating-point elements use quoted typed literals to retain `NaN` and infinity.
 
+Serde serialization of `NullableFloatArray` and `NullableDoubleArray` rejects
+non-finite elements with an error, preventing JSON from silently changing
+`Some(NaN)` or `Some(infinity)` into `None`. Finite values and NULL elements retain
+their existing serialized representation.
+
 The `QueryRow` JSON bridge represents non-finite floating-point array elements
 (`NaN` and positive/negative infinity) as strings. Floating-point model hydration
 rejects these with a serialization error, and `QueryRow::get` returns `None`,
