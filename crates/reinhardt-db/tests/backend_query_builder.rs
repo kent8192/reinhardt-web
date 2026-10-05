@@ -441,10 +441,10 @@ fn test_query_value_float() {
 	// Arrange
 
 	// Act
-	let val = QueryValue::Float(3.5);
+	let val = QueryValue::Float(1.25);
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(3.5));
+	assert_eq!(val, QueryValue::Float(1.25));
 }
 
 #[rstest]
@@ -551,13 +551,13 @@ fn test_query_value_from_i32() {
 
 #[rstest]
 fn test_query_value_from_f64() {
-	// Arrange
+	// Arrange: 1.1 loses precision if the conversion narrows through f32.
 
 	// Act
-	let val: QueryValue = 2.75f64.into();
+	let val: QueryValue = 1.1f64.into();
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(2.75));
+	assert_eq!(val, QueryValue::Float(1.1));
 }
 
 #[rstest]
