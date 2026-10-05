@@ -2,6 +2,7 @@ use super::postgres_features::{ArrayAgg, JsonbAgg, JsonbBuildObject, StringAgg, 
 use crate::orm::aggregation::Aggregate;
 use crate::orm::expressions::{F, Q};
 use crate::orm::query::quote_identifier;
+use reinhardt_query::{Expr, ExprTrait, Func, SimpleExpr};
 use serde::{Deserialize, Serialize};
 
 /// Represents an annotation value that can be added to a QuerySet
@@ -205,6 +206,79 @@ impl AnnotationValue {
 }
 
 impl Expression {
+	// Runtime lowering is separate from the standalone compatibility SQL renderers.
+	pub(crate) fn to_query_expr(&self) -> Expr {
+		let value = Self::value_to_query_expr;
+		match self {
+			Self::Add(left, right) => Self::grouped(value(left).add(value(right))).into(),
+			Self::Subtract(left, right) => Self::grouped(value(left).sub(value(right))).into(),
+			Self::Multiply(left, right) => Self::grouped(value(left).mul(value(right))).into(),
+			Self::Divide(left, right) => Self::grouped(value(left).div(value(right))).into(),
+			Self::Case { whens, default } => {
+				let mut case = Expr::case();
+				for when in whens {
+					case = case.when(
+						Self::condition_to_query_expr(&when.condition),
+						value(&when.then),
+					);
+				}
+				match default {
+					Some(default) => case.else_result(value(default)),
+					None => case.build(),
+				}
+			}
+			Self::Coalesce(values) => Func::coalesce(
+				values
+					.iter()
+					.map(|item| value(item).into_simple_expr())
+					.collect(),
+			)
+			.into(),
+		}
+	}
+
+	fn value_to_query_expr(value: &AnnotationValue) -> Expr {
+		match value {
+			AnnotationValue::Expression(expression) => expression.to_query_expr(),
+			_ => Expr::cust(value.to_sql()),
+		}
+	}
+
+	fn condition_to_query_expr(condition: &Q) -> SimpleExpr {
+		use crate::orm::expressions::QOperator;
+		match condition {
+			// Keep the established scalar grammar and explicit raw-SQL boundary.
+			Q::Condition { .. } => Self::grouped(Expr::cust(condition.to_sql())),
+			Q::Combined {
+				operator,
+				conditions,
+			} => {
+				let mut children = conditions.iter().map(Self::condition_to_query_expr);
+				let first = children.next().unwrap_or_else(|| match operator {
+					QOperator::Or => Expr::constant_false().into_simple_expr(),
+					QOperator::And | QOperator::Not => Expr::constant_true().into_simple_expr(),
+				});
+				let combined = children.fold(first, |left, right| {
+					Self::grouped(match operator {
+						QOperator::Or => left.or(right),
+						QOperator::And | QOperator::Not => left.and(right),
+					})
+				});
+				if matches!(operator, QOperator::Not) {
+					Self::grouped(combined).not()
+				} else {
+					combined
+				}
+			}
+		}
+	}
+
+	fn grouped(expression: impl Into<SimpleExpr>) -> SimpleExpr {
+		// Explicit grouping preserves boolean/arithmetic scope on every backend.
+		// Empty logical groups have already become constants before this wrapper.
+		SimpleExpr::CustomWithExpr("(?)".into(), vec![expression.into()])
+	}
+
 	/// Documentation for `to_sql`
 	///
 	pub fn to_sql(&self) -> String {

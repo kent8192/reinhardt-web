@@ -344,11 +344,13 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 				let column = extract_string_field(&expr_struct.fields, "column")?;
 				let new_definition =
 					extract_column_definition_field(&expr_struct.fields, "new_definition")?;
+				let old_definition =
+					extract_optional_column_definition_field(&expr_struct.fields, "old_definition");
 				return Some(super::Operation::AlterColumn {
 					table,
 					column,
 					new_definition,
-					old_definition: None,
+					old_definition,
 					mysql_options: None,
 				});
 			}
@@ -1012,6 +1014,24 @@ fn extract_column_definition_field(
 	None
 }
 
+/// Extract a historical column definition wrapped in `Some(...)`.
+fn extract_optional_column_definition_field(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+	field_name: &str,
+) -> Option<super::ColumnDefinition> {
+	for field in fields {
+		if let syn::Member::Named(ident) = &field.member
+			&& ident == field_name
+			&& let Expr::Call(call) = &field.expr
+			&& matches!(&*call.func, Expr::Path(path) if path.path.is_ident("Some"))
+			&& call.args.len() == 1
+		{
+			return parse_column_definition(&call.args[0]);
+		}
+	}
+	None
+}
+
 /// Parse `Vec<ColumnDefinition>` from expression
 fn parse_columns_vec(expr: &Expr) -> Vec<super::ColumnDefinition> {
 	let mut columns = Vec::new();
@@ -1161,153 +1181,307 @@ fn parse_bool_return(func: &ItemFn) -> Option<bool> {
 	None
 }
 
-/// Extract FieldType from type_definition field
+/// Extract FieldType from the type_definition field.
 fn extract_field_type(
 	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
 ) -> Option<super::FieldType> {
-	use super::FieldType;
-
-	for field in fields {
+	fields.iter().find_map(|field| {
 		if let syn::Member::Named(ident) = &field.member
 			&& ident == "type_definition"
 		{
-			// Handle FieldType::Variant or path::to::FieldType::Variant
-			if let Expr::Path(expr_path) = &field.expr {
-				let segments: Vec<_> = expr_path
-					.path
-					.segments
-					.iter()
-					.map(|s| s.ident.to_string())
-					.collect();
+			parse_field_type_expr(&field.expr)
+		} else {
+			None
+		}
+	})
+}
 
-				// Get the last segment as the variant name
-				if let Some(last_segment) = expr_path.path.segments.last() {
-					let variant = last_segment.ident.to_string();
+/// Parse field types emitted by migration source generation, including nested arrays.
+fn parse_field_type_expr(expr: &Expr) -> Option<super::FieldType> {
+	use super::FieldType;
 
-					return match variant.as_str() {
-						"Integer" => Some(FieldType::Integer),
-						"BigInteger" => Some(FieldType::BigInteger),
-						"SmallInteger" => Some(FieldType::SmallInteger),
-						"TinyInt" => Some(FieldType::TinyInt),
-						"MediumInt" => Some(FieldType::MediumInt),
-						"Text" => Some(FieldType::Text),
-						"TinyText" => Some(FieldType::TinyText),
-						"MediumText" => Some(FieldType::MediumText),
-						"LongText" => Some(FieldType::LongText),
-						"Date" => Some(FieldType::Date),
-						"Time" => Some(FieldType::Time),
-						"DateTime" => Some(FieldType::DateTime),
-						"TimestampTz" => Some(FieldType::TimestampTz),
-						"Float" => Some(FieldType::Float),
-						"Double" => Some(FieldType::Double),
-						"Real" => Some(FieldType::Real),
-						"Boolean" => Some(FieldType::Boolean),
-						"Binary" => Some(FieldType::Binary),
-						"Blob" => Some(FieldType::Blob),
-						"TinyBlob" => Some(FieldType::TinyBlob),
-						"MediumBlob" => Some(FieldType::MediumBlob),
-						"LongBlob" => Some(FieldType::LongBlob),
-						"Bytea" => Some(FieldType::Bytea),
-						"Json" => Some(FieldType::Json),
-						"JsonBinary" => Some(FieldType::JsonBinary),
-						"Uuid" => Some(FieldType::Uuid),
-						"Year" => Some(FieldType::Year),
-						_ => Some(FieldType::Custom(segments.join("::"))),
+	match expr {
+		Expr::Path(expr_path) => {
+			let variant = &expr_path.path.segments.last()?.ident;
+			Some(match variant.to_string().as_str() {
+				"Integer" => FieldType::Integer,
+				"BigInteger" => FieldType::BigInteger,
+				"SmallInteger" => FieldType::SmallInteger,
+				"TinyInt" => FieldType::TinyInt,
+				"MediumInt" => FieldType::MediumInt,
+				"Text" => FieldType::Text,
+				"TinyText" => FieldType::TinyText,
+				"MediumText" => FieldType::MediumText,
+				"LongText" => FieldType::LongText,
+				"Date" => FieldType::Date,
+				"Time" => FieldType::Time,
+				"DateTime" => FieldType::DateTime,
+				"TimestampTz" => FieldType::TimestampTz,
+				"Float" => FieldType::Float,
+				"Double" => FieldType::Double,
+				"Real" => FieldType::Real,
+				"Boolean" => FieldType::Boolean,
+				"Binary" => FieldType::Binary,
+				"Blob" => FieldType::Blob,
+				"TinyBlob" => FieldType::TinyBlob,
+				"MediumBlob" => FieldType::MediumBlob,
+				"LongBlob" => FieldType::LongBlob,
+				"Bytea" => FieldType::Bytea,
+				"Json" => FieldType::Json,
+				"JsonBinary" => FieldType::JsonBinary,
+				"HStore" => FieldType::HStore,
+				"CIText" => FieldType::CIText,
+				"Int4Range" => FieldType::Int4Range,
+				"Int8Range" => FieldType::Int8Range,
+				"NumRange" => FieldType::NumRange,
+				"DateRange" => FieldType::DateRange,
+				"TsRange" => FieldType::TsRange,
+				"TsTzRange" => FieldType::TsTzRange,
+				"TsVector" => FieldType::TsVector,
+				"TsQuery" => FieldType::TsQuery,
+				"Uuid" => FieldType::Uuid,
+				"Year" => FieldType::Year,
+				_ => FieldType::Custom(
+					expr_path
+						.path
+						.segments
+						.iter()
+						.map(|segment| segment.ident.to_string())
+						.collect::<Vec<_>>()
+						.join("::"),
+				),
+			})
+		}
+		Expr::Call(expr_call) => {
+			let Expr::Path(func_path) = &*expr_call.func else {
+				return None;
+			};
+			let variant = &func_path.path.segments.last()?.ident;
+			match variant.to_string().as_str() {
+				"Char" | "VarChar" => {
+					let Expr::Lit(expr_lit) = expr_call.args.first()? else {
+						return None;
 					};
-				}
-			}
-			// Handle FieldType::VarChar(n) or FieldType::Char(n)
-			else if let Expr::Call(expr_call) = &field.expr {
-				if let Expr::Path(func_path) = &*expr_call.func
-					&& let Some(last_segment) = func_path.path.segments.last()
-				{
-					let variant = last_segment.ident.to_string();
-
-					if !expr_call.args.is_empty()
-						&& let Expr::Lit(expr_lit) = &expr_call.args[0]
-						&& let syn::Lit::Int(lit_int) = &expr_lit.lit
-						&& let Ok(size) = lit_int.base10_parse::<u32>()
-					{
-						return match variant.as_str() {
-							"VarChar" => Some(FieldType::VarChar(size)),
-							"Char" => Some(FieldType::Char(size)),
-							_ => None,
-						};
-					}
-					if variant == "Custom"
-						&& let Some(s) = expr_call.args.first().and_then(extract_string_literal)
-					{
-						return Some(FieldType::Custom(s));
+					let syn::Lit::Int(lit_int) = &expr_lit.lit else {
+						return None;
+					};
+					let size = lit_int.base10_parse::<u32>().ok()?;
+					if variant == "Char" {
+						Some(FieldType::Char(size))
+					} else {
+						Some(FieldType::VarChar(size))
 					}
 				}
-			}
-			// Handle FieldType::Decimal { precision, scale }
-			// Handle FieldType::OneToOne { to, on_delete, on_update }
-			// Handle FieldType::ManyToMany { to, through }
-			else if let Expr::Struct(expr_struct) = &field.expr
-				&& let Some(last_segment) = expr_struct.path.segments.last()
-			{
-				let variant = last_segment.ident.to_string();
-
-				match variant.as_str() {
-					"Decimal" => {
-						let mut precision = 10u32;
-						let mut scale = 0u32;
-
-						for field_value in &expr_struct.fields {
-							if let syn::Member::Named(field_ident) = &field_value.member
-								&& let Expr::Lit(expr_lit) = &field_value.expr
-								&& let syn::Lit::Int(lit_int) = &expr_lit.lit
-								&& let Ok(val) = lit_int.base10_parse::<u32>()
-							{
-								if field_ident == "precision" {
-									precision = val;
-								} else if field_ident == "scale" {
-									scale = val;
-								}
-							}
-						}
-
-						return Some(FieldType::Decimal { precision, scale });
+				"Custom" => expr_call
+					.args
+					.first()
+					.and_then(extract_string_literal)
+					.map(FieldType::Custom),
+				"Array" => {
+					let Expr::Call(boxed) = expr_call.args.first()? else {
+						return None;
+					};
+					let Expr::Path(constructor) = &*boxed.func else {
+						return None;
+					};
+					let mut segments = constructor.path.segments.iter().rev();
+					if segments.next()?.ident != "new" || segments.next()?.ident != "Box" {
+						return None;
 					}
-					"OneToOne" => {
-						// Extract required field: to
-						let to = extract_string_field(&expr_struct.fields, "to")?;
-
-						// Extract optional fields with defaults
-						let on_delete =
-							extract_foreign_key_action_field(&expr_struct.fields, "on_delete")
-								.unwrap_or(super::ForeignKeyAction::Restrict);
-						let on_update =
-							extract_foreign_key_action_field(&expr_struct.fields, "on_update")
-								.unwrap_or(super::ForeignKeyAction::NoAction);
-
-						return Some(FieldType::OneToOne {
-							to,
-							on_delete,
-							on_update,
-						});
-					}
-					"ManyToMany" => {
-						// Extract required field: to
-						let to = extract_string_field(&expr_struct.fields, "to")?;
-
-						// Extract optional field: through
-						let through = extract_optional_str_field(&expr_struct.fields, "through");
-
-						return Some(FieldType::ManyToMany { to, through });
-					}
-					_ => {}
+					parse_field_type_expr(boxed.args.first()?)
+						.map(|inner| FieldType::Array(Box::new(inner)))
 				}
+				_ => None,
 			}
 		}
+		Expr::Struct(expr_struct) => {
+			let variant = &expr_struct.path.segments.last()?.ident;
+			let fields = &expr_struct.fields;
+			match variant.to_string().as_str() {
+				"Decimal" => {
+					let mut precision = 10;
+					let mut scale = 0;
+					for field in fields {
+						if let syn::Member::Named(ident) = &field.member
+							&& let Expr::Lit(expr_lit) = &field.expr
+							&& let syn::Lit::Int(lit_int) = &expr_lit.lit
+							&& let Ok(value) = lit_int.base10_parse::<u32>()
+						{
+							if ident == "precision" {
+								precision = value;
+							} else if ident == "scale" {
+								scale = value;
+							}
+						}
+					}
+					Some(FieldType::Decimal { precision, scale })
+				}
+				"Enum" => Some(FieldType::Enum {
+					values: extract_string_vec_field(fields, "values"),
+				}),
+				"Set" => Some(FieldType::Set {
+					values: extract_string_vec_field(fields, "values"),
+				}),
+				"ForeignKey" => Some(FieldType::ForeignKey {
+					to_table: extract_string_field(fields, "to_table")?,
+					to_field: extract_string_field(fields, "to_field")?,
+					on_delete: extract_foreign_key_action_field(fields, "on_delete")
+						.unwrap_or(super::ForeignKeyAction::Restrict),
+				}),
+				"OneToOne" => Some(FieldType::OneToOne {
+					to: extract_string_field(fields, "to")?,
+					on_delete: extract_foreign_key_action_field(fields, "on_delete")
+						.unwrap_or(super::ForeignKeyAction::Restrict),
+					on_update: extract_foreign_key_action_field(fields, "on_update")
+						.unwrap_or(super::ForeignKeyAction::NoAction),
+				}),
+				"ManyToMany" => Some(FieldType::ManyToMany {
+					to: extract_string_field(fields, "to")?,
+					through: extract_optional_str_field(fields, "through"),
+				}),
+				_ => None,
+			}
+		}
+		_ => None,
 	}
-	None
 }
 
 #[cfg(test)]
 mod tests {
+	use super::super::{ColumnDefinition, FieldType, ForeignKeyAction, Operation};
 	use super::*;
+	use quote::ToTokens;
+
+	#[rstest::rstest]
+	#[case::big_integer(FieldType::BigInteger)]
+	#[case::integer(FieldType::Integer)]
+	#[case::small_integer(FieldType::SmallInteger)]
+	#[case::tiny_int(FieldType::TinyInt)]
+	#[case::medium_int(FieldType::MediumInt)]
+	#[case::char(FieldType::Char(8))]
+	#[case::varchar(FieldType::VarChar(255))]
+	#[case::text(FieldType::Text)]
+	#[case::tiny_text(FieldType::TinyText)]
+	#[case::medium_text(FieldType::MediumText)]
+	#[case::long_text(FieldType::LongText)]
+	#[case::date(FieldType::Date)]
+	#[case::time(FieldType::Time)]
+	#[case::datetime(FieldType::DateTime)]
+	#[case::timestamp_tz(FieldType::TimestampTz)]
+	#[case::decimal(FieldType::Decimal { precision: 12, scale: 4 })]
+	#[case::float(FieldType::Float)]
+	#[case::double(FieldType::Double)]
+	#[case::real(FieldType::Real)]
+	#[case::boolean(FieldType::Boolean)]
+	#[case::binary(FieldType::Binary)]
+	#[case::blob(FieldType::Blob)]
+	#[case::tiny_blob(FieldType::TinyBlob)]
+	#[case::medium_blob(FieldType::MediumBlob)]
+	#[case::long_blob(FieldType::LongBlob)]
+	#[case::bytea(FieldType::Bytea)]
+	#[case::json(FieldType::Json)]
+	#[case::json_binary(FieldType::JsonBinary)]
+	#[case::array(FieldType::Array(Box::new(FieldType::Integer)))]
+	#[case::nested_array(FieldType::Array(Box::new(FieldType::Array(Box::new(
+		FieldType::CIText
+	)))))]
+	#[case::decimal_array(FieldType::Array(Box::new(FieldType::Decimal { precision: 12, scale: 4 })))]
+	#[case::custom_array(FieldType::Array(Box::new(FieldType::Custom("geography(Point,4326)".into()))))]
+	#[case::hstore(FieldType::HStore)]
+	#[case::citext(FieldType::CIText)]
+	#[case::int4_range(FieldType::Int4Range)]
+	#[case::int8_range(FieldType::Int8Range)]
+	#[case::num_range(FieldType::NumRange)]
+	#[case::date_range(FieldType::DateRange)]
+	#[case::ts_range(FieldType::TsRange)]
+	#[case::tstz_range(FieldType::TsTzRange)]
+	#[case::tsvector(FieldType::TsVector)]
+	#[case::tsquery(FieldType::TsQuery)]
+	#[case::uuid(FieldType::Uuid)]
+	#[case::year(FieldType::Year)]
+	#[case::enum_values(FieldType::Enum { values: vec!["one".into(), "two's".into()] })]
+	#[case::enum_empty(FieldType::Enum { values: vec![] })]
+	#[case::set_values(FieldType::Set { values: vec!["one".into(), "two's".into()] })]
+	#[case::set_empty(FieldType::Set { values: vec![] })]
+	#[case::foreign_key(FieldType::ForeignKey {
+		to_table: "accounts".into(),
+		to_field: "custom_id".into(),
+		on_delete: ForeignKeyAction::SetNull,
+	})]
+	#[case::one_to_one(FieldType::OneToOne {
+		to: "accounts.User".into(),
+		on_delete: ForeignKeyAction::Cascade,
+		on_update: ForeignKeyAction::SetDefault,
+	})]
+	#[case::many_to_many(FieldType::ManyToMany {
+		to: "accounts.User".into(),
+		through: Some("user_groups".into()),
+	})]
+	#[case::many_to_many_auto(FieldType::ManyToMany {
+		to: "accounts.User".into(),
+		through: None,
+	})]
+	#[case::custom(FieldType::Custom("geography(Point,4326)".into()))]
+	fn alter_column_source_round_trips_every_field_type(#[case] field_type: FieldType) {
+		// Arrange
+		let old_definition = ColumnDefinition {
+			default: Some("NULL".into()),
+			not_null: true,
+			unique: true,
+			..ColumnDefinition::new("value", field_type.clone())
+		};
+		let operation = Operation::AlterColumn {
+			table: "example".into(),
+			column: "value".into(),
+			old_definition: Some(old_definition),
+			new_definition: ColumnDefinition::new("value", field_type),
+			mysql_options: None,
+		};
+		let tokens = operation.to_token_stream();
+		let ast = syn::parse_file(&format!(
+			"fn migration() -> Migration {{ Migration {{ operations: vec![{tokens}] }} }}"
+		))
+		.unwrap();
+
+		// Act
+		let migration = extract_migration_metadata(&ast, "probe", "0002_types").unwrap();
+
+		// Assert
+		assert_eq!(migration.operations, vec![operation]);
+	}
+
+	#[rstest::rstest]
+	#[case::no_default(None)]
+	#[case::literal_default(Some("42"))]
+	#[case::sequence_default(Some("nextval('public.old_sequence'::regclass)"))]
+	fn alter_column_source_preserves_historical_default(#[case] default: Option<&str>) {
+		// Arrange
+		let old_definition = super::super::ColumnDefinition {
+			default: default.map(str::to_owned),
+			..super::super::ColumnDefinition::new("id", super::super::FieldType::BigInteger)
+		};
+		let operation = super::super::Operation::AlterColumn {
+			table: "example".into(),
+			column: "id".into(),
+			old_definition: Some(old_definition),
+			new_definition: super::super::ColumnDefinition::new(
+				"id",
+				super::super::FieldType::Integer,
+			),
+			mysql_options: None,
+		};
+		let tokens = operation.to_token_stream();
+		let ast = syn::parse_file(&format!(
+			"fn migration() -> Migration {{ Migration {{ operations: vec![{tokens}] }} }}"
+		))
+		.unwrap();
+
+		// Act
+		let migration = extract_migration_metadata(&ast, "probe", "0002_default").unwrap();
+
+		// Assert
+		assert_eq!(migration.operations, vec![operation]);
+	}
 
 	#[rstest::rstest]
 	#[case(r#"vec![SwappableDependency::new("AUTH_USER_MODEL", "auth", "User", "0001_initial")]"#,

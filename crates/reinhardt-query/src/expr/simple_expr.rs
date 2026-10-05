@@ -76,6 +76,14 @@ pub enum SimpleExpr {
 	/// its string syntax. Supports native/WASM behavioral parity (P2).
 	LikeWithEscape(Box<SimpleExpr>, Box<SimpleExpr>),
 
+	/// Case-insensitive LIKE with a fixed backslash escape character (P2).
+	///
+	/// PostgreSQL/CockroachDB use ILIKE; MySQL/SQLite compare LOWER expressions
+	/// using LIKE. Case folding follows the backend's locale/collation and LOWER
+	/// behavior; SQLite's built-in LOWER folds ASCII only. The pattern is already
+	/// escaped and may retain deliberate `%`/`_` wildcards.
+	InsensitiveLikeWithEscape(Box<SimpleExpr>, Box<SimpleExpr>),
+
 	/// A function call (e.g., `MAX(x)`, `LOWER(name)`)
 	FunctionCall(DynIden, Vec<SimpleExpr>),
 
