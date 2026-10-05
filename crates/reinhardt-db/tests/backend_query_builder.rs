@@ -441,10 +441,10 @@ fn test_query_value_float() {
 	// Arrange
 
 	// Act
-	let val = QueryValue::Float(3.5);
+	let val = QueryValue::Float(1.25);
 
 	// Assert
-	assert_eq!(val, QueryValue::Float(3.5));
+	assert_eq!(val, QueryValue::Float(1.25));
 }
 
 #[rstest]
