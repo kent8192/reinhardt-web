@@ -8,6 +8,11 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+`InsertBuilder::value` accepts `QueryValue::Now` as a database current-time
+expression. PostgreSQL, MySQL, and SQLite render it as `CURRENT_TIMESTAMP`.
+Rows containing `Now` use a typed `INSERT ... SELECT` source: current time and
+SQL `NULL` consume no bind arguments, and other values keep their column order.
+
 ## Features
 
 ### Implemented ✓
@@ -32,6 +37,11 @@ This crate provides the following modules:
     constraints are unchanged. Existing migration files are not rewritten;
     regenerate unapplied migrations with oversized generated names.
   - Forward and backward migrations
+  - PostgreSQL and CockroachDB `AlterColumn` rollback restores the previous
+    database default, including removing a newly added sequence default. Changed
+    defaults are removed before reverting the type and restored afterward.
+    Generated migration files preserve every historical field type, including
+    nested arrays, enum/set values, and relationship metadata.
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
   - State management and autodetection
@@ -57,6 +67,19 @@ This crate provides the following modules:
   - Many-to-many relationships
   - One-to-one relationships
   - Lazy loading and eager loading
+
+- **ContentTypes**: Database-backed polymorphic relationship metadata
+  - SQLite inserts and inserted-ID lookups share one acquired connection, so
+    returned IDs identify the inserted row even with multiple pooled connections
+
+### SQLite INSERT FROM SELECT upserts
+
+`InsertFromSelectBuilder::on_conflict_do_update` wraps the SQLite SELECT source
+in a typed derived table with an always-true outer `WHERE`. This avoids SQLite's
+[INSERT SELECT parsing ambiguity](https://www.sqlite.org/lang_upsert.html#parsing_ambiguity)
+when `ON CONFLICT` follows a source without a `WHERE` clause. The original source's
+filters, ordering, limits, and compound SELECTs remain inside the derived table.
+The same behavior applies when converting `InsertBuilder` with `from_select`.
 
 ### Implemented ✓ (Additional Features)
 
@@ -120,6 +143,10 @@ Low-level database connectivity and connection management:
     including non-negative LIMIT values after WHERE arguments. Inline NULLs do
     not consume bind slots. `fetch_all()` and `fetch_one()` execute this pair;
     a zero limit returns no rows and negative limits are omitted.
+  - INSERT builders combine conflict actions with `RETURNING` on PostgreSQL
+    and SQLite, placing conflict actions before `RETURNING` for both VALUES
+    and SELECT sources. MySQL retains `INSERT IGNORE` and
+    `ON DUPLICATE KEY UPDATE` without `RETURNING`.
   - **When to use**: Need direct database access or custom queries
 
 - **`pool` module**: Connection pooling implementation
@@ -161,6 +188,13 @@ Advanced features for specific use cases:
   - Document, Key-Value, Column-Family, Graph paradigms
   - **When to use**: Working with NoSQL databases like MongoDB
 
+### Unsigned composite key lookups
+
+Unsigned values passed to `QuerySet::get_composite` are checked before execution.
+The current parameter representation supports signed 64-bit integers, so values
+above `i64::MAX` return a type conversion error without including the key value.
+They never wrap to a negative key or clamp to the largest signed key.
+
 ### Updating composite primary keys
 
 `Manager::update` and `update_with_conn` match every component of a composite
@@ -177,6 +211,28 @@ of `Manager::get` and the manager's delete methods. For composite-key lookups,
 use `get_composite` or filter explicitly on every key component. Generated UUID
 and enum composite keys remain subject to
 [#6456](https://github.com/kent8192/reinhardt-web/issues/6456).
+
+### PostgreSQL parameter signatures
+
+PostgreSQL backend pool and transaction execute/fetch methods preserve each
+argument's native type. SQLx 0.8.6 caches prepared statements by SQL text, so an
+existing statement can have an incompatible parameter signature. For example,
+`QueryValue::Null` binds as INT4, whereas `QueryValue::Int` binds as INT8.
+
+Before execution, the backend clears existing named statements on the same
+acquired connection and disables persistence for that query. Disabling
+persistence alone does not bypass an existing cached statement. SQL text,
+values, transaction boundaries, and connection guard ownership are preserved.
+This trades statement reuse for correctness: backend queries are prepared
+again, and cache entries created through direct SQLx pool access are cleared.
+Direct SQLx calls can still cache statements before and after backend calls.
+
+Regression tests cover all pool and transaction execute/fetch methods, NULL to
+large integer transitions, both native integer widths, partially consumed
+streams, and INSERT commit/rollback. Remove the bypass only when the selected
+SQLx version safely handles changing native signatures without it. The
+dependency compatibility limitation remains tracked in
+[#6533](https://github.com/kent8192/reinhardt-web/issues/6533).
 
 ### Existence checks
 
@@ -279,6 +335,18 @@ For a complete list of field attributes, see the `#[field(...)]` macro documenta
 
 ### Query with QuerySet
 
+Runtime `Expression::Case` conditions treat `Q::empty()` (empty AND) as TRUE
+and an empty OR as FALSE. NOT negates the entire condition, including these
+identities, so a negated empty AND is FALSE. This applies to expression filters,
+updates, and annotations, including nested expressions. The standalone
+compatibility renderers `Q::to_sql()`, `When::to_sql()`, and
+`Expression::to_sql()` retain their existing output.
+
+Case-sensitive `Contains`, `StartsWith`, and `EndsWith` lookups escape literal
+`%`, `_`, and backslash characters in their bound patterns. Column identifiers
+use the selected backend's quoting. MySQL renders the escape character as
+`ESCAPE 0x5C`; PostgreSQL and SQLite use `ESCAPE '\'`.
+
 ```rust
 use reinhardt_db::orm::Model;
 
@@ -319,6 +387,20 @@ let updated = User::objects()
     .await?;
 ```
 
+### Arithmetic expressions
+
+Legacy `FilterValue::Expression`, `UpdateValue::Expression`, and arithmetic
+annotations lower field references and constants through the query AST. The
+selected PostgreSQL, MySQL, or SQLite renderer quotes the columns and binds the
+constants in expression order. For example, `F("id") + 0` compares or updates the
+column value on MySQL in both strict and non-strict SQL modes. Arithmetic nested
+in CASE results uses the same operand lowering and preserves the runtime empty
+condition identities described above. Nested operations retain their parentheses,
+and COALESCE operands use the same typed lowering.
+
+Scalar CASE result values, aggregate SQL, and subquery SQL retain their
+existing SQL rendering paths.
+
 ### Execute a QuerySet with Session
 
 `Session::list` executes a model-shaped `QuerySet` through the session's
@@ -327,6 +409,16 @@ supports filters, ordering, distinct, limits, and offsets. Projections,
 annotations, related loading, joins, grouping, CTEs, and alternate sources are
 not model-shaped and return an error. Array filter parameters are not supported
 through `sqlx::Any` on the main line.
+
+Session text reads accept both SQLx Any strings and complete UTF-8 byte values,
+including MySQL TEXT columns reported as BLOB. Values are not truncated or
+decoded lossily. Invalid UTF-8 returns a serialization error identifying the
+table, model field, and physical column; nullable text preserves SQL NULL.
+
+`Session::get`, `Session::list`, and `Session::list_all` preserve the full i64
+range of `BigIntegerField` values, including nullable fields. Integer decoding
+failures return `SessionError::SerializationError`; only a stored SQL NULL in a
+nullable integer field becomes `None`.
 
 `AsyncQuery` preserves bind parameters when executing legacy `Q` filters.
 Runtime field names and operators are treated as query structure and accept
@@ -774,7 +866,7 @@ Optimize how related objects are loaded:
   - `save()`, `delete()` - Persist and remove content types
   - `load_all()` - Load all content types from database
   - `exists()` - Check content type existence
-  - Supports PostgreSQL, MySQL, and SQLite via sqlx
+  - Supports PostgreSQL and SQLite via sqlx; MySQL is currently unsupported
 
 - **Multi-Database Support**
   - `MultiDbContentTypeManager` - Manage content types across multiple databases
@@ -792,6 +884,11 @@ Optimize how related objects are loaded:
 
 #### ORM Integration
 
+`ContentTypeQuery` and `ContentTypeTransaction` currently require a SQLite-backed
+pool. They generate SQLite SQL, and `ContentTypeTransaction::create()` uses
+SQLite's `last_insert_rowid()`. These interfaces do not support PostgreSQL or
+MySQL pools.
+
 - **ContentTypeQuery** - ORM-style query builder for content types
   - `new()` - Create query builder from connection pool
   - `filter_app_label()`, `filter_model()`, `filter_id()` - Filter by fields
@@ -804,12 +901,16 @@ Optimize how related objects are loaded:
   - `exists()` - Check if any records match
   - Django-inspired QuerySet API with method chaining
 
-- **ContentTypeTransaction** - Transaction-aware content type operations
-  - `new()` - Create transaction context
-  - `query()` - Get query builder for transaction
-  - `create()` - Create content type within transaction
-  - `delete()` - Delete content type within transaction
-  - Full ACID transaction support for content type operations
+- **ContentTypeTransaction** - Pool-backed content type operations (historical name)
+  - `new()` - Create a context without beginning or owning a database transaction
+  - `query()` - Get an independent query builder using the same pool
+  - `create()` - Create a content type using pool autocommit, keeping the insert
+    and generated-ID lookup on one acquired connection
+  - `delete()` - Delete a content type using pool autocommit
+  - Each operation executes independently; errors and dropping the context do not
+    roll back preceding writes. A transaction opened separately on a pool
+    connection does not enlist these operations. Use a transaction-aware API when
+    atomic changes are required.
 
 
 ## hybrid

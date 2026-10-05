@@ -696,6 +696,13 @@ impl PostgresQueryBuilder {
 				self.write_binary_operand(writer, pattern, BinOper::Like, true, false);
 				writer.push(" ESCAPE '\\'");
 			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(");
+				self.write_binary_operand(writer, expr, BinOper::ILike, false, false);
+				writer.push(" ILIKE ");
+				self.write_binary_operand(writer, pattern, BinOper::ILike, true, false);
+				writer.push(" ESCAPE '\\')");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');
@@ -854,6 +861,13 @@ impl PostgresQueryBuilder {
 				writer.push(" LIKE ");
 				self.write_binary_operand(writer, pattern, BinOper::Like, true, true);
 				writer.push(" ESCAPE '\\'");
+			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(");
+				self.write_binary_operand(writer, expr, BinOper::ILike, false, true);
+				writer.push(" ILIKE ");
+				self.write_binary_operand(writer, pattern, BinOper::ILike, true, true);
+				writer.push(" ESCAPE '\\')");
 			}
 			SimpleExpr::Binary(left, op, right) => match (op, right.as_ref()) {
 				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
@@ -1905,6 +1919,13 @@ impl PostgresQueryBuilder {
 		mut writer: SqlWriter,
 	) -> (String, Values) {
 		// CREATE UNIQUE INDEX IF NOT EXISTS
+		assert!(
+			stmt.columns
+				.iter()
+				.all(|column| column.prefix_length.is_none()),
+			"PostgreSQL does not support index column prefixes"
+		);
+
 		writer.push("CREATE");
 		writer.push_space();
 		if stmt.unique {
@@ -7695,6 +7716,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7717,6 +7739,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "username".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7739,6 +7762,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7761,6 +7785,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "created_at".into_iden(),
 			order: Some(Order::Desc),
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7783,10 +7808,12 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "last_name".into_iden(),
 			order: Some(Order::Asc),
+			prefix_length: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
 			order: Some(Order::Asc),
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7809,6 +7836,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "id".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7831,6 +7859,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "tags".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -7852,6 +7881,7 @@ mod tests {
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
 			order: None,
+			prefix_length: None,
 		});
 		stmt.r#where = Some(Expr::col("active").eq(true).into_simple_expr());
 

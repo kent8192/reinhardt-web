@@ -355,6 +355,19 @@ These fields exist for Django settings compatibility but are **not yet consumed*
 use reinhardt::conf::settings::{SettingsBuilder, SettingsConfig};
 ```
 
+### Database initialization
+
+With `dynamic-database`, call `DatabaseBackend::create_table()` before storing
+settings. `DatabaseAuditBackend::new()` initializes its audit table automatically.
+Both initialization paths create missing indexes on existing tables and can be
+repeated without deleting or rewriting records.
+
+Expiry and audit timestamps are stored as RFC 3339 text. MySQL uses prefix indexes
+on these `TEXT` columns: 64 characters for timestamps, 32 for event types, and
+191 for audit users. Long user identifiers remain intact, and filtering compares
+the full identifier even when users share the indexed prefix. Index creation
+errors are returned; only an already existing MySQL index name is accepted.
+
 ## Testing
 
 Run the database audit regression tests with a parallel test runner:
@@ -367,6 +380,15 @@ Audit tests receive asynchronous `rstest` backend fixtures whose in-memory SQLit
 database names use `reinhardt-test`'s `random_test_key` helper. Connections within
 each pool share that database, while independently injected backend fixtures keep
 their audit records separate.
+
+Run the fresh-table and existing-table initialization regressions with Docker:
+
+```bash
+cargo test -p reinhardt-integration-tests --test conf_database_indexes --features dynamic-database,mysql -- --test-threads=1
+```
+
+This covers MySQL index metadata, repeated initialization, legacy data, TTL
+lookups and cleanup, long audit users, and PostgreSQL/SQLite compatibility.
 
 ## License
 
