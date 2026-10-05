@@ -2137,7 +2137,7 @@ impl<M: Model> Manager<M> {
 			reinhardt_query::value::Value::SmallUnsigned(None) => QueryValue::Null,
 			reinhardt_query::value::Value::Unsigned(Some(u)) => QueryValue::Int(u as i64),
 			reinhardt_query::value::Value::Unsigned(None) => QueryValue::Null,
-			reinhardt_query::value::Value::BigUnsigned(Some(u)) => QueryValue::Int(u as i64),
+			reinhardt_query::value::Value::BigUnsigned(Some(u)) => QueryValue::Uint(u),
 			reinhardt_query::value::Value::BigUnsigned(None) => QueryValue::Null,
 
 			reinhardt_query::value::Value::Float(Some(f)) => QueryValue::Float(f as f64),
@@ -2313,6 +2313,7 @@ impl<M: Model> Manager<M> {
 			QueryValue::Bool(value) => reinhardt_query::value::Value::Bool(Some(value)),
 			QueryValue::Int32(value) => reinhardt_query::value::Value::Int(Some(value)),
 			QueryValue::Int(value) => reinhardt_query::value::Value::BigInt(Some(value)),
+			QueryValue::Uint(value) => reinhardt_query::value::Value::BigUnsigned(Some(value)),
 			QueryValue::Float(value) => reinhardt_query::value::Value::Double(Some(value)),
 			QueryValue::String(value) => {
 				reinhardt_query::value::Value::String(Some(Box::new(value)))

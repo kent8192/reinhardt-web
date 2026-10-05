@@ -36,6 +36,7 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 		QueryValue::Bool(b) => Value::Bool(Some(*b)),
 		QueryValue::Int32(i) => Value::Int(Some(*i)),
 		QueryValue::Int(i) => Value::BigInt(Some(*i)),
+		QueryValue::Uint(i) => Value::BigUnsigned(Some(*i)),
 		QueryValue::Float(f) => Value::Double(Some(*f)),
 		QueryValue::String(s) => Value::String(Some(Box::new(s.clone()))),
 		QueryValue::Bytes(b) => Value::Bytes(Some(Box::new(b.clone()))),

@@ -99,6 +99,7 @@ impl QueryRow {
 				QueryValue::Bool(b) => serde_json::Value::Bool(b),
 				QueryValue::Int32(i) => serde_json::Value::Number(i.into()),
 				QueryValue::Int(i) => serde_json::Value::Number(i.into()),
+				QueryValue::Uint(i) => serde_json::Value::Number(i.into()),
 				QueryValue::Float(f) => serde_json::Number::from_f64(f)
 					.map(serde_json::Value::Number)
 					.unwrap_or(serde_json::Value::Null),

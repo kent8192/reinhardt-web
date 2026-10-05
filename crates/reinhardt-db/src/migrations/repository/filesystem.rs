@@ -151,6 +151,7 @@ impl FilesystemRepository {
 			Operation::CreateSchema { .. } => "CreateSchema",
 			Operation::DropSchema { .. } => "DropSchema",
 			Operation::CreateExtension { .. } => "CreateExtension",
+			Operation::DropExtension { .. } => "DropExtension",
 			Operation::BulkLoad { .. } => "BulkLoad",
 			Operation::SetAutoIncrementValue { .. } => "SetAutoIncrementValue",
 			Operation::CreateCompositePrimaryKey { .. } => "CreateCompositePrimaryKey",

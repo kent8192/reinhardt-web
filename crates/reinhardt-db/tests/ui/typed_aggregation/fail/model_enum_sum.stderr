@@ -9,8 +9,8 @@ error[E0277]: the trait bound `Status: NumericAggregateField` is not satisfied
 help: the trait `NumericAggregateField` is not implemented for `Status`
  --> tests/ui/typed_aggregation/fail/../support.rs
   |
-  | pub struct Status(pub i64);
-  | ^^^^^^^^^^^^^^^^^
+  | pub(crate) struct Status(pub i64);
+  | ^^^^^^^^^^^^^^^^^^^^^^^^
   = help: the following other types implement trait `NumericAggregateField`:
             CustomAmount
             f32
@@ -38,8 +38,8 @@ error[E0277]: the trait bound `Status: NumericAggregateField` is not satisfied
 help: the trait `NumericAggregateField` is not implemented for `Status`
  --> tests/ui/typed_aggregation/fail/../support.rs
   |
-  | pub struct Status(pub i64);
-  | ^^^^^^^^^^^^^^^^^
+  | pub(crate) struct Status(pub i64);
+  | ^^^^^^^^^^^^^^^^^^^^^^^^
   = help: the following other types implement trait `NumericAggregateField`:
             CustomAmount
             f32
