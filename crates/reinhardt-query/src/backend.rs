@@ -49,6 +49,7 @@ fn write_arithmetic_operand(
 	expr: &SimpleExpr,
 	parent: BinOper,
 	right_operand: bool,
+	line_comment_markers: &[&str],
 	write_expr: impl FnOnce(&mut SqlWriter, &SimpleExpr),
 ) {
 	let parenthesized = matches!(
@@ -67,7 +68,11 @@ fn write_arithmetic_operand(
 	if parenthesized {
 		// Inspect the whole operand to include nested custom expressions, and
 		// conservatively terminate possible line comments without parsing SQL.
-		if writer.sql()[expression_start..].contains("--") {
+		let operand_sql = &writer.sql()[expression_start..];
+		if line_comment_markers
+			.iter()
+			.any(|marker| operand_sql.contains(*marker))
+		{
 			writer.push("\n");
 		}
 		writer.push(")");

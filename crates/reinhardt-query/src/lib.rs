@@ -162,7 +162,8 @@
 //!
 //! When a grouped arithmetic operand contains a possible `--` line comment,
 //! MySQL and SQLite insert a newline before the closing parenthesis so the
-//! comment cannot consume it. This also covers nested custom SQL expressions.
+//! comment cannot consume it. MySQL also recognizes possible `#` line comments.
+//! This also covers nested custom SQL expressions.
 //!
 //! ## DDL Examples
 //!

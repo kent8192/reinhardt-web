@@ -247,13 +247,13 @@ impl MySqlQueryBuilder {
 					writer.push(")");
 				}
 				_ => {
-					write_arithmetic_operand(writer, left, *op, false, |w, expr| {
+					write_arithmetic_operand(writer, left, *op, false, &["--", "#"], |w, expr| {
 						self.write_simple_expr(w, expr);
 					});
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					write_arithmetic_operand(writer, right, *op, true, |w, expr| {
+					write_arithmetic_operand(writer, right, *op, true, &["--", "#"], |w, expr| {
 						self.write_simple_expr(w, expr);
 					});
 				}

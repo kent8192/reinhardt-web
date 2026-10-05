@@ -147,11 +147,51 @@ fn arithmetic_cases() -> Vec<ArithmeticCase> {
 	]
 }
 
+#[fixture]
+fn mysql_hash_comment_cases() -> Vec<ArithmeticCase> {
+	vec![
+		ArithmeticCase {
+			expr: Expr::val(1_i64).add(Expr::val(2_i64).add(Expr::cust("3 # note"))),
+			sql: "? + (? + 3 # note\n)",
+			control: "? + (? + 3)",
+			operands: vec![1, 2],
+			result: 6,
+		},
+		ArithmeticCase {
+			expr: Expr::val(1_i64).add(Expr::cust("2 # note")).mul(3_i64),
+			sql: "(? + 2 # note\n) * ?",
+			control: "(? + 2) * ?",
+			operands: vec![1, 3],
+			result: 9,
+		},
+		ArithmeticCase {
+			expr: Expr::val(1_i64)
+				.add(Expr::val(2_i64).add(Expr::cust_with_values("? # note", [3_i64]))),
+			sql: "? + (? + ? # note\n)",
+			control: "? + (? + ?)",
+			operands: vec![1, 2, 3],
+			result: 6,
+		},
+		ArithmeticCase {
+			expr: Expr::val(1_i64)
+				.add(Expr::val(2_i64).add(Expr::val(3_i64).add(Expr::cust("4 # note")))),
+			sql: "? + (? + (? + 4 # note\n)\n)",
+			control: "? + (? + (? + 4))",
+			operands: vec![1, 2, 3],
+			result: 10,
+		},
+	]
+}
+
 #[rstest]
 fn arithmetic_sql_retains_grouping_and_bind_order(
-	arithmetic_cases: Vec<ArithmeticCase>,
+	mut arithmetic_cases: Vec<ArithmeticCase>,
+	mysql_hash_comment_cases: Vec<ArithmeticCase>,
 	#[values(false, true)] mysql: bool,
 ) {
+	if mysql {
+		arithmetic_cases.extend(mysql_hash_comment_cases);
+	}
 	for case in arithmetic_cases {
 		// Arrange
 		let query = Query::select().expr_as(case.expr, "computed").to_owned();
@@ -187,6 +227,23 @@ fn arithmetic_sql_retains_grouping_and_bind_order(
 			.collect::<String>();
 		assert_eq!(inlined, format!("SELECT {expected_inlined} AS {alias}"));
 	}
+}
+
+#[rstest]
+fn sqlite_hash_in_literal_keeps_group_format() {
+	// Arrange
+	let query = Query::select()
+		.expr(Expr::val(1_i64).add(Expr::val(2_i64).add(Expr::cust("'3 # literal'"))))
+		.to_owned();
+
+	// Act
+	let (sql, values) = query.build(SqliteQueryBuilder);
+	let inlined = query.to_string(SqliteQueryBuilder);
+
+	// Assert: SQLite does not treat a hash as a line-comment marker.
+	assert_eq!(sql, "SELECT ? + (? + '3 # literal')");
+	assert_eq!(values, Values(vec![1_i64.into(), 2_i64.into()]));
+	assert_eq!(inlined, "SELECT 1 + (2 + '3 # literal')");
 }
 
 fn sqlite_arguments(values: Values) -> sqlx::sqlite::SqliteArguments<'static> {
@@ -258,10 +315,12 @@ async fn sqlite_arithmetic_matches_explicitly_grouped_control(
 #[tokio::test]
 async fn mysql_arithmetic_matches_explicitly_grouped_control(
 	#[future] mysql_container: (MySqlContainer, Arc<sqlx::MySqlPool>, u16, String),
-	arithmetic_cases: Vec<ArithmeticCase>,
+	mut arithmetic_cases: Vec<ArithmeticCase>,
+	mysql_hash_comment_cases: Vec<ArithmeticCase>,
 ) {
 	// Arrange: the container guard owns cleanup, including assertion failures.
 	let (_container, pool, _, _) = mysql_container.await;
+	arithmetic_cases.extend(mysql_hash_comment_cases);
 	for case in arithmetic_cases {
 		let query = Query::select().expr_as(case.expr, "computed").to_owned();
 		let (sql, values) = query.build(MySqlQueryBuilder);
@@ -288,5 +347,20 @@ async fn mysql_arithmetic_matches_explicitly_grouped_control(
 			case.result as f64,
 			"{control_sql}"
 		);
+		if case.sql.contains('#') {
+			// Act: execute the hash-comment forms with literal values as well.
+			let inlined_sql = query.to_string(MySqlQueryBuilder);
+			let inlined_result = sqlx::query(&inlined_sql)
+				.fetch_one(pool.as_ref())
+				.await
+				.unwrap();
+
+			// Assert
+			assert_eq!(
+				mysql_arithmetic_result(inlined_result),
+				case.result as f64,
+				"{inlined_sql}"
+			);
+		}
 	}
 }
