@@ -455,6 +455,11 @@ annotations, related loading, joins, grouping, CTEs, and alternate sources are
 not model-shaped and return an error. Array filter parameters are not supported
 through `sqlx::Any` on the main line.
 
+`Session::list_all` executes an unfiltered model query through the same pool,
+projection, and row decoding path. Table names and physical column names,
+including embedded double quotes or backticks, are escaped by the backend query
+renderer.
+
 Session text reads accept both SQLx Any strings and complete UTF-8 byte values,
 including MySQL TEXT columns reported as BLOB. Values are not truncated or
 decoded lossily. Invalid UTF-8 returns a serialization error identifying the
