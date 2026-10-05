@@ -3680,7 +3680,7 @@ mod tests {
 
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 		let row = sqlx::query("SELECT name FROM natural_key_records WHERE record_key = $1")
@@ -3932,7 +3932,7 @@ mod tests {
 			.unwrap();
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 
@@ -3951,7 +3951,7 @@ mod tests {
 			.await
 			.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 
@@ -3991,7 +3991,7 @@ mod tests {
 
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 		let row = sqlx::query("SELECT name FROM assigned_id_records WHERE id = ?")
@@ -4032,7 +4032,7 @@ mod tests {
 
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 		let row =
@@ -4117,7 +4117,7 @@ mod tests {
 		let mut connection = pool.acquire().await.expect("connection should acquire");
 
 		// Act
-		let result = session.flush_with_connection(&mut *connection).await;
+		let result = session.flush_with_connection(&mut connection).await;
 
 		// Assert
 		assert_eq!(
