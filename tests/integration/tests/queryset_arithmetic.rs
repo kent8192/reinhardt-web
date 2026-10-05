@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use reinhardt_db::orm::annotation::{
-	Annotation, AnnotationValue as AV, Expression, Value as Scalar,
+	Annotation, AnnotationValue as AV, Expression, Value as Scalar, When,
 };
-use reinhardt_db::orm::expressions::F;
+use reinhardt_db::orm::expressions::{F, Q};
 use reinhardt_db::orm::inspection::FieldInfo;
 use reinhardt_db::orm::model::FieldSelector;
 use reinhardt_db::orm::query::{Filter, FilterOperator, FilterValue, UpdateValue};
@@ -147,6 +147,16 @@ fn nested_identity() -> Expression {
 	)
 }
 
+fn case_identity() -> Expression {
+	Expression::Case {
+		whens: vec![When::new(
+			Q::empty(),
+			AV::Expression(Expression::Add(field(), number(0))),
+		)],
+		default: Some(number(0)),
+	}
+}
+
 async fn assert_native_arithmetic(database: &ArithmeticDatabase, backend: DbBackend) {
 	// Arrange: each arithmetic node must retain its grouping and typed constants.
 	let reader = Session::new(database.pool.clone(), backend).await.unwrap();
@@ -162,6 +172,7 @@ async fn assert_native_arithmetic(database: &ArithmeticDatabase, backend: DbBack
 		),
 		(Expression::Divide(field(), number(1)), vec![Item { id: 1 }]),
 		(nested_identity(), vec![Item { id: 1 }]),
+		(case_identity(), vec![Item { id: 1 }]),
 		(Expression::Add(field(), number(1)), vec![]),
 		(
 			Expression::Coalesce(vec![AV::Value(Scalar::Null), *field()]),
@@ -185,11 +196,11 @@ async fn assert_native_arithmetic(database: &ArithmeticDatabase, backend: DbBack
 		])),
 	));
 	assert_eq!(reader.list(&text).await.unwrap(), vec![Item { id: 1 }]);
-	let annotated = QuerySet::<Item>::new().annotate(Annotation::new(
-		"identity",
-		AV::Expression(Expression::Add(field(), number(0))),
-	));
-	assert_eq!(reader.list(&annotated).await.unwrap(), vec![Item { id: 1 }]);
+	for expression in [Expression::Add(field(), number(0)), case_identity()] {
+		let annotated = QuerySet::<Item>::new()
+			.annotate(Annotation::new("identity", AV::Expression(expression)));
+		assert_eq!(reader.list(&annotated).await.unwrap(), vec![Item { id: 1 }]);
+	}
 
 	for (expression, operands) in [
 		(Expression::Add(field(), number(0)), vec![0_i64]),
@@ -197,6 +208,7 @@ async fn assert_native_arithmetic(database: &ArithmeticDatabase, backend: DbBack
 		(Expression::Multiply(field(), number(1)), vec![1_i64]),
 		(Expression::Divide(field(), number(1)), vec![1_i64]),
 		(nested_identity(), vec![7_i64, 2, 2, 7]),
+		(case_identity(), vec![0_i64]),
 	] {
 		let queryset = QuerySet::<Item>::new().filter(Filter::new(
 			"id",
