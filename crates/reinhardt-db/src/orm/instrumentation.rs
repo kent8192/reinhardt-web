@@ -650,10 +650,11 @@ mod tests {
 	}
 
 	fn low_threshold_config() -> NPlusOneConfig {
-		let mut config = NPlusOneConfig::default();
-		config.threshold = 3;
-		config.min_distinct_params = 3;
-		config
+		NPlusOneConfig {
+			threshold: 3,
+			min_distinct_params: 3,
+			..Default::default()
+		}
 	}
 
 	#[async_trait]

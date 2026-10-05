@@ -115,6 +115,15 @@
 //!
 //! ## Architecture
 //!
+//! `QuerySet` statements, `orm::execution` builders, and many-to-many operations
+//! use native backend codecs, preserving supported decimal and array types.
+//! This includes the ordinary `QuerySet::all`, `first`, and `get` accessors.
+//! Dedicated transaction executors support the same generated-value dispatch.
+//! Unsupported or lossy generated arguments fail before execution with a redacted
+//! backend/type/position error. `Manager` model creation and updates retain their
+//! JSON-to-`QueryValue` conversion. Explicit raw executors and the legacy
+//! `orm::execution::convert_values` adapter retain their existing contracts.
+//!
 //! Key modules in this crate:
 //!
 //! - `backends`: Low-level database operations, schema editor, DDL generation

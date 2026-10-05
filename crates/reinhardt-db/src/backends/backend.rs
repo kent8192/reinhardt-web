@@ -46,6 +46,48 @@ pub trait DatabaseBackend: Send + Sync {
 	/// Fetches an optional single row from the database
 	async fn fetch_optional(&self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>>;
 
+	/// Internal generated-SQL dispatch; raw executor implementations remain valid.
+	#[doc(hidden)]
+	async fn __execute_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<QueryResult> {
+		let params = super::generated::legacy_values(
+			values,
+			super::generated::backend_name(self.database_type()),
+		)?;
+		self.execute(sql, params).await
+	}
+
+	/// Internal generated-SQL dispatch with checked legacy-backend adaptation.
+	#[doc(hidden)]
+	async fn __fetch_one_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Row> {
+		let params = super::generated::legacy_values(
+			values,
+			super::generated::backend_name(self.database_type()),
+		)?;
+		self.fetch_one(sql, params).await
+	}
+
+	/// Internal generated-SQL dispatch with checked legacy-backend adaptation.
+	#[doc(hidden)]
+	async fn __fetch_all_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Vec<Row>> {
+		let params = super::generated::legacy_values(
+			values,
+			super::generated::backend_name(self.database_type()),
+		)?;
+		self.fetch_all(sql, params).await
+	}
+
 	/// Begin a database transaction and return a dedicated executor
 	///
 	/// This method acquires a dedicated database connection and begins a

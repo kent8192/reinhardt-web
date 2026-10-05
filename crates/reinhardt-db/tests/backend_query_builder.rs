@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rstest::rstest;
+use rstest::*;
 
 use reinhardt_db::backends::query_builder::{
 	ConflictTarget, DeleteBuilder, OnConflictClause, OnConflictClauseAction,
@@ -94,6 +94,57 @@ impl DatabaseBackend for MockBackend {
 	fn as_any(&self) -> &dyn std::any::Any {
 		self
 	}
+}
+
+#[rstest]
+#[case(DatabaseType::Postgres, "postgres")]
+#[case(DatabaseType::Mysql, "mysql")]
+#[case(DatabaseType::Sqlite, "sqlite")]
+#[tokio::test]
+async fn legacy_backend_generated_dispatch_rejects_unrepresentable_values(
+	#[case] db_type: DatabaseType,
+	#[case] backend_name: &str,
+) {
+	use reinhardt_query::{Value, Values};
+
+	// Arrange
+	let backend: Arc<dyn DatabaseBackend> = MockBackend::new(db_type);
+	let values = Values(vec![
+		7i64.into(),
+		Value::Decimal(Some(Box::new("123456789.123456789".parse().unwrap()))),
+	]);
+	let expected = format!(
+		"Type conversion error: cannot encode Decimal argument 2 for {backend_name}: type requires a native generated-value codec"
+	);
+
+	// Act
+	let execute_error = backend
+		.__execute_generated("probe", values.clone())
+		.await
+		.unwrap_err();
+	let one_error = backend
+		.__fetch_one_generated("probe", values.clone())
+		.await
+		.unwrap_err();
+	let all_error = backend
+		.__fetch_all_generated("probe", values)
+		.await
+		.unwrap_err();
+	let raw_result = backend
+		.execute("probe", vec![QueryValue::Int(7)])
+		.await
+		.unwrap();
+	let generated_result = backend
+		.__execute_generated("probe", Values(vec![7i64.into()]))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(execute_error.to_string(), expected);
+	assert_eq!(one_error.to_string(), expected);
+	assert_eq!(all_error.to_string(), expected);
+	assert_eq!(raw_result.rows_affected, 0);
+	assert_eq!(generated_result.rows_affected, 0);
 }
 
 // ==================== OnConflictClause tests ====================
@@ -854,6 +905,115 @@ fn test_query_cache_eviction_on_max_size() {
 
 // ==================== InsertBuilder SQL generation tests ====================
 
+#[cfg(feature = "sqlite")]
+#[fixture]
+async fn builder_probe_connection() -> reinhardt_db::backends::DatabaseConnection {
+	let db = reinhardt_db::backends::DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.unwrap();
+	db.execute(
+		"CREATE TABLE builder_probe (id BIGINT PRIMARY KEY, name TEXT)",
+		vec![],
+	)
+	.await
+	.unwrap();
+	db
+}
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"INSERT INTO \"users\" (\"name\", \"id\", \"notes\", \"email\", \"deleted_at\") VALUES (NULL, $1, NULL, $2, NULL)"
+)]
+#[case(
+	DatabaseType::Mysql,
+	"INSERT INTO `users` (`name`, `id`, `notes`, `email`, `deleted_at`) VALUES (NULL, ?, NULL, ?, NULL)"
+)]
+#[case(
+	DatabaseType::Sqlite,
+	"INSERT INTO \"users\" (\"name\", \"id\", \"notes\", \"email\", \"deleted_at\") VALUES (NULL, ?, NULL, ?, NULL)"
+)]
+fn test_insert_builder_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = InsertBuilder::new(backend, "users")
+		.value("name", QueryValue::Null)
+		.value("id", 2_i64)
+		.value("notes", QueryValue::Null)
+		.value("email", "two@example.com")
+		.value("deleted_at", QueryValue::Null);
+
+	// Act
+	let (sql, params) = builder.build().unwrap();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![QueryValue::Int(2), QueryValue::from("two@example.com")]
+	);
+}
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"INSERT INTO \"users\" (\"name\", \"notes\") VALUES (NULL, NULL)"
+)]
+#[case(
+	DatabaseType::Mysql,
+	"INSERT INTO `users` (`name`, `notes`) VALUES (NULL, NULL)"
+)]
+#[case(
+	DatabaseType::Sqlite,
+	"INSERT INTO \"users\" (\"name\", \"notes\") VALUES (NULL, NULL)"
+)]
+fn test_insert_builder_all_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = InsertBuilder::new(backend, "users")
+		.value("name", QueryValue::Null)
+		.value("notes", QueryValue::Null);
+
+	// Act
+	let (sql, params) = builder.build().unwrap();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, Vec::<QueryValue>::new());
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_insert_builder_executes_inline_null_before_id(
+	#[future] builder_probe_connection: reinhardt_db::backends::DatabaseConnection,
+) {
+	// Arrange
+	let db = builder_probe_connection.await;
+	let builder = InsertBuilder::new(db.backend(), "builder_probe")
+		.value("name", QueryValue::Null)
+		.value("id", 1_i64);
+
+	// Act
+	let result = builder.execute().await.unwrap();
+
+	// Assert
+	assert_eq!(result.rows_affected, 1);
+	let rows = db
+		.fetch_all("SELECT id, name FROM builder_probe", vec![])
+		.await
+		.unwrap();
+	assert_eq!(rows.len(), 1);
+	assert_eq!(rows[0].get::<i64>("id").unwrap(), 1);
+	assert_eq!(rows[0].data.get("name"), Some(&QueryValue::Null));
+}
+
 #[rstest]
 fn test_insert_builder_postgres_basic() {
 	// Arrange
@@ -1431,17 +1591,171 @@ fn test_select_builder_with_where_clause() {
 }
 
 #[rstest]
-fn test_select_builder_with_limit() {
+#[case::postgres(DatabaseType::Postgres, "SELECT * FROM \"users\" LIMIT $1")]
+#[case::mysql(DatabaseType::Mysql, "SELECT * FROM `users` LIMIT ?")]
+#[case::sqlite(DatabaseType::Sqlite, "SELECT * FROM \"users\" LIMIT ?")]
+fn test_select_builder_with_limit(#[case] database_type: DatabaseType, #[case] expected_sql: &str) {
 	// Arrange
-	let backend = MockBackend::new(DatabaseType::Postgres);
+	let backend = MockBackend::new(database_type);
 
 	// Act
-	let (sql, _) = SelectBuilder::new(backend).from("users").limit(10).build();
+	let (sql, params) = SelectBuilder::new(backend).from("users").limit(10).build();
 
 	// Assert
-	// LIMIT is parameterized as $1 by build_select() (commit 0c337c302)
-	assert!(sql.contains("LIMIT"));
-	assert!(sql.contains("$1"));
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(10)]);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"SELECT * FROM \"users\" WHERE \"active\" = $1 AND \"name\" = $2 LIMIT $3"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"SELECT * FROM `users` WHERE `active` = ? AND `name` = ? LIMIT ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"SELECT * FROM \"users\" WHERE \"active\" = ? AND \"name\" = ? LIMIT ?"
+)]
+fn test_select_builder_limit_follows_where_parameters(
+	#[case] database_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(database_type);
+	let name = "quoted' ? $42";
+
+	// Act
+	let (sql, params) = SelectBuilder::new(backend)
+		.from("users")
+		.where_eq("active", true)
+		.where_eq("name", name)
+		.limit(1)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![
+			QueryValue::Bool(true),
+			QueryValue::String(name.into()),
+			QueryValue::Int(1)
+		]
+	);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"SELECT * FROM \"users\" WHERE \"id\" = $1",
+	" LIMIT $2"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"SELECT * FROM `users` WHERE `id` = ?",
+	" LIMIT ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"SELECT * FROM \"users\" WHERE \"id\" = ?",
+	" LIMIT ?"
+)]
+fn test_select_builder_limit_boundaries(
+	#[case] database_type: DatabaseType,
+	#[case] base_sql: &str,
+	#[case] limit_sql: &str,
+	#[values(None, Some(-1), Some(i64::MIN), Some(0), Some(i64::MAX))] limit: Option<i64>,
+) {
+	// Arrange
+	let mut builder = SelectBuilder::new(MockBackend::new(database_type))
+		.from("users")
+		.where_eq("id", 7_i64);
+	if let Some(limit) = limit {
+		builder = builder.limit(limit);
+	}
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	let (expected_sql, expected_params) = match limit {
+		Some(limit) if limit >= 0 => (
+			format!("{base_sql}{limit_sql}"),
+			vec![QueryValue::Int(7), QueryValue::Int(limit)],
+		),
+		_ => (base_sql.into(), vec![QueryValue::Int(7)]),
+	};
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, expected_params);
+}
+
+#[rstest]
+#[case::postgres(
+	DatabaseType::Postgres,
+	"SELECT * FROM \"users\" WHERE \"deleted_at\" = NULL AND \"id\" = $1 LIMIT $2"
+)]
+#[case::mysql(
+	DatabaseType::Mysql,
+	"SELECT * FROM `users` WHERE `deleted_at` = NULL AND `id` = ? LIMIT ?"
+)]
+#[case::sqlite(
+	DatabaseType::Sqlite,
+	"SELECT * FROM \"users\" WHERE \"deleted_at\" = NULL AND \"id\" = ? LIMIT ?"
+)]
+fn test_select_builder_null_does_not_shift_limit_parameters(
+	#[case] database_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(database_type);
+
+	// Act
+	let (sql, params) = SelectBuilder::new(backend)
+		.from("users")
+		.where_eq("deleted_at", QueryValue::Null)
+		.where_eq("id", 7_i64)
+		.limit(1)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(7), QueryValue::Int(1)]);
+}
+
+#[rstest]
+#[case::boolean(QueryValue::Bool(true))]
+#[case::integer(QueryValue::Int(-17))]
+#[case::float(QueryValue::Float(1.25))]
+#[case::string(QueryValue::String("quoted' ? $42".into()))]
+#[case::bytes(QueryValue::Bytes(vec![0, 0x27, 0xff]))]
+#[case::timestamp(QueryValue::Timestamp(chrono::DateTime::from_timestamp(1_700_000_000, 123_456_789).unwrap()))]
+#[case::uuid(QueryValue::Uuid(uuid::Uuid::from_u128(7)))]
+fn test_select_builder_preserves_where_value_types_with_limit(
+	#[case] value: QueryValue,
+	#[values(DatabaseType::Postgres, DatabaseType::Mysql, DatabaseType::Sqlite)]
+	database_type: DatabaseType,
+) {
+	// Arrange
+	let backend = MockBackend::new(database_type);
+	let expected_sql = match database_type {
+		DatabaseType::Postgres => "SELECT * FROM \"users\" WHERE \"payload\" = $1 LIMIT $2",
+		DatabaseType::Mysql => "SELECT * FROM `users` WHERE `payload` = ? LIMIT ?",
+		DatabaseType::Sqlite => "SELECT * FROM \"users\" WHERE \"payload\" = ? LIMIT ?",
+	};
+
+	// Act
+	let (sql, params) = SelectBuilder::new(backend)
+		.from("users")
+		.where_eq("payload", value.clone())
+		.limit(1)
+		.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![value, QueryValue::Int(1)]);
 }
 
 #[rstest]
@@ -1462,6 +1776,173 @@ fn test_select_builder_mysql() {
 }
 
 // ==================== UpdateBuilder SQL generation tests ====================
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"name\" = NULL WHERE \"id\" = $1"
+)]
+#[case(DatabaseType::Mysql, "UPDATE `users` SET `name` = NULL WHERE `id` = ?")]
+#[case(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"name\" = NULL WHERE \"id\" = ?"
+)]
+fn test_update_builder_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = UpdateBuilder::new(backend, "users")
+		.set("name", QueryValue::Null)
+		.where_eq("id", 2_i64);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::Int(2)]);
+}
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"name\" = NULL, \"active\" = $1, \"notes\" = NULL, \"age\" = $2, \"deleted_at\" = NULL WHERE \"id\" = $3"
+)]
+#[case(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `name` = NULL, `active` = ?, `notes` = NULL, `age` = ?, `deleted_at` = NULL WHERE `id` = ?"
+)]
+#[case(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"name\" = NULL, \"active\" = ?, \"notes\" = NULL, \"age\" = ?, \"deleted_at\" = NULL WHERE \"id\" = ?"
+)]
+fn test_update_builder_mixed_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = UpdateBuilder::new(backend, "users")
+		.set("name", QueryValue::Null)
+		.set("active", true)
+		.set("notes", QueryValue::Null)
+		.set("age", 30_i64)
+		.set("deleted_at", QueryValue::Null)
+		.where_eq("id", 2_i64);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![
+			QueryValue::Bool(true),
+			QueryValue::Int(30),
+			QueryValue::Int(2)
+		]
+	);
+}
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"name\" = $1 WHERE \"deleted_at\" IS NULL AND \"id\" = $2"
+)]
+#[case(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `name` = ? WHERE `deleted_at` IS NULL AND `id` = ?"
+)]
+#[case(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"name\" = ? WHERE \"deleted_at\" IS NULL AND \"id\" = ?"
+)]
+fn test_update_builder_where_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = UpdateBuilder::new(backend, "users")
+		.set("name", "two")
+		.where_eq("deleted_at", QueryValue::Null)
+		.where_eq("id", 2_i64);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, vec![QueryValue::from("two"), QueryValue::Int(2)]);
+}
+
+#[rstest]
+#[case(
+	DatabaseType::Postgres,
+	"UPDATE \"users\" SET \"name\" = NULL WHERE \"deleted_at\" IS NULL"
+)]
+#[case(
+	DatabaseType::Mysql,
+	"UPDATE `users` SET `name` = NULL WHERE `deleted_at` IS NULL"
+)]
+#[case(
+	DatabaseType::Sqlite,
+	"UPDATE \"users\" SET \"name\" = NULL WHERE \"deleted_at\" IS NULL"
+)]
+fn test_update_builder_all_inline_null_bindings(
+	#[case] db_type: DatabaseType,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(db_type);
+	let builder = UpdateBuilder::new(backend, "users")
+		.set("name", QueryValue::Null)
+		.where_eq("deleted_at", QueryValue::Null);
+
+	// Act
+	let (sql, params) = builder.build();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(params, Vec::<QueryValue>::new());
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_update_builder_executes_inline_null_before_id(
+	#[future] builder_probe_connection: reinhardt_db::backends::DatabaseConnection,
+) {
+	// Arrange
+	let db = builder_probe_connection.await;
+	db.execute(
+		"INSERT INTO builder_probe (id, name) VALUES (1, 'one'), (2, 'two')",
+		vec![],
+	)
+	.await
+	.unwrap();
+	let builder = UpdateBuilder::new(db.backend(), "builder_probe")
+		.set("name", QueryValue::Null)
+		.where_eq("id", 2_i64);
+
+	// Act
+	let result = builder.execute().await.unwrap();
+
+	// Assert
+	assert_eq!(result.rows_affected, 1);
+	let rows = db
+		.fetch_all("SELECT id, name FROM builder_probe ORDER BY id", vec![])
+		.await
+		.unwrap();
+	assert_eq!(rows.len(), 2);
+	assert_eq!(rows[0].get::<i64>("id").unwrap(), 1);
+	assert_eq!(rows[0].get::<String>("name").unwrap(), "one");
+	assert_eq!(rows[1].get::<i64>("id").unwrap(), 2);
+	assert_eq!(rows[1].data.get("name"), Some(&QueryValue::Null));
+}
 
 #[rstest]
 fn test_update_builder_basic_postgres() {

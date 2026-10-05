@@ -400,6 +400,7 @@ impl InsertBuilder {
 	/// Builds the INSERT SQL and its bound values.
 	///
 	/// Conflict handling is rendered before `RETURNING` on supported backends.
+	/// `QueryValue::Null` is rendered as literal `NULL` and consumes no argument slot.
 	pub fn build(&self) -> Result<(String, Vec<QueryValue>)> {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
@@ -445,7 +446,12 @@ impl InsertBuilder {
 					))
 				})?;
 			}
-			self.values.clone()
+			// Match the renderer's literal NULLs without shifting later bindings.
+			self.values
+				.iter()
+				.filter(|value| !matches!(value, QueryValue::Null))
+				.cloned()
+				.collect()
 		};
 
 		// Build SQL based on database type
@@ -1166,7 +1172,7 @@ impl UpdateBuilder {
 		self
 	}
 
-	/// Performs the where eq operation.
+	/// Adds an equality predicate, using `IS NULL` for `QueryValue::Null`.
 	pub fn where_eq(mut self, column: impl Into<String>, value: impl Into<QueryValue>) -> Self {
 		self.wheres
 			.push((column.into(), "=".to_string(), value.into()));
@@ -1174,6 +1180,8 @@ impl UpdateBuilder {
 	}
 
 	/// Builds the SQL and bound parameters in renderer order.
+	///
+	/// `QueryValue::Null` is rendered as literal `NULL` and consumes no argument slot.
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
@@ -1194,9 +1202,12 @@ impl UpdateBuilder {
 		// Add WHERE clauses
 		for (col, op, val) in &self.wheres {
 			if op == "=" {
-				stmt.and_where(
-					Expr::col(Alias::new(col)).eq(Expr::val(query_value_to_sea_value(val))),
-				);
+				let column = Expr::col(Alias::new(col));
+				if matches!(val, QueryValue::Null) {
+					stmt.and_where(column.is_null());
+				} else {
+					stmt.and_where(column.eq(Expr::val(query_value_to_sea_value(val))));
+				}
 			}
 		}
 
@@ -1273,13 +1284,32 @@ impl SelectBuilder {
 		self
 	}
 
-	/// Performs the limit operation.
+	/// Sets a bound row limit. Negative limits are omitted; zero returns no rows.
 	pub fn limit(mut self, limit: i64) -> Self {
 		self.limit = Some(limit);
 		self
 	}
 
-	/// Builds the final result.
+	/// Builds parameterized SQL and its ordered bind values.
+	///
+	/// The values include the LIMIT after any WHERE arguments. Inline NULL
+	/// expressions do not consume a bind slot.
+	///
+	/// # Example
+	///
+	/// ```no_run
+	/// use std::sync::Arc;
+	/// use reinhardt_db::backends::{DatabaseBackend, QueryValue, SelectBuilder};
+	///
+	/// fn active_users(backend: Arc<dyn DatabaseBackend>) -> (String, Vec<QueryValue>) {
+	///     SelectBuilder::new(backend)
+	///         .columns(vec!["id", "name"])
+	///         .from("users")
+	///         .where_eq("active", true)
+	///         .limit(20)
+	///         .build()
+	/// }
+	/// ```
 	pub fn build(&self) -> (String, Vec<QueryValue>) {
 		use super::types::DatabaseType;
 		use reinhardt_query::prelude::{
@@ -1307,21 +1337,31 @@ impl SelectBuilder {
 		}
 
 		// Add LIMIT (only apply non-negative values)
-		if let Some(limit) = self.limit
-			&& let Ok(limit_u64) = u64::try_from(limit)
-		{
-			stmt.limit(limit_u64);
+		if let Some(limit) = self.limit.filter(|limit| *limit >= 0) {
+			stmt.limit(limit);
 		}
 
-		// Build parameterized SQL (consistent with InsertBuilder, UpdateBuilder, DeleteBuilder)
-		let sql = match self.backend.database_type() {
-			DatabaseType::Postgres => PostgresQueryBuilder.build_select(&stmt).0,
-			DatabaseType::Mysql => MySqlQueryBuilder.build_select(&stmt).0,
-			DatabaseType::Sqlite => SqliteQueryBuilder.build_select(&stmt).0,
+		let (sql, values) = match self.backend.database_type() {
+			DatabaseType::Postgres => PostgresQueryBuilder.build_select(&stmt),
+			DatabaseType::Mysql => MySqlQueryBuilder.build_select(&stmt),
+			DatabaseType::Sqlite => SqliteQueryBuilder.build_select(&stmt),
 		};
 
-		// Collect parameters
-		let params: Vec<QueryValue> = self.wheres.iter().map(|(_, _, val)| val.clone()).collect();
+		// Retain renderer order, including LIMIT and excluding inline NULLs.
+		// This statement only emits query_value_to_sea_value types and an i64 LIMIT.
+		let params = values
+			.into_iter()
+			.map(|value| match value {
+				Value::Bool(Some(value)) => QueryValue::Bool(value),
+				Value::BigInt(Some(value)) => QueryValue::Int(value),
+				Value::Double(Some(value)) => QueryValue::Float(value),
+				Value::String(Some(value)) => QueryValue::String(*value),
+				Value::Bytes(Some(value)) => QueryValue::Bytes(*value),
+				Value::ChronoDateTimeUtc(Some(value)) => QueryValue::Timestamp(*value),
+				Value::Uuid(Some(value)) => QueryValue::Uuid(*value),
+				_ => unreachable!("SelectBuilder only emits supported non-NULL bind values"),
+			})
+			.collect();
 
 		(sql, params)
 	}
@@ -2302,7 +2342,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_on_conflict_clause_with_null_value() {
 		// Arrange
 		let backend = Arc::new(MockBackend);
@@ -2315,9 +2355,11 @@ mod tests {
 		let (sql, params) = builder.build().unwrap();
 
 		// Assert
-		assert!(sql.contains("ON CONFLICT (\"email\") DO UPDATE SET"));
-		assert_eq!(params.len(), 2);
-		assert!(matches!(params[1], QueryValue::Null));
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"email\", \"name\") VALUES ($1, NULL) ON CONFLICT (\"email\") DO UPDATE SET \"name\" = EXCLUDED.\"name\""
+		);
+		assert_eq!(params, vec![QueryValue::from("test@example.com")]);
 	}
 
 	#[test]

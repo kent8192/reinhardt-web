@@ -2806,6 +2806,129 @@ mod tests {
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct QuotedTableModel {
+		id: i64,
+		name: String,
+	}
+
+	impl Model for QuotedTableModel {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"session\"quoted`"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut id = BigIntegerField::new();
+			id.base.primary_key = true;
+			id.set_attributes_from_name("id");
+			let mut name = CharField::new(255);
+			name.set_attributes_from_name("name");
+			let mut name_info = FieldInfo::from_field(&name);
+			name_info.db_column = Some("name\"quoted`".into());
+			vec![FieldInfo::from_field(&id), name_info]
+		}
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DbBackend::Postgres,
+		r#"SELECT "session""quoted`"."id" AS "id", "session""quoted`"."name""quoted`" AS "name""quoted`" FROM "session""quoted`""#
+	)]
+	#[case::mysql(
+		DbBackend::Mysql,
+		r#"SELECT `session"quoted```.`id` AS `id`, `session"quoted```.`name"quoted``` AS `name"quoted``` FROM `session"quoted```"#
+	)]
+	#[case::sqlite(
+		DbBackend::Sqlite,
+		r#"SELECT "session""quoted`"."id" AS "id", "session""quoted`"."name""quoted`" AS "name""quoted`" FROM "session""quoted`""#
+	)]
+	fn unfiltered_session_queryset_escapes_identifiers(
+		#[case] backend: DbBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let queryset = QuerySet::<QuotedTableModel>::new();
+		let mut statement = queryset
+			.build_full_model_select_statement()
+			.expect("model SELECT should build");
+		apply_any_model_projection_for_source::<QuotedTableModel>(
+			&mut statement,
+			backend,
+			Some(queryset.root_table_alias()),
+			queryset.annotations(),
+		)
+		.expect("model projection should build");
+
+		// Act
+		let (sql, values) = QueryStatement::Select(statement).build(backend);
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(Vec::new()));
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn list_all_reads_quoted_table_names(_init_drivers: ()) {
+		// Arrange
+		let pool = sqlx::pool::PoolOptions::<Any>::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("isolated in-memory pool should initialize");
+		sqlx::query(
+			"CREATE TABLE \"session\"\"quoted`\" \
+			 (id INTEGER PRIMARY KEY, \"name\"\"quoted`\" TEXT NOT NULL)",
+		)
+		.execute(&pool)
+		.await
+		.expect("quoted table should be created");
+		sqlx::query("INSERT INTO \"session\"\"quoted`\" (id, \"name\"\"quoted`\") VALUES (?, ?)")
+			.bind(1_i64)
+			.bind("valid")
+			.execute(&pool)
+			.await
+			.expect("control row should be inserted");
+		let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite)
+			.await
+			.expect("session should initialize");
+		let expected = QuotedTableModel {
+			id: 1,
+			name: "valid".into(),
+		};
+		let control = session
+			.get::<QuotedTableModel>(1)
+			.await
+			.expect("typed get should read the quoted table");
+		assert_eq!(control, Some(expected.clone()));
+
+		// Act
+		let rows = session
+			.list_all::<QuotedTableModel>()
+			.await
+			.expect("list_all should read the same quoted table as get");
+
+		// Assert
+		assert_eq!(rows, vec![expected]);
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct FloatPrecisionModel {
 		amount: f64,
 	}
@@ -3557,7 +3680,7 @@ mod tests {
 
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 		let row = sqlx::query("SELECT name FROM natural_key_records WHERE record_key = $1")
@@ -3809,7 +3932,7 @@ mod tests {
 			.unwrap();
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 
@@ -3828,7 +3951,7 @@ mod tests {
 			.await
 			.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 
@@ -3868,7 +3991,7 @@ mod tests {
 
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 		let row = sqlx::query("SELECT name FROM assigned_id_records WHERE id = ?")
@@ -3909,7 +4032,7 @@ mod tests {
 
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 		let row =
@@ -3994,7 +4117,7 @@ mod tests {
 		let mut connection = pool.acquire().await.expect("connection should acquire");
 
 		// Act
-		let result = session.flush_with_connection(&mut *connection).await;
+		let result = session.flush_with_connection(&mut connection).await;
 
 		// Assert
 		assert_eq!(

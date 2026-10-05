@@ -304,6 +304,44 @@ impl DatabaseConnection {
 		}
 	}
 
+	pub(crate) fn build_select(
+		&self,
+		statement: &reinhardt_query::SelectStatement,
+	) -> (String, reinhardt_query::Values) {
+		crate::backends::sql_build_helpers::build_select(self.inner.database_type(), statement)
+	}
+
+	pub(crate) async fn execute_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<u64, anyhow::Error> {
+		Ok(self
+			.inner
+			.execute_generated(sql, values)
+			.await?
+			.rows_affected)
+	}
+
+	pub(crate) async fn query_one_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<QueryRow, anyhow::Error> {
+		Ok(QueryRow::from_backend_row(
+			self.inner.fetch_one_generated(sql, values).await?,
+		))
+	}
+
+	pub(crate) async fn query_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Vec<QueryRow>, anyhow::Error> {
+		let rows = self.inner.fetch_all_generated(sql, values).await?;
+		Ok(rows.into_iter().map(QueryRow::from_backend_row).collect())
+	}
+
 	/// Execute a SQL statement (INSERT, UPDATE, DELETE, etc.)
 	pub async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<u64, anyhow::Error> {
 		let result = self.inner.execute(sql, params).await?;
