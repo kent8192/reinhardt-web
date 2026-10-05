@@ -10,6 +10,9 @@ use reinhardt_db::backends::query_builder::OnConflictClause;
 use reinhardt_db::backends::{
 	DatabaseBackend, DatabaseError, InsertBuilder, MySqlBackend, QueryValue,
 };
+use reinhardt_query::prelude::{
+	ColumnDef, Expr, ExprTrait, MySqlQueryBuilder, Query, QueryStatementBuilder,
+};
 use rstest::{fixture, rstest};
 use testcontainers::{ContainerAsync, ImageExt, core::logs::LogFrame, runners::AsyncRunner};
 use testcontainers_modules::mysql::Mysql;
@@ -17,6 +20,7 @@ use testcontainers_modules::mysql::Mysql;
 #[fixture]
 async fn mysql_backend() -> (ContainerAsync<Mysql>, Arc<MySqlBackend>) {
 	let container = Mysql::default()
+		.with_tag("8.0")
 		.with_startup_timeout(Duration::from_secs(120))
 		.with_log_consumer(|frame: &LogFrame| eprint!("{}", String::from_utf8_lossy(frame.bytes())))
 		.start()
@@ -37,13 +41,17 @@ async fn unsupported_conflict_preserves_existing_mysql_row(
 ) {
 	// Arrange: the container owns the disposable database for this test.
 	let (_container, backend) = mysql_backend.await;
-	backend
-		.execute(
-			"CREATE TABLE options (id BIGINT PRIMARY KEY, name TEXT)",
-			vec![],
-		)
-		.await
-		.unwrap();
+	let create_table = Query::create_table()
+		.table("options")
+		.col(ColumnDef::new("id").big_integer().primary_key(true))
+		.col(ColumnDef::new("name").text())
+		.to_string(MySqlQueryBuilder);
+	backend.execute(&create_table, vec![]).await.unwrap();
+	let select_name = Query::select()
+		.column("name")
+		.from("options")
+		.and_where(Expr::col("id").eq(1))
+		.to_string(MySqlQueryBuilder);
 	InsertBuilder::new(backend.clone(), "options")
 		.value("id", QueryValue::Int(1))
 		.value("name", QueryValue::String("original".into()))
@@ -78,10 +86,7 @@ async fn unsupported_conflict_preserves_existing_mysql_row(
 			.await
 			.unwrap_err();
 		assert_eq!(error, DatabaseError::NotSupported(message.into()));
-		let row = backend
-			.fetch_one("SELECT name FROM options WHERE id = 1", vec![])
-			.await
-			.unwrap();
+		let row = backend.fetch_one(&select_name, vec![]).await.unwrap();
 		assert_eq!(row.get::<String>("name").unwrap(), "original");
 	}
 
@@ -97,10 +102,7 @@ async fn unsupported_conflict_preserves_existing_mysql_row(
 			.execute()
 			.await
 			.unwrap();
-		let row = backend
-			.fetch_one("SELECT name FROM options WHERE id = 1", vec![])
-			.await
-			.unwrap();
+		let row = backend.fetch_one(&select_name, vec![]).await.unwrap();
 		assert_eq!(row.get::<String>("name").unwrap(), "updated");
 	}
 }
