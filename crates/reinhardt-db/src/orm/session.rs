@@ -4125,25 +4125,26 @@ mod tests {
 	#[case::ordinary(42, 42)]
 	#[case::above_i32_max((i32::MAX as u64) + 1, i64::from(i32::MAX) + 1)]
 	#[case::at_i64_max(i64::MAX as u64, i64::MAX)]
-	#[serial(sqlx_drivers)]
-	#[tokio::test]
-	async fn bind_reinhardt_query_value_preserves_unsigned_values(
+	fn bind_reinhardt_query_value_preserves_unsigned_arguments(
 		#[case] value: u64,
 		#[case] expected: i64,
+		#[values(DbBackend::Postgres, DbBackend::Mysql, DbBackend::Sqlite)] backend: DbBackend,
 	) {
-		// Arrange
-		let pool = create_test_pool().await;
-		let (sql, values) = RQuery::select()
-			.expr_as(Expr::val(RValue::BigUnsigned(Some(value))), "value")
-			.build(SqliteQueryBuilder);
+		use sqlx::{Arguments, Execute};
+
+		// Arrange: no SQL is executed; inspect the binder's prepared arguments only.
+		let parameter = RValue::BigUnsigned(Some(value));
 
 		// Act
-		let query =
-			bind_reinhardt_query_value(sqlx::query(&sql), &values.0[0], DbBackend::Sqlite).unwrap();
-		let row = query.fetch_one(pool.as_ref()).await.unwrap();
+		let mut query = bind_reinhardt_query_value(sqlx::query(""), &parameter, backend).unwrap();
+		let arguments = query.take_arguments().unwrap().unwrap();
 
 		// Assert
-		assert_eq!(row.try_get::<i64, _>("value").unwrap(), expected);
+		assert_eq!(arguments.len(), 1);
+		assert_eq!(
+			format!("{:?}", arguments.values.0[0]),
+			format!("BigInt({expected})")
+		);
 	}
 
 	#[rstest]
@@ -4154,17 +4155,10 @@ mod tests {
 		#[values(DbBackend::Postgres, DbBackend::Mysql, DbBackend::Sqlite)] backend: DbBackend,
 	) {
 		// Arrange
-		let statement = RQuery::select()
-			.expr(Expr::val(RValue::BigUnsigned(Some(value))))
-			.to_owned();
-		let (sql, values) = match backend {
-			DbBackend::Postgres => statement.build(PostgresQueryBuilder),
-			DbBackend::Mysql => statement.build(MySqlQueryBuilder),
-			DbBackend::Sqlite => statement.build(SqliteQueryBuilder),
-		};
+		let parameter = RValue::BigUnsigned(Some(value));
 
 		// Act
-		let error = bind_reinhardt_query_value(sqlx::query(&sql), &values.0[0], backend)
+		let error = bind_reinhardt_query_value(sqlx::query(""), &parameter, backend)
 			.err()
 			.expect("out-of-range unsigned values must fail before query execution");
 
