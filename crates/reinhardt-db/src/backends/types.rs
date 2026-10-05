@@ -137,6 +137,29 @@ pub(crate) fn array_query_value<T>(
 	}
 }
 
+/// JSON has no numeric representation for NaN or infinity.
+#[cfg(any(feature = "mysql", feature = "sqlite"))]
+pub(crate) fn validate_json_array(value: &QueryValue) -> std::result::Result<(), DatabaseError> {
+	let non_finite = match value {
+		QueryValue::FloatArray(values) => values.iter().any(|value| !value.is_finite()),
+		QueryValue::DoubleArray(values) => values.iter().any(|value| !value.is_finite()),
+		QueryValue::NullableFloatArray(values) => {
+			values.iter().flatten().any(|value| !value.is_finite())
+		}
+		QueryValue::NullableDoubleArray(values) => {
+			values.iter().flatten().any(|value| !value.is_finite())
+		}
+		_ => false,
+	};
+	if non_finite {
+		return Err(DatabaseError::new(
+			DatabaseErrorKind::Type,
+			"JSON array parameters cannot contain non-finite floating-point elements",
+		));
+	}
+	Ok(())
+}
+
 pub(crate) fn checked_unsigned_integer(
 	value: u64,
 	backend: &str,

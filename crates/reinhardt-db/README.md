@@ -24,6 +24,8 @@ and other non-nullable variants. A SQL NULL for the entire array is
 Use `Option<Vec<Option<T>>>` when the entire column can also be SQL NULL.
 Rebinding a nullable array on PostgreSQL retains its scalar element type; MySQL
 and SQLite use the existing JSON array encoding with JSON null elements.
+These JSON backends reject non-finite float/double array elements with a type
+error before binding, for both legacy and nullable array carriers.
 
 Derived ORM models support `Vec<Option<T>>` fields for all seven scalar types,
 and `Option<Vec<Option<T>>>` when the entire column can be SQL NULL. Manager

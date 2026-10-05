@@ -102,6 +102,7 @@ impl MySqlBackend {
 		query: sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments>,
 		value: &'q QueryValue,
 	) -> Result<sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments>> {
+		crate::backends::types::validate_json_array(value)?;
 		Ok(match value {
 			QueryValue::Null => query.bind(None::<i32>),
 			QueryValue::Bool(b) => query.bind(b),
@@ -430,6 +431,7 @@ impl MySqlTransactionExecutor {
 		query: sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments>,
 		value: &'q QueryValue,
 	) -> Result<sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments>> {
+		crate::backends::types::validate_json_array(value)?;
 		Ok(match value {
 			QueryValue::Null => query.bind(None::<i32>),
 			QueryValue::Bool(b) => query.bind(b),
@@ -907,6 +909,54 @@ mod tests {
 	use sqlx::mysql::MySqlPoolOptions;
 	use std::sync::Arc;
 	use std::sync::atomic::{AtomicUsize, Ordering};
+
+	#[rstest::rstest]
+	#[case::nan(f64::NAN)]
+	#[case::positive_infinity(f64::INFINITY)]
+	#[case::negative_infinity(f64::NEG_INFINITY)]
+	fn json_array_binding_rejects_non_finite_elements(#[case] special: f64) {
+		// Arrange
+		let values = [
+			QueryValue::FloatArray(vec![1.5, special as f32]),
+			QueryValue::DoubleArray(vec![1.5, special]),
+			QueryValue::NullableFloatArray(vec![None, Some(special as f32)]),
+			QueryValue::NullableDoubleArray(vec![None, Some(special)]),
+		];
+		for value in &values {
+			// Act
+			let pool = MySqlBackend::bind_value(sqlx::query("SELECT ?"), value);
+			let transaction = MySqlTransactionExecutor::bind_value(sqlx::query("SELECT ?"), value);
+			// Assert
+			for result in [pool, transaction] {
+				let error = result
+					.err()
+					.expect("non-finite elements must fail before execution");
+				assert_eq!(
+					error.database_kind(),
+					Some(reinhardt_core::exception::DatabaseErrorKind::Type)
+				);
+				assert!(error.to_string().contains("non-finite"));
+			}
+		}
+	}
+
+	#[rstest::rstest]
+	fn json_array_binding_accepts_finite_null_and_empty_elements() {
+		// Arrange
+		let values = [
+			QueryValue::FloatArray(vec![f32::MIN, f32::MAX]),
+			QueryValue::DoubleArray(vec![f64::MIN, f64::MAX]),
+			QueryValue::NullableFloatArray(vec![None, Some(1.5), None]),
+			QueryValue::NullableDoubleArray(vec![None, Some(-2.5), None]),
+			QueryValue::NullableFloatArray(vec![None]),
+			QueryValue::NullableDoubleArray(vec![]),
+		];
+		// Act / Assert
+		for value in &values {
+			assert!(MySqlBackend::bind_value(sqlx::query("SELECT ?"), value).is_ok());
+			assert!(MySqlTransactionExecutor::bind_value(sqlx::query("SELECT ?"), value).is_ok());
+		}
+	}
 
 	struct TestCloseOnDropConnection {
 		close_on_drop_calls: Arc<AtomicUsize>,
