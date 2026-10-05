@@ -79,7 +79,10 @@ in a typed derived table with an always-true outer `WHERE`. This avoids SQLite's
 [INSERT SELECT parsing ambiguity](https://www.sqlite.org/lang_upsert.html#parsing_ambiguity)
 when `ON CONFLICT` follows a source without a `WHERE` clause. The original source's
 filters, ordering, limits, and compound SELECTs remain inside the derived table.
-The same behavior applies when converting `InsertBuilder` with `from_select`.
+The same behavior applies when converting `InsertBuilder` with `from_select`,
+including targetless updates with `None` or an empty conflict-column list on
+SQLite 3.35.0+. Conflict actions precede `RETURNING`, so targetless upserts can
+return the inserted or updated row.
 
 ### Implemented ✓ (Additional Features)
 

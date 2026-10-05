@@ -104,6 +104,17 @@ async fn source_rows(#[future] conflict_rows: Arc<SqliteBackend>) -> Arc<SqliteB
 		.where_clause("conflict_rows.revision > excluded.revision"),
 	0, 1
 )]
+#[case::targetless_update(OnConflictClause::any().do_update(vec!["revision"]), 1, 2)]
+#[case::targetless_conditional_update(
+	OnConflictClause::any().do_update(vec!["revision"])
+		.where_clause("conflict_rows.revision < excluded.revision"),
+	1, 2
+)]
+#[case::targetless_condition_skips_update(
+	OnConflictClause::any().do_update(vec!["revision"])
+		.where_clause("conflict_rows.revision > excluded.revision"),
+	0, 1
+)]
 #[case::do_nothing(OnConflictClause::any().do_nothing(), 0, 1)]
 #[case::targeted_do_nothing(OnConflictClause::columns(vec!["id"]).do_nothing(), 0, 1)]
 #[tokio::test]
@@ -144,9 +155,12 @@ async fn test_insert_from_select_executes_fluent_conflict(
 }
 
 #[rstest]
+#[case::targeted(OnConflictClause::columns(vec!["id"]).do_update(vec!["revision"]))]
+#[case::targetless(OnConflictClause::any().do_update(vec!["revision"]))]
 #[tokio::test]
 async fn test_insert_from_select_fetches_fluent_conflict_returning(
 	#[future] conflict_rows: Arc<SqliteBackend>,
+	#[case] clause: OnConflictClause,
 	#[values(false, true)] from_table: bool,
 ) {
 	// Arrange
@@ -157,7 +171,7 @@ async fn test_insert_from_select_fetches_fluent_conflict_returning(
 		select.from(ConflictRows::Table.into_iden());
 	}
 	let builder = InsertBuilder::new(backend, "conflict_rows")
-		.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["revision"]))
+		.on_conflict(clause)
 		.returning(vec!["id", "revision"])
 		.from_select(vec!["id", "revision"], select);
 
@@ -204,14 +218,25 @@ async fn test_insert_from_select_preserves_source_query(
 	#[case] expected_rows: Vec<(i64, i64)>,
 	#[case] expected_affected: u64,
 	#[values(false, true)] legacy: bool,
+	#[values(false, true)] targetless: bool,
 ) {
 	// Arrange
 	let backend = source_rows.await;
 	let builder = InsertBuilder::new(backend.clone(), "conflict_rows");
 	let builder = if legacy {
-		builder.on_conflict_do_update(Some(vec!["id".into()]), vec!["revision".into()])
+		let target = if targetless {
+			None
+		} else {
+			Some(vec!["id".into()])
+		};
+		builder.on_conflict_do_update(target, vec!["revision".into()])
 	} else {
-		builder.on_conflict(OnConflictClause::columns(vec!["id"]).do_update(vec!["revision"]))
+		let target = if targetless {
+			OnConflictClause::any()
+		} else {
+			OnConflictClause::columns(vec!["id"])
+		};
+		builder.on_conflict(target.do_update(vec!["revision"]))
 	};
 	let builder = builder.from_select(vec!["id", "revision"], select);
 
