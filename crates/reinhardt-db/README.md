@@ -25,8 +25,10 @@ Use `Option<Vec<Option<T>>>` when the entire column can also be SQL NULL.
 Rebinding a nullable array on PostgreSQL retains its scalar element type; MySQL
 and SQLite use the existing JSON array encoding with JSON null elements.
 
-ORM `Manager` inserts and updates preserve NULL element positions when binding
-`DatabaseValue::Array`, including arrays whose elements are all NULL. Empty
+Derived ORM models support `Vec<Option<T>>` fields for all seven scalar types,
+and `Option<Vec<Option<T>>>` when the entire column can be SQL NULL. Manager
+writes, typed QuerySet filters, and `get_or_create` / `update_or_create` share
+native array conversion, including arrays whose elements are all NULL. Empty
 arrays and arrays without NULL elements retain their existing typed carriers.
 
 The additional public `QueryValue` variants require downstream exhaustive

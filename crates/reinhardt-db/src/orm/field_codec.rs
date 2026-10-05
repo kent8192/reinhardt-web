@@ -101,6 +101,26 @@
 //! During hydration, an undeclared stored value returns
 //! [`FieldCodecError::InvalidEnumValue`] with the model, field, and resolved
 //! column names.
+//!
+//! # Arrays with nullable elements
+//!
+//! Model fields support `Vec<Option<T>>` for `String`, `i32`, `i64`, `bool`,
+//! `f32`, `f64`, and `Uuid`. Each `None` preserves its position as a SQL NULL
+//! array element. Use `Option<Vec<Option<T>>>` when the whole column may also
+//! be NULL. The codecs also decode JSON arrays from MySQL and SQLite.
+//!
+//! ```rust
+//! use reinhardt_db::orm::{DatabaseArrayType, DatabaseField, DatabaseScalar, DatabaseValue};
+//!
+//! let flags = vec![Some(true), None];
+//! let encoded = flags.encode_database().unwrap().into_database_value();
+//! assert_eq!(encoded, DatabaseValue::Array {
+//!     element_type: DatabaseArrayType::Bool,
+//!     values: vec![DatabaseValue::Bool(true), DatabaseValue::Null],
+//! });
+//! let missing: Option<Vec<Option<bool>>> = None;
+//! assert_eq!(missing.encode_database().unwrap().into_database_value(), DatabaseValue::Null);
+//! ```
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -853,6 +873,13 @@ impl_array_database_field!(f32, DatabaseArrayType::F32);
 impl_array_database_field!(f64, DatabaseArrayType::F64);
 impl_array_database_field!(bool, DatabaseArrayType::Bool);
 impl_array_database_field!(uuid::Uuid, DatabaseArrayType::Uuid);
+impl_array_database_field!(Option<String>, DatabaseArrayType::String);
+impl_array_database_field!(Option<i32>, DatabaseArrayType::I32);
+impl_array_database_field!(Option<i64>, DatabaseArrayType::I64);
+impl_array_database_field!(Option<f32>, DatabaseArrayType::F32);
+impl_array_database_field!(Option<f64>, DatabaseArrayType::F64);
+impl_array_database_field!(Option<bool>, DatabaseArrayType::Bool);
+impl_array_database_field!(Option<uuid::Uuid>, DatabaseArrayType::Uuid);
 impl_json_database_field!(std::collections::HashMap<String, String>);
 
 #[cfg(feature = "pgvector")]
@@ -1013,6 +1040,62 @@ mod tests {
 			("framework".to_owned(), "reinhardt".to_owned()),
 		]));
 		assert_database_field_round_trip(rust_decimal::Decimal::new(12345, 2));
+	}
+
+	#[rstest::rstest]
+	#[case::string(["kept".to_owned(), "tail".to_owned()])]
+	#[case::int([i32::MIN, i32::MAX])]
+	#[case::bigint([i64::MIN, i64::MAX])]
+	#[case::bool([true, false])]
+	#[case::float([1.5_f32, -2.5_f32])]
+	#[case::double([3.5_f64, -4.5_f64])]
+	#[case::uuid([uuid::Uuid::nil(), uuid::Uuid::from_u128(1)])]
+	fn nullable_array_codecs_decode_json_and_distinguish_column_null<T>(#[case] values: [T; 2])
+	where
+		T: DatabaseScalar + serde::Serialize + std::fmt::Debug + PartialEq,
+		Vec<Option<T>>: DatabaseScalar,
+	{
+		// Arrange
+		let shapes = [
+			vec![
+				None,
+				Some(values[0].clone()),
+				None,
+				Some(values[1].clone()),
+				None,
+			],
+			vec![None, None],
+			values.into_iter().map(Some).collect(),
+			vec![],
+		];
+		for expected in shapes {
+			let json = serde_json::to_value(&expected).unwrap();
+
+			// Act
+			let decoded =
+				<Vec<Option<T>> as DatabaseScalar>::from_database_value(DatabaseValue::Json(json))
+					.unwrap();
+
+			// Assert
+			assert_eq!(decoded, expected);
+		}
+
+		// Act
+		let missing =
+			<Option<Vec<Option<T>>> as DatabaseScalar>::from_database_value(DatabaseValue::Null)
+				.unwrap();
+		let non_nullable =
+			<Vec<Option<T>> as DatabaseScalar>::from_database_value(DatabaseValue::Null);
+
+		// Assert
+		assert_eq!(missing, None);
+		assert!(matches!(
+			non_nullable,
+			Err(FieldCodecError::TypeMismatch {
+				expected: DatabaseStorageKind::Json,
+				actual: DatabaseValue::Null,
+			})
+		));
 	}
 
 	#[test]
