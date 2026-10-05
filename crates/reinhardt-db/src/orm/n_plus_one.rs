@@ -489,10 +489,11 @@ mod tests {
 	use super::*;
 
 	fn low_threshold_config() -> NPlusOneConfig {
-		let mut config = NPlusOneConfig::default();
-		config.threshold = 3;
-		config.min_distinct_params = 3;
-		config
+		NPlusOneConfig {
+			threshold: 3,
+			min_distinct_params: 3,
+			..Default::default()
+		}
 	}
 
 	#[test]
@@ -575,9 +576,11 @@ mod tests {
 
 	#[test]
 	fn ignores_repeated_query_with_same_bind_signature() {
-		let mut config = NPlusOneConfig::default();
-		config.threshold = 3;
-		config.min_distinct_params = 2;
+		let config = NPlusOneConfig {
+			threshold: 3,
+			min_distinct_params: 2,
+			..Default::default()
+		};
 
 		let mut state = ScopeState::new("posts.index".to_string(), config);
 		for _ in 0..3 {
