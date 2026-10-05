@@ -556,7 +556,16 @@ UUID, enum, binary, and file values.
 PostgreSQL backend pool and transaction execute/fetch methods preserve each
 argument's native type. SQLx 0.8.6 caches prepared statements by SQL text, so an
 existing statement can have an incompatible parameter signature. For example,
-`QueryValue::Null` binds as INT4, whereas `QueryValue::Int` binds as INT8.
+direct SQLx access can cache an INT4 parameter, whereas `QueryValue::Int` binds
+as INT8.
+
+`QueryValue::Null` is bound with an unspecified PostgreSQL parameter type,
+allowing the server to infer it from the destination column, an expression, or
+an explicit cast. Nullable TIMESTAMPTZ and UUID values therefore work with
+`INSERT ... SELECT $1` as well as `VALUES ($1)` in both pooled and transactional
+execution. NULL remains a bound parameter; SQL text and placeholder positions
+are unchanged. Queries without enough type context, such as `SELECT $1 IS NULL`,
+need an explicit cast (for example, `SELECT $1::TIMESTAMPTZ IS NULL`).
 
 Before execution, the backend clears existing named statements on the same
 acquired connection and disables persistence for that query. Disabling
