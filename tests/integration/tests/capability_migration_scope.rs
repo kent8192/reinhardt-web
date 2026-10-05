@@ -297,7 +297,7 @@ fn capability_check_rejects_empty_and_merge_proposals_without_writes(consumer: C
 
 	// Assert
 	assert_status(&empty, 1);
-	assert!(String::from_utf8_lossy(&empty.stderr).contains("1 migration(s) would be created"));
+	assert!(String::from_utf8_lossy(&empty.stderr).contains("empty migration would be created"));
 	assert!(String::from_utf8_lossy(&empty.stdout).contains("Would create empty migration"));
 	assert_eq!(migration_files(&project), before);
 	let preview = invoke(
@@ -352,7 +352,10 @@ fn capability_check_rejects_empty_and_merge_proposals_without_writes(consumer: C
 
 	// Assert
 	assert_status(&merge, 1);
-	assert!(String::from_utf8_lossy(&merge.stderr).contains("1 migration(s) would be created"));
+	assert!(
+		String::from_utf8_lossy(&merge.stderr)
+			.contains("1 migration conflict(s) require a merge migration")
+	);
 	assert!(String::from_utf8_lossy(&merge.stdout).contains("Would create merge migration"));
 	assert_eq!(migration_files(&project), before);
 	let preview = invoke(
@@ -430,10 +433,9 @@ fn capability_dependencies_order_plans_execution_and_file_state(consumer: Consum
 		r#"
 		operations: vec![Operation::CreateTable {
 			name: "ordered_dependency".to_string(),
-			columns: vec![ColumnDefinition {
-				name: "id".to_string(), type_definition: FieldType::BigInteger,
-				not_null: true, unique: false, primary_key: true, auto_increment: false, default: None,
-			}], constraints: vec![],
+			columns: vec![ColumnDefinition::new("id", FieldType::BigInteger)
+				.with_not_null(true).with_primary_key(true)],
+			constraints: vec![], without_rowid: None, interleave_in_parent: None, partition: None,
 		}], dependencies: Vec::new()
 	"#,
 	);
@@ -452,10 +454,7 @@ fn capability_dependencies_order_plans_execution_and_file_state(consumer: Consum
 		r#"
 		operations: vec![Operation::AddColumn {
 			table: "ordered_dependency".to_string(),
-			column: ColumnDefinition {
-				name: "label".to_string(), type_definition: FieldType::Text,
-				not_null: false, unique: false, primary_key: false, auto_increment: false, default: None,
-			},
+			column: ColumnDefinition::new("label", FieldType::Text), mysql_options: None,
 		}], dependencies: Vec::new(),
 		swappable_dependencies: vec![SwappableDependency::new("AUTH_USER_MODEL", "absent_default", "User", "0001_initial")],
 		optional_dependencies: vec![

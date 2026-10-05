@@ -1655,9 +1655,9 @@ impl DeleteBuilder {
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_db::backends::{AnalyzeBuilder, DatabaseBackend, DatabaseError};
+/// use reinhardt_db::backends::{AnalyzeBuilder, DatabaseBackend};
 /// use std::sync::Arc;
-/// # async fn example(backend: Arc<dyn DatabaseBackend>) -> Result<(), DatabaseError> {
+/// # async fn example(backend: Arc<dyn DatabaseBackend>) -> Result<(), reinhardt_core::exception::Error> {
 ///
 /// // Analyze all tables (PostgreSQL and SQLite only)
 /// let builder = AnalyzeBuilder::new(backend.clone());

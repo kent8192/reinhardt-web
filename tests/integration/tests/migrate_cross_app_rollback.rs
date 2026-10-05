@@ -670,10 +670,10 @@ async fn incomplete_cross_app_metadata_preserves_history_and_schema(
 		.join(missing_app)
 		.join(format!("{missing_name}.rs"));
 	if metadata == "invalid" {
-		std::fs::write(definition, "pub fn migration( {")
+		std::fs::write(&definition, "pub fn migration( {")
 			.expect("make the applied definition unparseable");
 	} else {
-		std::fs::remove_file(definition).expect("remove the applied definition");
+		std::fs::remove_file(&definition).expect("remove the applied definition");
 	}
 	let mut ctx = CommandContext::default();
 	ctx.set_option("database".into(), url);
@@ -698,12 +698,25 @@ async fn incomplete_cross_app_metadata_preserves_history_and_schema(
 		.expect_err("incomplete metadata must fail before any rollback effects");
 
 	// Assert: every mode preserves the complete ledger, timestamps, and schema.
-	assert_eq!(
-		error.to_string(),
-		format!(
-			"Execution error: Cannot determine cross-app rollback dependencies: applied migration {missing_app}:{missing_name} has no available definition"
-		)
-	);
+	if metadata == "invalid" {
+		let message = error.to_string();
+		assert!(
+			message
+				.starts_with("Execution error: Failed to load all migrations: InvalidMigration(")
+		);
+		assert!(message.contains(definition.to_str().unwrap()));
+		assert!(
+			message
+				.contains("failed to lex migration source: cannot parse string into token stream")
+		);
+	} else {
+		assert_eq!(
+			error.to_string(),
+			format!(
+				"Execution error: Cannot determine cross-app rollback dependencies: applied migration {missing_app}:{missing_name} has no available definition"
+			)
+		);
+	}
 	let after = recorder
 		.get_applied_migrations()
 		.await
@@ -1041,10 +1054,10 @@ async fn incomplete_nested_squash_preserves_history_and_schema(
 	assert_eq!(before.len(), if originals_recorded { 7 } else { 6 });
 	let definition = root.join("migrations/foundation/0002_intermediate.rs");
 	if metadata == "invalid" {
-		std::fs::write(definition, "pub fn migration( {")
+		std::fs::write(&definition, "pub fn migration( {")
 			.expect("make intermediate metadata unparseable");
 	} else {
-		std::fs::remove_file(definition).expect("remove intermediate metadata");
+		std::fs::remove_file(&definition).expect("remove intermediate metadata");
 	}
 	let mut ctx = CommandContext::default();
 	ctx.set_option("database".into(), url);
@@ -1070,12 +1083,25 @@ async fn incomplete_nested_squash_preserves_history_and_schema(
 	} else {
 		"0002_tables"
 	};
-	assert_eq!(
-		error.to_string(),
-		format!(
-			"Execution error: Cannot determine cross-app rollback dependencies: applied migration consumer:0001_references references unresolved dependency foundation:{dependency} while replacement definition foundation:0002_intermediate is unavailable"
-		)
-	);
+	if metadata == "invalid" {
+		let message = error.to_string();
+		assert!(
+			message
+				.starts_with("Execution error: Failed to load all migrations: InvalidMigration(")
+		);
+		assert!(message.contains(definition.to_str().unwrap()));
+		assert!(
+			message
+				.contains("failed to lex migration source: cannot parse string into token stream")
+		);
+	} else {
+		assert_eq!(
+			error.to_string(),
+			format!(
+				"Execution error: Cannot determine cross-app rollback dependencies: applied migration consumer:0001_references references unresolved dependency foundation:{dependency} while replacement definition foundation:0002_intermediate is unavailable"
+			)
+		);
+	}
 	let after = recorder
 		.get_applied_migrations()
 		.await

@@ -269,17 +269,28 @@ async fn test_insert_from_select_preserves_source_query(
 #[rstest]
 #[case::other_unique(
 	Some(1),
-	"(code: 2067) UNIQUE constraint failed: conflict_rows.revision"
+	DatabaseErrorKind::UniqueViolation,
+	"2067",
+	"UNIQUE constraint failed: conflict_rows.revision"
 )]
 #[case::not_null(
 	None,
-	"(code: 1299) NOT NULL constraint failed: conflict_rows.revision"
+	DatabaseErrorKind::NotNullViolation,
+	"1299",
+	"NOT NULL constraint failed: conflict_rows.revision"
 )]
-#[case::check(Some(0), "(code: 275) CHECK constraint failed: revision")]
+#[case::check(
+	Some(0),
+	DatabaseErrorKind::CheckViolation,
+	"275",
+	"CHECK constraint failed: revision"
+)]
 #[tokio::test]
 async fn test_fluent_do_nothing_propagates_unhandled_constraints(
 	#[future] conflict_rows: Arc<SqliteBackend>,
 	#[case] revision: Option<i64>,
+	#[case] expected_kind: DatabaseErrorKind,
+	#[case] expected_code: &str,
 	#[case] expected_message: &str,
 	#[values(false, true)] from_select: bool,
 	#[values(false, true)] any_target: bool,
@@ -316,10 +327,14 @@ async fn test_fluent_do_nothing_propagates_unhandled_constraints(
 	if any_target && revision == Some(1) {
 		assert_eq!(result.unwrap().rows_affected, 0);
 	} else {
+		let error = result.unwrap_err();
+		let database_error = error.database_error().expect("structured database error");
+		assert_eq!(database_error.kind(), expected_kind);
+		assert_eq!(database_error.code(), Some(expected_code));
 		assert_eq!(
-			result.unwrap_err().to_string(),
+			error.to_string(),
 			reinhardt_core::exception::Error::from(DatabaseError::new(
-				DatabaseErrorKind::Query,
+				expected_kind,
 				expected_message
 			))
 			.to_string()

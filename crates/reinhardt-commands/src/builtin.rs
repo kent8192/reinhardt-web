@@ -314,7 +314,11 @@ impl BaseCommand for MigrateCommand {
 					})
 					.cloned()
 					.collect();
-				let target_name = if target_name == "zero" {
+				let target_name = if target_name == "zero"
+					|| applied_for_app
+						.iter()
+						.any(|record| record.name == target_name)
+				{
 					target_name.to_string()
 				} else {
 					let terminal = terminal_replacement_target(&all_migrations, app, target_name)?;
@@ -331,174 +335,37 @@ impl BaseCommand for MigrateCommand {
 					}
 				};
 
-				// Branch (a): `migrate <app> zero` -> unapply ALL applied migrations.
-				if target_name == "zero" {
-					if applied_for_app.is_empty() {
-						ctx.info(&format!(
-							"No applied migrations for app '{}'; nothing to do.",
-							app
-						));
-						return Ok(());
-					}
-
-					// `applied_for_app` is ASC by applied time; rollback unapplies the
-					// newest first. Plan and `--fake` operate purely on recorder records
-					// and never load files; only a real rollback needs the on-disk
-					// reverse SQL.
-					if is_plan {
-						ctx.info(&format!(
-							"[plan] Would unapply {} migration(s) for app '{}':",
-							applied_for_app.len(),
-							app
-						));
-						for r in applied_for_app.iter().rev() {
-							ctx.info(&format!("  - {}:{} (unapply)", r.app, r.name));
-						}
-						return Ok(());
-					}
-
-					if is_fake {
-						ctx.info(
-							"Faking rollback (updating recorder without executing reverse SQL):",
-						);
-						for r in applied_for_app.iter().rev() {
-							recorder.unapply(&r.app, &r.name).await.map_err(|e| {
-								crate::CommandError::ExecutionError(format!(
-									"Failed to unapply {}:{}: {}",
-									r.app, r.name, e
-								))
-							})?;
-							ctx.success(&format!("  ✓ Faked rollback: {}:{}", r.app, r.name));
-						}
-						ctx.success(&format!(
-							"Faked rollback of {} migration(s) for app '{}'",
-							applied_for_app.len(),
-							app
-						));
-						return Ok(());
-					}
-
-					let mut to_rollback = Vec::with_capacity(applied_for_app.len());
-					for r in &applied_for_app {
-						let migration = all_migrations
-							.iter()
-							.find(|m| m.app_label == r.app && m.name == r.name)
-							.cloned()
-							.ok_or_else(|| {
-								crate::CommandError::ExecutionError(format!(
-									"Migration {}:{} is recorded as applied but its file was not found on disk",
-									r.app, r.name
-								))
-							})?;
-						to_rollback.push(migration);
-					}
-
-					let executor = DatabaseMigrationExecutor::new(connection);
-					let result = executor
-						.with_migration_history(all_migrations.clone())
-						.rollback_migrations(&to_rollback)
-						.await
-						.map_err(|e| {
-							crate::CommandError::ExecutionError(format!(
-								"Failed to roll back migrations: {:?}",
-								e
-							))
-						})?;
-					for id in &result.applied {
-						ctx.success(&format!("  ✓ Rolled back: {}", id));
-					}
-					ctx.success(&format!(
-						"Rolled back {} migration(s) for app '{}'",
-						result.applied.len(),
-						app
-					));
-					return Ok(());
-				}
-
-				// Branch (b): target is currently applied -> roll back everything after it.
-				if let Some(pos) = applied_for_app.iter().position(|r| r.name == target_name) {
-					let to_rollback_records = &applied_for_app[pos + 1..];
-					if to_rollback_records.is_empty() {
-						ctx.info(&format!(
-							"Already at {}:{}; nothing to do.",
-							app, target_name
-						));
-						return Ok(());
-					}
-
-					// Plan and `--fake` operate purely on recorder records; only a real
-					// rollback loads the on-disk reverse SQL.
-					if is_plan {
-						ctx.info(&format!(
-							"[plan] Would unapply {} migration(s) for app '{}' to reach target '{}':",
-							to_rollback_records.len(),
-							app,
-							target_name
-						));
-						for r in to_rollback_records.iter().rev() {
-							ctx.info(&format!("  - {}:{} (unapply)", r.app, r.name));
-						}
-						return Ok(());
-					}
-
-					if is_fake {
-						ctx.info(
-							"Faking rollback (updating recorder without executing reverse SQL):",
-						);
-						for r in to_rollback_records.iter().rev() {
-							recorder.unapply(&r.app, &r.name).await.map_err(|e| {
-								crate::CommandError::ExecutionError(format!(
-									"Failed to unapply {}:{}: {}",
-									r.app, r.name, e
-								))
-							})?;
-							ctx.success(&format!("  ✓ Faked rollback: {}:{}", r.app, r.name));
-						}
-						ctx.success(&format!(
-							"Faked rollback to {}:{} ({} migration(s) unapplied)",
-							app,
-							target_name,
-							to_rollback_records.len()
-						));
-						return Ok(());
-					}
-
-					let mut to_rollback = Vec::with_capacity(to_rollback_records.len());
-					for r in to_rollback_records {
-						let migration = all_migrations
-							.iter()
-							.find(|m| m.app_label == r.app && m.name == r.name)
-							.cloned()
-							.ok_or_else(|| {
-								crate::CommandError::ExecutionError(format!(
-									"Migration {}:{} is recorded as applied but its file was not found on disk",
-									r.app, r.name
-								))
-							})?;
-						to_rollback.push(migration);
-					}
-
-					let executor = DatabaseMigrationExecutor::new(connection);
-					let result = executor
-						.with_migration_history(all_migrations.clone())
-						.rollback_migrations(&to_rollback)
-						.await
-						.map_err(|e| {
-							crate::CommandError::ExecutionError(format!(
-								"Failed to roll back migrations: {:?}",
-								e
-							))
-						})?;
-					for id in &result.applied {
-						ctx.success(&format!("  ✓ Rolled back: {}", id));
-					}
-					ctx.success(&format!(
-						"Rolled back to {}:{} ({} migration(s) unapplied)",
+				// Reconciled replacement targets use the same cross-app rollback
+				// plan as ordinary migrations, including pending and nested squashes.
+				if target_name == "zero"
+					|| applied_for_app
+						.iter()
+						.any(|record| record.name == target_name)
+				{
+					let reconciled_applied: Vec<_> = applied
+						.iter()
+						.filter(|record| {
+							!stale_record_names
+								.contains(&(record.app.as_str(), record.name.as_str()))
+						})
+						.cloned()
+						.collect();
+					let target_plan = migration_target_plan(
 						app,
-						target_name,
-						result.applied.len()
-					));
-					return Ok(());
+						&target_name,
+						&reconciled_applied,
+						&all_migrations,
+					)?;
+					return execute_migration_target_plan(
+						target_plan,
+						&all_migrations,
+						is_plan,
+						is_fake,
+						&recorder,
+						connection,
+						ctx,
+					)
+					.await;
 				}
 
 				// Branch (c): target is NOT currently applied -> forward to target.

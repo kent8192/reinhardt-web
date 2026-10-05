@@ -1581,9 +1581,9 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 	{
 		let environment_url = env::var("DATABASE_URL").ok();
 		let url_override = database.as_deref().or(environment_url.as_deref());
-		let (_prepared, selected_url) =
+		let (prepared, selected_url) =
 			prepare_migration_database(&provider, "migrate", "default", url_override).await?;
-		return execute_migrate(MigrateParams {
+		let mut ctx = migrate_context_from_params(MigrateParams {
 			app_label: app_label.clone(),
 			migration_name: migration_name.clone(),
 			database: Some(selected_url),
@@ -1592,8 +1592,16 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 			plan: *plan,
 			migrations_dir: migrations_dir.clone(),
 			verbosity,
-		})
-		.await;
+		});
+		crate::showmigrations::attach_migration_settings(
+			&mut ctx,
+			prepared.settings::<MigrationSettings>(None)?.as_ref(),
+		);
+		crate::showmigrations::attach_core_migration_metadata(
+			&mut ctx,
+			prepared.settings::<CoreMigrationMetadata>(None)?.as_ref(),
+		);
+		return MigrateCommand.execute(&ctx).await.map_err(Into::into);
 	}
 	#[cfg(feature = "migrations")]
 	if let Commands::Showmigrations {

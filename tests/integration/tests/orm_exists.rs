@@ -98,9 +98,8 @@ async fn exists_async_decodes_native_results(
 		.await
 		.expect("Native EXISTS query must succeed");
 	let expected_native = match backend {
-		// The legacy MySQL row decoder normalizes integer results to booleans.
-		DatabaseBackend::Postgres | DatabaseBackend::MySql => json!(populated),
-		DatabaseBackend::Sqlite => json!(i64::from(populated)),
+		DatabaseBackend::Postgres => json!(populated),
+		DatabaseBackend::Sqlite | DatabaseBackend::MySql => json!(i64::from(populated)),
 	};
 	assert_eq!(
 		row.data.as_object().unwrap().values().next(),

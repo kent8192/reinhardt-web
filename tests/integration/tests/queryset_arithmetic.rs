@@ -19,7 +19,7 @@ use reinhardt_query::value::Value;
 use reinhardt_test::fixtures::{mysql_container, postgres_container};
 use rstest::*;
 use serde::{Deserialize, Serialize};
-use sqlx::any::AnyPoolOptions;
+use sqlx::{Row, any::AnyPoolOptions};
 use testcontainers::{ContainerAsync, GenericImage};
 
 #[reinhardt::model(
@@ -158,7 +158,24 @@ async fn assert_native_arithmetic(database: &ArithmeticDatabase, backend: DbBack
 		let annotated = QuerySet::<Item>::new()
 			.annotate(expression.label("identity").unwrap())
 			.unwrap();
-		assert_eq!(reader.list(&annotated).await.unwrap(), vec![Item { id: 1 }]);
+		// Annotations are row projections; Session::list accepts model-shaped queries.
+		let statement = annotated.select_related_query().unwrap();
+		let (sql, values) = match backend {
+			DbBackend::Postgres => PostgresQueryBuilder.build_select(&statement),
+			DbBackend::Mysql => MySqlQueryBuilder.build_select(&statement),
+			DbBackend::Sqlite => SqliteQueryBuilder.build_select(&statement),
+		};
+		let mut query = sqlx::query(&sql);
+		for value in values.0 {
+			let Value::BigInt(Some(value)) = value else {
+				panic!("typed arithmetic binds must remain i64")
+			};
+			query = query.bind(value);
+		}
+		let rows = query.fetch_all(database.pool.as_ref()).await.unwrap();
+		assert_eq!(rows.len(), 1);
+		assert_eq!(rows[0].get::<i64, _>("id"), 1);
+		assert_eq!(rows[0].get::<i64, _>("identity"), 1);
 	}
 
 	for (expression, operands) in [
