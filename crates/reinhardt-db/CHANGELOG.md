@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Preserve NULL element positions when decoding supported PostgreSQL scalar
+  arrays, including the distinction between SQL NULL and empty arrays.
 - Preserve unsigned composite primary keys instead of wrapping to a signed key
   or clamping to `i64::MAX`. PostgreSQL and SQLite reject overflow with a
   redacted type error before execution; MySQL binds the original `u64`.
@@ -22,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Operation` gains `Sequence` and `Identity` variants. Exhaustive downstream matches need corresponding arms.
 - `ProjectState`, catalog/schema structs, and column schema payloads gain metadata fields. Prefer constructors/builders over struct literals. Legacy column JSON/source remains readable.
+- `QueryValue` adds seven `Nullable*Array(Vec<Option<T>>)` variants.
+  Update exhaustive matches to handle the new variants. Existing non-nullable
+  array constructors and payload types are unchanged.
 
 - Add `QueryValue::Uint(u64)` for unsigned query parameters, including
   `LIMIT`/`OFFSET`. Exhaustive matches must handle the new variant. MySQL

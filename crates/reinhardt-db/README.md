@@ -8,6 +8,51 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+### PostgreSQL arrays with NULL elements
+
+PostgreSQL row decoding retains NULL element positions in text (including
+`varchar` and `char`), integer, bigint, boolean, real, double precision, and UUID
+arrays. Arrays containing NULL elements use the corresponding
+`QueryValue::NullableStringArray`, `NullableIntArray`, `NullableBigIntArray`,
+`NullableBoolArray`, `NullableFloatArray`, `NullableDoubleArray`, or
+`NullableUuidArray` variant with a `Vec<Option<T>>` payload. Arrays without NULL
+elements, including empty arrays, retain the existing `StringArray`, `IntArray`,
+and other non-nullable variants. A SQL NULL for the entire array is
+`QueryValue::Null`.
+
+`QueryRow` preserves these positions when deserializing into `Vec<Option<T>>`.
+Use `Option<Vec<Option<T>>>` when the entire column can also be SQL NULL.
+Rebinding a nullable array on PostgreSQL retains its scalar element type; MySQL
+and SQLite use the existing JSON array encoding with JSON null elements.
+These JSON backends reject non-finite float/double array elements with a type
+error before binding, for both legacy and nullable array carriers.
+
+Derived ORM models support `Vec<Option<T>>` fields for all seven scalar types,
+and `Option<Vec<Option<T>>>` when the entire column can be SQL NULL. Whole-column
+`None` is emitted as a SQL `NULL` literal and consumes no bind parameter. Manager
+writes, typed QuerySet filters, and `get_or_create` / `update_or_create` share
+native array conversion, including arrays whose elements are all NULL. Empty
+arrays and arrays without NULL elements retain their existing typed carriers.
+
+PostgreSQL `bulk_update` and `bulk_update_with_conn` cast array CASE literals to
+their declared scalar element type, including all-NULL and empty arrays. Special
+floating-point elements use quoted typed literals to retain `NaN` and infinity.
+
+Serde serialization of `NullableFloatArray` and `NullableDoubleArray` rejects
+non-finite elements with an error, preventing JSON from silently changing
+`Some(NaN)` or `Some(infinity)` into `None`. Finite values and NULL elements retain
+their existing serialized representation.
+
+The `QueryRow` JSON bridge represents non-finite floating-point array elements
+(`NaN` and positive/negative infinity) as strings. Floating-point model hydration
+rejects these with a serialization error, and `QueryRow::get` returns `None`,
+instead of silently turning non-NULL values into NULL elements. Native backend
+rows retain the original PostgreSQL floating-point values.
+
+The additional public `QueryValue` variants require downstream exhaustive
+matches to handle the seven `Nullable*Array` variants. Existing array
+constructors and their payload types remain available.
+
 ## Features
 
 ### Implemented ✓
