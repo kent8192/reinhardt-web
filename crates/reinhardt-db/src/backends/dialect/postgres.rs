@@ -28,6 +28,29 @@ fn vector_support_disabled_error() -> DatabaseError {
 	)
 }
 
+// A NULL has no native Rust payload type. OID 0 leaves its PostgreSQL type
+// unspecified in Parse so the server can infer it from SQL context (#6631).
+struct PgNull;
+
+impl sqlx::Type<Postgres> for PgNull {
+	fn type_info() -> sqlx::postgres::PgTypeInfo {
+		sqlx::postgres::PgTypeInfo::with_oid(sqlx::postgres::types::Oid(0))
+	}
+}
+
+impl<'q> sqlx::Encode<'q, Postgres> for PgNull {
+	fn encode_by_ref(
+		&self,
+		_buf: &mut sqlx::postgres::PgArgumentBuffer,
+	) -> std::result::Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+		Ok(sqlx::encode::IsNull::Yes)
+	}
+
+	fn size_hint(&self) -> usize {
+		0
+	}
+}
+
 /// PostgreSQL database backend
 pub struct PostgresBackend {
 	pool: Arc<PgPool>,
@@ -51,7 +74,7 @@ impl PostgresBackend {
 		value: &'q QueryValue,
 	) -> Result<sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>> {
 		Ok(match value {
-			QueryValue::Null => query.bind(None::<i32>),
+			QueryValue::Null => query.bind(PgNull),
 			QueryValue::Bool(b) => query.bind(b),
 			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
@@ -454,7 +477,7 @@ impl PgTransactionExecutor {
 		value: &'q QueryValue,
 	) -> Result<sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>> {
 		Ok(match value {
-			QueryValue::Null => query.bind(None::<i32>),
+			QueryValue::Null => query.bind(PgNull),
 			QueryValue::Bool(b) => query.bind(b),
 			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
@@ -1171,11 +1194,11 @@ mod tests {
 mod statement_cache_tests {
 	use super::{PostgresBackend, uncached_postgres_query};
 	use crate::backends::{backend::DatabaseBackend, types::QueryValue};
-	use futures::StreamExt;
+	use futures::{StreamExt, TryStreamExt};
 	use rstest::{fixture, rstest};
 	use sqlx::postgres::PgPoolOptions;
 	use sqlx::{Arguments, Connection, Row};
-	use testcontainers::{ContainerAsync, runners::AsyncRunner};
+	use testcontainers::{ContainerAsync, ImageExt, runners::AsyncRunner};
 	use testcontainers_modules::postgres::Postgres;
 
 	struct PostgresFixture {
@@ -1186,7 +1209,11 @@ mod statement_cache_tests {
 
 	#[fixture]
 	async fn postgres_fixture() -> PostgresFixture {
-		let container = Postgres::default().start().await.unwrap();
+		let container = Postgres::default()
+			.with_tag("17-alpine")
+			.start()
+			.await
+			.unwrap();
 		let url = format!(
 			"postgres://postgres:postgres@{}:{}/postgres",
 			container.get_host().await.unwrap(),
@@ -1203,9 +1230,298 @@ mod statement_cache_tests {
 	}
 
 	#[rstest]
+	#[case::select("SELECT $1, $2, $3, $4")]
+	#[case::values("VALUES ($1, $2, $3, $4)")]
+	#[tokio::test]
+	async fn pool_null_parameters_infer_insert_types(
+		#[future] postgres_fixture: PostgresFixture,
+		#[case] values_clause: &str,
+	) {
+		// Arrange
+		let fixture = postgres_fixture.await;
+		let backend = PostgresBackend::new(fixture.pool.clone());
+		backend
+			.execute(
+				"CREATE TABLE nullable_parameters (expires_at TIMESTAMPTZ, request_id UUID, marker BIGINT, label TEXT)",
+				vec![],
+			)
+			.await
+			.unwrap();
+		let timestamp = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+		let request_id = uuid::Uuid::from_u128(42);
+		let label = "literal $1, 'quotes', and SQL NULL";
+		let sql = format!(
+			"INSERT INTO nullable_parameters (expires_at, request_id, marker, label) {values_clause}"
+		);
+
+		// Act: reuse identical SQL with NULL, native values, and NULL again.
+		for (marker, expires_at, request_id) in [
+			(1, QueryValue::Null, QueryValue::Null),
+			(
+				2,
+				QueryValue::Timestamp(timestamp),
+				QueryValue::Uuid(request_id),
+			),
+			(3, QueryValue::Null, QueryValue::Null),
+		] {
+			let result = backend
+				.execute(
+					&sql,
+					vec![
+						expires_at,
+						request_id,
+						QueryValue::Int(marker),
+						label.into(),
+					],
+				)
+				.await
+				.unwrap();
+			assert_eq!(result.rows_affected, 1);
+		}
+
+		// Assert
+		let rows = backend
+			.fetch_all("SELECT * FROM nullable_parameters ORDER BY marker", vec![])
+			.await
+			.unwrap();
+		assert_eq!(rows.len(), 3);
+		for (index, row) in rows.iter().enumerate() {
+			assert_eq!(row.get::<i64>("marker").unwrap(), index as i64 + 1);
+			assert_eq!(row.get::<String>("label").unwrap(), label);
+			let (expires_at, request_id) = if index == 1 {
+				(
+					QueryValue::Timestamp(timestamp),
+					QueryValue::Uuid(request_id),
+				)
+			} else {
+				(QueryValue::Null, QueryValue::Null)
+			};
+			assert_eq!(row.data.get("expires_at"), Some(&expires_at));
+			assert_eq!(row.data.get("request_id"), Some(&request_id));
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn transaction_null_parameters_infer_temp_table_types(
+		#[future] postgres_fixture: PostgresFixture,
+	) {
+		// Arrange
+		let fixture = postgres_fixture.await;
+		let backend = PostgresBackend::new(fixture.pool.clone());
+		let mut tx = backend.begin().await.unwrap();
+		tx.execute(
+			"CREATE TEMP TABLE nullable_parameter_repro (expires_at TIMESTAMPTZ, request_id UUID) ON COMMIT DROP",
+			vec![],
+		)
+		.await
+		.unwrap();
+
+		// Act: no casts or SQL NULL literals are needed for either parameter.
+		let result = tx
+			.execute(
+				"INSERT INTO nullable_parameter_repro (expires_at, request_id) SELECT $1, $2",
+				vec![QueryValue::Null, QueryValue::Null],
+			)
+			.await
+			.unwrap();
+
+		// Assert: the values belong to this transaction's physical connection.
+		assert_eq!(result.rows_affected, 1);
+		let row = tx
+			.fetch_one("SELECT * FROM nullable_parameter_repro", vec![])
+			.await
+			.unwrap();
+		assert_eq!(row.data.get("expires_at"), Some(&QueryValue::Null));
+		assert_eq!(row.data.get("request_id"), Some(&QueryValue::Null));
+		tx.commit().await.unwrap();
+		let row = backend
+			.fetch_one(
+				"SELECT to_regclass('pg_temp.nullable_parameter_repro') IS NULL AS dropped",
+				vec![],
+			)
+			.await
+			.unwrap();
+		assert!(row.get::<bool>("dropped").unwrap());
+	}
+
+	#[rstest]
+	#[case::commit(true)]
+	#[case::rollback(false)]
+	#[tokio::test]
+	async fn transaction_null_parameters_preserve_atomic_writes(
+		#[future] postgres_fixture: PostgresFixture,
+		#[case] commit: bool,
+	) {
+		// Arrange
+		let fixture = postgres_fixture.await;
+		let backend = PostgresBackend::new(fixture.pool.clone());
+		backend
+			.execute(
+				"CREATE TABLE nullable_parameters (expires_at TIMESTAMPTZ, request_id UUID)",
+				vec![],
+			)
+			.await
+			.unwrap();
+		let mut tx = backend.begin().await.unwrap();
+
+		// Act
+		let result = tx
+			.execute(
+				"INSERT INTO nullable_parameters (expires_at, request_id) SELECT $1, $2",
+				vec![QueryValue::Null, QueryValue::Null],
+			)
+			.await
+			.unwrap();
+		assert_eq!(result.rows_affected, 1);
+		if commit {
+			tx.commit().await.unwrap();
+		} else {
+			tx.rollback().await.unwrap();
+		}
+
+		// Assert
+		let row = backend
+			.fetch_one("SELECT COUNT(*) AS total FROM nullable_parameters", vec![])
+			.await
+			.unwrap();
+		assert_eq!(row.get::<i64>("total").unwrap(), i64::from(commit));
+	}
+
+	#[rstest]
+	#[case::pool_one(false, "one")]
+	#[case::pool_all(false, "all")]
+	#[case::pool_optional(false, "optional")]
+	#[case::pool_stream(false, "stream")]
+	#[case::transaction_one(true, "one")]
+	#[case::transaction_all(true, "all")]
+	#[case::transaction_optional(true, "optional")]
+	#[case::transaction_stream(true, "stream")]
+	#[tokio::test]
+	async fn null_parameters_work_in_all_fetch_methods(
+		#[future] postgres_fixture: PostgresFixture,
+		#[case] transactional: bool,
+		#[case] method: &str,
+	) {
+		// Arrange
+		let fixture = postgres_fixture.await;
+		let backend = PostgresBackend::new(fixture.pool.clone());
+		let sql = "SELECT $1::TIMESTAMPTZ AS expires_at, $2::UUID AS request_id, $3::BOOLEAN AS enabled, $4::TEXT AS label, $5::BYTEA AS payload, $6::NUMERIC AS amount, $7::BIGINT AS marker";
+		let params = vec![
+			QueryValue::Null,
+			QueryValue::Null,
+			QueryValue::Null,
+			QueryValue::Null,
+			QueryValue::Null,
+			QueryValue::Null,
+			QueryValue::Int(1_i64 << 40),
+		];
+
+		// Act
+		let rows = if transactional {
+			let mut tx = backend.begin().await.unwrap();
+			let rows = match method {
+				"one" => vec![tx.fetch_one(sql, params).await.unwrap()],
+				"all" => tx.fetch_all(sql, params).await.unwrap(),
+				"stream" => tx
+					.fetch_stream(sql.into(), params, 1)
+					.unwrap()
+					.try_collect::<Vec<_>>()
+					.await
+					.unwrap(),
+				"optional" => tx
+					.fetch_optional(sql, params)
+					.await
+					.unwrap()
+					.into_iter()
+					.collect(),
+				_ => unreachable!("unknown fetch method"),
+			};
+			tx.rollback().await.unwrap();
+			rows
+		} else {
+			match method {
+				"one" => vec![backend.fetch_one(sql, params).await.unwrap()],
+				"all" => backend.fetch_all(sql, params).await.unwrap(),
+				"stream" => backend
+					.fetch_stream(sql.into(), params, 1)
+					.unwrap()
+					.try_collect::<Vec<_>>()
+					.await
+					.unwrap(),
+				"optional" => backend
+					.fetch_optional(sql, params)
+					.await
+					.unwrap()
+					.into_iter()
+					.collect(),
+				_ => unreachable!("unknown fetch method"),
+			}
+		};
+
+		// Assert
+		assert_eq!(rows.len(), 1);
+		assert_eq!(rows[0].data.len(), 7);
+		for column in [
+			"expires_at",
+			"request_id",
+			"enabled",
+			"label",
+			"payload",
+			"amount",
+		] {
+			assert_eq!(rows[0].data.get(column), Some(&QueryValue::Null));
+		}
+		assert_eq!(rows[0].get::<i64>("marker").unwrap(), 1_i64 << 40);
+	}
+
+	#[rstest]
+	#[case::pool(false)]
+	#[case::transaction(true)]
+	#[tokio::test]
+	async fn null_parameters_require_type_context(
+		#[future] postgres_fixture: PostgresFixture,
+		#[case] transactional: bool,
+	) {
+		// Arrange
+		let fixture = postgres_fixture.await;
+		let backend = PostgresBackend::new(fixture.pool.clone());
+		let sql = "SELECT $1 IS NULL AS missing";
+
+		// Act
+		let error = if transactional {
+			let mut tx = backend.begin().await.unwrap();
+			let error = tx.fetch_one(sql, vec![QueryValue::Null]).await.unwrap_err();
+			tx.rollback().await.unwrap();
+			error
+		} else {
+			backend
+				.fetch_one(sql, vec![QueryValue::Null])
+				.await
+				.unwrap_err()
+		};
+
+		// Assert: the API does not silently choose an integer type for ambiguous NULL.
+		let error = error.database_error().unwrap();
+		assert_eq!(error.code(), Some("42P18"));
+		assert_eq!(
+			error.message(),
+			"could not determine data type of parameter $1"
+		);
+		let row = backend
+			.fetch_one(
+				"SELECT $1::INTEGER IS NULL AS missing",
+				vec![QueryValue::Null],
+			)
+			.await
+			.unwrap();
+		assert!(row.get::<bool>("missing").unwrap());
+	}
+
+	#[rstest]
 	#[tokio::test]
 	async fn pool_query_accepts_int8_after_null(#[future] postgres_fixture: PostgresFixture) {
-		// Arrange: NULL is encoded with INT4, whereas integer values use INT8.
+		// Arrange: NULL infers BIGINT from SQL, while integer values use native INT8.
 		let fixture = postgres_fixture.await;
 		let backend = PostgresBackend::new(fixture.pool.clone());
 		let sql = "SELECT $1::BIGINT AS cached_width";
