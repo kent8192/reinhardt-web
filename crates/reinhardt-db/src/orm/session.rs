@@ -14,9 +14,13 @@
 //! This module provides a Session object that manages database operations with automatic
 //! object tracking, identity mapping, and transaction management.
 //!
-//! Unsigned query parameters must fit SQLx Any's signed 64-bit representation.
-//! Out-of-range values are rejected before execution, and conversion errors omit
-//! parameter values.
+//! Session binds `reinhardt_query::Value::BigUnsigned` parameters through SQLx Any's
+//! signed 64-bit representation. Values above `i64::MAX` are rejected before
+//! execution, and these conversion errors omit parameter values.
+//!
+//! The public `FilterValue::from(u64)` conversion produces signed integers for
+//! values through `i64::MAX` and strings for larger values. Those string parameters
+//! do not pass through the `BigUnsigned` range check.
 
 use super::transaction::Transaction;
 use crate::orm::inspection::FieldInfo;
