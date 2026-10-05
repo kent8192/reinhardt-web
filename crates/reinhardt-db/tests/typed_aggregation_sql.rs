@@ -959,8 +959,8 @@ async fn terminal_aggregate_sliced_query_uses_derived_source() {
 		executor.params,
 		vec![
 			QueryValue::String("paid".to_owned()),
-			QueryValue::Int(5),
-			QueryValue::Int(10),
+			QueryValue::Uint(5),
+			QueryValue::Uint(10),
 		]
 	);
 }

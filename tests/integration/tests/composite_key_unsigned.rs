@@ -191,7 +191,7 @@ async fn assert_signed_lookup<E: OrmExecutor>(executor: &mut E, value: PkValue, 
 	);
 }
 
-async fn assert_rejected<E: OrmExecutor>(executor: &mut E, value: u64, backend: &str) {
+async fn assert_rejected<E: OrmExecutor>(executor: &mut E, value: u64, expected_message: &str) {
 	// Act
 	let error = QuerySet::<SignedItem>::new()
 		.get_composite_with_db(executor, &primary_key(PkValue::Uint(value)))
@@ -204,9 +204,7 @@ async fn assert_rejected<E: OrmExecutor>(executor: &mut E, value: u64, backend: 
 			.database_error()
 			.expect("structured database error")
 			.message(),
-		format!(
-			"Unsigned integer parameter exceeds the signed 64-bit range supported by {backend}"
-		),
+		expected_message,
 	);
 }
 
@@ -221,19 +219,24 @@ async fn sqlite_unsigned_overflow_never_matches_a_signed_key(
 ) {
 	// Arrange
 	let mut database = sqlite_database.await;
+	let expected_message = if transaction {
+		"Unsigned integer parameter exceeds the signed 64-bit range supported by SQLite"
+	} else {
+		"cannot encode BigUnsigned argument 1 for sqlite: unsigned integer exceeds signed 64-bit range"
+	};
 
 	// Act
 	if transaction {
 		database
 			.connection
 			.atomic(async |executor| {
-				assert_rejected(executor, value, "SQLite").await;
+				assert_rejected(executor, value, expected_message).await;
 				Ok::<_, reinhardt_core::exception::Error>(())
 			})
 			.await
 			.expect("checked rejection leaves the transaction usable");
 	} else {
-		assert_rejected(&mut database.connection, value, "SQLite").await;
+		assert_rejected(&mut database.connection, value, expected_message).await;
 	}
 }
 
@@ -298,11 +301,16 @@ async fn postgres_unsigned_keys_are_checked_before_execution(
 		.await
 		.expect("native PostgreSQL connection");
 	let mut database = prepare_database(owner, false).await;
+	let expected_message = if transaction {
+		"Unsigned integer parameter exceeds the signed 64-bit range supported by PostgreSQL"
+	} else {
+		"cannot encode BigUnsigned argument 1 for postgres: unsigned integer exceeds signed 64-bit range"
+	};
 
 	// Act
-	async fn check(executor: &mut impl OrmExecutor) {
+	async fn check(executor: &mut impl OrmExecutor, expected_message: &str) {
 		for value in [i64::MAX as u64 + 1, u64::MAX] {
-			assert_rejected(executor, value, "PostgreSQL").await;
+			assert_rejected(executor, value, expected_message).await;
 		}
 		for value in [0, 42, i64::MAX] {
 			assert_signed_lookup(executor, PkValue::Uint(value as u64), value).await;
@@ -312,13 +320,13 @@ async fn postgres_unsigned_keys_are_checked_before_execution(
 		database
 			.connection
 			.atomic(async |executor| {
-				check(executor).await;
+				check(executor, expected_message).await;
 				Ok::<_, reinhardt_core::exception::Error>(())
 			})
 			.await
 			.expect("bind rejection does not abort the PostgreSQL transaction");
 	} else {
-		check(&mut database.connection).await;
+		check(&mut database.connection, expected_message).await;
 	}
 }
 

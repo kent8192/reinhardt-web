@@ -1753,9 +1753,9 @@ fn queryset_write_expressions_resolve_model_fields_without_rewriting_explicit_re
 		.expect("expression updates should compile");
 	assert_eq!(
 		expression_sql,
-		"UPDATE \"articles\" SET \"article_title\" = COALESCE(\"article_title\", 'fallback') WHERE \"article_title\" = $1"
+		"UPDATE \"articles\" SET \"article_title\" = COALESCE(\"article_title\", $1) WHERE \"article_title\" = $2"
 	);
-	assert_eq!(expression_params, vec!["updated"]);
+	assert_eq!(expression_params, vec!["fallback", "updated"]);
 
 	let explicit_physical_queryset = QuerySet::<Article>::new().filter(Filter::new(
 		"article_title",
