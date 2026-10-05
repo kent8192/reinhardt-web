@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Native PostgreSQL NULL parameters infer their type from SQL context instead
+  of declaring INT4, allowing nullable TIMESTAMPTZ and UUID inserts (#6631).
+
 - Preserve targetless SQLite `ON CONFLICT DO UPDATE` in value and SELECT INSERT
   builders instead of silently issuing an ordinary INSERT. Targetless updates
   require SQLite 3.35.0 or later. Preserve `RETURNING` after the conflict action
@@ -27,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
+- `QueryValue::Null` no longer declares an INT4 PostgreSQL parameter. SQL that
+  relied on that implicit type may need an explicit cast. For example,
+  `SELECT $1 IS NULL` now returns SQLSTATE `42P18` when passed a NULL parameter.
+
 - `Operation` gains `Sequence` and `Identity` variants. Exhaustive downstream matches need corresponding arms.
 - `ProjectState`, catalog/schema structs, and column schema payloads gain metadata fields. Prefer constructors/builders over struct literals. Legacy column JSON/source remains readable.
 - `QueryValue` adds seven `Nullable*Array(Vec<Option<T>>)` variants.
@@ -38,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   result values above `i64::MAX` now use `Uint` instead of decimal text.
 
 ### Migration guide
+
+For native PostgreSQL queries with NULL parameters, provide a type through a
+destination column, a typed expression, or a cast. Change `SELECT $1 IS NULL`
+to `SELECT $1::INTEGER IS NULL` to preserve its previous integer context, or
+cast to the intended type, such as `TIMESTAMPTZ` or `UUID`. This behavior takes
+effect in the next 0.4.0 development release; no schema or data migration is
+required. Queries whose destination columns already supply the type need no
+changes.
 
 Custom executors must bind unsigned values with their native driver codec or
 check conversion to the backend's signed type and return
