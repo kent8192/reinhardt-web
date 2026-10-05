@@ -1912,6 +1912,112 @@ mod tests {
 	use std::fmt;
 	use uuid::Uuid;
 
+	#[cfg(feature = "sqlite")]
+	struct GlobalConnectionGuard {
+		previous: Option<super::DatabaseConnection>,
+	}
+
+	#[cfg(feature = "sqlite")]
+	impl Drop for GlobalConnectionGuard {
+		fn drop(&mut self) {
+			// Named serial tests release every connection-state read before teardown.
+			*super::DB.get().unwrap().try_write().unwrap() = self.previous.take();
+		}
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest::fixture]
+	async fn global_database() -> (GlobalConnectionGuard, super::DatabaseConnection) {
+		let connection = super::DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.unwrap();
+		let state = super::DB.get_or_init(|| std::sync::Arc::new(tokio::sync::RwLock::new(None)));
+		let previous = state.write().await.replace(connection.clone());
+		(GlobalConnectionGuard { previous }, connection)
+	}
+
+	#[cfg(all(feature = "sqlite", target_pointer_width = "64"))]
+	#[rstest]
+	#[serial_test::serial(orm_global_database)]
+	#[tokio::test]
+	async fn queryset_default_execution_rejects_overflow_before_sql(
+		#[future] global_database: (GlobalConnectionGuard, super::DatabaseConnection),
+		#[values("all", "first", "get")] method: &str,
+	) {
+		// Arrange: no table exists, so an SQL error would expose skipped validation.
+		let (_guard, _connection) = global_database.await;
+		let queryset = super::QuerySet::<TestUser>::new().limit(usize::MAX);
+
+		// Act
+		let result = match method {
+			"all" => queryset.all().await.map(|_| ()),
+			"first" => queryset.first().await.map(|_| ()),
+			"get" => queryset.get().await.map(|_| ()),
+			_ => panic!("unknown queryset method"),
+		};
+
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Type conversion error: cannot encode BigUnsigned argument 1 for sqlite: unsigned integer exceeds signed 64-bit range"
+		);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[serial_test::serial(orm_global_database)]
+	#[tokio::test]
+	async fn queryset_default_execution_preserves_bound_strings(
+		#[future] global_database: (GlobalConnectionGuard, super::DatabaseConnection),
+		#[values("all", "first", "get")] method: &str,
+	) {
+		use crate::orm::{Filter, FilterOperator};
+		use reinhardt_query::{
+			ColumnDef, Query, QueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
+		};
+
+		// Arrange
+		let (_guard, connection) = global_database.await;
+		let create = Query::create_table()
+			.table(TestUser::table_name())
+			.col(ColumnDef::new("id").integer().primary_key(true))
+			.col(ColumnDef::new("name").text())
+			.col(ColumnDef::new("email").text())
+			.to_owned();
+		let (sql, _) = SqliteQueryBuilder.build_create_table(&create);
+		connection.execute(&sql, vec![]).await.unwrap();
+		let name = "quoted 'name',slash\\日本語";
+		let (sql, values) = Query::insert()
+			.into_table(TestUser::table_name())
+			.columns(["id", "name", "email"])
+			.values_panic([
+				reinhardt_query::Value::from(7),
+				name.into(),
+				"test@example.com".into(),
+			])
+			.build(SqliteQueryBuilder);
+		connection.execute_generated(&sql, values).await.unwrap();
+		let queryset = super::QuerySet::<TestUser>::new().filter(Filter::new(
+			"name",
+			FilterOperator::Eq,
+			FilterValue::String(name.to_owned()),
+		));
+
+		// Act
+		let users = match method {
+			"all" => queryset.all().await.unwrap(),
+			"first" => vec![queryset.first().await.unwrap().unwrap()],
+			"get" => vec![queryset.get().await.unwrap()],
+			_ => panic!("unknown queryset method"),
+		};
+
+		// Assert
+		assert_eq!(users.len(), 1);
+		assert_eq!(users[0].id, Some(7));
+		assert_eq!(users[0].name, name);
+		assert_eq!(users[0].email, "test@example.com");
+	}
+
 	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 	struct TestUser {
 		id: Option<i64>,
