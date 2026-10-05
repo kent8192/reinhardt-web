@@ -13,6 +13,10 @@
 //!
 //! This module provides a Session object that manages database operations with automatic
 //! object tracking, identity mapping, and unit-of-work persistence.
+//!
+//! Unsigned query parameters must fit SQLx Any's signed 64-bit representation.
+//! Out-of-range values are rejected before execution, and conversion errors omit
+//! parameter values.
 
 use crate::backends::types::{DatabaseType, RowLockCapabilities};
 use crate::orm::FieldCodecError;
@@ -2226,9 +2230,9 @@ fn bind_reinhardt_query_value<'a>(
 		RValue::Unsigned(Some(i)) => query.bind(*i as i64),
 		RValue::BigUnsigned(Some(i)) => {
 			let value = i64::try_from(*i).map_err(|_| {
-				SessionError::DatabaseError(format!(
-					"unsigned query parameter {i} exceeds sqlx::Any's i64 range"
-				))
+				SessionError::DatabaseError(
+					"unsigned query parameter exceeds sqlx::Any's i64 range".to_owned(),
+				)
 			})?;
 			query.bind(value)
 		}
@@ -3955,46 +3959,64 @@ mod tests {
 	// ──────────────────────────────────────────────────────────────
 
 	#[rstest]
-	fn test_bind_bigunsigned_overflow_clamps_to_i64_max() {
+	#[case::zero(0, 0)]
+	#[case::ordinary(42, 42)]
+	#[case::above_i32_max((i32::MAX as u64) + 1, i64::from(i32::MAX) + 1)]
+	#[case::at_i64_max(i64::MAX as u64, i64::MAX)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn bind_reinhardt_query_value_preserves_unsigned_values(
+		#[case] value: u64,
+		#[case] expected: i64,
+	) {
 		// Arrange
-		let overflow_value: u64 = u64::MAX; // exceeds i64::MAX
-		let result = i64::try_from(overflow_value).unwrap_or_else(|_| {
-			// Simulate the same fallback logic used in bind_reinhardt_query_value
-			i64::MAX
-		});
+		let pool = create_test_pool().await;
+		let (sql, values) = RQuery::select()
+			.expr_as(Expr::val(RValue::BigUnsigned(Some(value))), "value")
+			.build(SqliteQueryBuilder);
+
+		// Act
+		let query =
+			bind_reinhardt_query_value(sqlx::query(&sql), &values.0[0], DbBackend::Sqlite).unwrap();
+		let row = query.fetch_one(pool.as_ref()).await.unwrap();
 
 		// Assert
-		assert_eq!(result, i64::MAX);
+		assert_eq!(row.try_get::<i64, _>("value").unwrap(), expected);
 	}
 
 	#[rstest]
-	fn test_bind_bigunsigned_within_range_does_not_clamp() {
+	#[case::above_i64_max((i64::MAX as u64) + 1)]
+	#[case::at_u64_max(u64::MAX)]
+	fn bind_reinhardt_query_value_rejects_unsigned_overflow_without_payload(
+		#[case] value: u64,
+		#[values(DbBackend::Postgres, DbBackend::Mysql, DbBackend::Sqlite)] backend: DbBackend,
+	) {
 		// Arrange
-		let value: u64 = 42;
-		let result = i64::try_from(value).unwrap_or_else(|_| i64::MAX);
+		let statement = RQuery::select()
+			.expr(Expr::val(RValue::BigUnsigned(Some(value))))
+			.to_owned();
+		let (sql, values) = match backend {
+			DbBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DbBackend::Mysql => statement.build(MySqlQueryBuilder),
+			DbBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Act
+		let error = bind_reinhardt_query_value(sqlx::query(&sql), &values.0[0], backend)
+			.err()
+			.expect("out-of-range unsigned values must fail before query execution");
 
 		// Assert
-		assert_eq!(result, 42);
-	}
-
-	#[rstest]
-	fn test_bind_bigunsigned_at_i64_max_boundary() {
-		// Arrange
-		let value: u64 = i64::MAX as u64;
-		let result = i64::try_from(value).unwrap_or_else(|_| i64::MAX);
-
-		// Assert
-		assert_eq!(result, i64::MAX);
-	}
-
-	#[rstest]
-	fn test_bind_bigunsigned_just_above_i64_max_clamps() {
-		// Arrange
-		let value: u64 = (i64::MAX as u64) + 1;
-		let result = i64::try_from(value).unwrap_or_else(|_| i64::MAX);
-
-		// Assert
-		assert_eq!(result, i64::MAX);
+		assert_eq!(
+			error,
+			SessionError::DatabaseError(
+				"unsigned query parameter exceeds sqlx::Any's i64 range".to_owned()
+			)
+		);
+		assert_eq!(
+			error.to_string(),
+			"Database error: unsigned query parameter exceeds sqlx::Any's i64 range"
+		);
 	}
 
 	#[rstest]
