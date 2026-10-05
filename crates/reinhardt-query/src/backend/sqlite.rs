@@ -2,7 +2,7 @@
 //!
 //! This module implements the SQL generation backend for SQLite.
 
-use super::{QueryBuilder, SqlWriter};
+use super::{QueryBuilder, SqlWriter, write_arithmetic_operand};
 use crate::{
 	expr::{Condition, SimpleExpr},
 	query::{
@@ -21,6 +21,7 @@ use crate::{
 /// This struct implements SQL generation for SQLite, using the following conventions:
 /// - Identifiers: Double quotes (`"table_name"`)
 /// - Placeholders: Question marks (`?`)
+/// - Arithmetic: Parentheses preserve nested operand precedence and associativity
 ///
 /// # Examples
 ///
@@ -206,11 +207,15 @@ impl SqliteQueryBuilder {
 					writer.push(")");
 				}
 				_ => {
-					self.write_simple_expr(writer, left);
+					write_arithmetic_operand(writer, left, *op, false, &["--"], |w, expr| {
+						self.write_simple_expr(w, expr);
+					});
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr(writer, right);
+					write_arithmetic_operand(writer, right, *op, true, &["--"], |w, expr| {
+						self.write_simple_expr(w, expr);
+					});
 				}
 			},
 			SimpleExpr::Unary(op, expr) => {

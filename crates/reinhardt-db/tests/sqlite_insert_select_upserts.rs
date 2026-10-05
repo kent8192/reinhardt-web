@@ -104,17 +104,18 @@ async fn sqlite_select_upsert_preserves_source_rows(
 	#[case] affected_rows: u64,
 	#[case] expected: Vec<(i64, &str)>,
 	#[values(false, true)] from_insert_builder: bool,
+	#[values(None, Some(vec![]), Some(vec!["id".into()]))] conflict_columns: Option<Vec<String>>,
 ) {
 	// Arrange
 	let connection = sqlite_copy_source.await;
 	let source = shape.select();
 	let builder = if from_insert_builder {
 		InsertBuilder::new(connection.backend(), "target")
-			.on_conflict_do_update(Some(vec!["id".into()]), vec!["name".into()])
+			.on_conflict_do_update(conflict_columns, vec!["name".into()])
 			.from_select(vec!["id", "name"], source)
 	} else {
 		InsertFromSelectBuilder::new(connection.backend(), "target", vec!["id", "name"], source)
-			.on_conflict_do_update(Some(vec!["id".into()]), vec!["name".into()])
+			.on_conflict_do_update(conflict_columns, vec!["name".into()])
 	};
 
 	// Act
