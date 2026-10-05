@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.20...reinhardt-core@v0.3.21) - 2026-10-05
+
+### Added
+
+- *(conf)* backport deferred management settings bootstrap
+
+### Fixed
+
+- *(http)* serve streaming bodies through native endpoints
+- *(macros)* honor db_column in composite primary keys
+- *(commands)* resolve installed app paths to migration labels
+
 ## [0.3.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.16...reinhardt-core@v0.3.17) - 2026-09-13
 
 ### Fixed

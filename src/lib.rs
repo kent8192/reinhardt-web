@@ -52,6 +52,9 @@
 //! - `middleware-security` - Security headers (HSTS, XSS Protection, etc.)
 //! - `middleware-rate-limit` - Rate limiting and throttling
 //!
+//! Each middleware component feature exposes `reinhardt::middleware` on native
+//! targets without requiring the umbrella `middleware` feature.
+//!
 //! See [Cargo.toml feature definitions](https://github.com/kent8192/reinhardt/blob/main/Cargo.toml) for detailed documentation.
 //!
 //! ## Quick Example
@@ -278,7 +281,7 @@ pub mod http;
 pub mod i18n;
 #[cfg(all(feature = "mail", native))]
 pub mod mail;
-#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
+#[cfg(all(feature = "reinhardt-middleware", native))]
 pub mod middleware;
 #[cfg(all(feature = "rest", native))]
 pub mod rest;

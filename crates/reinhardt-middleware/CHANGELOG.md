@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.3.20...reinhardt-middleware@v0.3.21) - 2026-10-05
+
+### Fixed
+
+- *(http)* serve streaming bodies through native endpoints
+
 ## [0.3.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.3.14...reinhardt-middleware@v0.3.15) - 2026-09-01
 
 ### Security

@@ -28,9 +28,27 @@ mod rest;
 #[cfg(all(feature = "rest", native))]
 pub use rest::*;
 
-#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
+#[cfg(all(
+	any(
+		feature = "standard",
+		feature = "middleware",
+		feature = "middleware-cors",
+		feature = "middleware-security",
+		feature = "middleware-auth-jwt"
+	),
+	native
+))]
 mod middleware_exports;
-#[cfg(all(any(feature = "standard", feature = "middleware"), native))]
+#[cfg(all(
+	any(
+		feature = "standard",
+		feature = "middleware",
+		feature = "middleware-cors",
+		feature = "middleware-security",
+		feature = "middleware-auth-jwt"
+	),
+	native
+))]
 pub use middleware_exports::*;
 
 #[cfg(feature = "routing")]

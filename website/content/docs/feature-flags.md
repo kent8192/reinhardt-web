@@ -307,6 +307,13 @@ reinhardt-utils = { version = "LATEST_VERSION", features = ["redis-sentinel"] }
 | `middleware-rate-limit` | Rate limiting |
 | `social-auth` | Async session-backed social OAuth state; pair with `session-redis` for Redis |
 
+Each individual middleware component feature exposes its APIs through
+`reinhardt::middleware` on native targets without requiring the umbrella
+`middleware` feature. For example, `default-features = false` with
+`features = ["middleware-cors"]` enables
+`reinhardt::middleware::cors::create_cors_middleware_from_settings` and the
+`reinhardt::CorsMiddleware` re-export. Middleware remains native-only.
+
 ---
 
 ### Dependency Injection
@@ -480,8 +487,8 @@ The `tasks` feature provides background job processing with multiple backend opt
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { package = "reinhardt-web", version = "0.3.20", features = ["tasks", "streaming"] }
-reinhardt-tasks = { version = "0.3.20", features = ["kafka-backend"] }
+reinhardt = { package = "reinhardt-web", version = "0.3.21", features = ["tasks", "streaming"] }
+reinhardt-tasks = { version = "0.3.21", features = ["kafka-backend"] }
 ```
 
 For another backend, replace `kafka-backend` with `redis-backend`, `rabbitmq-backend`, `database-backend`, or `sqs-backend`.

@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.20...reinhardt-web@v0.3.21) - 2026-10-05
+
+### Added
+
+- *(conf)* backport deferred management settings bootstrap
+- *(commands)* backport scoped migration dispatch
+
+### Changed
+
+- *(testkit)* use typed truncate statements for table cleanup
+
+### Documentation
+
+- *(auth)* clarify legacy OAuth2 helper scope
+- *(auth)* clarify OAuth2 helper scope and validation
+- *(auth)* complete OAuth setup and token docs
+- *(auth)* align OAuth2 module catalog wording
+- *(commands)* clarify migration comparison scope
+- *(commands)* correct REST scaffold routing examples
+- *(auth)* remove redundant permission context link target
+
+### Fixed
+
+- *(commands)* honor makemigrations migration directory
+- *(commands)* reject non-utf8 migration directory paths
+- *(query)* preserve PostgreSQL expression grouping
+- *(macros)* honor db_column in composite primary keys
+- *(orm)* match every composite key component when updating
+- *(commands)* scope migrations to installed apps
+- *(commands)* resolve installed app paths to migration labels
+- *(commands)* preserve installed migration scope and history
+- *(migrations)* preserve scoped model move history
+- *(commands)* honor capability migration app scope
+- *(commands)* include capability contract in full preset
+- *(commands)* count global verbosity before custom dispatch
+- *(commands)* resolve conditional migration dependencies
+- *(commands)* fail checks for manual migration proposals
+- *(commands)* omit credential-bearing database URL logs
+- *(orm)* avoid RETURNING in MySQL bulk create
+- *(orm)* apply field metadata to MySQL bulk inserts
+- *(orm)* preserve MySQL datetime and JSON bindings
+- *(orm)* preserve MySQL bulk row semantics
+- *(db)* preserve wide Session integer values
+- *(views)* parse generic list filters using model field types
+
+### Maintenance
+
+- *(query)* integrate main rendering fixes
+- merge main into installed app migration fix
+- *(ui-tests)* fetch dependencies before offline consumer checks
+- *(orm)* merge main into MySQL bulk insert repair
+- *(db)* merge main into insert-select conflict fix
+
+### Testing
+
+- *(db)* align negated filter SQL expectations
+- *(db)* align standalone predicate SQL expectations
+- *(rest)* align mysql search expectations with hex escapes
+
 ## [0.3.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.19...reinhardt-web@v0.3.20) - 2026-09-25
 
 ### Documentation
