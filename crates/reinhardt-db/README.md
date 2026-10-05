@@ -383,6 +383,20 @@ let updated = User::objects()
     .await?;
 ```
 
+### Arithmetic expressions
+
+Legacy `FilterValue::Expression`, `UpdateValue::Expression`, and arithmetic
+annotations lower field references and constants through the query AST. The
+selected PostgreSQL, MySQL, or SQLite renderer quotes the columns and binds the
+constants in expression order. For example, `F("id") + 0` compares or updates the
+column value on MySQL in both strict and non-strict SQL modes. Arithmetic nested
+in CASE results uses the same operand lowering and preserves the runtime empty
+condition identities described above. Nested operations retain their parentheses,
+and COALESCE operands use the same typed lowering.
+
+Scalar CASE result values, aggregate SQL, and subquery SQL retain their
+existing SQL rendering paths.
+
 ### Execute a QuerySet with Session
 
 `Session::list` executes a model-shaped `QuerySet` through the session's

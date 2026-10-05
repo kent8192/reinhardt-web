@@ -1589,13 +1589,10 @@ fn apply_any_model_projection_for_source<T: Model>(
 		statement.expr_as(expression, Alias::new(column_name));
 	}
 	for annotation in annotations {
-		let expression = match &annotation.value {
-			crate::orm::annotation::AnnotationValue::Expression(expression) => {
-				expression.to_query_expr()
-			}
-			value => Expr::cust(value.to_sql_expr()),
-		};
-		statement.expr_as(expression, Alias::new(&annotation.alias));
+		statement.expr_as(
+			QuerySet::<T>::annotation_value_to_query_expr(&annotation.value),
+			Alias::new(&annotation.alias),
+		);
 	}
 
 	Ok(fields)
