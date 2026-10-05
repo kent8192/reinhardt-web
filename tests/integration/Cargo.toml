@@ -185,3 +185,8 @@ graphql = ["reinhardt-server/graphql"]
 msgpack = ["reinhardt-pages/msgpack"]
 client-router = ["reinhardt/client-router", "reinhardt-urls/client-router"]
 proptest = ["dep:proptest"]
+
+[[test]]
+name = "composite_key_unsigned"
+path = "tests/composite_key_unsigned.rs"
+required-features = ["mysql", "postgres", "sqlite"]

@@ -193,12 +193,11 @@ fn database_value_sql_literal(
 	value: DatabaseValue,
 	backend: DatabaseBackend,
 ) -> Result<String, FieldCodecError> {
-	if let DatabaseValue::Array {
-		element_type,
-		values,
-	} = &value
-		&& backend == DatabaseBackend::Postgres
-		&& values.is_empty()
+	if backend == DatabaseBackend::Postgres
+		&& let DatabaseValue::Array {
+			element_type,
+			values,
+		} = value
 	{
 		let element_type = match element_type {
 			DatabaseArrayType::String => "text",
@@ -209,7 +208,22 @@ fn database_value_sql_literal(
 			DatabaseArrayType::Bool => "boolean",
 			DatabaseArrayType::Uuid => "uuid",
 		};
-		return Ok(format!("ARRAY[]::{element_type}[]"));
+		let literals = values
+			.into_iter()
+			.map(|value| match value {
+				DatabaseValue::F32(value) if !value.is_finite() => {
+					postgres_special_float_literal(f64::from(value), "real")
+				}
+				DatabaseValue::F64(value) if !value.is_finite() => {
+					postgres_special_float_literal(value, "double precision")
+				}
+				value => database_value_to_query_value(value).to_sql_literal(),
+			})
+			.collect::<Vec<_>>()
+			.join(",");
+		// CASE branches need the array type, and special floats must be quoted
+		// typed literals rather than identifiers such as NaN or inf.
+		return Ok(format!("ARRAY[{literals}]::{element_type}[]"));
 	}
 
 	if backend == DatabaseBackend::Postgres || !matches!(&value, DatabaseValue::Array { .. }) {
@@ -218,6 +232,17 @@ fn database_value_sql_literal(
 
 	let json = value.into_json_value()?;
 	Ok(format!("'{}'", json.to_string().replace('\'', "''")))
+}
+
+fn postgres_special_float_literal(value: f64, sql_type: &str) -> String {
+	let literal = if value.is_nan() {
+		"NaN"
+	} else if value.is_sign_positive() {
+		"Infinity"
+	} else {
+		"-Infinity"
+	};
+	format!("'{literal}'::{sql_type}")
 }
 
 fn quote_identifier(identifier: &str, backend: DatabaseBackend) -> String {
@@ -2137,7 +2162,7 @@ impl<M: Model> Manager<M> {
 			reinhardt_query::value::Value::SmallUnsigned(None) => QueryValue::Null,
 			reinhardt_query::value::Value::Unsigned(Some(u)) => QueryValue::Int(u as i64),
 			reinhardt_query::value::Value::Unsigned(None) => QueryValue::Null,
-			reinhardt_query::value::Value::BigUnsigned(Some(u)) => QueryValue::Int(u as i64),
+			reinhardt_query::value::Value::BigUnsigned(Some(u)) => QueryValue::Uint(u),
 			reinhardt_query::value::Value::BigUnsigned(None) => QueryValue::Null,
 
 			reinhardt_query::value::Value::Float(Some(f)) => QueryValue::Float(f as f64),
@@ -2188,79 +2213,12 @@ impl<M: Model> Manager<M> {
 			}
 			#[cfg(feature = "pgvector")]
 			reinhardt_query::value::Value::Vector(None) => QueryValue::Vector(None),
-			reinhardt_query::value::Value::Array(array_type, Some(values)) => {
-				use reinhardt_query::value::Value as SeaValue;
-
-				match array_type {
-					reinhardt_query::value::ArrayType::String => QueryValue::StringArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::String(Some(value)) => Some((**value).clone()),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::Int => QueryValue::IntArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Int(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::BigInt => QueryValue::BigIntArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::BigInt(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::Bool => QueryValue::BoolArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Bool(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::Float => QueryValue::FloatArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Float(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::Double => QueryValue::DoubleArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Double(Some(value)) => Some(*value),
-								_ => None,
-							})
-							.collect(),
-					),
-					reinhardt_query::value::ArrayType::Uuid => QueryValue::UuidArray(
-						values
-							.iter()
-							.filter_map(|value| match value {
-								SeaValue::Uuid(Some(value)) => Some(**value),
-								_ => None,
-							})
-							.collect(),
-					),
-					_ => QueryValue::Json(Some(Box::new(super::execution::array_values_to_json(
-						&values,
-					)))),
-				}
+			reinhardt_query::value::Value::Array(array_type, values) => {
+				super::execution::array_value_to_query_value(
+					array_type,
+					values.map(|values| *values),
+				)
 			}
-			reinhardt_query::value::Value::Array(_, None) => QueryValue::Null,
 
 			// For complex types or unsupported types, convert to null
 			// This is a safe fallback that won't cause runtime errors
@@ -2275,6 +2233,7 @@ impl<M: Model> Manager<M> {
 			QueryValue::Bool(value) => reinhardt_query::value::Value::Bool(Some(value)),
 			QueryValue::Int32(value) => reinhardt_query::value::Value::Int(Some(value)),
 			QueryValue::Int(value) => reinhardt_query::value::Value::BigInt(Some(value)),
+			QueryValue::Uint(value) => reinhardt_query::value::Value::BigUnsigned(Some(value)),
 			QueryValue::Float(value) => reinhardt_query::value::Value::Double(Some(value)),
 			QueryValue::String(value) => {
 				reinhardt_query::value::Value::String(Some(Box::new(value)))
@@ -2318,6 +2277,27 @@ impl<M: Model> Manager<M> {
 						.collect(),
 				))))
 			}
+			QueryValue::NullableStringArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableIntArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableBigIntArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableBoolArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableFloatArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableDoubleArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableUuidArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
 			QueryValue::Now => reinhardt_query::value::Value::Int(None),
 		}
 	}
@@ -3251,14 +3231,16 @@ impl<M: Model> Default for Manager<M> {
 #[cfg(test)]
 mod tests {
 	use super::{Manager, build_delete_sql, field_codec_error};
-	#[cfg(feature = "pgvector")]
 	use crate::backends::types::QueryValue;
 	use crate::orm::Json;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
 	use crate::orm::inspection::FieldInfo;
 	use crate::orm::query::FilterValue;
-	use crate::orm::{DatabaseValue, FieldCodecContext, FieldCodecError, FieldSelector};
+	use crate::orm::{
+		DatabaseArrayType, DatabaseScalar, DatabaseValue, FieldCodecContext, FieldCodecError,
+		FieldSelector,
+	};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
@@ -4278,6 +4260,79 @@ mod tests {
 		assert_eq!(value, crate::orm::connection::QueryValue::IntArray(vec![7]));
 	}
 
+	#[rstest]
+	#[case::string(DatabaseArrayType::String, ["kept".to_owned(), "tail".to_owned()], QueryValue::StringArray, QueryValue::NullableStringArray, |value: Option<String>| reinhardt_query::Value::String(value.map(Box::new)))]
+	#[case::int(DatabaseArrayType::I32, [i32::MIN, i32::MAX], QueryValue::IntArray, QueryValue::NullableIntArray, reinhardt_query::Value::Int)]
+	#[case::bigint(DatabaseArrayType::I64, [i64::MIN, i64::MAX], QueryValue::BigIntArray, QueryValue::NullableBigIntArray, reinhardt_query::Value::BigInt)]
+	#[case::bool(DatabaseArrayType::Bool, [true, false], QueryValue::BoolArray, QueryValue::NullableBoolArray, reinhardt_query::Value::Bool)]
+	#[case::float(DatabaseArrayType::F32, [1.5_f32, -2.5_f32], QueryValue::FloatArray, QueryValue::NullableFloatArray, reinhardt_query::Value::Float)]
+	#[case::double(DatabaseArrayType::F64, [3.5_f64, -4.5_f64], QueryValue::DoubleArray, QueryValue::NullableDoubleArray, reinhardt_query::Value::Double)]
+	#[case::uuid(DatabaseArrayType::Uuid, [Uuid::nil(), Uuid::from_u128(1)], QueryValue::UuidArray, QueryValue::NullableUuidArray, |value: Option<Uuid>| reinhardt_query::Value::Uuid(value.map(Box::new)))]
+	fn manager_preserves_nullable_array_elements<T>(
+		#[case] element_type: DatabaseArrayType,
+		#[case] values: [T; 2],
+		#[case] non_nullable: fn(Vec<T>) -> QueryValue,
+		#[case] nullable: fn(Vec<Option<T>>) -> QueryValue,
+		#[case] encode: fn(Option<T>) -> reinhardt_query::Value,
+	) where
+		T: DatabaseScalar + Clone,
+	{
+		// Arrange
+		let mixed = vec![
+			None,
+			Some(values[0].clone()),
+			None,
+			Some(values[1].clone()),
+			None,
+		];
+		let all_null = vec![None, None];
+		let shapes = [
+			("mixed", mixed.clone(), nullable(mixed)),
+			("all_null", all_null.clone(), nullable(all_null)),
+			(
+				"non_null",
+				values.iter().cloned().map(Some).collect(),
+				non_nullable(values.to_vec()),
+			),
+			("empty", vec![], non_nullable(vec![])),
+		];
+		for (shape, elements, expected) in shapes {
+			let database_value = DatabaseValue::Array {
+				element_type,
+				values: elements
+					.iter()
+					.cloned()
+					.map(|value| value.map_or(DatabaseValue::Null, T::into_database_value))
+					.collect(),
+			};
+			let query_value = crate::orm::database_value_to_query_value(database_value);
+			let reinhardt_query::Value::Array(array_type, _) = &query_value else {
+				panic!("database array should retain its array type");
+			};
+			let typed_nulls = reinhardt_query::Value::Array(
+				array_type.clone(),
+				Some(Box::new(elements.into_iter().map(encode).collect())),
+			);
+			let whole_null = reinhardt_query::Value::Array(array_type.clone(), None);
+
+			// Act
+			let database_bound = Manager::<TestUser>::sea_value_to_query_value(query_value);
+			let typed_bound = Manager::<TestUser>::sea_value_to_query_value(typed_nulls);
+			let null_bound = Manager::<TestUser>::sea_value_to_query_value(whole_null);
+
+			// Assert
+			assert_eq!(
+				database_bound, expected,
+				"{element_type:?}: {shape} database values"
+			);
+			assert_eq!(
+				typed_bound, expected,
+				"{element_type:?}: {shape} typed NULLs"
+			);
+			assert_eq!(null_bound, QueryValue::Null, "{element_type:?}: whole NULL");
+		}
+	}
+
 	#[test]
 	fn manager_binds_naive_datetimes_without_converting_them_to_utc() {
 		let value = chrono::NaiveDate::from_ymd_opt(2026, 7, 26)
@@ -4913,6 +4968,39 @@ mod tests {
 			.expect("PostgreSQL empty array SQL should render");
 
 		assert!(sql.contains("ARRAY[]::text[]"));
+	}
+
+	#[rstest::rstest]
+	#[case(DatabaseArrayType::String, "text")]
+	#[case(DatabaseArrayType::I32, "integer")]
+	#[case(DatabaseArrayType::I64, "bigint")]
+	#[case(DatabaseArrayType::F32, "real")]
+	#[case(DatabaseArrayType::F64, "double precision")]
+	#[case(DatabaseArrayType::Bool, "boolean")]
+	#[case(DatabaseArrayType::Uuid, "uuid")]
+	fn bulk_update_nullable_arrays_keep_postgres_element_types(
+		#[case] element_type: DatabaseArrayType,
+		#[case] postgres_type: &str,
+	) {
+		// Arrange
+		let value = DatabaseValue::Array {
+			element_type,
+			values: vec![DatabaseValue::Null, DatabaseValue::Null],
+		};
+
+		// Act
+		let literal = super::database_value_sql_literal(value.clone(), DatabaseBackend::Postgres)
+			.expect("PostgreSQL nullable array should render");
+		let sqlite_literal =
+			super::database_value_sql_literal(value.clone(), DatabaseBackend::Sqlite)
+				.expect("SQLite nullable array should render");
+		let mysql_literal = super::database_value_sql_literal(value, DatabaseBackend::MySql)
+			.expect("MySQL nullable array should render");
+
+		// Assert
+		assert_eq!(literal, format!("ARRAY[NULL,NULL]::{postgres_type}[]"));
+		assert_eq!(sqlite_literal, "'[null,null]'");
+		assert_eq!(mysql_literal, "'[null,null]'");
 	}
 
 	#[test]

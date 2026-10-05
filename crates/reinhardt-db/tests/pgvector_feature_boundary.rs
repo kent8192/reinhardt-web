@@ -104,6 +104,11 @@ fn query_value(value: QueryValue) {
         | QueryValue::Uuid(_) | QueryValue::Json(_) | QueryValue::StringArray(_)
         | QueryValue::IntArray(_) | QueryValue::BigIntArray(_) | QueryValue::BoolArray(_)
         | QueryValue::FloatArray(_) | QueryValue::DoubleArray(_) | QueryValue::UuidArray(_)
+        | QueryValue::NullableStringArray(_) | QueryValue::NullableIntArray(_)
+        | QueryValue::NullableBigIntArray(_) | QueryValue::NullableBoolArray(_)
+        | QueryValue::NullableFloatArray(_) | QueryValue::NullableDoubleArray(_)
+        | QueryValue::NullableUuidArray(_)
+        | QueryValue::Uint(_)
         | QueryValue::Now => {}
     }
 }
@@ -193,9 +198,12 @@ fn operation(value: Operation) {
         | Operation::CreateSchema { .. }
         | Operation::DropSchema { .. }
         | Operation::CreateExtension { .. }
+        | Operation::DropExtension { .. }
         | Operation::BulkLoad { .. }
         | Operation::SetAutoIncrementValue { .. }
-        | Operation::CreateCompositePrimaryKey { .. } => {}
+        | Operation::CreateCompositePrimaryKey { .. }
+        | Operation::Sequence { .. }
+        | Operation::Identity { .. } => {}
     }
 }
 

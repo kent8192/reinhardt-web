@@ -7,6 +7,11 @@ Django-style admin panel functionality for Reinhardt framework.
 This crate provides a web-based admin interface for managing database models,
 built as a WASM single-page application served by a Reinhardt server.
 
+Admin updates preserve JSON null elements in PostgreSQL scalar array fields,
+including derived `Vec<Option<T>>` models. Empty arrays, arrays containing only
+null elements, and a null column remain distinct; non-null elements are validated
+against the registered scalar type before binding.
+
 ## Features
 
 - ✅ **Model Management Interface**: Web-based CRUD operations for database

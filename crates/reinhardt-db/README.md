@@ -8,6 +8,51 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+### PostgreSQL arrays with NULL elements
+
+PostgreSQL row decoding retains NULL element positions in text (including
+`varchar` and `char`), integer, bigint, boolean, real, double precision, and UUID
+arrays. Arrays containing NULL elements use the corresponding
+`QueryValue::NullableStringArray`, `NullableIntArray`, `NullableBigIntArray`,
+`NullableBoolArray`, `NullableFloatArray`, `NullableDoubleArray`, or
+`NullableUuidArray` variant with a `Vec<Option<T>>` payload. Arrays without NULL
+elements, including empty arrays, retain the existing `StringArray`, `IntArray`,
+and other non-nullable variants. A SQL NULL for the entire array is
+`QueryValue::Null`.
+
+`QueryRow` preserves these positions when deserializing into `Vec<Option<T>>`.
+Use `Option<Vec<Option<T>>>` when the entire column can also be SQL NULL.
+Rebinding a nullable array on PostgreSQL retains its scalar element type; MySQL
+and SQLite use the existing JSON array encoding with JSON null elements.
+These JSON backends reject non-finite float/double array elements with a type
+error before binding, for both legacy and nullable array carriers.
+
+Derived ORM models support `Vec<Option<T>>` fields for all seven scalar types,
+and `Option<Vec<Option<T>>>` when the entire column can be SQL NULL. Whole-column
+`None` is emitted as a SQL `NULL` literal and consumes no bind parameter. Manager
+writes, typed QuerySet filters, and `get_or_create` / `update_or_create` share
+native array conversion, including arrays whose elements are all NULL. Empty
+arrays and arrays without NULL elements retain their existing typed carriers.
+
+PostgreSQL `bulk_update` and `bulk_update_with_conn` cast array CASE literals to
+their declared scalar element type, including all-NULL and empty arrays. Special
+floating-point elements use quoted typed literals to retain `NaN` and infinity.
+
+Serde serialization of `NullableFloatArray` and `NullableDoubleArray` rejects
+non-finite elements with an error, preventing JSON from silently changing
+`Some(NaN)` or `Some(infinity)` into `None`. Finite values and NULL elements retain
+their existing serialized representation.
+
+The `QueryRow` JSON bridge represents non-finite floating-point array elements
+(`NaN` and positive/negative infinity) as strings. Floating-point model hydration
+rejects these with a serialization error, and `QueryRow::get` returns `None`,
+instead of silently turning non-NULL values into NULL elements. Native backend
+rows retain the original PostgreSQL floating-point values.
+
+The additional public `QueryValue` variants require downstream exhaustive
+matches to handle the seven `Nullable*Array` variants. Existing array
+constructors and their payload types remain available.
+
 ## Features
 
 ### Implemented ✓
@@ -175,6 +220,23 @@ repeated `LIMIT`/`OFFSET` pagination for this API.
   - `DatabaseErrorKind` provides portable connection, constraint, transaction, serialization, and query categories
   - `Error::database_kind()` supports category matching without driver-specific downcasts
   - `DatabaseError::code()` preserves an optional vendor code for diagnostics
+
+### Unsigned composite key lookups
+
+Unsigned composite-key lookups retain their value through
+`PkValue::Uint` and `QueryValue::Uint`. MySQL binds the full `u64` range;
+PostgreSQL and SQLite check conversion to a signed 64-bit integer and reject
+overflow before executing SQL. The resulting `DatabaseErrorKind::Type` error
+does not include the key value. Ordinary signed keys and native field codecs
+retain their existing behavior.
+
+When upgrading, add a `QueryValue::Uint(value)` arm to exhaustive matches.
+Custom executors must preserve the unsigned value or return a checked type
+error when their backend cannot represent it. Large unsigned MySQL result
+values now use `QueryValue::Uint` instead of decimal text.
+
+See the [unsigned query value migration guide](../../docs/migration/0.4.0-unsigned-query-values.md)
+for custom executor updates.
 
 ### Updating composite primary keys
 
@@ -698,10 +760,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`DatabaseMigrationExecutor` applies these operations in vector order. Rolling
-this migration back removes the model schema and indexes but deliberately
-leaves the database-level extension installed, because other applications or
-schemas may share it.
+`DatabaseMigrationExecutor` applies these operations in vector order. Automatic
+rollback rejects this migration's `CREATE EXTENSION IF NOT EXISTS` because other
+applications may own an existing extension. For a migration-owned extension, use
+`.with_if_not_exists(false)` before conversion; rollback drops the model schema
+and indexes followed by the extension.
 
 The typed distance methods map directly to PostgreSQL:
 
@@ -1282,6 +1345,11 @@ configured pool and backend, binding filter parameters through the driver. It
 therefore keeps request-scoped queries on the connection selected by the
 caller.
 
+`Session::list_all` reads every model row from the configured pool. Its typed
+SELECT uses backend-aware identifier escaping, including table names and
+physical column names containing double quotes or backticks. It shares model
+projections and row decoding with `Session::list`.
+
 `AsyncQuery` preserves bind parameters when executing legacy `Q` filters.
 Runtime field names and operators are treated as query structure and accept
 only supported forms. `Q::from_sql` rejects unrecognized SQL, while
@@ -1388,6 +1456,32 @@ let migration = Migration::new("0001_initial")
 // Apply migration
 migration.apply(db).await?;
 ```
+
+### PostgreSQL Extension Reversal
+
+Use `Operation::CreateExtension { if_not_exists: false, .. }` or
+`CreateExtension::new("hstore").with_if_not_exists(false).into_operation()?` for
+an extension owned by a migration. Automatic reversal emits the typed
+`Operation::DropExtension` without `CASCADE`, after reversing later operations.
+Dependent objects therefore block removal rather than being deleted implicitly.
+Both operations round-trip through generated Rust migration files and JSON.
+
+`IF NOT EXISTS` cannot prove whether the migration created an extension. Its
+automatic reversal returns `MigrationError::IrreversibleError` before any
+rollback statements run; the extension and applied-migration record remain.
+For a shared extension, provision it separately from reversible application
+migrations. The low-level `CreateExtension::database_backwards` helper returns
+no statements for conditional creation.
+
+Explicit `DropExtension { name, if_exists, cascade }` is forward-only because it
+does not capture the original schema and version. The exported `DropExtension`
+struct provides `.into_operation()` with `if_exists: true` and `cascade: false`.
+
+When upgrading from earlier 0.4.0 alpha releases, add a `DropExtension` arm to
+exhaustive `Operation` matches. Direct `CreateExtension` struct literals must
+also supply `if_not_exists` (true preserves the previous creation behavior).
+Existing JSON without that field defaults to true. To retain automatic cleanup,
+choose false only for extensions whose creation belongs to the migration.
 
 ### Connection Pooling
 

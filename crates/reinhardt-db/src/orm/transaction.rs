@@ -1284,7 +1284,6 @@ mod tests {
 	use crate::prelude::Model;
 	use futures::FutureExt;
 	use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
-	use rstest::*;
 	use std::collections::BTreeSet;
 	use std::fmt;
 	use std::sync::atomic::{AtomicBool, Ordering};

@@ -486,6 +486,7 @@ toml = { workspace = true }
 cfg_aliases = "0.2"
 
 [dev-dependencies]
+uuid = { workspace = true }
 futures-util = { workspace = true }
 reqwest = { workspace = true, features = ["stream"] }
 # The root integration test target reuses `tests/build.rs`, which invokes this macro.

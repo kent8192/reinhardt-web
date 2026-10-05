@@ -168,9 +168,7 @@ fn json_to_array_element(
 	value: serde_json::Value,
 ) -> AdminResult<Value> {
 	if value.is_null() {
-		return Err(AdminError::ValidationError(format!(
-			"Field '{field_name}' does not support NULL array elements"
-		)));
+		return Ok(Value::Int(None));
 	}
 
 	let invalid = || {
@@ -1156,78 +1154,32 @@ fn postgres_parameter_cast(
 }
 
 fn convert_admin_array(array_type: ArrayType, values: Option<Vec<Value>>) -> QueryValue {
-	let Some(values) = values else {
-		return QueryValue::Null;
+	// Normalize the admin's scalar aliases, then share ORM conversion so NULL
+	// elements retain their positions and native binding types.
+	let array_type = match array_type {
+		ArrayType::Char => ArrayType::String,
+		ArrayType::TinyInt | ArrayType::SmallInt => ArrayType::Int,
+		array_type => array_type,
 	};
-	match array_type {
-		ArrayType::String | ArrayType::Char => QueryValue::StringArray(
+	let values = values.map(|values| {
+		Box::new(
 			values
 				.into_iter()
-				.filter_map(|value| match value {
-					Value::String(Some(value)) => Some(*value),
-					Value::Char(Some(value)) => Some(value.to_string()),
-					_ => None,
+				.map(|value| match value {
+					Value::Char(value) => {
+						Value::String(value.map(|value| Box::new(value.to_string())))
+					}
+					Value::TinyInt(value) => Value::Int(value.map(i32::from)),
+					Value::SmallInt(value) => Value::Int(value.map(i32::from)),
+					value => value,
 				})
 				.collect(),
-		),
-		ArrayType::TinyInt | ArrayType::SmallInt | ArrayType::Int => QueryValue::IntArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::TinyInt(Some(value)) => Some(i32::from(value)),
-					Value::SmallInt(Some(value)) => Some(i32::from(value)),
-					Value::Int(Some(value)) => Some(value),
-					_ => None,
-				})
-				.collect(),
-		),
-		ArrayType::BigInt => QueryValue::BigIntArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::BigInt(Some(value)) => Some(value),
-					_ => None,
-				})
-				.collect(),
-		),
-		ArrayType::Bool => QueryValue::BoolArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::Bool(Some(value)) => Some(value),
-					_ => None,
-				})
-				.collect(),
-		),
-		ArrayType::Float => QueryValue::FloatArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::Float(Some(value)) => Some(value),
-					_ => None,
-				})
-				.collect(),
-		),
-		ArrayType::Double => QueryValue::DoubleArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::Double(Some(value)) => Some(value),
-					_ => None,
-				})
-				.collect(),
-		),
-		ArrayType::Uuid => QueryValue::UuidArray(
-			values
-				.into_iter()
-				.filter_map(|value| match value {
-					Value::Uuid(Some(value)) => Some(*value),
-					_ => None,
-				})
-				.collect(),
-		),
-		_ => unreachable!("unsupported admin array type: {array_type:?}"),
-	}
+		)
+	});
+	convert_values(Values(vec![Value::Array(array_type, values)]))
+		.into_iter()
+		.next()
+		.expect("one admin array produces one backend parameter")
 }
 
 fn convert_admin_value(value: Value) -> QueryValue {

@@ -14,7 +14,7 @@ use crate::backends::{
 	},
 	types::{
 		DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, RowStream, Savepoint,
-		TransactionExecutor,
+		TransactionExecutor, array_query_value,
 	},
 };
 #[cfg(feature = "pgvector")]
@@ -55,6 +55,10 @@ impl PostgresBackend {
 			QueryValue::Bool(b) => query.bind(b),
 			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
+			QueryValue::Uint(i) => query.bind(crate::backends::types::checked_unsigned_integer(
+				*i,
+				"PostgreSQL",
+			)?),
 			QueryValue::Float(f) => query.bind(f),
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),
@@ -75,6 +79,13 @@ impl PostgresBackend {
 			QueryValue::FloatArray(values) => query.bind(values),
 			QueryValue::DoubleArray(values) => query.bind(values),
 			QueryValue::UuidArray(values) => query.bind(values),
+			QueryValue::NullableStringArray(values) => query.bind(values),
+			QueryValue::NullableIntArray(values) => query.bind(values),
+			QueryValue::NullableBigIntArray(values) => query.bind(values),
+			QueryValue::NullableBoolArray(values) => query.bind(values),
+			QueryValue::NullableFloatArray(values) => query.bind(values),
+			QueryValue::NullableDoubleArray(values) => query.bind(values),
+			QueryValue::NullableUuidArray(values) => query.bind(values),
 			QueryValue::Now => {
 				// PostgreSQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -344,6 +355,10 @@ impl PgTransactionExecutor {
 			QueryValue::Bool(b) => query.bind(b),
 			QueryValue::Int32(i) => query.bind(i),
 			QueryValue::Int(i) => query.bind(i),
+			QueryValue::Uint(i) => query.bind(crate::backends::types::checked_unsigned_integer(
+				*i,
+				"PostgreSQL",
+			)?),
 			QueryValue::Float(f) => query.bind(f),
 			QueryValue::String(s) => query.bind(s),
 			QueryValue::Bytes(b) => query.bind(b),
@@ -364,6 +379,13 @@ impl PgTransactionExecutor {
 			QueryValue::FloatArray(values) => query.bind(values),
 			QueryValue::DoubleArray(values) => query.bind(values),
 			QueryValue::UuidArray(values) => query.bind(values),
+			QueryValue::NullableStringArray(values) => query.bind(values),
+			QueryValue::NullableIntArray(values) => query.bind(values),
+			QueryValue::NullableBigIntArray(values) => query.bind(values),
+			QueryValue::NullableBoolArray(values) => query.bind(values),
+			QueryValue::NullableFloatArray(values) => query.bind(values),
+			QueryValue::NullableDoubleArray(values) => query.bind(values),
+			QueryValue::NullableUuidArray(values) => query.bind(values),
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		})
 	}
@@ -429,92 +451,62 @@ impl PostgresBackend {
 				continue;
 			}
 
-			match type_name.as_str() {
-				"TEXT[]" | "VARCHAR[]" | "BPCHAR[]" => {
-					match pg_row
-						.try_get::<Option<Vec<String>>, _>(column_name)
-						.map_err(map_sqlx_error)?
-					{
-						Some(values) => {
-							row.insert(column_name.to_string(), QueryValue::StringArray(values))
-						}
-						None => row.insert(column_name.to_string(), QueryValue::Null),
-					};
-					continue;
-				}
-				"INT4[]" => {
-					match pg_row
-						.try_get::<Option<Vec<i32>>, _>(column_name)
-						.map_err(map_sqlx_error)?
-					{
-						Some(values) => {
-							row.insert(column_name.to_string(), QueryValue::IntArray(values))
-						}
-						None => row.insert(column_name.to_string(), QueryValue::Null),
-					};
-					continue;
-				}
-				"INT8[]" => {
-					match pg_row
-						.try_get::<Option<Vec<i64>>, _>(column_name)
-						.map_err(map_sqlx_error)?
-					{
-						Some(values) => {
-							row.insert(column_name.to_string(), QueryValue::BigIntArray(values))
-						}
-						None => row.insert(column_name.to_string(), QueryValue::Null),
-					};
-					continue;
-				}
-				"BOOL[]" => {
-					match pg_row
-						.try_get::<Option<Vec<bool>>, _>(column_name)
-						.map_err(map_sqlx_error)?
-					{
-						Some(values) => {
-							row.insert(column_name.to_string(), QueryValue::BoolArray(values))
-						}
-						None => row.insert(column_name.to_string(), QueryValue::Null),
-					};
-					continue;
-				}
-				"FLOAT4[]" => {
-					match pg_row
-						.try_get::<Option<Vec<f32>>, _>(column_name)
-						.map_err(map_sqlx_error)?
-					{
-						Some(values) => {
-							row.insert(column_name.to_string(), QueryValue::FloatArray(values))
-						}
-						None => row.insert(column_name.to_string(), QueryValue::Null),
-					};
-					continue;
-				}
-				"FLOAT8[]" => {
-					match pg_row
-						.try_get::<Option<Vec<f64>>, _>(column_name)
-						.map_err(map_sqlx_error)?
-					{
-						Some(values) => {
-							row.insert(column_name.to_string(), QueryValue::DoubleArray(values))
-						}
-						None => row.insert(column_name.to_string(), QueryValue::Null),
-					};
-					continue;
-				}
-				"UUID[]" => {
-					match pg_row
-						.try_get::<Option<Vec<Uuid>>, _>(column_name)
-						.map_err(map_sqlx_error)?
-					{
-						Some(values) => {
-							row.insert(column_name.to_string(), QueryValue::UuidArray(values))
-						}
-						None => row.insert(column_name.to_string(), QueryValue::Null),
-					};
-					continue;
-				}
-				_ => {}
+			let array_value = match type_name.as_str() {
+				// SQLx reports PostgreSQL bpchar arrays as CHAR[].
+				"TEXT[]" | "VARCHAR[]" | "CHAR[]" | "BPCHAR[]" => Some(array_query_value(
+					pg_row
+						.try_get::<Option<Vec<Option<String>>>, _>(column_name)
+						.map_err(map_sqlx_error)?,
+					QueryValue::StringArray,
+					QueryValue::NullableStringArray,
+				)),
+				"INT4[]" => Some(array_query_value(
+					pg_row
+						.try_get::<Option<Vec<Option<i32>>>, _>(column_name)
+						.map_err(map_sqlx_error)?,
+					QueryValue::IntArray,
+					QueryValue::NullableIntArray,
+				)),
+				"INT8[]" => Some(array_query_value(
+					pg_row
+						.try_get::<Option<Vec<Option<i64>>>, _>(column_name)
+						.map_err(map_sqlx_error)?,
+					QueryValue::BigIntArray,
+					QueryValue::NullableBigIntArray,
+				)),
+				"BOOL[]" => Some(array_query_value(
+					pg_row
+						.try_get::<Option<Vec<Option<bool>>>, _>(column_name)
+						.map_err(map_sqlx_error)?,
+					QueryValue::BoolArray,
+					QueryValue::NullableBoolArray,
+				)),
+				"FLOAT4[]" => Some(array_query_value(
+					pg_row
+						.try_get::<Option<Vec<Option<f32>>>, _>(column_name)
+						.map_err(map_sqlx_error)?,
+					QueryValue::FloatArray,
+					QueryValue::NullableFloatArray,
+				)),
+				"FLOAT8[]" => Some(array_query_value(
+					pg_row
+						.try_get::<Option<Vec<Option<f64>>>, _>(column_name)
+						.map_err(map_sqlx_error)?,
+					QueryValue::DoubleArray,
+					QueryValue::NullableDoubleArray,
+				)),
+				"UUID[]" => Some(array_query_value(
+					pg_row
+						.try_get::<Option<Vec<Option<Uuid>>>, _>(column_name)
+						.map_err(map_sqlx_error)?,
+					QueryValue::UuidArray,
+					QueryValue::NullableUuidArray,
+				)),
+				_ => None,
+			};
+			if let Some(value) = array_value {
+				row.insert(column_name.to_string(), value);
+				continue;
 			}
 			if matches!(type_name.as_str(), "NUMERIC" | "DECIMAL") {
 				match pg_row.try_get::<Option<sqlx::types::BigDecimal>, _>(column_name) {

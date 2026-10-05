@@ -1100,6 +1100,18 @@ fn parse_single_operation_strict(
 					)?,
 				});
 			}
+			"DropExtension" => {
+				validate_exact_named_fields(
+					&operation.fields,
+					&["name", "if_exists", "cascade"],
+					&context,
+				)?;
+				return Ok(super::Operation::DropExtension {
+					name: parse_string_field_strict(&operation.fields, "name", &context)?,
+					if_exists: parse_bool_field_strict(&operation.fields, "if_exists", &context)?,
+					cascade: parse_bool_field_strict(&operation.fields, "cascade", &context)?,
+				});
+			}
 			"CreateExtension" => {
 				validate_exact_named_fields(
 					&operation.fields,
@@ -2026,6 +2038,13 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 		let variant_name = expr_struct.path.segments.last()?.ident.to_string();
 
 		match variant_name.as_str() {
+			"DropExtension" => {
+				return Some(super::Operation::DropExtension {
+					name: extract_string_field(&expr_struct.fields, "name")?,
+					if_exists: extract_bool_field(&expr_struct.fields, "if_exists").unwrap_or(true),
+					cascade: extract_bool_field(&expr_struct.fields, "cascade").unwrap_or(false),
+				});
+			}
 			"CreateExtension" => {
 				let name = extract_string_field(&expr_struct.fields, "name")?;
 				let if_not_exists =
