@@ -1303,7 +1303,10 @@ fn test_insert_builder_sqlite_on_conflict_do_nothing() {
 		.unwrap();
 
 	// Assert
-	assert!(sql.contains("INSERT OR IGNORE"));
+	assert_eq!(
+		sql,
+		"INSERT INTO \"users\" (\"email\") VALUES (?) ON CONFLICT (\"email\") DO NOTHING"
+	);
 }
 
 #[rstest]
@@ -1378,19 +1381,40 @@ fn test_insert_conflict_update_before_returning(
 }
 
 #[rstest]
-#[case::postgres(
+#[case::postgres_legacy(
 	DatabaseType::Postgres,
+	false,
 	"INSERT INTO \"users\" (\"id\") VALUES ($1) ON CONFLICT DO NOTHING RETURNING \"id\""
 )]
-#[case::sqlite(
+#[case::postgres_fluent(
+	DatabaseType::Postgres,
+	true,
+	"INSERT INTO \"users\" (\"id\") VALUES ($1) ON CONFLICT DO NOTHING RETURNING \"id\""
+)]
+#[case::sqlite_legacy(
 	DatabaseType::Sqlite,
+	false,
 	"INSERT OR IGNORE INTO \"users\" (\"id\") VALUES (?) RETURNING \"id\""
 )]
-#[case::mysql(DatabaseType::Mysql, "INSERT IGNORE INTO `users` (`id`) VALUES (?)")]
+#[case::sqlite_fluent(
+	DatabaseType::Sqlite,
+	true,
+	"INSERT INTO \"users\" (\"id\") VALUES (?) ON CONFLICT DO NOTHING RETURNING \"id\""
+)]
+#[case::mysql_legacy(
+	DatabaseType::Mysql,
+	false,
+	"INSERT IGNORE INTO `users` (`id`) VALUES (?)"
+)]
+#[case::mysql_fluent(
+	DatabaseType::Mysql,
+	true,
+	"INSERT IGNORE INTO `users` (`id`) VALUES (?)"
+)]
 fn test_insert_conflict_do_nothing_with_returning(
 	#[case] db_type: DatabaseType,
+	#[case] fluent: bool,
 	#[case] expected_sql: &str,
-	#[values(false, true)] fluent: bool,
 ) {
 	// Arrange
 	let builder = InsertBuilder::new(MockBackend::new(db_type), "users")
