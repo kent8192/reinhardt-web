@@ -8,6 +8,11 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+`InsertBuilder::value` accepts `QueryValue::Now` as a database current-time
+expression. PostgreSQL, MySQL, and SQLite render it as `CURRENT_TIMESTAMP`.
+Rows containing `Now` use a typed `INSERT ... SELECT` source: current time and
+SQL `NULL` consume no bind arguments, and other values keep their column order.
+
 ## Features
 
 ### Implemented ✓
@@ -32,6 +37,11 @@ This crate provides the following modules:
     constraints are unchanged. Existing migration files are not rewritten;
     regenerate unapplied migrations with oversized generated names.
   - Forward and backward migrations
+  - PostgreSQL and CockroachDB `AlterColumn` rollback restores the previous
+    database default, including removing a newly added sequence default. Changed
+    defaults are removed before reverting the type and restored afterward.
+    Generated migration files preserve every historical field type, including
+    nested arrays, enum/set values, and relationship metadata.
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
   - State management and autodetection
@@ -101,6 +111,53 @@ The same behavior applies when converting `InsertBuilder` with `from_select`.
   - Per-model read and write database configuration
   - Multi-database support through hybrid module
 
+## Generated query parameters
+
+`QuerySet` statements, `orm::execution` builders, `orm::many_to_many_accessor`,
+and all operations of `associations::many_to_many_manager::ManyToManyManager`
+pass the renderer's original `Values` to native SQLx codecs in built-in backends.
+`ManyToManyManager` retains its `Display` primary-key interface and binds keys as strings.
+Dedicated transaction executors support the same generated-value dispatch.
+PostgreSQL retains typed arrays (including NULL and empty arrays), JSON versus
+JSONB array types, and exact decimals. MySQL retains exact decimals and
+the full unsigned integer range. SQLite rejects decimal and array arguments
+because it has no corresponding native codec.
+
+Arguments that cannot be encoded without loss fail before SQL execution. Errors
+report the backend, value type, and one-based argument position without exposing
+the value. PostgreSQL and MySQL reject temporal values with sub-microsecond
+precision or leap seconds; SQLite also rejects NaN rather than storing SQL NULL.
+MySQL normalizes fixed-offset datetimes to UTC after checking their precision,
+matching its UTC and local datetime bindings; typed NULL datetimes remain SQL NULL.
+SQLite also normalizes local and fixed-offset datetimes to UTC so generated
+predicates match the UTC text used by legacy timestamp bindings and `Manager`
+saves, retaining nanosecond precision and typed NULLs.
+UUIDs keep the existing native PostgreSQL and text MySQL/SQLite representation.
+BigDecimal arguments must fit the native
+[PostgreSQL numeric range](https://www.postgresql.org/docs/16/datatype-numeric.html)
+or [MySQL decimal precision and scale](https://dev.mysql.com/doc/refman/8.0/en/precision-math-decimal-characteristics.html).
+Range checks and native encoding use a normalized BigDecimal representation,
+so scaled zeros and redundant trailing zeros preserve their numeric value.
+
+The public `orm::execution::convert_values` function remains a legacy compatibility
+adapter with its historical lossy behavior. Explicit raw executors still accept
+`Vec<QueryValue>`, and row decoding retains its existing contract.
+
+External backends implementing only the raw executor API use a checked adapter
+for generated dispatch. It normalizes local and fixed-offset datetimes to UTC
+`QueryValue::Timestamp` values while retaining the instant and nanosecond precision;
+typed NULL datetimes become `QueryValue::Null`. Values that cannot be represented
+without loss in `QueryValue` are rejected before calling the raw executor.
+
+Model creation and updates through `Manager::create`, `Manager::create_with_conn`,
+`Manager::update`, and `Manager::update_with_conn` still serialize fields through
+JSON and convert arguments to `Vec<QueryValue>`, retaining their existing lossy
+conversion behavior. These model-save methods are outside the native-codec
+guarantees above.
+
+Custom backends that implement only the raw executor receive checked,
+representable values and reject types requiring a native codec.
+
 ## Module Architecture
 
 The `reinhardt-db` crate is organized into three logical layers:
@@ -129,6 +186,10 @@ Low-level database connectivity and connection management:
   - PostgreSQL, MySQL, SQLite support
   - Query execution and schema operations
   - reinhardt-query integration for query building
+  - `SelectBuilder::build()` returns SQL with the renderer's ordered bind values,
+    including non-negative LIMIT values after WHERE arguments. Inline NULLs do
+    not consume bind slots. `fetch_all()` and `fetch_one()` execute this pair;
+    a zero limit returns no rows and negative limits are omitted.
   - INSERT builders combine conflict actions with `RETURNING` on PostgreSQL
     and SQLite, placing conflict actions before `RETURNING` for both VALUES
     and SELECT sources. MySQL retains `INSERT IGNORE` and
@@ -218,6 +279,8 @@ Before execution, the backend clears existing named statements on the same
 acquired connection and disables persistence for that query. Disabling
 persistence alone does not bypass an existing cached statement. SQL text,
 values, transaction boundaries, and connection guard ownership are preserved.
+This also applies to native generated-value dispatch from `QuerySet`, execution
+builders, and dedicated transaction executors.
 This trades statement reuse for correctness: backend queries are prepared
 again, and cache entries created through direct SQLx pool access are cleared.
 Direct SQLx calls can still cache statements before and after backend calls.
@@ -382,6 +445,20 @@ let updated = User::objects()
     .await?;
 ```
 
+### Arithmetic expressions
+
+Legacy `FilterValue::Expression`, `UpdateValue::Expression`, and arithmetic
+annotations lower field references and constants through the query AST. The
+selected PostgreSQL, MySQL, or SQLite renderer quotes the columns and binds the
+constants in expression order. For example, `F("id") + 0` compares or updates the
+column value on MySQL in both strict and non-strict SQL modes. Arithmetic nested
+in CASE results uses the same operand lowering and preserves the runtime empty
+condition identities described above. Nested operations retain their parentheses,
+and COALESCE operands use the same typed lowering.
+
+Scalar CASE result values, aggregate SQL, and subquery SQL retain their
+existing SQL rendering paths.
+
 ### Execute a QuerySet with Session
 
 `Session::list` executes a model-shaped `QuerySet` through the session's
@@ -390,6 +467,16 @@ supports filters, ordering, distinct, limits, and offsets. Projections,
 annotations, related loading, joins, grouping, CTEs, and alternate sources are
 not model-shaped and return an error. Array filter parameters are not supported
 through `sqlx::Any` on the main line.
+
+`Session::list_all` executes an unfiltered model query through the same pool,
+projection, and row decoding path. Table names and physical column names,
+including embedded double quotes or backticks, are escaped by the backend query
+renderer.
+
+Session text reads accept both SQLx Any strings and complete UTF-8 byte values,
+including MySQL TEXT columns reported as BLOB. Values are not truncated or
+decoded lossily. Invalid UTF-8 returns a serialization error identifying the
+table, model field, and physical column; nullable text preserves SQL NULL.
 
 `Session::get`, `Session::list`, and `Session::list_all` preserve the full i64
 range of `BigIntegerField` values, including nullable fields. Integer decoding

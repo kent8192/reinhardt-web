@@ -122,7 +122,7 @@ async fn unsupported_inherited_mysql_conflict_never_calls_backend(
 	assert_eq!(execute_error, expected);
 	assert_eq!(fetch_error, expected);
 	let panic_message = build_panic.downcast_ref::<String>().unwrap();
-	assert!(panic_message.contains("invalid INSERT FROM SELECT conflict clause"));
+	assert!(panic_message.contains("invalid INSERT SELECT conflict configuration"));
 	assert!(panic_message.contains(message));
 	assert_eq!(backend.query_calls.load(Ordering::Relaxed), 0);
 }
@@ -156,7 +156,7 @@ async fn unsupported_inherited_mysql_conflict_never_calls_backend(
 #[case::sqlite_ignore(
 	DatabaseType::Sqlite,
 	OnConflictClause::any().do_nothing(),
-	"INSERT OR IGNORE INTO \"options\" (\"id\", \"name\") SELECT 1, 'replacement' RETURNING \"id\""
+	"INSERT INTO \"options\" (\"id\", \"name\") SELECT * FROM (SELECT 1, 'replacement') AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT DO NOTHING RETURNING \"id\""
 )]
 #[tokio::test]
 async fn supported_inherited_conflicts_preserve_sql_and_precedence(

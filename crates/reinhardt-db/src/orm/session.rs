@@ -395,19 +395,17 @@ impl Session {
 						None => return Err(serialization_error("unexpected SQL NULL".to_owned())),
 					}
 				}
-				typ if typ.contains("CharField") => {
-					if field.nullable {
-						row.try_get::<Option<String>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
-							})
-							.unwrap_or(serde_json::Value::Null)
-					} else {
-						row.try_get::<String, _>(column_name)
-							.map(serde_json::Value::from)
-							.unwrap_or(serde_json::Value::Null)
-					}
+				typ if typ.contains("CharField") || typ.contains("TextField") => {
+					any_text_value(&row, column_name, |detail| {
+						SessionError::SerializationError(format!(
+							"table `{}`, field `{}`, column `{}`: {detail}",
+							T::table_name(),
+							field.name,
+							column_name
+						))
+					})?
+					.map(Value::from)
+					.unwrap_or(Value::Null)
 				}
 				typ if typ.contains("BooleanField") => {
 					if field.nullable {
@@ -1591,13 +1589,10 @@ fn apply_any_model_projection_for_source<T: Model>(
 		statement.expr_as(expression, Alias::new(column_name));
 	}
 	for annotation in annotations {
-		let expression = match &annotation.value {
-			crate::orm::annotation::AnnotationValue::Expression(expression) => {
-				expression.to_query_expr()
-			}
-			value => Expr::cust(value.to_sql_expr()),
-		};
-		statement.expr_as(expression, Alias::new(&annotation.alias));
+		statement.expr_as(
+			QuerySet::<T>::annotation_value_to_query_expr(&annotation.value),
+			Alias::new(&annotation.alias),
+		);
 	}
 
 	Ok(fields)
@@ -1720,6 +1715,39 @@ where
 		.map_err(|error| serialization_error(error.to_string()))
 }
 
+// SQLx 0.8.6 Any exposes MySQL TEXT as BLOB metadata, even after CAST AS CHAR
+// (#6594). Preserve the complete value and validate UTF-8. If Any consistently
+// exposes these columns as text, this fallback can become a direct
+// row.try_get::<Option<String>, _>(column_name) with the same error context.
+fn any_text_value<F>(
+	row: &sqlx::any::AnyRow,
+	column_name: &str,
+	serialization_error: F,
+) -> Result<Option<String>, SessionError>
+where
+	F: Fn(String) -> SessionError,
+{
+	match row.try_get::<Option<String>, _>(column_name) {
+		Ok(value) => Ok(value),
+		Err(string_error) => {
+			let bytes = row
+				.try_get::<Option<Vec<u8>>, _>(column_name)
+				.map_err(|bytes_error| {
+					serialization_error(format!(
+						"cannot decode text: string: {string_error}; bytes: {bytes_error}"
+					))
+				})?;
+			bytes
+				.map(|bytes| {
+					String::from_utf8(bytes).map_err(|error| {
+						serialization_error(format!("invalid UTF-8: {}", error.utf8_error()))
+					})
+				})
+				.transpose()
+		}
+	}
+}
+
 fn deserialize_any_row<T>(row: &sqlx::any::AnyRow, fields: &[FieldInfo]) -> Result<T, SessionError>
 where
 	T: Model + serde::de::DeserializeOwned,
@@ -1789,9 +1817,7 @@ where
 					value
 				})
 		} else {
-			row.try_get::<Option<String>, _>(column_name)
-				.map(|value| value.map(Value::from))
-				.map_err(|error| serialization_error(error.to_string()))?
+			any_text_value(row, column_name, serialization_error)?.map(Value::from)
 		};
 
 		let value = match value {
@@ -2780,6 +2806,129 @@ mod tests {
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct QuotedTableModel {
+		id: i64,
+		name: String,
+	}
+
+	impl Model for QuotedTableModel {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"session\"quoted`"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut id = BigIntegerField::new();
+			id.base.primary_key = true;
+			id.set_attributes_from_name("id");
+			let mut name = CharField::new(255);
+			name.set_attributes_from_name("name");
+			let mut name_info = FieldInfo::from_field(&name);
+			name_info.db_column = Some("name\"quoted`".into());
+			vec![FieldInfo::from_field(&id), name_info]
+		}
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DbBackend::Postgres,
+		r#"SELECT "session""quoted`"."id" AS "id", "session""quoted`"."name""quoted`" AS "name""quoted`" FROM "session""quoted`""#
+	)]
+	#[case::mysql(
+		DbBackend::Mysql,
+		r#"SELECT `session"quoted```.`id` AS `id`, `session"quoted```.`name"quoted``` AS `name"quoted``` FROM `session"quoted```"#
+	)]
+	#[case::sqlite(
+		DbBackend::Sqlite,
+		r#"SELECT "session""quoted`"."id" AS "id", "session""quoted`"."name""quoted`" AS "name""quoted`" FROM "session""quoted`""#
+	)]
+	fn unfiltered_session_queryset_escapes_identifiers(
+		#[case] backend: DbBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let queryset = QuerySet::<QuotedTableModel>::new();
+		let mut statement = queryset
+			.build_full_model_select_statement()
+			.expect("model SELECT should build");
+		apply_any_model_projection_for_source::<QuotedTableModel>(
+			&mut statement,
+			backend,
+			Some(queryset.root_table_alias()),
+			queryset.annotations(),
+		)
+		.expect("model projection should build");
+
+		// Act
+		let (sql, values) = QueryStatement::Select(statement).build(backend);
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(Vec::new()));
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn list_all_reads_quoted_table_names(_init_drivers: ()) {
+		// Arrange
+		let pool = sqlx::pool::PoolOptions::<Any>::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("isolated in-memory pool should initialize");
+		sqlx::query(
+			"CREATE TABLE \"session\"\"quoted`\" \
+			 (id INTEGER PRIMARY KEY, \"name\"\"quoted`\" TEXT NOT NULL)",
+		)
+		.execute(&pool)
+		.await
+		.expect("quoted table should be created");
+		sqlx::query("INSERT INTO \"session\"\"quoted`\" (id, \"name\"\"quoted`\") VALUES (?, ?)")
+			.bind(1_i64)
+			.bind("valid")
+			.execute(&pool)
+			.await
+			.expect("control row should be inserted");
+		let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite)
+			.await
+			.expect("session should initialize");
+		let expected = QuotedTableModel {
+			id: 1,
+			name: "valid".into(),
+		};
+		let control = session
+			.get::<QuotedTableModel>(1)
+			.await
+			.expect("typed get should read the quoted table");
+		assert_eq!(control, Some(expected.clone()));
+
+		// Act
+		let rows = session
+			.list_all::<QuotedTableModel>()
+			.await
+			.expect("list_all should read the same quoted table as get");
+
+		// Assert
+		assert_eq!(rows, vec![expected]);
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct FloatPrecisionModel {
 		amount: f64,
 	}
@@ -3178,6 +3327,64 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case::utf8(Some("stored' ? $55 日本語 🦀".as_bytes().to_vec()), Some("stored' ? $55 日本語 🦀"))]
+	#[case::empty(Some(Vec::new()), Some(""))]
+	#[case::sql_null(None, None)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn any_text_decodes_bytes_without_losing_null_or_empty_values(
+		_init_drivers: (),
+		#[case] bytes: Option<Vec<u8>>,
+		#[case] expected: Option<&str>,
+	) {
+		// Arrange
+		let pool = sqlx::any::AnyPoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.unwrap();
+		let row = sqlx::query("SELECT ? AS text_value")
+			.bind(bytes)
+			.fetch_one(&pool)
+			.await
+			.unwrap();
+
+		// Act
+		let result = any_text_value(&row, "text_value", SessionError::SerializationError);
+
+		// Assert
+		assert_eq!(result.unwrap().as_deref(), expected);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn any_text_rejects_incompatible_column_types(_init_drivers: ()) {
+		// Arrange
+		let pool = sqlx::any::AnyPoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.unwrap();
+		let row = sqlx::query("SELECT 42 AS text_value")
+			.fetch_one(&pool)
+			.await
+			.unwrap();
+
+		// Act
+		let error =
+			any_text_value(&row, "text_value", SessionError::SerializationError).unwrap_err();
+
+		// Assert
+		let SessionError::SerializationError(message) = error else {
+			panic!("Expected a text serialization error: {error}");
+		};
+		assert!(message.contains("cannot decode text: string:"), "{message}");
+		assert!(message.contains("; bytes:"), "{message}");
+		assert!(message.contains("text_value"), "{message}");
+	}
+
+	#[rstest]
 	#[case(
 		DbBackend::Postgres,
 		r#"SELECT CAST("uuid_value" AS TEXT) AS "uuid_value", TO_CHAR("time_value", 'HH24:MI:SS.US') AS "time_value", CAST("json_value" AS TEXT) AS "json_value", CAST("decimal_value" AS TEXT) AS "decimal_value", array_to_json("array_value")::text AS "array_value", "bool_value" AS "bool_value", TO_CHAR(("datetime_value" AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "datetime_value" FROM "projection_models""#,
@@ -3473,7 +3680,7 @@ mod tests {
 
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 		let row = sqlx::query("SELECT name FROM natural_key_records WHERE record_key = $1")
@@ -3725,7 +3932,7 @@ mod tests {
 			.unwrap();
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 
@@ -3744,7 +3951,7 @@ mod tests {
 			.await
 			.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 
@@ -3784,7 +3991,7 @@ mod tests {
 
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 		let row = sqlx::query("SELECT name FROM assigned_id_records WHERE id = ?")
@@ -3825,7 +4032,7 @@ mod tests {
 
 		let mut connection = pool.acquire().await.unwrap();
 		session
-			.flush_with_connection(&mut *connection)
+			.flush_with_connection(&mut connection)
 			.await
 			.unwrap();
 		let row =
@@ -3910,7 +4117,7 @@ mod tests {
 		let mut connection = pool.acquire().await.expect("connection should acquire");
 
 		// Act
-		let result = session.flush_with_connection(&mut *connection).await;
+		let result = session.flush_with_connection(&mut connection).await;
 
 		// Assert
 		assert_eq!(
