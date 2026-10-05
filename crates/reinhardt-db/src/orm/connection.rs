@@ -57,6 +57,22 @@ pub struct QueryRow {
 	inner: Option<Row>,
 }
 
+fn float_array_json(values: impl IntoIterator<Item = Option<f64>>) -> serde_json::Value {
+	serde_json::Value::Array(
+		values
+			.into_iter()
+			.map(|value| match value {
+				None => serde_json::Value::Null,
+				Some(value) => serde_json::Number::from_f64(value)
+					.map(serde_json::Value::Number)
+					// JSON has no non-finite numbers. Strings preserve their distinction
+					// from NULL and make floating-point hydration reject the value.
+					.unwrap_or_else(|| serde_json::Value::String(value.to_string())),
+			})
+			.collect(),
+	)
+}
+
 impl QueryRow {
 	/// Creates a new instance.
 	pub fn new(data: serde_json::Value) -> Self {
@@ -74,6 +90,12 @@ impl QueryRow {
 	/// read as `Vec<Option<T>>`. A SQL NULL for the entire array remains distinct
 	/// from an empty array.
 	///
+	/// JSON cannot represent non-finite floating-point numbers. Array elements
+	/// containing NaN or infinity are represented as strings, so floating-point
+	/// model hydration returns a serialization error and [`Self::get`] returns
+	/// `None` instead of silently reading them as NULL elements. Backend [`Row`]
+	/// values retain the native floating-point values.
+	///
 	/// # Examples
 	///
 	/// ```
@@ -87,6 +109,11 @@ impl QueryRow {
 	/// let row = QueryRow::from_backend_row(row);
 	/// assert_eq!(row.get::<Vec<Option<String>>>("items"),
 	///     Some(vec![Some("kept".into()), None]));
+	///
+	/// let mut row = Row::new();
+	/// row.insert("items".into(), QueryValue::NullableDoubleArray(vec![Some(f64::NAN), None]));
+	/// let row = QueryRow::from_backend_row(row);
+	/// assert!(row.get::<Vec<Option<f64>>>("items").is_none());
 	/// ```
 	pub fn from_backend_row(row: Row) -> Self {
 		// Convert Row to JSON for backward compatibility
@@ -142,12 +169,10 @@ impl QueryRow {
 				QueryValue::BoolArray(values) => serde_json::Value::Array(
 					values.into_iter().map(serde_json::Value::from).collect(),
 				),
-				QueryValue::FloatArray(values) => serde_json::Value::Array(
-					values.into_iter().map(serde_json::Value::from).collect(),
-				),
-				QueryValue::DoubleArray(values) => serde_json::Value::Array(
-					values.into_iter().map(serde_json::Value::from).collect(),
-				),
+				QueryValue::FloatArray(values) => {
+					float_array_json(values.into_iter().map(|value| Some(f64::from(value))))
+				}
+				QueryValue::DoubleArray(values) => float_array_json(values.into_iter().map(Some)),
 				QueryValue::UuidArray(values) => serde_json::Value::Array(
 					values
 						.into_iter()
@@ -167,11 +192,9 @@ impl QueryRow {
 					serde_json::to_value(values).expect("nullable arrays serialize")
 				}
 				QueryValue::NullableFloatArray(values) => {
-					serde_json::to_value(values).expect("nullable arrays serialize")
+					float_array_json(values.into_iter().map(|value| value.map(f64::from)))
 				}
-				QueryValue::NullableDoubleArray(values) => {
-					serde_json::to_value(values).expect("nullable arrays serialize")
-				}
+				QueryValue::NullableDoubleArray(values) => float_array_json(values),
 				QueryValue::NullableUuidArray(values) => {
 					serde_json::to_value(values).expect("nullable arrays serialize")
 				}
@@ -758,6 +781,40 @@ mod tests {
 		// Assert
 		assert_eq!(query_row.data, serde_json::json!({"value": value}));
 		assert_eq!(query_row.get::<i32>("value"), Some(value));
+	}
+
+	#[rstest::rstest]
+	#[case::nullable_real(
+		QueryValue::NullableFloatArray(vec![Some(f32::NAN), None, Some(f32::INFINITY), Some(f32::NEG_INFINITY), Some(1.5)]),
+		serde_json::json!(["NaN", null, "inf", "-inf", 1.5]),
+	)]
+	#[case::nullable_double(
+		QueryValue::NullableDoubleArray(vec![Some(f64::NAN), None, Some(f64::INFINITY), Some(f64::NEG_INFINITY), Some(1.5)]),
+		serde_json::json!(["NaN", null, "inf", "-inf", 1.5]),
+	)]
+	#[case::real(
+		QueryValue::FloatArray(vec![f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 1.5]),
+		serde_json::json!(["NaN", "inf", "-inf", 1.5]),
+	)]
+	#[case::double(
+		QueryValue::DoubleArray(vec![f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1.5]),
+		serde_json::json!(["NaN", "inf", "-inf", 1.5]),
+	)]
+	fn non_finite_array_elements_do_not_become_json_null(
+		#[case] value: QueryValue,
+		#[case] expected: serde_json::Value,
+	) {
+		// Arrange
+		let mut row = Row::new();
+		row.insert("items".to_owned(), value);
+
+		// Act
+		let query_row = QueryRow::from_backend_row(row);
+
+		// Assert
+		assert_eq!(query_row.data["items"], expected);
+		assert_eq!(query_row.get::<Vec<Option<f32>>>("items"), None);
+		assert_eq!(query_row.get::<Vec<Option<f64>>>("items"), None);
 	}
 
 	#[test]

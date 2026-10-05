@@ -31,6 +31,15 @@ writes, typed QuerySet filters, and `get_or_create` / `update_or_create` share
 native array conversion, including arrays whose elements are all NULL. Empty
 arrays and arrays without NULL elements retain their existing typed carriers.
 
+PostgreSQL `bulk_update` and `bulk_update_with_conn` cast array CASE literals to
+their declared scalar element type, including all-NULL and empty arrays.
+
+The `QueryRow` JSON bridge represents non-finite floating-point array elements
+(`NaN` and positive/negative infinity) as strings. Floating-point model hydration
+rejects these with a serialization error, and `QueryRow::get` returns `None`,
+instead of silently turning non-NULL values into NULL elements. Native backend
+rows retain the original PostgreSQL floating-point values.
+
 The additional public `QueryValue` variants require downstream exhaustive
 matches to handle the seven `Nullable*Array` variants. Existing array
 constructors and their payload types remain available.

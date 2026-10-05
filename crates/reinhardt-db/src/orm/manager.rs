@@ -193,12 +193,8 @@ fn database_value_sql_literal(
 	value: DatabaseValue,
 	backend: DatabaseBackend,
 ) -> Result<String, FieldCodecError> {
-	if let DatabaseValue::Array {
-		element_type,
-		values,
-	} = &value
+	if let DatabaseValue::Array { element_type, .. } = &value
 		&& backend == DatabaseBackend::Postgres
-		&& values.is_empty()
 	{
 		let element_type = match element_type {
 			DatabaseArrayType::String => "text",
@@ -209,7 +205,11 @@ fn database_value_sql_literal(
 			DatabaseArrayType::Bool => "boolean",
 			DatabaseArrayType::Uuid => "uuid",
 		};
-		return Ok(format!("ARRAY[]::{element_type}[]"));
+		// CASE branches with only NULLs or quoted UUIDs otherwise infer text[].
+		return Ok(format!(
+			"{}::{element_type}[]",
+			database_value_to_query_value(value).to_sql_literal()
+		));
 	}
 
 	if backend == DatabaseBackend::Postgres || !matches!(&value, DatabaseValue::Array { .. }) {
@@ -4942,6 +4942,39 @@ mod tests {
 			.expect("PostgreSQL empty array SQL should render");
 
 		assert!(sql.contains("ARRAY[]::text[]"));
+	}
+
+	#[rstest::rstest]
+	#[case(DatabaseArrayType::String, "text")]
+	#[case(DatabaseArrayType::I32, "integer")]
+	#[case(DatabaseArrayType::I64, "bigint")]
+	#[case(DatabaseArrayType::F32, "real")]
+	#[case(DatabaseArrayType::F64, "double precision")]
+	#[case(DatabaseArrayType::Bool, "boolean")]
+	#[case(DatabaseArrayType::Uuid, "uuid")]
+	fn bulk_update_nullable_arrays_keep_postgres_element_types(
+		#[case] element_type: DatabaseArrayType,
+		#[case] postgres_type: &str,
+	) {
+		// Arrange
+		let value = DatabaseValue::Array {
+			element_type,
+			values: vec![DatabaseValue::Null, DatabaseValue::Null],
+		};
+
+		// Act
+		let literal = super::database_value_sql_literal(value.clone(), DatabaseBackend::Postgres)
+			.expect("PostgreSQL nullable array should render");
+		let sqlite_literal =
+			super::database_value_sql_literal(value.clone(), DatabaseBackend::Sqlite)
+				.expect("SQLite nullable array should render");
+		let mysql_literal = super::database_value_sql_literal(value, DatabaseBackend::MySql)
+			.expect("MySQL nullable array should render");
+
+		// Assert
+		assert_eq!(literal, format!("ARRAY[NULL,NULL]::{postgres_type}[]"));
+		assert_eq!(sqlite_literal, "'[null,null]'");
+		assert_eq!(mysql_literal, "'[null,null]'");
 	}
 
 	#[test]

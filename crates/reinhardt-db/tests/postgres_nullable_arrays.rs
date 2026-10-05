@@ -17,6 +17,8 @@ use testcontainers_modules::postgres::Postgres;
 
 struct ArrayFixture {
 	backend: PostgresBackend,
+	#[cfg(feature = "migrations")]
+	database_url: String,
 	_container: ContainerAsync<Postgres>,
 }
 
@@ -31,15 +33,16 @@ async fn postgres_arrays() -> ArrayFixture {
 		.expect("PostgreSQL container should start");
 	let host = container.get_host().await.unwrap();
 	let port = container.get_host_port_ipv4(5432).await.unwrap();
+	let database_url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
 	let pool = PgPoolOptions::new()
 		.max_connections(2)
-		.connect(&format!(
-			"postgres://postgres:postgres@{host}:{port}/postgres"
-		))
+		.connect(&database_url)
 		.await
 		.expect("PostgreSQL pool should connect");
 	ArrayFixture {
 		backend: PostgresBackend::new(pool),
+		#[cfg(feature = "migrations")]
+		database_url,
 		_container: container,
 	}
 }
@@ -324,6 +327,239 @@ mod derived_models {
 	nullable_array_model!(FloatArrayModel, f32, "nullable_float_arrays");
 	nullable_array_model!(DoubleArrayModel, f64, "nullable_double_arrays");
 	nullable_array_model!(UuidArrayModel, uuid::Uuid, "nullable_uuid_arrays");
+
+	type FloatArrayConversions<T> = (
+		fn(Vec<T>) -> QueryValue,
+		fn(Vec<Option<T>>) -> QueryValue,
+		fn(T) -> f64,
+		&'static str,
+	);
+	const REAL_CONVERSIONS: FloatArrayConversions<f32> = (
+		QueryValue::FloatArray,
+		QueryValue::NullableFloatArray,
+		f64::from,
+		"f32",
+	);
+	const DOUBLE_CONVERSIONS: FloatArrayConversions<f64> = (
+		QueryValue::DoubleArray,
+		QueryValue::NullableDoubleArray,
+		std::convert::identity,
+		"f64",
+	);
+
+	#[rstest]
+	#[case::string(PhantomData::<StringArrayModel>, ColumnType::Text, ["kept".to_owned(), "quote'tail".to_owned()])]
+	#[case::int(PhantomData::<IntArrayModel>, ColumnType::Integer, [i32::MIN, i32::MAX])]
+	#[case::bigint(PhantomData::<BigIntArrayModel>, ColumnType::BigInteger, [i64::MIN, i64::MAX])]
+	#[case::bool(PhantomData::<BoolArrayModel>, ColumnType::Boolean, [true, false])]
+	#[case::float(PhantomData::<FloatArrayModel>, ColumnType::Float, [1.5_f32, -2.5_f32])]
+	#[case::double(PhantomData::<DoubleArrayModel>, ColumnType::Double, [3.5_f64, -4.5_f64])]
+	#[case::uuid(PhantomData::<UuidArrayModel>, ColumnType::Uuid, [uuid::Uuid::nil(), uuid::Uuid::from_u128(1)])]
+	#[tokio::test]
+	#[serial_test::serial(nullable_array_default_database)]
+	async fn bulk_updates_preserve_nullable_array_elements<M, T>(
+		#[future] postgres_arrays: ArrayFixture,
+		#[case] _model: PhantomData<M>,
+		#[case] column_type: ColumnType,
+		#[case] values: [T; 2],
+	) where
+		M: NullableArrayRecord<T> + std::fmt::Debug + PartialEq,
+		T: Clone
+			+ std::fmt::Debug
+			+ PartialEq
+			+ sqlx::Type<sqlx::Postgres>
+			+ sqlx::postgres::PgHasArrayType
+			+ for<'r> sqlx::Decode<'r, sqlx::Postgres>
+			+ Send
+			+ Unpin,
+	{
+		// Arrange
+		let fixture = postgres_arrays.await;
+		let schema = Query::create_table()
+			.table(M::table_name())
+			.col(ColumnDef::new("id").big_integer().primary_key(true))
+			.col(ColumnDef::new("items").array(column_type))
+			.to_string(PostgresQueryBuilder);
+		fixture.backend.execute(&schema, vec![]).await.unwrap();
+		let owner = BackendsConnection::new(Arc::new(PostgresBackend::new(
+			fixture.backend.pool().clone(),
+		)));
+		let lease = DatabaseConnectionLease::register(owner).unwrap();
+		let mut connection = lease.handle();
+		let _registration =
+			reinhardt_db::orm::manager::install_scoped_database(&fixture.database_url)
+				.await
+				.unwrap();
+		let manager = Manager::<M>::new();
+		let shapes = [
+			vec![None, None],
+			vec![
+				None,
+				Some(values[0].clone()),
+				None,
+				Some(values[1].clone()),
+				None,
+			],
+			vec![],
+			values.iter().cloned().map(Some).collect(),
+		];
+		for id in 1..=4 {
+			manager
+				.create_with_conn(&mut connection, &M::new(id, vec![]))
+				.await
+				.unwrap();
+		}
+
+		for use_global_connection in [false, true] {
+			let updated_models = shapes
+				.iter()
+				.enumerate()
+				.map(|(index, _)| {
+					let offset = usize::from(use_global_connection);
+					M::new(
+						index as i64 + 1,
+						shapes[(index + offset) % shapes.len()].clone(),
+					)
+				})
+				.collect::<Vec<_>>();
+
+			// Act: both public bulk-update paths render CASE array literals.
+			let count = if use_global_connection {
+				manager
+					.bulk_update(updated_models.clone(), vec!["items".to_owned()], Some(2))
+					.await
+			} else {
+				manager
+					.bulk_update_with_conn(
+						&mut connection,
+						updated_models.clone(),
+						vec!["items".to_owned()],
+						Some(2),
+					)
+					.await
+			}
+			.expect("typed nullable-array bulk update should succeed");
+
+			// Assert: typed SQLx reads observe every shape after each bulk update.
+			assert_eq!(count, updated_models.len());
+			for model in updated_models {
+				let sql = Query::select()
+					.column("items")
+					.from(M::table_name())
+					.and_where(Expr::col("id").eq(model.primary_key().unwrap()))
+					.to_string(PostgresQueryBuilder);
+				let stored: Vec<Option<T>> = sqlx::query_scalar(&sql)
+					.fetch_one(fixture.backend.pool())
+					.await
+					.unwrap();
+				assert_eq!(stored, model.items());
+			}
+		}
+	}
+
+	#[rstest]
+	#[case::real(PhantomData::<FloatArrayModel>, ColumnType::Float, [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 1.5], REAL_CONVERSIONS)]
+	#[case::double(PhantomData::<DoubleArrayModel>, ColumnType::Double, [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1.5], DOUBLE_CONVERSIONS)]
+	#[tokio::test]
+	async fn non_finite_arrays_reject_derived_model_hydration<M, T>(
+		#[future] postgres_arrays: ArrayFixture,
+		#[case] _model: PhantomData<M>,
+		#[case] column_type: ColumnType,
+		#[case] values: [T; 4],
+		#[case] conversions: FloatArrayConversions<T>,
+	) where
+		M: NullableArrayRecord<T> + std::fmt::Debug,
+		T: Clone
+			+ std::fmt::Debug
+			+ serde::de::DeserializeOwned
+			+ sqlx::Type<sqlx::Postgres>
+			+ sqlx::postgres::PgHasArrayType
+			+ for<'r> sqlx::Decode<'r, sqlx::Postgres>
+			+ Send
+			+ Unpin,
+	{
+		// Arrange
+		let fixture = postgres_arrays.await;
+		let (non_nullable, nullable, to_f64, expected_type) = conversions;
+		let schema = Query::create_table()
+			.table(M::table_name())
+			.col(ColumnDef::new("id").big_integer().primary_key(true))
+			.col(ColumnDef::new("items").array(column_type))
+			.to_string(PostgresQueryBuilder);
+		fixture.backend.execute(&schema, vec![]).await.unwrap();
+		let mut transaction = fixture.backend.begin().await.unwrap();
+		for has_null in [false, true] {
+			let id = i64::from(has_null) + 1;
+			let items = if has_null {
+				nullable(vec![
+					Some(values[0].clone()),
+					None,
+					Some(values[1].clone()),
+					Some(values[2].clone()),
+					Some(values[3].clone()),
+				])
+			} else {
+				non_nullable(values.to_vec())
+			};
+			let (sql, _) = Query::insert()
+				.into_table(M::table_name())
+				.columns(["id", "items"])
+				.values(vec![Value::from(id), Value::from(0_i32)])
+				.unwrap()
+				.build(PostgresQueryBuilder);
+			fixture
+				.backend
+				.execute(&sql, vec![QueryValue::Int(id), items])
+				.await
+				.unwrap();
+			let sql = Query::select()
+				.column("items")
+				.from(M::table_name())
+				.and_where(Expr::col("id").eq(id))
+				.to_string(PostgresQueryBuilder);
+			let raw: Vec<Option<T>> = sqlx::query_scalar(&sql)
+				.fetch_one(fixture.backend.pool())
+				.await
+				.unwrap();
+
+			// Assert: PostgreSQL stores non-finite values separately from NULL.
+			let offset = usize::from(has_null);
+			assert!(to_f64(raw[0].clone().unwrap()).is_nan());
+			assert_eq!(to_f64(raw[1 + offset].clone().unwrap()), f64::INFINITY);
+			assert_eq!(to_f64(raw[2 + offset].clone().unwrap()), f64::NEG_INFINITY);
+			assert_eq!(to_f64(raw[3 + offset].clone().unwrap()), 1.5);
+			if has_null {
+				assert!(raw[1].is_none());
+			}
+
+			// Act
+			let row = fixture.backend.fetch_one(&sql, vec![]).await.unwrap();
+			let query_row = QueryRow::from_backend_row(row);
+			let result = Manager::<M>::new()
+				.all()
+				.filter(M::id_field().eq(id))
+				.all_with_executor(transaction.as_mut())
+				.await;
+
+			// Assert
+			assert_eq!(query_row.data["items"][0], "NaN");
+			assert!(query_row.get::<Vec<Option<T>>>("items").is_none());
+			let error = result.expect_err(
+				"non-finite JSON hydration must fail instead of returning NULL elements",
+			);
+			assert_eq!(
+				error.kind(),
+				reinhardt_core::exception::DatabaseErrorKind::Serialization
+			);
+			assert!(
+				error
+					.to_string()
+					.contains(&format!("expected {expected_type}")),
+				"{error}"
+			);
+		}
+		transaction.rollback().await.unwrap();
+	}
 
 	#[rstest]
 	#[case::string(PhantomData::<StringArrayModel>, ColumnType::Text, ["kept".to_owned(), "tail".to_owned()])]

@@ -108,6 +108,8 @@
 //! `f32`, `f64`, and `Uuid`. Each `None` preserves its position as a SQL NULL
 //! array element. Use `Option<Vec<Option<T>>>` when the whole column may also
 //! be NULL. The codecs also decode JSON arrays from MySQL and SQLite.
+//! The model-wide JSON hydration bridge rejects NaN and infinity in floating-
+//! point arrays; use native backend rows to read those PostgreSQL values.
 //!
 //! ```rust
 //! use reinhardt_db::orm::{DatabaseArrayType, DatabaseField, DatabaseScalar, DatabaseValue};
