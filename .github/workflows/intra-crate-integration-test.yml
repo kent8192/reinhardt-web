@@ -261,3 +261,12 @@ jobs:
       - name: Docker cleanup after tests
         if: always()
         run: docker system prune -af
+
+      # PR builds do not save the Rust target cache. Free their test binaries
+      # before post-job cache cleanup needs space for runner logs and archives.
+      - name: Release uncached test build output
+        if: ${{ always() && github.ref != 'refs/heads/main' }}
+        run: |
+          if [[ -d "$CARGO_TARGET_DIR" ]]; then
+            rm -r -- "$CARGO_TARGET_DIR"
+          fi
