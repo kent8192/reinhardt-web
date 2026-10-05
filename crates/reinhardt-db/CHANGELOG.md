@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.19...reinhardt-db@v0.4.0-alpha.20) - 2026-10-05
+
+### Added
+
+- *(migrations)* resolve confined SQL assets in filesystem loads
+
+### Fixed
+
+- *(migrations)* retain String types in upgraded metadata
+- *(migrations)* release SQL asset handles after identity reads
+- *(migrations)* gate SQL asset contexts to native targets
+- *(db)* restore defaults when reversing column alterations
+- fix!(db): add safe typed postgresql extension reversal
+- *(db)* quote Session list_all identifiers
+
+### Maintenance
+
+- *(db)* isolate typed extension reversal
+- *(db)* merge develop/0.4.0 into extension reversal
+- *(db)* merge develop/0.4.0 into database test lint fix
+
 ### Added
 
 - PostgreSQL sequence options, literal schema identifiers, and structured identity definitions (#6506).

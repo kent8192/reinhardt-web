@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.19...reinhardt-query@v0.4.0-alpha.20) - 2026-10-05
+
+### Added
+
+- *(query)* [**breaking**] render qualified sequence and identity DDL
+
+### Maintenance
+
+- *(git)* merge develop/0.4.0 into sequence identity work
+
 ### Added
 
 - PostgreSQL sequence options, literal schema identifiers, and structured identity definitions (#6506).

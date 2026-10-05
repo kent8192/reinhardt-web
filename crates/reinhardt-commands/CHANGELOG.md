@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.19...reinhardt-commands@v0.4.0-alpha.20) - 2026-10-05
+
+### Added
+
+- *(commands)* generate dependency stages for sequence declarations
+
+### Fixed
+
+- *(commands)* honor capability migration app scope
+- *(migrations)* keep app sequence generation within selected scope
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.18...reinhardt-commands@v0.4.0-alpha.19) - 2026-10-03
 
 ### Documentation
