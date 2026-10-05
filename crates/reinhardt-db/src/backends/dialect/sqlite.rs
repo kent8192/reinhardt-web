@@ -138,6 +138,43 @@ impl SqliteBackend {
 
 #[async_trait]
 impl DatabaseBackend for SqliteBackend {
+	async fn __execute_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(self.pool.as_ref())
+			.await?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+		})
+	}
+
+	async fn __fetch_one_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Row> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let row = sqlx::query_with(sql, arguments)
+			.fetch_one(self.pool.as_ref())
+			.await?;
+		Self::convert_row(row)
+	}
+
+	async fn __fetch_all_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Vec<Row>> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let rows = sqlx::query_with(sql, arguments)
+			.fetch_all(self.pool.as_ref())
+			.await?;
+		rows.into_iter().map(Self::convert_row).collect()
+	}
 	fn database_type(&self) -> DatabaseType {
 		DatabaseType::Sqlite
 	}
@@ -373,6 +410,25 @@ impl SqliteTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for SqliteTransactionExecutor {
+	async fn __execute_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		_backend: DatabaseType,
+	) -> Result<QueryResult> {
+		let arguments = crate::backends::generated::sqlite::arguments(values)?;
+		let connection = self.tx.as_mut().ok_or_else(|| {
+			crate::backends::DatabaseError::TransactionError(
+				"Transaction already consumed".to_string(),
+			)
+		})?;
+		let result = sqlx::query_with(sql, arguments)
+			.execute(&mut **connection)
+			.await?;
+		Ok(QueryResult {
+			rows_affected: result.rows_affected(),
+		})
+	}
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
 			crate::backends::error::DatabaseError::TransactionError(
