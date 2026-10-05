@@ -4,6 +4,7 @@
 //! QueryValue, DatabaseError, QueryCacheConfig, and builder construction.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -25,11 +26,15 @@ use reinhardt_db::backends::{
 /// Used to test query builder SQL generation.
 struct MockBackend {
 	db_type: DatabaseType,
+	query_calls: AtomicUsize,
 }
 
 impl MockBackend {
 	fn new(db_type: DatabaseType) -> Arc<Self> {
-		Arc::new(Self { db_type })
+		Arc::new(Self {
+			db_type,
+			query_calls: AtomicUsize::new(0),
+		})
 	}
 }
 
@@ -59,6 +64,7 @@ impl DatabaseBackend for MockBackend {
 		_sql: &str,
 		_params: Vec<QueryValue>,
 	) -> reinhardt_db::backends::Result<QueryResult> {
+		self.query_calls.fetch_add(1, Ordering::Relaxed);
 		Ok(QueryResult { rows_affected: 0 })
 	}
 
@@ -67,6 +73,7 @@ impl DatabaseBackend for MockBackend {
 		_sql: &str,
 		_params: Vec<QueryValue>,
 	) -> reinhardt_db::backends::Result<Row> {
+		self.query_calls.fetch_add(1, Ordering::Relaxed);
 		Ok(Row::new())
 	}
 
@@ -1047,6 +1054,97 @@ fn test_insert_builder_mysql_basic() {
 	// Assert
 	assert!(sql.contains("INSERT INTO"));
 	assert_eq!(params.len(), 1);
+}
+
+#[rstest]
+#[case::named_update(
+	OnConflictClause::constraint("ignored_constraint").do_update(vec!["name"]),
+	"MySQL does not support named conflict targets"
+)]
+#[case::named_ignore(
+	OnConflictClause::constraint("ignored_constraint").do_nothing(),
+	"MySQL does not support named conflict targets"
+)]
+#[case::named_conditional_update(
+	OnConflictClause::constraint("ignored_constraint")
+		.do_update(vec!["name"])
+		.where_clause("1 = 0"),
+	"MySQL does not support named conflict targets"
+)]
+#[case::conditional_column_update(
+	OnConflictClause::columns(vec!["id"]).do_update(vec!["name"]).where_clause("1 = 0"),
+	"MySQL does not support conditional ON DUPLICATE KEY UPDATE"
+)]
+#[case::conditional_any_update(
+	OnConflictClause::any().do_update(vec!["name"]).where_clause("1 = 0"),
+	"MySQL does not support conditional ON DUPLICATE KEY UPDATE"
+)]
+#[tokio::test]
+async fn test_mysql_unsupported_conflict_rejected_before_query(
+	#[case] clause: OnConflictClause,
+	#[case] message: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(DatabaseType::Mysql);
+	let builder = InsertBuilder::new(backend.clone(), "options")
+		.value("id", QueryValue::Int(1))
+		.value("name", QueryValue::String("replacement".into()))
+		.on_conflict(clause);
+	let expected = DatabaseError::NotSupported(message.into());
+
+	// Act
+	let build_error = builder.build().unwrap_err();
+	let execute_error = builder.execute().await.unwrap_err();
+	let fetch_error = builder.fetch_one().await.unwrap_err();
+
+	// Assert
+	assert_eq!(build_error, expected);
+	assert_eq!(execute_error, expected);
+	assert_eq!(fetch_error, expected);
+	assert_eq!(backend.query_calls.load(Ordering::Relaxed), 0);
+}
+
+#[rstest]
+#[case::column_update(
+	OnConflictClause::columns(vec!["id"]).do_update(vec!["name"]),
+	"INSERT INTO `options` (`id`, `name`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`)"
+)]
+#[case::any_update(
+	OnConflictClause::any().do_update(vec!["name"]),
+	"INSERT INTO `options` (`id`, `name`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`)"
+)]
+#[case::column_ignore(
+	OnConflictClause::columns(vec!["id"]).do_nothing(),
+	"INSERT IGNORE INTO `options` (`id`, `name`) VALUES (?, ?)"
+)]
+#[case::any_ignore(
+	OnConflictClause::any().do_nothing(),
+	"INSERT IGNORE INTO `options` (`id`, `name`) VALUES (?, ?)"
+)]
+#[tokio::test]
+async fn test_mysql_supported_conflict_still_executes(
+	#[case] clause: OnConflictClause,
+	#[case] expected_sql: &str,
+) {
+	// Arrange
+	let backend = MockBackend::new(DatabaseType::Mysql);
+	let builder = InsertBuilder::new(backend.clone(), "options")
+		.value("id", QueryValue::Int(1))
+		.value("name", QueryValue::String("replacement".into()))
+		.on_conflict(clause);
+
+	// Act
+	let (sql, params) = builder.build().unwrap();
+	let result = builder.execute().await.unwrap();
+
+	// Assert
+	assert_eq!(sql, expected_sql);
+	assert_eq!(
+		params,
+		vec![QueryValue::Int(1), QueryValue::String("replacement".into())]
+	);
+	assert_eq!(result.rows_affected, 0);
+	assert_eq!(backend.query_calls.load(Ordering::Relaxed), 1);
 }
 
 #[rstest]

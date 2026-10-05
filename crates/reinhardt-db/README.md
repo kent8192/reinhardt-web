@@ -197,6 +197,15 @@ Low-level database connectivity and connection management:
     and SQLite, placing conflict actions before `RETURNING` for both VALUES
     and SELECT sources. MySQL retains `INSERT IGNORE` and
     `ON DUPLICATE KEY UPDATE` without `RETURNING`.
+  - MySQL `InsertBuilder` returns `DatabaseError::NotSupported` for named conflict
+    targets or `WHERE` conditions before executing a query. Unconditional upserts
+    and `INSERT IGNORE` retain MySQL's handling of conflicts on any unique key,
+    including when the fluent API specifies conflict columns.
+  - `InsertBuilder::from_select` preserves fluent conflict targets, actions, and
+    conditions, with the same precedence over legacy conflict settings.
+    `InsertFromSelectBuilder::execute` and `fetch_one` reject invalid or unsupported
+    inherited clauses before calling the backend. Its existing infallible `build`
+    method panics for such clauses instead of silently discarding them.
   - **When to use**: Need direct database access or custom queries
 
 - **`pool` module**: Connection pooling implementation
