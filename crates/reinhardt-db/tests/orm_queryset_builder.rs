@@ -1047,14 +1047,14 @@ fn test_filter_value_from_i32() {
 #[rstest]
 fn test_filter_value_from_f64() {
 	// Arrange
-	let value: f64 = 3.14;
+	let value: f64 = 1.25;
 
 	// Act
 	let filter_value: FilterValue = value.into();
 
 	// Assert
 	assert!(
-		matches!(filter_value, FilterValue::Float(f) if (f - 3.14).abs() < f64::EPSILON),
+		matches!(filter_value, FilterValue::Float(f) if f == value),
 		"From<f64> should produce FilterValue::Float"
 	);
 }
