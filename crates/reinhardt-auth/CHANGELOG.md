@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.20...reinhardt-auth@v0.3.21) - 2026-10-05
+
+### Changed
+
+- *(auth)* simplify mock authentication result types
+
+### Documentation
+
+- *(auth)* clarify legacy OAuth2 helper scope
+- *(auth)* clarify OAuth2 helper scope and validation
+- *(auth)* complete OAuth setup and token docs
+- *(auth)* align OAuth2 module catalog wording
+
+### Fixed
+
+- *(auth)* validate params feature combinations
+- *(auth)* gate optional integration test targets
+
 ## [0.3.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.19...reinhardt-auth@v0.3.20) - 2026-09-25
 
 ### Fixed
