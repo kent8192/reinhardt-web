@@ -307,6 +307,13 @@ reinhardt-utils = { version = "LATEST_VERSION", features = ["redis-sentinel"] }
 | `middleware-rate-limit` | Rate limiting |
 | `social-auth` | Async session-backed social OAuth state; pair with `session-redis` for Redis |
 
+Each individual middleware component feature exposes its APIs through
+`reinhardt::middleware` on native targets without requiring the umbrella
+`middleware` feature. For example, `default-features = false` with
+`features = ["middleware-cors"]` enables
+`reinhardt::middleware::cors::create_cors_middleware_from_settings` and the
+`reinhardt::CorsMiddleware` re-export. Middleware remains native-only.
+
 ---
 
 ### Dependency Injection
