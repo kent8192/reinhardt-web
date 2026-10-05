@@ -141,7 +141,10 @@ pub enum FilterValue {
 	Range(Box<FilterValue>, Box<FilterValue>),
 	/// Field reference for field-to-field comparisons (e.g., WHERE discount_price < total_price)
 	FieldRef(super::expressions::F),
-	/// Arithmetic expression (e.g., WHERE total != unit_price * quantity)
+	/// Arithmetic expression (e.g., WHERE total != unit_price * quantity).
+	///
+	/// Arithmetic and COALESCE field references use backend-quoted columns, and
+	/// scalar constants remain typed bind values. Nested arithmetic retains its parentheses.
 	Expression(super::annotation::Expression),
 	/// Outer query reference for correlated subqueries (e.g., WHERE books.author_id = OuterRef("authors.id"))
 	OuterRef(super::expressions::OuterRef),
@@ -298,7 +301,10 @@ pub enum UpdateValue {
 	Uuid(Uuid),
 	/// Field reference for field-to-field updates (e.g., SET discount_price = total_price)
 	FieldRef(super::expressions::F),
-	/// Arithmetic expression (e.g., SET total = unit_price * quantity)
+	/// Arithmetic expression (e.g., SET total = unit_price * quantity).
+	///
+	/// Arithmetic and COALESCE field references use backend-quoted columns, and
+	/// scalar constants remain typed bind values. Nested arithmetic retains its parentheses.
 	Expression(super::annotation::Expression),
 }
 
@@ -3623,9 +3629,15 @@ where
 		}
 	}
 
-	// Filters and updates share the runtime expression lowering path.
-	fn expression_to_query_expr(expr: &super::annotation::Expression) -> Expr {
-		expr.to_query_expr()
+	/// Lower arithmetic operands before the selected backend quotes columns and binds values.
+	pub(super) fn annotation_value_to_query_expr(
+		value: &super::annotation::AnnotationValue,
+	) -> SimpleExpr {
+		value.to_query_expr()
+	}
+
+	fn expression_to_query_expr(expression: &super::annotation::Expression) -> Expr {
+		expression.to_query_expr()
 	}
 
 	fn filter_lhs_expr(filter: &Filter) -> Expr {
@@ -4383,13 +4395,10 @@ where
 		}
 
 		for annotation in &self.annotations {
-			let expression = match &annotation.value {
-				super::annotation::AnnotationValue::Expression(expression) => {
-					expression.to_query_expr()
-				}
-				value => Expr::cust(value.to_sql_expr()),
-			};
-			stmt.expr_as(expression, Alias::new(&annotation.alias));
+			stmt.expr_as(
+				Self::annotation_value_to_query_expr(&annotation.value),
+				Alias::new(&annotation.alias),
+			);
 		}
 
 		for cte in self.ctes.iter() {
@@ -5868,17 +5877,11 @@ where
 			self.select_related_query()
 		};
 
-		// Add annotations to SELECT clause if any using reinhardt-query API
-		// Collect annotation SQL strings first to handle lifetime issues
-		// Note: Use to_sql_expr() to get expression without alias (reinhardt-query adds alias via expr_as)
-		let annotation_exprs: Vec<_> = self
-			.annotations
-			.iter()
-			.map(|a| (a.value.to_sql_expr(), a.alias.clone()))
-			.collect();
-
-		for (value_sql, alias) in annotation_exprs {
-			stmt.expr_as(Expr::cust(value_sql), Alias::new(alias));
+		for annotation in &self.annotations {
+			stmt.expr_as(
+				Self::annotation_value_to_query_expr(&annotation.value),
+				Alias::new(&annotation.alias),
+			);
 		}
 
 		use reinhardt_query::prelude::PostgresQueryBuilder;
@@ -6829,8 +6832,8 @@ mod tests {
 	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
 	use reinhardt_query::prelude::{
-		Alias, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
-		SqliteQueryBuilder, Value, Values,
+		Alias, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuilder,
+		QueryStatementBuilder, SqliteQueryBuilder, Value, Values,
 	};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
@@ -6971,6 +6974,52 @@ mod tests {
 		assert_eq!(values, Values(vec![]));
 	}
 
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		"SELECT CASE WHEN TRUE THEN (\"id\" + $1) ELSE 0 END"
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT CASE WHEN TRUE THEN (`id` + ?) ELSE 0 END"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		"SELECT CASE WHEN TRUE THEN (\"id\" + ?) ELSE 0 END"
+	)]
+	fn case_arithmetic_preserves_native_operands_and_empty_condition(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		use crate::orm::annotation::{AnnotationValue, Expression, Value, When};
+		use crate::orm::expressions::{F, Q};
+
+		// Arrange: CASE identities and nested arithmetic share runtime lowering.
+		let expression = Expression::Case {
+			whens: vec![When::new(
+				Q::empty(),
+				AnnotationValue::Expression(Expression::Add(
+					Box::new(AnnotationValue::Field(F::new("id"))),
+					Box::new(AnnotationValue::Value(Value::Int(0))),
+				)),
+			)],
+			default: Some(Box::new(AnnotationValue::Value(Value::Int(0)))),
+		};
+		let mut statement = Query::select();
+		statement.expr(QuerySet::<TestUser>::expression_to_query_expr(&expression));
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: the identity stays constant while arithmetic operands are typed binds.
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(vec![0_i64.into()]));
+	}
+
 	impl TestUser {
 		// Allow dead_code: test helper constructor for query tests
 		#[allow(dead_code)]
@@ -7063,6 +7112,149 @@ mod tests {
 			queryset.subquery_fields().collect::<Vec<_>>(),
 			vec!["username_column", "email_column"]
 		);
+	}
+
+	#[rstest::rstest]
+	#[case(DatabaseBackend::Postgres, "\"users\".\"pk\"\"key`?\"", ["$1", "$2", "$3", "$4", "$5"])]
+	#[case(DatabaseBackend::MySql, "`users`.`pk\"key``?`", ["?", "?", "?", "?", "?"])]
+	#[case(DatabaseBackend::Sqlite, "\"users\".\"pk\"\"key`?\"", ["?", "?", "?", "?", "?"])]
+	fn legacy_arithmetic_preserves_native_quotes_grouping_and_scalar_types(
+		#[case] backend: DatabaseBackend,
+		#[case] field: &str,
+		#[case] slots: [&str; 5],
+	) {
+		use super::super::annotation::{AnnotationValue as AV, Expression, Value as Scalar};
+		use super::super::expressions::F;
+		use reinhardt_query::prelude::Values;
+		// Arrange
+		let payload = "quotes' \\ ? $9 雪";
+		let nested = AV::Expression(Expression::Multiply(
+			Box::new(AV::Expression(Expression::Add(
+				Box::new(AV::Field(F::new("users.pk\"key`?"))),
+				Box::new(AV::Value(Scalar::Int(1_i64 << 40))),
+			))),
+			Box::new(AV::Value(Scalar::Float(2.5))),
+		));
+		let statement = Query::select()
+			.expr(QuerySet::<TestUser>::annotation_value_to_query_expr(
+				&nested,
+			))
+			.expr(QuerySet::<TestUser>::annotation_value_to_query_expr(
+				&AV::Expression(Expression::Coalesce(vec![
+					AV::Value(Scalar::Null),
+					AV::Value(Scalar::String(payload.into())),
+				])),
+			))
+			.expr(QuerySet::<TestUser>::annotation_value_to_query_expr(
+				&AV::Value(Scalar::Bool(false)),
+			))
+			.expr(QuerySet::<TestUser>::annotation_value_to_query_expr(
+				&AV::Value(Scalar::Int(-7)),
+			))
+			.to_owned();
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => PostgresQueryBuilder.build_select(&statement),
+			DatabaseBackend::MySql => MySqlQueryBuilder.build_select(&statement),
+			DatabaseBackend::Sqlite => SqliteQueryBuilder.build_select(&statement),
+		};
+		// Assert
+		assert_eq!(
+			sql,
+			format!(
+				"SELECT (({field} + {}) * {}), COALESCE(NULL, {}), {}, {}",
+				slots[0], slots[1], slots[2], slots[3], slots[4]
+			)
+		);
+		assert_eq!(
+			values,
+			Values(vec![
+				(1_i64 << 40).into(),
+				2.5_f64.into(),
+				payload.into(),
+				false.into(),
+				(-7_i64).into()
+			])
+		);
+	}
+
+	#[rstest::rstest]
+	#[case(DatabaseBackend::Postgres)]
+	#[case(DatabaseBackend::MySql)]
+	#[case(DatabaseBackend::Sqlite)]
+	fn legacy_expressions_bind_annotation_update_and_filter_operands(
+		#[case] backend: DatabaseBackend,
+	) {
+		use super::super::annotation::{
+			Annotation, AnnotationValue as AV, Expression, Value as Scalar,
+		};
+		use super::super::expressions::F;
+		use reinhardt_query::prelude::Values;
+		// Arrange
+		let identity = Expression::Add(
+			Box::new(AV::Field(F::new("id"))),
+			Box::new(AV::Value(Scalar::Int(0))),
+		);
+		let queryset = QuerySet::<TestUser>::new()
+			.annotate(Annotation::new(
+				"fallback",
+				AV::Expression(Expression::Coalesce(vec![
+					AV::Value(Scalar::Null),
+					AV::Value(Scalar::Int(9)),
+				])),
+			))
+			.filter(Filter::new(
+				"id",
+				FilterOperator::Eq,
+				FilterValue::Integer(1),
+			))
+			.filter(Filter::new(
+				"id",
+				FilterOperator::Eq,
+				FilterValue::Expression(identity.clone()),
+			));
+		let select = queryset.build_full_model_select_statement().unwrap();
+		let update = queryset.update_query(&HashMap::from([(
+			"id".into(),
+			UpdateValue::Expression(identity.clone()),
+		)]));
+		let partial_update = queryset
+			.update_fields_query([FieldAssignment::new(
+				"id",
+				UpdateValue::Expression(identity),
+			)])
+			.unwrap();
+		// Act
+		let (selected, updated, partial) = match backend {
+			DatabaseBackend::Postgres => (
+				PostgresQueryBuilder.build_select(&select),
+				PostgresQueryBuilder.build_update(&update),
+				PostgresQueryBuilder.build_update(&partial_update),
+			),
+			DatabaseBackend::MySql => (
+				MySqlQueryBuilder.build_select(&select),
+				MySqlQueryBuilder.build_update(&update),
+				MySqlQueryBuilder.build_update(&partial_update),
+			),
+			DatabaseBackend::Sqlite => (
+				SqliteQueryBuilder.build_select(&select),
+				SqliteQueryBuilder.build_update(&update),
+				SqliteQueryBuilder.build_update(&partial_update),
+			),
+		};
+		// Assert: SELECT expressions precede WHERE binds; UPDATE operands precede WHERE binds.
+		assert_eq!(
+			selected.1,
+			Values(vec![9_i64.into(), 1_i64.into(), 0_i64.into()])
+		);
+		assert_eq!(
+			updated.1,
+			Values(vec![0_i64.into(), 1_i64.into(), 0_i64.into()])
+		);
+		assert_eq!(updated, partial);
+		assert!(selected.0.contains("COALESCE(NULL,"));
+		assert!(selected.0.contains(" + "));
+		assert!(updated.0.contains(" + "));
 	}
 
 	#[test]

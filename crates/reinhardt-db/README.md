@@ -37,6 +37,11 @@ This crate provides the following modules:
     constraints are unchanged. Existing migration files are not rewritten;
     regenerate unapplied migrations with oversized generated names.
   - Forward and backward migrations
+  - PostgreSQL and CockroachDB `AlterColumn` rollback restores the previous
+    database default, including removing a newly added sequence default. Changed
+    defaults are removed before reverting the type and restored afterward.
+    Generated migration files preserve every historical field type, including
+    nested arrays, enum/set values, and relationship metadata.
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
   - State management and autodetection
@@ -426,6 +431,20 @@ let updated = User::objects()
     .update_fields([User::field_updated_at().assign(Utc::now())])
     .await?;
 ```
+
+### Arithmetic expressions
+
+Legacy `FilterValue::Expression`, `UpdateValue::Expression`, and arithmetic
+annotations lower field references and constants through the query AST. The
+selected PostgreSQL, MySQL, or SQLite renderer quotes the columns and binds the
+constants in expression order. For example, `F("id") + 0` compares or updates the
+column value on MySQL in both strict and non-strict SQL modes. Arithmetic nested
+in CASE results uses the same operand lowering and preserves the runtime empty
+condition identities described above. Nested operations retain their parentheses,
+and COALESCE operands use the same typed lowering.
+
+Scalar CASE result values, aggregate SQL, and subquery SQL retain their
+existing SQL rendering paths.
 
 ### Execute a QuerySet with Session
 
