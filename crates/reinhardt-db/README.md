@@ -387,6 +387,11 @@ annotations, related loading, joins, grouping, CTEs, and alternate sources are
 not model-shaped and return an error. Array filter parameters are not supported
 through `sqlx::Any` on the main line.
 
+Session text reads accept both SQLx Any strings and complete UTF-8 byte values,
+including MySQL TEXT columns reported as BLOB. Values are not truncated or
+decoded lossily. Invalid UTF-8 returns a serialization error identifying the
+table, model field, and physical column; nullable text preserves SQL NULL.
+
 `Session::get`, `Session::list`, and `Session::list_all` preserve the full i64
 range of `BigIntegerField` values, including nullable fields. Integer decoding
 failures return `SessionError::SerializationError`; only a stored SQL NULL in a
