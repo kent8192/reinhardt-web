@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.21...reinhardt-web@v0.3.22) - 2026-10-06
+
+### Fixed
+
+- *(middleware)* expose component features through the facade
+- *(tests)* fetch uncached middleware consumer dependencies
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.20...reinhardt-web@v0.3.21) - 2026-10-05
 
 ### Added
