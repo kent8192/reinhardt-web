@@ -17,8 +17,8 @@ its `streaming` feature exposes the Kafka configuration type:
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { package = "reinhardt-web", version = "0.3.21", features = ["tasks", "streaming"] }
-reinhardt-tasks = { version = "0.3.21", features = ["kafka-backend"] }
+reinhardt = { package = "reinhardt-web", version = "0.3.22", features = ["tasks", "streaming"] }
+reinhardt-tasks = { version = "0.3.22", features = ["kafka-backend"] }
 ```
 
 Then import task features:
