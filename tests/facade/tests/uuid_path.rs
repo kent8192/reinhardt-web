@@ -57,16 +57,36 @@ uuid = "1"
 		)
 		.expect("write facade-only consumer manifest");
 		fs::write(self.root.path().join("src/lib.rs"), source).expect("write consumer source");
+		// Match the versions fetched by the parent build. Resolving afresh offline
+		// can select newer registry versions that are absent from the Cargo cache.
+		fs::copy(
+			self.repository.join("Cargo.lock"),
+			self.root.path().join("Cargo.lock"),
+		)
+		.expect("seed consumer dependencies from the workspace lockfile");
+		// Dependency patches only apply at the workspace root. Fetch the
+		// consumer's unpatched graph before the offline compilation assertions.
+		let output = self.cargo(&["fetch"]);
+		assert!(
+			output.status.success(),
+			"fetch isolated consumer dependencies:\n{}",
+			String::from_utf8_lossy(&output.stderr),
+		);
 	}
 
 	fn cargo(&self, arguments: &[&str]) -> Output {
-		Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+		let mut command = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+		command
 			.args(arguments)
-			.args(["--offline", "--manifest-path"])
+			.arg("--manifest-path")
 			.arg(self.root.path().join("Cargo.toml"))
 			.current_dir(self.root.path())
 			.env("CARGO_TARGET_DIR", self.root.path().join("target"))
-			.env("CARGO_BUILD_BUILD_DIR", self.root.path().join("build"))
+			.env("CARGO_BUILD_BUILD_DIR", self.root.path().join("build"));
+		if arguments.first() != Some(&"fetch") {
+			command.arg("--offline");
+		}
+		command
 			.output()
 			.expect("run isolated consumer Cargo command")
 	}
