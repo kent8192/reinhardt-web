@@ -4283,6 +4283,8 @@ mod tests {
 		assert_eq!(keys, vec![false, true, false]);
 	}
 
+	// The model macro registers migration metadata, even for this SQL-only test.
+	#[cfg(feature = "migrations")]
 	#[reinhardt_core::macros::model(app_label = "bulk_test", table_name = "zero_key_records")]
 	#[derive(serde::Serialize, serde::Deserialize)]
 	struct ZeroKeyRecord {
@@ -4290,6 +4292,7 @@ mod tests {
 		id: i64,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn mysql_bulk_create_preserves_mixed_zero_sentinel_keys() {
 		// Arrange
