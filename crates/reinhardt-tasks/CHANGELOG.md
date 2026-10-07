@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.19...reinhardt-tasks@v0.4.0-alpha.20) - 2026-10-06
+
+### Changed
+
+- *(tasks)* use typed sqlite database-list inspection
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.17...reinhardt-tasks@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation
