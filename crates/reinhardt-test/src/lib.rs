@@ -42,8 +42,8 @@
 // Re-export modules from reinhardt-testkit for backward-compatible module paths
 #[cfg(native)]
 pub use reinhardt_testkit::{
-	assertions, client, debug, factory, http, logging, mock, resource, response, server, testcase,
-	views, websocket,
+	assertions, client, debug, factory, http, logging, mock, resource, response, server, stub,
+	testcase, views, websocket,
 };
 
 #[cfg(all(native, feature = "messages"))]
@@ -107,21 +107,25 @@ pub use reinhardt_testkit::poll_until;
 // Flat re-exports for backward compatibility
 // ============================================================================
 
+// Keep compatibility coverage and re-exports until SimpleHandler is removed.
+#[cfg(native)]
+#[allow(deprecated)]
+pub use reinhardt_testkit::SimpleHandler;
+
 #[cfg(native)]
 pub use reinhardt_testkit::{
 	APIClient, APIClientBuilder, APIRequestFactory, APITestCase, AsyncTeardownGuard,
 	AsyncTestResource, BodyEchoHandler, CallRecord, ClientError, DebugEntry, DebugPanel,
 	DebugToolbar, DelayedHandler, EchoPathHandler, ErrorKind, HttpVersion, LargeResponseHandler,
-	MethodEchoHandler, MockFunction, RequestBuilder, ResponseExt, RouterHandler, SimpleHandler,
-	Spy, SqlQuery, StatusCodeHandler, SuiteGuard, SuiteResource, TeardownGuard, TestResource,
-	TestResponse, TimingInfo, WebSocketTestClient, acquire_suite, assert_has_header,
-	assert_header_contains, assert_header_equals, assert_no_header, assert_status,
-	create_api_test_objects, create_insecure_request, create_json_request,
-	create_large_test_objects, create_request, create_request_with_headers,
-	create_request_with_path_params, create_response_with_headers, create_response_with_status,
-	create_secure_request, create_test_objects, create_test_request, create_test_response,
-	extract_json, get_header, has_header, header_contains, header_equals, init_test_logging,
-	shutdown_test_server, spawn_test_server,
+	MethodEchoHandler, MockFunction, RequestBuilder, ResponseExt, RouterHandler, Spy, SqlQuery,
+	StatusCodeHandler, SuiteGuard, SuiteResource, TeardownGuard, TestResource, TestResponse,
+	TimingInfo, WebSocketTestClient, acquire_suite, assert_has_header, assert_header_contains,
+	assert_header_equals, assert_no_header, assert_status, create_api_test_objects,
+	create_insecure_request, create_json_request, create_large_test_objects, create_request,
+	create_request_with_headers, create_request_with_path_params, create_response_with_headers,
+	create_response_with_status, create_secure_request, create_test_objects, create_test_request,
+	create_test_response, extract_json, get_header, has_header, header_contains, header_equals,
+	init_test_logging, shutdown_test_server, spawn_test_server,
 };
 
 #[cfg(native)]

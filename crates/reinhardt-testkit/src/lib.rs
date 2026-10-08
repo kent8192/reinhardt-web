@@ -18,6 +18,7 @@
 //! - **[`APIClient`]**: HTTP client for making test API requests
 //! - **[`APIRequestFactory`]**: Factory for creating mock HTTP requests
 //! - **[`APITestCase`]**: Base test case with common assertions
+//! - **[`stub::StubRouter`]**: Async closure-based, method-aware test stub routes
 //! - **Response Assertions**: Status, header, and body assertions
 //! - **[`Factory`]**: Model factory for generating test data
 //! - **[`fixtures::TestDatabase`]**: Model-derived and migration-backed
@@ -64,6 +65,8 @@ pub mod resource;
 pub mod response;
 /// Test server spawning and management.
 pub mod server;
+/// Async closure-based routes for test stub servers.
+pub mod stub;
 /// Base test case with common assertions.
 pub mod testcase;
 /// Test view implementations for integration testing.
@@ -141,7 +144,10 @@ pub use messages::{
 	MessagesTestMixin, assert_message_count, assert_message_exists, assert_message_level,
 	assert_message_tags, assert_messages,
 };
-pub use mock::{CallRecord, MockFunction, SimpleHandler, Spy};
+// Keep compatibility coverage and re-exports until SimpleHandler is removed.
+#[allow(deprecated)]
+pub use mock::SimpleHandler;
+pub use mock::{CallRecord, MockFunction, Spy};
 pub use resource::{
 	AsyncTeardownGuard, AsyncTestResource, SuiteGuard, SuiteResource, TeardownGuard, TestResource,
 	acquire_suite,
@@ -195,7 +201,10 @@ pub mod prelude {
 	pub use super::messages::{
 		MessagesTestMixin, assert_message_count, assert_message_exists, assert_messages,
 	};
-	pub use super::mock::{MockFunction, SimpleHandler, Spy};
+	// Keep compatibility coverage and re-exports until SimpleHandler is removed.
+	#[allow(deprecated)]
+	pub use super::mock::SimpleHandler;
+	pub use super::mock::{MockFunction, Spy};
 	pub use super::poll_until;
 	pub use super::resource::{
 		AsyncTeardownGuard, AsyncTestResource, SuiteGuard, SuiteResource, TeardownGuard,
