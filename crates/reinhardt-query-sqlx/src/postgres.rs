@@ -4,6 +4,10 @@ use sqlx::Arguments;
 /// Adapt an owned renderer result without changing SQL or argument order.
 ///
 /// Unsupported types and overflowing integer conversions fail before execution.
+///
+/// # API parity
+///
+/// P0 (native-only): absent on `wasm32` targets.
 pub fn prepare_postgres(
 	built: (String, Values),
 ) -> Result<PreparedQuery<sqlx::postgres::PgArguments>, BindError> {

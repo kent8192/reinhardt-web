@@ -1,11 +1,12 @@
 //! Route-registration methods for [`ServerRouter`].
 //!
 //! Covers endpoint-trait registration, ViewSets, class-based views, raw
-//! method-agnostic handlers, and per-route middleware attachment.
+//! method-aware and method-agnostic handlers, and per-route middleware attachment.
 
 use super::ServerRouter;
 use super::types::{FunctionRoute, RouteContractMetadata, ViewRoute};
 use crate::routers::Route;
+use hyper::Method;
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{
 	Handler, RequestlessSyncHandler, RequestlessSyncHandlerAdapter, SyncHandler, SyncHandlerAdapter,
@@ -399,6 +400,47 @@ impl ServerRouter {
 		self.invalidate_compiled_routes();
 		let route = Route::from_handler(path, handler);
 		self.routes.push(route);
+		self
+	}
+
+	/// Register a raw handler for one HTTP method.
+	///
+	/// Use this for ad-hoc handlers, such as test stub servers, that do not
+	/// implement `EndpointInfo`. For application endpoints, prefer `#[get]`
+	/// (or another HTTP method macro) with [`Self::endpoint`] for typed
+	/// extractors and named, reversible routes.
+	///
+	/// This route is unnamed and declares no authentication protection. Other
+	/// methods on the same path receive the framework's 405 response unless separately
+	/// registered; unknown paths receive its 404 response. Router middleware
+	/// and exception handling follow the existing dispatch behavior. Attach
+	/// route middleware with [`Self::with_route_middleware`].
+	///
+	/// This method is native-only (P0); it is absent from the WASM router.
+	pub fn handler_for_method<H: Handler + 'static>(
+		mut self,
+		path: &str,
+		method: Method,
+		handler: H,
+	) -> Self {
+		self.invalidate_compiled_routes();
+		let metadata = RouteContractMetadata {
+			handler: format!("route:{method} {path}"),
+			module_path: None,
+			function_name: None,
+			authentication: reinhardt_core::endpoint::AuthProtection::None,
+			guard: None,
+		};
+		self.functions.push(FunctionRoute {
+			path: path.to_owned(),
+			method,
+			handler: Arc::new(handler),
+			sync_handler: None,
+			requestless_sync_handler: None,
+			name: None,
+			metadata,
+			middleware: Vec::new(),
+		});
 		self
 	}
 

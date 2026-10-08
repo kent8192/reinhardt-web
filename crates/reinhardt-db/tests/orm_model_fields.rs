@@ -368,7 +368,7 @@ fn aggregate_result_insert_and_get() {
 
 	// Act
 	result.insert("count", AggregateValue::Integer(42));
-	result.insert("avg", AggregateValue::Float(3.14));
+	result.insert("avg", AggregateValue::Float(1.25));
 	result.insert("null_val", AggregateValue::Null);
 
 	// Assert
@@ -378,7 +378,7 @@ fn aggregate_result_insert_and_get() {
 	);
 	assert!(matches!(
 		result.get("avg"),
-		Ok(AggregateValue::Float(f)) if (*f - 3.14).abs() < f64::EPSILON
+		Ok(AggregateValue::Float(f)) if *f == 1.25
 	));
 	assert!(matches!(result.get("null_val"), Ok(AggregateValue::Null)));
 	assert!(result.get("nonexistent").is_err());
@@ -414,13 +414,13 @@ fn annotation_value_int() {
 #[rstest]
 fn annotation_value_float() {
 	// Arrange
-	let val = Value::Float(3.14);
+	let val = Value::Float(1.25);
 
 	// Act
 	let sql = val.to_sql();
 
 	// Assert
-	assert_eq!(sql, "3.14");
+	assert_eq!(sql, "1.25");
 }
 
 #[rstest]
@@ -887,7 +887,7 @@ fn row_number_default() {
 	// Arrange
 
 	// Act
-	let row_num = RowNumber::default();
+	let row_num: RowNumber = Default::default();
 
 	// Assert (verify it creates the same as new())
 	let window = Window::new().order_by("id");
@@ -1634,7 +1634,7 @@ fn datetime_field_with_auto_now_add() {
 		dec.kwargs.get("auto_now_add"),
 		Some(&FieldKwarg::Bool(true))
 	);
-	assert!(dec.kwargs.get("auto_now").is_none());
+	assert!(!dec.kwargs.contains_key("auto_now"));
 }
 
 #[rstest]
@@ -1724,8 +1724,8 @@ fn slug_field_deconstruct_omits_defaults() {
 	// Assert
 	assert_eq!(dec.path, "reinhardt.orm.models.SlugField");
 	// Default max_length (50) and default db_index (true) are omitted
-	assert!(dec.kwargs.get("max_length").is_none());
-	assert!(dec.kwargs.get("db_index").is_none());
+	assert!(!dec.kwargs.contains_key("max_length"));
+	assert!(!dec.kwargs.contains_key("db_index"));
 }
 
 #[rstest]
@@ -1806,7 +1806,7 @@ fn url_field_deconstruct_omits_default_max_length() {
 	// Assert
 	assert_eq!(dec.path, "reinhardt.orm.models.URLField");
 	// Default max_length (200) is omitted from kwargs
-	assert!(dec.kwargs.get("max_length").is_none());
+	assert!(!dec.kwargs.contains_key("max_length"));
 }
 
 #[rstest]
@@ -1898,7 +1898,7 @@ fn field_arg_variants() {
 	);
 	assert_eq!(FieldArg::Int(42), FieldArg::Int(42));
 	assert_eq!(FieldArg::Bool(true), FieldArg::Bool(true));
-	assert_eq!(FieldArg::Float(3.14), FieldArg::Float(3.14));
+	assert_eq!(FieldArg::Float(1.25), FieldArg::Float(1.25));
 }
 
 #[rstest]

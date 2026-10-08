@@ -32,6 +32,10 @@ fn vector_module_requires_the_pgvector_feature() {
 		.arg("--manifest-path")
 		.arg(manifest_path)
 		.env("CARGO_TARGET_DIR", temporary_project.path().join("target"))
+		.env("CARGO_BUILD_BUILD_DIR", temporary_project.path().join("build"))
+		// These checks only inspect compilation, so keep their isolated artifacts small.
+		.env("CARGO_PROFILE_DEV_DEBUG", "0")
+		.env("CARGO_INCREMENTAL", "0")
 		.output()
 		.unwrap();
 
@@ -104,6 +108,11 @@ fn query_value(value: QueryValue) {
         | QueryValue::Uuid(_) | QueryValue::Json(_) | QueryValue::StringArray(_)
         | QueryValue::IntArray(_) | QueryValue::BigIntArray(_) | QueryValue::BoolArray(_)
         | QueryValue::FloatArray(_) | QueryValue::DoubleArray(_) | QueryValue::UuidArray(_)
+        | QueryValue::NullableStringArray(_) | QueryValue::NullableIntArray(_)
+        | QueryValue::NullableBigIntArray(_) | QueryValue::NullableBoolArray(_)
+        | QueryValue::NullableFloatArray(_) | QueryValue::NullableDoubleArray(_)
+        | QueryValue::NullableUuidArray(_)
+        | QueryValue::Uint(_)
         | QueryValue::Now => {}
     }
 }
@@ -193,9 +202,12 @@ fn operation(value: Operation) {
         | Operation::CreateSchema { .. }
         | Operation::DropSchema { .. }
         | Operation::CreateExtension { .. }
+        | Operation::DropExtension { .. }
         | Operation::BulkLoad { .. }
         | Operation::SetAutoIncrementValue { .. }
-        | Operation::CreateCompositePrimaryKey { .. } => {}
+        | Operation::CreateCompositePrimaryKey { .. }
+        | Operation::Sequence { .. }
+        | Operation::Identity { .. } => {}
     }
 }
 
@@ -238,6 +250,12 @@ fn main() {
 		.arg("--manifest-path")
 		.arg(manifest_path)
 		.env("CARGO_TARGET_DIR", temporary_project.path().join("target"))
+		.env(
+			"CARGO_BUILD_BUILD_DIR",
+			temporary_project.path().join("build"),
+		)
+		.env("CARGO_PROFILE_DEV_DEBUG", "0")
+		.env("CARGO_INCREMENTAL", "0")
 		.output()
 		.unwrap();
 

@@ -553,7 +553,7 @@ args = ["llvm-cov", "nextest", "--workspace", "--lib", "--all-features", "--no-f
 # ============================================================================
 
 [tasks.feature-check]
-description = "Check representative feature combinations (34 patterns)"
+description = "Check representative feature combinations (36 patterns)"
 dependencies = ["feature-check-facade", "feature-check-subcrate"]
 
 [tasks.dependency-feature-audit]
@@ -608,7 +608,7 @@ echo "=== All facade checks passed ==="
 '''
 
 [tasks.feature-check-subcrate]
-description = "Check key sub-crate feature combinations (12 patterns)"
+description = "Check key sub-crate feature combinations (14 patterns)"
 script_runner = "bash"
 script = '''
 set -e
@@ -617,6 +617,8 @@ echo "=== Feature Check: Sub-Crates ==="
 combos=(
 	"core-minimal|reinhardt-core|--no-default-features"
 	"core-full|reinhardt-core|--no-default-features -F core-full"
+	"conf-minimal|reinhardt-conf|--no-default-features"
+	"conf-dynamic-database|reinhardt-conf|--no-default-features -F dynamic-database"
 	"db-minimal|reinhardt-db|--no-default-features"
 	"db-full|reinhardt-db|--no-default-features -F database-full"
 	"db-no-di|reinhardt-db|--no-default-features -F backends,orm"
@@ -640,7 +642,7 @@ echo "=== All sub-crate checks passed ==="
 '''
 
 [tasks.feature-test-critical]
-description = "Run cargo test for critical feature combinations (4 patterns)"
+description = "Run cargo test for critical feature combinations (5 patterns)"
 script_runner = "bash"
 script = '''
 set -e
@@ -651,6 +653,7 @@ combos=(
 	"full|reinhardt-web|--no-default-features -F full"
 	"api-only|reinhardt-web|--no-default-features -F api-only"
 	"admin-forms|reinhardt-web|--no-default-features -F minimal,admin,database,db-postgres,auth"
+	"db-orm-sqlite|reinhardt-db|--no-default-features -F orm,sqlite"
 )
 
 for combo in "${combos[@]}"; do

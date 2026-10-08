@@ -604,39 +604,116 @@ mod database_storage {
 			Ok(result.rows_affected() as usize)
 		}
 	}
+
 	#[cfg(test)]
 	mod database_tests {
 		use super::*;
-		use rstest::rstest;
-		use testcontainers::runners::AsyncRunner;
-		use testcontainers_modules::postgres::Postgres;
+		use reinhardt_testkit::fixtures::postgres_container;
+		use rstest::*;
+		use testcontainers::{ContainerAsync, GenericImage};
+
+		#[fixture]
+		async fn storage(
+			#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+		) -> (DatabaseTokenStorage, ContainerAsync<GenericImage>) {
+			let (container, pool, _port, _url) = postgres_container.await;
+			let storage = DatabaseTokenStorage::new(pool.as_ref().clone());
+			storage.initialize().await.unwrap();
+			(storage, container)
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn initialized_schema_preserves_epoch_and_json_defaults(
+			#[future] storage: (DatabaseTokenStorage, ContainerAsync<GenericImage>),
+		) {
+			// Arrange
+			let (storage, _container) = storage.await;
+			// Act
+			let (created_at, expected, metadata): (i64, i64, serde_json::Value) = sqlx::query_as(
+				"INSERT INTO auth_tokens (token, user_id) VALUES ('schema-default-probe', -1) RETURNING created_at, EXTRACT(EPOCH FROM NOW())::BIGINT, metadata",
+			).fetch_one(&storage.pool).await.unwrap();
+			// Assert
+			assert_eq!(created_at, expected);
+			assert_eq!(metadata, serde_json::json!({}));
+		}
+
+		#[rstest]
+		#[case::no_expiration_empty_metadata(None, false)]
+		#[case::no_expiration_json_metadata(None, true)]
+		#[case::expiration_empty_metadata(Some(1_900_000_000), false)]
+		#[case::expiration_json_metadata(Some(1_900_000_000), true)]
+		#[tokio::test]
+		async fn round_trips_token_expiration_and_metadata(
+			#[future] storage: (DatabaseTokenStorage, ContainerAsync<GenericImage>),
+			#[case] expiration: Option<i64>,
+			#[case] with_metadata: bool,
+		) {
+			// Arrange
+			let (storage, _container) = storage.await;
+			let mut token = StoredToken::new("'quoted ? $1", 42);
+			token.expires_at = expiration;
+			if with_metadata {
+				token
+					.metadata
+					.insert("provider".into(), "'quoted \"json\" ? $2 日本語\n".into());
+			}
+
+			// Act
+			storage.store(token.clone()).await.unwrap();
+
+			// Assert
+			assert_eq!(storage.get(&token.token).await.unwrap(), token);
+			assert_eq!(storage.get_user_tokens(42).await.unwrap(), vec![token]);
+		}
+
+		#[rstest]
+		#[case::remains_without_expiration(None, None)]
+		#[case::adds_expiration(None, Some(2_000_000_000))]
+		#[case::removes_expiration(Some(1_900_000_000), None)]
+		#[case::changes_expiration(Some(1_900_000_000), Some(2_000_000_000))]
+		#[tokio::test]
+		async fn upsert_replaces_expiration_and_metadata(
+			#[future] storage: (DatabaseTokenStorage, ContainerAsync<GenericImage>),
+			#[case] original_expiration: Option<i64>,
+			#[case] updated_expiration: Option<i64>,
+		) {
+			// Arrange
+			let (storage, _container) = storage.await;
+			let mut original = StoredToken::new("'quoted ? $1", 42)
+				.with_metadata("provider", "original")
+				.with_metadata("obsolete", "removed on conflict");
+			original.expires_at = original_expiration;
+			storage.store(original).await.unwrap();
+			let mut replacement = StoredToken::new("'quoted ? $1", 42);
+			replacement.expires_at = updated_expiration;
+			if updated_expiration.is_some() {
+				replacement
+					.metadata
+					.insert("provider".into(), "'updated \"json\" ? $2 日本語\n".into());
+			}
+
+			// Act
+			storage.store(replacement.clone()).await.unwrap();
+
+			// Assert
+			assert_eq!(storage.get(&replacement.token).await.unwrap(), replacement);
+			assert_eq!(
+				storage.get_user_tokens(42).await.unwrap(),
+				vec![replacement]
+			);
+		}
 
 		#[rstest]
 		#[case(None)]
 		#[case(Some(1_900_000_000))]
 		#[tokio::test]
-		async fn stores_bound_token_and_native_json_metadata(#[case] expiration: Option<i64>) {
-			// Arrange: each test owns its container and pool through RAII.
-			let container = Postgres::default().start().await.unwrap();
-			let pool = PgPool::connect(&format!(
-				"postgres://postgres:postgres@{}:{}/postgres",
-				container.get_host().await.unwrap(),
-				container.get_host_port_ipv4(5432).await.unwrap()
-			))
-			.await
-			.unwrap();
-			let storage = DatabaseTokenStorage::new(pool);
-			storage.initialize().await.unwrap();
-			storage.initialize().await.unwrap();
-			// Schema defaults preserve the previous PostgreSQL numeric epoch conversion.
-			let mut tx = storage.pool().begin().await.unwrap();
-			let (created_at, expected, metadata): (i64, i64, serde_json::Value) = sqlx::query_as(
-                "INSERT INTO auth_tokens (token, user_id) VALUES ('schema-default-probe', -1) RETURNING created_at, EXTRACT(EPOCH FROM NOW())::BIGINT, metadata",
-            ).fetch_one(&mut *tx).await.unwrap();
-			assert_eq!(created_at, expected);
-			assert_eq!(metadata, serde_json::json!({}));
-			tx.rollback().await.unwrap();
-
+		async fn stores_bound_token_and_native_json_metadata(
+			#[future] storage: (DatabaseTokenStorage, ContainerAsync<GenericImage>),
+			#[case] expiration: Option<i64>,
+		) {
+			// Arrange: the fixture owns the container and pool through RAII.
+			let (storage, _container) = storage.await;
 			let mut token = StoredToken::new("'quoted ? $1", 42);
 			token.expires_at = expiration;
 			token

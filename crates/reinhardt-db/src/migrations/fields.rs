@@ -61,7 +61,7 @@ pub enum FieldType {
 	Boolean,
 
 	// Binary types
-	/// Binary variant.
+	/// Generic binary data, rendered as `BYTEA` for PostgreSQL and CockroachDB.
 	Binary,
 	/// Blob variant.
 	Blob, // MySQL-specific
@@ -171,6 +171,10 @@ impl FieldType {
 		use super::operations::SqlDialect;
 
 		match self {
+			FieldType::Binary => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb => "BYTEA".to_owned(),
+				SqlDialect::Mysql | SqlDialect::Sqlite => self.to_sql_string(),
+			},
 			FieldType::DateTime => match dialect {
 				SqlDialect::Postgres | SqlDialect::Cockroachdb => "TIMESTAMP".to_string(),
 				SqlDialect::Mysql | SqlDialect::Sqlite => "DATETIME".to_string(),
@@ -614,6 +618,7 @@ mod tests {
 	use super::FieldType;
 	use crate::migrations::MigrationError;
 	use crate::migrations::operations::SqlDialect;
+	use rstest::rstest;
 
 	#[test]
 	fn jsonb_sql_uses_native_or_text_storage_by_dialect() {
@@ -734,5 +739,20 @@ mod tests {
 				.unwrap();
 			assert!(message.contains("try_to_sql_for_dialect"));
 		}
+	}
+
+	#[rstest]
+	#[case::postgres(SqlDialect::Postgres, "BYTEA")]
+	#[case::cockroachdb(SqlDialect::Cockroachdb, "BYTEA")]
+	#[case::mysql(SqlDialect::Mysql, "BINARY")]
+	#[case::sqlite(SqlDialect::Sqlite, "BINARY")]
+	fn binary_uses_dialect_type(#[case] dialect: SqlDialect, #[case] expected: &str) {
+		assert_eq!(FieldType::Binary.to_sql_for_dialect(&dialect), expected);
+	}
+
+	#[rstest]
+	fn binary_preserves_generic_type() {
+		assert_eq!(FieldType::Binary.to_sql_string(), "BINARY");
+		assert_eq!(FieldType::Binary.to_string(), "BINARY");
 	}
 }

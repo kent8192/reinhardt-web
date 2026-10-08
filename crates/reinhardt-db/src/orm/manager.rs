@@ -5,6 +5,8 @@ use super::field_codec::database_value_to_query_value;
 use super::inspection::FieldInfo;
 use super::query::RelationLoadInput;
 use super::{DatabaseValue, FieldCodecError, Model, QuerySet};
+#[cfg(test)]
+use crate::backends::QueryValue;
 use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 use reinhardt_query::prelude::{
 	Alias, CockroachDBQueryBuilder, ColumnRef, Condition, DeleteStatement, Expr, ExprTrait, Func,
@@ -143,6 +145,15 @@ fn database_value_uses_pgvector(value: &DatabaseValue) -> bool {
 	}
 }
 
+fn validate_bulk_batch_size(batch_size: Option<usize>) -> reinhardt_core::exception::Result<()> {
+	if batch_size == Some(0) {
+		return Err(Error::Validation(
+			"batch_size must be greater than zero".into(),
+		));
+	}
+	Ok(())
+}
+
 fn validate_bulk_update_values_for_backend(
 	updates: &[(DatabaseValue, HashMap<String, DatabaseValue>)],
 	is_cockroachdb: bool,
@@ -221,6 +232,65 @@ fn build_delete_sql_checked(
 	} else {
 		Ok(build_delete_sql(stmt, backend))
 	}
+}
+
+#[cfg(test)]
+fn database_value_sql_literal(
+	value: DatabaseValue,
+	backend: DatabaseBackend,
+) -> Result<String, FieldCodecError> {
+	use super::DatabaseArrayType;
+	if backend == DatabaseBackend::Postgres
+		&& let DatabaseValue::Array {
+			element_type,
+			values,
+		} = value
+	{
+		let element_type = match element_type {
+			DatabaseArrayType::String => "text",
+			DatabaseArrayType::I32 => "integer",
+			DatabaseArrayType::I64 => "bigint",
+			DatabaseArrayType::F32 => "real",
+			DatabaseArrayType::F64 => "double precision",
+			DatabaseArrayType::Bool => "boolean",
+			DatabaseArrayType::Uuid => "uuid",
+		};
+		let literals = values
+			.into_iter()
+			.map(|value| match value {
+				DatabaseValue::F32(value) if !value.is_finite() => {
+					postgres_special_float_literal(f64::from(value), "real")
+				}
+				DatabaseValue::F64(value) if !value.is_finite() => {
+					postgres_special_float_literal(value, "double precision")
+				}
+				value => database_value_to_query_value(value).to_sql_literal(),
+			})
+			.collect::<Vec<_>>()
+			.join(",");
+		// CASE branches need the array type, and special floats must be quoted
+		// typed literals rather than identifiers such as NaN or inf.
+		return Ok(format!("ARRAY[{literals}]::{element_type}[]"));
+	}
+
+	if backend == DatabaseBackend::Postgres || !matches!(&value, DatabaseValue::Array { .. }) {
+		return Ok(database_value_to_query_value(value).to_sql_literal());
+	}
+
+	let json = value.into_json_value()?;
+	Ok(format!("'{}'", json.to_string().replace('\'', "''")))
+}
+
+#[cfg(test)]
+fn postgres_special_float_literal(value: f64, sql_type: &str) -> String {
+	let literal = if value.is_nan() {
+		"NaN"
+	} else if value.is_sign_positive() {
+		"Infinity"
+	} else {
+		"-Infinity"
+	};
+	format!("'{literal}'::{sql_type}")
 }
 
 #[derive(Clone)]
@@ -935,6 +1005,9 @@ impl<M: Model> Manager<M> {
 
 	fn is_generated_field(field: &str) -> bool {
 		M::generated_field_names().contains(&field)
+			|| M::field_metadata()
+				.iter()
+				.any(|info| info.name == field && info.attributes.contains_key("generated"))
 	}
 
 	fn field_column<'a>(field_metadata: &'a [FieldInfo], field_name: &'a str) -> &'a str {
@@ -2115,6 +2188,197 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
+	/// Convert reinhardt_query::value::Value to QueryValue for database parameter binding
+	#[cfg(test)]
+	pub(crate) fn sea_value_to_query_value(
+		v: reinhardt_query::value::Value,
+	) -> super::connection::QueryValue {
+		use super::connection::QueryValue;
+
+		match v {
+			reinhardt_query::value::Value::Bool(Some(b)) => QueryValue::Bool(b),
+			reinhardt_query::value::Value::Bool(None) => QueryValue::Null,
+
+			reinhardt_query::value::Value::TinyInt(Some(i)) => QueryValue::Int(i as i64),
+			reinhardt_query::value::Value::TinyInt(None) => QueryValue::Null,
+			reinhardt_query::value::Value::SmallInt(Some(i)) => QueryValue::Int(i as i64),
+			reinhardt_query::value::Value::SmallInt(None) => QueryValue::Null,
+			reinhardt_query::value::Value::Int(Some(i)) => QueryValue::Int32(i),
+			reinhardt_query::value::Value::Int(None) => QueryValue::Null,
+			reinhardt_query::value::Value::BigInt(Some(i)) => QueryValue::Int(i),
+			reinhardt_query::value::Value::BigInt(None) => QueryValue::Null,
+
+			reinhardt_query::value::Value::TinyUnsigned(Some(u)) => QueryValue::Int(u as i64),
+			reinhardt_query::value::Value::TinyUnsigned(None) => QueryValue::Null,
+			reinhardt_query::value::Value::SmallUnsigned(Some(u)) => QueryValue::Int(u as i64),
+			reinhardt_query::value::Value::SmallUnsigned(None) => QueryValue::Null,
+			reinhardt_query::value::Value::Unsigned(Some(u)) => QueryValue::Int(u as i64),
+			reinhardt_query::value::Value::Unsigned(None) => QueryValue::Null,
+			reinhardt_query::value::Value::BigUnsigned(Some(u)) => QueryValue::Uint(u),
+			reinhardt_query::value::Value::BigUnsigned(None) => QueryValue::Null,
+
+			reinhardt_query::value::Value::Float(Some(f)) => QueryValue::Float(f as f64),
+			reinhardt_query::value::Value::Float(None) => QueryValue::Null,
+			reinhardt_query::value::Value::Double(Some(f)) => QueryValue::Float(f),
+			reinhardt_query::value::Value::Double(None) => QueryValue::Null,
+			// QueryValue has no dedicated decimal variant. Preserve the exact
+			// decimal spelling as text so the backend can coerce it to DECIMAL
+			// without losing precision through an intermediate float.
+			reinhardt_query::value::Value::Decimal(Some(value)) => {
+				QueryValue::String(value.to_string())
+			}
+			reinhardt_query::value::Value::Decimal(None) => QueryValue::Null,
+
+			reinhardt_query::value::Value::String(Some(s)) => QueryValue::String((*s).clone()),
+			reinhardt_query::value::Value::String(None) => QueryValue::Null,
+
+			reinhardt_query::value::Value::Bytes(Some(b)) => QueryValue::Bytes((*b).clone()),
+			reinhardt_query::value::Value::Bytes(None) => QueryValue::Null,
+
+			// Timestamp handling
+			reinhardt_query::value::Value::ChronoDateTime(Some(dt)) => {
+				QueryValue::NaiveTimestamp(*dt)
+			}
+			reinhardt_query::value::Value::ChronoDateTime(None) => QueryValue::Null,
+			reinhardt_query::value::Value::ChronoDateTimeUtc(Some(dt)) => {
+				QueryValue::Timestamp(*dt)
+			}
+			reinhardt_query::value::Value::ChronoDateTimeUtc(None) => QueryValue::Null,
+			reinhardt_query::value::Value::ChronoDate(Some(date)) => {
+				QueryValue::String(date.to_string())
+			}
+			reinhardt_query::value::Value::ChronoDate(None) => QueryValue::Null,
+			reinhardt_query::value::Value::ChronoTime(Some(time)) => {
+				QueryValue::String(time.to_string())
+			}
+			reinhardt_query::value::Value::ChronoTime(None) => QueryValue::Null,
+
+			// UUID handling
+			reinhardt_query::value::Value::Uuid(Some(u)) => QueryValue::Uuid(*u),
+			reinhardt_query::value::Value::Uuid(None) => QueryValue::Null,
+
+			// JSON types - serialize to string
+			reinhardt_query::value::Value::Json(json) => QueryValue::Json(json),
+			#[cfg(feature = "pgvector")]
+			reinhardt_query::value::Value::Vector(Some(values)) => {
+				QueryValue::Vector(Some((*values).clone()))
+			}
+			#[cfg(feature = "pgvector")]
+			reinhardt_query::value::Value::Vector(None) => QueryValue::Vector(None),
+			reinhardt_query::value::Value::Array(array_type, values) => {
+				super::execution::array_value_to_query_value(
+					array_type,
+					values.map(|values| *values),
+				)
+			}
+
+			// For complex types or unsupported types, convert to null
+			// This is a safe fallback that won't cause runtime errors
+			_ => QueryValue::Null,
+		}
+	}
+
+	#[cfg(test)]
+	fn query_value_to_sea_value(value: QueryValue) -> reinhardt_query::value::Value {
+		match value {
+			QueryValue::Null => reinhardt_query::value::Value::Int(None),
+			QueryValue::Bool(value) => reinhardt_query::value::Value::Bool(Some(value)),
+			QueryValue::Int32(value) => reinhardt_query::value::Value::Int(Some(value)),
+			QueryValue::Int(value) => reinhardt_query::value::Value::BigInt(Some(value)),
+			QueryValue::Uint(value) => reinhardt_query::value::Value::BigUnsigned(Some(value)),
+			QueryValue::Float(value) => reinhardt_query::value::Value::Double(Some(value)),
+			QueryValue::String(value) => {
+				reinhardt_query::value::Value::String(Some(Box::new(value)))
+			}
+			QueryValue::Bytes(value) => reinhardt_query::value::Value::Bytes(Some(Box::new(value))),
+			QueryValue::Timestamp(value) => {
+				reinhardt_query::value::Value::ChronoDateTimeUtc(Some(Box::new(value)))
+			}
+			QueryValue::NaiveTimestamp(value) => {
+				reinhardt_query::value::Value::ChronoDateTime(Some(Box::new(value)))
+			}
+			QueryValue::Uuid(value) => reinhardt_query::value::Value::Uuid(Some(Box::new(value))),
+			QueryValue::Json(value) => reinhardt_query::value::Value::Json(value),
+			#[cfg(feature = "pgvector")]
+			QueryValue::Vector(values) => reinhardt_query::value::Value::Vector(values.map(Box::new)),
+			QueryValue::StringArray(values) => {
+				reinhardt_query::value::Value::Json(Some(Box::new(serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::String).collect(),
+				))))
+			}
+			QueryValue::IntArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::BigIntArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::BoolArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::FloatArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::DoubleArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::UuidArray(values) => {
+				reinhardt_query::value::Value::Json(Some(Box::new(serde_json::Value::Array(
+					values
+						.into_iter()
+						.map(|value| serde_json::Value::String(value.to_string()))
+						.collect(),
+				))))
+			}
+			QueryValue::NullableStringArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableIntArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableBigIntArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableBoolArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableFloatArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableDoubleArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::NullableUuidArray(values) => reinhardt_query::value::Value::Json(Some(
+				Box::new(serde_json::to_value(values).expect("nullable arrays serialize")),
+			)),
+			QueryValue::Now => reinhardt_query::value::Value::Int(None),
+		}
+	}
+
+	/// Serialize a JSON value to SQL-compatible string representation
+	// Allow dead_code: internal helper for JSON-to-SQL serialization in manager operations
+	#[allow(dead_code)]
+	fn serialize_value(v: &serde_json::Value) -> String {
+		match v {
+			serde_json::Value::Null => "NULL".to_string(),
+			serde_json::Value::Bool(b) => b.to_string().to_uppercase(),
+			serde_json::Value::Number(n) => n.to_string(),
+			serde_json::Value::String(s) => {
+				// Escape single quotes and wrap in quotes
+				format!("'{}'", s.replace('\'', "''"))
+			}
+			serde_json::Value::Array(arr) => {
+				// Convert to PostgreSQL array syntax: ARRAY['a', 'b', 'c']
+				let items: Vec<String> = arr.iter().map(Self::serialize_value).collect();
+				format!("ARRAY[{}]", items.join(", "))
+			}
+			serde_json::Value::Object(obj) => {
+				// Convert to JSON string for JSONB columns
+				let json_str = serde_json::to_string(obj).unwrap_or_else(|_| "{}".to_string());
+				format!("'{}'::jsonb", json_str.replace('\'', "''"))
+			}
+		}
+	}
+
 	/// Update an existing record using reinhardt-query for SQL injection protection
 	pub async fn update(&self, model: &M) -> reinhardt_core::exception::Result<M> {
 		let mut conn = get_connection().await?;
@@ -2464,6 +2728,47 @@ impl<M: Model> Manager<M> {
 		Ok(Some(stmt.to_owned()))
 	}
 
+	fn try_bulk_create_statements(
+		&self,
+		models: &[M],
+	) -> Result<Vec<InsertStatement>, FieldCodecError> {
+		let key_presence: Vec<bool> = models
+			.iter()
+			.map(|model| {
+				let values = model.encode_database_fields()?;
+				Ok(values.get(M::primary_key_field()).is_some_and(|value| {
+					!(matches!(value, DatabaseValue::Null)
+						|| (M::primary_key_uses_zero_sentinel()
+							&& matches!(value, DatabaseValue::I32(0) | DatabaseValue::I64(0))))
+				}))
+			})
+			.collect::<Result<_, FieldCodecError>>()?;
+		let mut statements = Vec::new();
+		let mut start = 0;
+		while start < models.len() {
+			let has_key = key_presence[start];
+			let mut end = start + 1;
+			while end < models.len() && key_presence[end] == has_key {
+				end += 1;
+			}
+			if let Some(statement) = self.try_bulk_create_query(&models[start..end], None)? {
+				statements.push(statement);
+			} else {
+				// DEFAULT VALUES inserts one row per statement on all supported backends.
+				for _ in start..end {
+					statements.push(
+						Query::insert()
+							.into_table(M::table_name())
+							.default_values()
+							.to_owned(),
+					);
+				}
+			}
+			start = end;
+		}
+		Ok(statements)
+	}
+
 	/// Generate bulk create SQL (convenience method)
 	///
 	/// # Arguments
@@ -2530,9 +2835,27 @@ impl<M: Model> Manager<M> {
 	/// ```
 	///
 	/// Options:
-	/// - batch_size: Split into multiple batches if needed
+	/// - batch_size: A positive size splits the input into batches; `None` uses a single batch
 	/// - ignore_conflicts: Skip records that would violate constraints
 	/// - update_conflicts: Update existing records instead of failing
+	///
+	/// PostgreSQL and SQLite return the inserted rows, including generated primary
+	/// keys. MySQL executes the insert without `RETURNING` and returns the input
+	/// models; generated keys, generated columns, and database defaults are not
+	/// hydrated. When `ignore_conflicts` is enabled, all backends return an empty vector. MySQL
+	/// uses `INSERT IGNORE` to skip conflicting rows.
+	/// MySQL uses field metadata for `db_column` names and binary, datetime, and
+	/// JSON bindings. JSON null remains a JSON value; absent optional values use
+	/// SQL NULL.
+	/// Database-generated columns are omitted. Consecutive rows with matching
+	/// insert columns share a statement, preserving input order for mixed primary keys.
+	///
+	/// Empty input returns an empty vector without accessing the database, regardless of batch size.
+	///
+	/// # Errors
+	///
+	/// Nonempty input with `batch_size: Some(0)` returns
+	/// [`reinhardt_core::exception::Error::Validation`] before accessing the database.
 	pub async fn bulk_create(
 		&self,
 		models: Vec<M>,
@@ -2544,44 +2867,16 @@ impl<M: Model> Manager<M> {
 			return Ok(vec![]);
 		}
 
+		validate_bulk_batch_size(batch_size)?;
 		let mut conn = get_connection().await?;
-		let batch_size = batch_size.unwrap_or(models.len());
-		let mut results = Vec::new();
-
-		for chunk in models.chunks(batch_size) {
-			let (sql, values, context) = {
-				let Some(mut statement) = self
-					.try_bulk_create_query(chunk, Some(conn.backend()))
-					.map_err(field_codec_error)?
-				else {
-					continue;
-				};
-				if ignore_conflicts {
-					Self::apply_bulk_insert_ignore(&mut statement, conn.backend());
-				} else {
-					statement.returning_all();
-				}
-				let context = super::execution::pgvector_context_for_insert(&statement);
-				let (sql, values) =
-					build_insert_sql_checked(&statement, conn.backend(), conn.is_cockroachdb())?;
-				(sql, values, context)
-			};
-
-			if ignore_conflicts {
-				OrmExecutor::execute_generated(&mut conn, (sql, values), context).await?;
-				// Note: Can't get RETURNING with DO NOTHING, skip results
-				// Return empty vec for ignored conflicts
-			} else {
-				let rows =
-					OrmExecutor::fetch_all_generated(&mut conn, (sql, values), context).await?;
-				for row in rows {
-					let model = decode_model_row(row)?;
-					results.push(model);
-				}
-			}
-		}
-
-		Ok(results)
+		self.bulk_create_with_conn(
+			&mut conn,
+			models,
+			batch_size,
+			ignore_conflicts,
+			_update_conflicts,
+		)
+		.await
 	}
 
 	/// Bulk-insert models through a caller-owned executor.
@@ -2600,17 +2895,16 @@ impl<M: Model> Manager<M> {
 			return Ok(Vec::new());
 		}
 
+		validate_bulk_batch_size(batch_size)?;
 		let batch_size = batch_size.unwrap_or(models.len());
 		let mut results = Vec::new();
+
+		let backend = conn.backend();
 		for chunk in models.chunks(batch_size) {
-			let backend = conn.backend();
-			let (sql, values, context) = {
-				let Some(mut statement) = self
-					.try_bulk_create_query(chunk, Some(backend))
-					.map_err(field_codec_error)?
-				else {
-					continue;
-				};
+			let statements = self
+				.try_bulk_create_statements(chunk)
+				.map_err(field_codec_error)?;
+			for mut statement in statements {
 				if ignore_conflicts {
 					Self::apply_bulk_insert_ignore(&mut statement, backend);
 				} else if backend != DatabaseBackend::MySql {
@@ -2619,19 +2913,20 @@ impl<M: Model> Manager<M> {
 				let context = super::execution::pgvector_context_for_insert(&statement);
 				let (sql, values) =
 					build_insert_sql_checked(&statement, backend, conn.is_cockroachdb())?;
-				(sql, values, context)
-			};
-
-			if ignore_conflicts || backend == DatabaseBackend::MySql {
-				conn.execute_generated((sql, values), context).await?;
-				if !ignore_conflicts {
-					results.extend(chunk.iter().cloned());
+				if ignore_conflicts || backend == DatabaseBackend::MySql {
+					conn.execute_generated_with_context(&sql, values, context)
+						.await?;
+				} else {
+					for row in conn
+						.fetch_all_generated_with_context(&sql, values, context)
+						.await?
+					{
+						results.push(decode_model_row(row)?);
+					}
 				}
-				continue;
 			}
-
-			for row in conn.fetch_all_generated((sql, values), context).await? {
-				results.push(decode_model_row(row)?);
+			if !ignore_conflicts && backend == DatabaseBackend::MySql {
+				results.extend(chunk.iter().cloned());
 			}
 		}
 		Ok(results)
@@ -2648,6 +2943,14 @@ impl<M: Model> Manager<M> {
 	///     batch_size=100
 	/// )
 	/// ```
+	///
+	/// A positive `batch_size` splits the input into batches; `None` uses a single batch.
+	/// Empty models or fields return zero without accessing the database, regardless of batch size.
+	///
+	/// # Errors
+	///
+	/// Nonempty models and fields with `batch_size: Some(0)` return
+	/// [`reinhardt_core::exception::Error::Validation`] before accessing the database.
 	pub async fn bulk_update(
 		&self,
 		models: Vec<M>,
@@ -2658,6 +2961,7 @@ impl<M: Model> Manager<M> {
 			return Ok(0);
 		}
 
+		validate_bulk_batch_size(batch_size)?;
 		let mut conn = get_connection().await?;
 		let batch_size = batch_size.unwrap_or(models.len());
 		let mut total_updated = 0;
@@ -2743,6 +3047,7 @@ impl<M: Model> Manager<M> {
 			return Ok(0);
 		}
 
+		validate_bulk_batch_size(batch_size)?;
 		let batch_size = batch_size.unwrap_or(models.len());
 		let mut total_updated = 0;
 		for chunk in models.chunks(batch_size) {
@@ -3010,16 +3315,23 @@ impl<M: Model> Default for Manager<M> {
 #[cfg(test)]
 mod tests {
 	use super::{Manager, build_delete_sql, field_codec_error};
-	#[cfg(feature = "pgvector")]
 	use crate::backends::types::QueryValue;
 	use crate::orm::Json;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
+	use crate::orm::fields::{
+		BigIntegerField, BinaryField, CharField, DateTimeField, Field, FieldKwarg,
+	};
 	use crate::orm::inspection::FieldInfo;
 	use crate::orm::query::FilterValue;
-	use crate::orm::{DatabaseValue, FieldCodecContext, FieldCodecError, FieldSelector};
+	use crate::orm::{
+		DatabaseArrayType, DatabaseScalar, DatabaseValue, FieldCodecContext, FieldCodecError,
+		FieldSelector,
+	};
+	use rstest::fixture;
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
+	use serial_test::serial;
 	use std::collections::HashMap;
 	use std::fmt;
 
@@ -3241,12 +3553,18 @@ mod tests {
 
 		async fn fetch_one_with_context(
 			&mut self,
-			_sql: &str,
+			sql: &str,
 			_params: Vec<QueryValue>,
 			context: Option<crate::backends::error::PgvectorOperationKind>,
 		) -> crate::backends::error::Result<crate::orm::Row> {
 			self.calls.push(("fetch_one_with_context", context));
-			Ok(vector_manager_row())
+			if sql.contains("generated_id") {
+				Ok(crate::orm::Row {
+					data: HashMap::from([("generated_id".to_owned(), QueryValue::Int(7))]),
+				})
+			} else {
+				Ok(vector_manager_row())
+			}
 		}
 
 		async fn fetch_all(
@@ -3647,7 +3965,104 @@ mod tests {
 	}
 	use uuid::Uuid;
 
-	#[derive(Debug, Clone, Serialize, Deserialize)]
+	#[cfg(feature = "sqlite")]
+	type GlobalConnectionGuard = DatabaseStateRestoreGuard;
+	#[cfg(feature = "sqlite")]
+	#[rstest::fixture]
+	async fn global_database() -> (GlobalConnectionGuard, super::DatabaseConnection) {
+		let owner = crate::orm::connection::BackendsConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.unwrap();
+		let lease = super::DatabaseConnectionLease::register(owner).unwrap();
+		let connection = lease.handle();
+		(DatabaseStateRestoreGuard::replace(Some(lease)), connection)
+	}
+
+	#[cfg(all(feature = "sqlite", target_pointer_width = "64"))]
+	#[rstest]
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn queryset_default_execution_rejects_overflow_before_sql(
+		#[future] global_database: (GlobalConnectionGuard, super::DatabaseConnection),
+		#[values("all", "first", "get")] method: &str,
+	) {
+		// Arrange: no table exists, so an SQL error would expose skipped validation.
+		let (_guard, _connection) = global_database.await;
+		let queryset = super::QuerySet::<TestUser>::new().limit(usize::MAX);
+
+		// Act
+		let result = match method {
+			"all" => queryset.all().await.map(|_| ()),
+			"first" => queryset.first().await.map(|_| ()),
+			"get" => queryset.get().await.map(|_| ()),
+			_ => panic!("unknown queryset method"),
+		};
+
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Database error: cannot encode BigUnsigned argument 1 for sqlite: unsigned integer exceeds signed 64-bit range"
+		);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn queryset_default_execution_preserves_bound_strings(
+		#[future] global_database: (GlobalConnectionGuard, super::DatabaseConnection),
+		#[values("all", "first", "get")] method: &str,
+	) {
+		use crate::orm::{Filter, FilterOperator};
+		use reinhardt_query::{
+			ColumnDef, Query, QueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
+		};
+
+		// Arrange
+		let (_guard, mut connection) = global_database.await;
+		let create = Query::create_table()
+			.table(TestUser::table_name())
+			.col(ColumnDef::new("id").integer().primary_key(true))
+			.col(ColumnDef::new("name").text())
+			.col(ColumnDef::new("email").text())
+			.to_owned();
+		let (sql, _) = SqliteQueryBuilder.build_create_table(&create);
+		connection.execute(&sql, vec![]).await.unwrap();
+		let name = "quoted 'name',slash\\日本語";
+		let (sql, values) = Query::insert()
+			.into_table(TestUser::table_name())
+			.columns(["id", "name", "email"])
+			.values_panic([
+				reinhardt_query::Value::from(7),
+				name.into(),
+				"test@example.com".into(),
+			])
+			.build(SqliteQueryBuilder);
+		super::OrmExecutor::execute_generated_with_context(&mut connection, &sql, values, None)
+			.await
+			.unwrap();
+		let queryset = super::QuerySet::<TestUser>::new().filter(Filter::new(
+			"name",
+			FilterOperator::Eq,
+			FilterValue::String(name.to_owned()),
+		));
+
+		// Act
+		let users = match method {
+			"all" => queryset.all().await.unwrap(),
+			"first" => vec![queryset.first().await.unwrap().unwrap()],
+			"get" => vec![queryset.get().await.unwrap()],
+			_ => panic!("unknown queryset method"),
+		};
+
+		// Assert
+		assert_eq!(users.len(), 1);
+		assert_eq!(users[0].id, Some(7));
+		assert_eq!(users[0].name, name);
+		assert_eq!(users[0].email, "test@example.com");
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 	struct TestUser {
 		id: Option<i64>,
 		name: String,
@@ -3699,6 +4114,1007 @@ mod tests {
 		fn new_fields() -> Self::Fields {
 			TestUserFields
 		}
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+	struct TestBinaryRecord {
+		id: Option<i64>,
+		name: String,
+		payload: Vec<u8>,
+		optional_payload: Option<Vec<u8>>,
+		json_data: serde_json::Value,
+		optional_json_data: Option<serde_json::Value>,
+		timestamp: chrono::DateTime<chrono::Utc>,
+		optional_timestamp: Option<chrono::DateTime<chrono::Utc>>,
+		stored_length: i64,
+		virtual_length: i64,
+	}
+
+	impl Model for TestBinaryRecord {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"test_binary_record"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn field_is_none(&self, field_name: &str) -> bool {
+			match field_name {
+				"id" => self.id.is_none(),
+				"optional_payload" => self.optional_payload.is_none(),
+				"optional_json_data" => self.optional_json_data.is_none(),
+				"optional_timestamp" => self.optional_timestamp.is_none(),
+				_ => false,
+			}
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut id = BigIntegerField::new();
+			id.base.primary_key = true;
+			id.base.db_column = Some("record_id".to_owned());
+			id.set_attributes_from_name("id");
+			let mut name = CharField::new(255);
+			name.base.db_column = Some("stored_name".to_owned());
+			name.set_attributes_from_name("name");
+			let mut payload = BinaryField::new();
+			payload.set_attributes_from_name("payload");
+			let mut optional_payload = BinaryField::new();
+			optional_payload.base.null = true;
+			optional_payload.set_attributes_from_name("optional_payload");
+			let mut json_data = CharField::new(255);
+			json_data.set_attributes_from_name("json_data");
+			let mut json_data = FieldInfo::from_field(&json_data);
+			json_data.field_type = "reinhardt.orm.models.JsonField".to_owned();
+			let mut optional_json_data = json_data.clone();
+			optional_json_data.name = "optional_json_data".to_owned();
+			optional_json_data.nullable = true;
+			let mut timestamp = DateTimeField::new();
+			timestamp.set_attributes_from_name("timestamp");
+			let mut optional_timestamp = DateTimeField::new();
+			optional_timestamp.base.null = true;
+			optional_timestamp.set_attributes_from_name("optional_timestamp");
+			let generated = [
+				("stored_length", "stored_size", "generated_stored"),
+				("virtual_length", "virtual_size", "generated_virtual"),
+			]
+			.into_iter()
+			.map(|(name, column, kind)| {
+				let mut field = BigIntegerField::new();
+				field.base.db_column = Some(column.to_owned());
+				field.set_attributes_from_name(name);
+				let mut info = FieldInfo::from_field(&field);
+				info.attributes.insert(
+					"generated".to_owned(),
+					FieldKwarg::String("OCTET_LENGTH(payload)".to_owned()),
+				);
+				info.attributes
+					.insert(kind.to_owned(), FieldKwarg::Bool(true));
+				info
+			});
+			let mut fields = vec![
+				FieldInfo::from_field(&id),
+				FieldInfo::from_field(&name),
+				FieldInfo::from_field(&payload),
+				FieldInfo::from_field(&optional_payload),
+				json_data,
+				optional_json_data,
+				FieldInfo::from_field(&timestamp),
+				FieldInfo::from_field(&optional_timestamp),
+			];
+			for info in &mut fields {
+				if matches!(info.name.as_str(), "payload" | "optional_payload") {
+					info.storage_kind = Some(crate::orm::DatabaseStorageKind::Bytes);
+				}
+			}
+			fields.extend(generated);
+			fields
+		}
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+	struct TestGeneratedRecord {
+		id: Option<i64>,
+		stored: i64,
+		virtual_value: i64,
+	}
+
+	impl Model for TestGeneratedRecord {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"test_generated_record"
+		}
+		fn primary_key(&self) -> Option<i64> {
+			self.id
+		}
+		fn set_primary_key(&mut self, value: i64) {
+			self.id = Some(value);
+		}
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut id = BigIntegerField::new();
+			id.base.primary_key = true;
+			id.set_attributes_from_name("id");
+			let mut fields = vec![FieldInfo::from_field(&id)];
+			for (name, expression, kind) in [
+				("stored", "42", "generated_stored"),
+				("virtual_value", "43", "generated_virtual"),
+			] {
+				let mut field = BigIntegerField::new();
+				field.set_attributes_from_name(name);
+				let mut field = FieldInfo::from_field(&field);
+				field.attributes.insert(
+					"generated".to_owned(),
+					FieldKwarg::String(expression.to_owned()),
+				);
+				field
+					.attributes
+					.insert(kind.to_owned(), FieldKwarg::Bool(true));
+				fields.push(field);
+			}
+			fields
+		}
+	}
+
+	#[rstest]
+	#[case(None, "INSERT INTO `test_generated_record` () VALUES ()")]
+	#[case(Some(42), "INSERT INTO `test_generated_record` (`id`) VALUES (?)")]
+	fn mysql_bulk_create_omits_generated_values(#[case] id: Option<i64>, #[case] expected: &str) {
+		let model = TestGeneratedRecord {
+			id,
+			stored: 999,
+			virtual_value: 999,
+		};
+		let statements = Manager::<TestGeneratedRecord>::new()
+			.try_bulk_create_statements(&[model])
+			.unwrap();
+		assert_eq!(statements.len(), 1);
+		let (sql, values) = super::build_insert_sql(&statements[0], DatabaseBackend::MySql);
+		assert_eq!(sql, expected);
+		assert_eq!(
+			values.0,
+			id.map(|id| vec![reinhardt_query::Value::BigInt(Some(id))])
+				.unwrap_or_default()
+		);
+	}
+	#[rstest]
+	fn mysql_bulk_create_preserves_mixed_primary_keys_in_order() {
+		let models: Vec<_> = [None, Some(42), None]
+			.into_iter()
+			.enumerate()
+			.map(|(index, id)| TestUser {
+				id,
+				name: index.to_string(),
+				email: format!("{index}@example.com"),
+			})
+			.collect();
+		let statements = Manager::<TestUser>::new()
+			.try_bulk_create_statements(&models)
+			.unwrap();
+		assert_eq!(statements.len(), 3);
+		let keys: Vec<_> = statements
+			.iter()
+			.map(|statement| {
+				super::build_insert_sql(statement, DatabaseBackend::MySql)
+					.0
+					.contains("`id`")
+			})
+			.collect();
+		assert_eq!(keys, vec![false, true, false]);
+	}
+
+	// The model macro registers migration metadata, even for this SQL-only test.
+	#[cfg(feature = "migrations")]
+	#[reinhardt_core::macros::model(app_label = "bulk_test", table_name = "zero_key_records")]
+	#[derive(serde::Serialize, serde::Deserialize)]
+	struct ZeroKeyRecord {
+		#[field(primary_key = true)]
+		id: i64,
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest]
+	fn mysql_bulk_create_preserves_mixed_zero_sentinel_keys() {
+		// Arrange
+		let models = [
+			ZeroKeyRecord { id: 0 },
+			ZeroKeyRecord { id: 42 },
+			ZeroKeyRecord { id: 0 },
+		];
+		// Act
+		let statements = Manager::<ZeroKeyRecord>::new()
+			.try_bulk_create_statements(&models)
+			.unwrap();
+		let rendered: Vec<_> = statements
+			.iter()
+			.map(|stmt| super::build_insert_sql(stmt, DatabaseBackend::MySql))
+			.collect();
+		// Assert
+		assert_eq!(rendered.len(), 3);
+		assert_eq!(rendered[0].0, "INSERT INTO `zero_key_records` () VALUES ()");
+		assert_eq!(
+			rendered[1].1.0,
+			vec![reinhardt_query::Value::BigInt(Some(42))]
+		);
+		assert_eq!(rendered[2].0, rendered[0].0);
+	}
+
+	#[cfg(all(
+		not(all(target_family = "wasm", target_os = "unknown")),
+		any(feature = "mysql", feature = "postgres", feature = "sqlite")
+	))]
+	mod bulk_create_backend_tests {
+		use super::{DatabaseBackend, Manager, TestUser};
+		#[cfg(feature = "mysql")]
+		use super::{Model, TestBinaryRecord, TestGeneratedRecord};
+		use crate::orm::manager::{
+			DatabaseRegistrationSnapshot, replace_database_connection_for_testing_sync,
+			restore_database_connection_for_testing_sync,
+		};
+		use crate::orm::test_connection::TestConnection as DatabaseConnection;
+		use rstest::{fixture, rstest};
+		use serial_test::serial;
+
+		struct DatabaseScope {
+			previous: DatabaseRegistrationSnapshot,
+		}
+		impl DatabaseScope {
+			async fn install(connection: DatabaseConnection) -> Self {
+				Self {
+					previous: replace_database_connection_for_testing_sync(Some(
+						connection.lease.clone(),
+					)),
+				}
+			}
+		}
+		impl Drop for DatabaseScope {
+			fn drop(&mut self) {
+				restore_database_connection_for_testing_sync(&mut self.previous);
+			}
+		}
+
+		#[cfg(feature = "mysql")]
+		#[fixture]
+		async fn mysql_database() -> (
+			testcontainers::ContainerAsync<testcontainers_modules::mysql::Mysql>,
+			DatabaseConnection,
+		) {
+			use testcontainers::ImageExt;
+			use testcontainers::runners::AsyncRunner;
+			let container = testcontainers_modules::mysql::Mysql::default()
+				.with_tag("8.0")
+				.with_startup_timeout(std::time::Duration::from_secs(180))
+				.start()
+				.await
+				.unwrap();
+			let url = format!(
+				"mysql://root@{}:{}/test",
+				container.get_host().await.unwrap(),
+				container.get_host_port_ipv4(3306).await.unwrap()
+			);
+			let connection = DatabaseConnection::connect(&url).await.unwrap();
+			(container, connection)
+		}
+
+		#[cfg(feature = "postgres")]
+		#[fixture]
+		async fn postgres_database() -> (
+			testcontainers::ContainerAsync<testcontainers_modules::postgres::Postgres>,
+			DatabaseConnection,
+		) {
+			use testcontainers::runners::AsyncRunner;
+			let container = testcontainers_modules::postgres::Postgres::default()
+				.start()
+				.await
+				.unwrap();
+			let url = format!(
+				"postgres://postgres:postgres@{}:{}/postgres",
+				container.get_host().await.unwrap(),
+				container.get_host_port_ipv4(5432).await.unwrap()
+			);
+			let connection = DatabaseConnection::connect(&url).await.unwrap();
+			(container, connection)
+		}
+
+		#[cfg(feature = "sqlite")]
+		#[fixture]
+		async fn sqlite_database() -> DatabaseConnection {
+			DatabaseConnection::connect_with_pool_size("sqlite::memory:", Some(1))
+				.await
+				.unwrap()
+		}
+
+		async fn stored_users(connection: &DatabaseConnection) -> Vec<TestUser> {
+			#[cfg(feature = "mysql")]
+			if connection.backend() == DatabaseBackend::MySql {
+				// Explicit SQLx types keep insert verification independent of MySQL's
+				// existing bool-first row inference and hydration limitations.
+				let backend = connection.inner().backend();
+				let mysql = backend
+					.as_any()
+					.downcast_ref::<crate::backends::dialect::MySqlBackend>()
+					.unwrap();
+				return sqlx::query_as::<_, (i64, String, String)>(
+					"SELECT id, name, email FROM test_user ORDER BY email",
+				)
+				.fetch_all(mysql.pool())
+				.await
+				.unwrap()
+				.into_iter()
+				.map(|(id, name, email)| TestUser {
+					id: Some(id),
+					name,
+					email,
+				})
+				.collect();
+			}
+			connection
+				.query(
+					"SELECT id, name, email FROM test_user ORDER BY email",
+					vec![],
+				)
+				.await
+				.unwrap()
+				.into_iter()
+				.map(|row| serde_json::from_value(row.data).unwrap())
+				.collect()
+		}
+
+		async fn assert_bulk_create_backend_cases(connection: DatabaseConnection) {
+			// Arrange
+			let _scope = DatabaseScope::install(connection.clone()).await;
+			let primary_key = match connection.backend() {
+				DatabaseBackend::MySql => "BIGINT PRIMARY KEY AUTO_INCREMENT",
+				DatabaseBackend::Postgres => "BIGSERIAL PRIMARY KEY",
+				DatabaseBackend::Sqlite => "INTEGER PRIMARY KEY AUTOINCREMENT",
+			};
+			connection
+				.execute(
+					&format!(
+						"CREATE TABLE test_user (id {primary_key}, name TEXT NOT NULL, email VARCHAR(255) NOT NULL UNIQUE)"
+					),
+					vec![],
+				)
+				.await
+				.unwrap();
+			let manager = Manager::<TestUser>::new();
+
+			for generated_keys in [false, true] {
+				for ignore_conflicts in [false, true] {
+					for batch_size in [None, Some(2)] {
+						connection
+							.execute("DELETE FROM test_user", vec![])
+							.await
+							.unwrap();
+						let seed = TestUser {
+							id: Some(9000),
+							name: "existing".to_owned(),
+							email: "existing@example.com".to_owned(),
+						};
+						if ignore_conflicts {
+							connection.execute(
+								"INSERT INTO test_user (id, name, email) VALUES (9000, 'existing', 'existing@example.com')",
+								vec![],
+							).await.unwrap();
+						}
+						let models: Vec<TestUser> =
+							["plain", "O'Reilly", "back\\slash", "日本語", "last"]
+								.into_iter()
+								.enumerate()
+								.map(|(index, name)| TestUser {
+									id: if generated_keys {
+										None
+									} else {
+										Some(100 + index as i64)
+									},
+									name: name.to_owned(),
+									email: if ignore_conflicts && index == 1 {
+										seed.email.clone()
+									} else {
+										format!("user-{index}@example.com")
+									},
+								})
+								.collect();
+						let mut expected = models.clone();
+						if ignore_conflicts {
+							expected.remove(1);
+							expected.push(seed);
+						}
+						expected.sort_by(|left, right| left.email.cmp(&right.email));
+
+						// Act
+						let outcome = manager
+							.bulk_create(models.clone(), batch_size, ignore_conflicts, false)
+							.await;
+						let stored = stored_users(&connection).await;
+						let returned = outcome.unwrap_or_else(|error| {
+							panic!("bulk_create failed: {error}; stored rows: {}", stored.len())
+						});
+
+						// Assert
+						assert_eq!(
+							stored
+								.iter()
+								.map(|model| (&model.name, &model.email))
+								.collect::<Vec<_>>(),
+							expected
+								.iter()
+								.map(|model| (&model.name, &model.email))
+								.collect::<Vec<_>>()
+						);
+						if !generated_keys {
+							assert_eq!(stored, expected);
+						}
+						for model in &stored {
+							assert_ne!(model.id, None);
+						}
+						if ignore_conflicts {
+							assert_eq!(returned, Vec::<TestUser>::new());
+						} else if connection.backend() == DatabaseBackend::MySql {
+							assert_eq!(returned, models);
+						} else {
+							let hydrated: Vec<TestUser> = models
+								.iter()
+								.map(|model| {
+									stored
+										.iter()
+										.find(|row| row.email == model.email)
+										.unwrap()
+										.clone()
+								})
+								.collect();
+							assert_eq!(returned, hydrated);
+						}
+					}
+				}
+			}
+
+			for batch_size in [None, Some(1)] {
+				// Arrange
+				connection
+					.execute("DELETE FROM test_user", vec![])
+					.await
+					.unwrap();
+				connection
+					.execute(
+						"INSERT INTO test_user (id, name, email) VALUES (1, 'existing', 'existing@example.com')",
+						vec![],
+					)
+					.await
+					.unwrap();
+				let models = vec![
+					TestUser {
+						id: Some(2),
+						name: "first".to_owned(),
+						email: "first@example.com".to_owned(),
+					},
+					TestUser {
+						id: Some(1),
+						name: "conflicting".to_owned(),
+						email: "conflicting@example.com".to_owned(),
+					},
+				];
+				// Act
+				manager
+					.bulk_create(models, batch_size, false, false)
+					.await
+					.unwrap_err();
+				let stored = stored_users(&connection).await;
+				// Assert
+				let mut expected = vec![TestUser {
+					id: Some(1),
+					name: "existing".to_owned(),
+					email: "existing@example.com".to_owned(),
+				}];
+				if batch_size.is_some() {
+					// Completed batches stay committed; bulk_create does not own a transaction.
+					expected.push(TestUser {
+						id: Some(2),
+						name: "first".to_owned(),
+						email: "first@example.com".to_owned(),
+					});
+				}
+				assert_eq!(stored, expected);
+			}
+		}
+
+		#[cfg(feature = "mysql")]
+		#[rstest]
+		#[tokio::test]
+		#[serial(sqlx_drivers)]
+		async fn bulk_create_mysql_backend_cases(
+			#[future] mysql_database: (
+				testcontainers::ContainerAsync<testcontainers_modules::mysql::Mysql>,
+				DatabaseConnection,
+			),
+		) {
+			let (_container, connection) = mysql_database.await;
+			assert_bulk_create_backend_cases(connection).await;
+		}
+
+		#[cfg(feature = "mysql")]
+		#[rstest]
+		#[tokio::test]
+		#[serial(sqlx_drivers)]
+		async fn bulk_create_mysql_typed_fields_and_renamed_columns(
+			#[future] mysql_database: (
+				testcontainers::ContainerAsync<testcontainers_modules::mysql::Mysql>,
+				DatabaseConnection,
+			),
+		) {
+			use reinhardt_query::prelude::{Alias, MySqlQueryBuilder, Order, Query, QueryBuilder};
+			use reinhardt_query::types::ColumnDef;
+			// Arrange
+			let (_container, connection) = mysql_database.await;
+			let _scope = DatabaseScope::install(connection.clone()).await;
+			let table = Query::create_table()
+				.table(TestBinaryRecord::table_name())
+				.col(
+					ColumnDef::new("record_id")
+						.big_integer()
+						.primary_key(true)
+						.auto_increment(true),
+				)
+				.col(
+					ColumnDef::new("stored_name")
+						.string_len(255)
+						.not_null(true)
+						.unique(true),
+				)
+				.col(ColumnDef::new("payload").custom("BLOB").not_null(true))
+				.col(ColumnDef::new("optional_payload").custom("BLOB"))
+				.col(ColumnDef::new("json_data").json().not_null(true))
+				.col(ColumnDef::new("optional_json_data").json())
+				.col(
+					ColumnDef::new("timestamp")
+						.custom("DATETIME(6)")
+						.not_null(true),
+				)
+				.col(ColumnDef::new("optional_timestamp").custom("TIMESTAMP(6)"))
+				.col(
+					ColumnDef::new("stored_size")
+						.custom("BIGINT GENERATED ALWAYS AS (OCTET_LENGTH(`payload`)) STORED"),
+				)
+				.col(
+					ColumnDef::new("virtual_size")
+						.custom("BIGINT GENERATED ALWAYS AS (OCTET_LENGTH(`payload`)) VIRTUAL"),
+				)
+				.to_owned();
+			let (sql, _) = MySqlQueryBuilder.build_create_table(&table);
+			connection.execute(&sql, vec![]).await.unwrap();
+			let manager = Manager::<TestBinaryRecord>::new();
+			let backend = connection.inner().backend();
+			let mysql = backend
+				.as_any()
+				.downcast_ref::<crate::backends::dialect::MySqlBackend>()
+				.unwrap();
+			let timestamp = chrono::DateTime::parse_from_rfc3339("2026-10-04T12:34:56.123456Z")
+				.unwrap()
+				.with_timezone(&chrono::Utc);
+
+			for key_pattern in 0..4 {
+				for ignore_conflicts in [false, true] {
+					for batch_size in [None, Some(2)] {
+						let delete = Query::delete()
+							.from_table(Alias::new(TestBinaryRecord::table_name()))
+							.to_owned();
+						let (sql, _) = MySqlQueryBuilder.build_delete(&delete);
+						connection.execute(&sql, vec![]).await.unwrap();
+						let models: Vec<TestBinaryRecord> = [
+							serde_json::Value::Null,
+							serde_json::json!("hello"),
+							serde_json::json!("null"),
+							serde_json::json!("true"),
+							serde_json::json!("42"),
+							serde_json::json!(true),
+							serde_json::json!(42),
+							serde_json::json!(1.25),
+							serde_json::json!([0, 255]),
+							serde_json::json!({"answer": 42}),
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(index, json_data)| TestBinaryRecord {
+							id: match key_pattern {
+								0 => Some(100 + index as i64),
+								1 => None,
+								2 if index % 2 == 0 => None,
+								3 if index % 2 == 1 => None,
+								_ => Some(100 + index as i64),
+							},
+							name: format!("record-{index}"),
+							payload: match index % 3 {
+								0 => vec![0, 255, 128, 39, 92],
+								1 => vec![],
+								_ => vec![255, 0],
+							},
+							optional_payload: match index % 3 {
+								0 => None,
+								1 => Some(vec![]),
+								_ => Some(vec![0, 255]),
+							},
+							json_data,
+							optional_json_data: match index % 3 {
+								0 => None,
+								1 => Some(serde_json::Value::Null),
+								_ => Some(serde_json::json!("null")),
+							},
+							timestamp: timestamp + chrono::Duration::microseconds(index as i64),
+							optional_timestamp: if index % 2 == 0 {
+								None
+							} else {
+								Some(timestamp)
+							},
+							stored_length: 0,
+							virtual_length: 0,
+						})
+						.collect();
+						let mut input = models.clone();
+						if ignore_conflicts {
+							let mut conflict = models[0].clone();
+							conflict.payload = vec![42];
+							conflict.id = if conflict.id.is_none() {
+								Some(30_000)
+							} else {
+								None
+							};
+							input.insert(1, conflict);
+						}
+						// Act
+						let returned = manager
+							.bulk_create(input, batch_size, ignore_conflicts, false)
+							.await
+							.unwrap();
+						let select = Query::select()
+							.columns(
+								[
+									"record_id",
+									"stored_name",
+									"payload",
+									"optional_payload",
+									"json_data",
+									"optional_json_data",
+									"timestamp",
+									"optional_timestamp",
+									"stored_size",
+									"virtual_size",
+								]
+								.into_iter()
+								.map(Alias::new),
+							)
+							.from(Alias::new(TestBinaryRecord::table_name()))
+							.order_by(Alias::new("stored_name"), Order::Asc)
+							.to_owned();
+						let (sql, _) = MySqlQueryBuilder.build_select(&select);
+						let stored = sqlx::query_as::<
+							_,
+							(
+								i64,
+								String,
+								Vec<u8>,
+								Option<Vec<u8>>,
+								sqlx::types::Json<serde_json::Value>,
+								Option<sqlx::types::Json<serde_json::Value>>,
+								chrono::NaiveDateTime,
+								Option<chrono::DateTime<chrono::Utc>>,
+								i64,
+								i64,
+							),
+						>(&sql)
+						.fetch_all(mysql.pool())
+						.await
+						.unwrap();
+						// Assert
+						assert_eq!(
+							returned,
+							if ignore_conflicts {
+								vec![]
+							} else {
+								models.clone()
+							}
+						);
+						assert_eq!(stored.len(), models.len());
+						for (
+							(
+								id,
+								name,
+								payload,
+								optional_payload,
+								json_data,
+								optional_json_data,
+								timestamp,
+								optional_timestamp,
+								stored_length,
+								virtual_length,
+							),
+							expected,
+						) in stored.into_iter().zip(&models)
+						{
+							assert_eq!(
+								(&name, &payload, &optional_payload, &json_data.0),
+								(
+									&expected.name,
+									&expected.payload,
+									&expected.optional_payload,
+									&expected.json_data
+								)
+							);
+							assert_eq!(
+								optional_json_data.map(|value| value.0),
+								expected.optional_json_data
+							);
+							assert_eq!(timestamp, expected.timestamp.naive_utc());
+							assert_eq!(optional_timestamp, expected.optional_timestamp);
+							assert_eq!(stored_length, expected.payload.len() as i64);
+							assert_eq!(virtual_length, expected.payload.len() as i64);
+							if let Some(expected_id) = expected.id {
+								assert_eq!(id, expected_id);
+							}
+						}
+					}
+				}
+			}
+		}
+
+		#[cfg(feature = "mysql")]
+		#[rstest]
+		#[tokio::test]
+		#[serial(sqlx_drivers)]
+		async fn bulk_create_mysql_default_only_generated_rows(
+			#[future] mysql_database: (
+				testcontainers::ContainerAsync<testcontainers_modules::mysql::Mysql>,
+				DatabaseConnection,
+			),
+		) {
+			use reinhardt_query::prelude::{Alias, MySqlQueryBuilder, Query, QueryBuilder};
+			use reinhardt_query::types::ColumnDef;
+			// Arrange
+			let (_container, connection) = mysql_database.await;
+			let _scope = DatabaseScope::install(connection.clone()).await;
+			let table = Query::create_table()
+				.table(TestGeneratedRecord::table_name())
+				.col(
+					ColumnDef::new("id")
+						.big_integer()
+						.primary_key(true)
+						.auto_increment(true),
+				)
+				.col(ColumnDef::new("stored").custom("BIGINT GENERATED ALWAYS AS (42) STORED"))
+				.col(
+					ColumnDef::new("virtual_value")
+						.custom("BIGINT GENERATED ALWAYS AS (43) VIRTUAL"),
+				)
+				.to_owned();
+			let (sql, _) = MySqlQueryBuilder.build_create_table(&table);
+			connection.execute(&sql, vec![]).await.unwrap();
+			let manager = Manager::<TestGeneratedRecord>::new();
+			let backend = connection.inner().backend();
+			let mysql = backend
+				.as_any()
+				.downcast_ref::<crate::backends::dialect::MySqlBackend>()
+				.unwrap();
+			let models = vec![
+				TestGeneratedRecord {
+					id: None,
+					stored: 0,
+					virtual_value: 0
+				};
+				3
+			];
+			for batch_size in [None, Some(2)] {
+				for ignore_conflicts in [false, true] {
+					let delete = Query::delete()
+						.from_table(Alias::new(TestGeneratedRecord::table_name()))
+						.to_owned();
+					let (sql, _) = MySqlQueryBuilder.build_delete(&delete);
+					connection.execute(&sql, vec![]).await.unwrap();
+					// Act
+					let returned = manager
+						.bulk_create(models.clone(), batch_size, ignore_conflicts, false)
+						.await
+						.unwrap();
+					let select = Query::select()
+						.columns(
+							["id", "stored", "virtual_value"]
+								.into_iter()
+								.map(Alias::new),
+						)
+						.from(Alias::new(TestGeneratedRecord::table_name()))
+						.to_owned();
+					let (sql, _) = MySqlQueryBuilder.build_select(&select);
+					let stored = sqlx::query_as::<_, (i64, i64, i64)>(&sql)
+						.fetch_all(mysql.pool())
+						.await
+						.unwrap();
+					// Assert
+					assert_eq!(
+						returned,
+						if ignore_conflicts {
+							vec![]
+						} else {
+							models.clone()
+						}
+					);
+					assert_eq!(stored.len(), 3);
+					let mut ids = std::collections::HashSet::new();
+					for (id, stored, virtual_value) in stored {
+						assert!(id > 0);
+						assert!(ids.insert(id));
+						assert_eq!((stored, virtual_value), (42, 43));
+					}
+				}
+			}
+		}
+
+		#[cfg(feature = "postgres")]
+		#[rstest]
+		#[tokio::test]
+		#[serial(sqlx_drivers)]
+		async fn bulk_create_postgres_backend_cases(
+			#[future] postgres_database: (
+				testcontainers::ContainerAsync<testcontainers_modules::postgres::Postgres>,
+				DatabaseConnection,
+			),
+		) {
+			let (_container, connection) = postgres_database.await;
+			assert_bulk_create_backend_cases(connection).await;
+		}
+
+		#[cfg(feature = "sqlite")]
+		#[rstest]
+		#[tokio::test]
+		#[serial(sqlx_drivers)]
+		async fn bulk_create_sqlite_backend_cases(#[future] sqlite_database: DatabaseConnection) {
+			assert_bulk_create_backend_cases(sqlite_database.await).await;
+		}
+	}
+
+	#[fixture]
+	fn bulk_users() -> Vec<TestUser> {
+		vec![
+			TestUser {
+				id: Some(1),
+				name: "Alice".into(),
+				email: "alice@example.com".into(),
+			},
+			TestUser {
+				id: Some(2),
+				name: "Bob".into(),
+				email: "bob@example.com".into(),
+			},
+		]
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_bulk_create_rejects_zero_batch_size_before_database_access(
+		bulk_users: Vec<TestUser>,
+	) {
+		// Arrange
+		let manager = TestUser::objects();
+
+		// Act
+		let error = manager
+			.bulk_create(bulk_users, Some(0), false, false)
+			.await
+			.expect_err("zero batch size must be rejected");
+
+		// Assert
+		assert!(
+			matches!(error, reinhardt_core::exception::Error::Validation(ref message)
+			if message == "batch_size must be greater than zero")
+		);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_bulk_update_rejects_zero_batch_size_before_database_access(
+		bulk_users: Vec<TestUser>,
+	) {
+		// Arrange
+		let manager = TestUser::objects();
+
+		// Act
+		let error = manager
+			.bulk_update(bulk_users, vec!["name".into()], Some(0))
+			.await
+			.expect_err("zero batch size must be rejected");
+
+		// Assert
+		assert!(
+			matches!(error, reinhardt_core::exception::Error::Validation(ref message)
+			if message == "batch_size must be greater than zero")
+		);
+	}
+
+	#[rstest]
+	#[case::zero(Some(0))]
+	#[case::one(Some(1))]
+	#[case::default(None)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_bulk_create_empty_models_remain_noop(#[case] batch_size: Option<usize>) {
+		// Arrange
+		let manager = TestUser::objects();
+
+		// Act
+		let created = manager
+			.bulk_create(vec![], batch_size, false, false)
+			.await
+			.expect("empty models must succeed without a database");
+
+		// Assert
+		assert_eq!(created, Vec::<TestUser>::new());
+	}
+
+	#[rstest]
+	#[case::zero(Some(0))]
+	#[case::one(Some(1))]
+	#[case::default(None)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_bulk_update_empty_models_remain_noop(#[case] batch_size: Option<usize>) {
+		// Arrange
+		let manager = TestUser::objects();
+
+		// Act
+		let updated = manager
+			.bulk_update(vec![], vec!["name".into()], batch_size)
+			.await
+			.expect("empty models must succeed without a database");
+
+		// Assert
+		assert_eq!(updated, 0);
+	}
+
+	#[rstest]
+	#[case::zero(Some(0))]
+	#[case::one(Some(1))]
+	#[case::default(None)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_bulk_update_empty_fields_remain_noop(
+		bulk_users: Vec<TestUser>,
+		#[case] batch_size: Option<usize>,
+	) {
+		// Arrange
+		let manager = TestUser::objects();
+
+		// Act
+		let updated = manager
+			.bulk_update(bulk_users, vec![], batch_size)
+			.await
+			.expect("empty fields must succeed without a database");
+
+		// Assert
+		assert_eq!(updated, 0);
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -4004,6 +5420,124 @@ mod tests {
 				)))]
 			);
 		}
+	}
+
+	#[rstest::rstest]
+	#[case(i32::MIN)]
+	#[case(0)]
+	#[case(i32::MAX)]
+	fn manager_preserves_int32_parameters(#[case] input: i32) {
+		// Arrange
+		let value = reinhardt_query::value::Value::Int(Some(input));
+
+		// Act
+		let bound = Manager::<TestUser>::sea_value_to_query_value(value.clone());
+		let restored = Manager::<TestUser>::query_value_to_sea_value(bound.clone());
+
+		// Assert
+		assert_eq!(bound, crate::backends::QueryValue::Int32(input));
+		assert_eq!(restored, value);
+	}
+
+	#[test]
+	fn manager_binds_integer_arrays_natively() {
+		let value =
+			Manager::<TestUser>::sea_value_to_query_value(reinhardt_query::value::Value::Array(
+				reinhardt_query::value::ArrayType::Int,
+				Some(Box::new(vec![reinhardt_query::value::Value::Int(Some(7))])),
+			));
+
+		assert_eq!(value, crate::orm::connection::QueryValue::IntArray(vec![7]));
+	}
+
+	#[rstest]
+	#[case::string(DatabaseArrayType::String, ["kept".to_owned(), "tail".to_owned()], QueryValue::StringArray, QueryValue::NullableStringArray, |value: Option<String>| reinhardt_query::Value::String(value.map(Box::new)))]
+	#[case::int(DatabaseArrayType::I32, [i32::MIN, i32::MAX], QueryValue::IntArray, QueryValue::NullableIntArray, reinhardt_query::Value::Int)]
+	#[case::bigint(DatabaseArrayType::I64, [i64::MIN, i64::MAX], QueryValue::BigIntArray, QueryValue::NullableBigIntArray, reinhardt_query::Value::BigInt)]
+	#[case::bool(DatabaseArrayType::Bool, [true, false], QueryValue::BoolArray, QueryValue::NullableBoolArray, reinhardt_query::Value::Bool)]
+	#[case::float(DatabaseArrayType::F32, [1.5_f32, -2.5_f32], QueryValue::FloatArray, QueryValue::NullableFloatArray, reinhardt_query::Value::Float)]
+	#[case::double(DatabaseArrayType::F64, [3.5_f64, -4.5_f64], QueryValue::DoubleArray, QueryValue::NullableDoubleArray, reinhardt_query::Value::Double)]
+	#[case::uuid(DatabaseArrayType::Uuid, [Uuid::nil(), Uuid::from_u128(1)], QueryValue::UuidArray, QueryValue::NullableUuidArray, |value: Option<Uuid>| reinhardt_query::Value::Uuid(value.map(Box::new)))]
+	fn manager_preserves_nullable_array_elements<T>(
+		#[case] element_type: DatabaseArrayType,
+		#[case] values: [T; 2],
+		#[case] non_nullable: fn(Vec<T>) -> QueryValue,
+		#[case] nullable: fn(Vec<Option<T>>) -> QueryValue,
+		#[case] encode: fn(Option<T>) -> reinhardt_query::Value,
+	) where
+		T: DatabaseScalar + Clone,
+	{
+		// Arrange
+		let mixed = vec![
+			None,
+			Some(values[0].clone()),
+			None,
+			Some(values[1].clone()),
+			None,
+		];
+		let all_null = vec![None, None];
+		let shapes = [
+			("mixed", mixed.clone(), nullable(mixed)),
+			("all_null", all_null.clone(), nullable(all_null)),
+			(
+				"non_null",
+				values.iter().cloned().map(Some).collect(),
+				non_nullable(values.to_vec()),
+			),
+			("empty", vec![], non_nullable(vec![])),
+		];
+		for (shape, elements, expected) in shapes {
+			let database_value = DatabaseValue::Array {
+				element_type,
+				values: elements
+					.iter()
+					.cloned()
+					.map(|value| value.map_or(DatabaseValue::Null, T::into_database_value))
+					.collect(),
+			};
+			let query_value = crate::orm::database_value_to_query_value(database_value);
+			let reinhardt_query::Value::Array(array_type, _) = &query_value else {
+				panic!("database array should retain its array type");
+			};
+			let typed_nulls = reinhardt_query::Value::Array(
+				array_type.clone(),
+				Some(Box::new(elements.into_iter().map(encode).collect())),
+			);
+			let whole_null = reinhardt_query::Value::Array(array_type.clone(), None);
+
+			// Act
+			let database_bound = Manager::<TestUser>::sea_value_to_query_value(query_value);
+			let typed_bound = Manager::<TestUser>::sea_value_to_query_value(typed_nulls);
+			let null_bound = Manager::<TestUser>::sea_value_to_query_value(whole_null);
+
+			// Assert
+			assert_eq!(
+				database_bound, expected,
+				"{element_type:?}: {shape} database values"
+			);
+			assert_eq!(
+				typed_bound, expected,
+				"{element_type:?}: {shape} typed NULLs"
+			);
+			assert_eq!(null_bound, QueryValue::Null, "{element_type:?}: whole NULL");
+		}
+	}
+
+	#[test]
+	fn manager_binds_naive_datetimes_without_converting_them_to_utc() {
+		let value = chrono::NaiveDate::from_ymd_opt(2026, 7, 26)
+			.expect("valid date")
+			.and_hms_opt(9, 15, 30)
+			.expect("valid time");
+
+		let bound = Manager::<TestUser>::sea_value_to_query_value(
+			reinhardt_query::value::Value::ChronoDateTime(Some(Box::new(value))),
+		);
+
+		assert_eq!(
+			bound,
+			crate::orm::connection::QueryValue::NaiveTimestamp(value)
+		);
 	}
 
 	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -4775,6 +6309,39 @@ mod tests {
 				.unwrap()
 				.is_none()
 		);
+	}
+
+	#[rstest::rstest]
+	#[case(DatabaseArrayType::String, "text")]
+	#[case(DatabaseArrayType::I32, "integer")]
+	#[case(DatabaseArrayType::I64, "bigint")]
+	#[case(DatabaseArrayType::F32, "real")]
+	#[case(DatabaseArrayType::F64, "double precision")]
+	#[case(DatabaseArrayType::Bool, "boolean")]
+	#[case(DatabaseArrayType::Uuid, "uuid")]
+	fn bulk_update_nullable_arrays_keep_postgres_element_types(
+		#[case] element_type: DatabaseArrayType,
+		#[case] postgres_type: &str,
+	) {
+		// Arrange
+		let value = DatabaseValue::Array {
+			element_type,
+			values: vec![DatabaseValue::Null, DatabaseValue::Null],
+		};
+
+		// Act
+		let literal = super::database_value_sql_literal(value.clone(), DatabaseBackend::Postgres)
+			.expect("PostgreSQL nullable array should render");
+		let sqlite_literal =
+			super::database_value_sql_literal(value.clone(), DatabaseBackend::Sqlite)
+				.expect("SQLite nullable array should render");
+		let mysql_literal = super::database_value_sql_literal(value, DatabaseBackend::MySql)
+			.expect("MySQL nullable array should render");
+
+		// Assert
+		assert_eq!(literal, format!("ARRAY[NULL,NULL]::{postgres_type}[]"));
+		assert_eq!(sqlite_literal, "'[null,null]'");
+		assert_eq!(mysql_literal, "'[null,null]'");
 	}
 
 	#[test]

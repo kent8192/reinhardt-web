@@ -1,7 +1,7 @@
 [package]
 name = "reinhardt-integration-tests"
 # reinhardt-version-sync
-version = "0.4.0-alpha.19"
+version = "0.4.0-alpha.20"
 edition.workspace = true
 rust-version.workspace = true
 publish = false
@@ -49,6 +49,7 @@ reinhardt-macros = { workspace = true }
 reinhardt-views = { workspace = true, features = ["viewsets"]}
 reinhardt-i18n = { workspace = true }
 reinhardt-tasks = { workspace = true, features = [
+	"durable",
   "redis-backend",
   "rabbitmq-backend",
 ] }
@@ -169,7 +170,7 @@ cfg_aliases = "0.2"
 [features]
 default = ["postgres", "sqlite", "caching", "hot-reload", "dynamic-redis"]
 testcontainers = []
-postgres = ["reinhardt-db/postgres"]
+postgres = ["reinhardt/db-postgres"]
 mysql = ["reinhardt-db/mysql"]
 sqlite = ["reinhardt-db/sqlite"]
 caching = ["reinhardt-conf/caching"]
@@ -185,3 +186,8 @@ graphql = ["reinhardt-server/graphql"]
 msgpack = ["reinhardt-pages/msgpack"]
 client-router = ["reinhardt/client-router", "reinhardt-urls/client-router"]
 proptest = ["dep:proptest"]
+
+[[test]]
+name = "composite_key_unsigned"
+path = "tests/composite_key_unsigned.rs"
+required-features = ["mysql", "postgres", "sqlite"]

@@ -54,6 +54,13 @@ impl DatabaseType {
 /// Integer parameters retain their binding width: `Int32` binds as PostgreSQL
 /// `integer`, while `Int` binds as `bigint`. Use `QueryValue::from(3_i32)` for
 /// functions requiring an `integer` argument, such as `right(text, integer)`.
+///
+/// PostgreSQL array rows without NULL elements retain their non-nullable array
+/// variants. Rows with NULL elements use the corresponding `Nullable*Array`
+/// variant, preserving every position. An empty array retains its scalar type;
+/// SQL NULL for the entire array is [`QueryValue::Null`].
+/// Serde serialization rejects non-finite values in nullable float arrays so
+/// JSON cannot silently replace a non-NULL element with null.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum QueryValue {
 	/// Null variant.
@@ -97,6 +104,97 @@ pub enum QueryValue {
 	Now,
 	/// Signed 32-bit integer parameter.
 	Int32(i32),
+	/// PostgreSQL-compatible string array with nullable elements.
+	NullableStringArray(Vec<Option<String>>),
+	/// PostgreSQL-compatible 32-bit integer array with nullable elements.
+	NullableIntArray(Vec<Option<i32>>),
+	/// PostgreSQL-compatible 64-bit integer array with nullable elements.
+	NullableBigIntArray(Vec<Option<i64>>),
+	/// PostgreSQL-compatible boolean array with nullable elements.
+	NullableBoolArray(Vec<Option<bool>>),
+	/// PostgreSQL-compatible 32-bit floating-point array with nullable elements.
+	#[serde(serialize_with = "serialize_nullable_float_array")]
+	NullableFloatArray(Vec<Option<f32>>),
+	/// PostgreSQL-compatible 64-bit floating-point array with nullable elements.
+	#[serde(serialize_with = "serialize_nullable_float_array")]
+	NullableDoubleArray(Vec<Option<f64>>),
+	/// PostgreSQL-compatible UUID array with nullable elements.
+	NullableUuidArray(Vec<Option<Uuid>>),
+	/// Unsigned 64-bit integer parameter (P0: native database execution).
+	///
+	/// MySQL binds the original value. PostgreSQL and SQLite perform a checked
+	/// conversion to their signed integer type and reject overflow before execution.
+	Uint(u64),
+}
+
+fn serialize_nullable_float_array<T, S>(
+	values: &[Option<T>],
+	serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+	T: Copy + Into<f64> + Serialize,
+	S: serde::Serializer,
+{
+	if values
+		.iter()
+		.flatten()
+		.any(|value| !(*value).into().is_finite())
+	{
+		return Err(serde::ser::Error::custom(
+			"nullable float arrays cannot serialize non-finite elements",
+		));
+	}
+	values.serialize(serializer)
+}
+
+/// Retain legacy array variants when no element is NULL.
+pub(crate) fn array_query_value<T>(
+	values: Option<Vec<Option<T>>>,
+	non_nullable: impl FnOnce(Vec<T>) -> QueryValue,
+	nullable: impl FnOnce(Vec<Option<T>>) -> QueryValue,
+) -> QueryValue {
+	match values {
+		Some(values) if values.iter().any(Option::is_none) => nullable(values),
+		Some(values) => non_nullable(values.into_iter().flatten().collect()),
+		None => QueryValue::Null,
+	}
+}
+
+/// JSON has no numeric representation for NaN or infinity.
+#[cfg(any(feature = "mysql", feature = "sqlite"))]
+pub(crate) fn validate_json_array(value: &QueryValue) -> std::result::Result<(), DatabaseError> {
+	let non_finite = match value {
+		QueryValue::FloatArray(values) => values.iter().any(|value| !value.is_finite()),
+		QueryValue::DoubleArray(values) => values.iter().any(|value| !value.is_finite()),
+		QueryValue::NullableFloatArray(values) => {
+			values.iter().flatten().any(|value| !value.is_finite())
+		}
+		QueryValue::NullableDoubleArray(values) => {
+			values.iter().flatten().any(|value| !value.is_finite())
+		}
+		_ => false,
+	};
+	if non_finite {
+		return Err(DatabaseError::new(
+			DatabaseErrorKind::Type,
+			"JSON array parameters cannot contain non-finite floating-point elements",
+		));
+	}
+	Ok(())
+}
+
+pub(crate) fn checked_unsigned_integer(
+	value: u64,
+	backend: &str,
+) -> std::result::Result<i64, DatabaseError> {
+	i64::try_from(value).map_err(|_| {
+		DatabaseError::new(
+			DatabaseErrorKind::Type,
+			format!(
+				"Unsigned integer parameter exceeds the signed 64-bit range supported by {backend}"
+			),
+		)
+	})
 }
 
 impl From<&str> for QueryValue {
@@ -209,6 +307,7 @@ impl TryFrom<QueryValue> for i64 {
 		match value {
 			QueryValue::Int32(i) => Ok(i64::from(i)),
 			QueryValue::Int(i) => Ok(i),
+			QueryValue::Uint(i) => checked_unsigned_integer(i, "i64"),
 			_ => Err(DatabaseError::new(
 				DatabaseErrorKind::Type,
 				format!("Cannot convert {:?} to i64", value),
@@ -223,6 +322,12 @@ impl TryFrom<QueryValue> for i32 {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Int32(i) => Ok(i),
+			QueryValue::Uint(i) => i32::try_from(i).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					"Unsigned integer value exceeds the i32 range",
+				)
+			}),
 			QueryValue::Int(i) => i32::try_from(i).map_err(|_| {
 				DatabaseError::new(
 					DatabaseErrorKind::Type,
@@ -243,6 +348,7 @@ impl TryFrom<QueryValue> for u64 {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Int32(i) => Self::try_from(QueryValue::Int(i64::from(i))),
+			QueryValue::Uint(i) => Ok(i),
 			QueryValue::Int(i) => u64::try_from(i).map_err(|_| {
 				DatabaseError::new(
 					DatabaseErrorKind::Type,
@@ -263,6 +369,12 @@ impl TryFrom<QueryValue> for u32 {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Int32(i) => Self::try_from(QueryValue::Int(i64::from(i))),
+			QueryValue::Uint(i) => u32::try_from(i).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					"Unsigned integer value exceeds the u32 range",
+				)
+			}),
 			QueryValue::Int(i) => u32::try_from(i).map_err(|_| {
 				DatabaseError::new(
 					DatabaseErrorKind::Type,
@@ -568,7 +680,7 @@ pub trait TransactionExecutor: Send + Sync {
 
 	/// Execute generated arguments on this transaction's connection (native-only, P0).
 	///
-	/// Native providers use owned companion codecs. The compatibility default
+	/// Native providers use checked native generated-value codecs. The compatibility default
 	/// rejects unrepresentable values before forwarding to the existing raw API.
 	async fn execute_generated(
 		&mut self,
@@ -581,7 +693,7 @@ pub trait TransactionExecutor: Send + Sync {
 
 	/// Fetch generated arguments on this transaction's connection (native-only, P0).
 	///
-	/// Native providers use owned companion codecs. The compatibility default
+	/// Native providers use checked native generated-value codecs. The compatibility default
 	/// rejects unrepresentable values before forwarding to the existing raw API.
 	async fn fetch_one_generated(
 		&mut self,
@@ -594,7 +706,7 @@ pub trait TransactionExecutor: Send + Sync {
 
 	/// Fetch generated arguments on this transaction's connection (native-only, P0).
 	///
-	/// Native providers use owned companion codecs. The compatibility default
+	/// Native providers use checked native generated-value codecs. The compatibility default
 	/// rejects unrepresentable values before forwarding to the existing raw API.
 	async fn fetch_all_generated(
 		&mut self,
@@ -607,7 +719,7 @@ pub trait TransactionExecutor: Send + Sync {
 
 	/// Fetch generated arguments on this transaction's connection (native-only, P0).
 	///
-	/// Native providers use owned companion codecs. The compatibility default
+	/// Native providers use checked native generated-value codecs. The compatibility default
 	/// rejects unrepresentable values before forwarding to the existing raw API.
 	async fn fetch_optional_generated(
 		&mut self,
@@ -616,6 +728,73 @@ pub trait TransactionExecutor: Send + Sync {
 	) -> super::error::Result<Option<Row>> {
 		let (sql, params) = super::generated::compatibility_arguments(built, self.backend())?;
 		self.fetch_optional_with_context(&sql, params, context)
+			.await
+	}
+
+	/// Native generated-value row dispatch on the dedicated connection.
+	#[doc(hidden)]
+	async fn __fetch_one_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		backend: DatabaseType,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Row> {
+		let params =
+			super::generated::legacy_values(values, super::generated::backend_name(backend))?;
+		self.fetch_one_with_context(sql, params, context).await
+	}
+
+	/// Native generated-value row dispatch on the dedicated connection.
+	#[doc(hidden)]
+	async fn __fetch_all_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		backend: DatabaseType,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Vec<Row>> {
+		let params =
+			super::generated::legacy_values(values, super::generated::backend_name(backend))?;
+		self.fetch_all_with_context(sql, params, context).await
+	}
+
+	/// Preserve native renderer arguments and structural operation context.
+	#[doc(hidden)]
+	async fn execute_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<QueryResult> {
+		let backend = self.backend();
+		self.__execute_generated(sql, values, backend, context)
+			.await
+	}
+
+	/// Preserve native renderer arguments and structural operation context.
+	#[doc(hidden)]
+	async fn fetch_one_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Row> {
+		let backend = self.backend();
+		self.__fetch_one_generated(sql, values, backend, context)
+			.await
+	}
+
+	/// Preserve native renderer arguments and structural operation context.
+	#[doc(hidden)]
+	async fn fetch_all_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<Vec<Row>> {
+		let backend = self.backend();
+		self.__fetch_all_generated(sql, values, backend, context)
 			.await
 	}
 
@@ -649,6 +828,20 @@ pub trait TransactionExecutor: Send + Sync {
 	/// Returns whether contextual pgvector error hints are supported.
 	fn supports_pgvector_error_hints(&self) -> bool {
 		false
+	}
+
+	/// Internal generated-SQL dispatch on this transaction's dedicated connection.
+	#[doc(hidden)]
+	async fn __execute_generated(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		backend: DatabaseType,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> super::error::Result<QueryResult> {
+		let params =
+			super::generated::legacy_values(values, super::generated::backend_name(backend))?;
+		self.execute_with_context(sql, params, context).await
 	}
 
 	/// Execute a query that modifies the database within the transaction
@@ -943,6 +1136,54 @@ impl RowLockCapabilities {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case::nan(f64::NAN)]
+	#[case::positive_infinity(f64::INFINITY)]
+	#[case::negative_infinity(f64::NEG_INFINITY)]
+	fn nullable_float_array_serialization_rejects_non_finite_values(#[case] value: f64) {
+		// Arrange
+		let arrays = [
+			QueryValue::NullableFloatArray(vec![None, Some(value as f32), Some(1.5)]),
+			QueryValue::NullableDoubleArray(vec![None, Some(value), Some(1.5)]),
+		];
+
+		// Act / Assert: serialization must not turn a non-NULL element into NULL.
+		for array in arrays {
+			let error = serde_json::to_string(&array).expect_err("reject lossy JSON text");
+			assert!(error.to_string().contains("non-finite"), "{error}");
+			let error = serde_json::to_value(&array).expect_err("reject lossy JSON values");
+			assert!(error.to_string().contains("non-finite"), "{error}");
+		}
+	}
+
+	#[rstest]
+	#[case::empty(vec![], vec![])]
+	#[case::nulls(vec![None, None], vec![None, None])]
+	#[case::mixed(vec![Some(f32::MIN), None, Some(f32::MAX)], vec![Some(f64::MIN), None, Some(f64::MAX)])]
+	fn nullable_float_array_serialization_retains_finite_wire_format(
+		#[case] real: Vec<Option<f32>>,
+		#[case] double: Vec<Option<f64>>,
+	) {
+		// Arrange
+		let arrays = [
+			(
+				QueryValue::NullableFloatArray(real.clone()),
+				serde_json::json!({"NullableFloatArray": real}),
+			),
+			(
+				QueryValue::NullableDoubleArray(double.clone()),
+				serde_json::json!({"NullableDoubleArray": double}),
+			),
+		];
+
+		// Act / Assert
+		for (array, expected) in arrays {
+			assert_eq!(serde_json::to_value(&array).unwrap(), expected);
+			let encoded = serde_json::to_string(&array).unwrap();
+			assert_eq!(serde_json::from_str::<QueryValue>(&encoded).unwrap(), array);
+		}
+	}
 
 	#[rstest]
 	#[case::min(i32::MIN)]

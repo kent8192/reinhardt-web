@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.19...reinhardt-core@v0.4.0-alpha.20) - 2026-10-06
+
+### Added
+
+- *(macros)* preserve PostgreSQL identity options in model metadata
+
+### Fixed
+
+- *(macros)* infer PostgreSQL arrays through nullable elements
+- *(macros)* infer grouped nullable array element types
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.18...reinhardt-core@v0.4.0-alpha.19) - 2026-10-03
 
 ### Fixed
@@ -183,6 +194,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(serializers)* cover required, fallback, and field-type stability
 - *(macros)* keep server_only Info compile-fail on SecretInfo
 - *(macros)* isolate server_only Info compile-fail from serde bounds
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.20...reinhardt-core@v0.3.21) - 2026-10-05
+
+### Added
+
+- *(conf)* backport deferred management settings bootstrap
+
+### Fixed
+
+- *(http)* serve streaming bodies through native endpoints
+- *(macros)* honor db_column in composite primary keys
+- *(commands)* resolve installed app paths to migration labels
 
 ## [0.3.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.16...reinhardt-core@v0.3.17) - 2026-09-13
 

@@ -18,17 +18,22 @@
 //! - **[`APIClient`]**: HTTP client for making test API requests
 //! - **[`APIRequestFactory`]**: Factory for creating mock HTTP requests
 //! - **[`APITestCase`]**: Base test case with common assertions
+//! - **[`stub::StubRouter`]**: Async closure-based, method-aware test stub routes
 //! - **Response Assertions**: Status, header, and body assertions
 //! - **[`Factory`]**: Model factory for generating test data
 //! - **[`fixtures::TestDatabase`]**: Model-derived and migration-backed
 //!   database fixture for application tests
 //! - **[`DebugToolbar`]**: Debug panel for inspecting queries and timing
 //! - **[`WebSocketTestClient`]**: WebSocket connection testing
-//! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) integration
+//! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) and
+//!   message queues, including NATS with JetStream enabled. Customize test-scoped
+//!   PostgreSQL containers with `PostgresContainerConfig` and
+//!   `postgres_container_with`. Apply migrations to a configured container URL
+//!   using `apply_postgres_migrations_from` or `apply_postgres_migrations_from_dir`.
 //!
 //! ## Feature Flags
 //!
-//! - **`testcontainers`**: Enable TestContainers for database testing
+//! - **`testcontainers`**: Enable TestContainers for database and message queue testing
 //! - **`static`**: Enable static file testing utilities
 //! - **`websockets`**: Enable WebSocket testing utilities
 //! - **`graphql`**: Enable GraphQL testing utilities
@@ -64,6 +69,8 @@ pub mod resource;
 pub mod response;
 /// Test server spawning and management.
 pub mod server;
+/// Async closure-based routes for test stub servers.
+pub mod stub;
 /// Base test case with common assertions.
 pub mod testcase;
 /// Test view implementations for integration testing.
@@ -128,7 +135,10 @@ pub use reinhardt_urls::routers::ServerRouter;
 pub use reinhardt_urls;
 
 #[cfg(feature = "testcontainers")]
-pub use fixtures::{postgres_container, redis_container};
+pub use fixtures::{
+	PostgresContainerConfig, apply_postgres_migrations_from, apply_postgres_migrations_from_dir,
+	postgres_container, postgres_container_with, redis_container, start_postgres_container,
+};
 pub use http::{
 	assert_has_header, assert_header_contains, assert_header_equals, assert_no_header,
 	assert_status, create_insecure_request, create_request, create_response_with_headers,
@@ -141,7 +151,10 @@ pub use messages::{
 	MessagesTestMixin, assert_message_count, assert_message_exists, assert_message_level,
 	assert_message_tags, assert_messages,
 };
-pub use mock::{CallRecord, MockFunction, SimpleHandler, Spy};
+// Keep compatibility coverage and re-exports until SimpleHandler is removed.
+#[allow(deprecated)]
+pub use mock::SimpleHandler;
+pub use mock::{CallRecord, MockFunction, Spy};
 pub use resource::{
 	AsyncTeardownGuard, AsyncTestResource, SuiteGuard, SuiteResource, TeardownGuard, TestResource,
 	acquire_suite,
@@ -183,7 +196,11 @@ pub mod prelude {
 	};
 
 	#[cfg(feature = "testcontainers")]
-	pub use super::fixtures::{postgres_container, redis_container};
+	pub use super::fixtures::{
+		PostgresContainerConfig, apply_postgres_migrations_from,
+		apply_postgres_migrations_from_dir, postgres_container, postgres_container_with,
+		redis_container, start_postgres_container,
+	};
 	pub use super::http::{
 		assert_has_header, assert_header_contains, assert_header_equals, assert_no_header,
 		assert_status, create_insecure_request, create_request, create_response_with_headers,
@@ -195,7 +212,10 @@ pub mod prelude {
 	pub use super::messages::{
 		MessagesTestMixin, assert_message_count, assert_message_exists, assert_messages,
 	};
-	pub use super::mock::{MockFunction, SimpleHandler, Spy};
+	// Keep compatibility coverage and re-exports until SimpleHandler is removed.
+	#[allow(deprecated)]
+	pub use super::mock::SimpleHandler;
+	pub use super::mock::{MockFunction, Spy};
 	pub use super::poll_until;
 	pub use super::resource::{
 		AsyncTeardownGuard, AsyncTestResource, SuiteGuard, SuiteResource, TeardownGuard,

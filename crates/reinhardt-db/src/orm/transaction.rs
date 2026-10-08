@@ -962,6 +962,10 @@ impl OrmExecutor for AtomicTransaction {
 		built: (String, reinhardt_query::Values),
 		context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> reinhardt_core::exception::Result<QueryResult> {
+		let (sql, values) = built;
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		let built = (sql, values);
 		self.executor_mut()?.execute_generated(built, context).await
 	}
 
@@ -970,6 +974,10 @@ impl OrmExecutor for AtomicTransaction {
 		built: (String, reinhardt_query::Values),
 		context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> reinhardt_core::exception::Result<Row> {
+		let (sql, values) = built;
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		let built = (sql, values);
 		self.executor_mut()?
 			.fetch_one_generated(built, context)
 			.await
@@ -980,6 +988,10 @@ impl OrmExecutor for AtomicTransaction {
 		built: (String, reinhardt_query::Values),
 		context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> reinhardt_core::exception::Result<Vec<Row>> {
+		let (sql, values) = built;
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		let built = (sql, values);
 		self.executor_mut()?
 			.fetch_all_generated(built, context)
 			.await
@@ -990,6 +1002,10 @@ impl OrmExecutor for AtomicTransaction {
 		built: (String, reinhardt_query::Values),
 		context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> reinhardt_core::exception::Result<Option<Row>> {
+		let (sql, values) = built;
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		let built = (sql, values);
 		self.executor_mut()?
 			.fetch_optional_generated(built, context)
 			.await
@@ -1023,8 +1039,65 @@ impl OrmExecutor for AtomicTransaction {
 		chunk_size: usize,
 		context: Option<crate::backends::error::PgvectorOperationKind>,
 	) -> reinhardt_core::exception::Result<RowStream<'a>> {
+		let (sql, values) = built;
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		let built = (sql, values);
 		self.executor_mut()?
 			.fetch_stream_generated(built, chunk_size, context)
+	}
+
+	async fn fetch_optional_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Option<Row>> {
+		Ok(
+			OrmExecutor::fetch_all_generated_with_context(self, sql, values, context)
+				.await?
+				.into_iter()
+				.next(),
+		)
+	}
+
+	async fn execute_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<QueryResult> {
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		self.executor_mut()?
+			.execute_generated_with_context(sql, values, context)
+			.await
+	}
+
+	async fn fetch_one_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Row> {
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		self.executor_mut()?
+			.fetch_one_generated_with_context(sql, values, context)
+			.await
+	}
+
+	async fn fetch_all_generated_with_context(
+		&mut self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Vec<Row>> {
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		self.executor_mut()?
+			.fetch_all_generated_with_context(sql, values, context)
+			.await
 	}
 
 	fn backend(&self) -> DatabaseBackend {
@@ -1402,7 +1475,6 @@ mod tests {
 	use crate::prelude::Model;
 	use futures::FutureExt;
 	use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
-	use rstest::*;
 	use std::collections::BTreeSet;
 	use std::fmt;
 	use std::sync::atomic::{AtomicBool, Ordering};

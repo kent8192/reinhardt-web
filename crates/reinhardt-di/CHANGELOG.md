@@ -98,6 +98,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Maintenance
 
 - merge main into develop/0.4.0
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.3.20...reinhardt-di@v0.3.21) - 2026-10-05
+
+### Fixed
+
+- *(di)* preserve provider function braces in cargo fix
 ## [0.3.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di@v0.3.8...reinhardt-di@v0.3.9) - 2026-08-21
 
 ### Documentation

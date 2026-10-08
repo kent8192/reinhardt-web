@@ -24,6 +24,7 @@ pub mod interpolation;
 pub mod logging;
 pub mod media;
 pub(crate) mod merge;
+/// Migration dependency settings, independent of runtime secrets.
 pub mod migrations;
 /// OpenAPI documentation endpoint configuration.
 pub mod openapi;
@@ -67,6 +68,8 @@ pub mod hot_reload;
 pub mod config;
 /// Database connection configuration types and helpers.
 pub mod database_config;
+#[cfg(feature = "dynamic-database")]
+mod database_index;
 /// Settings documentation and introspection utilities.
 pub mod docs;
 /// Test utilities for settings configuration.

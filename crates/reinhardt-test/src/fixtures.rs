@@ -10,7 +10,7 @@ pub use reinhardt_testkit::fixtures::{client, dcl, di, loader, mock, server};
 
 #[cfg(all(native, feature = "testcontainers"))]
 pub use reinhardt_testkit::fixtures::{
-	resources, schema, shared_postgres, testcontainers, validator,
+	nats_container, resources, schema, shared_postgres, testcontainers, validator,
 };
 
 #[cfg(native)]

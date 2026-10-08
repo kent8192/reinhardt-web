@@ -100,6 +100,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - merge main into develop/0.4.0
 - merge develop/0.4.0 into remove-anyhow branch
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.3.20...reinhardt-http@v0.3.21) - 2026-10-05
+
+### Fixed
+
+- *(http)* serve streaming bodies through native endpoints
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.3.17...reinhardt-http@v0.3.18) - 2026-09-16
 
 ### Fixed

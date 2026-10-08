@@ -13,6 +13,23 @@
 //!
 //! Equivalent to Django's `django.db` package.
 //!
+//! ## Filesystem migration SQL assets
+//!
+//! With the `migrations` feature, [`migrations::FilesystemSource`] resolves
+//! literal relative `include_str!` expressions in `Operation::RunSQL.sql` and
+//! `reverse_sql`. Deploy the referenced UTF-8 files alongside the migration
+//! sources. Paths are relative to the visible source file and must remain
+//! inside the selected migration root; internal links and shared assets work.
+//! Every load rereads deployed assets, preserving comments, line endings, and
+//! procedural SQL blocks. A file cannot be both a migration source and an asset.
+//!
+//! On Unix and Windows, `migrations::SqlAssetContext` supplies filesystem
+//! coordinates for strict AST parsing and source upgrades. Pathless APIs require this context
+//! for includes instead of reading from the current directory. Source upgrades
+//! retain include expressions and asset bytes; generated and squashed sources
+//! embed resolved SQL and can be deployed without the original asset files.
+//! Applied migration history does not checksum or replay changed assets.
+//!
 //! ## Constraint violation metadata
 //!
 //! [`DatabaseError::code`] retains a driver or database code. When a backend
@@ -367,9 +384,10 @@
 //! ```
 //!
 //! `DatabaseMigrationExecutor` applies these operations in vector order.
-//! Rolling this migration back removes the model schema and indexes but
-//! deliberately leaves the database-level extension installed, because other
-//! applications or schemas may share it.
+//! Automatic rollback rejects this migration's `CREATE EXTENSION IF NOT EXISTS`
+//! because other applications may own an existing extension. For an extension
+//! owned by this migration, use `.with_if_not_exists(false)` before conversion;
+//! rollback then drops the model schema and indexes followed by the extension.
 //!
 //! The distance methods map directly to PostgreSQL operators:
 //!
@@ -543,17 +561,33 @@
 //!
 //! ## Architecture
 //!
+//! `QuerySet` statements, `orm::execution` builders, and many-to-many operations
+//! use native backend codecs, preserving supported decimal and array types.
+//! This includes the ordinary `QuerySet::all`, `first`, and `get` accessors.
+//! Dedicated transaction executors support the same generated-value dispatch.
+//! Unsupported or lossy generated arguments fail before execution with a redacted
+//! backend/type/position error. `Manager` model creation and updates retain their
+//! JSON-to-`QueryValue` conversion. Explicit raw executors and the legacy
+//! `orm::execution::convert_values` adapter retain their existing contracts.
+//!
 //! Key modules in this crate:
 //!
-//! - [`backends`]: Low-level database operations, schema editor, DDL generation
-//! - [`backends_pool`]: Connection pool management with lifecycle hooks
-//! - [`pool`]: High-level pool abstraction for `ConnectionPool`
-//! - [`orm`]: Django-style model definitions, QuerySet, field types, and
-//!   model-level fixture support
-//! - [`migrations`]: Schema migration system with auto-detection and rollback
-//! - [`hybrid`]: Cross-database compatible type system
-//! - [`associations`]: Relationship management (ForeignKey, ManyToMany)
+//! - `backends`: Low-level database operations, schema editor, DDL generation
+//!   (requires the `backends` feature)
+//! - `backends_pool`: Connection pool management with lifecycle hooks
+//!   (requires the `backends` or `backends-pool` feature)
+//! - `pool`: High-level pool abstraction for `ConnectionPool`
+//!   (requires the `pool` feature)
+//! - `orm`: Django-style model definitions, QuerySet, and field types
+//!   (requires the `orm` feature)
+//! - `migrations`: Schema migration system with auto-detection and rollback
+//!   (requires the `migrations` feature)
+//! - `hybrid`: Cross-database compatible type system
+//!   (requires the `hybrid` feature)
+//! - `associations`: Relationship management (ForeignKey, ManyToMany)
+//!   (requires the `associations` feature)
 //! - `contenttypes`: Generic foreign key support
+//!   (requires the `contenttypes` feature)
 //!
 //! ## Feature Flags
 //!

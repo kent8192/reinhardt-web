@@ -116,6 +116,79 @@ fn compile_sources(root: &Path, relative_paths: &[&str]) -> BTreeMap<String, Mig
 }
 
 #[rstest::rstest]
+#[tokio::test]
+async fn sql_assets_upgrade_compiles_with_complete_public_facade_parity() {
+	// Arrange
+	let directory = TempDir::new_in("/tmp").unwrap();
+	let relative_path = "assets/0001_guard.rs";
+	let app = directory.path().join("assets");
+	fs::create_dir_all(app.join("sql")).unwrap();
+	let forward = "-- exact 🦀\r\nDO $guard$ BEGIN PERFORM 1; END $guard$;\r\n";
+	let reverse = "SELECT 'reverse; exact';\n";
+	fs::write(app.join("sql/forward.txt"), forward).unwrap();
+	fs::write(app.join("sql/reverse.sql"), reverse).unwrap();
+	let text = r##"use reinhardt::db::migrations::prelude::*;
+use reinhardt::db::migrations::{SwappableDependency, OptionalDependency, DependencyCondition};
+pub fn migration() -> Migration {
+    Migration {
+        app_label: "assets".into(), name: ("0001_guard".into()),
+        operations: vec![Operation::RunSQL {
+            sql: (include_str!("sql/forward.txt")).to_owned().into(),
+            reverse_sql: Some(include_str!(r#"sql/reverse.sql"#,).into()),
+        }],
+        dependencies: vec![("base".into(), "0001_initial".into::<>() )],
+        replaces: vec![("assets".to_owned().into(), "0000_old".into())],
+        atomic: false, initial: Some(false), state_only: false, database_only: true,
+        swappable_dependencies: vec![SwappableDependency::new("AUTH_USER_MODEL", "auth", "User", "0001_initial")],
+        optional_dependencies: vec![OptionalDependency::new("plugin", "0001_initial", DependencyCondition::AppInstalled("plugin".into()))],
+    }
+}
+"##;
+	fs::write(directory.path().join(relative_path), text).unwrap();
+	// Act
+	run(UpgradeSourceArgs {
+		path: directory.path().into(),
+		check: false,
+	})
+	.unwrap();
+	run(UpgradeSourceArgs {
+		path: directory.path().into(),
+		check: true,
+	})
+	.unwrap();
+	let compiled = compile_sources(directory.path(), &[relative_path]);
+	let loaded = FilesystemSource::new(directory.path())
+		.all_migrations()
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(
+		serde_json::to_value(&loaded[0]).unwrap(),
+		serde_json::to_value(compiled.get(relative_path).unwrap()).unwrap()
+	);
+	assert_eq!(
+		loaded[0].operations,
+		vec![Operation::RunSQL {
+			sql: forward.into(),
+			reverse_sql: Some(reverse.into())
+		}]
+	);
+	let upgraded = fs::read_to_string(directory.path().join(relative_path)).unwrap();
+	assert!(upgraded.starts_with("// reinhardt-migration-source: 1\n"));
+	assert_eq!(upgraded.matches("include_str").count(), 2);
+	assert!(upgraded.contains("sql/forward.txt") && upgraded.contains("sql/reverse.sql"));
+	assert!(!upgraded.contains(forward) && !upgraded.contains(reverse));
+	assert_eq!(
+		fs::read(app.join("sql/forward.txt")).unwrap(),
+		forward.as_bytes()
+	);
+	assert_eq!(
+		fs::read(app.join("sql/reverse.sql")).unwrap(),
+		reverse.as_bytes()
+	);
+}
+
+#[rstest::rstest]
 fn legacy_drop_column_into_upgrade_compiles_through_public_facade() {
 	// Arrange
 	let directory = TempDir::new().unwrap();

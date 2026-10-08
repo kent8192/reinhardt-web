@@ -29,11 +29,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.19", features = ["conf"] }
+reinhardt = { version = "0.4.0-alpha.20", features = ["conf"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.4.0-alpha.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.4.0-alpha.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.20", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.20", features = ["full"] }      # All features
 ```
 
 Then import configuration features:
@@ -52,13 +52,13 @@ Enable specific features based on your needs:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 # With async support
-reinhardt = { version = "0.4.0-alpha.19", features = ["conf", "async"] }
+reinhardt = { version = "0.4.0-alpha.20", features = ["conf", "async"] }
 
 # With encryption
-reinhardt = { version = "0.4.0-alpha.19", features = ["conf", "encryption"] }
+reinhardt = { version = "0.4.0-alpha.20", features = ["conf", "encryption"] }
 
 # With Vault integration
-reinhardt = { version = "0.4.0-alpha.19", features = ["conf", "vault"] }
+reinhardt = { version = "0.4.0-alpha.20", features = ["conf", "vault"] }
 ```
 
 Available features:
@@ -72,6 +72,11 @@ Available features:
 - `azure-keyvault`: Azure Key Vault integration
 - `secret-rotation`: Automatic secret rotation
 - `encryption`: Built-in encryption for sensitive settings
+
+When depending directly on `reinhardt-conf`, `dynamic-database` supports
+`default-features = false` without enabling `settings`. The settings module and
+its types remain available through `reinhardt_conf::settings`; the `settings`
+feature enables convenience re-exports at the crate root.
 
 ## Usage
 
@@ -403,6 +408,19 @@ These fields exist for Django settings compatibility but are **not yet consumed*
 use reinhardt::conf::settings::{SettingsBuilder, SettingsConfig};
 ```
 
+### Database initialization
+
+With `dynamic-database`, call `DatabaseBackend::create_table()` before storing
+settings. `DatabaseAuditBackend::new()` initializes its audit table automatically.
+Both initialization paths create missing indexes on existing tables and can be
+repeated without deleting or rewriting records.
+
+Expiry and audit timestamps are stored as RFC 3339 text. MySQL uses prefix indexes
+on these `TEXT` columns: 64 characters for timestamps, 32 for event types, and
+191 for audit users. Long user identifiers remain intact, and filtering compares
+the full identifier even when users share the indexed prefix. Index creation
+errors are returned; only an already existing MySQL index name is accepted.
+
 ## Testing
 
 Database audit tests inject an async `rstest` backend fixture, composed with
@@ -413,6 +431,20 @@ backends remain isolated. Pool cleanup follows the fixture's lifetime.
 ```bash
 cargo test -p reinhardt-conf --all-features --lib settings::audit::backends::database::tests -- --test-threads=8
 ```
+
+Audit tests receive asynchronous `rstest` backend fixtures whose in-memory SQLite
+database names use `reinhardt-test`'s `random_test_key` helper. Connections within
+each pool share that database, while independently injected backend fixtures keep
+their audit records separate.
+
+Run the fresh-table and existing-table initialization regressions with Docker:
+
+```bash
+cargo test -p reinhardt-integration-tests --test conf_database_indexes --features dynamic-database,mysql -- --test-threads=1
+```
+
+This covers MySQL index metadata, repeated initialization, legacy data, TTL
+lookups and cleanup, long audit users, and PostgreSQL/SQLite compatibility.
 
 ## License
 

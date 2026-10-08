@@ -335,6 +335,11 @@ impl Session {
 
 	/// Get an object by primary key
 	///
+	/// On an identity-map miss, the logical key is encoded with
+	/// [`Model::primary_key_database_value`] and bound as a query parameter.
+	/// Codec errors are returned before database access; identity-map entries
+	/// remain keyed by the logical key.
+	///
 	/// # Examples
 	///
 	/// ```no_run
@@ -537,9 +542,7 @@ impl Session {
 			return Ok(Vec::new());
 		}
 
-		let mut statement = RQuery::select();
-		statement.from(Alias::new(T::table_name()));
-		apply_any_model_projection::<T>(&mut statement, self.db_backend, T::table_name())?;
+		let statement = build_list_all_statement::<T>(self.db_backend)?;
 		let (sql, arguments) = prepare_any_select(&statement, self.db_backend)?.into_parts();
 		let rows = sqlx::query_with(&sql, arguments)
 			.fetch_all(&*self.pool)
@@ -1284,6 +1287,13 @@ impl Session {
 /// preserves the SQL and Values produced by the checked statement.
 type PreparedAnyQuery = reinhardt_query_sqlx::PreparedQuery<sqlx::any::AnyArguments<'static>>;
 
+fn build_list_all_statement<T: Model>(backend: DbBackend) -> Result<SelectStatement, SessionError> {
+	let mut statement = RQuery::select();
+	statement.from(Alias::new(T::table_name()));
+	apply_any_model_projection::<T>(&mut statement, backend, T::table_name())?;
+	Ok(statement)
+}
+
 fn prepare_any_select(
 	statement: &SelectStatement,
 	backend: DbBackend,
@@ -1665,28 +1675,7 @@ where
 /// SQLx Any may represent MySQL TEXT as bytes even after a CHAR projection.
 /// Decode the complete UTF-8 value without bounding its length or truncating it.
 fn any_text_value(row: &sqlx::any::AnyRow, column: &str) -> Result<Option<String>, SessionError> {
-	match row.try_get::<Option<String>, _>(column) {
-		Ok(value) => Ok(value),
-		Err(string_error) => {
-			let bytes = row
-				.try_get::<Option<Vec<u8>>, _>(column)
-				.map_err(|bytes_error| {
-					SessionError::SerializationError(format!(
-						"cannot decode text column {column}: string: {string_error}; bytes: {bytes_error}"
-					))
-				})?;
-			bytes
-				.map(|bytes| {
-					String::from_utf8(bytes).map_err(|error| {
-						SessionError::SerializationError(format!(
-							"invalid UTF-8 in text column {column}: {}",
-							error.utf8_error()
-						))
-					})
-				})
-				.transpose()
-		}
-	}
+	contextual_any_text_value(row, column, SessionError::SerializationError)
 }
 
 fn backend_bool_value<F>(
@@ -2052,7 +2041,9 @@ fn postgres_array_quote(value: &str) -> String {
 mod tests {
 	use super::*;
 	use crate::orm::Manager;
+	use crate::orm::fields::{BigIntegerField, CharField, Field, IntegerField};
 	use crate::orm::json::Json;
+	use reinhardt_query::{ColumnDef, ColumnType, Iden, IntoIden, Values};
 	use rstest::*;
 	use serde::{Deserialize, Serialize};
 	use serial_test::serial;
@@ -2107,6 +2098,453 @@ mod tests {
 				test_field_info("email", "reinhardt.orm.models.CharField", false, false),
 			]
 		}
+	}
+
+	#[derive(Debug, Iden, Clone, Copy)]
+	enum WideIntegers {
+		Table,
+		Id,
+		Name,
+		OptionalWide,
+		Count,
+		OptionalCount,
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct WideIntegerModel {
+		id: i64,
+		name: String,
+		optional_wide: Option<i64>,
+		count: i32,
+		optional_count: Option<i32>,
+	}
+
+	impl Model for WideIntegerModel {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"wide_integers"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut id = BigIntegerField::new();
+			id.base.primary_key = true;
+			id.set_attributes_from_name("id");
+			let mut name = CharField::new(255);
+			name.set_attributes_from_name("name");
+			let mut optional_wide = BigIntegerField::new();
+			optional_wide.base.null = true;
+			optional_wide.set_attributes_from_name("optional_wide");
+			let mut count = IntegerField::new();
+			count.set_attributes_from_name("count");
+			let mut optional_count = IntegerField::new();
+			optional_count.base.null = true;
+			optional_count.set_attributes_from_name("optional_count");
+			vec![
+				FieldInfo::from_field(&id),
+				FieldInfo::from_field(&name),
+				FieldInfo::from_field(&optional_wide),
+				FieldInfo::from_field(&count),
+				FieldInfo::from_field(&optional_count),
+			]
+		}
+	}
+
+	#[fixture]
+	async fn wide_integer_pool() -> Arc<AnyPool> {
+		sqlx::any::install_default_drivers();
+		// One connection owns this isolated in-memory database for the test's lifetime.
+		let pool = sqlx::pool::PoolOptions::<Any>::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.unwrap();
+		let sql = RQuery::create_table()
+			.table(WideIntegers::Table.into_iden())
+			.col(
+				ColumnDef::new(WideIntegers::Id)
+					.column_type(ColumnType::BigInteger)
+					.primary_key(true),
+			)
+			.col(
+				ColumnDef::new(WideIntegers::Name)
+					.column_type(ColumnType::Text)
+					.not_null(true),
+			)
+			.col(ColumnDef::new(WideIntegers::OptionalWide).column_type(ColumnType::BigInteger))
+			.col(
+				ColumnDef::new(WideIntegers::Count)
+					.column_type(ColumnType::Integer)
+					.not_null(true),
+			)
+			.col(ColumnDef::new(WideIntegers::OptionalCount).column_type(ColumnType::Integer))
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&sql).execute(&pool).await.unwrap();
+		Arc::new(pool)
+	}
+
+	async fn insert_wide_integer_model(pool: &AnyPool, model: &WideIntegerModel) {
+		let sql = RQuery::insert()
+			.into_table(WideIntegers::Table.into_iden())
+			.columns([
+				WideIntegers::Id,
+				WideIntegers::Name,
+				WideIntegers::OptionalWide,
+				WideIntegers::Count,
+				WideIntegers::OptionalCount,
+			])
+			.values(vec![
+				model.id.into(),
+				model.name.as_str().into(),
+				RValue::BigInt(model.optional_wide),
+				model.count.into(),
+				RValue::Int(model.optional_count),
+			])
+			.unwrap()
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&sql).execute(pool).await.unwrap();
+	}
+
+	#[rstest]
+	#[case::positive_wide(1_i64 << 40)]
+	#[case::negative_wide(-(1_i64 << 40))]
+	#[case::maximum(i64::MAX)]
+	#[case::minimum(i64::MIN)]
+	#[case::small(7)]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn session_integer_readers_preserve_wide_values(
+		#[future] wide_integer_pool: Arc<AnyPool>,
+		#[case] id: i64,
+		#[values(false, true)] nullable_values: bool,
+	) {
+		// Arrange
+		let pool = wide_integer_pool.await;
+		let expected = WideIntegerModel {
+			id,
+			name: "Wide integer".to_owned(),
+			optional_wide: nullable_values.then_some(id),
+			count: i32::MAX,
+			optional_count: nullable_values.then_some(i32::MIN),
+		};
+		insert_wide_integer_model(&pool, &expected).await;
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let control = session.list(&QuerySet::<WideIntegerModel>::new()).await;
+		let fetched = session.get::<WideIntegerModel>(id).await;
+		let all = session.list_all::<WideIntegerModel>().await;
+
+		// Assert
+		assert_eq!(control.unwrap(), vec![expected.clone()]);
+		assert_eq!(fetched.unwrap(), Some(expected.clone()));
+		assert_eq!(all.unwrap(), vec![expected.clone()]);
+		assert_eq!(
+			session.get::<WideIntegerModel>(id).await.unwrap(),
+			Some(expected)
+		);
+		assert_eq!(session.get::<WideIntegerModel>(0).await.unwrap(), None);
+	}
+
+	#[rstest]
+	#[case::nullable_wide(WideIntegers::OptionalWide, "optional_wide")]
+	#[case::required_narrow(WideIntegers::Count, "count")]
+	#[case::nullable_narrow(WideIntegers::OptionalCount, "optional_count")]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn session_integer_decode_errors_are_not_null(
+		#[future] wide_integer_pool: Arc<AnyPool>,
+		#[case] column: WideIntegers,
+		#[case] field_name: &str,
+	) {
+		// Arrange
+		let pool = wide_integer_pool.await;
+		let model = WideIntegerModel {
+			id: 7,
+			name: "Invalid integer".to_owned(),
+			optional_wide: Some(7),
+			count: 7,
+			optional_count: Some(7),
+		};
+		insert_wide_integer_model(&pool, &model).await;
+		// SQLite permits text in an integer-affinity column, exposing driver decode errors.
+		let sql = RQuery::update()
+			.table(WideIntegers::Table.into_iden())
+			.value(column, "invalid integer")
+			.and_where(Expr::col(WideIntegers::Id).eq(model.id))
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&sql).execute(&*pool).await.unwrap();
+		let sql = RQuery::select()
+			.column(column)
+			.from(WideIntegers::Table.into_iden())
+			.to_string(SqliteQueryBuilder);
+		let row = sqlx::query(&sql).fetch_one(&*pool).await.unwrap();
+		let driver_error = match column {
+			WideIntegers::OptionalWide => row.try_get::<Option<i64>, _>(field_name).unwrap_err(),
+			_ => row.try_get::<Option<i32>, _>(field_name).unwrap_err(),
+		};
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let error = session.get::<WideIntegerModel>(model.id).await.unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error,
+			SessionError::SerializationError(format!(
+				"table `wide_integers`, field `{field_name}`, column `{field_name}`: {driver_error}"
+			))
+		);
+		assert_eq!(session.identity_map.len(), 0);
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DbBackend::Postgres,
+		r#"SELECT "session""quoted`"."id" AS "id", "session""quoted`"."name""quoted`" AS "name""quoted`" FROM "session""quoted`""#
+	)]
+	#[case::mysql(
+		DbBackend::Mysql,
+		r#"SELECT `session"quoted```.`id` AS `id`, `session"quoted```.`name"quoted``` AS `name"quoted``` FROM `session"quoted```"#
+	)]
+	#[case::sqlite(
+		DbBackend::Sqlite,
+		r#"SELECT "session""quoted`"."id" AS "id", "session""quoted`"."name""quoted`" AS "name""quoted`" FROM "session""quoted`""#
+	)]
+	fn unfiltered_session_queryset_escapes_identifiers(
+		#[case] backend: DbBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let queryset = QuerySet::<QuotedTableModel>::new();
+		let mut statement = queryset
+			.build_full_model_select_statement()
+			.expect("model SELECT should build");
+		apply_any_model_projection::<QuotedTableModel>(
+			&mut statement,
+			backend,
+			QuotedTableModel::table_name(),
+		)
+		.expect("model projection should build");
+
+		// Act
+		let (sql, values) =
+			crate::orm::query_types::QueryStatement::Select(statement).build(backend);
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(Vec::new()));
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct QuotedTableModel {
+		id: i64,
+		name: String,
+	}
+
+	impl Model for QuotedTableModel {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"session\"quoted`"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut name = test_field_info("name", "reinhardt.orm.models.CharField", false, false);
+			name.db_column = Some("name\"quoted`".into());
+			vec![
+				test_field_info("id", "reinhardt.orm.models.BigIntegerField", false, true),
+				name,
+			]
+		}
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DbBackend::Postgres,
+		r#"SELECT "session""quoted`"."id" AS "id", "session""quoted`"."name""quoted`" AS "name""quoted`" FROM "session""quoted`""#
+	)]
+	#[case::mysql(
+		DbBackend::Mysql,
+		r#"SELECT `session"quoted```.`id` AS `id`, `session"quoted```.`name"quoted``` AS `name"quoted``` FROM `session"quoted```"#
+	)]
+	#[case::sqlite(
+		DbBackend::Sqlite,
+		r#"SELECT "session""quoted`"."id" AS "id", "session""quoted`"."name""quoted`" AS "name""quoted`" FROM "session""quoted`""#
+	)]
+	fn list_all_statement_escapes_identifiers(
+		#[case] backend: DbBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let statement = build_list_all_statement::<QuotedTableModel>(backend)
+			.expect("model SELECT should build");
+
+		// Act
+		let (sql, values) =
+			crate::orm::query_types::QueryStatement::Select(statement).build(backend);
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values.0, Vec::<RValue>::new());
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn list_all_reads_quoted_table_names(_init_drivers: ()) {
+		// Arrange
+		let pool = sqlx::pool::PoolOptions::<Any>::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("isolated in-memory pool should initialize");
+		sqlx::query(
+			"CREATE TABLE \"session\"\"quoted`\" \
+			 (id INTEGER PRIMARY KEY, \"name\"\"quoted`\" TEXT NOT NULL)",
+		)
+		.execute(&pool)
+		.await
+		.expect("quoted table should be created");
+		sqlx::query("INSERT INTO \"session\"\"quoted`\" (id, \"name\"\"quoted`\") VALUES (?, ?)")
+			.bind(1_i64)
+			.bind("valid")
+			.execute(&pool)
+			.await
+			.expect("control row should be inserted");
+		let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite)
+			.await
+			.expect("session should initialize");
+		let expected = QuotedTableModel {
+			id: 1,
+			name: "valid".into(),
+		};
+		let control = session
+			.get::<QuotedTableModel>(1)
+			.await
+			.expect("typed get should read the quoted table");
+		assert_eq!(control, Some(expected.clone()));
+
+		// Act
+		let rows = session
+			.list_all::<QuotedTableModel>()
+			.await
+			.expect("list_all should read the same quoted table as get");
+
+		// Assert
+		assert_eq!(rows, vec![expected]);
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct BooleanListModel {
+		id: i64,
+		enabled: Option<bool>,
+	}
+
+	impl Model for BooleanListModel {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"boolean_list_models"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![
+				test_field_info("id", "reinhardt.orm.models.BigIntegerField", false, true),
+				test_field_info("enabled", "reinhardt.orm.models.BooleanField", true, false),
+			]
+		}
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn list_all_preserves_nullable_boolean_values(_init_drivers: ()) {
+		// Arrange
+		let pool = sqlx::pool::PoolOptions::<Any>::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("isolated in-memory pool should initialize");
+		sqlx::query("CREATE TABLE boolean_list_models (id INTEGER PRIMARY KEY, enabled BOOLEAN)")
+			.execute(&pool)
+			.await
+			.expect("boolean table should be created");
+		sqlx::query("INSERT INTO boolean_list_models VALUES (1, 0), (2, 1), (3, NULL)")
+			.execute(&pool)
+			.await
+			.expect("boolean rows should be inserted");
+		let session = Session::new(Arc::new(pool), DbBackend::Sqlite)
+			.await
+			.expect("session should initialize");
+
+		// Act
+		let mut rows = session
+			.list_all::<BooleanListModel>()
+			.await
+			.expect("boolean projections should retain all three states");
+		rows.sort_by_key(|row| row.id);
+
+		// Assert
+		assert_eq!(
+			rows,
+			vec![
+				BooleanListModel {
+					id: 1,
+					enabled: Some(false)
+				},
+				BooleanListModel {
+					id: 2,
+					enabled: Some(true)
+				},
+				BooleanListModel {
+					id: 3,
+					enabled: None
+				},
+			]
+		);
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -2389,6 +2827,378 @@ mod tests {
 		let mut field = test_field_info(name, field_type, false, false);
 		field.storage_kind = Some(storage_kind);
 		field
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct CodecSessionModel<const ALIASED: bool> {
+		id: i64,
+		name: String,
+	}
+
+	impl<const ALIASED: bool> Model for CodecSessionModel<ALIASED> {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"codec_session_models"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<i64> {
+			Some(self.id - 100)
+		}
+
+		fn set_primary_key(&mut self, value: i64) {
+			self.id = value + 100;
+		}
+
+		fn primary_key_database_value(
+			value: &i64,
+		) -> Result<crate::orm::DatabaseValue, FieldCodecError> {
+			if *value < 0 {
+				return Err(FieldCodecError::Serialization(
+					"negative logical key".to_owned(),
+				));
+			}
+			Ok(crate::orm::DatabaseValue::I64(value + 100))
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut id = test_field_info("id", "BigIntegerField", false, true);
+			id.storage_kind = Some(crate::orm::DatabaseStorageKind::I64);
+			if ALIASED {
+				id.db_column = Some("stored_id".to_owned());
+			}
+			vec![id, test_field_info("name", "CharField", false, false)]
+		}
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct TextCodecSessionModel {
+		id: String,
+	}
+
+	impl Model for TextCodecSessionModel {
+		type PrimaryKey = String;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"text_codec_session_models"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<String> {
+			self.id.strip_prefix("stored:").map(str::to_owned)
+		}
+
+		fn set_primary_key(&mut self, value: String) {
+			self.id = format!("stored:{value}");
+		}
+
+		fn primary_key_database_value(
+			value: &String,
+		) -> Result<crate::orm::DatabaseValue, FieldCodecError> {
+			Ok(crate::orm::DatabaseValue::String(format!("stored:{value}")))
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![test_field_info("id", "CharField", false, true)]
+		}
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct DefaultTextSessionModel<const QUALIFIED: bool> {
+		id: String,
+	}
+
+	impl<const QUALIFIED: bool> Model for DefaultTextSessionModel<QUALIFIED> {
+		type PrimaryKey = String;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"default_text_session_models"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<String> {
+			Some(self.id.clone())
+		}
+
+		fn set_primary_key(&mut self, value: String) {
+			self.id = value;
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let field_type = if QUALIFIED {
+				"reinhardt.orm.models.CharField"
+			} else {
+				"CharField"
+			};
+			vec![test_field_info("id", field_type, false, true)]
+		}
+	}
+
+	#[fixture]
+	async fn codec_session_pool() -> Arc<AnyPool> {
+		sqlx::any::install_default_drivers();
+		Arc::new(
+			sqlx::any::AnyPoolOptions::new()
+				.max_connections(1)
+				.connect("sqlite::memory:")
+				.await
+				.expect("isolated SQLite pool"),
+		)
+	}
+
+	#[rstest]
+	#[case::logical_column(false)]
+	#[case::physical_column(true)]
+	#[tokio::test]
+	async fn get_uses_primary_key_codec(
+		#[future] codec_session_pool: Arc<AnyPool>,
+		#[case] aliased: bool,
+	) {
+		if aliased {
+			exercise_primary_key_codec::<true>(codec_session_pool.await).await;
+		} else {
+			exercise_primary_key_codec::<false>(codec_session_pool.await).await;
+		}
+	}
+
+	async fn exercise_primary_key_codec<const ALIASED: bool>(pool: Arc<AnyPool>) {
+		// Arrange: the stored-value control uses a different Session from get.
+		let column = if ALIASED { "stored_id" } else { "id" };
+		sqlx::query(&format!(
+			"CREATE TABLE codec_session_models ({column} INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+		))
+		.execute(&*pool)
+		.await
+		.unwrap();
+		sqlx::query("INSERT INTO codec_session_models VALUES (?, ?)")
+			.bind(105_i64)
+			.bind("stored row")
+			.execute(&*pool)
+			.await
+			.unwrap();
+		let expected = CodecSessionModel::<ALIASED> {
+			id: 105,
+			name: "stored row".to_owned(),
+		};
+		let control = Session::new(Arc::clone(&pool), DbBackend::Sqlite)
+			.await
+			.unwrap();
+		assert_eq!(
+			control
+				.list(&QuerySet::<CodecSessionModel<ALIASED>>::new())
+				.await
+				.unwrap(),
+			vec![expected.clone()]
+		);
+		let mut session = Session::new(Arc::clone(&pool), DbBackend::Sqlite)
+			.await
+			.unwrap();
+
+		// Act
+		let actual = session.get::<CodecSessionModel<ALIASED>>(5).await.unwrap();
+
+		// Assert: logical keys select encoded keys and remain identity-map keys.
+		assert_eq!(actual, Some(expected.clone()));
+		assert_eq!(session.identity_count(), 1);
+		assert_eq!(
+			session.get::<CodecSessionModel<ALIASED>>(6).await.unwrap(),
+			None
+		);
+		assert_eq!(session.identity_count(), 1);
+		sqlx::query("DELETE FROM codec_session_models")
+			.execute(&*pool)
+			.await
+			.unwrap();
+		assert_eq!(
+			session.get::<CodecSessionModel<ALIASED>>(5).await.unwrap(),
+			Some(expected)
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn get_uses_default_primary_key_codec(#[future] codec_session_pool: Arc<AnyPool>) {
+		// Arrange
+		let pool = codec_session_pool.await;
+		sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)")
+			.execute(&*pool)
+			.await
+			.unwrap();
+		sqlx::query("INSERT INTO users VALUES (5, 'default key', 'default@example.com')")
+			.execute(&*pool)
+			.await
+			.unwrap();
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let actual = session.get::<TestUser>(5).await.unwrap();
+
+		// Assert
+		assert_eq!(
+			actual,
+			Some(TestUser {
+				id: Some(5),
+				name: "default key".to_owned(),
+				email: "default@example.com".to_owned(),
+			})
+		);
+	}
+
+	#[rstest]
+	#[case::leading_zeroes("005")]
+	#[case::positive_sign("+005")]
+	#[case::negative_sign("-005")]
+	#[tokio::test]
+	async fn get_preserves_default_text_primary_keys(
+		#[future] codec_session_pool: Arc<AnyPool>,
+		#[values(false, true)] qualified: bool,
+		#[case] key: &str,
+	) {
+		if qualified {
+			exercise_default_text_primary_key::<true>(codec_session_pool.await, key).await;
+		} else {
+			exercise_default_text_primary_key::<false>(codec_session_pool.await, key).await;
+		}
+	}
+
+	async fn exercise_default_text_primary_key<const QUALIFIED: bool>(
+		pool: Arc<AnyPool>,
+		key: &str,
+	) {
+		use crate::orm::query::{Filter, FilterOperator};
+		use reinhardt_query::ColumnDef;
+
+		// Arrange
+		let table = DefaultTextSessionModel::<QUALIFIED>::table_name();
+		let schema = RQuery::create_table()
+			.table(Alias::new(table))
+			.col(ColumnDef::new(Alias::new("id")).string().primary_key(true))
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&schema).execute(&*pool).await.unwrap();
+		for stored_key in [key, "5"] {
+			let insert = RQuery::insert()
+				.into_table(Alias::new(table))
+				.columns([Alias::new("id")])
+				.values(vec![stored_key.into()])
+				.unwrap()
+				.to_string(SqliteQueryBuilder);
+			sqlx::query(&insert).execute(&*pool).await.unwrap();
+		}
+		let expected = DefaultTextSessionModel::<QUALIFIED> { id: key.to_owned() };
+		let control = Session::new(Arc::clone(&pool), DbBackend::Sqlite)
+			.await
+			.unwrap();
+		assert_eq!(
+			control
+				.list(
+					&QuerySet::<DefaultTextSessionModel<QUALIFIED>>::new().filter(Filter::new(
+						"id",
+						FilterOperator::Eq,
+						key.into(),
+					))
+				)
+				.await
+				.unwrap(),
+			vec![expected.clone()]
+		);
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let actual = session
+			.get::<DefaultTextSessionModel<QUALIFIED>>(key.to_owned())
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(actual, Some(expected));
+		assert_eq!(session.identity_count(), 1);
+		assert_eq!(
+			session
+				.get::<DefaultTextSessionModel<QUALIFIED>>("5".to_owned())
+				.await
+				.unwrap(),
+			Some(DefaultTextSessionModel::<QUALIFIED> { id: "5".to_owned() })
+		);
+		assert_eq!(session.identity_count(), 2);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn get_propagates_primary_key_codec_error(#[future] codec_session_pool: Arc<AnyPool>) {
+		// Arrange: a closed pool proves codec validation precedes database access.
+		let pool = codec_session_pool.await;
+		let mut session = Session::new(Arc::clone(&pool), DbBackend::Sqlite)
+			.await
+			.unwrap();
+		pool.close().await;
+
+		// Act
+		let error = session
+			.get::<CodecSessionModel<false>>(-1)
+			.await
+			.unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error,
+			SessionError::FieldCodec(FieldCodecError::Serialization(
+				"negative logical key".to_owned()
+			))
+		);
+		assert_eq!(session.identity_count(), 0);
+	}
+
+	#[rstest]
+	#[case::numeric_text("005")]
+	#[case::sql_metacharacters("key' OR 1=1 -- ? $1 雪")]
+	#[tokio::test]
+	async fn get_uses_text_primary_key_codec(
+		#[future] codec_session_pool: Arc<AnyPool>,
+		#[case] logical_key: &str,
+	) {
+		// Arrange
+		let pool = codec_session_pool.await;
+		sqlx::query("CREATE TABLE text_codec_session_models (id TEXT PRIMARY KEY)")
+			.execute(&*pool)
+			.await
+			.unwrap();
+		let expected = TextCodecSessionModel {
+			id: format!("stored:{logical_key}"),
+		};
+		for key in [&expected.id, "unrelated"] {
+			sqlx::query("INSERT INTO text_codec_session_models VALUES (?)")
+				.bind(key)
+				.execute(&*pool)
+				.await
+				.unwrap();
+		}
+		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
+
+		// Act
+		let actual = session
+			.get::<TextCodecSessionModel>(logical_key.to_owned())
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(actual, Some(expected));
+		assert_eq!(session.identity_count(), 1);
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -3577,7 +4387,9 @@ mod tests {
 	// Generated unsigned argument boundary tests exercise the real companion encoder.
 
 	#[rstest]
+	#[case(0)]
 	#[case(42)]
+	#[case(i32::MAX as u64 + 1)]
 	#[case(i64::MAX as u64)]
 	#[serial(sqlx_drivers)]
 	#[tokio::test]
@@ -4022,5 +4834,34 @@ mod tests {
 			&serde_json::Value::Null
 		);
 		assert_eq!(loaded_sql_null.optional_json, None);
+	}
+}
+
+fn contextual_any_text_value<F>(
+	row: &sqlx::any::AnyRow,
+	column_name: &str,
+	serialization_error: F,
+) -> Result<Option<String>, SessionError>
+where
+	F: Fn(String) -> SessionError,
+{
+	match row.try_get::<Option<String>, _>(column_name) {
+		Ok(value) => Ok(value),
+		Err(string_error) => {
+			let bytes = row
+				.try_get::<Option<Vec<u8>>, _>(column_name)
+				.map_err(|bytes_error| {
+					serialization_error(format!(
+						"cannot decode text: string: {string_error}; bytes: {bytes_error}"
+					))
+				})?;
+			bytes
+				.map(|bytes| {
+					String::from_utf8(bytes).map_err(|error| {
+						serialization_error(format!("invalid UTF-8: {}", error.utf8_error()))
+					})
+				})
+				.transpose()
+		}
 	}
 }

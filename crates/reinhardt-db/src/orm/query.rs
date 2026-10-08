@@ -9,8 +9,6 @@ use super::field_codec::{
 	DatabaseField, DatabaseValue, FieldCodecError, IntoFieldValue, database_value_to_query_value,
 };
 use super::{FieldSelector, Model};
-#[cfg(test)]
-use crate::backends::types::QueryValue;
 use crate::naming::to_snake_case;
 use crate::orm::query_fields::comparison::FieldComparison;
 use crate::orm::query_fields::compiler::QueryFieldCompiler;
@@ -30,8 +28,6 @@ use reinhardt_query::prelude::{
 	UpdateStatement,
 };
 use reinhardt_query::types::PgBinOper;
-#[cfg(test)]
-use reinhardt_query::value::Value;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -6275,6 +6271,18 @@ where
 		}
 	}
 
+	#[cfg(test)]
+	fn expression_to_query_expr(expression: &super::annotation::Expression) -> Expr {
+		Self::annotation_expression_to_query_expr(
+			expression,
+			&parse_column_reference,
+			&|condition| {
+				Self::annotation_condition_to_query_expr(condition, &parse_column_reference)
+			},
+		)
+		.into()
+	}
+
 	fn filter_expression_to_query_expr(&self, expression: &super::annotation::Expression) -> Expr {
 		Self::annotation_expression_to_query_expr(
 			expression,
@@ -7640,6 +7648,8 @@ where
 	///
 	/// Fetches all records from the database that match the accumulated filters.
 	/// If `select_related` fields are specified, performs JOIN queries for eager loading.
+	/// Values are bound through the active backend's native generated-value codecs,
+	/// with unsupported or lossy arguments rejected before SQL execution.
 	///
 	/// # Examples
 	///
@@ -9915,7 +9925,7 @@ where
 					}
 					&super::composite_pk::PkValue::Uint(v) => {
 						let condition = Expr::col(col_alias)
-							.binary(BinOper::Equal, Expr::value(Value::BigInt(Some(v as i64))));
+							.binary(BinOper::Equal, Expr::value(Value::BigUnsigned(Some(v))));
 						query.and_where(condition);
 					}
 					super::composite_pk::PkValue::String(v) => {
@@ -11562,33 +11572,12 @@ fn plan_value_to_text(value: serde_json::Value) -> String {
 fn build_select_statement(
 	statement: &SelectStatement,
 	backend: super::connection::DatabaseBackend,
-) -> reinhardt_core::exception::Result<(String, Vec<QueryValue>)> {
-	let (sql, values) = match backend {
+) -> (String, reinhardt_query::Values) {
+	match backend {
 		super::connection::DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
 		super::connection::DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
 		super::connection::DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
-	};
-
-	let params = query_values_from_sea_values(values)?;
-	Ok((sql, params))
-}
-
-#[cfg(test)]
-fn query_values_from_sea_values(
-	values: reinhardt_query::prelude::Values,
-) -> reinhardt_core::exception::Result<Vec<QueryValue>> {
-	for value in values.iter() {
-		if let Value::BigUnsigned(Some(value)) = value
-			&& i64::try_from(*value).is_err()
-		{
-			return Err(Error::from(DatabaseError::new(
-				DatabaseErrorKind::Type,
-				format!("Unsigned query parameter {value} exceeds the supported i64 range"),
-			)));
-		}
 	}
-
-	Ok(super::execution::convert_values(values))
 }
 
 #[cfg(test)]
@@ -11608,7 +11597,9 @@ mod tests {
 	use futures::Stream;
 	#[cfg(feature = "pgvector")]
 	use reinhardt_core::macros::model;
+	use reinhardt_query::Alias;
 	use reinhardt_query::prelude::ExprTrait;
+	use reinhardt_query::value::Value;
 	use reinhardt_query::{
 		QueryBuilder,
 		prelude::{
@@ -11677,6 +11668,31 @@ mod tests {
 			);
 			Poll::Ready(None)
 		}
+	}
+
+	#[rstest]
+	fn joined_arithmetic_filter_preserves_native_quoting_and_binds() {
+		// Arrange
+		use super::super::annotation::{AnnotationValue, Expression, Value};
+		let queryset = QuerySet::<TestUser>::new()
+			.cross_join::<TestCorpusFile>()
+			.filter(Filter::new(
+				"id",
+				FilterOperator::Eq,
+				FilterValue::Expression(Expression::Add(
+					Box::new(AnnotationValue::Field(super::super::expressions::F::new(
+						"id",
+					))),
+					Box::new(AnnotationValue::Value(Value::Int(7))),
+				)),
+			));
+		// Act
+		let statement = queryset.build_select_statement().unwrap();
+		let (sql, values) = reinhardt_query::MySqlQueryBuilder.build_select(&statement);
+		// Assert
+		assert!(sql.contains("(`test_users`.`id` + ?)"));
+		assert!(!sql.contains("\"test_users\""));
+		assert_eq!(values.0, vec![reinhardt_query::Value::BigInt(Some(7))]);
 	}
 
 	#[rstest]
@@ -12779,36 +12795,50 @@ mod tests {
 			);
 
 		// Act
-		let (sql, params) = build_select_statement(&statement, DatabaseBackend::MySql)
-			.expect("string filter should fit in QueryValue");
+		let (sql, params) = build_select_statement(&statement, DatabaseBackend::MySql);
 
 		// Assert
 		assert_eq!(sql, "SELECT `id` FROM `users` WHERE `name` = ?");
 		assert_eq!(
-			params,
-			vec![crate::backends::types::QueryValue::String(
-				payload.to_string()
-			)]
+			params.0,
+			vec![Value::String(Some(Box::new(payload.to_string())))]
 		);
 	}
 
-	#[test]
-	fn build_select_statement_rejects_oversized_unsigned_parameters() {
+	#[rstest::rstest]
+	fn build_select_statement_preserves_unsigned_parameters_for_native_codec() {
 		// Arrange
-		let mut statement = reinhardt_query::prelude::Query::select();
+		let mut statement = Query::select();
 		statement
-			.column(reinhardt_query::prelude::Alias::new("id"))
-			.from(reinhardt_query::prelude::Alias::new("users"))
-			.limit((i64::MAX as u64) + 1);
+			.column(Alias::new("id"))
+			.from(Alias::new("users"))
+			.limit(u64::MAX);
 
 		// Act
-		let error = build_select_statement(&statement, DatabaseBackend::MySql)
-			.expect_err("oversized unsigned parameters must not be clamped");
+		let (sql, values) = build_select_statement(&statement, DatabaseBackend::MySql);
+
+		// Assert
+		assert_eq!(sql, "SELECT `id` FROM `users` LIMIT ?");
+		assert_eq!(values.0, vec![Value::BigUnsigned(Some(u64::MAX))]);
+	}
+
+	#[cfg(all(feature = "sqlite", target_pointer_width = "64"))]
+	#[rstest]
+	#[tokio::test]
+	async fn queryset_native_execution_redacts_overflow_before_sql_execution() {
+		// Arrange
+		let mut db = crate::orm::test_connection::TestConnection::connect("sqlite::memory:")
+			.await
+			.unwrap();
+		let queryset = QuerySet::<TestUser>::new().limit(usize::MAX);
+
+		// Act
+		let error = queryset.all_with_db(&mut *db).await.unwrap_err();
 
 		// Assert
 		assert_eq!(
 			error.to_string(),
-			"Database error: Unsigned query parameter 9223372036854775808 exceeds the supported i64 range"
+			"Database error: cannot encode BigUnsigned argument 1 for sqlite: unsigned integer exceeds signed 64-bit range"
 		);
 	}
 
@@ -12817,6 +12847,109 @@ mod tests {
 		id: Option<i64>,
 		username: String,
 		email: String,
+	}
+
+	#[rstest]
+	#[case::empty_and(crate::orm::expressions::Q::empty(), "TRUE", "TRUE")]
+	#[case::empty_or(crate::orm::expressions::Q::Combined {
+		operator: crate::orm::expressions::QOperator::Or,
+		conditions: vec![],
+	}, "FALSE", "FALSE")]
+	#[case::empty_not(crate::orm::expressions::Q::Combined {
+		operator: crate::orm::expressions::QOperator::Not,
+		conditions: vec![],
+	}, "NOT (TRUE)", "NOT (TRUE)")]
+	#[case::negated_and(crate::orm::expressions::Q::empty().not(), "NOT (TRUE)", "NOT (TRUE)")]
+	#[case::nested(crate::orm::expressions::Q::empty().or(
+		crate::orm::expressions::Q::empty().not()
+	).and(crate::orm::expressions::Q::empty()), "((TRUE OR NOT (TRUE)) AND TRUE)", "((TRUE OR NOT (TRUE)) AND TRUE)")]
+	fn case_empty_conditions_render_for_each_backend(
+		#[case] condition: crate::orm::expressions::Q,
+		#[case] expected_condition: &str,
+		#[case] expected_postgres_condition: &str,
+		#[values(
+			DatabaseBackend::Postgres,
+			DatabaseBackend::MySql,
+			DatabaseBackend::Sqlite
+		)]
+		backend: DatabaseBackend,
+	) {
+		use crate::orm::annotation::{AnnotationValue, Expression, Value, When};
+		// Arrange
+		let expression = Expression::Case {
+			whens: vec![When::new(condition, AnnotationValue::Value(Value::Int(1)))],
+			default: Some(Box::new(AnnotationValue::Value(Value::Int(0)))),
+		};
+		let mut statement = reinhardt_query::Query::select();
+		statement.expr(QuerySet::<TestUser>::expression_to_query_expr(&expression));
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+		// Assert: identities are SQL constants, independent of placeholders or backend.
+		// PostgreSQL also groups custom AST operands in its renderer.
+		let expected_condition = match backend {
+			DatabaseBackend::Postgres => expected_postgres_condition,
+			DatabaseBackend::MySql | DatabaseBackend::Sqlite => expected_condition,
+		};
+		assert_eq!(
+			sql,
+			match backend {
+				DatabaseBackend::Postgres =>
+					format!("SELECT CASE WHEN {expected_condition} THEN $1 ELSE $2 END"),
+				DatabaseBackend::MySql | DatabaseBackend::Sqlite =>
+					format!("SELECT CASE WHEN {expected_condition} THEN ? ELSE ? END"),
+			}
+		);
+		assert_eq!(values, Values(vec![1_i64.into(), 0_i64.into()]));
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		"SELECT CASE WHEN TRUE THEN (\"id\" + $1) ELSE $2 END"
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT CASE WHEN TRUE THEN (`id` + ?) ELSE ? END"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		"SELECT CASE WHEN TRUE THEN (\"id\" + ?) ELSE ? END"
+	)]
+	fn case_arithmetic_preserves_native_operands_and_empty_condition(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		use crate::orm::annotation::{AnnotationValue, Expression, Value, When};
+		use crate::orm::expressions::{F, Q};
+
+		// Arrange: CASE identities and nested arithmetic share runtime lowering.
+		let expression = Expression::Case {
+			whens: vec![When::new(
+				Q::empty(),
+				AnnotationValue::Expression(Expression::Add(
+					Box::new(AnnotationValue::Field(F::new("id"))),
+					Box::new(AnnotationValue::Value(Value::Int(0))),
+				)),
+			)],
+			default: Some(Box::new(AnnotationValue::Value(Value::Int(0)))),
+		};
+		let mut statement = Query::select();
+		statement.expr(QuerySet::<TestUser>::expression_to_query_expr(&expression));
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: the identity stays constant while arithmetic operands are typed binds.
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(vec![0_i64.into(), 0_i64.into()]));
 	}
 
 	impl TestUser {
@@ -13029,7 +13162,7 @@ mod tests {
 
 	#[rstest]
 	fn model_shaped_session_accepts_prefetch_plan() {
-		let queryset = QuerySet::<TestUser>::new().prefetch_related(&["posts"]);
+		let queryset = QuerySet::<TestUser>::new().prefetch_related(["posts"]);
 
 		let statement = queryset
 			.build_full_model_select_statement()
@@ -14271,7 +14404,7 @@ mod tests {
 	#[test]
 	fn test_select_related_query_preserves_typed_codec_error() {
 		let queryset = QuerySet::<TestUser>::new()
-			.select_related(&["profile"])
+			.select_related(["profile"])
 			.filter(rejecting_typed_filter());
 
 		let error = queryset
@@ -14370,7 +14503,7 @@ mod tests {
 		let manager = std::sync::Arc::new(TestUser::objects());
 		let queryset = QuerySet::with_manager(manager);
 
-		let selected = queryset.select_related(&["profile", "posts"]);
+		let selected = queryset.select_related(["profile", "posts"]);
 
 		// Verify manager is preserved after select_related
 		assert!(selected.manager.is_some());
@@ -14379,7 +14512,7 @@ mod tests {
 
 	#[test]
 	fn test_string_select_related_still_records_field() {
-		let queryset = QuerySet::<TestUser>::new().select_related(&["profile"]);
+		let queryset = QuerySet::<TestUser>::new().select_related(["profile"]);
 
 		assert_eq!(queryset.select_related_fields, vec!["profile"]);
 	}
@@ -14406,7 +14539,7 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "invalid relation path passed to select_related")]
 	fn test_string_select_related_rejects_invalid_path() {
-		let _ = QuerySet::<TestUser>::new().select_related(&["missing__field"]);
+		let _ = QuerySet::<TestUser>::new().select_related(["missing__field"]);
 	}
 
 	#[test]
@@ -14414,7 +14547,7 @@ mod tests {
 		let manager = std::sync::Arc::new(TestUser::objects());
 		let queryset = QuerySet::with_manager(manager);
 
-		let prefetched = queryset.prefetch_related(&["comments", "likes"]);
+		let prefetched = queryset.prefetch_related(["comments", "likes"]);
 
 		// Verify manager is preserved after prefetch_related
 		assert!(prefetched.manager.is_some());
@@ -14437,6 +14570,72 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert!(err.to_string().contains("composite primary key"));
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct CompositeItem {
+		id: i64,
+		kind: String,
+	}
+
+	impl Model for CompositeItem {
+		type PrimaryKey = i64;
+		type Fields = TestUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"composite_items"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestUserFields
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn composite_primary_key() -> Option<crate::orm::composite_pk::CompositePrimaryKey> {
+			crate::orm::composite_pk::CompositePrimaryKey::new(vec![
+				"id".to_owned(),
+				"kind".to_owned(),
+			])
+			.ok()
+		}
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	#[case(i64::MAX as u64 + 1)]
+	#[case(u64::MAX)]
+	#[tokio::test]
+	async fn get_composite_preserves_unsigned_keys_for_selected_backend(#[case] value: u64) {
+		use crate::orm::composite_pk::PkValue;
+		let primary_key = HashMap::from([
+			("id".to_owned(), PkValue::Uint(value)),
+			("kind".to_owned(), PkValue::String("negative".to_owned())),
+		]);
+		let mut executor = RecordingExecutor::for_backend(DatabaseBackend::MySql);
+		let error = QuerySet::<CompositeItem>::new()
+			.get_composite_with_db(&mut executor, &primary_key)
+			.await
+			.unwrap_err();
+		assert_eq!(
+			error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Query)
+		);
+		assert_eq!(executor.calls.len(), 1);
+		assert_eq!(
+			executor.calls[0].1,
+			vec![
+				crate::orm::QueryValue::Uint(value),
+				crate::orm::QueryValue::String("negative".into())
+			]
+		);
 	}
 
 	// SQL Generation Tests
@@ -14465,7 +14664,7 @@ mod tests {
 		assert_eq!(params, vec!["alice", "1"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_update_sql_multiple_fields_multiple_filters() {
 		let queryset = QuerySet::<TestUser>::new()
 			.filter(Filter::new(
@@ -14523,7 +14722,7 @@ mod tests {
 		assert_eq!(params, vec!["1"]);
 	}
 
-	#[test]
+	#[rstest]
 	fn test_delete_sql_multiple_filters() {
 		let queryset = QuerySet::<TestUser>::new()
 			.filter(Filter::new(
@@ -14650,7 +14849,7 @@ mod tests {
 	#[test]
 	fn test_select_related_query_generation() {
 		// Test that select_related_query() generates SelectStatement correctly
-		let queryset = QuerySet::<TestUser>::new().select_related(&["profile", "department"]);
+		let queryset = QuerySet::<TestUser>::new().select_related(["profile", "department"]);
 
 		let stmt = queryset
 			.select_related_query()
@@ -14668,7 +14867,7 @@ mod tests {
 	#[test]
 	fn select_related_qualifies_root_ordering_columns() {
 		// Arrange
-		let mut queryset = QuerySet::<TestUser>::new().select_related(&["profile"]);
+		let mut queryset = QuerySet::<TestUser>::new().select_related(["profile"]);
 		queryset.order_by_fields.push("id".to_string());
 
 		// Act
@@ -14688,7 +14887,7 @@ mod tests {
 
 		// Arrange
 		let queryset = QuerySet::<TestUser>::new()
-			.select_related(&["profile"])
+			.select_related(["profile"])
 			.annotate_legacy(Annotation::new(
 				"relation_marker",
 				AnnotationValue::Value(Value::Int(1)),
@@ -14710,7 +14909,7 @@ mod tests {
 		use reinhardt_query::prelude::MySqlQueryBuilder;
 
 		let statement = QuerySet::<TestUser>::new()
-			.select_related(&["profile"])
+			.select_related(["profile"])
 			.annotate_legacy(Annotation::field(
 				"user_id",
 				AnnotationValue::Field(F::new("id")),
@@ -14913,7 +15112,7 @@ mod tests {
 	fn nullable_filter_relations_for_lock_tracks_outer_join_targets() {
 		let queryset = QuerySet::<TestUser>::new().filter(nested_project_name_filter());
 
-		assert_eq!(queryset.requires_serializable_transaction(), true);
+		assert!(queryset.requires_serializable_transaction());
 		assert_eq!(
 			queryset.nullable_filter_relations_for_lock(),
 			vec![(
@@ -15192,7 +15391,7 @@ mod tests {
 		>();
 
 		let sql = QuerySet::<TestUser>::new()
-			.select_related(&["corpus_file"])
+			.select_related(["corpus_file"])
 			.select_related(path)
 			.to_sql()
 			.expect("query SQL should compile");
@@ -15217,7 +15416,7 @@ mod tests {
 			.eq("/docs/index.md");
 
 		let sql = QuerySet::<TestUser>::new()
-			.select_related(&["corpus_file"])
+			.select_related(["corpus_file"])
 			.filter(filter)
 			.to_sql()
 			.expect("query SQL should compile");
@@ -15262,7 +15461,7 @@ mod tests {
 
 		let sql = QuerySet::<TestUser>::new()
 			.from_as("corpus_file")
-			.select_related(&["corpus_file"])
+			.select_related(["corpus_file"])
 			.select_related(path)
 			.to_sql()
 			.expect("query SQL should compile");
@@ -16326,7 +16525,7 @@ mod tests {
 
 		let queryset = QuerySet::<TestProjects>::new()
 			.prefetch_related(path)
-			.prefetch_related(&["projects"]);
+			.prefetch_related(["projects"]);
 		let queries = queryset.prefetch_related_queries(&[1, 2]);
 		let sql = queries[0].1.to_string(PostgresQueryBuilder);
 
@@ -16362,7 +16561,7 @@ mod tests {
 		>();
 		let queryset = QuerySet::<TestUser>::new()
 			.prefetch_related(path)
-			.prefetch_related(&["comments"]);
+			.prefetch_related(["comments"]);
 
 		let queries = queryset.prefetch_related_queries(&[1, 2]);
 		let fields: Vec<_> = queries.iter().map(|(field, _)| field.as_str()).collect();
@@ -16380,8 +16579,8 @@ mod tests {
 		);
 
 		let queryset = QuerySet::<TestCorpusFile>::new()
-			.select_related(&["owner"])
-			.prefetch_related(&["documents"]);
+			.select_related(["owner"])
+			.prefetch_related(["documents"]);
 
 		assert_eq!(queryset.select_related_fields, vec!["owner"]);
 		assert_eq!(queryset.prefetch_related_fields, vec!["documents"]);
@@ -16534,7 +16733,7 @@ mod tests {
 	#[test]
 	fn test_prefetch_related_queries_generation() {
 		// Test that prefetch_related_queries() generates correct queries
-		let queryset = QuerySet::<TestUser>::new().prefetch_related(&["posts", "comments"]);
+		let queryset = QuerySet::<TestUser>::new().prefetch_related(["posts", "comments"]);
 		let pk_values = vec![1, 2, 3];
 
 		let queries = queryset.prefetch_related_queries(&pk_values);
@@ -16549,7 +16748,7 @@ mod tests {
 
 	#[test]
 	fn test_prefetch_related_queries_empty_pk_values() {
-		let queryset = QuerySet::<TestUser>::new().prefetch_related(&["posts", "comments"]);
+		let queryset = QuerySet::<TestUser>::new().prefetch_related(["posts", "comments"]);
 		let pk_values = vec![];
 
 		let queries = queryset.prefetch_related_queries(&pk_values);
@@ -16562,8 +16761,8 @@ mod tests {
 	fn test_select_related_and_prefetch_together() {
 		// Test that both can be used together
 		let queryset = QuerySet::<TestUser>::new()
-			.select_related(&["profile"])
-			.prefetch_related(&["posts", "comments"]);
+			.select_related(["profile"])
+			.prefetch_related(["posts", "comments"]);
 
 		// Check select_related generates query
 		let select_stmt = queryset
@@ -17615,6 +17814,129 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE $1 ESCAPE '\'"#,
+		r#"SELECT * FROM "test_users" WHERE "tenant""`?"."username" LIKE $1 ESCAPE '\'"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE `username` LIKE ? ESCAPE 0x5C",
+		"SELECT * FROM `test_users` WHERE `tenant\"``?`.`username` LIKE ? ESCAPE 0x5C"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE "username" LIKE ? ESCAPE '\'"#,
+		r#"SELECT * FROM "test_users" WHERE "tenant""`?"."username" LIKE ? ESCAPE '\'"#
+	)]
+	fn case_sensitive_like_native_sql_and_values(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_column_sql: &str,
+		#[case] expected_qualified_sql: &str,
+		#[values(
+			(FilterOperator::Contains, r"%tenant' ? $42:\%\_\\%"),
+			(FilterOperator::StartsWith, r"tenant' ? $42:\%\_\\%"),
+			(FilterOperator::EndsWith, r"%tenant' ? $42:\%\_\\")
+		)]
+		lookup: (FilterOperator, &str),
+		#[values(false, true)] qualified: bool,
+	) {
+		// Arrange: quotes and placeholder-like text must remain identifier or value data.
+		let field = if qualified {
+			r#"tenant"`?.username"#
+		} else {
+			"username"
+		};
+		let (operator, expected_pattern) = lookup;
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			field,
+			operator,
+			FilterValue::String(r"tenant' ? $42:%_\".into()),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: only the lookup's own wildcards are unescaped.
+		assert_eq!(
+			sql,
+			if qualified {
+				expected_qualified_sql
+			} else {
+				expected_column_sql
+			}
+		);
+		assert_eq!(values, Values(vec![expected_pattern.into()]));
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE ("username" ILIKE $1 ESCAPE '\')"#,
+		r#"SELECT * FROM "test_users" WHERE ("tenant""`?"."username" ILIKE $1 ESCAPE '\')"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE (LOWER(`username`) LIKE LOWER(?) ESCAPE 0x5C)",
+		"SELECT * FROM `test_users` WHERE (LOWER(`tenant\"``?`.`username`) LIKE LOWER(?) ESCAPE 0x5C)"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE (LOWER("username") LIKE LOWER(?) ESCAPE '\')"#,
+		r#"SELECT * FROM "test_users" WHERE (LOWER("tenant""`?"."username") LIKE LOWER(?) ESCAPE '\')"#
+	)]
+	fn case_insensitive_like_native_sql_and_values(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_column_sql: &str,
+		#[case] expected_qualified_sql: &str,
+		#[values(
+			(FilterOperator::IContains, r"%tenant' ? $42:\%\_\\%"),
+			(FilterOperator::IStartsWith, r"tenant' ? $42:\%\_\\%"),
+			(FilterOperator::IEndsWith, r"%tenant' ? $42:\%\_\\"),
+			(FilterOperator::IExact, r"tenant' ? $42:\%\_\\")
+		)]
+		lookup: (FilterOperator, &str),
+		#[values(false, true)] qualified: bool,
+	) {
+		// Arrange: quotes and placeholder-like text must remain identifier or value data.
+		let field = if qualified {
+			r#"tenant"`?.username"#
+		} else {
+			"username"
+		};
+		let (operator, expected_pattern) = lookup;
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			field,
+			operator,
+			FilterValue::String(r"tenant' ? $42:%_\".into()),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: only the lookup's own wildcards are unescaped.
+		assert_eq!(
+			sql,
+			if qualified {
+				expected_qualified_sql
+			} else {
+				expected_column_sql
+			}
+		);
+		assert_eq!(values, Values(vec![expected_pattern.into()]));
+	}
+
+	#[rstest]
 	fn test_django_style_is_in_filter_accepts_typed_values() {
 		// Arrange
 		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
@@ -17650,6 +17972,90 @@ mod tests {
 			sql,
 			r#"SELECT * FROM "test_users" WHERE "id" BETWEEN 10 AND 20"#
 		);
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE "quoted""id`" BETWEEN $1 AND $2"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE `quoted\"id``` BETWEEN ? AND ?"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE "quoted""id`" BETWEEN ? AND ?"#
+	)]
+	fn range_filter_preserves_quoted_column_and_bound_endpoint_order(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let lower = "bound' ? $71";
+		let upper = "upper' ? $19";
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"quoted\"id`",
+			FilterOperator::Range,
+			FilterValue::Range(
+				Box::new(FilterValue::String(lower.into())),
+				Box::new(FilterValue::String(upper.into())),
+			),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert: exact SQL excludes payload interpolation and fixes identifier escaping.
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(vec![lower.into(), upper.into()]));
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseBackend::Postgres,
+		r#"SELECT * FROM "test_users" WHERE "test_users"."id" BETWEEN $1 AND $2"#
+	)]
+	#[case::mysql(
+		DatabaseBackend::MySql,
+		"SELECT * FROM `test_users` WHERE `test_users`.`id` BETWEEN ? AND ?"
+	)]
+	#[case::sqlite(
+		DatabaseBackend::Sqlite,
+		r#"SELECT * FROM "test_users" WHERE "test_users"."id" BETWEEN ? AND ?"#
+	)]
+	fn range_filter_preserves_qualified_column_and_wide_integer_endpoints(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let lower = 9_007_199_254_740_993_i64;
+		let upper = lower + 1;
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"test_users.id",
+			FilterOperator::Range,
+			FilterValue::Range(
+				Box::new(FilterValue::Integer(lower)),
+				Box::new(FilterValue::Int(upper)),
+			),
+		));
+		let statement = queryset.build_select_statement().unwrap();
+
+		// Act
+		let (sql, values) = match backend {
+			DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+			DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+			DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+		};
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(values, Values(vec![lower.into(), upper.into()]));
 	}
 
 	#[rstest]

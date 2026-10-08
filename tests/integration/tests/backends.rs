@@ -6,3 +6,8 @@ mod analyze_statement_integration;
 
 #[path = "backends/database_error_classification.rs"]
 mod database_error_classification;
+#[path = "backends/mysql_insert_conflict.rs"]
+mod mysql_insert_conflict;
+
+#[path = "backends/insert_select_conflict.rs"]
+mod insert_select_conflict;

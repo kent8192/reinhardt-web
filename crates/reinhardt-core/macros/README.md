@@ -283,6 +283,8 @@ Provides compile-time code generation for common patterns.
   - Model attributes: `app_label`, `table_name`, `constraints`, `form`
   - Field attributes: `primary_key`, `max_length`, `null`, `blank`, `unique`, `default`, `db_column`, `editable`
   - Supported types: `i32`, `i64`, `String`, `bool`, `DateTime<Utc>`, `NaiveDateTime`, `Date`, `Time`, `f32`, `f64`, `Option<T>`
+  - PostgreSQL array inference supports `Vec<Option<T>>` and outer optional arrays,
+    including scalar type arguments forwarded through `macro_rules!`.
   - Requires: Named fields, `Serialize`/`Deserialize`, at least one `primary_key`, `max_length` for String fields
   - Multiple `primary_key` fields generate a `{ModelName}CompositePk` type. Its Rust fields, constructor, tuple conversions, and `Display` output use the model's Rust field names.
   - Composite key metadata and `to_pk_values()` / `get_composite_pk_values()` use each field's `db_column` when declared, otherwise its Rust field name without a raw-identifier prefix. Use these physical column names when constructing value maps for composite key predicates and lookups.

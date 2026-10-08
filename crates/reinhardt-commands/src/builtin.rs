@@ -2,6 +2,9 @@
 //!
 //! Standard management commands included with Reinhardt.
 
+#[cfg(feature = "migrations")]
+use crate::showmigrations::CommandMigrationSource;
+
 use crate::{BaseCommand, CommandArgument, CommandContext, CommandOption, CommandResult};
 use async_trait::async_trait;
 #[cfg(feature = "migrations")]
@@ -96,9 +99,7 @@ impl BaseCommand for MigrateCommand {
 		// Use reinhardt-migrations for migration execution
 		#[cfg(feature = "migrations")]
 		{
-			use reinhardt_db::migrations::{
-				FilesystemRepository, FilesystemSource, MigrationService,
-			};
+			use reinhardt_db::migrations::{FilesystemRepository, MigrationService};
 			use std::path::PathBuf;
 			use std::sync::Arc;
 			use tokio::sync::Mutex;
@@ -109,7 +110,7 @@ impl BaseCommand for MigrateCommand {
 				.map(PathBuf::from)
 				.unwrap_or_else(|| PathBuf::from("migrations"));
 
-			let source = Arc::new(FilesystemSource::new(migrations_dir.clone()));
+			let source = Arc::new(CommandMigrationSource::new(&migrations_dir, ctx));
 			let repository: Arc<Mutex<dyn reinhardt_db::migrations::MigrationRepository>> =
 				Arc::new(Mutex::new(FilesystemRepository::new(migrations_dir)));
 			let service = MigrationService::new(source, repository);
@@ -215,6 +216,8 @@ impl BaseCommand for MigrateCommand {
 			//                            applied AFTER it (backward).
 			//   * `<target>` is NOT applied        -> apply `<target>` and its
 			//                            intra-app dependency closure (forward).
+			// Backward plans include applied dependents across apps and reverse
+			// them before their prerequisites.
 			//
 			// `--plan` previews the action without touching the database. On a fresh
 			// database the bookkeeping table is created lazily for real execution but
@@ -237,7 +240,7 @@ impl BaseCommand for MigrateCommand {
 				// `plan_applied_migrations` probes for it: a missing table on a fresh DB
 				// degrades to an empty set, while a genuine DB error fails fast so the
 				// preview never misreports the applied state.
-				let mut applied = if is_plan {
+				let applied = if is_plan {
 					plan_applied_migrations(&connection, &recorder).await?
 				} else {
 					recorder.ensure_schema_table().await.map_err(|e| {
@@ -271,47 +274,27 @@ impl BaseCommand for MigrateCommand {
 					.await;
 				}
 				let stale_records = stale_replacement_records(&all_migrations, app, &applied);
-				if is_plan {
-					for record in &stale_records {
-						ctx.info(&format!(
-							"[plan] Would unapply superseded record {}:{} before resolving the target",
-							record.app, record.name
-						));
-					}
-				} else if !stale_records.is_empty() {
-					for record in &stale_records {
-						recorder
-							.unapply(&record.app, &record.name)
-							.await
-							.map_err(|error| {
-								crate::CommandError::ExecutionError(format!(
-									"Failed to reconcile superseded replacement record {}:{}: {}",
-									record.app, record.name, error
-								))
-							})?;
-					}
-					applied = recorder.get_applied_migrations().await.map_err(|error| {
-						crate::CommandError::ExecutionError(format!(
-							"Failed to re-read reconciled migration history: {}",
-							error
-						))
-					})?;
-				}
 				let stale_record_names: HashSet<_> = stale_records
 					.iter()
 					.map(|record| (record.app.as_str(), record.name.as_str()))
 					.collect();
-				let applied_for_app: Vec<_> = applied
+				let reconciled_applied: Vec<_> = applied
 					.iter()
 					.filter(|record| {
-						record.app == *app
-							&& (!is_plan
-								|| !stale_record_names
-									.contains(&(record.app.as_str(), record.name.as_str())))
+						!stale_record_names.contains(&(record.app.as_str(), record.name.as_str()))
 					})
 					.cloned()
 					.collect();
-				let target_name = if target_name == "zero" {
+				let applied_for_app: Vec<_> = reconciled_applied
+					.iter()
+					.filter(|record| record.app == *app)
+					.cloned()
+					.collect();
+				let target_name = if target_name == "zero"
+					|| applied_for_app
+						.iter()
+						.any(|record| record.name == target_name)
+				{
 					target_name.to_string()
 				} else {
 					let terminal = terminal_replacement_target(&all_migrations, app, target_name)?;
@@ -328,172 +311,32 @@ impl BaseCommand for MigrateCommand {
 					}
 				};
 
-				// Branch (a): `migrate <app> zero` -> unapply ALL applied migrations.
-				if target_name == "zero" {
-					if applied_for_app.is_empty() {
-						ctx.info(&format!(
-							"No applied migrations for app '{}'; nothing to do.",
-							app
-						));
-						return Ok(());
-					}
-
-					// `applied_for_app` is ASC by applied time; rollback unapplies the
-					// newest first. Plan and `--fake` operate purely on recorder records
-					// and never load files; only a real rollback needs the on-disk
-					// reverse SQL.
-					if is_plan {
-						ctx.info(&format!(
-							"[plan] Would unapply {} migration(s) for app '{}':",
-							applied_for_app.len(),
-							app
-						));
-						for r in applied_for_app.iter().rev() {
-							ctx.info(&format!("  - {}:{} (unapply)", r.app, r.name));
-						}
-						return Ok(());
-					}
-
-					if is_fake {
-						ctx.info(
-							"Faking rollback (updating recorder without executing reverse SQL):",
-						);
-						for r in applied_for_app.iter().rev() {
-							recorder.unapply(&r.app, &r.name).await.map_err(|e| {
-								crate::CommandError::ExecutionError(format!(
-									"Failed to unapply {}:{}: {}",
-									r.app, r.name, e
-								))
-							})?;
-							ctx.success(&format!("  ✓ Faked rollback: {}:{}", r.app, r.name));
-						}
-						ctx.success(&format!(
-							"Faked rollback of {} migration(s) for app '{}'",
-							applied_for_app.len(),
-							app
-						));
-						return Ok(());
-					}
-
-					let mut to_rollback = Vec::with_capacity(applied_for_app.len());
-					for r in &applied_for_app {
-						let migration = all_migrations
-							.iter()
-							.find(|m| m.app_label == r.app && m.name == r.name)
-							.cloned()
-							.ok_or_else(|| {
-								crate::CommandError::ExecutionError(format!(
-									"Migration {}:{} is recorded as applied but its file was not found on disk",
-									r.app, r.name
-								))
-							})?;
-						to_rollback.push(migration);
-					}
-
-					let mut executor = DatabaseMigrationExecutor::new(connection);
-					let result = executor
-						.rollback_migrations(&to_rollback)
-						.await
-						.map_err(|e| {
-							crate::CommandError::ExecutionError(format!(
-								"Failed to roll back migrations: {:?}",
-								e
-							))
-						})?;
-					for id in &result.applied {
-						ctx.success(&format!("  ✓ Rolled back: {}", id));
-					}
-					ctx.success(&format!(
-						"Rolled back {} migration(s) for app '{}'",
-						result.applied.len(),
-						app
-					));
-					return Ok(());
-				}
-
-				// Branch (b): target is currently applied -> roll back everything after it.
-				if let Some(pos) = applied_for_app.iter().position(|r| r.name == target_name) {
-					let to_rollback_records = &applied_for_app[pos + 1..];
-					if to_rollback_records.is_empty() {
-						ctx.info(&format!(
-							"Already at {}:{}; nothing to do.",
-							app, target_name
-						));
-						return Ok(());
-					}
-
-					// Plan and `--fake` operate purely on recorder records; only a real
-					// rollback loads the on-disk reverse SQL.
-					if is_plan {
-						ctx.info(&format!(
-							"[plan] Would unapply {} migration(s) for app '{}' to reach target '{}':",
-							to_rollback_records.len(),
-							app,
-							target_name
-						));
-						for r in to_rollback_records.iter().rev() {
-							ctx.info(&format!("  - {}:{} (unapply)", r.app, r.name));
-						}
-						return Ok(());
-					}
-
-					if is_fake {
-						ctx.info(
-							"Faking rollback (updating recorder without executing reverse SQL):",
-						);
-						for r in to_rollback_records.iter().rev() {
-							recorder.unapply(&r.app, &r.name).await.map_err(|e| {
-								crate::CommandError::ExecutionError(format!(
-									"Failed to unapply {}:{}: {}",
-									r.app, r.name, e
-								))
-							})?;
-							ctx.success(&format!("  ✓ Faked rollback: {}:{}", r.app, r.name));
-						}
-						ctx.success(&format!(
-							"Faked rollback to {}:{} ({} migration(s) unapplied)",
-							app,
-							target_name,
-							to_rollback_records.len()
-						));
-						return Ok(());
-					}
-
-					let mut to_rollback = Vec::with_capacity(to_rollback_records.len());
-					for r in to_rollback_records {
-						let migration = all_migrations
-							.iter()
-							.find(|m| m.app_label == r.app && m.name == r.name)
-							.cloned()
-							.ok_or_else(|| {
-								crate::CommandError::ExecutionError(format!(
-									"Migration {}:{} is recorded as applied but its file was not found on disk",
-									r.app, r.name
-								))
-							})?;
-						to_rollback.push(migration);
-					}
-
-					let mut executor = DatabaseMigrationExecutor::new(connection);
-					let result = executor
-						.rollback_migrations(&to_rollback)
-						.await
-						.map_err(|e| {
-							crate::CommandError::ExecutionError(format!(
-								"Failed to roll back migrations: {:?}",
-								e
-							))
-						})?;
-					for id in &result.applied {
-						ctx.success(&format!("  ✓ Rolled back: {}", id));
-					}
-					ctx.success(&format!(
-						"Rolled back to {}:{} ({} migration(s) unapplied)",
+				// Reconciled replacement targets use the same cross-app rollback
+				// plan as ordinary migrations, including pending and nested squashes.
+				if target_name == "zero"
+					|| applied_for_app
+						.iter()
+						.any(|record| record.name == target_name)
+				{
+					let target_plan = migration_target_plan(
 						app,
-						target_name,
-						result.applied.len()
-					));
-					return Ok(());
+						&target_name,
+						&reconciled_applied,
+						&all_migrations,
+					)?;
+					// Validate against the reconciled view before changing persistent history.
+					reconcile_stale_replacement_records(&recorder, &stale_records, is_plan, ctx)
+						.await?;
+					return execute_migration_target_plan(
+						target_plan,
+						&all_migrations,
+						is_plan,
+						is_fake,
+						&recorder,
+						connection,
+						ctx,
+					)
+					.await;
 				}
 
 				// Branch (c): target is NOT currently applied -> forward to target.
@@ -589,7 +432,7 @@ impl BaseCommand for MigrateCommand {
 					.filter(|m| selection_keys.contains(&(m.app_label.clone(), m.name.clone())))
 					.cloned()
 					.collect();
-				let applied_keys = applied
+				let applied_keys = reconciled_applied
 					.iter()
 					.map(|record| MigrationKey::new(&record.app, &record.name))
 					.collect();
@@ -624,6 +467,9 @@ impl BaseCommand for MigrateCommand {
 					&all_migrations,
 					&applied_for_app,
 				)?;
+
+				reconcile_stale_replacement_records(&recorder, &stale_records, is_plan, ctx)
+					.await?;
 
 				if pending.is_empty() && replacement_adoptions.is_empty() {
 					ctx.info(&format!(
@@ -995,7 +841,11 @@ fn migration_target_plan(
 			Ok(MigrationTargetPlan::Rollback {
 				app: app.to_string(),
 				target: None,
-				records: applied_for_app,
+				records: dependency_ordered_rollback_records(
+					&applied_for_app,
+					applied,
+					all_migrations,
+				)?,
 			})
 		};
 	}
@@ -1004,7 +854,7 @@ fn migration_target_plan(
 		.iter()
 		.position(|record| record.name == target)
 	{
-		let records = applied_for_app[position + 1..].to_vec();
+		let records = &applied_for_app[position + 1..];
 		return if records.is_empty() {
 			Ok(MigrationTargetPlan::Noop {
 				message: format!("Already at {}:{}; nothing to do.", app, target),
@@ -1013,7 +863,7 @@ fn migration_target_plan(
 			Ok(MigrationTargetPlan::Rollback {
 				app: app.to_string(),
 				target: Some(target.to_string()),
-				records,
+				records: dependency_ordered_rollback_records(records, applied, all_migrations)?,
 			})
 		};
 	}
@@ -1075,6 +925,181 @@ fn migration_target_plan(
 			pending,
 		})
 	}
+}
+
+/// Expand rollback roots through applied dependents and order prerequisites first.
+#[cfg(feature = "migrations")]
+fn dependency_ordered_rollback_records(
+	roots: &[reinhardt_db::migrations::recorder::MigrationRecord],
+	applied: &[reinhardt_db::migrations::recorder::MigrationRecord],
+	all_migrations: &[reinhardt_db::migrations::Migration],
+) -> CommandResult<Vec<reinhardt_db::migrations::recorder::MigrationRecord>> {
+	use reinhardt_db::migrations::{MigrationGraph, MigrationKey};
+	use std::collections::{HashMap, HashSet};
+
+	let applied_by_key: HashMap<_, _> = applied
+		.iter()
+		.map(|record| {
+			(
+				MigrationKey::new(record.app.as_str(), record.name.as_str()),
+				record,
+			)
+		})
+		.collect();
+	let migrations_by_key: HashMap<_, _> = all_migrations
+		.iter()
+		.map(|migration| {
+			(
+				MigrationKey::new(migration.app_label.as_str(), migration.name.as_str()),
+				migration,
+			)
+		})
+		.collect();
+	// Cross-app dependents cannot be ruled out without every applied definition.
+	// Single-app history already supplies the complete native rollback suffix,
+	// preserving fake history repair when a selected migration file is missing.
+	let spans_apps = roots
+		.first()
+		.is_some_and(|root| applied.iter().any(|record| record.app != root.app));
+	if spans_apps {
+		for record in applied {
+			let key = MigrationKey::new(record.app.as_str(), record.name.as_str());
+			if !migrations_by_key.contains_key(&key) {
+				return Err(crate::CommandError::ExecutionError(format!(
+					"Cannot determine cross-app rollback dependencies: applied migration {}:{} has no available definition",
+					record.app, record.name
+				)));
+			}
+		}
+	}
+	if !spans_apps
+		&& roots.iter().any(|record| {
+			!migrations_by_key.contains_key(&MigrationKey::new(
+				record.app.as_str(),
+				record.name.as_str(),
+			))
+		}) {
+		// Incomplete single-app metadata cannot reconstruct ordering edges. The
+		// native suffix already contains every selected record in recorder order.
+		return Ok(roots.to_vec());
+	}
+	let mut replacements = HashMap::new();
+	let mut unavailable_replacements = HashSet::new();
+	for migration in all_migrations {
+		let replacement = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
+		if !applied_by_key.contains_key(&replacement) {
+			continue;
+		}
+		// Only recorded replacements own aliases. Intermediate definitions supply
+		// nested squash metadata without adding unapplied nodes to the graph.
+		let mut seen = HashSet::new();
+		let mut stack: Vec<_> = migration.replaces.iter().collect();
+		while let Some((app, name)) = stack.pop() {
+			let key = MigrationKey::new(app.as_str(), name.as_str());
+			if applied_by_key.contains_key(&key) || !seen.insert(key.clone()) {
+				continue;
+			}
+			if let Some(replaced) = migrations_by_key.get(&key) {
+				stack.extend(replaced.replaces.iter());
+			} else {
+				unavailable_replacements.insert(key.clone());
+			}
+			replacements.insert(key, replacement.clone());
+		}
+	}
+	let mut applied_graph = MigrationGraph::new();
+	for migration in all_migrations {
+		let key = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
+		if !applied_by_key.contains_key(&key) {
+			continue;
+		}
+		let mut dependencies = Vec::new();
+		let mut normalized = HashSet::new();
+		for (app, name) in &migration.dependencies {
+			let dependency = MigrationKey::new(app.as_str(), name.as_str());
+			let mut stack = vec![(dependency, false)];
+			let mut seen = HashSet::new();
+			while let Some((dependency, from_replacement)) = stack.pop() {
+				if !seen.insert(dependency.clone()) {
+					continue;
+				}
+				let resolved = if applied_by_key.contains_key(&dependency) {
+					dependency
+				} else if let Some(owner) = replacements.get(&dependency) {
+					owner.clone()
+				} else {
+					// A dependency on an unapplied squash may be satisfied by its
+					// recorded old path. Follow only replaces, never pending dependencies.
+					if let Some(definition) = migrations_by_key.get(&dependency)
+						&& !definition.replaces.is_empty()
+					{
+						stack.extend(definition.replaces.iter().map(|(app, name)| {
+							(MigrationKey::new(app.as_str(), name.as_str()), true)
+						}));
+						continue;
+					}
+					// Squashes replace migrations within one app. Missing ancestry
+					// can hide aliases in that app, not unrelated pending keys.
+					let unavailable =
+						if from_replacement && !migrations_by_key.contains_key(&dependency) {
+							Some(&dependency)
+						} else {
+							unavailable_replacements
+								.iter()
+								.filter(|key| key.app_label == dependency.app_label)
+								.min_by(|left, right| left.name.cmp(&right.name))
+						};
+					if spans_apps && let Some(unavailable) = unavailable {
+						return Err(crate::CommandError::ExecutionError(format!(
+							"Cannot determine cross-app rollback dependencies: applied migration {}:{} references unresolved dependency {}:{} while replacement definition {}:{} is unavailable",
+							migration.app_label,
+							migration.name,
+							app,
+							name,
+							unavailable.app_label,
+							unavailable.name
+						)));
+					}
+					dependency
+				};
+				if normalized.insert(resolved.clone()) {
+					dependencies.push(resolved);
+				}
+			}
+		}
+		applied_graph.add_migration(key, dependencies);
+	}
+
+	let mut selected = HashSet::new();
+	let mut rollback_graph = MigrationGraph::new();
+	let mut stack: Vec<_> = roots
+		.iter()
+		.map(|record| MigrationKey::new(record.app.as_str(), record.name.as_str()))
+		.collect();
+	while let Some(key) = stack.pop() {
+		if !selected.insert(key.clone()) {
+			continue;
+		}
+		stack.extend(applied_graph.get_dependents(&key).into_iter().cloned());
+		// Missing files in single-app history keep the existing plan/fake behavior;
+		// real execution validates all selected files before invoking the executor.
+		let dependencies = applied_graph
+			.get_dependencies(&key)
+			.unwrap_or_default()
+			.to_vec();
+		rollback_graph.add_migration(key, dependencies);
+	}
+
+	let ordered = rollback_graph.topological_sort().map_err(|error| {
+		crate::CommandError::ExecutionError(format!(
+			"Failed to sort migration plan by dependencies: {}",
+			error
+		))
+	})?;
+	Ok(ordered
+		.into_iter()
+		.map(|key| (*applied_by_key[&key]).clone())
+		.collect())
 }
 
 /// Apply a [`MigrationTargetPlan`] while preserving `--plan`, `--fake`, and real execution.
@@ -1168,8 +1193,9 @@ async fn execute_migration_target_plan(
 				migrations.push(migration);
 			}
 
-			let mut executor = DatabaseMigrationExecutor::new(connection);
+			let executor = DatabaseMigrationExecutor::new(connection);
 			let result = executor
+				.with_migration_history(all_migrations.to_vec())
 				.rollback_migrations(&migrations)
 				.await
 				.map_err(|error| {
@@ -1669,6 +1695,34 @@ fn stale_replacement_records(
 }
 
 #[cfg(feature = "migrations")]
+async fn reconcile_stale_replacement_records(
+	recorder: &reinhardt_db::migrations::DatabaseMigrationRecorder,
+	stale_records: &[reinhardt_db::migrations::recorder::MigrationRecord],
+	is_plan: bool,
+	ctx: &CommandContext,
+) -> CommandResult<()> {
+	for record in stale_records {
+		if is_plan {
+			ctx.info(&format!(
+				"[plan] Would unapply superseded record {}:{} before executing the target",
+				record.app, record.name
+			));
+		} else {
+			recorder
+				.unapply(&record.app, &record.name)
+				.await
+				.map_err(|error| {
+					crate::CommandError::ExecutionError(format!(
+						"Failed to reconcile superseded replacement record {}:{}: {}",
+						record.app, record.name, error
+					))
+				})?;
+		}
+	}
+	Ok(())
+}
+
+#[cfg(feature = "migrations")]
 async fn fake_record_migration(
 	recorder: &reinhardt_db::migrations::DatabaseMigrationRecorder,
 	migration: &reinhardt_db::migrations::Migration,
@@ -1838,13 +1892,14 @@ async fn plan_applied_migrations(
 /// Build from_state from database history (preferred approach)
 #[cfg(feature = "migrations")]
 async fn build_from_state_from_db(
+	ctx: &CommandContext,
 	migrations_dir: &std::path::Path,
 	database_url: &str,
 	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::{
-		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
+		DatabaseMigrationRecorder, MigrationSource, MigrationStateLoader,
 	};
 	// 2. Connect to database
 	let connection = DatabaseConnection::connect(database_url)
@@ -1869,7 +1924,7 @@ async fn build_from_state_from_db(
 		eprintln!("[DEBUG]   - {}/{}", record.app, record.name);
 	}
 
-	let source = FilesystemSource::new(migrations_dir);
+	let source = CommandMigrationSource::new(migrations_dir, ctx);
 	let all_migrations = source.all_migrations().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to load migrations from disk: {}", e))
 	})?;
@@ -1898,13 +1953,14 @@ async fn build_from_state_from_db(
 /// Note: TestContainers integration requires the 'testcontainers' feature to be enabled.
 #[cfg(all(feature = "migrations", feature = "testcontainers"))]
 async fn build_from_state_from_testcontainers(
+	ctx: &CommandContext,
 	migrations_dir: &std::path::Path,
 	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_db::migrations::{
-		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
+		DatabaseMigrationRecorder, MigrationSource, MigrationStateLoader,
 	};
 	use reinhardt_test::testcontainers::{
 		GenericImage, ImageExt,
@@ -1940,7 +1996,7 @@ async fn build_from_state_from_testcontainers(
 		})?;
 
 	// 3. Load all existing migrations
-	let source = FilesystemSource::new(migrations_dir);
+	let source = CommandMigrationSource::new(migrations_dir, ctx);
 	let all_migrations = source.all_migrations().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to load migrations: {}", e))
 	})?;
@@ -1973,6 +2029,7 @@ async fn build_from_state_from_testcontainers(
 /// Build from_state from TestContainers (stub when feature not enabled)
 #[cfg(all(feature = "migrations", not(feature = "testcontainers")))]
 async fn build_from_state_from_testcontainers(
+	_ctx: &CommandContext,
 	_migrations_dir: &std::path::Path,
 	_dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
@@ -1988,14 +2045,13 @@ async fn build_from_state_from_testcontainers(
 /// to reconstruct the current `ProjectState`.
 #[cfg(feature = "migrations")]
 async fn build_from_state_from_files(
+	ctx: &CommandContext,
 	migrations_dir: &std::path::Path,
 	dependency_context: &reinhardt_db::migrations::DependencyResolutionContext,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
-	use reinhardt_db::migrations::{
-		FilesystemSource, MigrationSource, build_state_from_files_with_context,
-	};
+	use reinhardt_db::migrations::{MigrationSource, build_state_from_files_with_context};
 
-	let source = FilesystemSource::new(migrations_dir);
+	let source = CommandMigrationSource::new(migrations_dir, ctx);
 
 	// Check if there are any migrations on disk
 	let all_migrations = source.all_migrations().await.map_err(|e| {
@@ -2039,6 +2095,7 @@ pub(crate) enum MigrationStateSource {
 /// No fallback source is attempted on failure.
 #[cfg(feature = "migrations")]
 pub(crate) async fn prepare_makemigrations_state(
+	ctx: &CommandContext,
 	source: MigrationStateSource,
 	migrations_dir: &std::path::Path,
 	database_url: Option<&str>,
@@ -2046,10 +2103,10 @@ pub(crate) async fn prepare_makemigrations_state(
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
 	match source {
 		MigrationStateSource::Files => {
-			build_from_state_from_files(migrations_dir, dependency_context).await
+			build_from_state_from_files(ctx, migrations_dir, dependency_context).await
 		}
 		MigrationStateSource::TemporaryDb => {
-			build_from_state_from_testcontainers(migrations_dir, dependency_context).await
+			build_from_state_from_testcontainers(ctx, migrations_dir, dependency_context).await
 		}
 		MigrationStateSource::Database => {
 			let url = database_url.ok_or_else(|| {
@@ -2057,7 +2114,7 @@ pub(crate) async fn prepare_makemigrations_state(
 					"database state source requires a selected database URL".to_owned(),
 				)
 			})?;
-			build_from_state_from_db(migrations_dir, url, dependency_context).await
+			build_from_state_from_db(ctx, migrations_dir, url, dependency_context).await
 		}
 		MigrationStateSource::Empty => Ok(reinhardt_db::migrations::ProjectState::new()),
 	}
@@ -2387,8 +2444,10 @@ pub(crate) async fn execute_makemigrations_with_state(
 				// even when those apps are no longer installed. Replay files without
 				// applying the conflicting graph to a database.
 				let from_state =
-					build_from_state_from_files(&migrations_dir, &dependency_context).await?;
-				let target_state = ProjectState::from_global_registry();
+					build_from_state_from_files(ctx, &migrations_dir, &dependency_context).await?;
+				let target_state = ProjectState::try_from_global_registry().map_err(|error| {
+					CommandError::ExecutionError(format!("Failed to load model registry: {error}"))
+				})?;
 				let detector = reinhardt_db::migrations::MigrationAutodetector::new(
 					from_state,
 					target_state.clone(),
@@ -2542,7 +2601,9 @@ pub(crate) async fn execute_makemigrations_with_state(
 
 		// Keep the full graph for cross-app matching and foreign key validation.
 		// Restrict generated output below without erasing historical move sources.
-		let target_project_state = ProjectState::from_global_registry();
+		let target_project_state = ProjectState::try_from_global_registry().map_err(|error| {
+			CommandError::ExecutionError(format!("Invalid migration declarations: {error}"))
+		})?;
 
 		let is_verbose = ctx.has_option("verbose");
 
@@ -2585,12 +2646,12 @@ pub(crate) async fn execute_makemigrations_with_state(
 		let from_state = if let Some(state) = prepared_state {
 			state
 		} else if is_check && !from_db_flag && !ctx.has_option("force-empty-state") {
-			build_from_state_from_files(&migrations_dir, &dependency_context).await?
+			build_from_state_from_files(ctx, &migrations_dir, &dependency_context).await?
 		} else if ctx.has_option("force-empty-state") {
 			ProjectState::new()
 		} else if from_db_flag {
 			// When --from-db flag is specified: prioritize database history
-			match build_from_state_from_db(&migrations_dir, &database_url, &dependency_context)
+			match build_from_state_from_db(ctx, &migrations_dir, &database_url, &dependency_context)
 				.await
 			{
 				Ok(state) => {
@@ -2600,8 +2661,12 @@ pub(crate) async fn execute_makemigrations_with_state(
 				Err(e) => {
 					ctx.warning(&format!("Failed to connect to database: {}", e));
 					ctx.info("Falling back to TestContainers...");
-					match build_from_state_from_testcontainers(&migrations_dir, &dependency_context)
-						.await
+					match build_from_state_from_testcontainers(
+						ctx,
+						&migrations_dir,
+						&dependency_context,
+					)
+					.await
 					{
 						Ok(state) => {
 							ctx.verbose("Built state from TestContainers");
@@ -2610,8 +2675,12 @@ pub(crate) async fn execute_makemigrations_with_state(
 						Err(e) => {
 							ctx.warning(&format!("Failed to use TestContainers: {}", e));
 							ctx.info("Falling back to file-based state reconstruction...");
-							match build_from_state_from_files(&migrations_dir, &dependency_context)
-								.await
+							match build_from_state_from_files(
+								ctx,
+								&migrations_dir,
+								&dependency_context,
+							)
+							.await
 							{
 								Ok(state) => {
 									ctx.verbose("Built state from migration files (offline)");
@@ -2648,7 +2717,9 @@ pub(crate) async fn execute_makemigrations_with_state(
 			}
 		} else {
 			// Default: prioritize TestContainers
-			match build_from_state_from_testcontainers(&migrations_dir, &dependency_context).await {
+			match build_from_state_from_testcontainers(ctx, &migrations_dir, &dependency_context)
+				.await
+			{
 				Ok(state) => {
 					ctx.verbose("Built state from TestContainers");
 					state
@@ -2657,6 +2728,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 					ctx.warning(&format!("Failed to use TestContainers: {}", e));
 					ctx.info("Falling back to database history...");
 					match build_from_state_from_db(
+						ctx,
 						&migrations_dir,
 						&database_url,
 						&dependency_context,
@@ -2670,8 +2742,12 @@ pub(crate) async fn execute_makemigrations_with_state(
 						Err(e) => {
 							ctx.warning(&format!("Failed to connect to database: {}", e));
 							ctx.info("Falling back to file-based state reconstruction...");
-							match build_from_state_from_files(&migrations_dir, &dependency_context)
-								.await
+							match build_from_state_from_files(
+								ctx,
+								&migrations_dir,
+								&dependency_context,
+							)
+							.await
 							{
 								Ok(state) => {
 									ctx.verbose("Built state from migration files (offline)");
@@ -2720,6 +2796,13 @@ pub(crate) async fn execute_makemigrations_with_state(
 				.keys()
 				.chain(from_state.models.keys())
 				.map(|(app_label, _)| app_label.clone())
+				.chain(
+					target_project_state
+						.sequences
+						.keys()
+						.chain(from_state.sequences.keys())
+						.map(|key| key.app_label.clone()),
+				)
 				.collect::<std::collections::HashSet<_>>()
 				.into_iter()
 				.collect();
@@ -2817,6 +2900,8 @@ pub(crate) async fn execute_makemigrations_with_state(
 
 		let mut pending: Vec<(reinhardt_db::migrations::Migration, String, String)> = Vec::new();
 		let mut this_run_names = std::collections::BTreeMap::new();
+		let mut next_numbers = std::collections::BTreeMap::<String, u32>::new();
+		let mut stage_names = std::collections::BTreeMap::new();
 		for migration in generated_migrations {
 			if !apps_to_write.contains(&migration.app_label) {
 				continue;
@@ -2847,19 +2932,32 @@ pub(crate) async fn execute_makemigrations_with_state(
 				}
 			}
 			let app_name = migration.app_label.clone();
-			let migration_number = MigrationNumbering::next_number(&migrations_dir, &app_name);
+			let next = next_numbers.entry(app_name.clone()).or_insert_with(|| {
+				MigrationNumbering::next_number(&migrations_dir, &app_name)
+					.parse()
+					.expect("numeric migration number")
+			});
+			let migration_number = format!("{next:04}");
+			*next += 1;
 			let is_initial = migration_number == "0001";
 			let base_name = migration_name_opt.clone().unwrap_or_else(|| {
 				MigrationNamer::generate_name(&migration.operations, is_initial)
 			});
 			let final_name = format!("{}_{}", migration_number, base_name);
-			this_run_names.insert(app_name, final_name.clone());
+			stage_names.insert(
+				(app_name.clone(), migration.name.clone()),
+				final_name.clone(),
+			);
+			if migration.name == "autodetected" {
+				this_run_names.insert(app_name, final_name.clone());
+			}
 			pending.push((migration, migration_number, final_name));
 		}
 
+		let mut previous_generated = std::collections::BTreeMap::new();
 		for (migration, migration_number, final_name) in pending {
 			let app_name = migration.app_label.clone();
-			let dependencies = resolve_makemigrations_dependencies(
+			let mut dependencies = resolve_makemigrations_dependencies(
 				&app_name,
 				&migration_number,
 				&migration.operations,
@@ -2868,6 +2966,33 @@ pub(crate) async fn execute_makemigrations_with_state(
 				&existing_latest,
 			);
 
+			if let Some(previous) = previous_generated.insert(app_name.clone(), final_name.clone())
+			{
+				dependencies.retain(|(app, _)| app != &app_name);
+				dependencies.push((app_name.clone(), previous));
+			}
+			// Explicit staged dependencies identify the exact provider phase.
+			// Replace the generic per-app lookup to avoid linking defaults to a
+			// provider's later table stage and recreating a cross-app cycle.
+			dependencies.retain(|(app, _)| {
+				!migration
+					.dependencies
+					.iter()
+					.any(|(provider, _)| provider == app)
+			});
+			for (app, symbolic_name) in &migration.dependencies {
+				let name = stage_names
+					.get(&(app.clone(), symbolic_name.clone()))
+					.cloned()
+					.ok_or_else(|| {
+						CommandError::ExecutionError(format!(
+							"Missing generated migration stage '{app}.{symbolic_name}'"
+						))
+					})?;
+				if !dependencies.contains(&(app.clone(), name.clone())) {
+					dependencies.push((app.clone(), name));
+				}
+			}
 			let new_migration = dependencies.into_iter().fold(
 				reinhardt_db::migrations::Migration::new(final_name, app_name.clone())
 					.with_initial((migration_number == "0001").then_some(true)),
@@ -2922,7 +3047,7 @@ pub(crate) async fn execute_makemigrations_with_state(
 							if err_msg.contains("already exists") {
 								CommandError::ExecutionError(format!(
 									"Migration file already exists: {}
-									
+
 									Possible solutions:
 									1. If the operations are identical, you don't need a new migration
 									2. If you want to modify the migration, delete the existing file first:
@@ -3115,7 +3240,6 @@ fn add_reused_table_name_dependencies_with_history(
 	}
 	Ok(())
 }
-
 #[cfg(feature = "migrations")]
 fn latest_existing_migration_names(
 	migrations: &[reinhardt_db::migrations::Migration],
@@ -3150,16 +3274,23 @@ fn expand_apps_with_fk_providers(
 		.collect();
 	let mut stack: Vec<String> = to_write.iter().cloned().collect();
 	while let Some(app) = stack.pop() {
-		let Some(migration) = generated.iter().find(|m| m.app_label == app) else {
-			continue;
-		};
-		for provider in reinhardt_db::migrations::MigrationAutodetector::foreign_key_provider_apps(
-			to_state,
-			&migration.operations,
-			&app,
-		) {
-			if generated_apps.contains(&provider) && to_write.insert(provider.clone()) {
-				stack.push(provider);
+		for migration in generated
+			.iter()
+			.filter(|migration| migration.app_label == app)
+		{
+			let providers =
+				reinhardt_db::migrations::MigrationAutodetector::foreign_key_provider_apps(
+					to_state,
+					&migration.operations,
+					&app,
+				);
+			for provider in providers
+				.into_iter()
+				.chain(migration.dependencies.iter().map(|(app, _)| app.clone()))
+			{
+				if generated_apps.contains(&provider) && to_write.insert(provider.clone()) {
+					stack.push(provider);
+				}
 			}
 		}
 	}
@@ -7599,6 +7730,678 @@ mod tests {
 		);
 	}
 
+	#[rstest::rstest]
+	#[case("zero", vec![
+		"reporting:0001_summary",
+		"consumer:0002_references",
+		"foundation:0002_tables",
+		"consumer:0001_retained",
+		"foundation:0001_initial",
+	])]
+	#[case("0001_initial", vec![
+		"reporting:0001_summary",
+		"consumer:0002_references",
+		"foundation:0002_tables",
+	])]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_rolls_back_transitive_applied_dependents_across_apps(
+		#[case] target: &str,
+		#[case] expected: Vec<&str>,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: cross-app recorder order deliberately differs from dependency order.
+		let migrations = vec![
+			Migration::new("0001_environment", "operations"),
+			Migration::new("0001_initial", "foundation")
+				.add_dependency("operations", "0001_environment"),
+			Migration::new("0002_tables", "foundation")
+				.add_dependency("foundation", "0001_initial"),
+			Migration::new("0001_retained", "consumer")
+				.add_dependency("foundation", "0001_initial"),
+			Migration::new("0002_references", "consumer")
+				.add_dependency("foundation", "0002_tables"),
+			Migration::new("0001_summary", "reporting")
+				.add_dependency("consumer", "0002_references"),
+			Migration::new("0003_pending", "consumer")
+				.add_dependency("consumer", "0002_references"),
+			Migration::new("0002_tables", "unrelated").add_dependency("unrelated", "0002_tables"),
+		];
+		let applied = vec![
+			migration_record("operations", "0001_environment"),
+			migration_record("foundation", "0001_initial"),
+			migration_record("reporting", "0001_summary"),
+			migration_record("consumer", "0002_references"),
+			migration_record("foundation", "0002_tables"),
+			migration_record("consumer", "0001_retained"),
+			migration_record("unrelated", "0002_tables"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", target, &applied, &migrations)
+			.expect("rollback must expand applied dependents across apps");
+
+		// Assert: target/prerequisites, pending records, and unrelated cycles stay outside the plan.
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("an applied target with later records must select rollback");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			expected
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_keeps_dependents_of_the_latest_applied_target() {
+		// Arrange
+		let migrations = vec![
+			reinhardt_db::migrations::Migration::new("0001_initial", "foundation"),
+			reinhardt_db::migrations::Migration::new("0001_references", "consumer")
+				.add_dependency("foundation", "0001_initial"),
+		];
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("consumer", "0001_references"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "0001_initial", &applied, &migrations)
+			.expect("latest applied target must keep its dependents");
+
+		// Assert
+		let MigrationTargetPlan::Noop { message } = plan else {
+			panic!("latest applied target must remain a no-op");
+		};
+		assert_eq!(
+			message,
+			"Already at foundation:0001_initial; nothing to do."
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::squashed_zero("zero", false)]
+	#[case::squashed_target("0001_initial", false)]
+	#[case::nested_squash_zero("zero", true)]
+	#[case::nested_squash_target("0001_initial", true)]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_resolves_applied_replacement_dependencies(
+		#[case] target: &str,
+		#[case] nested: bool,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: only the final squash is applied; dependents retain the original key.
+		let mut intermediate = Migration::new("0002_intermediate", "foundation");
+		intermediate.replaces = vec![("foundation".into(), "0002_old".into())];
+		let mut squashed = Migration::new("0002_squashed", "foundation")
+			.add_dependency("foundation", "0001_initial");
+		squashed.replaces = vec![(
+			"foundation".into(),
+			if nested {
+				"0002_intermediate"
+			} else {
+				"0002_old"
+			}
+			.into(),
+		)];
+		let mut future = Migration::new("0003_future_squash", "foundation");
+		future.replaces = vec![("foundation".into(), "0002_old".into())];
+		let migrations = vec![
+			Migration::new("0001_initial", "foundation"),
+			Migration::new("0002_old", "foundation"),
+			intermediate,
+			squashed,
+			future,
+			Migration::new("0001_references", "consumer").add_dependency("foundation", "0002_old"),
+			Migration::new("0001_summary", "reporting")
+				.add_dependency("consumer", "0001_references"),
+			Migration::new("0002_pending", "consumer").add_dependency("foundation", "0002_old"),
+			Migration::new("0002_old", "unrelated"),
+		];
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("reporting", "0001_summary"),
+			migration_record("foundation", "0002_squashed"),
+			migration_record("consumer", "0001_references"),
+			migration_record("unrelated", "0002_old"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", target, &applied, &migrations)
+			.expect("applied replacements must connect their original-key dependents");
+
+		// Assert: pending alternatives and same-name keys in other apps stay excluded.
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("the applied squash must select rollback");
+		};
+		let mut expected = vec![
+			"reporting:0001_summary",
+			"consumer:0001_references",
+			"foundation:0002_squashed",
+		];
+		if target == "zero" {
+			expected.push("foundation:0001_initial");
+		}
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			expected
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::zero_without_original("zero", false)]
+	#[case::zero_with_original("zero", true)]
+	#[case::target_without_original("0001_initial", false)]
+	#[case::target_with_original("0001_initial", true)]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_rejects_unresolved_nested_replacement_dependencies(
+		#[case] target: &str,
+		#[case] original_available: bool,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: a recorded squash lost the intermediate definition linking its old key.
+		let mut squashed = Migration::new("0002_squashed", "foundation")
+			.add_dependency("foundation", "0001_initial");
+		squashed.replaces = vec![("foundation".into(), "0002_intermediate".into())];
+		let mut pending = Migration::new("0003_future_squash", "foundation");
+		pending.replaces = vec![("foundation".into(), "0002_old".into())];
+		let mut migrations = vec![
+			Migration::new("0001_initial", "foundation"),
+			squashed,
+			pending,
+			Migration::new("0001_references", "consumer").add_dependency("foundation", "0002_old"),
+		];
+		if original_available {
+			migrations.push(Migration::new("0002_old", "foundation"));
+		}
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("foundation", "0002_squashed"),
+			migration_record("consumer", "0001_references"),
+		];
+
+		// Act
+		let error = migration_target_plan("foundation", target, &applied, &migrations)
+			.expect_err("an unresolved historic dependency must fail before rollback");
+
+		// Assert: an on-disk original or pending alternative cannot prove alias ownership.
+		assert_eq!(
+			error.to_string(),
+			"Execution error: Cannot determine cross-app rollback dependencies: applied migration consumer:0001_references references unresolved dependency foundation:0002_old while replacement definition foundation:0002_intermediate is unavailable"
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::intermediate_key("0002_intermediate")]
+	#[case::recorded_key("0002_squashed")]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_keeps_resolvable_dependencies_without_replaced_definitions(
+		#[case] dependency: &str,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: the applied dependency is explicit even though replaced metadata is absent.
+		let mut squashed = Migration::new("0002_squashed", "foundation");
+		squashed.replaces = vec![("foundation".into(), "0002_intermediate".into())];
+		let migrations = vec![
+			squashed,
+			Migration::new("0001_references", "consumer").add_dependency("foundation", dependency),
+		];
+		let applied = vec![
+			migration_record("foundation", "0002_squashed"),
+			migration_record("consumer", "0001_references"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect("directly resolvable aliases do not need their replaced definitions");
+
+		// Assert
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must reverse the applied dependency chain");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			vec!["consumer:0001_references", "foundation:0002_squashed"]
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_keeps_recorded_keys_with_unapplied_replacements() {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: the original path is recorded and the squash is only on disk.
+		let mut squashed = Migration::new("0001_squashed", "foundation");
+		squashed.replaces = vec![("foundation".into(), "0001_original".into())];
+		let migrations = vec![
+			Migration::new("0001_original", "foundation"),
+			squashed,
+			Migration::new("0001_references", "consumer")
+				.add_dependency("foundation", "0001_original"),
+		];
+		let applied = vec![
+			migration_record("consumer", "0001_references"),
+			migration_record("foundation", "0001_original"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect("pending replacement metadata must preserve the recorded path");
+
+		// Assert
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must reverse the recorded original path");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			vec!["consumer:0001_references", "foundation:0001_original"]
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::direct_zero("zero", false)]
+	#[case::direct_target("0001_initial", false)]
+	#[case::direct_retained_original("0002_tables", false)]
+	#[case::nested_zero("zero", true)]
+	#[case::nested_target("0001_initial", true)]
+	#[case::nested_retained_original("0002_tables", true)]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_resolves_pending_squash_dependencies_to_recorded_history(
+		#[case] target: &str,
+		#[case] nested: bool,
+		#[values(false, true)] reverse_definitions: bool,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: the recorded old path satisfies an applied consumer's pending squash key.
+		let originals = vec![
+			("foundation".into(), "0002_tables".into()),
+			("foundation".into(), "0003_index".into()),
+		];
+		let mut intermediate = Migration::new("0002_intermediate", "foundation");
+		intermediate.replaces = originals.clone();
+		let mut squash = Migration::new("0002_squashed", "foundation");
+		squash.replaces = if nested {
+			vec![("foundation".into(), "0002_intermediate".into())]
+		} else {
+			originals
+		};
+		let mut future = Migration::new("0004_future_squash", "foundation");
+		future.replaces = vec![("foundation".into(), "0002_tables".into())];
+		let mut migrations = vec![
+			Migration::new("0001_initial", "foundation"),
+			Migration::new("0002_tables", "foundation")
+				.add_dependency("foundation", "0001_initial"),
+			Migration::new("0003_index", "foundation").add_dependency("foundation", "0002_tables"),
+			intermediate,
+			squash,
+			future,
+			Migration::new("0001_references", "consumer")
+				.add_dependency("foundation", "0002_squashed")
+				.add_dependency("foundation", "0002_intermediate"),
+			Migration::new("0001_summary", "reporting")
+				.add_dependency("consumer", "0001_references"),
+			Migration::new("0002_pending", "consumer")
+				.add_dependency("foundation", "0002_squashed"),
+			Migration::new("0002_tables", "unrelated"),
+		];
+		if reverse_definitions {
+			migrations.reverse();
+		}
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("reporting", "0001_summary"),
+			migration_record("foundation", "0002_tables"),
+			migration_record("consumer", "0001_references"),
+			migration_record("foundation", "0003_index"),
+			migration_record("unrelated", "0002_tables"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", target, &applied, &migrations)
+			.expect("pending squash dependencies must resolve to recorded replacement paths");
+
+		// Assert: dependencies are deduplicated, and pending squashes never become nodes.
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("the recorded old path must select rollback");
+		};
+		let mut expected = vec![
+			"reporting:0001_summary",
+			"consumer:0001_references",
+			"foundation:0003_index",
+		];
+		if target != "0002_tables" {
+			expected.push("foundation:0002_tables");
+		}
+		if target == "zero" {
+			expected.push("foundation:0001_initial");
+		}
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			expected
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_resolves_pending_squash_to_recorded_intermediate() {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: the old path is itself a recorded squash with removed originals.
+		let mut intermediate = Migration::new("0001_intermediate", "foundation");
+		intermediate.replaces = vec![("foundation".into(), "0001_old".into())];
+		let mut pending = Migration::new("0001_squashed", "foundation");
+		pending.replaces = vec![("foundation".into(), "0001_intermediate".into())];
+		let migrations = vec![
+			intermediate,
+			pending,
+			Migration::new("0001_references", "consumer")
+				.add_dependency("foundation", "0001_squashed"),
+		];
+		let applied = vec![
+			migration_record("foundation", "0001_intermediate"),
+			migration_record("consumer", "0001_references"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect("a pending squash may resolve directly to a recorded intermediate");
+
+		// Assert
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must reverse the recorded squash path");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			vec!["consumer:0001_references", "foundation:0001_intermediate"]
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::entire_path_unknown(false)]
+	#[case::partially_known_path(true)]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_rejects_missing_pending_squash_ancestry(#[case] known_branch: bool) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: the referenced pending squash cannot connect through its missing intermediate.
+		let mut pending = Migration::new("0001_squashed", "foundation");
+		pending.replaces = vec![("foundation".into(), "0001_intermediate".into())];
+		if known_branch {
+			pending
+				.replaces
+				.push(("foundation".into(), "0001_old".into()));
+		}
+		let migrations = vec![
+			Migration::new("0001_old", "foundation"),
+			pending,
+			Migration::new("0001_references", "consumer")
+				.add_dependency("foundation", "0001_squashed"),
+		];
+		let applied = vec![
+			migration_record("foundation", "0001_old"),
+			migration_record("consumer", "0001_references"),
+		];
+
+		// Act
+		let error = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect_err("incomplete referenced squash ancestry must fail before rollback");
+
+		// Assert: resolving another branch cannot make the missing branch safe to ignore.
+		assert_eq!(
+			error.to_string(),
+			"Execution error: Cannot determine cross-app rollback dependencies: applied migration consumer:0001_references references unresolved dependency foundation:0001_squashed while replacement definition foundation:0001_intermediate is unavailable"
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::missing_dependent("consumer", "0001_references")]
+	#[case::missing_root("foundation", "0001_initial")]
+	#[case::unknown_app("unrelated", "0001_initial")]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_rejects_incomplete_cross_app_metadata(
+		#[case] missing_app: &str,
+		#[case] missing_name: &str,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: an applied record cannot be resolved in the loaded definitions.
+		let mut migrations = vec![
+			Migration::new("0001_initial", "foundation"),
+			Migration::new("0001_references", "consumer")
+				.add_dependency("foundation", "0001_initial"),
+			Migration::new("0001_initial", "unrelated"),
+		];
+		migrations.retain(|migration| {
+			migration.app_label != missing_app || migration.name != missing_name
+		});
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("consumer", "0001_references"),
+			migration_record("unrelated", "0001_initial"),
+		];
+
+		// Act
+		let error = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect_err("missing applied metadata must not silently truncate the closure");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			format!(
+				"Execution error: Cannot determine cross-app rollback dependencies: applied migration {missing_app}:{missing_name} has no available definition"
+			)
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::zero_missing_first("zero", "0001_first")]
+	#[case::zero_missing_middle("zero", "0002_second")]
+	#[case::zero_missing_last("zero", "0003_third")]
+	#[case::target_missing_first("0001_first", "0001_first")]
+	#[case::target_missing_middle("0001_first", "0002_second")]
+	#[case::target_missing_last("0001_first", "0003_third")]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_preserves_single_app_missing_file_history_repair(
+		#[case] target: &str,
+		#[case] missing: &str,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: native app history supplies the suffix even with incomplete definitions.
+		let mut migrations = vec![
+			Migration::new("0001_first", "myapp"),
+			Migration::new("0002_second", "myapp").add_dependency("myapp", "0001_first"),
+			Migration::new("0003_third", "myapp").add_dependency("myapp", "0002_second"),
+		];
+		migrations.retain(|migration| migration.name != missing);
+		let applied = vec![
+			migration_record("myapp", "0001_first"),
+			migration_record("myapp", "0002_second"),
+			migration_record("myapp", "0003_third"),
+		];
+
+		// Act
+		let plan = migration_target_plan("myapp", target, &applied, &migrations)
+			.expect("single-app fake history repair must retain its existing selection");
+
+		// Assert: fake can update these records; real execution still preflights files.
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("the recorded suffix must select rollback");
+		};
+		let mut expected = vec!["myapp:0003_third", "myapp:0002_second"];
+		if target == "zero" {
+			expected.push("myapp:0001_first");
+		}
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| format!("{}:{}", record.app, record.name))
+				.collect::<Vec<_>>(),
+			expected
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_preserves_recorder_order_with_nonlexical_missing_keys() {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: recorder order, not migration names, defines the native rollback suffix.
+		let applied = vec![
+			migration_record("myapp", "0001_first"),
+			migration_record("myapp", "0003_second"),
+			migration_record("myapp", "0002_third"),
+		];
+		let migrations = vec![
+			Migration::new("0001_first", "myapp"),
+			Migration::new("0003_second", "myapp").add_dependency("myapp", "0001_first"),
+		];
+
+		// Act
+		let plan = migration_target_plan("myapp", "zero", &applied, &migrations)
+			.expect("missing files must preserve the recorded application order");
+
+		// Assert
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must select the complete recorder history");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.rev()
+				.map(|record| record.name.as_str())
+				.collect::<Vec<_>>(),
+			vec!["0002_third", "0003_second", "0001_first"]
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_does_not_traverse_unapplied_dependents() {
+		// Arrange: only the root and a descendant beyond an unapplied dependency are recorded.
+		let migrations = vec![
+			reinhardt_db::migrations::Migration::new("0001_initial", "foundation"),
+			reinhardt_db::migrations::Migration::new("0001_pending", "consumer")
+				.add_dependency("foundation", "0001_initial"),
+			reinhardt_db::migrations::Migration::new("0001_summary", "reporting")
+				.add_dependency("consumer", "0001_pending"),
+		];
+		let applied = vec![
+			migration_record("foundation", "0001_initial"),
+			migration_record("reporting", "0001_summary"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect("unapplied dependents must not expand the rollback plan");
+
+		// Assert
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must roll back the applied root");
+		};
+		assert_eq!(records.len(), 1);
+		assert_eq!(
+			(records[0].app.as_str(), records[0].name.as_str()),
+			("foundation", "0001_initial")
+		);
+	}
+
+	#[rstest::rstest]
+	#[case::available_pending_definition(true)]
+	#[case::unavailable_pending_definition(false)]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_ignores_unrelated_unavailable_replacement_ancestry(
+		#[case] pending_available: bool,
+	) {
+		use reinhardt_db::migrations::Migration;
+
+		// Arrange: a different app's missing squash ancestry cannot own this pending key.
+		let mut archive = Migration::new("0001_squashed", "archive");
+		archive.replaces = vec![("archive".into(), "0001_pending".into())];
+		let mut migrations = vec![
+			archive,
+			Migration::new("0001_initial", "foundation"),
+			Migration::new("0001_summary", "reporting").add_dependency("consumer", "0001_pending"),
+		];
+		if pending_available {
+			migrations.push(
+				Migration::new("0001_pending", "consumer")
+					.add_dependency("foundation", "0001_initial"),
+			);
+		}
+		let applied = vec![
+			migration_record("archive", "0001_squashed"),
+			migration_record("foundation", "0001_initial"),
+			migration_record("reporting", "0001_summary"),
+		];
+
+		// Act
+		let plan = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect("unrelated missing ancestry must preserve pending dependency boundaries");
+
+		// Assert: neither the pending key nor the unrelated apps join the rollback closure.
+		let MigrationTargetPlan::Rollback { records, .. } = plan else {
+			panic!("zero must reverse the recorded foundation root");
+		};
+		assert_eq!(
+			records
+				.iter()
+				.map(|record| (record.app.as_str(), record.name.as_str()))
+				.collect::<Vec<_>>(),
+			vec![("foundation", "0001_initial")]
+		);
+	}
+
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn migration_target_plan_rejects_cyclic_rollback_dependencies() {
+		// Arrange
+		let migrations = vec![
+			reinhardt_db::migrations::Migration::new("0001_initial", "foundation")
+				.add_dependency("foundation", "0001_initial"),
+		];
+		let applied = vec![migration_record("foundation", "0001_initial")];
+
+		// Act
+		let error = migration_target_plan("foundation", "zero", &applied, &migrations)
+			.expect_err("cyclic rollback dependencies must fail before execution");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Execution error: Failed to sort migration plan by dependencies: Circular dependency detected: Circular dependency detected: foundation.0001_initial"
+		);
+	}
+
 	#[test]
 	#[cfg(feature = "migrations")]
 	fn migration_target_plan_forward_target_includes_only_same_app_dependencies() {
@@ -8614,6 +9417,79 @@ name = "db.sqlite3"
 		);
 	}
 
+	#[rstest::rstest]
+	#[cfg(feature = "migrations")]
+	fn sequence_provider_and_owner_dependencies_use_base_stages() {
+		use reinhardt_db::migrations::{
+			FieldState, FieldType, MigrationAutodetector, ModelState, ProjectState, QualifiedName,
+			SequenceDefault, SequenceDefinition, SequenceKey, SequenceOwner,
+		};
+		use std::collections::BTreeMap;
+		// Arrange
+		let key = SequenceKey::new("generators", "numbers");
+		let name = QualifiedName::new("event_numbers");
+		let mut target = ProjectState::new();
+		target
+			.add_sequence(
+				SequenceDefinition::new(key.clone(), name.clone())
+					.with_owned_by(Some(SequenceOwner::new(QualifiedName::new("events"), "n"))),
+			)
+			.unwrap();
+		let mut model = ModelState::new("runs", "Event");
+		model.table_name = "events".into();
+		model.add_field(
+			FieldState::new("n", FieldType::BigInteger, false)
+				.with_sequence_default(SequenceDefault::new(key, name)),
+		);
+		target.add_model(model);
+		let generated = MigrationAutodetector::new(ProjectState::new(), target.clone())
+			.try_generate_migrations()
+			.unwrap();
+		let base_names = BTreeMap::from([
+			("generators".into(), "0007_create_sequence".into()),
+			("runs".into(), "0003_create_event".into()),
+		]);
+		let previous = BTreeMap::from([
+			("generators".into(), "0006_previous".into()),
+			("runs".into(), "0002_previous".into()),
+		]);
+		// Act
+		let expanded = expand_apps_with_fk_providers(&["runs".into()], &generated, &target);
+		let table = generated
+			.iter()
+			.find(|migration| migration.app_label == "runs")
+			.unwrap();
+		let ownership = generated
+			.iter()
+			.find(|migration| migration.name == "autodetected_ownership")
+			.unwrap();
+		let table_dependencies = resolve_makemigrations_dependencies(
+			"runs",
+			"0003",
+			&table.operations,
+			&target,
+			&base_names,
+			&previous,
+		);
+		let ownership_dependencies = resolve_makemigrations_dependencies(
+			"generators",
+			"0008",
+			&ownership.operations,
+			&target,
+			&base_names,
+			&previous,
+		);
+		// Assert
+		assert!(expanded.contains("generators"));
+		assert!(table_dependencies.contains(&("generators".into(), "0007_create_sequence".into())));
+		assert!(ownership_dependencies.contains(&("runs".into(), "0003_create_event".into())));
+		assert!(
+			!table_dependencies
+				.iter()
+				.any(|(_, name)| name.contains("ownership"))
+		);
+	}
+
 	#[test]
 	#[cfg(feature = "migrations")]
 	fn resolve_makemigrations_dependencies_keeps_same_app_previous_migration() {
@@ -8658,6 +9534,27 @@ name = "db.sqlite3"
 				("organizations".to_string(), "0001_initial".to_string()),
 				("auth".to_string(), "0003_user_email".to_string()),
 			]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[rstest::rstest]
+	fn provider_expansion_reads_every_generated_stage() {
+		use reinhardt_db::migrations::{Migration, ProjectState};
+		// Arrange
+		let generated = vec![
+			Migration::new("autodetected_sequences", "events"),
+			Migration::new("autodetected", "events")
+				.add_dependency("providers", "autodetected_sequences"),
+			Migration::new("autodetected_sequences", "providers"),
+		];
+		// Act
+		let expanded =
+			expand_apps_with_fk_providers(&["events".into()], &generated, &ProjectState::new());
+		// Assert
+		assert_eq!(
+			expanded,
+			std::collections::BTreeSet::from(["events".into(), "providers".into()])
 		);
 	}
 

@@ -17,6 +17,14 @@ The standalone `inline_params` helper uses PostgreSQL literals for numbered
 placeholders (`$1`, `$2`, ...) and generic literals for positional placeholders
 (`?`), preserving `X'...'` byte literals for positional SQL.
 
+`Query::sqlite_foreign_keys(enabled).build_sqlite_checked()` builds a typed
+connection-local foreign-key setting. The checked PostgreSQL, MySQL, and
+CockroachDB methods reject it before execution. Execute the SQLite statement on
+the caller's connection outside a transaction or savepoint, and restore the
+prior setting after a temporary change. SQL generation has native/WASM parity.
+See [the setting-site inventory](../../docs/migration/sqlite-foreign-key-settings.md)
+for the schema editor's connection and cleanup guarantees.
+
 ## Features
 
 ### DML (Data Manipulation Language)
@@ -64,6 +72,19 @@ built-in type grammar while retaining bound values and escaped source identifier
 - **SQLite** - DML and basic DDL operations
 - **CockroachDB** - Full PostgreSQL compatibility with distributed database features
 
+### SQLite Connection Inspection
+
+`Query::sqlite_database_list().build_sqlite_checked()` generates
+`PRAGMA database_list` with no parameters. The result retains SQLite's `seq`,
+`name`, and `file` columns, including empty filenames. Execution and decoding
+remain caller-owned, and the list describes the executing connection rather
+than the entire pool. An empty filename does not prove that a pool shares its
+main database.
+
+`SqliteDatabaseListStatement` exposes only checked rendering; its PostgreSQL,
+MySQL, and CockroachDB methods return `QueryBuildError::UnsupportedBackendFeature`.
+SQL generation has P2 native/WASM parity and needs no optional feature.
+
 ## Installation
 
 Add to your `Cargo.toml`:
@@ -71,7 +92,7 @@ Add to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-query = { version = "0.4.0-alpha.19" }
+reinhardt-query = { version = "0.4.0-alpha.20" }
 ```
 
 ## Quick Start

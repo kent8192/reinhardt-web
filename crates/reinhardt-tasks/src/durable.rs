@@ -15,7 +15,8 @@ use reinhardt_query::{InsertStatement, SelectStatement, UpdateStatement, Value a
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sqlx::{
-	Row, SqlitePool,
+	Row, Sqlite, SqliteConnection, SqlitePool,
+	pool::PoolConnection,
 	sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
 };
 use std::{fmt, str::FromStr, sync::Arc, time::Duration};
@@ -1159,6 +1160,86 @@ pub struct SqliteDurableJobStore {
 	pool: SqlitePool,
 }
 
+struct SqliteSchemaProbe {
+	connection: Option<PoolConnection<Sqlite>>,
+	drop_statement: String,
+	runtime: tokio::runtime::Handle,
+}
+
+impl SqliteSchemaProbe {
+	fn new(connection: PoolConnection<Sqlite>, drop_statement: String) -> Self {
+		Self {
+			connection: Some(connection),
+			drop_statement,
+			runtime: tokio::runtime::Handle::current(),
+		}
+	}
+
+	fn connection(&mut self) -> &mut SqliteConnection {
+		self.connection
+			.as_deref_mut()
+			.expect("schema probe connection is held until cleanup completes")
+	}
+
+	async fn cleanup(&mut self) -> Result<(), sqlx::Error> {
+		if let Some(connection) = self.connection.as_mut() {
+			sqlx::query(&self.drop_statement)
+				.execute(&mut **connection)
+				.await?;
+			self.connection = None;
+		}
+		Ok(())
+	}
+}
+
+impl Drop for SqliteSchemaProbe {
+	fn drop(&mut self) {
+		if let Some(mut connection) = self.connection.take() {
+			let drop_statement = std::mem::take(&mut self.drop_statement);
+			// Quarantine the connection if starting cleanup fails. Entering the
+			// original handle lets SQLx dispose of it even when no runtime is current.
+			connection.close_on_drop();
+			let _entered = self.runtime.enter();
+			let original_runtime = self.runtime.clone();
+			// An ordinary Tokio task can be discarded during runtime shutdown.
+			// This thread owns cleanup and a separate runtime until DROP and the
+			// explicit pool return finish; dropping its handle detaches that work.
+			let cleanup = std::thread::Builder::new()
+				.name("reinhardt-sqlite-probe-cleanup".to_string())
+				.spawn(move || {
+					let _entered = original_runtime.enter();
+					let mut connection = connection;
+					let runtime = match tokio::runtime::Builder::new_current_thread()
+						.enable_all()
+						.build()
+					{
+						Ok(runtime) => runtime,
+						Err(error) => {
+							tracing::warn!(%error, "failed to start SQLite schema probe cleanup runtime");
+							return;
+						}
+					};
+					runtime.block_on(async move {
+						if let Err(error) =
+							sqlx::query(&drop_statement).execute(&mut *connection).await
+						{
+							tracing::warn!(%error, "failed to remove SQLite pool schema probe");
+							if let Err(error) = connection.close().await {
+								tracing::warn!(%error, "failed to close SQLite schema probe connection");
+							}
+						} else {
+							// Eagerly return the clean connection before this runtime shuts down.
+							connection.return_to_pool().await;
+						}
+					});
+				});
+			if let Err(error) = cleanup {
+				tracing::warn!(%error, "failed to start SQLite schema probe cleanup thread");
+			}
+		}
+	}
+}
+
 impl SqliteDurableJobStore {
 	/// Opens a SQLite durable job store and creates required tables.
 	pub async fn new(database_url: &str) -> Result<Self, DurableQueueError> {
@@ -1173,6 +1254,11 @@ impl SqliteDurableJobStore {
 	}
 
 	/// Creates a store from an existing SQLite pool and creates required tables.
+	///
+	/// Multi-connection in-memory pools must share their schema. The sharing check
+	/// removes its probe table on success and error. Cancellation cleanup runs
+	/// independently of the caller's runtime while retaining the probe connection
+	/// until the table is removed.
 	pub async fn from_pool(pool: SqlitePool) -> Result<Self, DurableQueueError> {
 		let store = Self { pool };
 		store.reject_private_in_memory_pool().await?;
@@ -1186,13 +1272,10 @@ impl SqliteDurableJobStore {
 	}
 
 	async fn reject_private_in_memory_pool(&self) -> Result<(), DurableQueueError> {
-		// Workaround: https://github.com/kent8192/reinhardt-web/issues/6508
-		// SQLite attachment filenames are connection-local; sqlite_master cannot supply them.
-		// Replace with a typed SQLite database-list operation when its result-column contract
-		// and private/shared in-memory pool regressions are covered.
-		let rows = sqlx::query("PRAGMA database_list")
-			.fetch_all(&self.pool)
-			.await?;
+		let (sql, _) = Query::sqlite_database_list()
+			.build_sqlite_checked()
+			.map_err(|error| DurableQueueError::Store(error.to_string()))?;
+		let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
 		let is_in_memory = rows.iter().any(|row| {
 			let name: String = row.get("name");
 			let file: String = row.get("file");
@@ -1225,25 +1308,41 @@ impl SqliteDurableJobStore {
 			.table(Alias::new(&probe_table))
 			.if_exists()
 			.to_string(SqliteQueryBuilder);
-		let mut first = self.pool.acquire().await?;
-		sqlx::query(&create_probe).execute(&mut *first).await?;
-
-		let mut second = self.pool.acquire().await?;
-		let (sql, arguments) = prepare_durable(
-			Query::select()
-				.expr(Func::count(Expr::asterisk().into_simple_expr()))
-				.from("sqlite_master")
-				.and_where(Expr::col("type").eq("table"))
-				.and_where(Expr::col("name").eq(probe_table.as_str()))
-				.take(),
-		)?;
-		let visible_from_second: i64 = sqlx::query_scalar_with::<_, i64, _>(&sql, arguments)
-			.fetch_one(&mut *second)
-			.await?;
-		drop(second);
-
-		sqlx::query(&drop_probe).execute(&mut *first).await?;
-		Ok(visible_from_second > 0)
+		let first = self.pool.acquire().await?;
+		// Arm cleanup before CREATE is polled, including cancellation during execution.
+		let mut probe = SqliteSchemaProbe::new(first, drop_probe);
+		let result = async {
+			sqlx::query(&create_probe)
+				.execute(probe.connection())
+				.await?;
+			let mut second = self.pool.acquire().await?;
+			let (sql, arguments) = prepare_durable(
+				Query::select()
+					.expr(Func::count(Expr::asterisk().into_simple_expr()))
+					.from("sqlite_master")
+					.and_where(Expr::col("type").eq("table"))
+					.and_where(Expr::col("name").eq(probe_table.as_str()))
+					.take(),
+			)?;
+			let visible_from_second: i64 = sqlx::query_scalar_with::<_, i64, _>(&sql, arguments)
+				.fetch_one(&mut *second)
+				.await?;
+			Ok::<_, DurableQueueError>(visible_from_second > 0)
+		}
+		.await;
+		let cleanup = probe.cleanup().await;
+		match result {
+			Ok(shared) => {
+				cleanup?;
+				Ok(shared)
+			}
+			Err(error) => {
+				if let Err(cleanup_error) = cleanup {
+					tracing::warn!(%cleanup_error, "failed to remove SQLite pool schema probe");
+				}
+				Err(error)
+			}
+		}
 	}
 
 	async fn create_tables(&self) -> Result<(), DurableQueueError> {
@@ -1899,8 +1998,67 @@ fn duration_to_chrono(duration: Duration) -> chrono::Duration {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use rstest::rstest;
+	use reinhardt_query::prelude::{
+		Expr, ExprTrait, Iden, IntoIden, Query, QueryStatementBuilder, SqliteQueryBuilder,
+	};
+	use rstest::{fixture, rstest};
 	use serde_json::json;
+
+	#[derive(Debug, Iden)]
+	enum SqliteMaster {
+		#[iden = "sqlite_master"]
+		Table,
+		Type,
+		Name,
+	}
+
+	#[fixture]
+	async fn probe_pool() -> SqlitePool {
+		SqlitePoolOptions::new()
+			.min_connections(2)
+			.max_connections(2)
+			.acquire_timeout(Duration::from_secs(1))
+			.connect("sqlite::memory:")
+			.await
+			.unwrap()
+	}
+
+	async fn probe_table_names(connection: &mut SqliteConnection) -> Vec<String> {
+		let sql = Query::select()
+			.column(SqliteMaster::Name)
+			.from(SqliteMaster::Table.into_iden())
+			.and_where(Expr::col(SqliteMaster::Type).eq("table"))
+			.and_where(Expr::col(SqliteMaster::Name).starts_with("__reinhardt_durable_pool_probe_"))
+			.to_string(SqliteQueryBuilder);
+		sqlx::query_scalar(&sql)
+			.fetch_all(connection)
+			.await
+			.unwrap()
+	}
+
+	async fn wait_for_probe_table(connection: &mut SqliteConnection) {
+		tokio::time::timeout(Duration::from_secs(2), async {
+			loop {
+				let names = probe_table_names(connection).await;
+				if !names.is_empty() {
+					assert_eq!(names.len(), 1);
+					return;
+				}
+				tokio::task::yield_now().await;
+			}
+		})
+		.await
+		.expect("schema probe did not create its table");
+	}
+
+	async fn assert_no_probe_tables(pool: &SqlitePool) {
+		// Acquire both connections so cancellation cleanup must release its owner
+		// before either schema can be inspected, including private-memory pools.
+		let mut first = pool.acquire().await.unwrap();
+		let mut second = pool.acquire().await.unwrap();
+		assert_eq!(probe_table_names(&mut first).await, Vec::<String>::new());
+		assert_eq!(probe_table_names(&mut second).await, Vec::<String>::new());
+	}
 
 	async fn queue() -> DurableQueue<SqliteDurableJobStore> {
 		let store = SqliteDurableJobStore::new("sqlite::memory:").await.unwrap();
@@ -2246,6 +2404,7 @@ mod tests {
 		assert_eq!(reclaimed.record().attempt_count, 2);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn from_pool_rejects_private_in_memory_sqlite_pool() {
 		let pool = SqlitePoolOptions::new()
@@ -2254,26 +2413,33 @@ mod tests {
 			.await
 			.unwrap();
 
-		let error = SqliteDurableJobStore::from_pool(pool).await.unwrap_err();
+		let error = SqliteDurableJobStore::from_pool(pool.clone())
+			.await
+			.unwrap_err();
 
-		assert!(
-			matches!(error, DurableQueueError::Store(message) if message.contains("private in-memory SQLite pools"))
-		);
+		match error {
+			DurableQueueError::Store(message) => assert_eq!(
+				message,
+				"SqliteDurableJobStore::from_pool cannot safely use private in-memory SQLite pools; use SqliteDurableJobStore::new(\"sqlite::memory:\") or a shared/file-backed database"
+			),
+			other => panic!("expected private-memory rejection, got {other:?}"),
+		}
+		assert_no_probe_tables(&pool).await;
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn from_pool_allows_shared_in_memory_sqlite_pool() {
-		let pool = SqlitePoolOptions::new()
-			.max_connections(2)
-			.connect("sqlite::memory:")
+	async fn from_pool_allows_shared_in_memory_sqlite_pool(#[future] probe_pool: SqlitePool) {
+		let pool = probe_pool.await;
+
+		let store = SqliteDurableJobStore::from_pool(pool.clone())
 			.await
 			.unwrap();
-
-		let store = SqliteDurableJobStore::from_pool(pool).await.unwrap();
 		let queue = DurableQueue::new(store);
 		let enqueued = queue.enqueue(JobSpec::new("send_email")).await.unwrap();
 
 		assert_eq!(enqueued.state, JobState::Queued);
+		assert_no_probe_tables(&pool).await;
 	}
 
 	#[tokio::test]
@@ -2289,6 +2455,143 @@ mod tests {
 		let enqueued = queue.enqueue(JobSpec::new("send_email")).await.unwrap();
 
 		assert_eq!(enqueued.state, JobState::Queued);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn from_pool_schema_probe_cleans_up_after_acquire_timeout(
+		#[future] probe_pool: SqlitePool,
+	) {
+		// Arrange
+		let pool = probe_pool.await;
+		let mut held = pool.acquire().await.unwrap();
+		let mut construction = Box::pin(SqliteDurableJobStore::from_pool(pool.clone()));
+
+		// Act
+		tokio::select! {
+			result = construction.as_mut() => panic!("probe ended before table creation: {result:?}"),
+			() = wait_for_probe_table(&mut held) => {}
+		}
+		let error = construction.await.unwrap_err();
+		drop(held);
+
+		// Assert
+		assert!(matches!(
+			error,
+			DurableQueueError::Database(sqlx::Error::PoolTimedOut)
+		));
+		assert_no_probe_tables(&pool).await;
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn from_pool_schema_probe_cleans_up_after_cancellation(#[future] probe_pool: SqlitePool) {
+		// Arrange
+		let pool = probe_pool.await;
+		let mut held = pool.acquire().await.unwrap();
+		let mut construction = Box::pin(SqliteDurableJobStore::from_pool(pool.clone()));
+
+		// Act
+		tokio::select! {
+			result = construction.as_mut() => panic!("probe ended before table creation: {result:?}"),
+			() = wait_for_probe_table(&mut held) => {}
+		}
+		drop(construction);
+		drop(held);
+
+		// Assert
+		assert_no_probe_tables(&pool).await;
+	}
+
+	#[rstest]
+	#[case::cancel_before_shutdown(false)]
+	#[case::cancel_after_shutdown(true)]
+	fn from_pool_schema_probe_cleans_up_after_runtime_shutdown(#[case] shutdown_first: bool) {
+		// Arrange
+		let runtime = tokio::runtime::Builder::new_current_thread()
+			.enable_all()
+			.build()
+			.unwrap();
+		let (pool, held, construction, queue, enqueued) = runtime.block_on(async {
+			let pool = probe_pool().await;
+			let store = SqliteDurableJobStore::from_pool(pool.clone())
+				.await
+				.unwrap();
+			let queue = DurableQueue::new(store);
+			let enqueued = queue.enqueue(JobSpec::new("retained_job")).await.unwrap();
+			let enqueued = queue.status(enqueued.id).await.unwrap();
+			let mut held = pool.acquire().await.unwrap();
+			let mut construction = Box::pin(SqliteDurableJobStore::from_pool(pool.clone()));
+			tokio::select! {
+				result = construction.as_mut() => panic!("probe ended before table creation: {result:?}"),
+				() = wait_for_probe_table(&mut held) => {}
+			}
+			(pool, held, construction, queue, enqueued)
+		});
+
+		// Act: a current-thread runtime cannot poll cleanup between these drops.
+		if shutdown_first {
+			drop(runtime);
+			drop(construction);
+		} else {
+			drop(construction);
+			drop(runtime);
+		}
+
+		// Assert: reuse the retained pool and its data on an independent runtime.
+		let runtime = tokio::runtime::Builder::new_current_thread()
+			.enable_all()
+			.build()
+			.unwrap();
+		runtime.block_on(async {
+			drop(held);
+			assert_no_probe_tables(&pool).await;
+			assert_eq!(queue.status(enqueued.id).await.unwrap(), enqueued);
+			pool.close().await;
+		});
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn from_pool_schema_probe_cleans_up_after_schema_read_failure(
+		#[future] probe_pool: SqlitePool,
+	) {
+		// Arrange
+		let pool = probe_pool.await;
+		let mut held = pool.acquire().await.unwrap();
+		let mut construction = Box::pin(SqliteDurableJobStore::from_pool(pool.clone()));
+
+		// Act
+		tokio::select! {
+			result = construction.as_mut() => panic!("probe ended before table creation: {result:?}"),
+			() = wait_for_probe_table(&mut held) => {}
+		}
+		// Interrupt only the schema-read connection after CREATE has completed.
+		held.lock_handle()
+			.await
+			.unwrap()
+			.set_progress_handler(1, || false);
+		drop(held);
+		let error = construction.await.unwrap_err();
+
+		// Assert
+		match error {
+			DurableQueueError::Database(sqlx::Error::Database(error)) => {
+				assert_eq!(error.code().as_deref(), Some("9"));
+				assert_eq!(error.message(), "interrupted");
+			}
+			other => panic!("expected the original schema-read interruption, got {other:?}"),
+		}
+		let mut first = pool.acquire().await.unwrap();
+		let mut second = pool.acquire().await.unwrap();
+		first.lock_handle().await.unwrap().remove_progress_handler();
+		second
+			.lock_handle()
+			.await
+			.unwrap()
+			.remove_progress_handler();
+		assert_eq!(probe_table_names(&mut first).await, Vec::<String>::new());
+		assert_eq!(probe_table_names(&mut second).await, Vec::<String>::new());
 	}
 
 	#[tokio::test]

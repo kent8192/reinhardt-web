@@ -8,6 +8,13 @@ Background task queue for executing long-running or scheduled tasks asynchronous
 
 Supports task scheduling, retries, task priorities, and multiple worker processes.
 
+With `durable` enabled, `SqliteDurableJobStore::from_pool` uses checked,
+connection-local database-list inspection to identify an empty filename on the
+main database. It accepts single-connection private in-memory pools and shared
+in-memory pools; multiple-connection private in-memory pools are rejected after
+schema-sharing verification. In-memory attachments do not change this decision
+for a file-backed main database.
+
 ## Installation
 
 Add the facade task and streaming features and the direct task-crate dependency
@@ -17,8 +24,8 @@ its `streaming` feature exposes the Kafka configuration type:
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.19", features = ["tasks", "streaming"] }
-reinhardt-tasks = { version = "0.4.0-alpha.19", features = ["kafka-backend"] }
+reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.20", features = ["tasks", "streaming"] }
+reinhardt-tasks = { version = "0.4.0-alpha.20", features = ["kafka-backend"] }
 ```
 
 Then import task features:

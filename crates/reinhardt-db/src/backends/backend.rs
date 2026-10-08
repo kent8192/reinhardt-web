@@ -64,8 +64,8 @@ pub trait DatabaseBackend: Send + Sync {
 
 	/// Execute a generated statement from the exact owned renderer pair (native-only, P0).
 	///
-	/// SQLx backends consume native companion arguments. The compatibility default
-	/// retains representable QueryValue data and rejects unsupported/overflowing
+	/// SQLx backends consume checked native generated-value codecs. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported
 	/// values before calling the raw API; custom backends can override this method.
 	async fn execute_generated(
 		&self,
@@ -78,8 +78,8 @@ pub trait DatabaseBackend: Send + Sync {
 
 	/// Fetch one generated row from the exact owned renderer pair (native-only, P0).
 	///
-	/// SQLx backends consume native companion arguments. The compatibility default
-	/// retains representable QueryValue data and rejects unsupported/overflowing
+	/// SQLx backends consume checked native generated-value codecs. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported
 	/// values before calling the raw API; custom backends can override this method.
 	async fn fetch_one_generated(
 		&self,
@@ -92,8 +92,8 @@ pub trait DatabaseBackend: Send + Sync {
 
 	/// Fetch all generated rows from the exact owned renderer pair (native-only, P0).
 	///
-	/// SQLx backends consume native companion arguments. The compatibility default
-	/// retains representable QueryValue data and rejects unsupported/overflowing
+	/// SQLx backends consume checked native generated-value codecs. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported
 	/// values before calling the raw API; custom backends can override this method.
 	async fn fetch_all_generated(
 		&self,
@@ -106,8 +106,8 @@ pub trait DatabaseBackend: Send + Sync {
 
 	/// Fetch an optional generated row from the exact owned renderer pair (native-only, P0).
 	///
-	/// SQLx backends consume native companion arguments. The compatibility default
-	/// retains representable QueryValue data and rejects unsupported/overflowing
+	/// SQLx backends consume checked native generated-value codecs. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported
 	/// values before calling the raw API; custom backends can override this method.
 	async fn fetch_optional_generated(
 		&self,
@@ -232,6 +232,48 @@ pub trait DatabaseBackend: Send + Sync {
 		} else {
 			result
 		}
+	}
+
+	/// Internal generated-SQL dispatch; raw executor implementations remain valid.
+	#[doc(hidden)]
+	async fn __execute_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<QueryResult> {
+		let params = super::generated::legacy_values(
+			values,
+			super::generated::backend_name(self.database_type()),
+		)?;
+		self.execute(sql, params).await
+	}
+
+	/// Internal generated-SQL dispatch with checked legacy-backend adaptation.
+	#[doc(hidden)]
+	async fn __fetch_one_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Row> {
+		let params = super::generated::legacy_values(
+			values,
+			super::generated::backend_name(self.database_type()),
+		)?;
+		self.fetch_one(sql, params).await
+	}
+
+	/// Internal generated-SQL dispatch with checked legacy-backend adaptation.
+	#[doc(hidden)]
+	async fn __fetch_all_generated(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+	) -> Result<Vec<Row>> {
+		let params = super::generated::legacy_values(
+			values,
+			super::generated::backend_name(self.database_type()),
+		)?;
+		self.fetch_all(sql, params).await
 	}
 
 	/// Begin a database transaction and return a dedicated executor

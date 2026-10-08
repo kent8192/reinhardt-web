@@ -1068,7 +1068,7 @@ async fn latest_and_earliest_use_typed_ordering_with_caller_owned_executors() {
 		executor
 			.calls
 			.iter()
-			.all(|call| call.params == vec![QueryValue::Int(1)])
+			.all(|call| call.params == vec![QueryValue::Uint(1)])
 	);
 
 	let mut transaction_executor =
@@ -1120,7 +1120,7 @@ async fn latest_and_earliest_use_typed_ordering_with_caller_owned_executors() {
 		transaction_executor
 			.calls
 			.iter()
-			.all(|call| call.params == vec![QueryValue::Int(1)])
+			.all(|call| call.params == vec![QueryValue::Uint(1)])
 	);
 }
 
@@ -1815,9 +1815,9 @@ fn queryset_write_expressions_resolve_model_fields_without_rewriting_explicit_re
 		.expect("expression updates should compile");
 	assert_eq!(
 		expression_sql,
-		"UPDATE \"articles\" SET \"article_title\" = COALESCE(\"article_title\", 'fallback') WHERE \"article_title\" = $1"
+		"UPDATE \"articles\" SET \"article_title\" = COALESCE(\"article_title\", $1) WHERE \"article_title\" = $2"
 	);
-	assert_eq!(expression_params, vec!["updated"]);
+	assert_eq!(expression_params, vec!["fallback", "updated"]);
 
 	let explicit_physical_queryset = QuerySet::<Article>::new().filter(Filter::new(
 		"article_title",

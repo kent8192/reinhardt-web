@@ -4,19 +4,76 @@
 //! - Statement execution succeeds without errors
 //! - Statistics are actually updated (PostgreSQL pg_stat_user_tables)
 //! - Different ANALYZE options work correctly (verbose, columns)
-//! - Cross-database compatibility (PostgreSQL, SQLite)
+//! - Cross-database compatibility (PostgreSQL, MySQL, SQLite)
 //!
 //! **Fixtures Used:**
 //! - postgres_container: PostgreSQL database container
+//! - mysql_container: MySQL database container
 //! - sqlite_with_migrations_from: SQLite database with migrations
 
 use reinhardt_db::backends::{AnalyzeBuilder, PostgresBackend};
 use reinhardt_db::orm::manager::reinitialize_database;
+#[cfg(feature = "mysql")]
+use reinhardt_test::fixtures::mysql_container;
 use reinhardt_test::fixtures::postgres_container;
 use rstest::*;
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
+
+// ============================================================================
+// MySQL ANALYZE Tests
+// ============================================================================
+
+#[cfg(feature = "mysql")]
+#[rstest]
+#[tokio::test]
+async fn test_analyze_mysql_requires_explicit_table(
+	#[future] mysql_container: (
+		ContainerAsync<GenericImage>,
+		Arc<sqlx::MySqlPool>,
+		u16,
+		String,
+	),
+) {
+	use reinhardt_db::backends::DatabaseConnection;
+	use reinhardt_query::prelude::{
+		Alias, ColumnDef, MySqlQueryBuilder, Query, QueryStatementBuilder,
+	};
+
+	// Arrange: the container owns all database resources and removes them on drop.
+	let (_container, _pool, _port, url) = mysql_container.await;
+	let connection = DatabaseConnection::connect_mysql(&url).await.unwrap();
+	let builder = AnalyzeBuilder::new(connection.backend());
+
+	// Act
+	let error = builder.execute().await.unwrap_err();
+
+	// Assert: missing targets return a backend capability error, not a server error.
+	assert_eq!(
+		error.database_kind(),
+		Some(reinhardt_core::exception::DatabaseErrorKind::Unsupported)
+	);
+	assert_eq!(
+		error.database_error().unwrap().message(),
+		"MySQL ANALYZE requires an explicit table; use AnalyzeBuilder::table()"
+	);
+
+	// Arrange: an explicit target is the native success control.
+	let schema = Query::create_table()
+		.table(Alias::new("analyze_target"))
+		.col(ColumnDef::new(Alias::new("id")).integer().primary_key(true))
+		.to_string(MySqlQueryBuilder);
+	connection.execute(&schema, Vec::new()).await.unwrap();
+	let builder = AnalyzeBuilder::new(connection.backend()).table("analyze_target");
+
+	// Act
+	let result = builder.execute().await.unwrap();
+
+	// Assert
+	assert_eq!(builder.build(), "ANALYZE TABLE `analyze_target`");
+	assert_eq!(result.rows_affected, 0);
+}
 
 // ============================================================================
 // PostgreSQL ANALYZE Tests

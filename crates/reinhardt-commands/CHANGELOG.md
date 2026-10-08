@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.19...reinhardt-commands@v0.4.0-alpha.20) - 2026-10-06
+
+### Added
+
+- *(commands)* backport scoped migration dispatch
+
+### Fixed
+
+- *(commands)* honor capability migration app scope
+- *(commands)* include capability contract in full preset
+- *(commands)* count global verbosity before custom dispatch
+- *(commands)* resolve conditional migration dependencies
+- *(commands)* fail checks for manual migration proposals
+- *(commands)* omit credential-bearing database URL logs
+- *(commands)* roll back applied dependents across apps
+- *(commands)* resolve replacement keys in rollback plans
+- *(commands)* reject incomplete cross-app rollback metadata
+- *(commands)* reject unresolved rollback replacement ancestry
+- *(commands)* scope missing rollback ancestry by dependency app
+- *(commands)* preserve recorder order for missing rollback files
+- *(commands)* resolve pending squash dependencies to recorded paths
+- *(sync)* reconcile migration and query regressions
+- *(commands)* validate targets before reconciling migration history
+
+### Maintenance
+
+- *(sync)* merge main into develop/0.4.0
+- *(sync)* merge updated main into develop/0.4.0
+
+### Testing
+
+- *(cli)* align capability verbosity regression with main
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.18...reinhardt-commands@v0.4.0-alpha.19) - 2026-10-03
 
 ### Documentation
@@ -153,6 +186,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Maintenance
 
 - merge main into develop/0.4.0
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.20...reinhardt-commands@v0.3.21) - 2026-10-05
+
+### Added
+
+- *(commands)* backport scoped migration dispatch
+
+### Documentation
+
+- *(commands)* qualify the runserver command link
+- *(commands)* clarify migration comparison scope
+- *(commands)* correct REST scaffold routing examples
+
+### Fixed
+
+- *(commands)* honor makemigrations migration directory
+- *(commands)* reject non-utf8 migration directory paths
+- *(commands)* scope migrations to installed apps
+- *(commands)* resolve installed app paths to migration labels
+- *(commands)* preserve installed migration scope and history
+- *(migrations)* preserve scoped model move history
+- *(commands)* honor capability migration app scope
+- *(commands)* include capability contract in full preset
+- *(commands)* count global verbosity before custom dispatch
+- *(commands)* resolve conditional migration dependencies
+- *(commands)* fail checks for manual migration proposals
+- *(commands)* omit credential-bearing database URL logs
+- *(commands)* roll back applied dependents across apps
+- *(commands)* resolve replacement keys in rollback plans
+- *(commands)* reject incomplete cross-app rollback metadata
+- *(commands)* reject unresolved rollback replacement ancestry
+- *(commands)* scope missing rollback ancestry by dependency app
+- *(commands)* preserve recorder order for missing rollback files
+- *(commands)* resolve pending squash dependencies to recorded paths
+
+### Maintenance
+
+- merge main into installed app migration fix
 
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.15...reinhardt-commands@v0.3.16) - 2026-09-08
 

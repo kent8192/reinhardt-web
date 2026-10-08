@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-db"
-version = "0.4.0-alpha.19"
+version = "0.4.0-alpha.20"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -14,7 +14,7 @@ documentation = "https://docs.rs/reinhardt-db"
 
 [dependencies]
 # Internal crates (optional)
-reinhardt-storages = { path = "../reinhardt-storages", version = "0.4.0-alpha.19", default-features = false, optional = true }
+reinhardt-storages = { path = "../reinhardt-storages", version = "0.4.0-alpha.20", default-features = false, optional = true }
 
 # Database drivers and query builders
 sqlx = { version = "0.8", features = [
@@ -174,6 +174,7 @@ orm = ["backends", "db-deps", "hybrid"]
 file-storage = ["orm", "dep:reinhardt-storages"]
 migrations = [
   "db-deps",
+  "dep:cap-fs-ext",
   "dep:cap-std",
   "dep:libc",
   "dep:refinery",
@@ -270,6 +271,9 @@ libc = { workspace = true, optional = true }
 [target.'cfg(any(unix, windows, target_os = "redox"))'.dependencies]
 same-file = { workspace = true, optional = true }
 
+[target.'cfg(windows)'.dependencies]
+cap-fs-ext = { version = "3.4.6", optional = true }
+
 [[test]]
 name = "contenttypes_registry"
 path = "tests/contenttypes_registry.rs"
@@ -289,6 +293,11 @@ required-features = ["pgvector"]
 name = "database_connection_di"
 path = "tests/database_connection_di.rs"
 required-features = ["orm", "di", "sqlite"]
+
+[[test]]
+name = "contenttypes_connection_affinity"
+path = "tests/contenttypes_connection_affinity.rs"
+required-features = ["database", "contenttypes", "sqlite"]
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dev-dependencies]
 tokio-test = "0.4"

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.19...reinhardt-macros@v0.4.0-alpha.20) - 2026-10-06
+
+### Added
+
+- *(macros)* preserve PostgreSQL identity options in model metadata
+
+### Fixed
+
+- *(macros)* infer PostgreSQL arrays through nullable elements
+- *(macros)* infer grouped nullable array element types
+
 ## [0.4.0-alpha.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.18...reinhardt-macros@v0.4.0-alpha.19) - 2026-10-03
 
 ### Fixed
@@ -381,6 +392,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - *(macros)* resolve bare string foreign keys within their source app
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.20...reinhardt-macros@v0.3.21) - 2026-10-05
+
+### Added
+
+- *(conf)* backport deferred management settings bootstrap
+
+### Fixed
+
+- *(http)* serve streaming bodies through native endpoints
+- *(macros)* honor db_column in composite primary keys
+- *(commands)* resolve installed app paths to migration labels
 
 ## [0.3.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.16...reinhardt-macros@v0.3.17) - 2026-09-13
 

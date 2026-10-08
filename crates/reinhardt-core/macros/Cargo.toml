@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-macros"
-version = "0.4.0-alpha.19"
+version = "0.4.0-alpha.20"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -19,10 +19,11 @@ proc-macro-crate = "3.1"
 nom = { workspace = true }
 ctor = { workspace = true }
 inventory = { workspace = true }
+serde_json = { workspace = true, optional = true }
 
 [features]
 full = []
-db-postgres = []
+db-postgres = ["dep:serde_json"]
 db-mysql = []
 db-sqlite = []
 pgvector = []

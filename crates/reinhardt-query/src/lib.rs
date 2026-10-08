@@ -23,6 +23,8 @@
 //! - **Type-safe query construction** - Build SELECT, INSERT, UPDATE, DELETE statements
 //! - **Plan-only diagnostics** - Wrap typed SELECT statements in backend-aware
 //!   [`ExplainStatement`] values without exposing `ANALYZE`
+//! - **SQLite connection inspection** - Checked [`SqliteDatabaseListStatement`]
+//!   generation preserves `seq`, `name`, and `file`; execution remains caller-owned
 //! - **DCL (Data Control Language) support** - Build GRANT and REVOKE statements
 //! - **Expression system** - Rich expression API with arithmetic, comparison, and logical operators
 //! - **Advanced SQL features** - JOINs, GROUP BY, HAVING, DISTINCT, UNION, CTEs, Window functions
@@ -30,6 +32,7 @@
 //!
 //! ### DDL (Data Definition Language)
 //! - **Typed generated columns** - DDL-safe [`types::SchemaExpr`] builders for generated column bodies
+//! - **Indexes** - CREATE/DROP INDEX, including typed MySQL `TEXT`/`BLOB` column prefixes
 //! - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
 //! - **Sequence operations** - CREATE/ALTER/DROP SEQUENCE (PostgreSQL, CockroachDB)
 //! - **Database operations** - CREATE/DROP DATABASE (PostgreSQL, MySQL, CockroachDB); ALTER DATABASE (PostgreSQL, CockroachDB)
@@ -39,6 +42,8 @@
 //! - **Events** - CREATE/ALTER/DROP EVENT (MySQL)
 //! - **Comments** - COMMENT ON for all database objects (PostgreSQL, CockroachDB)
 //! - **Maintenance** - VACUUM, ANALYZE, OPTIMIZE/REPAIR/CHECK TABLE
+//! - **SQLite connection settings** - Checked [`SqliteForeignKeysStatement`]
+//!   generation for caller-owned connections, with native/WASM SQL parity
 //!
 //! ### Multi-Backend Support
 //! - **PostgreSQL** - Full DDL and DML support with advanced features
@@ -46,6 +51,8 @@
 //! - **SQLite** - DML and basic DDL operations
 //! - **CockroachDB** - Full PostgreSQL compatibility with distributed database features
 //! - **Parameterized queries** - Automatic placeholder generation (`$1` for PostgreSQL, `?` for MySQL/SQLite)
+//! - **Portable escaped case-insensitive matching** - `ExprTrait::ilike_with_escape`
+//!   uses ILIKE on PostgreSQL/CockroachDB and LOWER/LIKE on MySQL/SQLite.
 //!
 //! ## Architecture
 //!
@@ -150,6 +157,27 @@
 //! // LIKE pattern matching
 //! let like_expr = Expr::col("email").like("%@example.com");
 //! ```
+//!
+//! Nested typed arithmetic retains the AST's grouping, including a lower
+//! precedence operand and a right operand with equal precedence. Parentheses
+//! do not change the order of bound values. For example, adding a fee before
+//! multiplying by the quantity works with both MySQL and SQLite:
+//!
+//! ```rust
+//! use reinhardt_query::{Expr, ExprTrait, MySqlQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder};
+//!
+//! let query = Query::select()
+//!     .expr(Expr::col("price").add(Expr::col("fee")).mul(Expr::col("quantity")))
+//!     .to_owned();
+//!
+//! assert_eq!(query.to_string(MySqlQueryBuilder), "SELECT (`price` + `fee`) * `quantity`");
+//! assert_eq!(query.to_string(SqliteQueryBuilder), "SELECT (\"price\" + \"fee\") * \"quantity\"");
+//! ```
+//!
+//! When a grouped arithmetic operand contains a possible `--` line comment,
+//! MySQL and SQLite insert a newline before the closing parenthesis so the
+//! comment cannot consume it. MySQL also recognizes possible `#` line comments.
+//! This also covers nested custom SQL expressions.
 //!
 //! ## DDL Examples
 //!
@@ -374,6 +402,7 @@ pub mod nosql;
 /// use reinhardt_query::prelude::*;
 /// ```
 pub mod prelude {
+	pub use crate::types::{IdentityDef, IdentityGeneration, SequenceType};
 	// Backend builders
 	pub use crate::backend::{
 		CockroachDBQueryBuilder, MySqlQueryBuilder, PostgresQueryBuilder, QueryBuilder, SqlWriter,
@@ -398,7 +427,7 @@ pub mod prelude {
 		DeleteStatement, ExplainFormat, ExplainOptions, ExplainStatement, ForeignKey,
 		ForeignKeyCreateStatement, InsertStatement, LockBehavior, LockType, OnConflict, Query,
 		QueryBuilderTrait, QueryStatementBuilder, QueryStatementWriter, SelectStatement,
-		UpdateStatement,
+		SqliteDatabaseListStatement, SqliteForeignKeysStatement, UpdateStatement,
 	};
 	// DDL query builders
 	pub use crate::query::{

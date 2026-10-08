@@ -236,9 +236,10 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// Encodes a primary key into its canonical database representation.
 	///
 	/// Macro-generated models route this through the primary-key field's
-	/// [`DatabaseField`] implementation. Manual model
-	/// implementations retain the legacy numeric, UUID, or string fallback and
-	/// can override this method for custom primary-key codecs.
+	/// [`DatabaseField`] implementation. Manual models with `CharField` or
+	/// `TextField` primary keys preserve the exact string, including numeric text
+	/// such as `"005"`. Other manual models retain the legacy numeric, UUID, or
+	/// string fallback and can override this method for custom primary-key codecs.
 	fn primary_key_database_value(pk: &Self::PrimaryKey) -> Result<DatabaseValue, FieldCodecError> {
 		let value = pk.to_string();
 		let field_type = Self::field_metadata()
@@ -250,6 +251,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			.as_deref()
 			.and_then(|value| value.rsplit('.').next())
 		{
+			Some("CharField") | Some("TextField") => DatabaseValue::String(value),
 			Some("AutoField")
 			| Some("IntegerField")
 			| Some("BigAutoField")
@@ -1283,11 +1285,14 @@ mod tests {
 	use crate::orm::fields::{BinaryField, CharField, Field};
 	use crate::orm::inspection::FieldInfo;
 	use crate::orm::{DatabaseStorageKind, DatabaseValue, FieldSelector, Manager};
+	#[cfg(feature = "migrations")]
 	use reinhardt_core::macros::{ModelEnum, model};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
+	// Model fixtures also generate migration metadata.
+	#[cfg(feature = "migrations")]
 	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 	#[model_enum(repr = "string")]
 	#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -1298,6 +1303,7 @@ mod tests {
 		Running,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 	#[model_enum(repr = "i32")]
 	enum Priority {
@@ -1307,6 +1313,7 @@ mod tests {
 		Normal,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "field_map_records")]
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	struct FieldMapRecord {
@@ -1317,6 +1324,7 @@ mod tests {
 		priority: Priority,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "decimal_primary_key_records")]
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	struct DecimalPrimaryKeyRecord {
@@ -1324,6 +1332,7 @@ mod tests {
 		id: rust_decimal::Decimal,
 	}
 
+	#[cfg(feature = "migrations")]
 	#[model(app_label = "tests", table_name = "datetime_primary_key_records")]
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	struct DateTimePrimaryKeyRecord {
@@ -1441,6 +1450,7 @@ mod tests {
 		"manual_datetime_keys"
 	);
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn string_enum_database_value_survives_field_map_round_trip() {
 		// Arrange
@@ -1468,6 +1478,7 @@ mod tests {
 		assert_eq!(status, Status::Queued);
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn i32_enum_database_value_survives_field_map_round_trip() {
 		// Arrange
@@ -1588,6 +1599,7 @@ mod tests {
 		assert_eq!(value, DatabaseValue::Bytes(vec![0, 1, 255, 255]));
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn generated_datetime_primary_key_accepts_display_format() {
 		let filter =
@@ -1630,6 +1642,7 @@ mod tests {
 		));
 	}
 
+	#[cfg(feature = "migrations")]
 	#[rstest]
 	fn generated_decimal_primary_key_preserves_route_precision() {
 		let route_value = "9007199254740993.123456789";

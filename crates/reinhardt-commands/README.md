@@ -15,11 +15,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.19", features = ["commands"] }
+reinhardt = { version = "0.4.0-alpha.20", features = ["commands"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.4.0-alpha.19", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.4.0-alpha.19", features = ["full"] }      # All features
+# reinhardt = { version = "0.4.0-alpha.20", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.4.0-alpha.20", features = ["full"] }      # All features
 ```
 
 Then import command features:
@@ -39,7 +39,7 @@ package:
 ```bash
 # Pin the documented Reinhardt release for reproducibility.
 # Omit --version to let Cargo choose the latest stable release.
-cargo install reinhardt-admin-cli --version "0.4.0-alpha.19"
+cargo install reinhardt-admin-cli --version "0.4.0-alpha.20"
 ```
 
 This installs the `reinhardt-admin` command:
@@ -170,6 +170,10 @@ dependencies; no extra Cargo feature flag is required at launch time.
   `reinhardt-db`)
 - `reinhardt-db` - Enable database-backed management commands such as
   `dumpdata`, `loaddata`, and `seed`
+- `contract` - Enable the opt-in capability-aware management entry point
+  (includes `migrations`); exposed as `commands-contract` by the facade, which
+  also enables the configuration types needed by the provider. The `full`
+  preset includes `contract`
 - `routers` - Enable URL-related commands (requires `reinhardt-urls`)
 - `contract` - Enable application contract export (requires `migrations` and
   `routers`). The `reinhardt` facade exposes this as `commands-contract`.
@@ -406,6 +410,45 @@ the last successful client active while the HMR channel reports normalized
 diagnostics; a successful fallback uses the existing readiness-gated reload
 behavior.
 
+### Capability-aware migration bootstrap
+
+With `commands-contract`, call
+`execute_from_command_line_with_capabilities(registry, provider, None)` from the
+native management binary. The provider returns raw `ScopedSettings` for
+migration capabilities and `PendingSettings<ProjectSettings>` for existing
+runtime commands. Include `CoreSettings`, `ContactSettings`, and
+`MigrationSettings` in the project's composed settings.
+
+Enable a database backend at compile time, such as the facade's `db-sqlite` or
+`db-postgres`, as required by the stable migration engine. File-based discovery
+still runs without a database connection or credentials.
+
+`makemigrations --state-source files` and `makemigrations --check` resolve only
+migration metadata. The check implies dry-run behavior and exits unsuccessfully
+when files would be created. `--state-source database --database ALIAS` resolves
+only the named database configuration; `--state-source temporary-db` requires
+the `testcontainers` feature. `--empty` and `--merge` remain database-free. Their
+proposals also make `--check` fail, while a merge check with no conflicts succeeds.
+
+Migration dependency resolution combines `core.migration_features` with
+`migrations.migration_features`. The dedicated `migration_settings` and
+`migration_swappable_settings` maps override core swappable defaults; the
+swappable map wins within the migration fragment. Optional dependencies use
+installed app labels (including registered module paths), feature flags, and
+setting values. Plans, execution, conflict checks, and file/database state
+reconstruction share these resolved dependencies. On the stable line, declare
+conditional dependencies as literal `Migration` fields using `vec![]` or arrays,
+with dependency struct literals or `SwappableDependency::new` /
+`OptionalDependency::new` constructors. Unsupported expressions fail to load.
+
+Other existing commands retain the full settings bootstrap. Legacy entry points
+and their `Commands` variants retain their existing signatures and flags.
+
+This entry point uses the existing stable-line migration engine. It does not
+add the development line's verification or migration-visibility commands. The
+optional `CargoCheckContext` preserves launcher compatibility and is not used
+by the stable-line commands.
+
 ## Template System
 
 `reinhardt-commands` uses the
@@ -463,7 +506,7 @@ use reinhardt::commands::TemplateContext;
 
 let mut context = TemplateContext::new();
 context.insert("project_name", "my_project");
-context.insert("version", "0.4.0-alpha.19");
+context.insert("version", "0.4.0-alpha.20");
 context.insert("features", vec!["auth", "admin"]);  // Any Serialize type
 ```
 
@@ -991,10 +1034,43 @@ The resolution rules are:
 - `<target>` is **not** applied — apply `<target>` and its intra-app dependency
   closure (forward), skipping anything already applied.
 
+Both rollback forms also unapply every applied migration in other apps that
+transitively depends on the selected migrations. Dependents are reversed before
+their prerequisites, regardless of recorder timestamps. An applied target and
+prerequisites outside this reverse closure stay applied, as do unrelated apps.
+Unapplied dependents are excluded. For example, if `consumer:0001_references`
+depends on `foundation:0001_tables`, `migrate foundation zero` reverses the
+consumer migration before reversing the foundation migration.
+
+Dependencies on replaced migration keys resolve to their recorded squash before
+building the rollback closure, including nested squashes. Unapplied squash
+alternatives do not redirect dependencies away from the recorded migration path.
+When an applied migration depends on an unapplied squash key, that dependency
+resolves through its `replaces` metadata to the recorded old path, including
+recorded intermediate squashes. The unapplied squash does not enter the plan.
+If replacement definitions in the dependency's app are unavailable and an applied
+dependency cannot be resolved to a recorded migration or squash alias, cross-app
+rollback fails before any effects. Restore the intermediate replacement definitions
+before retrying. Missing replacement ancestry in unrelated apps does not block
+rollback or make unapplied dependency keys part of the rollback closure.
+Directly resolvable aliases still work when the replaced files have been removed.
+Missing intermediate definitions in a referenced unapplied squash path also stop
+rollback before any effects, even when another branch resolves successfully.
+
+When applied history spans multiple apps, all applied migration definitions must
+be available to check cross-app dependents. Missing definitions, including files
+skipped because they could not be parsed, stop rollback before changing schema or
+recorder rows in real, fake, and preview modes. Restore those definitions before
+retrying. Single-app history retains preview and fake rollback for missing selected
+files, using reverse recorder order for the selected suffix. Real execution always
+requires every selected migration definition.
+
 `--plan` never mutates the database, including the migration bookkeeping table:
 on a fresh database a dry-run leaves it uncreated. Apply plans are displayed in
 the same dependency-resolved order used by real migration execution, including
-cross-app dependencies.
+cross-app dependencies. Rollback previews, real execution, and `--fake` use the
+same reverse dependency plan; fake rollback only removes the selected ledger
+records without executing reverse SQL.
 
 ### `collect_migrations!` Macro and `linkme` Dependency
 
@@ -1007,7 +1083,7 @@ Projects using `collect_migrations!` must add `linkme` as a dependency:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.4.0-alpha.19", features = ["standard"] }
+reinhardt = { version = "0.4.0-alpha.20", features = ["standard"] }
 linkme = "0.3"
 ```
 

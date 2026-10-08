@@ -311,6 +311,13 @@ reinhardt-utils = { version = "LATEST_VERSION", features = ["redis-sentinel"] }
 | `middleware-rate-limit` | Rate limiting |
 | `social-auth` | Async session-backed social OAuth state; pair with `session-redis` for Redis |
 
+Each individual middleware component feature exposes its APIs through
+`reinhardt::middleware` on native targets without requiring the umbrella
+`middleware` feature. For example, `default-features = false` with
+`features = ["middleware-cors"]` enables
+`reinhardt::middleware::cors::create_cors_middleware_from_settings` and the
+`reinhardt::CorsMiddleware` re-export. Middleware remains native-only.
+
 ---
 
 ### Dependency Injection
@@ -318,6 +325,7 @@ reinhardt-utils = { version = "LATEST_VERSION", features = ["redis-sentinel"] }
 | Feature | Description | Auto-enables |
 |---------|-------------|--------------|
 | `di` | Full DI system | `reinhardt-di/params`, `reinhardt-db?/di` |
+| `uuid` | UUID support, including native UUID path extraction when DI is enabled | `reinhardt-pages/uuid`, `reinhardt-di?/uuid` |
 
 The `di` feature enables FastAPI-style dependency injection with parameter extraction:
 
@@ -337,6 +345,12 @@ async fn handler(
 
 **Note**: The `minimal` and `standard` bundles automatically include the `di` feature, so parameter types (`Body`, `Cookie`, `Header`, `Json`, `Path`, `Query`) are available without explicit configuration.
 
+Enable `uuid` alongside `di`, `minimal`, `standard`, or `api-only` to use
+`Path<uuid::Uuid>` and `Path<(uuid::Uuid, uuid::Uuid)>` as native injectable
+extractors through the facade. A direct `reinhardt-di` dependency is unnecessary.
+The `uuid` feature preserves Pages UUID support and does not enable the facade's
+`di` feature by itself. The facade's direct DI dependency remains native-only.
+
 ---
 
 ### Other Features
@@ -355,6 +369,12 @@ async fn handler(
 | `tasks` | Background jobs | reinhardt-tasks |
 | `shortcuts` | Django-style helpers | reinhardt-shortcuts |
 | `dentdelion` | Plugin system | reinhardt-dentdelion |
+
+With `test` enabled, `websockets` also enables the native
+`reinhardt::test::fixtures::{websocket_server, websocket_client}` fixtures, and
+`graphql` enables `reinhardt::test::fixtures::graphql_server`. These combinations
+do not require `full`. Enabling either protocol feature without `test` does not
+activate the optional test dependency.
 
 ---
 
@@ -477,8 +497,8 @@ The `tasks` feature provides background job processing with multiple backend opt
 <!-- reinhardt-version-sync:2 -->
 ```toml
 [dependencies]
-reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.19", features = ["tasks", "streaming"] }
-reinhardt-tasks = { version = "0.4.0-alpha.19", features = ["kafka-backend"] }
+reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.20", features = ["tasks", "streaming"] }
+reinhardt-tasks = { version = "0.4.0-alpha.20", features = ["kafka-backend"] }
 ```
 
 For another backend, replace `kafka-backend` with `redis-backend`, `rabbitmq-backend`, `database-backend`, or `sqs-backend`.

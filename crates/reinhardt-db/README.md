@@ -8,6 +8,55 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+### PostgreSQL arrays with NULL elements
+
+PostgreSQL row decoding retains NULL element positions in text (including
+`varchar` and `char`), integer, bigint, boolean, real, double precision, and UUID
+arrays. Arrays containing NULL elements use the corresponding
+`QueryValue::NullableStringArray`, `NullableIntArray`, `NullableBigIntArray`,
+`NullableBoolArray`, `NullableFloatArray`, `NullableDoubleArray`, or
+`NullableUuidArray` variant with a `Vec<Option<T>>` payload. Arrays without NULL
+elements, including empty arrays, retain the existing `StringArray`, `IntArray`,
+and other non-nullable variants. A SQL NULL for the entire array is
+`QueryValue::Null`.
+
+`QueryRow` preserves these positions when deserializing into `Vec<Option<T>>`.
+Use `Option<Vec<Option<T>>>` when the entire column can also be SQL NULL.
+Rebinding a nullable array on PostgreSQL retains its scalar element type; MySQL
+and SQLite use the existing JSON array encoding with JSON null elements.
+These JSON backends reject non-finite float/double array elements with a type
+error before binding, for both legacy and nullable array carriers.
+
+Derived ORM models support `Vec<Option<T>>` fields for all seven scalar types,
+and `Option<Vec<Option<T>>>` when the entire column can be SQL NULL. Whole-column
+`None` is emitted as a SQL `NULL` literal and consumes no bind parameter. Manager
+writes, typed QuerySet filters, and `get_or_create` / `update_or_create` share
+native array conversion, including arrays whose elements are all NULL. Empty
+arrays and arrays without NULL elements retain their existing typed carriers.
+
+PostgreSQL `bulk_update` and `bulk_update_with_conn` cast array CASE literals to
+their declared scalar element type, including all-NULL and empty arrays. Special
+floating-point elements use quoted typed literals to retain `NaN` and infinity.
+
+Serde serialization of `NullableFloatArray` and `NullableDoubleArray` rejects
+non-finite elements with an error, preventing JSON from silently changing
+`Some(NaN)` or `Some(infinity)` into `None`. Finite values and NULL elements retain
+their existing serialized representation.
+
+The `QueryRow` JSON bridge represents non-finite floating-point array elements
+(`NaN` and positive/negative infinity) as strings. Floating-point model hydration
+rejects these with a serialization error, and `QueryRow::get` returns `None`,
+instead of silently turning non-NULL values into NULL elements. Native backend
+rows retain the original PostgreSQL floating-point values.
+
+The additional public `QueryValue` variants require downstream exhaustive
+matches to handle the seven `Nullable*Array` variants. Existing array
+constructors and their payload types remain available.
+`InsertBuilder::value` accepts `QueryValue::Now` as a database current-time
+expression. PostgreSQL, MySQL, and SQLite render it as `CURRENT_TIMESTAMP`.
+Rows containing `Now` use a typed `INSERT ... SELECT` source: current time and
+SQL `NULL` consume no bind arguments, and other values keep their column order.
+
 ## Features
 
 ### Implemented ✓
@@ -38,6 +87,11 @@ This crate provides the following modules:
     constraints are unchanged. Existing migration files are not rewritten;
     regenerate unapplied migrations with oversized generated names.
   - Forward and backward migrations
+  - PostgreSQL and CockroachDB `AlterColumn` rollback restores the previous
+    database default, including removing a newly added sequence default. Changed
+    defaults are removed before reverting the type and restored afterward.
+    Generated migration files preserve every historical field type, including
+    nested arrays, enum/set values, and relationship metadata.
   - Schema versioning and dependency management
   - Migration operations (CreateModel, AddField, AlterField, etc.)
   - `Operation::CreateIndex` gives expression and partial indexes a deterministic
@@ -106,6 +160,18 @@ Filesystem loading walks migration builder chains iteratively, preserving
 operation and dependency order and applying later flag values last. Adding
 operations does not add recursive frames to the migration builder parser.
 
+On Unix and Windows, `FilesystemRepository` reads and duplicate checks resolve
+literal relative `include_str!` paths in `RunSQL.sql` and `RunSQL.reverse_sql`,
+using the migration file's directory and the configured migration root as
+`FilesystemSource` does. Assets must remain inside that root. Deploy the SQL
+files alongside their migration sources; saving a later migration preserves
+existing source and asset files. Each repository read observes current asset
+contents, and duplicate checks compare the resolved SQL contents.
+Source discovery rejects incomplete scans, directory cycles, and directory
+symlinks resolving outside the migration root. Internal directory links remain
+usable for SQL assets; source identities are collected through the root's real
+directories.
+
 Pre-0.4 generated `DropColumn` operations without `old_definition` are upgraded
 with `old_definition: None`. Explicit definitions retain their meaning; the
 existing rollback path can recover a missing definition from prior migration
@@ -130,6 +196,22 @@ application dependency and validate compilation, migration application, and
   - One-to-one relationships
   - Lazy loading and eager loading
 
+- **ContentTypes**: Database-backed polymorphic relationship metadata
+  - SQLite inserts and inserted-ID lookups share one acquired connection, so
+    returned IDs identify the inserted row even with multiple pooled connections
+
+### SQLite INSERT FROM SELECT upserts
+
+`InsertFromSelectBuilder::on_conflict_do_update` wraps the SQLite SELECT source
+in a typed derived table with an always-true outer `WHERE`. This avoids SQLite's
+[INSERT SELECT parsing ambiguity](https://www.sqlite.org/lang_upsert.html#parsing_ambiguity)
+when `ON CONFLICT` follows a source without a `WHERE` clause. The original source's
+filters, ordering, limits, and compound SELECTs remain inside the derived table.
+The same behavior applies when converting `InsertBuilder` with `from_select`,
+including targetless updates with `None` or an empty conflict-column list on
+SQLite 3.35.0+. Conflict actions precede `RETURNING`, so targetless upserts can
+return the inserted or updated row.
+
 ### Implemented ✓ (Additional Features)
 
 - **Advanced Query Optimization**
@@ -151,14 +233,14 @@ The backend `DatabaseConnection` and `DatabaseBackend` expose
 `execute_generated`, `fetch_one_generated`, `fetch_all_generated` and
 `fetch_optional_generated` for an owned `(String, reinhardt_query::Values)` pair.
 Build that pair from one statement and consume its AST before awaiting. The
-native SQLx backends use the companion's generated arguments, preserving decimal
+native SQLx backends use the checked native generated-value codecs, preserving decimal
 precision, PostgreSQL nullable array elements and MySQL unsigned integers.
 MySQL and SQLite explicitly retain their existing UUID text-column encoding.
 Conversion errors identify the backend, argument index and type without values.
 
 These native-only APIs have P0 parity. Existing raw methods and custom backend
 implementations remain available. The generated trait defaults forward only data
-representable by the existing QueryValue contract, with checked integer ranges;
+representable by the existing QueryValue contract, including unsigned integers;
 arrays, decimals, dates and times require a custom generated-method override.
 They never use the older ORM converter's clamping or Debug-string fallbacks.
 Consumers still own connections, transactions, row decoding and result metadata.
@@ -266,6 +348,23 @@ repeated `LIMIT`/`OFFSET` pagination for this API.
   - `DatabaseErrorKind` provides portable connection, constraint, transaction, serialization, and query categories
   - `Error::database_kind()` supports category matching without driver-specific downcasts
   - `DatabaseError::code()` preserves an optional vendor code for diagnostics
+
+### Unsigned composite key lookups
+
+Unsigned composite-key lookups retain their value through
+`PkValue::Uint` and `QueryValue::Uint`. MySQL binds the full `u64` range;
+PostgreSQL and SQLite check conversion to a signed 64-bit integer and reject
+overflow before executing SQL. The resulting `DatabaseErrorKind::Type` error
+does not include the key value. Ordinary signed keys and native field codecs
+retain their existing behavior.
+
+When upgrading, add a `QueryValue::Uint(value)` arm to exhaustive matches.
+Custom executors must preserve the unsigned value or return a checked type
+error when their backend cannot represent it. Large unsigned MySQL result
+values now use `QueryValue::Uint` instead of decimal text.
+
+See the [unsigned query value migration guide](../../docs/migration/0.4.0-unsigned-query-values.md)
+for custom executor updates.
 
 ### Updating composite primary keys
 
@@ -398,6 +497,53 @@ queryset for locking reads.
   - Per-model read and write database configuration
   - Multi-database support through hybrid module
 
+## Generated query parameters
+
+`QuerySet` statements, `orm::execution` builders, `orm::many_to_many_accessor`,
+and all operations of `associations::many_to_many_manager::ManyToManyManager`
+pass the renderer's original `Values` to native SQLx codecs in built-in backends.
+`ManyToManyManager` retains its `Display` primary-key interface and binds keys as strings.
+Dedicated transaction executors support the same generated-value dispatch.
+PostgreSQL retains typed arrays (including NULL and empty arrays), JSON versus
+JSONB array types, and exact decimals. MySQL retains exact decimals and
+the full unsigned integer range. SQLite rejects decimal and array arguments
+because it has no corresponding native codec.
+
+Arguments that cannot be encoded without loss fail before SQL execution. Errors
+report the backend, value type, and one-based argument position without exposing
+the value. PostgreSQL and MySQL reject temporal values with sub-microsecond
+precision or leap seconds; SQLite also rejects NaN rather than storing SQL NULL.
+MySQL normalizes fixed-offset datetimes to UTC after checking their precision,
+matching its UTC and local datetime bindings; typed NULL datetimes remain SQL NULL.
+SQLite also normalizes local and fixed-offset datetimes to UTC so generated
+predicates match the UTC text used by legacy timestamp bindings and `Manager`
+saves, retaining nanosecond precision and typed NULLs.
+UUIDs keep the existing native PostgreSQL and text MySQL/SQLite representation.
+BigDecimal arguments must fit the native
+[PostgreSQL numeric range](https://www.postgresql.org/docs/16/datatype-numeric.html)
+or [MySQL decimal precision and scale](https://dev.mysql.com/doc/refman/8.0/en/precision-math-decimal-characteristics.html).
+Range checks and native encoding use a normalized BigDecimal representation,
+so scaled zeros and redundant trailing zeros preserve their numeric value.
+
+The public `orm::execution::convert_values` function remains a legacy compatibility
+adapter with its historical lossy behavior. Explicit raw executors still accept
+`Vec<QueryValue>`, and row decoding retains its existing contract.
+
+External backends implementing only the raw executor API use a checked adapter
+for generated dispatch. It normalizes local and fixed-offset datetimes to UTC
+`QueryValue::Timestamp` values while retaining the instant and nanosecond precision;
+typed NULL datetimes become `QueryValue::Null`. Values that cannot be represented
+without loss in `QueryValue` are rejected before calling the raw executor.
+
+Model creation and updates through `Manager::create`, `Manager::create_with_conn`,
+`Manager::update`, and `Manager::update_with_conn` still serialize fields through
+JSON and convert arguments to `Vec<QueryValue>`, retaining their existing lossy
+conversion behavior. These model-save methods are outside the native-codec
+guarantees above.
+
+Custom backends that implement only the raw executor receive checked,
+representable values and reject types requiring a native codec.
+
 ## Module Architecture
 
 The `reinhardt-db` crate is organized into three logical layers:
@@ -426,6 +572,23 @@ Low-level database connectivity and connection management:
   - PostgreSQL, MySQL, SQLite support
   - Query execution and schema operations
   - reinhardt-query integration for query building
+  - `SelectBuilder::build()` returns SQL with the renderer's ordered bind values,
+    including non-negative LIMIT values after WHERE arguments. Inline NULLs do
+    not consume bind slots. `fetch_all()` and `fetch_one()` execute this pair;
+    a zero limit returns no rows and negative limits are omitted.
+  - INSERT builders combine conflict actions with `RETURNING` on PostgreSQL
+    and SQLite, placing conflict actions before `RETURNING` for both VALUES
+    and SELECT sources. MySQL retains `INSERT IGNORE` and
+    `ON DUPLICATE KEY UPDATE` without `RETURNING`.
+  - MySQL `InsertBuilder` returns `DatabaseError::NotSupported` for named conflict
+    targets or `WHERE` conditions before executing a query. Unconditional upserts
+    and `INSERT IGNORE` retain MySQL's handling of conflicts on any unique key,
+    including when the fluent API specifies conflict columns.
+  - `InsertBuilder::from_select` preserves fluent conflict targets, actions, and
+    conditions, with the same precedence over legacy conflict settings.
+    `InsertFromSelectBuilder::execute` and `fetch_one` reject invalid or unsupported
+    inherited clauses before calling the backend. Its existing infallible `build`
+    method panics for such clauses instead of silently discarding them.
   - **When to use**: Need direct database access or custom queries
 
 - **`pool` module**: Connection pooling implementation
@@ -467,6 +630,13 @@ Advanced features for specific use cases:
   - Document, Key-Value, Column-Family, Graph paradigms
   - **When to use**: Working with NoSQL databases like MongoDB
 
+### Unsigned composite key lookups
+
+Unsigned values passed to `QuerySet::get_composite` are checked before execution.
+The current parameter representation supports signed 64-bit integers, so values
+above `i64::MAX` return a type conversion error without including the key value.
+They never wrap to a negative key or clamp to the largest signed key.
+
 ### Updating composite primary keys
 
 `Manager::update` and `update_with_conn` match every component of a composite
@@ -484,6 +654,47 @@ use `get_composite` or filter explicitly on every key component. Generated
 composite keys use the same field codec policies as model persistence, including
 UUID, enum, binary, and file values.
 
+### PostgreSQL parameter signatures
+
+PostgreSQL backend pool and transaction execute/fetch methods preserve each
+argument's native type. SQLx 0.8.6 caches prepared statements by SQL text, so an
+existing statement can have an incompatible parameter signature. For example,
+direct SQLx access can cache an INT4 parameter, whereas `QueryValue::Int` binds
+as INT8.
+
+`QueryValue::Null` is bound with an unspecified PostgreSQL parameter type,
+allowing the server to infer it from the destination column, an expression, or
+an explicit cast. Nullable TIMESTAMPTZ and UUID values therefore work with
+`INSERT ... SELECT $1` as well as `VALUES ($1)` in both pooled and transactional
+execution. NULL remains a bound parameter; SQL text and placeholder positions
+are unchanged. Queries without enough type context, such as `SELECT $1 IS NULL`,
+need an explicit cast (for example, `SELECT $1::TIMESTAMPTZ IS NULL`).
+
+Before execution, the backend clears existing named statements on the same
+acquired connection and disables persistence for that query. Disabling
+persistence alone does not bypass an existing cached statement. SQL text,
+values, transaction boundaries, and connection guard ownership are preserved.
+This also applies to native generated-value dispatch from `QuerySet`, execution
+builders, and dedicated transaction executors.
+This trades statement reuse for correctness: backend queries are prepared
+again, and cache entries created through direct SQLx pool access are cleared.
+Direct SQLx calls can still cache statements before and after backend calls.
+
+Regression tests cover all pool and transaction execute/fetch methods, NULL to
+large integer transitions, both native integer widths, partially consumed
+streams, and INSERT commit/rollback. Remove the bypass only when the selected
+SQLx version safely handles changing native signatures without it. The
+dependency compatibility limitation remains tracked in
+[#6533](https://github.com/kent8192/reinhardt-web/issues/6533).
+
+### Existence checks
+
+`SelectExecution::exists_async` returns `true` when the selected query matches
+at least one row and `false` otherwise. It renders the query for the connection's
+backend and decodes PostgreSQL boolean results and SQLite/MySQL integer `0`/`1`
+results. This conversion is limited to existence checks; other result types and
+integers outside `0`/`1` remain deserialization errors.
+
 ## Installation
 
 Add this to your `Cargo.toml`:
@@ -491,7 +702,7 @@ Add this to your `Cargo.toml`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = "0.4.0-alpha.19"
+reinhardt-db = "0.4.0-alpha.20"
 chrono-tz = "0.10"
 ```
 
@@ -502,7 +713,7 @@ Enable specific features based on your needs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = { version = "0.4.0-alpha.19", features = ["postgres", "orm", "migrations"] }
+reinhardt-db = { version = "0.4.0-alpha.20", features = ["postgres", "orm", "migrations"] }
 ```
 
 Available features:
@@ -675,7 +886,7 @@ Enable native dense-vector storage directly on `reinhardt-db`:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt-db = { version = "0.4.0-alpha.19", features = ["pgvector"] }
+reinhardt-db = { version = "0.4.0-alpha.20", features = ["pgvector"] }
 reinhardt-core = { version = "0.4.0-alpha.2", features = ["macros"] }
 serde = { version = "1", features = ["derive"] }
 ```
@@ -686,7 +897,7 @@ Applications using the facade enable `db-pgvector` instead and import
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.19", features = ["db-pgvector"] }
+reinhardt = { package = "reinhardt-web", version = "0.4.0-alpha.20", features = ["db-pgvector"] }
 ```
 
 Reinhardt never installs the PostgreSQL extension automatically. Add
@@ -789,10 +1000,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`DatabaseMigrationExecutor` applies these operations in vector order. Rolling
-this migration back removes the model schema and indexes but deliberately
-leaves the database-level extension installed, because other applications or
-schemas may share it.
+`DatabaseMigrationExecutor` applies these operations in vector order. Automatic
+rollback rejects this migration's `CREATE EXTENSION IF NOT EXISTS` because other
+applications may own an existing extension. For a migration-owned extension, use
+`.with_if_not_exists(false)` before conversion; rollback drops the model schema
+and indexes followed by the extension.
 
 The typed distance methods map directly to PostgreSQL:
 
@@ -1063,6 +1275,18 @@ pub full_name: String,
 - Support for composite primary keys
 
 ### Query with QuerySet
+
+Runtime `Expression::Case` conditions treat `Q::empty()` (empty AND) as TRUE
+and an empty OR as FALSE. NOT negates the entire condition, including these
+identities, so a negated empty AND is FALSE. This applies to expression filters,
+updates, and annotations, including nested expressions. The standalone
+compatibility renderers `Q::to_sql()`, `When::to_sql()`, and
+`Expression::to_sql()` retain their existing output.
+
+Case-sensitive `Contains`, `StartsWith`, and `EndsWith` lookups escape literal
+`%`, `_`, and backslash characters in their bound patterns. Column identifiers
+use the selected backend's quoting. MySQL renders the escape character as
+`ESCAPE 0x5C`; PostgreSQL and SQLite use `ESCAPE '\'`.
 
 ```rust
 use chrono::Utc;
@@ -1365,6 +1589,19 @@ Global ORM time-zone configuration is intentionally outside this API; pass the
 zone explicitly when UTC is not the desired projection.
 Use `dates_with_db` / `datetimes_with_db` or the corresponding
 `*_with_executor` variants to retain a caller-owned connection or transaction.
+### Arithmetic expressions
+
+Legacy `FilterValue::Expression`, `UpdateValue::Expression`, and arithmetic
+annotations lower field references and constants through the query AST. The
+selected PostgreSQL, MySQL, or SQLite renderer quotes the columns and binds the
+constants in expression order. For example, `F("id") + 0` compares or updates the
+column value on MySQL in both strict and non-strict SQL modes. Arithmetic nested
+in CASE results uses the same operand lowering and preserves the runtime empty
+condition identities described above. Nested operations retain their parentheses,
+and COALESCE operands use the same typed lowering.
+
+Scalar CASE result values, aggregate SQL, and subquery SQL retain their
+existing SQL rendering paths.
 
 ### Execute a QuerySet with Session
 
@@ -1372,6 +1609,26 @@ Use `dates_with_db` / `datetimes_with_db` or the corresponding
 configured pool and backend, binding filter parameters through the driver. It
 therefore keeps request-scoped queries on the connection selected by the
 caller.
+
+`Session::list_all` reads every model row from the configured pool. Its typed
+SELECT uses backend-aware identifier escaping, including table names and
+physical column names containing double quotes or backticks. It shares model
+projections and row decoding with `Session::list`.
+
+`Session::list_all` executes an unfiltered model query through the same pool,
+projection, and row decoding path. Table names and physical column names,
+including embedded double quotes or backticks, are escaped by the backend query
+renderer.
+
+Session text reads accept both SQLx Any strings and complete UTF-8 byte values,
+including MySQL TEXT columns reported as BLOB. Values are not truncated or
+decoded lossily. Invalid UTF-8 returns a serialization error identifying the
+table, model field, and physical column; nullable text preserves SQL NULL.
+
+`Session::get`, `Session::list`, and `Session::list_all` preserve the full i64
+range of `BigIntegerField` values, including nullable fields. Integer decoding
+failures return `SessionError::SerializationError`; only a stored SQL NULL in a
+nullable integer field becomes `None`.
 
 `AsyncQuery` preserves bind parameters when executing legacy `Q` filters.
 Runtime field names and operators are treated as query structure and accept
@@ -1462,6 +1719,13 @@ primary keys.
 
 ### Create Migrations
 
+The facade's `db-postgres` and `db-cockroachdb` features enable the corresponding
+model macro support. Model fields using `Vec<u8>` or `Option<Vec<u8>>` generate
+the generic `FieldType::Binary` migration type. PostgreSQL and CockroachDB render
+this type as `BYTEA`, so byte-vector models do not require an explicit database
+field type. The generic SQL spelling and the MySQL/SQLite rendering remain
+`BINARY`.
+
 ```rust
 use reinhardt_db::migrations::{Migration, CreateModel, AddField};
 
@@ -1479,6 +1743,32 @@ let migration = Migration::new("0001_initial")
 // Apply migration
 migration.apply(db).await?;
 ```
+
+### PostgreSQL Extension Reversal
+
+Use `Operation::CreateExtension { if_not_exists: false, .. }` or
+`CreateExtension::new("hstore").with_if_not_exists(false).into_operation()?` for
+an extension owned by a migration. Automatic reversal emits the typed
+`Operation::DropExtension` without `CASCADE`, after reversing later operations.
+Dependent objects therefore block removal rather than being deleted implicitly.
+Both operations round-trip through generated Rust migration files and JSON.
+
+`IF NOT EXISTS` cannot prove whether the migration created an extension. Its
+automatic reversal returns `MigrationError::IrreversibleError` before any
+rollback statements run; the extension and applied-migration record remain.
+For a shared extension, provision it separately from reversible application
+migrations. The low-level `CreateExtension::database_backwards` helper returns
+no statements for conditional creation.
+
+Explicit `DropExtension { name, if_exists, cascade }` is forward-only because it
+does not capture the original schema and version. The exported `DropExtension`
+struct provides `.into_operation()` with `if_exists: true` and `cascade: false`.
+
+When upgrading from earlier 0.4.0 alpha releases, add a `DropExtension` arm to
+exhaustive `Operation` matches. Direct `CreateExtension` struct literals must
+also supply `if_not_exists` (true preserves the previous creation behavior).
+Existing JSON without that field defaults to true. To retain automatic cleanup,
+choose false only for extensions whose creation belongs to the migration.
 
 ### Connection Pooling
 
@@ -1639,6 +1929,20 @@ cargo test --package reinhardt-db --all-features
 
 # Run with PostgreSQL container (TestContainers automatically starts PostgreSQL)
 cargo test --package reinhardt-db --test orm_integration_tests
+```
+
+The ORM-only SQLite library tests also support disabling default features:
+
+```bash
+cargo test -p reinhardt-db --no-default-features --features orm,sqlite --lib
+```
+
+Library-test fixtures using `#[model]` generate migration metadata and require
+the `migrations` feature. Their tests run when it is enabled, while tests that
+do not use those fixtures remain available in the ORM-only configuration:
+
+```bash
+cargo test -p reinhardt-db --no-default-features --features orm,sqlite,migrations --lib
 ```
 
 ### TestContainers Integration
@@ -1871,7 +2175,7 @@ Optimize how related objects are loaded:
   - `save()`, `delete()` - Persist and remove content types
   - `load_all()` - Load all content types from database
   - `exists()` - Check content type existence
-  - Supports PostgreSQL, MySQL, and SQLite via sqlx
+  - Supports PostgreSQL and SQLite via sqlx; MySQL is currently unsupported
 
 - **Multi-Database Support**
   - `MultiDbContentTypeManager` - Manage content types across multiple databases
@@ -1889,6 +2193,11 @@ Optimize how related objects are loaded:
 
 #### ORM Integration
 
+`ContentTypeQuery` and `ContentTypeTransaction` currently require a SQLite-backed
+pool. They generate SQLite SQL, and `ContentTypeTransaction::create()` uses
+SQLite's `last_insert_rowid()`. These interfaces do not support PostgreSQL or
+MySQL pools.
+
 - **ContentTypeQuery** - ORM-style query builder for content types
   - `new()` - Create query builder from connection pool
   - `filter_app_label()`, `filter_model()`, `filter_id()` - Filter by fields
@@ -1901,12 +2210,16 @@ Optimize how related objects are loaded:
   - `exists()` - Check if any records match
   - Django-inspired QuerySet API with method chaining
 
-- **ContentTypeTransaction** - Transaction-aware content type operations
-  - `new()` - Create transaction context
-  - `query()` - Get query builder for transaction
-  - `create()` - Create content type within transaction
-  - `delete()` - Delete content type within transaction
-  - Full ACID transaction support for content type operations
+- **ContentTypeTransaction** - Pool-backed content type operations (historical name)
+  - `new()` - Create a context without beginning or owning a database transaction
+  - `query()` - Get an independent query builder using the same pool
+  - `create()` - Create a content type using pool autocommit, keeping the insert
+    and generated-ID lookup on one acquired connection
+  - `delete()` - Delete a content type using pool autocommit
+  - Each operation executes independently; errors and dropping the context do not
+    roll back preceding writes. A transaction opened separately on a pool
+    connection does not enlist these operations. Use a transaction-aware API when
+    atomic changes are required.
 
 
 ## hybrid
@@ -2178,3 +2491,53 @@ Optimize how related objects are loaded:
 ## License
 
 Licensed under the BSD 3-Clause License.
+
+## PostgreSQL sequence and identity migrations
+
+The `migrations::sequences` API represents independent generators with
+`SequenceDefinition`/`SequenceMetadata` and stable `(app_label, logical_name)` keys.
+Register them through `global_registry().register_sequence(...)`, and use typed
+`SequenceDefault` field metadata for dependency-aware `nextval` defaults.
+Names have separate literal schema/name components; dots inside a component are
+preserved. `makemigrations` creates sequences before defaults and establishes
+`OWNED BY` after the owner exists, including staged cross-app dependencies.
+An explicitly authored `SequenceOperation::Create` with `owned_by` applies that
+ownership immediately, so its owning column must already exist. Relation renames
+wait for earlier table renames or sequence drops that release the target name.
+
+`IdentityDefinition` belongs to a column. The model macro accepts
+`identity_always = true` or `identity_by_default = true` together with nested
+`identity_options(sequence_name = "events_sequence_seq", start = 1, increment = 1,
+no_min_value = true, no_max_value = true, cache = 1, cycle = false)`.
+Identity takes precedence over inferred auto-increment metadata, preserves
+`db_column`, and does not make a column a primary key. The PostgreSQL macro
+feature (`db-postgres` on the facade) is required for these attributes.
+
+Complete before/after sequence options support ALTER and physical rename without
+restarting allocation. Logical declaration changes use explicit
+`SequenceOperation::RenameDeclaration` in a state-only migration. Catalog
+introspection matches managed physical objects; unmanaged sequences are retained.
+Identity alterations preserve the observed sequence name when the target omits
+it, and retain both column widths for reversible integer type changes. Identity
+state and preflight lookups respect the table schema. Schema inspection fetches
+the sequence catalog once and indexes identity sequences by owning column.
+App-specific schema conversion includes only that app's managed declarations;
+sequence removals are reported as destructive changes.
+Opaque defaults retain their SQL and require explicit migration dependencies.
+
+Rollback restores schema definitions, not rows or consumed numbers. Provide full
+history with `DatabaseMigrationExecutor::with_migration_history` when a new
+executor applies or rolls back a subset requiring earlier schema snapshots.
+An executor retains migration definitions across incremental calls and rebuilds
+state from recorded applications, selecting the applied replacement path and
+excluding pending files. Dropping an owning column/table
+implicitly deletes its sequence; reverse planning recreates it before restoring
+its default and ownership. Explicit `Restart` requires a reverse target or is
+irreversible. `START WITH` updates the recorded start without moving the cursor.
+
+This feature supports permanent PostgreSQL sequences only. MySQL, SQLite,
+CockroachDB, temporary/unlogged generators, schema moves, and role changes are
+rejected for the new operations. Existing `auto_increment` migrations retain
+their backend behavior. See the crate changelog for intentional alpha API changes;
+non-exhaustive hardening of existing types is tracked separately in
+[#6511](https://github.com/kent8192/reinhardt-web/issues/6511).

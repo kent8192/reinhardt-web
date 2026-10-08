@@ -2,7 +2,7 @@
 //!
 //! This module implements the SQL generation backend for SQLite.
 
-use super::{QueryBuilder, SqlWriter};
+use super::{QueryBuilder, SqlWriter, write_arithmetic_operand};
 use crate::{
 	expr::{Condition, SimpleExpr, TemporalTruncKind, TemporalTruncOutput},
 	query::{
@@ -10,7 +10,8 @@ use crate::{
 		CreateIndexStatement, CreateTableStatement, CreateTriggerStatement, CreateViewStatement,
 		DeleteStatement, DropIndexStatement, DropTableStatement, DropTriggerStatement,
 		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
-		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
+		RepairTableStatement, SelectStatement, SqliteDatabaseListStatement,
+		SqliteForeignKeysStatement, TruncateTableStatement, UpdateStatement,
 	},
 	types::{
 		BinOper, ColumnRef, GeneratedColumn, GeneratedStorage, SchemaBinOper, SchemaExpr,
@@ -24,6 +25,7 @@ use crate::{
 /// This struct implements SQL generation for SQLite, using the following conventions:
 /// - Identifiers: Double quotes (`"table_name"`)
 /// - Placeholders: Question marks (`?`)
+/// - Arithmetic: Parentheses preserve nested operand precedence and associativity
 ///
 /// # Examples
 ///
@@ -50,6 +52,25 @@ use crate::{
 pub struct SqliteQueryBuilder;
 
 impl SqliteQueryBuilder {
+	pub(crate) fn build_database_list(
+		&self,
+		_stmt: &SqliteDatabaseListStatement,
+	) -> (String, Values) {
+		("PRAGMA database_list".to_owned(), Values::default())
+	}
+
+	pub(crate) fn build_foreign_keys_setting(
+		&self,
+		statement: &SqliteForeignKeysStatement,
+	) -> (String, Values) {
+		let sql = if statement.enabled {
+			"PRAGMA foreign_keys = ON"
+		} else {
+			"PRAGMA foreign_keys = OFF"
+		};
+		(sql.to_owned(), Values::default())
+	}
+
 	/// Create a new SQLite query builder
 	pub fn new() -> Self {
 		Self
@@ -432,11 +453,15 @@ impl SqliteQueryBuilder {
 					writer.push(")");
 				}
 				_ => {
-					self.write_simple_expr(writer, left);
+					write_arithmetic_operand(writer, left, *op, false, &["--"], |w, expr| {
+						self.write_simple_expr(w, expr);
+					});
 					writer.push_space();
 					writer.push(op.as_str());
 					writer.push_space();
-					self.write_simple_expr(writer, right);
+					write_arithmetic_operand(writer, right, *op, true, &["--"], |w, expr| {
+						self.write_simple_expr(w, expr);
+					});
 				}
 			},
 			SimpleExpr::Unary(op, expr) => {
@@ -1490,6 +1515,11 @@ impl QueryBuilder for SqliteQueryBuilder {
 					writer.push_space();
 					writer.push_identifier(&new.to_string(), |s| self.escape_iden(s));
 				}
+				AlterTableOperation::AddIdentity { .. }
+				| AlterTableOperation::SetIdentity { .. }
+				| AlterTableOperation::DropIdentity { .. } => {
+					panic!("sqlite does not support PostgreSQL identity operations");
+				}
 				AlterTableOperation::RenameTable(new_name) => {
 					writer.push("RENAME TO");
 					writer.push_space();
@@ -1533,6 +1563,13 @@ impl QueryBuilder for SqliteQueryBuilder {
 	}
 
 	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
+		assert!(
+			stmt.columns
+				.iter()
+				.all(|column| column.prefix_length.is_none()),
+			"SQLite does not support index column prefixes"
+		);
+
 		let mut writer = SqlWriter::new();
 
 		// CREATE UNIQUE INDEX IF NOT EXISTS
@@ -4759,6 +4796,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -4771,6 +4809,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -4798,6 +4837,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
@@ -4849,6 +4889,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -4861,6 +4902,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::ForeignKey {
@@ -4893,6 +4935,7 @@ mod tests {
 			expression: None,
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4917,6 +4960,7 @@ mod tests {
 			expression: None,
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4941,6 +4985,7 @@ mod tests {
 			expression: None,
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4965,6 +5010,7 @@ mod tests {
 			expression: None,
 			order: Some(Order::Desc),
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -4989,12 +5035,14 @@ mod tests {
 			expression: None,
 			order: Some(Order::Asc),
 			operator_class: None,
+			prefix_length: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
 			expression: None,
 			order: Some(Order::Asc),
 			operator_class: None,
+			prefix_length: None,
 		});
 
 		let (sql, values) = builder.build_create_index(&stmt);
@@ -5018,6 +5066,7 @@ mod tests {
 			expression: None,
 			order: None,
 			operator_class: None,
+			prefix_length: None,
 		});
 		stmt.r#where = Some(Expr::col("active").eq(true).into_simple_expr());
 
@@ -5048,6 +5097,7 @@ mod tests {
 				default: None,
 				check: None,
 				generated: None,
+				identity: None,
 				comment: None,
 			}));
 
@@ -5153,6 +5203,7 @@ mod tests {
 				default: None,
 				check: None,
 				generated: None,
+				identity: None,
 				comment: None,
 			}));
 
@@ -5195,6 +5246,7 @@ mod tests {
 			default: None,
 			check: None,
 			generated: None,
+			identity: None,
 			comment: None,
 		});
 
