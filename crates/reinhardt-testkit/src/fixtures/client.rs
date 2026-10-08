@@ -15,17 +15,17 @@
 //!
 //! ```rust,no_run
 //! use reinhardt_testkit::fixtures::{test_server_guard, api_client_from_url, TestServerGuard};
-//! use reinhardt_urls::routers::UnifiedRouter;
+//! use reinhardt_urls::routers::ServerRouter;
 //! use rstest::*;
 //!
 //! #[rstest]
 //! #[tokio::test]
 //! async fn test_api() {
-//!     let router = UnifiedRouter::new();
+//!     let router = ServerRouter::new();
 //!     let server = test_server_guard(router).await;
 //!     let client = api_client_from_url(&server.url);
 //!     let response = client.get("/api/test").await.unwrap();
-//!     assert_eq!(response.status_code(), 200);
+//!     assert_eq!(response.status_code(), 404);
 //! }
 //! ```
 //!
