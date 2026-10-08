@@ -276,7 +276,7 @@ impl Drop for FileLockGuard {
 
 /// Fixture providing a PostgreSQL container with connection pool
 ///
-/// Starts a PostgreSQL 17 Alpine container and provides a connection pool
+/// Starts a PostgreSQL 16 Alpine container and provides a connection pool
 /// for testing database operations.
 ///
 /// # Examples
