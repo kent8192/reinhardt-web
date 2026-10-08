@@ -15,9 +15,10 @@ Consumers execute the pair using SQLx's `query_with`/`query_as_with` functions.
 
 The adapter is native-only (API parity P0); its symbols and native dependencies
 are absent on browser WASM. `reinhardt-query` remains executor-independent and
-portable. Default features are empty. Consumers enable the required backend and
-codec features explicitly. Wiring the adapter into runtime callers is tracked
-in [#5895](https://github.com/kent8192/reinhardt-web/issues/5895).
+portable. Default features are empty. Applications retain the existing
+`reinhardt-db`/facade backend selections; consuming crates forward those selections
+to adapter features. Standalone conf's `dynamic-database` enables its existing
+Any path without introducing a dependency on db.
 
 ## Encoding contract
 

@@ -113,6 +113,48 @@ struct FlavoredTransactionExecutor {
 
 #[async_trait::async_trait]
 impl TransactionExecutor for FlavoredTransactionExecutor {
+	fn fetch_stream_generated<'a>(
+		&'a mut self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		self.inner
+			.fetch_stream_generated(built, chunk_size, context)
+	}
+
+	async fn execute_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		self.inner.execute_generated(built, context).await
+	}
+
+	async fn fetch_one_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		self.inner.fetch_one_generated(built, context).await
+	}
+
+	async fn fetch_all_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		self.inner.fetch_all_generated(built, context).await
+	}
+
+	async fn fetch_optional_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		self.inner.fetch_optional_generated(built, context).await
+	}
+
 	fn backend(&self) -> DatabaseType {
 		self.inner.backend()
 	}
@@ -879,31 +921,66 @@ impl DatabaseConnection {
 		Ok(db_config.to_url())
 	}
 
-	#[cfg(any(feature = "orm", feature = "associations"))]
-	pub(crate) async fn execute_generated(
-		&self,
-		sql: &str,
-		values: reinhardt_query::Values,
-	) -> Result<super::types::QueryResult> {
-		self.backend.__execute_generated(sql, values).await
+	/// Stream an owned generated pair with a bounded fetch hint (native-only, P0).
+	///
+	/// Encodes before execution, preserves structural error context and releases
+	/// the native cursor when the stream is dropped.
+	pub fn fetch_stream_generated<'a>(
+		&'a self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		self.backend
+			.fetch_stream_generated(built, chunk_size, context)
 	}
 
-	#[cfg(feature = "orm")]
-	pub(crate) async fn fetch_one_generated(
+	/// Execute a generated statement using its exact owned SQL/Values pair (native-only, P0).
+	///
+	/// Native SQLx backend codecs preserve argument types and return redacted
+	/// conversion errors before execution. Caller-owned raw APIs remain separate.
+	pub async fn execute_generated(
 		&self,
-		sql: &str,
-		values: reinhardt_query::Values,
-	) -> Result<super::types::Row> {
-		self.backend.__fetch_one_generated(sql, values).await
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		self.backend.execute_generated(built, context).await
 	}
 
-	#[cfg(feature = "orm")]
-	pub(crate) async fn fetch_all_generated(
+	/// Fetch one generated row using its exact owned SQL/Values pair (native-only, P0).
+	///
+	/// Native SQLx backend codecs preserve argument types and return redacted
+	/// conversion errors before execution. Caller-owned raw APIs remain separate.
+	pub async fn fetch_one_generated(
 		&self,
-		sql: &str,
-		values: reinhardt_query::Values,
-	) -> Result<Vec<super::types::Row>> {
-		self.backend.__fetch_all_generated(sql, values).await
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		self.backend.fetch_one_generated(built, context).await
+	}
+
+	/// Fetch all generated rows using its exact owned SQL/Values pair (native-only, P0).
+	///
+	/// Native SQLx backend codecs preserve argument types and return redacted
+	/// conversion errors before execution. Caller-owned raw APIs remain separate.
+	pub async fn fetch_all_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		self.backend.fetch_all_generated(built, context).await
+	}
+
+	/// Fetch an optional generated row using its exact owned SQL/Values pair (native-only, P0).
+	///
+	/// Native SQLx backend codecs preserve argument types and return redacted
+	/// conversion errors before execution. Caller-owned raw APIs remain separate.
+	pub async fn fetch_optional_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		self.backend.fetch_optional_generated(built, context).await
 	}
 
 	/// Executes the operation.

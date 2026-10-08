@@ -14,6 +14,7 @@ testcontainers = [
   "dep:testcontainers",
   "dep:testcontainers-modules",
   "dep:sqlx",
+  "dep:reinhardt-query-sqlx",
   "dep:memcache-async",
   "dep:tokio-util",
   "dep:redis",
@@ -71,6 +72,7 @@ testcontainers-modules = { workspace = true, optional = true }
 # which clears RUSTSEC-2026-0145. See workspace Cargo.toml for details.
 astral-tokio-tar = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
+reinhardt-query-sqlx = { workspace = true, optional = true }
 memcache-async = { version = "0.9.0", optional = true }
 tokio-util = { version = "0.7", features = ["compat"], optional = true }
 redis = { workspace = true, optional = true, features = [

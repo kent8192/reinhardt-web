@@ -43,6 +43,8 @@ reinhardt-query = { workspace = true, features = [
   "with-uuid",
 ], optional = true }
 
+reinhardt-query-sqlx = { workspace = true, optional = true, features = ["any", "with-chrono", "with-uuid", "with-json", "with-rust_decimal", "with-bigdecimal"] }
+
 # Async runtime
 tokio = { version = "1.41", features = ["full", "macros", "rt", "sync"], optional = true }
 async-trait = { version = "0.1", optional = true }
@@ -148,6 +150,7 @@ db-deps = [
   "dep:rand",
   "dep:regex",
   "dep:reinhardt-query",
+  "dep:reinhardt-query-sqlx",
   "dep:rust_decimal",
   "dep:serde",
   "dep:serde_json",
@@ -207,17 +210,18 @@ database-full = [
 ]
 
 # Database-specific features
-postgres = ["db-deps", "sqlx/postgres"]
+postgres = ["db-deps", "sqlx/postgres", "reinhardt-query-sqlx/postgres"]
 pgvector = [
   "postgres",
   "orm",
   "migrations",
   "dep:pgvector",
   "reinhardt-query/pgvector",
+  "reinhardt-query-sqlx/pgvector",
   "reinhardt-core/pgvector",
 ]
-sqlite = ["db-deps", "sqlx/sqlite"]
-mysql = ["db-deps", "sqlx/mysql"]
+sqlite = ["db-deps", "sqlx/sqlite", "reinhardt-query-sqlx/sqlite"]
+mysql = ["db-deps", "sqlx/mysql", "reinhardt-query-sqlx/mysql"]
 
 # NoSQL database features
 nosql-all = ["cassandra", "dynamodb", "mongodb", "neo4j", "nosql", "redis"]

@@ -168,29 +168,30 @@ where
 	where
 		E: OrmExecutor,
 	{
-		let mut query = Query::select();
-		query
-			.from(Alias::new(T::table_name()))
-			.column(ColumnRef::table_asterisk(Alias::new(T::table_name())))
-			.and_where(
-				Expr::col(Alias::new(&self.foreign_key_field))
-					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
-			);
+		let (sql, values) = {
+			let mut query = Query::select();
+			query
+				.from(Alias::new(T::table_name()))
+				.column(ColumnRef::table_asterisk(Alias::new(T::table_name())))
+				.and_where(
+					Expr::col(Alias::new(&self.foreign_key_field))
+						.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
+				);
 
-		// Apply LIMIT/OFFSET
-		if let Some(limit) = self.limit {
-			query.limit(limit as u64);
-		}
-		if let Some(offset) = self.offset {
-			query.offset(offset as u64);
-		}
+			// Apply LIMIT/OFFSET
+			if let Some(limit) = self.limit {
+				query.limit(limit as u64);
+			}
+			if let Some(offset) = self.offset {
+				query.offset(offset as u64);
+			}
 
-		let query = query.to_owned();
-		let (sql, values) = build_select_sql(&query, conn.backend());
+			let query = query.to_owned();
+			build_select_sql(&query, conn.backend())
+		};
 		let params = value_samples(&values);
-		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = conn.fetch_all(&sql, query_values).await;
+		let query_result = conn.fetch_all_generated((sql.clone(), values), None).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -240,23 +241,24 @@ where
 	where
 		E: OrmExecutor,
 	{
-		let query = Query::select()
-			.from(Alias::new(T::table_name()))
-			.expr_as(
-				Func::count(Expr::asterisk().into_simple_expr()),
-				Alias::new("count"),
-			)
-			.and_where(
-				Expr::col(Alias::new(&self.foreign_key_field))
-					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
-			)
-			.to_owned();
+		let (sql, values) = {
+			let query = Query::select()
+				.from(Alias::new(T::table_name()))
+				.expr_as(
+					Func::count(Expr::asterisk().into_simple_expr()),
+					Alias::new("count"),
+				)
+				.and_where(
+					Expr::col(Alias::new(&self.foreign_key_field))
+						.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
+				)
+				.to_owned();
 
-		let (sql, values) = build_select_sql(&query, conn.backend());
+			build_select_sql(&query, conn.backend())
+		};
 		let params = value_samples(&values);
-		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = conn.fetch_all(&sql, query_values).await;
+		let query_result = conn.fetch_all_generated((sql.clone(), values), None).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {

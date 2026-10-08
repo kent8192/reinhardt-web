@@ -1,12 +1,12 @@
-#[cfg(test)]
-use super::connection::QueryValue;
 use super::connection::{
 	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, OrmExecutor, QueryRow, Row,
 };
-use super::field_codec::{DatabaseArrayType, database_value_to_query_value};
+use super::field_codec::database_value_to_query_value;
 use super::inspection::FieldInfo;
 use super::query::RelationLoadInput;
 use super::{DatabaseValue, FieldCodecError, Model, QuerySet};
+#[cfg(test)]
+use crate::backends::QueryValue;
 use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 use reinhardt_query::prelude::{
 	Alias, CockroachDBQueryBuilder, ColumnRef, Condition, DeleteStatement, Expr, ExprTrait, Func,
@@ -53,6 +53,42 @@ fn executor_field_codec_error(error: FieldCodecError) -> crate::backends::error:
 
 fn executor_error(error: Error) -> crate::backends::error::DatabaseError {
 	crate::backends::error::into_database_error(error)
+}
+
+fn model_database_value(
+	value: DatabaseValue,
+	backend: Option<DatabaseBackend>,
+) -> Result<DatabaseValue, FieldCodecError> {
+	// Model arrays use JSON columns on backends without native SQL arrays.
+	if matches!(
+		backend,
+		Some(DatabaseBackend::MySql | DatabaseBackend::Sqlite)
+	) && matches!(&value, DatabaseValue::Array { .. })
+	{
+		Ok(DatabaseValue::Json(value.into_json_value()?))
+	} else {
+		Ok(value)
+	}
+}
+
+fn model_query_value(
+	value: DatabaseValue,
+	backend: Option<DatabaseBackend>,
+) -> Result<reinhardt_query::value::Value, FieldCodecError> {
+	model_database_value(value, backend).map(database_value_to_query_value)
+}
+
+fn model_fields_for_backend<M: Model>(
+	model: &M,
+	backend: DatabaseBackend,
+) -> Result<std::collections::BTreeMap<String, DatabaseValue>, FieldCodecError> {
+	model
+		.encode_database_fields()?
+		.into_iter()
+		.map(|(field, value)| {
+			model_database_value(value, Some(backend)).map(|value| (field, value))
+		})
+		.collect()
 }
 
 /// Build SQL with values from an INSERT statement based on database backend
@@ -198,10 +234,12 @@ fn build_delete_sql_checked(
 	}
 }
 
+#[cfg(test)]
 fn database_value_sql_literal(
 	value: DatabaseValue,
 	backend: DatabaseBackend,
 ) -> Result<String, FieldCodecError> {
+	use super::DatabaseArrayType;
 	if backend == DatabaseBackend::Postgres
 		&& let DatabaseValue::Array {
 			element_type,
@@ -243,6 +281,7 @@ fn database_value_sql_literal(
 	Ok(format!("'{}'", json.to_string().replace('\'', "''")))
 }
 
+#[cfg(test)]
 fn postgres_special_float_literal(value: f64, sql_type: &str) -> String {
 	let literal = if value.is_nan() {
 		"NaN"
@@ -252,15 +291,6 @@ fn postgres_special_float_literal(value: f64, sql_type: &str) -> String {
 		"-Infinity"
 	};
 	format!("'{literal}'::{sql_type}")
-}
-
-fn quote_identifier(identifier: &str, backend: DatabaseBackend) -> String {
-	let quote = if backend == DatabaseBackend::MySql {
-		'`'
-	} else {
-		'"'
-	};
-	format!("{quote}{identifier}{quote}")
 }
 
 #[derive(Clone)]
@@ -1776,25 +1806,21 @@ impl<M: Model> Manager<M> {
 		executor: &mut dyn super::connection::TransactionExecutor,
 		model: &M,
 	) -> Result<M, crate::backends::error::DatabaseError> {
-		let obj = model
-			.encode_database_fields()
-			.map_err(executor_field_codec_error)?;
-		let mut stmt =
-			Self::build_insert_statement_from_object(&obj, |field| model.field_is_none(field))
-				.map_err(executor_error)?;
 		let backend = Self::executor_backend(executor);
+		let obj = model_fields_for_backend(model, backend).map_err(executor_field_codec_error)?;
+		let (sql, values, context) = {
+			let mut stmt =
+				Self::build_insert_statement_from_object(&obj, |field| model.field_is_none(field))
+					.map_err(executor_error)?;
 
-		if backend != DatabaseBackend::MySql {
-			stmt.returning(Self::returning_columns_from_object(&obj));
-		}
-		let context = super::execution::pgvector_context_for_insert(&stmt);
-		let (sql, values) = build_insert_sql_checked(&stmt, backend, executor.is_cockroachdb())
-			.map_err(executor_error)?;
-		let params = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+			if backend != DatabaseBackend::MySql {
+				stmt.returning(Self::returning_columns_from_object(&obj));
+			}
+			let context = super::execution::pgvector_context_for_insert(&stmt);
+			let (sql, values) = build_insert_sql_checked(&stmt, backend, executor.is_cockroachdb())
+				.map_err(executor_error)?;
+			(sql, values, context)
+		};
 
 		if backend == DatabaseBackend::MySql {
 			let explicit_primary_key = obj
@@ -1806,24 +1832,36 @@ impl<M: Model> Manager<M> {
 				})
 				.cloned();
 			if explicit_primary_key.is_none() {
+				let reset = Query::select()
+					.expr_as(
+						Func::mysql_last_insert_id(Some(Expr::val(0_i64).into_simple_expr())),
+						Alias::new("generated_id"),
+					)
+					.to_owned();
+				let reset = MySqlQueryBuilder
+					.build_select_checked(&reset)
+					.map_err(|error| executor_error(checked_query_build_error(error)))?;
 				executor
-					.fetch_one("SELECT LAST_INSERT_ID(0) AS generated_id", Vec::new())
+					.fetch_one_generated(reset, None)
 					.await
 					.map_err(executor_error)?;
 			}
 			executor
-				.execute_with_context(&sql, params, context)
+				.execute_generated((sql, values), context)
 				.await
 				.map_err(executor_error)?;
 
 			let primary_key_value = if let Some(primary_key) = explicit_primary_key {
 				database_value_to_query_value(primary_key)
 			} else {
+				let read = Query::select()
+					.expr_as(Func::mysql_last_insert_id(None), Alias::new("generated_id"))
+					.to_owned();
+				let read = MySqlQueryBuilder
+					.build_select_checked(&read)
+					.map_err(|error| executor_error(checked_query_build_error(error)))?;
 				let row = executor
-					.fetch_one(
-						"SELECT CAST(LAST_INSERT_ID() AS SIGNED) AS generated_id",
-						Vec::new(),
-					)
+					.fetch_one_generated(read, None)
 					.await
 					.map_err(executor_error)?;
 				let generated_id = row.get::<i64>("generated_id")?;
@@ -1836,29 +1874,28 @@ impl<M: Model> Manager<M> {
 				reinhardt_query::value::Value::BigInt(Some(generated_id))
 			};
 
-			let mut select = Query::select();
-			select.from(Alias::new(M::table_name()));
-			select.column(ColumnRef::Asterisk);
-			let field_metadata = M::field_metadata();
-			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
-			select.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key_value));
-			let (select_sql, select_values) =
-				build_select_sql_checked(&select, backend, executor.is_cockroachdb())
-					.map_err(executor_error)?;
-			let select_params = select_values
-				.0
-				.into_iter()
-				.map(Self::sea_value_to_query_value)
-				.collect();
+			let (select_sql, select_values) = {
+				let mut select = Query::select();
+				select.from(Alias::new(M::table_name()));
+				select.column(ColumnRef::Asterisk);
+				let field_metadata = M::field_metadata();
+				let primary_key_column =
+					Self::field_column(&field_metadata, M::primary_key_field());
+				select.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key_value));
+				let (select_sql, select_values) =
+					build_select_sql_checked(&select, backend, executor.is_cockroachdb())
+						.map_err(executor_error)?;
+				(select_sql, select_values)
+			};
 			let row = executor
-				.fetch_one(&select_sql, select_params)
+				.fetch_one_generated((select_sql, select_values), None)
 				.await
 				.map_err(executor_error)?;
 			return Self::decode_executor_row(row);
 		}
 
 		let row = executor
-			.fetch_one_with_context(&sql, params, context)
+			.fetch_one_generated((sql, values), context)
 			.await
 			.map_err(executor_error)?;
 		Self::decode_executor_row(row)
@@ -1937,36 +1974,37 @@ impl<M: Model> Manager<M> {
 	where
 		E: OrmExecutor + ?Sized,
 	{
-		let obj = match model.encode_database_fields().map_err(field_codec_error) {
+		let backend = conn.backend();
+		let obj = match model_fields_for_backend(model, backend).map_err(field_codec_error) {
 			Ok(obj) => obj,
 			Err(error) => {
 				return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
 			}
 		};
-		let mut stmt = match Self::build_insert_statement_from_object(&obj, |field| {
-			model.field_is_none(field)
-		}) {
-			Ok(statement) => statement,
-			Err(error) => {
-				return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
+		let (sql, values, context) = {
+			let mut stmt = match Self::build_insert_statement_from_object(&obj, |field| {
+				model.field_is_none(field)
+			}) {
+				Ok(statement) => statement,
+				Err(error) => {
+					return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
+				}
+			};
+			if backend != DatabaseBackend::MySql {
+				stmt.returning(Self::returning_columns_from_object(&obj));
 			}
+			let context = super::execution::pgvector_context_for_insert(&stmt);
+			let (sql, values) =
+				match build_insert_sql_checked(&stmt, backend, conn.is_cockroachdb()) {
+					Ok(sql_and_values) => sql_and_values,
+					Err(error) => {
+						return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(
+							error,
+						);
+					}
+				};
+			(sql, values, context)
 		};
-		let backend = conn.backend();
-		if backend != DatabaseBackend::MySql {
-			stmt.returning(Self::returning_columns_from_object(&obj));
-		}
-		let context = super::execution::pgvector_context_for_insert(&stmt);
-		let (sql, values) = match build_insert_sql_checked(&stmt, backend, conn.is_cockroachdb()) {
-			Ok(sql_and_values) => sql_and_values,
-			Err(error) => {
-				return super::custom_manager::CreateWithConnOutcome::FailedBeforeInsert(error);
-			}
-		};
-		let params = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
 
 		if backend == DatabaseBackend::MySql {
 			let explicit_primary_key = obj
@@ -1977,7 +2015,7 @@ impl<M: Model> Manager<M> {
 							|| !M::primary_key_uses_zero_sentinel())
 				})
 				.cloned();
-			let result = match conn.execute_with_context(&sql, params, context).await {
+			let result = match conn.execute_generated((sql, values), context).await {
 				Ok(result) => result,
 				Err(error) => {
 					let outcome = match error.database_error().map(DatabaseError::kind) {
@@ -2014,26 +2052,27 @@ impl<M: Model> Manager<M> {
 			};
 			let field_metadata = M::field_metadata();
 			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
-			let mut select = Query::select();
-			select
-				.from(Alias::new(M::table_name()))
-				.column(ColumnRef::Asterisk)
-				.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key));
-			let (select_sql, select_values) =
-				match build_select_sql_checked(&select, backend, conn.is_cockroachdb()) {
-					Ok(sql_and_values) => sql_and_values,
-					Err(error) => {
-						return super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(
-							error,
-						);
-					}
-				};
-			let select_params = select_values
-				.0
-				.into_iter()
-				.map(Self::sea_value_to_query_value)
-				.collect();
-			let row = match conn.fetch_one(&select_sql, select_params).await {
+			let (select_sql, select_values) = {
+				let mut select = Query::select();
+				select
+					.from(Alias::new(M::table_name()))
+					.column(ColumnRef::Asterisk)
+					.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key));
+				let (select_sql, select_values) =
+					match build_select_sql_checked(&select, backend, conn.is_cockroachdb()) {
+						Ok(sql_and_values) => sql_and_values,
+						Err(error) => {
+							return super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(
+								error,
+							);
+						}
+					};
+				(select_sql, select_values)
+			};
+			let row = match conn
+				.fetch_one_generated((select_sql, select_values), None)
+				.await
+			{
 				Ok(row) => row,
 				Err(error) => {
 					return super::custom_manager::CreateWithConnOutcome::FailedAfterInsert(error);
@@ -2047,7 +2086,7 @@ impl<M: Model> Manager<M> {
 			};
 		}
 
-		let row = match conn.fetch_one_with_context(&sql, params, context).await {
+		let row = match conn.fetch_one_generated((sql, values), context).await {
 			Ok(row) => row,
 			Err(error) => {
 				return match error.database_error().map(DatabaseError::kind) {
@@ -2150,6 +2189,7 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Convert reinhardt_query::value::Value to QueryValue for database parameter binding
+	#[cfg(test)]
 	pub(crate) fn sea_value_to_query_value(
 		v: reinhardt_query::value::Value,
 	) -> super::connection::QueryValue {
@@ -2356,53 +2396,47 @@ impl<M: Model> Manager<M> {
 				"Model must have primary key",
 			)
 		})?;
-		let obj = model
-			.encode_database_fields()
-			.map_err(executor_field_codec_error)?;
 		let backend = Self::executor_backend(executor);
-		let stmt = Self::build_update_statement_from_object_with_returning(
-			&obj,
-			backend != DatabaseBackend::MySql,
-		)
-		.map_err(executor_field_codec_error)?;
-		let context = super::execution::pgvector_context_for_update(&stmt);
-		let (sql, values) = build_update_sql_checked(&stmt, backend, executor.is_cockroachdb())
-			.map_err(executor_error)?;
-		let params = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+		let obj = model_fields_for_backend(model, backend).map_err(executor_field_codec_error)?;
+		let (sql, values, context) = {
+			let stmt = Self::build_update_statement_from_object_with_returning(
+				&obj,
+				backend != DatabaseBackend::MySql,
+			)
+			.map_err(executor_field_codec_error)?;
+			let context = super::execution::pgvector_context_for_update(&stmt);
+			let (sql, values) = build_update_sql_checked(&stmt, backend, executor.is_cockroachdb())
+				.map_err(executor_error)?;
+			(sql, values, context)
+		};
 
 		if backend == DatabaseBackend::MySql {
 			executor
-				.execute_with_context(&sql, params, context)
+				.execute_generated((sql, values), context)
 				.await
 				.map_err(executor_error)?;
-			let mut select = Query::select();
-			select.from(Alias::new(M::table_name()));
-			select.column(ColumnRef::Asterisk);
-			select.cond_where(
-				Self::primary_key_condition_from_object(&obj)
-					.map_err(executor_field_codec_error)?,
-			);
-			let (select_sql, select_values) =
-				build_select_sql_checked(&select, backend, executor.is_cockroachdb())
-					.map_err(executor_error)?;
-			let select_params = select_values
-				.0
-				.into_iter()
-				.map(Self::sea_value_to_query_value)
-				.collect();
+			let (select_sql, select_values) = {
+				let mut select = Query::select();
+				select.from(Alias::new(M::table_name()));
+				select.column(ColumnRef::Asterisk);
+				select.cond_where(
+					Self::primary_key_condition_from_object(&obj)
+						.map_err(executor_field_codec_error)?,
+				);
+				let (select_sql, select_values) =
+					build_select_sql_checked(&select, backend, executor.is_cockroachdb())
+						.map_err(executor_error)?;
+				(select_sql, select_values)
+			};
 			let row = executor
-				.fetch_one(&select_sql, select_params)
+				.fetch_one_generated((select_sql, select_values), None)
 				.await
 				.map_err(executor_error)?;
 			return Self::decode_executor_row(row);
 		}
 
 		let row = executor
-			.fetch_one_with_context(&sql, params, context)
+			.fetch_one_generated((sql, values), context)
 			.await
 			.map_err(executor_error)?;
 		Self::decode_executor_row(row)
@@ -2449,44 +2483,42 @@ impl<M: Model> Manager<M> {
 			))
 		})?;
 
-		let obj = model.encode_database_fields().map_err(field_codec_error)?;
 		let backend = conn.backend();
-		let stmt = if backend == DatabaseBackend::MySql {
-			Self::build_update_statement_from_object_with_returning(&obj, false)
-		} else {
-			Self::build_update_statement_from_object(&obj, |field| model.field_is_none(field))
-		}
-		.map_err(field_codec_error)?;
+		let obj = model_fields_for_backend(model, backend).map_err(field_codec_error)?;
+		let (sql, values, context) = {
+			let stmt = if backend == DatabaseBackend::MySql {
+				Self::build_update_statement_from_object_with_returning(&obj, false)
+			} else {
+				Self::build_update_statement_from_object(&obj, |field| model.field_is_none(field))
+			}
+			.map_err(field_codec_error)?;
 
-		let context = super::execution::pgvector_context_for_update(&stmt);
-		let (sql, values) = build_update_sql_checked(&stmt, backend, conn.is_cockroachdb())?;
-		let values: Vec<_> = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+			let context = super::execution::pgvector_context_for_update(&stmt);
+			let (sql, values) = build_update_sql_checked(&stmt, backend, conn.is_cockroachdb())?;
+			(sql, values, context)
+		};
 
 		if backend == DatabaseBackend::MySql {
-			conn.execute_with_context(&sql, values, context).await?;
-			let mut select = Query::select();
-			select
-				.from(Alias::new(M::table_name()))
-				.column(ColumnRef::Asterisk)
-				.cond_where(
-					Self::primary_key_condition_from_object(&obj).map_err(field_codec_error)?,
-				);
-			let (select_sql, select_values) =
-				build_select_sql_checked(&select, backend, conn.is_cockroachdb())?;
-			let select_params = select_values
-				.0
-				.into_iter()
-				.map(Self::sea_value_to_query_value)
-				.collect();
-			let row = conn.fetch_one(&select_sql, select_params).await?;
+			conn.execute_generated((sql, values), context).await?;
+			let (select_sql, select_values) = {
+				let mut select = Query::select();
+				select
+					.from(Alias::new(M::table_name()))
+					.column(ColumnRef::Asterisk)
+					.cond_where(
+						Self::primary_key_condition_from_object(&obj).map_err(field_codec_error)?,
+					);
+				let (select_sql, select_values) =
+					build_select_sql_checked(&select, backend, conn.is_cockroachdb())?;
+				(select_sql, select_values)
+			};
+			let row = conn
+				.fetch_one_generated((select_sql, select_values), None)
+				.await?;
 			return decode_model_row(row);
 		}
 
-		let row = conn.fetch_one_with_context(&sql, values, context).await?;
+		let row = conn.fetch_one_generated((sql, values), context).await?;
 		decode_model_row(row)
 	}
 
@@ -2505,20 +2537,18 @@ impl<M: Model> Manager<M> {
 		executor: &mut dyn super::connection::TransactionExecutor,
 		pk: M::PrimaryKey,
 	) -> Result<(), crate::backends::error::DatabaseError> {
-		let stmt = Self::build_delete_statement(&pk).map_err(executor_field_codec_error)?;
-		let (sql, values) = build_delete_sql_checked(
-			&stmt,
-			Self::executor_backend(executor),
-			executor.is_cockroachdb(),
-		)
-		.map_err(executor_error)?;
-		let params = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+		let (sql, values) = {
+			let stmt = Self::build_delete_statement(&pk).map_err(executor_field_codec_error)?;
+			let (sql, values) = build_delete_sql_checked(
+				&stmt,
+				Self::executor_backend(executor),
+				executor.is_cockroachdb(),
+			)
+			.map_err(executor_error)?;
+			(sql, values)
+		};
 		executor
-			.execute(&sql, params)
+			.execute_generated((sql, values), None)
 			.await
 			.map_err(executor_error)?;
 		Ok(())
@@ -2559,16 +2589,15 @@ impl<M: Model> Manager<M> {
 	where
 		E: OrmExecutor,
 	{
-		let stmt = Self::build_delete_statement(&pk).map_err(field_codec_error)?;
+		let (sql, values) = {
+			let stmt = Self::build_delete_statement(&pk).map_err(field_codec_error)?;
 
-		let (sql, values) = build_delete_sql_checked(&stmt, conn.backend(), conn.is_cockroachdb())?;
-		let values: Vec<_> = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+			let (sql, values) =
+				build_delete_sql_checked(&stmt, conn.backend(), conn.is_cockroachdb())?;
+			(sql, values)
+		};
 
-		conn.execute(&sql, values).await?;
+		conn.execute_generated((sql, values), None).await?;
 		Ok(())
 	}
 
@@ -2606,19 +2635,18 @@ impl<M: Model> Manager<M> {
 		E: OrmExecutor,
 	{
 		// Build reinhardt-query SELECT COUNT(*) statement with explicit alias
-		let stmt = Query::select()
-			.from(Alias::new(M::table_name()))
-			.expr_as(Func::count(Expr::asterisk().into()), Alias::new("count"))
-			.to_owned();
+		let (sql, values) = {
+			let stmt = Query::select()
+				.from(Alias::new(M::table_name()))
+				.expr_as(Func::count(Expr::asterisk().into()), Alias::new("count"))
+				.to_owned();
 
-		let (sql, values) = build_select_sql_checked(&stmt, conn.backend(), conn.is_cockroachdb())?;
-		let values: Vec<_> = values
-			.0
-			.into_iter()
-			.map(Self::sea_value_to_query_value)
-			.collect();
+			let (sql, values) =
+				build_select_sql_checked(&stmt, conn.backend(), conn.is_cockroachdb())?;
+			(sql, values)
+		};
 
-		let row = QueryRow::from_backend_row(conn.fetch_one(&sql, values).await?);
+		let row = QueryRow::from_backend_row(conn.fetch_one_generated((sql, values), None).await?);
 		row.get::<i64>("count").ok_or_else(|| {
 			Error::from(DatabaseError::new(
 				DatabaseErrorKind::Query,
@@ -2629,12 +2657,13 @@ impl<M: Model> Manager<M> {
 
 	/// Bulk create multiple records using reinhardt-query (similar to Django's bulk_create())
 	pub fn bulk_create_query(&self, models: &[M]) -> Option<InsertStatement> {
-		self.try_bulk_create_query(models).ok().flatten()
+		self.try_bulk_create_query(models, None).ok().flatten()
 	}
 
 	fn try_bulk_create_query(
 		&self,
 		models: &[M],
+		backend: Option<DatabaseBackend>,
 	) -> Result<Option<InsertStatement>, FieldCodecError> {
 		if models.is_empty() {
 			return Ok(None);
@@ -2682,16 +2711,17 @@ impl<M: Model> Manager<M> {
 
 		// Add value rows for each model
 		for obj in &database_values {
-			let values: Vec<reinhardt_query::value::Value> = field_names
+			let values = field_names
 				.iter()
 				.map(|field| {
-					obj.get(field.as_str())
-						.cloned()
-						.map(database_value_to_query_value)
-							// Use untyped NULL for missing fields
-							.unwrap_or(reinhardt_query::value::Value::Int(None))
+					model_query_value(
+						obj.get(field.as_str())
+							.cloned()
+							.unwrap_or(DatabaseValue::Null),
+						backend,
+					)
 				})
-				.collect();
+				.collect::<Result<Vec<_>, _>>()?;
 			stmt.values_panic(values);
 		}
 
@@ -2721,7 +2751,7 @@ impl<M: Model> Manager<M> {
 			while end < models.len() && key_presence[end] == has_key {
 				end += 1;
 			}
-			if let Some(statement) = self.try_bulk_create_query(&models[start..end])? {
+			if let Some(statement) = self.try_bulk_create_query(&models[start..end], None)? {
 				statements.push(statement);
 			} else {
 				// DEFAULT VALUES inserts one row per statement on all supported backends.
@@ -2750,6 +2780,20 @@ impl<M: Model> Manager<M> {
 			insert_to_string(&stmt, backend)
 		} else {
 			String::new()
+		}
+	}
+
+	fn apply_bulk_insert_ignore(statement: &mut InsertStatement, backend: DatabaseBackend) {
+		match backend {
+			DatabaseBackend::Postgres => {
+				statement.on_conflict(reinhardt_query::query::OnConflict::new().do_nothing());
+			}
+			DatabaseBackend::MySql => {
+				statement.mysql_ignore();
+			}
+			DatabaseBackend::Sqlite => {
+				statement.sqlite_or_ignore();
+			}
 		}
 	}
 
@@ -2861,25 +2905,14 @@ impl<M: Model> Manager<M> {
 				.try_bulk_create_statements(chunk)
 				.map_err(field_codec_error)?;
 			for mut statement in statements {
-				if !ignore_conflicts && backend != DatabaseBackend::MySql {
+				if ignore_conflicts {
+					Self::apply_bulk_insert_ignore(&mut statement, backend);
+				} else if backend != DatabaseBackend::MySql {
 					statement.returning_all();
 				}
 				let context = super::execution::pgvector_context_for_insert(&statement);
 				let (sql, values) =
 					build_insert_sql_checked(&statement, backend, conn.is_cockroachdb())?;
-				let sql = if ignore_conflicts {
-					match backend {
-						DatabaseBackend::Postgres => format!("{sql} ON CONFLICT DO NOTHING"),
-						DatabaseBackend::MySql => {
-							sql.replacen("INSERT INTO", "INSERT IGNORE INTO", 1)
-						}
-						DatabaseBackend::Sqlite => {
-							sql.replacen("INSERT INTO", "INSERT OR IGNORE INTO", 1)
-						}
-					}
-				} else {
-					sql
-				};
 				if ignore_conflicts || backend == DatabaseBackend::MySql {
 					conn.execute_generated_with_context(&sql, values, context)
 						.await?;
@@ -2929,7 +2962,7 @@ impl<M: Model> Manager<M> {
 		}
 
 		validate_bulk_batch_size(batch_size)?;
-		let conn = get_connection().await?;
+		let mut conn = get_connection().await?;
 		let batch_size = batch_size.unwrap_or(models.len());
 		let mut total_updated = 0;
 
@@ -2975,14 +3008,24 @@ impl<M: Model> Manager<M> {
 
 			if !updates.is_empty() {
 				validate_bulk_update_values_for_backend(&updates, conn.is_cockroachdb())?;
-				let sql = self
-					.bulk_update_database_values_sql_detailed(&updates, &fields, conn.backend())
-					.map_err(field_codec_error)?;
-				if sql.is_empty() {
-					continue;
-				}
-				let rows_affected = conn.execute(&sql, vec![]).await?;
-				total_updated += rows_affected as usize;
+				let (sql, values, context) = {
+					let Some(statement) = self
+						.bulk_update_database_values_query(&updates, &fields, conn.backend())
+						.map_err(field_codec_error)?
+					else {
+						continue;
+					};
+					let context = super::execution::pgvector_context_for_update(&statement);
+					let (sql, values) = build_update_sql_checked(
+						&statement,
+						conn.backend(),
+						conn.is_cockroachdb(),
+					)?;
+					(sql, values, context)
+				};
+				let result =
+					OrmExecutor::execute_generated(&mut conn, (sql, values), context).await?;
+				total_updated += result.rows_affected as usize;
 			}
 		}
 
@@ -3046,13 +3089,22 @@ impl<M: Model> Manager<M> {
 				continue;
 			}
 			validate_bulk_update_values_for_backend(&updates, conn.is_cockroachdb())?;
-			let sql = self
-				.bulk_update_database_values_sql_detailed(&updates, &fields, conn.backend())
-				.map_err(field_codec_error)?;
-			if sql.is_empty() {
-				continue;
-			}
-			total_updated += conn.execute(&sql, Vec::new()).await?.rows_affected as usize;
+			let (sql, values, context) = {
+				let Some(statement) = self
+					.bulk_update_database_values_query(&updates, &fields, conn.backend())
+					.map_err(field_codec_error)?
+				else {
+					continue;
+				};
+				let context = super::execution::pgvector_context_for_update(&statement);
+				let (sql, values) =
+					build_update_sql_checked(&statement, conn.backend(), conn.is_cockroachdb())?;
+				(sql, values, context)
+			};
+			total_updated += conn
+				.execute_generated((sql, values), context)
+				.await?
+				.rows_affected as usize;
 		}
 		Ok(total_updated)
 	}
@@ -3126,65 +3178,55 @@ impl<M: Model> Manager<M> {
 		sql
 	}
 
-	/// Bulk update SQL generation using CASE expressions
-	///
-	/// Generates raw SQL because reinhardt-query's `UpdateStatement` does not support
-	/// expression-based SET values (e.g., CASE WHEN ... END).
-	fn bulk_update_database_values_sql_detailed(
+	/// Builds bulk updates with typed CASE expressions and bound database values.
+	fn bulk_update_database_values_query(
 		&self,
 		updates: &[(DatabaseValue, HashMap<String, DatabaseValue>)],
 		fields: &[String],
 		backend: DatabaseBackend,
-	) -> Result<String, FieldCodecError> {
+	) -> Result<Option<UpdateStatement>, FieldCodecError> {
 		if updates.is_empty() || fields.is_empty() {
-			return Ok(String::new());
+			return Ok(None);
 		}
 
-		let table_name = M::table_name();
 		let field_metadata = M::field_metadata();
 		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
-		let mut set_clauses = Vec::new();
+		let mut statement = Query::update();
+		statement.table(Alias::new(M::table_name()));
+		let query_value = |value| model_query_value(value, Some(backend));
+		let mut has_values = false;
 
 		for field in fields
 			.iter()
 			.filter(|field| !Self::is_generated_field(field.as_str()))
 		{
-			let mut when_clauses = Vec::new();
+			let mut case = Expr::case();
+			let mut has_when = false;
 			for (pk, field_map) in updates {
 				if let Some(value) = field_map.get(field) {
-					when_clauses.push(format!(
-						"WHEN {} = {} THEN {}",
-						quote_identifier(primary_key_column, backend),
-						database_value_sql_literal(pk.clone(), backend)?,
-						database_value_sql_literal(value.clone(), backend)?
-					));
+					case = case.when(
+						Expr::col(Alias::new(primary_key_column)).eq(query_value(pk.clone())?),
+						Expr::val(query_value(value.clone())?),
+					);
+					has_when = true;
 				}
 			}
-			if !when_clauses.is_empty() {
+			if has_when {
 				let column_name = Self::field_column(&field_metadata, field);
-				set_clauses.push(format!(
-					"{} = CASE {} END",
-					quote_identifier(column_name, backend),
-					when_clauses.join(" ")
-				));
+				statement.value_expr(Alias::new(column_name), case.build());
+				has_values = true;
 			}
 		}
 
-		if set_clauses.is_empty() {
-			return Ok(String::new());
+		if !has_values {
+			return Ok(None);
 		}
 		let ids = updates
 			.iter()
-			.map(|(pk, _)| database_value_sql_literal(pk.clone(), backend))
-			.collect::<Result<Vec<_>, _>>()?
-			.join(", ");
-		Ok(format!(
-			"UPDATE {} SET {} WHERE {} IN ({})",
-			quote_identifier(table_name, backend),
-			set_clauses.join(", "),
-			quote_identifier(primary_key_column, backend),
-			ids
-		))
+			.map(|(pk, _)| query_value(pk.clone()))
+			.collect::<Result<Vec<_>, _>>()?;
+		statement.and_where(Expr::col(Alias::new(primary_key_column)).is_in(ids));
+		Ok(Some(statement))
 	}
 
 	/// Generates bulk-update SQL from legacy JSON input values.
@@ -3511,12 +3553,18 @@ mod tests {
 
 		async fn fetch_one_with_context(
 			&mut self,
-			_sql: &str,
+			sql: &str,
 			_params: Vec<QueryValue>,
 			context: Option<crate::backends::error::PgvectorOperationKind>,
 		) -> crate::backends::error::Result<crate::orm::Row> {
 			self.calls.push(("fetch_one_with_context", context));
-			Ok(vector_manager_row())
+			if sql.contains("generated_id") {
+				Ok(crate::orm::Row {
+					data: HashMap::from([("generated_id".to_owned(), QueryValue::Int(7))]),
+				})
+			} else {
+				Ok(vector_manager_row())
+			}
 		}
 
 		async fn fetch_all(
@@ -3605,38 +3653,6 @@ mod tests {
 			source.downcast_ref::<FieldCodecError>(),
 			Some(FieldCodecError::FieldPolicyMismatch { .. })
 		));
-	}
-
-	#[test]
-	#[cfg(feature = "pgvector")]
-	fn manager_preserves_vector_query_values() {
-		let value =
-			Manager::<JsonManagerModel>::query_value_to_sea_value(QueryValue::Vector(Some(vec![
-				1.0, 2.0, 3.0,
-			])));
-
-		assert_eq!(
-			value,
-			reinhardt_query::value::Value::Vector(Some(Box::new(vec![1.0, 2.0, 3.0])))
-		);
-		assert_eq!(
-			Manager::<JsonManagerModel>::query_value_to_sea_value(QueryValue::Vector(None)),
-			reinhardt_query::value::Value::Vector(None)
-		);
-	}
-
-	#[test]
-	#[cfg(feature = "pgvector")]
-	fn manager_binds_vector_values_natively() {
-		let value = Manager::<JsonManagerModel>::sea_value_to_query_value(
-			reinhardt_query::value::Value::Vector(Some(Box::new(vec![1.0, 2.0, 3.0]))),
-		);
-		let null_value = Manager::<JsonManagerModel>::sea_value_to_query_value(
-			reinhardt_query::value::Value::Vector(None),
-		);
-
-		assert_eq!(value, QueryValue::Vector(Some(vec![1.0, 2.0, 3.0])));
-		assert_eq!(null_value, QueryValue::Vector(None));
 	}
 
 	#[cfg(feature = "pgvector")]
@@ -3818,6 +3834,35 @@ mod tests {
 				expected_method,
 				Some(crate::backends::error::PgvectorOperationKind::VectorValue)
 			))
+		);
+	}
+
+	#[cfg(feature = "pgvector")]
+	#[rstest]
+	#[tokio::test]
+	async fn manager_bulk_update_propagates_vector_statement_context() {
+		// Arrange
+		let model = VectorManagerModel {
+			id: Some(7),
+			embedding: crate::orm::Vector::try_from(vec![1.0, 2.0, 3.0]).unwrap(),
+		};
+		let mut executor = VectorManagerOrmExecutor {
+			backend: DatabaseBackend::Postgres,
+			calls: Vec::new(),
+		};
+		// Act
+		let updated = Manager::<VectorManagerModel>::new()
+			.bulk_update_with_conn(&mut executor, vec![model], vec!["embedding".into()], None)
+			.await
+			.unwrap();
+		// Assert
+		assert_eq!(updated, 1);
+		assert_eq!(
+			executor.calls,
+			vec![(
+				"execute_with_context",
+				Some(crate::backends::error::PgvectorOperationKind::VectorValue)
+			)]
 		);
 	}
 
@@ -6061,58 +6106,209 @@ mod tests {
 		assert!(sql.contains("WHERE"));
 	}
 
-	#[test]
-	fn test_bulk_update_database_values_serializes_arrays_per_backend() {
-		use crate::orm::{DatabaseArrayType, DatabaseValue};
-
+	#[rstest]
+	#[case(
+		DatabaseBackend::Postgres,
+		"UPDATE \"test_user\" SET \"name\" = CASE WHEN \"id\" = $1 THEN $2 END WHERE \"id\" IN ($3)"
+	)]
+	#[case(
+		DatabaseBackend::MySql,
+		"UPDATE `test_user` SET `name` = CASE WHEN `id` = ? THEN ? END WHERE `id` IN (?)"
+	)]
+	#[case(
+		DatabaseBackend::Sqlite,
+		"UPDATE \"test_user\" SET \"name\" = CASE WHEN \"id\" = ? THEN ? END WHERE \"id\" IN (?)"
+	)]
+	fn bulk_update_database_arrays_keep_backend_encoding(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange: JSON columns outside PostgreSQL and native array elements inside it.
+		use crate::orm::DatabaseArrayType;
+		let array = DatabaseValue::Array {
+			element_type: DatabaseArrayType::String,
+			values: vec![
+				DatabaseValue::String("alpha' ? $1".into()),
+				DatabaseValue::Null,
+			],
+		};
+		let updates = vec![(
+			DatabaseValue::I64(1),
+			HashMap::from([("name".into(), array.clone())]),
+		)];
 		let manager = TestUser::objects();
-		let mut field_values = HashMap::new();
-		field_values.insert(
-			"name".to_string(),
-			DatabaseValue::Array {
-				element_type: DatabaseArrayType::String,
-				values: vec![
-					DatabaseValue::String("alpha".to_string()),
-					DatabaseValue::String("beta".to_string()),
-				],
-			},
-		);
-		let updates = vec![(DatabaseValue::I64(1), field_values)];
-		let fields = vec!["name".to_string()];
-
-		let sqlite_sql = manager
-			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Sqlite)
-			.expect("SQLite array SQL should render");
-		assert!(sqlite_sql.contains("'[\"alpha\",\"beta\"]'"));
-		assert!(!sqlite_sql.contains("ARRAY["));
-
-		let postgres_sql = manager
-			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Postgres)
-			.expect("PostgreSQL array SQL should render");
-		assert!(postgres_sql.contains("ARRAY["));
+		// Act
+		let statement = manager
+			.bulk_update_database_values_query(&updates, &["name".into()], backend)
+			.unwrap()
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&statement, backend);
+		// Assert
+		assert_eq!(sql, expected_sql);
+		let expected_array = if backend == DatabaseBackend::Postgres {
+			super::database_value_to_query_value(array)
+		} else {
+			reinhardt_query::value::Value::Json(Some(Box::new(serde_json::json!([
+				"alpha' ? $1",
+				null
+			]))))
+		};
+		assert_eq!(values.0, vec![1_i64.into(), expected_array, 1_i64.into()]);
 	}
 
-	#[test]
-	fn test_bulk_update_database_values_casts_empty_postgres_arrays() {
-		use crate::orm::{DatabaseArrayType, DatabaseValue};
-
-		let manager = TestUser::objects();
-		let mut field_values = HashMap::new();
-		field_values.insert(
-			"name".to_string(),
-			DatabaseValue::Array {
-				element_type: DatabaseArrayType::String,
-				values: vec![],
-			},
+	#[rstest]
+	fn bulk_update_empty_postgres_array_keeps_element_type() {
+		// Arrange
+		use crate::orm::DatabaseArrayType;
+		let array = DatabaseValue::Array {
+			element_type: DatabaseArrayType::String,
+			values: vec![],
+		};
+		let updates = vec![(
+			DatabaseValue::I64(1),
+			HashMap::from([("name".into(), array.clone())]),
+		)];
+		// Act
+		let statement = TestUser::objects()
+			.bulk_update_database_values_query(
+				&updates,
+				&["name".into()],
+				DatabaseBackend::Postgres,
+			)
+			.unwrap()
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&statement, DatabaseBackend::Postgres);
+		// Assert: the typed argument supplies the empty array's element type.
+		assert_eq!(
+			sql,
+			"UPDATE \"test_user\" SET \"name\" = CASE WHEN \"id\" = $1 THEN $2 END WHERE \"id\" IN ($3)"
 		);
-		let updates = vec![(DatabaseValue::I64(1), field_values)];
-		let fields = vec!["name".to_string()];
+		assert_eq!(
+			values.0,
+			vec![
+				1_i64.into(),
+				super::database_value_to_query_value(array),
+				1_i64.into()
+			]
+		);
+	}
 
-		let sql = manager
-			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Postgres)
-			.expect("PostgreSQL empty array SQL should render");
+	#[rstest]
+	#[case(
+		DatabaseBackend::Postgres,
+		"UPDATE \"test_user\" SET \"name\" = CASE WHEN \"id\" = $1 THEN $2 WHEN \"id\" = $3 THEN $4 END, \"email\" = CASE WHEN \"id\" = $5 THEN NULL END WHERE \"id\" IN ($6, $7)"
+	)]
+	#[case(
+		DatabaseBackend::MySql,
+		"UPDATE `test_user` SET `name` = CASE WHEN `id` = ? THEN ? WHEN `id` = ? THEN ? END, `email` = CASE WHEN `id` = ? THEN NULL END WHERE `id` IN (?, ?)"
+	)]
+	#[case(
+		DatabaseBackend::Sqlite,
+		"UPDATE \"test_user\" SET \"name\" = CASE WHEN \"id\" = ? THEN ? WHEN \"id\" = ? THEN ? END, \"email\" = CASE WHEN \"id\" = ? THEN NULL END WHERE \"id\" IN (?, ?)"
+	)]
+	fn bulk_update_case_keeps_null_decimal_and_argument_order(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange: requested field order controls CASE/argument order; missing arms have no ELSE.
+		let text = "quote' ? $2";
+		let decimal = rust_decimal::Decimal::from_str_exact("123456789012.123456789012").unwrap();
+		let updates = vec![
+			(
+				DatabaseValue::I64(1),
+				HashMap::from([
+					("name".into(), DatabaseValue::String(text.into())),
+					("email".into(), DatabaseValue::Null),
+				]),
+			),
+			(
+				DatabaseValue::I64(2),
+				HashMap::from([("name".into(), DatabaseValue::Decimal(decimal))]),
+			),
+		];
+		// Act
+		let statement = TestUser::objects()
+			.bulk_update_database_values_query(&updates, &["name".into(), "email".into()], backend)
+			.unwrap()
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&statement, backend);
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(
+			values.0,
+			vec![
+				1_i64.into(),
+				text.into(),
+				2_i64.into(),
+				reinhardt_query::value::Value::Decimal(Some(Box::new(decimal))),
+				1_i64.into(),
+				1_i64.into(),
+				2_i64.into()
+			]
+		);
+	}
 
-		assert!(sql.contains("ARRAY[]::text[]"));
+	#[rstest]
+	fn bulk_update_uses_physical_primary_key_and_skips_empty_generated_updates() {
+		// Arrange
+		let key = DatabaseValue::String("external:quote' ? $2".into());
+		let updates = vec![(
+			key.clone(),
+			HashMap::from([("body".into(), DatabaseValue::String("bound".into()))]),
+		)];
+		// Act
+		let statement = TypedKeyUser::objects()
+			.bulk_update_database_values_query(
+				&updates,
+				&["body".into()],
+				DatabaseBackend::Postgres,
+			)
+			.unwrap()
+			.unwrap();
+		let (sql, values) = super::build_update_sql(&statement, DatabaseBackend::Postgres);
+		// Assert
+		assert_eq!(
+			sql,
+			"UPDATE \"typed_key_user\" SET \"body\" = CASE WHEN \"external_key\" = $1 THEN $2 END WHERE \"external_key\" IN ($3)"
+		);
+		assert_eq!(
+			values.0,
+			vec![
+				super::database_value_to_query_value(key.clone()),
+				"bound".into(),
+				super::database_value_to_query_value(key)
+			]
+		);
+		assert!(
+			TypedKeyUser::objects()
+				.bulk_update_database_values_query(
+					&updates,
+					&["absent".into()],
+					DatabaseBackend::Postgres
+				)
+				.unwrap()
+				.is_none()
+		);
+		assert!(
+			TypedKeyUser::objects()
+				.bulk_update_database_values_query(&[], &["body".into()], DatabaseBackend::Postgres)
+				.unwrap()
+				.is_none()
+		);
+		let generated = vec![(
+			DatabaseValue::I64(1),
+			HashMap::from([("full_name".into(), DatabaseValue::String("computed".into()))]),
+		)];
+		assert!(
+			GeneratedUser::objects()
+				.bulk_update_database_values_query(
+					&generated,
+					&["full_name".into()],
+					DatabaseBackend::Postgres
+				)
+				.unwrap()
+				.is_none()
+		);
 	}
 
 	#[rstest::rstest]
@@ -6369,24 +6565,5 @@ mod tests {
 		// Object should be converted (typically to JSON string)
 		let debug_str = format!("{:?}", sea_value);
 		assert!(!debug_str.is_empty());
-	}
-
-	#[test]
-	fn test_serialize_value_string() {
-		use serde_json::json;
-		let value = json!("test_string");
-		let serialized = super::Manager::<TestUser>::serialize_value(&value);
-
-		// Should return the string representation
-		assert!(serialized.contains("test_string"));
-	}
-
-	#[test]
-	fn test_serialize_value_number() {
-		use serde_json::json;
-		let value = json!(123);
-		let serialized = super::Manager::<TestUser>::serialize_value(&value);
-
-		assert!(serialized.contains("123"));
 	}
 }

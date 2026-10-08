@@ -43,6 +43,7 @@ pub struct SelectStatement {
 	pub(crate) unions: Vec<(UnionType, SelectStatement)>,
 	pub(crate) orders: Vec<OrderExpr>,
 	pub(crate) limit: Option<Value>,
+	pub(crate) literal_limit: Option<u64>,
 	pub(crate) offset: Option<Value>,
 	pub(crate) lock: Option<LockClause>,
 	pub(crate) windows: Vec<(DynIden, WindowStatement)>,
@@ -162,6 +163,7 @@ impl SelectStatement {
 			unions: std::mem::take(&mut self.unions),
 			orders: std::mem::take(&mut self.orders),
 			limit: self.limit.take(),
+			literal_limit: self.literal_limit.take(),
 			offset: self.offset.take(),
 			lock: self.lock.take(),
 			windows: std::mem::take(&mut self.windows),
@@ -566,6 +568,29 @@ impl SelectStatement {
 		V: IntoValue,
 	{
 		self.limit = Some(limit.into_value());
+		self.literal_limit = None;
+		self
+	}
+
+	/// Set a structural integer LIMIT without adding a bound argument.
+	///
+	/// Use this for fixed cardinality checks whose prepared SQL and parameter
+	/// contract must retain a constant limit. The unsigned integer is formatted
+	/// by the backend; arbitrary SQL fragments are not accepted. Calling
+	/// [`Self::limit`] replaces this literal mode and restores bound arguments.
+	/// This query-building operation is available on native and WASM targets.
+	///
+	/// ```
+	/// use reinhardt_query::prelude::*;
+	/// let built = Query::select().column("id").from("items")
+	///     .and_where(Expr::col("id").eq(7_i64))
+	///     .limit_literal(2).build(PostgresQueryBuilder);
+	/// assert_eq!(built.0, "SELECT \"id\" FROM \"items\" WHERE \"id\" = $1 LIMIT 2");
+	/// assert_eq!(built.1.0, vec![Value::BigInt(Some(7))]);
+	/// ```
+	pub fn limit_literal(&mut self, limit: u64) -> &mut Self {
+		self.literal_limit = Some(limit);
+		self.limit = None;
 		self
 	}
 

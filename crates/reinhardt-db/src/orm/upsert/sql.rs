@@ -1,9 +1,9 @@
+use crate::orm::DatabaseBackend;
 use crate::orm::field_codec::{DatabaseValue, FieldCodecError, database_value_to_query_value};
 use crate::orm::model::Model;
 #[cfg(test)]
 use crate::orm::upsert::assignment::TypedAssignment;
 use crate::orm::upsert::plan::UpsertPlan;
-use crate::orm::{DatabaseBackend, QueryValue};
 use reinhardt_core::exception::{DatabaseErrorKind, Error, Result};
 use reinhardt_query::prelude::{
 	Alias, Expr, ExprTrait, InsertStatement, MySqlQueryBuilder, OnConflict, PostgresQueryBuilder,
@@ -13,7 +13,13 @@ use std::collections::BTreeMap;
 
 pub(crate) struct BoundSql {
 	pub(crate) sql: String,
-	pub(crate) params: Vec<QueryValue>,
+	pub(crate) values: Values,
+}
+
+impl BoundSql {
+	pub(crate) fn into_parts(self) -> (String, Values) {
+		(self.sql, self.values)
+	}
 }
 
 pub(crate) fn select_by_lookup<M: Model>(
@@ -43,23 +49,11 @@ pub(crate) fn select_by_lookup<M: Model>(
 			statement.and_where(column.eq(database_value_to_query_value(assignment.value.clone())));
 		}
 	}
-	let (mut sql, values) = build_select_sql(&statement, backend);
-	// Workaround for reinhardt-query lock and inline LIMIT ordering
-	// (tracked in reinhardt-web#5813). Keep LIMIT and FOR UPDATE together here because
-	// SelectStatement::limit(2) currently adds a bound parameter, which would change
-	// BoundSql.params. Remove both manual suffixes once the builder can express an inline
-	// LIMIT followed by a lock clause.
-	//
-	// Ideal implementation (without workaround):
-	//   statement.limit(2);
-	//   if lock && matches!(backend, DatabaseBackend::Postgres | DatabaseBackend::MySql) {
-	//       statement.lock_exclusive();
-	//   }
-	//   let (sql, values) = build_select_sql(&statement, backend);
-	sql.push_str(" LIMIT 2");
+	statement.limit_literal(2);
 	if lock && matches!(backend, DatabaseBackend::Postgres | DatabaseBackend::MySql) {
-		sql.push_str(" FOR UPDATE");
+		statement.lock_exclusive();
 	}
+	let (sql, values) = build_select_sql(&statement, backend);
 	Ok(bound_sql(sql, values))
 }
 
@@ -110,11 +104,11 @@ pub(crate) fn select_by_primary_key<M: Model>(
 				.eq(database_value_to_query_value(value.clone())),
 		);
 	}
-	let (mut sql, values) = build_select_sql(&statement, backend);
-	sql.push_str(" LIMIT 2");
+	statement.limit_literal(2);
 	if lock && matches!(backend, DatabaseBackend::Postgres | DatabaseBackend::MySql) {
-		sql.push_str(" FOR UPDATE");
+		statement.lock_exclusive();
 	}
+	let (sql, values) = build_select_sql(&statement, backend);
 	Ok(bound_sql(sql, values))
 }
 
@@ -147,8 +141,8 @@ pub(crate) fn select_by_generated_mysql_primary_key<M: Model>(
 		Expr::col(Alias::new(primary_key.db_column_name()))
 			.eq(reinhardt_query::value::Value::BigInt(Some(last_insert_id))),
 	);
-	let (mut sql, values) = build_select_sql(&statement, DatabaseBackend::MySql);
-	sql.push_str(" LIMIT 2");
+	statement.limit_literal(2);
+	let (sql, values) = build_select_sql(&statement, DatabaseBackend::MySql);
 	Ok(bound_sql(sql, values))
 }
 
@@ -350,10 +344,7 @@ fn build_update_sql(statement: &UpdateStatement, backend: DatabaseBackend) -> (S
 }
 
 fn bound_sql(sql: String, values: Values) -> BoundSql {
-	BoundSql {
-		sql,
-		params: crate::orm::execution::convert_values(values),
-	}
+	BoundSql { sql, values }
 }
 
 fn field_codec_error(error: FieldCodecError) -> Error {
@@ -384,7 +375,8 @@ mod tests {
 	use crate::orm::model::{FieldSelector, Model};
 	use crate::orm::upsert::assignment::TypedAssignment;
 	use crate::orm::upsert::plan::{UniqueProof, UniqueProofSource, UpsertMode, UpsertPlan};
-	use crate::orm::{DatabaseBackend, Manager, QueryValue};
+	use crate::orm::{DatabaseBackend, Manager};
+	use reinhardt_query::Value;
 	use rstest::*;
 	use serde::{Deserialize, Serialize};
 	use std::collections::{BTreeMap, HashMap};
@@ -719,10 +711,10 @@ mod tests {
 
 		assert_eq!(compiled.sql, expected_sql);
 		assert_eq!(
-			compiled.params,
+			compiled.values.0,
 			vec![
-				QueryValue::Int(7),
-				QueryValue::String(quote_bearing_slug.to_owned()),
+				Value::BigInt(Some(7)),
+				Value::String(Some(Box::new(quote_bearing_slug.to_owned()))),
 			]
 		);
 		assert!(!compiled.sql.contains(quote_bearing_slug));
@@ -752,7 +744,7 @@ mod tests {
 				table = quoted(backend, "articles"),
 			)
 		);
-		assert_eq!(compiled.params, vec![QueryValue::Int(7)]);
+		assert_eq!(compiled.values.0, vec![Value::BigInt(Some(7))]);
 	}
 
 	#[rstest]
@@ -778,11 +770,11 @@ mod tests {
 
 		assert_eq!(compiled.sql, expected_sql);
 		assert_eq!(
-			compiled.params,
+			compiled.values.0,
 			vec![
-				QueryValue::Int(7),
-				QueryValue::String("rust".to_owned()),
-				QueryValue::String("A quoted headline".to_owned()),
+				Value::BigInt(Some(7)),
+				Value::String(Some(Box::new("rust".to_owned()))),
+				Value::String(Some(Box::new("A quoted headline".to_owned()))),
 			]
 		);
 	}
@@ -819,11 +811,11 @@ mod tests {
 
 		assert_eq!(compiled.sql, expected_sql);
 		assert_eq!(
-			compiled.params,
+			compiled.values.0,
 			vec![
-				QueryValue::String(quote_bearing_headline.to_owned()),
-				QueryValue::Int(7),
-				QueryValue::Int(9),
+				Value::String(Some(Box::new(quote_bearing_headline.to_owned()))),
+				Value::BigInt(Some(7)),
+				Value::BigInt(Some(9)),
 			]
 		);
 		assert!(!compiled.sql.contains(quote_bearing_headline));
@@ -850,11 +842,11 @@ mod tests {
 			 WHERE \"tenant_key\" = $2 AND \"article_key\" = $3"
 		);
 		assert_eq!(
-			compiled.params,
+			compiled.values.0,
 			vec![
-				QueryValue::String("new".to_owned()),
-				QueryValue::Int(7),
-				QueryValue::Int(9),
+				Value::String(Some(Box::new("new".to_owned()))),
+				Value::BigInt(Some(7)),
+				Value::BigInt(Some(9)),
 			]
 		);
 	}

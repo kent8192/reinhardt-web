@@ -8,7 +8,8 @@
 
 #[cfg(feature = "database")]
 use reinhardt_query::prelude::{
-	Alias, BinOper, Cond, Expr, Func, Order, Query, QueryStatementBuilder, SqliteQueryBuilder,
+	Alias, BinOper, Cond, Expr, Func, IntoIden, Order, Query, QueryStatementBuilder, SimpleExpr,
+	SqliteQueryBuilder,
 };
 #[cfg(feature = "database")]
 use reinhardt_query::value::Values;
@@ -20,7 +21,7 @@ use std::sync::Arc;
 #[cfg(feature = "database")]
 use super::ContentType;
 #[cfg(feature = "database")]
-use super::persistence::{PersistenceError, bind_query_values};
+use super::persistence::{PersistenceError, prepare_query, prepare_sqlite_statement};
 
 /// ORM-compatible ContentType query builder
 ///
@@ -280,8 +281,9 @@ impl ContentTypeQuery {
 	/// # }
 	/// ```
 	pub async fn all(&self) -> Result<Vec<ContentType>, PersistenceError> {
-		let (sql, values) = self.build_query();
-		let rows = bind_query_values(sqlx::query(&sql), &values)
+		let (sql, arguments) =
+			prepare_query(self.build_query(), reinhardt_query_sqlx::AnyBackend::Sqlite)?;
+		let rows = sqlx::query_with(&sql, arguments)
 			.fetch_all(&*self.pool)
 			.await
 			.map_err(|e| {
@@ -375,8 +377,8 @@ impl ContentTypeQuery {
 			count_query.cond_where(condition);
 		}
 
-		let (sql, values) = count_query.build(SqliteQueryBuilder);
-		let row = bind_query_values(sqlx::query(&sql), &values)
+		let (sql, arguments) = prepare_sqlite_statement(count_query)?;
+		let row = sqlx::query_with(&sql, arguments)
 			.fetch_one(&*self.pool)
 			.await
 			.map_err(|e| PersistenceError::DatabaseError(format!("Failed to count: {}", e)))?;
@@ -470,12 +472,12 @@ impl ContentTypeTransaction {
 			.values(vec![app_label.clone().into(), model.clone().into()])
 			.expect("Failed to build insert statement")
 			.to_owned();
-		let (sql, values) = stmt.build(SqliteQueryBuilder);
-		// Keep the insert and its connection-local ID lookup on the same connection.
-		let mut connection = self.pool.acquire().await.map_err(|e| {
-			PersistenceError::DatabaseError(format!("Failed to create content type: {}", e))
+		let (sql, arguments) = prepare_sqlite_statement(stmt)?;
+		// Both statements must use the same connection-local insert ID.
+		let mut connection = self.pool.acquire().await.map_err(|error| {
+			PersistenceError::DatabaseError(format!("Failed to create content type: {error}"))
 		})?;
-		bind_query_values(sqlx::query(&sql), &values)
+		sqlx::query_with(&sql, arguments)
 			.execute(&mut *connection)
 			.await
 			.map_err(|e| {
@@ -483,7 +485,18 @@ impl ContentTypeTransaction {
 			})?;
 
 		// Get the last inserted ID using SQLite's last_insert_rowid()
-		let id_row = sqlx::query("SELECT last_insert_rowid() as id")
+		let (sql, arguments) = prepare_sqlite_statement(
+			Query::select()
+				.expr_as(
+					SimpleExpr::FunctionCall(
+						Alias::new("last_insert_rowid").into_iden(),
+						Vec::new(),
+					),
+					"id",
+				)
+				.take(),
+		)?;
+		let id_row = sqlx::query_with(&sql, arguments)
 			.fetch_one(&mut *connection)
 			.await
 			.map_err(|e| {
@@ -512,8 +525,8 @@ impl ContentTypeTransaction {
 				Cond::all().add(Expr::col(Alias::new("id")).binary(BinOper::Equal, Expr::val(id))),
 			)
 			.to_owned();
-		let (sql, values) = stmt.build(SqliteQueryBuilder);
-		bind_query_values(sqlx::query(&sql), &values)
+		let (sql, arguments) = prepare_sqlite_statement(stmt)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&*self.pool)
 			.await
 			.map_err(|e| {

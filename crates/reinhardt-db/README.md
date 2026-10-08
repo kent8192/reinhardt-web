@@ -125,6 +125,25 @@ This crate provides the following modules:
     - Avoid direct database introspection for schema detection
     - Ensure consistency between migration files and actual schema state
 
+Backend `InsertBuilder` and `InsertFromSelectBuilder` execute checked typed
+statements with their exact generated Values. NULL and current-time expressions
+consume no arguments; native arrays remain PostgreSQL arrays and use the existing
+JSON-text builder storage on MySQL/SQLite. Conflict actions precede RETURNING,
+and converting an INSERT builder to a SELECT source retains its fluent conflict
+configuration. Unsupported named targets or MySQL conditional updates return
+errors instead of discarding configuration. SQLite DO UPDATE requires a nonempty
+column target in this backend API.
+
+`AnalyzeBuilder` uses typed identifier escaping and checked generated execution.
+PostgreSQL column/VERBOSE options and the documented ignored options on other
+backends retain their behavior. PostgreSQL/SQLite accept no target; MySQL runtime
+execution requires a table and returns an explicit error otherwise.
+
+The public INSERT VALUES `build()` retains its SQL/legacy-parameter result;
+INSERT SELECT `build()` remains a standalone inline renderer with an empty
+legacy parameter list. Runtime methods use bound source Values. Explicit
+`OnConflictClause::where_clause` accepts caller-owned trusted SQL conditions.
+
 Generated migration sources start with `// reinhardt-migration-source: 1` and
 use constructors/builders for framework-owned values. Upgrade legacy generated
 files offline with:
@@ -207,6 +226,80 @@ return the inserted or updated row.
   - Lazy query evaluation
   - Only/Defer field optimization for reduced data transfer
   - Aggregate pushdown optimization
+
+### Generated Backend Arguments
+
+The backend `DatabaseConnection` and `DatabaseBackend` expose
+`execute_generated`, `fetch_one_generated`, `fetch_all_generated` and
+`fetch_optional_generated` for an owned `(String, reinhardt_query::Values)` pair.
+Build that pair from one statement and consume its AST before awaiting. The
+native SQLx backends use the checked native generated-value codecs, preserving decimal
+precision, PostgreSQL nullable array elements and MySQL unsigned integers.
+MySQL and SQLite explicitly retain their existing UUID text-column encoding.
+Conversion errors identify the backend, argument index and type without values.
+
+These native-only APIs have P0 parity. Existing raw methods and custom backend
+implementations remain available. The generated trait defaults forward only data
+representable by the existing QueryValue contract, including unsigned integers
+and string, integer, boolean, floating-point and UUID arrays. Empty arrays,
+nullable elements and whole-column NULL remain distinct. Arrays with other
+element types, decimals, dates and times require a custom generated-method override.
+They never use the older ORM converter's clamping or Debug-string fallbacks.
+Consumers still own connections, transactions, row decoding and result metadata.
+
+Generated PostgreSQL operations use an unnamed statement after clearing any
+existing named cache entries on the acquired connection. This is a
+[tracked SQLx workaround](https://github.com/kent8192/reinhardt-web/issues/6533):
+SQLx 0.8 caches by SQL before checking argument types or persistence. It preserves
+native values and SQL text across changing signatures, at the cost of statement
+re-preparation and clearing cache entries created by raw queries. Remove the
+bypass only after a driver fix passes changing-signature pool, transaction and
+partial-stream regressions. Transaction and pool guards retain their ownership.
+
+Generated transaction methods use the same codecs on the transaction's dedicated
+connection, including write-intent executors and AtomicTransaction forwarding.
+`fetch_stream_generated` encodes before returning a cursor, borrows the executor
+and uses a bounded fetch hint; dropping a stream releases its cursor so that the
+same transaction or pool can continue. These capabilities are native-only (P0).
+
+`OrmExecutor` exposes the same generated operations, plus generated savepoint
+execution and fetch methods. Native connection handles preserve their registry
+lease rules; a resolved stream captures its owner before it is returned, and
+encoding failures become stream items before driver execution. AtomicTransaction
+uses its existing nested atomic scope for generated savepoints. InsertExecution
+and generic SelectExecution async methods use these owned arguments while the
+public legacy `convert_values` API retains its historical raw parameter contract.
+
+QuerySet execution, count, EXPLAIN, temporal projections, typed terminal
+aggregates, updates, deletes and borrowed iterators also consume the owned
+renderer pair. Query instrumentation keeps its existing SQL and parameter
+samples; these diagnostic samples are separate from the native driver arguments.
+Typed `get_or_create` and `update_or_create` retain renderer Values through
+conflict recovery and nested savepoints. Their constant two-row cardinality
+limit and backend row locks are query-builder clauses; the constant preserves
+the existing SQL and argument count.
+Reverse foreign-key and many-to-many accessors also retain native arguments
+through counts, joins, pagination and writes. Caller-owned transactions still
+control atomic relationship replacement.
+Manager create, update, delete and count operations use native generated
+arguments through ORM and dedicated transaction executors while preserving
+hydration and write-outcome reporting. Bulk updates use typed CASE expressions
+and native arguments with the same batching, generated-field exclusions and
+physical column names. Model arrays retain native PostgreSQL element types;
+Manager create/update and CASE updates encode MySQL/SQLite model arrays as JSON
+before constructing the typed statement, including empty arrays. Native
+generated APIs still reject direct SQL array arguments on MySQL/SQLite. Bulk
+creates also consume native renderer Values, using PostgreSQL ON CONFLICT DO
+NOTHING, MySQL INSERT IGNORE and SQLite INSERT OR IGNORE as typed clauses.
+Existing ignored-conflict results and caller transaction ownership are retained.
+
+Backend UPDATE, SELECT and DELETE builders also execute checked SQL and native
+Values together. Current timestamps and NULL expressions consume no argument
+slots; bound LIMIT values remain paired with their SQL. Each `where_in` call
+renders one predicate for its complete set, and an empty set matches no rows.
+The public raw `build` methods retain their signatures and now return the correct
+argument order. Builder arrays retain native PostgreSQL storage and explicit
+JSON text on MySQL/SQLite.
 
 ### Streaming QuerySets
 

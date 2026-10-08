@@ -13,6 +13,21 @@ use super::{
 /// Core database backend trait
 #[async_trait]
 pub trait DatabaseBackend: Send + Sync {
+	/// Stream an owned generated pair without materializing all rows (native-only, P0).
+	///
+	/// The stream borrows this executor; dropping it releases its cursor. Native
+	/// providers encode before returning the stream. Custom defaults reject values
+	/// which the legacy raw API cannot represent.
+	fn fetch_stream_generated<'a>(
+		&'a self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<RowStream<'a>> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.database_type())?;
+		self.fetch_stream_with_context(sql, params, chunk_size, context)
+	}
+
 	/// Returns the database type
 	fn database_type(&self) -> DatabaseType;
 
@@ -45,6 +60,63 @@ pub trait DatabaseBackend: Send + Sync {
 	fn supports_transactional_ddl(&self) -> bool {
 		// Default implementation: check database type
 		self.database_type().supports_transactional_ddl()
+	}
+
+	/// Execute a generated statement from the exact owned renderer pair (native-only, P0).
+	///
+	/// SQLx backends consume checked native generated-value codecs. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported
+	/// values before calling the raw API; custom backends can override this method.
+	async fn execute_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<QueryResult> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.database_type())?;
+		self.execute_with_context(&sql, params, context).await
+	}
+
+	/// Fetch one generated row from the exact owned renderer pair (native-only, P0).
+	///
+	/// SQLx backends consume checked native generated-value codecs. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported
+	/// values before calling the raw API; custom backends can override this method.
+	async fn fetch_one_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Row> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.database_type())?;
+		self.fetch_one_with_context(&sql, params, context).await
+	}
+
+	/// Fetch all generated rows from the exact owned renderer pair (native-only, P0).
+	///
+	/// SQLx backends consume checked native generated-value codecs. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported
+	/// values before calling the raw API; custom backends can override this method.
+	async fn fetch_all_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Vec<Row>> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.database_type())?;
+		self.fetch_all_with_context(&sql, params, context).await
+	}
+
+	/// Fetch an optional generated row from the exact owned renderer pair (native-only, P0).
+	///
+	/// SQLx backends consume checked native generated-value codecs. The compatibility default
+	/// retains representable QueryValue data and rejects unsupported
+	/// values before calling the raw API; custom backends can override this method.
+	async fn fetch_optional_generated(
+		&self,
+		built: (String, reinhardt_query::Values),
+		context: Option<super::error::PgvectorOperationKind>,
+	) -> Result<Option<Row>> {
+		let (sql, params) = super::generated::compatibility_arguments(built, self.database_type())?;
+		self.fetch_optional_with_context(&sql, params, context)
+			.await
 	}
 
 	/// Executes a query that modifies the database

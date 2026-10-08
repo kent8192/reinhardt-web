@@ -99,18 +99,21 @@ where
 		if self.empty_result {
 			return Ok(empty_aggregate_result(&expressions));
 		}
-		let stmt = build_aggregate_statement(self, &expressions)?;
-		let context = super::super::execution::pgvector_context_for_select(&stmt);
 		let backend = Self::executor_backend(executor);
-		let (sql, values) =
-			Self::build_select_for_backend(&stmt, backend, executor.is_cockroachdb())?;
+		let ((sql, values), context) = {
+			let stmt = build_aggregate_statement(self, &expressions)?;
+			let context = super::super::execution::pgvector_context_for_select(&stmt);
+			let built = Self::build_select_for_backend(&stmt, backend, executor.is_cockroachdb())?;
+			(built, context)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::super::execution::convert_values(values);
 		let started = std::time::Instant::now();
-		let query_result = executor.fetch_one_with_context(&sql, params, context).await;
+		let query_result = executor
+			.fetch_one_generated((sql.clone(), values), context)
+			.await;
 		let duration = started.elapsed();
 		match query_result {
 			Ok(row) => {
@@ -140,18 +143,21 @@ where
 		if self.empty_result {
 			return Ok(empty_aggregate_result(&expressions));
 		}
-		let stmt = build_aggregate_statement(self, &expressions)?;
-		let context = super::super::execution::pgvector_context_for_select(&stmt);
 		let backend = executor.backend();
-		let (sql, values) =
-			Self::build_select_for_backend(&stmt, backend, executor.is_cockroachdb())?;
+		let ((sql, values), context) = {
+			let stmt = build_aggregate_statement(self, &expressions)?;
+			let context = super::super::execution::pgvector_context_for_select(&stmt);
+			let built = Self::build_select_for_backend(&stmt, backend, executor.is_cockroachdb())?;
+			(built, context)
+		};
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-		let params = super::super::execution::convert_values(values);
 		let started = std::time::Instant::now();
-		let query_result = executor.fetch_one_with_context(&sql, params, context).await;
+		let query_result = executor
+			.fetch_one_generated((sql.clone(), values), context)
+			.await;
 		let duration = started.elapsed();
 		let row = match query_result {
 			Ok(row) => {

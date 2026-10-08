@@ -40,6 +40,7 @@ fn qualify_model_root_in_place(expr: &mut SimpleExpr, root_alias: &str) {
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		}
@@ -631,6 +632,18 @@ mod tests {
 	use crate::orm::query_fields::literal;
 	use reinhardt_core::exception::Error;
 	use reinhardt_query::prelude::{PostgresQueryBuilder, Query, QueryStatementBuilder};
+
+	#[rstest::rstest]
+	fn epoch_extraction_qualifies_its_model_operand() {
+		// Arrange
+		let expression = reinhardt_query::Func::pg_extract_epoch(Expr::col("occurred_at").into());
+		// Act
+		let sql = Query::select()
+			.expr(qualify_model_root(&expression, "root"))
+			.to_string(PostgresQueryBuilder);
+		// Assert
+		assert_eq!(sql, "SELECT EXTRACT(EPOCH FROM \"root\".\"occurred_at\")");
+	}
 
 	#[rstest::rstest]
 	#[case(false, r#"SELECT "root"."name" LIKE "root"."pattern" ESCAPE '\'"#)]

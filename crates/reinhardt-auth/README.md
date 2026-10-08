@@ -1063,6 +1063,7 @@ impl AuthBackend for MyAuthBackend {
 #### Storage Backends
 
 - **DatabaseSessionBackend** (feature: `database`) - Persistent session storage in database
+  - Native generated arguments preserve session keys and JSON text as bound data; checked rendering selects the injected database backend, including CockroachDB validation.
   - Uses the connection supplied to `from_connection()` for load, save, delete, and existence checks
   - Session model with expiration timestamps
   - Automatic session cleanup with `cleanup_expired()`

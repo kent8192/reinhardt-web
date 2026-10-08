@@ -78,15 +78,25 @@ impl DatabaseAuditBackend {
 	/// Build SQL string from a query statement
 	///
 	/// Selects the appropriate QueryBuilder based on the database backend type.
-	fn build_sql<T>(&self, statement: T) -> String
+	fn build_sql<T>(
+		&self,
+		statement: T,
+	) -> Result<(String, sqlx::any::AnyArguments<'static>), String>
 	where
 		T: QueryStatementBuilder,
 	{
-		match self.detect_backend() {
-			"postgres" => statement.to_string(PostgresQueryBuilder),
-			"mysql" => statement.to_string(MySqlQueryBuilder),
-			_ => statement.to_string(SqliteQueryBuilder),
-		}
+		use reinhardt_query_sqlx::{AnyBackend, prepare_any};
+		let (built, backend) = match self.detect_backend() {
+			"postgres" => (
+				statement.build_any(&PostgresQueryBuilder),
+				AnyBackend::Postgres,
+			),
+			"mysql" => (statement.build_any(&MySqlQueryBuilder), AnyBackend::MySql),
+			_ => (statement.build_any(&SqliteQueryBuilder), AnyBackend::Sqlite),
+		};
+		prepare_any(built, backend)
+			.map(|prepared| prepared.into_parts())
+			.map_err(|error| format!("Failed to build database query: {error}"))
 	}
 
 	/// Build SQL string from a DDL (table) statement
@@ -197,9 +207,9 @@ impl AuditBackend for DatabaseAuditBackend {
 			])
 			.unwrap()
 			.to_owned();
-		let sql = self.build_sql(stmt);
+		let (sql, arguments) = self.build_sql(stmt)?;
 
-		sqlx::query(&sql)
+		sqlx::query_with(&sql, arguments)
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(|e| format!("Failed to log event: {}", e))?;
@@ -208,9 +218,9 @@ impl AuditBackend for DatabaseAuditBackend {
 	}
 
 	async fn get_events(&self, filter: Option<EventFilter>) -> Result<Vec<AuditEvent>, String> {
-		// Build SELECT query in a block scope so the non-Send SeaQuery
-		// statement is dropped before the await point.
-		let sql = {
+		// Build SELECT query in a block scope so the non-Send query
+		// AST is dropped before the await point.
+		let (sql, arguments) = {
 			let mut query = Query::select()
 				.columns([
 					Alias::new("timestamp"),
@@ -240,10 +250,10 @@ impl AuditBackend for DatabaseAuditBackend {
 
 			query.order_by(Alias::new("timestamp"), Order::Desc);
 
-			self.build_sql(query)
+			self.build_sql(query)?
 		};
 
-		let rows = sqlx::query(&sql)
+		let rows = sqlx::query_with(&sql, arguments)
 			.fetch_all(self.pool.as_ref())
 			.await
 			.map_err(|e| format!("Failed to fetch events: {}", e))?;

@@ -174,6 +174,17 @@ impl MySqlQueryBuilder {
 		});
 	}
 
+	/// Build a typed ANALYZE statement after checking backend capabilities.
+	///
+	/// Native and WASM construction/rendering behavior is identical.
+	pub fn build_analyze_checked(
+		&self,
+		statement: &crate::query::AnalyzeStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_analyze_for_backend(statement, "MySQL")?;
+		Ok(self.build_analyze(statement))
+	}
+
 	/// Build a SELECT statement after rejecting PostgreSQL-only vector features.
 	pub fn build_select_checked(
 		&self,
@@ -441,6 +452,11 @@ impl MySqlQueryBuilder {
 	/// Write a simple expression
 	fn write_simple_expr(&self, writer: &mut SqlWriter, expr: &SimpleExpr) {
 		match expr {
+			SimpleExpr::Grouped(expr) => {
+				writer.push("(");
+				self.write_simple_expr(writer, expr);
+				writer.push(")");
+			}
 			SimpleExpr::Column(col_ref) => {
 				self.write_column_ref(writer, col_ref);
 			}
@@ -643,12 +659,32 @@ impl MySqlQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
+			SimpleExpr::TextCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS CHAR)");
+			}
+			SimpleExpr::SignedIntegerCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS SIGNED)");
+			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr(writer, expr);
 				writer.push(" AS ");
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
+			}
+			SimpleExpr::PgExtractEpoch(_) => {
+				panic!("PostgreSQL numeric epoch extraction is not supported by mysql")
+			}
+			SimpleExpr::MySqlLastInsertId(value) => {
+				writer.push("CAST(LAST_INSERT_ID(");
+				if let Some(value) = value {
+					self.write_simple_expr(writer, value);
+				}
+				writer.push(") AS SIGNED)");
 			}
 			SimpleExpr::TemporalTrunc {
 				expr,
@@ -1044,6 +1080,10 @@ impl QueryBuilder for MySqlQueryBuilder {
 			writer.push_keyword("LIMIT");
 			writer.push_space();
 			writer.push_value(limit.clone(), |_i| self.placeholder(0));
+		} else if let Some(limit) = stmt.literal_limit {
+			writer.push_keyword("LIMIT");
+			writer.push_space();
+			writer.push(&limit.to_string());
 		}
 
 		// OFFSET clause
@@ -1117,12 +1157,23 @@ impl QueryBuilder for MySqlQueryBuilder {
 	}
 
 	fn build_insert(&self, stmt: &InsertStatement) -> (String, Values) {
-		use crate::query::insert::InsertSource;
+		use crate::query::insert::{InsertModifier, InsertSource};
+		assert!(
+			matches!(
+				stmt.modifier,
+				InsertModifier::None | InsertModifier::MySqlIgnore
+			),
+			"SQLite INSERT modifier is unsupported by this backend"
+		);
 
 		let mut writer = SqlWriter::new();
 
 		// INSERT INTO clause
-		writer.push("INSERT INTO");
+		writer.push(if stmt.modifier == InsertModifier::MySqlIgnore {
+			"INSERT IGNORE INTO"
+		} else {
+			"INSERT INTO"
+		});
 		writer.push_space();
 
 		if let Some(table) = &stmt.table {
@@ -1154,7 +1205,17 @@ impl QueryBuilder for MySqlQueryBuilder {
 				writer.push_keyword("() VALUES ()");
 			}
 			InsertSource::Values(values) => {
-				if !values.is_empty() {
+				if let Some(rows) = &stmt.expression_values {
+					writer.push_keyword("VALUES");
+					writer.push_space();
+					writer.push_list(rows, ", ", |w, row| {
+						w.push("(");
+						w.push_list(row, ", ", |w2, expression| {
+							self.write_simple_expr(w2, expression);
+						});
+						w.push(")");
+					});
+				} else if !values.is_empty() {
 					writer.push_keyword("VALUES");
 					writer.push_space();
 
@@ -1178,6 +1239,14 @@ impl QueryBuilder for MySqlQueryBuilder {
 		// ON DUPLICATE KEY UPDATE clause (MySQL equivalent of ON CONFLICT)
 		if let Some(on_conflict) = &stmt.on_conflict {
 			use crate::query::{OnConflictAction, OnConflictTarget};
+			assert!(
+				on_conflict.constraint.is_none(),
+				"MySQL does not support ON CONFLICT ON CONSTRAINT"
+			);
+			assert!(
+				on_conflict.action_condition.is_none(),
+				"MySQL does not support ON CONFLICT DO UPDATE WHERE"
+			);
 			match &on_conflict.action {
 				OnConflictAction::DoNothing => {
 					// MySQL doesn't have DO NOTHING directly;
@@ -1595,6 +1664,12 @@ impl QueryBuilder for MySqlQueryBuilder {
 	}
 
 	fn build_create_index(&self, stmt: &CreateIndexStatement) -> (String, Values) {
+		assert!(
+			stmt.columns
+				.iter()
+				.all(|column| column.expression.is_none()),
+			"typed expression indexes are not supported by MySQL"
+		);
 		let mut writer = SqlWriter::new();
 
 		// CREATE [UNIQUE] INDEX
@@ -3206,8 +3281,24 @@ impl QueryBuilder for MySqlQueryBuilder {
 		);
 	}
 
-	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-		panic!("MySQL uses ANALYZE TABLE, not ANALYZE statement. Not supported via this builder.");
+	fn build_analyze(&self, statement: &crate::query::AnalyzeStatement) -> (String, Values) {
+		assert!(
+			!statement.verbose
+				&& statement
+					.tables
+					.iter()
+					.all(|table| table.columns.is_empty()),
+			"MySQL ANALYZE does not support verbose or column options"
+		);
+		let mut writer = SqlWriter::new();
+		writer.push_keyword("ANALYZE TABLE");
+		if !statement.tables.is_empty() {
+			writer.push_space();
+			writer.push_list(&statement.tables, ", ", |writer, table| {
+				writer.push_identifier(&table.table.to_string(), |name| self.escape_iden(name));
+			});
+		}
+		writer.finish()
 	}
 
 	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {
@@ -6289,6 +6380,7 @@ mod tests {
 		stmt.table("users");
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 			prefix_length: None,
@@ -6310,6 +6402,7 @@ mod tests {
 		stmt.unique = true;
 		stmt.columns.push(IndexColumn {
 			name: "username".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 			prefix_length: None,
@@ -6334,6 +6427,7 @@ mod tests {
 		stmt.if_not_exists = true;
 		stmt.columns.push(IndexColumn {
 			name: "email".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 			prefix_length: None,
@@ -6356,6 +6450,7 @@ mod tests {
 		stmt.table("users");
 		stmt.columns.push(IndexColumn {
 			name: "created_at".into_iden(),
+			expression: None,
 			order: Some(Order::Desc),
 			operator_class: None,
 			prefix_length: None,
@@ -6380,12 +6475,14 @@ mod tests {
 		stmt.table("users");
 		stmt.columns.push(IndexColumn {
 			name: "last_name".into_iden(),
+			expression: None,
 			order: Some(Order::Asc),
 			operator_class: None,
 			prefix_length: None,
 		});
 		stmt.columns.push(IndexColumn {
 			name: "first_name".into_iden(),
+			expression: None,
 			order: Some(Order::Asc),
 			operator_class: None,
 			prefix_length: None,
@@ -6410,6 +6507,7 @@ mod tests {
 		stmt.using = Some(IndexMethod::BTree);
 		stmt.columns.push(IndexColumn {
 			name: "id".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 			prefix_length: None,
@@ -6434,6 +6532,7 @@ mod tests {
 		stmt.using = Some(IndexMethod::FullText);
 		stmt.columns.push(IndexColumn {
 			name: "content".into_iden(),
+			expression: None,
 			order: None,
 			operator_class: None,
 			prefix_length: None,

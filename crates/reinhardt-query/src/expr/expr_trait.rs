@@ -69,6 +69,27 @@ pub trait ExprTrait: Sized {
 	/// Build the final SimpleExpr.
 	fn into_simple_expr(self) -> SimpleExpr;
 
+	/// Preserve explicit parentheses around this expression on every backend.
+	///
+	/// Grouping is structural; nested parameters keep their renderer order and
+	/// validators inspect the inner expression. This supports native/WASM
+	/// behavioral parity (P2).
+	///
+	/// # Example
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, ExprTrait, MySqlQueryBuilder, Query};
+	/// let statement = Query::select()
+	///     .expr(Expr::val(3_i64).add(5_i64).grouped().mul(2_i64))
+	///     .to_owned();
+	/// let (sql, values) = MySqlQueryBuilder.build_select_checked(&statement).unwrap();
+	/// assert_eq!(sql, "SELECT (? + ?) * ?");
+	/// assert_eq!(values.0, vec![3_i64.into(), 5_i64.into(), 2_i64.into()]);
+	/// ```
+	fn grouped(self) -> SimpleExpr {
+		SimpleExpr::Grouped(Box::new(self.into_simple_expr()))
+	}
+
 	// =========================================================================
 	// Comparison operations
 	// =========================================================================
@@ -598,6 +619,30 @@ pub trait ExprTrait: Sized {
 		T: crate::types::IntoIden,
 	{
 		SimpleExpr::Cast(Box::new(self.into_simple_expr()), type_name.into_iden())
+	}
+
+	/// Cast to the selected backend's text type (P2 native/WASM parity).
+	///
+	/// Uses the closed built-in type grammar rather than an escaped user type
+	/// identifier. MySQL renders `CHAR`; PostgreSQL and SQLite render `TEXT`.
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, ExprTrait, MySqlQueryBuilder, Query};
+	/// let statement = Query::select().expr(Expr::val(7_i64).cast_as_text()).to_owned();
+	/// let (sql, values) = MySqlQueryBuilder.build_select_checked(&statement).unwrap();
+	/// assert_eq!(sql, "SELECT CAST(? AS CHAR)");
+	/// assert_eq!(values.0, vec![7_i64.into()]);
+	/// ```
+	fn cast_as_text(self) -> SimpleExpr {
+		SimpleExpr::TextCast(Box::new(self.into_simple_expr()))
+	}
+
+	/// Cast to the selected backend's signed integer type (P2).
+	///
+	/// PostgreSQL renders `BIGINT`, MySQL `SIGNED`, and SQLite `INTEGER`.
+	/// The database determines conversion and overflow behavior for the source.
+	fn cast_as_signed_integer(self) -> SimpleExpr {
+		SimpleExpr::SignedIntegerCast(Box::new(self.into_simple_expr()))
 	}
 
 	/// AS ENUM expression (PostgreSQL).

@@ -32,6 +32,16 @@ impl Default for InsertSource {
 	}
 }
 
+/// Mutually exclusive backend-specific INSERT prefixes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum InsertModifier {
+	#[default]
+	None,
+	SqliteReplace,
+	SqliteIgnore,
+	MySqlIgnore,
+}
+
 /// INSERT statement builder
 ///
 /// This struct provides a fluent API for constructing INSERT queries.
@@ -52,11 +62,13 @@ pub struct InsertStatement {
 	pub(crate) table: Option<TableRef>,
 	pub(crate) columns: Vec<DynIden>,
 	pub(crate) source: InsertSource,
+	pub(crate) expression_values: Option<Vec<Vec<SimpleExpr>>>,
 	pub(crate) returning: Option<ReturningClause>,
 	pub(crate) returning_exprs: Option<Vec<SimpleExpr>>,
 	pub(crate) on_conflict: Option<super::on_conflict::OnConflict>,
 	pub(crate) overriding_system_value: bool,
 	pub(crate) default_values: bool,
+	pub(crate) modifier: InsertModifier,
 }
 
 impl InsertStatement {
@@ -66,11 +78,13 @@ impl InsertStatement {
 			table: None,
 			columns: Vec::new(),
 			source: InsertSource::Values(Vec::new()),
+			expression_values: None,
 			returning: None,
 			returning_exprs: None,
 			on_conflict: None,
 			overriding_system_value: false,
 			default_values: false,
+			modifier: InsertModifier::None,
 		}
 	}
 
@@ -80,11 +94,13 @@ impl InsertStatement {
 			table: self.table.take(),
 			columns: std::mem::take(&mut self.columns),
 			source: std::mem::replace(&mut self.source, InsertSource::Values(Vec::new())),
+			expression_values: self.expression_values.take(),
 			returning: self.returning.take(),
 			returning_exprs: self.returning_exprs.take(),
 			on_conflict: self.on_conflict.take(),
 			overriding_system_value: std::mem::take(&mut self.overriding_system_value),
 			default_values: std::mem::take(&mut self.default_values),
+			modifier: std::mem::take(&mut self.modifier),
 		}
 	}
 
@@ -172,6 +188,10 @@ impl InsertStatement {
 			));
 		}
 		self.default_values = false;
+		if let Some(rows) = &mut self.expression_values {
+			rows.push(values.into_iter().map(SimpleExpr::Value).collect());
+			return Ok(self);
+		}
 		match &mut self.source {
 			InsertSource::Values(vals) => vals.push(values),
 			InsertSource::Subquery(_) => {
@@ -212,6 +232,10 @@ impl InsertStatement {
 			);
 		}
 		self.default_values = false;
+		if let Some(rows) = &mut self.expression_values {
+			rows.push(values.into_iter().map(SimpleExpr::Value).collect());
+			return self;
+		}
 		match &mut self.source {
 			InsertSource::Values(vals) => vals.push(values),
 			InsertSource::Subquery(_) => {
@@ -219,6 +243,52 @@ impl InsertStatement {
 			}
 		}
 		self
+	}
+
+	/// Append a VALUES row containing structural SQL expressions.
+	///
+	/// Values inside expressions retain their renderer-generated argument order.
+	/// Existing value rows are preserved, and subsequent [`Self::values`] rows
+	/// are appended in call order. Backend-checked rendering validates nested
+	/// expressions. Construction and rendering have native/WASM parity (P2).
+	///
+	/// Returns an error when the row length differs from an already-set column
+	/// list. A row replaces a previous SELECT source, matching [`Self::values`].
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, PostgresQueryBuilder, Query, QueryStatementBuilder};
+	/// let mut statement = Query::insert();
+	/// statement.into_table("events").columns(["name", "created_at"]);
+	/// statement.values_expr(vec![Expr::val("created").into(), Expr::current_timestamp().into()])?;
+	/// let (sql, values) = statement.build(PostgresQueryBuilder);
+	/// assert_eq!(sql, "INSERT INTO \"events\" (\"name\", \"created_at\") VALUES ($1, CURRENT_TIMESTAMP)");
+	/// assert_eq!(values.len(), 1);
+	/// # Ok::<(), String>(())
+	/// ```
+	pub fn values_expr(&mut self, values: Vec<SimpleExpr>) -> Result<&mut Self, String> {
+		if !self.columns.is_empty() && values.len() != self.columns.len() {
+			return Err(format!(
+				"Number of values ({}) doesn't match number of columns ({})",
+				values.len(),
+				self.columns.len()
+			));
+		}
+		self.default_values = false;
+		if self.expression_values.is_none() {
+			let previous = std::mem::replace(&mut self.source, InsertSource::Values(Vec::new()));
+			let rows = match previous {
+				InsertSource::Values(rows) => rows
+					.into_iter()
+					.map(|row| row.into_iter().map(SimpleExpr::Value).collect())
+					.collect(),
+				InsertSource::Subquery(_) => Vec::new(),
+			};
+			self.expression_values = Some(rows);
+		}
+		if let Some(rows) = &mut self.expression_values {
+			rows.push(values);
+		}
+		Ok(self)
 	}
 
 	/// Add a RETURNING clause with multiple columns
@@ -276,6 +346,69 @@ impl InsertStatement {
 	{
 		self.returning = None;
 		self.returning_exprs = Some(expressions.into_iter().map(Into::into).collect());
+		self
+	}
+
+	/// Use SQLite's INSERT OR REPLACE conflict algorithm.
+	///
+	/// This preserves SQLite's delete-and-insert replacement semantics, which
+	/// differ from ON CONFLICT DO UPDATE. Checked builders reject other backends;
+	/// legacy non-SQLite builders panic rather than silently discard this option.
+	/// Construction/rendering has native/WASM behavioral parity (P2).
+	/// The last backend-specific INSERT modifier replaces earlier modifiers.
+	///
+	/// ```
+	/// use reinhardt_query::{Query, SqliteQueryBuilder, Value, Values};
+	/// let statement = Query::insert().into_table("results").columns(["id"])
+	///     .values_panic([42]).sqlite_or_replace().take();
+	/// let (sql, values) = SqliteQueryBuilder.build_insert_checked(&statement).unwrap();
+	/// assert_eq!(sql, "INSERT OR REPLACE INTO \"results\" (\"id\") VALUES (?)");
+	/// assert_eq!(values, Values(vec![Value::Int(Some(42))]));
+	/// ```
+	pub fn sqlite_or_replace(&mut self) -> &mut Self {
+		self.modifier = InsertModifier::SqliteReplace;
+		self
+	}
+
+	/// Use MySQL's INSERT IGNORE modifier.
+	///
+	/// This preserves MySQL's warning and constraint handling, rather than
+	/// simulating a no-op update on duplicate keys. Checked builders reject other
+	/// backends; legacy builders panic instead of discarding the modifier.
+	/// The last backend-specific INSERT modifier replaces earlier modifiers.
+	/// Construction/rendering has native/WASM behavioral parity (P2).
+	///
+	/// ```
+	/// use reinhardt_query::{MySqlQueryBuilder, Query, Value, Values};
+	/// let statement = Query::insert().into_table("results").columns(["id"])
+	///     .values_panic([42]).mysql_ignore().take();
+	/// let (sql, values) = MySqlQueryBuilder.build_insert_checked(&statement).unwrap();
+	/// assert_eq!(sql, "INSERT IGNORE INTO `results` (`id`) VALUES (?)");
+	/// assert_eq!(values, Values(vec![Value::Int(Some(42))]));
+	/// ```
+	pub fn mysql_ignore(&mut self) -> &mut Self {
+		self.modifier = InsertModifier::MySqlIgnore;
+		self
+	}
+
+	/// Use SQLite's INSERT OR IGNORE conflict algorithm.
+	///
+	/// This selects SQLite's statement conflict algorithm without adding an
+	/// ON CONFLICT target. Checked builders reject other backends; legacy builders
+	/// panic instead of discarding the modifier. The last backend-specific INSERT
+	/// modifier replaces earlier modifiers.
+	/// Construction/rendering has native/WASM behavioral parity (P2).
+	///
+	/// ```
+	/// use reinhardt_query::{Query, SqliteQueryBuilder, Value, Values};
+	/// let statement = Query::insert().into_table("results").columns(["id"])
+	///     .values_panic([42]).sqlite_or_ignore().take();
+	/// let (sql, values) = SqliteQueryBuilder.build_insert_checked(&statement).unwrap();
+	/// assert_eq!(sql, "INSERT OR IGNORE INTO \"results\" (\"id\") VALUES (?)");
+	/// assert_eq!(values, Values(vec![Value::Int(Some(42))]));
+	/// ```
+	pub fn sqlite_or_ignore(&mut self) -> &mut Self {
+		self.modifier = InsertModifier::SqliteIgnore;
 		self
 	}
 
@@ -345,6 +478,7 @@ impl InsertStatement {
 	/// ```
 	pub fn from_subquery(&mut self, select: SelectStatement) -> &mut Self {
 		self.default_values = false;
+		self.expression_values = None;
 		self.source = InsertSource::Subquery(Box::new(select));
 		self
 	}
@@ -366,14 +500,18 @@ impl InsertStatement {
 	pub fn default_values(&mut self) -> &mut Self {
 		self.columns.clear();
 		self.source = InsertSource::Values(Vec::new());
+		self.expression_values = None;
 		self.default_values = true;
 		self
 	}
 
 	/// Get the values if this is a VALUES source
 	///
-	/// Returns `None` if the source is a subquery.
+	/// Returns `None` if the source is a subquery or contains expression rows.
 	pub fn get_values(&self) -> Option<&Vec<Vec<Value>>> {
+		if self.expression_values.is_some() {
+			return None;
+		}
 		match &self.source {
 			InsertSource::Values(vals) => Some(vals),
 			InsertSource::Subquery(_) => None,
@@ -601,6 +739,210 @@ mod tests {
 		assert!(
 			query.get_values().is_none(),
 			"should not have values when using subquery"
+		);
+	}
+}
+
+#[cfg(test)]
+mod sqlite_replace_tests {
+	use crate::{
+		CockroachDBQueryBuilder, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuildError,
+		SqliteQueryBuilder, Value, Values,
+	};
+	use rstest::rstest;
+	#[rstest]
+	fn checked_replace_preserves_values_and_take() {
+		// Arrange
+		let mut statement = Query::insert();
+		statement
+			.into_table("results")
+			.columns(["id", "result"])
+			.values_panic(vec![Value::Int(Some(42)), Value::String(None)])
+			.sqlite_or_replace();
+		// Act
+		let taken = statement.take();
+		let (sql, values) = SqliteQueryBuilder.build_insert_checked(&taken).unwrap();
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT OR REPLACE INTO \"results\" (\"id\", \"result\") VALUES (?, NULL)"
+		);
+		assert_eq!(values, Values(vec![Value::Int(Some(42))]));
+		assert_eq!(statement.modifier, super::InsertModifier::None);
+		for (result, backend) in [
+			(
+				PostgresQueryBuilder.build_insert_checked(&taken),
+				"PostgreSQL",
+			),
+			(MySqlQueryBuilder.build_insert_checked(&taken), "MySQL"),
+			(
+				CockroachDBQueryBuilder::new().build_insert_checked(&taken),
+				"CockroachDB",
+			),
+		] {
+			assert_eq!(
+				result,
+				Err(QueryBuildError::UnsupportedBackendFeature {
+					feature: "SQLite INSERT OR REPLACE",
+					backend
+				})
+			);
+		}
+	}
+}
+
+#[cfg(test)]
+mod ignore_modifier_tests {
+	use crate::{
+		CockroachDBQueryBuilder, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryBuildError,
+		QueryBuilder, SqliteQueryBuilder, Value, Values,
+	};
+	use rstest::rstest;
+
+	#[rstest]
+	#[case(
+		true,
+		"INSERT IGNORE INTO `results` (`id`, `text`, `absent`) VALUES (?, ?, NULL)"
+	)]
+	#[case(
+		false,
+		"INSERT OR IGNORE INTO \"results\" (\"id\", \"text\", \"absent\") VALUES (?, ?, NULL)"
+	)]
+	fn ignore_modifier_keeps_values_and_resets_on_take(
+		#[case] mysql: bool,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange: modifier selection is last-call-wins, including the existing replacement mode.
+		let mut statement = Query::insert();
+		statement
+			.into_table("results")
+			.columns(["id", "text", "absent"])
+			.values_panic([
+				Value::Int(Some(42)),
+				"quote' ? $1".into(),
+				Value::String(None),
+			])
+			.sqlite_or_replace();
+		if mysql {
+			statement.sqlite_or_ignore().mysql_ignore();
+		} else {
+			statement.mysql_ignore().sqlite_or_ignore();
+		}
+		// Act
+		let taken = statement.take();
+		let result = if mysql {
+			MySqlQueryBuilder.build_insert_checked(&taken)
+		} else {
+			SqliteQueryBuilder.build_insert_checked(&taken)
+		};
+		// Assert
+		assert_eq!(
+			result.unwrap(),
+			(
+				expected_sql.into(),
+				Values(vec![42.into(), "quote' ? $1".into()])
+			)
+		);
+		statement
+			.into_table("results")
+			.columns(["id"])
+			.values_panic([7]);
+		assert_eq!(
+			PostgresQueryBuilder
+				.build_insert_checked(&statement)
+				.unwrap(),
+			(
+				"INSERT INTO \"results\" (\"id\") VALUES ($1)".into(),
+				Values(vec![7.into()])
+			)
+		);
+	}
+
+	#[rstest]
+	#[case(true, "MySQL INSERT IGNORE")]
+	#[case(false, "SQLite INSERT OR IGNORE")]
+	fn checked_ignore_rejects_every_other_backend(
+		#[case] mysql: bool,
+		#[case] feature: &'static str,
+	) {
+		// Arrange
+		let mut statement = Query::insert();
+		statement
+			.into_table("results")
+			.columns(["id"])
+			.values_panic([42]);
+		if mysql {
+			statement.mysql_ignore();
+		} else {
+			statement.sqlite_or_ignore();
+		}
+		// Act / Assert
+		let other = if mysql {
+			(
+				SqliteQueryBuilder.build_insert_checked(&statement),
+				"SQLite",
+			)
+		} else {
+			(MySqlQueryBuilder.build_insert_checked(&statement), "MySQL")
+		};
+		for (result, backend) in [
+			(
+				PostgresQueryBuilder.build_insert_checked(&statement),
+				"PostgreSQL",
+			),
+			(
+				CockroachDBQueryBuilder::new().build_insert_checked(&statement),
+				"CockroachDB",
+			),
+			other,
+		] {
+			assert_eq!(
+				result,
+				Err(QueryBuildError::UnsupportedBackendFeature { feature, backend })
+			);
+		}
+	}
+
+	#[rstest]
+	#[case(true)]
+	#[case(false)]
+	fn unchecked_ignore_cannot_silently_discard_modifier(#[case] mysql: bool) {
+		// Arrange / Act
+		let render = || {
+			let mut statement = Query::insert();
+			statement
+				.into_table("results")
+				.columns(["id"])
+				.values_panic([42]);
+			if mysql {
+				statement.mysql_ignore();
+			} else {
+				statement.sqlite_or_ignore();
+			}
+			PostgresQueryBuilder.build_insert(&statement)
+		};
+		// Assert
+		assert!(std::panic::catch_unwind(render).is_err());
+	}
+
+	#[rstest]
+	fn replace_modifier_replaces_an_earlier_ignore() {
+		// Arrange
+		let mut statement = Query::insert();
+		statement
+			.into_table("results")
+			.columns(["id"])
+			.values_panic([42])
+			.mysql_ignore()
+			.sqlite_or_ignore()
+			.sqlite_or_replace();
+		// Act / Assert
+		assert_eq!(
+			SqliteQueryBuilder.build_insert_checked(&statement).unwrap(),
+			(
+				"INSERT OR REPLACE INTO \"results\" (\"id\") VALUES (?)".into(),
+				Values(vec![42.into()])
+			)
 		);
 	}
 }

@@ -53,6 +53,18 @@ for the schema editor's connection and cleanup guarantees.
 - **Events** - CREATE/ALTER/DROP EVENT (MySQL)
 - **Comments** - COMMENT ON for all database objects (PostgreSQL, CockroachDB)
 - **Maintenance** - VACUUM, ANALYZE, OPTIMIZE/REPAIR/CHECK TABLE
+  - Checked ANALYZE: PostgreSQL table/column lists and VERBOSE; MySQL table
+    lists; SQLite optional single table/index/schema target; CockroachDB single
+    table. Unsupported configurations return QueryBuildError. Identifier
+    escaping and generated empty Values are identical on native and WASM.
+
+`Func::mysql_last_insert_id` reads or assigns connection-scoped MySQL state
+through a typed expression with a signed integer result. Reset, insert, and read
+must share one executor. Checked non-MySQL builders and plan-only MySQL EXPLAIN
+reject this stateful expression. Both native and WASM can build it.
+
+`ExprTrait::cast_as_text` and `cast_as_signed_integer` use each backend's
+built-in type grammar while retaining bound values and escaped source identifiers.
 
 ### Multi-Backend Support
 - **PostgreSQL** - Full DDL and DML support with advanced features
@@ -162,6 +174,32 @@ stmt.from_table("users")
 let builder = PostgresQueryBuilder::new();
 let (sql, values) = builder.build_delete(&stmt);
 ```
+
+`SelectStatement::limit_literal(2)` expresses a fixed cardinality limit without
+adding an argument to a prepared query. It accepts an unsigned integer, and the
+backend places the clause before row locking. Calling `limit(...)` again restores
+the usual bound limit. Both forms are available on native and WASM targets.
+
+`InsertStatement::mysql_ignore()` and `sqlite_or_ignore()` select the backend's
+INSERT conflict modifier while retaining generated Values. MySQL emits
+`INSERT IGNORE`; SQLite emits `INSERT OR IGNORE`. Checked builders reject other
+backends; legacy builders panic instead of silently dropping the modifier.
+The last modifier replaces earlier modifiers, including `sqlite_or_replace()`,
+and `take()` resets the original statement. Construction and rendering are
+available with the same behavior on native and WASM targets.
+
+`OnConflict::constraint("users_pkey")` selects a quoted named unique constraint
+on PostgreSQL and CockroachDB. `action_and_where(Expr::col("version").lt(10))`
+adds a typed update predicate on those backends and SQLite; repeated predicates
+combine with AND. Condition values follow INSERT/source values in the generated
+argument list. Checked builders reject unsupported targets, MySQL update
+conditions and invalid actions; `do_nothing()` clears earlier update conditions.
+These APIs have identical native and WASM behavior.
+
+SQLite INSERT SELECT with an UPSERT adds a typed always-true WHERE when a
+source FROM without WHERE would make ON CONFLICT ambiguous. Compound sources
+use a derived table for that guard. Guard values remain part of the exact
+generated arguments; ordinary SELECT rendering is unchanged.
 
 ### Row locking
 

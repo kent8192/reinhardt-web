@@ -609,10 +609,17 @@ async fn postgres_single_use_and_cross_instance_replay() {
 	let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
 	let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 	let mut executor = DatabaseMigrationExecutor::new(connection);
-	executor
+	let applied = executor
 		.apply_migrations(&[PostgresOAuthStore::migration()])
 		.await
 		.unwrap();
+	assert_eq!(applied.applied.len(), 1);
+	// The published migration identities remain applied after the SQL representation changes.
+	let repeated = executor
+		.apply_migrations(&[PostgresOAuthStore::migration()])
+		.await
+		.unwrap();
+	assert!(repeated.applied.is_empty());
 	let pool = PgPool::connect(&url).await.unwrap();
 	let first = PostgresOAuthStore::new(pool.clone());
 	let second = PostgresOAuthStore::new(pool);
