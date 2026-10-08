@@ -28,6 +28,7 @@ or enable a missing extractor implementation.
 ```bash
 cargo test -p reinhardt-facade-tests --test uuid_path
 cargo test -p reinhardt-facade-tests --test middleware_features
+cargo test -p reinhardt-facade-tests --test test_fixture_features
 ```
 
 The UUID suite checks single and tuple path injection with `di`, `minimal`, and
@@ -40,3 +41,10 @@ and JWT imports, CORS with API and umbrella presets, and the WASM dependency
 boundary. Each consumer disables default features and has no direct middleware
 dependency. Cargo commands run offline first and retry once online only when a
 registry dependency is missing from the cache, including WASM-only dependencies.
+
+The fixture suite checks native WebSocket and GraphQL fixture imports with
+`websockets,test`, `graphql,test`, and both protocols together. It also verifies
+that protocol features alone do not enable the optional test dependency and that
+native fixture dependencies stay outside the WASM graph. Each consumer disables
+default features and depends only on the facade. Cargo commands use the same
+bounded registry-cache retry as the middleware suite.
