@@ -390,6 +390,10 @@ impl<T> Default for Spy<T> {
 /// Simple handler wrapper for testing
 ///
 /// Deprecated: use [`crate::stub::StubRouter`] for async, method-aware routes.
+/// Use `reinhardt_testkit::stub::StubRouter`, `reinhardt_test::stub::StubRouter`,
+/// or `reinhardt::test::stub::StubRouter` through your existing test facade.
+/// The deprecation starts in `0.4.0-alpha.21`; this handler remains available
+/// for compatibility.
 ///
 /// Provides a convenient way to create handlers from closures for testing purposes.
 /// The handler function can be any closure that takes a `Request` and returns a
@@ -449,8 +453,8 @@ impl<T> Default for Spy<T> {
 /// });
 /// ```
 #[deprecated(
-	since = "0.4.0-alpha.20",
-	note = "Use reinhardt_testkit::stub::StubRouter for async, method-aware test routes"
+	since = "0.4.0-alpha.21",
+	note = "Use stub::StubRouter through your test facade: reinhardt_testkit::stub, reinhardt_test::stub, or reinhardt::test::stub for async, method-aware test routes"
 )]
 pub struct SimpleHandler<F>
 where
