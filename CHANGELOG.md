@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.22...reinhardt-web@v0.3.23) - 2026-10-08
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(facade)* forward optional WebSocket and GraphQL test features
+
 ## [0.3.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.21...reinhardt-web@v0.3.22) - 2026-10-06
 
 ### Fixed
