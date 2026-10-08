@@ -188,7 +188,10 @@ pub use fixtures::{
 };
 
 #[cfg(all(native, feature = "testcontainers"))]
-pub use fixtures::{postgres_container, redis_container};
+pub use fixtures::{
+	PostgresContainerConfig, apply_postgres_migrations_from, apply_postgres_migrations_from_dir,
+	postgres_container, postgres_container_with, redis_container, start_postgres_container,
+};
 
 #[cfg(all(native, feature = "testcontainers"))]
 pub use reinhardt_testkit::containers::{

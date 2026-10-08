@@ -290,6 +290,167 @@ impl Drop for FileLockGuard {
 // PostgreSQL Container Fixtures
 // ============================================================================
 
+/// Configuration for a test-scoped PostgreSQL container.
+///
+/// Defaults to `postgres:16-alpine`, user and database `postgres`, trust
+/// authentication, a random host port, the standard readiness log message,
+/// and a 120-second startup timeout. Pool settings remain controlled by
+/// `TEST_MAX_CONNECTIONS` and `TEST_ACQUIRE_TIMEOUT_SECS`.
+///
+/// Available with the `testcontainers` feature for native Docker tests (P0).
+///
+/// # Examples
+///
+/// ```rust
+/// use reinhardt_testkit::PostgresContainerConfig;
+///
+/// let config = PostgresContainerConfig::default()
+///     .image("postgres", "16-alpine")
+///     .user("test_user")
+///     .password("test_password")
+///     .database("test_db")
+///     .args(["-c", "max_connections=400"]);
+/// ```
+#[derive(Clone, Debug)]
+pub struct PostgresContainerConfig {
+	image_name: String,
+	image_tag: String,
+	user: String,
+	password: Option<String>,
+	database: String,
+	extra_env: std::collections::BTreeMap<String, String>,
+	command_args: Vec<String>,
+	host_port: Option<u16>,
+	wait_for: WaitFor,
+	startup_timeout: std::time::Duration,
+}
+
+impl Default for PostgresContainerConfig {
+	fn default() -> Self {
+		Self {
+			image_name: "postgres".into(),
+			image_tag: "16-alpine".into(),
+			user: "postgres".into(),
+			password: None,
+			database: "postgres".into(),
+			extra_env: std::collections::BTreeMap::new(),
+			command_args: Vec::new(),
+			host_port: None,
+			wait_for: WaitFor::message_on_stderr("database system is ready to accept connections"),
+			startup_timeout: std::time::Duration::from_secs(120),
+		}
+	}
+}
+
+impl PostgresContainerConfig {
+	/// Set the Docker image name and tag. It must support the PostgreSQL entrypoint.
+	pub fn image(mut self, name: impl Into<String>, tag: impl Into<String>) -> Self {
+		self.image_name = name.into();
+		self.image_tag = tag.into();
+		self
+	}
+
+	/// Set both `POSTGRES_USER` and the connection URL's user.
+	pub fn user(mut self, user: impl Into<String>) -> Self {
+		self.user = user.into();
+		self
+	}
+
+	/// Enable password authentication with `POSTGRES_PASSWORD` and URL credentials.
+	///
+	/// Without this method, trust authentication is used. Reserved characters in
+	/// credentials are percent-encoded in the URL.
+	pub fn password(mut self, password: impl Into<String>) -> Self {
+		self.password = Some(password.into());
+		self
+	}
+
+	/// Set both `POSTGRES_DB` and the connection URL's database.
+	pub fn database(mut self, database: impl Into<String>) -> Self {
+		self.database = database.into();
+		self
+	}
+
+	/// Add an environment variable, replacing an earlier value for the same key.
+	///
+	/// `POSTGRES_USER`, `POSTGRES_DB`, `POSTGRES_PASSWORD`, and
+	/// `POSTGRES_HOST_AUTH_METHOD` are derived from the credentials and take
+	/// precedence over extra environment variables, including removal of
+	/// incompatible authentication settings.
+	pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+		self.extra_env.insert(key.into(), value.into());
+		self
+	}
+
+	/// Append a command argument for the container's PostgreSQL entrypoint.
+	pub fn arg(mut self, arg: impl Into<String>) -> Self {
+		self.command_args.push(arg.into());
+		self
+	}
+
+	/// Append command arguments, for example `["-c", "max_connections=400"]`.
+	pub fn args(mut self, args: impl IntoIterator<Item = impl Into<String>>) -> Self {
+		self.command_args.extend(args.into_iter().map(Into::into));
+		self
+	}
+
+	/// Map a fixed host port to container TCP port 5432.
+	///
+	/// Fixed ports can collide across parallel test processes, including nextest.
+	/// Callers are responsible for serializing tests that share a fixed port;
+	/// an in-process lock alone does not serialize separate nextest processes.
+	/// The default lets Docker choose a random host port.
+	pub fn host_port(mut self, port: u16) -> Self {
+		self.host_port = Some(port);
+		self
+	}
+
+	/// Replace the container's wait condition.
+	///
+	/// Connection and `SELECT 1` readiness retries always run, even with
+	/// `WaitFor::Nothing`.
+	pub fn wait_for(mut self, wait_for: WaitFor) -> Self {
+		self.wait_for = wait_for;
+		self
+	}
+
+	/// Set the timeout for the Docker container's startup wait condition.
+	///
+	/// This does not change the subsequent connection and readiness retries.
+	pub fn startup_timeout(mut self, timeout: std::time::Duration) -> Self {
+		self.startup_timeout = timeout;
+		self
+	}
+
+	fn environment(&self) -> std::collections::BTreeMap<&str, &str> {
+		let mut env: std::collections::BTreeMap<_, _> = self
+			.extra_env
+			.iter()
+			.map(|(key, value)| (key.as_str(), value.as_str()))
+			.collect();
+		env.insert("POSTGRES_USER", &self.user);
+		env.insert("POSTGRES_DB", &self.database);
+		if let Some(password) = &self.password {
+			env.remove("POSTGRES_HOST_AUTH_METHOD");
+			env.insert("POSTGRES_PASSWORD", password);
+		} else {
+			env.remove("POSTGRES_PASSWORD");
+			env.insert("POSTGRES_HOST_AUTH_METHOD", "trust");
+		}
+		env
+	}
+
+	fn database_url(&self, port: u16) -> String {
+		let user = urlencoding::encode(&self.user);
+		let database = urlencoding::encode(&self.database);
+		let credentials = match &self.password {
+			Some(password) => format!("{user}:{}", urlencoding::encode(password)),
+			None => user.into_owned(),
+		};
+		format!("postgres://{credentials}@localhost:{port}/{database}?sslmode=disable")
+	}
+}
+
 /// Fixture providing a PostgreSQL container with connection pool
 ///
 /// Starts a PostgreSQL 17 Alpine container and provides a connection pool
@@ -298,8 +459,9 @@ impl Drop for FileLockGuard {
 /// # Examples
 ///
 /// ```no_run
-/// use reinhardt_testkit::fixtures::postgres_container;
+/// use reinhardt_testkit::fixtures::{ContainerAsync, GenericImage, postgres_container};
 /// use rstest::*;
+/// use std::sync::Arc;
 ///
 /// #[rstest]
 /// #[tokio::test]
@@ -314,15 +476,79 @@ impl Drop for FileLockGuard {
 #[fixture]
 pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String)
 {
+	start_postgres_container(PostgresContainerConfig::default()).await
+}
+
+/// PostgreSQL fixture accepting a configuration through rstest's `#[with(...)]`.
+///
+/// Omitting the configuration uses the same defaults as `postgres_container`.
+/// Available with the `testcontainers` feature for native Docker tests (P0).
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::{
+///     ContainerAsync, GenericImage, PostgresContainerConfig, postgres_container_with,
+/// };
+/// use rstest::rstest;
+/// use std::sync::Arc;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn custom_postgres(
+///     #[with(PostgresContainerConfig::default().args(["-c", "max_connections=400"]))]
+///     #[future] postgres_container_with: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+/// ) {
+///     let (_container, pool, _port, _url) = postgres_container_with.await;
+///     assert_eq!(pool.is_closed(), false);
+/// }
+/// ```
+#[fixture]
+pub async fn postgres_container_with(
+	#[default(PostgresContainerConfig::default())] config: PostgresContainerConfig,
+) -> (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String) {
+	start_postgres_container(config).await
+}
+
+/// Start a configured PostgreSQL container and return its guard, pool, port, and URL.
+///
+/// Port discovery, connection establishment, and `SELECT 1` readiness checks
+/// always retry independently of the configured wait condition. Keep the
+/// returned container guard alive while using its pool or URL.
+/// Available with the `testcontainers` feature for native Docker tests (P0).
+///
+/// # Panics
+///
+/// Panics if Docker startup, port discovery, or database readiness fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::{PostgresContainerConfig, start_postgres_container};
+///
+/// # async fn example() {
+/// let (_container, pool, _port, url) = start_postgres_container(
+///     PostgresContainerConfig::default().database("test_db"),
+/// ).await;
+/// assert_eq!(pool.is_closed(), false);
+/// # }
+/// ```
+pub async fn start_postgres_container(
+	config: PostgresContainerConfig,
+) -> (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String) {
 	use testcontainers::core::IntoContainerPort;
 
-	let image = GenericImage::new("postgres", "16-alpine")
+	let mut image = GenericImage::new(&config.image_name, &config.image_tag)
 		.with_exposed_port(5432.tcp())
-		.with_wait_for(WaitFor::message_on_stderr(
-			"database system is ready to accept connections",
-		))
-		.with_startup_timeout(std::time::Duration::from_secs(120))
-		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust");
+		.with_wait_for(config.wait_for.clone())
+		.with_startup_timeout(config.startup_timeout)
+		.with_cmd(config.command_args.iter().cloned());
+	for (key, value) in config.environment() {
+		image = image.with_env_var(key, value);
+	}
+	if let Some(port) = config.host_port {
+		image = image.with_mapped_port(port, 5432.tcp());
+	}
 
 	let postgres = image
 		.start()
@@ -357,10 +583,7 @@ pub async fn postgres_container() -> (ContainerAsync<GenericImage>, Arc<sqlx::Pg
 		}
 	};
 
-	let database_url = format!(
-		"postgres://postgres@localhost:{}/postgres?sslmode=disable",
-		port
-	);
+	let database_url = config.database_url(port);
 
 	// Get pool configuration from environment variables
 	let (max_conns, timeout_secs) = get_pool_config();
@@ -560,6 +783,156 @@ async fn try_start_redis_container()
 	let url = format!("redis://localhost:{}", port);
 
 	Ok((redis, port, url))
+}
+
+// ============================================================================
+// NATS Container Fixtures
+// ============================================================================
+
+/// Fixture providing a per-test NATS container with JetStream enabled.
+///
+/// Starts the official `nats` image with `-js` and returns the container, the host
+/// port mapped to 4222/tcp, and a `nats://localhost:<port>` connection URL.
+/// Readiness requires both startup log messages and a TCP `INFO` response with
+/// `"jetstream":true`. Keep the container handle alive for the test duration;
+/// dropping it removes the container, including its JetStream data.
+///
+/// The image name is fixed; only its tag is configurable. The default tag is
+/// `2.12-alpine`. Only this default tag is pre-pulled in CI; other tags are pulled
+/// at test time and are subject to Docker Hub rate limits.
+///
+/// Requires the `testcontainers` feature and Docker. This fixture is native-only
+/// (P0 target-only behavior); it is not available through the WASM test facade.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::{ContainerAsync, GenericImage, nats_container};
+/// use rstest::*;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_nats(
+///     #[future] nats_container: (ContainerAsync<GenericImage>, u16, String),
+/// ) {
+///     let (_container, port, url) = nats_container.await;
+///     assert_eq!(url, format!("nats://localhost:{port}"));
+/// }
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_another_nats_tag(
+///     #[future] #[with("2.11-alpine")]
+///     nats_container: (ContainerAsync<GenericImage>, u16, String),
+/// ) {
+///     let (_container, port, url) = nats_container.await;
+///     assert_eq!(url, format!("nats://localhost:{port}"));
+/// }
+/// ```
+#[fixture]
+pub async fn nats_container(
+	#[default("2.12-alpine")] tag: &str,
+) -> (ContainerAsync<GenericImage>, u16, String) {
+	const MAX_RETRIES: u32 = 3;
+	const RETRY_DELAY_MS: u64 = 2000;
+
+	let mut last_error = None;
+
+	for attempt in 0..MAX_RETRIES {
+		match try_start_nats_container(tag).await {
+			Ok(result) => return result,
+			Err(error) => {
+				eprintln!(
+					"NATS container start attempt {} of {} failed: {:?}",
+					attempt + 1,
+					MAX_RETRIES,
+					error
+				);
+				last_error = Some(error);
+
+				if attempt < MAX_RETRIES - 1 {
+					tokio::time::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS)).await;
+				}
+			}
+		}
+	}
+
+	panic!(
+		"Failed to start NATS container after {} attempts: {:?}",
+		MAX_RETRIES, last_error
+	);
+}
+
+async fn try_start_nats_container(
+	tag: &str,
+) -> Result<(ContainerAsync<GenericImage>, u16, String), Box<dyn std::error::Error>> {
+	use testcontainers::core::IntoContainerPort;
+
+	let nats = GenericImage::new("nats", tag)
+		.with_exposed_port(4222.tcp())
+		.with_wait_for(WaitFor::message_on_stderr(
+			"Listening for client connections on 0.0.0.0:4222",
+		))
+		.with_wait_for(WaitFor::message_on_stderr("Server is ready"))
+		.with_cmd(["-js"])
+		.start()
+		.await?;
+
+	let port = nats.get_host_port_ipv4(4222).await?;
+	probe_nats_jetstream(port).await?;
+	let url = format!("nats://localhost:{port}");
+
+	Ok((nats, port, url))
+}
+
+async fn read_nats_info(port: u16) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+	use tokio::io::{AsyncBufReadExt, BufReader};
+
+	let stream = tokio::net::TcpStream::connect(("localhost", port)).await?;
+	let mut line = String::new();
+	BufReader::new(stream).read_line(&mut line).await?;
+	let json = line
+		.strip_prefix("INFO ")
+		.and_then(|info| info.strip_suffix("\r\n"))
+		.ok_or_else(|| {
+			std::io::Error::new(
+				std::io::ErrorKind::InvalidData,
+				"NATS did not send a complete initial INFO line",
+			)
+		})?;
+
+	Ok(serde_json::from_str(json)?)
+}
+
+async fn probe_nats_jetstream(port: u16) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+	use std::time::Duration;
+	use tokio::time::{Instant, sleep_until, timeout_at};
+
+	let deadline = Instant::now() + Duration::from_secs(30);
+
+	loop {
+		// Bound each connection/read attempt as well as the complete readiness loop.
+		let attempt_deadline = deadline.min(Instant::now() + Duration::from_secs(1));
+		let error: Box<dyn std::error::Error> =
+			match timeout_at(attempt_deadline, read_nats_info(port)).await {
+				Ok(Ok(info)) if info["jetstream"].as_bool() == Some(true) => return Ok(info),
+				Ok(Ok(_)) => Box::new(std::io::Error::new(
+					std::io::ErrorKind::InvalidData,
+					"NATS INFO does not report jetstream:true",
+				)),
+				Ok(Err(error)) => error,
+				Err(error) => Box::new(error),
+			};
+
+		if Instant::now() >= deadline {
+			return Err(Box::new(std::io::Error::new(
+				std::io::ErrorKind::TimedOut,
+				format!("NATS JetStream readiness timed out on port {port}: {error}"),
+			)));
+		}
+
+		sleep_until(deadline.min(Instant::now() + Duration::from_millis(200))).await;
+	}
 }
 
 // ============================================================================
@@ -1380,15 +1753,53 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 #[cfg(feature = "testcontainers")]
 pub async fn postgres_with_migrations_from<P: reinhardt_db::migrations::MigrationProvider>()
 -> Result<(ContainerAsync<GenericImage>, MigrationDatabase), Box<dyn std::error::Error>> {
+	let (container, _pool, _port, url) = postgres_container().await;
+	let database = apply_postgres_migrations_from::<P>(&url).await?;
+	Ok((container, database))
+}
+
+/// Apply a `MigrationProvider` to an already-started PostgreSQL database URL.
+///
+/// Returns a guarded ORM connection. The caller must keep the container guard
+/// alive until the returned connection is dropped. Available with the
+/// `testcontainers` feature for native database tests (P0).
+///
+/// # Errors
+///
+/// Returns an error if connecting, applying migrations, or registering the
+/// connection fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_db::migrations::{Migration, MigrationProvider};
+/// use reinhardt_testkit::{
+///     PostgresContainerConfig, apply_postgres_migrations_from, start_postgres_container,
+/// };
+///
+/// struct AppMigrations;
+/// impl MigrationProvider for AppMigrations {
+///     fn migrations() -> Vec<Migration> { Vec::new() }
+/// }
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let (_container, _pool, _port, url) = start_postgres_container(
+///     PostgresContainerConfig::default().database("test_db"),
+/// ).await;
+/// let db = apply_postgres_migrations_from::<AppMigrations>(&url).await?;
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "testcontainers")]
+pub async fn apply_postgres_migrations_from<P: reinhardt_db::migrations::MigrationProvider>(
+	database_url: &str,
+) -> Result<MigrationDatabase, Box<dyn std::error::Error>> {
 	use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_db::orm::DatabaseConnectionLease;
 
-	// Start PostgreSQL container
-	let (container, _pool, _port, url) = postgres_container().await;
-
 	// Connect to database
-	let owner = BackendsConnection::connect_postgres(&url)
+	let owner = BackendsConnection::connect_postgres(database_url)
 		.await
 		.map_err(|e| format!("Failed to connect to PostgreSQL for migrations: {}", e))?;
 
@@ -1404,13 +1815,10 @@ pub async fn postgres_with_migrations_from<P: reinhardt_db::migrations::Migratio
 	}
 
 	let connection_lease = DatabaseConnectionLease::register(owner)?;
-	Ok((
-		container,
-		MigrationDatabase {
-			connection: connection_lease.handle(),
-			_connection_lease: connection_lease,
-		},
-	))
+	Ok(MigrationDatabase {
+		connection: connection_lease.handle(),
+		_connection_lease: connection_lease,
+	})
 }
 
 /// Fixture: MySQL container (base fixture)
@@ -1720,17 +2128,53 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 pub async fn postgres_with_migrations_from_dir(
 	migrations_dir: impl AsRef<std::path::Path>,
 ) -> Result<(ContainerAsync<GenericImage>, MigrationDatabase), Box<dyn std::error::Error>> {
+	let (container, _pool, _port, url) = postgres_container().await;
+	let database = apply_postgres_migrations_from_dir(&url, migrations_dir).await?;
+	Ok((container, database))
+}
+
+/// Apply filesystem migrations to an already-started PostgreSQL database URL.
+///
+/// The directory contains migration files organized as `<app_label>/<name>.rs`.
+/// Like `postgres_with_migrations_from_dir`, this initializes the ORM global
+/// connection for model access. Callers must serialize tests sharing that global
+/// state and keep their container guard alive while using the returned connection.
+/// Available with the `testcontainers` feature for native database tests (P0).
+///
+/// # Errors
+///
+/// Returns an error if connecting, loading or applying migrations, initializing
+/// the ORM global connection, or registering the guarded connection fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::{
+///     PostgresContainerConfig, apply_postgres_migrations_from_dir, start_postgres_container,
+/// };
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let (_container, _pool, _port, url) = start_postgres_container(
+///     PostgresContainerConfig::default().database("test_db"),
+/// ).await;
+/// let migrations = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+/// let db = apply_postgres_migrations_from_dir(&url, migrations).await?;
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "testcontainers")]
+pub async fn apply_postgres_migrations_from_dir(
+	database_url: &str,
+	migrations_dir: impl AsRef<std::path::Path>,
+) -> Result<MigrationDatabase, Box<dyn std::error::Error>> {
 	use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::migrations::FilesystemSource;
 	use reinhardt_db::migrations::MigrationSource;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_db::orm::DatabaseConnectionLease;
 
-	// Start PostgreSQL container
-	let (container, _pool, _port, url) = postgres_container().await;
-
 	// Connect to database
-	let owner = BackendsConnection::connect_postgres(&url)
+	let owner = BackendsConnection::connect_postgres(database_url)
 		.await
 		.map_err(|e| format!("Failed to connect to PostgreSQL for migrations: {}", e))?;
 
@@ -1751,18 +2195,15 @@ pub async fn postgres_with_migrations_from_dir(
 
 	// Initialize the ORM global database connection so that E2E tests
 	// using ORM models can access the database without manual setup.
-	reinhardt_db::orm::reinitialize_database(&url)
+	reinhardt_db::orm::reinitialize_database(database_url)
 		.await
 		.map_err(|e| format!("Failed to initialize ORM global state: {}", e))?;
 
 	let connection_lease = DatabaseConnectionLease::register(owner)?;
-	Ok((
-		container,
-		MigrationDatabase {
-			connection: connection_lease.handle(),
-			_connection_lease: connection_lease,
-		},
-	))
+	Ok(MigrationDatabase {
+		connection: connection_lease.handle(),
+		_connection_lease: connection_lease,
+	})
 }
 
 // ============================================================================
@@ -1944,7 +2385,258 @@ pub async fn kafka_container() -> Arc<crate::containers::KafkaContainer> {
 #[cfg(all(test, feature = "testcontainers"))]
 mod tests {
 	use super::*;
+	use reinhardt_query::prelude::{Expr, PostgresQueryBuilder, Query, QueryStatementBuilder};
 	use rstest::*;
+
+	#[rstest]
+	fn test_postgres_container_config_defaults() {
+		// Arrange
+		let config = PostgresContainerConfig::default();
+
+		// Act
+		let env = config.environment();
+		let url = config.database_url(54321);
+
+		// Assert
+		assert_eq!(config.image_name, "postgres");
+		assert_eq!(config.image_tag, "16-alpine");
+		assert_eq!(config.password, None);
+		assert_eq!(config.host_port, None);
+		assert_eq!(config.command_args, Vec::<String>::new());
+		assert_eq!(config.startup_timeout, std::time::Duration::from_secs(120));
+		assert_eq!(
+			format!("{:?}", config.wait_for),
+			format!(
+				"{:?}",
+				WaitFor::message_on_stderr("database system is ready to accept connections")
+			)
+		);
+		assert_eq!(
+			env,
+			std::collections::BTreeMap::from([
+				("POSTGRES_USER", "postgres"),
+				("POSTGRES_DB", "postgres"),
+				("POSTGRES_HOST_AUTH_METHOD", "trust"),
+			])
+		);
+		assert_eq!(
+			url,
+			"postgres://postgres@localhost:54321/postgres?sslmode=disable"
+		);
+	}
+
+	#[rstest]
+	#[case::trust(None)]
+	#[case::password(Some("p@ss:/?#% word"))]
+	fn test_postgres_container_config_credentials_override_env(#[case] password: Option<&str>) {
+		// Arrange
+		let mut config = PostgresContainerConfig::default()
+			.user("test@user")
+			.database("test/db")
+			.env("POSTGRES_USER", "wrong_user")
+			.env("POSTGRES_DB", "wrong_db")
+			.env("POSTGRES_PASSWORD", "wrong_password")
+			.env("POSTGRES_HOST_AUTH_METHOD", "wrong_auth")
+			.env("TZ", "UTC")
+			.env("TZ", "Asia/Tokyo");
+		if let Some(password) = password {
+			config = config.password(password);
+		}
+
+		// Act
+		let env = config.environment();
+		let url = config.database_url(54321);
+
+		// Assert
+		let mut expected = std::collections::BTreeMap::from([
+			("POSTGRES_USER", "test@user"),
+			("POSTGRES_DB", "test/db"),
+			("TZ", "Asia/Tokyo"),
+		]);
+		let expected_url = if let Some(password) = password {
+			expected.insert("POSTGRES_PASSWORD", password);
+			"postgres://test%40user:p%40ss%3A%2F%3F%23%25%20word@localhost:54321/test%2Fdb?sslmode=disable"
+		} else {
+			expected.insert("POSTGRES_HOST_AUTH_METHOD", "trust");
+			"postgres://test%40user@localhost:54321/test%2Fdb?sslmode=disable"
+		};
+		assert_eq!(env, expected);
+		assert_eq!(url, expected_url);
+	}
+
+	#[rstest]
+	fn test_postgres_container_config_builders() {
+		// Arrange / Act
+		let config = PostgresContainerConfig::default()
+			.image("custom/postgres", "test-tag")
+			.arg("-c")
+			.arg("max_connections=400")
+			.args(["-c", "log_statement=all"])
+			.host_port(54321)
+			.wait_for(WaitFor::Nothing)
+			.startup_timeout(std::time::Duration::from_secs(90));
+
+		// Assert
+		assert_eq!(config.image_name, "custom/postgres");
+		assert_eq!(config.image_tag, "test-tag");
+		assert_eq!(
+			config.command_args,
+			["-c", "max_connections=400", "-c", "log_statement=all"]
+		);
+		assert_eq!(config.host_port, Some(54321));
+		assert!(matches!(config.wait_for, WaitFor::Nothing));
+		assert_eq!(config.startup_timeout, std::time::Duration::from_secs(90));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_postgres_container_with_defaults(
+		#[future] postgres_container_with: (
+			ContainerAsync<GenericImage>,
+			Arc<sqlx::PgPool>,
+			u16,
+			String,
+		),
+	) {
+		// Arrange / Act
+		let (_container, _pool, port, url) = postgres_container_with.await;
+
+		// Assert
+		assert_eq!(
+			url,
+			format!("postgres://postgres@localhost:{port}/postgres?sslmode=disable")
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_postgres_container_custom_command(
+		#[with(PostgresContainerConfig::default().args(["-c", "max_connections=400"]))]
+		#[future]
+		postgres_container_with: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+	) {
+		// Arrange
+		let (_container, pool, _port, _url) = postgres_container_with.await;
+
+		// Act: SHOW is a PostgreSQL diagnostic command, not a query-builder statement.
+		let max_connections: String = sqlx::query_scalar("SHOW max_connections")
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to read max_connections");
+
+		// Assert
+		assert_eq!(max_connections, "400");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_postgres_container_password_credentials(
+		#[with(PostgresContainerConfig::default()
+			.user("test@user")
+			.password("p@ss:/?#% word")
+			.database("test/db")
+			.env("POSTGRES_USER", "wrong_user")
+			.env("POSTGRES_DB", "wrong_db")
+			.env("POSTGRES_PASSWORD", "wrong_password")
+			.env("POSTGRES_HOST_AUTH_METHOD", "trust"))]
+		#[future]
+		postgres_container_with: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+	) {
+		use sqlx::Connection;
+
+		// Arrange
+		let (_container, pool, port, url) = postgres_container_with.await;
+		let query = Query::select()
+			.expr(Expr::cust("current_user"))
+			.expr(Expr::cust("current_database()"))
+			.to_string(PostgresQueryBuilder);
+		let wrong_password = url
+			.parse::<sqlx::postgres::PgConnectOptions>()
+			.expect("Invalid connection URL")
+			.password("wrong_password");
+
+		// Act
+		let credentials: (String, String) = sqlx::query_as(&query)
+			.fetch_one(pool.as_ref())
+			.await
+			.expect("Failed to read PostgreSQL credentials");
+		let error = sqlx::PgConnection::connect_with(&wrong_password)
+			.await
+			.expect_err("Incorrect password must not authenticate");
+
+		// Assert
+		assert_eq!(credentials, ("test@user".into(), "test/db".into()));
+		assert_eq!(
+			url,
+			format!(
+				"postgres://test%40user:p%40ss%3A%2F%3F%23%25%20word@localhost:{port}/test%2Fdb?sslmode=disable"
+			)
+		);
+		assert_eq!(
+			error.as_database_error().unwrap().code().as_deref(),
+			Some("28P01")
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_postgres_container_fixed_host_port() {
+		// Arrange
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let requested_port = listener.local_addr().unwrap().port();
+		// Release this reservation so Docker can bind the selected port.
+		drop(listener);
+		let config = PostgresContainerConfig::default().host_port(requested_port);
+
+		// Act
+		let (_container, _pool, port, url) = start_postgres_container(config).await;
+
+		// Assert
+		assert_eq!(port, requested_port);
+		assert_eq!(
+			url,
+			format!("postgres://postgres@localhost:{requested_port}/postgres?sslmode=disable")
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_postgres_container_readiness_without_wait_condition() {
+		// Arrange
+		let config = PostgresContainerConfig::default().wait_for(WaitFor::Nothing);
+		let query = Query::select()
+			.expr(Expr::val(1))
+			.to_string(PostgresQueryBuilder);
+
+		// Act
+		let (_container, pool, _port, _url) = start_postgres_container(config).await;
+		let value: i32 = sqlx::query_scalar(&query)
+			.fetch_one(pool.as_ref())
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(value, 1);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_nats_container_jetstream_enabled(
+		#[future] nats_container: (ContainerAsync<GenericImage>, u16, String),
+	) {
+		// Arrange
+		let (_container, port, url) = nats_container.await;
+
+		// Act
+		let info = probe_nats_jetstream(port)
+			.await
+			.expect("Failed to read JetStream-enabled NATS INFO");
+
+		// Assert
+		assert_eq!(url, format!("nats://localhost:{port}"));
+		assert_eq!(info["jetstream"].as_bool(), Some(true));
+		assert_eq!(info["port"].as_u64(), Some(4222));
+	}
 
 	#[rstest]
 	fn test_get_pool_config_defaults() {
