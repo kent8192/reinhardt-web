@@ -204,6 +204,11 @@ impl APIClientBuilder {
 		self
 	}
 
+	/// Whether requests would bypass the network through a framework handler.
+	pub(crate) fn has_framework_handler(&self) -> bool {
+		self.framework_handler.is_some()
+	}
+
 	/// Set a DI context for in-process handler requests.
 	///
 	/// The context is injected into every reinhardt `Request` before
