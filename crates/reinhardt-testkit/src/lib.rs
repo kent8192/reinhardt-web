@@ -15,7 +15,8 @@
 //!
 //! ## Features
 //!
-//! - **[`APIClient`]**: HTTP client for making test API requests
+//! - **[`APIClient`]**: HTTP client with per-request [`TestRequestBuilder`] headers
+//!   and payloads, plus independent credential snapshots through `APIClient::fork`
 //! - **[`APIRequestFactory`]**: Factory for creating mock HTTP requests
 //! - **[`APITestCase`]**: Base test case with common assertions
 //! - **[`stub::StubRouter`]**: Async closure-based, method-aware test stub routes
@@ -119,7 +120,7 @@ pub use reinhardt_db::orm::relationship;
 pub use reinhardt_db::orm::{FieldSelector, Model};
 
 pub use assertions::*;
-pub use client::{APIClient, APIClientBuilder, ClientError, HttpVersion};
+pub use client::{APIClient, APIClientBuilder, ClientError, HttpVersion, TestRequestBuilder};
 pub use debug::{DebugEntry, DebugPanel, DebugToolbar, SqlQuery, TimingInfo};
 pub use factory::{APIRequestFactory, RequestBuilder};
 pub use fixtures::{
@@ -187,7 +188,7 @@ pub use websocket::WebSocketTestClient;
 /// Re-export commonly used testing types
 pub mod prelude {
 	pub use super::assertions::*;
-	pub use super::client::APIClient;
+	pub use super::client::{APIClient, TestRequestBuilder};
 	pub use super::debug::DebugToolbar;
 	pub use super::factory::APIRequestFactory;
 	pub use super::fixtures::{
