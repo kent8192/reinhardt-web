@@ -1824,7 +1824,12 @@ mod tests {
 		// Assert
 		assert_eq!(json.body().as_ref(), br#"{"name":"before"}"#);
 		assert_eq!(header_values(&json, "content-type"), ["explicit/type"]);
-		assert_eq!(form.body().as_ref(), b"count=2&name=A+B");
+		let mut form_fields = std::str::from_utf8(form.body())
+			.unwrap()
+			.split('&')
+			.collect::<Vec<_>>();
+		form_fields.sort_unstable();
+		assert_eq!(form_fields, ["count=2", "name=A+B"]);
 		assert_eq!(
 			header_values(&form, "content-type"),
 			["application/x-www-form-urlencoded"]
