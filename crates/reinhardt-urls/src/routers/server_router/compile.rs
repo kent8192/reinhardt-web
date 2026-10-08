@@ -9,7 +9,6 @@ use super::ServerRouter;
 use super::handlers::ViewSetHandler;
 use super::types::RouteHandler;
 use crate::routers::pattern::PathPattern;
-use hyper::Method;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::Action;
 use std::borrow::Cow;
@@ -68,21 +67,21 @@ impl ServerRouter {
 
 			// Normalize typed converters before matching so catch-alls consume
 			// nested paths and matchit exposes the declared parameter names.
-			let router_lock = match func_route.method {
-				Method::GET => &self.get_router,
-				Method::POST => &self.post_router,
-				Method::PUT => &self.put_router,
-				Method::DELETE => &self.delete_router,
-				Method::PATCH => &self.patch_router,
-				Method::HEAD => &self.head_router,
-				Method::OPTIONS => &self.options_router,
-				_ => &self.get_router,
-			};
-			if let Err(e) = router_lock
-				.write()
-				.unwrap_or_else(PoisonError::into_inner)
-				.insert(&route_path, route_handler)
-			{
+			let insertion =
+				if let Some(router_lock) = self.standard_method_router(&func_route.method) {
+					router_lock
+						.write()
+						.unwrap_or_else(PoisonError::into_inner)
+						.insert(&route_path, route_handler)
+				} else {
+					self.other_method_routers
+						.write()
+						.unwrap_or_else(PoisonError::into_inner)
+						.entry(func_route.method.clone())
+						.or_default()
+						.insert(&route_path, route_handler)
+				};
+			if let Err(e) = insertion {
 				errors.push(format!(
 					"Failed to compile route '{}' ({}): {}",
 					func_route.path, func_route.method, e
@@ -103,24 +102,11 @@ impl ServerRouter {
 				.unwrap_or_else(|| Cow::Borrowed(&view_route.path));
 			let route_path: &str = &route_path_owned;
 
-			// Register view for all common HTTP methods
-			for router_lock in &[
-				&self.get_router,
-				&self.post_router,
-				&self.put_router,
-				&self.delete_router,
-				&self.patch_router,
-			] {
-				if let Err(e) = router_lock
-					.write()
-					.unwrap_or_else(PoisonError::into_inner)
-					.insert(route_path, route_handler.clone())
-				{
-					errors.push(format!(
-						"Failed to compile view route '{}': {}",
-						view_route.path, e
-					));
-				}
+			for e in self.compile_method_agnostic_route(route_path, route_handler) {
+				errors.push(format!(
+					"Failed to compile view route '{}': {}",
+					view_route.path, e
+				));
 			}
 		}
 
@@ -137,24 +123,11 @@ impl ServerRouter {
 				.unwrap_or_else(|| Cow::Borrowed(&route.path));
 			let route_path: &str = &route_path_owned;
 
-			// Register raw route for all common HTTP methods
-			for router_lock in &[
-				&self.get_router,
-				&self.post_router,
-				&self.put_router,
-				&self.delete_router,
-				&self.patch_router,
-			] {
-				if let Err(e) = router_lock
-					.write()
-					.unwrap_or_else(PoisonError::into_inner)
-					.insert(route_path, route_handler.clone())
-				{
-					errors.push(format!(
-						"Failed to compile raw route '{}': {}",
-						route.path, e
-					));
-				}
+			for e in self.compile_method_agnostic_route(route_path, route_handler) {
+				errors.push(format!(
+					"Failed to compile raw route '{}': {}",
+					route.path, e
+				));
 			}
 		}
 
@@ -164,6 +137,47 @@ impl ServerRouter {
 		// Cache the result, including failures, without recompiling partial routers.
 		*cached = Some(errors.clone());
 
+		errors
+	}
+
+	/// Register handlers in every existing method table and an open-ended fallback.
+	fn compile_method_agnostic_route(
+		&self,
+		path: &str,
+		handler: RouteHandler,
+	) -> Vec<matchit::InsertError> {
+		let mut errors = Vec::new();
+		for router_lock in [
+			&self.get_router,
+			&self.post_router,
+			&self.put_router,
+			&self.delete_router,
+			&self.patch_router,
+			&self.head_router,
+			&self.options_router,
+			&self.any_method_router,
+		] {
+			if let Err(error) = router_lock
+				.write()
+				.unwrap_or_else(PoisonError::into_inner)
+				.insert(path, handler.clone())
+			{
+				errors.push(error);
+			}
+		}
+
+		// Endpoints compile first, so every registered extension method is present.
+		// Sharing these tables preserves matchit's path precedence and conflicts.
+		for router in self
+			.other_method_routers
+			.write()
+			.unwrap_or_else(PoisonError::into_inner)
+			.values_mut()
+		{
+			if let Err(error) = router.insert(path, handler.clone()) {
+				errors.push(error);
+			}
+		}
 		errors
 	}
 

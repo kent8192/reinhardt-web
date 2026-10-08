@@ -10,7 +10,6 @@ use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::{ExceptionHandler, ExcludeMiddleware};
 use reinhardt_middleware::Middleware;
-#[cfg(feature = "viewsets")]
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -102,6 +101,8 @@ impl ServerRouter {
 			patch_router: RwLock::new(MatchitRouter::new()),
 			head_router: RwLock::new(MatchitRouter::new()),
 			options_router: RwLock::new(MatchitRouter::new()),
+			other_method_routers: RwLock::new(HashMap::new()),
+			any_method_router: RwLock::new(MatchitRouter::new()),
 			route_compilation: RwLock::new(None),
 			exception_handler: None,
 		}
