@@ -9,9 +9,11 @@ use super::ServerRouter;
 use super::handlers::ViewSetHandler;
 use super::types::RouteHandler;
 use crate::routers::pattern::PathPattern;
+use hyper::Method;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::Action;
 use std::borrow::Cow;
+use std::collections::HashSet;
 #[cfg(feature = "viewsets")]
 use std::sync::Arc;
 use std::sync::PoisonError;
@@ -47,6 +49,7 @@ impl ServerRouter {
 		}
 
 		let mut errors = Vec::new();
+		let mut explicit_head_options = HashSet::new();
 
 		// Compile endpoint routes
 		for func_route in &self.functions {
@@ -86,6 +89,8 @@ impl ServerRouter {
 					"Failed to compile route '{}' ({}): {}",
 					func_route.path, func_route.method, e
 				));
+			} else if matches!(func_route.method, Method::HEAD | Method::OPTIONS) {
+				explicit_head_options.insert((func_route.method.clone(), route_path));
 			}
 		}
 
@@ -102,7 +107,11 @@ impl ServerRouter {
 				.unwrap_or_else(|| Cow::Borrowed(&view_route.path));
 			let route_path: &str = &route_path_owned;
 
-			for e in self.compile_method_agnostic_route(route_path, route_handler) {
+			for e in self.compile_method_agnostic_route(
+				route_path,
+				route_handler,
+				&explicit_head_options,
+			) {
 				errors.push(format!(
 					"Failed to compile view route '{}': {}",
 					view_route.path, e
@@ -123,7 +132,11 @@ impl ServerRouter {
 				.unwrap_or_else(|| Cow::Borrowed(&route.path));
 			let route_path: &str = &route_path_owned;
 
-			for e in self.compile_method_agnostic_route(route_path, route_handler) {
+			for e in self.compile_method_agnostic_route(
+				route_path,
+				route_handler,
+				&explicit_head_options,
+			) {
 				errors.push(format!(
 					"Failed to compile raw route '{}': {}",
 					route.path, e
@@ -145,23 +158,30 @@ impl ServerRouter {
 		&self,
 		path: &str,
 		handler: RouteHandler,
+		explicit_head_options: &HashSet<(Method, String)>,
 	) -> Vec<matchit::InsertError> {
 		let mut errors = Vec::new();
-		for router_lock in [
-			&self.get_router,
-			&self.post_router,
-			&self.put_router,
-			&self.delete_router,
-			&self.patch_router,
-			&self.head_router,
-			&self.options_router,
-			&self.any_method_router,
+		for (method, router_lock) in [
+			(Some(Method::GET), &self.get_router),
+			(Some(Method::POST), &self.post_router),
+			(Some(Method::PUT), &self.put_router),
+			(Some(Method::DELETE), &self.delete_router),
+			(Some(Method::PATCH), &self.patch_router),
+			(Some(Method::HEAD), &self.head_router),
+			(Some(Method::OPTIONS), &self.options_router),
+			(None, &self.any_method_router),
 		] {
 			if let Err(error) = router_lock
 				.write()
 				.unwrap_or_else(PoisonError::into_inner)
 				.insert(path, handler.clone())
 			{
+				// Explicit HEAD/OPTIONS endpoints override method-agnostic handlers.
+				if matches!((&method, &error), (Some(method), matchit::InsertError::Conflict { with })
+					if explicit_head_options.contains(&(method.clone(), with.clone())))
+				{
+					continue;
+				}
 				errors.push(error);
 			}
 		}
