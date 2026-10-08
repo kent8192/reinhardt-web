@@ -17,7 +17,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.3.22"
+cargo install reinhardt-admin-cli --version "0.3.23"
 ```
 
 ## 2. Create your project
