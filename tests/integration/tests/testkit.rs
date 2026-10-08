@@ -20,3 +20,9 @@ mod server_guard_lifecycle;
 
 #[path = "testkit/mock_integration.rs"]
 mod mock_integration;
+
+#[path = "testkit/stub_router_integration.rs"]
+mod stub_router_integration;
+
+#[path = "testkit/postgres_container_migrations.rs"]
+mod postgres_container_migrations;

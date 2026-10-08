@@ -2568,3 +2568,185 @@ async fn rejected_typed_paths_report_not_found(
 		if message == &format!("Method POST not allowed for {prefix}/files/nested/file.txt"))
 	);
 }
+
+struct MethodRouteHandler(&'static str);
+
+#[async_trait::async_trait]
+impl Handler for MethodRouteHandler {
+	async fn handle(&self, _request: Request) -> Result<Response> {
+		Ok(Response::ok().with_body(self.0))
+	}
+}
+
+struct MethodRoutePathParamHandler;
+
+#[async_trait::async_trait]
+impl Handler for MethodRoutePathParamHandler {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		Ok(Response::ok().with_body(request.path_params.get("id").unwrap().to_owned()))
+	}
+}
+
+#[rstest]
+#[case(Method::POST, "/stub", hyper::StatusCode::OK)]
+#[case(Method::GET, "/stub", hyper::StatusCode::METHOD_NOT_ALLOWED)]
+#[case(Method::POST, "/unknown", hyper::StatusCode::NOT_FOUND)]
+#[tokio::test]
+async fn handler_for_method_dispatches_with_framework_status(
+	#[case] method: Method,
+	#[case] path: &str,
+	#[case] expected_status: hyper::StatusCode,
+) {
+	// Arrange
+	let router = ServerRouter::new()
+		.with_middleware(SecurityHeaderTestMiddleware)
+		.handler_for_method("/stub", Method::POST, MethodRouteHandler("posted"));
+	let request = Request::builder()
+		.method(method)
+		.uri(path)
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
+
+	// Act
+	let response = Handler::handle(&router, request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, expected_status);
+	assert_eq!(response.headers.get("x-security-test").unwrap(), "applied");
+	if expected_status == hyper::StatusCode::OK {
+		assert_eq!(response.body, bytes::Bytes::from_static(b"posted"));
+	}
+}
+
+#[rstest]
+#[case(Method::GET, "read")]
+#[case(Method::POST, "write")]
+#[tokio::test]
+async fn handler_for_method_dispatches_two_methods_independently(
+	#[case] method: Method,
+	#[case] expected_body: &str,
+) {
+	// Arrange
+	let router = ServerRouter::new()
+		.handler_for_method("/stub", Method::GET, MethodRouteHandler("read"))
+		.handler_for_method("/stub", Method::POST, MethodRouteHandler("write"));
+	let request = Request::builder()
+		.method(method)
+		.uri("/stub")
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
+
+	// Act
+	let response = Handler::handle(&router, request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(
+		response.body,
+		bytes::Bytes::copy_from_slice(expected_body.as_bytes())
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn handler_for_method_exposes_path_params() {
+	// Arrange
+	let router = ServerRouter::new().handler_for_method(
+		"/stub/{id}",
+		Method::GET,
+		MethodRoutePathParamHandler,
+	);
+	let request = create_test_request("/stub/42");
+
+	// Act
+	let response = Handler::handle(&router, request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(response.body, bytes::Bytes::from_static(b"42"));
+}
+
+#[rstest]
+#[case(Method::GET, Some("applied"))]
+#[case(Method::POST, None)]
+#[tokio::test]
+async fn handler_for_method_applies_route_middleware_only_to_its_route(
+	#[case] method: Method,
+	#[case] expected_header: Option<&str>,
+) {
+	// Arrange
+	let router = ServerRouter::new()
+		.handler_for_method("/stub", Method::GET, MethodRouteHandler("read"))
+		.with_route_middleware(SecurityHeaderTestMiddleware)
+		.handler_for_method("/stub", Method::POST, MethodRouteHandler("write"));
+	let request = Request::builder()
+		.method(method)
+		.uri("/stub")
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
+
+	// Act
+	let response = Handler::handle(&router, request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(
+		response
+			.headers
+			.get("x-security-test")
+			.map(|value| value.to_str().unwrap()),
+		expected_header,
+	);
+}
+
+#[rstest]
+fn handler_for_method_preserves_unnamed_raw_contract() {
+	// Arrange
+	let router =
+		ServerRouter::new().handler_for_method("/stub", Method::POST, MethodRouteHandler("posted"));
+
+	// Act
+	let contracts = router.get_mounted_route_contracts().unwrap();
+
+	// Assert
+	assert_eq!(
+		contracts,
+		vec![types::MountedRouteContract {
+			path: "/stub".to_owned(),
+			method: Method::POST,
+			name: None,
+			metadata: types::RouteContractMetadata {
+				handler: "route:POST /stub".to_owned(),
+				module_path: None,
+				function_name: None,
+				authentication: reinhardt_core::endpoint::AuthProtection::None,
+				guard: None,
+			},
+		}]
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn handler_for_method_invalidates_compiled_routes() {
+	// Arrange
+	let router =
+		ServerRouter::new().handler_for_method("/stub", Method::GET, MethodRouteHandler("read"));
+	let initial_response = Handler::handle(&router, create_test_request("/stub"))
+		.await
+		.unwrap();
+	assert_eq!(initial_response.body, bytes::Bytes::from_static(b"read"));
+	let router = router.handler_for_method("/added", Method::GET, MethodRouteHandler("added"));
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/added"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(response.body, bytes::Bytes::from_static(b"added"));
+}
