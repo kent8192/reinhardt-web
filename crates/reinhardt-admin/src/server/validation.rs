@@ -137,6 +137,16 @@ fn validate_mutation_data_inner(
 		// Check if field is in allowlist
 		validate_field_allowed(field_name, allowed_fields, field_aliases)?;
 
+		#[cfg(server)]
+		if let Some(metadata) =
+			super::type_inference::get_field_metadata(model_admin.table_name(), field_name)
+			&& super::type_inference::requires_unavailable_admin_feature(&metadata.field_type)
+		{
+			return Err(AdminError::ValidationError(format!(
+				"Field '{field_name}' requires an enabled admin feature before it can be edited"
+			)));
+		}
+
 		// Check readonly fields (for both create and update)
 		if readonly_field_is_configured(field_name, &readonly_fields, field_aliases) {
 			return Err(AdminError::ValidationError(format!(

@@ -68,14 +68,14 @@ fn admin_infers_fields_with_independent_pgvector_features(consumer: TempDir) {
 	.expect("seed consumer dependency versions from workspace lockfile");
 	fs::create_dir(consumer.path().join("src")).expect("create consumer source directory");
 	let cases = [
-		("database-only-vector", "", "pgvector", true),
-		("without-vector", "", "migrations", false),
-		("admin-vector", "pgvector", "pgvector", true),
+		("database-only-vector", "", "pgvector", Some("Hidden")),
+		("without-vector", "", "migrations", None),
+		("admin-vector", "pgvector", "pgvector", Some("TextArea")),
 	];
 
 	// Act: replace each manifest while reusing only build artifacts. The consumer
 	// graph cannot inherit reinhardt-admin/pgvector from a workspace test build.
-	for (name, admin_feature, db_feature, vector_enabled) in cases {
+	for (name, admin_feature, db_feature, vector_type) in cases {
 		fs::write(
 			consumer.path().join("Cargo.toml"),
 			format!(
@@ -90,6 +90,7 @@ publish = false
 [dependencies]
 reinhardt-admin = {{ path = {admin_path}, default-features = false, features = [{admin_features}] }}
 reinhardt-db = {{ path = {db_path}, default-features = false, features = ["{db_feature}"] }}
+serde_json = "1"
 
 {patches}
 "#,
@@ -101,13 +102,39 @@ reinhardt-db = {{ path = {db_path}, default-features = false, features = ["{db_f
 			),
 		)
 		.expect("write standalone consumer manifest");
-		let vector_assertion = if vector_enabled {
-			r#"
-    let field = DbFieldType::Vector { dimensions: 1536 };
-    assert_eq!(infer_admin_field_type(&field), AdminFieldType::TextArea);
-"#
+		let vector_assertion = if let Some(vector_type) = vector_type {
+			format!(
+				r#"
+    let field = DbFieldType::Vector {{ dimensions: 1536 }};
+    assert_eq!(infer_admin_field_type(&field), AdminFieldType::{vector_type});
+    struct RegisteredModel;
+    impl Drop for RegisteredModel {{
+        fn drop(&mut self) {{
+            reinhardt_db::migrations::global_registry().remove_model("consumer", "Embedding");
+        }}
+    }}
+    let mut model = reinhardt_db::migrations::ModelMetadata::new("consumer", "Embedding", "embeddings");
+    model.add_field("embedding".into(), reinhardt_db::migrations::FieldMetadata::new(field));
+    reinhardt_db::migrations::global_registry().register_model(model);
+    let _registered = RegisteredModel;
+    let admin = reinhardt_admin::core::ModelAdminConfig::builder()
+        .model_name("Embedding").table_name("embeddings")
+        .fields(vec!["embedding"]).build().unwrap();
+    for value in [serde_json::json!([1.0, 2.0, 3.0]), serde_json::json!("[1,2,3]"), serde_json::Value::Null] {{
+        let data = std::collections::HashMap::from([("embedding".into(), value)]);
+        for is_update in [false, true] {{
+            let result = reinhardt_admin::server::validation::validate_mutation_data(&data, &admin, is_update);
+            assert_eq!(result.is_ok(), {editable});
+            if let Err(error) = result {{
+                assert_eq!(error.to_string(), "Validation error: Field 'embedding' requires an enabled admin feature before it can be edited");
+            }}
+        }}
+    }}
+"#,
+				editable = vector_type == "TextArea",
+			)
 		} else {
-			""
+			String::new()
 		};
 		fs::write(
 			consumer.path().join("src/main.rs"),
@@ -120,7 +147,7 @@ fn main() {{
     assert_eq!(infer_admin_field_type(&DbFieldType::Integer), AdminFieldType::Number);
     assert_eq!(infer_admin_field_type(&DbFieldType::Custom("geometry".into())), AdminFieldType::Text);
 {vector_assertion}}}
-"#
+"#,
 			),
 		)
 		.expect("write consumer field inference assertions");
