@@ -105,7 +105,7 @@ pub mod dcl;
 // Re-export commonly used items from submodules
 
 // From client module
-pub use client::api_client_from_url;
+pub use client::{TestServerClient, api_client_from_url, test_server_client};
 
 // From loader module
 pub use loader::{

@@ -43,13 +43,17 @@ fn redirect_router() -> ServerRouter {
 
 #[rstest]
 #[tokio::test]
-async fn redirect_never_returns_original_status_and_location(redirect_router: ServerRouter) {
+async fn redirect_never_returns_original_status_and_location(
+	redirect_router: ServerRouter,
+	#[values(false, true)] forked: bool,
+) {
 	// Arrange
 	let server = test_server_guard(redirect_router).await;
 	let client = APIClient::builder()
 		.base_url(&server.url)
 		.redirect_policy(RedirectPolicy::Never)
 		.build();
+	let client = if forked { client.fork().await } else { client };
 
 	// Act
 	let response = client.get("/a").await.unwrap();
@@ -66,6 +70,7 @@ async fn redirect_never_returns_original_status_and_location(redirect_router: Se
 async fn redirect_follow_returns_final_response(
 	redirect_router: ServerRouter,
 	#[case] policy: Option<RedirectPolicy>,
+	#[values(false, true)] forked: bool,
 ) {
 	// Arrange
 	let server = test_server_guard(redirect_router).await;
@@ -74,6 +79,7 @@ async fn redirect_follow_returns_final_response(
 		builder = builder.redirect_policy(policy);
 	}
 	let client = builder.build();
+	let client = if forked { client.fork().await } else { client };
 
 	// Act
 	let response = client.get("/a").await.unwrap();
@@ -92,6 +98,7 @@ async fn redirect_follow_limit_exceeded_is_redirect_error(
 	redirect_router: ServerRouter,
 	#[case] limit: usize,
 	#[case] path: &str,
+	#[values(false, true)] forked: bool,
 ) {
 	// Arrange
 	let server = test_server_guard(redirect_router).await;
@@ -99,6 +106,7 @@ async fn redirect_follow_limit_exceeded_is_redirect_error(
 		.base_url(&server.url)
 		.redirect_policy(RedirectPolicy::Follow { limit })
 		.build();
+	let client = if forked { client.fork().await } else { client };
 
 	// Act
 	let error = match client.get(path).await {

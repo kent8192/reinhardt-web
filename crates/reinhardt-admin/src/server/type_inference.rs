@@ -153,7 +153,29 @@ pub fn infer_admin_field_type(db_type: &DbFieldType) -> AdminFieldType {
 
 		// Full-text search types → TextArea
 		DbFieldType::TsVector | DbFieldType::TsQuery => AdminFieldType::TextArea,
+
+		// Cargo can enable the database's Vector variant through another crate
+		// without enabling this crate's pgvector codecs. Do not offer an editor
+		// for values that the admin cannot bind to the database.
+		#[cfg(not(feature = "pgvector"))]
+		#[allow(
+			unreachable_patterns,
+			reason = "the fallback is needed only when reinhardt-db/pgvector is enabled independently"
+		)]
+		_ => AdminFieldType::Hidden,
 	}
+}
+
+pub(crate) fn requires_unavailable_admin_feature(db_type: &DbFieldType) -> bool {
+	// Relationships have their own controls; other hidden inferred types are
+	// feature-unified database variants without an admin value codec.
+	matches!(infer_admin_field_type(db_type), AdminFieldType::Hidden)
+		&& !matches!(
+			db_type,
+			DbFieldType::OneToOne { .. }
+				| DbFieldType::ManyToMany { .. }
+				| DbFieldType::ForeignKey { .. }
+		)
 }
 
 /// Returns whether model metadata identifies a semantic file field.

@@ -248,13 +248,10 @@ async fn test_header_compression() {
 	for i in 0..10 {
 		let header_value = format!("value-{}", i);
 		let response = client
-			.get_with_headers(
-				"/",
-				&[
-					("x-custom-header", header_value.as_str()),
-					("x-another-header", "repeated-value"),
-				],
-			)
+			.request(http::Method::GET, "/")
+			.header("x-custom-header", header_value.as_str())
+			.header("x-another-header", "repeated-value")
+			.send()
 			.await
 			.expect("Request should succeed");
 
@@ -309,7 +306,9 @@ async fn test_stream_priority() {
 	let priorities = vec!["high", "normal", "low"];
 	for priority in priorities {
 		let response = client
-			.get_with_headers("/", &[("x-priority", priority)])
+			.request(http::Method::GET, "/")
+			.header("x-priority", priority)
+			.send()
 			.await
 			.expect("Request should succeed");
 
@@ -418,7 +417,9 @@ async fn test_flow_control() {
 	for size in sizes {
 		let size_str = size.to_string();
 		let response = client
-			.get_with_headers("/", &[("x-response-size", size_str.as_str())])
+			.request(http::Method::GET, "/")
+			.header("x-response-size", size_str.as_str())
+			.send()
 			.await
 			.expect("Request should succeed");
 

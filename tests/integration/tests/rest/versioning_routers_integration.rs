@@ -249,10 +249,9 @@ async fn test_accept_header_versioning_with_routers() {
 
 	// Test v1 via explicit path (simulates Accept header routing)
 	let v1_response = client
-		.get_with_headers(
-			"/api/v1/users",
-			&[("Accept", "application/json; version=v1")],
-		)
+		.request(http::Method::GET, "/api/v1/users")
+		.header("Accept", "application/json; version=v1")
+		.send()
 		.await
 		.expect("Failed to send v1 request");
 	assert_eq!(
@@ -268,10 +267,9 @@ async fn test_accept_header_versioning_with_routers() {
 
 	// Test v2 via explicit path (simulates Accept header routing)
 	let v2_response = client
-		.get_with_headers(
-			"/api/v2/users",
-			&[("Accept", "application/json; version=v2")],
-		)
+		.request(http::Method::GET, "/api/v2/users")
+		.header("Accept", "application/json; version=v2")
+		.send()
 		.await
 		.expect("Failed to send v2 request");
 	assert_eq!(
@@ -620,10 +618,9 @@ async fn test_version_negotiation_with_multiple_strategies() {
 
 	// Test with explicit v2 path (simulates version negotiation result)
 	let v2_response = client
-		.get_with_headers(
-			"/api/v2/users",
-			&[("Accept", "application/json; version=v2")],
-		)
+		.request(http::Method::GET, "/api/v2/users")
+		.header("Accept", "application/json; version=v2")
+		.send()
 		.await
 		.expect("Failed to send negotiated request");
 	assert_eq!(
