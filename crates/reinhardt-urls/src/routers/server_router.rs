@@ -20,6 +20,9 @@
 //!
 //! Each HTTP method has its own matchit router for optimal performance:
 //! - `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`
+//! - Other methods have separate tables when registered by an endpoint.
+//! - Raw handlers and views accept every method, including extension methods.
+//! - HEAD uses GET routing when no HEAD route matches, retaining the HEAD method.
 //! - Routes are compiled lazily on first access (thread-safe with RwLock)
 //! - Parameters are extracted directly from matchit's Params
 //!
@@ -45,11 +48,11 @@
 //! - `global`   — global router registry used by `showurls`
 
 use crate::routers::UrlReverser;
+use hyper::Method;
 use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::ExceptionHandler;
 use reinhardt_middleware::Middleware;
-#[cfg(feature = "viewsets")]
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -209,6 +212,12 @@ pub struct ServerRouter {
 
 	/// Matchit router for OPTIONS requests
 	pub(crate) options_router: RwLock<MatchitRouter<RouteHandler>>,
+
+	/// Method-specific tables for CONNECT, TRACE, and extension endpoints.
+	pub(crate) other_method_routers: RwLock<HashMap<Method, MatchitRouter<RouteHandler>>>,
+
+	/// Raw handlers and views used for methods without an endpoint table.
+	pub(crate) any_method_router: RwLock<MatchitRouter<RouteHandler>>,
 
 	/// Cached compilation diagnostics; `None` means compilation has not run.
 	/// An empty cached list indicates success. Failures remain available to validation.
