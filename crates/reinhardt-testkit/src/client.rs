@@ -812,11 +812,13 @@ impl APIClient {
 
 		// Merge a snapshot so per-request headers replace defaults without changing the client.
 		let mut headers = self.default_headers.read().await.clone();
+		let mut request_headers = HeaderMap::new();
 		for (name, value) in extra_headers {
 			let name = HeaderName::from_bytes(name.as_bytes()).map_err(http::Error::from)?;
 			let value = HeaderValue::from_str(value).map_err(http::Error::from)?;
-			headers.insert(name, value);
+			request_headers.append(name, value);
 		}
+		headers.extend(request_headers);
 		if let Some(request_headers) = req_builder.headers_mut() {
 			*request_headers = headers;
 		}
@@ -1172,6 +1174,69 @@ mod tests {
 		);
 		assert_eq!(subsequent_response.header("X-Default"), Some("retained"));
 		assert_eq!(subsequent_response.header("X-Request"), None);
+	}
+
+	#[rstest]
+	#[case::get(false)]
+	#[case::post_raw(true)]
+	#[tokio::test]
+	async fn per_request_headers_preserve_multiple_values(
+		header_echo_client: APIClient,
+		#[case] post_raw: bool,
+		#[values(false, true)] with_defaults: bool,
+	) {
+		// Arrange
+		let client = header_echo_client;
+		if with_defaults {
+			let mut defaults = client.default_headers.write().await;
+			defaults.append("X-Scope", HeaderValue::from_static("default-read"));
+			defaults.append("X-Scope", HeaderValue::from_static("default-write"));
+		}
+		client.set_header("X-Default", "retained").await.unwrap();
+		let headers = [
+			("X-Scope", "read"),
+			("X-Request", "request-only"),
+			("x-scope", "write"),
+			("X-SCOPE", "admin"),
+		];
+
+		// Act
+		let response = if post_raw {
+			client
+				.post_raw_with_headers("/scopes", b"body", "text/plain", &headers)
+				.await
+		} else {
+			client.get_with_headers("/scopes", &headers).await
+		}
+		.unwrap();
+		let subsequent_response = client.get("/scopes").await.unwrap();
+
+		// Assert
+		let scope_values: Vec<_> = response
+			.headers()
+			.get_all("X-Scope")
+			.iter()
+			.map(|value| value.to_str().unwrap())
+			.collect();
+		assert_eq!(scope_values, ["read", "write", "admin"]);
+		assert_eq!(response.header("X-Default"), Some("retained"));
+		assert_eq!(response.header("X-Request"), Some("request-only"));
+		let default_values: Vec<_> = subsequent_response
+			.headers()
+			.get_all("X-Scope")
+			.iter()
+			.map(|value| value.to_str().unwrap())
+			.collect();
+		assert_eq!(
+			default_values,
+			if with_defaults {
+				vec!["default-read", "default-write"]
+			} else {
+				Vec::new()
+			}
+		);
+		assert_eq!(subsequent_response.header("X-Request"), None);
+		assert_eq!(subsequent_response.header("X-Default"), Some("retained"));
 	}
 
 	/// Handler that echoes request metadata through X-Echo-* response headers.
