@@ -161,7 +161,6 @@ pub(crate) fn array_query_value<T>(
 }
 
 /// JSON has no numeric representation for NaN or infinity.
-#[cfg(any(feature = "mysql", feature = "sqlite"))]
 pub(crate) fn validate_json_array(value: &QueryValue) -> std::result::Result<(), DatabaseError> {
 	let non_finite = match value {
 		QueryValue::FloatArray(values) => values.iter().any(|value| !value.is_finite()),
