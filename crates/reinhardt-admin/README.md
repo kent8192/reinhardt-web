@@ -12,6 +12,12 @@ including derived `Vec<Option<T>>` models. Empty arrays, arrays containing only
 null elements, and a null column remain distinct; non-null elements are validated
 against the registered scalar type before binding.
 
+Enable `reinhardt-admin/pgvector` to edit PostgreSQL vector fields in a text area
+with vector validation and typed database bindings. If only
+`reinhardt-db/pgvector` is enabled through another dependency, vector fields are
+hidden and read-only, and mutation requests for them are rejected. Other field
+inference continues to work without the admin feature.
+
 ## Features
 
 - ✅ **Model Management Interface**: Web-based CRUD operations for database

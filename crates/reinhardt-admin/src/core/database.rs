@@ -600,10 +600,18 @@ fn json_to_sea_value(
 ) -> AdminResult<Value> {
 	if let Some(field_meta) =
 		crate::server::type_inference::get_field_metadata(table_name, field_name)
-		&& let Some(value) =
-			json_to_structured_value(field_name, &field_meta.field_type, value.clone())
 	{
-		return value;
+		if crate::server::type_inference::requires_unavailable_admin_feature(&field_meta.field_type)
+		{
+			return Err(AdminError::ValidationError(format!(
+				"Field '{field_name}' requires an enabled admin feature before it can be edited"
+			)));
+		}
+		if let Some(value) =
+			json_to_structured_value(field_name, &field_meta.field_type, value.clone())
+		{
+			return value;
+		}
 	}
 
 	#[cfg(server)]

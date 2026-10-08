@@ -622,6 +622,7 @@ impl OAuthServer {
 			.await
 	}
 	/// Begin an OIDC request while binding openid to the OIDC code endpoint.
+	#[cfg(feature = "oidc-op")]
 	pub(crate) async fn begin_oidc_authorization(
 		&self,
 		request: AuthorizationRequest,
@@ -836,6 +837,7 @@ impl OAuthServer {
 		.map(|(token, _)| token)
 	}
 	/// Redeem an OIDC code with an OIDC-specific access-token lifetime.
+	#[cfg(feature = "oidc-op")]
 	pub(crate) async fn exchange_oidc_code(
 		&self,
 		request: CodeExchangeRequest<'_>,
@@ -1090,6 +1092,7 @@ impl OAuthServer {
 			.await
 			.map_err(|_| OAuthError::ServerError)
 	}
+	#[cfg(feature = "oidc-op")]
 	pub(crate) async fn retire_user(&self, user_id: &str) -> Result<(), OAuthError> {
 		self.store
 			.retire_user(user_id)
