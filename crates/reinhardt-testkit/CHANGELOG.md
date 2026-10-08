@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.22...reinhardt-testkit@v0.3.23) - 2026-10-08
+
+### Documentation
+
+- *(testkit)* correct PostgreSQL container version
+
+### Fixed
+
+- *(testkit)* replace default headers with per-request values
+- *(testkit)* retain repeated per-request header values
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.20...reinhardt-testkit@v0.3.21) - 2026-10-05
 
 ### Changed
