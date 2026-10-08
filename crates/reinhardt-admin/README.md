@@ -12,6 +12,11 @@ including derived `Vec<Option<T>>` models. Empty arrays, arrays containing only
 null elements, and a null column remain distinct; non-null elements are validated
 against the registered scalar type before binding.
 
+Admin field inference maps PostgreSQL vector fields to a text area whenever
+`reinhardt-db/pgvector` is enabled, including through another dependency. The
+admin crate's `pgvector` feature is a convenience for enabling database support;
+field inference also works when that feature is disabled.
+
 ## Features
 
 - ✅ **Model Management Interface**: Web-based CRUD operations for database

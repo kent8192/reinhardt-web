@@ -153,6 +153,15 @@ pub fn infer_admin_field_type(db_type: &DbFieldType) -> AdminFieldType {
 
 		// Full-text search types → TextArea
 		DbFieldType::TsVector | DbFieldType::TsQuery => AdminFieldType::TextArea,
+
+		// Cargo can enable the database's Vector variant through another crate
+		// without enabling this crate's pgvector feature. It still uses TextArea.
+		#[cfg(not(feature = "pgvector"))]
+		#[allow(
+			unreachable_patterns,
+			reason = "the fallback is needed only when reinhardt-db/pgvector is enabled independently"
+		)]
+		_ => AdminFieldType::TextArea,
 	}
 }
 
