@@ -4,7 +4,7 @@
 //! with authentication, cookies, and headers support.
 
 use bytes::Bytes;
-use http::{HeaderMap, HeaderValue, Method, Request, Response};
+use http::{HeaderMap, HeaderValue, Method, Request, Response, header::HeaderName};
 use http_body_util::{BodyExt, Full};
 use serde::Serialize;
 use serde_json::Value;
@@ -810,15 +810,17 @@ impl APIClient {
 
 		let mut req_builder = Request::builder().method(method).uri(url);
 
-		// Add default headers
-		let default_headers = self.default_headers.read().await;
-		for (name, value) in default_headers.iter() {
-			req_builder = req_builder.header(name, value);
-		}
-
-		// Add extra per-request headers (these override default headers if same name)
+		// Merge a snapshot so per-request headers replace defaults without changing the client.
+		let mut headers = self.default_headers.read().await.clone();
+		let mut request_headers = HeaderMap::new();
 		for (name, value) in extra_headers {
-			req_builder = req_builder.header(*name, *value);
+			let name = HeaderName::from_bytes(name.as_bytes()).map_err(http::Error::from)?;
+			let value = HeaderValue::from_str(value).map_err(http::Error::from)?;
+			request_headers.append(name, value);
+		}
+		headers.extend(request_headers);
+		if let Some(request_headers) = req_builder.headers_mut() {
+			*request_headers = headers;
 		}
 
 		// Add content type if provided
@@ -1094,7 +1096,148 @@ mod tests {
 	use super::*;
 	use async_trait::async_trait;
 	use reinhardt_core::exception::{Error as HttpError, Result as HttpResult};
-	use rstest::rstest;
+	use rstest::{fixture, rstest};
+
+	#[fixture]
+	fn header_echo_client() -> APIClient {
+		let mut client = APIClient::new();
+		client.set_handler(|request| {
+			let mut response = Response::new(Full::new(Bytes::new()));
+			*response.headers_mut() = request.headers().clone();
+			response
+		});
+		client
+	}
+
+	#[rstest]
+	#[case::invalid_name("invalid header", "value")]
+	#[case::invalid_value("X-Valid", "bad\nvalue")]
+	#[tokio::test]
+	async fn invalid_per_request_headers_return_http_errors(
+		header_echo_client: APIClient,
+		#[case] name: &str,
+		#[case] value: &str,
+	) {
+		// Act
+		let error = header_echo_client
+			.get_with_headers("/whoami", &[(name, value)])
+			.await
+			.err()
+			.expect("invalid per-request headers must fail");
+
+		// Assert
+		assert!(matches!(error, ClientError::Http(_)));
+	}
+
+	#[rstest]
+	#[case::get(false)]
+	#[case::post_raw(true)]
+	#[tokio::test]
+	async fn per_request_headers_replace_defaults_without_mutating_client(
+		header_echo_client: APIClient,
+		#[case] post_raw: bool,
+		#[values("Authorization", "authorization", "AUTHORIZATION")] header_name: &str,
+	) {
+		// Arrange
+		let client = header_echo_client;
+		client
+			.set_header("Authorization", "Bearer bob")
+			.await
+			.unwrap();
+		client.set_header("X-Default", "retained").await.unwrap();
+		let headers = [(header_name, "Bearer alice"), ("X-Request", "request-only")];
+
+		// Act
+		let response = if post_raw {
+			client
+				.post_raw_with_headers("/whoami", b"body", "text/plain", &headers)
+				.await
+		} else {
+			client.get_with_headers("/whoami", &headers).await
+		}
+		.unwrap();
+		let subsequent_response = client.get("/whoami").await.unwrap();
+
+		// Assert
+		let authorization_values: Vec<_> = response
+			.headers()
+			.get_all(http::header::AUTHORIZATION)
+			.iter()
+			.map(|value| value.to_str().unwrap())
+			.collect();
+		assert_eq!(authorization_values, ["Bearer alice"]);
+		assert_eq!(response.header("X-Default"), Some("retained"));
+		assert_eq!(response.header("X-Request"), Some("request-only"));
+		assert_eq!(
+			subsequent_response.header("Authorization"),
+			Some("Bearer bob")
+		);
+		assert_eq!(subsequent_response.header("X-Default"), Some("retained"));
+		assert_eq!(subsequent_response.header("X-Request"), None);
+	}
+
+	#[rstest]
+	#[case::get(false)]
+	#[case::post_raw(true)]
+	#[tokio::test]
+	async fn per_request_headers_preserve_multiple_values(
+		header_echo_client: APIClient,
+		#[case] post_raw: bool,
+		#[values(false, true)] with_defaults: bool,
+	) {
+		// Arrange
+		let client = header_echo_client;
+		if with_defaults {
+			let mut defaults = client.default_headers.write().await;
+			defaults.append("X-Scope", HeaderValue::from_static("default-read"));
+			defaults.append("X-Scope", HeaderValue::from_static("default-write"));
+		}
+		client.set_header("X-Default", "retained").await.unwrap();
+		let headers = [
+			("X-Scope", "read"),
+			("X-Request", "request-only"),
+			("x-scope", "write"),
+			("X-SCOPE", "admin"),
+		];
+
+		// Act
+		let response = if post_raw {
+			client
+				.post_raw_with_headers("/scopes", b"body", "text/plain", &headers)
+				.await
+		} else {
+			client.get_with_headers("/scopes", &headers).await
+		}
+		.unwrap();
+		let subsequent_response = client.get("/scopes").await.unwrap();
+
+		// Assert
+		let scope_values: Vec<_> = response
+			.headers()
+			.get_all("X-Scope")
+			.iter()
+			.map(|value| value.to_str().unwrap())
+			.collect();
+		assert_eq!(scope_values, ["read", "write", "admin"]);
+		assert_eq!(response.header("X-Default"), Some("retained"));
+		assert_eq!(response.header("X-Request"), Some("request-only"));
+		let default_values: Vec<_> = subsequent_response
+			.headers()
+			.get_all("X-Scope")
+			.iter()
+			.map(|value| value.to_str().unwrap())
+			.collect();
+		assert_eq!(
+			default_values,
+			if with_defaults {
+				vec!["default-read", "default-write"]
+			} else {
+				Vec::new()
+			}
+		);
+		assert_eq!(subsequent_response.header("X-Request"), None);
+		assert_eq!(subsequent_response.header("X-Default"), Some("retained"));
+	}
 
 	/// Handler that echoes request metadata through X-Echo-* response headers.
 	struct EchoHandler;
