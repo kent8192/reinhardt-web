@@ -47,6 +47,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - merge main into custom predicate fix
 - *(sync)* merge main into develop/0.4.0
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.3.20...reinhardt-query@v0.3.21) - 2026-10-05
+
+### Added
+
+- *(query)* add typed MySQL index column prefixes
+
+### Documentation
+
+- *(query)* split database and maintenance support rows
+- *(query)* correct database DDL backend support
+
+### Fixed
+
+- *(query)* preserve quoted SQL during parameter inlining
+- *(query)* apply MySQL line comment rules during inlining
+- *(query)* preserve build overrides when inlining values
+- *(query)* respect backend syntax during parameter inlining
+- *(query)* preserve postgres backtick operators
+- *(query)* preserve PostgreSQL expression grouping
+- *(query)* preserve custom predicate grouping
+- *(query)* terminate line comments before predicate parentheses
+- *(query)* preserve standalone current of predicates
+- *(orm)* preserve MySQL bulk row semantics
+- *(query)* preserve MySQL and SQLite arithmetic grouping
+- *(query)* terminate line comments in arithmetic groups
+- *(query)* terminate MySQL hash comments in arithmetic groups
+
+### Maintenance
+
+- *(query)* integrate main rendering fixes
+- merge main into custom predicate fix
+
 ### Added
 
 - `OnConflict::new()` and `Default` construct a targetless `DO NOTHING` clause.

@@ -13,6 +13,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(db)* clarify the insert builder NULL parameter contract
 
+## [0.3.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.21...reinhardt-db@v0.3.22) - 2026-10-06
+
+### Fixed
+
+- *(migrations)* render binary fields as bytea on PostgreSQL
+- *(features)* forward postgres model macros through facade
+
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.20...reinhardt-db@v0.3.21) - 2026-10-05
+
+### Documentation
+
+- *(db)* update Django composite key comparison
+
+### Fixed
+
+- *(db)* bound generated foreign-key constraint names
+- *(orm)* match every composite key component when updating
+- *(commands)* preserve installed migration scope and history
+- *(migrations)* preserve scoped model move history
+- *(commands)* resolve conditional migration dependencies
+- *(orm)* avoid RETURNING in MySQL bulk create
+- *(orm)* apply field metadata to MySQL bulk inserts
+- *(orm)* preserve MySQL datetime and JSON bindings
+- *(orm)* preserve MySQL bulk row semantics
+- *(db)* preserve wide Session integer values
+
+### Maintenance
+
+- merge main into installed app migration fix
+- *(orm)* merge main into MySQL bulk insert repair
+- *(db)* merge main into insert-select conflict fix
+- *(db)* reconcile MySQL conflict validation with main
+
+### Testing
+
+- *(db)* align negated filter SQL expectations
+- *(db)* align standalone predicate SQL expectations
+
 ### Fixed
 
 - *(commands)* resolve conditional migration dependencies

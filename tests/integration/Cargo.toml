@@ -170,7 +170,7 @@ cfg_aliases = "0.2"
 [features]
 default = ["postgres", "sqlite", "caching", "hot-reload", "dynamic-redis"]
 testcontainers = []
-postgres = ["reinhardt-db/postgres"]
+postgres = ["reinhardt/db-postgres"]
 mysql = ["reinhardt-db/mysql"]
 sqlite = ["reinhardt-db/sqlite"]
 caching = ["reinhardt-conf/caching"]

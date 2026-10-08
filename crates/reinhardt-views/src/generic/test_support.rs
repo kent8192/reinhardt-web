@@ -1,5 +1,8 @@
+use reinhardt_db::orm::fields::{BigIntegerField, BooleanField, CharField, Field};
+use reinhardt_db::orm::inspection::FieldInfo;
 use reinhardt_db::orm::{
-	CustomManager, FieldSelector, Filter, FilterOperator, FilterValue, Manager, Model, QuerySet,
+	CustomManager, DatabaseValue, FieldSelector, Filter, FilterOperator, FilterValue, Manager,
+	Model, QuerySet,
 };
 use serde::{Deserialize, Serialize};
 
@@ -39,6 +42,20 @@ impl Model for ManagedArticle {
 
 	fn new_fields() -> Self::Fields {
 		ManagedArticleFields
+	}
+
+	fn field_metadata() -> Vec<FieldInfo> {
+		let mut tenant_id = BigIntegerField::new();
+		tenant_id.set_attributes_from_name("tenant_id");
+		let mut is_archived = BooleanField::new();
+		is_archived.set_attributes_from_name("is_archived");
+		let mut title = CharField::new(255);
+		title.set_attributes_from_name("title");
+		vec![
+			FieldInfo::from_field(&tenant_id),
+			FieldInfo::from_field(&is_archived),
+			FieldInfo::from_field(&title),
+		]
 	}
 }
 
@@ -109,15 +126,21 @@ pub(crate) fn assert_manager_and_request_filters(queryset: QuerySet<ManagedArtic
 	assert_eq!(filters[0].field, "is_archived");
 	assert_eq!(filters[1].field, "tenant_id");
 
-	let manager_debug = format!("{:?}", filters[0]);
 	assert!(
-		manager_debug.contains("Boolean(false)"),
-		"expected manager filter value Boolean(false), got: {manager_debug}"
+		matches!(filters[0].value, FilterValue::Boolean(false)),
+		"expected manager filter value Boolean(false), got: {:?}",
+		filters[0].value
 	);
 
-	let request_debug = format!("{:?}", filters[1]);
-	assert!(
-		request_debug.contains("String(\"7\")"),
-		"expected request filter value String(\"7\"), got: {request_debug}"
-	);
+	assert_request_filter_value(&filters[1].value, &DatabaseValue::I64(7));
+}
+
+pub(crate) fn assert_request_filter_value(value: &FilterValue, expected: &DatabaseValue) {
+	match (value, expected) {
+		(FilterValue::Typed(Ok(actual)), expected) => assert_eq!(actual, expected),
+		(FilterValue::String(actual), DatabaseValue::String(expected)) => {
+			assert_eq!(actual, expected);
+		}
+		_ => panic!("expected request filter value {expected:?}, got: {value:?}"),
+	}
 }
