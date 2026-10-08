@@ -1,4 +1,4 @@
-//! Cross-crate regression coverage for generated Any arguments in settings stores.
+//! Cross-crate regression coverage for generated native arguments in settings stores.
 #![cfg(feature = "dynamic-database")]
 
 use chrono::Duration;
@@ -16,19 +16,7 @@ async fn exercise_stores(url: &str) {
 	// Arrange: the settings schema and audit schema use their public initialization paths.
 	sqlx::any::install_default_drivers();
 	let settings = DatabaseBackend::new(url).await.unwrap();
-	let schema_result = settings.create_table().await;
-	if url.starts_with("mysql://") {
-		// The existing TEXT expiry index fails after creating the usable table (#6519).
-		// Keep this baseline limitation visible while exercising generated DML bindings.
-		let error = schema_result.unwrap_err();
-		assert!(error.starts_with("Failed to create index:"), "{error}");
-		assert!(
-			error.contains("1170") && error.contains("expire_date"),
-			"{error}"
-		);
-	} else {
-		schema_result.unwrap();
-	}
+	settings.create_table().await.unwrap();
 	let audit = DatabaseAuditBackend::new(url).await.unwrap();
 	let key = "quoted' ? $1 config";
 	let value = json!({"message": "quoted' \"text\" ? $2", "nullable": null});

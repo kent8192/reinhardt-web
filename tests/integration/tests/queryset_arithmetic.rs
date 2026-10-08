@@ -184,7 +184,7 @@ async fn assert_native_arithmetic(database: &ArithmeticDatabase, backend: DbBack
 		(Expression::Multiply(field(), number(1)), vec![1_i64]),
 		(Expression::Divide(field(), number(1)), vec![1_i64]),
 		(nested_identity(), vec![7_i64, 2, 2, 7]),
-		(case_identity(), vec![0_i64]),
+		(case_identity(), vec![0_i64, 0]),
 	] {
 		let queryset = QuerySet::<Item>::new().filter(Filter::new(
 			"id",

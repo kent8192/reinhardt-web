@@ -167,12 +167,12 @@ async fn unsupported_inherited_mysql_conflict_never_calls_backend(
 #[case::sqlite_condition(
 	DatabaseType::Sqlite,
 	OnConflictClause::columns(vec!["id"]).do_update(vec!["name"]).where_clause("1 = 0"),
-	"INSERT INTO \"options\" (\"id\", \"name\") SELECT * FROM (SELECT 1, 'replacement') AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT (\"id\") DO UPDATE SET \"name\" = excluded.\"name\" WHERE 1 = 0 RETURNING \"id\""
+	"INSERT INTO \"options\" (\"id\", \"name\") SELECT 1, 'replacement' ON CONFLICT (\"id\") DO UPDATE SET \"name\" = EXCLUDED.\"name\" WHERE 1 = 0 RETURNING \"id\""
 )]
 #[case::sqlite_ignore(
 	DatabaseType::Sqlite,
 	OnConflictClause::any().do_nothing(),
-	"INSERT INTO \"options\" (\"id\", \"name\") SELECT * FROM (SELECT 1, 'replacement') AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT DO NOTHING RETURNING \"id\""
+	"INSERT INTO \"options\" (\"id\", \"name\") SELECT 1, 'replacement' ON CONFLICT DO NOTHING RETURNING \"id\""
 )]
 #[tokio::test]
 async fn supported_inherited_conflicts_preserve_sql_and_precedence(

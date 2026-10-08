@@ -33,11 +33,14 @@ async fn exercise_analyze(connection: DatabaseConnection) {
 	assert!(result.is_ok(), "{result:?}");
 	let global = AnalyzeBuilder::new(connection.backend()).execute().await;
 	if dialect == DatabaseType::Mysql {
-		assert!(
-			global
-				.unwrap_err()
-				.to_string()
-				.contains("tableless ANALYZE")
+		let error = global.unwrap_err();
+		assert_eq!(
+			error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Unsupported)
+		);
+		assert_eq!(
+			error.database_error().unwrap().message(),
+			"MySQL ANALYZE requires an explicit table; use AnalyzeBuilder::table()"
 		);
 	} else {
 		assert!(global.is_ok());

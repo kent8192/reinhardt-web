@@ -8,9 +8,7 @@
 
 use futures::StreamExt;
 use reinhardt_db::backends::{DatabaseConnection, DatabaseErrorKind, DatabaseType};
-use reinhardt_db::orm::execution::{
-	ExecutionError, InsertExecution, QueryExecution, SelectExecution,
-};
+use reinhardt_db::orm::execution::{InsertExecution, QueryExecution, SelectExecution};
 use reinhardt_db::orm::query::{FieldAssignment, Filter, UpdateValue};
 use reinhardt_db::orm::{
 	CustomManager, DatabaseConnectionLease, DatabaseValue, FilterOperator, FilterValue,
@@ -1150,17 +1148,7 @@ async fn exercise_orm_generated_capabilities(connection: &DatabaseConnection) {
 	);
 	assert_eq!(query.get_async(&mut handle, &19).await.unwrap(), expected);
 	assert_eq!(query.count_async(&mut handle).await.unwrap(), 1);
-	match database {
-		DatabaseType::Postgres => assert!(query.exists_async(&mut handle).await.unwrap()),
-		DatabaseType::Mysql | DatabaseType::Sqlite => {
-			// Workaround: https://github.com/kent8192/reinhardt-web/issues/6530
-			// Native integer EXISTS results need backend-aware decoding. Assert the
-			// existing error until that repair permits the same boolean assertion.
-			let error = query.exists_async(&mut handle).await.unwrap_err();
-			assert!(matches!(&error, ExecutionError::Deserialization(_)));
-			assert!(error.to_string().contains("expected a boolean"));
-		}
-	}
+	assert!(query.exists_async(&mut handle).await.unwrap());
 	let mut stream =
 		OrmExecutor::fetch_stream_generated(&mut handle, transaction_select(database), 1, None)
 			.unwrap();
