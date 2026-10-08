@@ -134,6 +134,17 @@ impl SqliteQueryBuilder {
 		}
 	}
 
+	/// Build a typed ANALYZE statement after checking backend capabilities.
+	///
+	/// Native and WASM construction/rendering behavior is identical.
+	pub fn build_analyze_checked(
+		&self,
+		statement: &crate::query::AnalyzeStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_analyze_for_backend(statement, "SQLite")?;
+		Ok(self.build_analyze(statement))
+	}
+
 	/// Build a SELECT statement after rejecting PostgreSQL-only vector features.
 	pub fn build_select_checked(
 		&self,
@@ -387,6 +398,11 @@ impl SqliteQueryBuilder {
 	/// Write a simple expression
 	fn write_simple_expr(&self, writer: &mut SqlWriter, expr: &SimpleExpr) {
 		match expr {
+			SimpleExpr::Grouped(expr) => {
+				writer.push("(");
+				self.write_simple_expr(writer, expr);
+				writer.push(")");
+			}
 			SimpleExpr::Column(col_ref) => {
 				self.write_column_ref(writer, col_ref);
 			}
@@ -539,6 +555,13 @@ impl SqliteQueryBuilder {
 				self.write_simple_expr(writer, pattern);
 				writer.push(" ESCAPE '\\'");
 			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(LOWER(");
+				self.write_simple_expr(writer, expr);
+				writer.push(") LIKE LOWER(");
+				self.write_simple_expr(writer, pattern);
+				writer.push(") ESCAPE '\\')");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');
@@ -572,6 +595,16 @@ impl SqliteQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
+			SimpleExpr::TextCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS TEXT)");
+			}
+			SimpleExpr::SignedIntegerCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS INTEGER)");
+			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr(writer, expr);
@@ -581,6 +614,9 @@ impl SqliteQueryBuilder {
 			}
 			SimpleExpr::PgExtractEpoch(_) => {
 				panic!("PostgreSQL numeric epoch extraction is not supported by sqlite")
+			}
+			SimpleExpr::MySqlLastInsertId(_) => {
+				panic!("MySQL last insert ID is not supported by sqlite")
 			}
 			SimpleExpr::TemporalTrunc {
 				expr, kind, output, ..
@@ -1086,7 +1122,29 @@ impl QueryBuilder for SqliteQueryBuilder {
 			}
 			InsertSource::Subquery(select) => {
 				writer.push_space();
-				let (select_sql, select_values) = self.build_select(select);
+				// A trailing SELECT FROM without WHERE makes ON CONFLICT
+				// ambiguous to SQLite's parser. Keep the guard in the typed AST.
+				let needs_guard = stmt.on_conflict.is_some()
+					&& (!select.unions.is_empty()
+						|| (!select.from.is_empty() && select.r#where.conditions.is_empty()));
+				let guarded;
+				let source = if needs_guard {
+					guarded = if select.unions.is_empty() {
+						let mut source = select.as_ref().clone();
+						source.and_where(crate::Expr::val(true));
+						source
+					} else {
+						crate::Query::select()
+							.column(ColumnRef::Asterisk)
+							.from_subquery(select.as_ref().clone(), "__reinhardt_insert_source")
+							.and_where(crate::Expr::val(true))
+							.to_owned()
+					};
+					&guarded
+				} else {
+					select.as_ref()
+				};
+				let (select_sql, select_values) = self.build_select(source);
 				writer.push(&select_sql);
 				writer.append_values(&select_values);
 			}
@@ -1095,6 +1153,10 @@ impl QueryBuilder for SqliteQueryBuilder {
 		// ON CONFLICT clause
 		if let Some(on_conflict) = &stmt.on_conflict {
 			use crate::query::{OnConflictAction, OnConflictTarget};
+			assert!(
+				on_conflict.constraint.is_none(),
+				"SQLite does not support ON CONFLICT ON CONSTRAINT"
+			);
 			writer.push_keyword("ON CONFLICT");
 
 			// Target columns
@@ -1130,6 +1192,18 @@ impl QueryBuilder for SqliteQueryBuilder {
 					});
 				}
 			}
+		}
+
+		if let Some(conflict) = &stmt.on_conflict
+			&& let Some(condition) = &conflict.action_condition
+		{
+			assert!(
+				matches!(conflict.action, crate::query::OnConflictAction::DoUpdate(_)),
+				"DO NOTHING cannot have an action condition"
+			);
+			writer.push_keyword("WHERE");
+			writer.push_space();
+			self.write_simple_expr(&mut writer, condition);
 		}
 
 		// RETURNING clause (SQLite 3.35+)
@@ -1992,8 +2066,23 @@ impl QueryBuilder for SqliteQueryBuilder {
 		);
 	}
 
-	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-		panic!("SQLite ANALYZE has different syntax. Not supported via this builder.");
+	fn build_analyze(&self, statement: &crate::query::AnalyzeStatement) -> (String, Values) {
+		assert!(
+			statement.tables.len() <= 1
+				&& !statement.verbose
+				&& statement
+					.tables
+					.iter()
+					.all(|table| table.columns.is_empty()),
+			"SQLite ANALYZE supports one target without verbose or column options"
+		);
+		let mut writer = SqlWriter::new();
+		writer.push_keyword("ANALYZE");
+		if let Some(table) = statement.tables.first() {
+			writer.push_space();
+			writer.push_identifier(&table.table.to_string(), |name| self.escape_iden(name));
+		}
+		writer.finish()
 	}
 
 	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {

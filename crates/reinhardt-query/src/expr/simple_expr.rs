@@ -222,6 +222,34 @@ pub enum SimpleExpr {
 		/// The window name
 		name: DynIden,
 	},
+
+	/// MySQL's connection-scoped last insert ID, projected as a signed integer.
+	///
+	/// `None` reads the ID. `Some(expr)` also assigns the connection's ID. The
+	/// signed cast matches an `i64` decoder; callers must reject nonpositive
+	/// generated IDs when they require a positive auto-increment key. Checked
+	/// builders reject other backends. This expression may mutate connection
+	/// state, so MySQL's safe EXPLAIN path rejects it.
+	MySqlLastInsertId(Option<Box<SimpleExpr>>),
+
+	/// Cast to the backend's text type: TEXT on PostgreSQL/SQLite, CHAR on MySQL.
+	TextCast(Box<SimpleExpr>),
+
+	/// Cast to a signed integer: BIGINT, SIGNED, or INTEGER for the selected backend.
+	SignedIntegerCast(Box<SimpleExpr>),
+
+	/// Case-insensitive LIKE with a fixed backslash escape character (P2).
+	///
+	/// PostgreSQL/CockroachDB use ILIKE; MySQL/SQLite compare LOWER expressions
+	/// using LIKE. Case folding follows the backend's locale/collation and LOWER
+	/// behavior; SQLite's built-in LOWER folds ASCII only. The pattern is already
+	/// escaped and may retain deliberate `%`/`_` wildcards.
+	InsensitiveLikeWithEscape(Box<SimpleExpr>, Box<SimpleExpr>),
+
+	/// An explicitly parenthesized expression (P2 native/WASM behavioral parity).
+	///
+	/// Retains grouping through every backend renderer without custom SQL text.
+	Grouped(Box<SimpleExpr>),
 }
 
 /// SQL keywords that can appear as constants.

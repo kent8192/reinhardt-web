@@ -173,6 +173,17 @@ impl MySqlQueryBuilder {
 		});
 	}
 
+	/// Build a typed ANALYZE statement after checking backend capabilities.
+	///
+	/// Native and WASM construction/rendering behavior is identical.
+	pub fn build_analyze_checked(
+		&self,
+		statement: &crate::query::AnalyzeStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_analyze_for_backend(statement, "MySQL")?;
+		Ok(self.build_analyze(statement))
+	}
+
 	/// Build a SELECT statement after rejecting PostgreSQL-only vector features.
 	pub fn build_select_checked(
 		&self,
@@ -440,6 +451,11 @@ impl MySqlQueryBuilder {
 	/// Write a simple expression
 	fn write_simple_expr(&self, writer: &mut SqlWriter, expr: &SimpleExpr) {
 		match expr {
+			SimpleExpr::Grouped(expr) => {
+				writer.push("(");
+				self.write_simple_expr(writer, expr);
+				writer.push(")");
+			}
 			SimpleExpr::Column(col_ref) => {
 				self.write_column_ref(writer, col_ref);
 			}
@@ -592,6 +608,13 @@ impl MySqlQueryBuilder {
 				self.write_simple_expr(writer, pattern);
 				writer.push(" ESCAPE 0x5C");
 			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(LOWER(");
+				self.write_simple_expr(writer, expr);
+				writer.push(") LIKE LOWER(");
+				self.write_simple_expr(writer, pattern);
+				writer.push(") ESCAPE 0x5C)");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				let template = if template == "? LIKE ? ESCAPE '\\'" {
 					"? LIKE ? ESCAPE 0x5C"
@@ -630,6 +653,16 @@ impl MySqlQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
+			SimpleExpr::TextCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS CHAR)");
+			}
+			SimpleExpr::SignedIntegerCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS SIGNED)");
+			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr(writer, expr);
@@ -639,6 +672,13 @@ impl MySqlQueryBuilder {
 			}
 			SimpleExpr::PgExtractEpoch(_) => {
 				panic!("PostgreSQL numeric epoch extraction is not supported by mysql")
+			}
+			SimpleExpr::MySqlLastInsertId(value) => {
+				writer.push("CAST(LAST_INSERT_ID(");
+				if let Some(value) = value {
+					self.write_simple_expr(writer, value);
+				}
+				writer.push(") AS SIGNED)");
 			}
 			SimpleExpr::TemporalTrunc {
 				expr,
@@ -1187,6 +1227,14 @@ impl QueryBuilder for MySqlQueryBuilder {
 		// ON DUPLICATE KEY UPDATE clause (MySQL equivalent of ON CONFLICT)
 		if let Some(on_conflict) = &stmt.on_conflict {
 			use crate::query::{OnConflictAction, OnConflictTarget};
+			assert!(
+				on_conflict.constraint.is_none(),
+				"MySQL does not support ON CONFLICT ON CONSTRAINT"
+			);
+			assert!(
+				on_conflict.action_condition.is_none(),
+				"MySQL does not support ON CONFLICT DO UPDATE WHERE"
+			);
 			match &on_conflict.action {
 				OnConflictAction::DoNothing => {
 					// MySQL doesn't have DO NOTHING directly;
@@ -3211,8 +3259,24 @@ impl QueryBuilder for MySqlQueryBuilder {
 		);
 	}
 
-	fn build_analyze(&self, _stmt: &crate::query::AnalyzeStatement) -> (String, Values) {
-		panic!("MySQL uses ANALYZE TABLE, not ANALYZE statement. Not supported via this builder.");
+	fn build_analyze(&self, statement: &crate::query::AnalyzeStatement) -> (String, Values) {
+		assert!(
+			!statement.verbose
+				&& statement
+					.tables
+					.iter()
+					.all(|table| table.columns.is_empty()),
+			"MySQL ANALYZE does not support verbose or column options"
+		);
+		let mut writer = SqlWriter::new();
+		writer.push_keyword("ANALYZE TABLE");
+		if !statement.tables.is_empty() {
+			writer.push_space();
+			writer.push_list(&statement.tables, ", ", |writer, table| {
+				writer.push_identifier(&table.table.to_string(), |name| self.escape_iden(name));
+			});
+		}
+		writer.finish()
 	}
 
 	fn build_vacuum(&self, _stmt: &crate::query::VacuumStatement) -> (String, Values) {

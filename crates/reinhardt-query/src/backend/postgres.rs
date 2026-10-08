@@ -182,6 +182,17 @@ impl PostgresQueryBuilder {
 		}
 	}
 
+	/// Build a typed ANALYZE statement after checking backend capabilities.
+	///
+	/// Native and WASM construction/rendering behavior is identical.
+	pub fn build_analyze_checked(
+		&self,
+		statement: &crate::query::AnalyzeStatement,
+	) -> Result<(String, Values), crate::QueryBuildError> {
+		crate::error::validate_analyze_for_backend(statement, "PostgreSQL")?;
+		Ok(self.build_analyze(statement))
+	}
+
 	/// Build a SELECT statement through the checked query-building API.
 	pub fn build_select_checked(
 		&self,
@@ -853,6 +864,11 @@ impl PostgresQueryBuilder {
 	/// Write a simple expression
 	fn write_simple_expr(&self, writer: &mut SqlWriter, expr: &SimpleExpr) {
 		match expr {
+			SimpleExpr::Grouped(expr) => {
+				writer.push("(");
+				self.write_simple_expr(writer, expr);
+				writer.push(")");
+			}
 			SimpleExpr::Column(col_ref) => {
 				self.write_column_ref(writer, col_ref);
 			}
@@ -1016,6 +1032,13 @@ impl PostgresQueryBuilder {
 				self.write_binary_operand(writer, pattern, BinOper::Like, true, false);
 				writer.push(" ESCAPE '\\'");
 			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(");
+				self.write_binary_operand(writer, expr, BinOper::ILike, false, false);
+				writer.push(" ILIKE ");
+				self.write_binary_operand(writer, pattern, BinOper::ILike, true, false);
+				writer.push(" ESCAPE '\\')");
+			}
 			SimpleExpr::CustomWithExpr(template, exprs) => {
 				// Replace `?` placeholders with the rendered expressions
 				let mut parts = template.split('?');
@@ -1053,12 +1076,25 @@ impl PostgresQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
+			SimpleExpr::TextCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS TEXT)");
+			}
+			SimpleExpr::SignedIntegerCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr(writer, expr);
+				writer.push(" AS BIGINT)");
+			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr(writer, expr);
 				writer.push(" AS ");
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
+			}
+			SimpleExpr::MySqlLastInsertId(_) => {
+				panic!("MySQL last insert ID is not supported by PostgreSQL")
 			}
 			SimpleExpr::PgExtractEpoch(expression) => {
 				writer.push("EXTRACT(EPOCH FROM ");
@@ -1180,11 +1216,23 @@ impl PostgresQueryBuilder {
 					}
 				}
 			}
+			SimpleExpr::Grouped(expr) => {
+				writer.push("(");
+				self.write_simple_expr_unquoted(writer, expr);
+				writer.push(")");
+			}
 			SimpleExpr::LikeWithEscape(expr, pattern) => {
 				self.write_binary_operand(writer, expr, BinOper::Like, false, true);
 				writer.push(" LIKE ");
 				self.write_binary_operand(writer, pattern, BinOper::Like, true, true);
 				writer.push(" ESCAPE '\\'");
+			}
+			SimpleExpr::InsensitiveLikeWithEscape(expr, pattern) => {
+				writer.push("(");
+				self.write_binary_operand(writer, expr, BinOper::ILike, false, true);
+				writer.push(" ILIKE ");
+				self.write_binary_operand(writer, pattern, BinOper::ILike, true, true);
+				writer.push(" ESCAPE '\\')");
 			}
 			SimpleExpr::Binary(left, op, right) => match (op, right.as_ref()) {
 				(BinOper::Between | BinOper::NotBetween, SimpleExpr::Tuple(items))
@@ -1313,12 +1361,25 @@ impl PostgresQueryBuilder {
 				writer.push_space();
 				writer.push_identifier(&alias.to_string(), |s| self.escape_iden(s));
 			}
+			SimpleExpr::TextCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr_unquoted(writer, expr);
+				writer.push(" AS TEXT)");
+			}
+			SimpleExpr::SignedIntegerCast(expr) => {
+				writer.push("CAST(");
+				self.write_simple_expr_unquoted(writer, expr);
+				writer.push(" AS BIGINT)");
+			}
 			SimpleExpr::Cast(expr, type_name) => {
 				writer.push("CAST(");
 				self.write_simple_expr_unquoted(writer, expr);
 				writer.push(" AS ");
 				writer.push_identifier(&type_name.to_string(), |s| self.escape_iden(s));
 				writer.push(")");
+			}
+			SimpleExpr::MySqlLastInsertId(_) => {
+				panic!("MySQL last insert ID is not supported by PostgreSQL")
 			}
 			SimpleExpr::PgExtractEpoch(expression) => {
 				writer.push("EXTRACT(EPOCH FROM ");
@@ -1901,16 +1962,20 @@ impl PostgresQueryBuilder {
 		// ON CONFLICT clause
 		if let Some(on_conflict) = &stmt.on_conflict {
 			use crate::query::{OnConflictAction, OnConflictTarget};
-			let has_target =
-				!matches!(&on_conflict.target, OnConflictTarget::Columns(cols) if cols.is_empty());
+			let has_target = on_conflict.constraint.is_some()
+				|| !matches!(&on_conflict.target, OnConflictTarget::Columns(cols) if cols.is_empty());
 			assert!(
 				has_target || matches!(on_conflict.action, OnConflictAction::DoNothing),
 				"PostgreSQL ON CONFLICT DO UPDATE requires a conflict target"
 			);
 			writer.push_keyword("ON CONFLICT");
 
-			// Target columns
-			if has_target {
+			// Named constraints and column targets are mutually exclusive.
+			if let Some(constraint) = &on_conflict.constraint {
+				writer.push_keyword("ON CONSTRAINT");
+				writer.push_space();
+				writer.push_identifier(&constraint.to_string(), |s| self.escape_iden(s));
+			} else if has_target {
 				writer.push_space();
 				writer.push("(");
 				match &on_conflict.target {
@@ -1942,6 +2007,18 @@ impl PostgresQueryBuilder {
 					});
 				}
 			}
+		}
+
+		if let Some(conflict) = &stmt.on_conflict
+			&& let Some(condition) = &conflict.action_condition
+		{
+			assert!(
+				matches!(conflict.action, crate::query::OnConflictAction::DoUpdate(_)),
+				"DO NOTHING cannot have an action condition"
+			);
+			writer.push_keyword("WHERE");
+			writer.push_space();
+			self.write_simple_expr(&mut writer, condition);
 		}
 
 		// RETURNING clause (PostgreSQL specific)

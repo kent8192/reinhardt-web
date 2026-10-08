@@ -32,6 +32,25 @@ use crate::types::IntoIden;
 pub struct Func;
 
 impl Func {
+	/// Read or assign MySQL's last insert ID as a signed integer (P2).
+	///
+	/// `None` reads connection state. `Some(expr)` assigns it and returns the
+	/// assigned value. Execute reset, insert, and read on the same connection.
+	/// Checked builders reject other backends. No SQL fragment is required.
+	///
+	/// ```
+	/// use reinhardt_query::{Expr, Func, MySqlQueryBuilder, Query, Values};
+	/// let statement = Query::select()
+	///     .expr_as(Func::mysql_last_insert_id(Some(Expr::val(0_i64).into_simple_expr())), "generated_id")
+	///     .to_owned();
+	/// let (sql, values) = MySqlQueryBuilder.build_select_checked(&statement).unwrap();
+	/// assert_eq!(sql, "SELECT CAST(LAST_INSERT_ID(?) AS SIGNED) AS `generated_id`");
+	/// assert_eq!(values, Values(vec![0_i64.into()]));
+	/// ```
+	pub fn mysql_last_insert_id(value: Option<SimpleExpr>) -> SimpleExpr {
+		SimpleExpr::MySqlLastInsertId(value.map(Box::new))
+	}
+
 	/// Create a COUNT(expr) function call.
 	pub fn count(expr: SimpleExpr) -> SimpleExpr {
 		SimpleExpr::FunctionCall("COUNT".into_iden(), vec![expr])

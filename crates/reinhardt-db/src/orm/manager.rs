@@ -1759,8 +1759,17 @@ impl<M: Model> Manager<M> {
 				})
 				.cloned();
 			if explicit_primary_key.is_none() {
+				let reset = Query::select()
+					.expr_as(
+						Func::mysql_last_insert_id(Some(Expr::val(0_i64).into_simple_expr())),
+						Alias::new("generated_id"),
+					)
+					.to_owned();
+				let reset = MySqlQueryBuilder
+					.build_select_checked(&reset)
+					.map_err(|error| executor_error(checked_query_build_error(error)))?;
 				executor
-					.fetch_one("SELECT LAST_INSERT_ID(0) AS generated_id", Vec::new())
+					.fetch_one_generated(reset, None)
 					.await
 					.map_err(executor_error)?;
 			}
@@ -1772,11 +1781,14 @@ impl<M: Model> Manager<M> {
 			let primary_key_value = if let Some(primary_key) = explicit_primary_key {
 				database_value_to_query_value(primary_key)
 			} else {
+				let read = Query::select()
+					.expr_as(Func::mysql_last_insert_id(None), Alias::new("generated_id"))
+					.to_owned();
+				let read = MySqlQueryBuilder
+					.build_select_checked(&read)
+					.map_err(|error| executor_error(checked_query_build_error(error)))?;
 				let row = executor
-					.fetch_one(
-						"SELECT CAST(LAST_INSERT_ID() AS SIGNED) AS generated_id",
-						Vec::new(),
-					)
+					.fetch_one_generated(read, None)
 					.await
 					.map_err(executor_error)?;
 				let generated_id = row.get::<i64>("generated_id")?;

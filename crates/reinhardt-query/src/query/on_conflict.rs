@@ -3,7 +3,10 @@
 //! This module provides the [`OnConflict`] builder for constructing
 //! ON CONFLICT clauses used in upsert operations.
 
-use crate::types::{DynIden, IntoIden};
+use crate::{
+	expr::SimpleExpr,
+	types::{BinOper, DynIden, IntoIden},
+};
 
 /// Target for ON CONFLICT clause.
 #[derive(Debug, Clone)]
@@ -43,6 +46,8 @@ pub enum OnConflictAction {
 pub struct OnConflict {
 	pub(crate) target: OnConflictTarget,
 	pub(crate) action: OnConflictAction,
+	pub(crate) constraint: Option<DynIden>,
+	pub(crate) action_condition: Option<Box<SimpleExpr>>,
 }
 
 impl Default for OnConflict {
@@ -79,6 +84,8 @@ impl OnConflict {
 		Self {
 			target: OnConflictTarget::Columns(Vec::new()),
 			action: OnConflictAction::DoNothing,
+			constraint: None,
+			action_condition: None,
 		}
 	}
 
@@ -87,6 +94,8 @@ impl OnConflict {
 		Self {
 			target: OnConflictTarget::Column(col.into_iden()),
 			action: OnConflictAction::DoNothing,
+			constraint: None,
+			action_condition: None,
 		}
 	}
 
@@ -101,13 +110,70 @@ impl OnConflict {
 		Self {
 			target: OnConflictTarget::Columns(cols.into_iter().map(|c| c.into_iden()).collect()),
 			action: OnConflictAction::DoNothing,
+			constraint: None,
+			action_condition: None,
 		}
+	}
+
+	/// Target a named unique constraint in PostgreSQL or CockroachDB.
+	///
+	/// Checked builders reject this target in MySQL and SQLite. The identifier
+	/// is quoted by the selected backend. Native and WASM behavior is identical.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::{OnConflict, PostgresQueryBuilder, Query, QueryStatementBuilder};
+	/// let sql = Query::insert().into_table("users").columns(["id"])
+	///     .values_panic([1])
+	///     .on_conflict(OnConflict::constraint("users_pkey").update_columns(["id"]))
+	///     .to_string(PostgresQueryBuilder);
+	/// assert!(sql.contains("ON CONFLICT ON CONSTRAINT \"users_pkey\" DO UPDATE"));
+	/// ```
+	#[must_use]
+	pub fn constraint<C: IntoIden>(name: C) -> Self {
+		Self {
+			constraint: Some(name.into_iden()),
+			..Self::new()
+		}
+	}
+
+	/// Add a typed condition to the DO UPDATE action.
+	///
+	/// Repeated calls combine conditions with AND. PostgreSQL, CockroachDB and
+	/// SQLite support this clause; checked MySQL builds reject it. A condition
+	/// on DO NOTHING is invalid. Calling [`Self::do_nothing`] clears conditions.
+	/// Bound condition values follow insert and subquery values in argument order.
+	/// Native and WASM behavior is identical.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_query::{Expr, ExprTrait, OnConflict, PostgresQueryBuilder, Query};
+	/// let statement = Query::insert().into_table("users").columns(["id"])
+	///     .values_panic([1])
+	///     .on_conflict(OnConflict::column("id").update_columns(["id"])
+	///         .action_and_where(Expr::col("id").gt(0)))
+	///     .to_owned();
+	/// let (sql, values) = PostgresQueryBuilder.build_insert_checked(&statement).unwrap();
+	/// assert!(sql.ends_with("WHERE \"id\" > $2"));
+	/// assert_eq!(values.0, vec![1.into(), 0.into()]);
+	/// ```
+	#[must_use]
+	pub fn action_and_where<E: Into<SimpleExpr>>(mut self, condition: E) -> Self {
+		let condition = condition.into();
+		self.action_condition = Some(Box::new(match self.action_condition.take() {
+			Some(previous) => SimpleExpr::Binary(previous, BinOper::And, Box::new(condition)),
+			None => condition,
+		}));
+		self
 	}
 
 	/// Set the action to DO NOTHING.
 	#[must_use]
 	pub fn do_nothing(mut self) -> Self {
 		self.action = OnConflictAction::DoNothing;
+		self.action_condition = None;
 		self
 	}
 

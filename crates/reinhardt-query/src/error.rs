@@ -42,6 +42,12 @@ pub enum QueryBuildError {
 		/// The requested vector dimension count.
 		dimensions: u32,
 	},
+	/// An ON CONFLICT action or target is invalid.
+	#[error("invalid ON CONFLICT clause: {reason}")]
+	InvalidOnConflict {
+		/// The invalid target or action combination.
+		reason: &'static str,
+	},
 }
 
 /// A pgvector feature found through structural query inspection.
@@ -416,6 +422,9 @@ fn table_ref_references_cte(table: &TableRef, cte_names: &[String]) -> bool {
 
 fn contains_aggregate(expr: &SimpleExpr) -> bool {
 	match expr {
+		SimpleExpr::MySqlLastInsertId(value) => value
+			.as_ref()
+			.is_some_and(|value| contains_aggregate(value)),
 		SimpleExpr::FunctionCall(name, arguments) => {
 			matches!(
 				name.to_string().to_ascii_uppercase().as_str(),
@@ -432,11 +441,16 @@ fn contains_aggregate(expr: &SimpleExpr) -> bool {
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::Grouped(expression)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => contains_aggregate(expression),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			contains_aggregate(left) || contains_aggregate(right)
 		}
 		SimpleExpr::Tuple(expressions) | SimpleExpr::CustomWithExpr(_, expressions) => {
@@ -467,16 +481,24 @@ fn contains_aggregate(expr: &SimpleExpr) -> bool {
 
 fn contains_window(expr: &SimpleExpr) -> bool {
 	match expr {
+		SimpleExpr::MySqlLastInsertId(value) => {
+			value.as_ref().is_some_and(|value| contains_window(value))
+		}
 		SimpleExpr::Window { .. } | SimpleExpr::WindowNamed { .. } => true,
 		SimpleExpr::Unary(_, expression)
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::Grouped(expression)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => contains_window(expression),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			contains_window(left) || contains_window(right)
 		}
 		SimpleExpr::FunctionCall(_, arguments)
@@ -640,6 +662,12 @@ fn validate_simple_expr_lock(
 	visible_cte_names: &[String],
 ) -> Result<(), QueryBuildError> {
 	match expr {
+		SimpleExpr::MySqlLastInsertId(value) => {
+			if let Some(value) = value {
+				validate_simple_expr_lock(value, backend, visible_cte_names)?;
+			}
+			Ok(())
+		}
 		SimpleExpr::Column(_)
 		| SimpleExpr::TableColumn(_, _)
 		| SimpleExpr::Value(_)
@@ -650,11 +678,16 @@ fn validate_simple_expr_lock(
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::Grouped(expression)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
 		} => validate_simple_expr_lock(expression, backend, visible_cte_names),
-		SimpleExpr::Binary(left, _, right) | SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::Binary(left, _, right)
+		| SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			validate_simple_expr_lock(left, backend, visible_cte_names)?;
 			validate_simple_expr_lock(right, backend, visible_cte_names)
 		}
@@ -768,6 +801,32 @@ pub(crate) fn validate_create_index_for_backend(
 	Ok(())
 }
 
+pub(crate) fn validate_analyze_for_backend(
+	statement: &crate::query::AnalyzeStatement,
+	backend: &'static str,
+) -> Result<(), QueryBuildError> {
+	let feature = if matches!(backend, "MySQL" | "CockroachDB") && statement.tables.is_empty() {
+		Some("tableless ANALYZE")
+	} else if matches!(backend, "SQLite" | "CockroachDB") && statement.tables.len() > 1 {
+		Some("multi-table ANALYZE")
+	} else if backend != "PostgreSQL" && statement.verbose {
+		Some("ANALYZE VERBOSE")
+	} else if backend != "PostgreSQL"
+		&& statement
+			.tables
+			.iter()
+			.any(|table| !table.columns.is_empty())
+	{
+		Some("column-level ANALYZE")
+	} else {
+		None
+	};
+	if let Some(feature) = feature {
+		return Err(QueryBuildError::UnsupportedBackendFeature { feature, backend });
+	}
+	Ok(())
+}
+
 pub(crate) fn validate_insert_for_backend(
 	statement: &InsertStatement,
 	backend: &'static str,
@@ -781,6 +840,46 @@ pub(crate) fn validate_insert_for_backend(
 	};
 	if let Some(feature) = unsupported_modifier {
 		return Err(QueryBuildError::UnsupportedBackendFeature { feature, backend });
+	}
+
+	if let Some(conflict) = &statement.on_conflict {
+		use crate::query::{OnConflictAction, OnConflictTarget};
+		if conflict.constraint.is_some() && !matches!(backend, "PostgreSQL" | "CockroachDB") {
+			return Err(QueryBuildError::UnsupportedBackendFeature {
+				feature: "ON CONFLICT ON CONSTRAINT",
+				backend,
+			});
+		}
+		if let OnConflictAction::DoUpdate(columns) = &conflict.action {
+			if columns.is_empty() {
+				return Err(QueryBuildError::InvalidOnConflict {
+					reason: "DO UPDATE requires update columns",
+				});
+			}
+			if matches!(backend, "PostgreSQL" | "CockroachDB")
+				&& conflict.constraint.is_none()
+				&& matches!(&conflict.target, OnConflictTarget::Columns(cols) if cols.is_empty())
+			{
+				return Err(QueryBuildError::InvalidOnConflict {
+					reason: "DO UPDATE requires a conflict target",
+				});
+			}
+		}
+		if let Some(condition) = &conflict.action_condition {
+			if matches!(conflict.action, OnConflictAction::DoNothing) {
+				return Err(QueryBuildError::InvalidOnConflict {
+					reason: "DO NOTHING cannot have an action condition",
+				});
+			}
+			if backend == "MySQL" {
+				return Err(QueryBuildError::UnsupportedBackendFeature {
+					feature: "ON CONFLICT DO UPDATE WHERE",
+					backend,
+				});
+			}
+			validate_simple_expr(condition, backend)?;
+			validate_simple_expr_lock(condition, backend, &[])?;
+		}
 	}
 
 	if let Some(table) = &statement.table {
@@ -1077,6 +1176,15 @@ fn validate_condition_expression(
 
 fn validate_simple_expr(expr: &SimpleExpr, backend: &'static str) -> Result<(), QueryBuildError> {
 	match expr {
+		SimpleExpr::MySqlLastInsertId(value) => {
+			if backend != "MySQL" {
+				return Err(unsupported("MySQL last insert ID", backend));
+			}
+			if let Some(value) = value {
+				validate_simple_expr(value, backend)?;
+			}
+			Ok(())
+		}
 		SimpleExpr::Column(_)
 		| SimpleExpr::TableColumn(_, _)
 		| SimpleExpr::Custom(_)
@@ -1086,7 +1194,10 @@ fn validate_simple_expr(expr: &SimpleExpr, backend: &'static str) -> Result<(), 
 		SimpleExpr::Unary(_, expression)
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
-		| SimpleExpr::Cast(expression, _) => validate_simple_expr(expression, backend),
+		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::Grouped(expression)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression) => validate_simple_expr(expression, backend),
 		SimpleExpr::PgExtractEpoch(expression) => {
 			if backend != "PostgreSQL" {
 				return Err(unsupported("PostgreSQL numeric epoch extraction", backend));
@@ -1118,7 +1229,8 @@ fn validate_simple_expr(expr: &SimpleExpr, backend: &'static str) -> Result<(), 
 			}
 			validate_simple_expr(expr, backend)
 		}
-		SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			validate_simple_expr(left, backend)?;
 			validate_simple_expr(right, backend)
 		}
@@ -1279,6 +1391,13 @@ fn collect_insert_pgvector_features(
 	statement: &InsertStatement,
 	features: &mut PgvectorFeatureSet,
 ) {
+	if let Some(condition) = statement
+		.on_conflict
+		.as_ref()
+		.and_then(|conflict| conflict.action_condition.as_ref())
+	{
+		collect_simple_expr_pgvector_features(condition, features);
+	}
 	if let Some(table) = &statement.table {
 		collect_table_ref_pgvector_features(table, features);
 	}
@@ -1345,6 +1464,15 @@ fn collect_simple_expr_pgvector_features_with_values(
 	collect_vector_values: bool,
 ) {
 	match expr {
+		SimpleExpr::MySqlLastInsertId(value) => {
+			if let Some(value) = value {
+				collect_simple_expr_pgvector_features_with_values(
+					value,
+					features,
+					collect_vector_values,
+				);
+			}
+		}
 		SimpleExpr::Column(_)
 		| SimpleExpr::TableColumn(_, _)
 		| SimpleExpr::Custom(_)
@@ -1359,6 +1487,9 @@ fn collect_simple_expr_pgvector_features_with_values(
 		| SimpleExpr::AsEnum(_, expression)
 		| SimpleExpr::ExprAlias(expression, _)
 		| SimpleExpr::Cast(expression, _)
+		| SimpleExpr::Grouped(expression)
+		| SimpleExpr::TextCast(expression)
+		| SimpleExpr::SignedIntegerCast(expression)
 		| SimpleExpr::PgExtractEpoch(expression)
 		| SimpleExpr::TemporalTrunc {
 			expr: expression, ..
@@ -1369,7 +1500,8 @@ fn collect_simple_expr_pgvector_features_with_values(
 				collect_vector_values,
 			);
 		}
-		SimpleExpr::LikeWithEscape(left, right) => {
+		SimpleExpr::LikeWithEscape(left, right)
+		| SimpleExpr::InsensitiveLikeWithEscape(left, right) => {
 			collect_simple_expr_pgvector_features_with_values(
 				left,
 				features,

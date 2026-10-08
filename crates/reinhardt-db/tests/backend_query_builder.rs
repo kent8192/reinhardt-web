@@ -1002,7 +1002,7 @@ fn test_insert_builder_sqlite_on_conflict_do_update() {
 	// Assert
 	assert!(sql.contains("ON CONFLICT"));
 	assert!(sql.contains("DO UPDATE SET"));
-	assert!(sql.contains("excluded")); // lowercase for SQLite
+	assert!(sql.contains("EXCLUDED")); // Typed excluded-row reference.
 }
 
 #[rstest]
