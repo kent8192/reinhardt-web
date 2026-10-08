@@ -148,14 +148,15 @@ pub use reinhardt_testkit::{
 	AsyncTestResource, BodyEchoHandler, CallRecord, ClientError, DebugEntry, DebugPanel,
 	DebugToolbar, DelayedHandler, EchoPathHandler, ErrorKind, HttpVersion, LargeResponseHandler,
 	MethodEchoHandler, MockFunction, RequestBuilder, ResponseExt, RouterHandler, Spy, SqlQuery,
-	StatusCodeHandler, SuiteGuard, SuiteResource, TeardownGuard, TestResource, TestResponse,
-	TimingInfo, WebSocketTestClient, acquire_suite, assert_has_header, assert_header_contains,
-	assert_header_equals, assert_no_header, assert_status, create_api_test_objects,
-	create_insecure_request, create_json_request, create_large_test_objects, create_request,
-	create_request_with_headers, create_request_with_path_params, create_response_with_headers,
-	create_response_with_status, create_secure_request, create_test_objects, create_test_request,
-	create_test_response, extract_json, get_header, has_header, header_contains, header_equals,
-	init_test_logging, shutdown_test_server, spawn_test_server,
+	StatusCodeHandler, SuiteGuard, SuiteResource, TeardownGuard, TestRequestBuilder, TestResource,
+	TestResponse, TimingInfo, WebSocketTestClient, acquire_suite, assert_has_header,
+	assert_header_contains, assert_header_equals, assert_no_header, assert_status,
+	create_api_test_objects, create_insecure_request, create_json_request,
+	create_large_test_objects, create_request, create_request_with_headers,
+	create_request_with_path_params, create_response_with_headers, create_response_with_status,
+	create_secure_request, create_test_objects, create_test_request, create_test_response,
+	extract_json, get_header, has_header, header_contains, header_equals, init_test_logging,
+	shutdown_test_server, spawn_test_server,
 };
 
 #[cfg(native)]

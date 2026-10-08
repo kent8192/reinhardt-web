@@ -4,7 +4,7 @@
 //! with authentication, cookies, and headers support.
 
 use bytes::Bytes;
-use http::{HeaderMap, HeaderValue, Method, Request, Response};
+use http::{HeaderMap, HeaderValue, Method, Request, Response, header::HeaderName};
 use http_body_util::{BodyExt, Full};
 use serde::Serialize;
 use serde_json::Value;
@@ -227,7 +227,6 @@ impl APIClientBuilder {
 			async_handler: None,
 			handler_di_context: None,
 			http_client,
-			use_cookie_store: self.cookie_store,
 		};
 
 		// Wire up framework Handler for in-process dispatch
@@ -295,9 +294,6 @@ pub struct APIClient {
 
 	/// Reusable HTTP client with connection pooling
 	http_client: reqwest::Client,
-
-	/// Whether automatic cookie storage is enabled
-	use_cookie_store: bool,
 }
 
 impl APIClient {
@@ -552,6 +548,46 @@ impl APIClient {
 			headers.clear();
 		}
 	}
+	/// Build a request with per-request headers and a body for any HTTP method.
+	///
+	/// Header operations apply in call order after default headers, the implied
+	/// content type, manual cookies, and forced authentication. They affect only
+	/// this request. Conversion and serialization errors are returned by `send()`.
+	/// Cookies added by reqwest's automatic cookie jar at send time cannot be
+	/// removed per request. Native-only (P0) through `reinhardt::test`.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_testkit::APIClient;
+	/// use http::Method;
+	/// # tokio_test::block_on(async {
+	/// # let mut client = APIClient::new();
+	/// # client.set_handler(|request| {
+	/// #     let (parts, body) = request.into_parts();
+	/// #     let mut response = http::Response::new(body);
+	/// #     *response.headers_mut() = parts.headers;
+	/// #     response
+	/// # });
+	/// let response = client.request(Method::PUT, "/users/1")
+	///     .header("Authorization", "Bearer alice")
+	///     .json(&serde_json::json!({"name": "Alice"}))
+	///     .send().await.unwrap();
+	/// assert_eq!(response.headers()["authorization"], "Bearer alice");
+	/// # });
+	/// ```
+	pub fn request(&self, method: Method, path: &str) -> TestRequestBuilder<'_> {
+		TestRequestBuilder {
+			client: self,
+			method,
+			path: path.to_owned(),
+			body: Bytes::new(),
+			content_type: None,
+			headers: Vec::new(),
+			error: None,
+		}
+	}
+
 	/// Make a GET request
 	///
 	/// # Examples
@@ -566,7 +602,7 @@ impl APIClient {
 	/// # });
 	/// ```
 	pub async fn get(&self, path: &str) -> ClientResult<TestResponse> {
-		self.request(Method::GET, path, None, None).await
+		self.request(Method::GET, path).send().await
 	}
 	/// Make a POST request
 	///
@@ -589,9 +625,9 @@ impl APIClient {
 		data: &T,
 		format: &str,
 	) -> ClientResult<TestResponse> {
-		let body = self.serialize_data(data, format)?;
-		let content_type = self.get_content_type(format);
-		self.request(Method::POST, path, Some(body), Some(content_type))
+		self.request(Method::POST, path)
+			.serialized(data, format)
+			.send()
 			.await
 	}
 	/// Make a PUT request
@@ -615,9 +651,9 @@ impl APIClient {
 		data: &T,
 		format: &str,
 	) -> ClientResult<TestResponse> {
-		let body = self.serialize_data(data, format)?;
-		let content_type = self.get_content_type(format);
-		self.request(Method::PUT, path, Some(body), Some(content_type))
+		self.request(Method::PUT, path)
+			.serialized(data, format)
+			.send()
 			.await
 	}
 	/// Make a PATCH request
@@ -641,9 +677,9 @@ impl APIClient {
 		data: &T,
 		format: &str,
 	) -> ClientResult<TestResponse> {
-		let body = self.serialize_data(data, format)?;
-		let content_type = self.get_content_type(format);
-		self.request(Method::PATCH, path, Some(body), Some(content_type))
+		self.request(Method::PATCH, path)
+			.serialized(data, format)
+			.send()
 			.await
 	}
 	/// Make a DELETE request
@@ -660,7 +696,7 @@ impl APIClient {
 	/// # });
 	/// ```
 	pub async fn delete(&self, path: &str) -> ClientResult<TestResponse> {
-		self.request(Method::DELETE, path, None, None).await
+		self.request(Method::DELETE, path).send().await
 	}
 	/// Make a HEAD request
 	///
@@ -676,7 +712,7 @@ impl APIClient {
 	/// # });
 	/// ```
 	pub async fn head(&self, path: &str) -> ClientResult<TestResponse> {
-		self.request(Method::HEAD, path, None, None).await
+		self.request(Method::HEAD, path).send().await
 	}
 	/// Make an OPTIONS request
 	///
@@ -692,7 +728,7 @@ impl APIClient {
 	/// # });
 	/// ```
 	pub async fn options(&self, path: &str) -> ClientResult<TestResponse> {
-		self.request(Method::OPTIONS, path, None, None).await
+		self.request(Method::OPTIONS, path).send().await
 	}
 
 	/// Make a GET request with additional per-request headers
@@ -704,16 +740,22 @@ impl APIClient {
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::with_base_url("http://localhost:8080");
-	/// // let response = client.get_with_headers("/api/data", &[("Accept", "application/json")]).await;
+	/// // let response = client.request(Method::GET, "/api/data")
+	/// //     .header("Accept", "application/json").send().await;
 	/// # });
 	/// ```
+	/// Deprecated in 0.4.0; removal is planned for 0.5.
+	#[deprecated(since = "0.4.0", note = "use APIClient::request(..).header(..).send()")]
 	pub async fn get_with_headers(
 		&self,
 		path: &str,
 		headers: &[(&str, &str)],
 	) -> ClientResult<TestResponse> {
-		self.request_with_extra_headers(Method::GET, path, None, None, headers)
-			.await
+		let mut request = self.request(Method::GET, path);
+		for (name, value) in headers {
+			request = request.header(*name, *value);
+		}
+		request.send().await
 	}
 
 	/// Make a POST request with raw body and additional per-request headers
@@ -727,14 +769,14 @@ impl APIClient {
 	///
 	/// # tokio_test::block_on(async {
 	/// let client = APIClient::with_base_url("http://localhost:8080");
-	/// // let response = client.post_raw_with_headers(
-	/// //     "/api/echo",
-	/// //     b"{\"test\":\"data\"}",
-	/// //     "application/json",
-	/// //     &[("X-Custom-Header", "value")]
-	/// // ).await;
+	/// // let response = client.request(Method::POST, "/api/echo")
+	/// //     .body(bytes::Bytes::from_static(b"raw"))
+	/// //     .header("Content-Type", "application/json")
+	/// //     .header("X-Custom-Header", "value").send().await;
 	/// # });
 	/// ```
+	/// Deprecated in 0.4.0; removal is planned for 0.5.
+	#[deprecated(since = "0.4.0", note = "use APIClient::request(..).header(..).send()")]
 	pub async fn post_raw_with_headers(
 		&self,
 		path: &str,
@@ -742,14 +784,14 @@ impl APIClient {
 		content_type: &str,
 		headers: &[(&str, &str)],
 	) -> ClientResult<TestResponse> {
-		self.request_with_extra_headers(
-			Method::POST,
-			path,
-			Some(Bytes::copy_from_slice(body)),
-			Some(content_type),
-			headers,
-		)
-		.await
+		let mut request = self
+			.request(Method::POST, path)
+			.body(Bytes::copy_from_slice(body))
+			.header(http::header::CONTENT_TYPE, content_type);
+		for (name, value) in headers {
+			request = request.header(*name, *value);
+		}
+		request.send().await
 	}
 
 	/// Make a POST request with raw body
@@ -772,92 +814,15 @@ impl APIClient {
 		body: &[u8],
 		content_type: &str,
 	) -> ClientResult<TestResponse> {
-		self.request(
-			Method::POST,
-			path,
-			Some(Bytes::copy_from_slice(body)),
-			Some(content_type),
-		)
-		.await
-	}
-
-	/// Generic request method
-	async fn request(
-		&self,
-		method: Method,
-		path: &str,
-		body: Option<Bytes>,
-		content_type: Option<&str>,
-	) -> ClientResult<TestResponse> {
-		self.request_with_extra_headers(method, path, body, content_type, &[])
+		self.request(Method::POST, path)
+			.body(Bytes::copy_from_slice(body))
+			.header(http::header::CONTENT_TYPE, content_type)
+			.send()
 			.await
 	}
 
-	/// Generic request method with additional per-request headers
-	///
-	/// This method is similar to `request()` but allows adding extra headers
-	/// that are specific to this request only, without modifying the default headers.
-	async fn request_with_extra_headers(
-		&self,
-		method: Method,
-		path: &str,
-		body: Option<Bytes>,
-		content_type: Option<&str>,
-		extra_headers: &[(&str, &str)],
-	) -> ClientResult<TestResponse> {
-		let url = if path.starts_with("http://") || path.starts_with("https://") {
-			path.to_string()
-		} else {
-			format!("{}{}", self.base_url, path)
-		};
-
-		let mut req_builder = Request::builder().method(method).uri(url);
-
-		// Add default headers
-		let default_headers = self.default_headers.read().await;
-		for (name, value) in default_headers.iter() {
-			req_builder = req_builder.header(name, value);
-		}
-
-		// Add extra per-request headers (these override default headers if same name)
-		for (name, value) in extra_headers {
-			req_builder = req_builder.header(*name, *value);
-		}
-
-		// Add content type if provided
-		if let Some(ct) = content_type {
-			req_builder = req_builder.header("Content-Type", ct);
-		}
-
-		// Add cookies (with validation to prevent header injection)
-		let cookies = self.cookies.read().await;
-		if !cookies.is_empty() {
-			let cookie_header = cookies
-				.iter()
-				.map(|(k, v)| {
-					validate_cookie_key(k);
-					validate_cookie_value(v);
-					format!("{}={}", k, v)
-				})
-				.collect::<Vec<_>>()
-				.join("; ");
-			req_builder = req_builder.header("Cookie", cookie_header);
-		}
-
-		// Add authentication if user is set
-		let user = self.user.read().await;
-		if user.is_some() {
-			// Add custom header to indicate forced authentication
-			req_builder = req_builder.header("X-Test-User", "authenticated");
-		}
-
-		// Build request with body
-		let request = if let Some(body_bytes) = body {
-			req_builder.body(Full::new(body_bytes))?
-		} else {
-			req_builder.body(Full::new(Bytes::new()))?
-		};
-
+	/// Dispatch a fully assembled request through the configured handler or transport.
+	async fn dispatch(&self, request: Request<Full<Bytes>>) -> ClientResult<TestResponse> {
 		// Execute request
 		let response = if let Some(async_handler) = &self.async_handler {
 			// In-process dispatch via framework Handler trait
@@ -946,13 +911,8 @@ impl APIClient {
 				&url,
 			);
 
-			// Copy headers (skip Cookie if using cookie_store, as reqwest manages it automatically)
-			for (name, value) in parts.headers.iter() {
-				if self.use_cookie_store && name.as_str().eq_ignore_ascii_case("cookie") {
-					continue;
-				}
-				reqwest_request = reqwest_request.header(name.as_str(), value.as_bytes());
-			}
+			// Explicit headers take precedence over the automatic jar in reqwest.
+			reqwest_request = reqwest_request.headers(parts.headers);
 
 			// Copy body
 			let body_bytes = body
@@ -1038,12 +998,363 @@ impl APIClient {
 	}
 
 	/// Get content type for format
-	fn get_content_type(&self, format: &str) -> &str {
+	fn get_content_type(&self, format: &str) -> &'static str {
 		match format {
 			"json" => "application/json",
 			"form" => "application/x-www-form-urlencoded",
 			_ => "application/octet-stream",
 		}
+	}
+}
+
+/// Builds one request while borrowing its [`APIClient`].
+///
+/// Pair with [`TestResponse`] to configure and inspect requests for any HTTP method.
+/// Chain methods are infallible: the first conversion or serialization error is
+/// retained and returned by [`Self::send`]. Per-request header operations run last,
+/// in call order, without changing client defaults. Reqwest's automatic jar cookies
+/// added at send time cannot be removed per request.
+/// Native-only (P0) through `reinhardt::test`.
+///
+/// # Examples
+///
+/// ```rust
+/// use reinhardt_testkit::APIClient;
+/// use http::Method;
+/// # tokio_test::block_on(async {
+/// # let mut client = APIClient::new();
+/// # client.set_handler(|request| {
+/// #     let (parts, body) = request.into_parts();
+/// #     let mut response = http::Response::new(body);
+/// #     *response.headers_mut() = parts.headers;
+/// #     response
+/// # });
+/// let response = client.request(Method::PATCH, "/profile")
+///     .without_header("Authorization")
+///     .form(&serde_json::json!({"name": "Ada"}))
+///     .send().await.unwrap();
+/// assert_eq!(response.body().as_ref(), b"name=Ada");
+/// # });
+/// ```
+pub struct TestRequestBuilder<'a> {
+	client: &'a APIClient,
+	method: Method,
+	path: String,
+	body: Bytes,
+	content_type: Option<HeaderValue>,
+	headers: Vec<HeaderOperation>,
+	error: Option<ClientError>,
+}
+
+enum HeaderOperation {
+	Replace(HeaderName, HeaderValue),
+	Append(HeaderName, HeaderValue),
+	Remove(HeaderName),
+}
+
+impl TestRequestBuilder<'_> {
+	/// Replace all values for a header, including client-generated values.
+	///
+	/// Names are case-insensitive. Accepts strings and `http::header` constants.
+	/// Invalid names or values are returned as [`ClientError::Http`] by `send()`.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_testkit::APIClient;
+	/// use http::Method;
+	/// # tokio_test::block_on(async {
+	/// # let mut client = APIClient::new();
+	/// # client.set_handler(|request| {
+	/// #     let (parts, body) = request.into_parts();
+	/// #     let mut response = http::Response::new(body);
+	/// #     *response.headers_mut() = parts.headers;
+	/// #     response
+	/// # });
+	/// let response = client.request(Method::GET, "/")
+	///     .header(http::header::ACCEPT, "application/json")
+	///     .send().await.unwrap();
+	/// assert_eq!(response.headers()["accept"], "application/json");
+	/// # });
+	/// ```
+	pub fn header<K, V>(mut self, name: K, value: V) -> Self
+	where
+		K: TryInto<HeaderName>,
+		K::Error: Into<http::Error>,
+		V: TryInto<HeaderValue>,
+		V::Error: Into<http::Error>,
+	{
+		self.add_header(name, value, HeaderOperation::Replace);
+		self
+	}
+
+	/// Append a header value, retaining existing values in their original order.
+	///
+	/// Invalid names or values are returned as [`ClientError::Http`] by `send()`.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_testkit::APIClient;
+	/// use http::Method;
+	/// # tokio_test::block_on(async {
+	/// # let mut client = APIClient::new();
+	/// # client.set_handler(|request| {
+	/// #     let (parts, body) = request.into_parts();
+	/// #     let mut response = http::Response::new(body);
+	/// #     *response.headers_mut() = parts.headers;
+	/// #     response
+	/// # });
+	/// let response = client.request(Method::GET, "/")
+	///     .header("x-tag", "first").append_header("x-tag", "second")
+	///     .send().await.unwrap();
+	/// assert_eq!(response.headers().get_all("x-tag").iter().count(), 2);
+	/// # });
+	/// ```
+	pub fn append_header<K, V>(mut self, name: K, value: V) -> Self
+	where
+		K: TryInto<HeaderName>,
+		K::Error: Into<http::Error>,
+		V: TryInto<HeaderValue>,
+		V::Error: Into<http::Error>,
+	{
+		self.add_header(name, value, HeaderOperation::Append);
+		self
+	}
+
+	/// Remove a header for this request, including manual cookies and forced auth.
+	///
+	/// Later `header()` or `append_header()` calls can add it again. This cannot
+	/// suppress cookies added by reqwest's automatic cookie jar at send time.
+	/// An invalid name is returned as [`ClientError::Http`] by `send()`.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_testkit::APIClient;
+	/// use http::Method;
+	/// # tokio_test::block_on(async {
+	/// # let mut client = APIClient::new();
+	/// # client.set_handler(|request| {
+	/// #     let (parts, body) = request.into_parts();
+	/// #     let mut response = http::Response::new(body);
+	/// #     *response.headers_mut() = parts.headers;
+	/// #     response
+	/// # });
+	/// client.set_header("Authorization", "Bearer base").await.unwrap();
+	/// let response = client.request(Method::GET, "/")
+	///     .without_header(http::header::AUTHORIZATION).send().await.unwrap();
+	/// assert_eq!(response.headers().get("authorization"), None);
+	/// # });
+	/// ```
+	pub fn without_header<K>(mut self, name: K) -> Self
+	where
+		K: TryInto<HeaderName>,
+		K::Error: Into<http::Error>,
+	{
+		if self.error.is_none() {
+			match name.try_into() {
+				Ok(name) => self.headers.push(HeaderOperation::Remove(name)),
+				Err(error) => self.error = Some(ClientError::Http(error.into())),
+			}
+		}
+		self
+	}
+
+	/// Serialize JSON immediately and imply `Content-Type: application/json`.
+	///
+	/// Serialization errors are returned by `send()`. Explicit header operations
+	/// take precedence over the implied content type, regardless of call order.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_testkit::APIClient;
+	/// use http::Method;
+	/// # tokio_test::block_on(async {
+	/// # let mut client = APIClient::new();
+	/// # client.set_handler(|request| {
+	/// #     let (parts, body) = request.into_parts();
+	/// #     let mut response = http::Response::new(body);
+	/// #     *response.headers_mut() = parts.headers;
+	/// #     response
+	/// # });
+	/// let response = client.request(Method::POST, "/")
+	///     .json(&serde_json::json!({"id": 1})).send().await.unwrap();
+	/// assert_eq!(response.headers()["content-type"], "application/json");
+	/// # });
+	/// ```
+	pub fn json<T: Serialize>(self, data: &T) -> Self {
+		self.serialized(data, "json")
+	}
+
+	/// Serialize URL-encoded form data immediately and imply its content type.
+	///
+	/// Uses the same object serialization as [`APIClient::post`] with `"form"`.
+	/// Serialization errors are returned by `send()`.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_testkit::APIClient;
+	/// use http::Method;
+	/// # tokio_test::block_on(async {
+	/// # let mut client = APIClient::new();
+	/// # client.set_handler(|request| {
+	/// #     let (parts, body) = request.into_parts();
+	/// #     let mut response = http::Response::new(body);
+	/// #     *response.headers_mut() = parts.headers;
+	/// #     response
+	/// # });
+	/// let response = client.request(Method::POST, "/")
+	///     .form(&serde_json::json!({"name": "Ada Lovelace"}))
+	///     .send().await.unwrap();
+	/// assert_eq!(response.body().as_ref(), b"name=Ada+Lovelace");
+	/// # });
+	/// ```
+	pub fn form<T: Serialize>(self, data: &T) -> Self {
+		self.serialized(data, "form")
+	}
+
+	/// Set the raw body without setting or removing a content type.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_testkit::APIClient;
+	/// use http::Method;
+	/// # tokio_test::block_on(async {
+	/// # let mut client = APIClient::new();
+	/// # client.set_handler(|request| {
+	/// #     let (parts, body) = request.into_parts();
+	/// #     let mut response = http::Response::new(body);
+	/// #     *response.headers_mut() = parts.headers;
+	/// #     response
+	/// # });
+	/// let response = client.request(Method::DELETE, "/")
+	///     .body(bytes::Bytes::from_static(b"raw")).send().await.unwrap();
+	/// assert_eq!(response.body().as_ref(), b"raw");
+	/// assert_eq!(response.headers().get("content-type"), None);
+	/// # });
+	/// ```
+	pub fn body(mut self, body: impl Into<Bytes>) -> Self {
+		self.body = body.into();
+		self
+	}
+
+	/// Assemble and dispatch the request, returning any stored builder error first.
+	///
+	/// Snapshots defaults without holding their locks while the handler or network
+	/// runs. Applies the implied content type, manual cookies, forced auth, then
+	/// each per-request header operation in call order.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_testkit::APIClient;
+	/// use http::Method;
+	/// # tokio_test::block_on(async {
+	/// # let mut client = APIClient::new();
+	/// # client.set_handler(|request| {
+	/// #     let (parts, body) = request.into_parts();
+	/// #     let mut response = http::Response::new(body);
+	/// #     *response.headers_mut() = parts.headers;
+	/// #     response
+	/// # });
+	/// let response = client.request(Method::GET, "/").send().await.unwrap();
+	/// assert_eq!(response.status(), http::StatusCode::OK);
+	/// # });
+	/// ```
+	pub async fn send(self) -> ClientResult<TestResponse> {
+		if let Some(error) = self.error {
+			return Err(error);
+		}
+		let mut headers = self.client.default_headers.read().await.clone();
+		if let Some(content_type) = self.content_type {
+			headers.insert(http::header::CONTENT_TYPE, content_type);
+		}
+		{
+			let cookies = self.client.cookies.read().await;
+			if !cookies.is_empty() {
+				let cookie = cookies
+					.iter()
+					.map(|(key, value)| {
+						validate_cookie_key(key);
+						validate_cookie_value(value);
+						format!("{key}={value}")
+					})
+					.collect::<Vec<_>>()
+					.join("; ");
+				headers.insert(http::header::COOKIE, HeaderValue::from_str(&cookie)?);
+			}
+		}
+		if self.client.user.read().await.is_some() {
+			headers.insert("x-test-user", HeaderValue::from_static("authenticated"));
+		}
+		for operation in self.headers {
+			match operation {
+				HeaderOperation::Replace(name, value) => {
+					headers.insert(name, value);
+				}
+				HeaderOperation::Append(name, value) => {
+					headers.append(name, value);
+				}
+				HeaderOperation::Remove(name) => {
+					headers.remove(name);
+				}
+			}
+		}
+		let url = if self.path.starts_with("http://") || self.path.starts_with("https://") {
+			self.path
+		} else {
+			format!("{}{}", self.client.base_url, self.path)
+		};
+		let mut request = Request::builder()
+			.method(self.method)
+			.uri(url)
+			.body(Full::new(self.body))?;
+		*request.headers_mut() = headers;
+		self.client.dispatch(request).await
+	}
+
+	fn add_header<K, V>(
+		&mut self,
+		name: K,
+		value: V,
+		operation: impl FnOnce(HeaderName, HeaderValue) -> HeaderOperation,
+	) where
+		K: TryInto<HeaderName>,
+		K::Error: Into<http::Error>,
+		V: TryInto<HeaderValue>,
+		V::Error: Into<http::Error>,
+	{
+		if self.error.is_none() {
+			let header = name.try_into().map_err(Into::into).and_then(|name| {
+				value
+					.try_into()
+					.map_err(Into::into)
+					.map(|value| operation(name, value))
+			});
+			match header {
+				Ok(header) => self.headers.push(header),
+				Err(error) => self.error = Some(ClientError::Http(error)),
+			}
+		}
+	}
+
+	fn serialized<T: Serialize>(mut self, data: &T, format: &str) -> Self {
+		if self.error.is_none() {
+			match self.client.serialize_data(data, format) {
+				Ok(body) => {
+					self.body = body;
+					self.content_type = Some(HeaderValue::from_static(
+						self.client.get_content_type(format),
+					));
+				}
+				Err(error) => self.error = Some(error),
+			}
+		}
+		self
 	}
 }
 
@@ -1125,6 +1436,286 @@ mod tests {
 	use async_trait::async_trait;
 	use reinhardt_core::exception::{Error as HttpError, Result as HttpResult};
 	use rstest::rstest;
+
+	#[rstest::fixture]
+	fn header_echo_client() -> APIClient {
+		let mut client = APIClient::new();
+		client.set_handler(|request| {
+			let (parts, body) = request.into_parts();
+			let mut response = Response::new(body);
+			*response.headers_mut() = parts.headers;
+			response.headers_mut().insert(
+				"x-echo-method",
+				HeaderValue::from_str(parts.method.as_str()).unwrap(),
+			);
+			response
+		});
+		client
+	}
+
+	fn header_values<'a>(response: &'a TestResponse, name: &str) -> Vec<&'a str> {
+		response
+			.headers()
+			.get_all(name)
+			.iter()
+			.map(|value| value.to_str().unwrap())
+			.collect()
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn request_header_replaces_all_values_without_mutating_defaults(
+		header_echo_client: APIClient,
+	) {
+		// Arrange
+		let client = header_echo_client;
+		client
+			.set_header("Authorization", "Bearer bob")
+			.await
+			.unwrap();
+		// Act
+		let overridden = client
+			.request(Method::GET, "/")
+			.append_header("Authorization", "Bearer previous")
+			.header("authorization", "Bearer alice")
+			.send()
+			.await
+			.unwrap();
+		let plain = client.get("/").await.unwrap();
+		// Assert
+		assert_eq!(
+			header_values(&overridden, "authorization"),
+			["Bearer alice"]
+		);
+		assert_eq!(header_values(&plain, "authorization"), ["Bearer bob"]);
+	}
+
+	// Exercise deprecated wrappers deliberately until their planned 0.5 removal.
+	#[allow(deprecated)]
+	async fn deprecated_header_request(
+		client: &APIClient,
+		post: bool,
+	) -> ClientResult<TestResponse> {
+		if post {
+			client
+				.post_raw_with_headers(
+					"/",
+					b"raw",
+					"text/plain",
+					&[("authorization", "Bearer alice")],
+				)
+				.await
+		} else {
+			client
+				.get_with_headers("/", &[("authorization", "Bearer alice")])
+				.await
+		}
+	}
+
+	#[rstest]
+	#[case(false)]
+	#[case(true)]
+	#[tokio::test]
+	async fn deprecated_wrappers_replace_default_authorization(
+		header_echo_client: APIClient,
+		#[case] post: bool,
+	) {
+		// Arrange
+		let client = header_echo_client;
+		client
+			.set_header("Authorization", "Bearer bob")
+			.await
+			.unwrap();
+		// Act
+		let overridden = deprecated_header_request(&client, post).await.unwrap();
+		let plain = client.get("/").await.unwrap();
+		// Assert
+		assert_eq!(
+			header_values(&overridden, "authorization"),
+			["Bearer alice"]
+		);
+		assert_eq!(header_values(&plain, "authorization"), ["Bearer bob"]);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn request_header_operations_apply_in_order_after_generated_headers(
+		header_echo_client: APIClient,
+	) {
+		// Arrange
+		let client = header_echo_client;
+		client.set_header("X-Tag", "default").await.unwrap();
+		client.set_header("X-Remove", "default").await.unwrap();
+		client.set_cookie("session", "manual").await.unwrap();
+		*client.user.write().await = Some(serde_json::json!({"id": 1}));
+		// Act
+		let response = client
+			.request(Method::POST, "/")
+			.append_header("X-Tag", "second")
+			.append_header("x-tag", "third")
+			.without_header("x-remove")
+			.without_header(http::header::COOKIE)
+			.without_header("X-Test-User")
+			.json(&serde_json::json!({"id": 1}))
+			.header(http::header::CONTENT_TYPE, "application/custom")
+			.header("x-order", "first")
+			.without_header("x-order")
+			.append_header("x-order", "last")
+			.send()
+			.await
+			.unwrap();
+		let plain = client.get("/").await.unwrap();
+		// Assert
+		assert_eq!(
+			header_values(&response, "x-tag"),
+			["default", "second", "third"]
+		);
+		for name in ["x-remove", "cookie", "x-test-user"] {
+			assert_eq!(header_values(&response, name), Vec::<&str>::new());
+		}
+		assert_eq!(
+			header_values(&response, "content-type"),
+			["application/custom"]
+		);
+		assert_eq!(header_values(&response, "x-order"), ["last"]);
+		assert_eq!(plain.header("x-remove"), Some("default"));
+		assert_eq!(plain.header("cookie"), Some("session=manual"));
+		assert_eq!(plain.header("x-test-user"), Some("authenticated"));
+	}
+
+	#[rstest]
+	#[case(Method::PUT)]
+	#[case(Method::PATCH)]
+	#[case(Method::DELETE)]
+	#[tokio::test]
+	async fn request_builder_supports_headers_and_body_for_each_method(
+		header_echo_client: APIClient,
+		#[case] method: Method,
+	) {
+		// Arrange
+		let client = header_echo_client;
+		// Act
+		let response = client
+			.request(method.clone(), "/")
+			.header("x-subject", "alice")
+			.body(Bytes::from_static(b"payload"))
+			.send()
+			.await
+			.unwrap();
+		// Assert
+		assert_eq!(response.header("x-echo-method"), Some(method.as_str()));
+		assert_eq!(response.header("x-subject"), Some("alice"));
+		assert_eq!(response.body().as_ref(), b"payload");
+		assert_eq!(response.header("content-type"), None);
+	}
+
+	#[rstest]
+	#[case("name")]
+	#[case("value")]
+	#[case("append")]
+	#[case("remove")]
+	#[tokio::test]
+	async fn request_builder_defers_invalid_header_errors(#[case] invalid: &str) {
+		// Arrange
+		let mut client = APIClient::new();
+		let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+		let captured = Arc::clone(&calls);
+		client.set_handler(move |_| {
+			captured.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+			Response::new(Full::new(Bytes::new()))
+		});
+		let request = client.request(Method::GET, "/");
+		// Act
+		let request = match invalid {
+			"name" => request.header("invalid name", "value"),
+			"value" => request.header("x-valid", "bad\nvalue"),
+			"append" => request.append_header("invalid name", "value"),
+			"remove" => request.without_header("invalid name"),
+			_ => unreachable!(),
+		};
+		let result = request.header("x-valid", "valid").send().await;
+		// Assert
+		assert!(matches!(result, Err(ClientError::Http(_))));
+		assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn request_builder_retains_first_serialization_error() {
+		// Arrange
+		let mut client = APIClient::new();
+		client.set_handler(|_| panic!("invalid builder must not dispatch"));
+		let invalid = HashMap::from([((1, 2), "value")]);
+		// Act
+		let result = client
+			.request(Method::POST, "/")
+			.json(&invalid)
+			.json(&serde_json::json!({"valid": true}))
+			.header("invalid name", "value")
+			.send()
+			.await;
+		let form_result = client.request(Method::POST, "/").form(&[1, 2]).send().await;
+		// Assert
+		assert!(matches!(result, Err(ClientError::Serialization(_))));
+		match form_result {
+			Err(ClientError::RequestFailed(message)) => {
+				assert_eq!(message, "Expected object for form data")
+			}
+			_ => panic!("expected form serialization failure"),
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn request_serializes_immediately_and_explicit_headers_win(
+		header_echo_client: APIClient,
+	) {
+		// Arrange
+		let client = header_echo_client;
+		client
+			.set_header("content-type", "default/type")
+			.await
+			.unwrap();
+		let mut data = serde_json::json!({"name": "before"});
+		let request = client
+			.request(Method::POST, "/")
+			.header("content-type", "explicit/type")
+			.json(&data);
+		data["name"] = serde_json::json!("after");
+		// Act
+		let json = request.send().await.unwrap();
+		let form = client
+			.request(Method::POST, "/")
+			.form(&serde_json::json!({"name": "A B", "count": 2}))
+			.send()
+			.await
+			.unwrap();
+		let raw = client
+			.request(Method::POST, "/")
+			.json(&data)
+			.body("raw")
+			.send()
+			.await
+			.unwrap();
+		let removed = client
+			.request(Method::POST, "/")
+			.without_header("content-type")
+			.form(&data)
+			.send()
+			.await
+			.unwrap();
+		// Assert
+		assert_eq!(json.body().as_ref(), br#"{"name":"before"}"#);
+		assert_eq!(header_values(&json, "content-type"), ["explicit/type"]);
+		assert_eq!(form.body().as_ref(), b"count=2&name=A+B");
+		assert_eq!(
+			header_values(&form, "content-type"),
+			["application/x-www-form-urlencoded"]
+		);
+		assert_eq!(raw.body().as_ref(), b"raw");
+		assert_eq!(header_values(&raw, "content-type"), ["application/json"]);
+		assert_eq!(removed.header("content-type"), None);
+	}
 
 	struct FileHandler {
 		response: HttpResponse,
