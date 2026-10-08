@@ -11,7 +11,7 @@ use crate::server::relation::{resolve_relation, resolve_relation_configuration};
 #[cfg(server)]
 use crate::server::type_inference::{
 	find_model_by_table_name, get_field_metadata, infer_admin_field_type_from_metadata,
-	infer_required,
+	infer_required, requires_unavailable_admin_feature,
 };
 #[cfg(server)]
 use crate::server::validation::validate_mutation_data_with_aliases;
@@ -216,7 +216,10 @@ pub(crate) fn resolve_admin_form(
 			field_type,
 			required,
 			nullable,
-			readonly: readonly_fields.contains(&name.as_str()),
+			readonly: readonly_fields.contains(&name.as_str())
+				|| metadata.as_ref().is_some_and(|metadata| {
+					requires_unavailable_admin_feature(&metadata.field_type)
+				}),
 			help_text: None,
 			placeholder: None,
 		};
