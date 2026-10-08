@@ -40,7 +40,8 @@ mismatches return 405, unknown paths return 404, and duplicate `(path, method)`
 registrations panic immediately.
 
 `SimpleHandler` is deprecated starting in `0.4.0-alpha.21` and remains available
-for compatibility. Replace `SimpleHandler::new(|request| { ... })` and manual
+throughout `0.4.x`, with removal planned for `0.5.0`. Replace
+`SimpleHandler::new(|request| { ... })` and manual
 method checks with `StubRouter::new().post(path, |request| async move { ... })`
 (or the matching HTTP method), then convert it into a `ServerRouter`. The
 `reinhardt_test::stub` and `reinhardt::test::stub` paths work without adding

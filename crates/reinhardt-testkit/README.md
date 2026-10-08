@@ -26,7 +26,8 @@ registrations panic immediately. GET, POST, PUT, PATCH, and DELETE have
 helpers; use `.route(path, method, handler)` for other methods.
 
 `SimpleHandler` is deprecated starting in `0.4.0-alpha.21` and remains available
-for compatibility. Migrate from `SimpleHandler::new(|request| { ... })` and
+throughout `0.4.x`, with removal planned for `0.5.0`. Migrate from
+`SimpleHandler::new(|request| { ... })` and
 manual method checks to `StubRouter::new().post(path, |request| async move {
 ... })` (or the matching HTTP method). Return the response from the async
 closure, then convert the builder into a `ServerRouter`. Application endpoints

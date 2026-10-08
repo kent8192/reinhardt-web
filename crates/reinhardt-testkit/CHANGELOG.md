@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `stub::StubRouter` registers capturing async closures for explicit HTTP
+  methods, using the framework's route dispatch and 404/405 handling.
+
+### Deprecated
+
+- `SimpleHandler` is deprecated starting in `0.4.0-alpha.21`. Its synchronous
+  closure requires custom handler adapters for async work and manual method
+  checks. Use `stub::StubRouter` to await request processing and register each
+  supported HTTP method explicitly. `SimpleHandler` and its compatibility
+  re-exports remain available throughout `0.4.x`; removal is planned for
+  `0.5.0`, following the breaking-change review process.
+
+### Migration: SimpleHandler to StubRouter
+
+1. Choose the facade already used by the test: `reinhardt_testkit::stub`,
+   `reinhardt_test::stub`, or `reinhardt::test::stub`. Each exports `StubRouter`;
+   facade users do not need a direct dependency on `reinhardt-testkit`.
+2. Replace the synchronous handler with an async closure registered for each
+   supported method. Manual method checks become `.get()`, `.post()`, `.put()`,
+   `.patch()`, `.delete()`, or `.route(path, method, handler)` registrations.
+
+Before:
+
+```rust
+use reinhardt_testkit::{SimpleHandler, http::Response};
+
+let handler = SimpleHandler::new(|request| {
+    Ok(Response::ok().with_body(request.body().clone()))
+});
+```
+
+After, for a POST-only webhook:
+
+```rust
+use reinhardt_testkit::{http::Response, stub::StubRouter};
+
+let router = StubRouter::new()
+    .post("/webhook", |request| async move {
+        Ok(Response::ok().with_body(request.body().clone()))
+    })
+    .into_server_router();
+```
+
+3. In an async test, call
+   `reinhardt_testkit::test_server_guard(router).await` and keep the returned
+   guard alive while sending requests. Through the facades, use
+   `reinhardt_test::fixtures::test_server_guard` or
+   `reinhardt::test::fixtures::test_server_guard`. Dropping the guard shuts down
+   the server. Unknown paths return 404; unregistered methods on a known path
+   return 405 without invoking the closure.
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.4.0-alpha.19...reinhardt-testkit@v0.4.0-alpha.20) - 2026-10-06
 
 ### Changed

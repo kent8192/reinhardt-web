@@ -49,10 +49,11 @@
 //! `reinhardt::test::fixtures::test_server_guard` instead.
 //!
 //! [`SimpleHandler`] is deprecated starting in `0.4.0-alpha.21` and remains
-//! available for compatibility. Replace its synchronous closure and manual
-//! method checks with the corresponding [`stub::StubRouter`] method and an
-//! async closure, then convert it into a `ServerRouter`. Neither facade requires
-//! a direct dependency on `reinhardt-testkit` for this migration.
+//! available throughout `0.4.x`, with removal planned for `0.5.0`. Replace its
+//! synchronous closure and manual method checks with the corresponding
+//! [`stub::StubRouter`] method and an async closure, then convert it into a
+//! `ServerRouter`. Neither facade requires a direct dependency on
+//! `reinhardt-testkit` for this migration.
 //!
 //! ## Feature Flags
 //!
