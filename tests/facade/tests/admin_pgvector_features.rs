@@ -33,6 +33,34 @@ fn admin_infers_fields_with_independent_pgvector_features(consumer: TempDir) {
 			.to_string_lossy()
 			.into_owned(),
 	);
+	let mut workspace: toml::Value = toml::from_str(
+		&fs::read_to_string(repository.join("Cargo.toml")).expect("read workspace manifest"),
+	)
+	.expect("parse workspace manifest");
+	let patches = workspace["patch"]
+		.as_table_mut()
+		.expect("workspace patches");
+	for (_, sources) in patches.iter_mut() {
+		for (_, dependency) in sources
+			.as_table_mut()
+			.expect("patch source table")
+			.iter_mut()
+		{
+			if let Some(path) = dependency.get_mut("path") {
+				*path = toml::Value::String(
+					repository
+						.join(path.as_str().expect("patch path"))
+						.to_string_lossy()
+						.into_owned(),
+				);
+			}
+		}
+	}
+	let patches = toml::to_string(&toml::Value::Table(toml::map::Map::from_iter([(
+		"patch".into(),
+		toml::Value::Table(patches.clone()),
+	)])))
+	.expect("serialize workspace patches for the isolated consumer");
 	fs::copy(
 		repository.join("Cargo.lock"),
 		consumer.path().join("Cargo.lock"),
@@ -62,6 +90,8 @@ publish = false
 [dependencies]
 reinhardt-admin = {{ path = {admin_path}, default-features = false, features = [{admin_features}] }}
 reinhardt-db = {{ path = {db_path}, default-features = false, features = ["{db_feature}"] }}
+
+{patches}
 "#,
 				admin_features = if admin_feature.is_empty() {
 					String::new()
