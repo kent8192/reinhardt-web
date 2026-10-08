@@ -25,6 +25,7 @@ mod postgres;
 mod protocol;
 mod store;
 
+#[cfg(feature = "oidc-op")]
 pub(crate) use protocol::CodeExchangeRequest;
 #[cfg(feature = "oidc-op")]
 pub(crate) use protocol::PreparedAuthorization;
