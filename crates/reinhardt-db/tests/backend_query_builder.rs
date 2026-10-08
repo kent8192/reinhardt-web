@@ -1145,15 +1145,15 @@ fn test_insert_builder_sqlite_basic() {
 #[rstest]
 #[case::postgres(
 	DatabaseType::Postgres,
-	r#"INSERT INTO "insert_probe" ("created", "touched") SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"#
+	r#"INSERT INTO "insert_probe" ("created", "touched") VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"#
 )]
 #[case::mysql(
 	DatabaseType::Mysql,
-	"INSERT INTO `insert_probe` (`created`, `touched`) SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"
+	"INSERT INTO `insert_probe` (`created`, `touched`) VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
 )]
 #[case::sqlite(
 	DatabaseType::Sqlite,
-	r#"INSERT INTO "insert_probe" ("created", "touched") SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"#
+	r#"INSERT INTO "insert_probe" ("created", "touched") VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"#
 )]
 fn test_insert_builder_now_without_bindings(
 	#[case] db_type: DatabaseType,
@@ -1178,15 +1178,15 @@ fn test_insert_builder_now_without_bindings(
 #[rstest]
 #[case::postgres(
 	DatabaseType::Postgres,
-	r#"INSERT INTO "insert_probe" ("created", "nullable", "id", "touched", "payload", "updated") SELECT CURRENT_TIMESTAMP, NULL, $1, CURRENT_TIMESTAMP, $2, CURRENT_TIMESTAMP"#
+	r#"INSERT INTO "insert_probe" ("created", "nullable", "id", "touched", "payload", "updated") VALUES (CURRENT_TIMESTAMP, NULL, $1, CURRENT_TIMESTAMP, $2, CURRENT_TIMESTAMP)"#
 )]
 #[case::mysql(
 	DatabaseType::Mysql,
-	"INSERT INTO `insert_probe` (`created`, `nullable`, `id`, `touched`, `payload`, `updated`) SELECT CURRENT_TIMESTAMP, NULL, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP"
+	"INSERT INTO `insert_probe` (`created`, `nullable`, `id`, `touched`, `payload`, `updated`) VALUES (CURRENT_TIMESTAMP, NULL, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP)"
 )]
 #[case::sqlite(
 	DatabaseType::Sqlite,
-	r#"INSERT INTO "insert_probe" ("created", "nullable", "id", "touched", "payload", "updated") SELECT CURRENT_TIMESTAMP, NULL, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP"#
+	r#"INSERT INTO "insert_probe" ("created", "nullable", "id", "touched", "payload", "updated") VALUES (CURRENT_TIMESTAMP, NULL, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP)"#
 )]
 fn test_insert_builder_now_preserves_binding_order(
 	#[case] db_type: DatabaseType,
@@ -1219,11 +1219,11 @@ fn test_insert_builder_now_preserves_binding_order(
 #[rstest]
 #[case::postgres(
 	DatabaseType::Postgres,
-	r#"INSERT INTO "insert_probe" ("created", "id", "touched", "payload") SELECT CURRENT_TIMESTAMP, $1, CURRENT_TIMESTAMP, $2 ON CONFLICT ("id") DO UPDATE SET "touched" = EXCLUDED."touched", "payload" = EXCLUDED."payload" RETURNING "id", "touched", "payload""#
+	r#"INSERT INTO "insert_probe" ("created", "id", "touched", "payload") VALUES (CURRENT_TIMESTAMP, $1, CURRENT_TIMESTAMP, $2) ON CONFLICT ("id") DO UPDATE SET "touched" = EXCLUDED."touched", "payload" = EXCLUDED."payload" RETURNING "id", "touched", "payload""#
 )]
 #[case::sqlite(
 	DatabaseType::Sqlite,
-	r#"INSERT INTO "insert_probe" ("created", "id", "touched", "payload") SELECT CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ? ON CONFLICT ("id") DO UPDATE SET "touched" = excluded."touched", "payload" = excluded."payload" RETURNING "id", "touched", "payload""#
+	r#"INSERT INTO "insert_probe" ("created", "id", "touched", "payload") VALUES (CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?) ON CONFLICT ("id") DO UPDATE SET "touched" = EXCLUDED."touched", "payload" = EXCLUDED."payload" RETURNING "id", "touched", "payload""#
 )]
 fn test_insert_builder_now_conflict_returning_preserves_bindings(
 	#[case] db_type: DatabaseType,
@@ -1403,7 +1403,7 @@ fn test_insert_builder_sqlite_on_conflict_do_update() {
 	// Assert
 	assert!(sql.contains("ON CONFLICT"));
 	assert!(sql.contains("DO UPDATE SET"));
-	assert!(sql.contains("excluded")); // lowercase for SQLite
+	assert!(sql.contains("EXCLUDED")); // Typed excluded-row reference.
 }
 
 #[rstest]
@@ -1443,7 +1443,7 @@ fn test_sqlite_targetless_insert_sql(
 	assert_eq!(
 		sql,
 		format!(
-			"INSERT INTO \"upsert_probe\" (\"id\", \"email\", \"version\") VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET \"version\" = excluded.\"version\"{condition}{returning_sql}"
+			"INSERT INTO \"upsert_probe\" (\"id\", \"email\", \"version\") VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET \"version\" = EXCLUDED.\"version\"{condition}{returning_sql}"
 		)
 	);
 	assert_eq!(
@@ -1502,7 +1502,7 @@ fn test_sqlite_targetless_insert_select_sql(
 	assert_eq!(
 		sql,
 		format!(
-			"INSERT INTO \"upsert_probe\" (\"id\", \"version\") SELECT * FROM (SELECT \"id\", \"version\" FROM \"source_table\" WHERE TRUE) AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT{target} DO UPDATE SET \"version\" = excluded.\"version\"{returning_sql}"
+			"INSERT INTO \"upsert_probe\" (\"id\", \"version\") SELECT \"id\", \"version\" FROM \"source_table\" WHERE TRUE ON CONFLICT{target} DO UPDATE SET \"version\" = EXCLUDED.\"version\"{returning_sql}"
 		)
 	);
 	assert!(params.is_empty());
@@ -1559,7 +1559,7 @@ fn test_insert_builder_returning_clause_postgres() {
 )]
 #[case::sqlite(
 	DatabaseType::Sqlite,
-	"INSERT INTO \"users\" (\"id\") VALUES (?) ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\" RETURNING \"id\""
+	"INSERT INTO \"users\" (\"id\") VALUES (?) ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\" RETURNING \"id\""
 )]
 #[case::mysql(
 	DatabaseType::Mysql,
@@ -1649,7 +1649,7 @@ fn test_insert_conflict_do_nothing_with_returning(
 )]
 #[case::sqlite(
 	DatabaseType::Sqlite,
-	"INSERT INTO \"users\" (\"id\") VALUES (?) ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\" WHERE users.id = 3 RETURNING \"id\", \"return\"\"ing\""
+	"INSERT INTO \"users\" (\"id\") VALUES (?) ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\" WHERE users.id = 3 RETURNING \"id\", \"return\"\"ing\""
 )]
 fn test_insert_conflict_condition_before_returning(
 	#[case] db_type: DatabaseType,
@@ -1681,7 +1681,7 @@ fn test_insert_conflict_condition_before_returning(
 )]
 #[case::sqlite(
 	DatabaseType::Sqlite,
-	"INSERT INTO \"users\" (\"id\") SELECT * FROM (SELECT 3) AS \"__reinhardt_insert_source\" WHERE TRUE ON CONFLICT (\"id\") DO UPDATE SET \"id\" = excluded.\"id\" RETURNING \"id\""
+	"INSERT INTO \"users\" (\"id\") SELECT 3 ON CONFLICT (\"id\") DO UPDATE SET \"id\" = EXCLUDED.\"id\" RETURNING \"id\""
 )]
 #[case::mysql(
 	DatabaseType::Mysql,
@@ -1903,15 +1903,15 @@ fn test_select_builder_limit_boundaries(
 #[rstest]
 #[case::postgres(
 	DatabaseType::Postgres,
-	"SELECT * FROM \"users\" WHERE \"deleted_at\" = NULL AND \"id\" = $1 LIMIT $2"
+	"SELECT * FROM \"users\" WHERE \"deleted_at\" IS NULL AND \"id\" = $1 LIMIT $2"
 )]
 #[case::mysql(
 	DatabaseType::Mysql,
-	"SELECT * FROM `users` WHERE `deleted_at` = NULL AND `id` = ? LIMIT ?"
+	"SELECT * FROM `users` WHERE `deleted_at` IS NULL AND `id` = ? LIMIT ?"
 )]
 #[case::sqlite(
 	DatabaseType::Sqlite,
-	"SELECT * FROM \"users\" WHERE \"deleted_at\" = NULL AND \"id\" = ? LIMIT ?"
+	"SELECT * FROM \"users\" WHERE \"deleted_at\" IS NULL AND \"id\" = ? LIMIT ?"
 )]
 fn test_select_builder_null_does_not_shift_limit_parameters(
 	#[case] database_type: DatabaseType,
@@ -2018,15 +2018,15 @@ fn test_builders_preserve_original_parameter_variants(
 	let (update_sql, select_sql) = match database_type {
 		DatabaseType::Postgres => (
 			"UPDATE \"users\" SET \"updated\" = CURRENT_TIMESTAMP, \"empty\" = NULL, \"payload\" = $1 WHERE \"payload\" = $2 AND \"id\" = $3",
-			"SELECT * FROM \"users\" WHERE \"empty\" = NULL AND \"payload\" = $1 LIMIT $2",
+			"SELECT * FROM \"users\" WHERE \"empty\" IS NULL AND \"payload\" = $1 LIMIT $2",
 		),
 		DatabaseType::Mysql => (
 			"UPDATE `users` SET `updated` = CURRENT_TIMESTAMP, `empty` = NULL, `payload` = ? WHERE `payload` = ? AND `id` = ?",
-			"SELECT * FROM `users` WHERE `empty` = NULL AND `payload` = ? LIMIT ?",
+			"SELECT * FROM `users` WHERE `empty` IS NULL AND `payload` = ? LIMIT ?",
 		),
 		DatabaseType::Sqlite => (
 			"UPDATE \"users\" SET \"updated\" = CURRENT_TIMESTAMP, \"empty\" = NULL, \"payload\" = ? WHERE \"payload\" = ? AND \"id\" = ?",
-			"SELECT * FROM \"users\" WHERE \"empty\" = NULL AND \"payload\" = ? LIMIT ?",
+			"SELECT * FROM \"users\" WHERE \"empty\" IS NULL AND \"payload\" = ? LIMIT ?",
 		),
 	};
 	for value in bound_query_values {
@@ -3995,4 +3995,59 @@ mod insert_builder_sqlite_tests {
 		assert!(timestamp >= before, "stored timestamp predates INSERT");
 		assert!(timestamp <= after, "stored timestamp follows INSERT");
 	}
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn native_builder_round_trips_nullable_arrays_and_rejects_non_finite_values() {
+	// Arrange
+	let backend = reinhardt_db::backends::DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.unwrap();
+	backend
+		.execute(
+			"CREATE TABLE array_probe (id INTEGER PRIMARY KEY, values_json TEXT NOT NULL)",
+			vec![],
+		)
+		.await
+		.unwrap();
+
+	// Act
+	backend
+		.insert("array_probe")
+		.value("id", 1_i64)
+		.value(
+			"values_json",
+			QueryValue::NullableDoubleArray(vec![None, Some(1.25), None]),
+		)
+		.execute()
+		.await
+		.unwrap();
+	let error = backend
+		.insert("array_probe")
+		.value("id", 2_i64)
+		.value(
+			"values_json",
+			QueryValue::NullableDoubleArray(vec![None, Some(f64::NAN)]),
+		)
+		.execute()
+		.await
+		.unwrap_err();
+	let rows = backend
+		.select()
+		.from("array_probe")
+		.columns(vec!["id", "values_json"])
+		.fetch_all()
+		.await
+		.unwrap();
+
+	// Assert: NULL elements keep their positions and invalid numbers never reach SQLx.
+	assert_eq!(rows.len(), 1);
+	assert_eq!(rows[0].data["id"], QueryValue::Int(1));
+	assert_eq!(
+		rows[0].data["values_json"],
+		QueryValue::String("[null,1.25,null]".into())
+	);
+	assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Type));
 }

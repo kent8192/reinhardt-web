@@ -1,0 +1,19 @@
+[package]
+name = "audit-runtime-sql"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+proc-macro2 = { version = "1.0", features = ["span-locations"] }
+quote = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+syn = { version = "2.0", features = ["full", "visit", "extra-traits"] }
+
+[dev-dependencies]
+rstest = "0.26.1"
+tempfile = "3.8"

@@ -48,17 +48,54 @@ use reinhardt_core::macros::model;
 use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 use reinhardt_db::orm::{
 	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, Filter, FilterOperator,
-	FilterValue, Model,
+	FilterValue, Model, OrmExecutor,
 };
 use reinhardt_query::prelude::{
-	Alias, ColumnDef, CreateIndexStatement, Expr, ExprTrait, Func, IntoValue, MySqlQueryBuilder,
-	OnConflict, PostgresQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder,
+	Alias, CockroachDBQueryBuilder, ColumnDef, CreateIndexStatement, CreateTableStatement,
+	DeleteStatement, Expr, ExprTrait, Func, InsertStatement, IntoValue, MySqlQueryBuilder,
+	OnConflict, PostgresQueryBuilder, Query, SelectStatement, SqliteQueryBuilder, Values,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::sessions::cleanup::{CleanupableBackend, SessionMetadata};
 
 use super::cache::{SessionBackend, SessionError};
+
+enum SessionStatement {
+	Select(SelectStatement),
+	Insert(InsertStatement),
+	Delete(DeleteStatement),
+	CreateTable(CreateTableStatement),
+	CreateIndex(CreateIndexStatement),
+}
+
+fn build_session_statement(
+	backend: DatabaseBackend,
+	is_cockroachdb: bool,
+	statement: SessionStatement,
+) -> Result<(String, Values), SessionError> {
+	macro_rules! build {
+		($statement:expr, $method:ident) => {
+			if is_cockroachdb {
+				CockroachDBQueryBuilder::new().$method($statement)
+			} else {
+				match backend {
+					DatabaseBackend::Postgres => PostgresQueryBuilder.$method($statement),
+					DatabaseBackend::MySql => MySqlQueryBuilder.$method($statement),
+					DatabaseBackend::Sqlite => SqliteQueryBuilder.$method($statement),
+				}
+			}
+		};
+	}
+	match &statement {
+		SessionStatement::Select(stmt) => build!(stmt, build_select_checked),
+		SessionStatement::Insert(stmt) => build!(stmt, build_insert_checked),
+		SessionStatement::Delete(stmt) => build!(stmt, build_delete_checked),
+		SessionStatement::CreateTable(stmt) => build!(stmt, build_create_table_checked),
+		SessionStatement::CreateIndex(stmt) => build!(stmt, build_create_index_checked),
+	}
+	.map_err(|error| SessionError::CacheError(format!("Failed to build session query: {error}")))
+}
 
 async fn connect_backend(database_url: &str) -> Result<BackendsConnection, SessionError> {
 	BackendsConnection::connect(database_url)
@@ -214,39 +251,16 @@ impl DatabaseSessionBackend {
 		})
 	}
 
-	/// Build SQL string for the current database backend
-	///
-	/// Uses reinhardt-query to generate database-specific SQL syntax.
-	fn build_sql<T>(&self, statement: T) -> String
-	where
-		T: QueryStatementBuilder,
-	{
-		match self.connection.backend() {
-			DatabaseBackend::Postgres => statement.to_string(PostgresQueryBuilder),
-			DatabaseBackend::MySql => statement.to_string(MySqlQueryBuilder),
-			DatabaseBackend::Sqlite => statement.to_string(SqliteQueryBuilder),
-		}
-	}
-
-	/// Build table SQL string for the current database backend
-	fn build_table_sql<T>(&self, statement: T) -> String
-	where
-		T: QueryStatementBuilder,
-	{
-		match self.connection.backend() {
-			DatabaseBackend::Postgres => statement.to_string(PostgresQueryBuilder),
-			DatabaseBackend::MySql => statement.to_string(MySqlQueryBuilder),
-			DatabaseBackend::Sqlite => statement.to_string(SqliteQueryBuilder),
-		}
-	}
-
-	/// Build index SQL string for the current database backend
-	fn build_index_sql(&self, statement: &CreateIndexStatement) -> String {
-		match self.connection.backend() {
-			DatabaseBackend::Postgres => statement.to_string(PostgresQueryBuilder),
-			DatabaseBackend::MySql => statement.to_string(MySqlQueryBuilder),
-			DatabaseBackend::Sqlite => statement.to_string(SqliteQueryBuilder),
-		}
+	/// Render a checked statement while keeping SQL and its native arguments paired.
+	fn build_statement(
+		&self,
+		statement: SessionStatement,
+	) -> Result<(String, Values), SessionError> {
+		build_session_statement(
+			self.connection.backend(),
+			self.connection.is_cockroachdb(),
+			statement,
+		)
 	}
 
 	/// Clean up expired sessions
@@ -279,11 +293,13 @@ impl DatabaseSessionBackend {
 			.and_where(Expr::col(Alias::new("expire_date")).lt(now_timestamp))
 			.to_owned();
 
-		let sql = self.build_sql(stmt);
-		let rows_affected =
-			self.connection.execute(&sql, vec![]).await.map_err(|e| {
-				SessionError::CacheError(format!("Failed to cleanup sessions: {}", e))
-			})?;
+		let built = self.build_statement(SessionStatement::Delete(stmt))?;
+		let mut connection = self.connection;
+		let rows_affected = connection
+			.execute_generated(built, None)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to cleanup sessions: {}", e)))?
+			.rows_affected;
 
 		Ok(rows_affected)
 	}
@@ -333,10 +349,14 @@ impl DatabaseSessionBackend {
 			.col(ColumnDef::new(Alias::new("last_accessed")).big_integer())
 			.to_owned();
 
-		let sql = self.build_table_sql(stmt);
-		self.connection.execute(&sql, vec![]).await.map_err(|e| {
-			SessionError::CacheError(format!("Failed to create sessions table: {}", e))
-		})?;
+		let built = self.build_statement(SessionStatement::CreateTable(stmt))?;
+		let mut connection = self.connection;
+		connection
+			.execute_generated(built, None)
+			.await
+			.map_err(|e| {
+				SessionError::CacheError(format!("Failed to create sessions table: {}", e))
+			})?;
 
 		// Create index for expire_date using reinhardt-query
 		let index_stmt = Query::create_index()
@@ -346,8 +366,9 @@ impl DatabaseSessionBackend {
 			.col(Alias::new("expire_date"))
 			.to_owned();
 
-		let index_sql = self.build_index_sql(&index_stmt);
-		let _ = self.connection.execute(&index_sql, vec![]).await;
+		if let Ok(built) = self.build_statement(SessionStatement::CreateIndex(index_stmt)) {
+			let _ = connection.execute_generated(built, None).await;
+		}
 
 		Ok(())
 	}
@@ -444,9 +465,10 @@ impl SessionBackend for DatabaseSessionBackend {
 			)
 			.to_owned();
 
-		let sql = self.build_sql(stmt);
-		self.connection
-			.execute(&sql, vec![])
+		let built = self.build_statement(SessionStatement::Insert(stmt))?;
+		let mut connection = self.connection;
+		connection
+			.execute_generated(built, None)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to save session: {}", e)))?;
 
@@ -460,9 +482,10 @@ impl SessionBackend for DatabaseSessionBackend {
 			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
 			.to_owned();
 
-		let sql = self.build_sql(stmt);
-		self.connection
-			.execute(&sql, vec![])
+		let built = self.build_statement(SessionStatement::Delete(stmt))?;
+		let mut connection = self.connection;
+		connection
+			.execute_generated(built, None)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to delete session: {}", e)))?;
 
@@ -575,14 +598,14 @@ impl CleanupableBackend for DatabaseSessionBackend {
 			.expr_as(Func::count(Expr::asterisk().into()), Alias::new("count"))
 			.and_where(Expr::col(Alias::new("session_key")).starts_with(prefix))
 			.to_owned();
-		let sql = self.build_sql(stmt);
-		let count: i64 = self
-			.connection
-			.query_one(&sql, vec![])
+		let built = self.build_statement(SessionStatement::Select(stmt))?;
+		let mut connection = self.connection;
+		let count: i64 = connection
+			.fetch_one_generated(built, None)
 			.await
 			.map_err(|e| SessionError::CacheError(format!("Failed to count session keys: {}", e)))?
 			.get("count")
-			.ok_or_else(|| {
+			.map_err(|_| {
 				SessionError::CacheError("Failed to read session key count".to_string())
 			})?;
 
@@ -599,10 +622,13 @@ impl CleanupableBackend for DatabaseSessionBackend {
 			.and_where(Expr::col(Alias::new("session_key")).like(pattern.as_str()))
 			.to_owned();
 
-		let sql = self.build_sql(stmt);
-		let rows_affected = self.connection.execute(&sql, vec![]).await.map_err(|e| {
-			SessionError::CacheError(format!("Failed to delete session keys: {}", e))
-		})?;
+		let built = self.build_statement(SessionStatement::Delete(stmt))?;
+		let mut connection = self.connection;
+		let rows_affected = connection
+			.execute_generated(built, None)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to delete session keys: {}", e)))?
+			.rows_affected;
 
 		Ok(rows_affected as usize)
 	}
@@ -611,6 +637,52 @@ impl CleanupableBackend for DatabaseSessionBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[rstest::rstest]
+	#[case(
+		DatabaseBackend::Postgres,
+		"INSERT INTO \"sessions\" (\"session_key\", \"session_data\", \"expire_date\", \"last_accessed\") VALUES ($1, $2, $3, NULL)"
+	)]
+	#[case(
+		DatabaseBackend::MySql,
+		"INSERT INTO `sessions` (`session_key`, `session_data`, `expire_date`, `last_accessed`) VALUES (?, ?, ?, NULL)"
+	)]
+	#[case(
+		DatabaseBackend::Sqlite,
+		"INSERT INTO \"sessions\" (\"session_key\", \"session_data\", \"expire_date\", \"last_accessed\") VALUES (?, ?, ?, NULL)"
+	)]
+	fn session_insert_keeps_exact_arguments(
+		#[case] backend: DatabaseBackend,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange: quote-bearing keys and JSON remain data, and NULL consumes no slot.
+		let key = "tenant' ? $42";
+		let data = r#"{"payload":"quoted' ? $43"}"#;
+		let statement = Query::insert()
+			.into_table(Alias::new("sessions"))
+			.columns([
+				Alias::new("session_key"),
+				Alias::new("session_data"),
+				Alias::new("expire_date"),
+				Alias::new("last_accessed"),
+			])
+			.values_panic([
+				key.into(),
+				data.into(),
+				123_i64.into(),
+				reinhardt_query::Value::Int(None),
+			])
+			.take();
+		// Act
+		let (sql, values) =
+			build_session_statement(backend, false, SessionStatement::Insert(statement)).unwrap();
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(
+			values,
+			Values(vec![key.into(), data.into(), 123_i64.into()])
+		);
+	}
 
 	fn session(
 		session_key: impl Into<String>,

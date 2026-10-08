@@ -206,21 +206,22 @@ where
 			))
 		})?;
 
-		let query = Query::insert()
-			.into_table(Alias::new(&self.through_table))
-			.columns([
-				Alias::new(&self.source_field),
-				Alias::new(&self.target_field),
-			])
-			.values_panic([
-				Expr::val(primary_key_value::<S>(self.source_id.clone())?),
-				Expr::val(primary_key_value::<T>(target_id)?),
-			])
-			.to_owned();
+		let (sql, values) = {
+			let query = Query::insert()
+				.into_table(Alias::new(&self.through_table))
+				.columns([
+					Alias::new(&self.source_field),
+					Alias::new(&self.target_field),
+				])
+				.values_panic([
+					Expr::val(primary_key_value::<S>(self.source_id.clone())?),
+					Expr::val(primary_key_value::<T>(target_id)?),
+				])
+				.to_owned();
 
-		let (sql, values) = build_insert_sql(&query, conn.backend());
-		conn.execute_generated_with_context(&sql, values, None)
-			.await?;
+			build_insert_sql(&query, conn.backend())
+		};
+		conn.execute_generated((sql, values), None).await?;
 
 		Ok(())
 	}
@@ -260,21 +261,22 @@ where
 			))
 		})?;
 
-		let query = Query::delete()
-			.from_table(Alias::new(&self.through_table))
-			.and_where(Expr::col(Alias::new(&self.source_field)).binary(
-				BinOper::Equal,
-				Expr::val(primary_key_value::<S>(self.source_id.clone())?),
-			))
-			.and_where(Expr::col(Alias::new(&self.target_field)).binary(
-				BinOper::Equal,
-				Expr::val(primary_key_value::<T>(target_id)?),
-			))
-			.to_owned();
+		let (sql, values) = {
+			let query = Query::delete()
+				.from_table(Alias::new(&self.through_table))
+				.and_where(Expr::col(Alias::new(&self.source_field)).binary(
+					BinOper::Equal,
+					Expr::val(primary_key_value::<S>(self.source_id.clone())?),
+				))
+				.and_where(Expr::col(Alias::new(&self.target_field)).binary(
+					BinOper::Equal,
+					Expr::val(primary_key_value::<T>(target_id)?),
+				))
+				.to_owned();
 
-		let (sql, values) = build_delete_sql(&query, conn.backend());
-		conn.execute_generated_with_context(&sql, values, None)
-			.await?;
+			build_delete_sql(&query, conn.backend())
+		};
+		conn.execute_generated((sql, values), None).await?;
 
 		Ok(())
 	}
@@ -294,21 +296,23 @@ where
 				"Target model has no primary key",
 			))
 		})?;
-		let query = Query::select()
-			.from(Alias::new(&self.through_table))
-			.expr(Expr::asterisk())
-			.and_where(Expr::col(Alias::new(&self.source_field)).binary(
-				BinOper::Equal,
-				Expr::val(primary_key_value::<S>(self.source_id.clone())?),
-			))
-			.and_where(Expr::col(Alias::new(&self.target_field)).binary(
-				BinOper::Equal,
-				Expr::val(primary_key_value::<T>(target_id)?),
-			))
-			.to_owned();
-		let (sql, values) = build_select_sql(&query, conn.backend());
+		let (sql, values) = {
+			let query = Query::select()
+				.from(Alias::new(&self.through_table))
+				.expr(Expr::asterisk())
+				.and_where(Expr::col(Alias::new(&self.source_field)).binary(
+					BinOper::Equal,
+					Expr::val(primary_key_value::<S>(self.source_id.clone())?),
+				))
+				.and_where(Expr::col(Alias::new(&self.target_field)).binary(
+					BinOper::Equal,
+					Expr::val(primary_key_value::<T>(target_id)?),
+				))
+				.to_owned();
+			build_select_sql(&query, conn.backend())
+		};
 		Ok(!conn
-			.fetch_all(&sql, super::execution::convert_values(values))
+			.fetch_all_generated((sql, values), None)
 			.await?
 			.is_empty())
 	}
@@ -374,25 +378,25 @@ where
 	where
 		E: OrmExecutor,
 	{
-		let mut query = Query::select();
-		query
-			.from(Alias::new(&self.through_table))
-			.expr_as(
-				Func::count(Expr::asterisk().into_simple_expr()),
-				Alias::new("count"),
-			)
-			.and_where(Expr::col(Alias::new(&self.source_field)).binary(
-				BinOper::Equal,
-				Expr::val(primary_key_value::<S>(self.source_id.clone())?),
-			));
+		let (sql, values) = {
+			let mut query = Query::select();
+			query
+				.from(Alias::new(&self.through_table))
+				.expr_as(
+					Func::count(Expr::asterisk().into_simple_expr()),
+					Alias::new("count"),
+				)
+				.and_where(Expr::col(Alias::new(&self.source_field)).binary(
+					BinOper::Equal,
+					Expr::val(primary_key_value::<S>(self.source_id.clone())?),
+				));
 
-		let query = query.to_owned();
-		let (sql, values) = build_select_sql(&query, conn.backend());
+			let query = query.to_owned();
+			build_select_sql(&query, conn.backend())
+		};
 		let params = value_samples(&values);
 		let started_at = Instant::now();
-		let query_result = conn
-			.fetch_all_generated_with_context(&sql, values, None)
-			.await;
+		let query_result = conn.fetch_all_generated((sql.clone(), values), None).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -436,66 +440,66 @@ where
 	where
 		E: OrmExecutor,
 	{
-		let mut query = Query::select();
-		query.from(Alias::new(T::table_name()));
+		let (sql, values) = {
+			let mut query = Query::select();
+			query.from(Alias::new(T::table_name()));
 
-		// Use explicit column selection instead of SELECT * to avoid conflicts
-		// with intermediate table columns in JOIN queries.
-		// When JOIN is used with SELECT *, all columns from both tables are returned,
-		// which can cause type conflicts (e.g., intermediate table's INTEGER id vs
-		// target table's UUID id).
-		let field_metadata = T::field_metadata();
-		if field_metadata.is_empty() {
-			// Fallback: if no field metadata is available, select all from target table only
-			query.column(ColumnRef::table_asterisk(Alias::new(T::table_name())));
-		} else {
-			// Explicitly select only target table columns
-			for field in field_metadata {
-				query.column((
-					Alias::new(T::table_name()),
-					Alias::new(field.db_column_name()),
-				));
+			// Use explicit column selection instead of SELECT * to avoid conflicts
+			// with intermediate table columns in JOIN queries.
+			// When JOIN is used with SELECT *, all columns from both tables are returned,
+			// which can cause type conflicts (e.g., intermediate table's INTEGER id vs
+			// target table's UUID id).
+			let field_metadata = T::field_metadata();
+			if field_metadata.is_empty() {
+				// Fallback: if no field metadata is available, select all from target table only
+				query.column(ColumnRef::table_asterisk(Alias::new(T::table_name())));
+			} else {
+				// Explicitly select only target table columns
+				for field in field_metadata {
+					query.column((
+						Alias::new(T::table_name()),
+						Alias::new(field.db_column_name()),
+					));
+				}
 			}
-		}
 
-		query
-			.inner_join(
-				Alias::new(&self.through_table),
-				Expr::col((
-					Alias::new(T::table_name()),
-					Alias::new(T::primary_key_column()),
-				))
-				.equals((
+			query
+				.inner_join(
 					Alias::new(&self.through_table),
-					Alias::new(&self.target_field),
-				)),
-			)
-			.and_where(
-				Expr::col((
-					Alias::new(&self.through_table),
-					Alias::new(&self.source_field),
-				))
-				.binary(
-					BinOper::Equal,
-					Expr::val(primary_key_value::<S>(self.source_id.clone())?),
-				),
-			);
+					Expr::col((
+						Alias::new(T::table_name()),
+						Alias::new(T::primary_key_column()),
+					))
+					.equals((
+						Alias::new(&self.through_table),
+						Alias::new(&self.target_field),
+					)),
+				)
+				.and_where(
+					Expr::col((
+						Alias::new(&self.through_table),
+						Alias::new(&self.source_field),
+					))
+					.binary(
+						BinOper::Equal,
+						Expr::val(primary_key_value::<S>(self.source_id.clone())?),
+					),
+				);
 
-		// Apply LIMIT/OFFSET
-		if let Some(limit) = self.limit {
-			query.limit(limit as u64);
-		}
-		if let Some(offset) = self.offset {
-			query.offset(offset as u64);
-		}
+			// Apply LIMIT/OFFSET
+			if let Some(limit) = self.limit {
+				query.limit(limit as u64);
+			}
+			if let Some(offset) = self.offset {
+				query.offset(offset as u64);
+			}
 
-		let query = query.to_owned();
-		let (sql, values) = build_select_sql(&query, conn.backend());
+			let query = query.to_owned();
+			build_select_sql(&query, conn.backend())
+		};
 		let params = value_samples(&values);
 		let started_at = Instant::now();
-		let query_result = conn
-			.fetch_all_generated_with_context(&sql, values, None)
-			.await;
+		let query_result = conn.fetch_all_generated((sql.clone(), values), None).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -544,17 +548,18 @@ where
 	where
 		E: OrmExecutor,
 	{
-		let query = Query::delete()
-			.from_table(Alias::new(&self.through_table))
-			.and_where(Expr::col(Alias::new(&self.source_field)).binary(
-				BinOper::Equal,
-				Expr::val(primary_key_value::<S>(self.source_id.clone())?),
-			))
-			.to_owned();
+		let (sql, values) = {
+			let query = Query::delete()
+				.from_table(Alias::new(&self.through_table))
+				.and_where(Expr::col(Alias::new(&self.source_field)).binary(
+					BinOper::Equal,
+					Expr::val(primary_key_value::<S>(self.source_id.clone())?),
+				))
+				.to_owned();
 
-		let (sql, values) = build_delete_sql(&query, conn.backend());
-		conn.execute_generated_with_context(&sql, values, None)
-			.await?;
+			build_delete_sql(&query, conn.backend())
+		};
+		conn.execute_generated((sql, values), None).await?;
 
 		Ok(())
 	}
@@ -684,46 +689,46 @@ where
 			.unwrap_or(default_target_field);
 
 		// Build JOIN query using reinhardt-query
-		let mut query = Query::select();
-		query.from(Alias::new(S::table_name()));
+		let (sql, values) = {
+			let mut query = Query::select();
+			query.from(Alias::new(S::table_name()));
 
-		// Use explicit column selection instead of SELECT * to avoid conflicts
-		// with intermediate table columns in JOIN queries.
-		let field_metadata = S::field_metadata();
-		if field_metadata.is_empty() {
-			query.column(ColumnRef::table_asterisk(Alias::new(S::table_name())));
-		} else {
-			for field in field_metadata {
-				query.column((
-					Alias::new(S::table_name()),
-					Alias::new(field.db_column_name()),
-				));
+			// Use explicit column selection instead of SELECT * to avoid conflicts
+			// with intermediate table columns in JOIN queries.
+			let field_metadata = S::field_metadata();
+			if field_metadata.is_empty() {
+				query.column(ColumnRef::table_asterisk(Alias::new(S::table_name())));
+			} else {
+				for field in field_metadata {
+					query.column((
+						Alias::new(S::table_name()),
+						Alias::new(field.db_column_name()),
+					));
+				}
 			}
-		}
 
-		let query = query
-			.inner_join(
-				Alias::new(&through_table),
-				Expr::col((
-					Alias::new(S::table_name()),
-					Alias::new(S::primary_key_column()),
-				))
-				.equals((Alias::new(&through_table), Alias::new(&source_field))),
-			)
-			.and_where(
-				Expr::col((Alias::new(&through_table), Alias::new(&target_field))).binary(
-					BinOper::Equal,
-					Expr::val(primary_key_value::<T>(target_id)?),
-				),
-			)
-			.to_owned();
+			let query = query
+				.inner_join(
+					Alias::new(&through_table),
+					Expr::col((
+						Alias::new(S::table_name()),
+						Alias::new(S::primary_key_column()),
+					))
+					.equals((Alias::new(&through_table), Alias::new(&source_field))),
+				)
+				.and_where(
+					Expr::col((Alias::new(&through_table), Alias::new(&target_field))).binary(
+						BinOper::Equal,
+						Expr::val(primary_key_value::<T>(target_id)?),
+					),
+				)
+				.to_owned();
 
-		let (sql, values) = build_select_sql(&query, conn.backend());
+			build_select_sql(&query, conn.backend())
+		};
 		let params = value_samples(&values);
 		let started_at = Instant::now();
-		let query_result = conn
-			.fetch_all_generated_with_context(&sql, values, None)
-			.await;
+		let query_result = conn.fetch_all_generated((sql.clone(), values), None).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {

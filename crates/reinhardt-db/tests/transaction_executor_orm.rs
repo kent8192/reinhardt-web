@@ -1475,6 +1475,60 @@ async fn mysql_create_uses_exact_insert_result_and_physical_primary_key_reload()
 	assert_eq!(executor.calls[1].params, vec![QueryValue::Int(42)]);
 }
 
+#[rstest]
+#[tokio::test]
+async fn mysql_transaction_create_preserves_reset_insert_read_reload_order() {
+	// Arrange
+	let id_row = |id| Row {
+		data: HashMap::from([("generated_id".into(), QueryValue::Int(id))]),
+	};
+	let mut executor =
+		RecordingTransactionExecutor::new(reinhardt_db::backends::DatabaseType::Mysql)
+			.with_fetch_one(id_row(0))
+			.with_fetch_one(id_row(43))
+			.with_fetch_one(article_row(43, "bound' ? $99"));
+	// Act
+	let created = Manager::<Article>::new()
+		.insert_with_executor(
+			&mut executor,
+			&Article {
+				id: None,
+				title: "bound' ? $99".into(),
+			},
+		)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(created.id, Some(43));
+	assert_eq!(created.title, "bound' ? $99");
+	assert_eq!(executor.calls.len(), 4);
+	assert_eq!(
+		executor.calls[0],
+		RecordedCall {
+			kind: "fetch_one",
+			sql: "SELECT CAST(LAST_INSERT_ID(?) AS SIGNED) AS `generated_id`".into(),
+			params: vec![QueryValue::Int(0)],
+		}
+	);
+	assert_eq!(executor.calls[1].kind, "execute");
+	assert!(executor.calls[1].sql.starts_with("INSERT"));
+	assert_eq!(
+		executor.calls[1].params,
+		vec![QueryValue::String("bound' ? $99".into())]
+	);
+	assert_eq!(
+		executor.calls[2],
+		RecordedCall {
+			kind: "fetch_one",
+			sql: "SELECT CAST(LAST_INSERT_ID() AS SIGNED) AS `generated_id`".into(),
+			params: vec![],
+		}
+	);
+	assert_eq!(executor.calls[3].kind, "fetch_one");
+	assert!(executor.calls[3].sql.contains("article_id"));
+	assert_eq!(executor.calls[3].params, vec![QueryValue::Int(43)]);
+}
+
 #[tokio::test]
 async fn postgres_and_sqlite_create_render_the_supplied_executor_dialect() {
 	for (backend, placeholder) in [
@@ -1600,8 +1654,16 @@ async fn custom_manager_bulk_terminals_preserve_executor_borrows_and_hooks() {
 	assert_eq!(updated, 1);
 	assert_eq!(manager.bulk_update_calls.load(Ordering::SeqCst), 1);
 	assert_eq!(bulk_update_executor.calls.len(), 1);
+	assert_eq!(
+		bulk_update_executor.calls[0].params,
+		vec![
+			QueryValue::Int(31),
+			QueryValue::String("hooked-bulk-updated".into()),
+			QueryValue::Int(31)
+		]
+	);
 	assert!(
-		bulk_update_executor.calls[0]
+		!bulk_update_executor.calls[0]
 			.sql
 			.contains("hooked-bulk-updated")
 	);

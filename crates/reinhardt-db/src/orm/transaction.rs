@@ -957,6 +957,96 @@ impl Drop for AtomicTransaction {
 
 #[async_trait::async_trait]
 impl OrmExecutor for AtomicTransaction {
+	async fn execute_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<QueryResult> {
+		let (sql, values) = built;
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		let built = (sql, values);
+		self.executor_mut()?.execute_generated(built, context).await
+	}
+
+	async fn fetch_one_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Row> {
+		let (sql, values) = built;
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		let built = (sql, values);
+		self.executor_mut()?
+			.fetch_one_generated(built, context)
+			.await
+	}
+
+	async fn fetch_all_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Vec<Row>> {
+		let (sql, values) = built;
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		let built = (sql, values);
+		self.executor_mut()?
+			.fetch_all_generated(built, context)
+			.await
+	}
+
+	async fn fetch_optional_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Option<Row>> {
+		let (sql, values) = built;
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		let built = (sql, values);
+		self.executor_mut()?
+			.fetch_optional_generated(built, context)
+			.await
+	}
+
+	async fn execute_generated_in_savepoint(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<QueryResult> {
+		self.atomic(async move |savepoint| {
+			OrmExecutor::execute_generated(savepoint, built, context).await
+		})
+		.await
+	}
+
+	async fn fetch_all_generated_in_savepoint(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Vec<Row>> {
+		self.atomic(async move |savepoint| {
+			OrmExecutor::fetch_all_generated(savepoint, built, context).await
+		})
+		.await
+	}
+
+	fn fetch_stream_generated<'a>(
+		&'a mut self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<RowStream<'a>> {
+		let (sql, values) = built;
+		let values =
+			super::execution::prepare_generated_values(values, OrmExecutor::backend(self))?;
+		let built = (sql, values);
+		self.executor_mut()?
+			.fetch_stream_generated(built, chunk_size, context)
+	}
+
 	async fn fetch_optional_generated_with_context(
 		&mut self,
 		sql: &str,
@@ -1160,6 +1250,54 @@ impl OrmExecutor for AtomicTransaction {
 // to the closure-scoped `AtomicTransaction` API.
 #[async_trait::async_trait]
 impl TransactionExecutor for AtomicTransaction {
+	async fn execute_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<QueryResult> {
+		self.executor_mut()?.execute_generated(built, context).await
+	}
+
+	async fn fetch_one_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Row> {
+		self.executor_mut()?
+			.fetch_one_generated(built, context)
+			.await
+	}
+
+	async fn fetch_all_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Vec<Row>> {
+		self.executor_mut()?
+			.fetch_all_generated(built, context)
+			.await
+	}
+
+	async fn fetch_optional_generated(
+		&mut self,
+		built: (String, reinhardt_query::Values),
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<Option<Row>> {
+		self.executor_mut()?
+			.fetch_optional_generated(built, context)
+			.await
+	}
+
+	fn fetch_stream_generated<'a>(
+		&'a mut self,
+		built: (String, reinhardt_query::Values),
+		chunk_size: usize,
+		context: Option<crate::backends::error::PgvectorOperationKind>,
+	) -> reinhardt_core::exception::Result<RowStream<'a>> {
+		self.executor_mut()?
+			.fetch_stream_generated(built, chunk_size, context)
+	}
+
 	fn backend(&self) -> DatabaseType {
 		self.executor_ref().map_or_else(
 			|| match self.backend {

@@ -196,15 +196,25 @@ impl DatabaseBackend {
 	///
 	/// Uses reinhardt-query to generate database-specific SQL syntax for queries.
 	#[cfg(feature = "dynamic-database")]
-	fn build_sql<T>(&self, statement: T) -> String
+	fn build_sql<T>(
+		&self,
+		statement: T,
+	) -> Result<(String, sqlx::any::AnyArguments<'static>), String>
 	where
 		T: QueryStatementBuilder,
 	{
-		match self.detect_backend() {
-			"postgres" => statement.to_string(PostgresQueryBuilder),
-			"mysql" => statement.to_string(MySqlQueryBuilder),
-			_ => statement.to_string(SqliteQueryBuilder),
-		}
+		use reinhardt_query_sqlx::{AnyBackend, prepare_any};
+		let (built, backend) = match self.detect_backend() {
+			"postgres" => (
+				statement.build_any(&PostgresQueryBuilder),
+				AnyBackend::Postgres,
+			),
+			"mysql" => (statement.build_any(&MySqlQueryBuilder), AnyBackend::MySql),
+			_ => (statement.build_any(&SqliteQueryBuilder), AnyBackend::Sqlite),
+		};
+		prepare_any(built, backend)
+			.map(|prepared| prepared.into_parts())
+			.map_err(|error| format!("Failed to build database query: {error}"))
 	}
 
 	/// Build table SQL string for the current database backend
@@ -335,9 +345,9 @@ impl DatabaseBackend {
 			.and_where(Expr::col(Alias::new("key")).eq(key))
 			.to_owned();
 
-		let sql = self.build_sql(stmt);
+		let (sql, arguments) = self.build_sql(stmt)?;
 
-		let row = sqlx::query(&sql)
+		let row = sqlx::query_with(&sql, arguments)
 			.fetch_optional(self.pool.as_ref())
 			.await
 			.map_err(|e| format!("Failed to get setting: {}", e))?;
@@ -433,9 +443,9 @@ impl DatabaseBackend {
 
 		use reinhardt_query::prelude::{Alias, IntoValue, Query};
 
-		// Build INSERT query in a block scope so the non-Send SeaQuery
-		// statement is dropped before the await point.
-		let sql = {
+		// Build INSERT query in a block scope so the non-Send query
+		// AST is dropped before the await point.
+		let (sql, arguments) = {
 			let mut stmt = Query::insert()
 				.into_table(Alias::new("settings"))
 				.columns([
@@ -460,10 +470,10 @@ impl DatabaseBackend {
 				]);
 			}
 
-			self.build_sql(stmt)
+			self.build_sql(stmt)?
 		};
 
-		sqlx::query(&sql)
+		sqlx::query_with(&sql, arguments)
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(|e| format!("Failed to set setting: {}", e))?;
@@ -500,9 +510,9 @@ impl DatabaseBackend {
 			.and_where(Expr::col(Alias::new("key")).eq(key))
 			.to_owned();
 
-		let sql = self.build_sql(stmt);
+		let (sql, arguments) = self.build_sql(stmt)?;
 
-		sqlx::query(&sql)
+		sqlx::query_with(&sql, arguments)
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(|e| format!("Failed to delete setting: {}", e))?;
@@ -549,9 +559,9 @@ impl DatabaseBackend {
 			)
 			.to_owned();
 
-		let sql = self.build_sql(stmt);
+		let (sql, arguments) = self.build_sql(stmt)?;
 
-		let row = sqlx::query(&sql)
+		let row = sqlx::query_with(&sql, arguments)
 			.fetch_optional(self.pool.as_ref())
 			.await
 			.map_err(|e| format!("Failed to check setting existence: {}", e))?;
@@ -593,9 +603,9 @@ impl DatabaseBackend {
 			.and_where(Expr::col(Alias::new("expire_date")).lt(Expr::value(&now)))
 			.to_owned();
 
-		let sql = self.build_sql(stmt);
+		let (sql, arguments) = self.build_sql(stmt)?;
 
-		let rows_affected = sqlx::query(&sql)
+		let rows_affected = sqlx::query_with(&sql, arguments)
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(|e| format!("Failed to cleanup settings: {}", e))?
@@ -644,9 +654,9 @@ impl DatabaseBackend {
 			)
 			.to_owned();
 
-		let sql = self.build_sql(stmt);
+		let (sql, arguments) = self.build_sql(stmt)?;
 
-		let rows = sqlx::query(&sql)
+		let rows = sqlx::query_with(&sql, arguments)
 			.fetch_all(self.pool.as_ref())
 			.await
 			.map_err(|e| format!("Failed to fetch keys: {}", e))?;
@@ -724,8 +734,38 @@ mod tests_no_feature {
 #[cfg(all(test, feature = "dynamic-database"))]
 mod tests {
 	use super::*;
+	use reinhardt_query::ExprTrait;
+	use rstest::rstest;
 	use serde_json::json;
 	use std::sync::Once;
+
+	#[rstest]
+	#[case(None)]
+	#[case(Some(3600))]
+	#[tokio::test]
+	async fn quoted_keys_and_payloads_remain_bound(#[case] ttl: Option<u64>) {
+		// Arrange
+		let backend = create_test_backend().await;
+		let key = "key' ? $1; DELETE FROM settings";
+		let value = serde_json::json!({"payload": "value' ? $2"});
+		// Act
+		backend.set(key, &value, ttl).await.unwrap();
+		let actual = backend.get(key).await.unwrap();
+		// Assert
+		assert_eq!(actual, Some(value));
+		assert_eq!(backend.keys().await.unwrap(), vec![key.to_owned()]);
+		let statement = reinhardt_query::Query::select()
+			.column(reinhardt_query::Alias::new("value"))
+			.from(reinhardt_query::Alias::new("settings"))
+			.and_where(reinhardt_query::Expr::col(reinhardt_query::Alias::new("key")).eq(key))
+			.to_owned();
+		let (sql, arguments) = backend.build_sql(statement).unwrap();
+		assert_eq!(sql, "SELECT \"value\" FROM \"settings\" WHERE \"key\" = ?");
+		use sqlx::Arguments;
+		assert_eq!(arguments.len(), 1);
+		backend.delete(key).await.unwrap();
+		assert_eq!(backend.get(key).await.unwrap(), None);
+	}
 
 	static INIT_DRIVERS: Once = Once::new();
 

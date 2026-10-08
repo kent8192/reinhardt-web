@@ -181,6 +181,12 @@ pub enum SimpleExpr {
 	/// `CAST(x AS "text")`. See [`ExprTrait::cast_as`](super::ExprTrait::cast_as).
 	Cast(Box<SimpleExpr>, DynIden),
 
+	/// PostgreSQL's numeric epoch extraction (P2 native/WASM parity).
+	///
+	/// Checked builders reject other backends instead of substituting a
+	/// floating-point function or changing timestamp semantics.
+	PgExtractEpoch(Box<SimpleExpr>),
+
 	/// A typed backend-specific temporal truncation expression.
 	TemporalTrunc {
 		/// Source date or datetime expression.
@@ -224,6 +230,26 @@ pub enum SimpleExpr {
 		/// The window name
 		name: DynIden,
 	},
+
+	/// MySQL's connection-scoped last insert ID, projected as a signed integer.
+	///
+	/// `None` reads the ID. `Some(expr)` also assigns the connection's ID. The
+	/// signed cast matches an `i64` decoder; callers must reject nonpositive
+	/// generated IDs when they require a positive auto-increment key. Checked
+	/// builders reject other backends. This expression may mutate connection
+	/// state, so MySQL's safe EXPLAIN path rejects it.
+	MySqlLastInsertId(Option<Box<SimpleExpr>>),
+
+	/// Cast to the backend's text type: TEXT on PostgreSQL/SQLite, CHAR on MySQL.
+	TextCast(Box<SimpleExpr>),
+
+	/// Cast to a signed integer: BIGINT, SIGNED, or INTEGER for the selected backend.
+	SignedIntegerCast(Box<SimpleExpr>),
+
+	/// An explicitly parenthesized expression (P2 native/WASM behavioral parity).
+	///
+	/// Retains grouping through every backend renderer without custom SQL text.
+	Grouped(Box<SimpleExpr>),
 }
 
 /// SQL keywords that can appear as constants.

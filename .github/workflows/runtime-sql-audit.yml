@@ -1,0 +1,23 @@
+name: Runtime SQL Audit
+
+on:
+  push:
+    branches: [main, 'develop/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: runtime-sql-audit
+      - name: Test syntax and registry validation
+        run: cargo test --locked --manifest-path scripts/audit-runtime-sql/Cargo.toml
+      - name: Audit runtime SQL provenance
+        run: cargo run --locked --manifest-path scripts/audit-runtime-sql/Cargo.toml -- check "$PWD" "$PWD/docs/runtime-sql-inventory.json"

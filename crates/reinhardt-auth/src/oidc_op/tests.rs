@@ -1097,13 +1097,23 @@ async fn postgres_state_is_shared_and_single_use_across_instances() {
 	let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
 	let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 	let mut executor = DatabaseMigrationExecutor::new(connection);
-	executor
+	let applied = executor
 		.apply_migrations(&[
 			crate::oauth2_server::PostgresOAuthStore::migration(),
 			PostgresOidcStore::migration(),
 		])
 		.await
 		.unwrap();
+	assert_eq!(applied.applied.len(), 2);
+	// The published migration identities remain applied after the SQL representation changes.
+	let repeated = executor
+		.apply_migrations(&[
+			crate::oauth2_server::PostgresOAuthStore::migration(),
+			PostgresOidcStore::migration(),
+		])
+		.await
+		.unwrap();
+	assert!(repeated.applied.is_empty());
 	let first = PostgresOidcStore::new(PgPool::connect(&url).await.unwrap());
 	let second = PostgresOidcStore::new(PgPool::connect(&url).await.unwrap());
 

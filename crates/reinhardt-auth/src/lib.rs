@@ -128,6 +128,11 @@ pub mod base_user_manager;
 #[cfg_attr(docsrs, doc(cfg(feature = "basic")))]
 #[cfg(feature = "basic")]
 pub mod basic;
+#[cfg(all(
+	feature = "database",
+	any(feature = "jwt", feature = "token", feature = "oauth")
+))]
+mod database_query;
 /// Group management (create, delete, assign users).
 pub mod group_management;
 /// Login/logout HTTP handlers.

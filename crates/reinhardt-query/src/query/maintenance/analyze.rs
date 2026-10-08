@@ -14,6 +14,12 @@ use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatem
 /// This struct provides a fluent API for constructing ANALYZE queries.
 /// ANALYZE collects statistics about table contents for the query planner.
 ///
+/// PostgreSQL supports table lists, column targets and VERBOSE. MySQL supports
+/// table lists and requires a target. SQLite accepts at most one table, index or
+/// schema target, or no target for the entire database. CockroachDB requires one
+/// table. Checked builders reject unsupported options instead of omitting them.
+/// Construction and rendering have identical native and WASM behavior.
+///
 /// # Examples
 ///
 /// ```rust
@@ -34,6 +40,14 @@ use crate::query::traits::{QueryBuilderTrait, QueryStatementBuilder, QueryStatem
 /// // ANALYZE users (email, name)
 /// let query = Query::analyze()
 ///     .table_columns("users", ["email", "name"]);
+/// ```
+///
+/// ```rust
+/// use reinhardt_query::{MySqlQueryBuilder, Query};
+/// let statement = Query::analyze().table("users").to_owned();
+/// let (sql, values) = MySqlQueryBuilder.build_analyze_checked(&statement).unwrap();
+/// assert_eq!(sql, "ANALYZE TABLE `users`");
+/// assert!(values.0.is_empty());
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct AnalyzeStatement {

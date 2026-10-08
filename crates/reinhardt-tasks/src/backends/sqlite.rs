@@ -5,7 +5,29 @@ use crate::{
 	result::{ResultBackend, TaskResultMetadata},
 };
 use async_trait::async_trait;
+use reinhardt_query::prelude::{
+	ColumnDef, Expr, ExprTrait, IntoValue, Query, QueryStatementBuilder, SqliteQueryBuilder,
+};
 use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
+
+fn prepare(
+	statement: impl QueryStatementBuilder,
+) -> Result<(String, sqlx::sqlite::SqliteArguments<'static>), TaskExecutionError> {
+	reinhardt_query_sqlx::prepare_sqlite(statement.build_any(&SqliteQueryBuilder))
+		.map(|prepared| prepared.into_parts())
+		.map_err(|error| TaskExecutionError::BackendError(error.to_string()))
+}
+fn task_results_schema() -> String {
+	Query::create_table()
+		.table("task_results")
+		.if_not_exists()
+		.col(ColumnDef::new("task_id").text().primary_key(true))
+		.col(ColumnDef::new("status").text().not_null(true))
+		.col(ColumnDef::new("result").text())
+		.col(ColumnDef::new("error").text())
+		.col(ColumnDef::new("created_at").integer().not_null(true))
+		.to_string(SqliteQueryBuilder)
+}
 
 /// SQLite-based task backend
 ///
@@ -58,34 +80,20 @@ impl SqliteBackend {
 
 	/// Create necessary database tables
 	async fn create_tables(&self) -> Result<(), sqlx::Error> {
-		sqlx::query(
-			r#"
-            CREATE TABLE IF NOT EXISTS tasks (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                status TEXT NOT NULL,
-                task_data TEXT,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            )
-        "#,
-		)
-		.execute(&self.pool)
-		.await?;
-
-		sqlx::query(
-			r#"
-            CREATE TABLE IF NOT EXISTS task_results (
-                task_id TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
-                result TEXT,
-                error TEXT,
-                created_at INTEGER NOT NULL
-            )
-        "#,
-		)
-		.execute(&self.pool)
-		.await?;
+		let sql = Query::create_table()
+			.table("tasks")
+			.if_not_exists()
+			.col(ColumnDef::new("id").text().primary_key(true))
+			.col(ColumnDef::new("name").text().not_null(true))
+			.col(ColumnDef::new("status").text().not_null(true))
+			.col(ColumnDef::new("task_data").text())
+			.col(ColumnDef::new("created_at").integer().not_null(true))
+			.col(ColumnDef::new("updated_at").integer().not_null(true))
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&sql).execute(&self.pool).await?;
+		sqlx::query(&task_results_schema())
+			.execute(&self.pool)
+			.await?;
 
 		Ok(())
 	}
@@ -107,25 +115,38 @@ impl crate::backend::TaskBackend for SqliteBackend {
 			.to_json()
 			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
-		sqlx::query(
-			"INSERT INTO tasks (id, name, status, task_data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-		)
-		.bind(&id_str)
-		.bind(&task_name)
-		.bind(status_str)
-		.bind(&task_data_json)
-		.bind(now)
-		.bind(now)
-		.execute(&self.pool)
-		.await
-		.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table("tasks")
+				.columns([
+					"id",
+					"name",
+					"status",
+					"task_data",
+					"created_at",
+					"updated_at",
+				])
+				.values_panic(vec![
+					id_str.into_value(),
+					task_name.into_value(),
+					status_str.into_value(),
+					task_data_json.into_value(),
+					now.into_value(),
+					now.into_value(),
+				])
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&self.pool)
+			.await
+			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
 		Ok(task_id)
 	}
 
 	async fn dequeue(&self) -> Result<Option<TaskId>, TaskExecutionError> {
 		use reinhardt_query::prelude::{
-			Expr, ExprTrait, Order, Query, QueryStatementBuilder, SqliteQueryBuilder, Value,
+			Expr, ExprTrait, Order, Query, QueryStatementBuilder, SqliteQueryBuilder,
 		};
 
 		let now = chrono::Utc::now().timestamp();
@@ -166,21 +187,10 @@ impl crate::backend::TaskBackend for SqliteBackend {
 			.returning(["id"])
 			.build(SqliteQueryBuilder);
 
-		let mut query = sqlx::query_as::<_, (String,)>(&sql);
-		for value in values.0 {
-			query = match value {
-				Value::String(Some(s)) => query.bind(*s),
-				Value::Int(Some(i)) => query.bind(i),
-				Value::BigInt(Some(i)) => query.bind(i),
-				other => {
-					return Err(TaskExecutionError::BackendError(format!(
-						"unsupported bind value in dequeue claim query: {other:?}"
-					)));
-				}
-			};
-		}
-
-		let record: Option<(String,)> = query
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite((sql, values))
+			.map(|prepared| prepared.into_parts())
+			.map_err(|error| TaskExecutionError::BackendError(error.to_string()))?;
+		let record: Option<(String,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
@@ -199,8 +209,14 @@ impl crate::backend::TaskBackend for SqliteBackend {
 	async fn get_status(&self, task_id: TaskId) -> Result<TaskStatus, TaskExecutionError> {
 		let id_str = task_id.to_string();
 
-		let record: Option<(String,)> = sqlx::query_as("SELECT status FROM tasks WHERE id = ?")
-			.bind(&id_str)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column("status")
+				.from("tasks")
+				.and_where(Expr::col("id").eq(id_str))
+				.take(),
+		)?;
+		let record: Option<(String,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
@@ -236,10 +252,15 @@ impl crate::backend::TaskBackend for SqliteBackend {
 		};
 		let now = chrono::Utc::now().timestamp();
 
-		let result = sqlx::query("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?")
-			.bind(status_str)
-			.bind(now)
-			.bind(&id_str)
+		let (sql, arguments) = prepare(
+			Query::update()
+				.table("tasks")
+				.value("status", status_str)
+				.value("updated_at", now)
+				.and_where(Expr::col("id").eq(id_str))
+				.take(),
+		)?;
+		let result = sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
@@ -257,8 +278,14 @@ impl crate::backend::TaskBackend for SqliteBackend {
 	) -> Result<Option<crate::registry::SerializedTask>, TaskExecutionError> {
 		let id_str = task_id.to_string();
 
-		let record: Option<(String,)> = sqlx::query_as("SELECT task_data FROM tasks WHERE id = ?")
-			.bind(&id_str)
+		let (sql, arguments) = prepare(
+			Query::select()
+				.column("task_data")
+				.from("tasks")
+				.and_where(Expr::col("id").eq(id_str))
+				.take(),
+		)?;
+		let record: Option<(String,)> = sqlx::query_as_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await
 			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
@@ -325,19 +352,9 @@ impl SqliteResultBackend {
 	}
 
 	async fn create_tables(&self) -> Result<(), sqlx::Error> {
-		sqlx::query(
-			r#"
-            CREATE TABLE IF NOT EXISTS task_results (
-                task_id TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
-                result TEXT,
-                error TEXT,
-                created_at INTEGER NOT NULL
-            )
-        "#,
-		)
-		.execute(&self.pool)
-		.await?;
+		sqlx::query(&task_results_schema())
+			.execute(&self.pool)
+			.await?;
 
 		Ok(())
 	}
@@ -355,21 +372,30 @@ impl ResultBackend for SqliteResultBackend {
 			TaskStatus::Retry => "retry",
 		};
 
-		sqlx::query(
-			r#"
-            INSERT OR REPLACE INTO task_results
-            (task_id, status, result, error, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        "#,
-		)
-		.bind(&task_id_str)
-		.bind(status_str)
-		.bind(metadata.result())
-		.bind(metadata.error())
-		.bind(metadata.created_at())
-		.execute(&self.pool)
-		.await
-		.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
+		let built = {
+			let statement = Query::insert()
+				.into_table("task_results")
+				.columns(["task_id", "status", "result", "error", "created_at"])
+				.values_panic(vec![
+					task_id_str.into_value(),
+					status_str.into_value(),
+					metadata.result().into_value(),
+					metadata.error().into_value(),
+					metadata.created_at().into_value(),
+				])
+				.sqlite_or_replace()
+				.take();
+			SqliteQueryBuilder
+				.build_insert_checked(&statement)
+				.map_err(|error| TaskExecutionError::BackendError(error.to_string()))?
+		};
+		let (sql, arguments) = reinhardt_query_sqlx::prepare_sqlite(built)
+			.map(|prepared| prepared.into_parts())
+			.map_err(|error| TaskExecutionError::BackendError(error.to_string()))?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&self.pool)
+			.await
+			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
 		Ok(())
 	}
@@ -380,13 +406,18 @@ impl ResultBackend for SqliteResultBackend {
 	) -> Result<Option<TaskResultMetadata>, TaskExecutionError> {
 		let task_id_str = task_id.to_string();
 
-		let record: Option<(String, Option<String>, Option<String>, i64)> = sqlx::query_as(
-			"SELECT status, result, error, created_at FROM task_results WHERE task_id = ?",
-		)
-		.bind(&task_id_str)
-		.fetch_optional(&self.pool)
-		.await
-		.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
+		let (sql, arguments) = prepare(
+			Query::select()
+				.columns(["status", "result", "error", "created_at"])
+				.from("task_results")
+				.and_where(Expr::col("task_id").eq(task_id_str))
+				.take(),
+		)?;
+		let record: Option<(String, Option<String>, Option<String>, i64)> =
+			sqlx::query_as_with(&sql, arguments)
+				.fetch_optional(&self.pool)
+				.await
+				.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
 		match record {
 			Some((status_str, result, error, _created_at)) => {
@@ -413,8 +444,13 @@ impl ResultBackend for SqliteResultBackend {
 	async fn delete_result(&self, task_id: TaskId) -> Result<(), TaskExecutionError> {
 		let task_id_str = task_id.to_string();
 
-		sqlx::query("DELETE FROM task_results WHERE task_id = ?")
-			.bind(&task_id_str)
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table("task_results")
+				.and_where(Expr::col("task_id").eq(task_id_str))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
 			.execute(&self.pool)
 			.await
 			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
@@ -431,6 +467,40 @@ mod tests {
 	use rstest::rstest;
 	use std::collections::HashSet;
 	use std::sync::Arc;
+
+	#[rstest]
+	#[tokio::test]
+	async fn result_replacement_preserves_nulls_and_delete_insert_semantics() {
+		// Arrange
+		let backend = SqliteResultBackend::new("sqlite::memory:").await.unwrap();
+		let task_id = TaskId::new();
+		let mut first =
+			TaskResultMetadata::new(task_id, TaskStatus::Failure, Some("first' ? $1".into()));
+		first.set_error("old error".into());
+		backend.store_result(first).await.unwrap();
+		let (first_rowid,): (i64,) =
+			sqlx::query_as("SELECT rowid FROM task_results WHERE task_id = ?")
+				.bind(task_id.to_string())
+				.fetch_one(&backend.pool)
+				.await
+				.unwrap();
+		let next = TaskResultMetadata::new(task_id, TaskStatus::Success, None);
+		let timestamp = next.created_at();
+		// Act
+		backend.store_result(next).await.unwrap();
+		let row: (i64, String, Option<String>, Option<String>, i64) = sqlx::query_as(
+			"SELECT rowid, status, result, error, created_at FROM task_results WHERE task_id = ?",
+		)
+		.bind(task_id.to_string())
+		.fetch_one(&backend.pool)
+		.await
+		.unwrap();
+		// Assert
+		assert_eq!(
+			row,
+			(first_rowid + 1, "success".into(), None, None, timestamp)
+		);
+	}
 
 	struct TestTask {
 		id: TaskId,

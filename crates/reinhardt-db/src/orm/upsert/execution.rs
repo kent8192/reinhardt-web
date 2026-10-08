@@ -31,7 +31,9 @@ where
 	}
 	let backend = executor.backend();
 	let select = sql::select_by_lookup(&plan, backend, false)?;
-	let rows = executor.fetch_all(&select.sql, select.params).await?;
+	let rows = executor
+		.fetch_all_generated(select.into_parts(), None)
+		.await?;
 	if let Some(model) = decode_lookup_rows(rows)? {
 		return Ok((model, false));
 	}
@@ -46,7 +48,7 @@ where
 	if matches!(backend, DatabaseBackend::Postgres | DatabaseBackend::Sqlite) {
 		let insert_rows = if backend == DatabaseBackend::Postgres {
 			match executor
-				.fetch_all_in_savepoint(&insert.sql, insert.params)
+				.fetch_all_generated_in_savepoint(insert.into_parts(), None)
 				.await
 			{
 				Ok(rows) => rows,
@@ -56,7 +58,9 @@ where
 				Err(error) => return Err(error),
 			}
 		} else {
-			executor.fetch_all(&insert.sql, insert.params).await?
+			executor
+				.fetch_all_generated(insert.into_parts(), None)
+				.await?
 		};
 		return match decode_lookup_rows(insert_rows)? {
 			Some(model) => Ok((model, true)),
@@ -64,7 +68,7 @@ where
 		};
 	}
 
-	match executor.execute(&insert.sql, insert.params).await {
+	match executor.execute_generated(insert.into_parts(), None).await {
 		Ok(result) => {
 			let created = match result.rows_affected {
 				1 => true,
@@ -114,7 +118,9 @@ where
 		));
 	}
 	let select = sql::select_by_generated_mysql_primary_key::<M>(generated_primary_key)?;
-	let rows = executor.fetch_all(&select.sql, select.params).await?;
+	let rows = executor
+		.fetch_all_generated(select.into_parts(), None)
+		.await?;
 	decode_lookup_rows(rows)?.ok_or_else(|| {
 		Error::Conflict(
 			"MySQL INSERT completed without a row matching its generated primary key".to_owned(),
@@ -152,7 +158,9 @@ where
 	E: OrmExecutor + ?Sized,
 {
 	let select = sql::select_by_lookup(plan, executor.backend(), false)?;
-	let rows = executor.fetch_all(&select.sql, select.params).await?;
+	let rows = executor
+		.fetch_all_generated(select.into_parts(), None)
+		.await?;
 	match decode_lookup_rows(rows)? {
 		Some(model) => Ok((model, created)),
 		None => match original_race_error {
@@ -203,14 +211,19 @@ where
 	let insert = sql::insert(&plan, backend)?;
 	if matches!(backend, DatabaseBackend::Postgres | DatabaseBackend::Sqlite) {
 		let insert_rows = if backend == DatabaseBackend::Postgres {
-			fetch_postgres_insert_in_savepoint(transaction, &insert).await
+			fetch_postgres_insert_in_savepoint(transaction, insert).await
 		} else {
-			transaction.fetch_all(&insert.sql, insert.params).await
+			transaction
+				.fetch_all_generated(insert.into_parts(), None)
+				.await
 		};
 		return resolve_returning_insert(manager, &plan, transaction, insert_rows).await;
 	}
 
-	match transaction.execute(&insert.sql, insert.params).await {
+	match transaction
+		.execute_generated(insert.into_parts(), None)
+		.await
+	{
 		Ok(result) => {
 			let created = match result.rows_affected {
 				1 => true,
@@ -290,12 +303,10 @@ where
 
 async fn fetch_postgres_insert_in_savepoint(
 	transaction: &mut AtomicTransaction,
-	insert: &sql::BoundSql,
+	insert: sql::BoundSql,
 ) -> Result<Vec<Row>> {
-	let sql = insert.sql.clone();
-	let params = insert.params.clone();
 	transaction
-		.atomic(async move |savepoint| savepoint.fetch_all(&sql, params).await)
+		.fetch_all_generated_in_savepoint(insert.into_parts(), None)
 		.await
 }
 
@@ -304,7 +315,9 @@ async fn load_locked<M: Model>(
 	transaction: &mut AtomicTransaction,
 ) -> Result<Option<M>> {
 	let select = sql::select_by_lookup(plan, transaction.backend(), true)?;
-	let rows = transaction.fetch_all(&select.sql, select.params).await?;
+	let rows = transaction
+		.fetch_all_generated(select.into_parts(), None)
+		.await?;
 	decode_update_lookup_rows(rows)
 }
 
@@ -355,10 +368,12 @@ where
 	let update = sql::update_values_by_primary_key(&locked, &values, transaction.backend())?;
 	let result = if transaction.backend() == DatabaseBackend::Postgres {
 		transaction
-			.execute_in_savepoint(&update.sql, update.params)
+			.execute_generated_in_savepoint(update.into_parts(), None)
 			.await?
 	} else {
-		transaction.execute(&update.sql, update.params).await?
+		transaction
+			.execute_generated(update.into_parts(), None)
+			.await?
 	};
 	if result.rows_affected != 1
 		&& !(transaction.backend() == DatabaseBackend::MySql && result.rows_affected == 0)
@@ -369,7 +384,9 @@ where
 		)));
 	}
 	let select = sql::select_by_primary_key(&candidate, transaction.backend(), true)?;
-	let rows = transaction.fetch_all(&select.sql, select.params).await?;
+	let rows = transaction
+		.fetch_all_generated(select.into_parts(), None)
+		.await?;
 	let Some(reloaded) = decode_update_lookup_rows(rows)? else {
 		return Err(Error::Conflict(
 			"update_or_create UPDATE completed without exactly one row matching its final primary key"

@@ -174,15 +174,7 @@ impl TestSavepoint {
 // raw string interpolation to prevent SQL injection.
 /// Test database utilities for common operations.
 pub mod utils {
-	use reinhardt_query::{Alias, Expr, Iden, PostgresQueryBuilder, Query, QueryStatementBuilder};
-
-	/// Quote an identifier for PostgreSQL using `reinhardt_query::Iden`.
-	fn quote_ident(name: &str) -> String {
-		let alias = Alias::new(name);
-		let mut buf = String::new();
-		alias.quoted('"', &mut buf);
-		buf
-	}
+	use reinhardt_query::{Alias, Expr, PostgresQueryBuilder, Query, QueryStatementBuilder};
 
 	/// Truncate all tables in the given list.
 	///
@@ -209,7 +201,7 @@ pub mod utils {
 		query.from_table(Alias::new(table));
 
 		if let Some(clause) = where_clause {
-			query.and_where(Expr::cust(clause.to_string()));
+			query.and_where(Expr::cust(clause));
 		}
 
 		query.to_string(PostgresQueryBuilder)
@@ -219,16 +211,22 @@ pub mod utils {
 	///
 	/// Values are inserted as raw SQL expressions (e.g., `'Alice'`, `NOW()`),
 	/// so they are NOT parameterised. Table and column names are properly quoted
-	/// via `reinhardt_query::Iden`.
+	/// by the typed INSERT builder. The caller owns the raw value fragments.
 	pub fn insert_test_data_sql(table: &str, columns: &[&str], values: &[&str]) -> String {
-		let quoted_table = quote_ident(table);
-		let quoted_cols: Vec<String> = columns.iter().map(|c| quote_ident(c)).collect();
-		format!(
-			"INSERT INTO {} ({}) VALUES ({})",
-			quoted_table,
-			quoted_cols.join(", "),
-			values.join(", ")
-		)
+		let mut query = Query::insert();
+		query.into_table(Alias::new(table));
+		// Set the row before columns to preserve rendering of caller-supplied
+		// mismatched arities; the caller still owns execution and database errors.
+		query
+			.values_expr(
+				values
+					.iter()
+					.map(|value| Expr::cust(*value).into())
+					.collect(),
+			)
+			.expect("Rows without an existing column list do not require arity validation");
+		query.columns(columns.iter().map(|column| Alias::new(*column)));
+		query.to_string(PostgresQueryBuilder)
 	}
 }
 
@@ -418,6 +416,26 @@ mod tests {
 	) {
 		let sql = utils::insert_test_data_sql("users", columns, values);
 		assert_eq!(sql, expected);
+	}
+
+	#[rstest::rstest]
+	fn insert_helpers_preserve_caller_expressions_and_identifier_quoting() {
+		// Arrange / Act
+		let sql = utils::insert_test_data_sql(
+			"users\"quoted",
+			&["name\"quoted", "created_at"],
+			&["'Alice''s ? $1'", "DEFAULT"],
+		);
+		let mismatched = utils::insert_test_data_sql("users", &["name", "created_at"], &["NOW()"]);
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\"\"quoted\" (\"name\"\"quoted\", \"created_at\") VALUES ('Alice''s ? $1', DEFAULT)"
+		);
+		assert_eq!(
+			mismatched,
+			"INSERT INTO \"users\" (\"name\", \"created_at\") VALUES (NOW())"
+		);
 	}
 
 	#[test]

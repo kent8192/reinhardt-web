@@ -39,7 +39,7 @@ bcrypt-hasher = ["basic", "dep:bcrypt"]
 social = ["dep:jsonwebtoken", "p256"]
 
 # Database and session storage (ORM model support)
-database = ["ctor", "reinhardt-apps", "reinhardt-query", "sqlx"]
+database = ["ctor", "reinhardt-apps", "reinhardt-query", "sqlx", "reinhardt-db/postgres", "dep:reinhardt-query-sqlx"]
 redis-sessions = ["redis"]
 
 # Rate limiting permission
@@ -116,6 +116,7 @@ totp-lite = "2.0"
 data-encoding = "2.6"
 sqlx = { workspace = true, optional = true, features = ["any", "runtime-tokio", "sqlite"]}
 reinhardt-query = { workspace = true, optional = true, features = ["with-json"] }
+reinhardt-query-sqlx = { workspace = true, optional = true, features = ["with-json"] }
 reinhardt-apps = { workspace = true, optional = true }
 ctor = { workspace = true, optional = true }
 redis = { workspace = true, optional = true }

@@ -112,6 +112,7 @@ pub mod traits;
 pub mod truncate_table;
 pub mod type_def;
 pub mod update;
+mod value_mapper;
 
 // Re-export all public types from submodules
 pub use alter_index::AlterIndexStatement;

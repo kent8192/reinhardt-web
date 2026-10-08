@@ -184,39 +184,38 @@ impl<T: Model> AsyncQuery<T> {
 	/// Execute query and fetch all results
 	///
 	pub async fn all(&self) -> Result<Vec<sqlx::any::AnyRow>> {
-		let (sql, values) = self.build();
-		self.engine.fetch_all_with_values(&sql, &values).await
+		self.engine.fetch_all_with_values(self.build()).await
 	}
 	/// Execute query and fetch first result
 	///
 	pub async fn first(&self) -> Result<Option<sqlx::any::AnyRow>> {
-		let (sql, values) = self.build();
-		self.engine.fetch_optional_with_values(&sql, &values).await
+		self.engine.fetch_optional_with_values(self.build()).await
 	}
 	/// Execute query and fetch one result (error if not exactly one)
 	///
 	pub async fn one(&self) -> Result<sqlx::any::AnyRow> {
-		let (sql, values) = self.build();
-		self.engine.fetch_one_with_values(&sql, &values).await
+		self.engine.fetch_one_with_values(self.build()).await
 	}
 	/// Count the number of rows
 	///
 	pub async fn count(&self) -> Result<i64> {
-		let mut count_query = self.clone();
-		count_query.columns.clear();
-		count_query.limit = None;
-		count_query.offset = None;
+		let built = {
+			let mut count_query = self.clone();
+			count_query.columns.clear();
+			count_query.limit = None;
+			count_query.offset = None;
 
-		let mut stmt = count_query.statement();
-		stmt.clear_selects();
-		stmt.expr(Func::count(Expr::asterisk().into()));
-		let (sql, values) = match count_query.compiler.dialect() {
-			DatabaseDialect::PostgreSQL => stmt.build(PostgresQueryBuilder),
-			DatabaseDialect::MySQL => stmt.build(MySqlQueryBuilder),
-			DatabaseDialect::SQLite => stmt.build(SqliteQueryBuilder),
-			DatabaseDialect::MSSQL => stmt.build(PostgresQueryBuilder),
+			let mut stmt = count_query.statement();
+			stmt.clear_selects();
+			stmt.expr(Func::count(Expr::asterisk().into()));
+			match count_query.compiler.dialect() {
+				DatabaseDialect::PostgreSQL => stmt.build(PostgresQueryBuilder),
+				DatabaseDialect::MySQL => stmt.build(MySqlQueryBuilder),
+				DatabaseDialect::SQLite => stmt.build(SqliteQueryBuilder),
+				DatabaseDialect::MSSQL => stmt.build(PostgresQueryBuilder),
+			}
 		};
-		let row = self.engine.fetch_one_with_values(&sql, &values).await?;
+		let row = self.engine.fetch_one_with_values(built).await?;
 
 		// Extract count value from row
 		use sqlx::Row;

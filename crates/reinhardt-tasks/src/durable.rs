@@ -7,7 +7,11 @@
 use crate::{RetryStrategy, TaskId, TaskPriority};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use reinhardt_query::Query;
+use reinhardt_query::prelude::{
+	Alias, ColumnDef, Cond, Condition, Expr, ExprTrait, Func, IntoValue, Order, Query,
+	QueryStatementBuilder, SqliteQueryBuilder,
+};
+use reinhardt_query::{InsertStatement, SelectStatement, UpdateStatement, Value as QueryValue};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sqlx::{
@@ -1296,28 +1300,36 @@ impl SqliteDurableJobStore {
 
 	async fn in_memory_schema_is_shared(&self) -> Result<bool, DurableQueueError> {
 		let probe_table = format!("__reinhardt_durable_pool_probe_{}", Uuid::new_v4().simple());
-		let create_probe = format!("CREATE TABLE {probe_table} (id INTEGER PRIMARY KEY)");
-		let drop_probe = format!("DROP TABLE IF EXISTS {probe_table}");
+		let create_probe = Query::create_table()
+			.table(Alias::new(&probe_table))
+			.col(ColumnDef::new("id").integer().primary_key(true))
+			.to_string(SqliteQueryBuilder);
+		let drop_probe = Query::drop_table()
+			.table(Alias::new(&probe_table))
+			.if_exists()
+			.to_string(SqliteQueryBuilder);
 		let first = self.pool.acquire().await?;
-		// Arm cleanup before CREATE is polled: the SQLite worker can finish a
-		// statement even if its awaiting future is canceled. A transaction cannot
-		// protect this table because its schema lock would block the second reader.
+		// Arm cleanup before CREATE is polled, including cancellation during execution.
 		let mut probe = SqliteSchemaProbe::new(first, drop_probe);
 		let result = async {
 			sqlx::query(&create_probe)
 				.execute(probe.connection())
 				.await?;
 			let mut second = self.pool.acquire().await?;
-			let visible_from_second: i64 = sqlx::query_scalar(
-				"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
-			)
-			.bind(&probe_table)
-			.fetch_one(&mut *second)
-			.await?;
-			Ok::<_, sqlx::Error>(visible_from_second > 0)
+			let (sql, arguments) = prepare_durable(
+				Query::select()
+					.expr(Func::count(Expr::asterisk().into_simple_expr()))
+					.from("sqlite_master")
+					.and_where(Expr::col("type").eq("table"))
+					.and_where(Expr::col("name").eq(probe_table.as_str()))
+					.take(),
+			)?;
+			let visible_from_second: i64 = sqlx::query_scalar_with::<_, i64, _>(&sql, arguments)
+				.fetch_one(&mut *second)
+				.await?;
+			Ok::<_, DurableQueueError>(visible_from_second > 0)
 		}
 		.await;
-
 		let cleanup = probe.cleanup().await;
 		match result {
 			Ok(shared) => {
@@ -1328,65 +1340,64 @@ impl SqliteDurableJobStore {
 				if let Err(cleanup_error) = cleanup {
 					tracing::warn!(%cleanup_error, "failed to remove SQLite pool schema probe");
 				}
-				Err(error.into())
+				Err(error)
 			}
 		}
 	}
 
 	async fn create_tables(&self) -> Result<(), DurableQueueError> {
-		sqlx::query(
-			r#"
-			CREATE TABLE IF NOT EXISTS durable_jobs (
-				id TEXT PRIMARY KEY,
-				queue TEXT NOT NULL,
-				kind TEXT NOT NULL,
-				target TEXT,
-				state TEXT NOT NULL,
-				attempt_count INTEGER NOT NULL,
-				max_attempts INTEGER NOT NULL,
-				priority INTEGER NOT NULL,
-				payload TEXT NOT NULL,
-				result TEXT,
-				failure_kind TEXT,
-				failure_message TEXT,
-				retry_after INTEGER,
-				cancellation_requested INTEGER NOT NULL,
-				created_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL,
-				started_at INTEGER,
-				lease_expires_at INTEGER,
-				finished_at INTEGER
+		let sql = Query::create_table()
+			.table("durable_jobs")
+			.if_not_exists()
+			.col(ColumnDef::new("id").text().primary_key(true))
+			.col(ColumnDef::new("queue").text().not_null(true))
+			.col(ColumnDef::new("kind").text().not_null(true))
+			.col(ColumnDef::new("target").text())
+			.col(ColumnDef::new("state").text().not_null(true))
+			.col(ColumnDef::new("attempt_count").integer().not_null(true))
+			.col(ColumnDef::new("max_attempts").integer().not_null(true))
+			.col(ColumnDef::new("priority").integer().not_null(true))
+			.col(ColumnDef::new("payload").text().not_null(true))
+			.col(ColumnDef::new("result").text())
+			.col(ColumnDef::new("failure_kind").text())
+			.col(ColumnDef::new("failure_message").text())
+			.col(ColumnDef::new("retry_after").integer())
+			.col(
+				ColumnDef::new("cancellation_requested")
+					.integer()
+					.not_null(true),
 			)
-			"#,
-		)
-		.execute(&self.pool)
-		.await?;
-
-		sqlx::query(
-			r#"
-			CREATE INDEX IF NOT EXISTS durable_jobs_claim_idx
-			ON durable_jobs (queue, state, priority DESC, retry_after, created_at)
-			"#,
-		)
-		.execute(&self.pool)
-		.await?;
-
-		sqlx::query(
-			r#"
-			CREATE TABLE IF NOT EXISTS durable_job_events (
-				job_id TEXT NOT NULL,
-				event_sequence INTEGER NOT NULL,
-				event_kind TEXT NOT NULL,
-				from_state TEXT,
-				to_state TEXT NOT NULL,
-				message TEXT,
-				created_at INTEGER NOT NULL,
-				PRIMARY KEY (job_id, event_sequence)
-			)
-			"#,
-		)
-		.execute(&self.pool)
-		.await?;
+			.col(ColumnDef::new("created_at").integer().not_null(true))
+			.col(ColumnDef::new("updated_at").integer().not_null(true))
+			.col(ColumnDef::new("started_at").integer())
+			.col(ColumnDef::new("lease_expires_at").integer())
+			.col(ColumnDef::new("finished_at").integer())
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&sql).execute(&self.pool).await?;
+		let sql = Query::create_index()
+			.name("durable_jobs_claim_idx")
+			.table("durable_jobs")
+			.if_not_exists()
+			.col("queue")
+			.col("state")
+			.col_order("priority", Order::Desc)
+			.col("retry_after")
+			.col("created_at")
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&sql).execute(&self.pool).await?;
+		let sql = Query::create_table()
+			.table("durable_job_events")
+			.if_not_exists()
+			.col(ColumnDef::new("job_id").text().not_null(true))
+			.col(ColumnDef::new("event_sequence").integer().not_null(true))
+			.col(ColumnDef::new("event_kind").text().not_null(true))
+			.col(ColumnDef::new("from_state").text())
+			.col(ColumnDef::new("to_state").text().not_null(true))
+			.col(ColumnDef::new("message").text())
+			.col(ColumnDef::new("created_at").integer().not_null(true))
+			.primary_key(["job_id", "event_sequence"])
+			.to_string(SqliteQueryBuilder);
+		sqlx::query(&sql).execute(&self.pool).await?;
 
 		Ok(())
 	}
@@ -1395,47 +1406,10 @@ impl SqliteDurableJobStore {
 #[async_trait]
 impl DurableJobStore for SqliteDurableJobStore {
 	async fn insert_job(&self, record: DurableJobRecord) -> Result<(), DurableQueueError> {
-		sqlx::query(
-			r#"
-			INSERT INTO durable_jobs (
-				id, queue, kind, target, state, attempt_count, max_attempts, priority,
-				payload, result, failure_kind, failure_message, retry_after,
-				cancellation_requested, created_at, updated_at, started_at, lease_expires_at,
-				finished_at
-			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			"#,
-		)
-		.bind(record.id.to_string())
-		.bind(record.queue)
-		.bind(record.kind)
-		.bind(record.target)
-		.bind(record.state.as_str())
-		.bind(i64::from(record.attempt_count))
-		.bind(i64::from(record.max_attempts))
-		.bind(i64::from(record.priority))
-		.bind(serde_json::to_string(&record.payload)?)
-		.bind(
-			record
-				.result
-				.map(|result| serde_json::to_string(&result))
-				.transpose()?,
-		)
-		.bind(record.failure_kind)
-		.bind(record.failure_message)
-		.bind(record.retry_after.map(timestamp_millis))
-		.bind(if record.cancellation_requested {
-			1_i64
-		} else {
-			0_i64
-		})
-		.bind(timestamp_millis(record.created_at))
-		.bind(timestamp_millis(record.updated_at))
-		.bind(record.started_at.map(timestamp_millis))
-		.bind(record.lease_expires_at.map(timestamp_millis))
-		.bind(record.finished_at.map(timestamp_millis))
-		.execute(&self.pool)
-		.await?;
+		let (sql, arguments) = prepare_durable(insert_job_statement(&record)?)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&self.pool)
+			.await?;
 		Ok(())
 	}
 
@@ -1446,47 +1420,8 @@ impl DurableJobStore for SqliteDurableJobStore {
 	) -> Result<JobEvent, DurableQueueError> {
 		let mut tx = self.pool.begin().await?;
 
-		sqlx::query(
-			r#"
-			INSERT INTO durable_jobs (
-				id, queue, kind, target, state, attempt_count, max_attempts, priority,
-				payload, result, failure_kind, failure_message, retry_after,
-				cancellation_requested, created_at, updated_at, started_at, lease_expires_at,
-				finished_at
-			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			"#,
-		)
-		.bind(record.id.to_string())
-		.bind(record.queue)
-		.bind(record.kind)
-		.bind(record.target)
-		.bind(record.state.as_str())
-		.bind(i64::from(record.attempt_count))
-		.bind(i64::from(record.max_attempts))
-		.bind(i64::from(record.priority))
-		.bind(serde_json::to_string(&record.payload)?)
-		.bind(
-			record
-				.result
-				.map(|result| serde_json::to_string(&result))
-				.transpose()?,
-		)
-		.bind(record.failure_kind)
-		.bind(record.failure_message)
-		.bind(record.retry_after.map(timestamp_millis))
-		.bind(if record.cancellation_requested {
-			1_i64
-		} else {
-			0_i64
-		})
-		.bind(timestamp_millis(record.created_at))
-		.bind(timestamp_millis(record.updated_at))
-		.bind(record.started_at.map(timestamp_millis))
-		.bind(record.lease_expires_at.map(timestamp_millis))
-		.bind(record.finished_at.map(timestamp_millis))
-		.execute(&mut *tx)
-		.await?;
+		let (sql, arguments) = prepare_durable(insert_job_statement(&record)?)?;
+		sqlx::query_with(&sql, arguments).execute(&mut *tx).await?;
 
 		let event = insert_event_in_tx(&mut tx, event).await?;
 		tx.commit().await?;
@@ -1494,68 +1429,18 @@ impl DurableJobStore for SqliteDurableJobStore {
 	}
 
 	async fn get_job(&self, job_id: JobId) -> Result<Option<DurableJobRecord>, DurableQueueError> {
-		let row = sqlx::query("SELECT * FROM durable_jobs WHERE id = ?")
-			.bind(job_id.to_string())
+		let (sql, arguments) = prepare_durable(job_by_id(&job_id.to_string()))?;
+		let row = sqlx::query_with(&sql, arguments)
 			.fetch_optional(&self.pool)
 			.await?;
 		row.map(row_to_record).transpose()
 	}
 
 	async fn update_job(&self, record: DurableJobRecord) -> Result<(), DurableQueueError> {
-		let result = sqlx::query(
-			r#"
-			UPDATE durable_jobs SET
-				queue = ?,
-				kind = ?,
-				target = ?,
-				state = ?,
-				attempt_count = ?,
-				max_attempts = ?,
-				priority = ?,
-				payload = ?,
-				result = ?,
-				failure_kind = ?,
-				failure_message = ?,
-				retry_after = ?,
-				cancellation_requested = ?,
-				created_at = ?,
-				updated_at = ?,
-				started_at = ?,
-				lease_expires_at = ?,
-				finished_at = ?
-			WHERE id = ?
-			"#,
-		)
-		.bind(record.queue)
-		.bind(record.kind)
-		.bind(record.target)
-		.bind(record.state.as_str())
-		.bind(i64::from(record.attempt_count))
-		.bind(i64::from(record.max_attempts))
-		.bind(i64::from(record.priority))
-		.bind(serde_json::to_string(&record.payload)?)
-		.bind(
-			record
-				.result
-				.map(|result| serde_json::to_string(&result))
-				.transpose()?,
-		)
-		.bind(record.failure_kind)
-		.bind(record.failure_message)
-		.bind(record.retry_after.map(timestamp_millis))
-		.bind(if record.cancellation_requested {
-			1_i64
-		} else {
-			0_i64
-		})
-		.bind(timestamp_millis(record.created_at))
-		.bind(timestamp_millis(record.updated_at))
-		.bind(record.started_at.map(timestamp_millis))
-		.bind(record.lease_expires_at.map(timestamp_millis))
-		.bind(record.finished_at.map(timestamp_millis))
-		.bind(record.id.to_string())
-		.execute(&self.pool)
-		.await?;
+		let (sql, arguments) = prepare_durable(update_job_statement(&record)?)?;
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(&self.pool)
+			.await?;
 
 		if result.rows_affected() == 0 {
 			Err(DurableQueueError::NotFound(record.id))
@@ -1571,67 +1456,15 @@ impl DurableJobStore for SqliteDurableJobStore {
 		expected_attempt_count: u32,
 		expected_cancellation_requested: bool,
 	) -> Result<bool, DurableQueueError> {
-		let result = sqlx::query(
-			r#"
-			UPDATE durable_jobs SET
-				queue = ?,
-				kind = ?,
-				target = ?,
-				state = ?,
-				attempt_count = ?,
-				max_attempts = ?,
-				priority = ?,
-				payload = ?,
-				result = ?,
-				failure_kind = ?,
-				failure_message = ?,
-				retry_after = ?,
-				cancellation_requested = ?,
-				created_at = ?,
-				updated_at = ?,
-				started_at = ?,
-				lease_expires_at = ?,
-				finished_at = ?
-			WHERE id = ? AND state = ? AND attempt_count = ? AND cancellation_requested = ?
-			"#,
-		)
-		.bind(record.queue)
-		.bind(record.kind)
-		.bind(record.target)
-		.bind(record.state.as_str())
-		.bind(i64::from(record.attempt_count))
-		.bind(i64::from(record.max_attempts))
-		.bind(i64::from(record.priority))
-		.bind(serde_json::to_string(&record.payload)?)
-		.bind(
-			record
-				.result
-				.map(|result| serde_json::to_string(&result))
-				.transpose()?,
-		)
-		.bind(record.failure_kind)
-		.bind(record.failure_message)
-		.bind(record.retry_after.map(timestamp_millis))
-		.bind(if record.cancellation_requested {
-			1_i64
-		} else {
-			0_i64
-		})
-		.bind(timestamp_millis(record.created_at))
-		.bind(timestamp_millis(record.updated_at))
-		.bind(record.started_at.map(timestamp_millis))
-		.bind(record.lease_expires_at.map(timestamp_millis))
-		.bind(record.finished_at.map(timestamp_millis))
-		.bind(record.id.to_string())
-		.bind(expected_state.as_str())
-		.bind(i64::from(expected_attempt_count))
-		.bind(if expected_cancellation_requested {
-			1_i64
-		} else {
-			0_i64
-		})
-		.execute(&self.pool)
-		.await?;
+		let (sql, arguments) = prepare_durable(current_job_statement(
+			&record,
+			expected_state,
+			expected_attempt_count,
+			expected_cancellation_requested,
+		)?)?;
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(&self.pool)
+			.await?;
 
 		Ok(result.rows_affected() > 0)
 	}
@@ -1645,67 +1478,13 @@ impl DurableJobStore for SqliteDurableJobStore {
 		event: JobEventDraft,
 	) -> Result<bool, DurableQueueError> {
 		let mut tx = self.pool.begin().await?;
-		let result = sqlx::query(
-			r#"
-			UPDATE durable_jobs SET
-				queue = ?,
-				kind = ?,
-				target = ?,
-				state = ?,
-				attempt_count = ?,
-				max_attempts = ?,
-				priority = ?,
-				payload = ?,
-				result = ?,
-				failure_kind = ?,
-				failure_message = ?,
-				retry_after = ?,
-				cancellation_requested = ?,
-				created_at = ?,
-				updated_at = ?,
-				started_at = ?,
-				lease_expires_at = ?,
-				finished_at = ?
-			WHERE id = ? AND state = ? AND attempt_count = ? AND cancellation_requested = ?
-			"#,
-		)
-		.bind(record.queue)
-		.bind(record.kind)
-		.bind(record.target)
-		.bind(record.state.as_str())
-		.bind(i64::from(record.attempt_count))
-		.bind(i64::from(record.max_attempts))
-		.bind(i64::from(record.priority))
-		.bind(serde_json::to_string(&record.payload)?)
-		.bind(
-			record
-				.result
-				.map(|result| serde_json::to_string(&result))
-				.transpose()?,
-		)
-		.bind(record.failure_kind)
-		.bind(record.failure_message)
-		.bind(record.retry_after.map(timestamp_millis))
-		.bind(if record.cancellation_requested {
-			1_i64
-		} else {
-			0_i64
-		})
-		.bind(timestamp_millis(record.created_at))
-		.bind(timestamp_millis(record.updated_at))
-		.bind(record.started_at.map(timestamp_millis))
-		.bind(record.lease_expires_at.map(timestamp_millis))
-		.bind(record.finished_at.map(timestamp_millis))
-		.bind(record.id.to_string())
-		.bind(expected_state.as_str())
-		.bind(i64::from(expected_attempt_count))
-		.bind(if expected_cancellation_requested {
-			1_i64
-		} else {
-			0_i64
-		})
-		.execute(&mut *tx)
-		.await?;
+		let (sql, arguments) = prepare_durable(current_job_statement(
+			&record,
+			expected_state,
+			expected_attempt_count,
+			expected_cancellation_requested,
+		)?)?;
+		let result = sqlx::query_with(&sql, arguments).execute(&mut *tx).await?;
 
 		let updated = result.rows_affected() > 0;
 		if updated {
@@ -1728,51 +1507,31 @@ impl DurableJobStore for SqliteDurableJobStore {
 		loop {
 			let mut tx = self.pool.begin().await?;
 
-			let expired_cancel_candidate: Option<String> = sqlx::query_scalar(
-				r#"
-			SELECT id
-			FROM durable_jobs
-			WHERE queue = ?
-			  AND state = ?
-			  AND cancellation_requested != 0
-			  AND lease_expires_at IS NOT NULL
-			  AND lease_expires_at <= ?
-			ORDER BY priority DESC, created_at ASC
-			LIMIT 1
-			"#,
-			)
-			.bind(queue)
-			.bind(JobState::Running.as_str())
-			.bind(now_millis)
-			.fetch_optional(&mut *tx)
-			.await?;
+			let (sql, arguments) = prepare_durable(expired_candidate(
+				expired_claim(queue, now_millis).add(Expr::col("cancellation_requested").ne(0_i64)),
+			))?;
+			let expired_cancel_candidate: Option<String> =
+				sqlx::query_scalar_with::<_, String, _>(&sql, arguments)
+					.fetch_optional(&mut *tx)
+					.await?;
 
 			if let Some(expired_job_id) = expired_cancel_candidate {
-				let result = sqlx::query(
-					r#"
-				UPDATE durable_jobs
-				SET state = ?,
-					retry_after = NULL,
-					lease_expires_at = NULL,
-					finished_at = ?,
-					updated_at = ?
-				WHERE id = ?
-				  AND queue = ?
-				  AND state = ?
-				  AND cancellation_requested != 0
-				  AND lease_expires_at IS NOT NULL
-				  AND lease_expires_at <= ?
-				"#,
-				)
-				.bind(JobState::Canceled.as_str())
-				.bind(now_millis)
-				.bind(now_millis)
-				.bind(&expired_job_id)
-				.bind(queue)
-				.bind(JobState::Running.as_str())
-				.bind(now_millis)
-				.execute(&mut *tx)
-				.await?;
+				let (sql, arguments) = prepare_durable(
+					Query::update()
+						.table("durable_jobs")
+						.value("state", JobState::Canceled.as_str())
+						.value("retry_after", Option::<i64>::None)
+						.value("lease_expires_at", Option::<i64>::None)
+						.value("finished_at", now_millis)
+						.value("updated_at", now_millis)
+						.and_where(Expr::col("id").eq(expired_job_id.as_str()))
+						.cond_where(
+							expired_claim(queue, now_millis)
+								.add(Expr::col("cancellation_requested").ne(0_i64)),
+						)
+						.take(),
+				)?;
+				let result = sqlx::query_with(&sql, arguments).execute(&mut *tx).await?;
 
 				if result.rows_affected() > 0 {
 					let job_id = expired_job_id.parse().map_err(|error: uuid::Error| {
@@ -1795,66 +1554,37 @@ impl DurableJobStore for SqliteDurableJobStore {
 				}
 			}
 
-			let expired_final_candidate: Option<String> = sqlx::query_scalar(
-				r#"
-			SELECT id
-			FROM durable_jobs
-			WHERE queue = ?
-			  AND state = ?
-			  AND lease_expires_at IS NOT NULL
-			  AND lease_expires_at <= ?
-			  AND cancellation_requested = 0
-			  AND (
-				attempt_count >= max_attempts
-				OR (attempt_count - 1) >= ?
-			  )
-			ORDER BY priority DESC, created_at ASC
-			LIMIT 1
-			"#,
-			)
-			.bind(queue)
-			.bind(JobState::Running.as_str())
-			.bind(now_millis)
-			.bind(i64::from(retry_max_retries))
-			.fetch_optional(&mut *tx)
-			.await?;
+			let (sql, arguments) = prepare_durable(expired_candidate(
+				expired_claim(queue, now_millis)
+					.add(Expr::col("cancellation_requested").eq(0_i64))
+					.add(exhausted_attempts(retry_max_retries)),
+			))?;
+			let expired_final_candidate: Option<String> =
+				sqlx::query_scalar_with::<_, String, _>(&sql, arguments)
+					.fetch_optional(&mut *tx)
+					.await?;
 
 			if let Some(expired_job_id) = expired_final_candidate {
 				let final_message = "job claim lease expired after maximum attempts";
-				let result = sqlx::query(
-					r#"
-				UPDATE durable_jobs
-				SET state = ?,
-					failure_kind = ?,
-					failure_message = ?,
-					retry_after = NULL,
-					lease_expires_at = NULL,
-					finished_at = ?,
-					updated_at = ?
-				WHERE id = ?
-				  AND queue = ?
-				  AND state = ?
-				  AND cancellation_requested = 0
-				  AND lease_expires_at IS NOT NULL
-				  AND lease_expires_at <= ?
-				  AND (
-					attempt_count >= max_attempts
-					OR (attempt_count - 1) >= ?
-				  )
-				"#,
-				)
-				.bind(JobState::FailedFinal.as_str())
-				.bind("claim_lease_expired")
-				.bind(final_message)
-				.bind(now_millis)
-				.bind(now_millis)
-				.bind(&expired_job_id)
-				.bind(queue)
-				.bind(JobState::Running.as_str())
-				.bind(now_millis)
-				.bind(i64::from(retry_max_retries))
-				.execute(&mut *tx)
-				.await?;
+				let (sql, arguments) = prepare_durable(
+					Query::update()
+						.table("durable_jobs")
+						.value("state", JobState::FailedFinal.as_str())
+						.value("failure_kind", "claim_lease_expired")
+						.value("failure_message", final_message)
+						.value("retry_after", Option::<i64>::None)
+						.value("lease_expires_at", Option::<i64>::None)
+						.value("finished_at", now_millis)
+						.value("updated_at", now_millis)
+						.and_where(Expr::col("id").eq(expired_job_id.as_str()))
+						.cond_where(
+							expired_claim(queue, now_millis)
+								.add(Expr::col("cancellation_requested").eq(0_i64))
+								.add(exhausted_attempts(retry_max_retries)),
+						)
+						.take(),
+				)?;
+				let result = sqlx::query_with(&sql, arguments).execute(&mut *tx).await?;
 
 				if result.rows_affected() > 0 {
 					let job_id = expired_job_id.parse().map_err(|error: uuid::Error| {
@@ -1875,37 +1605,51 @@ impl DurableJobStore for SqliteDurableJobStore {
 				}
 			}
 
-			let candidate: Option<(String, String, i64, Option<i64>)> = sqlx::query_as(
-				r#"
-			SELECT id, state, attempt_count, lease_expires_at
-			FROM durable_jobs
-			WHERE queue = ?
-			  AND cancellation_requested = 0
-			  AND (
-				(state = ? AND (retry_after IS NULL OR retry_after <= ?))
-				OR (state = ? AND retry_after IS NOT NULL AND retry_after <= ?)
-				OR (
-					state = ?
-					AND lease_expires_at IS NOT NULL
-					AND lease_expires_at <= ?
-					AND attempt_count < max_attempts
-					AND (attempt_count - 1) < ?
-				)
-			  )
-			ORDER BY priority DESC, created_at ASC
-			LIMIT 1
-			"#,
-			)
-			.bind(queue)
-			.bind(JobState::Queued.as_str())
-			.bind(now_millis)
-			.bind(JobState::FailedRetryable.as_str())
-			.bind(now_millis)
-			.bind(JobState::Running.as_str())
-			.bind(now_millis)
-			.bind(i64::from(retry_max_retries))
-			.fetch_optional(&mut *tx)
-			.await?;
+			let (sql, arguments) = prepare_durable(
+				Query::select()
+					.columns(["id", "state", "attempt_count", "lease_expires_at"])
+					.from("durable_jobs")
+					.and_where(Expr::col("queue").eq(queue))
+					.and_where(Expr::col("cancellation_requested").eq(0_i64))
+					.cond_where(
+						Cond::any()
+							.add(
+								Cond::all()
+									.add(Expr::col("state").eq(JobState::Queued.as_str()))
+									.add(
+										Cond::any()
+											.add(Expr::col("retry_after").is_null())
+											.add(Expr::col("retry_after").lte(now_millis)),
+									),
+							)
+							.add(
+								Cond::all()
+									.add(Expr::col("state").eq(JobState::FailedRetryable.as_str()))
+									.add(Expr::col("retry_after").is_not_null())
+									.add(Expr::col("retry_after").lte(now_millis)),
+							)
+							.add(
+								Cond::all()
+									.add(Expr::col("state").eq(JobState::Running.as_str()))
+									.add(Expr::col("lease_expires_at").is_not_null())
+									.add(Expr::col("lease_expires_at").lte(now_millis))
+									.add(Expr::col("attempt_count").lt(Expr::col("max_attempts")))
+									.add(
+										Expr::col("attempt_count")
+											.sub(1_i64)
+											.lt(i64::from(retry_max_retries)),
+									),
+							),
+					)
+					.order_by("priority", Order::Desc)
+					.order_by("created_at", Order::Asc)
+					.limit(1)
+					.take(),
+			)?;
+			let candidate: Option<(String, String, i64, Option<i64>)> =
+				sqlx::query_as_with::<_, (String, String, i64, Option<i64>), _>(&sql, arguments)
+					.fetch_optional(&mut *tx)
+					.await?;
 
 			let Some((job_id, previous_state, expected_attempt_count, expected_lease_expires_at)) =
 				candidate
@@ -1915,48 +1659,42 @@ impl DurableJobStore for SqliteDurableJobStore {
 			};
 			let previous_state = JobState::from_str(&previous_state)?;
 
-			let result = sqlx::query(
-				r#"
-			UPDATE durable_jobs
-			SET state = ?,
-				attempt_count = attempt_count + 1,
-				retry_after = NULL,
-				lease_expires_at = ?,
-				started_at = ?,
-				updated_at = ?
-			WHERE id = ?
-			  AND state = ?
-			  AND attempt_count = ?
-			  AND (
-				(state != ?)
-				OR (
-					lease_expires_at IS NOT NULL
-					AND lease_expires_at = ?
-					AND lease_expires_at <= ?
-				)
-			  )
-			"#,
-			)
-			.bind(JobState::Running.as_str())
-			.bind(lease_expires_millis)
-			.bind(now_millis)
-			.bind(now_millis)
-			.bind(&job_id)
-			.bind(previous_state.as_str())
-			.bind(expected_attempt_count)
-			.bind(JobState::Running.as_str())
-			.bind(expected_lease_expires_at)
-			.bind(now_millis)
-			.execute(&mut *tx)
-			.await?;
+			let (sql, arguments) = prepare_durable(
+				Query::update()
+					.table("durable_jobs")
+					.value("state", JobState::Running.as_str())
+					.value_expr("attempt_count", Expr::col("attempt_count").add(1_i64))
+					.value("retry_after", Option::<i64>::None)
+					.value("lease_expires_at", lease_expires_millis)
+					.value("started_at", now_millis)
+					.value("updated_at", now_millis)
+					.and_where(Expr::col("id").eq(job_id.as_str()))
+					.and_where(Expr::col("state").eq(previous_state.as_str()))
+					.and_where(Expr::col("attempt_count").eq(expected_attempt_count))
+					.cond_where(
+						Cond::any()
+							.add(Expr::col("state").ne(JobState::Running.as_str()))
+							.add(
+								Cond::all()
+									.add(Expr::col("lease_expires_at").is_not_null())
+									.add(
+										Expr::col("lease_expires_at")
+											.eq(Expr::val(expected_lease_expires_at)),
+									)
+									.add(Expr::col("lease_expires_at").lte(now_millis)),
+							),
+					)
+					.take(),
+			)?;
+			let result = sqlx::query_with(&sql, arguments).execute(&mut *tx).await?;
 
 			if result.rows_affected() == 0 {
 				tx.commit().await?;
 				continue;
 			}
 
-			let row = sqlx::query("SELECT * FROM durable_jobs WHERE id = ?")
-				.bind(&job_id)
+			let (sql, arguments) = prepare_durable(job_by_id(&job_id))?;
+			let row = sqlx::query_with(&sql, arguments)
 				.fetch_one(&mut *tx)
 				.await?;
 			let claimed_job_id = job_id
@@ -1990,20 +1728,138 @@ impl DurableJobStore for SqliteDurableJobStore {
 	}
 
 	async fn list_events(&self, job_id: JobId) -> Result<Vec<JobEvent>, DurableQueueError> {
-		let rows = sqlx::query(
-			r#"
-			SELECT *
-			FROM durable_job_events
-			WHERE job_id = ?
-			ORDER BY event_sequence ASC
-			"#,
-		)
-		.bind(job_id.to_string())
-		.fetch_all(&self.pool)
-		.await?;
+		let (sql, arguments) = prepare_durable(
+			Query::select()
+				.expr(Expr::asterisk())
+				.from("durable_job_events")
+				.and_where(Expr::col("job_id").eq(job_id.to_string()))
+				.order_by("event_sequence", Order::Asc)
+				.take(),
+		)?;
+		let rows = sqlx::query_with(&sql, arguments)
+			.fetch_all(&self.pool)
+			.await?;
 
 		rows.into_iter().map(row_to_event).collect()
 	}
+}
+
+fn prepare_durable(
+	statement: impl QueryStatementBuilder,
+) -> Result<(String, sqlx::sqlite::SqliteArguments<'static>), DurableQueueError> {
+	reinhardt_query_sqlx::prepare_sqlite(statement.build_any(&SqliteQueryBuilder))
+		.map(|prepared| prepared.into_parts())
+		.map_err(|error| DurableQueueError::Store(error.to_string()))
+}
+const JOB_COLUMNS: [&str; 19] = [
+	"id",
+	"queue",
+	"kind",
+	"target",
+	"state",
+	"attempt_count",
+	"max_attempts",
+	"priority",
+	"payload",
+	"result",
+	"failure_kind",
+	"failure_message",
+	"retry_after",
+	"cancellation_requested",
+	"created_at",
+	"updated_at",
+	"started_at",
+	"lease_expires_at",
+	"finished_at",
+];
+fn job_values(record: &DurableJobRecord) -> Result<Vec<QueryValue>, DurableQueueError> {
+	Ok(vec![
+		record.id.to_string().into_value(),
+		record.queue.as_str().into_value(),
+		record.kind.as_str().into_value(),
+		record.target.as_deref().into_value(),
+		record.state.as_str().into_value(),
+		i64::from(record.attempt_count).into_value(),
+		i64::from(record.max_attempts).into_value(),
+		i64::from(record.priority).into_value(),
+		serde_json::to_string(&record.payload)?.into_value(),
+		(record
+			.result
+			.as_ref()
+			.map(serde_json::to_string)
+			.transpose()?)
+		.into_value(),
+		record.failure_kind.as_deref().into_value(),
+		record.failure_message.as_deref().into_value(),
+		record.retry_after.map(timestamp_millis).into_value(),
+		i64::from(record.cancellation_requested).into_value(),
+		timestamp_millis(record.created_at).into_value(),
+		timestamp_millis(record.updated_at).into_value(),
+		record.started_at.map(timestamp_millis).into_value(),
+		record.lease_expires_at.map(timestamp_millis).into_value(),
+		record.finished_at.map(timestamp_millis).into_value(),
+	])
+}
+fn insert_job_statement(record: &DurableJobRecord) -> Result<InsertStatement, DurableQueueError> {
+	Ok(Query::insert()
+		.into_table("durable_jobs")
+		.columns(JOB_COLUMNS)
+		.values_panic(job_values(record)?)
+		.take())
+}
+fn update_job_statement(record: &DurableJobRecord) -> Result<UpdateStatement, DurableQueueError> {
+	let mut statement = Query::update();
+	statement.table("durable_jobs");
+	for (column, value) in JOB_COLUMNS.into_iter().zip(job_values(record)?).skip(1) {
+		statement.value(column, value);
+	}
+	statement.and_where(Expr::col("id").eq(record.id.to_string()));
+	Ok(statement)
+}
+fn current_job_statement(
+	record: &DurableJobRecord,
+	state: JobState,
+	attempt: u32,
+	canceled: bool,
+) -> Result<UpdateStatement, DurableQueueError> {
+	Ok(update_job_statement(record)?
+		.and_where(Expr::col("state").eq(state.as_str()))
+		.and_where(Expr::col("attempt_count").eq(i64::from(attempt)))
+		.and_where(Expr::col("cancellation_requested").eq(i64::from(canceled)))
+		.take())
+}
+fn job_by_id(id: &str) -> SelectStatement {
+	Query::select()
+		.expr(Expr::asterisk())
+		.from("durable_jobs")
+		.and_where(Expr::col("id").eq(id))
+		.take()
+}
+fn expired_claim(queue: &str, now: i64) -> Condition {
+	Cond::all()
+		.add(Expr::col("queue").eq(queue))
+		.add(Expr::col("state").eq(JobState::Running.as_str()))
+		.add(Expr::col("lease_expires_at").is_not_null())
+		.add(Expr::col("lease_expires_at").lte(now))
+}
+fn exhausted_attempts(retries: u32) -> Condition {
+	Cond::any()
+		.add(Expr::col("attempt_count").gte(Expr::col("max_attempts")))
+		.add(
+			Expr::col("attempt_count")
+				.sub(1_i64)
+				.gte(i64::from(retries)),
+		)
+}
+fn expired_candidate(condition: Condition) -> SelectStatement {
+	Query::select()
+		.column("id")
+		.from("durable_jobs")
+		.cond_where(condition)
+		.order_by("priority", Order::Desc)
+		.order_by("created_at", Order::Asc)
+		.limit(1)
+		.take()
 }
 
 fn row_to_record(row: SqliteRow) -> Result<DurableJobRecord, DurableQueueError> {
@@ -2047,34 +1903,47 @@ async fn insert_event_in_tx(
 	tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
 	event: JobEventDraft,
 ) -> Result<JobEvent, DurableQueueError> {
-	let sequence: i64 = sqlx::query_scalar(
-		r#"
-		SELECT COALESCE(MAX(event_sequence), 0) + 1
-		FROM durable_job_events
-		WHERE job_id = ?
-		"#,
-	)
-	.bind(event.job_id.to_string())
-	.fetch_one(&mut **tx)
-	.await?;
+	let (sql, arguments) = prepare_durable(
+		Query::select()
+			.expr(
+				Func::coalesce(vec![
+					Func::max(Expr::col("event_sequence").into_simple_expr()),
+					Expr::val(0_i64).into_simple_expr(),
+				])
+				.add(1_i64),
+			)
+			.from("durable_job_events")
+			.and_where(Expr::col("job_id").eq(event.job_id.to_string()))
+			.take(),
+	)?;
+	let sequence: i64 = sqlx::query_scalar_with::<_, i64, _>(&sql, arguments)
+		.fetch_one(&mut **tx)
+		.await?;
 
-	sqlx::query(
-		r#"
-		INSERT INTO durable_job_events (
-			job_id, event_sequence, event_kind, from_state, to_state, message, created_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		"#,
-	)
-	.bind(event.job_id.to_string())
-	.bind(sequence)
-	.bind(event.kind.as_str())
-	.bind(event.from_state.map(JobState::as_str))
-	.bind(event.to_state.as_str())
-	.bind(event.message.as_deref())
-	.bind(timestamp_millis(event.created_at))
-	.execute(&mut **tx)
-	.await?;
+	let (sql, arguments) = prepare_durable(
+		Query::insert()
+			.into_table("durable_job_events")
+			.columns([
+				"job_id",
+				"event_sequence",
+				"event_kind",
+				"from_state",
+				"to_state",
+				"message",
+				"created_at",
+			])
+			.values_panic([
+				event.job_id.to_string().into_value(),
+				sequence.into_value(),
+				event.kind.as_str().into_value(),
+				event.from_state.map(JobState::as_str).into_value(),
+				event.to_state.as_str().into_value(),
+				event.message.as_deref().into_value(),
+				timestamp_millis(event.created_at).into_value(),
+			])
+			.take(),
+	)?;
+	sqlx::query_with(&sql, arguments).execute(&mut **tx).await?;
 
 	Ok(JobEvent {
 		job_id: event.job_id,
@@ -2194,6 +2063,56 @@ mod tests {
 	async fn queue() -> DurableQueue<SqliteDurableJobStore> {
 		let store = SqliteDurableJobStore::new("sqlite::memory:").await.unwrap();
 		DurableQueue::new(store).with_retry_strategy(RetryStrategy::fixed_delay(Duration::ZERO))
+	}
+
+	#[rstest]
+	#[case(false, 11)]
+	#[case(true, 14)]
+	#[tokio::test]
+	async fn generated_arguments_preserve_nullable_job_columns(
+		#[case] present: bool,
+		#[case] expected_args: usize,
+	) {
+		// Arrange: fixed millisecond timestamps avoid round-trip precision loss.
+		let store = SqliteDurableJobStore::new("sqlite::memory:").await.unwrap();
+		let now = DateTime::from_timestamp_millis(1_900_000_000_000).unwrap();
+		let mut record = JobSpec::new("'kind ? $1")
+			.queue("'queue ? $2")
+			.payload(&json!({"text": "'quoted ? $3"}))
+			.unwrap()
+			.into_record(now);
+		if present {
+			record.target = Some("'target ? $4".into());
+			record.result = Some(json!({"ok": true}));
+			record.retry_after = Some(now);
+		}
+		let (sql, values) = insert_job_statement(&record)
+			.unwrap()
+			.build(SqliteQueryBuilder);
+		assert_eq!(values.0.len(), expected_args);
+		assert_eq!(sql.matches('?').count(), expected_args);
+		assert!(!sql.contains("'kind"));
+		// Act
+		store.insert_job(record.clone()).await.unwrap();
+		// Assert: later bound columns are not shifted by omitted NULL arguments.
+		assert_eq!(
+			store.get_job(record.id).await.unwrap(),
+			Some(record.clone())
+		);
+		record.target = Some("changed".into());
+		assert!(
+			!store
+				.update_job_if_current(record.clone(), JobState::Running, 0, false)
+				.await
+				.unwrap()
+		);
+		assert!(
+			store
+				.update_job_if_current(record.clone(), JobState::Queued, 0, false)
+				.await
+				.unwrap()
+		);
+		assert_eq!(store.get_job(record.id).await.unwrap(), Some(record));
 	}
 
 	#[tokio::test]
