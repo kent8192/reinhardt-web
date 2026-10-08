@@ -95,3 +95,45 @@ async fn example() {
 ```
 
 See `instructions/TESTING_STANDARDS.md` (the TI- entry about `with_di_overrides!`) for the full rule set.
+
+## API Client Requests and Forks
+
+`APIClient::request` builds requests for any HTTP method. Use `.json(&data)`,
+`.form(&data)`, or `.body(bytes)` for payloads, then `.send().await`. Conversion
+and serialization errors are returned by `send()`.
+
+```rust,no_run
+use http::{Method, header::AUTHORIZATION};
+use reinhardt_testkit::APIClient;
+
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+let client = APIClient::new();
+client.set_header("Authorization", "Bearer bob").await?;
+let response = client.request(Method::PUT, "/users/1")
+    .header(AUTHORIZATION, "Bearer alice")
+    .json(&serde_json::json!({"name": "Alice"}))
+    .send().await?;
+# Ok(())
+# }
+```
+
+`.header(name, value)` replaces every existing value of that name;
+`.append_header(name, value)` preserves them and appends another value.
+`.without_header(name)` removes the header for this request. Operations run in
+call order after default headers, the payload's implied Content-Type, manual
+cookies, and the forced-auth X-Test-User header. They never change client defaults.
+Automatic cookie-jar cookies added by reqwest at send time cannot be removed
+per request. A raw body does not set or remove Content-Type.
+
+Derive separate per-credential or subject clients from a fixture with
+`let alice = base.fork().await;`. A fork snapshots default headers, manual
+cookies, and the forced-auth user into independent state. Its handlers and DI
+context are shared, while its connection pool and automatic cookie jar are new.
+Timeout, HTTP version, and cookie-store configuration are inherited. Automatic
+jar cookies are not inherited; manual cookies are. Forks can make concurrent
+requests without racing on shared credential headers.
+
+`get_with_headers` and `post_raw_with_headers` are deprecated in 0.4.0, with
+removal planned for 0.5. Migrate to `request(..).header(..).send()`. Existing verb
+methods such as `get`, `post`, and `put` remain supported. The deprecated wrappers
+also replace defaults when given a header of the same name.

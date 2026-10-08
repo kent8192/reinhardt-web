@@ -112,10 +112,8 @@ async fn api_client_dispatches_all_public_http_methods_and_payload_formats() {
 	client.set_cookie("sessionid", "session-42").await.unwrap();
 
 	// Act
-	let get = client
-		.get_with_headers("/get", &[("X-Request", "get")])
-		.await
-		.unwrap();
+	let request: reinhardt::TestRequestBuilder<'_> = client.request(http::Method::GET, "/get");
+	let get = request.header("X-Request", "get").send().await.unwrap();
 	let post = client.post("/post", &payload, "json").await.unwrap();
 	let put = client.put("/put", &payload, "form").await.unwrap();
 	let patch = client.patch("/patch", &payload, "json").await.unwrap();
@@ -123,12 +121,11 @@ async fn api_client_dispatches_all_public_http_methods_and_payload_formats() {
 	let head = client.head("/head").await.unwrap();
 	let options = client.options("/options").await.unwrap();
 	let raw_headers = client
-		.post_raw_with_headers(
-			"/raw-headers",
-			b"raw-body",
-			"text/plain",
-			&[("X-Raw", "yes")],
-		)
+		.request(http::Method::POST, "/raw-headers")
+		.body(bytes::Bytes::copy_from_slice(b"raw-body"))
+		.header(http::header::CONTENT_TYPE, "text/plain")
+		.header("X-Raw", "yes")
+		.send()
 		.await
 		.unwrap();
 	let raw = client

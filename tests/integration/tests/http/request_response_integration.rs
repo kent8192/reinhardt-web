@@ -155,7 +155,9 @@ async fn test_content_negotiation_json() {
 
 	// Test JSON content negotiation
 	let json_response = client
-		.get_with_headers("/api/data", &[("Accept", "application/json")])
+		.request(http::Method::GET, "/api/data")
+		.header("Accept", "application/json")
+		.send()
 		.await
 		.unwrap();
 
@@ -169,7 +171,9 @@ async fn test_content_negotiation_json() {
 
 	// Test plain text content negotiation
 	let text_response = client
-		.get_with_headers("/api/data", &[("Accept", "text/plain")])
+		.request(http::Method::GET, "/api/data")
+		.header("Accept", "text/plain")
+		.send()
 		.await
 		.unwrap();
 
@@ -189,7 +193,9 @@ async fn test_content_negotiation_wildcard() {
 
 	// Test wildcard accept
 	let response = client
-		.get_with_headers("/api/resource", &[("Accept", "*/*")])
+		.request(http::Method::GET, "/api/resource")
+		.header("Accept", "*/*")
+		.send()
 		.await
 		.unwrap();
 
@@ -294,21 +300,27 @@ async fn test_multiple_accept_headers() {
 
 	// Test each format
 	let json_response = client
-		.get_with_headers("/formats", &[("Accept", "application/json")])
+		.request(http::Method::GET, "/formats")
+		.header("Accept", "application/json")
+		.send()
 		.await
 		.unwrap();
 	assert_eq!(json_response.status(), StatusCode::OK);
 	assert!(json_response.text().contains("json"));
 
 	let html_response = client
-		.get_with_headers("/formats", &[("Accept", "text/html")])
+		.request(http::Method::GET, "/formats")
+		.header("Accept", "text/html")
+		.send()
 		.await
 		.unwrap();
 	assert_eq!(html_response.status(), StatusCode::OK);
 	assert!(html_response.text().contains("<html>"));
 
 	let text_response = client
-		.get_with_headers("/formats", &[("Accept", "text/plain")])
+		.request(http::Method::GET, "/formats")
+		.header("Accept", "text/plain")
+		.send()
 		.await
 		.unwrap();
 	assert_eq!(text_response.status(), StatusCode::OK);

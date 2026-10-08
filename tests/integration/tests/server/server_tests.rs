@@ -187,7 +187,9 @@ async fn test_server_custom_headers() {
 
 	let client = APIClient::with_base_url(&server.url);
 	let response = client
-		.get_with_headers("/headers", &[("User-Agent", "TestAgent/1.0")])
+		.request(http::Method::GET, "/headers")
+		.header("User-Agent", "TestAgent/1.0")
+		.send()
 		.await
 		.unwrap();
 
