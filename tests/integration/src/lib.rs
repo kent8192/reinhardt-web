@@ -335,6 +335,8 @@ impl Drop for TestServer {
 	}
 }
 
+// Keep compatibility coverage and re-exports until SimpleHandler is removed.
+#[allow(deprecated)]
 pub use reinhardt_test::mock::SimpleHandler;
 
 /// Helper to make HTTP requests in tests

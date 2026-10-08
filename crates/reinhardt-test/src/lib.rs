@@ -18,12 +18,42 @@
 //! - **[`APIClient`]**: HTTP client for making test API requests
 //! - **[`APIRequestFactory`]**: Factory for creating mock HTTP requests
 //! - **[`APITestCase`]**: Base test case with common assertions
+//! - **[`stub::StubRouter`]**: Native async closure-based, method-aware stub routes
 //! - **Response Assertions**: Status, header, and body assertions
 //! - **[`Factory`]**: Model factory for generating test data
 //! - **[`load_model_fixture_file`]**: Django-compatible model fixture loading
 //! - **[`DebugToolbar`]**: Debug panel for inspecting queries and timing
 //! - **[`WebSocketTestClient`]**: WebSocket connection testing
 //! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) integration
+//!
+//! ## Async Stub Routes (Native Only)
+//!
+//! Use this facade's exports to register fake upstreams and webhook receivers:
+//!
+//! ```rust
+//! use reinhardt_test::{http::Response, stub::StubRouter};
+//!
+//! let router = StubRouter::new()
+//!     .post("/webhook", |request| async move {
+//!         Ok(Response::ok().with_body(request.body().clone()))
+//!     })
+//!     .get("/health", |_request| async { Ok(Response::ok()) })
+//!     .into_server_router();
+//! ```
+//!
+//! In an async test, pass `router` to [`fixtures::test_server_guard`] and keep
+//! the returned guard alive while sending requests. The router uses framework
+//! 404/405 handling and rejects duplicate `(path, method)` registrations.
+//! Through the top-level crate, import
+//! `reinhardt::test::{http::Response, stub::StubRouter}` and use
+//! `reinhardt::test::fixtures::test_server_guard` instead.
+//!
+//! [`SimpleHandler`] is deprecated starting in `0.4.0-alpha.21` and remains
+//! available throughout `0.4.x`, with removal planned for `0.5.0`. Replace its
+//! synchronous closure and manual method checks with the corresponding
+//! [`stub::StubRouter`] method and an async closure, then convert it into a
+//! `ServerRouter`. Neither facade requires a direct dependency on
+//! `reinhardt-testkit` for this migration.
 //!
 //! ## Feature Flags
 //!
@@ -42,8 +72,8 @@
 // Re-export modules from reinhardt-testkit for backward-compatible module paths
 #[cfg(native)]
 pub use reinhardt_testkit::{
-	assertions, client, debug, factory, http, logging, mock, resource, response, server, testcase,
-	views, websocket,
+	assertions, client, debug, factory, http, logging, mock, resource, response, server, stub,
+	testcase, views, websocket,
 };
 
 #[cfg(all(native, feature = "messages"))]
@@ -107,21 +137,25 @@ pub use reinhardt_testkit::poll_until;
 // Flat re-exports for backward compatibility
 // ============================================================================
 
+// Keep compatibility coverage and re-exports until SimpleHandler is removed.
+#[cfg(native)]
+#[allow(deprecated)]
+pub use reinhardt_testkit::SimpleHandler;
+
 #[cfg(native)]
 pub use reinhardt_testkit::{
 	APIClient, APIClientBuilder, APIRequestFactory, APITestCase, AsyncTeardownGuard,
 	AsyncTestResource, BodyEchoHandler, CallRecord, ClientError, DebugEntry, DebugPanel,
 	DebugToolbar, DelayedHandler, EchoPathHandler, ErrorKind, HttpVersion, LargeResponseHandler,
-	MethodEchoHandler, MockFunction, RequestBuilder, ResponseExt, RouterHandler, SimpleHandler,
-	Spy, SqlQuery, StatusCodeHandler, SuiteGuard, SuiteResource, TeardownGuard, TestResource,
-	TestResponse, TimingInfo, WebSocketTestClient, acquire_suite, assert_has_header,
-	assert_header_contains, assert_header_equals, assert_no_header, assert_status,
-	create_api_test_objects, create_insecure_request, create_json_request,
-	create_large_test_objects, create_request, create_request_with_headers,
-	create_request_with_path_params, create_response_with_headers, create_response_with_status,
-	create_secure_request, create_test_objects, create_test_request, create_test_response,
-	extract_json, get_header, has_header, header_contains, header_equals, init_test_logging,
-	shutdown_test_server, spawn_test_server,
+	MethodEchoHandler, MockFunction, RequestBuilder, ResponseExt, RouterHandler, Spy, SqlQuery,
+	StatusCodeHandler, SuiteGuard, SuiteResource, TeardownGuard, TestResource, TestResponse,
+	TimingInfo, WebSocketTestClient, acquire_suite, assert_has_header, assert_header_contains,
+	assert_header_equals, assert_no_header, assert_status, create_api_test_objects,
+	create_insecure_request, create_json_request, create_large_test_objects, create_request,
+	create_request_with_headers, create_request_with_path_params, create_response_with_headers,
+	create_response_with_status, create_secure_request, create_test_objects, create_test_request,
+	create_test_response, extract_json, get_header, has_header, header_contains, header_equals,
+	init_test_logging, shutdown_test_server, spawn_test_server,
 };
 
 #[cfg(native)]
