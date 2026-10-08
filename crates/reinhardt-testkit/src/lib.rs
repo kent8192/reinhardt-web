@@ -26,7 +26,8 @@
 //! - **[`WebSocketTestClient`]**: WebSocket connection testing
 //! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) integration
 //!   with `PostgresContainerConfig` and `postgres_container_with` for test-scoped
-//!   PostgreSQL customization.
+//!   PostgreSQL customization. Apply migrations to a configured container URL
+//!   using `apply_postgres_migrations_from` or `apply_postgres_migrations_from_dir`.
 //!
 //! ## Feature Flags
 //!
@@ -131,8 +132,8 @@ pub use reinhardt_urls;
 
 #[cfg(feature = "testcontainers")]
 pub use fixtures::{
-	PostgresContainerConfig, postgres_container, postgres_container_with, redis_container,
-	start_postgres_container,
+	PostgresContainerConfig, apply_postgres_migrations_from, apply_postgres_migrations_from_dir,
+	postgres_container, postgres_container_with, redis_container, start_postgres_container,
 };
 pub use http::{
 	assert_has_header, assert_header_contains, assert_header_equals, assert_no_header,
@@ -189,8 +190,9 @@ pub mod prelude {
 
 	#[cfg(feature = "testcontainers")]
 	pub use super::fixtures::{
-		PostgresContainerConfig, postgres_container, postgres_container_with, redis_container,
-		start_postgres_container,
+		PostgresContainerConfig, apply_postgres_migrations_from,
+		apply_postgres_migrations_from_dir, postgres_container, postgres_container_with,
+		redis_container, start_postgres_container,
 	};
 	pub use super::http::{
 		assert_has_header, assert_header_contains, assert_header_equals, assert_no_header,

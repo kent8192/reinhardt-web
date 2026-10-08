@@ -1603,15 +1603,53 @@ pub async fn localstack_fixture() -> (ContainerAsync<GenericImage>, u16, String)
 #[cfg(feature = "testcontainers")]
 pub async fn postgres_with_migrations_from<P: reinhardt_db::migrations::MigrationProvider>()
 -> Result<(ContainerAsync<GenericImage>, MigrationDatabase), Box<dyn std::error::Error>> {
+	let (container, _pool, _port, url) = postgres_container().await;
+	let database = apply_postgres_migrations_from::<P>(&url).await?;
+	Ok((container, database))
+}
+
+/// Apply a `MigrationProvider` to an already-started PostgreSQL database URL.
+///
+/// Returns a guarded ORM connection. The caller must keep the container guard
+/// alive until the returned connection is dropped. Available with the
+/// `testcontainers` feature for native database tests (P0).
+///
+/// # Errors
+///
+/// Returns an error if connecting, applying migrations, or registering the
+/// connection fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_db::migrations::{Migration, MigrationProvider};
+/// use reinhardt_testkit::{
+///     PostgresContainerConfig, apply_postgres_migrations_from, start_postgres_container,
+/// };
+///
+/// struct AppMigrations;
+/// impl MigrationProvider for AppMigrations {
+///     fn migrations() -> Vec<Migration> { Vec::new() }
+/// }
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let (_container, _pool, _port, url) = start_postgres_container(
+///     PostgresContainerConfig::default().database("test_db"),
+/// ).await;
+/// let db = apply_postgres_migrations_from::<AppMigrations>(&url).await?;
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "testcontainers")]
+pub async fn apply_postgres_migrations_from<P: reinhardt_db::migrations::MigrationProvider>(
+	database_url: &str,
+) -> Result<MigrationDatabase, Box<dyn std::error::Error>> {
 	use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_db::orm::DatabaseConnectionLease;
 
-	// Start PostgreSQL container
-	let (container, _pool, _port, url) = postgres_container().await;
-
 	// Connect to database
-	let owner = BackendsConnection::connect_postgres(&url)
+	let owner = BackendsConnection::connect_postgres(database_url)
 		.await
 		.map_err(|e| format!("Failed to connect to PostgreSQL for migrations: {}", e))?;
 
@@ -1627,13 +1665,10 @@ pub async fn postgres_with_migrations_from<P: reinhardt_db::migrations::Migratio
 	}
 
 	let connection_lease = DatabaseConnectionLease::register(owner)?;
-	Ok((
-		container,
-		MigrationDatabase {
-			connection: connection_lease.handle(),
-			_connection_lease: connection_lease,
-		},
-	))
+	Ok(MigrationDatabase {
+		connection: connection_lease.handle(),
+		_connection_lease: connection_lease,
+	})
 }
 
 /// Fixture: MySQL container (base fixture)
@@ -1943,17 +1978,53 @@ pub async fn sqlite_with_migrations_from<P: reinhardt_db::migrations::MigrationP
 pub async fn postgres_with_migrations_from_dir(
 	migrations_dir: impl AsRef<std::path::Path>,
 ) -> Result<(ContainerAsync<GenericImage>, MigrationDatabase), Box<dyn std::error::Error>> {
+	let (container, _pool, _port, url) = postgres_container().await;
+	let database = apply_postgres_migrations_from_dir(&url, migrations_dir).await?;
+	Ok((container, database))
+}
+
+/// Apply filesystem migrations to an already-started PostgreSQL database URL.
+///
+/// The directory contains migration files organized as `<app_label>/<name>.rs`.
+/// Like `postgres_with_migrations_from_dir`, this initializes the ORM global
+/// connection for model access. Callers must serialize tests sharing that global
+/// state and keep their container guard alive while using the returned connection.
+/// Available with the `testcontainers` feature for native database tests (P0).
+///
+/// # Errors
+///
+/// Returns an error if connecting, loading or applying migrations, initializing
+/// the ORM global connection, or registering the guarded connection fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::{
+///     PostgresContainerConfig, apply_postgres_migrations_from_dir, start_postgres_container,
+/// };
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let (_container, _pool, _port, url) = start_postgres_container(
+///     PostgresContainerConfig::default().database("test_db"),
+/// ).await;
+/// let migrations = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+/// let db = apply_postgres_migrations_from_dir(&url, migrations).await?;
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "testcontainers")]
+pub async fn apply_postgres_migrations_from_dir(
+	database_url: &str,
+	migrations_dir: impl AsRef<std::path::Path>,
+) -> Result<MigrationDatabase, Box<dyn std::error::Error>> {
 	use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::migrations::FilesystemSource;
 	use reinhardt_db::migrations::MigrationSource;
 	use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
 	use reinhardt_db::orm::DatabaseConnectionLease;
 
-	// Start PostgreSQL container
-	let (container, _pool, _port, url) = postgres_container().await;
-
 	// Connect to database
-	let owner = BackendsConnection::connect_postgres(&url)
+	let owner = BackendsConnection::connect_postgres(database_url)
 		.await
 		.map_err(|e| format!("Failed to connect to PostgreSQL for migrations: {}", e))?;
 
@@ -1974,18 +2045,15 @@ pub async fn postgres_with_migrations_from_dir(
 
 	// Initialize the ORM global database connection so that E2E tests
 	// using ORM models can access the database without manual setup.
-	reinhardt_db::orm::reinitialize_database(&url)
+	reinhardt_db::orm::reinitialize_database(database_url)
 		.await
 		.map_err(|e| format!("Failed to initialize ORM global state: {}", e))?;
 
 	let connection_lease = DatabaseConnectionLease::register(owner)?;
-	Ok((
-		container,
-		MigrationDatabase {
-			connection: connection_lease.handle(),
-			_connection_lease: connection_lease,
-		},
-	))
+	Ok(MigrationDatabase {
+		connection: connection_lease.handle(),
+		_connection_lease: connection_lease,
+	})
 }
 
 // ============================================================================
