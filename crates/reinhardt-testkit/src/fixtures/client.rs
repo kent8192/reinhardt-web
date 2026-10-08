@@ -63,6 +63,22 @@ use crate::client::APIClient;
 /// # }
 /// ```
 ///
+/// To inspect redirect responses, configure the network policy with the builder:
+///
+/// ```rust,no_run
+/// use reinhardt_testkit::{APIClient, RedirectPolicy};
+///
+/// # async fn example() {
+/// let client = APIClient::builder()
+///     .base_url("http://localhost:8080")
+///     .redirect_policy(RedirectPolicy::Never)
+///     .build();
+/// let response = client.get("/login").await.unwrap();
+/// assert_eq!(response.status_code(), 302);
+/// assert_eq!(response.header("Location"), Some("/dashboard"));
+/// # }
+/// ```
+///
 /// # Usage with TestServerGuard
 ///
 /// ```rust,no_run

@@ -31,6 +31,31 @@ pub enum HttpVersion {
 	Auto,
 }
 
+/// Redirect handling for requests sent over the network by [`APIClient`].
+///
+/// The default follows at most 10 consecutive redirects. In-process clients
+/// created with [`APIClient::from_handler`], [`APIClientBuilder::handler`], or
+/// [`APIClient::set_handler`] always return redirect responses unchanged and
+/// silently ignore this policy.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedirectPolicy {
+	/// Follow at most `limit` consecutive redirects; a redirect beyond that
+	/// fails the request. A limit of zero makes any redirect fail.
+	Follow {
+		/// Maximum number of consecutive redirects to follow.
+		limit: usize,
+	},
+	/// Never follow redirects; return the 3xx response and its `Location` header.
+	Never,
+}
+
+impl Default for RedirectPolicy {
+	fn default() -> Self {
+		Self::Follow { limit: 10 }
+	}
+}
+
 /// Errors that can occur when using the API test client.
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -76,6 +101,17 @@ impl ClientError {
 		}
 	}
 
+	/// Returns true if a network request failed because of its redirect policy.
+	///
+	/// This includes exceeding the configured redirect limit. Errors from
+	/// in-process dispatch and other non-reqwest errors return false.
+	pub fn is_redirect(&self) -> bool {
+		match self {
+			ClientError::Reqwest(e) => e.is_redirect(),
+			_ => false,
+		}
+	}
+
 	/// Returns true if the error occurred during request building
 	pub fn is_request(&self) -> bool {
 		match self {
@@ -113,6 +149,7 @@ pub struct APIClientBuilder {
 	base_url: String,
 	timeout: Option<Duration>,
 	http_version: HttpVersion,
+	redirect_policy: RedirectPolicy,
 	cookie_store: bool,
 	framework_handler: Option<Arc<dyn HttpHandler>>,
 	di_context: Option<Arc<InjectionContext>>,
@@ -125,6 +162,7 @@ impl APIClientBuilder {
 			base_url: "http://testserver".to_string(),
 			timeout: None,
 			http_version: HttpVersion::Auto,
+			redirect_policy: RedirectPolicy::default(),
 			cookie_store: false,
 			framework_handler: None,
 			di_context: None,
@@ -146,6 +184,17 @@ impl APIClientBuilder {
 	/// Set the HTTP version
 	pub fn http_version(mut self, version: HttpVersion) -> Self {
 		self.http_version = version;
+		self
+	}
+
+	/// Set the redirect policy for requests sent over the network.
+	///
+	/// Defaults to [`RedirectPolicy::Follow`] with a limit of 10. In-process
+	/// clients configured with [`Self::handler`], [`APIClient::from_handler`], or
+	/// [`APIClient::set_handler`] silently ignore this setting and return
+	/// redirect responses unchanged. Combining a policy with a handler is valid.
+	pub fn redirect_policy(mut self, policy: RedirectPolicy) -> Self {
+		self.redirect_policy = policy;
 		self
 	}
 
@@ -208,6 +257,12 @@ impl APIClientBuilder {
 				// Default behavior, no special configuration needed
 			}
 		}
+
+		// Configure network redirect handling
+		client_builder = client_builder.redirect(match self.redirect_policy {
+			RedirectPolicy::Follow { limit } => reqwest::redirect::Policy::limited(limit),
+			RedirectPolicy::Never => reqwest::redirect::Policy::none(),
+		});
 
 		// Configure cookie store
 		if self.cookie_store {
@@ -1122,9 +1177,11 @@ mod urlencoding {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::fixtures::test_server_guard;
 	use async_trait::async_trait;
 	use reinhardt_core::exception::{Error as HttpError, Result as HttpResult};
-	use rstest::rstest;
+	use reinhardt_urls::routers::ServerRouter;
+	use rstest::{fixture, rstest};
 
 	struct FileHandler {
 		response: HttpResponse,
@@ -1135,6 +1192,157 @@ mod tests {
 		async fn handle(&self, _: HttpRequest) -> HttpResult<HttpResponse> {
 			Ok(self.response.clone())
 		}
+	}
+
+	#[fixture]
+	fn redirect_router() -> ServerRouter {
+		ServerRouter::new()
+			.handler(
+				"/a",
+				FileHandler {
+					response: HttpResponse::new(http::StatusCode::FOUND)
+						.with_header("Location", "/b"),
+				},
+			)
+			.handler(
+				"/b",
+				FileHandler {
+					response: HttpResponse::new(http::StatusCode::FOUND)
+						.with_header("Location", "/c"),
+				},
+			)
+			.handler(
+				"/c",
+				FileHandler {
+					response: HttpResponse::ok().with_body("redirect target"),
+				},
+			)
+	}
+
+	#[rstest]
+	fn redirect_policy_default_preserves_ten_redirect_limit() {
+		assert_eq!(
+			RedirectPolicy::default(),
+			RedirectPolicy::Follow { limit: 10 }
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn redirect_never_returns_original_status_and_location(redirect_router: ServerRouter) {
+		// Arrange
+		let server = test_server_guard(redirect_router).await;
+		let client = APIClient::builder()
+			.base_url(&server.url)
+			.redirect_policy(RedirectPolicy::Never)
+			.build();
+
+		// Act
+		let response = client.get("/a").await.unwrap();
+
+		// Assert
+		assert_eq!(response.status(), http::StatusCode::FOUND);
+		assert_eq!(response.header("Location"), Some("/b"));
+	}
+
+	#[rstest]
+	#[case::default(None)]
+	#[case::exact_limit(Some(RedirectPolicy::Follow { limit: 2 }))]
+	#[tokio::test]
+	async fn redirect_follow_returns_final_response(
+		redirect_router: ServerRouter,
+		#[case] policy: Option<RedirectPolicy>,
+	) {
+		// Arrange
+		let server = test_server_guard(redirect_router).await;
+		let mut builder = APIClient::builder().base_url(&server.url);
+		if let Some(policy) = policy {
+			builder = builder.redirect_policy(policy);
+		}
+		let client = builder.build();
+
+		// Act
+		let response = client.get("/a").await.unwrap();
+
+		// Assert
+		assert_eq!(response.status(), http::StatusCode::OK);
+		assert_eq!(response.body().as_ref(), b"redirect target");
+		assert_eq!(response.header("Location"), None);
+	}
+
+	#[rstest]
+	#[case::zero_limit(0, "/b")]
+	#[case::two_hops_exceed_one(1, "/a")]
+	#[tokio::test]
+	async fn redirect_follow_limit_exceeded_is_redirect_error(
+		redirect_router: ServerRouter,
+		#[case] limit: usize,
+		#[case] path: &str,
+	) {
+		// Arrange
+		let server = test_server_guard(redirect_router).await;
+		let client = APIClient::builder()
+			.base_url(&server.url)
+			.redirect_policy(RedirectPolicy::Follow { limit })
+			.build();
+
+		// Act
+		let error = match client.get(path).await {
+			Err(error) => error,
+			Ok(response) => panic!(
+				"expected redirect failure, got status {}",
+				response.status()
+			),
+		};
+
+		// Assert
+		assert!(error.is_redirect());
+		assert!(matches!(error, ClientError::Reqwest(_)));
+	}
+
+	#[rstest]
+	#[case::from_handler(APIClient::from_handler)]
+	#[case::builder(|router| APIClient::builder()
+		.redirect_policy(RedirectPolicy::Follow { limit: 0 })
+		.handler(router)
+		.build())]
+	#[tokio::test]
+	async fn redirect_in_process_returns_original_status_and_location(
+		redirect_router: ServerRouter,
+		#[case] create_client: fn(ServerRouter) -> APIClient,
+	) {
+		// Arrange
+		let client = create_client(redirect_router);
+
+		// Act
+		let response = client.get("/a").await.unwrap();
+
+		// Assert
+		assert_eq!(response.status(), http::StatusCode::FOUND);
+		assert_eq!(response.header("Location"), Some("/b"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn redirect_sync_handler_ignores_follow_policy() {
+		// Arrange
+		let mut client = APIClient::builder()
+			.redirect_policy(RedirectPolicy::Follow { limit: 0 })
+			.build();
+		client.set_handler(|_| {
+			Response::builder()
+				.status(http::StatusCode::FOUND)
+				.header("Location", "/b")
+				.body(Full::new(Bytes::new()))
+				.unwrap()
+		});
+
+		// Act
+		let response = client.get("/a").await.unwrap();
+
+		// Assert
+		assert_eq!(response.status(), http::StatusCode::FOUND);
+		assert_eq!(response.header("Location"), Some("/b"));
 	}
 
 	#[rstest]
@@ -1429,10 +1637,12 @@ mod tests {
 			"Request failed: Invalid header name: invalid header"
 		);
 		assert_eq!(invalid_name.is_request(), true);
+		assert!(!invalid_name.is_redirect());
 		assert!(matches!(&invalid_value, ClientError::InvalidHeaderValue(_)));
 		assert_eq!(invalid_value.is_request(), true);
 		assert_eq!(invalid_value.is_timeout(), false);
 		assert_eq!(invalid_value.is_connect(), false);
+		assert!(!invalid_value.is_redirect());
 	}
 
 	#[rstest]

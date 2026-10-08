@@ -15,7 +15,8 @@
 //!
 //! ## Features
 //!
-//! - **[`APIClient`]**: HTTP client for making test API requests
+//! - **[`APIClient`]**: HTTP client for making test API requests with configurable
+//!   network redirect handling via [`RedirectPolicy`]
 //! - **[`APIRequestFactory`]**: Factory for creating mock HTTP requests
 //! - **[`APITestCase`]**: Base test case with common assertions
 //! - **[`stub::StubRouter`]**: Async closure-based, method-aware test stub routes
@@ -119,7 +120,7 @@ pub use reinhardt_db::orm::relationship;
 pub use reinhardt_db::orm::{FieldSelector, Model};
 
 pub use assertions::*;
-pub use client::{APIClient, APIClientBuilder, ClientError, HttpVersion};
+pub use client::{APIClient, APIClientBuilder, ClientError, HttpVersion, RedirectPolicy};
 pub use debug::{DebugEntry, DebugPanel, DebugToolbar, SqlQuery, TimingInfo};
 pub use factory::{APIRequestFactory, RequestBuilder};
 pub use fixtures::{
