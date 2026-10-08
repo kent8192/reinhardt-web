@@ -4,13 +4,14 @@
 //! method/path matchit lookup used by the `Handler` implementation.
 
 use super::ServerRouter;
-use super::types::RouteMatch;
+use super::types::{RouteHandler, RouteMatch};
 use hyper::Method;
+use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::PathParams;
 use reinhardt_middleware::Middleware;
 use std::borrow::Cow;
-use std::sync::{Arc, PoisonError};
+use std::sync::{Arc, PoisonError, RwLock};
 
 impl ServerRouter {
 	/// Strip `prefix` from `path` and ensure the result always has a leading `/`.
@@ -52,6 +53,7 @@ impl ServerRouter {
 	/// 1. Check prefix match
 	/// 2. Try child routers first (depth-first search)
 	/// 3. Try own routes
+	/// 4. For HEAD only, retry GET after the entire HEAD search has missed.
 	pub(crate) fn resolve(&self, path: &str, method: &Method) -> Option<RouteMatch> {
 		// 1. Check prefix and normalize remaining path (ensures leading `/`)
 		let remaining_path = Self::strip_prefix_normalized(&self.prefix, path)?;
@@ -73,6 +75,13 @@ impl ServerRouter {
 			own_middleware,
 			self.di_context.clone(),
 		)
+		.or_else(|| {
+			if *method == Method::HEAD {
+				self.resolve(path, &Method::GET)
+			} else {
+				None
+			}
+		})
 	}
 
 	/// Internal route resolution with middleware and DI context inheritance
@@ -117,6 +126,23 @@ impl ServerRouter {
 		)
 	}
 
+	/// Select a dedicated table; other methods use their own table or raw routes.
+	pub(super) fn standard_method_router(
+		&self,
+		method: &Method,
+	) -> Option<&RwLock<MatchitRouter<RouteHandler>>> {
+		match *method {
+			Method::GET => Some(&self.get_router),
+			Method::POST => Some(&self.post_router),
+			Method::PUT => Some(&self.put_router),
+			Method::DELETE => Some(&self.delete_router),
+			Method::PATCH => Some(&self.patch_router),
+			Method::HEAD => Some(&self.head_router),
+			Method::OPTIONS => Some(&self.options_router),
+			_ => None,
+		}
+	}
+
 	/// Match routes in this router with provided context
 	///
 	/// This method uses matchit for O(m) route matching where m = path length.
@@ -140,18 +166,26 @@ impl ServerRouter {
 		};
 
 		// Use matchit to find matching route - O(m) complexity
-		let router_lock = match *method {
-			Method::GET => &self.get_router,
-			Method::POST => &self.post_router,
-			Method::PUT => &self.put_router,
-			Method::DELETE => &self.delete_router,
-			Method::PATCH => &self.patch_router,
-			Method::HEAD => &self.head_router,
-			Method::OPTIONS => &self.options_router,
-			_ => &self.get_router,
+		let router_guard;
+		let other_method_routers;
+		let router = if let Some(router_lock) = self.standard_method_router(method) {
+			router_guard = router_lock.read().unwrap_or_else(PoisonError::into_inner);
+			&*router_guard
+		} else {
+			other_method_routers = self
+				.other_method_routers
+				.read()
+				.unwrap_or_else(PoisonError::into_inner);
+			if let Some(router) = other_method_routers.get(method) {
+				router
+			} else {
+				router_guard = self
+					.any_method_router
+					.read()
+					.unwrap_or_else(PoisonError::into_inner);
+				&*router_guard
+			}
 		};
-
-		let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
 
 		macro_rules! return_route_match {
 			($matched:expr) => {{
@@ -233,11 +267,25 @@ impl ServerRouter {
 			&self.patch_router,
 			&self.head_router,
 			&self.options_router,
+			&self.any_method_router,
 		];
 
 		let path_exists = |candidate_path: &str| {
 			for router_lock in method_routers {
 				let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
+				if let Ok(matched) = router.at(candidate_path)
+					&& matched.value.path_params_are_valid(&matched.params)
+				{
+					return true;
+				}
+			}
+
+			for router in self
+				.other_method_routers
+				.read()
+				.unwrap_or_else(PoisonError::into_inner)
+				.values()
+			{
 				if let Ok(matched) = router.at(candidate_path)
 					&& matched.value.path_params_are_valid(&matched.params)
 				{

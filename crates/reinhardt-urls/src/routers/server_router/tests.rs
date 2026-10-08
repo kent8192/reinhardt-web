@@ -769,6 +769,245 @@ fn create_test_request(path: &str) -> reinhardt_http::Request {
 		.unwrap()
 }
 
+/// Exposes the request received after routing, without implementing dispatch.
+struct RoutedRequestHandler;
+
+#[async_trait::async_trait]
+impl Handler for RoutedRequestHandler {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		Ok(Response::ok()
+			.with_header("x-request-method", request.method.as_str())
+			.with_header("x-request-path", request.uri.path())
+			.with_header(
+				"x-rest",
+				request.path_params.get("rest").map_or("", String::as_str),
+			))
+	}
+}
+
+/// Serves the same asset through independently registered HTTP methods.
+struct AssetEndpoint<const METHOD: u8>;
+
+impl<const METHOD: u8> EndpointInfo for AssetEndpoint<METHOD> {
+	fn path() -> &'static str {
+		"/assets/{*asset}"
+	}
+
+	fn method() -> Method {
+		match METHOD {
+			0 => Method::GET,
+			1 => Method::HEAD,
+			2 => Method::from_bytes(b"PROPFIND").unwrap(),
+			_ => unreachable!("unsupported asset method"),
+		}
+	}
+
+	fn name() -> &'static str {
+		match METHOD {
+			0 => "asset-get",
+			1 => "asset-head",
+			2 => "asset-propfind",
+			_ => unreachable!("unsupported asset method"),
+		}
+	}
+}
+
+#[async_trait::async_trait]
+impl<const METHOD: u8> Handler for AssetEndpoint<METHOD> {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		let response = Response::ok()
+			.with_header("content-type", "application/javascript")
+			.with_header("content-length", "12")
+			.with_header("x-endpoint", Self::method().as_str())
+			.with_header("x-request-method", request.method.as_str())
+			.with_header(
+				"x-asset",
+				request.path_params.get("asset").map_or("", String::as_str),
+			);
+		Ok(if request.method == Method::HEAD {
+			response
+		} else {
+			response.with_body("const app=1;")
+		})
+	}
+}
+
+#[rstest]
+#[case(Method::GET)]
+#[case(Method::HEAD)]
+#[case(Method::OPTIONS)]
+#[case(Method::CONNECT)]
+#[case(Method::TRACE)]
+#[case(Method::from_bytes(b"PROPFIND").unwrap())]
+#[tokio::test]
+async fn test_method_agnostic_route_dispatch(
+	#[case] method: Method,
+	#[values("handler", "handler_arc", "view", "view_named")] registration: &str,
+	#[values(false, true)] catch_all: bool,
+) {
+	// Arrange: exercise both prefix stripping and trailing-slash fallback.
+	let (pattern, path, rest) = if catch_all {
+		(
+			"/assets/{*rest}",
+			"/api/assets/nested/app.js",
+			"nested/app.js",
+		)
+	} else {
+		("/health/", "/api/health", "")
+	};
+	let router = ServerRouter::new().with_prefix("/api");
+	let router = match registration {
+		"handler" => router.handler(pattern, RoutedRequestHandler),
+		"handler_arc" => router.handler_arc(pattern, Arc::new(RoutedRequestHandler)),
+		"view" => router.view(pattern, RoutedRequestHandler),
+		// Named views are deprecated but retain the same dispatch contract as views.
+		#[allow(deprecated)]
+		"view_named" => router.view_named(pattern, "probe", RoutedRequestHandler),
+		_ => unreachable!("unsupported registration"),
+	}
+	.with_route_middleware(SecurityHeaderTestMiddleware);
+	let request = Request::builder()
+		.method(method.clone())
+		.uri(path)
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
+
+	// Act
+	let response = router.handle(request).await.unwrap();
+
+	// Assert: the handler sees the original method, URI, and route parameters.
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(response.headers["x-request-method"], method.as_str());
+	assert_eq!(response.headers["x-request-path"], path);
+	assert_eq!(response.headers["x-rest"], rest);
+	assert_eq!(response.headers["x-security-test"], "applied");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_shared_router_mounted_as_raw_handler_receives_head() {
+	// Arrange: one router is shared between direct and mounted requests.
+	let inner = Arc::new(
+		ServerRouter::new()
+			.endpoint(|| AssetEndpoint::<0>)
+			.endpoint(|| AssetEndpoint::<1>),
+	);
+	let outer = ServerRouter::new()
+		.handler_arc("/", inner.clone())
+		.handler_arc("/{*rest}", inner.clone());
+	let mut head_request = create_test_request("/assets/nested/app.js");
+	head_request.method = Method::HEAD;
+
+	// Act
+	let direct = inner.handle(head_request.clone_for_di()).await.unwrap();
+	let mounted = outer.handle(head_request).await.unwrap();
+	let get = outer
+		.handle(create_test_request("/assets/nested/app.js"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(mounted.status, hyper::StatusCode::OK);
+	assert_eq!(mounted.headers, direct.headers);
+	assert_eq!(mounted.body, bytes::Bytes::new());
+	assert_eq!(mounted.headers["x-endpoint"], "HEAD");
+	assert_eq!(mounted.headers["x-asset"], "nested/app.js");
+	assert_eq!(mounted.headers["content-type"], get.headers["content-type"]);
+	assert_eq!(
+		mounted.headers["content-length"],
+		get.headers["content-length"]
+	);
+	assert_eq!(get.body, "const app=1;");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_head_endpoint_precedes_get_fallback(#[values(false, true)] explicit_head: bool) {
+	// Arrange: a child GET route must not hide an explicit parent HEAD route.
+	let child = ServerRouter::new().endpoint(|| AssetEndpoint::<0>);
+	let router = ServerRouter::new().mount("/", child);
+	let router = if explicit_head {
+		router.endpoint(|| AssetEndpoint::<1>)
+	} else {
+		router
+	};
+	let mut request = create_test_request("/assets/nested/app.js");
+	request.method = Method::HEAD;
+
+	// Act
+	let response = router.handle(request).await.unwrap();
+
+	// Assert: fallback changes route selection, never the request's method.
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(response.headers["x-request-method"], "HEAD");
+	assert_eq!(
+		response.headers["x-endpoint"],
+		if explicit_head { "HEAD" } else { "GET" }
+	);
+	assert_eq!(response.headers["x-asset"], "nested/app.js");
+	assert_eq!(response.headers["content-length"], "12");
+	assert_eq!(response.body, bytes::Bytes::new());
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_extension_method_routes_preserve_endpoint_selection() {
+	// Arrange: method-specific endpoints share a path with a raw catch-all.
+	let router = ServerRouter::new()
+		.endpoint(|| AssetEndpoint::<0>)
+		.endpoint(|| AssetEndpoint::<2>)
+		.handler("/{*rest}", RoutedRequestHandler);
+	let propfind = Method::from_bytes(b"PROPFIND").unwrap();
+	let mut propfind_request = create_test_request("/assets/app.js");
+	propfind_request.method = propfind;
+	let mut trace_request = create_test_request("/assets/app.js");
+	trace_request.method = Method::TRACE;
+
+	// Act
+	let validation = router.validate_routes();
+	let get = router
+		.handle(create_test_request("/assets/app.js"))
+		.await
+		.unwrap();
+	let propfind = router.handle(propfind_request).await.unwrap();
+	let trace = router.handle(trace_request).await.unwrap();
+
+	// Assert: extension methods neither alias GET nor bypass explicit endpoints.
+	assert_eq!(validation, Ok(()));
+	assert_eq!(get.headers["x-endpoint"], "GET");
+	assert_eq!(propfind.headers["x-endpoint"], "PROPFIND");
+	assert_eq!(trace.headers["x-request-method"], "TRACE");
+	assert_eq!(trace.headers["x-rest"], "assets/app.js");
+}
+
+#[rstest]
+#[case(Method::GET)]
+#[case(Method::HEAD)]
+#[case(Method::OPTIONS)]
+#[case(Method::from_bytes(b"MKCOL").unwrap())]
+#[tokio::test]
+async fn test_extension_endpoint_distinguishes_404_and_405(#[case] method: Method) {
+	// Arrange: no GET route exists; path detection must inspect extension routes.
+	let router = ServerRouter::new().endpoint(|| AssetEndpoint::<2>);
+	let mut existing = create_test_request("/assets/app.js");
+	existing.method = method.clone();
+	let mut missing = create_test_request("/missing");
+	missing.method = method.clone();
+
+	// Act
+	let wrong_method = router.handle(existing).await.unwrap_err();
+	let not_found = router.handle(missing).await.unwrap_err();
+
+	// Assert
+	assert!(
+		matches!(wrong_method, reinhardt_http::Error::MethodNotAllowed(message)
+		if message == format!("Method {method} not allowed for /assets/app.js"))
+	);
+	assert!(matches!(not_found, reinhardt_http::Error::NotFound(message)
+		if message == format!("No route for {method} /missing")));
+}
+
 #[rstest]
 fn test_server_router_exclude_stores_exclusion() {
 	// Arrange & Act
