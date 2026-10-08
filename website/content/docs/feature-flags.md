@@ -366,6 +366,12 @@ The `uuid` feature preserves Pages UUID support and does not enable the facade's
 | `shortcuts` | Django-style helpers | reinhardt-shortcuts |
 | `dentdelion` | Plugin system | reinhardt-dentdelion |
 
+With `test` enabled, `websockets` also enables the native
+`reinhardt::test::fixtures::{websocket_server, websocket_client}` fixtures, and
+`graphql` enables `reinhardt::test::fixtures::graphql_server`. These combinations
+do not require `full`. Enabling either protocol feature without `test` does not
+activate the optional test dependency.
+
 ---
 
 ### Plugin System (dentdelion)
