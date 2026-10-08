@@ -24,11 +24,12 @@
 //!   database fixture for application tests
 //! - **[`DebugToolbar`]**: Debug panel for inspecting queries and timing
 //! - **[`WebSocketTestClient`]**: WebSocket connection testing
-//! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) integration
+//! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) and
+//!   message queues, including NATS with JetStream enabled
 //!
 //! ## Feature Flags
 //!
-//! - **`testcontainers`**: Enable TestContainers for database testing
+//! - **`testcontainers`**: Enable TestContainers for database and message queue testing
 //! - **`static`**: Enable static file testing utilities
 //! - **`websockets`**: Enable WebSocket testing utilities
 //! - **`graphql`**: Enable GraphQL testing utilities
