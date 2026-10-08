@@ -109,6 +109,13 @@ filter = 'package(=reinhardt-integration-tests) & binary(=url_patterns_target_pa
 threads-required = 2
 slow-timeout = { period = "1200s", terminate-after = 3 }
 
+# The admin feature matrix builds a standalone native consumer three times.
+# Keep its cold nested Cargo build isolated from other resource-heavy tests.
+[[profile.default.overrides]]
+filter = 'package(=reinhardt-facade-tests) & binary(=admin_pgvector_features) & test(=admin_infers_fields_with_independent_pgvector_features)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 2 }
+
 # This CLI regression builds a standalone consumer linking auth/session models.
 # Reserve both slots and allow its nested Cargo build to finish on a cold cache.
 [[profile.default.overrides]]
