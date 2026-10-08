@@ -110,6 +110,8 @@ impl ServerRouter {
 				&self.put_router,
 				&self.delete_router,
 				&self.patch_router,
+				&self.head_router,
+				&self.options_router,
 			] {
 				if let Err(e) = router_lock
 					.write()
@@ -144,6 +146,8 @@ impl ServerRouter {
 				&self.put_router,
 				&self.delete_router,
 				&self.patch_router,
+				&self.head_router,
+				&self.options_router,
 			] {
 				if let Err(e) = router_lock
 					.write()

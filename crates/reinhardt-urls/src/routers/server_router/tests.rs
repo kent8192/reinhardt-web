@@ -4,13 +4,134 @@ use super::*;
 use hyper::Method;
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{Handler, Request, Response, Result};
-use rstest::rstest;
+use rstest::{fixture, rstest};
 use std::sync::{
 	Arc, Mutex,
 	atomic::{AtomicUsize, Ordering},
 };
 
 struct TestEndpoint<const ID: u8>;
+
+struct MethodEchoHandler;
+
+#[async_trait::async_trait]
+impl Handler for MethodEchoHandler {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		let response = Response::ok()
+			.with_header("X-Method", request.method.as_str())
+			.with_header("Content-Length", "5")
+			.with_header("X-Path", request.uri.path());
+		Ok(if request.method == Method::HEAD {
+			response
+		} else {
+			response.with_body("asset")
+		})
+	}
+}
+
+#[fixture]
+fn method_echo_handler() -> MethodEchoHandler {
+	MethodEchoHandler
+}
+
+#[rstest]
+#[case::handler("handler")]
+#[case::handler_arc("handler_arc")]
+#[case::view("view")]
+#[case::view_named("view_named")]
+#[tokio::test]
+async fn method_agnostic_routes_forward_every_method(
+	method_echo_handler: MethodEchoHandler,
+	#[case] registration: &str,
+	#[values("/asset", "/assets/{*rest}")] pattern: &str,
+	#[values(
+		"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE", "CONNECT", "PROPFIND"
+	)]
+	method: &str,
+) {
+	// Arrange
+	let router = ServerRouter::new();
+	let router = match registration {
+		"handler" => router.handler(pattern, method_echo_handler),
+		"handler_arc" => router.handler_arc(pattern, Arc::new(method_echo_handler)),
+		"view" => router.view(pattern, method_echo_handler),
+		"view_named" => {
+			#[allow(
+				deprecated,
+				reason = "The supported view_named API also needs method-dispatch regression coverage."
+			)]
+			let router = router.view_named(pattern, "asset", method_echo_handler);
+			router
+		}
+		_ => unreachable!("unsupported registration"),
+	};
+	let path = if pattern == "/asset" {
+		"/asset"
+	} else {
+		"/assets/app.js"
+	};
+	let mut request = create_test_request(path);
+	request.method = Method::from_bytes(method.as_bytes()).unwrap();
+
+	// Act
+	let response = router.handle(request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(response.headers["X-Method"], method);
+	assert_eq!(response.headers["X-Path"], path);
+	assert_eq!(response.headers["Content-Length"], "5");
+	assert_eq!(
+		response.body.as_ref(),
+		if method == "HEAD" {
+			b"".as_slice()
+		} else {
+			b"asset".as_slice()
+		}
+	);
+}
+
+struct HeadAssetEndpoint;
+
+impl EndpointInfo for HeadAssetEndpoint {
+	fn path() -> &'static str {
+		"/assets/{file}"
+	}
+	fn method() -> Method {
+		Method::HEAD
+	}
+	fn name() -> &'static str {
+		"head-asset"
+	}
+}
+
+#[async_trait::async_trait]
+impl Handler for HeadAssetEndpoint {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		MethodEchoHandler.handle(request).await
+	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn mounted_shared_router_receives_head_requests() {
+	// Arrange
+	let inner = Arc::new(ServerRouter::new().endpoint(|| HeadAssetEndpoint));
+	let outer = ServerRouter::new()
+		.handler_arc("/", inner.clone())
+		.handler_arc("/{*rest}", inner);
+	let mut request = create_test_request("/assets/app.js");
+	request.method = Method::HEAD;
+
+	// Act
+	let response = outer.handle(request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(response.headers["X-Method"], "HEAD");
+	assert_eq!(response.headers["Content-Length"], "5");
+	assert!(response.body.is_empty());
+}
 
 impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 	fn path() -> &'static str {

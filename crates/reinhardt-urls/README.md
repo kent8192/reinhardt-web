@@ -96,6 +96,15 @@ if let Some((handler, params)) = router.match_request(&request) {
 }
 ```
 
+### Raw Handler and View Methods
+
+`ServerRouter::handler`, `handler_arc`, and class-based view registrations
+forward requests to their handlers for every HTTP method, including `HEAD`,
+`OPTIONS`, and extension methods such as `PROPFIND`. The request method is
+preserved so the handler can enforce its own method policy. In particular,
+mounted routers can serve their existing HEAD endpoints; handlers remain
+responsible for returning HEAD responses with headers and no body.
+
 ### Catch-All Endpoint Paths
 
 HTTP macros accept the typed path converter syntax, for example
