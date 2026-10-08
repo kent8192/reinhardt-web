@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - merge main into develop/0.4.0
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.3.20...reinhardt-di-macros@v0.3.21) - 2026-10-05
+
+### Fixed
+
+- *(di)* preserve provider function braces in cargo fix
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-di-macros@v0.2.0...reinhardt-di-macros@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-di-macros` for the Reinhardt 0.3.0 line. This

@@ -378,6 +378,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(utils)* replace legacy Azure SDK staticfiles backend
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.3.20...reinhardt-utils@v0.3.21) - 2026-10-05
+
+### Documentation
+
+- *(utils)* align security logging guide with API
+- *(utils)* fix security logging setup example
+- *(utils)* fix version marker and native facade note
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.3.17...reinhardt-utils@v0.3.18) - 2026-09-16
 
 ### Fixed

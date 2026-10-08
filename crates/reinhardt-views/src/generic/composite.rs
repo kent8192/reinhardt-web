@@ -117,7 +117,7 @@ where
 	}
 
 	/// Builds a filtered queryset with ordering applied, before pagination.
-	fn get_filtered_queryset(&self, request: &Request) -> QuerySet<M> {
+	fn get_filtered_queryset(&self, request: &Request) -> Result<QuerySet<M>> {
 		let mut queryset = self.get_queryset();
 
 		// Apply ordering if configured
@@ -133,19 +133,19 @@ where
 					let filter = Filter::new(
 						field.clone(),
 						FilterOperator::Eq,
-						FilterValue::String(value.to_owned()),
+						super::request_filter_value::<M>(field, value)?,
 					);
 					queryset = queryset.filter(filter);
 				}
 			}
 		}
 
-		queryset
+		Ok(queryset)
 	}
 
 	/// Gets the objects to display with pagination applied.
 	async fn get_objects(&self, request: &Request) -> Result<Vec<M>> {
-		let mut queryset = self.get_filtered_queryset(request);
+		let mut queryset = self.get_filtered_queryset(request)?;
 
 		// Apply pagination based on request parameters
 		if let Some(ref pagination) = self.pagination_config {
@@ -231,7 +231,7 @@ where
 				let response_body = if let Some(ref pagination) = self.pagination_config {
 					// Get total count from the filtered queryset (before pagination)
 					let total_count = self
-						.get_filtered_queryset(&request)
+						.get_filtered_queryset(&request)?
 						.count()
 						.await
 						.map_err(|e| Error::Http(e.to_string()))?;
@@ -793,9 +793,64 @@ mod tests {
 	use super::*;
 	use crate::generic::test_support::{
 		ManagedArticle, assert_default_manager_queryset, assert_explicit_queryset,
-		assert_manager_and_request_filters, explicit_queryset,
+		assert_manager_and_request_filters, assert_request_filter_value, explicit_queryset,
 	};
+	use reinhardt_db::orm::DatabaseValue;
 	use reinhardt_rest::serializers::JsonSerializer;
+	use rstest::rstest;
+
+	#[rstest]
+	#[case("tenant_id", "7", DatabaseValue::I64(7))]
+	#[case("is_archived", "true", DatabaseValue::Bool(true))]
+	#[case("title", "007", DatabaseValue::String("007".to_owned()))]
+	#[case("legacy_field", "007", DatabaseValue::String("007".to_owned()))]
+	fn list_create_request_filters_use_model_field_types(
+		#[case] field: &str,
+		#[case] value: &str,
+		#[case] expected: DatabaseValue,
+	) {
+		// Arrange
+		let request = Request::builder()
+			.uri(format!("/managed-articles?{field}={value}"))
+			.build()
+			.unwrap();
+		let view = ListCreateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_filter_config(FilterConfig::new().with_filterable_fields(vec![field]));
+
+		// Act
+		let queryset = view.get_filtered_queryset(&request).unwrap();
+
+		// Assert
+		assert_eq!(queryset.filters().len(), 2);
+		assert_eq!(queryset.filters()[1].field, field);
+		assert_request_filter_value(&queryset.filters()[1].value, &expected);
+	}
+
+	#[rstest]
+	fn list_create_invalid_typed_request_filter_returns_validation_error() {
+		// Arrange
+		let request = Request::builder()
+			.uri("/managed-articles?tenant_id=invalid")
+			.build()
+			.unwrap();
+		let view = ListCreateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
+			.with_filter_config(FilterConfig::new().with_filterable_fields(vec!["tenant_id"]));
+
+		// Act
+		let error = view
+			.get_filtered_queryset(&request)
+			.err()
+			.expect("Expected invalid typed filter to fail");
+
+		// Assert
+		let Error::Validation(message) = error else {
+			panic!("Expected validation error, got: {error:?}");
+		};
+		assert_eq!(
+			message,
+			"invalid reinhardt.orm.models.BigIntegerField value: invalid"
+		);
+	}
 
 	#[test]
 	fn list_create_default_queryset_uses_model_objects() {
@@ -822,7 +877,7 @@ mod tests {
 		let view = ListCreateAPIView::<ManagedArticle, JsonSerializer<ManagedArticle>>::new()
 			.with_filter_config(FilterConfig::new().with_filterable_fields(vec!["tenant_id"]));
 
-		assert_manager_and_request_filters(view.get_filtered_queryset(&request));
+		assert_manager_and_request_filters(view.get_filtered_queryset(&request).unwrap());
 	}
 
 	#[test]

@@ -45,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - merge main into develop/0.4.0
 
+## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.3.20...reinhardt-storages@v0.3.21) - 2026-10-05
+
+### Fixed
+
+- *(storage)* gate backend-only settings errors
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-storages@v0.3.15...reinhardt-storages@v0.3.16) - 2026-09-08
 
 ### Maintenance
