@@ -93,6 +93,27 @@ async fn method_agnostic_routes_forward_every_method(
 
 struct HeadAssetEndpoint;
 
+struct OptionsAssetEndpoint;
+
+impl EndpointInfo for OptionsAssetEndpoint {
+	fn path() -> &'static str {
+		"/assets/{file}"
+	}
+	fn method() -> Method {
+		Method::OPTIONS
+	}
+	fn name() -> &'static str {
+		"options-asset"
+	}
+}
+
+#[async_trait::async_trait]
+impl Handler for OptionsAssetEndpoint {
+	async fn handle(&self, _: Request) -> Result<Response> {
+		Ok(Response::ok().with_header("X-Endpoint", "options"))
+	}
+}
+
 impl EndpointInfo for HeadAssetEndpoint {
 	fn path() -> &'static str {
 		"/assets/{file}"
@@ -108,8 +129,97 @@ impl EndpointInfo for HeadAssetEndpoint {
 #[async_trait::async_trait]
 impl Handler for HeadAssetEndpoint {
 	async fn handle(&self, request: Request) -> Result<Response> {
-		MethodEchoHandler.handle(request).await
+		Ok(MethodEchoHandler
+			.handle(request)
+			.await?
+			.with_header("X-Endpoint", "head"))
 	}
+}
+
+#[rstest]
+#[case::handler("handler")]
+#[case::handler_arc("handler_arc")]
+#[case::view("view")]
+#[case::view_named("view_named")]
+#[tokio::test]
+async fn method_agnostic_routes_preserve_explicit_head_options(
+	#[case] registration: &str,
+	#[values(false, true)] endpoint_first: bool,
+	#[values("", "/api/")] prefix: &str,
+) {
+	// Arrange
+	let mut router = ServerRouter::new().with_prefix(prefix);
+	if endpoint_first {
+		router = router
+			.endpoint(|| HeadAssetEndpoint)
+			.endpoint(|| OptionsAssetEndpoint);
+	}
+	router = match registration {
+		"handler" => router.handler("/assets/{name}", MethodEchoHandler),
+		"handler_arc" => router.handler_arc("/assets/{name}", Arc::new(MethodEchoHandler)),
+		"view" => router.view("/assets/{name}", MethodEchoHandler),
+		"view_named" => {
+			#[allow(
+				deprecated,
+				reason = "The supported view_named API needs override regression coverage."
+			)]
+			let router = router.view_named("/assets/{name}", "assets", MethodEchoHandler);
+			router
+		}
+		_ => unreachable!("unsupported registration"),
+	};
+	if !endpoint_first {
+		router = router
+			.endpoint(|| HeadAssetEndpoint)
+			.endpoint(|| OptionsAssetEndpoint);
+	}
+	let path = format!(
+		"{}assets/app.js",
+		if prefix.is_empty() { "/" } else { prefix }
+	);
+
+	// Act
+	let validation = router.validate_routes();
+	let repeated_validation = router.validate_routes();
+	let mut head_request = create_test_request(&path);
+	head_request.method = Method::HEAD;
+	let head = router.handle(head_request).await.unwrap();
+	let mut options_request = create_test_request(&path);
+	options_request.method = Method::OPTIONS;
+	let options = router.handle(options_request).await.unwrap();
+	let get = router.handle(create_test_request(&path)).await.unwrap();
+
+	// Assert
+	assert_eq!(validation, Ok(()));
+	assert_eq!(repeated_validation, Ok(()));
+	assert_eq!(head.status, hyper::StatusCode::OK);
+	assert_eq!(head.headers["X-Endpoint"], "head");
+	assert_eq!(head.headers["X-Method"], "HEAD");
+	assert!(head.body.is_empty());
+	assert_eq!(options.status, hyper::StatusCode::OK);
+	assert_eq!(options.headers["X-Endpoint"], "options");
+	assert_eq!(get.status, hyper::StatusCode::OK);
+	assert_eq!(get.headers["X-Method"], "GET");
+	assert!(!get.headers.contains_key("X-Endpoint"));
+}
+
+#[rstest]
+fn duplicate_head_endpoints_remain_validation_errors() {
+	// Arrange
+	let router = ServerRouter::new()
+		.endpoint(|| HeadAssetEndpoint)
+		.endpoint(|| HeadAssetEndpoint)
+		.handler("/assets/{file}", MethodEchoHandler);
+	// Act
+	let errors = router.validate_routes().unwrap_err();
+	// Assert
+	assert_eq!(
+		errors,
+		[
+			"Failed to compile route '/assets/{file}' (HEAD): Insertion failed due to conflict with previously registered route: /assets/{file}",
+			"Duplicate route name 'head-asset': path '/assets/{file}' conflicts with existing path '/assets/{file}'",
+		]
+	);
 }
 
 #[rstest]
