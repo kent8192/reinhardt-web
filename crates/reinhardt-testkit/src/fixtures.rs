@@ -8,7 +8,7 @@
 //! - `loader` - Fixture data loading from JSON, factory patterns
 //! - `database` - Model-derived and migration-backed test database fixtures
 //! - `mock` - mockall-based mock implementations for database backends
-//! - `testcontainers` - Docker container fixtures (PostgreSQL, Redis, LocalStack)
+//! - `testcontainers` - Docker container fixtures (PostgreSQL, Redis, NATS, LocalStack)
 //! - `resources` - Suite-wide shared resources with automatic lifecycle management
 //! - `migrations` - Migration registry test fixtures with LocalRegistry for isolation
 //! - `validator` - Validator integration test fixtures
@@ -74,7 +74,7 @@ pub mod shared_postgres;
 /// TestContainers setup and lifecycle management fixtures.
 #[cfg(feature = "testcontainers")]
 #[allow(deprecated)] // Module contains deprecated fixtures; suppress rstest-generated code warnings
-/// Docker container fixtures (PostgreSQL, Redis, CockroachDB) via TestContainers.
+/// Docker container fixtures (PostgreSQL, Redis, NATS, CockroachDB) via TestContainers.
 pub mod testcontainers;
 
 // Admin settings fixtures (depends only on reinhardt-conf, not reinhardt-admin)
@@ -139,8 +139,9 @@ pub use server::graphql_server;
 pub use testcontainers::{
 	FileLockGuard, MigrationDatabase, cockroachdb_container, create_test_any_pool, kafka_container,
 	localstack_fixture, mongodb_container, mysql_container, mysql_with_migrations_from,
-	postgres_container, postgres_with_migrations_from, postgres_with_migrations_from_dir,
-	rabbitmq_container, redis_container, shared_kafka_container, sqlite_with_migrations_from,
+	nats_container, postgres_container, postgres_with_migrations_from,
+	postgres_with_migrations_from_dir, rabbitmq_container, redis_container, shared_kafka_container,
+	sqlite_with_migrations_from,
 };
 
 // From shared_postgres module (conditional on feature)
