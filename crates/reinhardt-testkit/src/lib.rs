@@ -24,14 +24,15 @@
 //!   database fixture for application tests
 //! - **[`DebugToolbar`]**: Debug panel for inspecting queries and timing
 //! - **[`WebSocketTestClient`]**: WebSocket connection testing
-//! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) integration
-//!   with `PostgresContainerConfig` and `postgres_container_with` for test-scoped
-//!   PostgreSQL customization. Apply migrations to a configured container URL
+//! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) and
+//!   message queues, including NATS with JetStream enabled. Customize test-scoped
+//!   PostgreSQL containers with `PostgresContainerConfig` and
+//!   `postgres_container_with`. Apply migrations to a configured container URL
 //!   using `apply_postgres_migrations_from` or `apply_postgres_migrations_from_dir`.
 //!
 //! ## Feature Flags
 //!
-//! - **`testcontainers`**: Enable TestContainers for database testing
+//! - **`testcontainers`**: Enable TestContainers for database and message queue testing
 //! - **`static`**: Enable static file testing utilities
 //! - **`websockets`**: Enable WebSocket testing utilities
 //! - **`graphql`**: Enable GraphQL testing utilities

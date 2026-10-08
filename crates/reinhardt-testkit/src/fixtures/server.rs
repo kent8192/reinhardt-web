@@ -146,13 +146,17 @@ impl Drop for TestServerGuard {
 	}
 }
 
-/// Create a test server guard with the given router.
+/// Create a test server fixture with automatic connection cleanup.
 ///
-/// This is a helper function (not an rstest fixture) that creates a test server
-/// with automatic connection cleanup. Use it directly in your tests.
+/// By default, the fixture uses an empty [`Router`]. Override the router with
+/// rstest's `#[with(...)]` attribute, or pass it directly when calling the function.
+/// A downstream fixture named `router` is not resolved implicitly: rstest resolves
+/// fixture dependencies at the definition site.
 /// See [`TestServerGuard`] for the cancellation behavior on drop.
 ///
 /// # Examples
+///
+/// Call the function directly with a custom router:
 ///
 /// ```no_run
 /// use reinhardt_testkit::fixtures::*;
@@ -160,7 +164,7 @@ impl Drop for TestServerGuard {
 ///
 /// #[tokio::test]
 /// async fn test_server() {
-///     let router = Router::new();
+///     let router = Router::new().handler("/hello", BasicHandler);
 ///     let server = test_server_guard(router).await;
 ///     let response = reqwest::get(&format!("{}/hello", server.url))
 ///         .await
@@ -169,7 +173,42 @@ impl Drop for TestServerGuard {
 ///     // Automatic cleanup on drop
 /// }
 /// ```
-pub async fn test_server_guard(router: Router) -> TestServerGuard {
+///
+/// Use the default fixture or override its router with `#[with(...)]`:
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::{test_server_guard, BasicHandler, TestServerGuard};
+/// use reinhardt_urls::routers::ServerRouter;
+/// use rstest::*;
+///
+/// fn my_router() -> ServerRouter {
+///     ServerRouter::new().handler("/hello", BasicHandler)
+/// }
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_default_server(#[future] test_server_guard: TestServerGuard) {
+///     let server = test_server_guard.await;
+///     let response = reqwest::get(format!("{}/unregistered", server.url)).await.unwrap();
+///     assert_eq!(response.status(), 404);
+/// }
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_custom_server(
+///     #[future]
+///     #[from(test_server_guard)]
+///     #[with(my_router())]
+///     server: TestServerGuard,
+/// ) {
+///     let server = server.await;
+///     let response = reqwest::get(format!("{}/hello", server.url)).await.unwrap();
+///     assert_eq!(response.status(), 200);
+///     assert_eq!(response.text().await.unwrap(), "OK");
+/// }
+/// ```
+#[fixture]
+pub async fn test_server_guard(#[default(Router::new())] router: Router) -> TestServerGuard {
 	TestServerGuard::new(router).await
 }
 
@@ -762,6 +801,90 @@ async fn wait_for_server_ready(addr: SocketAddr) -> Result<(), std::io::Error> {
 mod tests {
 	use super::*;
 	use rstest::*;
+
+	#[fixture]
+	fn hello_router() -> Router {
+		Router::new().handler("/hello", BasicHandler)
+	}
+
+	#[fixture]
+	async fn hello_scenario(
+		#[future]
+		#[from(test_server_guard)]
+		#[with(hello_router())]
+		server: TestServerGuard,
+	) -> TestServerGuard {
+		server.await
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_guard_fixture_default_router(
+		#[future] test_server_guard: TestServerGuard,
+	) {
+		// Arrange
+		let server = test_server_guard.await;
+		let client = http_client();
+
+		// Act
+		let response = client
+			.get(format!("{}/unregistered", server.url))
+			.send()
+			.await
+			.expect("Failed to request unregistered route");
+
+		// Assert
+		assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_guard_fixture_router_override(
+		#[future]
+		#[from(test_server_guard)]
+		#[with(hello_router())]
+		server: TestServerGuard,
+	) {
+		// Arrange
+		let server = server.await;
+		let client = http_client();
+
+		// Act
+		let response = client
+			.get(format!("{}/hello", server.url))
+			.send()
+			.await
+			.expect("Failed to request overridden router");
+
+		// Assert
+		assert_eq!(response.status(), reqwest::StatusCode::OK);
+		assert_eq!(
+			response.text().await.expect("Failed to read response"),
+			"OK"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_guard_fixture_composition(#[future] hello_scenario: TestServerGuard) {
+		// Arrange
+		let server = hello_scenario.await;
+		let client = http_client();
+
+		// Act
+		let response = client
+			.get(format!("{}/hello", server.url))
+			.send()
+			.await
+			.expect("Failed to request composed server fixture");
+
+		// Assert
+		assert_eq!(response.status(), reqwest::StatusCode::OK);
+		assert_eq!(
+			response.text().await.expect("Failed to read response"),
+			"OK"
+		);
+	}
 
 	#[rstest]
 	#[tokio::test]

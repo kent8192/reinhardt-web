@@ -786,6 +786,156 @@ async fn try_start_redis_container()
 }
 
 // ============================================================================
+// NATS Container Fixtures
+// ============================================================================
+
+/// Fixture providing a per-test NATS container with JetStream enabled.
+///
+/// Starts the official `nats` image with `-js` and returns the container, the host
+/// port mapped to 4222/tcp, and a `nats://localhost:<port>` connection URL.
+/// Readiness requires both startup log messages and a TCP `INFO` response with
+/// `"jetstream":true`. Keep the container handle alive for the test duration;
+/// dropping it removes the container, including its JetStream data.
+///
+/// The image name is fixed; only its tag is configurable. The default tag is
+/// `2.12-alpine`. Only this default tag is pre-pulled in CI; other tags are pulled
+/// at test time and are subject to Docker Hub rate limits.
+///
+/// Requires the `testcontainers` feature and Docker. This fixture is native-only
+/// (P0 target-only behavior); it is not available through the WASM test facade.
+///
+/// # Examples
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::{ContainerAsync, GenericImage, nats_container};
+/// use rstest::*;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_nats(
+///     #[future] nats_container: (ContainerAsync<GenericImage>, u16, String),
+/// ) {
+///     let (_container, port, url) = nats_container.await;
+///     assert_eq!(url, format!("nats://localhost:{port}"));
+/// }
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_with_another_nats_tag(
+///     #[future] #[with("2.11-alpine")]
+///     nats_container: (ContainerAsync<GenericImage>, u16, String),
+/// ) {
+///     let (_container, port, url) = nats_container.await;
+///     assert_eq!(url, format!("nats://localhost:{port}"));
+/// }
+/// ```
+#[fixture]
+pub async fn nats_container(
+	#[default("2.12-alpine")] tag: &str,
+) -> (ContainerAsync<GenericImage>, u16, String) {
+	const MAX_RETRIES: u32 = 3;
+	const RETRY_DELAY_MS: u64 = 2000;
+
+	let mut last_error = None;
+
+	for attempt in 0..MAX_RETRIES {
+		match try_start_nats_container(tag).await {
+			Ok(result) => return result,
+			Err(error) => {
+				eprintln!(
+					"NATS container start attempt {} of {} failed: {:?}",
+					attempt + 1,
+					MAX_RETRIES,
+					error
+				);
+				last_error = Some(error);
+
+				if attempt < MAX_RETRIES - 1 {
+					tokio::time::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS)).await;
+				}
+			}
+		}
+	}
+
+	panic!(
+		"Failed to start NATS container after {} attempts: {:?}",
+		MAX_RETRIES, last_error
+	);
+}
+
+async fn try_start_nats_container(
+	tag: &str,
+) -> Result<(ContainerAsync<GenericImage>, u16, String), Box<dyn std::error::Error>> {
+	use testcontainers::core::IntoContainerPort;
+
+	let nats = GenericImage::new("nats", tag)
+		.with_exposed_port(4222.tcp())
+		.with_wait_for(WaitFor::message_on_stderr(
+			"Listening for client connections on 0.0.0.0:4222",
+		))
+		.with_wait_for(WaitFor::message_on_stderr("Server is ready"))
+		.with_cmd(["-js"])
+		.start()
+		.await?;
+
+	let port = nats.get_host_port_ipv4(4222).await?;
+	probe_nats_jetstream(port).await?;
+	let url = format!("nats://localhost:{port}");
+
+	Ok((nats, port, url))
+}
+
+async fn read_nats_info(port: u16) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+	use tokio::io::{AsyncBufReadExt, BufReader};
+
+	let stream = tokio::net::TcpStream::connect(("localhost", port)).await?;
+	let mut line = String::new();
+	BufReader::new(stream).read_line(&mut line).await?;
+	let json = line
+		.strip_prefix("INFO ")
+		.and_then(|info| info.strip_suffix("\r\n"))
+		.ok_or_else(|| {
+			std::io::Error::new(
+				std::io::ErrorKind::InvalidData,
+				"NATS did not send a complete initial INFO line",
+			)
+		})?;
+
+	Ok(serde_json::from_str(json)?)
+}
+
+async fn probe_nats_jetstream(port: u16) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+	use std::time::Duration;
+	use tokio::time::{Instant, sleep_until, timeout_at};
+
+	let deadline = Instant::now() + Duration::from_secs(30);
+
+	loop {
+		// Bound each connection/read attempt as well as the complete readiness loop.
+		let attempt_deadline = deadline.min(Instant::now() + Duration::from_secs(1));
+		let error: Box<dyn std::error::Error> =
+			match timeout_at(attempt_deadline, read_nats_info(port)).await {
+				Ok(Ok(info)) if info["jetstream"].as_bool() == Some(true) => return Ok(info),
+				Ok(Ok(_)) => Box::new(std::io::Error::new(
+					std::io::ErrorKind::InvalidData,
+					"NATS INFO does not report jetstream:true",
+				)),
+				Ok(Err(error)) => error,
+				Err(error) => Box::new(error),
+			};
+
+		if Instant::now() >= deadline {
+			return Err(Box::new(std::io::Error::new(
+				std::io::ErrorKind::TimedOut,
+				format!("NATS JetStream readiness timed out on port {port}: {error}"),
+			)));
+		}
+
+		sleep_until(deadline.min(Instant::now() + Duration::from_millis(200))).await;
+	}
+}
+
+// ============================================================================
 // Redis Cluster Container Fixtures
 // ============================================================================
 
@@ -2467,6 +2617,25 @@ mod tests {
 
 		// Assert
 		assert_eq!(value, 1);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_nats_container_jetstream_enabled(
+		#[future] nats_container: (ContainerAsync<GenericImage>, u16, String),
+	) {
+		// Arrange
+		let (_container, port, url) = nats_container.await;
+
+		// Act
+		let info = probe_nats_jetstream(port)
+			.await
+			.expect("Failed to read JetStream-enabled NATS INFO");
+
+		// Assert
+		assert_eq!(url, format!("nats://localhost:{port}"));
+		assert_eq!(info["jetstream"].as_bool(), Some(true));
+		assert_eq!(info["port"].as_u64(), Some(4222));
 	}
 
 	#[rstest]
