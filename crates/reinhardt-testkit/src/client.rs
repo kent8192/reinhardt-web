@@ -95,6 +95,32 @@ pub type ClientResult<T> = Result<T, ClientError>;
 /// Type alias for request handler function
 pub type RequestHandler = Arc<dyn Fn(Request<Full<Bytes>>) -> Response<Full<Bytes>> + Send + Sync>;
 
+// Keep transport construction in one place so forks inherit future transport settings.
+#[derive(Clone)]
+struct TransportConfig {
+	timeout: Option<Duration>,
+	http_version: HttpVersion,
+	cookie_store: bool,
+}
+
+impl TransportConfig {
+	fn build_client(&self) -> reqwest::Client {
+		let mut builder = reqwest::Client::builder();
+		if let Some(timeout) = self.timeout {
+			builder = builder.timeout(timeout);
+		}
+		builder = match self.http_version {
+			HttpVersion::Http1Only => builder.http1_only(),
+			HttpVersion::Http2PriorKnowledge => builder.http2_prior_knowledge(),
+			HttpVersion::Auto => builder,
+		};
+		builder
+			.cookie_store(self.cookie_store)
+			.build()
+			.expect("Failed to build reqwest client")
+	}
+}
+
 /// Builder for creating APIClient with custom configuration
 ///
 /// # Example
@@ -189,37 +215,15 @@ impl APIClientBuilder {
 
 	/// Build the APIClient
 	pub fn build(self) -> APIClient {
-		let mut client_builder = reqwest::Client::builder();
-
-		// Configure timeout
-		if let Some(timeout) = self.timeout {
-			client_builder = client_builder.timeout(timeout);
-		}
-
-		// Configure HTTP version
-		match self.http_version {
-			HttpVersion::Http1Only => {
-				client_builder = client_builder.http1_only();
-			}
-			HttpVersion::Http2PriorKnowledge => {
-				client_builder = client_builder.http2_prior_knowledge();
-			}
-			HttpVersion::Auto => {
-				// Default behavior, no special configuration needed
-			}
-		}
-
-		// Configure cookie store
-		if self.cookie_store {
-			client_builder = client_builder.cookie_store(true);
-		}
-
-		let http_client = client_builder
-			.build()
-			.expect("Failed to build reqwest client");
+		let transport = TransportConfig {
+			timeout: self.timeout,
+			http_version: self.http_version,
+			cookie_store: self.cookie_store,
+		};
+		let http_client = transport.build_client();
 
 		let mut client = APIClient {
-			base_url: self.base_url,
+			base_url: self.base_url.into(),
 			default_headers: Arc::new(RwLock::new(HeaderMap::new())),
 			cookies: Arc::new(RwLock::new(HashMap::new())),
 			user: Arc::new(RwLock::new(None)),
@@ -227,6 +231,7 @@ impl APIClientBuilder {
 			async_handler: None,
 			handler_di_context: None,
 			http_client,
+			transport,
 		};
 
 		// Wire up framework Handler for in-process dispatch
@@ -271,8 +276,8 @@ impl Default for APIClientBuilder {
 /// # }
 /// ```
 pub struct APIClient {
-	/// Base URL for requests (e.g., "http://testserver")
-	base_url: String,
+	/// Shared base URL for requests (e.g., "http://testserver")
+	base_url: Arc<str>,
 
 	/// Default headers to include in all requests
 	default_headers: Arc<RwLock<HeaderMap>>,
@@ -294,6 +299,9 @@ pub struct APIClient {
 
 	/// Reusable HTTP client with connection pooling
 	http_client: reqwest::Client,
+
+	/// Configuration used to create independent HTTP transports.
+	transport: TransportConfig,
 }
 
 impl APIClient {
@@ -367,6 +375,54 @@ impl APIClient {
 	/// ```
 	pub fn builder() -> APIClientBuilder {
 		APIClientBuilder::new()
+	}
+	/// Derive an independent client for another credential or subject from a fixture.
+	///
+	/// Snapshots default headers, manual cookies, and the forced-auth user into
+	/// separate locks so concurrent requests and later authentication changes do
+	/// not race on shared defaults. Shares the base URL, handlers, and DI
+	/// context. Builds a new transport with the same timeout, HTTP version, and
+	/// cookie-store setting, with an independent connection pool and automatic jar.
+	/// Cookies from the parent's automatic jar are not inherited; only cookies
+	/// configured with [`Self::set_cookie`] are copied.
+	/// Native-only (P0) through `reinhardt::test`.
+	///
+	/// # Panics
+	///
+	/// Panics if reqwest cannot build a transport, as with [`APIClientBuilder::build`].
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_testkit::APIClient;
+	/// # tokio_test::block_on(async {
+	/// let mut base = APIClient::new();
+	/// base.set_handler(|request| {
+	///     let mut response = http::Response::new(request.into_body());
+	///     response.headers_mut().insert("x-result", http::HeaderValue::from_static("ok"));
+	///     response
+	/// });
+	/// let alice = base.fork().await;
+	/// let bob = base.fork().await;
+	/// alice.set_header("Authorization", "Bearer alice").await.unwrap();
+	/// bob.set_header("Authorization", "Bearer bob").await.unwrap();
+	/// let (alice_response, bob_response) = tokio::join!(alice.get("/me"), bob.get("/me"));
+	/// assert_eq!(alice_response.unwrap().header("x-result"), Some("ok"));
+	/// assert_eq!(bob_response.unwrap().header("x-result"), Some("ok"));
+	/// # });
+	/// ```
+	pub async fn fork(&self) -> APIClient {
+		APIClient {
+			base_url: self.base_url.clone(),
+			default_headers: Arc::new(RwLock::new(self.default_headers.read().await.clone())),
+			cookies: Arc::new(RwLock::new(self.cookies.read().await.clone())),
+			user: Arc::new(RwLock::new(self.user.read().await.clone())),
+			handler: self.handler.clone(),
+			async_handler: self.async_handler.clone(),
+			handler_di_context: self.handler_di_context.clone(),
+			http_client: self.transport.build_client(),
+			transport: self.transport.clone(),
+		}
 	}
 	/// Get the base URL of this client.
 	pub fn base_url(&self) -> &str {
@@ -1715,6 +1771,113 @@ mod tests {
 		assert_eq!(raw.body().as_ref(), b"raw");
 		assert_eq!(header_values(&raw, "content-type"), ["application/json"]);
 		assert_eq!(removed.header("content-type"), None);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn fork_snapshots_state_and_mutations_are_independent(header_echo_client: APIClient) {
+		// Arrange
+		let parent = header_echo_client;
+		parent
+			.set_header("Authorization", "Bearer original")
+			.await
+			.unwrap();
+		parent.set_header("x-default", "original").await.unwrap();
+		parent.set_cookie("session", "original").await.unwrap();
+		*parent.user.write().await = Some(serde_json::json!({"id": 1}));
+		let fork = parent.fork().await;
+		// Act
+		parent.set_header("x-default", "parent").await.unwrap();
+		parent.set_cookie("session", "parent").await.unwrap();
+		parent.clear_auth().await.unwrap();
+		let snapshot = fork.get("/").await.unwrap();
+		parent.set_cookie("session", "parent-new").await.unwrap();
+		parent
+			.set_header("Authorization", "Bearer parent-new")
+			.await
+			.unwrap();
+		fork.set_header("x-default", "fork").await.unwrap();
+		fork.set_header("Authorization", "Bearer fork")
+			.await
+			.unwrap();
+		fork.set_cookie("session", "fork").await.unwrap();
+		let parent_response = parent.get("/").await.unwrap();
+		fork.cleanup().await;
+		let after_cleanup = parent.get("/").await.unwrap();
+		// Assert
+		assert_eq!(snapshot.header("x-default"), Some("original"));
+		assert_eq!(
+			header_values(&snapshot, "authorization"),
+			["Bearer original"]
+		);
+		assert_eq!(snapshot.header("cookie"), Some("session=original"));
+		assert_eq!(snapshot.header("x-test-user"), Some("authenticated"));
+		assert_eq!(*fork.user.read().await, None);
+		assert_eq!(parent_response.header("x-default"), Some("parent"));
+		assert_eq!(
+			parent_response.header("authorization"),
+			Some("Bearer parent-new")
+		);
+		assert_eq!(parent_response.header("cookie"), Some("session=parent-new"));
+		assert_eq!(parent_response.header("x-test-user"), None);
+		assert_eq!(after_cleanup.header("x-default"), Some("parent"));
+		assert_eq!(
+			after_cleanup.header("authorization"),
+			Some("Bearer parent-new")
+		);
+		assert_eq!(after_cleanup.header("cookie"), Some("session=parent-new"));
+		assert_eq!(fork.base_url(), parent.base_url());
+		assert!(Arc::ptr_eq(&fork.base_url, &parent.base_url));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn concurrent_forks_send_only_their_own_authorization(header_echo_client: APIClient) {
+		// Arrange
+		let base = header_echo_client;
+		base.set_header("Authorization", "Bearer base")
+			.await
+			.unwrap();
+		let alice = base.fork().await;
+		let bob = base.fork().await;
+		alice
+			.set_header("Authorization", "Bearer alice")
+			.await
+			.unwrap();
+		bob.set_header("Authorization", "Bearer bob").await.unwrap();
+		// Act
+		let (alice_response, bob_response) = tokio::join!(alice.get("/"), bob.get("/"));
+		let base_response = base.get("/").await.unwrap();
+		// Assert
+		assert_eq!(
+			header_values(&alice_response.unwrap(), "authorization"),
+			["Bearer alice"]
+		);
+		assert_eq!(
+			header_values(&bob_response.unwrap(), "authorization"),
+			["Bearer bob"]
+		);
+		assert_eq!(
+			header_values(&base_response, "authorization"),
+			["Bearer base"]
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn fork_of_from_handler_reaches_the_same_handler() {
+		// Arrange
+		let parent = APIClient::from_handler(EchoHandler);
+		let fork = parent.fork().await;
+		// Act
+		let response = fork.get("/forked").await.unwrap();
+		// Assert
+		assert_eq!(response.status(), http::StatusCode::OK);
+		assert_eq!(response.body().as_ref(), b"/forked");
+		assert!(Arc::ptr_eq(
+			parent.async_handler.as_ref().unwrap(),
+			fork.async_handler.as_ref().unwrap()
+		));
 	}
 
 	struct FileHandler {

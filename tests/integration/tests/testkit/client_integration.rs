@@ -297,3 +297,138 @@ async fn api_client_manages_credentials_cookies_and_cleanup_through_requests() {
 	assert_eq!(logged_out.header("X-Test-User"), Some("missing"));
 	assert_eq!(logged_out.header("X-Custom"), Some("logout-retained"));
 }
+
+#[rstest]
+#[tokio::test]
+async fn fork_uses_the_same_handler_and_di_context() {
+	use reinhardt_di::{InjectionContext, SingletonScope};
+	use std::sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	};
+
+	struct ContextHandler {
+		context: Arc<InjectionContext>,
+		calls: Arc<AtomicUsize>,
+	}
+	#[async_trait]
+	impl Handler for ContextHandler {
+		async fn handle(&self, request: Request) -> reinhardt_http::Result<Response> {
+			let context = request.get_di_context::<Arc<InjectionContext>>().unwrap();
+			assert!(Arc::ptr_eq(context.as_ref(), &self.context));
+			let call = self.calls.fetch_add(1, Ordering::SeqCst);
+			Ok(Response::ok().with_body(format!("call-{call}")))
+		}
+	}
+	// Arrange
+	let context = Arc::new(InjectionContext::builder(SingletonScope::new()).build());
+	let calls = Arc::new(AtomicUsize::new(0));
+	let parent = APIClient::builder()
+		.handler(ContextHandler {
+			context: Arc::clone(&context),
+			calls: Arc::clone(&calls),
+		})
+		.di_context(context)
+		.build();
+	let fork = parent.fork().await;
+	// Act
+	let parent_response = parent.get("/parent").await.unwrap();
+	let fork_response = fork.get("/fork").await.unwrap();
+	// Assert
+	assert_eq!(parent_response.text(), "call-0");
+	assert_eq!(fork_response.text(), "call-1");
+	assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[rstest]
+#[tokio::test]
+async fn fork_has_an_independent_automatic_cookie_jar_and_inherits_manual_cookies() {
+	use reinhardt_test::{fixtures::test_server_guard, stub::StubRouter};
+	// Arrange
+	let router = StubRouter::new()
+		.get("/set-parent", |_| async {
+			Ok(Response::ok().with_header("set-cookie", "automatic=parent; Path=/"))
+		})
+		.get("/set-fork", |_| async {
+			Ok(Response::ok().with_header("set-cookie", "automatic=fork; Path=/"))
+		})
+		.get("/cookies", |request| async move {
+			let cookie = request
+				.headers
+				.get(http::header::COOKIE)
+				.and_then(|value| value.to_str().ok())
+				.unwrap_or("missing");
+			Ok(Response::ok().with_body(cookie.to_owned()))
+		});
+	let server = test_server_guard(router.into()).await;
+	let parent = APIClient::builder()
+		.base_url(&server.url)
+		.cookie_store(true)
+		.http1_only()
+		.build();
+	parent.get("/set-parent").await.unwrap();
+	let fork = parent.fork().await;
+	// Act
+	let parent_cookie = parent.get("/cookies").await.unwrap();
+	let fork_before_cookie = fork.get("/cookies").await.unwrap();
+	fork.get("/set-fork").await.unwrap();
+	let fork_cookie = fork.get("/cookies").await.unwrap();
+	let parent_after_cookie = parent.get("/cookies").await.unwrap();
+	parent.set_cookie("manual", "snapshot").await.unwrap();
+	let manual_fork = parent.fork().await;
+	let manual_cookie = manual_fork.get("/cookies").await.unwrap();
+	let suppressed_manual = manual_fork
+		.request(http::Method::GET, "/cookies")
+		.without_header(http::header::COOKIE)
+		.send()
+		.await
+		.unwrap();
+	let explicit = parent
+		.request(http::Method::GET, "/cookies")
+		.header(http::header::COOKIE, "explicit=request")
+		.send()
+		.await
+		.unwrap();
+	let automatic_after_removal = fork
+		.request(http::Method::GET, "/cookies")
+		.without_header(http::header::COOKIE)
+		.send()
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(parent_cookie.text(), "automatic=parent");
+	assert_eq!(fork_before_cookie.text(), "missing");
+	assert_eq!(fork_cookie.text(), "automatic=fork");
+	assert_eq!(parent_after_cookie.text(), "automatic=parent");
+	assert_eq!(manual_cookie.text(), "manual=snapshot");
+	assert_eq!(suppressed_manual.text(), "missing");
+	assert_eq!(explicit.text(), "explicit=request");
+	assert_eq!(automatic_after_removal.text(), "automatic=fork");
+	assert_eq!(fork_cookie.version(), http::Version::HTTP_11);
+}
+
+#[rstest]
+#[tokio::test]
+async fn fork_inherits_transport_timeout() {
+	use reinhardt_test::{fixtures::test_server_guard, stub::StubRouter};
+	use std::time::Duration;
+	// Arrange
+	let router = StubRouter::new().get("/slow", |_| async {
+		tokio::time::sleep(Duration::from_secs(1)).await;
+		Ok(Response::ok())
+	});
+	let server = test_server_guard(router.into()).await;
+	let parent = APIClient::builder()
+		.base_url(&server.url)
+		.timeout(Duration::from_millis(50))
+		.build();
+	let fork = parent.fork().await;
+	// Act
+	let result = fork.get("/slow").await;
+	// Assert
+	let error = match result {
+		Err(error) => error,
+		Ok(_) => panic!("expected inherited timeout"),
+	};
+	assert!(error.is_timeout());
+}

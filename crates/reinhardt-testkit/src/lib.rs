@@ -16,7 +16,7 @@
 //! ## Features
 //!
 //! - **[`APIClient`]**: HTTP client with per-request [`TestRequestBuilder`] headers
-//!   and payloads
+//!   and payloads, plus independent credential snapshots through `APIClient::fork`
 //! - **[`APIRequestFactory`]**: Factory for creating mock HTTP requests
 //! - **[`APITestCase`]**: Base test case with common assertions
 //! - **[`stub::StubRouter`]**: Async closure-based, method-aware test stub routes
