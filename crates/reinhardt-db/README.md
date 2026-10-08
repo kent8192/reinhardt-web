@@ -240,8 +240,10 @@ Conversion errors identify the backend, argument index and type without values.
 
 These native-only APIs have P0 parity. Existing raw methods and custom backend
 implementations remain available. The generated trait defaults forward only data
-representable by the existing QueryValue contract, including unsigned integers;
-arrays, decimals, dates and times require a custom generated-method override.
+representable by the existing QueryValue contract, including unsigned integers
+and string, integer, boolean, floating-point and UUID arrays. Empty arrays,
+nullable elements and whole-column NULL remain distinct. Arrays with other
+element types, decimals, dates and times require a custom generated-method override.
 They never use the older ORM converter's clamping or Debug-string fallbacks.
 Consumers still own connections, transactions, row decoding and result metadata.
 

@@ -277,7 +277,14 @@ pub(crate) fn compatibility_arguments(
 			Value::Json(value) => QueryValue::Json(value),
 			#[cfg(feature = "pgvector")]
 			Value::Vector(value) => QueryValue::Vector(value.map(|value| *value)),
-			Value::Array(..) => return Err(unsupported("Array").into()),
+			Value::Array(element_type, values) => {
+				let backend = match backend {
+					DatabaseType::Postgres => "postgres/custom",
+					DatabaseType::Mysql => "mysql/custom",
+					DatabaseType::Sqlite => "sqlite/custom",
+				};
+				legacy_array(element_type, values.map(|values| *values), backend, index)?
+			}
 			Value::ChronoDate(..) => return Err(unsupported("ChronoDate").into()),
 			Value::ChronoTime(..) => return Err(unsupported("ChronoTime").into()),
 			Value::Decimal(..) => return Err(unsupported("Decimal").into()),
@@ -457,24 +464,211 @@ mod compatibility_tests {
 		assert_eq!(arguments, vec![QueryValue::Uint(value)]);
 	}
 
+	fn compatibility_parameter_cases(arrays: bool) -> (Vec<Value>, Vec<QueryValue>) {
+		if !arrays {
+			return (
+				vec![
+					Value::Int(Some(7)),
+					Value::String(Some(Box::new("quoted' payload".to_owned()))),
+				],
+				vec![
+					QueryValue::Int32(7),
+					QueryValue::String("quoted' payload".to_owned()),
+				],
+			);
+		}
+		use reinhardt_query::ArrayType;
+		let mut values = Vec::new();
+		let mut expected = Vec::new();
+		values.extend([
+			Value::Array(
+				ArrayType::String,
+				Some(Box::new(vec![Value::String(Some(Box::new(
+					"quoted' payload".to_owned(),
+				)))])),
+			),
+			Value::Array(
+				ArrayType::String,
+				Some(Box::new(vec![
+					Value::String(Some(Box::new("quoted' payload".to_owned()))),
+					Value::String(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::String, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::String, None),
+		]);
+		expected.extend([
+			QueryValue::StringArray(vec!["quoted' payload".to_owned()]),
+			QueryValue::NullableStringArray(vec![Some("quoted' payload".to_owned()), None, None]),
+			QueryValue::StringArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(ArrayType::Int, Some(Box::new(vec![Value::Int(Some(7))]))),
+			Value::Array(
+				ArrayType::Int,
+				Some(Box::new(vec![
+					Value::Int(Some(7)),
+					Value::Int(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::Int, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::Int, None),
+		]);
+		expected.extend([
+			QueryValue::IntArray(vec![7]),
+			QueryValue::NullableIntArray(vec![Some(7), None, None]),
+			QueryValue::IntArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(
+				ArrayType::BigInt,
+				Some(Box::new(vec![Value::BigInt(Some(i64::MAX))])),
+			),
+			Value::Array(
+				ArrayType::BigInt,
+				Some(Box::new(vec![
+					Value::BigInt(Some(i64::MAX)),
+					Value::BigInt(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::BigInt, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::BigInt, None),
+		]);
+		expected.extend([
+			QueryValue::BigIntArray(vec![i64::MAX]),
+			QueryValue::NullableBigIntArray(vec![Some(i64::MAX), None, None]),
+			QueryValue::BigIntArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(
+				ArrayType::Bool,
+				Some(Box::new(vec![Value::Bool(Some(true))])),
+			),
+			Value::Array(
+				ArrayType::Bool,
+				Some(Box::new(vec![
+					Value::Bool(Some(true)),
+					Value::Bool(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::Bool, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::Bool, None),
+		]);
+		expected.extend([
+			QueryValue::BoolArray(vec![true]),
+			QueryValue::NullableBoolArray(vec![Some(true), None, None]),
+			QueryValue::BoolArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(
+				ArrayType::Float,
+				Some(Box::new(vec![Value::Float(Some(1.25))])),
+			),
+			Value::Array(
+				ArrayType::Float,
+				Some(Box::new(vec![
+					Value::Float(Some(1.25)),
+					Value::Float(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::Float, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::Float, None),
+		]);
+		expected.extend([
+			QueryValue::FloatArray(vec![1.25]),
+			QueryValue::NullableFloatArray(vec![Some(1.25), None, None]),
+			QueryValue::FloatArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(
+				ArrayType::Double,
+				Some(Box::new(vec![Value::Double(Some(2.5))])),
+			),
+			Value::Array(
+				ArrayType::Double,
+				Some(Box::new(vec![
+					Value::Double(Some(2.5)),
+					Value::Double(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::Double, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::Double, None),
+		]);
+		expected.extend([
+			QueryValue::DoubleArray(vec![2.5]),
+			QueryValue::NullableDoubleArray(vec![Some(2.5), None, None]),
+			QueryValue::DoubleArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		values.extend([
+			Value::Array(
+				ArrayType::Uuid,
+				Some(Box::new(vec![Value::Uuid(Some(Box::new(
+					uuid::Uuid::nil(),
+				)))])),
+			),
+			Value::Array(
+				ArrayType::Uuid,
+				Some(Box::new(vec![
+					Value::Uuid(Some(Box::new(uuid::Uuid::nil()))),
+					Value::Uuid(None),
+					Value::Int(None),
+				])),
+			),
+			Value::Array(ArrayType::Uuid, Some(Box::new(Vec::new()))),
+			Value::Array(ArrayType::Uuid, None),
+		]);
+		expected.extend([
+			QueryValue::UuidArray(vec![uuid::Uuid::nil()]),
+			QueryValue::NullableUuidArray(vec![Some(uuid::Uuid::nil()), None, None]),
+			QueryValue::UuidArray(Vec::new()),
+			QueryValue::Null,
+		]);
+		(values, expected)
+	}
+
+	fn compatibility_query(arrays: bool) -> ((String, Values), Vec<QueryValue>) {
+		use reinhardt_query::prelude::{Alias, Expr, PostgresQueryBuilder, Query};
+		let (values, expected) = compatibility_parameter_cases(arrays);
+		let mut statement = Query::select();
+		// Explicit placeholders retain typed NULL arguments instead of rendering
+		// them as SQL literals before the custom-provider bridge can observe them.
+		for index in 0..values.len() {
+			statement.expr_as(
+				Expr::cust(format!("${}", index + 1)),
+				Alias::new(format!("argument_{index}")),
+			);
+		}
+		let (sql, _) = PostgresQueryBuilder
+			.build_select_checked(&statement)
+			.unwrap();
+		((sql, Values(values)), expected)
+	}
+
 	#[rstest]
 	#[tokio::test]
-	async fn existing_custom_backend_works_without_implementing_new_generated_methods() {
+	async fn existing_custom_backend_works_without_implementing_new_generated_methods(
+		#[values(false, true)] arrays: bool,
+	) {
 		// Arrange: this provider implements only the pre-existing required raw methods.
 		let calls: CapturedCalls = Arc::new(Mutex::new(Vec::new()));
 		let connection = crate::backends::DatabaseConnection::new(Arc::new(CustomBackend {
 			calls: calls.clone(),
 		}));
-		let sql = "SELECT $1 AS id, $2 AS name";
-		let built = || {
-			(
-				sql.to_owned(),
-				Values(vec![
-					Value::Int(Some(7)),
-					Value::String(Some(Box::new("quoted' payload".to_owned()))),
-				]),
-			)
-		};
+		let (pair, expected) = compatibility_query(arrays);
+		let sql = pair.0.clone();
+		let built = || pair.clone();
 		// Act
 		let result = connection.execute_generated(built(), None).await.unwrap();
 		let one = connection.fetch_one_generated(built(), None).await.unwrap();
@@ -502,31 +696,22 @@ mod compatibility_tests {
 			failed.unwrap_err().database_kind(),
 			Some(DatabaseErrorKind::Type)
 		);
-		assert_eq!(
-			*calls.lock().unwrap(),
-			vec![
-				(
-					sql.to_owned(),
-					vec![
-						QueryValue::Int32(7),
-						QueryValue::String("quoted' payload".to_owned())
-					]
-				);
-				4
-			]
-		);
+		assert_eq!(*calls.lock().unwrap(), vec![(sql.to_owned(), expected); 4]);
 	}
 
 	#[rstest]
 	#[tokio::test]
-	async fn existing_custom_transaction_and_stream_defaults_preserve_raw_parameters() {
+	async fn existing_custom_transaction_and_stream_defaults_preserve_raw_parameters(
+		#[values(false, true)] arrays: bool,
+	) {
 		// Arrange: no generated methods are implemented by this legacy provider.
 		let calls: CapturedCalls = Arc::new(Mutex::new(Vec::new()));
 		let connection = crate::backends::DatabaseConnection::new(Arc::new(CustomBackend {
 			calls: calls.clone(),
 		}));
-		let sql = "SELECT $1 AS id";
-		let built = || (sql.to_owned(), Values(vec![Value::Int(Some(7))]));
+		let (pair, expected) = compatibility_query(arrays);
+		let sql = pair.0.clone();
+		let built = || pair.clone();
 		let mut transaction = connection.begin().await.unwrap();
 		// Act
 		let result = transaction.execute_generated(built(), None).await.unwrap();
@@ -583,10 +768,7 @@ mod compatibility_tests {
 		assert_eq!(result.rows_affected, 1);
 		assert_eq!(result.last_insert_id, Some(7));
 		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Type));
-		assert_eq!(
-			*calls.lock().unwrap(),
-			vec![(sql.to_owned(), vec![QueryValue::Int32(7)]); 6]
-		);
+		assert_eq!(*calls.lock().unwrap(), vec![(sql.to_owned(), expected); 6]);
 	}
 
 	#[rstest]
@@ -639,7 +821,7 @@ mod compatibility_tests {
 		Value::Decimal(Some(Box::new(rust_decimal::Decimal::new(12345, 4)))),
 		"Decimal"
 	)]
-	#[case(Value::Array(reinhardt_query::ArrayType::Int, Some(Box::new(vec![Value::Int(Some(1))]))), "Array")]
+	#[case(Value::Array(reinhardt_query::ArrayType::Int, Some(Box::new(vec![Value::String(Some(Box::new("wrong element type".into())))]))), "Array")]
 	fn custom_bridge_rejects_unrepresentable_types_without_stringifying(
 		#[case] value: Value,
 		#[case] kind: &str,
