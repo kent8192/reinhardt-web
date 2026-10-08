@@ -18,12 +18,41 @@
 //! - **[`APIClient`]**: HTTP client for making test API requests
 //! - **[`APIRequestFactory`]**: Factory for creating mock HTTP requests
 //! - **[`APITestCase`]**: Base test case with common assertions
+//! - **[`stub::StubRouter`]**: Native async closure-based, method-aware stub routes
 //! - **Response Assertions**: Status, header, and body assertions
 //! - **[`Factory`]**: Model factory for generating test data
 //! - **[`load_model_fixture_file`]**: Django-compatible model fixture loading
 //! - **[`DebugToolbar`]**: Debug panel for inspecting queries and timing
 //! - **[`WebSocketTestClient`]**: WebSocket connection testing
 //! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) integration
+//!
+//! ## Async Stub Routes (Native Only)
+//!
+//! Use this facade's exports to register fake upstreams and webhook receivers:
+//!
+//! ```rust
+//! use reinhardt_test::{http::Response, stub::StubRouter};
+//!
+//! let router = StubRouter::new()
+//!     .post("/webhook", |request| async move {
+//!         Ok(Response::ok().with_body(request.body().clone()))
+//!     })
+//!     .get("/health", |_request| async { Ok(Response::ok()) })
+//!     .into_server_router();
+//! ```
+//!
+//! In an async test, pass `router` to [`fixtures::test_server_guard`] and keep
+//! the returned guard alive while sending requests. The router uses framework
+//! 404/405 handling and rejects duplicate `(path, method)` registrations.
+//! Through the top-level crate, import
+//! `reinhardt::test::{http::Response, stub::StubRouter}` and use
+//! `reinhardt::test::fixtures::test_server_guard` instead.
+//!
+//! [`SimpleHandler`] is deprecated starting in `0.4.0-alpha.21` and remains
+//! available for compatibility. Replace its synchronous closure and manual
+//! method checks with the corresponding [`stub::StubRouter`] method and an
+//! async closure, then convert it into a `ServerRouter`. Neither facade requires
+//! a direct dependency on `reinhardt-testkit` for this migration.
 //!
 //! ## Feature Flags
 //!

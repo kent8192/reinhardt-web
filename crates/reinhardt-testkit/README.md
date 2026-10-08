@@ -2,6 +2,37 @@
 
 Core testing infrastructure for the Reinhardt framework.
 
+## Async Stub Routes
+
+`stub::StubRouter` builds native test servers from async closures that can
+capture shared state. Register each path with its HTTP method:
+
+```rust
+use reinhardt_testkit::{http::Response, stub::StubRouter};
+
+let router = StubRouter::new()
+    .post("/webhook", |request| async move {
+        Ok(Response::ok().with_body(request.body().clone()))
+    })
+    .get("/health", |_request| async { Ok(Response::ok()) })
+    .into_server_router();
+```
+
+In an async test, start the server with
+`reinhardt_testkit::test_server_guard(router).await`. Keep the returned guard
+alive while sending requests; dropping it shuts down the server. The router
+uses the framework's 404/405 handling, and duplicate `(path, method)`
+registrations panic immediately. GET, POST, PUT, PATCH, and DELETE have
+helpers; use `.route(path, method, handler)` for other methods.
+
+`SimpleHandler` is deprecated starting in `0.4.0-alpha.21` and remains available
+for compatibility. Migrate from `SimpleHandler::new(|request| { ... })` and
+manual method checks to `StubRouter::new().post(path, |request| async move {
+... })` (or the matching HTTP method). Return the response from the async
+closure, then convert the builder into a `ServerRouter`. Application endpoints
+that need extractors or named routes should use HTTP method macros and
+`ServerRouter::endpoint`.
+
 ## Model-Derived Test Databases
 
 `TestDatabase` creates an isolated database for tests and applies schema from

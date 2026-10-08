@@ -8,6 +8,45 @@ Comprehensive testing utilities inspired by Django REST Framework's test utiliti
 
 Supports both unit testing and integration testing with real or test databases.
 
+## Async Stub Routes
+
+`stub::StubRouter` provides native async closures for fake upstreams and webhook
+receivers. When depending directly on `reinhardt-test`, use its own exports:
+
+```rust
+use reinhardt_test::{http::Response, stub::StubRouter};
+
+let router = StubRouter::new()
+    .post("/webhook", |request| async move {
+        Ok(Response::ok().with_body(request.body().clone()))
+    })
+    .get("/health", |_request| async { Ok(Response::ok()) })
+    .into_server_router();
+```
+
+With the top-level `reinhardt` crate's `test` feature, the same example uses:
+
+```rust
+use reinhardt::test::{http::Response, stub::StubRouter};
+```
+
+In an async test, start the server with
+`reinhardt_test::fixtures::test_server_guard(router).await`, or
+`reinhardt::test::fixtures::test_server_guard(router).await` through the
+top-level facade. Keep the returned guard alive while sending requests;
+dropping it shuts down the server. GET, POST, PUT, PATCH, and DELETE have
+helpers; use `.route(path, method, handler)` for other methods. Method
+mismatches return 405, unknown paths return 404, and duplicate `(path, method)`
+registrations panic immediately.
+
+`SimpleHandler` is deprecated starting in `0.4.0-alpha.21` and remains available
+for compatibility. Replace `SimpleHandler::new(|request| { ... })` and manual
+method checks with `StubRouter::new().post(path, |request| async move { ... })`
+(or the matching HTTP method), then convert it into a `ServerRouter`. The
+`reinhardt_test::stub` and `reinhardt::test::stub` paths work without adding
+`reinhardt-testkit` as a direct dependency. For application endpoints with
+extractors or named routes, use HTTP method macros and `ServerRouter::endpoint`.
+
 ## Test Databases
 
 `reinhardt-test` re-exports `reinhardt-testkit`'s model-derived database
