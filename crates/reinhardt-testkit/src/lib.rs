@@ -25,7 +25,10 @@
 //! - **[`DebugToolbar`]**: Debug panel for inspecting queries and timing
 //! - **[`WebSocketTestClient`]**: WebSocket connection testing
 //! - **TestContainers**: Database containers (PostgreSQL, MySQL, Redis) and
-//!   message queues, including NATS with JetStream enabled
+//!   message queues, including NATS with JetStream enabled. Customize test-scoped
+//!   PostgreSQL containers with `PostgresContainerConfig` and
+//!   `postgres_container_with`. Apply migrations to a configured container URL
+//!   using `apply_postgres_migrations_from` or `apply_postgres_migrations_from_dir`.
 //!
 //! ## Feature Flags
 //!
@@ -129,7 +132,10 @@ pub use reinhardt_urls::routers::ServerRouter;
 pub use reinhardt_urls;
 
 #[cfg(feature = "testcontainers")]
-pub use fixtures::{postgres_container, redis_container};
+pub use fixtures::{
+	PostgresContainerConfig, apply_postgres_migrations_from, apply_postgres_migrations_from_dir,
+	postgres_container, postgres_container_with, redis_container, start_postgres_container,
+};
 pub use http::{
 	assert_has_header, assert_header_contains, assert_header_equals, assert_no_header,
 	assert_status, create_insecure_request, create_request, create_response_with_headers,
@@ -184,7 +190,11 @@ pub mod prelude {
 	};
 
 	#[cfg(feature = "testcontainers")]
-	pub use super::fixtures::{postgres_container, redis_container};
+	pub use super::fixtures::{
+		PostgresContainerConfig, apply_postgres_migrations_from,
+		apply_postgres_migrations_from_dir, postgres_container, postgres_container_with,
+		redis_container, start_postgres_container,
+	};
 	pub use super::http::{
 		assert_has_header, assert_header_contains, assert_header_equals, assert_no_header,
 		assert_status, create_insecure_request, create_request, create_response_with_headers,
