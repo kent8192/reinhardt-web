@@ -511,11 +511,17 @@ JSONB array types, and exact decimals. MySQL retains exact decimals and
 the full unsigned integer range. SQLite rejects decimal and array arguments
 because it has no corresponding native codec.
 
-Arguments that cannot be encoded without loss fail before SQL execution. Errors
-report the backend, value type, and one-based argument position without exposing
-the value. PostgreSQL and MySQL reject temporal values with sub-microsecond
-precision or leap seconds; SQLite also rejects NaN rather than storing SQL NULL.
-MySQL normalizes fixed-offset datetimes to UTC after checking their precision,
+Unsupported argument types and values outside native ranges fail before SQL
+execution. Errors report the backend, value type, and one-based argument position
+without exposing the value. PostgreSQL and MySQL truncate temporal values to
+microsecond precision at the binding boundary, including ORM `auto_now` /
+`auto_now_add` timestamps and PostgreSQL array elements. Explicit caller
+timestamps follow this same contract: sub-microsecond digits are silently
+discarded rather than rejected. This is truncation before encoding, not PostgreSQL
+text input rounding to the nearest microsecond; returned model timestamps reflect
+the stored microsecond value. Leap seconds remain unsupported. SQLite also rejects
+NaN rather than storing SQL NULL.
+MySQL normalizes fixed-offset datetimes to UTC after truncating their precision,
 matching its UTC and local datetime bindings; typed NULL datetimes remain SQL NULL.
 SQLite also normalizes local and fixed-offset datetimes to UTC so generated
 predicates match the UTC text used by legacy timestamp bindings and `Manager`

@@ -4,11 +4,12 @@ use reinhardt_query::{Value, Values};
 use sqlx::Arguments;
 pub(in crate::backends) fn arguments(values: Values) -> Result<sqlx::mysql::MySqlArguments> {
 	let mut arguments = <sqlx::mysql::MySqlArguments>::default();
-	for (offset, value) in values.into_iter().enumerate() {
+	for (offset, mut value) in values.into_iter().enumerate() {
 		let index = offset + 1;
 		let kind = value_type(&value);
 		let backend = "mysql";
 		let fail = |reason| error(backend, index, kind, reason);
+		super::normalize_temporal_precision(&mut value);
 		super::validate_value(&value, backend, index)?;
 		macro_rules! add {
 			($value:expr) => {
