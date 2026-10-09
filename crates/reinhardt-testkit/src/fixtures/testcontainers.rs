@@ -797,6 +797,9 @@ async fn try_start_redis_container()
 /// `"jetstream":true`. Keep the container handle alive for the test duration;
 /// dropping it removes the container, including its JetStream data.
 ///
+/// The returned future is `Send`, so it supports shared boxed fixture composition
+/// and spawning on multithreaded runtimes.
+///
 /// The image name is fixed; only its tag is configurable. The default tag is
 /// `2.12-alpine`. Only this default tag is pre-pulled in CI; other tags are pulled
 /// at test time and are subject to Docker Hub rate limits.
@@ -865,7 +868,7 @@ pub async fn nats_container(
 
 async fn try_start_nats_container(
 	tag: &str,
-) -> Result<(ContainerAsync<GenericImage>, u16, String), Box<dyn std::error::Error>> {
+) -> Result<(ContainerAsync<GenericImage>, u16, String), Box<dyn std::error::Error + Send + Sync>> {
 	use testcontainers::core::IntoContainerPort;
 
 	let nats = GenericImage::new("nats", tag)
@@ -885,7 +888,9 @@ async fn try_start_nats_container(
 	Ok((nats, port, url))
 }
 
-async fn read_nats_info(port: u16) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+async fn read_nats_info(
+	port: u16,
+) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
 	use tokio::io::{AsyncBufReadExt, BufReader};
 
 	let stream = tokio::net::TcpStream::connect(("localhost", port)).await?;
@@ -904,7 +909,9 @@ async fn read_nats_info(port: u16) -> Result<serde_json::Value, Box<dyn std::err
 	Ok(serde_json::from_str(json)?)
 }
 
-async fn probe_nats_jetstream(port: u16) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+async fn probe_nats_jetstream(
+	port: u16,
+) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
 	use std::time::Duration;
 	use tokio::time::{Instant, sleep_until, timeout_at};
 
@@ -913,7 +920,7 @@ async fn probe_nats_jetstream(port: u16) -> Result<serde_json::Value, Box<dyn st
 	loop {
 		// Bound each connection/read attempt as well as the complete readiness loop.
 		let attempt_deadline = deadline.min(Instant::now() + Duration::from_secs(1));
-		let error: Box<dyn std::error::Error> =
+		let error: Box<dyn std::error::Error + Send + Sync> =
 			match timeout_at(attempt_deadline, read_nats_info(port)).await {
 				Ok(Ok(info)) if info["jetstream"].as_bool() == Some(true) => return Ok(info),
 				Ok(Ok(_)) => Box::new(std::io::Error::new(
@@ -2617,6 +2624,15 @@ mod tests {
 
 		// Assert
 		assert_eq!(value, 1);
+	}
+
+	#[rstest]
+	fn test_nats_container_future_is_send() {
+		fn assert_send<T: Send>(_: T) {}
+
+		// The compile-time assertions never poll the futures or start Docker.
+		assert_send(nats_container::default());
+		assert_send(nats_container("2.11-alpine"));
 	}
 
 	#[rstest]
