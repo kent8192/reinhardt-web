@@ -97,6 +97,11 @@ restriction such as local-only work still controls the delivery scope.
   for the source and target. Reuse the task's worktree when available.
 - Resolve PR conflicts by merging the target branch into the source in a
   worktree, then validate and push normally. Do not rebase or force-push.
+- Attribute AI-written commits, PRs, Issues and comments to the agent tool and
+  model you actually are. Fill in both names from your own knowledge; never copy
+  them from examples, earlier commits, or another agent's message. See
+  [Commit Guidelines](instructions/COMMIT_GUIDELINE.md) and
+  [GitHub Interaction FF-1](instructions/GITHUB_INTERACTION.md#ff-1-must-agent-attribution).
 - Create one focused commit at a time under
   [Commit Guidelines](instructions/COMMIT_GUIDELINE.md); review the staged diff.
   Dry-run batch operations before applying them.
@@ -118,8 +123,8 @@ restriction such as local-only work still controls the delivery scope.
 ## Instruction Maintenance
 
 `AGENTS.md` and `CLAUDE.md` are mirrored entrypoints. Edit both together.
-Only `AGENTS.md` / `CLAUDE.md`, `AGENTS.local.md` / `CLAUDE.local.md`, and
-`Codex attribution` / `Claude Code attribution` substitutions may differ.
+Only `AGENTS.md` / `CLAUDE.md` and `AGENTS.local.md` / `CLAUDE.local.md`
+references may differ.
 Run `diff CLAUDE.md AGENTS.md` and verify only those substitutions remain.
 
 Keep always-needed rules here and conditional detail in one canonical instruction
