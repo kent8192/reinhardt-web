@@ -71,7 +71,7 @@ gh pr create --title "feat(auth): add JWT token validation" \
 - [x] All existing tests pass
 - [x] Manual testing with expired tokens
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 EOF
 )"
 ```
@@ -262,7 +262,7 @@ The `release` label has special significance and triggers automated workflows:
    - [x] `cargo publish --dry-run -p reinhardt-core` succeeds
    - [ ] Ready for publication after merge
    
-   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+   🤖 Generated with [<Agent Name>](<Agent URL>)
    EOF
    )"
    ```
@@ -745,7 +745,7 @@ Version Changes:
 - [x] `cargo publish --dry-run -p [crate-name]`
 - [ ] Ready for publish after PR merge
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 ```
 
 **See**: @instructions/RELEASE_PROCESS.md for detailed release procedures
