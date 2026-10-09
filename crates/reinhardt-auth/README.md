@@ -622,8 +622,10 @@ assert!(mfa.verify_code("alice", code).await?);
 
 Enable `oauth` for the authorization server and `database` for its PostgreSQL
 store. The server supports Authorization Code with mandatory PKCE `S256` and
-Client Credentials. It issues audience-bound opaque Bearer tokens. Refresh and
-Implicit grants are unavailable; no refresh token is issued.
+Client Credentials. It issues audience-bound opaque Bearer tokens. Implicit
+grant is unavailable. Refresh tokens are issued only on the Authorization Code
+grant, and only when both the server configuration and the client registration
+opt in; see [Refresh Tokens](#refresh-tokens).
 
 `OAuthServer` provides administrative client and resource registration, typed
 pending authorization requests, explicit host approval, token inspection,
@@ -653,7 +655,10 @@ original audience when re-registered. Custom stores used for registration must
 implement `insert_client_if_absent`, `insert_resource_if_absent`, and the
 corresponding compare-and-swap methods atomically.
 Code exchange commits redemption and token insertion together; custom stores
-must implement `redeem_code_and_store_token` atomically. `put_token` accepts
+must implement `redeem_code_and_store_token` atomically. Refresh tokens also need
+`redeem_code_and_store_tokens`, `inspect_refresh_token`, `rotate_refresh_token`,
+and `revoke_refresh_family`; their default implementations return an error (or
+find no family), so a store without them cannot issue refresh tokens. `put_token` accepts
 client-credentials tokens only. Authorization completion separately prepares its
 validated pending snapshot and code, then calls `complete_pending` to persist
 both atomically. Client-secret rotation uses `compare_and_swap_client` so a
@@ -661,7 +666,7 @@ concurrent administrative update cannot be overwritten. A conflicting rotation,
 previous-secret revocation, or disable operation returns `ServerError`; retry
 with fresh state rather than using an uncommitted credential.
 Resource servers authenticate separately to introspection. Use
-`PostgresOAuthStore::migration()` in the host's Reinhardt migration graph before
+`PostgresOAuthStore::migrations()` in the host's Reinhardt migration graph before
 serving requests; enable `reinhardt-db/postgres` in the host that runs it.
 Schedule `PostgresOAuthStore::purge_expired(now)` from a host maintenance job,
 passing the current UNIX time in seconds. It deletes expired pending requests,
@@ -734,6 +739,106 @@ origins. Distribute each new confidential-client secret once. Update clients to
 use the mounted HTTPS endpoints and PKCE `S256`; users must authorize again.
 Retire the legacy helper only after its existing callers have moved.
 
+#### Refresh Tokens
+
+Refresh tokens are opt-in and apply only to the OAuth Authorization Code grant.
+They are never issued for Client Credentials or on the OIDC token endpoint. Both
+of the following must be set before a code exchange issues one:
+
+- `OAuthServerConfig::refresh_tokens` is `Some(RefreshTokenPolicy)`. It is `None`
+  in `OAuthServerConfig::new` and `OAuthServerConfig::for_loopback_development`.
+- The client registration sets `ClientRegistration::refresh_token` to `true`.
+  Registration rejects this flag unless `authorization_code` is also `true`.
+  Public clients may use it.
+
+The metadata document lists `refresh_token` in `grant_types_supported` only when
+the server policy is set. `IssuedToken` is `#[non_exhaustive]` and carries
+`refresh_token: Option<String>`, which is omitted from serialized output when
+no refresh token was issued. Match it with `..` or read its fields by name.
+
+`RefreshTokenPolicy::new(idle_ttl, max_lifetime)` returns `InvalidRequest` unless
+both durations are non-zero, `idle_ttl` is at most 90 days, `max_lifetime` is at
+most 365 days, and `idle_ttl` does not exceed `max_lifetime`. `Default` uses a
+30-day idle timeout and a 90-day maximum lifetime. The fields are public, so a
+policy edited after construction bypasses `new`; `OAuthServerConfig::validate()`
+checks the policy again.
+
+A successful code exchange creates a token family: the refresh-token rotation
+chain started by that code, plus every access token issued from it. The family
+records the code's scopes, audience, and user, and its absolute expiry is fixed
+at creation as `now + max_lifetime`. The first refresh token's idle expiry is
+`min(now + idle_ttl, absolute expiry)`. Refresh tokens are opaque high-entropy
+secrets; only their SHA-256 digests are stored, as for access tokens.
+
+Refresh uses the token endpoint's `refresh_token` grant, with the same client
+authentication as the code grant: confidential clients must present their
+secret, and public clients authenticate with `client_id` only. The request may
+include `scope` and `resource`.
+
+- A refresh may request a subset of the family's scopes. The access token
+  receives the requested scopes intersected with the client's current `scopes`
+  allowlist. An empty intersection returns `invalid_grant`. A scope outside the
+  family's scopes returns `invalid_scope`.
+- The refresh token keeps the family's original scopes, so a later refresh can
+  request the wider set again. Only the access token is narrowed.
+- A `resource` that differs from the family audience returns `invalid_target`.
+- A disabled audience resource, or a user that is missing, inactive, or no
+  longer authenticated, returns `invalid_grant`. These failures do not revoke
+  the family.
+
+Every refresh rotates the refresh token. The presented token is marked rotated,
+and its replacement joins the same family. There is no grace window. Presenting
+a rotated token while its family is live and owned by the client is reuse: the
+server revokes the family and all of its access tokens atomically and returns
+`invalid_grant`. A concurrent refresh that loses the race is also treated as
+reuse. In PostgreSQL, row locks ensure that exactly one concurrent rotation
+succeeds.
+
+Because a losing refresh revokes the whole family, a client must serialize
+refreshes for each family. Let one process perform the refresh and persist the
+returned refresh token before any other process uses the previous one. For
+example, a CLI can hold an exclusive file lock around the read, refresh, and
+write sequence. Parallel refreshes from a shared copy of the token will end the
+session.
+
+Expired, revoked, reused, and other-client refresh tokens all return
+`invalid_grant` with no `error_description` that distinguishes them, so callers
+cannot probe token state. Reuse is logged with `tracing::warn!`, and the log
+contains only the client ID and family ID.
+
+Policy changes apply to existing families. The idle expiry for each refresh
+uses the policy in effect at that refresh, so a shorter `idle_ttl` takes effect
+on the next refresh. Absolute expiry is fixed at creation and keeps the
+`max_lifetime` from that time. Setting `refresh_tokens` to `None` makes refresh
+return `unsupported_grant_type`. Clearing a client's `refresh_token` flag makes
+refresh return `unauthorized_client`. To cut off existing families immediately,
+use `revoke_client` or `revoke_user`. `disable_client` and `retire_user` also
+revoke families.
+
+Revocation accepts an optional RFC 7009 `token_type_hint` on
+`OAuthServer::revoke_with_hint` and the `/revoke` endpoint; `OAuthServer::revoke`
+passes no hint. The hint only sets the order in which token types are tried;
+the server always tries both. Revoking a refresh token revokes its whole family,
+including access tokens already issued from it. This applies even when the
+presented refresh token was already rotated. Revoking an access token revokes
+only that token, and the family survives. Replaying an authorization code also
+revokes the family that the code produced. Revoking a token owned by another
+client has no effect and still returns success. `revoke_user`, `retire_user`,
+`revoke_client`, and `disable_client` revoke families as well, but their
+returned counts still include only access tokens.
+
+Introspection and `token_info` see only access tokens. A refresh token presented
+to either is reported as inactive.
+
+`PostgresOAuthStore::purge_expired(now)` deletes families whose absolute expiry
+has passed, together with their refresh tokens. Rotated refresh tokens remain
+until their family is purged, because reuse detection depends on them.
+Authorization codes referenced by a remaining family are kept. The refresh
+token tables are created by `0002_oauth_server_refresh_tokens`
+(`PostgresOAuthStore::refresh_token_migration()`), which runs after
+`0001_oauth_server` and does not modify it. Existing deployments must apply it
+before enabling refresh tokens; `PostgresOAuthStore::migrations()` returns both.
+
 ### OpenID Provider
 
 Enable `oidc-op` on `reinhardt-auth` (or `auth-oidc-op` on the root
@@ -741,7 +846,8 @@ Enable `oidc-op` on `reinhardt-auth` (or `auth-oidc-op` on the root
 authorization server. The first profile supports first-party confidential web
 clients, Authorization Code with mandatory PKCE `S256`, `client_secret_basic`,
 the `openid` scope, RS256 ID Tokens, a UserInfo-only opaque access token,
-Discovery, and JWKS. It does not issue refresh tokens or expose a logout,
+Discovery, and JWKS. The OIDC token endpoint never issues refresh tokens, even
+when the OAuth refresh token policy is enabled. It does not expose a logout,
 dynamic registration, or claims endpoint. The RP redirect URI must match its
 registration exactly and use HTTPS. `OidcConfig::for_loopback_development`
 permits HTTP only for explicit loopback development.
@@ -767,7 +873,7 @@ fn oidc_routes(
 }
 ```
 
-Apply `PostgresOAuthStore::migration()` and then
+Apply `PostgresOAuthStore::migrations()` and then
 `PostgresOidcStore::migration()` with the host's Reinhardt migration executor.
 Use the same database for both stores. Schedule
 `PostgresOidcStore::purge_expired(now)` after the OAuth purge job. It removes
