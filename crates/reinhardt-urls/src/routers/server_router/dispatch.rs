@@ -52,7 +52,19 @@ impl ServerRouter {
 	/// 1. Check prefix match
 	/// 2. Try child routers first (depth-first search)
 	/// 3. Try own routes
+	/// 4. For HEAD only, retry GET after the entire HEAD search has missed.
 	pub(crate) fn resolve(&self, path: &str, method: &Method) -> Option<RouteMatch<'_>> {
+		self.resolve_method(path, method).or_else(|| {
+			if *method == Method::HEAD {
+				self.resolve_method(path, &Method::GET)
+			} else {
+				None
+			}
+		})
+	}
+
+	/// Resolve a request path using only the routing tables for `method`.
+	fn resolve_method(&self, path: &str, method: &Method) -> Option<RouteMatch<'_>> {
 		// 1. Check prefix and normalize remaining path (ensures leading `/`)
 		let remaining_path = Self::strip_prefix_normalized(&self.prefix, path)?;
 

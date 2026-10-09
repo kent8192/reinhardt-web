@@ -868,11 +868,10 @@ impl APIClient {
 		path: &str,
 		headers: &[(&str, &str)],
 	) -> ClientResult<TestResponse> {
-		let mut request = self.request(Method::GET, path);
-		for (name, value) in headers {
-			request = request.header(*name, *value);
-		}
-		request.send().await
+		self.request(Method::GET, path)
+			.legacy_headers(headers)
+			.send()
+			.await
 	}
 
 	/// Make a POST request with raw body and additional per-request headers
@@ -901,14 +900,12 @@ impl APIClient {
 		content_type: &str,
 		headers: &[(&str, &str)],
 	) -> ClientResult<TestResponse> {
-		let mut request = self
-			.request(Method::POST, path)
+		self.request(Method::POST, path)
 			.body(Bytes::copy_from_slice(body))
-			.header(http::header::CONTENT_TYPE, content_type);
-		for (name, value) in headers {
-			request = request.header(*name, *value);
-		}
-		request.send().await
+			.header(http::header::CONTENT_TYPE, content_type)
+			.legacy_headers(headers)
+			.send()
+			.await
 	}
 
 	/// Make a POST request with raw body
@@ -1434,6 +1431,24 @@ impl TestRequestBuilder<'_> {
 		self.client.dispatch(request).await
 	}
 
+	/// Apply the per-request header pairs accepted by the deprecated wrappers.
+	///
+	/// The first value of each case-insensitive name replaces client defaults;
+	/// later values with the same name are appended in order.
+	fn legacy_headers(mut self, headers: &[(&str, &str)]) -> Self {
+		let mut replaced = Vec::with_capacity(headers.len());
+		for (name, value) in headers {
+			let lowercase = name.to_ascii_lowercase();
+			if replaced.contains(&lowercase) {
+				self = self.append_header(*name, *value);
+			} else {
+				self = self.header(*name, *value);
+				replaced.push(lowercase);
+			}
+		}
+		self
+	}
+
 	fn add_header<K, V>(
 		&mut self,
 		name: K,
@@ -1553,6 +1568,143 @@ mod tests {
 	use async_trait::async_trait;
 	use reinhardt_core::exception::{Error as HttpError, Result as HttpResult};
 	use rstest::rstest;
+
+	// Exercise deprecated wrappers deliberately until their planned 0.5 removal.
+	#[allow(deprecated)]
+	async fn deprecated_headers_request(
+		client: &APIClient,
+		post_raw: bool,
+		path: &str,
+		headers: &[(&str, &str)],
+	) -> ClientResult<TestResponse> {
+		if post_raw {
+			client
+				.post_raw_with_headers(path, b"body", "text/plain", headers)
+				.await
+		} else {
+			client.get_with_headers(path, headers).await
+		}
+	}
+
+	#[rstest]
+	#[case::invalid_name("invalid header", "value")]
+	#[case::invalid_value("X-Valid", "bad\nvalue")]
+	#[tokio::test]
+	async fn invalid_per_request_headers_return_http_errors(
+		header_echo_client: APIClient,
+		#[case] name: &str,
+		#[case] value: &str,
+	) {
+		// Act
+		let error =
+			deprecated_headers_request(&header_echo_client, false, "/whoami", &[(name, value)])
+				.await
+				.err()
+				.expect("invalid per-request headers must fail");
+
+		// Assert
+		assert!(matches!(error, ClientError::Http(_)));
+	}
+
+	#[rstest]
+	#[case::get(false)]
+	#[case::post_raw(true)]
+	#[tokio::test]
+	async fn per_request_headers_replace_defaults_without_mutating_client(
+		header_echo_client: APIClient,
+		#[case] post_raw: bool,
+		#[values("Authorization", "authorization", "AUTHORIZATION")] header_name: &str,
+	) {
+		// Arrange
+		let client = header_echo_client;
+		client
+			.set_header("Authorization", "Bearer bob")
+			.await
+			.unwrap();
+		client.set_header("X-Default", "retained").await.unwrap();
+		let headers = [(header_name, "Bearer alice"), ("X-Request", "request-only")];
+
+		// Act
+		let response = deprecated_headers_request(&client, post_raw, "/whoami", &headers)
+			.await
+			.unwrap();
+		let subsequent_response = client.get("/whoami").await.unwrap();
+
+		// Assert
+		let authorization_values: Vec<_> = response
+			.headers()
+			.get_all(http::header::AUTHORIZATION)
+			.iter()
+			.map(|value| value.to_str().unwrap())
+			.collect();
+		assert_eq!(authorization_values, ["Bearer alice"]);
+		assert_eq!(response.header("X-Default"), Some("retained"));
+		assert_eq!(response.header("X-Request"), Some("request-only"));
+		assert_eq!(
+			subsequent_response.header("Authorization"),
+			Some("Bearer bob")
+		);
+		assert_eq!(subsequent_response.header("X-Default"), Some("retained"));
+		assert_eq!(subsequent_response.header("X-Request"), None);
+	}
+
+	#[rstest]
+	#[case::get(false)]
+	#[case::post_raw(true)]
+	#[tokio::test]
+	async fn per_request_headers_preserve_multiple_values(
+		header_echo_client: APIClient,
+		#[case] post_raw: bool,
+		#[values(false, true)] with_defaults: bool,
+	) {
+		// Arrange
+		let client = header_echo_client;
+		if with_defaults {
+			let mut defaults = client.default_headers.write().await;
+			defaults.append("X-Scope", HeaderValue::from_static("default-read"));
+			defaults.append("X-Scope", HeaderValue::from_static("default-write"));
+		}
+		client.set_header("X-Default", "retained").await.unwrap();
+		let headers = [
+			("X-Scope", "read"),
+			("X-Request", "request-only"),
+			("x-scope", "write"),
+			("X-SCOPE", "admin"),
+		];
+
+		// Act
+		let response = deprecated_headers_request(&client, post_raw, "/scopes", &headers)
+			.await
+			.unwrap();
+		let subsequent_response = client.get("/scopes").await.unwrap();
+
+		// Assert
+		let scope_values: Vec<_> = response
+			.headers()
+			.get_all("X-Scope")
+			.iter()
+			.map(|value| value.to_str().unwrap())
+			.collect();
+		assert_eq!(scope_values, ["read", "write", "admin"]);
+		assert_eq!(response.header("X-Default"), Some("retained"));
+		assert_eq!(response.header("X-Request"), Some("request-only"));
+		let default_values: Vec<_> = subsequent_response
+			.headers()
+			.get_all("X-Scope")
+			.iter()
+			.map(|value| value.to_str().unwrap())
+			.collect();
+		assert_eq!(
+			default_values,
+			if with_defaults {
+				vec!["default-read", "default-write"]
+			} else {
+				Vec::new()
+			}
+		);
+		assert_eq!(subsequent_response.header("X-Request"), None);
+		assert_eq!(subsequent_response.header("X-Default"), Some("retained"));
+	}
 
 	#[rstest::fixture]
 	fn header_echo_client() -> APIClient {
