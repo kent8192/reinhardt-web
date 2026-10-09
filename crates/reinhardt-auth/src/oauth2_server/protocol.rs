@@ -2,8 +2,9 @@
 
 use super::store::{
 	AuthorizationCommit, ClientKind, ClientRegistration, CodeInspection, CodeRedemption,
-	CodeRedemptionRequest, OAuthServerStore, PendingRecord, ResourceRegistration, StoredCode,
-	StoredToken,
+	CodeRedemptionRequest, CodeRedemptionWithRefresh, OAuthServerStore, PendingRecord,
+	RefreshInspection, RefreshRotation, RefreshRotationRequest, ResourceRegistration, StoredCode,
+	StoredRefreshToken, StoredToken, StoredTokenFamily,
 };
 use crate::repository::UserRepository;
 use argon2::Argon2;
@@ -97,6 +98,75 @@ pub enum TokenPrincipal {
 	Client(String),
 }
 
+/// Longest idle lifetime a refresh-token policy may grant.
+const MAX_REFRESH_IDLE_TTL: Duration = Duration::from_secs(90 * 24 * 3600);
+/// Longest absolute lifetime a refresh-token policy may grant.
+const MAX_REFRESH_LIFETIME: Duration = Duration::from_secs(365 * 24 * 3600);
+
+/// Lifetimes of refresh tokens issued by the Authorization Code grant.
+///
+/// A token family (the rotation chain started by one code redemption) expires when
+/// either limit is reached: `idle_ttl` after the most recent refresh, or `max_lifetime`
+/// after the code was redeemed. Rotation never extends `max_lifetime`.
+///
+/// Changing the policy is retroactive for idle expiry (each refresh uses the current
+/// `idle_ttl`) but not for `max_lifetime`, which is fixed when the family is created.
+/// To cut off existing families immediately, use [`OAuthServer::revoke_client`] or
+/// [`OAuthServer::revoke_user`].
+///
+/// ```
+/// use reinhardt_auth::oauth2_server::RefreshTokenPolicy;
+/// use std::time::Duration;
+///
+/// let policy = RefreshTokenPolicy::new(
+///     Duration::from_secs(7 * 24 * 3600),
+///     Duration::from_secs(30 * 24 * 3600),
+/// ).unwrap();
+/// assert_eq!(policy.idle_ttl, Duration::from_secs(7 * 24 * 3600));
+/// // The idle lifetime may not exceed the absolute lifetime.
+/// assert!(RefreshTokenPolicy::new(Duration::from_secs(60), Duration::from_secs(30)).is_err());
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub struct RefreshTokenPolicy {
+	/// Lifetime of a refresh token since it was issued (at most 90 days).
+	pub idle_ttl: Duration,
+	/// Lifetime of a token family since its code was redeemed (at most 365 days).
+	pub max_lifetime: Duration,
+}
+impl RefreshTokenPolicy {
+	/// Create a policy. Both lifetimes must be non-zero, `idle_ttl` at most 90 days,
+	/// `max_lifetime` at most 365 days, and `idle_ttl` no longer than `max_lifetime`.
+	pub fn new(idle_ttl: Duration, max_lifetime: Duration) -> Result<Self, OAuthError> {
+		let policy = Self {
+			idle_ttl,
+			max_lifetime,
+		};
+		policy.validate()?;
+		Ok(policy)
+	}
+	fn validate(&self) -> Result<(), OAuthError> {
+		if self.idle_ttl.as_secs() == 0
+			|| self.max_lifetime.as_secs() == 0
+			|| self.idle_ttl > MAX_REFRESH_IDLE_TTL
+			|| self.max_lifetime > MAX_REFRESH_LIFETIME
+			|| self.idle_ttl > self.max_lifetime
+		{
+			return Err(OAuthError::InvalidRequest);
+		}
+		Ok(())
+	}
+}
+impl Default for RefreshTokenPolicy {
+	/// Idle lifetime of 30 days and absolute lifetime of 90 days.
+	fn default() -> Self {
+		Self {
+			idle_ttl: Duration::from_secs(30 * 24 * 3600),
+			max_lifetime: Duration::from_secs(90 * 24 * 3600),
+		}
+	}
+}
+
 /// Protocol lifetimes and published endpoint URLs.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -117,6 +187,9 @@ pub struct OAuthServerConfig {
 	pub pending_ttl: Duration,
 	/// Lifetime of an access token (at most one hour).
 	pub token_ttl: Duration,
+	/// Refresh-token lifetimes. `None` (the default) disables the `refresh_token` grant;
+	/// clients must additionally opt in through `ClientRegistration::refresh_token`.
+	pub refresh_tokens: Option<RefreshTokenPolicy>,
 }
 impl OAuthServerConfig {
 	/// Construct defaults from an HTTPS issuer and explicit mounted URLs.
@@ -136,6 +209,7 @@ impl OAuthServerConfig {
 			code_ttl: Duration::from_secs(300),
 			pending_ttl: Duration::from_secs(600),
 			token_ttl: Duration::from_secs(3600),
+			refresh_tokens: None,
 		};
 		if Url::parse(&config.issuer)
 			.map_err(|_| OAuthError::InvalidRequest)?
@@ -163,6 +237,7 @@ impl OAuthServerConfig {
 			code_ttl: Duration::from_secs(300),
 			pending_ttl: Duration::from_secs(600),
 			token_ttl: Duration::from_secs(3600),
+			refresh_tokens: None,
 		};
 		if Url::parse(&config.issuer)
 			.map_err(|_| OAuthError::InvalidRequest)?
@@ -230,6 +305,9 @@ impl OAuthServerConfig {
 		{
 			return Err(OAuthError::InvalidRequest);
 		}
+		if let Some(policy) = &self.refresh_tokens {
+			policy.validate()?;
+		}
 		Ok(())
 	}
 }
@@ -288,8 +366,9 @@ pub enum AuthorizationDecision {
 	Deny,
 }
 
-/// Access token data returned only at issuance.
+/// Token data returned only at issuance.
 #[derive(Clone, Debug, Serialize)]
+#[non_exhaustive]
 pub struct IssuedToken {
 	/// Opaque bearer token.
 	pub access_token: String,
@@ -299,6 +378,10 @@ pub struct IssuedToken {
 	pub expires_in: u64,
 	/// Space-separated granted scopes.
 	pub scope: String,
+	/// Opaque refresh token; present only when the server policy and the client both
+	/// opt in, and only for the Authorization Code grant and its refreshes.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub refresh_token: Option<String>,
 }
 
 /// Active token metadata; never includes the raw token.
@@ -522,7 +605,8 @@ impl OAuthServer {
 		client.previous_secret_expires_at = None;
 		self.replace_client(&expected, client).await
 	}
-	/// Atomically disable a client and invalidate its pending requests, codes, and tokens.
+	/// Atomically disable a client and invalidate its pending requests, codes, tokens, and
+	/// token families. Returns the number of newly revoked access tokens.
 	pub async fn disable_client(&self, id: &str) -> Result<u64, OAuthError> {
 		self.store
 			.disable_client(id)
@@ -907,6 +991,14 @@ impl OAuthServer {
 		}
 		let raw = random_secret();
 		let issued_at = now();
+		// Refresh tokens belong to the plain Authorization Code grant only; the OIDC
+		// token endpoint never issues them.
+		let refresh_policy = self
+			.config
+			.refresh_tokens
+			.as_ref()
+			.filter(|_| !expect_oidc && client.refresh_token);
+		let family_id = refresh_policy.map(|_| random_secret());
 		let token = StoredToken {
 			digest: digest(&raw),
 			client_id: client.client_id.clone(),
@@ -917,21 +1009,58 @@ impl OAuthServer {
 			expires_at: issued_at + ttl.as_secs() as i64,
 			revoked: false,
 			code_digest: Some(code_digest.clone()),
+			family_id: family_id.clone(),
 		};
-		let redeemed = self
-			.store
-			.redeem_code_and_store_token(CodeRedemptionRequest {
-				digest: &code_digest,
-				client_id,
-				redirect_uri,
-				challenge: &challenge(verifier),
-				resource,
-				expect_oidc,
-				now: now(),
-				token,
-			})
-			.await
-			.map_err(|_| OAuthError::ServerError)?;
+		let redemption = CodeRedemptionRequest {
+			digest: &code_digest,
+			client_id,
+			redirect_uri,
+			challenge: &challenge(verifier),
+			resource,
+			expect_oidc,
+			now: now(),
+			token,
+		};
+		let (redeemed, raw_refresh) = match (refresh_policy, family_id) {
+			(Some(policy), Some(family_id)) => {
+				let absolute_expires_at = issued_at + policy.max_lifetime.as_secs() as i64;
+				let raw_refresh = random_secret();
+				let family = StoredTokenFamily {
+					family_id: family_id.clone(),
+					client_id: client.client_id.clone(),
+					user_id: record.user_id.clone(),
+					scopes: record.scopes.clone(),
+					audience: record.audience.clone(),
+					code_digest: code_digest.clone(),
+					created_at: issued_at,
+					absolute_expires_at,
+					revoked: false,
+				};
+				let refresh_token = StoredRefreshToken {
+					digest: digest(&raw_refresh),
+					family_id,
+					parent_digest: None,
+					issued_at,
+					idle_expires_at: (issued_at + policy.idle_ttl.as_secs() as i64)
+						.min(absolute_expires_at),
+					rotated: false,
+				};
+				let redeemed = self
+					.store
+					.redeem_code_and_store_tokens(CodeRedemptionWithRefresh {
+						redemption,
+						family,
+						refresh_token,
+					})
+					.await;
+				(redeemed, Some(raw_refresh))
+			}
+			_ => (
+				self.store.redeem_code_and_store_token(redemption).await,
+				None,
+			),
+		};
+		let redeemed = redeemed.map_err(|_| OAuthError::ServerError)?;
 		let CodeRedemption::Valid(record) = redeemed else {
 			return Err(OAuthError::InvalidGrant);
 		};
@@ -941,9 +1070,149 @@ impl OAuthServer {
 				token_type: "Bearer",
 				expires_in: ttl.as_secs(),
 				scope: record.scopes.join(" "),
+				refresh_token: raw_refresh,
 			},
 			record.user_id,
 		))
+	}
+	/// Exchange a refresh token for a new access token and a replacement refresh token.
+	///
+	/// Requires `OAuthServerConfig::refresh_tokens` and `ClientRegistration::refresh_token`.
+	/// The client authenticates exactly as for the code grant. The presented token is
+	/// consumed: presenting it again revokes the whole token family and every access token
+	/// issued from it, so clients must serialize refreshes (for example with a file lock).
+	/// `scope` may narrow the original grant but never widen it, and the issued scopes are
+	/// further limited to the client's current scope allowlist. Expired, revoked, reused,
+	/// and foreign tokens are all reported as `InvalidGrant`.
+	pub async fn refresh(
+		&self,
+		refresh_token: &str,
+		client_id: &str,
+		client_secret: Option<&str>,
+		scope: Option<&str>,
+		resource: Option<&str>,
+	) -> Result<IssuedToken, OAuthError> {
+		let policy = self
+			.config
+			.refresh_tokens
+			.as_ref()
+			.ok_or(OAuthError::UnsupportedGrantType)?;
+		let client = self.authenticate_client(client_id, client_secret).await?;
+		if !client.refresh_token || !client.authorization_code {
+			return Err(OAuthError::UnauthorizedClient);
+		}
+		let presented = digest(refresh_token);
+		let family = match self
+			.store
+			.inspect_refresh_token(&presented, client_id, now())
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+		{
+			RefreshInspection::Active(_, family) => family,
+			RefreshInspection::Reused { family_id } => {
+				tracing::warn!(
+					client_id,
+					family_id,
+					"refresh token reuse revoked its token family"
+				);
+				return Err(OAuthError::InvalidGrant);
+			}
+			RefreshInspection::Invalid => return Err(OAuthError::InvalidGrant),
+		};
+		if resource.is_some_and(|resource| resource != family.audience) {
+			return Err(OAuthError::InvalidTarget);
+		}
+		let requested = match scope {
+			Some(raw) => {
+				let requested: Vec<String> = raw.split(' ').map(str::to_owned).collect();
+				if requested.iter().any(|scope| !valid_scope(scope))
+					|| requested.iter().collect::<HashSet<_>>().len() != requested.len()
+					|| !subset(&requested, &family.scopes)
+				{
+					return Err(OAuthError::InvalidScope);
+				}
+				requested
+			}
+			None => family.scopes.clone(),
+		};
+		let issued_scopes: Vec<String> = requested
+			.into_iter()
+			.filter(|scope| client.scopes.contains(scope))
+			.collect();
+		if issued_scopes.is_empty() {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let audience_enabled = self
+			.store
+			.resource_for_audience(&family.audience)
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+			.is_some_and(|resource| resource.enabled);
+		if !audience_enabled {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let user = self
+			.users
+			.get_user_by_id(&family.user_id)
+			.await
+			.map_err(|_| OAuthError::ServerError)?;
+		if !user.is_some_and(|user| user.is_account_active() && user.is_authenticated()) {
+			return Err(OAuthError::InvalidGrant);
+		}
+		let raw_access = random_secret();
+		let raw_refresh = random_secret();
+		let issued_at = now();
+		let ttl = self.config.token_ttl;
+		let replacement = StoredRefreshToken {
+			digest: digest(&raw_refresh),
+			family_id: family.family_id.clone(),
+			parent_digest: Some(presented.clone()),
+			issued_at,
+			idle_expires_at: (issued_at + policy.idle_ttl.as_secs() as i64)
+				.min(family.absolute_expires_at),
+			rotated: false,
+		};
+		let token = StoredToken {
+			digest: digest(&raw_access),
+			client_id: client.client_id.clone(),
+			principal: TokenPrincipal::User(family.user_id.clone()),
+			scopes: issued_scopes.clone(),
+			audience: family.audience.clone(),
+			issued_at,
+			expires_at: issued_at + ttl.as_secs() as i64,
+			revoked: false,
+			code_digest: None,
+			family_id: Some(family.family_id.clone()),
+		};
+		match self
+			.store
+			.rotate_refresh_token(RefreshRotationRequest {
+				presented_digest: &presented,
+				client_id,
+				now: issued_at,
+				replacement,
+				token,
+			})
+			.await
+			.map_err(|_| OAuthError::ServerError)?
+		{
+			RefreshRotation::Rotated => Ok(IssuedToken {
+				access_token: raw_access,
+				token_type: "Bearer",
+				expires_in: ttl.as_secs(),
+				scope: issued_scopes.join(" "),
+				refresh_token: Some(raw_refresh),
+			}),
+			RefreshRotation::Reused { family_id } => {
+				tracing::warn!(
+					client_id,
+					family_id,
+					"refresh token reuse revoked its token family"
+				);
+				Err(OAuthError::InvalidGrant)
+			}
+			RefreshRotation::Invalid => Err(OAuthError::InvalidGrant),
+		}
 	}
 	/// Issue a client-credentials token for a confidential client.
 	pub async fn client_credentials(
@@ -995,6 +1264,7 @@ impl OAuthServer {
 				expires_at: issued_at + ttl.as_secs() as i64,
 				revoked: false,
 				code_digest,
+				family_id: None,
 			})
 			.await
 			.map_err(|_| OAuthError::ServerError)?;
@@ -1003,6 +1273,7 @@ impl OAuthServer {
 			token_type: "Bearer",
 			expires_in: ttl.as_secs(),
 			scope: scopes.join(" "),
+			refresh_token: None,
 		})
 	}
 	/// Look up active token metadata. User tokens require an active account.
@@ -1050,18 +1321,54 @@ impl OAuthServer {
 			expires_at: record.expires_at,
 		}))
 	}
-	/// Revoke an access token, limited to its owning client.
+	/// Revoke an access token or a refresh token, limited to its owning client.
+	///
+	/// Equivalent to [`OAuthServer::revoke_with_hint`] without a hint.
 	pub async fn revoke(
 		&self,
 		token: &str,
 		client_id: &str,
 		secret: Option<&str>,
 	) -> Result<(), OAuthError> {
+		self.revoke_with_hint(token, client_id, secret, None).await
+	}
+	/// Revoke an access token or a refresh token, limited to its owning client.
+	///
+	/// `token_type_hint` is the RFC 7009 optional hint (`access_token` or `refresh_token`).
+	/// It only chooses which kind is tried first; unknown values are ignored and both kinds
+	/// are always tried. An access token is revoked on its own, while a refresh token
+	/// (current or already rotated) revokes its whole token family together with every
+	/// access token issued from it. A token owned by another client, or an unknown token,
+	/// has no effect and still succeeds.
+	pub async fn revoke_with_hint(
+		&self,
+		token: &str,
+		client_id: &str,
+		secret: Option<&str>,
+		token_type_hint: Option<&str>,
+	) -> Result<(), OAuthError> {
 		self.authenticate_client(client_id, secret).await?;
-		self.store
-			.revoke_token(&digest(token), client_id)
-			.await
-			.map_err(|_| OAuthError::ServerError)
+		let digest = digest(token);
+		let revoke_access = async {
+			self.store
+				.revoke_token(&digest, client_id)
+				.await
+				.map_err(|_| OAuthError::ServerError)
+		};
+		let revoke_family = async {
+			self.store
+				.revoke_refresh_family(&digest, client_id)
+				.await
+				.map(|_| ())
+				.map_err(|_| OAuthError::ServerError)
+		};
+		if token_type_hint == Some("refresh_token") {
+			revoke_family.await?;
+			revoke_access.await
+		} else {
+			revoke_access.await?;
+			revoke_family.await
+		}
 	}
 	/// Inspect a token for an authenticated resource server and its audience.
 	pub async fn introspect(
@@ -1084,8 +1391,9 @@ impl OAuthServer {
 			.await?
 			.filter(|info| info.audience == resource.audience))
 	}
-	/// Invalidate outstanding codes and revoke tokens after a host account security event.
-	/// Returns the number of newly revoked tokens without retiring the user or OIDC subject.
+	/// Invalidate outstanding codes and revoke tokens and token families (so refresh tokens
+	/// stop working) after a host account security event. Returns the number of newly
+	/// revoked access tokens without retiring the user or OIDC subject.
 	pub async fn revoke_user(&self, user_id: &str) -> Result<u64, OAuthError> {
 		self.store
 			.revoke_user(user_id)
@@ -1099,7 +1407,8 @@ impl OAuthServer {
 			.await
 			.map_err(|_| OAuthError::ServerError)
 	}
-	/// Revoke all tokens issued to a client.
+	/// Revoke all tokens and token families issued to a client. Returns the number of
+	/// newly revoked access tokens.
 	pub async fn revoke_client(&self, client_id: &str) -> Result<u64, OAuthError> {
 		self.store
 			.revoke_client(client_id)
@@ -1168,6 +1477,7 @@ fn validate_client_registration(
 	if client.client_id.is_empty()
 		|| !(client.authorization_code || client.client_credentials)
 		|| (client.kind == ClientKind::Public && client.client_credentials)
+		|| (client.refresh_token && !client.authorization_code)
 		|| (client.kind != ClientKind::Public && !client.browser_origins.is_empty())
 		|| (client.oidc_enabled
 			&& (client.kind != ClientKind::Confidential

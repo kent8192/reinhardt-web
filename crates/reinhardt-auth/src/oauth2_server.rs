@@ -35,13 +35,14 @@ pub use http::{OAuthBrowserSession, OAuthConsentPresenter, OAuthEndpoint, OAuthH
 pub use postgres::PostgresOAuthStore;
 pub use protocol::{
 	AuthorizationDecision, AuthorizationRequest, IssuedToken, OAuthError, OAuthRateLimiter,
-	OAuthServer, OAuthServerConfig, PendingAuthorization, SharedOAuthRateLimiter, TokenInfo,
-	TokenPrincipal,
+	OAuthServer, OAuthServerConfig, PendingAuthorization, RefreshTokenPolicy,
+	SharedOAuthRateLimiter, TokenInfo, TokenPrincipal,
 };
 pub use store::{
 	AuthorizationCommit, ClientKind, ClientRegistration, CodeInspection, CodeRedemption,
-	CodeRedemptionRequest, MemoryOAuthStore, OAuthServerStore, PendingRecord, ResourceRegistration,
-	StoredCode, StoredToken,
+	CodeRedemptionRequest, CodeRedemptionWithRefresh, MemoryOAuthStore, OAuthServerStore,
+	PendingRecord, RefreshInspection, RefreshRotation, RefreshRotationRequest,
+	ResourceRegistration, StoredCode, StoredRefreshToken, StoredToken, StoredTokenFamily,
 };
 
 #[cfg(test)]

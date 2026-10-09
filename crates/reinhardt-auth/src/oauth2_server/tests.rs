@@ -197,6 +197,7 @@ fn client(kind: ClientKind) -> ClientRegistration {
 		previous_secret_expires_at: None,
 		oidc_enabled: false,
 		authorization_code: true,
+		refresh_token: false,
 		client_credentials: kind == ClientKind::Confidential,
 		redirect_uris: vec![
 			"https://client.example/callback".into(),
@@ -610,13 +611,13 @@ async fn postgres_single_use_and_cross_instance_replay() {
 	let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 	let mut executor = DatabaseMigrationExecutor::new(connection);
 	let applied = executor
-		.apply_migrations(&[PostgresOAuthStore::migration()])
+		.apply_migrations(&PostgresOAuthStore::migrations())
 		.await
 		.unwrap();
-	assert_eq!(applied.applied.len(), 1);
+	assert_eq!(applied.applied.len(), 2);
 	// The published migration identities remain applied after the SQL representation changes.
 	let repeated = executor
-		.apply_migrations(&[PostgresOAuthStore::migration()])
+		.apply_migrations(&PostgresOAuthStore::migrations())
 		.await
 		.unwrap();
 	assert!(repeated.applied.is_empty());
@@ -686,6 +687,7 @@ async fn postgres_single_use_and_cross_instance_replay() {
 			expires_at: i64::MAX,
 			revoked: false,
 			code_digest: Some("code-digest".into()),
+			family_id: None,
 		},
 	};
 	assert!(matches!(
@@ -782,6 +784,7 @@ async fn postgres_single_use_and_cross_instance_replay() {
 		expires_at: i64::MAX,
 		revoked: false,
 		code_digest: Some("atomic-code".into()),
+		family_id: None,
 	};
 	let redemption = |token_digest: &str| CodeRedemptionRequest {
 		digest: "atomic-code",
@@ -832,6 +835,7 @@ async fn postgres_single_use_and_cross_instance_replay() {
 			expires_at: i64::MAX,
 			revoked: false,
 			code_digest: None,
+			family_id: None,
 		})
 		.await
 		.unwrap();
@@ -848,6 +852,7 @@ async fn postgres_single_use_and_cross_instance_replay() {
 			expires_at: i64::MAX,
 			revoked: false,
 			code_digest: None,
+			family_id: None,
 		})
 		.await
 		.unwrap();
@@ -900,6 +905,7 @@ async fn postgres_single_use_and_cross_instance_replay() {
 			expires_at: 2,
 			revoked: false,
 			code_digest: None,
+			family_id: None,
 		})
 		.await
 		.unwrap();
@@ -939,6 +945,7 @@ async fn postgres_single_use_and_cross_instance_replay() {
 					expires_at: i64::MAX,
 					revoked: false,
 					code_digest: Some("retained-code".into()),
+					family_id: None,
 				}
 			})
 			.await
@@ -958,7 +965,7 @@ async fn postgres_single_use_and_cross_instance_replay() {
 
 	// Roll back through Reinhardt's migration executor, not a test-only SQL path.
 	executor
-		.rollback_migrations(&[PostgresOAuthStore::migration()])
+		.rollback_migrations(&PostgresOAuthStore::migrations())
 		.await
 		.unwrap();
 	let table: (Option<String>,) =
@@ -1565,4 +1572,7 @@ async fn pending_and_code_expiry_prevent_issuance() {
 	);
 }
 
+#[cfg(feature = "database")]
+mod refresh_postgres_tests;
+mod refresh_tests;
 mod review_tests;

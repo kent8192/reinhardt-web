@@ -198,6 +198,20 @@ impl OAuthHandler {
 				}
 				None => Err(OAuthError::InvalidClient),
 			},
+			Some("refresh_token") => match params.get("refresh_token") {
+				Some(refresh_token) if !refresh_token.is_empty() => {
+					self.server
+						.refresh(
+							refresh_token,
+							&client_id,
+							secret.as_deref(),
+							params.get("scope").map(String::as_str),
+							params.get("resource").map(String::as_str),
+						)
+						.await
+				}
+				_ => Err(OAuthError::InvalidRequest),
+			},
 			None => Err(OAuthError::InvalidRequest),
 			Some(_) => Err(OAuthError::UnsupportedGrantType),
 		};
@@ -245,7 +259,12 @@ impl OAuthHandler {
 		};
 		let response = match self
 			.server
-			.revoke(token, &client_id, secret.as_deref())
+			.revoke_with_hint(
+				token,
+				&client_id,
+				secret.as_deref(),
+				params.get("token_type_hint").map(String::as_str),
+			)
 			.await
 		{
 			Ok(()) => no_store(Response::new(StatusCode::OK)),
@@ -299,9 +318,13 @@ impl OAuthHandler {
 			return method_not_allowed("GET");
 		}
 		let c = self.server.config();
+		let mut grant_types = vec!["authorization_code", "client_credentials"];
+		if c.refresh_tokens.is_some() {
+			grant_types.push("refresh_token");
+		}
 		let response = json_response(
 			StatusCode::OK,
-			json!({"issuer":c.issuer,"authorization_endpoint":c.authorization_endpoint,"token_endpoint":c.token_endpoint,"revocation_endpoint":c.revocation_endpoint,"introspection_endpoint":c.introspection_endpoint,"response_types_supported":["code"],"grant_types_supported":["authorization_code","client_credentials"],"token_endpoint_auth_methods_supported":["client_secret_basic","none"],"revocation_endpoint_auth_methods_supported":["client_secret_basic","none"],"introspection_endpoint_auth_methods_supported":["client_secret_basic"],"code_challenge_methods_supported":["S256"],"authorization_response_iss_parameter_supported":true}),
+			json!({"issuer":c.issuer,"authorization_endpoint":c.authorization_endpoint,"token_endpoint":c.token_endpoint,"revocation_endpoint":c.revocation_endpoint,"introspection_endpoint":c.introspection_endpoint,"response_types_supported":["code"],"grant_types_supported":grant_types,"token_endpoint_auth_methods_supported":["client_secret_basic","none"],"revocation_endpoint_auth_methods_supported":["client_secret_basic","none"],"introspection_endpoint_auth_methods_supported":["client_secret_basic"],"code_challenge_methods_supported":["S256"],"authorization_response_iss_parameter_supported":true}),
 		);
 		self.registered_origin(response, &request).await
 	}
