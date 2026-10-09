@@ -1,10 +1,11 @@
-//! PostgreSQL state store. The migration is registered with Reinhardt's migration engine.
+//! PostgreSQL state store. The migrations are registered with Reinhardt's migration engine.
 
 use super::protocol::TokenPrincipal;
 use super::store::{
 	AuthorizationCommit, ClientRegistration, CodeInspection, CodeRedemption, CodeRedemptionRequest,
-	OAuthServerStore, PendingRecord, ResourceRegistration, StoredCode, StoredToken,
-	token_matches_code,
+	DeviceAuthorizationStatus, DeviceDecisionCommit, DevicePoll, DeviceRedemption,
+	DeviceRedemptionRequest, OAuthServerStore, PendingRecord, ResourceRegistration, StoredCode,
+	StoredDeviceAuthorization, StoredToken, token_matches_code,
 };
 use crate::database_query::{json_text_path, prepare, schema_operation};
 use async_trait::async_trait;
@@ -14,6 +15,8 @@ use reinhardt_query::prelude::{
 };
 use serde::Serialize;
 use sqlx::{PgPool, Postgres, Transaction, types::Json};
+
+const DEVICE_TABLE: &str = "oauth_server_device_authorizations";
 
 /// OAuth state store shared by PostgreSQL-backed server instances.
 #[derive(Clone)]
@@ -25,8 +28,85 @@ impl PostgresOAuthStore {
 	pub fn new(pool: PgPool) -> Self {
 		Self { pool }
 	}
-	/// Return the initial PostgreSQL migration for the host's migration graph.
-	pub fn migration() -> Migration {
+	/// Return the PostgreSQL migrations for the host's migration graph, in apply order.
+	///
+	/// The initial migration keeps its published identity. The second migration
+	/// depends on it and adds the Device Authorization table.
+	pub fn migrations() -> Vec<Migration> {
+		vec![
+			Self::initial_migration(),
+			Self::device_authorization_migration(),
+		]
+	}
+	fn device_authorization_migration() -> Migration {
+		[
+			schema_operation(
+				Query::create_table()
+					.table(DEVICE_TABLE)
+					.col(
+						ColumnDef::new("device_code_digest")
+							.text()
+							.primary_key(true),
+					)
+					.col(ColumnDef::new("id").text().not_null(true))
+					.col(ColumnDef::new("user_code_digest").text().not_null(true))
+					.col(ColumnDef::new("payload").jsonb().not_null(true))
+					.col(ColumnDef::new("client_id").text().not_null(true))
+					.col(ColumnDef::new("expires_at").big_integer().not_null(true))
+					.take(),
+				Query::drop_table().table(DEVICE_TABLE).take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_device_authorizations_id")
+					.table(DEVICE_TABLE)
+					.unique()
+					.col("id")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_device_authorizations_id")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_device_authorizations_user_code")
+					.table(DEVICE_TABLE)
+					.unique()
+					.col("user_code_digest")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_device_authorizations_user_code")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_device_authorizations_client")
+					.table(DEVICE_TABLE)
+					.col("client_id")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_device_authorizations_client")
+					.take(),
+			),
+			schema_operation(
+				Query::create_index()
+					.name("oauth_server_device_authorizations_expiry")
+					.table(DEVICE_TABLE)
+					.col("expires_at")
+					.take(),
+				Query::drop_index()
+					.name("oauth_server_device_authorizations_expiry")
+					.take(),
+			),
+		]
+		.into_iter()
+		.fold(
+			Migration::new("0002_oauth_server_device_authorizations", "oauth_server")
+				.add_dependency("oauth_server", "0001_oauth_server"),
+			|migration, operation| migration.add_operation(operation),
+		)
+	}
+	fn initial_migration() -> Migration {
 		// Keep the published identity and one statement per operation: PostgreSQL
 		// prepares RunSQL operations individually, and rollback runs in reverse order.
 		[
@@ -181,7 +261,7 @@ impl PostgresOAuthStore {
 	pub fn pool(&self) -> &PgPool {
 		&self.pool
 	}
-	/// Delete expired pending requests, codes, and tokens in one transaction.
+	/// Delete expired pending requests, codes, tokens, and Device Authorizations in one transaction.
 	/// Run this periodically from a host maintenance job.
 	pub async fn purge_expired(&self, now: i64) -> Result<u64, String> {
 		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
@@ -190,6 +270,7 @@ impl PostgresOAuthStore {
 			"oauth_server_pending",
 			"oauth_server_tokens",
 			"oauth_server_codes",
+			DEVICE_TABLE,
 		] {
 			let mut query = Query::delete();
 			query
@@ -293,6 +374,107 @@ async fn insert_code(tx: &mut Transaction<'_, Postgres>, code: &StoredCode) -> R
 		.execute(&mut **tx)
 		.await
 		.map_err(|e| e.to_string())?;
+	Ok(())
+}
+
+async fn lock_device_authorization(
+	tx: &mut Transaction<'_, Postgres>,
+	column: &'static str,
+	value: &str,
+) -> Result<Option<StoredDeviceAuthorization>, String> {
+	let (sql, arguments) = prepare(
+		Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new(DEVICE_TABLE))
+			.and_where(Expr::col(Alias::new(column).into_iden()).eq(value))
+			.lock_exclusive()
+			.take(),
+	)?;
+	let row: Option<(Json<StoredDeviceAuthorization>,)> = sqlx::query_as_with(&sql, arguments)
+		.fetch_optional(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	Ok(row.map(|(Json(record),)| record))
+}
+async fn save_device_authorization(
+	tx: &mut Transaction<'_, Postgres>,
+	record: &StoredDeviceAuthorization,
+) -> Result<(), String> {
+	let (sql, arguments) = prepare(
+		Query::update()
+			.table(Alias::new(DEVICE_TABLE))
+			.value(Alias::new("payload"), json_value(record)?)
+			.and_where(
+				Expr::col(Alias::new("device_code_digest").into_iden())
+					.eq(record.device_code_digest.as_str()),
+			)
+			.take(),
+	)?;
+	sqlx::query_with(&sql, arguments)
+		.execute(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	Ok(())
+}
+/// Lock the Device Authorizations matching `filter` and invalidate them.
+/// With `only_approved`, records in any other state are left untouched.
+async fn invalidate_device_authorizations(
+	tx: &mut Transaction<'_, Postgres>,
+	filter: reinhardt_query::SimpleExpr,
+	only_approved: bool,
+) -> Result<(), String> {
+	let (sql, arguments) = prepare(
+		Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new(DEVICE_TABLE))
+			.and_where(filter)
+			.lock_exclusive()
+			.take(),
+	)?;
+	let rows: Vec<(Json<StoredDeviceAuthorization>,)> = sqlx::query_as_with(&sql, arguments)
+		.fetch_all(&mut **tx)
+		.await
+		.map_err(|e| e.to_string())?;
+	for (Json(mut record),) in rows {
+		if only_approved && record.status != DeviceAuthorizationStatus::Approved {
+			continue;
+		}
+		if record.invalidate() {
+			save_device_authorization(tx, &record).await?;
+		}
+	}
+	Ok(())
+}
+async fn read_device_authorization(
+	pool: &PgPool,
+	column: &'static str,
+	value: &str,
+) -> Result<Option<StoredDeviceAuthorization>, String> {
+	let (sql, arguments) = prepare(
+		Query::select()
+			.column(Alias::new("payload"))
+			.from(Alias::new(DEVICE_TABLE))
+			.and_where(Expr::col(Alias::new(column).into_iden()).eq(value))
+			.take(),
+	)?;
+	let row: Option<(Json<StoredDeviceAuthorization>,)> = sqlx::query_as_with(&sql, arguments)
+		.fetch_optional(pool)
+		.await
+		.map_err(|e| e.to_string())?;
+	Ok(row.map(|(Json(record),)| record))
+}
+async fn revoke_device_token(
+	tx: &mut Transaction<'_, Postgres>,
+	record: &StoredDeviceAuthorization,
+) -> Result<(), String> {
+	if let Some(token_digest) = &record.token_digest {
+		let (sql, arguments) =
+			update_flag("oauth_server_tokens", "revoked", "digest", token_digest)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut **tx)
+			.await
+			.map_err(|e| e.to_string())?;
+	}
 	Ok(())
 }
 
@@ -421,6 +603,12 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
+		invalidate_device_authorizations(
+			&mut tx,
+			Expr::col(Alias::new("client_id").into_iden()).eq(id),
+			false,
+		)
+		.await?;
 		let (sql, arguments) = prepare(
 			Query::update()
 				.table(Alias::new("oauth_server_tokens"))
@@ -906,6 +1094,8 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
+		invalidate_device_authorizations(&mut tx, json_text_path(&["user_id"]).eq(user_id), true)
+			.await?;
 		let (sql, arguments) = prepare(
 			Query::update()
 				.table(Alias::new("oauth_server_tokens"))
@@ -935,6 +1125,8 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.execute(&mut *tx)
 			.await
 			.map_err(|e| e.to_string())?;
+		invalidate_device_authorizations(&mut tx, json_text_path(&["user_id"]).eq(user_id), true)
+			.await?;
 		let (sql, arguments) = prepare(
 			Query::update()
 				.table(Alias::new("oauth_server_tokens"))
@@ -963,5 +1155,150 @@ impl OAuthServerStore for PostgresOAuthStore {
 			.await
 			.map_err(|e| e.to_string())?;
 		Ok(result.rows_affected())
+	}
+	async fn insert_device_authorization(
+		&self,
+		record: StoredDeviceAuthorization,
+		now: i64,
+	) -> Result<bool, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		// An expired record must not keep its User Code reserved.
+		let (sql, arguments) = prepare(
+			Query::delete()
+				.from_table(Alias::new(DEVICE_TABLE))
+				.and_where(
+					Expr::col(Alias::new("user_code_digest").into_iden())
+						.eq(record.user_code_digest.as_str()),
+				)
+				.and_where(Expr::col(Alias::new("expires_at").into_iden()).lte(now))
+				.take(),
+		)?;
+		sqlx::query_with(&sql, arguments)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		let (sql, arguments) = prepare(
+			Query::insert()
+				.into_table(Alias::new(DEVICE_TABLE))
+				.columns([
+					"device_code_digest",
+					"id",
+					"user_code_digest",
+					"payload",
+					"client_id",
+					"expires_at",
+				])
+				.values(vec![
+					record.device_code_digest.clone().into(),
+					record.id.clone().into(),
+					record.user_code_digest.clone().into(),
+					json_value(&record)?,
+					record.client_id.clone().into(),
+					record.expires_at.into(),
+				])?
+				.on_conflict(OnConflict::new().do_nothing())
+				.take(),
+		)?;
+		let result = sqlx::query_with(&sql, arguments)
+			.execute(&mut *tx)
+			.await
+			.map_err(|e| e.to_string())?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(result.rows_affected() == 1)
+	}
+	async fn device_authorization(
+		&self,
+		device_code_digest: &str,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		read_device_authorization(&self.pool, "device_code_digest", device_code_digest).await
+	}
+	async fn device_authorization_by_id(
+		&self,
+		id: &str,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		read_device_authorization(&self.pool, "id", id).await
+	}
+	async fn bind_device_user_code(
+		&self,
+		user_code_digest: &str,
+		session_digest: &str,
+		now: i64,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some(mut record) =
+			lock_device_authorization(&mut tx, "user_code_digest", user_code_digest).await?
+		else {
+			return Ok(None);
+		};
+		let was_bound = record.session_digest.is_some();
+		if !record.bind_session(session_digest, now) {
+			return Ok(None);
+		}
+		if !was_bound {
+			save_device_authorization(&mut tx, &record).await?;
+		}
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(Some(record))
+	}
+	async fn decide_device_authorization(
+		&self,
+		commit: DeviceDecisionCommit<'_>,
+	) -> Result<bool, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some(mut record) = lock_device_authorization(&mut tx, "id", commit.id).await? else {
+			return Ok(false);
+		};
+		if !record.decide(&commit) {
+			return Ok(false);
+		}
+		save_device_authorization(&mut tx, &record).await?;
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(true)
+	}
+	async fn poll_device_authorization(
+		&self,
+		device_code_digest: &str,
+		client_id: &str,
+		now: i64,
+	) -> Result<DevicePoll, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some(mut record) =
+			lock_device_authorization(&mut tx, "device_code_digest", device_code_digest).await?
+		else {
+			return Ok(DevicePoll::Invalid);
+		};
+		let before = record.clone();
+		let outcome = record.poll(client_id, now);
+		if matches!(outcome, DevicePoll::Replay) {
+			revoke_device_token(&mut tx, &record).await?;
+		}
+		if record != before {
+			save_device_authorization(&mut tx, &record).await?;
+		}
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(outcome)
+	}
+	async fn redeem_device_authorization(
+		&self,
+		request: DeviceRedemptionRequest<'_>,
+	) -> Result<DeviceRedemption, String> {
+		let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
+		let Some(mut record) =
+			lock_device_authorization(&mut tx, "device_code_digest", request.device_code_digest)
+				.await?
+		else {
+			return Ok(DeviceRedemption::Invalid);
+		};
+		let outcome = record.redeem(&request);
+		match &outcome {
+			DeviceRedemption::Valid(redeemed) => {
+				save_device_authorization(&mut tx, redeemed).await?;
+				insert_token(&mut tx, &request.token).await?;
+			}
+			DeviceRedemption::Replay => revoke_device_token(&mut tx, &record).await?,
+			DeviceRedemption::Invalid => return Ok(outcome),
+		}
+		tx.commit().await.map_err(|e| e.to_string())?;
+		Ok(outcome)
 	}
 }
