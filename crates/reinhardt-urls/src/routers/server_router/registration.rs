@@ -268,6 +268,9 @@ impl ServerRouter {
 
 	/// Register a class-based view (Django-style)
 	///
+	/// The view receives every HTTP method, including HEAD, OPTIONS, and extension
+	/// methods, and decides which methods it supports internally.
+	///
 	/// # Examples
 	///
 	/// ```rust,no_run
@@ -312,6 +315,8 @@ impl ServerRouter {
 	}
 
 	/// Register a named class-based view (Django-style with URL reversal)
+	///
+	/// Method dispatch follows [`Self::view`], including HEAD and extension methods.
 	///
 	/// # Examples
 	///
@@ -374,6 +379,8 @@ impl ServerRouter {
 	///
 	/// This method allows you to pass a handler directly without wrapping it in `Arc`.
 	/// The `Arc` wrapping is handled internally for you.
+	/// The handler receives every HTTP method unchanged, including HEAD and
+	/// extension methods. Method restrictions belong to the handler itself.
 	///
 	/// # Examples
 	///
@@ -475,6 +482,7 @@ impl ServerRouter {
 	///
 	/// This is provided for cases where you already have an `Arc<dyn Handler>`.
 	/// In most cases, you should use `handler()` instead.
+	/// Like [`Self::handler`], this route forwards every HTTP method unchanged.
 	///
 	/// # Examples
 	///

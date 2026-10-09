@@ -439,6 +439,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(db)* align migration compatibility contracts
 
+## [0.3.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.22...reinhardt-web@v0.3.23) - 2026-10-08
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(facade)* forward optional WebSocket and GraphQL test features
+- *(testkit)* replace default headers with per-request values
+- *(testkit)* retain repeated per-request header values
+
+### Maintenance
+
+- *(urls)* merge main while preserving head and options overrides
+
 ## [0.3.22](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.21...reinhardt-web@v0.3.22) - 2026-10-06
 
 ### Fixed

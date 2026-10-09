@@ -4,7 +4,7 @@ use super::*;
 use hyper::Method;
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{Handler, Request, Response, Result, SyncHandler};
-use rstest::rstest;
+use rstest::{fixture, rstest};
 use std::sync::{
 	Arc, Mutex,
 	atomic::{AtomicUsize, Ordering},
@@ -16,6 +16,237 @@ use reinhardt_views::viewsets::{
 };
 
 struct TestEndpoint<const ID: u8>;
+
+struct MethodEchoHandler;
+
+#[async_trait::async_trait]
+impl Handler for MethodEchoHandler {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		let response = Response::ok()
+			.with_header("X-Method", request.method.as_str())
+			.with_header("Content-Length", "5")
+			.with_header("X-Path", request.uri.path());
+		Ok(if request.method == Method::HEAD {
+			response
+		} else {
+			response.with_body("asset")
+		})
+	}
+}
+
+#[fixture]
+fn method_echo_handler() -> MethodEchoHandler {
+	MethodEchoHandler
+}
+
+#[rstest]
+#[case::handler("handler")]
+#[case::handler_arc("handler_arc")]
+#[case::view("view")]
+#[case::view_named("view_named")]
+#[tokio::test]
+async fn method_agnostic_routes_forward_every_method(
+	method_echo_handler: MethodEchoHandler,
+	#[case] registration: &str,
+	#[values("/asset", "/assets/{*rest}")] pattern: &str,
+	#[values(
+		"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE", "CONNECT", "PROPFIND"
+	)]
+	method: &str,
+) {
+	// Arrange
+	let router = ServerRouter::new();
+	let router = match registration {
+		"handler" => router.handler(pattern, method_echo_handler),
+		"handler_arc" => router.handler_arc(pattern, Arc::new(method_echo_handler)),
+		"view" => router.view(pattern, method_echo_handler),
+		"view_named" => {
+			#[allow(
+				deprecated,
+				reason = "The supported view_named API also needs method-dispatch regression coverage."
+			)]
+			let router = router.view_named(pattern, "asset", method_echo_handler);
+			router
+		}
+		_ => unreachable!("unsupported registration"),
+	};
+	let path = if pattern == "/asset" {
+		"/asset"
+	} else {
+		"/assets/app.js"
+	};
+	let mut request = create_test_request(path);
+	request.method = Method::from_bytes(method.as_bytes()).unwrap();
+
+	// Act
+	let response = router.handle(request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(response.headers["X-Method"], method);
+	assert_eq!(response.headers["X-Path"], path);
+	assert_eq!(response.headers["Content-Length"], "5");
+	assert_eq!(
+		response.body.as_ref(),
+		if method == "HEAD" {
+			b"".as_slice()
+		} else {
+			b"asset".as_slice()
+		}
+	);
+}
+
+struct HeadAssetEndpoint;
+
+struct OptionsAssetEndpoint;
+
+impl EndpointInfo for OptionsAssetEndpoint {
+	fn path() -> &'static str {
+		"/assets/{file}"
+	}
+	fn method() -> Method {
+		Method::OPTIONS
+	}
+	fn name() -> &'static str {
+		"options-asset"
+	}
+}
+
+#[async_trait::async_trait]
+impl Handler for OptionsAssetEndpoint {
+	async fn handle(&self, _: Request) -> Result<Response> {
+		Ok(Response::ok().with_header("X-Endpoint", "options"))
+	}
+}
+
+impl EndpointInfo for HeadAssetEndpoint {
+	fn path() -> &'static str {
+		"/assets/{file}"
+	}
+	fn method() -> Method {
+		Method::HEAD
+	}
+	fn name() -> &'static str {
+		"head-asset"
+	}
+}
+
+#[async_trait::async_trait]
+impl Handler for HeadAssetEndpoint {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		Ok(MethodEchoHandler
+			.handle(request)
+			.await?
+			.with_header("X-Endpoint", "head"))
+	}
+}
+
+#[rstest]
+#[case::handler("handler")]
+#[case::handler_arc("handler_arc")]
+#[case::view("view")]
+#[case::view_named("view_named")]
+#[tokio::test]
+async fn method_agnostic_routes_preserve_explicit_head_options(
+	#[case] registration: &str,
+	#[values(false, true)] endpoint_first: bool,
+	#[values("", "/api/")] prefix: &str,
+) {
+	// Arrange
+	let mut router = ServerRouter::new().with_prefix(prefix);
+	if endpoint_first {
+		router = router
+			.endpoint(|| HeadAssetEndpoint)
+			.endpoint(|| OptionsAssetEndpoint);
+	}
+	router = match registration {
+		"handler" => router.handler("/assets/{name}", MethodEchoHandler),
+		"handler_arc" => router.handler_arc("/assets/{name}", Arc::new(MethodEchoHandler)),
+		"view" => router.view("/assets/{name}", MethodEchoHandler),
+		"view_named" => {
+			#[allow(
+				deprecated,
+				reason = "The supported view_named API needs override regression coverage."
+			)]
+			let router = router.view_named("/assets/{name}", "assets", MethodEchoHandler);
+			router
+		}
+		_ => unreachable!("unsupported registration"),
+	};
+	if !endpoint_first {
+		router = router
+			.endpoint(|| HeadAssetEndpoint)
+			.endpoint(|| OptionsAssetEndpoint);
+	}
+	let path = format!(
+		"{}assets/app.js",
+		if prefix.is_empty() { "/" } else { prefix }
+	);
+
+	// Act
+	let validation = router.validate_routes();
+	let repeated_validation = router.validate_routes();
+	let mut head_request = create_test_request(&path);
+	head_request.method = Method::HEAD;
+	let head = router.handle(head_request).await.unwrap();
+	let mut options_request = create_test_request(&path);
+	options_request.method = Method::OPTIONS;
+	let options = router.handle(options_request).await.unwrap();
+	let get = router.handle(create_test_request(&path)).await.unwrap();
+
+	// Assert
+	assert_eq!(validation, Ok(()));
+	assert_eq!(repeated_validation, Ok(()));
+	assert_eq!(head.status, hyper::StatusCode::OK);
+	assert_eq!(head.headers["X-Endpoint"], "head");
+	assert_eq!(head.headers["X-Method"], "HEAD");
+	assert!(head.body.is_empty());
+	assert_eq!(options.status, hyper::StatusCode::OK);
+	assert_eq!(options.headers["X-Endpoint"], "options");
+	assert_eq!(get.status, hyper::StatusCode::OK);
+	assert_eq!(get.headers["X-Method"], "GET");
+	assert!(!get.headers.contains_key("X-Endpoint"));
+}
+
+#[rstest]
+fn duplicate_head_endpoints_remain_validation_errors() {
+	// Arrange
+	let router = ServerRouter::new()
+		.endpoint(|| HeadAssetEndpoint)
+		.endpoint(|| HeadAssetEndpoint)
+		.handler("/assets/{file}", MethodEchoHandler);
+	// Act
+	let errors = router.validate_routes().unwrap_err();
+	// Assert
+	assert_eq!(
+		errors,
+		[
+			"Failed to compile route '/assets/{file}' (HEAD): Insertion failed due to conflict with previously registered route: /assets/{file}",
+			"Duplicate route name 'head-asset': path '/assets/{file}' conflicts with existing path '/assets/{file}'",
+		]
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn mounted_shared_router_receives_head_requests() {
+	// Arrange
+	let inner = Arc::new(ServerRouter::new().endpoint(|| HeadAssetEndpoint));
+	let outer = ServerRouter::new()
+		.handler_arc("/", inner.clone())
+		.handler_arc("/{*rest}", inner);
+	let mut request = create_test_request("/assets/app.js");
+	request.method = Method::HEAD;
+
+	// Act
+	let response = outer.handle(request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(response.headers["X-Method"], "HEAD");
+	assert_eq!(response.headers["Content-Length"], "5");
+	assert!(response.body.is_empty());
+}
 
 impl<const ID: u8> EndpointInfo for TestEndpoint<ID> {
 	fn path() -> &'static str {
@@ -1074,6 +1305,239 @@ fn escaped_literal_brace_route_resolves_without_path_params() {
 	// Assert
 	assert!(route_match.params.is_none());
 	assert!(router.resolve("/{{hello}}", &Method::GET).is_none());
+}
+
+/// Exposes the request received after routing, without implementing dispatch.
+struct RoutedRequestHandler;
+
+#[async_trait::async_trait]
+impl Handler for RoutedRequestHandler {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		Ok(Response::ok()
+			.with_header("x-request-method", request.method.as_str())
+			.with_header("x-request-path", request.uri.path())
+			.with_header("x-rest", request.path_params.get("rest").unwrap_or("")))
+	}
+}
+
+/// Serves the same asset through independently registered HTTP methods.
+struct AssetEndpoint<const METHOD: u8>;
+
+impl<const METHOD: u8> EndpointInfo for AssetEndpoint<METHOD> {
+	fn path() -> &'static str {
+		"/assets/{*asset}"
+	}
+
+	fn method() -> Method {
+		match METHOD {
+			0 => Method::GET,
+			1 => Method::HEAD,
+			2 => Method::from_bytes(b"PROPFIND").unwrap(),
+			_ => unreachable!("unsupported asset method"),
+		}
+	}
+
+	fn name() -> &'static str {
+		match METHOD {
+			0 => "asset-get",
+			1 => "asset-head",
+			2 => "asset-propfind",
+			_ => unreachable!("unsupported asset method"),
+		}
+	}
+}
+
+#[async_trait::async_trait]
+impl<const METHOD: u8> Handler for AssetEndpoint<METHOD> {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		let response = Response::ok()
+			.with_header("content-type", "application/javascript")
+			.with_header("content-length", "12")
+			.with_header("x-endpoint", Self::method().as_str())
+			.with_header("x-request-method", request.method.as_str())
+			.with_header("x-asset", request.path_params.get("asset").unwrap_or(""));
+		Ok(if request.method == Method::HEAD {
+			response
+		} else {
+			response.with_body("const app=1;")
+		})
+	}
+}
+
+#[rstest]
+#[case(Method::GET)]
+#[case(Method::HEAD)]
+#[case(Method::OPTIONS)]
+#[case(Method::CONNECT)]
+#[case(Method::TRACE)]
+#[case(Method::from_bytes(b"PROPFIND").unwrap())]
+#[tokio::test]
+async fn test_method_agnostic_route_dispatch(
+	#[case] method: Method,
+	#[values("handler", "handler_arc", "view", "view_named")] registration: &str,
+	#[values(false, true)] catch_all: bool,
+) {
+	// Arrange: exercise both prefix stripping and trailing-slash fallback.
+	let (pattern, path, rest) = if catch_all {
+		(
+			"/assets/{*rest}",
+			"/api/assets/nested/app.js",
+			"nested/app.js",
+		)
+	} else {
+		("/health/", "/api/health", "")
+	};
+	let router = ServerRouter::new().with_prefix("/api");
+	let router = match registration {
+		"handler" => router.handler(pattern, RoutedRequestHandler),
+		"handler_arc" => router.handler_arc(pattern, Arc::new(RoutedRequestHandler)),
+		"view" => router.view(pattern, RoutedRequestHandler),
+		// Named views are deprecated but retain the same dispatch contract as views.
+		#[allow(deprecated)]
+		"view_named" => router.view_named(pattern, "probe", RoutedRequestHandler),
+		_ => unreachable!("unsupported registration"),
+	}
+	.with_route_middleware(SecurityHeaderTestMiddleware);
+	let request = Request::builder()
+		.method(method.clone())
+		.uri(path)
+		.body(bytes::Bytes::new())
+		.build()
+		.unwrap();
+
+	// Act
+	let response = router.handle(request).await.unwrap();
+
+	// Assert: the handler sees the original method, URI, and route parameters.
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(response.headers["x-request-method"], method.as_str());
+	assert_eq!(response.headers["x-request-path"], path);
+	assert_eq!(response.headers["x-rest"], rest);
+	assert_eq!(response.headers["x-security-test"], "applied");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_shared_router_mounted_as_raw_handler_receives_head() {
+	// Arrange: one router is shared between direct and mounted requests.
+	let inner = Arc::new(
+		ServerRouter::new()
+			.endpoint(|| AssetEndpoint::<0>)
+			.endpoint(|| AssetEndpoint::<1>),
+	);
+	let outer = ServerRouter::new()
+		.handler_arc("/", inner.clone())
+		.handler_arc("/{*rest}", inner.clone());
+	let mut head_request = create_test_request("/assets/nested/app.js");
+	head_request.method = Method::HEAD;
+
+	// Act
+	let direct = inner.handle(head_request.clone_for_di()).await.unwrap();
+	let mounted = outer.handle(head_request).await.unwrap();
+	let get = outer
+		.handle(create_test_request("/assets/nested/app.js"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(mounted.status, hyper::StatusCode::OK);
+	assert_eq!(mounted.headers, direct.headers);
+	assert_eq!(mounted.body, bytes::Bytes::new());
+	assert_eq!(mounted.headers["x-endpoint"], "HEAD");
+	assert_eq!(mounted.headers["x-asset"], "nested/app.js");
+	assert_eq!(mounted.headers["content-type"], get.headers["content-type"]);
+	assert_eq!(
+		mounted.headers["content-length"],
+		get.headers["content-length"]
+	);
+	assert_eq!(get.body, "const app=1;");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_head_endpoint_precedes_get_fallback(#[values(false, true)] explicit_head: bool) {
+	// Arrange: a child GET route must not hide an explicit parent HEAD route.
+	let child = ServerRouter::new().endpoint(|| AssetEndpoint::<0>);
+	let router = ServerRouter::new().mount("/", child);
+	let router = if explicit_head {
+		router.endpoint(|| AssetEndpoint::<1>)
+	} else {
+		router
+	};
+	let mut request = create_test_request("/assets/nested/app.js");
+	request.method = Method::HEAD;
+
+	// Act
+	let response = router.handle(request).await.unwrap();
+
+	// Assert: fallback changes route selection, never the request's method.
+	assert_eq!(response.status, hyper::StatusCode::OK);
+	assert_eq!(response.headers["x-request-method"], "HEAD");
+	assert_eq!(
+		response.headers["x-endpoint"],
+		if explicit_head { "HEAD" } else { "GET" }
+	);
+	assert_eq!(response.headers["x-asset"], "nested/app.js");
+	assert_eq!(response.headers["content-length"], "12");
+	assert_eq!(response.body, bytes::Bytes::new());
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_extension_method_routes_preserve_endpoint_selection() {
+	// Arrange: method-specific endpoints share a path with a raw catch-all.
+	let router = ServerRouter::new()
+		.endpoint(|| AssetEndpoint::<0>)
+		.endpoint(|| AssetEndpoint::<2>)
+		.handler("/{*rest}", RoutedRequestHandler);
+	let propfind = Method::from_bytes(b"PROPFIND").unwrap();
+	let mut propfind_request = create_test_request("/assets/app.js");
+	propfind_request.method = propfind;
+	let mut trace_request = create_test_request("/assets/app.js");
+	trace_request.method = Method::TRACE;
+
+	// Act
+	let validation = router.validate_routes();
+	let get = router
+		.handle(create_test_request("/assets/app.js"))
+		.await
+		.unwrap();
+	let propfind = router.handle(propfind_request).await.unwrap();
+	let trace = router.handle(trace_request).await.unwrap();
+
+	// Assert: extension methods neither alias GET nor bypass explicit endpoints.
+	assert_eq!(validation, Ok(()));
+	assert_eq!(get.headers["x-endpoint"], "GET");
+	assert_eq!(propfind.headers["x-endpoint"], "PROPFIND");
+	assert_eq!(trace.headers["x-request-method"], "TRACE");
+	assert_eq!(trace.headers["x-rest"], "assets/app.js");
+}
+
+#[rstest]
+#[case(Method::GET)]
+#[case(Method::HEAD)]
+#[case(Method::OPTIONS)]
+#[case(Method::from_bytes(b"MKCOL").unwrap())]
+#[tokio::test]
+async fn test_extension_endpoint_distinguishes_404_and_405(#[case] method: Method) {
+	// Arrange: no GET route exists; path detection must inspect extension routes.
+	let router = ServerRouter::new().endpoint(|| AssetEndpoint::<2>);
+	let mut existing = create_test_request("/assets/app.js");
+	existing.method = method.clone();
+	let mut missing = create_test_request("/missing");
+	missing.method = method.clone();
+
+	// Act
+	let wrong_method = router.handle(existing).await.unwrap_err();
+	let not_found = router.handle(missing).await.unwrap_err();
+
+	// Assert
+	assert!(
+		matches!(wrong_method, reinhardt_http::Error::MethodNotAllowed(message)
+		if message == format!("Method {method} not allowed for /assets/app.js"))
+	);
+	assert!(matches!(not_found, reinhardt_http::Error::NotFound(message)
+		if message == format!("No route for {method} /missing")));
 }
 
 #[rstest]

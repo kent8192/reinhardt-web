@@ -72,6 +72,17 @@ let db = TestDatabase::builder()
     .unwrap();
 ```
 
+## API client headers
+
+`APIClient::get_with_headers` and `APIClient::post_raw_with_headers` replace
+client default headers with the same name, including names that differ only
+in letter case. For example, a request with `Authorization: Bearer alice`
+replaces a default `Authorization: Bearer bob` with a single header value.
+Unrelated default headers remain present, and subsequent requests retain the
+client defaults. Multiple per-request values for the same header are retained
+in order, including names that differ only in letter case. Invalid per-request
+header names or values return an error.
+
 ## DI mock fixtures
 
 `reinhardt-testkit` exposes three layers for mocking DI dependencies in tests:
