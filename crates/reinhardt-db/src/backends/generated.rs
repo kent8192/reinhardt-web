@@ -184,6 +184,35 @@ fn validate_value(value: &Value, backend: &str, index: usize) -> Result<()> {
 	Ok(())
 }
 
+// PostgreSQL and MySQL temporal codecs store microseconds. Normalize at the
+// binding boundary so ORM-generated clocks and explicit timestamps share the
+// same contract. Keep leap seconds intact for validation instead of hiding them.
+#[cfg(any(feature = "postgres", feature = "mysql"))]
+fn normalize_temporal_precision(value: &mut Value) {
+	use chrono::Timelike;
+	macro_rules! truncate {
+		($value:expr) => {{
+			let nanos = $value.nanosecond();
+			if nanos < 1_000_000_000 {
+				**$value -= chrono::Duration::nanoseconds(i64::from(nanos % 1_000));
+			}
+		}};
+	}
+	match value {
+		Value::ChronoTime(Some(value)) => truncate!(value),
+		Value::ChronoDateTime(Some(value)) => truncate!(value),
+		Value::ChronoDateTimeUtc(Some(value)) => truncate!(value),
+		Value::ChronoDateTimeLocal(Some(value)) => truncate!(value),
+		Value::ChronoDateTimeWithTimeZone(Some(value)) => truncate!(value),
+		Value::Array(_, Some(values)) => {
+			for value in values.iter_mut() {
+				normalize_temporal_precision(value);
+			}
+		}
+		_ => {}
+	}
+}
+
 #[cfg(any(feature = "postgres", feature = "mysql"))]
 fn codec_loss(value: &Value, backend: &str) -> Option<&'static str> {
 	use chrono::Timelike;

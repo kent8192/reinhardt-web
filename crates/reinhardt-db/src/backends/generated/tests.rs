@@ -380,22 +380,13 @@ fn temporal_value(nanos: u32) -> Value {
 
 #[cfg(feature = "postgres")]
 #[rstest]
-#[case(
-	temporal_value(4),
-	"ChronoTime",
-	"sub-microsecond precision is unsupported"
-)]
-#[case(Value::Array(ArrayType::ChronoTime, Some(Box::new(vec![temporal_value(4)]))), "Array", "sub-microsecond precision is unsupported")]
+#[case(Value::Array(ArrayType::ChronoTime, Some(Box::new(vec![temporal_value(1_000_000_000)]))), "Array", "leap seconds are unsupported")]
 #[case(
 	temporal_value(1_000_000_000),
 	"ChronoTime",
 	"leap seconds are unsupported"
 )]
-fn postgres_rejects_temporal_precision_loss(
-	#[case] value: Value,
-	#[case] kind: &str,
-	#[case] reason: &str,
-) {
+fn postgres_rejects_leap_seconds(#[case] value: Value, #[case] kind: &str, #[case] reason: &str) {
 	// Arrange
 	let values = Values(vec![Value::Int(Some(7)), value]);
 
@@ -440,30 +431,16 @@ fn mysql_accepts_fixed_offset_datetime_and_null() {
 #[cfg(feature = "mysql")]
 #[rstest]
 #[case(
-	temporal_value(4),
-	"ChronoTime",
-	"sub-microsecond precision is unsupported"
-)]
-#[case(
 	temporal_value(1_000_000_000),
 	"ChronoTime",
 	"leap seconds are unsupported"
-)]
-#[case(
-	fixed_offset_datetime_value(4),
-	"ChronoDateTimeWithTimeZone",
-	"sub-microsecond precision is unsupported"
 )]
 #[case(
 	fixed_offset_datetime_value(1_000_000_000),
 	"ChronoDateTimeWithTimeZone",
 	"leap seconds are unsupported"
 )]
-fn mysql_rejects_temporal_precision_loss(
-	#[case] value: Value,
-	#[case] kind: &str,
-	#[case] reason: &str,
-) {
+fn mysql_rejects_leap_seconds(#[case] value: Value, #[case] kind: &str, #[case] reason: &str) {
 	// Arrange
 	let values = Values(vec![Value::Int(Some(7)), value]);
 
@@ -747,6 +724,10 @@ async fn mysql_codecs_round_trip_native_values() {
 			"2026-10-05T06:02:03.654321Z",
 		),
 		(
+			"2026-10-04T12:02:03.123456789+09:00",
+			"2026-10-04T03:02:03.123456Z",
+		),
+		(
 			"2026-10-04T12:02:03.000001+00:00",
 			"2026-10-04T12:02:03.000001Z",
 		),
@@ -828,4 +809,120 @@ async fn mysql_codecs_round_trip_native_values() {
 		// Assert
 		assert_eq!(row.get::<sqlx::types::BigDecimal, _>(0), expected);
 	}
+}
+
+#[cfg(any(feature = "postgres", feature = "mysql"))]
+#[rstest]
+fn nanosecond_timestamps_are_normalized_for_native_bindings() {
+	// Arrange: this deterministic clock value also occurs in auto_now_add fields.
+	let timestamp =
+		chrono::DateTime::<chrono::Utc>::from_timestamp(1_700_000_000, 123_456_789).unwrap();
+	let mut value = Value::ChronoDateTimeUtc(Some(Box::new(timestamp)));
+
+	// Act
+	super::normalize_temporal_precision(&mut value);
+
+	// Assert: normalization preserves the second and truncates only submicroseconds.
+	let expected =
+		chrono::DateTime::<chrono::Utc>::from_timestamp(1_700_000_000, 123_456_000).unwrap();
+	assert_eq!(value, Value::ChronoDateTimeUtc(Some(Box::new(expected))));
+	#[cfg(feature = "postgres")]
+	assert_eq!(
+		sqlx::Arguments::len(
+			&postgres::arguments(Values(vec![
+				timestamp.into(),
+				Value::Array(
+					ArrayType::ChronoDateTimeUtc,
+					Some(Box::new(vec![
+						timestamp.into(),
+						Value::ChronoDateTimeUtc(None)
+					]))
+				),
+			]))
+			.unwrap()
+		),
+		2
+	);
+	#[cfg(feature = "mysql")]
+	assert_eq!(
+		sqlx::Arguments::len(
+			&mysql::arguments(Values(vec![
+				timestamp.into(),
+				Value::ChronoDateTimeUtc(None)
+			]))
+			.unwrap()
+		),
+		2
+	);
+}
+
+#[cfg(feature = "postgres")]
+#[rstest]
+#[tokio::test]
+async fn postgres_round_trips_truncated_timestamp_scalars_and_arrays() {
+	use sqlx::Row;
+	use testcontainers::{ImageExt, runners::AsyncRunner};
+	use testcontainers_modules::postgres::Postgres;
+
+	// Arrange: include pre-epoch values and digits that would round upward.
+	let container = Postgres::default()
+		.with_tag("17-alpine")
+		.start()
+		.await
+		.unwrap();
+	let url = format!(
+		"postgres://postgres:postgres@{}:{}/postgres",
+		container.get_host().await.unwrap(),
+		container.get_host_port_ipv4(5432).await.unwrap()
+	);
+	let pool = sqlx::PgPool::connect(&url).await.unwrap();
+	for seconds in [-1, 1_700_000_000] {
+		let timestamp =
+			chrono::DateTime::<chrono::Utc>::from_timestamp(seconds, 123_456_789).unwrap();
+		let expected =
+			chrono::DateTime::<chrono::Utc>::from_timestamp(seconds, 123_456_000).unwrap();
+		let (sql, values) = Query::select()
+			.expr(Expr::val(timestamp))
+			.expr(Expr::val(Value::Array(
+				ArrayType::ChronoDateTimeUtc,
+				Some(Box::new(vec![
+					timestamp.into(),
+					Value::ChronoDateTimeUtc(None),
+				])),
+			)))
+			.build(reinhardt_query::PostgresQueryBuilder);
+
+		// Act
+		let row = sqlx::query_with(&sql, postgres::arguments(values).unwrap())
+			.fetch_one(&pool)
+			.await
+			.unwrap();
+
+		// Assert: SQLx decodes the persisted microsecond scalar and nullable array.
+		assert_eq!(row.get::<chrono::DateTime<chrono::Utc>, _>(0), expected);
+		assert_eq!(
+			row.get::<Vec<Option<chrono::DateTime<chrono::Utc>>>, _>(1),
+			vec![Some(expected), None]
+		);
+	}
+}
+
+#[cfg(any(feature = "postgres", feature = "mysql"))]
+#[rstest]
+#[case::time(temporal_value(123_456_789))]
+#[case::naive_datetime(Value::ChronoDateTime(Some(Box::new(chrono::DateTime::<chrono::Utc>::from_timestamp(1_700_000_000, 123_456_789).unwrap().naive_utc()))))]
+#[case::local_datetime(Value::ChronoDateTimeLocal(Some(Box::new(chrono::DateTime::<chrono::Utc>::from_timestamp(1_700_000_000, 123_456_789).unwrap().with_timezone(&chrono::Local)))))]
+#[case::fixed_offset_datetime(Value::ChronoDateTimeWithTimeZone(Some(Box::new(chrono::DateTime::parse_from_rfc3339("2026-10-04T01:02:03.123456789+09:00").unwrap()))))]
+fn native_codecs_accept_nanosecond_temporal_variants(#[case] value: Value) {
+	// Arrange
+	let values = Values(vec![value]);
+
+	// Act and assert: all temporal codecs share the accepted precision contract.
+	#[cfg(feature = "postgres")]
+	assert_eq!(
+		sqlx::Arguments::len(&postgres::arguments(values.clone()).unwrap()),
+		1
+	);
+	#[cfg(feature = "mysql")]
+	assert_eq!(sqlx::Arguments::len(&mysql::arguments(values).unwrap()), 1);
 }
