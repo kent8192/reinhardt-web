@@ -31,6 +31,31 @@ pub enum HttpVersion {
 	Auto,
 }
 
+/// Redirect handling for requests sent over the network by [`APIClient`].
+///
+/// The default follows at most 10 consecutive redirects. In-process clients
+/// created with [`APIClient::from_handler`], [`APIClientBuilder::handler`], or
+/// [`APIClient::set_handler`] always return redirect responses unchanged and
+/// silently ignore this policy.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedirectPolicy {
+	/// Follow at most `limit` consecutive redirects; a redirect beyond that
+	/// fails the request. A limit of zero makes any redirect fail.
+	Follow {
+		/// Maximum number of consecutive redirects to follow.
+		limit: usize,
+	},
+	/// Never follow redirects; return the 3xx response and its `Location` header.
+	Never,
+}
+
+impl Default for RedirectPolicy {
+	fn default() -> Self {
+		Self::Follow { limit: 10 }
+	}
+}
+
 /// Errors that can occur when using the API test client.
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -76,6 +101,17 @@ impl ClientError {
 		}
 	}
 
+	/// Returns true if a network request failed because of its redirect policy.
+	///
+	/// This includes exceeding the configured redirect limit. Errors from
+	/// in-process dispatch and other non-reqwest errors return false.
+	pub fn is_redirect(&self) -> bool {
+		match self {
+			ClientError::Reqwest(e) => e.is_redirect(),
+			_ => false,
+		}
+	}
+
 	/// Returns true if the error occurred during request building
 	pub fn is_request(&self) -> bool {
 		match self {
@@ -100,6 +136,7 @@ pub type RequestHandler = Arc<dyn Fn(Request<Full<Bytes>>) -> Response<Full<Byte
 struct TransportConfig {
 	timeout: Option<Duration>,
 	http_version: HttpVersion,
+	redirect_policy: RedirectPolicy,
 	cookie_store: bool,
 }
 
@@ -115,6 +152,10 @@ impl TransportConfig {
 			HttpVersion::Auto => builder,
 		};
 		builder
+			.redirect(match self.redirect_policy {
+				RedirectPolicy::Follow { limit } => reqwest::redirect::Policy::limited(limit),
+				RedirectPolicy::Never => reqwest::redirect::Policy::none(),
+			})
 			.cookie_store(self.cookie_store)
 			.build()
 			.expect("Failed to build reqwest client")
@@ -139,6 +180,7 @@ pub struct APIClientBuilder {
 	base_url: String,
 	timeout: Option<Duration>,
 	http_version: HttpVersion,
+	redirect_policy: RedirectPolicy,
 	cookie_store: bool,
 	framework_handler: Option<Arc<dyn HttpHandler>>,
 	di_context: Option<Arc<InjectionContext>>,
@@ -151,6 +193,7 @@ impl APIClientBuilder {
 			base_url: "http://testserver".to_string(),
 			timeout: None,
 			http_version: HttpVersion::Auto,
+			redirect_policy: RedirectPolicy::default(),
 			cookie_store: false,
 			framework_handler: None,
 			di_context: None,
@@ -172,6 +215,17 @@ impl APIClientBuilder {
 	/// Set the HTTP version
 	pub fn http_version(mut self, version: HttpVersion) -> Self {
 		self.http_version = version;
+		self
+	}
+
+	/// Set the redirect policy for requests sent over the network.
+	///
+	/// Defaults to [`RedirectPolicy::Follow`] with a limit of 10. In-process
+	/// clients configured with [`Self::handler`], [`APIClient::from_handler`], or
+	/// [`APIClient::set_handler`] silently ignore this setting and return
+	/// redirect responses unchanged. Combining a policy with a handler is valid.
+	pub fn redirect_policy(mut self, policy: RedirectPolicy) -> Self {
+		self.redirect_policy = policy;
 		self
 	}
 
@@ -223,6 +277,7 @@ impl APIClientBuilder {
 		let transport = TransportConfig {
 			timeout: self.timeout,
 			http_version: self.http_version,
+			redirect_policy: self.redirect_policy,
 			cookie_store: self.cookie_store,
 		};
 		let http_client = transport.build_client();
@@ -386,8 +441,9 @@ impl APIClient {
 	/// Snapshots default headers, manual cookies, and the forced-auth user into
 	/// separate locks so concurrent requests and later authentication changes do
 	/// not race on shared defaults. Shares the base URL, handlers, and DI
-	/// context. Builds a new transport with the same timeout, HTTP version, and
-	/// cookie-store setting, with an independent connection pool and automatic jar.
+	/// context. Builds a new transport with the same timeout, HTTP version,
+	/// redirect policy, and cookie-store setting, with an independent connection
+	/// pool and automatic jar.
 	/// Cookies from the parent's automatic jar are not inherited; only cookies
 	/// configured with [`Self::set_cookie`] are copied.
 	/// Native-only (P0) through `reinhardt::test`.
@@ -1768,7 +1824,12 @@ mod tests {
 		// Assert
 		assert_eq!(json.body().as_ref(), br#"{"name":"before"}"#);
 		assert_eq!(header_values(&json, "content-type"), ["explicit/type"]);
-		assert_eq!(form.body().as_ref(), b"count=2&name=A+B");
+		let mut form_fields = std::str::from_utf8(form.body())
+			.unwrap()
+			.split('&')
+			.collect::<Vec<_>>();
+		form_fields.sort_unstable();
+		assert_eq!(form_fields, ["count=2", "name=A+B"]);
 		assert_eq!(
 			header_values(&form, "content-type"),
 			["application/x-www-form-urlencoded"]
@@ -1894,6 +1955,37 @@ mod tests {
 		async fn handle(&self, _: HttpRequest) -> HttpResult<HttpResponse> {
 			Ok(self.response.clone())
 		}
+	}
+
+	#[rstest]
+	fn redirect_policy_default_preserves_ten_redirect_limit() {
+		assert_eq!(
+			RedirectPolicy::default(),
+			RedirectPolicy::Follow { limit: 10 }
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn redirect_sync_handler_ignores_follow_policy() {
+		// Arrange
+		let mut client = APIClient::builder()
+			.redirect_policy(RedirectPolicy::Follow { limit: 0 })
+			.build();
+		client.set_handler(|_| {
+			Response::builder()
+				.status(http::StatusCode::FOUND)
+				.header("Location", "/b")
+				.body(Full::new(Bytes::new()))
+				.unwrap()
+		});
+
+		// Act
+		let response = client.get("/a").await.unwrap();
+
+		// Assert
+		assert_eq!(response.status(), http::StatusCode::FOUND);
+		assert_eq!(response.header("Location"), Some("/b"));
 	}
 
 	#[rstest]
@@ -2188,10 +2280,12 @@ mod tests {
 			"Request failed: Invalid header name: invalid header"
 		);
 		assert_eq!(invalid_name.is_request(), true);
+		assert!(!invalid_name.is_redirect());
 		assert!(matches!(&invalid_value, ClientError::InvalidHeaderValue(_)));
 		assert_eq!(invalid_value.is_request(), true);
 		assert_eq!(invalid_value.is_timeout(), false);
 		assert_eq!(invalid_value.is_connect(), false);
+		assert!(!invalid_value.is_redirect());
 	}
 
 	#[rstest]

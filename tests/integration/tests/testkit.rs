@@ -26,3 +26,6 @@ mod stub_router_integration;
 
 #[path = "testkit/postgres_container_migrations.rs"]
 mod postgres_container_migrations;
+
+#[path = "testkit/redirect_policy.rs"]
+mod redirect_policy;

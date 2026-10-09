@@ -81,26 +81,28 @@ async fn exercise_inserts(connection: DatabaseConnection) {
 				.where_clause("1 = 0"),
 		);
 	if dialect == DatabaseType::Mysql {
-		assert!(
-			condition
-				.execute()
-				.await
-				.unwrap_err()
-				.to_string()
-				.contains("MySQL does not support conditional")
+		let error = condition.execute().await.unwrap_err();
+		assert_eq!(
+			error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Unsupported)
+		);
+		assert_eq!(
+			error.database_error().unwrap().message(),
+			"MySQL does not support conditional ON DUPLICATE KEY UPDATE"
 		);
 		let named = InsertBuilder::new(backend.clone(), "insert_values")
 			.value("id", 1_i64)
 			.on_conflict(
 				OnConflictClause::constraint("insert_values_pkey").do_update(vec!["name"]),
 			);
-		assert!(
-			named
-				.execute()
-				.await
-				.unwrap_err()
-				.to_string()
-				.contains("ON CONFLICT ON CONSTRAINT is unsupported")
+		let error = named.execute().await.unwrap_err();
+		assert_eq!(
+			error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Unsupported)
+		);
+		assert_eq!(
+			error.database_error().unwrap().message(),
+			"MySQL does not support named conflict targets"
 		);
 	} else {
 		assert_eq!(condition.execute().await.unwrap().rows_affected, 0);
@@ -122,17 +124,11 @@ async fn exercise_inserts(connection: DatabaseConnection) {
 		assert_eq!(row.get::<i64>("id").unwrap(), 1);
 	}
 	if dialect == DatabaseType::Sqlite {
-		let missing = InsertBuilder::new(backend.clone(), "insert_values")
+		let targetless = InsertBuilder::new(backend.clone(), "insert_values")
 			.value("id", 1_i64)
+			.value("name", replacement)
 			.on_conflict(OnConflictClause::any().do_update(vec!["name"]));
-		assert!(
-			missing
-				.execute()
-				.await
-				.unwrap_err()
-				.to_string()
-				.contains("non-empty conflict_columns")
-		);
+		assert_eq!(targetless.execute().await.unwrap().rows_affected, 1);
 	}
 	// Bound SELECT expressions execute through the exact generated arguments.
 	let source_payload = "source' ? $99";

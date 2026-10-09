@@ -219,11 +219,7 @@ async fn sqlite_unsigned_overflow_never_matches_a_signed_key(
 ) {
 	// Arrange
 	let mut database = sqlite_database.await;
-	let expected_message = if transaction {
-		"Unsigned integer parameter exceeds the signed 64-bit range supported by SQLite"
-	} else {
-		"cannot encode BigUnsigned argument 1 for sqlite: unsigned integer exceeds signed 64-bit range"
-	};
+	let expected_message = "cannot encode BigUnsigned argument 1 for sqlite: unsigned integer exceeds signed 64-bit range";
 
 	// Act
 	if transaction {
@@ -301,11 +297,7 @@ async fn postgres_unsigned_keys_are_checked_before_execution(
 		.await
 		.expect("native PostgreSQL connection");
 	let mut database = prepare_database(owner, false).await;
-	let expected_message = if transaction {
-		"Unsigned integer parameter exceeds the signed 64-bit range supported by PostgreSQL"
-	} else {
-		"cannot encode BigUnsigned argument 1 for postgres: unsigned integer exceeds signed 64-bit range"
-	};
+	let expected_message = "cannot encode BigUnsigned argument 1 for postgres: unsigned integer exceeds signed 64-bit range";
 
 	// Act
 	async fn check(executor: &mut impl OrmExecutor, expected_message: &str) {
