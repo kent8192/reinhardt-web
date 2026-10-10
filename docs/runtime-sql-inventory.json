@@ -3044,8 +3044,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/http.rs",
       "symbol": "OAuthHandler::metadata_request",
       "kind": "macro-sql-literal",
-      "line": 304,
-      "fingerprint": "37ef7c236996c23e7020d23663a6fa84926cad1c25d73bb1e0d2a203c4c22de9",
+      "line": 327,
+      "fingerprint": "6ded3067211f33f9743addf6ba457858b249746af9bc99c9216d802710167b44",
       "conditions": [],
       "test_only": false,
       "category": "vendor-administration",
@@ -3068,7 +3068,7 @@
       "symbol": "OAuthHandler::token_request",
       "kind": "sql-literal",
       "line": 162,
-      "fingerprint": "40f0bb8f4cdaa1266e8c46af00a081c90c5bfa6171e037d1ca12304b7051e420",
+      "fingerprint": "c99841318aad3c6b6be5e6ae8b7a1d84ff62b34c0c21ef2abd708d36210ff471",
       "conditions": [],
       "test_only": false,
       "category": "vendor-administration",
@@ -3561,8 +3561,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "execution-wrapper",
-      "line": 383,
-      "fingerprint": "f3911d9712f125049e6f9d8acc433ff119088564a3fff0e0affd9c0a1d0044b8",
+      "line": 891,
+      "fingerprint": "266513bd2a47fbb4af40e4ecebaf1e43883eba0684457e29967fa5fadb037de8",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3589,8 +3589,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "execution-wrapper",
-      "line": 398,
-      "fingerprint": "8cfb6c55a8efaf33cd738b5b5d35ccf4a3f4781a8e621edec04f28f45cdee714",
+      "line": 906,
+      "fingerprint": "cff0f330ccb2b4050a25db781e016d6c9e044cf669cd038034165f872127eaf6",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3617,8 +3617,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "execution-wrapper",
-      "line": 408,
-      "fingerprint": "8cfb6c55a8efaf33cd738b5b5d35ccf4a3f4781a8e621edec04f28f45cdee714",
+      "line": 916,
+      "fingerprint": "cff0f330ccb2b4050a25db781e016d6c9e044cf669cd038034165f872127eaf6",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3645,8 +3645,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "execution-wrapper",
-      "line": 420,
-      "fingerprint": "8cfb6c55a8efaf33cd738b5b5d35ccf4a3f4781a8e621edec04f28f45cdee714",
+      "line": 928,
+      "fingerprint": "cff0f330ccb2b4050a25db781e016d6c9e044cf669cd038034165f872127eaf6",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3673,8 +3673,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "execution-wrapper",
-      "line": 432,
-      "fingerprint": "8cfb6c55a8efaf33cd738b5b5d35ccf4a3f4781a8e621edec04f28f45cdee714",
+      "line": 941,
+      "fingerprint": "cff0f330ccb2b4050a25db781e016d6c9e044cf669cd038034165f872127eaf6",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3701,8 +3701,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "executor",
-      "line": 383,
-      "fingerprint": "8ab3510391a94c83db0cec1f7964d8ff2fe088b4173a8459694031f511466356",
+      "line": 891,
+      "fingerprint": "cbc30d0f12b0956b726a8fe2c0ae6625fd34aa96c2e05327be76475a37534139",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3729,8 +3729,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "executor",
-      "line": 398,
-      "fingerprint": "6485a13603781a576a28a3393928ad91dd6cb9d0e42f3a7d3b18f9b1dc7f6b0b",
+      "line": 906,
+      "fingerprint": "479ebc122378878e468ba013c6927753442ff62d5addee26ce482886eaea9e59",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3757,8 +3757,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "executor",
-      "line": 408,
-      "fingerprint": "6485a13603781a576a28a3393928ad91dd6cb9d0e42f3a7d3b18f9b1dc7f6b0b",
+      "line": 916,
+      "fingerprint": "479ebc122378878e468ba013c6927753442ff62d5addee26ce482886eaea9e59",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3785,8 +3785,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "executor",
-      "line": 420,
-      "fingerprint": "6485a13603781a576a28a3393928ad91dd6cb9d0e42f3a7d3b18f9b1dc7f6b0b",
+      "line": 928,
+      "fingerprint": "479ebc122378878e468ba013c6927753442ff62d5addee26ce482886eaea9e59",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3813,8 +3813,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "executor",
-      "line": 432,
-      "fingerprint": "6485a13603781a576a28a3393928ad91dd6cb9d0e42f3a7d3b18f9b1dc7f6b0b",
+      "line": 941,
+      "fingerprint": "479ebc122378878e468ba013c6927753442ff62d5addee26ce482886eaea9e59",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3953,8 +3953,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::inspect_code_for_exchange",
       "kind": "execution-wrapper",
-      "line": 756,
-      "fingerprint": "2ff3ab9530c5211dbe1dc348b99e7bae88d536c8566029c4c3fcc98e7a71eb55",
+      "line": 1265,
+      "fingerprint": "f106791a34776d0a52a885dedd3454245b82a0fd89e6acf90136dc4410947faf",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3981,8 +3981,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::inspect_code_for_exchange",
       "kind": "execution-wrapper",
-      "line": 769,
-      "fingerprint": "a394d73cef64f132e84803c5e22aa309c5c99fcfb07b2deac34bd756aa1e7e6f",
+      "line": 1278,
+      "fingerprint": "d66570b0dbed063a2d61dd826a01042fa89864e81644b84af56fa9f96bfe8b0c",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4009,8 +4009,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::inspect_code_for_exchange",
       "kind": "execution-wrapper",
-      "line": 779,
-      "fingerprint": "a394d73cef64f132e84803c5e22aa309c5c99fcfb07b2deac34bd756aa1e7e6f",
+      "line": 1288,
+      "fingerprint": "d66570b0dbed063a2d61dd826a01042fa89864e81644b84af56fa9f96bfe8b0c",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4037,8 +4037,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::inspect_code_for_exchange",
       "kind": "executor",
-      "line": 756,
-      "fingerprint": "14235ed13752c1565d444adb26e934136a2bb5686913c66f5f555759eec79eb9",
+      "line": 1265,
+      "fingerprint": "f1b3a07dbd5edca97cd9878df25354fea44c3db339d87ca7ef85086d8fdef84f",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4065,8 +4065,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::inspect_code_for_exchange",
       "kind": "executor",
-      "line": 769,
-      "fingerprint": "8da17bdaf5566e3b5361dfd6503a30ea5ecbae9421e1e7b8d6657d123f99c56d",
+      "line": 1278,
+      "fingerprint": "36cd732b8e8d901e2356bf5b2d4d24b4ab03526d9c001965605d4ccb7490748f",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4093,8 +4093,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::inspect_code_for_exchange",
       "kind": "executor",
-      "line": 779,
-      "fingerprint": "8da17bdaf5566e3b5361dfd6503a30ea5ecbae9421e1e7b8d6657d123f99c56d",
+      "line": 1288,
+      "fingerprint": "36cd732b8e8d901e2356bf5b2d4d24b4ab03526d9c001965605d4ccb7490748f",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4397,230 +4397,6 @@
       ]
     },
     {
-      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token::execution-wrapper#1",
-      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
-      "symbol": "PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token",
-      "kind": "execution-wrapper",
-      "line": 811,
-      "fingerprint": "106d69e1f28d78b0d320299d7810ecd8895f74ac9de3317c901a6f60fd6f089b",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "typed",
-      "operation": "dml",
-      "representation": "typed-query",
-      "feature_reachability": [
-        "database and oauth (oidc-op for OIDC state)",
-        "native PostgreSQL executor"
-      ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
-        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token::execution-wrapper#2",
-      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
-      "symbol": "PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token",
-      "kind": "execution-wrapper",
-      "line": 828,
-      "fingerprint": "80eb85ab23f02a4541dd516ae8789e5f8b4bd9b26f972af9bb60a6d2da597266",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "typed",
-      "operation": "dml",
-      "representation": "typed-query",
-      "feature_reachability": [
-        "database and oauth (oidc-op for OIDC state)",
-        "native PostgreSQL executor"
-      ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
-        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token::execution-wrapper#3",
-      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
-      "symbol": "PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token",
-      "kind": "execution-wrapper",
-      "line": 834,
-      "fingerprint": "80eb85ab23f02a4541dd516ae8789e5f8b4bd9b26f972af9bb60a6d2da597266",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "typed",
-      "operation": "dml",
-      "representation": "typed-query",
-      "feature_reachability": [
-        "database and oauth (oidc-op for OIDC state)",
-        "native PostgreSQL executor"
-      ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
-        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token::execution-wrapper#4",
-      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
-      "symbol": "PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token",
-      "kind": "execution-wrapper",
-      "line": 845,
-      "fingerprint": "80eb85ab23f02a4541dd516ae8789e5f8b4bd9b26f972af9bb60a6d2da597266",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "typed",
-      "operation": "dml",
-      "representation": "typed-query",
-      "feature_reachability": [
-        "database and oauth (oidc-op for OIDC state)",
-        "native PostgreSQL executor"
-      ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
-        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token::executor#1",
-      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
-      "symbol": "PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token",
-      "kind": "executor",
-      "line": 811,
-      "fingerprint": "cc9bcc52e0b3cdcb9a173c5c86866ff042896183f51544b79b6cd290353745b4",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "typed",
-      "operation": "dml",
-      "representation": "typed-query",
-      "feature_reachability": [
-        "database and oauth (oidc-op for OIDC state)",
-        "native PostgreSQL executor"
-      ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
-        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token::executor#2",
-      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
-      "symbol": "PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token",
-      "kind": "executor",
-      "line": 828,
-      "fingerprint": "8dd34e20fb0895fa54f5d85c6380083f26699f11d130dba503d9b1152a65456a",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "typed",
-      "operation": "dml",
-      "representation": "typed-query",
-      "feature_reachability": [
-        "database and oauth (oidc-op for OIDC state)",
-        "native PostgreSQL executor"
-      ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
-        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token::executor#3",
-      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
-      "symbol": "PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token",
-      "kind": "executor",
-      "line": 834,
-      "fingerprint": "8dd34e20fb0895fa54f5d85c6380083f26699f11d130dba503d9b1152a65456a",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "typed",
-      "operation": "dml",
-      "representation": "typed-query",
-      "feature_reachability": [
-        "database and oauth (oidc-op for OIDC state)",
-        "native PostgreSQL executor"
-      ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
-        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token::executor#4",
-      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
-      "symbol": "PostgresOAuthStore as OAuthServerStore::redeem_code_and_store_token",
-      "kind": "executor",
-      "line": 845,
-      "fingerprint": "8dd34e20fb0895fa54f5d85c6380083f26699f11d130dba503d9b1152a65456a",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "typed",
-      "operation": "dml",
-      "representation": "typed-query",
-      "feature_reachability": [
-        "database and oauth (oidc-op for OIDC state)",
-        "native PostgreSQL executor"
-      ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
-        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
-      ]
-    },
-    {
       "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::resource::execution-wrapper#1",
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::resource",
@@ -4737,8 +4513,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::retire_user",
       "kind": "execution-wrapper",
-      "line": 934,
-      "fingerprint": "47f48de0609b85d2c3b3d02f0d19456e7903790d7891ef81aed67d933da867a2",
+      "line": 1385,
+      "fingerprint": "e914d2b9f6387d1b51218b63d6c467036e8016506de561f6094a3d881ba56dc9",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4765,8 +4541,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::retire_user",
       "kind": "execution-wrapper",
-      "line": 945,
-      "fingerprint": "47f48de0609b85d2c3b3d02f0d19456e7903790d7891ef81aed67d933da867a2",
+      "line": 1397,
+      "fingerprint": "e914d2b9f6387d1b51218b63d6c467036e8016506de561f6094a3d881ba56dc9",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4793,8 +4569,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::retire_user",
       "kind": "executor",
-      "line": 934,
-      "fingerprint": "8b5903085cc2e162a71ab33d1a44e6f2ab55d5487f0d7d942436de4cbead32d8",
+      "line": 1385,
+      "fingerprint": "f20b640914d7d16d85f8ec425f0e2b907edfca0b03a4162414865cb598c4cf24",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4821,8 +4597,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::retire_user",
       "kind": "executor",
-      "line": 945,
-      "fingerprint": "8b5903085cc2e162a71ab33d1a44e6f2ab55d5487f0d7d942436de4cbead32d8",
+      "line": 1397,
+      "fingerprint": "f20b640914d7d16d85f8ec425f0e2b907edfca0b03a4162414865cb598c4cf24",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4849,36 +4625,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::revoke_client",
       "kind": "execution-wrapper",
-      "line": 961,
-      "fingerprint": "1e5f98b3b92603a9b042e0f76f732a504c1d2135df5f1f79e240a86b4353038d",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "typed",
-      "operation": "dml",
-      "representation": "typed-query",
-      "feature_reachability": [
-        "database and oauth (oidc-op for OIDC state)",
-        "native PostgreSQL executor"
-      ],
-      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
-      "backends": [
-        "postgres"
-      ],
-      "evidence": [
-        "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
-        "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
-        "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
-      ]
-    },
-    {
-      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::revoke_client::executor#1",
-      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
-      "symbol": "PostgresOAuthStore as OAuthServerStore::revoke_client",
-      "kind": "executor",
-      "line": 961,
-      "fingerprint": "eb96664438e6ff46dd60f21b7ebcc4b36894327d68353380c8a59bb432b162f7",
+      "line": 1415,
+      "fingerprint": "5f4a6b02bea3b382cab45ee4451e72d796377baaa040b2bb059a2d6245dcbb1e",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4961,8 +4709,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::revoke_user",
       "kind": "execution-wrapper",
-      "line": 905,
-      "fingerprint": "c8a338ea75687aaa83b035afa377bceb853a1fbfb0f1c498e623f2036e56cd82",
+      "line": 1355,
+      "fingerprint": "3c2504eea59532037b8e7588a9fb348e7b9b39d24776879e84943e8f77c03828",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4989,8 +4737,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::revoke_user",
       "kind": "execution-wrapper",
-      "line": 917,
-      "fingerprint": "c8a338ea75687aaa83b035afa377bceb853a1fbfb0f1c498e623f2036e56cd82",
+      "line": 1368,
+      "fingerprint": "3c2504eea59532037b8e7588a9fb348e7b9b39d24776879e84943e8f77c03828",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5017,8 +4765,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::revoke_user",
       "kind": "executor",
-      "line": 905,
-      "fingerprint": "62a4869500a9314be2456931ba43b0b325cf80cb940a00aa05d32683c75365bf",
+      "line": 1355,
+      "fingerprint": "3c9017ba1627c7c44bcefe016890910b90e99d467b39a0b342a4d5590be28c55",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5045,8 +4793,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::revoke_user",
       "kind": "executor",
-      "line": 917,
-      "fingerprint": "62a4869500a9314be2456931ba43b0b325cf80cb940a00aa05d32683c75365bf",
+      "line": 1368,
+      "fingerprint": "3c9017ba1627c7c44bcefe016890910b90e99d467b39a0b342a4d5590be28c55",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5066,6 +4814,33 @@
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
         "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::rotate_refresh_token::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore as OAuthServerStore::rotate_refresh_token",
+      "kind": "execution-wrapper",
+      "line": 1496,
+      "fingerprint": "0777308199acb5afb9e38c9f8152a1aba5f65cb79f75f001dc4d930d2c6cf33a",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
       ]
     },
     {
@@ -5241,8 +5016,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore::purge_expired",
       "kind": "execution-wrapper",
-      "line": 210,
-      "fingerprint": "e570454a3ac9f23cbda7deeee9931f0b58d42eff49eaee4b23490b024478ce31",
+      "line": 498,
+      "fingerprint": "24b711d0c1864b7022db476aefb6d86a5f205d9564d76c96fb7377bc0f91484c",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5269,8 +5044,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore::purge_expired",
       "kind": "executor",
-      "line": 210,
-      "fingerprint": "4fa08d05d64207dad61364dbada34e0f624cf53fa0bff461ec2d556b3f8f6b8c",
+      "line": 498,
+      "fingerprint": "32808e4b430ed4d30e7284f4e0b6e641af2a67e373fd587e7fbd20c305e2edc8",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5290,6 +5065,276 @@
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
         "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore::redeem_code::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore::redeem_code",
+      "kind": "execution-wrapper",
+      "line": 388,
+      "fingerprint": "bea48d85e22f8fad7eb56fa6223912b39d1cf22459e0cae95738e648b7227282",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore::redeem_code::execution-wrapper#2",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore::redeem_code",
+      "kind": "execution-wrapper",
+      "line": 405,
+      "fingerprint": "fa947afa504970cf391b82ad32207f9eb38717a17c30e015ea23965c919cf721",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore::redeem_code::execution-wrapper#3",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore::redeem_code",
+      "kind": "execution-wrapper",
+      "line": 411,
+      "fingerprint": "fa947afa504970cf391b82ad32207f9eb38717a17c30e015ea23965c919cf721",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore::redeem_code::execution-wrapper#4",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore::redeem_code",
+      "kind": "execution-wrapper",
+      "line": 431,
+      "fingerprint": "fa947afa504970cf391b82ad32207f9eb38717a17c30e015ea23965c919cf721",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore::redeem_code::executor#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore::redeem_code",
+      "kind": "executor",
+      "line": 388,
+      "fingerprint": "57342650a7ee63b422bd51e82f148b93d00f97a2774660f96d1201894deb556b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore::redeem_code::executor#2",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore::redeem_code",
+      "kind": "executor",
+      "line": 405,
+      "fingerprint": "64279b0fffd8928f841d6c3358e9c6950cace2079cbfe4f7aec82ce11db21992",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore::redeem_code::executor#3",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore::redeem_code",
+      "kind": "executor",
+      "line": 411,
+      "fingerprint": "64279b0fffd8928f841d6c3358e9c6950cace2079cbfe4f7aec82ce11db21992",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore::redeem_code::executor#4",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore::redeem_code",
+      "kind": "executor",
+      "line": 431,
+      "fingerprint": "64279b0fffd8928f841d6c3358e9c6950cace2079cbfe4f7aec82ce11db21992",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::execute::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "execute",
+      "kind": "execution-wrapper",
+      "line": 593,
+      "fingerprint": "bde036884480d70c77cee410f1dd9bcb56154af42e088ec539e8fc2d303e9871",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::execute::executor#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "execute",
+      "kind": "executor",
+      "line": 593,
+      "fingerprint": "d287e3b408aad4248e0628a760af20ac7be2f7132d1c9e46168d829c5375f053",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
       ]
     },
     {
@@ -5349,12 +5394,66 @@
       ]
     },
     {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::insert_family::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "insert_family",
+      "kind": "execution-wrapper",
+      "line": 621,
+      "fingerprint": "9ac462ceb41e02e5b6225fe4e016e3984debee7a80a36eff8988bf541df713cd",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::insert_refresh_token::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "insert_refresh_token",
+      "kind": "execution-wrapper",
+      "line": 642,
+      "fingerprint": "74a966dc303a8730b55eaa45610029ec694b50d4fc48ea1ab3b80eadd973fd54",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
       "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::insert_token::execution-wrapper#1",
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "insert_token",
       "kind": "execution-wrapper",
-      "line": 273,
-      "fingerprint": "0e8bca4ae4a958f9950f3772adb84cdba8d01c82eb8a6967a6efb3f2da4929d8",
+      "line": 563,
+      "fingerprint": "798c017bdab7c8954ec438dc28838d194f33c941d9aefdf703abacb8df53d5df",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5381,8 +5480,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "insert_token",
       "kind": "executor",
-      "line": 273,
-      "fingerprint": "597a7a307431cc28de131da2576e426c5ed0d7997978cf50dbc785c921027d52",
+      "line": 563,
+      "fingerprint": "e3efd1a4126372bdea9de6bbe5ad928cf69b4927e093aa35eb887f362df96033",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5405,12 +5504,309 @@
       ]
     },
     {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::lock_refresh_token::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "lock_refresh_token",
+      "kind": "execution-wrapper",
+      "line": 730,
+      "fingerprint": "50f5a0e968dc707e3234f8e58321c2c39695025327d4263353c0fcb1f6b53a37",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::lock_refresh_token::execution-wrapper#2",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "lock_refresh_token",
+      "kind": "execution-wrapper",
+      "line": 745,
+      "fingerprint": "50f5a0e968dc707e3234f8e58321c2c39695025327d4263353c0fcb1f6b53a37",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::lock_refresh_token::execution-wrapper#3",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "lock_refresh_token",
+      "kind": "execution-wrapper",
+      "line": 760,
+      "fingerprint": "50f5a0e968dc707e3234f8e58321c2c39695025327d4263353c0fcb1f6b53a37",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::lock_refresh_token::executor#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "lock_refresh_token",
+      "kind": "executor",
+      "line": 730,
+      "fingerprint": "9634c0a8d280fdb033b7fd261c254fcb5e1aaf1854c4330720e768b850b8e38e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::lock_refresh_token::executor#2",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "lock_refresh_token",
+      "kind": "executor",
+      "line": 745,
+      "fingerprint": "9634c0a8d280fdb033b7fd261c254fcb5e1aaf1854c4330720e768b850b8e38e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::lock_refresh_token::executor#3",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "lock_refresh_token",
+      "kind": "executor",
+      "line": 760,
+      "fingerprint": "9634c0a8d280fdb033b7fd261c254fcb5e1aaf1854c4330720e768b850b8e38e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::revoke_code_families::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "revoke_code_families",
+      "kind": "execution-wrapper",
+      "line": 781,
+      "fingerprint": "1204cb240e08bad80e5af75e8f56362514622d7251b2ce743c02d72ea77f9e3b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::revoke_code_families::execution-wrapper#2",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "revoke_code_families",
+      "kind": "execution-wrapper",
+      "line": 794,
+      "fingerprint": "1204cb240e08bad80e5af75e8f56362514622d7251b2ce743c02d72ea77f9e3b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::revoke_family::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "revoke_family",
+      "kind": "execution-wrapper",
+      "line": 770,
+      "fingerprint": "62b1f5e9244f3764f3bab39f7457296d10b80aa7647c740f61b836106c7c1453",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::revoke_family::execution-wrapper#2",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "revoke_family",
+      "kind": "execution-wrapper",
+      "line": 772,
+      "fingerprint": "62b1f5e9244f3764f3bab39f7457296d10b80aa7647c740f61b836106c7c1453",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::revoke_owner_families::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "revoke_owner_families",
+      "kind": "execution-wrapper",
+      "line": 804,
+      "fingerprint": "555cc2253ced6128c346465ea285e01c32e972efacd365e5a7d13c5a49a984c7",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "155 oauth2_server library tests passed with the oauth, oidc-op and database features, 29 of them refresh-token scenarios on native PostgreSQL via TestContainers covering family creation, rotation, reuse and concurrent-rotation revocation, idle/absolute expiry, administrative cutoffs, purge, and migration apply/rollback.",
+        "Every new refresh-token statement is built with reinhardt-query and executed through prepare() or update_flag(); the execute() helper only accepts their Prepared output."
+      ]
+    },
+    {
       "id": "crates/reinhardt-auth/src/oauth2_server/protocol.rs::OAuthServerConfig::validate::execution-wrapper#1",
       "path": "crates/reinhardt-auth/src/oauth2_server/protocol.rs",
       "symbol": "OAuthServerConfig::validate",
       "kind": "execution-wrapper",
-      "line": 200,
-      "fingerprint": "974c7c08b4e42d8598d7fe1e73863f3cdf1a3c754ea49fd3e5ad1e90a0451036",
+      "line": 275,
+      "fingerprint": "8256db8626264572aa203ecd6d4b860ffd7c6e2f7fb2374eaacb90f849252136",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5432,8 +5828,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/protocol.rs",
       "symbol": "OAuthServerConfig::validate",
       "kind": "execution-wrapper",
-      "line": 218,
-      "fingerprint": "9701a0854da74eef03d933e789f0f49b770ffa9390ea3ab1985e5fdff85ac44d",
+      "line": 293,
+      "fingerprint": "49ebf81717ac4917c2db39fc5da60e3d0fc070252cf5ac692263e8932057187b",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
