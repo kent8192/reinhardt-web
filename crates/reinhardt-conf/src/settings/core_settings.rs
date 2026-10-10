@@ -10,14 +10,17 @@ use super::validation::{ValidationError, ValidationResult};
 use reinhardt_core::macros::settings;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 
 /// Core application settings.
 ///
 /// Contains essential configuration: base directory, secret key, debug mode,
 /// allowed hosts, database configs, security settings, middleware, and apps.
+///
+/// The `Debug` output redacts `secret_key`.
 #[settings(fragment = true, section = "core", validate = false)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CoreSettings {
 	/// Base directory of the project.
 	#[serde(default = "default_base_dir")]
@@ -77,6 +80,39 @@ pub struct CoreSettings {
 	/// Feature flags used to resolve conditional migration dependencies.
 	#[serde(default)]
 	pub migration_features: Vec<String>,
+}
+
+impl fmt::Debug for CoreSettings {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// Exhaustive destructuring makes adding a field a compile error here,
+		// so new fields cannot silently bypass the redaction review.
+		let Self {
+			base_dir,
+			secret_key: _,
+			debug,
+			allowed_hosts,
+			databases,
+			security,
+			middleware,
+			root_urlconf,
+			installed_apps,
+			migration_swappable_settings,
+			migration_features,
+		} = self;
+		f.debug_struct("CoreSettings")
+			.field("base_dir", base_dir)
+			.field("secret_key", &"[REDACTED]")
+			.field("debug", debug)
+			.field("allowed_hosts", allowed_hosts)
+			.field("databases", databases)
+			.field("security", security)
+			.field("middleware", middleware)
+			.field("root_urlconf", root_urlconf)
+			.field("installed_apps", installed_apps)
+			.field("migration_swappable_settings", migration_swappable_settings)
+			.field("migration_features", migration_features)
+			.finish()
+	}
 }
 
 fn default_base_dir() -> PathBuf {
@@ -374,5 +410,21 @@ secure_ssl_redirect = true
 				"field '{field_name}' must have a default value"
 			);
 		}
+	}
+
+	#[rstest]
+	fn test_core_settings_debug_redacts_secret_key() {
+		// Arrange
+		let settings = CoreSettings {
+			secret_key: "super-secret-value".to_string(),
+			..Default::default()
+		};
+
+		// Act
+		let output = format!("{settings:?}");
+
+		// Assert
+		assert!(!output.contains("super-secret-value"), "{output}");
+		assert!(output.contains("secret_key: \"[REDACTED]\""), "{output}");
 	}
 }

@@ -332,10 +332,12 @@ pub fn create_rate_limit_config_from_settings(
 /// Redis channel layer settings fragment.
 ///
 /// Maps to the `[ws_redis]` section. Requires the `redis-channel` feature.
+///
+/// The `Debug` output redacts `password`.
 #[cfg(feature = "redis-channel")]
 #[settings(fragment = true, section = "ws_redis")]
 #[non_exhaustive]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RedisChannelSettings {
 	/// Redis connection URL.
 	#[serde(default = "default_redis_url")]
@@ -362,6 +364,34 @@ pub struct RedisChannelSettings {
 	/// Require authentication (warns if disabled without credentials).
 	#[serde(default = "default_redis_require_auth")]
 	pub require_auth: bool,
+}
+
+#[cfg(feature = "redis-channel")]
+impl std::fmt::Debug for RedisChannelSettings {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		// Exhaustive destructuring makes adding a field a compile error here,
+		// so new fields cannot silently bypass the redaction review.
+		let Self {
+			url,
+			channel_prefix,
+			group_prefix,
+			message_expiry,
+			password,
+			username,
+			tls,
+			require_auth,
+		} = self;
+		f.debug_struct("RedisChannelSettings")
+			.field("url", url)
+			.field("channel_prefix", channel_prefix)
+			.field("group_prefix", group_prefix)
+			.field("message_expiry", message_expiry)
+			.field("password", &password.as_ref().map(|_| "[REDACTED]"))
+			.field("username", username)
+			.field("tls", tls)
+			.field("require_auth", require_auth)
+			.finish()
+	}
 }
 
 #[cfg(feature = "redis-channel")]
@@ -484,5 +514,27 @@ mod tests {
 		assert!(config.username.is_none());
 		assert!(!config.tls);
 		assert!(config.require_auth);
+	}
+
+	#[cfg(feature = "redis-channel")]
+	#[rstest::rstest]
+	#[case::set(Some("redis-password-value"), "password: Some(\"[REDACTED]\")")]
+	#[case::unset(None, "password: None")]
+	fn redis_settings_debug_redacts_password(
+		#[case] password: Option<&str>,
+		#[case] expected_field: &str,
+	) {
+		// Arrange
+		let settings = RedisChannelSettings {
+			password: password.map(str::to_owned),
+			..Default::default()
+		};
+
+		// Act
+		let output = format!("{settings:?}");
+
+		// Assert
+		assert!(!output.contains("redis-password-value"), "{output}");
+		assert!(output.contains(expected_field), "{output}");
 	}
 }

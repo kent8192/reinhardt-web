@@ -4,6 +4,7 @@
 
 use reinhardt_core::macros::settings;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::path::PathBuf;
 
 fn default_backend() -> String {
@@ -29,9 +30,11 @@ fn default_server_email() -> String {
 /// Email configuration fragment.
 ///
 /// Controls email backend, SMTP connection, and notification settings.
+///
+/// The `Debug` output redacts `password`.
 #[settings(fragment = true, section = "email")]
 #[non_exhaustive]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct EmailSettings {
 	/// Email backend type (e.g., `"smtp"`, `"console"`, `"file"`, `"memory"`).
 	#[serde(default = "default_backend")]
@@ -86,6 +89,49 @@ pub struct EmailSettings {
 	/// Required when backend is `"file"`.
 	#[serde(default)]
 	pub file_path: Option<PathBuf>,
+}
+
+impl fmt::Debug for EmailSettings {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// Exhaustive destructuring makes adding a field a compile error here,
+		// so new fields cannot silently bypass the redaction review.
+		let Self {
+			backend,
+			host,
+			port,
+			username,
+			password,
+			use_tls,
+			use_ssl,
+			from_email,
+			admins,
+			managers,
+			server_email,
+			subject_prefix,
+			timeout,
+			ssl_certfile,
+			ssl_keyfile,
+			file_path,
+		} = self;
+		f.debug_struct("EmailSettings")
+			.field("backend", backend)
+			.field("host", host)
+			.field("port", port)
+			.field("username", username)
+			.field("password", &password.as_ref().map(|_| "[REDACTED]"))
+			.field("use_tls", use_tls)
+			.field("use_ssl", use_ssl)
+			.field("from_email", from_email)
+			.field("admins", admins)
+			.field("managers", managers)
+			.field("server_email", server_email)
+			.field("subject_prefix", subject_prefix)
+			.field("timeout", timeout)
+			.field("ssl_certfile", ssl_certfile)
+			.field("ssl_keyfile", ssl_keyfile)
+			.field("file_path", file_path)
+			.finish()
+	}
 }
 
 impl Default for EmailSettings {
@@ -148,5 +194,26 @@ mod tests {
 		assert!(settings.ssl_certfile.is_none());
 		assert!(settings.ssl_keyfile.is_none());
 		assert!(settings.file_path.is_none());
+	}
+
+	#[rstest]
+	#[case::set(Some("smtp-password-value"), "password: Some(\"[REDACTED]\")")]
+	#[case::unset(None, "password: None")]
+	fn test_email_debug_redacts_password(
+		#[case] password: Option<&str>,
+		#[case] expected_field: &str,
+	) {
+		// Arrange
+		let settings = EmailSettings {
+			password: password.map(str::to_owned),
+			..Default::default()
+		};
+
+		// Act
+		let output = format!("{settings:?}");
+
+		// Assert
+		assert!(!output.contains("smtp-password-value"), "{output}");
+		assert!(output.contains(expected_field), "{output}");
 	}
 }
