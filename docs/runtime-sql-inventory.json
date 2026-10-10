@@ -6979,6 +6979,35 @@
       "evidence": []
     },
     {
+      "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend as AtomicSessionBackend::take::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
+      "symbol": "DatabaseSessionBackend as AtomicSessionBackend::take",
+      "kind": "execution-wrapper",
+      "line": 558,
+      "fingerprint": "a079e338b12b4bbd238a52458781f27e1ff7fc924b23896a7dc02c95bbe5dab3",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "reinhardt-auth database; reinhardt-db canonical backend features"
+      ],
+      "backends": [
+        "postgres",
+        "cockroachdb",
+        "mysql",
+        "sqlite"
+      ],
+      "rationale": "Atomic session take loads the row through the ORM manager, then renders a typed DELETE whose session_key, session_data and expire_date predicates are bound Values, through the same build_statement owned pair as SessionBackend::delete; only the caller observing one affected row receives the data, without backend-specific DELETE ... RETURNING.",
+      "evidence": [
+        "Two SQLite database-session unit tests passed: take returns a saved session once and deletes its row, and take deletes an expired row without returning it.",
+        "Three PostgreSQL TestContainers integration tests passed with two DatabaseSessionBackend replicas sharing one database: 16 concurrent contenders for legacy and for contextual OAuth state produce exactly one winner, and a contextual state round-trips across replicas and rejects replay."
+      ]
+    },
+    {
       "id": "crates/reinhardt-auth/src/sessions/backends/database.rs::DatabaseSessionBackend as CleanupableBackend::count_keys_with_prefix::execution-wrapper#1",
       "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
       "symbol": "DatabaseSessionBackend as CleanupableBackend::count_keys_with_prefix",
