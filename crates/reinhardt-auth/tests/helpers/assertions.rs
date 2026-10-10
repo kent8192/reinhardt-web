@@ -111,6 +111,7 @@ mod tests {
 			token_type: "Bearer".into(),
 			expires_in: Some(3600),
 			refresh_token: None,
+			refresh_token_expires_in: None,
 			scope: Some("openid email profile".into()),
 			id_token: None,
 		};

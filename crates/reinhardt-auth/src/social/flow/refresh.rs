@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use super::token_endpoint::parse_token_endpoint_response;
 use crate::social::core::{OAuth2Client, ProviderConfig, SocialAuthError, TokenResponse};
 use crate::social::url_validation::validate_endpoint_url;
 
@@ -46,30 +47,18 @@ impl RefreshFlow {
 			.client
 			.client()
 			.post(token_endpoint)
+			.header("Accept", "application/json")
 			.form(&params)
 			.send()
 			.await
 			.map_err(|e| SocialAuthError::Network(e.to_string()))?;
 
-		if !response.status().is_success() {
-			let status = response.status();
-			let error_body = response
-				.text()
-				.await
-				.unwrap_or_else(|_| "Unknown error".to_string());
-
-			return Err(SocialAuthError::TokenRefreshError(format!(
-				"Token refresh failed ({}): {}",
-				status, error_body
-			)));
-		}
-
-		let token_response: TokenResponse = response
-			.json()
-			.await
-			.map_err(|e| SocialAuthError::TokenRefreshError(e.to_string()))?;
-
-		Ok(token_response)
+		parse_token_endpoint_response(
+			response,
+			"Token refresh",
+			SocialAuthError::TokenRefreshError,
+		)
+		.await
 	}
 }
 
