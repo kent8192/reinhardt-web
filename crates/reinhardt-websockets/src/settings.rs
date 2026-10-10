@@ -485,4 +485,26 @@ mod tests {
 		assert!(!config.tls);
 		assert!(config.require_auth);
 	}
+
+	#[cfg(feature = "redis-channel")]
+	#[rstest::rstest]
+	#[case::set(Some("redis-password-value"), "password: Some(\"[REDACTED]\")")]
+	#[case::unset(None, "password: None")]
+	fn redis_settings_debug_redacts_password(
+		#[case] password: Option<&str>,
+		#[case] expected_field: &str,
+	) {
+		// Arrange
+		let settings = RedisChannelSettings {
+			password: password.map(str::to_owned),
+			..Default::default()
+		};
+
+		// Act
+		let output = format!("{settings:?}");
+
+		// Assert
+		assert!(!output.contains("redis-password-value"), "{output}");
+		assert!(output.contains(expected_field), "{output}");
+	}
 }

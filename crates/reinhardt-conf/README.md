@@ -113,7 +113,8 @@ might evaluate unrelated secrets. Existing `build`, `build_composed`, and
 with value-free metadata for resolved leaf paths. The metadata records each
 leaf's type, policy, secret classification, and merged-key presence; it never
 stores resolved values. Mark plain-string secret leaves explicitly with
-`#[setting(secret)]`.
+`#[setting(secret)]`; the fragment's `Debug` output then prints those fields as
+`"[REDACTED]"` instead of their values.
 
 ### Settings contract verification
 

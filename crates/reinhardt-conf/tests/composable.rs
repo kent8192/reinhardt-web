@@ -33,3 +33,6 @@ mod boundary_values;
 
 #[path = "composable/decision_table.rs"]
 mod decision_table;
+
+#[path = "composable/secret_redaction.rs"]
+mod secret_redaction;
