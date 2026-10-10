@@ -4,6 +4,7 @@ pub mod authorization;
 pub mod pkce;
 pub mod refresh;
 pub mod state;
+pub(crate) mod token_endpoint;
 pub mod token_exchange;
 
 pub use authorization::AuthorizationFlow;
