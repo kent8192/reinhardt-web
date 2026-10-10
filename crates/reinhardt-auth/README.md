@@ -1020,6 +1020,37 @@ Use a per-browser, unpredictable binding with appropriate `Secure`,
 `HttpOnly`, and `SameSite` cookie settings. The context is opaque and is not
 encrypted by the state store, so do not place secrets in it.
 
+`CallbackResult::claims` is always present: when the provider cannot identify
+the user (ID token validation fails, or the UserInfo request fails because of
+an HTTP error, network error, or malformed body), the callback returns an
+error instead of a token response without an identity.
+
+#### GitHub Provider
+
+`GitHubProvider` maps GitHub's `/user` response to `StandardClaims`:
+
+- `sub` is the numeric user ID. Key accounts on it; GitHub users can rename
+  their login.
+- `additional_claims["login"]` is the login (the `@handle`), present even
+  when the user has set a display name.
+- `name` is the display name, falling back to the login when it is unset.
+- `email` is only the public profile email (`/user/emails` is not called),
+  and `email_verified` is always `None`.
+
+`ProviderConfig::github()` requests the classic OAuth App scopes `user` and
+`user:email`. GitHub Apps ignore OAuth scopes, so for GitHub App user
+authorization build the configuration without them; the authorization URL
+then omits the `scope` parameter:
+
+```rust,ignore
+use reinhardt::auth::ProviderConfig;
+
+let config = ProviderConfig {
+    scopes: Vec::new(),
+    ..ProviderConfig::github(client_id, client_secret, redirect_uri)
+};
+```
+
 ### Token Blacklist & Rotation
 
 #### Token Blacklist
