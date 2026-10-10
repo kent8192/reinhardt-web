@@ -384,10 +384,13 @@ mod postgres {
 		let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
 		let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 		DatabaseMigrationExecutor::new(connection)
-			.apply_migrations(&[
-				PostgresOAuthStore::migration(),
-				PostgresOidcStore::migration(),
-			])
+			.apply_migrations(
+				&[
+					PostgresOAuthStore::migrations(),
+					vec![PostgresOidcStore::migration()],
+				]
+				.concat(),
+			)
 			.await
 			.unwrap();
 		let oauth_store = PostgresOAuthStore::new(PgPool::connect(&url).await.unwrap());

@@ -189,32 +189,23 @@ async fn https_issuer_rejects_case_variant_http_resource_scheme() {
 	);
 }
 fn client(kind: ClientKind) -> ClientRegistration {
-	ClientRegistration {
-		client_id: "client-a".into(),
-		kind,
-		secret_hash: None,
-		previous_secret_hash: None,
-		previous_secret_expires_at: None,
-		oidc_enabled: false,
-		authorization_code: true,
-		client_credentials: kind == ClientKind::Confidential,
-		redirect_uris: vec![
-			"https://client.example/callback".into(),
-			"http://127.0.0.1:3456/callback".into(),
-			"http://[::1]:3456/callback".into(),
-			"com.example.app:/callback".into(),
-		],
-		scopes: vec!["read".into(), "write".into()],
-		default_scopes: vec!["read".into()],
-		audiences: vec!["https://api.example".into()],
-		default_audience: Some("https://api.example".into()),
-		browser_origins: if kind == ClientKind::Public {
-			vec!["https://client.example".into()]
-		} else {
-			vec![]
-		},
-		enabled: true,
+	let mut client = ClientRegistration::new("client-a", kind);
+	client.authorization_code = true;
+	client.client_credentials = kind == ClientKind::Confidential;
+	client.redirect_uris = vec![
+		"https://client.example/callback".into(),
+		"http://127.0.0.1:3456/callback".into(),
+		"http://[::1]:3456/callback".into(),
+		"com.example.app:/callback".into(),
+	];
+	client.scopes = vec!["read".into(), "write".into()];
+	client.default_scopes = vec!["read".into()];
+	client.audiences = vec!["https://api.example".into()];
+	client.default_audience = Some("https://api.example".into());
+	if kind == ClientKind::Public {
+		client.browser_origins = vec!["https://client.example".into()];
 	}
+	client
 }
 async fn setup(kind: ClientKind) -> (OAuthServer, Option<String>) {
 	let server = server();
@@ -610,13 +601,13 @@ async fn postgres_single_use_and_cross_instance_replay() {
 	let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 	let mut executor = DatabaseMigrationExecutor::new(connection);
 	let applied = executor
-		.apply_migrations(&[PostgresOAuthStore::migration()])
+		.apply_migrations(&PostgresOAuthStore::migrations())
 		.await
 		.unwrap();
-	assert_eq!(applied.applied.len(), 1);
+	assert_eq!(applied.applied.len(), 2);
 	// The published migration identities remain applied after the SQL representation changes.
 	let repeated = executor
-		.apply_migrations(&[PostgresOAuthStore::migration()])
+		.apply_migrations(&PostgresOAuthStore::migrations())
 		.await
 		.unwrap();
 	assert!(repeated.applied.is_empty());
@@ -958,7 +949,7 @@ async fn postgres_single_use_and_cross_instance_replay() {
 
 	// Roll back through Reinhardt's migration executor, not a test-only SQL path.
 	executor
-		.rollback_migrations(&[PostgresOAuthStore::migration()])
+		.rollback_migrations(&PostgresOAuthStore::migrations())
 		.await
 		.unwrap();
 	let table: (Option<String>,) =
@@ -1565,4 +1556,5 @@ async fn pending_and_code_expiry_prevent_issuance() {
 	);
 }
 
+mod device_tests;
 mod review_tests;
