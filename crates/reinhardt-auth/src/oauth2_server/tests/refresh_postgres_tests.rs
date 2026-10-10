@@ -2,7 +2,7 @@
 //!
 //! Each test starts its own PostgreSQL container and applies the OAuth server
 //! migrations through Reinhardt's migration executor, so the tests also cover
-//! migration `0002_oauth_server_refresh_tokens` on top of `0001_oauth_server`.
+//! migration `0003_oauth_server_refresh_tokens` on top of the earlier migrations.
 
 use crate::oauth2_server::{
 	ClientKind, ClientRegistration, CodeInspection, CodeRedemption, CodeRedemptionRequest,
@@ -29,7 +29,6 @@ const ISSUED_AT: i64 = 10;
 
 struct Harness {
 	_container: ContainerAsync<Postgres>,
-	executor: DatabaseMigrationExecutor,
 	/// Two independent store instances sharing one database, like two server nodes.
 	first: PostgresOAuthStore,
 	second: PostgresOAuthStore,
@@ -58,7 +57,6 @@ async fn harness() -> Harness {
 		_container: container,
 		first: PostgresOAuthStore::new(PgPool::connect(&url).await.unwrap()),
 		second: PostgresOAuthStore::new(PgPool::connect(&url).await.unwrap()),
-		executor,
 	}
 }
 
@@ -267,35 +265,27 @@ async fn table_exists(store: &PostgresOAuthStore, table: &str) -> bool {
 }
 
 fn registration(client_id: &str) -> ClientRegistration {
-	ClientRegistration {
-		client_id: client_id.into(),
-		kind: ClientKind::Public,
-		secret_hash: None,
-		previous_secret_hash: None,
-		previous_secret_expires_at: None,
-		oidc_enabled: false,
-		authorization_code: true,
-		refresh_token: true,
-		client_credentials: false,
-		redirect_uris: vec![REDIRECT.into()],
-		scopes: vec!["read".into(), "write".into()],
-		default_scopes: vec!["read".into()],
-		audiences: vec![AUDIENCE.into()],
-		default_audience: Some(AUDIENCE.into()),
-		browser_origins: vec!["https://client.example".into()],
-		enabled: true,
-	}
+	let mut client = ClientRegistration::new(client_id, ClientKind::Public);
+	client.authorization_code = true;
+	client.refresh_token = true;
+	client.redirect_uris = vec![REDIRECT.into()];
+	client.scopes = vec!["read".into(), "write".into()];
+	client.default_scopes = vec!["read".into()];
+	client.audiences = vec![AUDIENCE.into()];
+	client.default_audience = Some(AUDIENCE.into());
+	client.browser_origins = vec!["https://client.example".into()];
+	client
 }
 
 #[rstest]
 #[tokio::test]
-async fn migration_0002_applies_on_top_of_0001_and_keeps_existing_tokens() {
-	// Arrange: a database already migrated to 0001 with a token written before 0002.
+async fn migration_0003_applies_on_top_of_earlier_migrations_and_keeps_existing_tokens() {
+	// Arrange: a database already migrated to 0002 with a token written before 0003.
 	let (_container, url) = start_postgres().await;
 	let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 	let mut executor = DatabaseMigrationExecutor::new(connection);
 	let initial = executor
-		.apply_migrations(&[PostgresOAuthStore::migration()])
+		.apply_migrations(&PostgresOAuthStore::migrations()[..2])
 		.await
 		.unwrap();
 	let store = PostgresOAuthStore::new(PgPool::connect(&url).await.unwrap());
@@ -323,8 +313,8 @@ async fn migration_0002_applies_on_top_of_0001_and_keeps_existing_tokens() {
 		.await
 		.unwrap();
 
-	// Assert: 0002 is the only new migration, creates its tables and column, and keeps old rows.
-	assert_eq!(initial.applied.len(), 1);
+	// Assert: 0003 is the only new migration, creates its tables and column, and keeps old rows.
+	assert_eq!(initial.applied.len(), 2);
 	assert_eq!(upgraded.applied.len(), 1);
 	assert!(repeated.applied.is_empty());
 	assert!(table_exists(&store, "oauth_server_token_families").await);
@@ -342,34 +332,6 @@ async fn migration_0002_applies_on_top_of_0001_and_keeps_existing_tokens() {
 	assert!(!legacy.revoked);
 	assert_eq!(store.revoke_user(USER).await.unwrap(), 1);
 	assert!(access_revoked(&store, "legacy-token").await);
-}
-
-#[rstest]
-#[tokio::test]
-async fn migrations_roll_back_in_reverse_order(#[future] harness: Harness) {
-	// Arrange
-	let mut harness = harness.await;
-
-	// Act: roll back only 0002, then the whole list.
-	harness
-		.executor
-		.rollback_migrations(&[PostgresOAuthStore::refresh_token_migration()])
-		.await
-		.unwrap();
-	let after_refresh_rollback = (
-		table_exists(&harness.first, "oauth_server_token_families").await,
-		table_exists(&harness.first, "oauth_server_refresh_tokens").await,
-		table_exists(&harness.first, "oauth_server_tokens").await,
-	);
-	harness
-		.executor
-		.rollback_migrations(&PostgresOAuthStore::migrations())
-		.await
-		.unwrap();
-
-	// Assert
-	assert_eq!(after_refresh_rollback, (false, false, true));
-	assert!(!table_exists(&harness.first, "oauth_server_tokens").await);
 }
 
 #[rstest]

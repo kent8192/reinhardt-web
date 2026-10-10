@@ -106,28 +106,7 @@ async fn issuer() -> TestIssuer {
 		.register_resource("oidc-userinfo", USERINFO)
 		.await
 		.unwrap();
-	let secret = oauth
-		.register_client(ClientRegistration {
-			client_id: "rp-a".into(),
-			kind: ClientKind::Confidential,
-			secret_hash: None,
-			previous_secret_hash: None,
-			previous_secret_expires_at: None,
-			oidc_enabled: true,
-			authorization_code: true,
-			refresh_token: false,
-			client_credentials: false,
-			redirect_uris: vec![REDIRECT.into()],
-			scopes: vec!["openid".into()],
-			default_scopes: vec!["openid".into()],
-			audiences: vec![USERINFO.into()],
-			default_audience: Some(USERINFO.into()),
-			browser_origins: vec![],
-			enabled: true,
-		})
-		.await
-		.unwrap()
-		.unwrap();
+	let secret = oauth.register_client(rp_client()).await.unwrap().unwrap();
 	let active = Arc::new(AtomicBool::new(true));
 	let signer = Arc::new(RsaPemKeyRing::new());
 	add_key(&signer, "key-a");
@@ -1108,7 +1087,7 @@ async fn postgres_state_is_shared_and_single_use_across_instances() {
 		)
 		.await
 		.unwrap();
-	assert_eq!(applied.applied.len(), 3);
+	assert_eq!(applied.applied.len(), 4);
 	// The published migration identities remain applied after the SQL representation changes.
 	let repeated = executor
 		.apply_migrations(
@@ -1319,28 +1298,7 @@ async fn production_nodes_complete_one_cross_instance_login() {
 		.register_resource("oidc-userinfo", USERINFO)
 		.await
 		.unwrap();
-	let secret = oauth_a
-		.register_client(ClientRegistration {
-			client_id: "rp-a".into(),
-			kind: ClientKind::Confidential,
-			secret_hash: None,
-			previous_secret_hash: None,
-			previous_secret_expires_at: None,
-			oidc_enabled: true,
-			authorization_code: true,
-			refresh_token: false,
-			client_credentials: false,
-			redirect_uris: vec![REDIRECT.into()],
-			scopes: vec!["openid".into()],
-			default_scopes: vec!["openid".into()],
-			audiences: vec![USERINFO.into()],
-			default_audience: Some(USERINFO.into()),
-			browser_origins: vec![],
-			enabled: true,
-		})
-		.await
-		.unwrap()
-		.unwrap();
+	let secret = oauth_a.register_client(rp_client()).await.unwrap().unwrap();
 	let signer = Arc::new(RsaPemKeyRing::new());
 	let public = add_key(&signer, "key-a");
 	let state_a = PostgresOidcStore::new(pool_a);
@@ -1452,3 +1410,15 @@ async fn production_nodes_complete_one_cross_instance_login() {
 }
 
 mod review_tests;
+
+fn rp_client() -> ClientRegistration {
+	let mut client = ClientRegistration::new("rp-a", ClientKind::Confidential);
+	client.oidc_enabled = true;
+	client.authorization_code = true;
+	client.redirect_uris = vec![REDIRECT.into()];
+	client.scopes = vec!["openid".into()];
+	client.default_scopes = vec!["openid".into()];
+	client.audiences = vec![USERINFO.into()];
+	client.default_audience = Some(USERINFO.into());
+	client
+}
