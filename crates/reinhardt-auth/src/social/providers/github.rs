@@ -14,6 +14,7 @@ use crate::social::flow::{AuthorizationFlow, RefreshFlow, TokenExchangeFlow};
 use crate::social::url_validation::validate_endpoint_url;
 use async_trait::async_trait;
 use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 
 /// GitHub `/user` endpoint response shape.
@@ -25,7 +26,8 @@ use std::collections::HashMap;
 struct GitHubUserResponse {
 	/// Numeric GitHub user ID. Mapped to `StandardClaims::sub` as a string.
 	id: u64,
-	/// GitHub login (username). Used as a fallback for `name` when null.
+	/// GitHub login (username). Exposed as `additional_claims["login"]` and
+	/// used as a fallback for `name` when that is null.
 	login: String,
 	/// Public email address. May be `null` if the user keeps their email private.
 	#[serde(default)]
@@ -41,8 +43,11 @@ struct GitHubUserResponse {
 /// Map a GitHub `/user` response into the framework's [`StandardClaims`].
 ///
 /// - `sub` is set to the stringified numeric `id`.
+/// - `additional_claims["login"]` always holds `login`.
 /// - `name` falls back to `login` when GitHub returns `null`.
-/// - `email` and `picture` (from `avatar_url`) pass through as-is.
+/// - `email` and `picture` (from `avatar_url`) pass through as-is. `email`
+///   is only the user's public profile email, and `email_verified` is always
+///   `None` because `/user` does not report verification.
 fn map_github_user_to_claims(user: GitHubUserResponse) -> StandardClaims {
 	let GitHubUserResponse {
 		id,
@@ -52,16 +57,19 @@ fn map_github_user_to_claims(user: GitHubUserResponse) -> StandardClaims {
 		avatar_url,
 	} = user;
 
+	let name = name.or_else(|| Some(login.clone()));
+	let additional_claims = HashMap::from([("login".to_string(), Value::String(login))]);
+
 	StandardClaims {
 		sub: id.to_string(),
 		email,
 		email_verified: None,
-		name: name.or(Some(login)),
+		name,
 		given_name: None,
 		family_name: None,
 		picture: avatar_url,
 		locale: None,
-		additional_claims: HashMap::new(),
+		additional_claims,
 	}
 }
 
@@ -71,6 +79,13 @@ fn map_github_user_to_claims(user: GitHubUserResponse) -> StandardClaims {
 /// configured via `ProviderConfig::github()`. GitHub's `/user` endpoint
 /// returns a non-OIDC payload, so this provider issues its own HTTP request
 /// instead of delegating to a generic `UserInfoClient`.
+///
+/// The resulting claims carry the numeric user ID as `sub` and the login
+/// (the user's `@handle`) as `additional_claims["login"]`. GitHub lets users
+/// rename their login, so key accounts on `sub` and use the login for
+/// display only. Only the public profile email is read; the provider does
+/// not call `/user/emails`, so `email` is `None` for users who keep their
+/// email private, and `email_verified` is always `None`.
 pub struct GitHubProvider {
 	config: ProviderConfig,
 	auth_flow: AuthorizationFlow,
@@ -309,7 +324,7 @@ mod tests {
 	}
 
 	#[rstest]
-	fn map_github_user_to_claims_maps_full_payload() {
+	fn map_github_user_to_claims_keeps_login_when_name_is_set() {
 		// Arrange
 		let user = GitHubUserResponse {
 			id: 12345,
@@ -334,7 +349,11 @@ mod tests {
 		assert!(claims.given_name.is_none());
 		assert!(claims.family_name.is_none());
 		assert!(claims.locale.is_none());
-		assert!(claims.additional_claims.is_empty());
+		assert_eq!(
+			claims.additional_claims,
+			HashMap::from([("login".to_string(), Value::String("octotest".to_string()))]),
+			"login must be exposed even when GitHub returns a display name"
+		);
 	}
 
 	#[rstest]
@@ -357,6 +376,10 @@ mod tests {
 			claims.name.as_deref(),
 			Some("octotest"),
 			"name must fall back to login when GitHub returns null"
+		);
+		assert_eq!(
+			claims.additional_claims.get("login"),
+			Some(&Value::String("octotest".to_string()))
 		);
 		assert_eq!(claims.email.as_deref(), Some("octo@example.com"));
 		assert!(claims.picture.is_none());
