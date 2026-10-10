@@ -820,14 +820,20 @@ The Verification Page is host-owned and served from `verification_uri`. It calls
 use reinhardt_auth::oauth2_server::{
     AuthorizationDecision, OAuthError, OAuthServer, PendingDeviceAuthorization,
 };
+use std::net::IpAddr;
 
 // Called when the user submits the User Code on the Verification Page.
+// `client_ip` is the requester's address resolved through trusted proxies,
+// for example `Request::get_client_ip`.
 async fn review_request(
     server: &OAuthServer,
     user_code: &str,
     browser_session: &str,
+    client_ip: IpAddr,
 ) -> Result<PendingDeviceAuthorization, OAuthError> {
-    server.lookup_device_user_code(user_code, browser_session).await
+    server
+        .lookup_device_user_code(user_code, browser_session, client_ip)
+        .await
 }
 
 // Called only from the confirmation form's submit handler.
@@ -851,9 +857,11 @@ async fn approve_request(
 - The first browser session that looks up a User Code owns it. Repeat lookups
   from that session return the same request; lookups from any other session
   return `invalid_grant`.
-- Every lookup counts against the configured `OAuthRateLimiter`, keyed by
-  browser session, whether it succeeds or fails. A limited lookup returns
-  `slow_down`.
+- Every lookup counts against the configured `OAuthRateLimiter` under two keys,
+  whether it succeeds or fails: `DeviceVerification:session:<digest>` for the
+  browser session and `DeviceVerification:ip:<client_ip>` for the requester's
+  address. The address key keeps the limit in force when an attacker discards
+  the session between guesses. A lookup over either limit returns `slow_down`.
 - Never approve a request reached through `verification_uri_complete`. Show the
   client, scopes, and audience, and require an explicit user confirmation
   (RFC 8628 §5.4). Use `AuthorizationDecision::Deny` for refusal. `Approve` needs
@@ -869,10 +877,11 @@ The token endpoint accepts `urn:ietf:params:oauth:grant-type:device_code` with
 the `device_code` parameter and normal client authentication. Errors use HTTP 400:
 
 - `authorization_pending`: the user has not decided yet. Keep polling.
+- `expired_token`: the device code has expired. Expiry is checked before
+  throttling and does not update the polling state, so the client stops polling.
 - `slow_down`: the client polled before the stored interval elapsed. The server
   adds 5 seconds to that interval, and the client must add 5 seconds too. Only
-  replay detection runs before this check.
-- `expired_token`: the device code has expired.
+  replay detection and expiry run before this check.
 - `access_denied`: the user denied the request.
 - `invalid_grant`: the device code is unknown or belongs to another client, the
   request was invalidated, or an approved code is replayed. A replay also revokes

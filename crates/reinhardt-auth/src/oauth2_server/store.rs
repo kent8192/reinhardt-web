@@ -340,13 +340,18 @@ impl StoredDeviceAuthorization {
 		true
 	}
 	/// Evaluate one poll. A redeemed record reports a replay before throttling.
-	/// Otherwise `slow_down` precedes expiry, and expiry precedes the decision state.
+	/// Otherwise expiry precedes `slow_down`, which precedes the decision state: an
+	/// expired session must conclude with `expired_token` (RFC 8628 section 3.5),
+	/// so expired polls neither throttle nor update the polling state.
 	pub(crate) fn poll(&mut self, client_id: &str, now: i64) -> DevicePoll {
 		if self.client_id != client_id {
 			return DevicePoll::Invalid;
 		}
 		if self.status == DeviceAuthorizationStatus::Redeemed {
 			return DevicePoll::Replay;
+		}
+		if self.expires_at <= now {
+			return DevicePoll::Expired;
 		}
 		let too_fast = self
 			.last_polled_at
@@ -355,9 +360,6 @@ impl StoredDeviceAuthorization {
 		if too_fast {
 			self.interval = self.interval.saturating_add(SLOW_DOWN_STEP);
 			return DevicePoll::SlowDown;
-		}
-		if self.expires_at <= now {
-			return DevicePoll::Expired;
 		}
 		match self.status {
 			DeviceAuthorizationStatus::Pending => DevicePoll::Pending,

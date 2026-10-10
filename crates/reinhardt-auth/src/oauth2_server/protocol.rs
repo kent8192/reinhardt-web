@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
 	collections::HashSet,
+	net::IpAddr,
 	sync::Arc,
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -1141,8 +1142,12 @@ impl OAuthServer {
 	}
 	/// Resolve a User Code typed on the Verification Page and bind it to the browser session.
 	///
-	/// Every call counts against a per-browser-session rate limit checked before the
-	/// code is examined; when it is exceeded the call returns [`OAuthError::SlowDown`].
+	/// Every call counts against two rate limits checked before the code is examined:
+	/// one keyed by the browser session (`DeviceVerification:session:<digest>`) and one
+	/// keyed by the requester's address (`DeviceVerification:ip:<client_ip>`), which
+	/// still applies when an attacker discards the session between guesses. Pass the
+	/// address resolved through the host's trusted-proxy configuration. When either
+	/// limit is exceeded the call returns [`OAuthError::SlowDown`].
 	/// The first session to look up a User Code owns the Device Authorization; any
 	/// other session receives `InvalidGrant`, as do malformed, unknown, expired,
 	/// already decided, and invalidated codes. Repeating the lookup from the owning
@@ -1155,16 +1160,21 @@ impl OAuthServer {
 		&self,
 		user_code: &str,
 		browser_session: &str,
+		client_ip: IpAddr,
 	) -> Result<PendingDeviceAuthorization, OAuthError> {
 		self.device_config().ok_or(OAuthError::InvalidRequest)?;
 		if browser_session.is_empty() {
 			return Err(OAuthError::InvalidRequest);
 		}
 		let session_digest = digest(browser_session);
-		if !self
-			.allow(&format!("DeviceVerification:{session_digest}"))
-			.await
-		{
+		// Both limits are consulted so every attempt counts against each key.
+		let session_allowed = self
+			.allow(&format!("DeviceVerification:session:{session_digest}"))
+			.await;
+		let source_allowed = self
+			.allow(&format!("DeviceVerification:ip:{client_ip}"))
+			.await;
+		if !(session_allowed && source_allowed) {
 			return Err(OAuthError::SlowDown);
 		}
 		let normalized = normalize_user_code(user_code).ok_or(OAuthError::InvalidGrant)?;
@@ -1258,11 +1268,12 @@ impl OAuthServer {
 	/// Exchange an approved Device Code for an opaque access token (RFC 8628 section 3.4).
 	///
 	/// Each call is one poll, evaluated atomically in the store. A redeemed Device Code
-	/// reports `InvalidGrant` and revokes its token before any throttling. Otherwise a
+	/// reports `InvalidGrant` and revokes its token before any throttling. Otherwise an
+	/// expired Device Code returns [`OAuthError::ExpiredToken`] without throttling; a
 	/// poll sooner than the current interval after the previous one returns
 	/// [`OAuthError::SlowDown`] and lengthens the interval by five seconds; later checks
-	/// run in the order expiry ([`OAuthError::ExpiredToken`]), pending
-	/// ([`OAuthError::AuthorizationPending`]), denial (`AccessDenied`), and approval.
+	/// run in the order pending ([`OAuthError::AuthorizationPending`]), denial
+	/// (`AccessDenied`), and approval.
 	/// An unknown Device Code, or one issued to another client, is `InvalidGrant`.
 	pub async fn exchange_device_code(
 		&self,

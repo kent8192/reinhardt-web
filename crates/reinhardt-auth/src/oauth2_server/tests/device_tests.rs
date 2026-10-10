@@ -11,11 +11,16 @@ use hyper::{Method, StatusCode};
 use reinhardt_http::{Handler, Request, Response};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 
 const VERIFICATION_URI: &str = "https://auth.example/device";
 const DEVICE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
 const USER_CODE_ALPHABET: &str = "BCDFGHJKLMNPQRSTVWXZ";
+/// Address of the Verification Page requester in tests.
+const CLIENT_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7));
+/// A second requester address, isolated from [`CLIENT_IP`]'s rate limit.
+const OTHER_CLIENT_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(198, 51, 100, 9));
 
 fn sha(value: &str) -> String {
 	hex::encode(Sha256::digest(value.as_bytes()))
@@ -82,7 +87,7 @@ async fn approve(
 	scopes: &[&str],
 ) {
 	let pending = server
-		.lookup_device_user_code(&issued.user_code, session)
+		.lookup_device_user_code(&issued.user_code, session, CLIENT_IP)
 		.await
 		.unwrap();
 	server
@@ -427,7 +432,9 @@ async fn user_codes_use_the_restricted_alphabet_and_normalize() {
 		format!("  {} ", issued[2].user_code.replace('-', " ")),
 	];
 	for input in &lookups {
-		let resolved = server.lookup_device_user_code(input, "session-a").await;
+		let resolved = server
+			.lookup_device_user_code(input, "session-a", CLIENT_IP)
+			.await;
 		assert!(resolved.is_ok(), "{input:?}");
 	}
 
@@ -459,7 +466,9 @@ async fn malformed_or_unknown_user_code_is_invalid_grant(#[case] input: &str) {
 	let server = device_server(Arc::new(MemoryOAuthStore::new())).await;
 
 	// Act
-	let result = server.lookup_device_user_code(input, "session-a").await;
+	let result = server
+		.lookup_device_user_code(input, "session-a", CLIENT_IP)
+		.await;
 
 	// Assert
 	assert_eq!(result.unwrap_err(), OAuthError::InvalidGrant);
@@ -476,15 +485,15 @@ async fn lookup_binds_one_browser_session(store: Arc<dyn OAuthServerStore>) {
 
 	// Act
 	let first = server
-		.lookup_device_user_code(&issued.user_code, "session-a")
+		.lookup_device_user_code(&issued.user_code, "session-a", CLIENT_IP)
 		.await
 		.unwrap();
 	let repeat = server
-		.lookup_device_user_code(&issued.user_code, "session-a")
+		.lookup_device_user_code(&issued.user_code, "session-a", CLIENT_IP)
 		.await
 		.unwrap();
 	let other = server
-		.lookup_device_user_code(&issued.user_code, "session-b")
+		.lookup_device_user_code(&issued.user_code, "session-b", CLIENT_IP)
 		.await;
 	let hijack = server
 		.complete_device_authorization(&first.id, "session-b", AuthorizationDecision::Deny)
@@ -520,7 +529,7 @@ async fn complete_requires_a_bound_undecided_record(store: Arc<dyn OAuthServerSt
 		.complete_device_authorization(&unbound.id, "session-a", AuthorizationDecision::Deny)
 		.await;
 	let relookup = server
-		.lookup_device_user_code(&issued.user_code, "session-a")
+		.lookup_device_user_code(&issued.user_code, "session-a", CLIENT_IP)
 		.await;
 
 	// Assert
@@ -542,7 +551,7 @@ async fn approval_with_extra_scope_leaves_the_record_untouched(store: Arc<dyn OA
 		.await
 		.unwrap();
 	let pending = server
-		.lookup_device_user_code(&issued.user_code, "session-a")
+		.lookup_device_user_code(&issued.user_code, "session-a", CLIENT_IP)
 		.await
 		.unwrap();
 
@@ -609,7 +618,7 @@ async fn approval_by_an_unusable_user_is_recorded_as_denied() {
 		.unwrap();
 	let issued = issue(&server).await;
 	let pending = server
-		.lookup_device_user_code(&issued.user_code, "session-a")
+		.lookup_device_user_code(&issued.user_code, "session-a", CLIENT_IP)
 		.await
 		.unwrap();
 
@@ -652,10 +661,18 @@ impl OAuthRateLimiter for VerificationLimit {
 	}
 }
 
+/// Identity of the `n`th guessing request: browser session and requester address.
+type Requester = fn(usize) -> (String, IpAddr);
+
 #[rstest]
+#[case::same_session_and_address(|_| ("attacker".to_owned(), CLIENT_IP))]
+#[case::fresh_session_per_guess(|n| (format!("attacker-{n}"), CLIENT_IP))]
+#[case::fresh_address_per_guess(
+	|n| ("attacker".to_owned(), IpAddr::V4(Ipv4Addr::new(192, 0, 2, n as u8)))
+)]
 #[tokio::test]
-async fn user_code_lookups_are_rate_limited_per_browser_session() {
-	// Arrange: three lookups per browser session are allowed.
+async fn user_code_lookups_are_rate_limited_per_session_and_address(#[case] requester: Requester) {
+	// Arrange: three lookups per rate-limit key are allowed.
 	let limiter = Arc::new(VerificationLimit {
 		max: 3,
 		seen: Default::default(),
@@ -669,19 +686,23 @@ async fn user_code_lookups_are_rate_limited_per_browser_session() {
 
 	// Act
 	let mut guesses = Vec::new();
-	for _ in 0..3 {
+	for n in 0..3 {
+		let (session, ip) = requester(n);
 		guesses.push(
 			server
-				.lookup_device_user_code("BCDF-GHJK", "attacker")
+				.lookup_device_user_code("BCDF-GHJK", &session, ip)
 				.await,
 		);
 	}
+	let (session, ip) = requester(3);
 	let throttled = server
-		.lookup_device_user_code(&issued.user_code, "attacker")
+		.lookup_device_user_code(&issued.user_code, &session, ip)
 		.await;
-	let empty_session = server.lookup_device_user_code(&issued.user_code, "").await;
-	let other_session = server
-		.lookup_device_user_code(&issued.user_code, "victim")
+	let empty_session = server
+		.lookup_device_user_code(&issued.user_code, "", ip)
+		.await;
+	let victim = server
+		.lookup_device_user_code(&issued.user_code, "victim", OTHER_CLIENT_IP)
 		.await;
 
 	// Assert
@@ -692,7 +713,7 @@ async fn user_code_lookups_are_rate_limited_per_browser_session() {
 	);
 	assert_eq!(throttled.unwrap_err(), OAuthError::SlowDown);
 	assert_eq!(empty_session.unwrap_err(), OAuthError::InvalidRequest);
-	assert!(other_session.is_ok());
+	assert!(victim.is_ok());
 	assert_eq!(OAuthError::SlowDown.as_str(), "slow_down");
 }
 
@@ -765,7 +786,7 @@ async fn denied_authorization_reports_access_denied(store: Arc<dyn OAuthServerSt
 	let server = device_server(store).await;
 	let issued = issue(&server).await;
 	let pending = server
-		.lookup_device_user_code(&issued.user_code, "session-a")
+		.lookup_device_user_code(&issued.user_code, "session-a", CLIENT_IP)
 		.await
 		.unwrap();
 	server
@@ -798,7 +819,7 @@ async fn expired_authorization_reports_expired_token(store: Arc<dyn OAuthServerS
 		.exchange_device_code("expired-code", "tv-app", None)
 		.await;
 	let lookup = server
-		.lookup_device_user_code("BCDF-GHJK", "session-a")
+		.lookup_device_user_code("BCDF-GHJK", "session-a", CLIENT_IP)
 		.await;
 
 	// Assert
@@ -806,6 +827,39 @@ async fn expired_authorization_reports_expired_token(store: Arc<dyn OAuthServerS
 	assert_eq!(lookup.unwrap_err(), OAuthError::InvalidGrant);
 }
 on_each_store!(expired_authorization_reports_expired_token);
+
+async fn expiry_precedes_slow_down_for_rapid_polls(store: Arc<dyn OAuthServerStore>) {
+	// Arrange
+	let server = device_server(store.clone()).await;
+	let now = unix_now();
+	store
+		.insert_device_authorization(
+			crafted("expired", "expired-code", "BCDFGHJK", now - 10),
+			now - 20,
+		)
+		.await
+		.unwrap();
+
+	// Act: the second poll arrives well inside the five-second interval.
+	let first = server
+		.exchange_device_code("expired-code", "tv-app", None)
+		.await;
+	let second = server
+		.exchange_device_code("expired-code", "tv-app", None)
+		.await;
+
+	// Assert
+	assert_eq!(first.unwrap_err(), OAuthError::ExpiredToken);
+	assert_eq!(second.unwrap_err(), OAuthError::ExpiredToken);
+	let record = store
+		.device_authorization(&sha("expired-code"))
+		.await
+		.unwrap()
+		.unwrap();
+	assert_eq!(record.interval, 5);
+	assert_eq!(record.last_polled_at, None);
+}
+on_each_store!(expiry_precedes_slow_down_for_rapid_polls);
 
 async fn unknown_and_foreign_device_codes_are_invalid_grants(store: Arc<dyn OAuthServerStore>) {
 	// Arrange
@@ -1046,7 +1100,7 @@ async fn disable_client_invalidates_every_authorization(store: Arc<dyn OAuthServ
 	);
 	assert_eq!(
 		server
-			.lookup_device_user_code(&undecided.user_code, "session-c")
+			.lookup_device_user_code(&undecided.user_code, "session-c", CLIENT_IP)
 			.await
 			.unwrap_err(),
 		OAuthError::InvalidGrant
