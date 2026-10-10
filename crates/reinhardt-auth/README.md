@@ -857,6 +857,13 @@ Use a per-browser, unpredictable binding with appropriate `Secure`,
 `HttpOnly`, and `SameSite` cookie settings. The context is opaque and is not
 encrypted by the state store, so do not place secrets in it.
 
+The state store must consume each state atomically. `InMemoryStateStore`
+coordinates only within one process. For multiple replicas, pass a shared
+store to `SocialAuthBackend::with_state_store`: `SessionStateStore` over a
+backend implementing `AtomicSessionBackend`, such as `DatabaseSessionBackend`,
+or `AsyncSessionStateStore` with `RedisSessionBackend` from
+`reinhardt-middleware`.
+
 ### Token Blacklist & Rotation
 
 #### Token Blacklist

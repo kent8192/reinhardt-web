@@ -13,6 +13,9 @@ mod database_backend_integration;
 #[path = "sessions/database_backend_injected_connection.rs"]
 mod database_backend_injected_connection;
 
+#[path = "sessions/database_oauth_state.rs"]
+mod database_oauth_state;
+
 #[path = "sessions/session_auth_advanced.rs"]
 mod session_auth_advanced;
 

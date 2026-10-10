@@ -35,6 +35,7 @@ use reinhardt_utils::cache::{Cache, InMemoryCache};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 use crate::sessions::cleanup::{CleanupableBackend, SessionMetadata};
 
@@ -78,6 +79,44 @@ pub trait SessionBackend: Send + Sync + Clone {
 	async fn exists(&self, session_key: &str) -> Result<bool, SessionError>;
 }
 
+/// Optional atomic get-and-delete capability for session backends.
+///
+/// Implementations must guarantee that, for one stored entry, at most one
+/// concurrent `take` call returns it, including callers that use different
+/// clones of the backend or, for shared stores, different processes.
+/// Missing and expired entries are returned as `None`.
+///
+/// Single-use secrets such as OAuth `state` parameters require this
+/// capability; a `load` followed by `delete` lets two callers observe the
+/// same entry.
+///
+/// ## Example
+///
+/// ```rust
+/// use reinhardt_auth::sessions::backends::{
+///     AtomicSessionBackend, InMemorySessionBackend, SessionBackend,
+/// };
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let backend = InMemorySessionBackend::new();
+/// backend.save("one_time_token", &"secret", Some(60)).await?;
+///
+/// let first: Option<String> = backend.take("one_time_token").await?;
+/// let second: Option<String> = backend.take("one_time_token").await?;
+/// assert_eq!(first.as_deref(), Some("secret"));
+/// assert_eq!(second, None);
+/// # Ok(())
+/// # }
+/// # tokio::runtime::Runtime::new().unwrap().block_on(example()).unwrap();
+/// ```
+#[async_trait]
+pub trait AtomicSessionBackend: SessionBackend {
+	/// Atomically load and delete one unexpired entry.
+	async fn take<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
+	where
+		T: for<'de> Deserialize<'de> + Serialize + Send + Sync;
+}
+
 /// In-memory session backend
 ///
 /// Stores sessions in memory using the InMemoryCache backend.
@@ -108,6 +147,10 @@ pub trait SessionBackend: Send + Sync + Clone {
 #[derive(Clone)]
 pub struct InMemorySessionBackend {
 	cache: Arc<InMemoryCache>,
+	// Serializes `take` so its get-and-delete pair is observed by one caller.
+	// The cache is private to this backend, so every competing `take` uses
+	// this lock.
+	take_lock: Arc<Mutex<()>>,
 }
 
 impl InMemorySessionBackend {
@@ -115,6 +158,7 @@ impl InMemorySessionBackend {
 	pub fn new() -> Self {
 		Self {
 			cache: Arc::new(InMemoryCache::new()),
+			take_lock: Arc::new(Mutex::new(())),
 		}
 	}
 }
@@ -165,6 +209,21 @@ impl SessionBackend for InMemorySessionBackend {
 			.has_key(session_key)
 			.await
 			.map_err(|e| SessionError::CacheError(e.to_string()))
+	}
+}
+
+#[async_trait]
+impl AtomicSessionBackend for InMemorySessionBackend {
+	async fn take<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
+	where
+		T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
+	{
+		let _guard = self.take_lock.lock().await;
+		let data = self.load(session_key).await?;
+		if data.is_some() {
+			self.delete(session_key).await?;
+		}
+		Ok(data)
 	}
 }
 
