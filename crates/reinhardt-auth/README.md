@@ -784,14 +784,16 @@ include `scope` and `resource`.
 
 - A refresh may request a subset of the family's scopes. The access token
   receives the requested scopes intersected with the client's current `scopes`
-  allowlist. An empty intersection returns `invalid_grant`. A scope outside the
-  family's scopes returns `invalid_scope`.
+  allowlist. An empty intersection returns `invalid_grant`, unless the family
+  was granted without any scope, in which case refreshes keep issuing unscoped
+  access tokens. A scope outside the family's scopes returns `invalid_scope`.
 - The refresh token keeps the family's original scopes, so a later refresh can
   request the wider set again. Only the access token is narrowed.
 - A `resource` that differs from the family audience returns `invalid_target`.
-- A disabled audience resource, or a user that is missing, inactive, or no
-  longer authenticated, returns `invalid_grant`. These failures do not revoke
-  the family.
+- A family audience that is no longer in the client's `audiences` allowlist, a
+  disabled audience resource, or a user that is missing, inactive, or no longer
+  authenticated returns `invalid_grant`. These failures do not revoke the
+  family.
 
 Every refresh rotates the refresh token. The presented token is marked rotated,
 and its replacement joins the same family. There is no grace window. Presenting

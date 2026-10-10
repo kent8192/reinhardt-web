@@ -1206,8 +1206,9 @@ impl OAuthServer {
 	/// consumed: presenting it again revokes the whole token family and every access token
 	/// issued from it, so clients must serialize refreshes (for example with a file lock).
 	/// `scope` may narrow the original grant but never widen it, and the issued scopes are
-	/// further limited to the client's current scope allowlist. Expired, revoked, reused,
-	/// and foreign tokens are all reported as `InvalidGrant`.
+	/// further limited to the client's current scope allowlist. The family's audience must
+	/// still be in the client's current audience allowlist. Expired, revoked, reused, and
+	/// foreign tokens are all reported as `InvalidGrant`.
 	pub async fn refresh(
 		&self,
 		refresh_token: &str,
@@ -1246,6 +1247,9 @@ impl OAuthServer {
 		if resource.is_some_and(|resource| resource != family.audience) {
 			return Err(OAuthError::InvalidTarget);
 		}
+		if !client.audiences.contains(&family.audience) {
+			return Err(OAuthError::InvalidGrant);
+		}
 		let requested = match scope {
 			Some(raw) => {
 				let requested: Vec<String> = raw.split(' ').map(str::to_owned).collect();
@@ -1263,7 +1267,9 @@ impl OAuthServer {
 			.into_iter()
 			.filter(|scope| client.scopes.contains(scope))
 			.collect();
-		if issued_scopes.is_empty() {
+		// A family granted without scopes keeps refreshing with none; a family whose
+		// scopes the client may no longer use at all must not degrade to an unscoped token.
+		if issued_scopes.is_empty() && !family.scopes.is_empty() {
 			return Err(OAuthError::InvalidGrant);
 		}
 		let audience_enabled = self

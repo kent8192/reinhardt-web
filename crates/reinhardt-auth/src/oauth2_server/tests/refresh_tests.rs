@@ -56,7 +56,7 @@ impl Harness {
 	}
 	async fn code(&self, user_id: &str, scopes: &[&str]) -> String {
 		let mut input = request(REDIRECT);
-		input.scope = Some(scopes.join(" "));
+		input.scope = (!scopes.is_empty()).then(|| scopes.join(" "));
 		let pending = self
 			.server
 			.begin_authorization(input, "session")
@@ -879,6 +879,69 @@ async fn disabled_audience_blocks_refresh_without_revoking_the_family() {
 	// Assert
 	assert_eq!(blocked.unwrap_err(), OAuthError::InvalidGrant);
 	assert!(recovered.is_ok());
+}
+
+#[rstest]
+#[tokio::test]
+async fn audience_removed_from_the_client_allowlist_blocks_refresh() {
+	// Arrange: the client also serves a second audience that stays registered.
+	let harness = enabled().await;
+	harness
+		.server
+		.register_resource("resource-b", "https://other.example")
+		.await
+		.unwrap();
+	harness
+		.replace_client(|client| client.audiences.push("https://other.example".into()))
+		.await;
+	let first = harness.first_tokens(&["read"]).await;
+	let refresh_token = first.refresh_token.unwrap();
+	harness
+		.replace_client(|client| {
+			client.audiences = vec!["https://other.example".into()];
+			client.default_audience = Some("https://other.example".into());
+		})
+		.await;
+
+	// Act
+	let blocked = harness.refresh(&refresh_token, None).await;
+	harness
+		.replace_client(|client| client.audiences.push(AUDIENCE.into()))
+		.await;
+	let recovered = harness.refresh(&refresh_token, None).await;
+
+	// Assert
+	assert_eq!(blocked.unwrap_err(), OAuthError::InvalidGrant);
+	assert_eq!(recovered.unwrap().scope, "read");
+}
+
+#[rstest]
+#[tokio::test]
+async fn family_granted_without_scopes_can_refresh() {
+	// Arrange
+	let harness = enabled().await;
+	harness
+		.replace_client(|client| {
+			client.scopes.clear();
+			client.default_scopes.clear();
+		})
+		.await;
+	let first = harness.first_tokens(&[]).await;
+	assert_eq!(first.scope, "");
+
+	// Act
+	let refreshed = harness
+		.refresh(&first.refresh_token.unwrap(), None)
+		.await
+		.unwrap();
+	let second = harness
+		.refresh(&refreshed.refresh_token.clone().unwrap(), None)
+		.await;
+
+	// Assert
+	assert_eq!(refreshed.scope, "");
+	assert!(harness.access_active(&refreshed.access_token).await);
+	assert_eq!(second.unwrap().scope, "");
 }
 
 // ---------------------------------------------------------------------------
