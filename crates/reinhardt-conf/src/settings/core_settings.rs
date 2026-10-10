@@ -375,4 +375,20 @@ secure_ssl_redirect = true
 			);
 		}
 	}
+
+	#[rstest]
+	fn test_core_settings_debug_redacts_secret_key() {
+		// Arrange
+		let settings = CoreSettings {
+			secret_key: "super-secret-value".to_string(),
+			..Default::default()
+		};
+
+		// Act
+		let output = format!("{settings:?}");
+
+		// Assert
+		assert!(!output.contains("super-secret-value"), "{output}");
+		assert!(output.contains("secret_key: \"[REDACTED]\""), "{output}");
+	}
 }
