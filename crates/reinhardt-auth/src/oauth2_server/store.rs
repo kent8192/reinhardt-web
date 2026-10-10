@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 
+/// Seconds added to a Device Code's polling interval for every `slow_down`.
+const SLOW_DOWN_STEP: u64 = 5;
+
 /// Whether a client has a server-side credential.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ClientKind {
@@ -16,7 +19,11 @@ pub enum ClientKind {
 }
 
 /// Administrative registration of an OAuth client.
+///
+/// Construct with [`ClientRegistration::new`] and assign the public fields; new
+/// capabilities are added as fields without breaking that pattern.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ClientRegistration {
 	/// Unique identifier.
 	pub client_id: String,
@@ -37,6 +44,9 @@ pub struct ClientRegistration {
 	pub authorization_code: bool,
 	/// Whether the client credentials grant is enabled.
 	pub client_credentials: bool,
+	/// Whether the RFC 8628 Device Authorization Grant is enabled.
+	#[serde(default)]
+	pub device_code: bool,
 	/// Exact redirect URI allowlist.
 	pub redirect_uris: Vec<String>,
 	/// Scope allowlist.
@@ -51,6 +61,43 @@ pub struct ClientRegistration {
 	pub browser_origins: Vec<String>,
 	/// Disabled registrations cannot issue tokens.
 	pub enabled: bool,
+}
+
+impl ClientRegistration {
+	/// Create a registration with every grant disabled and every allowlist empty.
+	///
+	/// The registration is enabled, not OIDC-enabled, and has no secret hashes.
+	/// Assign the public fields to enable grants and fill allowlists before
+	/// passing it to `OAuthServer::register_client`.
+	///
+	/// ```
+	/// use reinhardt_auth::oauth2_server::{ClientKind, ClientRegistration};
+	///
+	/// let mut client = ClientRegistration::new("tv-app", ClientKind::Public);
+	/// client.device_code = true;
+	/// client.audiences = vec!["https://api.example".into()];
+	/// assert!(client.enabled && !client.authorization_code);
+	/// ```
+	pub fn new(client_id: impl Into<String>, kind: ClientKind) -> Self {
+		Self {
+			client_id: client_id.into(),
+			kind,
+			secret_hash: None,
+			previous_secret_hash: None,
+			previous_secret_expires_at: None,
+			oidc_enabled: false,
+			authorization_code: false,
+			client_credentials: false,
+			device_code: false,
+			redirect_uris: Vec::new(),
+			scopes: Vec::new(),
+			default_scopes: Vec::new(),
+			audiences: Vec::new(),
+			default_audience: None,
+			browser_origins: Vec::new(),
+			enabled: true,
+		}
+	}
 }
 
 /// Administrative registration of a resource server.
@@ -204,6 +251,223 @@ pub struct CodeRedemptionRequest<'a> {
 	pub token: StoredToken,
 }
 
+/// Lifecycle state of a Device Authorization.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum DeviceAuthorizationStatus {
+	/// Waiting for the user to approve or deny on the Verification Page.
+	Pending,
+	/// Approved by a user; the Device Code has not been redeemed yet.
+	Approved,
+	/// Denied by the user or because the approving account was unusable.
+	Denied,
+	/// The Device Code was exchanged for a token.
+	Redeemed,
+	/// Invalidated by client disablement or a user security event.
+	Invalidated,
+}
+
+/// Persisted Device Authorization, stored only under digests of its secrets.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct StoredDeviceAuthorization {
+	/// Opaque random identifier handed to the Verification Page.
+	pub id: String,
+	/// SHA-256 digest of the Device Code.
+	pub device_code_digest: String,
+	/// SHA-256 digest of the normalized User Code.
+	pub user_code_digest: String,
+	/// Client that requested the authorization.
+	pub client_id: String,
+	/// Requested scopes.
+	pub scopes: Vec<String>,
+	/// Resource audience.
+	pub audience: String,
+	/// SHA-256 digest of the browser session that first looked up the User Code.
+	pub session_digest: Option<String>,
+	/// Lifecycle state.
+	pub status: DeviceAuthorizationStatus,
+	/// User who approved, once approved.
+	pub user_id: Option<String>,
+	/// Scopes approved by the user, once approved.
+	pub approved_scopes: Vec<String>,
+	/// Digest of the access token issued from this authorization.
+	pub token_digest: Option<String>,
+	/// Minimum seconds between polls; grows by five on every `slow_down`.
+	pub interval: u64,
+	/// UNIX time of the latest poll, or none before the first poll.
+	pub last_polled_at: Option<i64>,
+	/// UNIX expiry time.
+	pub expires_at: i64,
+}
+impl StoredDeviceAuthorization {
+	/// Bind an unbound pending authorization to a browser session, or confirm the binding.
+	pub(crate) fn bind_session(&mut self, session_digest: &str, now: i64) -> bool {
+		if self.status != DeviceAuthorizationStatus::Pending || self.expires_at <= now {
+			return false;
+		}
+		match &self.session_digest {
+			Some(bound) => bound == session_digest,
+			None => {
+				self.session_digest = Some(session_digest.to_owned());
+				true
+			}
+		}
+	}
+	/// Apply a user decision when the record is still pending, unexpired and bound to the session.
+	pub(crate) fn decide(&mut self, commit: &DeviceDecisionCommit<'_>) -> bool {
+		if self.status != DeviceAuthorizationStatus::Pending
+			|| self.expires_at <= commit.now
+			|| self.session_digest.as_deref() != Some(commit.session_digest)
+		{
+			return false;
+		}
+		match commit.approval {
+			Some(approval) => {
+				if approval.user_id.is_empty()
+					|| !approval
+						.scopes
+						.iter()
+						.all(|scope| self.scopes.contains(scope))
+				{
+					return false;
+				}
+				self.status = DeviceAuthorizationStatus::Approved;
+				self.user_id = Some(approval.user_id.to_owned());
+				self.approved_scopes = approval.scopes.to_vec();
+			}
+			None => self.status = DeviceAuthorizationStatus::Denied,
+		}
+		true
+	}
+	/// Evaluate one poll. A redeemed record reports a replay before throttling.
+	/// Otherwise expiry precedes `slow_down`, which precedes the decision state: an
+	/// expired session must conclude with `expired_token` (RFC 8628 section 3.5),
+	/// so expired polls neither throttle nor update the polling state.
+	pub(crate) fn poll(&mut self, client_id: &str, now: i64) -> DevicePoll {
+		if self.client_id != client_id {
+			return DevicePoll::Invalid;
+		}
+		if self.status == DeviceAuthorizationStatus::Redeemed {
+			return DevicePoll::Replay;
+		}
+		if self.expires_at <= now {
+			return DevicePoll::Expired;
+		}
+		let too_fast = self
+			.last_polled_at
+			.is_some_and(|last| now.saturating_sub(last) < self.interval as i64);
+		self.last_polled_at = Some(now);
+		if too_fast {
+			self.interval = self.interval.saturating_add(SLOW_DOWN_STEP);
+			return DevicePoll::SlowDown;
+		}
+		match self.status {
+			DeviceAuthorizationStatus::Pending => DevicePoll::Pending,
+			DeviceAuthorizationStatus::Denied => DevicePoll::Denied,
+			DeviceAuthorizationStatus::Approved => DevicePoll::Approved(Box::new(self.clone())),
+			DeviceAuthorizationStatus::Redeemed | DeviceAuthorizationStatus::Invalidated => {
+				DevicePoll::Invalid
+			}
+		}
+	}
+	/// Redeem an approved authorization with its token, or report why that is impossible.
+	pub(crate) fn redeem(&mut self, request: &DeviceRedemptionRequest<'_>) -> DeviceRedemption {
+		if self.client_id != request.client_id {
+			return DeviceRedemption::Invalid;
+		}
+		if self.status == DeviceAuthorizationStatus::Redeemed {
+			return DeviceRedemption::Replay;
+		}
+		if self.status != DeviceAuthorizationStatus::Approved
+			|| self.expires_at <= request.now
+			|| !token_matches_device_authorization(&request.token, self)
+		{
+			return DeviceRedemption::Invalid;
+		}
+		self.status = DeviceAuthorizationStatus::Redeemed;
+		self.token_digest = Some(request.token.digest.clone());
+		DeviceRedemption::Valid(Box::new(self.clone()))
+	}
+	/// Invalidate a record that has not been redeemed; returns whether it changed.
+	pub(crate) fn invalidate(&mut self) -> bool {
+		if matches!(
+			self.status,
+			DeviceAuthorizationStatus::Redeemed | DeviceAuthorizationStatus::Invalidated
+		) {
+			return false;
+		}
+		self.status = DeviceAuthorizationStatus::Invalidated;
+		true
+	}
+}
+
+/// Approval attached to a [`DeviceDecisionCommit`].
+#[derive(Clone, Copy, Debug)]
+pub struct DeviceApproval<'a> {
+	/// Authenticated user who approved.
+	pub user_id: &'a str,
+	/// Approved scopes; must be a subset of the requested scopes.
+	pub scopes: &'a [String],
+}
+
+/// User decision to commit atomically to a Device Authorization.
+#[derive(Clone, Copy, Debug)]
+pub struct DeviceDecisionCommit<'a> {
+	/// Identifier of the Device Authorization.
+	pub id: &'a str,
+	/// Digest of the browser session that must be bound to the record.
+	pub session_digest: &'a str,
+	/// Current UNIX time for the expiry check.
+	pub now: i64,
+	/// Approval details, or none to deny.
+	pub approval: Option<DeviceApproval<'a>>,
+}
+
+/// Outcome of one atomically evaluated poll of a Device Code.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum DevicePoll {
+	/// Polled before the current interval elapsed; the interval grew by five seconds.
+	SlowDown,
+	/// The Device Authorization expired.
+	Expired,
+	/// The user has not decided yet.
+	Pending,
+	/// The user denied the request.
+	Denied,
+	/// Approved and unredeemed; carries a snapshot for host checks before redemption.
+	Approved(Box<StoredDeviceAuthorization>),
+	/// The Device Code was already redeemed; the token issued from it is revoked.
+	Replay,
+	/// Unknown, invalidated, or belonging to another client.
+	Invalid,
+}
+
+/// Validated Device Code bindings and the token to store in one atomic redemption.
+#[derive(Debug)]
+pub struct DeviceRedemptionRequest<'a> {
+	/// Digest of the Device Code presented by the client.
+	pub device_code_digest: &'a str,
+	/// Authenticated client identifier.
+	pub client_id: &'a str,
+	/// Current UNIX time used to reject an expired authorization.
+	pub now: i64,
+	/// Access token to insert only after the authorization is validated.
+	pub token: StoredToken,
+}
+
+/// Result of atomic Device Authorization redemption.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum DeviceRedemption {
+	/// First and only valid redemption.
+	Valid(Box<StoredDeviceAuthorization>),
+	/// Already redeemed; the previously issued token is revoked.
+	Replay,
+	/// Absent, expired, no longer approved, or mismatched.
+	Invalid,
+}
+
 /// Persisted opaque token metadata, stored only under a digest.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredToken {
@@ -244,7 +508,8 @@ pub trait OAuthServerStore: Send + Sync {
 		expected: &ClientRegistration,
 		replacement: ClientRegistration,
 	) -> Result<bool, String>;
-	/// Atomically disable a client and invalidate its pending requests, codes, and tokens.
+	/// Atomically disable a client and invalidate its pending requests, codes, Device
+	/// Authorizations, and tokens.
 	/// Returns the number of newly revoked tokens, or none for a missing registration.
 	async fn disable_client(&self, client_id: &str) -> Result<Option<u64>, String>;
 	/// Get a client registration.
@@ -338,12 +603,74 @@ pub trait OAuthServerStore: Send + Sync {
 	async fn token(&self, digest: &str) -> Result<Option<StoredToken>, String>;
 	/// Revoke a token belonging to the specified client.
 	async fn revoke_token(&self, digest: &str, client_id: &str) -> Result<(), String>;
-	/// Invalidate outstanding user codes and revoke tokens atomically. Returns newly revoked token count.
+	/// Invalidate outstanding user codes and approved Device Authorizations and revoke
+	/// tokens atomically. Returns newly revoked token count.
 	async fn revoke_user(&self, user_id: &str) -> Result<u64, String>;
-	/// Invalidate a retired user's codes and tokens together.
+	/// Invalidate a retired user's codes, approved Device Authorizations, and tokens together.
 	async fn retire_user(&self, user_id: &str) -> Result<(), String>;
 	/// Revoke all client tokens (administrative operation).
 	async fn revoke_client(&self, client_id: &str) -> Result<u64, String>;
+	/// Insert a Device Authorization unless its User Code digest collides with a live
+	/// record (or its identifiers are already taken). Returns false on collision so the
+	/// caller can generate a fresh User Code. Expired records do not block reuse.
+	async fn insert_device_authorization(
+		&self,
+		_record: StoredDeviceAuthorization,
+		_now: i64,
+	) -> Result<bool, String> {
+		Err("store does not support device authorization".to_owned())
+	}
+	/// Read a Device Authorization by Device Code digest without changing it.
+	async fn device_authorization(
+		&self,
+		_device_code_digest: &str,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		Err("store does not support device authorization".to_owned())
+	}
+	/// Read a Device Authorization by its opaque identifier without changing it.
+	async fn device_authorization_by_id(
+		&self,
+		_id: &str,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		Err("store does not support device authorization".to_owned())
+	}
+	/// Atomically bind a live pending record to a browser session by User Code digest.
+	/// Returns the record when it is pending, unexpired, and unbound or bound to the same
+	/// session; otherwise none and the record is untouched.
+	async fn bind_device_user_code(
+		&self,
+		_user_code_digest: &str,
+		_session_digest: &str,
+		_now: i64,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		Err("store does not support device authorization".to_owned())
+	}
+	/// Atomically commit a user decision to a pending, unexpired record bound to the
+	/// session. Returns false for a stale, unbound, or mismatched record.
+	async fn decide_device_authorization(
+		&self,
+		_commit: DeviceDecisionCommit<'_>,
+	) -> Result<bool, String> {
+		Err("store does not support device authorization".to_owned())
+	}
+	/// Evaluate one poll atomically: throttle, expiry, decision state, and replay
+	/// detection. A replay also revokes the token issued from the Device Code.
+	async fn poll_device_authorization(
+		&self,
+		_device_code_digest: &str,
+		_client_id: &str,
+		_now: i64,
+	) -> Result<DevicePoll, String> {
+		Err("store does not support device authorization".to_owned())
+	}
+	/// Atomically redeem an approved Device Authorization and save its token, rolling
+	/// both back on failure. A replay revokes the previously issued token.
+	async fn redeem_device_authorization(
+		&self,
+		_request: DeviceRedemptionRequest<'_>,
+	) -> Result<DeviceRedemption, String> {
+		Err("store does not support device authorization".to_owned())
+	}
 }
 
 /// Development and test store. Production requires PostgreSQL.
@@ -358,6 +685,7 @@ struct MemoryState {
 	pending: HashMap<String, PendingRecord>,
 	codes: HashMap<String, StoredCode>,
 	tokens: HashMap<String, StoredToken>,
+	device_authorizations: HashMap<String, StoredDeviceAuthorization>,
 }
 impl MemoryOAuthStore {
 	/// Create an empty in-memory store.
@@ -412,6 +740,13 @@ impl OAuthServerStore for MemoryOAuthStore {
 		for code in state.codes.values_mut().filter(|code| code.client_id == id) {
 			code.redeemed = true;
 			code.replayed = true;
+		}
+		for record in state
+			.device_authorizations
+			.values_mut()
+			.filter(|record| record.client_id == id)
+		{
+			record.invalidate();
 		}
 		let mut count = 0;
 		for token in state
@@ -666,6 +1001,7 @@ impl OAuthServerStore for MemoryOAuthStore {
 	}
 	async fn revoke_user(&self, user_id: &str) -> Result<u64, String> {
 		let mut state = self.state.lock().await;
+		invalidate_user_device_authorizations(&mut state, user_id);
 		for code in state
 			.codes
 			.values_mut()
@@ -685,6 +1021,7 @@ impl OAuthServerStore for MemoryOAuthStore {
 	}
 	async fn retire_user(&self, user_id: &str) -> Result<(), String> {
 		let mut state = self.state.lock().await;
+		invalidate_user_device_authorizations(&mut state, user_id);
 		for code in state
 			.codes
 			.values_mut()
@@ -713,6 +1050,149 @@ impl OAuthServerStore for MemoryOAuthStore {
 		}
 		Ok(count)
 	}
+	async fn insert_device_authorization(
+		&self,
+		record: StoredDeviceAuthorization,
+		now: i64,
+	) -> Result<bool, String> {
+		let mut state = self.state.lock().await;
+		state
+			.device_authorizations
+			.retain(|_, existing| existing.expires_at > now);
+		if state.device_authorizations.values().any(|existing| {
+			existing.user_code_digest == record.user_code_digest || existing.id == record.id
+		}) || state
+			.device_authorizations
+			.contains_key(&record.device_code_digest)
+		{
+			return Ok(false);
+		}
+		state
+			.device_authorizations
+			.insert(record.device_code_digest.clone(), record);
+		Ok(true)
+	}
+	async fn device_authorization(
+		&self,
+		device_code_digest: &str,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		Ok(self
+			.state
+			.lock()
+			.await
+			.device_authorizations
+			.get(device_code_digest)
+			.cloned())
+	}
+	async fn device_authorization_by_id(
+		&self,
+		id: &str,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		Ok(self
+			.state
+			.lock()
+			.await
+			.device_authorizations
+			.values()
+			.find(|record| record.id == id)
+			.cloned())
+	}
+	async fn bind_device_user_code(
+		&self,
+		user_code_digest: &str,
+		session_digest: &str,
+		now: i64,
+	) -> Result<Option<StoredDeviceAuthorization>, String> {
+		let mut state = self.state.lock().await;
+		let Some(record) = state
+			.device_authorizations
+			.values_mut()
+			.find(|record| record.user_code_digest == user_code_digest)
+		else {
+			return Ok(None);
+		};
+		Ok(record
+			.bind_session(session_digest, now)
+			.then(|| record.clone()))
+	}
+	async fn decide_device_authorization(
+		&self,
+		commit: DeviceDecisionCommit<'_>,
+	) -> Result<bool, String> {
+		let mut state = self.state.lock().await;
+		Ok(state
+			.device_authorizations
+			.values_mut()
+			.find(|record| record.id == commit.id)
+			.is_some_and(|record| record.decide(&commit)))
+	}
+	async fn poll_device_authorization(
+		&self,
+		device_code_digest: &str,
+		client_id: &str,
+		now: i64,
+	) -> Result<DevicePoll, String> {
+		let mut guard = self.state.lock().await;
+		let state = &mut *guard;
+		let Some(record) = state.device_authorizations.get_mut(device_code_digest) else {
+			return Ok(DevicePoll::Invalid);
+		};
+		let outcome = record.poll(client_id, now);
+		if matches!(outcome, DevicePoll::Replay)
+			&& let Some(token_digest) = record.token_digest.clone()
+			&& let Some(token) = state.tokens.get_mut(&token_digest)
+		{
+			token.revoked = true;
+		}
+		Ok(outcome)
+	}
+	async fn redeem_device_authorization(
+		&self,
+		request: DeviceRedemptionRequest<'_>,
+	) -> Result<DeviceRedemption, String> {
+		let mut guard = self.state.lock().await;
+		let state = &mut *guard;
+		let token_collision = state.tokens.contains_key(&request.token.digest);
+		let Some(record) = state
+			.device_authorizations
+			.get_mut(request.device_code_digest)
+		else {
+			return Ok(DeviceRedemption::Invalid);
+		};
+		let status_before = record.status;
+		if status_before == DeviceAuthorizationStatus::Approved && token_collision {
+			return Err("token digest collision".to_owned());
+		}
+		let outcome = record.redeem(&request);
+		match &outcome {
+			DeviceRedemption::Valid(_) => {
+				state
+					.tokens
+					.insert(request.token.digest.clone(), request.token);
+			}
+			DeviceRedemption::Replay => {
+				if let Some(token_digest) = record.token_digest.clone()
+					&& let Some(token) = state.tokens.get_mut(&token_digest)
+				{
+					token.revoked = true;
+				}
+			}
+			DeviceRedemption::Invalid => {}
+		}
+		Ok(outcome)
+	}
+}
+
+fn invalidate_user_device_authorizations(state: &mut MemoryState, user_id: &str) {
+	for record in state
+		.device_authorizations
+		.values_mut()
+		.filter(|record| record.user_id.as_deref() == Some(user_id))
+	{
+		if record.status == DeviceAuthorizationStatus::Approved {
+			record.invalidate();
+		}
+	}
 }
 
 pub(crate) fn token_matches_code(token: &StoredToken, code: &StoredCode) -> bool {
@@ -721,5 +1201,20 @@ pub(crate) fn token_matches_code(token: &StoredToken, code: &StoredCode) -> bool
 		&& token.scopes == code.scopes
 		&& token.audience == code.audience
 		&& token.code_digest.as_deref() == Some(code.digest.as_str())
+		&& !token.revoked
+}
+
+pub(crate) fn token_matches_device_authorization(
+	token: &StoredToken,
+	record: &StoredDeviceAuthorization,
+) -> bool {
+	token.client_id == record.client_id
+		&& record
+			.user_id
+			.as_ref()
+			.is_some_and(|user_id| token.principal == TokenPrincipal::User(user_id.clone()))
+		&& token.scopes == record.approved_scopes
+		&& token.audience == record.audience
+		&& token.code_digest.is_none()
 		&& !token.revoked
 }

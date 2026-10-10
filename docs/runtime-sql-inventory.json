@@ -3044,8 +3044,31 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/http.rs",
       "symbol": "OAuthHandler::metadata_request",
       "kind": "macro-sql-literal",
-      "line": 304,
-      "fingerprint": "37ef7c236996c23e7020d23663a6fa84926cad1c25d73bb1e0d2a203c4c22de9",
+      "line": 349,
+      "fingerprint": "5a21d070da6e0ea34607cc78a54f26bff1c1c64ff537f14d7cfa94fe53286324",
+      "conditions": [],
+      "test_only": false,
+      "category": "vendor-administration",
+      "ownership": "framework",
+      "status": "pending",
+      "operation": "vendor-administration",
+      "representation": "review-required",
+      "feature_reachability": [
+        "review-required"
+      ],
+      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
+      "backends": [
+        "review-required"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/http.rs::OAuthHandler::metadata_request::sql-literal#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/http.rs",
+      "symbol": "OAuthHandler::metadata_request",
+      "kind": "sql-literal",
+      "line": 352,
+      "fingerprint": "5a21d070da6e0ea34607cc78a54f26bff1c1c64ff537f14d7cfa94fe53286324",
       "conditions": [],
       "test_only": false,
       "category": "vendor-administration",
@@ -3067,8 +3090,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/http.rs",
       "symbol": "OAuthHandler::token_request",
       "kind": "sql-literal",
-      "line": 162,
-      "fingerprint": "40f0bb8f4cdaa1266e8c46af00a081c90c5bfa6171e037d1ca12304b7051e420",
+      "line": 169,
+      "fingerprint": "74c0861e80d0baa0c4e4dd29c228e9c522497f29514762f5426adedea1d54225",
       "conditions": [],
       "test_only": false,
       "category": "vendor-administration",
@@ -3561,8 +3584,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "execution-wrapper",
-      "line": 383,
-      "fingerprint": "f3911d9712f125049e6f9d8acc433ff119088564a3fff0e0affd9c0a1d0044b8",
+      "line": 565,
+      "fingerprint": "66b8444aa6128498ad509445f250aec32b6429a3cde10ec2812784db1afbfeb1",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3589,8 +3612,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "execution-wrapper",
-      "line": 398,
-      "fingerprint": "8cfb6c55a8efaf33cd738b5b5d35ccf4a3f4781a8e621edec04f28f45cdee714",
+      "line": 580,
+      "fingerprint": "0209db4289c159ad2067fe669825f138529a8c14fdefb80884a07f7928989622",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3617,8 +3640,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "execution-wrapper",
-      "line": 408,
-      "fingerprint": "8cfb6c55a8efaf33cd738b5b5d35ccf4a3f4781a8e621edec04f28f45cdee714",
+      "line": 590,
+      "fingerprint": "0209db4289c159ad2067fe669825f138529a8c14fdefb80884a07f7928989622",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3645,8 +3668,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "execution-wrapper",
-      "line": 420,
-      "fingerprint": "8cfb6c55a8efaf33cd738b5b5d35ccf4a3f4781a8e621edec04f28f45cdee714",
+      "line": 602,
+      "fingerprint": "0209db4289c159ad2067fe669825f138529a8c14fdefb80884a07f7928989622",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3673,8 +3696,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "execution-wrapper",
-      "line": 432,
-      "fingerprint": "8cfb6c55a8efaf33cd738b5b5d35ccf4a3f4781a8e621edec04f28f45cdee714",
+      "line": 620,
+      "fingerprint": "0209db4289c159ad2067fe669825f138529a8c14fdefb80884a07f7928989622",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3701,8 +3724,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "executor",
-      "line": 383,
-      "fingerprint": "8ab3510391a94c83db0cec1f7964d8ff2fe088b4173a8459694031f511466356",
+      "line": 565,
+      "fingerprint": "6266e3b458d841df15c196e2a07bd2d6ae21cd733ead7db3a29b006092928881",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3729,8 +3752,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "executor",
-      "line": 398,
-      "fingerprint": "6485a13603781a576a28a3393928ad91dd6cb9d0e42f3a7d3b18f9b1dc7f6b0b",
+      "line": 580,
+      "fingerprint": "b3274f96e72109768e205e4cdee15b7d671c32eed752535cf7cee2ef6e9476b0",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3757,8 +3780,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "executor",
-      "line": 408,
-      "fingerprint": "6485a13603781a576a28a3393928ad91dd6cb9d0e42f3a7d3b18f9b1dc7f6b0b",
+      "line": 590,
+      "fingerprint": "b3274f96e72109768e205e4cdee15b7d671c32eed752535cf7cee2ef6e9476b0",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3785,8 +3808,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "executor",
-      "line": 420,
-      "fingerprint": "6485a13603781a576a28a3393928ad91dd6cb9d0e42f3a7d3b18f9b1dc7f6b0b",
+      "line": 602,
+      "fingerprint": "b3274f96e72109768e205e4cdee15b7d671c32eed752535cf7cee2ef6e9476b0",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3813,8 +3836,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::disable_client",
       "kind": "executor",
-      "line": 432,
-      "fingerprint": "6485a13603781a576a28a3393928ad91dd6cb9d0e42f3a7d3b18f9b1dc7f6b0b",
+      "line": 620,
+      "fingerprint": "b3274f96e72109768e205e4cdee15b7d671c32eed752535cf7cee2ef6e9476b0",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -3890,6 +3913,114 @@
         "16 native PostgreSQL OAuth/OIDC tests passed, including CAS, replay, transactional rollback, apply/reapply/rollback.",
         "4 database-filtered tests passed, including both token expiry cases, schema default equivalence, and JSON argument order.",
         "Normal production library Clippy and rustdoc build passed; unrelated broad test/doc failures tracked in #6514/#6518."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::insert_device_authorization::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore as OAuthServerStore::insert_device_authorization",
+      "kind": "execution-wrapper",
+      "line": 1176,
+      "fingerprint": "9c3af2d2b6e90e8548d0da32715770a2d835930cfb33aad8419f79d11bd8c28a",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::insert_device_authorization::execution-wrapper#2",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore as OAuthServerStore::insert_device_authorization",
+      "kind": "execution-wrapper",
+      "line": 1202,
+      "fingerprint": "9c3af2d2b6e90e8548d0da32715770a2d835930cfb33aad8419f79d11bd8c28a",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::insert_device_authorization::executor#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore as OAuthServerStore::insert_device_authorization",
+      "kind": "executor",
+      "line": 1176,
+      "fingerprint": "5511e4041431c5b47dadbc7ded830de5950b662e4872a1d5cc91872fc6c6489b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::PostgresOAuthStore as OAuthServerStore::insert_device_authorization::executor#2",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "PostgresOAuthStore as OAuthServerStore::insert_device_authorization",
+      "kind": "executor",
+      "line": 1202,
+      "fingerprint": "5511e4041431c5b47dadbc7ded830de5950b662e4872a1d5cc91872fc6c6489b",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
       ]
     },
     {
@@ -4737,8 +4868,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::retire_user",
       "kind": "execution-wrapper",
-      "line": 934,
-      "fingerprint": "47f48de0609b85d2c3b3d02f0d19456e7903790d7891ef81aed67d933da867a2",
+      "line": 1124,
+      "fingerprint": "1b11e2d773891d702f42000fc910b388c1671164e8579a649d185d11a11792d4",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4765,8 +4896,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::retire_user",
       "kind": "execution-wrapper",
-      "line": 945,
-      "fingerprint": "47f48de0609b85d2c3b3d02f0d19456e7903790d7891ef81aed67d933da867a2",
+      "line": 1137,
+      "fingerprint": "1b11e2d773891d702f42000fc910b388c1671164e8579a649d185d11a11792d4",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4793,8 +4924,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::retire_user",
       "kind": "executor",
-      "line": 934,
-      "fingerprint": "8b5903085cc2e162a71ab33d1a44e6f2ab55d5487f0d7d942436de4cbead32d8",
+      "line": 1124,
+      "fingerprint": "662a4dee49166939f7e55b05132d7ad74b1263fdad3256fcad27bc9d71fe0968",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4821,8 +4952,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::retire_user",
       "kind": "executor",
-      "line": 945,
-      "fingerprint": "8b5903085cc2e162a71ab33d1a44e6f2ab55d5487f0d7d942436de4cbead32d8",
+      "line": 1137,
+      "fingerprint": "662a4dee49166939f7e55b05132d7ad74b1263fdad3256fcad27bc9d71fe0968",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4961,8 +5092,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::revoke_user",
       "kind": "execution-wrapper",
-      "line": 905,
-      "fingerprint": "c8a338ea75687aaa83b035afa377bceb853a1fbfb0f1c498e623f2036e56cd82",
+      "line": 1093,
+      "fingerprint": "ae02ed4bf0e8dce45f8c85634d1b2b599f25245b2f74128e5b088353352c90c2",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -4989,8 +5120,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::revoke_user",
       "kind": "execution-wrapper",
-      "line": 917,
-      "fingerprint": "c8a338ea75687aaa83b035afa377bceb853a1fbfb0f1c498e623f2036e56cd82",
+      "line": 1107,
+      "fingerprint": "ae02ed4bf0e8dce45f8c85634d1b2b599f25245b2f74128e5b088353352c90c2",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5017,8 +5148,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::revoke_user",
       "kind": "executor",
-      "line": 905,
-      "fingerprint": "62a4869500a9314be2456931ba43b0b325cf80cb940a00aa05d32683c75365bf",
+      "line": 1093,
+      "fingerprint": "5520ff2e8651bdff6e842d132103f225430404064e2c0ed4d148add954f68578",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5045,8 +5176,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore as OAuthServerStore::revoke_user",
       "kind": "executor",
-      "line": 917,
-      "fingerprint": "62a4869500a9314be2456931ba43b0b325cf80cb940a00aa05d32683c75365bf",
+      "line": 1107,
+      "fingerprint": "5520ff2e8651bdff6e842d132103f225430404064e2c0ed4d148add954f68578",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5241,8 +5372,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore::purge_expired",
       "kind": "execution-wrapper",
-      "line": 210,
-      "fingerprint": "e570454a3ac9f23cbda7deeee9931f0b58d42eff49eaee4b23490b024478ce31",
+      "line": 291,
+      "fingerprint": "5a925136e2b63bd53e5dc01060a247afd8bbe0fc10688e01815e6db33b45321b",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5269,8 +5400,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
       "symbol": "PostgresOAuthStore::purge_expired",
       "kind": "executor",
-      "line": 210,
-      "fingerprint": "4fa08d05d64207dad61364dbada34e0f624cf53fa0bff461ec2d556b3f8f6b8c",
+      "line": 291,
+      "fingerprint": "28c16f808b04512c51a487d1adab2106ea7ca1907c17c2137dd226ccc47fce34",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5405,12 +5536,282 @@
       ]
     },
     {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::invalidate_device_authorizations::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "invalidate_device_authorizations",
+      "kind": "execution-wrapper",
+      "line": 434,
+      "fingerprint": "c86e513c1ef8c16ee7e5557d7c7bfe5616274deb1297608e7c4ba5fd0bb84276",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::invalidate_device_authorizations::executor#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "invalidate_device_authorizations",
+      "kind": "executor",
+      "line": 434,
+      "fingerprint": "95eedbb0bd2344ba37d44c3e65ccfa8a70a899aa000e54766f6c7ca000daa1d2",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::lock_device_authorization::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "lock_device_authorization",
+      "kind": "execution-wrapper",
+      "line": 393,
+      "fingerprint": "1a21bf70cb9b66f8cc1632ae7ae1d3fd7d2afab8a6635b5518602be0864f4c36",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::lock_device_authorization::executor#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "lock_device_authorization",
+      "kind": "executor",
+      "line": 393,
+      "fingerprint": "2487ac98f4307385ff012df3627757ce40a74024a5643495acfd0624362e1b0e",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::read_device_authorization::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "read_device_authorization",
+      "kind": "execution-wrapper",
+      "line": 460,
+      "fingerprint": "5ad986da9fbb3c8957c432e27e13f38f9f475b7f6156e6ce012bbf6e15d4effb",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::read_device_authorization::executor#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "read_device_authorization",
+      "kind": "executor",
+      "line": 460,
+      "fingerprint": "4d4c21e2698ce93b14f850c0d89e18e27f2d9c236b041287c63ed63fe9db7f9a",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::revoke_device_token::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "revoke_device_token",
+      "kind": "execution-wrapper",
+      "line": 473,
+      "fingerprint": "36f260691c2e00f809375c75ba8c70820ae1c267fef5dcf92bf1e1c4f36650e8",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::revoke_device_token::executor#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "revoke_device_token",
+      "kind": "executor",
+      "line": 473,
+      "fingerprint": "873fa28eca67d5470678613ce826441d62f69e05b8cfc5dd9f98ae59adad12c9",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::save_device_authorization::execution-wrapper#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "save_device_authorization",
+      "kind": "execution-wrapper",
+      "line": 413,
+      "fingerprint": "92c7938628ffce64f21c510e18e71948e130b3f7a17f5673b9f81dfc140ff422",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
+      "id": "crates/reinhardt-auth/src/oauth2_server/postgres.rs::save_device_authorization::executor#1",
+      "path": "crates/reinhardt-auth/src/oauth2_server/postgres.rs",
+      "symbol": "save_device_authorization",
+      "kind": "executor",
+      "line": 413,
+      "fingerprint": "75dd574784c2aa2d47f1f962b335a613b964c13821278fde37af02d101ccc465",
+      "conditions": [],
+      "test_only": false,
+      "category": "review-required",
+      "ownership": "framework",
+      "status": "typed",
+      "operation": "dml",
+      "representation": "typed-query",
+      "feature_reachability": [
+        "database and oauth (oidc-op for OIDC state)",
+        "native PostgreSQL executor"
+      ],
+      "rationale": "Private authentication statements consume exact rendered Values; JSON operators are typed. Built-in schema/reverse statements preserve migration identities and constant/default semantics.",
+      "backends": [
+        "postgres"
+      ],
+      "evidence": [
+        "74 device authorization tests passed, 16 of them on native PostgreSQL via TestContainers, covering insertion with expired User Code reuse, session binding, decisions, polling with expiry and slow_down, redemption, replay token revocation, and client/user invalidation.",
+        "121 oauth2_server library tests passed with the oauth, oidc-op and database features; every new device statement is built with reinhardt-query and executed through prepare()."
+      ]
+    },
+    {
       "id": "crates/reinhardt-auth/src/oauth2_server/protocol.rs::OAuthServerConfig::validate::execution-wrapper#1",
       "path": "crates/reinhardt-auth/src/oauth2_server/protocol.rs",
       "symbol": "OAuthServerConfig::validate",
       "kind": "execution-wrapper",
-      "line": 200,
-      "fingerprint": "974c7c08b4e42d8598d7fe1e73863f3cdf1a3c754ea49fd3e5ad1e90a0451036",
+      "line": 278,
+      "fingerprint": "77d21a2bde9671ec94ca64218b706196af8fcf43587102233611c8406e1781b7",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -5432,8 +5833,8 @@
       "path": "crates/reinhardt-auth/src/oauth2_server/protocol.rs",
       "symbol": "OAuthServerConfig::validate",
       "kind": "execution-wrapper",
-      "line": 218,
-      "fingerprint": "9701a0854da74eef03d933e789f0f49b770ffa9390ea3ab1985e5fdff85ac44d",
+      "line": 301,
+      "fingerprint": "4792fd38eb7fb8c51d11cc401115c8127d062e9adb2bb0f59d93cc94f9c86184",
       "conditions": [],
       "test_only": false,
       "category": "review-required",

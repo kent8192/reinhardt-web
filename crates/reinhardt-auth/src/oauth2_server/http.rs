@@ -1,7 +1,8 @@
 //! Routable HTTP endpoints for the OAuth server.
 
 use super::protocol::{
-	AuthorizationRequest, OAuthError, OAuthServer, PendingAuthorization, TokenPrincipal,
+	AuthorizationRequest, DEVICE_CODE_GRANT, OAuthError, OAuthServer, PendingAuthorization,
+	TokenPrincipal,
 };
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -28,6 +29,7 @@ pub trait OAuthConsentPresenter: Send + Sync {
 
 /// An OAuth endpoint to mount at the URL advertised in metadata.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum OAuthEndpoint {
 	/// Browser authorization request.
 	Authorization,
@@ -39,6 +41,11 @@ pub enum OAuthEndpoint {
 	Introspection,
 	/// Authorization-server metadata.
 	Metadata,
+	/// RFC 8628 device authorization endpoint (POST, form-encoded, no CORS).
+	///
+	/// Answers HTTP 400 `invalid_request` while the server configuration has no
+	/// `device_authorization` settings, so the grant stays off unless enabled.
+	DeviceAuthorization,
 }
 
 /// Reinhardt HTTP handler for one OAuth protocol endpoint.
@@ -185,6 +192,17 @@ impl OAuthHandler {
 					)
 					.await
 			}
+			Some(DEVICE_CODE_GRANT) if self.server.config().device_authorization.is_none() => {
+				Err(OAuthError::UnsupportedGrantType)
+			}
+			Some(DEVICE_CODE_GRANT) => match params.get("device_code").filter(|v| !v.is_empty()) {
+				Some(device_code) => {
+					self.server
+						.exchange_device_code(device_code, &client_id, secret.as_deref())
+						.await
+				}
+				None => Err(OAuthError::InvalidRequest),
+			},
 			Some("client_credentials") => match secret.as_deref() {
 				Some(secret) => {
 					self.server
@@ -206,6 +224,35 @@ impl OAuthHandler {
 			Err(error) => oauth_error(error, error_status(error)),
 		};
 		apply_cors(response, cors_origin.as_deref())
+	}
+	async fn device_authorization_request(&self, request: Request) -> Response {
+		if request.method != Method::POST {
+			return method_not_allowed("POST");
+		}
+		if self.server.config().device_authorization.is_none() {
+			return oauth_error(OAuthError::InvalidRequest, StatusCode::BAD_REQUEST);
+		}
+		let params = match form_params(&request) {
+			Ok(p) => p,
+			Err(e) => return oauth_error(e, StatusCode::BAD_REQUEST),
+		};
+		let (client_id, secret) = match client_auth(&request, &params) {
+			Ok(v) => v,
+			Err(e) => return oauth_error(e, error_status(e)),
+		};
+		match self
+			.server
+			.begin_device_authorization(
+				&client_id,
+				secret.as_deref(),
+				params.get("scope").map(String::as_str),
+				params.get("resource").map(String::as_str),
+			)
+			.await
+		{
+			Ok(issued) => json_response(StatusCode::OK, json!(issued)),
+			Err(error) => oauth_error(error, error_status(error)),
+		}
 	}
 	async fn revocation_request(&self, request: Request) -> Response {
 		if request.method != Method::POST {
@@ -299,10 +346,16 @@ impl OAuthHandler {
 			return method_not_allowed("GET");
 		}
 		let c = self.server.config();
-		let response = json_response(
-			StatusCode::OK,
-			json!({"issuer":c.issuer,"authorization_endpoint":c.authorization_endpoint,"token_endpoint":c.token_endpoint,"revocation_endpoint":c.revocation_endpoint,"introspection_endpoint":c.introspection_endpoint,"response_types_supported":["code"],"grant_types_supported":["authorization_code","client_credentials"],"token_endpoint_auth_methods_supported":["client_secret_basic","none"],"revocation_endpoint_auth_methods_supported":["client_secret_basic","none"],"introspection_endpoint_auth_methods_supported":["client_secret_basic"],"code_challenge_methods_supported":["S256"],"authorization_response_iss_parameter_supported":true}),
-		);
+		let mut metadata = json!({"issuer":c.issuer,"authorization_endpoint":c.authorization_endpoint,"token_endpoint":c.token_endpoint,"revocation_endpoint":c.revocation_endpoint,"introspection_endpoint":c.introspection_endpoint,"response_types_supported":["code"],"grant_types_supported":["authorization_code","client_credentials"],"token_endpoint_auth_methods_supported":["client_secret_basic","none"],"revocation_endpoint_auth_methods_supported":["client_secret_basic","none"],"introspection_endpoint_auth_methods_supported":["client_secret_basic"],"code_challenge_methods_supported":["S256"],"authorization_response_iss_parameter_supported":true});
+		if let Some(device) = &c.device_authorization {
+			metadata["device_authorization_endpoint"] = json!(device.endpoint);
+			metadata["grant_types_supported"] = json!([
+				"authorization_code",
+				"client_credentials",
+				DEVICE_CODE_GRANT
+			]);
+		}
+		let response = json_response(StatusCode::OK, metadata);
 		self.registered_origin(response, &request).await
 	}
 	async fn registered_origin(&self, response: Response, request: &Request) -> Response {
@@ -326,7 +379,9 @@ impl OAuthHandler {
 				OAuthEndpoint::Token | OAuthEndpoint::Revocation => "POST, OPTIONS",
 				OAuthEndpoint::Metadata => "GET, OPTIONS",
 				OAuthEndpoint::Authorization => return method_not_allowed("GET"),
-				OAuthEndpoint::Introspection => return method_not_allowed("POST"),
+				OAuthEndpoint::Introspection | OAuthEndpoint::DeviceAuthorization => {
+					return method_not_allowed("POST");
+				}
 			};
 			response
 				.with_header("Access-Control-Allow-Methods", methods)
@@ -400,6 +455,7 @@ impl Handler for OAuthHandler {
 		}
 		Ok(match self.endpoint {
 			OAuthEndpoint::Authorization => return self.authorization_request(request).await,
+			OAuthEndpoint::DeviceAuthorization => self.device_authorization_request(request).await,
 			OAuthEndpoint::Token => self.token_request(request).await,
 			OAuthEndpoint::Revocation => self.revocation_request(request).await,
 			OAuthEndpoint::Introspection => self.introspection_request(request).await,
@@ -526,6 +582,9 @@ mod status_tests {
 	#[case(OAuthError::InvalidRequest, StatusCode::BAD_REQUEST)]
 	#[case(OAuthError::InvalidClient, StatusCode::UNAUTHORIZED)]
 	#[case(OAuthError::ServerError, StatusCode::INTERNAL_SERVER_ERROR)]
+	#[case(OAuthError::AuthorizationPending, StatusCode::BAD_REQUEST)]
+	#[case(OAuthError::SlowDown, StatusCode::BAD_REQUEST)]
+	#[case(OAuthError::ExpiredToken, StatusCode::BAD_REQUEST)]
 	fn oauth_errors_use_their_http_status(#[case] error: OAuthError, #[case] expected: StatusCode) {
 		assert_eq!(error_status(error), expected);
 	}

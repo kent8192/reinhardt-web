@@ -106,27 +106,7 @@ async fn issuer() -> TestIssuer {
 		.register_resource("oidc-userinfo", USERINFO)
 		.await
 		.unwrap();
-	let secret = oauth
-		.register_client(ClientRegistration {
-			client_id: "rp-a".into(),
-			kind: ClientKind::Confidential,
-			secret_hash: None,
-			previous_secret_hash: None,
-			previous_secret_expires_at: None,
-			oidc_enabled: true,
-			authorization_code: true,
-			client_credentials: false,
-			redirect_uris: vec![REDIRECT.into()],
-			scopes: vec!["openid".into()],
-			default_scopes: vec!["openid".into()],
-			audiences: vec![USERINFO.into()],
-			default_audience: Some(USERINFO.into()),
-			browser_origins: vec![],
-			enabled: true,
-		})
-		.await
-		.unwrap()
-		.unwrap();
+	let secret = oauth.register_client(rp_client()).await.unwrap().unwrap();
 	let active = Arc::new(AtomicBool::new(true));
 	let signer = Arc::new(RsaPemKeyRing::new());
 	add_key(&signer, "key-a");
@@ -1098,19 +1078,25 @@ async fn postgres_state_is_shared_and_single_use_across_instances() {
 	let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 	let mut executor = DatabaseMigrationExecutor::new(connection);
 	let applied = executor
-		.apply_migrations(&[
-			crate::oauth2_server::PostgresOAuthStore::migration(),
-			PostgresOidcStore::migration(),
-		])
+		.apply_migrations(
+			&[
+				crate::oauth2_server::PostgresOAuthStore::migrations(),
+				vec![PostgresOidcStore::migration()],
+			]
+			.concat(),
+		)
 		.await
 		.unwrap();
-	assert_eq!(applied.applied.len(), 2);
+	assert_eq!(applied.applied.len(), 3);
 	// The published migration identities remain applied after the SQL representation changes.
 	let repeated = executor
-		.apply_migrations(&[
-			crate::oauth2_server::PostgresOAuthStore::migration(),
-			PostgresOidcStore::migration(),
-		])
+		.apply_migrations(
+			&[
+				crate::oauth2_server::PostgresOAuthStore::migrations(),
+				vec![PostgresOidcStore::migration()],
+			]
+			.concat(),
+		)
 		.await
 		.unwrap();
 	assert!(repeated.applied.is_empty());
@@ -1228,10 +1214,13 @@ async fn postgres_state_is_shared_and_single_use_across_instances() {
 	assert!(first.subject("user-a").await.unwrap().is_none());
 	assert!(first.subject_or_insert("user-b", &subject).await.is_err());
 	executor
-		.rollback_migrations(&[
-			PostgresOidcStore::migration(),
-			crate::oauth2_server::PostgresOAuthStore::migration(),
-		])
+		.rollback_migrations(
+			&[
+				vec![PostgresOidcStore::migration()],
+				crate::oauth2_server::PostgresOAuthStore::migrations(),
+			]
+			.concat(),
+		)
 		.await
 		.unwrap();
 	let table: (Option<String>,) =
@@ -1264,10 +1253,13 @@ async fn production_nodes_complete_one_cross_instance_login() {
 	let connection = DatabaseConnection::connect_postgres(&url).await.unwrap();
 	let mut executor = DatabaseMigrationExecutor::new(connection);
 	executor
-		.apply_migrations(&[
-			PostgresOAuthStore::migration(),
-			PostgresOidcStore::migration(),
-		])
+		.apply_migrations(
+			&[
+				PostgresOAuthStore::migrations(),
+				vec![PostgresOidcStore::migration()],
+			]
+			.concat(),
+		)
 		.await
 		.unwrap();
 	let pool_a = PgPool::connect(&url).await.unwrap();
@@ -1306,27 +1298,7 @@ async fn production_nodes_complete_one_cross_instance_login() {
 		.register_resource("oidc-userinfo", USERINFO)
 		.await
 		.unwrap();
-	let secret = oauth_a
-		.register_client(ClientRegistration {
-			client_id: "rp-a".into(),
-			kind: ClientKind::Confidential,
-			secret_hash: None,
-			previous_secret_hash: None,
-			previous_secret_expires_at: None,
-			oidc_enabled: true,
-			authorization_code: true,
-			client_credentials: false,
-			redirect_uris: vec![REDIRECT.into()],
-			scopes: vec!["openid".into()],
-			default_scopes: vec!["openid".into()],
-			audiences: vec![USERINFO.into()],
-			default_audience: Some(USERINFO.into()),
-			browser_origins: vec![],
-			enabled: true,
-		})
-		.await
-		.unwrap()
-		.unwrap();
+	let secret = oauth_a.register_client(rp_client()).await.unwrap().unwrap();
 	let signer = Arc::new(RsaPemKeyRing::new());
 	let public = add_key(&signer, "key-a");
 	let state_a = PostgresOidcStore::new(pool_a);
@@ -1426,12 +1398,27 @@ async fn production_nodes_complete_one_cross_instance_login() {
 		OidcError::InvalidGrant
 	);
 	executor
-		.rollback_migrations(&[
-			PostgresOidcStore::migration(),
-			PostgresOAuthStore::migration(),
-		])
+		.rollback_migrations(
+			&[
+				vec![PostgresOidcStore::migration()],
+				PostgresOAuthStore::migrations(),
+			]
+			.concat(),
+		)
 		.await
 		.unwrap();
 }
 
 mod review_tests;
+
+fn rp_client() -> ClientRegistration {
+	let mut client = ClientRegistration::new("rp-a", ClientKind::Confidential);
+	client.oidc_enabled = true;
+	client.authorization_code = true;
+	client.redirect_uris = vec![REDIRECT.into()];
+	client.scopes = vec!["openid".into()];
+	client.default_scopes = vec!["openid".into()];
+	client.audiences = vec![USERINFO.into()];
+	client.default_audience = Some(USERINFO.into());
+	client
+}

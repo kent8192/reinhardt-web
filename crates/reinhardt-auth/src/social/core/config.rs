@@ -81,6 +81,29 @@ impl ProviderConfig {
 	}
 
 	/// Create a GitHub OAuth2 provider configuration
+	///
+	/// The configuration requests the classic OAuth App scopes `user` and
+	/// `user:email`. GitHub Apps ignore OAuth scopes and derive access from the
+	/// app's permissions instead; for GitHub App user authorization, clear
+	/// `scopes` so the authorization URL omits the `scope` parameter:
+	///
+	/// ```
+	/// use reinhardt_auth::social::ProviderConfig;
+	///
+	/// let config = ProviderConfig {
+	///     scopes: Vec::new(),
+	///     ..ProviderConfig::github(
+	///         "client_id".to_string(),
+	///         "client_secret".to_string(),
+	///         "https://example.com/callback".to_string(),
+	///     )
+	/// };
+	/// assert!(config.scopes.is_empty());
+	/// ```
+	///
+	/// `GitHubProvider` reads only the public profile email from `/user`, so
+	/// `StandardClaims::email` is `None` when the user keeps it private, and
+	/// `email_verified` is always `None`.
 	pub fn github(client_id: String, client_secret: String, redirect_uri: String) -> Self {
 		Self {
 			name: "github".to_string(),
