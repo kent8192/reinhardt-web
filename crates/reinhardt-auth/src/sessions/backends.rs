@@ -64,7 +64,9 @@ pub mod cookie;
 pub mod jwt;
 
 // Re-export commonly used backends
-pub use cache::{CacheSessionBackend, InMemorySessionBackend, SessionBackend, SessionError};
+pub use cache::{
+	AtomicSessionBackend, CacheSessionBackend, InMemorySessionBackend, SessionBackend, SessionError,
+};
 
 #[cfg(feature = "database")]
 pub use database::DatabaseSessionBackend;

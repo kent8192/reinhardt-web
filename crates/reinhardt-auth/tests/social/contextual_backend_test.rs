@@ -1,9 +1,12 @@
 //! Context-aware social authentication regression tests.
 
 use async_trait::async_trait;
+use reinhardt_auth::sessions::backends::InMemorySessionBackend;
+use reinhardt_auth::social::flow::SessionStateStore;
 use reinhardt_auth::social::{
 	OAuthProvider, SocialAuthBackend, SocialAuthError, StandardClaims, TokenResponse,
 };
+use rstest::rstest;
 use std::collections::HashMap;
 use std::sync::{
 	Arc,
@@ -287,4 +290,93 @@ async fn legacy_callback_still_succeeds() {
 	// Assert
 	assert_eq!(result.token_response.access_token, "access-token");
 	assert_eq!(exchange_calls.load(Ordering::SeqCst), 1);
+}
+
+/// Builds two backends that share one session store, as two replicas would.
+fn session_store_replicas(
+	exchange_calls: &Arc<AtomicUsize>,
+) -> (SocialAuthBackend, SocialAuthBackend) {
+	let sessions = InMemorySessionBackend::new();
+	let replica = |sessions: InMemorySessionBackend| {
+		let mut backend =
+			SocialAuthBackend::with_state_store(Arc::new(SessionStateStore::new(sessions)));
+		backend.register_provider(Arc::new(TestProvider::new(
+			"github",
+			exchange_calls.clone(),
+		)));
+		backend
+	};
+	(replica(sessions.clone()), replica(sessions))
+}
+
+#[rstest]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn session_store_contextual_callback_succeeds_once_across_replicas() {
+	// Arrange
+	let exchange_calls = Arc::new(AtomicUsize::new(0));
+	let (first, second) = session_store_replicas(&exchange_calls);
+	let authorization = first
+		.begin_auth_with_context("github", None, None, b"browser-a", b"link-user-42".to_vec())
+		.await
+		.unwrap();
+
+	// Act
+	let (left, right) = tokio::join!(
+		first.handle_callback_with_context(
+			"github",
+			"provider-code",
+			&authorization.state,
+			b"browser-a",
+		),
+		second.handle_callback_with_context(
+			"github",
+			"provider-code",
+			&authorization.state,
+			b"browser-a",
+		),
+	);
+
+	// Assert
+	let contexts: Vec<Vec<u8>> = [left, right]
+		.into_iter()
+		.filter_map(Result::ok)
+		.map(|result| result.context)
+		.collect();
+	assert_eq!(contexts, vec![b"link-user-42".to_vec()]);
+	assert_eq!(exchange_calls.load(Ordering::SeqCst), 1);
+}
+
+#[rstest]
+#[tokio::test]
+async fn session_store_contextual_callback_rejects_binding_mismatch_across_replicas() {
+	// Arrange
+	let exchange_calls = Arc::new(AtomicUsize::new(0));
+	let (first, second) = session_store_replicas(&exchange_calls);
+	let authorization = first
+		.begin_auth_with_context("github", None, None, b"browser-a", Vec::new())
+		.await
+		.unwrap();
+
+	// Act
+	let mismatched = second
+		.handle_callback_with_context(
+			"github",
+			"provider-code",
+			&authorization.state,
+			b"browser-b",
+		)
+		.await;
+	let retry = first
+		.handle_callback_with_context(
+			"github",
+			"provider-code",
+			&authorization.state,
+			b"browser-a",
+		)
+		.await;
+
+	// Assert
+	assert!(matches!(mismatched, Err(SocialAuthError::InvalidState)));
+	assert!(matches!(retry, Err(SocialAuthError::InvalidState)));
+	assert_eq!(exchange_calls.load(Ordering::SeqCst), 0);
 }
