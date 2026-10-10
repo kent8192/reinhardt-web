@@ -1087,7 +1087,7 @@ async fn postgres_state_is_shared_and_single_use_across_instances() {
 		)
 		.await
 		.unwrap();
-	assert_eq!(applied.applied.len(), 3);
+	assert_eq!(applied.applied.len(), 4);
 	// The published migration identities remain applied after the SQL representation changes.
 	let repeated = executor
 		.apply_migrations(

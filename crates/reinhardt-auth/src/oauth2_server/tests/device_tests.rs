@@ -1363,7 +1363,7 @@ fn persisted_registration_without_device_code_still_deserializes() {
 #[cfg(feature = "database")]
 #[rstest]
 #[tokio::test]
-async fn migrations_apply_and_roll_back_both_steps() {
+async fn migrations_apply_and_roll_back_every_step() {
 	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::DatabaseMigrationExecutor;
 	use testcontainers::runners::AsyncRunner;
@@ -1394,12 +1394,24 @@ async fn migrations_apply_and_roll_back_both_steps() {
 	// Act
 	let applied = executor.apply_migrations(&migrations).await.unwrap();
 	let repeated = executor.apply_migrations(&migrations).await.unwrap();
-	let both_tables = (
+	let all_tables = (
 		exists("oauth_server_tokens").await,
 		exists("oauth_server_device_authorizations").await,
+		exists("oauth_server_token_families").await,
+		exists("oauth_server_refresh_tokens").await,
+	);
+	let rolled_back_third = executor
+		.rollback_migrations(&migrations[2..])
+		.await
+		.unwrap();
+	let after_third = (
+		exists("oauth_server_tokens").await,
+		exists("oauth_server_device_authorizations").await,
+		exists("oauth_server_token_families").await,
+		exists("oauth_server_refresh_tokens").await,
 	);
 	let rolled_back_second = executor
-		.rollback_migrations(&migrations[1..])
+		.rollback_migrations(&migrations[1..2])
 		.await
 		.unwrap();
 	let after_second = (
@@ -1413,7 +1425,7 @@ async fn migrations_apply_and_roll_back_both_steps() {
 	let after_first = exists("oauth_server_tokens").await;
 
 	// Assert
-	assert_eq!(migrations.len(), 2);
+	assert_eq!(migrations.len(), 3);
 	assert_eq!(migrations[0].name, "0001_oauth_server");
 	assert!(migrations[0].dependencies.is_empty());
 	assert_eq!(
@@ -1424,9 +1436,19 @@ async fn migrations_apply_and_roll_back_both_steps() {
 		migrations[1].dependencies,
 		vec![("oauth_server".to_owned(), "0001_oauth_server".to_owned())]
 	);
-	assert_eq!(applied.applied.len(), 2);
+	assert_eq!(migrations[2].name, "0003_oauth_server_refresh_tokens");
+	assert_eq!(
+		migrations[2].dependencies,
+		vec![(
+			"oauth_server".to_owned(),
+			"0002_oauth_server_device_authorizations".to_owned()
+		)]
+	);
+	assert_eq!(applied.applied.len(), 3);
 	assert!(repeated.applied.is_empty());
-	assert_eq!(both_tables, (true, true));
+	assert_eq!(all_tables, (true, true, true, true));
+	assert_eq!(rolled_back_third.applied.len(), 1);
+	assert_eq!(after_third, (true, true, false, false));
 	assert_eq!(rolled_back_second.applied.len(), 1);
 	assert_eq!(after_second, (true, false));
 	assert_eq!(rolled_back_first.applied.len(), 1);

@@ -42,6 +42,10 @@ pub struct ClientRegistration {
 	pub oidc_enabled: bool,
 	/// Whether the code grant is enabled.
 	pub authorization_code: bool,
+	/// Whether the code grant also issues refresh tokens. Requires `authorization_code`,
+	/// and the server must enable `OAuthServerConfig::refresh_tokens`.
+	#[serde(default)]
+	pub refresh_token: bool,
 	/// Whether the client credentials grant is enabled.
 	pub client_credentials: bool,
 	/// Whether the RFC 8628 Device Authorization Grant is enabled.
@@ -87,6 +91,7 @@ impl ClientRegistration {
 			previous_secret_expires_at: None,
 			oidc_enabled: false,
 			authorization_code: false,
+			refresh_token: false,
 			client_credentials: false,
 			device_code: false,
 			redirect_uris: Vec::new(),
@@ -489,6 +494,109 @@ pub struct StoredToken {
 	pub revoked: bool,
 	/// Authorization-code digest if delegated.
 	pub code_digest: Option<String>,
+	/// Token family that issued this access token, if it came from a refresh-enabled grant.
+	#[serde(default)]
+	pub family_id: Option<String>,
+}
+
+/// One token family: the refresh-token chain started by a single code redemption
+/// and every access token issued from it.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct StoredTokenFamily {
+	/// Random family identifier.
+	pub family_id: String,
+	/// Client the family was issued to.
+	pub client_id: String,
+	/// Delegating user.
+	pub user_id: String,
+	/// Scopes of the original grant; refreshes may narrow but never widen them.
+	pub scopes: Vec<String>,
+	/// Single resource audience of the original grant.
+	pub audience: String,
+	/// Digest of the authorization code that started the family.
+	pub code_digest: String,
+	/// UNIX creation time.
+	pub created_at: i64,
+	/// UNIX absolute expiry; fixed at creation and never extended by rotation.
+	pub absolute_expires_at: i64,
+	/// Whether the whole family has been revoked.
+	pub revoked: bool,
+}
+
+/// Persisted refresh token, stored only under a digest.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct StoredRefreshToken {
+	/// SHA-256 refresh-token digest.
+	pub digest: String,
+	/// Owning token family.
+	pub family_id: String,
+	/// Digest of the refresh token this one replaced, if any.
+	pub parent_digest: Option<String>,
+	/// UNIX issuance time.
+	pub issued_at: i64,
+	/// UNIX idle expiry; never later than the family's absolute expiry.
+	pub idle_expires_at: i64,
+	/// Whether this token has already been exchanged; presenting it again is reuse.
+	pub rotated: bool,
+}
+
+/// Atomic code redemption that also starts a token family.
+#[derive(Debug)]
+pub struct CodeRedemptionWithRefresh<'a> {
+	/// Code bindings and access token; `token.family_id` names `family`.
+	pub redemption: CodeRedemptionRequest<'a>,
+	/// New family, keyed to the redeemed code digest.
+	pub family: StoredTokenFamily,
+	/// First refresh token of the family.
+	pub refresh_token: StoredRefreshToken,
+}
+
+/// Result of inspecting a presented refresh token.
+// Allowed: the value is returned once per refresh and destructured immediately, so
+// boxing the active records would only add a heap allocation to every refresh.
+#[allow(clippy::large_enum_variant)]
+#[derive(Clone, Debug)]
+pub enum RefreshInspection {
+	/// Unrotated, unexpired token of a live family owned by the client.
+	Active(StoredRefreshToken, StoredTokenFamily),
+	/// An already-rotated token of a live family owned by the client was presented;
+	/// the store revoked the family and its access tokens atomically.
+	Reused {
+		/// Revoked family identifier, for audit logging.
+		family_id: String,
+	},
+	/// Missing, expired, revoked, or owned by another client.
+	Invalid,
+}
+
+/// Atomic rotation of an inspected refresh token.
+#[derive(Debug)]
+pub struct RefreshRotationRequest<'a> {
+	/// Digest of the presented refresh token.
+	pub presented_digest: &'a str,
+	/// Authenticated client identifier.
+	pub client_id: &'a str,
+	/// Current UNIX time, rechecked against idle and absolute expiry under lock.
+	pub now: i64,
+	/// Replacement refresh token; its family and parent must match the presented token.
+	pub replacement: StoredRefreshToken,
+	/// Access token issued by this refresh; `family_id` names the same family.
+	pub token: StoredToken,
+}
+
+/// Result of atomic refresh-token rotation.
+#[derive(Clone, Debug)]
+pub enum RefreshRotation {
+	/// Presented token marked rotated; replacement and access token stored.
+	Rotated,
+	/// Presented token was already rotated (e.g. a concurrent refresh won);
+	/// the family was revoked atomically.
+	Reused {
+		/// Revoked family identifier, for audit logging.
+		family_id: String,
+	},
+	/// Presented token became invalid; nothing was written.
+	Invalid,
 }
 
 /// Atomic storage contract for a multi-instance OAuth server.
@@ -509,8 +617,8 @@ pub trait OAuthServerStore: Send + Sync {
 		replacement: ClientRegistration,
 	) -> Result<bool, String>;
 	/// Atomically disable a client and invalidate its pending requests, codes, Device
-	/// Authorizations, and tokens.
-	/// Returns the number of newly revoked tokens, or none for a missing registration.
+	/// Authorizations, tokens, and token families. Returns the number of newly revoked
+	/// access tokens, or none for a missing registration.
 	async fn disable_client(&self, client_id: &str) -> Result<Option<u64>, String>;
 	/// Get a client registration.
 	async fn client(&self, client_id: &str) -> Result<Option<ClientRegistration>, String>;
@@ -586,13 +694,15 @@ pub trait OAuthServerStore: Send + Sync {
 	/// Read code metadata before constructing a token; redemption rechecks it under lock.
 	async fn code(&self, digest: &str) -> Result<Option<StoredCode>, String>;
 	/// Inspect bindings under the code lock without consuming an unused code.
-	/// A correctly bound replay atomically revokes linked tokens, even if expired.
+	/// A correctly bound replay atomically revokes linked tokens and the token family
+	/// started by the code, even if expired.
 	/// Returns none for missing, mismatched, expired, or replayed codes.
 	async fn inspect_code_for_exchange(
 		&self,
 		request: CodeInspection<'_>,
 	) -> Result<Option<StoredCode>, String>;
 	/// Atomically redeem a bound code and save its token, rolling both back on failure.
+	/// A replay also revokes the token family started by the code.
 	async fn redeem_code_and_store_token(
 		&self,
 		request: CodeRedemptionRequest<'_>,
@@ -604,12 +714,50 @@ pub trait OAuthServerStore: Send + Sync {
 	/// Revoke a token belonging to the specified client.
 	async fn revoke_token(&self, digest: &str, client_id: &str) -> Result<(), String>;
 	/// Invalidate outstanding user codes and approved Device Authorizations and revoke
-	/// tokens atomically. Returns newly revoked token count.
+	/// tokens atomically, including the user's token families. Returns the newly revoked
+	/// access-token count.
 	async fn revoke_user(&self, user_id: &str) -> Result<u64, String>;
-	/// Invalidate a retired user's codes, approved Device Authorizations, and tokens together.
+	/// Invalidate a retired user's codes, approved Device Authorizations, tokens, and token
+	/// families together.
 	async fn retire_user(&self, user_id: &str) -> Result<(), String>;
-	/// Revoke all client tokens (administrative operation).
+	/// Revoke all client tokens and token families (administrative operation).
+	/// Returns the newly revoked access-token count.
 	async fn revoke_client(&self, client_id: &str) -> Result<u64, String>;
+	/// Atomically redeem a bound code, store its access token, and start a token family.
+	/// Replay and invalid outcomes match `redeem_code_and_store_token` and write nothing new.
+	/// Stores without refresh-token support must keep this default error.
+	async fn redeem_code_and_store_tokens(
+		&self,
+		_request: CodeRedemptionWithRefresh<'_>,
+	) -> Result<CodeRedemption, String> {
+		Err("store does not support refresh tokens".to_owned())
+	}
+	/// Inspect a presented refresh token for the authenticated client without rotating it.
+	/// Presenting an already-rotated token of a live family owned by the client revokes
+	/// the family and its access tokens atomically and returns `Reused`.
+	async fn inspect_refresh_token(
+		&self,
+		_digest: &str,
+		_client_id: &str,
+		_now: i64,
+	) -> Result<RefreshInspection, String> {
+		Err("store does not support refresh tokens".to_owned())
+	}
+	/// Atomically mark the presented token rotated and store its replacement and access token.
+	/// Exactly one concurrent rotation of the same token returns `Rotated`; the others
+	/// observe the rotated token, revoke the family, and return `Reused`.
+	async fn rotate_refresh_token(
+		&self,
+		_request: RefreshRotationRequest<'_>,
+	) -> Result<RefreshRotation, String> {
+		Err("store does not support refresh tokens".to_owned())
+	}
+	/// Revoke the family of a refresh token (rotated or not) owned by the client,
+	/// together with its access tokens. Returns whether a matching family was found.
+	/// Stores that cannot create families hold none, so the default finds nothing.
+	async fn revoke_refresh_family(&self, _digest: &str, _client_id: &str) -> Result<bool, String> {
+		Ok(false)
+	}
 	/// Insert a Device Authorization unless its User Code digest collides with a live
 	/// record (or its identifiers are already taken). Returns false on collision so the
 	/// caller can generate a fresh User Code. Expired records do not block reuse.
@@ -685,7 +833,135 @@ struct MemoryState {
 	pending: HashMap<String, PendingRecord>,
 	codes: HashMap<String, StoredCode>,
 	tokens: HashMap<String, StoredToken>,
+	families: HashMap<String, StoredTokenFamily>,
+	refresh_tokens: HashMap<String, StoredRefreshToken>,
 	device_authorizations: HashMap<String, StoredDeviceAuthorization>,
+}
+impl MemoryState {
+	/// Revoke a family and every access token issued from it.
+	fn revoke_family(&mut self, family_id: &str) {
+		if let Some(family) = self.families.get_mut(family_id) {
+			family.revoked = true;
+		}
+		for token in self
+			.tokens
+			.values_mut()
+			.filter(|token| token.family_id.as_deref() == Some(family_id))
+		{
+			token.revoked = true;
+		}
+	}
+	/// Revoke every family started by the code, together with its access tokens.
+	fn revoke_families_of_code(&mut self, code_digest: &str) {
+		let ids: Vec<String> = self
+			.families
+			.values()
+			.filter(|family| family.code_digest == code_digest)
+			.map(|family| family.family_id.clone())
+			.collect();
+		for id in ids {
+			self.revoke_family(&id);
+		}
+	}
+	/// Mark matching families revoked without touching access tokens, which the caller
+	/// revokes (and counts) through its own principal or client filter.
+	fn mark_families_revoked(&mut self, matches: impl Fn(&StoredTokenFamily) -> bool) {
+		for family in self.families.values_mut().filter(|family| matches(family)) {
+			family.revoked = true;
+		}
+	}
+	/// Resolve a presented refresh token to its family and apply the shared state rules.
+	/// Reuse of a rotated token revokes the family before reporting.
+	fn check_refresh_token(
+		&mut self,
+		digest: &str,
+		client_id: &str,
+		now: i64,
+	) -> Result<RefreshInspection, String> {
+		let Some(token) = self.refresh_tokens.get(digest).cloned() else {
+			return Ok(RefreshInspection::Invalid);
+		};
+		let Some(family) = self.families.get(&token.family_id).cloned() else {
+			return Ok(RefreshInspection::Invalid);
+		};
+		if family.revoked || family.absolute_expires_at <= now || family.client_id != client_id {
+			return Ok(RefreshInspection::Invalid);
+		}
+		if token.rotated {
+			self.revoke_family(&family.family_id);
+			return Ok(RefreshInspection::Reused {
+				family_id: family.family_id,
+			});
+		}
+		if token.idle_expires_at <= now {
+			return Ok(RefreshInspection::Invalid);
+		}
+		Ok(RefreshInspection::Active(token, family))
+	}
+	fn redeem(
+		&mut self,
+		request: CodeRedemptionRequest<'_>,
+		family: Option<(StoredTokenFamily, StoredRefreshToken)>,
+	) -> Result<CodeRedemption, String> {
+		let CodeRedemptionRequest {
+			digest,
+			client_id,
+			redirect_uri,
+			challenge,
+			resource,
+			expect_oidc,
+			now,
+			token,
+		} = request;
+		let token_collision = self.tokens.contains_key(&token.digest);
+		let Some(code) = self.codes.get_mut(digest) else {
+			return Ok(CodeRedemption::Invalid);
+		};
+		if code.client_id != client_id
+			|| code.redirect_uri != redirect_uri
+			|| code.challenge != challenge
+			|| resource.is_some_and(|r| r != code.audience)
+			|| code.oidc != expect_oidc
+		{
+			return Ok(CodeRedemption::Invalid);
+		}
+		if code.redeemed {
+			code.replayed = true;
+			for linked in self
+				.tokens
+				.values_mut()
+				.filter(|t| t.code_digest.as_deref() == Some(digest))
+			{
+				linked.revoked = true;
+			}
+			self.revoke_families_of_code(digest);
+			return Ok(CodeRedemption::Replay);
+		}
+		if code.expires_at <= now || !token_matches_code(&token, code) {
+			return Ok(CodeRedemption::Invalid);
+		}
+		if token_collision {
+			return Err("token digest collision".to_owned());
+		}
+		if let Some((family, refresh)) = &family {
+			if !family_matches_code(family, refresh, &token, code) {
+				return Err("token family does not match the redeemed code".to_owned());
+			}
+			if self.families.contains_key(&family.family_id)
+				|| self.refresh_tokens.contains_key(&refresh.digest)
+			{
+				return Err("token family digest collision".to_owned());
+			}
+		}
+		code.redeemed = true;
+		let redeemed = code.clone();
+		if let Some((family, refresh)) = family {
+			self.families.insert(family.family_id.clone(), family);
+			self.refresh_tokens.insert(refresh.digest.clone(), refresh);
+		}
+		self.tokens.insert(token.digest.clone(), token);
+		Ok(CodeRedemption::Valid(redeemed))
+	}
 }
 impl MemoryOAuthStore {
 	/// Create an empty in-memory store.
@@ -757,6 +1033,7 @@ impl OAuthServerStore for MemoryOAuthStore {
 			token.revoked = true;
 			count += 1;
 		}
+		state.mark_families_revoked(|family| family.client_id == id);
 		Ok(Some(count))
 	}
 	async fn client(&self, id: &str) -> Result<Option<ClientRegistration>, String> {
@@ -927,6 +1204,7 @@ impl OAuthServerStore for MemoryOAuthStore {
 			{
 				token.revoked = true;
 			}
+			state.revoke_families_of_code(request.digest);
 			return Ok(None);
 		}
 		Ok((code.expires_at > request.now).then(|| code.clone()))
@@ -935,50 +1213,21 @@ impl OAuthServerStore for MemoryOAuthStore {
 		&self,
 		request: CodeRedemptionRequest<'_>,
 	) -> Result<CodeRedemption, String> {
-		let CodeRedemptionRequest {
-			digest,
-			client_id,
-			redirect_uri,
-			challenge,
-			resource,
-			expect_oidc,
-			now,
-			token,
+		self.state.lock().await.redeem(request, None)
+	}
+	async fn redeem_code_and_store_tokens(
+		&self,
+		request: CodeRedemptionWithRefresh<'_>,
+	) -> Result<CodeRedemption, String> {
+		let CodeRedemptionWithRefresh {
+			redemption,
+			family,
+			refresh_token,
 		} = request;
-		let mut state = self.state.lock().await;
-		let token_collision = state.tokens.contains_key(&token.digest);
-		let Some(code) = state.codes.get_mut(digest) else {
-			return Ok(CodeRedemption::Invalid);
-		};
-		if code.client_id != client_id
-			|| code.redirect_uri != redirect_uri
-			|| code.challenge != challenge
-			|| resource.is_some_and(|r| r != code.audience)
-			|| code.oidc != expect_oidc
-		{
-			return Ok(CodeRedemption::Invalid);
-		}
-		if code.redeemed {
-			code.replayed = true;
-			for linked in state
-				.tokens
-				.values_mut()
-				.filter(|t| t.code_digest.as_deref() == Some(digest))
-			{
-				linked.revoked = true;
-			}
-			return Ok(CodeRedemption::Replay);
-		}
-		if code.expires_at <= now || !token_matches_code(&token, code) {
-			return Ok(CodeRedemption::Invalid);
-		}
-		if token_collision {
-			return Err("token digest collision".to_owned());
-		}
-		code.redeemed = true;
-		let redeemed = code.clone();
-		state.tokens.insert(token.digest.clone(), token);
-		Ok(CodeRedemption::Valid(redeemed))
+		self.state
+			.lock()
+			.await
+			.redeem(redemption, Some((family, refresh_token)))
 	}
 	async fn put_token(&self, token: StoredToken) -> Result<(), String> {
 		if token.code_digest.is_some() {
@@ -1017,6 +1266,7 @@ impl OAuthServerStore for MemoryOAuthStore {
 				count += 1;
 			}
 		}
+		state.mark_families_revoked(|family| family.user_id == user_id);
 		Ok(count)
 	}
 	async fn retire_user(&self, user_id: &str) -> Result<(), String> {
@@ -1037,6 +1287,7 @@ impl OAuthServerStore for MemoryOAuthStore {
 		{
 			token.revoked = true;
 		}
+		state.mark_families_revoked(|family| family.user_id == user_id);
 		Ok(())
 	}
 	async fn revoke_client(&self, client_id: &str) -> Result<u64, String> {
@@ -1048,7 +1299,83 @@ impl OAuthServerStore for MemoryOAuthStore {
 				count += 1;
 			}
 		}
+		state.mark_families_revoked(|family| family.client_id == client_id);
 		Ok(count)
+	}
+	async fn inspect_refresh_token(
+		&self,
+		digest: &str,
+		client_id: &str,
+		now: i64,
+	) -> Result<RefreshInspection, String> {
+		self.state
+			.lock()
+			.await
+			.check_refresh_token(digest, client_id, now)
+	}
+	async fn rotate_refresh_token(
+		&self,
+		request: RefreshRotationRequest<'_>,
+	) -> Result<RefreshRotation, String> {
+		let RefreshRotationRequest {
+			presented_digest,
+			client_id,
+			now,
+			replacement,
+			token,
+		} = request;
+		let mut state = self.state.lock().await;
+		let Some(presented) = state.refresh_tokens.get(presented_digest) else {
+			return Ok(RefreshRotation::Invalid);
+		};
+		if replacement.family_id != presented.family_id
+			|| token.family_id.as_deref() != Some(presented.family_id.as_str())
+			|| replacement.parent_digest.as_deref() != Some(presented_digest)
+			|| token.client_id != client_id
+			|| token.revoked
+			|| replacement.rotated
+		{
+			return Err("replacement tokens do not match the presented refresh token".to_owned());
+		}
+		match state.check_refresh_token(presented_digest, client_id, now)? {
+			RefreshInspection::Active(..) => {}
+			RefreshInspection::Reused { family_id } => {
+				return Ok(RefreshRotation::Reused { family_id });
+			}
+			RefreshInspection::Invalid => return Ok(RefreshRotation::Invalid),
+		}
+		if state.refresh_tokens.contains_key(&replacement.digest)
+			|| state.tokens.contains_key(&token.digest)
+		{
+			return Err("token digest collision".to_owned());
+		}
+		if let Some(presented) = state.refresh_tokens.get_mut(presented_digest) {
+			presented.rotated = true;
+		}
+		state
+			.refresh_tokens
+			.insert(replacement.digest.clone(), replacement);
+		state.tokens.insert(token.digest.clone(), token);
+		Ok(RefreshRotation::Rotated)
+	}
+	async fn revoke_refresh_family(&self, digest: &str, client_id: &str) -> Result<bool, String> {
+		let mut state = self.state.lock().await;
+		let Some(family_id) = state
+			.refresh_tokens
+			.get(digest)
+			.map(|token| token.family_id.clone())
+		else {
+			return Ok(false);
+		};
+		if state
+			.families
+			.get(&family_id)
+			.is_none_or(|family| family.client_id != client_id)
+		{
+			return Ok(false);
+		}
+		state.revoke_family(&family_id);
+		Ok(true)
 	}
 	async fn insert_device_authorization(
 		&self,
@@ -1181,6 +1508,26 @@ impl OAuthServerStore for MemoryOAuthStore {
 		}
 		Ok(outcome)
 	}
+}
+
+/// Whether a family, its first refresh token, and the first access token describe
+/// exactly the grant carried by the redeemed code.
+fn family_matches_code(
+	family: &StoredTokenFamily,
+	refresh: &StoredRefreshToken,
+	token: &StoredToken,
+	code: &StoredCode,
+) -> bool {
+	!family.revoked
+		&& family.code_digest == code.digest
+		&& family.client_id == code.client_id
+		&& family.user_id == code.user_id
+		&& family.scopes == code.scopes
+		&& family.audience == code.audience
+		&& token.family_id.as_deref() == Some(family.family_id.as_str())
+		&& refresh.family_id == family.family_id
+		&& refresh.parent_digest.is_none()
+		&& !refresh.rotated
 }
 
 fn invalidate_user_device_authorizations(state: &mut MemoryState, user_id: &str) {

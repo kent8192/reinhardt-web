@@ -36,14 +36,16 @@ pub use postgres::PostgresOAuthStore;
 pub use protocol::{
 	AuthorizationDecision, AuthorizationRequest, DeviceAuthorizationConfig,
 	DeviceAuthorizationResponse, IssuedToken, OAuthError, OAuthRateLimiter, OAuthServer,
-	OAuthServerConfig, PendingAuthorization, PendingDeviceAuthorization, SharedOAuthRateLimiter,
-	TokenInfo, TokenPrincipal,
+	OAuthServerConfig, PendingAuthorization, PendingDeviceAuthorization, RefreshTokenPolicy,
+	SharedOAuthRateLimiter, TokenInfo, TokenPrincipal,
 };
 pub use store::{
 	AuthorizationCommit, ClientKind, ClientRegistration, CodeInspection, CodeRedemption,
-	CodeRedemptionRequest, DeviceApproval, DeviceAuthorizationStatus, DeviceDecisionCommit,
-	DevicePoll, DeviceRedemption, DeviceRedemptionRequest, MemoryOAuthStore, OAuthServerStore,
-	PendingRecord, ResourceRegistration, StoredCode, StoredDeviceAuthorization, StoredToken,
+	CodeRedemptionRequest, CodeRedemptionWithRefresh, DeviceApproval, DeviceAuthorizationStatus,
+	DeviceDecisionCommit, DevicePoll, DeviceRedemption, DeviceRedemptionRequest, MemoryOAuthStore,
+	OAuthServerStore, PendingRecord, RefreshInspection, RefreshRotation, RefreshRotationRequest,
+	ResourceRegistration, StoredCode, StoredDeviceAuthorization, StoredRefreshToken, StoredToken,
+	StoredTokenFamily,
 };
 
 #[cfg(test)]
