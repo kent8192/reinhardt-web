@@ -316,16 +316,24 @@ pub fn http_client(
 /// HTTP client fixture for streaming responses (SSE, long-poll, chunked bodies)
 ///
 /// Unlike [`http_client`], this client sets **no total request deadline**.
-/// It bounds only the two phases that cannot legitimately take long:
+/// It bounds connection setup and idle time instead:
 ///
 /// - `connect_timeout` limits establishing the connection.
-/// - `read_timeout` is an *idle* limit applied to each read of the response
-///   body. It resets every time data arrives, so a stream that keeps emitting
-///   events can stay open indefinitely, while a stalled stream still fails
-///   after `read_timeout` of silence instead of hanging the test.
+/// - `read_timeout` is an *idle* limit. It applies while waiting for the
+///   response headers (time to first byte) and to each subsequent read of the
+///   response body, and it restarts every time data arrives. A stream that
+///   keeps emitting events can therefore stay open indefinitely, while a
+///   stalled stream still fails after `read_timeout` of silence instead of
+///   hanging the test.
 ///
 /// The defaults are a 10 second connect timeout and a 30 second read timeout.
 /// Override them with rstest's `#[with(connect_timeout, read_timeout)]`.
+///
+/// Because `read_timeout` also covers the wait for the response headers, an
+/// endpoint that holds the request open without sending anything for longer
+/// than `read_timeout` (a long-poll that answers only once an event happens)
+/// fails with a timeout error. Raise `read_timeout` above the longest expected
+/// silence for such tests, as shown in the long-poll example below.
 ///
 /// # Examples
 ///
@@ -347,7 +355,7 @@ pub fn http_client(
 /// }
 /// ```
 ///
-/// Custom phase timeouts:
+/// Custom phase timeouts for a stream with long silent gaps:
 ///
 /// ```no_run
 /// use reinhardt_testkit::fixtures::*;
@@ -362,6 +370,29 @@ pub fn http_client(
 /// ) {
 ///     let response = streaming_http_client
 ///         .get("http://localhost:8080/events")
+///         .send()
+///         .await
+///         .unwrap();
+///     assert_eq!(response.status(), 200);
+/// }
+/// ```
+///
+/// A long-poll endpoint that may hold the request for up to a minute before
+/// sending the response headers needs a `read_timeout` above that wait:
+///
+/// ```no_run
+/// use reinhardt_testkit::fixtures::*;
+/// use rstest::*;
+/// use std::time::Duration;
+///
+/// #[rstest]
+/// #[tokio::test]
+/// async fn test_long_poll(
+///     #[with(Duration::from_secs(10), Duration::from_secs(120))]
+///     streaming_http_client: reqwest::Client,
+/// ) {
+///     let response = streaming_http_client
+///         .get("http://localhost:8080/poll")
 ///         .send()
 ///         .await
 ///         .unwrap();
