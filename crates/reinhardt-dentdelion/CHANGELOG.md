@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Enforce one aggregate linear-memory budget across a WASM store and reject shared memories that bypass limiter callbacks.
+
 - Cancel asynchronous WASM host imports when the whole lifecycle invocation expires.
 
 - Include result conversion in the JavaScript cooperative deadline.

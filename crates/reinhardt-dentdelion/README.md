@@ -330,8 +330,9 @@ for path in discovered {
 ### Limitations
 
 - **Models capability is NOT supported** for WASM plugins (requires compile-time integration)
-- Linear-memory limit: 128MB per memory by default (enforced by Wasmtime's
-  store limiter; configurable via `WasmRuntimeConfig`)
+- Aggregate linear-memory limit: 128MB per store by default (configurable via
+  `WasmRuntimeConfig`). Initial allocations and growth across memories/instances
+  share the budget; unsupported shared memories are rejected.
 - Execution timeout: 30 seconds by default (configurable). A wall-clock bound
   covers each complete lifecycle invocation, including asynchronous host imports;
   Wasmtime epoch interruption also stops guest CPU execution.

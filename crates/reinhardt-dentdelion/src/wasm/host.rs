@@ -48,7 +48,7 @@ use super::ts_runtime::SharedTsRuntime;
 use reinhardt_db::backends::connection::DatabaseConnection;
 
 #[cfg(feature = "wasm")]
-use wasmtime::StoreLimits;
+use super::runtime::StoreMemoryLimits;
 #[cfg(feature = "wasm")]
 use wasmtime::component::ResourceTable;
 #[cfg(feature = "wasm")]
@@ -233,7 +233,7 @@ pub struct HostState {
 	resource_table: parking_lot::Mutex<ResourceTable>,
 	/// Per-store linear-memory limit, installed by `WasmRuntime::create_store`.
 	#[cfg(feature = "wasm")]
-	pub(super) store_limits: Option<StoreLimits>,
+	pub(super) store_limits: Option<StoreMemoryLimits>,
 }
 
 impl HostState {

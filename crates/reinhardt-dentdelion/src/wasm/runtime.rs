@@ -32,10 +32,82 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use wasmtime::component::{Component, HasSelf, Linker};
-use wasmtime::{CallHook, Config, Engine, Store, StoreLimitsBuilder};
+use wasmtime::{CallHook, Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::p2;
 
 use super::host::HostState;
+
+/// Aggregate linear-memory accounting retained for the lifetime of one store.
+/// Wasmtime invokes the limiter before each non-shared memory allocation/growth.
+pub(super) struct StoreMemoryLimits {
+	limits: StoreLimits,
+	budget: usize,
+	allocated: usize,
+	last_growth: usize,
+}
+
+impl StoreMemoryLimits {
+	fn new(budget: usize) -> Self {
+		Self {
+			limits: StoreLimitsBuilder::new()
+				.memory_size(budget)
+				.trap_on_grow_failure(true)
+				.build(),
+			budget,
+			allocated: 0,
+			last_growth: 0,
+		}
+	}
+}
+
+impl ResourceLimiter for StoreMemoryLimits {
+	fn memory_growing(
+		&mut self,
+		current: usize,
+		desired: usize,
+		maximum: Option<usize>,
+	) -> anyhow::Result<bool> {
+		self.last_growth = 0;
+		if !self.limits.memory_growing(current, desired, maximum)? {
+			return Ok(false);
+		}
+		let growth = desired.saturating_sub(current);
+		if growth > self.budget.saturating_sub(self.allocated) {
+			anyhow::bail!("WASM store linear-memory budget exceeded");
+		}
+		self.allocated += growth;
+		self.last_growth = growth;
+		Ok(true)
+	}
+
+	fn memory_grow_failed(&mut self, error: anyhow::Error) -> anyhow::Result<()> {
+		// A permitted allocation can still fail in the OS; release its reservation.
+		self.allocated -= self.last_growth;
+		self.last_growth = 0;
+		self.limits.memory_grow_failed(error)
+	}
+
+	fn table_growing(
+		&mut self,
+		current: usize,
+		desired: usize,
+		maximum: Option<usize>,
+	) -> anyhow::Result<bool> {
+		self.limits.table_growing(current, desired, maximum)
+	}
+	fn table_grow_failed(&mut self, error: anyhow::Error) -> anyhow::Result<()> {
+		self.limits.table_grow_failed(error)
+	}
+	fn instances(&self) -> usize {
+		self.limits.instances()
+	}
+	fn tables(&self) -> usize {
+		self.limits.tables()
+	}
+	fn memories(&self) -> usize {
+		self.limits.memories()
+	}
+}
 
 /// Default memory limit in megabytes.
 pub(super) const DEFAULT_MEMORY_LIMIT_MB: u32 = 128;
@@ -46,7 +118,7 @@ pub(super) const DEFAULT_TIMEOUT_SECS: u32 = 30;
 /// Configuration for the WASM runtime.
 #[derive(Debug, Clone)]
 pub struct WasmRuntimeConfig {
-	/// Memory limit in megabytes.
+	/// Aggregate linear-memory limit in megabytes for one store.
 	pub memory_limit_mb: u32,
 	/// Execution timeout.
 	pub timeout: Duration,
@@ -165,6 +237,8 @@ impl WasmRuntime {
 
 		// Enable Component Model
 		wasmtime_config.wasm_component_model(true);
+		// ResourceLimiter cannot account shared memories; guest threads are unsupported.
+		wasmtime_config.wasm_threads(false);
 		wasmtime_config.epoch_interruption(true);
 
 		// Create the engine
@@ -299,12 +373,9 @@ impl WasmRuntime {
 	///
 	/// * `host_state` - The host state for this store
 	pub fn create_store(&self, mut host_state: HostState) -> Store<HostState> {
-		host_state.store_limits = Some(
-			StoreLimitsBuilder::new()
-				.memory_size((self.config.memory_limit_mb as usize).saturating_mul(1024 * 1024))
-				.trap_on_grow_failure(true)
-				.build(),
-		);
+		host_state.store_limits = Some(StoreMemoryLimits::new(
+			(self.config.memory_limit_mb as usize).saturating_mul(1024 * 1024),
+		));
 		let mut store = Store::new(&self.engine, host_state);
 		store.limiter(|state| {
 			state
@@ -438,6 +509,99 @@ mod tests {
 		let result = runtime.load_component_from_bytes(&invalid_bytes);
 
 		assert!(matches!(result, Err(PluginError::InvalidWasmBinary)));
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn store_memory_budget_counts_all_memories_and_instances() {
+		// Arrange: a one-MiB store budget, with two distinct linear memories.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.memory_limit_mb(1)
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			r#"(module
+			(memory $a 1) (memory $b 1)
+			(func (export "grow_a") (result i32) i32.const 7 memory.grow $a)
+			(func (export "grow_b") (result i32) i32.const 7 memory.grow $b)
+			(func (export "grow_again") (result i32) i32.const 1 memory.grow $a)
+		)"#,
+		)
+		.unwrap();
+		let mut store = runtime.create_store(HostState::new("aggregate-memories"));
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+			.await
+			.unwrap();
+		let grow_a = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_a")
+			.unwrap();
+		let grow_b = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_b")
+			.unwrap();
+		let grow_again = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_again")
+			.unwrap();
+
+		// Act: each memory reaches half a MiB, exhausting the shared budget.
+		assert_eq!(grow_a.call_async(&mut store, ()).await.unwrap(), 1);
+		assert_eq!(grow_b.call_async(&mut store, ()).await.unwrap(), 1);
+
+		// Assert: a per-memory-valid growth still traps when the aggregate is full.
+		assert!(grow_again.call_async(&mut store, ()).await.is_err());
+		let another = wasmtime::Module::new(runtime.engine(), "(module (memory 1))").unwrap();
+		assert!(
+			wasmtime::Instance::new_async(&mut store, &another, &[])
+				.await
+				.is_err()
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn store_memory_budget_rejects_oversized_initial_multi_memory_allocation() {
+		// Arrange: individually valid one-MiB memories exceed the total budget together.
+		let runtime =
+			WasmRuntime::new(WasmRuntimeConfigBuilder::new().memory_limit_mb(1).build()).unwrap();
+		let module =
+			wasmtime::Module::new(runtime.engine(), "(module (memory 16) (memory 16))").unwrap();
+		let mut store = runtime.create_store(HostState::new("initial-memories"));
+
+		// Act / Assert: initialization is metered as well as later memory.grow.
+		assert!(
+			wasmtime::Instance::new_async(&mut store, &module, &[])
+				.await
+				.is_err()
+		);
+	}
+
+	#[rstest::rstest]
+	fn failed_memory_allocation_releases_its_budget_reservation() {
+		// Arrange: simulate an OS allocation failure after the limiter permits growth.
+		let mut limiter = StoreMemoryLimits::new(65536);
+		assert!(limiter.memory_growing(0, 65536, None).unwrap());
+
+		// Act: the Wasmtime failure callback rolls back the unfulfilled reservation.
+		assert!(
+			limiter
+				.memory_grow_failed(anyhow::anyhow!("allocation failed"))
+				.is_err()
+		);
+
+		// Assert: a later real allocation can still use the full budget.
+		assert!(limiter.memory_growing(0, 65536, None).unwrap());
+	}
+
+	#[rstest::rstest]
+	fn shared_memories_cannot_bypass_store_accounting() {
+		// Arrange: shared memories are outside Wasmtime's ResourceLimiter callbacks.
+		let runtime = WasmRuntime::new(WasmRuntimeConfig::default()).unwrap();
+
+		// Act / Assert: guest validation rejects them before any allocation.
+		assert!(wasmtime::Module::new(runtime.engine(), "(module (memory 1 2 shared))").is_err());
 	}
 
 	#[rstest::rstest]
