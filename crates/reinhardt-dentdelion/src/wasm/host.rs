@@ -180,6 +180,11 @@ fn is_private_ip(ip: &std::net::IpAddr) -> bool {
 	match ip {
 		IpAddr::V4(ipv4) => {
 			let o = ipv4.octets();
+			// IANA's globally reachable PCP/TURN anycast /32s override the /24 parent.
+			// https://www.iana.org/assignments/iana-ipv4-special-registry
+			if matches!(o, [192, 0, 0, 9 | 10]) {
+				return false;
+			}
 			// 127.0.0.0/8 - Loopback
 			ipv4.is_loopback()
 			// 10.0.0.0/8 - Private
@@ -2536,13 +2541,57 @@ mod tests {
 
 	#[rstest::rstest]
 	#[case("192.0.0.1", true)]
+	#[case("192.0.0.8", true)]
+	#[case("192.0.0.9", false)]
+	#[case("192.0.0.10", false)]
+	#[case("192.0.0.11", true)]
+	#[case("192.0.0.170", true)]
+	#[case("192.0.0.171", true)]
 	#[case("192.0.1.1", false)]
 	#[case("192.0.2.1", true)]
-	fn private_ipv4_filter_preserves_routable_adjacent_prefix(
+	fn private_ipv4_filter_preserves_anycast_exceptions_and_adjacent_prefix(
 		#[case] address: &str,
 		#[case] expected_private: bool,
 	) {
 		assert_eq!(is_private_ip(&address.parse().unwrap()), expected_private);
+	}
+
+	#[rstest::rstest]
+	#[case("192.0.0.8", false)]
+	#[case("192.0.0.9", true)]
+	#[case("192.0.0.10", true)]
+	#[case("192.0.0.11", false)]
+	#[case("192.0.0.170", false)]
+	#[case("192.0.0.171", false)]
+	#[tokio::test]
+	async fn plugin_urls_apply_narrow_anycast_exceptions_to_literals_and_dns(
+		#[case] address: &str,
+		#[case] allowed: bool,
+	) {
+		// Arrange: one literal and one DNS response represent the same destination.
+		let socket: std::net::SocketAddr = format!("{address}:443").parse().unwrap();
+		let literal = format!("https://{address}/component");
+
+		// Act: both paths run the production URL and resolved-address validation.
+		let direct = validate_url_for_ssrf(&literal).await;
+		let resolved = validate_url_for_ssrf_with_resolver(
+			"https://anycast.example/component",
+			|domain, port| async move {
+				assert_eq!(domain, "anycast.example");
+				assert_eq!(port, 443);
+				Ok(vec![socket])
+			},
+		)
+		.await;
+
+		// Assert: only the two /32 exceptions pass, without a network request.
+		if allowed {
+			assert_eq!(direct.unwrap(), vec![socket]);
+			assert_eq!(resolved.unwrap(), vec![socket]);
+		} else {
+			assert_eq!(direct.unwrap_err().code, 403);
+			assert_eq!(resolved.unwrap_err().code, 403);
+		}
 	}
 
 	#[rstest::rstest]

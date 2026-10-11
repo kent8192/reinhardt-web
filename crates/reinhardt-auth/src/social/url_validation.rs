@@ -65,6 +65,11 @@ pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
 	match ip {
 		std::net::IpAddr::V4(ip) => {
 			let o = ip.octets();
+			// IANA's globally reachable PCP/TURN anycast /32s override the /24 parent.
+			// https://www.iana.org/assignments/iana-ipv4-special-registry
+			if matches!(o, [192, 0, 0, 9 | 10]) {
+				return true;
+			}
 			!(o[0] == 0
 				|| o[0] == 10
 				|| o[0] == 127
@@ -139,9 +144,15 @@ mod tests {
 
 	#[rstest]
 	#[case("192.0.0.1", false)]
+	#[case("192.0.0.8", false)]
+	#[case("192.0.0.9", true)]
+	#[case("192.0.0.10", true)]
+	#[case("192.0.0.11", false)]
+	#[case("192.0.0.170", false)]
+	#[case("192.0.0.171", false)]
 	#[case("192.0.1.1", true)]
 	#[case("192.0.2.1", false)]
-	fn public_ipv4_filter_preserves_routable_adjacent_prefix(
+	fn public_ipv4_filter_preserves_anycast_exceptions_and_adjacent_prefix(
 		#[case] address: &str,
 		#[case] expected_public: bool,
 	) {

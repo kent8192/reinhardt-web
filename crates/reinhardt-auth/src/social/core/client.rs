@@ -142,6 +142,49 @@ mod tests {
 	use super::*;
 
 	#[rstest::rstest]
+	#[case("192.0.0.8", false)]
+	#[case("192.0.0.9", true)]
+	#[case("192.0.0.10", true)]
+	#[case("192.0.0.11", false)]
+	#[case("192.0.0.170", false)]
+	#[case("192.0.0.171", false)]
+	#[tokio::test]
+	async fn oauth_endpoints_apply_narrow_anycast_exceptions_to_literals_and_dns(
+		#[case] address: &str,
+		#[case] allowed: bool,
+	) {
+		// Arrange: the same destination is supplied directly and by an asynchronous resolver.
+		let client = OAuth2Client::new();
+		let socket: std::net::SocketAddr = format!("{address}:443").parse().unwrap();
+
+		// Act: build a pinned literal client and use the production DNS/allowlist helpers.
+		let direct = client
+			.for_endpoint(&format!("https://{address}/token"))
+			.await;
+		let resolved = resolve_endpoint_addresses(
+			"anycast.example",
+			443,
+			CONNECT_TIMEOUT,
+			|domain, port| async move {
+				assert_eq!(domain, "anycast.example");
+				assert_eq!(port, 443);
+				Ok(vec![socket])
+			},
+		)
+		.await
+		.unwrap();
+
+		// Assert: credentials can target only the two /32 exceptions, never adjacent ranges.
+		assert_eq!(direct.is_ok(), allowed);
+		assert_eq!(
+			resolved
+				.iter()
+				.all(|addr| allowed_resolved_ip(addr.ip(), "https", false)),
+			allowed
+		);
+	}
+
+	#[rstest::rstest]
 	#[tokio::test]
 	async fn pending_endpoint_dns_wait_expires_and_is_dropped() {
 		use std::sync::{
