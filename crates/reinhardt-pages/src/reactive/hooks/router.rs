@@ -89,9 +89,16 @@ impl std::error::Error for NavigateError {}
 /// `ClientLauncher::launch()` has not installed an SPA router on the
 /// current thread. The form! macro's WASM-side codegen relies on this
 /// fallible shape to fall back to a hard `location.set_href` when a form
-/// is rendered outside `ClientLauncher::launch`. Callers from a normal
-/// component / hook context SHOULD treat the variant as a programmer
-/// error (the hook was called outside a mounted SPA).
+/// is rendered outside `ClientLauncher::launch`. Callers of the navigation
+/// methods from a normal component / hook context SHOULD treat the variant
+/// as a programmer error (the hook was called outside a mounted SPA).
+///
+/// The route readers ([`RouterHandle::current_path`],
+/// [`RouterHandle::current_route_name`]) are different: server-side
+/// rendering never installs an SPA router, so a component that renders on
+/// both targets SHOULD handle `RouterNotInstalled` from a reader as the
+/// normal "no client route" case, for example by rendering without route
+/// state.
 #[derive(Clone, Copy, Debug)]
 pub struct RouterHandle;
 
@@ -264,15 +271,20 @@ impl RouterHandle {
 /// Returns a [`RouterHandle`] for imperative navigation from the current
 /// component or reactive context.
 ///
-/// The handle itself is infallible to obtain; navigation methods on
+/// The handle itself is infallible to obtain. Navigation methods on
 /// [`RouterHandle`] (`push`, `replace`, `navigate`) return a
 /// `Result<(), NavigateError>` whose variants document the fallible
 /// cases, and the route readers (`current_path`, `current_route_name`)
-/// return the router's reactive signals under the same error contract. In particular, `Err(NavigateError::RouterNotInstalled)` is
-/// returned when `ClientLauncher::launch()` has not installed an SPA
-/// router on the current thread — the form! macro's WASM-side codegen
-/// uses this discriminant to fall back to a hard navigation, while
-/// component / hook callers SHOULD treat it as a programmer error.
+/// return the router's reactive signals under the same error contract.
+///
+/// `Err(NavigateError::RouterNotInstalled)` is returned when
+/// `ClientLauncher::launch()` has not installed an SPA router on the
+/// current thread. For the navigation methods, the form! macro's WASM-side
+/// codegen uses this discriminant to fall back to a hard navigation, while
+/// component / hook callers SHOULD treat it as a programmer error. For the
+/// route readers it is the expected result during server-side rendering,
+/// so components that render on both targets SHOULD handle it as the
+/// "no client route" case.
 ///
 /// # Example
 ///
