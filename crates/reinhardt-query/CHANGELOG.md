@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `SequenceOption` and `OwnedBy` are now `#[non_exhaustive]` (#6511). Existing variants remain constructible, but downstream `match` expressions must add a wildcard arm; interpreters should return an explicit unsupported-option error from that arm instead of skipping the value. `SequenceDef` is also marked `#[non_exhaustive]`; its fields were already crate-private, so construction through `SequenceDef::new` and its builder methods is unchanged.
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-query@v0.4.0-alpha.19...reinhardt-query@v0.4.0-alpha.20) - 2026-10-06
 
 ### Added
