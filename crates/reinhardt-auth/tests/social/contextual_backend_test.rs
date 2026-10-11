@@ -79,6 +79,23 @@ impl OAuthProvider for TestProvider {
 	}
 }
 
+/// Builds a backend with one registered `github` provider and returns the
+/// counter that provider increments on every token exchange.
+///
+/// rstest does not share fixture instances, so the backend and the counter are
+/// created together by a single fixture to guarantee the counter observes the
+/// registered provider.
+#[fixture]
+fn backend_with_calls() -> (SocialAuthBackend, Arc<AtomicUsize>) {
+	let exchange_calls = Arc::new(AtomicUsize::new(0));
+	let mut backend = SocialAuthBackend::new();
+	backend.register_provider(Arc::new(TestProvider::new(
+		"github",
+		exchange_calls.clone(),
+	)));
+	(backend, exchange_calls)
+}
+
 #[tokio::test]
 async fn contextual_callback_returns_bound_context() {
 	// Arrange
@@ -237,25 +254,13 @@ async fn contextual_begin_rejects_empty_binding() {
 	assert!(matches!(result, Err(SocialAuthError::StateValidation(_))));
 }
 
-#[fixture]
-fn exchange_calls() -> Arc<AtomicUsize> {
-	Arc::new(AtomicUsize::new(0))
-}
-
-#[fixture]
-fn backend(exchange_calls: Arc<AtomicUsize>) -> SocialAuthBackend {
-	let mut backend = SocialAuthBackend::new();
-	backend.register_provider(Arc::new(TestProvider::new("github", exchange_calls)));
-	backend
-}
-
 #[rstest]
 #[tokio::test]
 async fn contextual_callback_consumes_state_when_binding_is_empty(
-	backend: SocialAuthBackend,
-	exchange_calls: Arc<AtomicUsize>,
+	backend_with_calls: (SocialAuthBackend, Arc<AtomicUsize>),
 ) {
 	// Arrange
+	let (backend, exchange_calls) = backend_with_calls;
 	let authorization = backend
 		.begin_auth_with_context("github", None, None, b"browser-a", Vec::new())
 		.await

@@ -106,6 +106,8 @@ impl ContextualStateData {
 	}
 
 	/// Compares a binding with the stored digest in constant time.
+	///
+	/// Always returns `false` for an empty binding.
 	pub fn binding_matches(&self, binding: &[u8]) -> bool {
 		if binding.is_empty() {
 			return false;
@@ -509,6 +511,26 @@ mod tests {
 		);
 
 		assert!(matches!(result, Err(SocialAuthError::StateValidation(_))));
+	}
+
+	#[rstest]
+	fn test_contextual_state_never_matches_empty_binding() {
+		// Arrange
+		let data = ContextualStateData::new(
+			StateData::new("state-1".to_string(), None, None),
+			"github".to_string(),
+			b"browser-binding",
+			Vec::new(),
+		)
+		.unwrap();
+
+		// Act
+		let matches_empty = data.binding_matches(b"");
+		let matches_original = data.binding_matches(b"browser-binding");
+
+		// Assert
+		assert!(!matches_empty);
+		assert!(matches_original);
 	}
 
 	#[rstest]

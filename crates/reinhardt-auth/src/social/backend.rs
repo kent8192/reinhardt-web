@@ -174,16 +174,23 @@ impl SocialAuthBackend {
 	///
 	/// Once `provider_name` resolves to a registered provider, the single-use
 	/// state is consumed before the callback data is validated, so a callback
-	/// that fails validation can never be retried with the same state. A
-	/// callback is rejected with [`SocialAuthError::InvalidState`] (after the
-	/// state has been consumed) when:
+	/// that fails validation can never be retried with the same state.
 	///
-	/// - the state is unknown, already consumed, or expired,
-	/// - the state was issued for a different provider, or
-	/// - the supplied `binding` does not match the one recorded by
-	///   [`begin_auth_with_context`](Self::begin_auth_with_context). An empty
-	///   `binding` never matches, so a callback that carries no browser binding
-	///   is treated exactly like one with a wrong binding.
+	/// # Errors
+	///
+	/// - [`SocialAuthError::Provider`] when `provider_name` is not registered.
+	///   The state is not touched in that case.
+	/// - [`SocialAuthError::Storage`] when the state store does not support
+	///   contextual state.
+	/// - [`SocialAuthError::InvalidState`] when the state is unknown, already
+	///   consumed, or expired, when it was issued for a different provider, or
+	///   when `binding` does not match the one recorded by
+	///   [`begin_auth_with_context`](Self::begin_auth_with_context). The state
+	///   is removed from the store whenever it existed. An empty `binding`
+	///   never matches, so a callback that carries no browser binding is
+	///   treated exactly like one with a wrong binding.
+	/// - Any error returned by the provider while exchanging the code or
+	///   retrieving claims. The state has already been consumed by then.
 	pub async fn handle_callback_with_context(
 		&self,
 		provider_name: &str,
