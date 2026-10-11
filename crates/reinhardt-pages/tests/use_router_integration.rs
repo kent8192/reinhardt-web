@@ -19,10 +19,13 @@ use reinhardt_pages::app::{
 };
 use reinhardt_pages::component::Page;
 use reinhardt_pages::reactive::hooks::use_router;
+use reinhardt_pages::reactive::{Effect, with_runtime};
 use reinhardt_urls::routers::ClientRouter;
 
 use rstest::rstest;
 use serial_test::serial;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Builds a small `ClientRouter` with two named routes so navigation observably
 /// changes the `current_path` signal.
@@ -202,5 +205,131 @@ fn use_router_returns_not_installed_when_no_router() {
 		matches!(result, Err(NavigateError::RouterNotInstalled)),
 		"expected Err(RouterNotInstalled), got {:?}",
 		result
+	);
+}
+
+#[rstest]
+#[serial(router)]
+fn current_path_signal_follows_push_and_replace() {
+	ReactiveScope::run(|| {
+		// Arrange
+		let _guard = SpaRouterGuard::install(build_test_router());
+		let router = use_router();
+		let path = router
+			.current_path()
+			.expect("an installed router exposes its path signal");
+		let initial = path.get();
+
+		// Act
+		router.push("/welcome").expect("push to a registered route");
+		let after_push = path.get();
+		router.replace("/").expect("replace to a registered route");
+		let after_replace = path.get();
+
+		// Assert
+		assert_eq!(initial, "/");
+		assert_eq!(after_push, "/welcome");
+		assert_eq!(after_replace, "/");
+	});
+}
+
+#[rstest]
+#[serial(router)]
+fn current_path_signal_notifies_effects_on_navigation() {
+	ReactiveScope::run(|| {
+		// Arrange
+		let _guard = SpaRouterGuard::install(build_test_router());
+		let path = use_router()
+			.current_path()
+			.expect("an installed router exposes its path signal");
+		let observed: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+		let observed_by_effect = Rc::clone(&observed);
+		let _effect = Effect::new(move || {
+			observed_by_effect.borrow_mut().push(path.get());
+		});
+
+		// Act
+		use_router()
+			.push("/welcome")
+			.expect("push to a registered route");
+		with_runtime(|runtime| runtime.flush_updates());
+
+		// Assert
+		assert_eq!(
+			*observed.borrow(),
+			vec!["/".to_owned(), "/welcome".to_owned()]
+		);
+	});
+}
+
+#[rstest]
+#[serial(router)]
+fn current_route_name_resolves_the_initial_route_and_follows_navigation() {
+	ReactiveScope::run(|| {
+		// Arrange
+		let _guard = SpaRouterGuard::install(build_test_router());
+		let router = use_router();
+		let route_name = router
+			.current_route_name()
+			.expect("an installed router exposes its route-name signal");
+		let initial = route_name.get();
+
+		// Act
+		router.push("/welcome").expect("push to a registered route");
+		let after_push = route_name.get();
+
+		// Assert
+		assert_eq!(initial.as_deref(), Some("home"));
+		assert_eq!(after_push.as_deref(), Some("welcome"));
+	});
+}
+
+#[rstest]
+#[serial(router)]
+fn current_route_name_is_none_for_an_unmatched_path() {
+	ReactiveScope::run(|| {
+		// Arrange
+		let router = build_test_router().not_found(|| Page::text("Missing"));
+		let _guard = SpaRouterGuard::install(router);
+		let handle = use_router();
+		let path = handle
+			.current_path()
+			.expect("an installed router exposes its path signal");
+		let route_name = handle
+			.current_route_name()
+			.expect("an installed router exposes its route-name signal");
+
+		// Act
+		handle
+			.push("/missing/")
+			.expect("unmatched paths commit the not-found surface");
+
+		// Assert
+		assert_eq!(path.get(), "/missing/");
+		assert_eq!(route_name.get(), None);
+	});
+}
+
+#[rstest]
+#[serial(router)]
+fn route_readers_return_not_installed_without_router() {
+	use reinhardt_pages::reactive::hooks::router::NavigateError;
+
+	// Arrange
+	let _noop_component = Page::text("Noop");
+	__clear_spa_router_for_test();
+
+	// Act
+	let path = use_router().current_path();
+	let route_name = use_router().current_route_name();
+
+	// Assert
+	assert!(
+		matches!(path, Err(NavigateError::RouterNotInstalled)),
+		"expected Err(RouterNotInstalled), got {path:?}"
+	);
+	assert!(
+		matches!(route_name, Err(NavigateError::RouterNotInstalled)),
+		"expected Err(RouterNotInstalled), got {route_name:?}"
 	);
 }

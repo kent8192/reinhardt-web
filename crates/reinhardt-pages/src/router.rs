@@ -172,7 +172,7 @@ pub mod request {
 	};
 }
 
-pub use components::{Link, PrefetchMode, Redirect, RouterOutlet, guard, guard_or};
+pub use components::{ActiveMatch, Link, PrefetchMode, Redirect, RouterOutlet, guard, guard_or};
 pub use history::{HistoryState, NavigationType};
 pub use navigate::{navigate, navigate_named, navigate_or_reload};
 pub use navigation_guard::{

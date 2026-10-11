@@ -12,16 +12,24 @@
 //! (zero-cost wrapper, no strong reference bookkeeping) and avoids pinning
 //! the router for the lifetime of any captured closure.
 //!
+//! The handle also exposes the committed route as reactive state
+//! ([`RouterHandle::current_path`], [`RouterHandle::current_route_name`]) so a
+//! component that stays mounted across navigations, such as a `#[layout]`
+//! shell, can follow the active route.
+//!
 //! See also the free [`crate::router::navigate`] function for one-shot
 //! navigation calls outside a hook context.
 
 use crate::app::NavigationIntent;
 use crate::app::try_with_navigation_coordinator;
 use crate::app::try_with_spa_router;
+use crate::reactive::Signal;
 use crate::router::NavigationType;
 
 /// Public navigation error returned by [`RouterHandle::push`],
-/// [`RouterHandle::replace`], and [`RouterHandle::navigate`].
+/// [`RouterHandle::replace`], and [`RouterHandle::navigate`], and by the
+/// route readers [`RouterHandle::current_path`] and
+/// [`RouterHandle::current_route_name`].
 ///
 /// The inner SPA router translates its concrete error
 /// (`reinhardt_urls::routers::client_router::error::RouterError`) into a
@@ -144,6 +152,113 @@ impl RouterHandle {
 			NavigationType::Pop | NavigationType::Initial => Ok(()),
 		}
 	}
+
+	/// Returns the reactive path of the currently committed route.
+	///
+	/// The returned [`Signal`] is the SPA router's own path signal, so it
+	/// updates on every committed navigation: [`Self::push`],
+	/// [`Self::replace`], [`crate::router::navigate`], intercepted
+	/// [`crate::router::Link`] clicks, and browser back/forward. Reading it
+	/// with [`Signal::get`] inside a reactive context (a `page!` expression,
+	/// [`crate::component::Page::reactive`], an effect, or a memo) subscribes
+	/// that context to route changes. The value is the path as it was
+	/// committed, including any `?query` or `#fragment` suffix.
+	///
+	/// Treat the signal as read-only: writing to it does not navigate and
+	/// leaves the rendered route out of sync. Use [`Self::push`] or
+	/// [`Self::replace`] to change the route.
+	///
+	/// # Errors
+	///
+	/// Returns [`NavigateError::RouterNotInstalled`] when
+	/// `ClientLauncher::launch()` has not installed an SPA router on the
+	/// current thread.
+	///
+	/// # Parity
+	///
+	/// P1 (symbol parity). On `wasm32-unknown-unknown` the method returns the
+	/// live router signal. Native builds never run `ClientLauncher::launch()`,
+	/// so server-side rendering receives
+	/// `Err(NavigateError::RouterNotInstalled)` without side effects.
+	///
+	/// # Example
+	///
+	/// ```rust
+	/// use reinhardt_pages::component::Page;
+	/// use reinhardt_pages::reactive::hooks::use_router;
+	///
+	/// // Renders the current path and re-renders after each navigation.
+	/// fn breadcrumb() -> Page {
+	///     match use_router().current_path() {
+	///         Ok(path) => Page::reactive(move || Page::text(path.get())),
+	///         // Server-side rendering has no SPA router.
+	///         Err(_) => Page::Empty,
+	///     }
+	/// }
+	///
+	/// assert_eq!(breadcrumb().render_to_string(), "");
+	/// ```
+	pub fn current_path(&self) -> Result<Signal<String>, NavigateError> {
+		try_with_spa_router(|router| *router.current_path())
+			.ok_or(NavigateError::RouterNotInstalled)
+	}
+
+	/// Returns the reactive name of the currently committed route.
+	///
+	/// The name is the one the route was registered with on
+	/// [`reinhardt_urls::routers::ClientRouter`] (for example
+	/// `ClientRouter::route("account", ...)` or
+	/// `#[component(..., name = "account")]`), including any namespace
+	/// prefix. For nested layout routes it is the leaf route's name. The
+	/// value is `None` when the current path matched an unnamed route or no
+	/// route at all (the not-found surface).
+	///
+	/// The router resolves the name from the path through its matcher when a
+	/// navigation commits, and the route rendered at launch is resolved the
+	/// same way when the router is installed. The signal therefore updates
+	/// together with [`Self::current_path`]. Treat it as read-only.
+	///
+	/// # Errors
+	///
+	/// Returns [`NavigateError::RouterNotInstalled`] when
+	/// `ClientLauncher::launch()` has not installed an SPA router on the
+	/// current thread.
+	///
+	/// # Parity
+	///
+	/// P1 (symbol parity), with the same native behavior as
+	/// [`Self::current_path`].
+	///
+	/// # Example
+	///
+	/// A `#[layout]` shell stays mounted while its child routes change, so it
+	/// reads the route name reactively to mark the current section:
+	///
+	/// ```rust
+	/// use reinhardt_pages::component::{IntoPage, Page, PageElement};
+	/// use reinhardt_pages::reactive::hooks::use_router;
+	///
+	/// fn section_heading() -> Page {
+	///     let Ok(route_name) = use_router().current_route_name() else {
+	///         return Page::Empty;
+	///     };
+	///     PageElement::new("h1")
+	///         .child(Page::reactive(move || {
+	///             let title = match route_name.get().as_deref() {
+	///                 Some("account") => "Account",
+	///                 _ => "Overview",
+	///             };
+	///             Page::text(title)
+	///         }))
+	///         .into_page()
+	/// }
+	///
+	/// assert_eq!(section_heading().render_to_string(), "");
+	/// ```
+	pub fn current_route_name(&self) -> Result<Signal<Option<String>>, NavigateError> {
+		try_with_spa_router(|router| *router.current_route_name())
+			.ok_or(NavigateError::RouterNotInstalled)
+	}
 }
 
 /// Returns a [`RouterHandle`] for imperative navigation from the current
@@ -152,7 +267,8 @@ impl RouterHandle {
 /// The handle itself is infallible to obtain; navigation methods on
 /// [`RouterHandle`] (`push`, `replace`, `navigate`) return a
 /// `Result<(), NavigateError>` whose variants document the fallible
-/// cases. In particular, `Err(NavigateError::RouterNotInstalled)` is
+/// cases, and the route readers (`current_path`, `current_route_name`)
+/// return the router's reactive signals under the same error contract. In particular, `Err(NavigateError::RouterNotInstalled)` is
 /// returned when `ClientLauncher::launch()` has not installed an SPA
 /// router on the current thread — the form! macro's WASM-side codegen
 /// uses this discriminant to fall back to a hard navigation, while
