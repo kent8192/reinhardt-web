@@ -89,7 +89,12 @@ specific exception; create it with the description "Maintainer approval for an
 SP-3 breaking security fix targeting main" if it does not exist. Keep the
 `breaking-change` label and breaking title so release and announcement tooling
 still recognize the compatibility impact. A security title, branch name, or
-`security` label alone does not satisfy the required target check.
+`security` label alone does not satisfy the required target check. The workflow
+reads the complete issue-event history and verifies that the latest
+`rc-breaking-approved` label event was applied by a user with current `maintain`
+or `admin` repository access. Triage and write access alone cannot approve this
+exception. Missing provenance, a later removal, or an access-check failure
+rejects approval; a maintainer can remove and reapply the label after review.
 
 The required check runs through `pull_request_target` using the trusted base
 branch workflow. Changes to this policy workflow must reach `main` separately

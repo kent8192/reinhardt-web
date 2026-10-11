@@ -455,7 +455,11 @@ title, label, base, and source changes, including label removal. The failed
 result is independent of warning-comment delivery or deduplication; an existing
 warning never makes an invalid target pass. Retarget the breaking change to the
 appropriate develop branch, correct an inaccurate classification, or obtain
-explicit maintainer approval for the documented security exception.
+explicit maintainer approval for the documented security exception. Both
+`security` and `rc-breaking-approved` must remain present, and the latest approval
+label event must identify a user with current `maintain` or `admin` repository
+access. Triage or write access alone, missing event history, or failed permission
+verification cannot approve the exception.
 
 The trusted `pull_request_target` workflow publishes this named check explicitly
 on the current `pr.head.sha` through the Checks API with `checks: write`. Both
