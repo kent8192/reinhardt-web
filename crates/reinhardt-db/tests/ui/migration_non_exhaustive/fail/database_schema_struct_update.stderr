@@ -1,0 +1,9 @@
+error[E0639]: cannot create non-exhaustive struct using struct expression
+ --> tests/ui/migration_non_exhaustive/fail/database_schema_struct_update.rs:6:10
+  |
+6 |       let _ = DatabaseSchema {
+  |  _____________^
+7 | |         default_schema: Some("public".to_string()),
+8 | |         ..DatabaseSchema::default()
+9 | |     };
+  | |_____^
