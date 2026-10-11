@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reject non-global and overlay IPv6 assignments for OAuth requests while retaining routable special-purpose locator exceptions.
+
 - Decline anonymous and expired sessions before enforcing session-authentication CSRF checks.
 
 - Share custom CSRF headers with session authentication and configure token issuance for custom session cookies.

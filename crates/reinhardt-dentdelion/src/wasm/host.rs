@@ -182,15 +182,31 @@ fn is_private_ip(ip: &std::net::IpAddr) -> bool {
 			|| (o[0] == 203 && o[1] == 0 && o[2] == 113)
 			|| o[0] >= 224
 		}
-		IpAddr::V6(ipv6) => {
-			// Only global-unicast 2000::/3 is eligible. Exclude documentation and
-			// transition ranges that can encode another destination address.
-			(ipv6.segments()[0] & 0xe000) != 0x2000
-				|| (ipv6.segments()[0] == 0x2001 && ipv6.segments()[1] == 0x0db8)
-				|| (ipv6.segments()[0] == 0x2001 && ipv6.segments()[1] == 0)
-				|| ipv6.segments()[0] == 0x2002
-		}
+		IpAddr::V6(ipv6) => !is_public_ipv6(ipv6),
 	}
+}
+
+/// Global-unicast locators, excluding non-global and overlay identifier assignments.
+fn is_public_ipv6(ip: &std::net::Ipv6Addr) -> bool {
+	let segments = ip.segments();
+	if (segments[0] & 0xe000) != 0x2000
+		|| (segments[0] == 0x2001 && segments[1] == 0x0db8)
+		|| segments[0] == 0x2002
+		|| (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
+	{
+		return false;
+	}
+	// IANA 2001::/23 is non-global except more-specific assignments:
+	// https://www.iana.org/assignments/iana-ipv6-special-registry
+	if segments[0] == 0x2001 && (segments[1] & 0xfe00) == 0 {
+		// Keep actual anycast, AMT and AS112 locators. ORCHIDv2 and DETs have
+		// IANA Global=True, but are non-routable identifiers at the IPv6 layer
+		// (RFC 7343 section 1.2/3 and RFC 9374 section 1); HTTP uses locators.
+		return (segments[1] == 1 && segments[2..7] == [0; 5] && matches!(segments[7], 1..=3))
+			|| segments[1] == 3
+			|| (segments[1] == 4 && segments[2] == 0x0112);
+	}
+	true
 }
 
 /// Host state that is passed to WASM instances.
@@ -1523,6 +1539,34 @@ impl crate::wasm::runtime::reinhardt::dentdelion::ssr::Host for HostState {
 
 #[cfg(test)]
 mod tests {
+	#[rstest::rstest]
+	#[case("2001:1::1", true)]
+	#[case("2001:1::2", true)]
+	#[case("2001:1::3", true)]
+	#[case("2001:1::4", false)]
+	#[case("2001:2::1", false)]
+	#[case("2001:2:ffff::1", false)]
+	#[case("2001:3::1", true)]
+	#[case("2001:3:ffff:ffff:ffff:ffff:ffff:ffff", true)]
+	#[case("2001:4:112::1", true)]
+	#[case("2001:4:113::1", false)]
+	#[case("2001:10::1", false)]
+	#[case("2001:20::1", false)]
+	#[case("2001:2f:ffff::1", false)]
+	#[case("2001:30::1", false)]
+	#[case("2001:3f:ffff::1", false)]
+	#[case("2001:1ff:ffff::1", false)]
+	#[case("2001:200::1", true)]
+	#[case("3fff::1", false)]
+	#[case("3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff", false)]
+	#[case("3fff:1000::1", true)]
+	#[case("2620:4f:8000::1", true)]
+	fn ipv6_special_assignments_preserve_global_locator_exceptions(
+		#[case] address: &str,
+		#[case] expected_public: bool,
+	) {
+		assert_eq!(!is_private_ip(&address.parse().unwrap()), expected_public);
+	}
 	use super::*;
 
 	#[test]
