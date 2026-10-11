@@ -403,6 +403,43 @@ pub(crate) fn translate_physical_field_names_to_logical(
 	translate_physical_field_names_to_logical_in_model(&model, data)
 }
 
+/// Read the stored value of every submitted field from a physical row.
+///
+/// Each submitted name is resolved to the physical column it is written to, so
+/// foreign-key ID columns and renamed columns find their stored values even
+/// when the logical record uses a different name. Fields without a stored
+/// value are omitted.
+pub(crate) fn stored_values_for_submitted_fields(
+	table_name: &str,
+	submitted: &HashMap<String, serde_json::Value>,
+	stored_row: &HashMap<String, serde_json::Value>,
+) -> HashMap<String, serde_json::Value> {
+	stored_values_for_submitted_fields_in_model(
+		find_model_by_table_name(table_name).as_ref(),
+		submitted,
+		stored_row,
+	)
+}
+
+fn stored_values_for_submitted_fields_in_model(
+	model: Option<&ModelMetadata>,
+	submitted: &HashMap<String, serde_json::Value>,
+	stored_row: &HashMap<String, serde_json::Value>,
+) -> HashMap<String, serde_json::Value> {
+	submitted
+		.keys()
+		.filter_map(|field_name| {
+			let physical_name = model
+				.and_then(|model| find_field_entry(model, field_name))
+				.map(|(column_name, metadata)| physical_field_name(column_name, metadata));
+			let column_name = physical_name.as_deref().unwrap_or(field_name);
+			stored_row
+				.get(column_name)
+				.map(|value| (field_name.clone(), value.clone()))
+		})
+		.collect()
+}
+
 fn translate_logical_field_names_in_model(
 	model: &ModelMetadata,
 	data: &mut HashMap<String, serde_json::Value>,
@@ -936,6 +973,66 @@ mod tests {
 			Some(&serde_json::json!("alice@example.com"))
 		);
 		assert!(!data.contains_key("email_address"));
+	}
+
+	#[rstest]
+	fn stored_values_follow_submitted_names_to_their_physical_columns() {
+		// Arrange
+		let mut model = ModelMetadata::new("admin", "Article", "articles");
+		model.add_field(
+			"email_address".to_string(),
+			FieldMetadata::new(DbFieldType::VarChar(255))
+				.with_param("rust_field_name", "email")
+				.with_param("db_column", "email_address"),
+		);
+		model.add_field(
+			"author_id".to_string(),
+			FieldMetadata::new(DbFieldType::Integer).with_param("rust_field_name", "author"),
+		);
+		let submitted = HashMap::from([
+			(String::from("email"), serde_json::json!("new@example.com")),
+			(String::from("author_id"), serde_json::json!(8)),
+			(String::from("unknown"), serde_json::json!("value")),
+		]);
+		let stored_row = HashMap::from([
+			(
+				String::from("email_address"),
+				serde_json::json!("old@example.com"),
+			),
+			(String::from("author_id"), serde_json::json!(7)),
+		]);
+
+		// Act
+		let stored =
+			stored_values_for_submitted_fields_in_model(Some(&model), &submitted, &stored_row);
+
+		// Assert
+		assert_eq!(
+			stored,
+			HashMap::from([
+				(String::from("email"), serde_json::json!("old@example.com")),
+				(String::from("author_id"), serde_json::json!(7)),
+			])
+		);
+	}
+
+	#[rstest]
+	fn stored_values_use_submitted_names_for_unregistered_tables() {
+		// Arrange
+		let submitted = HashMap::from([(String::from("is_active"), serde_json::json!(true))]);
+		let stored_row = HashMap::from([
+			(String::from("is_active"), serde_json::json!(false)),
+			(String::from("name"), serde_json::json!("Alice")),
+		]);
+
+		// Act
+		let stored = stored_values_for_submitted_fields_in_model(None, &submitted, &stored_row);
+
+		// Assert
+		assert_eq!(
+			stored,
+			HashMap::from([(String::from("is_active"), serde_json::json!(false))])
+		);
 	}
 
 	#[test]

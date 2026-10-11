@@ -364,6 +364,41 @@ primary-key values, and the declared `ModelPermission` before calling the
 hook. Confirmation metadata is enforced by the browser UI; server-side callers
 must still make an explicit action request.
 
+### Save Hooks
+
+Override the async `before_save` and `after_save` methods to run application
+logic when a record is saved through the admin. Both receive an
+`AdminSaveContext` (user, create or update mode, primary key, and the record as
+stored before the write) and an `AdminChange` that pairs each submitted field
+with its stored value. `AdminChange::transition` returns the decoded old and new
+values only when a field actually changes:
+
+```rust,ignore
+async fn before_save(
+	&self,
+	ctx: &AdminSaveContext<'_>,
+	change: &AdminChange,
+) -> AdminResult<()> {
+	if change.transition::<bool>("is_active") == Some((false, true)) {
+		end_all_sessions(ctx.pk()).await.map_err(|_| {
+			AdminError::ValidationError("sessions could not be ended".to_owned())
+		})?;
+	}
+	Ok(())
+}
+```
+
+The hooks run for `create_record`, `update_record`, the multipart create and
+update endpoints, `import_data`, and each row of `update_inline_edits`.
+`before_save` runs after form validation and permission checks, inside the
+write transaction, and before any write; on update the stored record is locked
+first. Returning `AdminError::ValidationError` rolls the save back and is shown
+as a form-wide validation error (HTTP 422, field `_all`) or as a row error on
+the changelist. Side effects of the hook are not rolled back. `after_save` runs
+once the transaction has committed and cannot fail the request. Bulk actions
+(`execute_action`), deletions, inline child rows, and many-to-many selections
+do not call the hooks.
+
 ### Editing Related Models Inline
 
 Manual admin configuration can place foreign-key children on the parent create
@@ -458,7 +493,8 @@ customization cannot add virtual fields.
 
 `AdminForm::normalize` receives owned JSON values and `validate` borrows the
 normalized data. Both hooks must be synchronous and pure: they have no request,
-user, database, or object instance. Return `AdminFormErrors::field` for a field-local error or
+user, database, or object instance; use the `ModelAdmin` save hooks for checks
+that need them. Return `AdminFormErrors::field` for a field-local error or
 `AdminFormErrors::global` for a form-wide error. The server returns these as
 HTTP 422 errors, using `_all` for global messages.
 
@@ -527,8 +563,8 @@ fields; sources cannot be file, foreign-key, or many-to-many fields.
 
 Foreign-key and many-to-many overrides remain limited to their compatible
 widgets and preserve existing lookup permissions and save-time revalidation.
-Arbitrary components, HTML attributes, asynchronous validation, and virtual
-fields are not supported.
+Arbitrary components, HTML attributes, and virtual fields are not supported.
+Asynchronous checks belong in `ModelAdmin::before_save`.
 
 Configured textarea rows use the additive `TextAreaWithRows` variants of
 `FieldType` and `FormFieldSpec`; downstream exhaustive matches must handle

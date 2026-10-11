@@ -10,7 +10,10 @@ use crate::core::database::canonicalize_pk_value;
 #[cfg(server)]
 use crate::core::history::insert_history_event;
 #[cfg(server)]
-use crate::core::{AdminDatabaseKey, AdminFormMode, AdminRequestContext, AdminSiteKey};
+use crate::core::{
+	AdminChange, AdminDatabaseKey, AdminFormMode, AdminRequestContext, AdminSaveContext,
+	AdminSiteKey,
+};
 #[cfg(server)]
 use reinhardt_di::KeyedDepends;
 #[cfg(server)]
@@ -58,6 +61,15 @@ fn contains_import_primary_key(
 /// # Authentication
 ///
 /// Requires staff (admin) permission and add permission for the model.
+///
+/// # Save hooks
+///
+/// Each record calls
+/// [`ModelAdmin::before_save`](crate::core::ModelAdmin::before_save) without a
+/// stored record inside its write transaction, and
+/// [`ModelAdmin::after_save`](crate::core::ModelAdmin::after_save) with the
+/// new primary key after it commits. A record rejected by `before_save` is
+/// counted as failed.
 ///
 /// # Example
 ///
@@ -198,13 +210,14 @@ pub async fn import_data(
 			.await?;
 			sanitize_mutation_values(&mut record);
 			record.extend(relation_values);
+			let change = AdminChange::new(None, &record);
 			super::create::inject_auto_timestamps(&mut record, &table_name);
 			translate_logical_field_names(&table_name, &mut record).map_server_fn_error()?;
-			Ok::<_, ServerFnError>(record)
+			Ok::<_, ServerFnError>((record, change))
 		}
 		.await;
-		let record = match record {
-			Ok(record) => record,
+		let (record, change) = match record {
+			Ok(prepared) => prepared,
 			Err(_) => {
 				failed += 1;
 				errors.push(format!("Record {}: import failed", index + 1));
@@ -214,6 +227,8 @@ pub async fn import_data(
 		let changed_fields = record.keys().cloned().collect();
 		let result: reinhardt_core::exception::Result<_> = connection
 			.atomic_write(async |transaction| {
+				let save_context = AdminSaveContext::new(user.as_ref(), AdminFormMode::Create);
+				model_admin.before_save(&save_context, &change).await?;
 				let created = db
 					.create_with_executor(transaction, &table_name, Some(&pk_field), record)
 					.await?;
@@ -233,11 +248,16 @@ pub async fn import_data(
 					created.affected,
 				);
 				insert_history_event(transaction, &event).await?;
-				Ok(())
+				Ok(object_id)
 			})
 			.await;
 		match result {
-			Ok(_) => imported += 1,
+			Ok(object_id) => {
+				imported += 1;
+				let save_context =
+					AdminSaveContext::new(user.as_ref(), AdminFormMode::Create).with_pk(&object_id);
+				model_admin.after_save(&save_context, &change).await;
+			}
 			Err(_) => {
 				// Hide internal error details (SQL fragments, table structures, column names)
 				// to prevent information disclosure aiding reconnaissance attacks

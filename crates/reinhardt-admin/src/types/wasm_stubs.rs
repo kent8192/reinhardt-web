@@ -479,6 +479,29 @@ mod wasm_only {
 			)))
 		}
 
+		/// Run application logic before a record saved through the admin is written.
+		///
+		/// The client target never calls this hook; it mirrors the server
+		/// signature so shared implementations compile on both targets.
+		async fn before_save(
+			&self,
+			_ctx: &crate::core::AdminSaveContext<'_>,
+			_change: &crate::core::AdminChange,
+		) -> AdminResult<()> {
+			Ok(())
+		}
+
+		/// Run application logic after a record saved through the admin is committed.
+		///
+		/// The client target never calls this hook; it mirrors the server
+		/// signature so shared implementations compile on both targets.
+		async fn after_save(
+			&self,
+			_ctx: &crate::core::AdminSaveContext<'_>,
+			_change: &crate::core::AdminChange,
+		) {
+		}
+
 		/// Check if user has permission to view this model.
 		async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
 			false

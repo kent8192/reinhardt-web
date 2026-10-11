@@ -9,7 +9,10 @@ use crate::adapters::{AdminDatabase, AdminSite};
 #[cfg(server)]
 use crate::core::history::insert_history_event;
 #[cfg(server)]
-use crate::core::{AdminDatabaseKey, AdminQuery, AdminRequestContext, AdminSiteKey};
+use crate::core::{
+	AdminChange, AdminDatabaseKey, AdminFormMode, AdminQuery, AdminRequestContext,
+	AdminSaveContext, AdminSiteKey,
+};
 use crate::types::MutationResponse;
 #[cfg(server)]
 use reinhardt_di::KeyedDepends;
@@ -27,8 +30,8 @@ use super::error::{AdminAuth, MapServerFnError, ModelPermission};
 use super::form::prepare_parent_form_data;
 #[cfg(server)]
 use super::inline::{
-	created_parent_identity, map_inline_mutation_error, map_inline_transaction_error,
-	parse_inline_mutations, preflight_inline_permissions,
+	InlineTransactionError, created_parent_identity, map_inline_mutation_error,
+	map_inline_transaction_error, parse_inline_mutations, preflight_inline_permissions,
 	sanitize_inline_mutations_with_trusted_fields, save_inline_mutations,
 };
 #[cfg(server)]
@@ -56,6 +59,14 @@ use super::type_inference::translate_logical_field_names;
 /// # Authentication
 ///
 /// Requires authentication and add permission for the model.
+///
+/// # Save hooks
+///
+/// Calls [`ModelAdmin::before_save`](crate::core::ModelAdmin::before_save)
+/// without a stored record inside the write transaction, and
+/// [`ModelAdmin::after_save`](crate::core::ModelAdmin::after_save) with the
+/// new primary key after it commits. A `before_save` validation error is
+/// returned as an HTTP 422 validation error.
 ///
 /// # Example
 ///
@@ -167,7 +178,7 @@ pub(crate) async fn create_record_with_trusted_file_fields(
 	let data = prepare_parent_form_data(
 		&site,
 		model_admin.as_ref(),
-		crate::core::AdminFormMode::Create,
+		AdminFormMode::Create,
 		request.data,
 	)?;
 	let descriptors = resolve_relations(&site, model_admin.as_ref()).map_server_fn_error()?;
@@ -216,6 +227,9 @@ pub(crate) async fn create_record_with_trusted_file_fields(
 	sanitize_mutation_values(&mut sanitized_data);
 	sanitize_inline_mutations_with_trusted_fields(&mut inline_mutations, trusted_file_fields);
 	sanitized_data.extend(relation_values);
+	// Save hooks see the submitted fields before server-generated timestamps
+	// are added and field names are translated to physical columns.
+	let change = AdminChange::new(None, &sanitized_data);
 	let mut audit_data = sanitized_data.clone();
 	for selection in &selections {
 		audit_data.insert(
@@ -248,9 +262,14 @@ pub(crate) async fn create_record_with_trusted_file_fields(
 	let actor = user.get_username().to_string();
 	let audit_user_id = auth.user_id().unwrap_or("unknown").to_string();
 	let connection = *db.connection();
-	let result: Result<_, super::inline::InlineTransactionError> = async {
+	let result: Result<_, InlineTransactionError> = async {
 		connection
 			.atomic_write(async |transaction| {
+				let save_context = AdminSaveContext::new(user.as_ref(), AdminFormMode::Create);
+				model_admin
+					.before_save(&save_context, &change)
+					.await
+					.map_err(InlineTransactionError::SaveHook)?;
 				let created = db
 					.create_with_executor(
 						transaction,
@@ -318,7 +337,7 @@ pub(crate) async fn create_record_with_trusted_file_fields(
 					transaction,
 				)
 				.await?;
-				Ok((created, outcomes))
+				Ok((created, outcomes, object_id))
 			})
 			.await
 	}
@@ -327,9 +346,12 @@ pub(crate) async fn create_record_with_trusted_file_fields(
 	let success = result.is_ok();
 	audit::log_create(&audit_user_id, &model_name, &audit_data, success);
 
-	let (created, outcomes) = result.map_err(map_inline_transaction_error)?;
+	let (created, outcomes, object_id) = result.map_err(map_inline_transaction_error)?;
 	let affected = created.primary_key.as_u64().unwrap_or(created.affected);
 	audit::log_inline_outcomes(site.as_ref(), &audit_user_id, &outcomes);
+	let save_context =
+		AdminSaveContext::new(user.as_ref(), AdminFormMode::Create).with_pk(&object_id);
+	model_admin.after_save(&save_context, &change).await;
 
 	Ok((
 		MutationResponse {
