@@ -10,7 +10,15 @@ use super::{MigrationError, Result};
 use crate::backends::{DatabaseConnection, DatabaseType};
 
 /// Schema information extracted from a database
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`DatabaseSchema::new`] and the chained `with_*` builders; public fields
+/// stay readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct DatabaseSchema {
 	/// All tables in the schema
 	pub tables: HashMap<String, TableInfo>,
@@ -32,7 +40,15 @@ pub struct InspectDbOptions {
 }
 
 /// Table metadata
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`TableInfo::new`] and the chained `with_*` builders; public fields stay
+/// readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct TableInfo {
 	/// Table name
 	pub name: String,
@@ -51,7 +67,15 @@ pub struct TableInfo {
 }
 
 /// Column metadata
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`ColumnInfo::new`] and the chained `with_*` builders; public fields stay
+/// readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ColumnInfo {
 	/// Column name
 	pub name: String,

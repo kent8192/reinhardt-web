@@ -32,6 +32,11 @@ use std::collections::{HashMap, HashSet};
 /// This conversion maps database-specific types to UI-appropriate form field types.
 /// For example, `VARCHAR` becomes `Text`, while `TEXT` or `LONGTEXT` become `TextArea`.
 ///
+/// Database types without an admin editor, including feature-gated or future
+/// variants of the non-exhaustive [`DbFieldType`] that this crate does not
+/// handle, map to `AdminFieldType::Hidden` so the admin never offers an editor
+/// it cannot bind.
+///
 /// # Examples
 ///
 /// ```
@@ -154,14 +159,11 @@ pub fn infer_admin_field_type(db_type: &DbFieldType) -> AdminFieldType {
 		// Full-text search types → TextArea
 		DbFieldType::TsVector | DbFieldType::TsQuery => AdminFieldType::TextArea,
 
-		// Cargo can enable the database's Vector variant through another crate
-		// without enabling this crate's pgvector codecs. Do not offer an editor
-		// for values that the admin cannot bind to the database.
-		#[cfg(not(feature = "pgvector"))]
-		#[allow(
-			unreachable_patterns,
-			reason = "the fallback is needed only when reinhardt-db/pgvector is enabled independently"
-		)]
+		// `FieldType` is non-exhaustive, and Cargo can enable the database's
+		// Vector variant through another crate without enabling this crate's
+		// pgvector codecs. Do not offer an editor for values that the admin
+		// cannot bind to the database: `requires_unavailable_admin_feature`
+		// reports these hidden, non-relationship fields as unavailable.
 		_ => AdminFieldType::Hidden,
 	}
 }

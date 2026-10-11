@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- The migration enums `Operation`, `OperationStatement`, `Constraint`, `IndexType`, and `FieldType` are now `#[non_exhaustive]` (#6511). Existing variants remain constructible, so migration source files keep compiling, but downstream `match` expressions need a wildcard arm. When the caller interprets migrations, that arm should return an explicit unsupported-operation or unsupported-type error rather than silently skipping the value.
+- The migration state, introspection, and registry structs `FieldState`, `ModelState`, `ProjectState`, `introspection::DatabaseSchema`, `TableInfo`, `ColumnInfo`, `ModelMetadata`, and `FieldMetadata` are now `#[non_exhaustive]` (#6511). Replace external struct literals with the constructors and builders: `FieldState::new(..).with_param(..)`, `ModelState::new(..).with_table_name(..).with_field(..)`, `ProjectState::new().with_model(..)`, `DatabaseSchema::new().with_table(..)`, `TableInfo::new(..).with_column(..)`, and `ColumnInfo::new(..).with_default(..)`. Struct update syntax (`..Default::default()`) does not bypass the restriction. Public fields remain readable and assignable, and JSON tags, field names, and migration-source round trips are unchanged.
+
 ## [0.4.0-alpha.20](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.19...reinhardt-db@v0.4.0-alpha.20) - 2026-10-06
 
 ### Documentation

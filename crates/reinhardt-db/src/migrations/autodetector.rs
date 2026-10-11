@@ -130,7 +130,16 @@ pub struct ForeignKeyInfo {
 }
 
 /// Field state for migration detection
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`FieldState::new`] (or [`FieldState::with_foreign_key`]) and the chained
+/// `with_*` builders; public fields stay readable and assignable after
+/// construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FieldState {
 	/// The name.
 	pub name: String,
@@ -265,7 +274,15 @@ impl FieldState {
 /// Model state for migration detection
 ///
 /// Django equivalent: `ModelState` in django/db/migrations/state.py
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`ModelState::new`] and the chained `with_*` builders; public fields stay
+/// readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ModelState {
 	/// Application label (e.g., "auth", "blog")
 	pub app_label: String,
@@ -1040,7 +1057,15 @@ impl ModelState {
 ///
 /// assert!(state.get_model("myapp", "User").is_some());
 /// ```
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`ProjectState::new`] and the chained `with_*` builders; public fields
+/// stay readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ProjectState {
 	/// Models: (app_label, model_name) -> ModelState
 	pub models: std::collections::BTreeMap<(String, String), ModelState>,

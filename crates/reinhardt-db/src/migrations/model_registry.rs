@@ -47,7 +47,15 @@ use std::sync::{Arc, RwLock};
 ///
 ///     Django -.-> Reinhardt
 /// ```
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]` and already has private fields, so it is
+/// built with [`ModelMetadata::new`] and populated through
+/// [`ModelMetadata::add_field`], [`ModelMetadata::add_constraint`],
+/// [`ModelMetadata::add_index`], and the other mutation methods.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ModelMetadata {
 	/// Application label (e.g., "auth", "blog")
 	pub app_label: String,
@@ -357,7 +365,15 @@ impl ModelMetadata {
 }
 
 /// Field metadata for registration
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`FieldMetadata::new`] and the chained `with_*` builders; public fields
+/// stay readable and assignable after construction.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct FieldMetadata {
 	/// Field type (e.g., CharField, IntegerField, ForeignKey)
 	pub field_type: super::FieldType,

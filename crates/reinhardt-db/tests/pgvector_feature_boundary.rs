@@ -121,6 +121,7 @@ fn index_type(value: IndexType) {
     match value {
         IndexType::BTree | IndexType::Hash | IndexType::Gin | IndexType::Gist
         | IndexType::Brin | IndexType::Fulltext | IndexType::Spatial => {}
+        _ => {}
     }
 }
 
@@ -142,6 +143,7 @@ fn field_type(value: FieldType) {
         | FieldType::Enum { .. } | FieldType::Set { .. } | FieldType::ForeignKey { .. }
         | FieldType::OneToOne { .. } | FieldType::ManyToMany { .. }
         | FieldType::Custom(_) => {}
+        _ => {}
     }
 }
 
@@ -208,6 +210,7 @@ fn operation(value: Operation) {
         | Operation::CreateCompositePrimaryKey { .. }
         | Operation::Sequence { .. }
         | Operation::Identity { .. } => {}
+        _ => {}
     }
 }
 

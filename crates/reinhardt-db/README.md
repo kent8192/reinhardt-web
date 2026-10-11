@@ -2313,6 +2313,12 @@ MySQL pools.
   - `ModelState`: Represents individual model definitions
   - `FieldState`: Tracks field configurations
   - Support for indexes and constraints
+  - State, introspection, and registry metadata types are `#[non_exhaustive]`:
+    build them with `new()` and the `with_*` builders instead of struct
+    literals. The migration enums (`Operation`, `OperationStatement`,
+    `Constraint`, `IndexType`, `FieldType`) are also non-exhaustive, so a
+    downstream `match` needs a wildcard arm that returns an explicit
+    unsupported-value error.
 
 - **Autodetection**: Automatically detect schema changes
   - `MigrationAutodetector`: Detects differences between states
