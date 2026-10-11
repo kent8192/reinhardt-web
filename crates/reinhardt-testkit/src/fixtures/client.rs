@@ -89,7 +89,7 @@ impl TestServerClient {
 	/// Create a server-backed client using the server's URL and default settings.
 	///
 	/// Takes ownership of the guard so the server stays alive until this client
-	/// is dropped.
+	/// and all of its forks (see [`Self::fork`]) are dropped.
 	pub fn new(server: TestServerGuard) -> Self {
 		Self {
 			client: APIClient::with_base_url(&server.url),
@@ -100,7 +100,8 @@ impl TestServerClient {
 	/// Create a server-backed client using custom client settings.
 	///
 	/// Always replaces the builder's base URL with the server's URL and takes
-	/// ownership of the guard.
+	/// ownership of the guard, so the server stays alive until this client and
+	/// all of its forks (see [`Self::fork`]) are dropped.
 	///
 	/// # Panics
 	///
@@ -488,7 +489,6 @@ mod tests {
 
 		// Assert
 		assert!(Arc::ptr_eq(&parent.server, &fork.server));
-		assert_eq!(fork.server().url, parent.server().url);
 		assert_eq!(fork.base_url(), parent.base_url());
 	}
 
