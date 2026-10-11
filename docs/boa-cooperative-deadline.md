@@ -56,6 +56,9 @@ queue admission, VM execution, and completion-value conversion. Component-file
 loading consumes that same deadline. Expired queued work is cancelled before
 execution; an admitted timeout retires the context. The WASM executor can enforce
 its shorter deadline even while the interpreter is inside native work.
+Subsequent guest calls within that lifecycle also use the remaining deadline
+for epoch interruption rather than renewing the configured CPU budget. Standalone
+calls receive a fresh deadline; guest entry after an expired lifecycle is denied.
 
 Regression tests cover expensive `toString` and `Symbol.toPrimitive` methods,
 string-hint semantics and receiver binding, getter/nested native iteration limits,

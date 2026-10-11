@@ -37,6 +37,8 @@ use wasmtime_wasi::p2;
 
 use super::host::HostState;
 
+const EPOCH_INTERVAL: Duration = Duration::from_millis(10);
+
 tokio::task_local! {
 	/// The lifecycle deadline remains fixed across guest calls and host imports.
 	static EXECUTION_DEADLINE: Option<std::time::Instant>;
@@ -46,6 +48,14 @@ fn invocation_deadline(timeout: Duration) -> Option<std::time::Instant> {
 	EXECUTION_DEADLINE
 		.try_with(|deadline| *deadline)
 		.unwrap_or_else(|_| std::time::Instant::now().checked_add(timeout))
+}
+
+fn remaining_epoch_ticks(deadline: Option<std::time::Instant>) -> u64 {
+	deadline.map_or(u64::MAX, |deadline| {
+		let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+		let ticks = remaining.as_nanos().div_ceil(EPOCH_INTERVAL.as_nanos());
+		u64::try_from(ticks).unwrap_or(u64::MAX)
+	})
 }
 
 /// Aggregate linear-memory and table accounting for the lifetime of one store.
@@ -150,7 +160,8 @@ pub(super) const DEFAULT_TIMEOUT_SECS: u32 = 30;
 pub struct WasmRuntimeConfig {
 	/// Aggregate linear-memory and table allocation limit in megabytes for one store.
 	pub memory_limit_mb: u32,
-	/// Execution timeout.
+	/// Elapsed lifecycle deadline, shared across guest calls and host imports.
+	/// Guest CPU interruption is checked at epoch boundaries.
 	pub timeout: Duration,
 	/// Enable async support.
 	pub async_support: bool,
@@ -305,7 +316,7 @@ impl WasmRuntime {
 		let ticker_stop = Arc::clone(&stop_epoch_ticker);
 		let epoch_ticker = std::thread::spawn(move || {
 			while !ticker_stop.load(Ordering::Relaxed) {
-				std::thread::sleep(Duration::from_millis(10));
+				std::thread::sleep(EPOCH_INTERVAL);
 				ticker_engine.increment_epoch();
 			}
 		});
@@ -414,17 +425,20 @@ impl WasmRuntime {
 				.as_mut()
 				.expect("store limits configured")
 		});
-		let ticks = self.config.timeout.as_millis().div_ceil(10).max(1);
-		store.set_epoch_deadline(u64::try_from(ticks).unwrap_or(u64::MAX));
+		store.set_epoch_deadline(remaining_epoch_ticks(store.data().execution_deadline));
 		store.epoch_deadline_trap();
-		let ticks = u64::try_from(ticks).unwrap_or(u64::MAX);
 		let timeout = self.config.timeout;
-		// Reset only on a new host-to-guest call. Returning from a host import
-		// must not extend the budget of an already-running guest invocation.
+		// Guest entries within a lifecycle share its remaining wall-clock budget.
+		// Standalone calls receive a fresh budget; returning from imports never resets it.
 		store.call_hook(move |mut context, transition| {
 			if matches!(transition, CallHook::CallingWasm) {
+				let deadline = invocation_deadline(timeout);
+				let ticks = remaining_epoch_ticks(deadline);
+				if ticks == 0 {
+					anyhow::bail!("WASM execution deadline expired before guest entry");
+				}
 				context.set_epoch_deadline(ticks);
-				context.data_mut().execution_deadline = invocation_deadline(timeout);
+				context.data_mut().execution_deadline = deadline;
 			}
 			Ok(())
 		});
@@ -504,6 +518,59 @@ impl std::fmt::Debug for WasmRuntime {
 
 #[cfg(test)]
 mod tests {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn later_guest_calls_keep_the_remaining_lifecycle_epoch_budget() {
+		// Arrange: fuel-disabled guest code can yield only through epoch interruption.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.timeout(Duration::from_millis(300))
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			r#"(module
+			(func (export "ready"))
+			(func (export "spin") (loop $again br $again))
+		)"#,
+		)
+		.unwrap();
+		let started = std::time::Instant::now();
+
+		// Act: a second guest entry follows an earlier call and consumes most of the budget.
+		let result = runtime
+			.with_execution_timeout(async {
+				let mut store = runtime.create_store(HostState::new("remaining-epoch-budget"));
+				let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+					.await
+					.unwrap();
+				instance
+					.get_typed_func::<(), ()>(&mut store, "ready")
+					.unwrap()
+					.call_async(&mut store, ())
+					.await
+					.unwrap();
+				tokio::time::sleep(Duration::from_millis(250)).await;
+				instance
+					.get_typed_func::<(), ()>(&mut store, "spin")
+					.unwrap()
+					.call_async(&mut store, ())
+					.await
+					.map_err(|error| PluginError::WasmExecutionError(error.to_string()))
+			})
+			.await;
+
+		// Assert: the CPU trap must not grant another full 300 ms to the second call.
+		assert!(matches!(result, Err(PluginError::WasmExecutionError(_))));
+		assert!(
+			started.elapsed() < Duration::from_millis(450),
+			"a later guest call reset the epoch budget: {:?}",
+			started.elapsed()
+		);
+	}
+
 	#[rstest::rstest]
 	#[tokio::test]
 	async fn unrepresentable_deadlines_preserve_ready_invocations() {
