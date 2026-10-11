@@ -448,11 +448,14 @@ in force, and local results must not be described as remote CI results.
 **Breaking-change warning check:**
 `Warn Invalid Breaking Change Target` is required alongside `CI Success` on
 `main`. A breaking title or `breaking-change` label fails this check unless the
-source is a versioned `develop/X.Y.Z` branch. It reads current PR metadata on
+source is a versioned `develop/X.Y.Z` branch or the PR meets the approved
+security exception in [PR Base Branch Policy BB-3](PR_BASE_BRANCH_POLICY.md#bb-3-should-how-to-choose-the-source-branch).
+It reads current PR metadata on
 title, label, base, and source changes, including label removal. The failed
 result is independent of warning-comment delivery or deduplication; an existing
 warning never makes an invalid target pass. Retarget the breaking change to the
-appropriate develop branch, or correct an inaccurate classification.
+appropriate develop branch, correct an inaccurate classification, or obtain
+explicit maintainer approval for the documented security exception.
 
 The trusted `pull_request_target` workflow publishes this named check explicitly
 on the current `pr.head.sha` through the Checks API with `checks: write`. Both

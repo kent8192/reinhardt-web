@@ -80,6 +80,22 @@ While BB-1 makes the base branch automatic, the developer must still choose whic
 | Performance improvements (no API change) | `main` | Safe for RC |
 | Performance improvements (API change) | `develop/0.x+1.0` | Equivalent to breaking change |
 
+**Approved breaking security fixes:** Security fixes continue to target `main`
+when an API change is necessary, subject to the explicit maintainer approval and
+API Change Proposal required by [Stability Policy SP-3](STABILITY_POLICY.md#sp-3-must-breaking-changes-require-approval).
+After approving the proposal and migration guide, a maintainer applies both
+`security` and `rc-breaking-approved` to the PR. The approval label records this
+specific exception; create it with the description "Maintainer approval for an
+SP-3 breaking security fix targeting main" if it does not exist. Keep the
+`breaking-change` label and breaking title so release and announcement tooling
+still recognize the compatibility impact. A security title, branch name, or
+`security` label alone does not satisfy the required target check.
+
+The required check runs through `pull_request_target` using the trusted base
+branch workflow. Changes to this policy workflow must reach `main` separately
+before they can affect an open security PR; then a label change or workflow rerun
+reevaluates the current PR metadata and publishes a result on its current head.
+
 **During Normal Phase** (no `develop/*` branch exists):
 
 All changes branch from and target `main`. There is no develop branch active.
