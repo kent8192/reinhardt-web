@@ -27,7 +27,9 @@ impl<'a> AuthBuilder<'a> {
 	///
 	/// Creates a real session in the `AsyncSessionBackend` and sets the
 	/// `sessionid` cookie on the client. The session will be validated by
-	/// `CookieSessionAuthMiddleware` on subsequent requests.
+	/// `CookieSessionAuthMiddleware` on subsequent requests when it also has a
+	/// current-account `AuthBackend`. See [`SessionAuthBuilder`] for the complete
+	/// fixture wiring; session privilege flags alone do not authorize requests.
 	pub fn session(
 		self,
 		user: &impl ForceLoginUser,
@@ -56,6 +58,10 @@ impl<'a> AuthBuilder<'a> {
 /// Builder for session-based test authentication.
 ///
 /// Created by [`AuthBuilder::session()`].
+///
+/// Privilege overrides are fixture metadata. Cookie authentication also requires
+/// a current-account `AuthBackend` that reflects the overridden identity.
+#[doc = include_str!("session_auth.md")]
 pub struct SessionAuthBuilder<'a> {
 	client: &'a APIClient,
 	identity: SessionIdentity,
@@ -68,13 +74,18 @@ impl<'a> SessionAuthBuilder<'a> {
 	/// Override the `is_staff` flag.
 	///
 	/// Use this when the user's `ForceLoginUser` impl defaults `is_staff` to `false`
-	/// but the test requires staff access.
+	/// but the test requires staff access. The fixture's current-account
+	/// `AuthBackend` must reflect this override; the cookie middleware ignores
+	/// cached session privilege flags. See [`SessionAuthBuilder`] for wiring.
 	pub fn with_staff(mut self, is_staff: bool) -> Self {
 		self.identity.is_staff = is_staff;
 		self
 	}
 
-	/// Override the `is_superuser` flag.
+	/// Override the `is_superuser` flag in fixture metadata.
+	///
+	/// Also configure the fixture's current-account `AuthBackend` as shown in
+	/// [`SessionAuthBuilder`]. Session metadata alone cannot grant privileges.
 	pub fn with_superuser(mut self, is_superuser: bool) -> Self {
 		self.identity.is_superuser = is_superuser;
 		self
