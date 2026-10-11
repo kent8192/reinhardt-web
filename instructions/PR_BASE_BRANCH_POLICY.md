@@ -88,8 +88,9 @@ After approving the proposal and migration guide, a maintainer applies both
 specific exception; create it with the description "Maintainer approval for an
 SP-3 breaking security fix targeting main" if it does not exist. Keep the
 `breaking-change` label and breaking title so release and announcement tooling
-still recognize the compatibility impact. A security title, branch name, or
-`security` label alone does not satisfy the required target check. The workflow
+still recognize the compatibility impact. The exception requires all three
+labels, including `breaking-change` for the required announcement. A security
+title, branch name, or `security` label alone does not satisfy the required target check. The workflow
 reads the complete issue-event history and verifies that the latest
 `rc-breaking-approved` label event was applied by a user with current `maintain`
 or `admin` repository access. Triage and write access alone cannot approve this
@@ -98,8 +99,11 @@ rejects approval; a maintainer can remove and reapply the label after review.
 
 The required check runs through `pull_request_target` using the trusted base
 branch workflow. Changes to this policy workflow must reach `main` separately
-before they can affect an open security PR; then a label change or workflow rerun
-reevaluates the current PR metadata and publishes a result on its current head.
+before they can affect an open security PR. After the merge, remove and reapply
+the approval label to trigger a fresh `pull_request_target` event using the updated
+base workflow and publish a result on the current PR head. Rerunning an older
+workflow execution retains its original SHA/ref and cannot activate the new
+policy.
 
 **During Normal Phase** (no `develop/*` branch exists):
 
