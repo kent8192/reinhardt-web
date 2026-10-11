@@ -125,7 +125,7 @@ pub use mock::{MockConnection, MockDatabaseBackend, mock_connection, mock_databa
 pub use server::{
 	BasicHandler, TestServer, TestServerBuilder, TestServerGuard, http_client, http1_server,
 	http2_server, server_with_di, server_with_middleware_chain, server_with_rate_limit,
-	server_with_timeout, test_server_guard,
+	server_with_timeout, streaming_http_client, test_server_guard,
 };
 
 #[cfg(feature = "websockets")]
