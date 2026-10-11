@@ -46,17 +46,23 @@ use crate::client::{APIClient, APIClientBuilder};
 use reinhardt_urls::routers::ServerRouter as Router;
 use rstest::fixture;
 use std::ops::Deref;
+use std::sync::Arc;
 
 /// A server-backed client that owns its test server's lifetime.
 ///
 /// Requests reach the server over the network through [`APIClient`]. The client
 /// drops before the [`TestServerGuard`], and dropping this value shuts down the
-/// server, including during panic unwinding. Server cancellation completes
-/// asynchronously as the Tokio runtime polls the aborted tasks.
+/// server, including during panic unwinding, unless a fork still shares the
+/// guard. Server cancellation completes asynchronously as the Tokio runtime
+/// polls the aborted tasks.
 ///
 /// Shared client methods are available through [`Deref`]. Mutable client access
 /// and splitting the client from its guard are intentionally unavailable so
 /// requests cannot be redirected to an in-process handler.
+///
+/// Use [`TestServerClient::fork`] instead of [`APIClient::fork`] to derive an
+/// independent client for another credential or subject. The fork shares this
+/// client's server guard, so the server stays up until the last fork drops.
 ///
 /// # Examples
 ///
@@ -75,7 +81,8 @@ use std::ops::Deref;
 pub struct TestServerClient {
 	// Declaration order ensures the client drops before its server guard.
 	client: APIClient,
-	server: TestServerGuard,
+	// Shared with every fork; the guard shuts the server down when the last holder drops.
+	server: Arc<TestServerGuard>,
 }
 
 impl TestServerClient {
@@ -86,7 +93,7 @@ impl TestServerClient {
 	pub fn new(server: TestServerGuard) -> Self {
 		Self {
 			client: APIClient::with_base_url(&server.url),
-			server,
+			server: Arc::new(server),
 		}
 	}
 
@@ -125,13 +132,55 @@ impl TestServerClient {
 		);
 		Self {
 			client: builder.base_url(&server.url).build(),
-			server,
+			server: Arc::new(server),
+		}
+	}
+
+	/// Derive an independent server-backed client that shares this client's server.
+	///
+	/// Behaves like [`APIClient::fork`] for client state: default headers, manual
+	/// cookies, and the forced-auth user are snapshotted into separate locks, and
+	/// the fork builds its own transport with the same settings. In addition, the
+	/// fork holds a shared reference to the server guard, so the server keeps
+	/// running until the last of this client and all of its forks drops. Dropping
+	/// the original first does not cut off the forks.
+	///
+	/// This inherent method takes precedence over [`APIClient::fork`], which is
+	/// otherwise reachable through [`Deref`] and would return a bare [`APIClient`]
+	/// that does not keep the server alive.
+	///
+	/// # Panics
+	///
+	/// Panics if reqwest cannot build a transport, as with [`APIClient::fork`].
+	///
+	/// # Examples
+	///
+	/// ```rust,no_run
+	/// use reinhardt_testkit::fixtures::{test_server_client, TestServerClient};
+	/// use reinhardt_urls::routers::ServerRouter;
+	///
+	/// # #[tokio::main]
+	/// # async fn main() {
+	/// let base = test_server_client(ServerRouter::new()).await;
+	/// let alice = base.fork().await;
+	/// alice.set_header("Authorization", "Bearer alice").await.unwrap();
+	/// // The server stays up because `alice` shares the guard.
+	/// drop(base);
+	/// let response = alice.get("/unregistered").await.unwrap();
+	/// assert_eq!(response.status_code(), 404);
+	/// # }
+	/// ```
+	pub async fn fork(&self) -> TestServerClient {
+		TestServerClient {
+			client: self.client.fork().await,
+			server: Arc::clone(&self.server),
 		}
 	}
 
 	/// Borrow the server guard to inspect its URL or shutdown coordinator.
 	///
-	/// The guard remains owned by this client and cannot be separated from it.
+	/// The guard is shared with this client's forks and cannot be separated from
+	/// them.
 	pub fn server(&self) -> &TestServerGuard {
 		&self.server
 	}
@@ -150,7 +199,7 @@ impl Deref for TestServerClient {
 /// Uses [`test_server_guard`] with an empty [`Router`] by default. Override the
 /// router with rstest's `#[with(...)]` attribute or pass it directly when calling
 /// the function. Dropping the returned [`TestServerClient`] shuts down the server,
-/// including during panic unwinding.
+/// including during panic unwinding, once no [`TestServerClient::fork`] remains.
 ///
 /// # Examples
 ///
@@ -251,6 +300,7 @@ pub fn api_client_from_url(url: &str) -> APIClient {
 mod tests {
 	use super::*;
 	use crate::fixtures::server::BasicHandler;
+	use reinhardt_http::{Handler, Request, Response};
 	use rstest::*;
 	use std::io::ErrorKind;
 	use std::net::SocketAddr;
@@ -261,6 +311,29 @@ mod tests {
 	#[fixture]
 	fn hello_router() -> Router {
 		Router::new().handler("/hello", BasicHandler)
+	}
+
+	/// Echoes the `x-fork` request header, or `none` when it is absent.
+	struct ForkHeaderEchoHandler;
+
+	#[async_trait::async_trait]
+	impl Handler for ForkHeaderEchoHandler {
+		async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
+			let value = request
+				.headers
+				.get("x-fork")
+				.and_then(|value| value.to_str().ok())
+				.unwrap_or("none")
+				.to_owned();
+			Ok(Response::ok().with_body(value))
+		}
+	}
+
+	#[fixture]
+	fn fork_router() -> Router {
+		Router::new()
+			.handler("/hello", BasicHandler)
+			.handler("/echo", ForkHeaderEchoHandler)
 	}
 
 	async fn assert_connection_refused(addr: SocketAddr) {
@@ -397,6 +470,95 @@ mod tests {
 		// Assert
 		assert_eq!(response.status_code(), 200);
 		assert_eq!(response.text(), "OK");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_client_fork_shares_server_guard(
+		#[future]
+		#[from(test_server_client)]
+		#[with(hello_router())]
+		client: TestServerClient,
+	) {
+		// Arrange
+		let parent = client.await;
+
+		// Act
+		let fork: TestServerClient = parent.fork().await;
+
+		// Assert
+		assert!(Arc::ptr_eq(&parent.server, &fork.server));
+		assert_eq!(fork.server().url, parent.server().url);
+		assert_eq!(fork.base_url(), parent.base_url());
+	}
+
+	#[rstest]
+	#[case::parent_dropped_first(true)]
+	#[case::fork_dropped_first(false)]
+	#[tokio::test]
+	async fn test_server_client_fork_keeps_server_until_last_holder_drops(
+		#[future]
+		#[from(test_server_client)]
+		#[with(hello_router())]
+		client: TestServerClient,
+		#[case] parent_dropped_first: bool,
+	) {
+		// Arrange
+		let parent = client.await;
+		let addr = parent
+			.server()
+			.url
+			.strip_prefix("http://")
+			.unwrap()
+			.parse()
+			.unwrap();
+		let fork = parent.fork().await;
+		let (dropped_first, survivor) = if parent_dropped_first {
+			(parent, fork)
+		} else {
+			(fork, parent)
+		};
+		let _connection = TcpStream::connect(addr).await.unwrap();
+
+		// Act
+		drop(dropped_first);
+		let response = survivor.get("/hello").await.unwrap();
+
+		// Assert
+		assert_eq!(response.status_code(), 200);
+		assert_eq!(response.text(), "OK");
+
+		// Act
+		drop(survivor);
+
+		// Assert
+		assert_connection_refused(addr).await;
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_client_fork_state_is_independent(
+		#[future]
+		#[from(test_server_client)]
+		#[with(fork_router())]
+		client: TestServerClient,
+	) {
+		// Arrange
+		let parent = client.await;
+		parent.set_header("x-fork", "original").await.unwrap();
+		let fork = parent.fork().await;
+
+		// Act
+		let snapshot = fork.get("/echo").await.unwrap();
+		parent.set_header("x-fork", "parent").await.unwrap();
+		fork.set_header("x-fork", "fork").await.unwrap();
+		let parent_response = parent.get("/echo").await.unwrap();
+		let fork_response = fork.get("/echo").await.unwrap();
+
+		// Assert
+		assert_eq!(snapshot.text(), "original");
+		assert_eq!(parent_response.text(), "parent");
+		assert_eq!(fork_response.text(), "fork");
 	}
 
 	#[test]
