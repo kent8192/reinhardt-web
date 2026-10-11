@@ -38,6 +38,10 @@ use wasmtime_wasi::p2;
 use super::host::HostState;
 
 const EPOCH_INTERVAL: Duration = Duration::from_millis(10);
+// Cardinality policy, not an estimate of Wasmtime's exact metadata allocation.
+// Divide the configured budget between three resource classes in 64 KiB slots.
+const RESOURCE_COUNT_SLOT_BYTES: usize = 64 * 1024;
+const MAX_RESOURCES_PER_KIND: usize = 128;
 
 tokio::task_local! {
 	/// The lifecycle deadline remains fixed across guest calls and host imports.
@@ -71,10 +75,14 @@ pub(super) struct StoreMemoryLimits {
 
 impl StoreMemoryLimits {
 	fn new(budget: usize) -> Self {
+		let count_limit = (budget / (3 * RESOURCE_COUNT_SLOT_BYTES)).min(MAX_RESOURCES_PER_KIND);
 		Self {
 			limits: StoreLimitsBuilder::new()
 				.memory_size(budget)
 				.table_elements(budget / std::mem::size_of::<usize>())
+				.instances(count_limit)
+				.memories(count_limit)
+				.tables(count_limit)
 				.trap_on_grow_failure(true)
 				.build(),
 			budget,
@@ -159,6 +167,9 @@ pub(super) const DEFAULT_TIMEOUT_SECS: u32 = 30;
 #[derive(Debug, Clone)]
 pub struct WasmRuntimeConfig {
 	/// Aggregate linear-memory and table allocation limit in megabytes for one store.
+	/// Each resource kind (core instances, memories, tables) also has a count limit
+	/// of `min(128, bytes / (3 * 64 KiB))`, including empty resources. This bounds
+	/// metadata-only resource creation; it is not a process RSS limit.
 	pub memory_limit_mb: u32,
 	/// Elapsed lifecycle deadline, shared across guest calls and host imports.
 	/// Guest CPU interruption is checked at epoch boundaries.
@@ -518,6 +529,75 @@ impl std::fmt::Debug for WasmRuntime {
 
 #[cfg(test)]
 mod tests {
+	#[rstest::rstest]
+	#[case("instance", "")]
+	#[case("memory", "(memory 0)")]
+	#[case("table", "(table 0 funcref)")]
+	#[tokio::test]
+	async fn empty_component_resources_obey_store_count_limits(
+		#[case] kind: &str,
+		#[case] resource: &str,
+	) {
+		// Arrange: one MiB permits five of each resource kind, including empty ones.
+		let runtime =
+			WasmRuntime::new(WasmRuntimeConfigBuilder::new().memory_limit_mb(1).build()).unwrap();
+		let linker = Linker::<HostState>::new(runtime.engine());
+		for (count, allowed) in [(5, true), (6, false)] {
+			let wat = if kind == "instance" {
+				let instances = (0..count)
+					.map(|_| "(core instance (instantiate $m))")
+					.collect::<String>();
+				format!("(component (core module $m) {instances})")
+			} else {
+				format!(
+					"(component (core module $m {}) (core instance (instantiate $m)))",
+					resource.repeat(count)
+				)
+			};
+			let component = Component::new(runtime.engine(), wat).unwrap();
+			let mut store = runtime.create_store(HostState::new("empty-resource-counts"));
+
+			// Act: instantiate a real component whose payload allocations are zero.
+			let result = linker.instantiate_async(&mut store, &component).await;
+
+			// Assert: strict cardinality limits reject metadata-only allocation attacks.
+			if allowed {
+				assert!(result.is_ok(), "{kind}: {result:?}");
+			} else {
+				let error = result.unwrap_err().to_string();
+				assert!(error.contains(&format!("{kind} count too high")), "{error}");
+			}
+		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn empty_instance_count_is_shared_by_repeated_component_instantiation() {
+		// Arrange: each component instantiation creates one empty core instance.
+		let runtime =
+			WasmRuntime::new(WasmRuntimeConfigBuilder::new().memory_limit_mb(1).build()).unwrap();
+		let component = Component::new(
+			runtime.engine(),
+			"(component (core module $m) (core instance (instantiate $m)))",
+		)
+		.unwrap();
+		let linker = Linker::<HostState>::new(runtime.engine());
+		let mut store = runtime.create_store(HostState::new("repeated-empty-component"));
+		for _ in 0..5 {
+			linker
+				.instantiate_async(&mut store, &component)
+				.await
+				.unwrap();
+		}
+
+		// Act / Assert: a sixth component cannot reset the store's instance quota.
+		let error = linker
+			.instantiate_async(&mut store, &component)
+			.await
+			.unwrap_err();
+		assert!(error.to_string().contains("instance count too high"));
+	}
+
 	#[rstest::rstest]
 	#[tokio::test]
 	async fn later_guest_calls_keep_the_remaining_lifecycle_epoch_budget() {

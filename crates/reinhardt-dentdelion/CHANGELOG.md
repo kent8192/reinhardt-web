@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Bound empty WASM core instances, memories and tables with per-store count quotas derived from the configured memory budget, capped at 128 of each kind. The count quota is `bytes / (3 * 64 KiB)` per kind (five for a one-MiB budget); it bounds resource metadata cardinality rather than process RSS.
 - Resolve plugin DNS asynchronously within the lifecycle deadline.
 
 - Reject non-global and overlay IPv6 assignments while preserving routable locator exceptions.
