@@ -48,7 +48,9 @@ fn serialize_delimited(
 				.iter()
 				.map(|(k, v)| {
 					let s = match v {
-						serde_json::Value::String(s) => s.clone(),
+						serde_json::Value::String(s) => {
+							crate::core::export::formula_safe_cell(s).into_owned()
+						}
 						serde_json::Value::Null => String::new(),
 						other => other.to_string(),
 					};
@@ -69,16 +71,12 @@ fn serialize_delimited(
 
 	// Write each record's values in header order
 	for record in &flat_records {
-		let values: Vec<_> = headers
-			.iter()
-			.map(|h| {
-				crate::core::export::formula_safe_cell(
-					record.get(*h).map(String::as_str).unwrap_or(""),
-				)
-			})
-			.collect();
-		wtr.write_record(values.iter().map(|cell| cell.as_bytes()))
-			.map_err(|e| format!("record serialization failed: {}", e))?;
+		wtr.write_record(
+			headers
+				.iter()
+				.map(|h| record.get(*h).map(String::as_str).unwrap_or("")),
+		)
+		.map_err(|e| format!("record serialization failed: {}", e))?;
 	}
 
 	wtr.into_inner()
@@ -224,5 +222,27 @@ mod tests {
 		let output = serialize_delimited(&records, delimiter).unwrap();
 		let text = String::from_utf8(output).unwrap();
 		assert!(text.contains("' \t=1+1"));
+	}
+
+	#[rstest]
+	#[case(b',')]
+	#[case(b'\t')]
+	fn server_export_preserves_numbers_and_escapes_numeric_strings(#[case] delimiter: u8) {
+		let records = vec![HashMap::from([
+			("number".into(), serde_json::json!(-42)),
+			("string".into(), serde_json::json!("-42")),
+		])];
+		let output = serialize_delimited(&records, delimiter).unwrap();
+		let mut reader = csv::ReaderBuilder::new()
+			.delimiter(delimiter)
+			.from_reader(output.as_slice());
+		assert_eq!(
+			reader.headers().unwrap(),
+			&csv::StringRecord::from(vec!["number", "string"])
+		);
+		assert_eq!(
+			reader.records().next().unwrap().unwrap(),
+			csv::StringRecord::from(vec!["-42", "'-42"])
+		);
 	}
 }

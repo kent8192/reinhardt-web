@@ -35,6 +35,12 @@ use super::types::{ConfigValue, WitHttpResponse, WitPluginError};
 /// ensures connection pools are reused across all plugins.
 static DEFAULT_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
+type HttpClientFactory = Arc<dyn Fn() -> reqwest::ClientBuilder + Send + Sync>;
+
+fn default_http_client_factory() -> HttpClientFactory {
+	Arc::new(reqwest::Client::builder)
+}
+
 #[cfg(feature = "ts")]
 use super::ts_runtime::SharedTsRuntime;
 
@@ -123,16 +129,27 @@ fn validate_url_for_ssrf(url: &str) -> Result<Vec<std::net::SocketAddr>, WitPlug
 
 /// Construct a one-request client pinned to addresses checked above.
 /// A fresh client avoids reusing a pooled connection resolved for another URL.
-fn ssrf_safe_client(url: &str) -> Result<reqwest::Client, WitPluginError> {
+fn ssrf_safe_client(
+	url: &str,
+	factory: &HttpClientFactory,
+) -> Result<reqwest::Client, WitPluginError> {
 	let addrs = validate_url_for_ssrf(url)?;
+	build_pinned_http_client(url, factory, &addrs)
+}
+
+fn build_pinned_http_client(
+	url: &str,
+	factory: &HttpClientFactory,
+	addrs: &[std::net::SocketAddr],
+) -> Result<reqwest::Client, WitPluginError> {
 	let parsed = url::Url::parse(url)
 		.map_err(|e| WitPluginError::with_details(400, "Invalid URL", e.to_string()))?;
-	let mut builder = reqwest::Client::builder()
+	let mut builder = factory()
 		.redirect(reqwest::redirect::Policy::none())
 		.no_proxy()
 		.timeout(std::time::Duration::from_secs(30));
 	if let Some(url::Host::Domain(domain)) = parsed.host() {
-		builder = builder.resolve_to_addrs(domain, &addrs);
+		builder = builder.resolve_to_addrs(domain, addrs);
 	}
 	builder
 		.build()
@@ -160,7 +177,7 @@ fn is_private_ip(ip: &std::net::IpAddr) -> bool {
 			|| o[0] == 0
 			// Shared, reserved, documentation, benchmarking, and multicast ranges
 			|| (o[0] == 100 && (o[1] & 0xc0) == 64)
-			|| (o[0] == 192 && o[1] == 0 && o[2] <= 2)
+			|| (o[0] == 192 && o[1] == 0 && matches!(o[2], 0 | 2))
 			|| (o[0] == 198 && (o[1] == 18 || o[1] == 19 || (o[1] == 51 && o[2] == 100)))
 			|| (o[0] == 203 && o[1] == 0 && o[2] == 113)
 			|| o[0] >= 224
@@ -194,6 +211,7 @@ pub struct HostState {
 	capabilities: HashSet<Capability>,
 	/// Whether plugin HTTP requests are enabled; requests use a fresh pinned client.
 	http_client: Option<reqwest::Client>,
+	http_client_factory: Option<HttpClientFactory>,
 	/// Database connection for SQL queries (optional, requires DatabaseAccess capability)
 	#[cfg(feature = "wasm")]
 	db_connection: Option<Arc<DatabaseConnection>>,
@@ -261,6 +279,7 @@ impl HostState {
 			typed_services: RwLock::new(HashMap::new()),
 			capabilities: HashSet::new(),
 			http_client: Some(DEFAULT_HTTP_CLIENT.clone()),
+			http_client_factory: Some(default_http_client_factory()),
 			db_connection: None,
 			event_bus,
 			model_registry,
@@ -366,6 +385,16 @@ impl HostState {
 
 	// ===== HTTP Client API =====
 
+	fn pinned_http_client(&self, url: &str) -> Result<reqwest::Client, WitPluginError> {
+		self.http_client
+			.as_ref()
+			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))?;
+		let factory = self.http_client_factory.as_ref().ok_or_else(|| {
+			WitPluginError::new(500, "A prebuilt HTTP client cannot be safely pinned; configure HostStateBuilder::http_client_factory instead")
+		})?;
+		ssrf_safe_client(url, factory)
+	}
+
 	/// Check if HTTP access is allowed.
 	fn has_http_capability(&self) -> bool {
 		use crate::capability::PluginCapability;
@@ -387,10 +416,7 @@ impl HostState {
 			return Err(WitPluginError::new(403, "HTTP access not permitted"));
 		}
 
-		self.http_client
-			.as_ref()
-			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))?;
-		let client = ssrf_safe_client(url)?;
+		let client = self.pinned_http_client(url)?;
 
 		let mut request = client.get(url);
 
@@ -435,10 +461,7 @@ impl HostState {
 			return Err(WitPluginError::new(403, "HTTP access not permitted"));
 		}
 
-		self.http_client
-			.as_ref()
-			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))?;
-		let client = ssrf_safe_client(url)?;
+		let client = self.pinned_http_client(url)?;
 
 		let mut request = client.post(url).body(body.to_vec());
 
@@ -824,6 +847,7 @@ impl Clone for HostState {
 		} else {
 			builder = builder.no_http_client();
 		}
+		builder.http_client_factory = self.http_client_factory.clone();
 
 		#[cfg(feature = "wasm")]
 		if let Some(ref conn) = self.db_connection {
@@ -864,6 +888,7 @@ pub struct HostStateBuilder {
 	config: HashMap<String, ConfigValue>,
 	capabilities: HashSet<Capability>,
 	http_client: Option<reqwest::Client>,
+	http_client_factory: Option<HttpClientFactory>,
 	#[cfg(feature = "wasm")]
 	db_connection: Option<Arc<DatabaseConnection>>,
 	#[cfg(not(feature = "wasm"))]
@@ -884,6 +909,7 @@ impl HostStateBuilder {
 			config: HashMap::new(),
 			capabilities: HashSet::new(),
 			http_client: Some(DEFAULT_HTTP_CLIENT.clone()),
+			http_client_factory: Some(default_http_client_factory()),
 			db_connection: None,
 			event_bus: None,
 			model_registry: None,
@@ -923,16 +949,35 @@ impl HostStateBuilder {
 		self
 	}
 
-	/// Enable HTTP access with a supplied client handle.
-	/// Plugin requests always use a fresh pinned client to enforce SSRF controls.
+	/// Set a prebuilt HTTP client.
+	///
+	/// Requests fail with a migration error because an opaque client cannot
+	/// expose its DNS, proxy, redirect, or TLS settings for safe destination
+	/// pinning. Use `http_client_factory` to retain custom client settings.
 	pub fn http_client(mut self, client: reqwest::Client) -> Self {
 		self.http_client = Some(client);
+		self.http_client_factory = None;
+		self
+	}
+
+	/// Configure clients for validated plugin HTTP destinations (native-only, P0).
+	///
+	/// The trusted factory preserves custom headers, CA roots, and client
+	/// certificates. Address pinning, disabled redirects/proxies, and a
+	/// 30-second request timeout are applied after the factory returns.
+	pub fn http_client_factory<F>(mut self, factory: F) -> Self
+	where
+		F: Fn() -> reqwest::ClientBuilder + Send + Sync + 'static,
+	{
+		self.http_client = Some(DEFAULT_HTTP_CLIENT.clone());
+		self.http_client_factory = Some(Arc::new(factory));
 		self
 	}
 
 	/// Disable HTTP client.
 	pub fn no_http_client(mut self) -> Self {
 		self.http_client = None;
+		self.http_client_factory = None;
 		self
 	}
 
@@ -1006,6 +1051,7 @@ impl HostStateBuilder {
 			typed_services: RwLock::new(HashMap::new()),
 			capabilities: self.capabilities,
 			http_client: self.http_client,
+			http_client_factory: self.http_client_factory,
 			db_connection: self.db_connection,
 			event_bus: self.event_bus.unwrap_or_else(|| Arc::new(EventBus::new())),
 			model_registry: self
@@ -2162,6 +2208,93 @@ mod tests {
 
 		// Assert
 		assert!(result.is_ok());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn pinned_http_factory_preserves_headers_and_overrides_unsafe_transport() {
+		use tokio::io::{AsyncReadExt, AsyncWriteExt};
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let address = listener.local_addr().unwrap();
+		let factory: HttpClientFactory = Arc::new(|| {
+			let mut headers = reqwest::header::HeaderMap::new();
+			headers.insert(
+				"x-custom-client",
+				reqwest::header::HeaderValue::from_static("retained"),
+			);
+			reqwest::Client::builder()
+				.default_headers(headers)
+				.proxy(reqwest::Proxy::http("http://127.0.0.1:9").unwrap())
+				.redirect(reqwest::redirect::Policy::limited(10))
+				.resolve("plugin.example", "127.0.0.1:9".parse().unwrap())
+		});
+		// Exercise the transport seam with a local socket after address validation.
+		let url = format!("http://plugin.example:{}/", address.port());
+		let client = build_pinned_http_client(&url, &factory, &[address]).unwrap();
+		let server = async {
+			let (mut socket, _) = listener.accept().await.unwrap();
+			let mut request = Vec::new();
+			while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+				let mut buffer = [0u8; 1024];
+				let count = socket.read(&mut buffer).await.unwrap();
+				assert_ne!(count, 0);
+				request.extend_from_slice(&buffer[..count]);
+			}
+			assert!(
+				String::from_utf8(request)
+					.unwrap()
+					.to_lowercase()
+					.contains("x-custom-client: retained")
+			);
+			socket.write_all(b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:9/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+		};
+		let (response, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+			tokio::join!(client.get(&url).send(), server)
+		})
+		.await
+		.unwrap();
+		assert_eq!(response.unwrap().status(), reqwest::StatusCode::FOUND);
+	}
+
+	#[rstest::rstest]
+	fn http_client_factory_survives_cloning_and_disabled_clients_remain_disabled() {
+		let host = HostStateBuilder::new("factory")
+			.http_client_factory(reqwest::Client::builder)
+			.build();
+		assert!(host.clone().http_client_factory.is_some());
+		let disabled = HostStateBuilder::new("disabled")
+			.http_client_factory(reqwest::Client::builder)
+			.no_http_client()
+			.build();
+		assert!(
+			disabled
+				.clone()
+				.pinned_http_client("https://192.0.1.1/")
+				.unwrap_err()
+				.message
+				.contains("not available")
+		);
+		let legacy = HostStateBuilder::new("legacy")
+			.http_client(reqwest::Client::new())
+			.build();
+		assert!(
+			legacy
+				.pinned_http_client("https://192.0.1.1/")
+				.unwrap_err()
+				.message
+				.contains("http_client_factory")
+		);
+	}
+
+	#[rstest::rstest]
+	#[case("192.0.0.1", true)]
+	#[case("192.0.1.1", false)]
+	#[case("192.0.2.1", true)]
+	fn private_ipv4_filter_preserves_routable_adjacent_prefix(
+		#[case] address: &str,
+		#[case] expected_private: bool,
+	) {
+		assert_eq!(is_private_ip(&address.parse().unwrap()), expected_private);
 	}
 
 	#[rstest::rstest]

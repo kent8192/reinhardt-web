@@ -72,7 +72,7 @@ pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
 				|| (o[0] == 100 && (o[1] & 0xc0) == 64)
 				|| (o[0] == 169 && o[1] == 254)
 				|| (o[0] == 172 && (o[1] & 0xf0) == 16)
-				|| (o[0] == 192 && (o[1] == 168 || (o[1] == 0 && o[2] <= 2)))
+				|| (o[0] == 192 && (o[1] == 168 || (o[1] == 0 && matches!(o[2], 0 | 2))))
 				|| (o[0] == 198 && (o[1] == 18 || o[1] == 19 || (o[1] == 51 && o[2] == 100)))
 				|| (o[0] == 203 && o[1] == 0 && o[2] == 113))
 		}
@@ -89,6 +89,17 @@ pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case("192.0.0.1", false)]
+	#[case("192.0.1.1", true)]
+	#[case("192.0.2.1", false)]
+	fn public_ipv4_filter_preserves_routable_adjacent_prefix(
+		#[case] address: &str,
+		#[case] expected_public: bool,
+	) {
+		assert_eq!(is_public_ip(address.parse().unwrap()), expected_public);
+	}
 
 	#[rstest]
 	#[case("2606:4700:4700::1111", true)]

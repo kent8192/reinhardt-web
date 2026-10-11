@@ -337,6 +337,16 @@ for path in discovered {
 - Fuel-based CPU metering: 100M instructions default (configurable)
 - Plugin HTTP requests reject internal/reserved addresses, pin validated DNS
   results, and never follow redirects or environment proxies.
+- JavaScript has an elapsed-time timeout and a separate
+  `TsResourceLimits::loop_iteration_limit` (default: 1,000,000 iterations per
+  loop). Native builtins can synchronously reenter JavaScript, so the interpreter
+  guard remains necessary even with cooperative deadline checks. Interpreter
+  limits report `TsError::RuntimeLimitExceeded`, rather than `ExecutionTimeout`.
+- Custom plugin HTTP clients use `HostStateBuilder::http_client_factory` so CA
+  roots, client certificates, and default headers survive construction. The host
+  applies validated DNS pinning, no redirects/proxies, and a 30-second request
+  timeout after the factory. Opaque clients passed to `http_client` return a
+  migration error because their settings cannot be safely extracted.
 - Config values must be MessagePack-serializable
 
 ## CLI Integration

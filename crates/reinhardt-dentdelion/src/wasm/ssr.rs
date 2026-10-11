@@ -100,6 +100,9 @@ pub enum SsrError {
 impl From<TsError> for SsrError {
 	fn from(err: TsError) -> Self {
 		match err {
+			TsError::RuntimeLimitExceeded { message } => SsrError::EvalFailed(format!(
+				"JavaScript interpreter resource limit exceeded: {message}"
+			)),
 			TsError::InitFailed(_msg) => SsrError::NotAvailable,
 			TsError::EvalFailed(msg) => SsrError::EvalFailed(msg),
 			TsError::PropsSerialization(msg) => SsrError::PropsSerialization(msg),

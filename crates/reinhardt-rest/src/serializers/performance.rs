@@ -416,10 +416,18 @@ fn build_validation_query(
 		for (field, value) in fields.into_iter().zip(values) {
 			let field = validation_identifier(field)?;
 			params.push(QueryValue::String(value.to_string()));
-			conditions.push(format!(
-				"{quote}{field}{quote} = {}",
-				placeholder(params.len())
-			));
+			let value_placeholder = placeholder(params.len());
+			// PostgreSQL binds String as text. Convert the bound text through
+			// the table's composite row type so integer, UUID, temporal, and
+			// other column input functions retain their native comparison semantics.
+			let typed_value = if backend == DatabaseBackend::Postgres {
+				format!(
+					"(jsonb_populate_record(NULL::{table}, jsonb_build_object('{field}', {value_placeholder}::text))).{quote}{field}{quote}"
+				)
+			} else {
+				value_placeholder
+			};
+			conditions.push(format!("{quote}{field}{quote} = {typed_value}"));
 		}
 		subqueries.push(format!(
 			"SELECT {check_placeholder} as check_id, COUNT(*) as cnt FROM {table} WHERE {}",
@@ -710,7 +718,7 @@ mod tests {
 			build_validation_query("users", &checks, DatabaseBackend::Postgres).unwrap();
 		assert_eq!(
 			sql,
-			"SELECT $1 as check_id, COUNT(*) as cnt FROM \"users\" WHERE \"email\" = $2"
+			"SELECT $1 as check_id, COUNT(*) as cnt FROM \"users\" WHERE \"email\" = (jsonb_populate_record(NULL::\"users\", jsonb_build_object('email', $2::text))).\"email\""
 		);
 		assert_eq!(params.len(), 2);
 		assert!(

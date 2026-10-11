@@ -675,3 +675,66 @@ mod validator_composition_with_orm_tests {
 		assert_eq!(result.unwrap_err().len(), 1);
 	}
 }
+
+#[rstest]
+#[tokio::test]
+#[serial(validator_orm_db)]
+async fn batch_validator_preserves_postgres_column_types(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
+	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
+) {
+	use reinhardt_rest::serializers::performance::BatchValidator;
+
+	// Arrange: values whose text representations normalize in their column type.
+	let (_container, pool, _port, url) = postgres_container.await;
+	sqlx::query("CREATE TABLE batch_typed_values (number INTEGER, identifier UUID, created TIMESTAMP, label TEXT)")
+        .execute(pool.as_ref()).await.unwrap();
+	sqlx::query("INSERT INTO batch_typed_values VALUES (42, '550e8400-e29b-41d4-a716-446655440000', '2026-10-12 00:00:00', 'existing')")
+        .execute(pool.as_ref()).await.unwrap();
+	reinitialize_database(&url).await.unwrap();
+	let mut validator = BatchValidator::new();
+	let checks = [
+		("number", "042"),
+		("identifier", "550E8400-E29B-41D4-A716-446655440000"),
+		("created", "2026-10-12T00:00:00"),
+	];
+	for (field, value) in checks {
+		validator.add_unique_check("batch_typed_values", field, value);
+	}
+	validator.add_unique_check("batch_typed_values", "number", "43");
+	validator.add_unique_check("batch_typed_values", "label", "x' OR 1=1 --");
+	validator.add_unique_together_check(
+		"batch_typed_values",
+		vec!["number".into(), "identifier".into(), "created".into()],
+		vec![
+			"042".into(),
+			"550E8400-E29B-41D4-A716-446655440000".into(),
+			"2026-10-12T00:00:00".into(),
+		],
+	);
+
+	// Act.
+	let failed = validator.execute().await.unwrap();
+
+	// Assert: duplicates use native equality, while nonmatches and SQL-like data remain safe.
+	assert_eq!(
+		failed.len(),
+		4,
+		"unexpected database error or normalization failure: {failed:?}"
+	);
+	for (field, value) in checks {
+		assert_eq!(
+			failed
+				.get(&format!("batch_typed_values:{field}:{value}"))
+				.map(String::as_str),
+			Some(format!("{field} already exists").as_str())
+		);
+	}
+	assert!(
+		failed
+			.values()
+			.all(|message| !message.starts_with("Database error:"))
+	);
+	assert!(!failed.contains_key("batch_typed_values:number:43"));
+	assert!(!failed.contains_key("batch_typed_values:label:x' OR 1=1 --"));
+}

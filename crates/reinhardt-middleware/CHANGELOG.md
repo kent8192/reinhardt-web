@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Configure CSRF session cookies and honor typed session metadata when issuing and validating tokens.
+
 ### Security
 
 - Revalidate cookie sessions against the current account record before granting authenticated or admin access.

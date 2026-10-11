@@ -83,6 +83,7 @@ impl CsrfMiddlewareConfig {
 /// CSRF protection middleware
 pub struct CsrfMiddleware {
 	config: CsrfMiddlewareConfig,
+	session_cookie_name: String,
 	/// Shared CSRF secret for testing
 	test_secret: Option<String>,
 }
@@ -94,7 +95,10 @@ impl CsrfMiddleware {
 	/// 1. Session ID from extensions (set by session middleware)
 	/// 2. Session cookie
 	/// 3. Generated from request metadata
-	fn get_session_id(request: &Request) -> String {
+	fn get_session_id(&self, request: &Request) -> String {
+		if let Some(session_id) = request.extensions.get::<crate::session::SessionId>() {
+			return session_id.as_ref().to_string();
+		}
 		// Try to get session ID from extensions (set by session middleware)
 		if let Some(session_id) = request.extensions.get::<String>() {
 			return session_id.to_owned();
@@ -106,7 +110,14 @@ impl CsrfMiddleware {
 		{
 			for cookie in cookie_str.split(';') {
 				let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
-				if parts.len() == 2 && parts[0] == "sessionid" {
+				let cookie_name = request
+					.extensions
+					.get::<crate::session::SessionCookieName>();
+				let cookie_name = cookie_name
+					.as_ref()
+					.map(|name| name.as_str())
+					.unwrap_or(&self.session_cookie_name);
+				if parts.len() == 2 && parts[0] == cookie_name {
 					return parts[1].to_string();
 				}
 			}
@@ -162,6 +173,7 @@ impl CsrfMiddleware {
 	pub fn new() -> Self {
 		Self {
 			config: CsrfMiddlewareConfig::default(),
+			session_cookie_name: "sessionid".into(),
 			test_secret: None,
 		}
 	}
@@ -170,6 +182,7 @@ impl CsrfMiddleware {
 	pub fn with_config(config: CsrfMiddlewareConfig) -> Self {
 		Self {
 			config,
+			session_cookie_name: "sessionid".into(),
 			test_secret: None,
 		}
 	}
@@ -178,8 +191,18 @@ impl CsrfMiddleware {
 	pub fn with_test_secret(secret: String) -> Self {
 		Self {
 			config: CsrfMiddlewareConfig::default(),
+			session_cookie_name: "sessionid".into(),
 			test_secret: Some(secret),
 		}
+	}
+
+	/// Set the session cookie used for HMAC token issuance and validation.
+	///
+	/// Match the cookie name in `SessionAuthConfig`. Typed session extensions
+	/// from session middleware take precedence. This method is native-only (P0).
+	pub fn with_session_cookie_name(mut self, name: impl Into<String>) -> Self {
+		self.session_cookie_name = name.into();
+		self
 	}
 
 	/// Extract CSRF token from request
@@ -226,7 +249,7 @@ impl CsrfMiddleware {
 
 		// For HMAC-based CSRF, we generate a secret based on session_id
 		// This ensures consistency across requests from the same session
-		let session_id = Self::get_session_id(request);
+		let session_id = self.get_session_id(request);
 		let mut hasher = Sha256::new();
 		hasher.update(b"csrf_secret");
 		hasher.update(session_id.as_bytes());
@@ -290,7 +313,7 @@ impl CsrfMiddleware {
 
 		// Get secret and session_id
 		let (secret, _) = self.get_or_create_secret(request);
-		let session_id = Self::get_session_id(request);
+		let session_id = self.get_session_id(request);
 
 		// Validate token using HMAC
 		check_token(&token, &secret, &session_id).map_err(|e| {
@@ -342,7 +365,7 @@ impl Middleware for CsrfMiddleware {
 		}
 
 		// Generate HMAC-based token using session_id (before moving request)
-		let session_id = Self::get_session_id(&request);
+		let session_id = self.get_session_id(&request);
 		let token = get_token(&secret, &session_id);
 
 		// Process request
@@ -848,7 +871,7 @@ mod tests {
 			.unwrap();
 
 		// Act
-		let session_id = CsrfMiddleware::get_session_id(&request);
+		let session_id = CsrfMiddleware::new().get_session_id(&request);
 
 		// Assert - should be 64 hex chars (32 bytes encoded)
 		assert_eq!(
@@ -888,8 +911,8 @@ mod tests {
 			.unwrap();
 
 		// Act
-		let session_id1 = CsrfMiddleware::get_session_id(&request1);
-		let session_id2 = CsrfMiddleware::get_session_id(&request2);
+		let session_id1 = CsrfMiddleware::new().get_session_id(&request1);
+		let session_id2 = CsrfMiddleware::new().get_session_id(&request2);
 
 		// Assert - two calls should produce different values since they use CSPRNG
 		assert_ne!(

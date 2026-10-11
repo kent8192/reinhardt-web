@@ -32,7 +32,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use wasmtime::component::{Component, HasSelf, Linker};
-use wasmtime::{Config, Engine, Store, StoreLimitsBuilder};
+use wasmtime::{CallHook, Config, Engine, Store, StoreLimitsBuilder};
 use wasmtime_wasi::p2;
 
 use super::host::HostState;
@@ -315,6 +315,15 @@ impl WasmRuntime {
 		let ticks = self.config.timeout.as_millis().div_ceil(10).max(1);
 		store.set_epoch_deadline(u64::try_from(ticks).unwrap_or(u64::MAX));
 		store.epoch_deadline_trap();
+		let ticks = u64::try_from(ticks).unwrap_or(u64::MAX);
+		// Reset only on a new host-to-guest call. Returning from a host import
+		// must not extend the budget of an already-running guest invocation.
+		store.call_hook(move |mut context, transition| {
+			if matches!(transition, CallHook::CallingWasm) {
+				context.set_epoch_deadline(ticks);
+			}
+			Ok(())
+		});
 
 		// Configure fuel if enabled
 		if self.config.fuel_metering {
@@ -471,6 +480,9 @@ mod tests {
 		let noop = instance
 			.get_typed_func::<(), ()>(&mut store, "noop")
 			.unwrap();
+		assert!(noop.call_async(&mut store, ()).await.is_ok());
+		tokio::time::sleep(Duration::from_millis(60)).await;
+		// A reused store gets a fresh execution budget after idle time.
 		assert!(noop.call_async(&mut store, ()).await.is_ok());
 		let spin = instance
 			.get_typed_func::<(), ()>(&mut store, "spin")

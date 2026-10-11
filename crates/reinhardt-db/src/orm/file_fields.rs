@@ -10,7 +10,7 @@ fn validate_upload_path(upload_to: &str, file_name: &str) -> Result<(), FileFiel
 	let directory = Path::new(upload_to);
 	if directory
 		.components()
-		.any(|component| !matches!(component, Component::Normal(_)))
+		.any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
 		|| upload_to.contains(['\\', ':', '\0'])
 	{
 		return Err(FileFieldError::InvalidPath(upload_to.into()));
@@ -798,6 +798,25 @@ mod tests {
 		}
 		assert!(!storage.path().join("uploads").exists());
 		assert!(!storage.path().join("escape.txt").exists());
+	}
+
+	#[rstest::rstest]
+	#[case("./uploads")]
+	#[case("./uploads/./files")]
+	#[case(".")]
+	fn file_field_accepts_current_directory_components(#[case] directory: &str) {
+		let storage = tempfile::tempdir().unwrap();
+		let field = FileField::with_storage(directory, storage.path().to_path_buf());
+
+		let saved = field.save("safe.txt", b"payload").unwrap();
+
+		assert_eq!(fs::read(storage.path().join(&saved)).unwrap(), b"payload");
+		assert!(field.exists(&saved));
+		assert!(!Path::new(&saved).is_absolute());
+		assert!(matches!(
+			field.save("../unsafe.txt", b"payload"),
+			Err(FileFieldError::InvalidPath(_))
+		));
 	}
 
 	#[rstest::rstest]

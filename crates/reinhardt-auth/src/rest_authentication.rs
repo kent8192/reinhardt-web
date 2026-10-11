@@ -447,6 +447,8 @@ pub struct SessionAuthentication<B: SessionBackend> {
 	config: SessionAuthConfig,
 	/// Session backend for loading session data
 	session_backend: B,
+	/// Token configuration shared with the issuing CSRF middleware.
+	csrf_config: reinhardt_core::security::csrf::CsrfConfig,
 }
 
 impl<B: SessionBackend> SessionAuthentication<B> {
@@ -455,6 +457,7 @@ impl<B: SessionBackend> SessionAuthentication<B> {
 		Self {
 			config: SessionAuthConfig::default(),
 			session_backend,
+			csrf_config: reinhardt_core::security::csrf::CsrfConfig::default(),
 		}
 	}
 
@@ -463,7 +466,16 @@ impl<B: SessionBackend> SessionAuthentication<B> {
 		Self {
 			config,
 			session_backend,
+			csrf_config: reinhardt_core::security::csrf::CsrfConfig::default(),
 		}
+	}
+
+	/// Use the same CSRF token header configuration as the issuing middleware.
+	///
+	/// This is a native-only (P0) session authentication configuration.
+	pub fn with_csrf_config(mut self, config: reinhardt_core::security::csrf::CsrfConfig) -> Self {
+		self.csrf_config = config;
+		self
 	}
 
 	fn check_csrf(&self, request: &Request, session_key: &str) -> Result<(), AuthenticationError> {
@@ -475,10 +487,9 @@ impl<B: SessionBackend> SessionAuthentication<B> {
 			return Ok(());
 		}
 
-		let header_name = reinhardt_core::security::csrf::CsrfConfig::default().header_name;
 		let token = request
 			.headers
-			.get(header_name.as_str())
+			.get(self.csrf_config.header_name.as_str())
 			.and_then(|value| value.to_str().ok())
 			.ok_or(AuthenticationError::InvalidToken)?;
 		let mut hasher = Sha256::new();

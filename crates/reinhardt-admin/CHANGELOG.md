@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve negative JSON numbers as numeric CSV/TSV cells while escaping formula-like strings and headers.
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.20...reinhardt-admin@v0.3.21) - 2026-10-05
 
 ### Documentation

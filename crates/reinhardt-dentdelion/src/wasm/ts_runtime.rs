@@ -45,12 +45,12 @@
 //! ```
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use boa_engine::{Context, JsError, JsValue, Source};
+use boa_engine::{Context, JsError, JsValue, Script, Source};
 
 /// Default maximum JavaScript execution time per evaluation (5 seconds).
 const DEFAULT_EXECUTION_TIMEOUT: Duration = Duration::from_secs(5);
@@ -58,9 +58,8 @@ const DEFAULT_EXECUTION_TIMEOUT: Duration = Duration::from_secs(5);
 /// Default maximum JavaScript source code size in bytes (1 MiB).
 const DEFAULT_MAX_SOURCE_SIZE: usize = 1024 * 1024;
 
-/// Boa does not interrupt a running context when a channel receive times out.
-/// This interpreter-level limit ensures a nonterminating loop eventually stops.
-const MAX_LOOP_ITERATIONS: u64 = 100_000;
+/// Independent interpreter guard for loops reentered from native builtins.
+const DEFAULT_LOOP_ITERATION_LIMIT: u64 = 1_000_000;
 
 /// Resource limits for JavaScript execution.
 ///
@@ -72,6 +71,11 @@ pub struct TsResourceLimits {
 	pub execution_timeout: Duration,
 	/// Maximum source code size in bytes.
 	pub max_source_size: usize,
+	/// Maximum iterations of an individual loop, independently of elapsed time.
+	///
+	/// Boa native builtins can reenter synchronous JavaScript evaluation, where
+	/// the cooperative deadline cannot run. This guard also bounds those loops.
+	pub loop_iteration_limit: u64,
 }
 
 impl Default for TsResourceLimits {
@@ -79,6 +83,7 @@ impl Default for TsResourceLimits {
 		Self {
 			execution_timeout: DEFAULT_EXECUTION_TIMEOUT,
 			max_source_size: DEFAULT_MAX_SOURCE_SIZE,
+			loop_iteration_limit: DEFAULT_LOOP_ITERATION_LIMIT,
 		}
 	}
 }
@@ -112,6 +117,18 @@ enum RuntimeCommand {
 	},
 }
 
+const COMMAND_QUEUED: u8 = 0;
+const COMMAND_STARTED: u8 = 1;
+const COMMAND_CANCELLED: u8 = 2;
+const COMMAND_TIMED_OUT: u8 = 3;
+
+/// A queued command and its worker-start acknowledgement.
+struct RuntimeRequest {
+	command: RuntimeCommand,
+	started_tx: mpsc::Sender<()>,
+	state: Arc<AtomicU8>,
+}
+
 /// JavaScript runtime for SSR.
 ///
 /// This runtime provides a sandboxed JavaScript execution environment
@@ -129,7 +146,7 @@ pub struct TsRuntime {
 	///
 	/// `SyncSender` is both `Send` and `Sync` (when `T: Send`),
 	/// which makes `TsRuntime` naturally `Send + Sync`.
-	command_tx: SyncSender<RuntimeCommand>,
+	command_tx: SyncSender<RuntimeRequest>,
 	/// Whether Preact has been initialized (set once during construction)
 	preact_initialized: bool,
 	/// Resource limits for JavaScript execution
@@ -167,7 +184,7 @@ impl TsRuntime {
 	/// - Preact initialization fails
 	pub fn with_limits(limits: TsResourceLimits) -> Result<Self, TsError> {
 		// Bounded channel for command passing (backpressure at 16 pending commands)
-		let (command_tx, command_rx) = mpsc::sync_channel::<RuntimeCommand>(16);
+		let (command_tx, command_rx) = mpsc::sync_channel::<RuntimeRequest>(16);
 
 		// Oneshot channel for initialization result
 		let (init_tx, init_rx) = mpsc::channel::<Result<(), TsError>>();
@@ -175,8 +192,9 @@ impl TsRuntime {
 		// Spawn dedicated thread for boa_engine::Context.
 		// Context is !Send + !Sync, so it must stay on this single thread.
 		let execution_timeout = limits.execution_timeout;
+		let loop_iteration_limit = limits.loop_iteration_limit;
 		thread::spawn(move || {
-			runtime_thread_main(command_rx, init_tx, execution_timeout);
+			runtime_thread_main(command_rx, init_tx, execution_timeout, loop_iteration_limit);
 		});
 
 		// Wait for initialization result from the dedicated thread
@@ -208,27 +226,13 @@ impl TsRuntime {
 		self.check_source_size(code)?;
 		self.check_ready()?;
 
-		let (response_tx, response_rx) = mpsc::channel();
-		self.command_tx
-			.try_send(RuntimeCommand::Eval {
+		self.execute(
+			|response_tx| RuntimeCommand::Eval {
 				code: code.to_string(),
 				response_tx,
-			})
-			.map_err(|_| TsError::EvalFailed("Runtime queue is unavailable or full".to_string()))?;
-
-		response_rx
-			.recv_timeout(self.limits.execution_timeout)
-			.map_err(|e| match e {
-				mpsc::RecvTimeoutError::Timeout => {
-					self.poisoned.store(true, Ordering::Release);
-					TsError::ExecutionTimeout {
-						timeout: self.limits.execution_timeout,
-					}
-				}
-				mpsc::RecvTimeoutError::Disconnected => {
-					TsError::EvalFailed("Runtime thread terminated during evaluation".to_string())
-				}
-			})?
+			},
+			TsError::EvalFailed,
+		)
 	}
 
 	/// Evaluate JavaScript code without expecting a return value.
@@ -238,27 +242,13 @@ impl TsRuntime {
 		self.check_source_size(code)?;
 		self.check_ready()?;
 
-		let (response_tx, response_rx) = mpsc::channel();
-		self.command_tx
-			.try_send(RuntimeCommand::EvalVoid {
+		self.execute(
+			|response_tx| RuntimeCommand::EvalVoid {
 				code: code.to_string(),
 				response_tx,
-			})
-			.map_err(|_| TsError::EvalFailed("Runtime queue is unavailable or full".to_string()))?;
-
-		response_rx
-			.recv_timeout(self.limits.execution_timeout)
-			.map_err(|e| match e {
-				mpsc::RecvTimeoutError::Timeout => {
-					self.poisoned.store(true, Ordering::Release);
-					TsError::ExecutionTimeout {
-						timeout: self.limits.execution_timeout,
-					}
-				}
-				mpsc::RecvTimeoutError::Disconnected => {
-					TsError::EvalFailed("Runtime thread terminated during evaluation".to_string())
-				}
-			})?
+			},
+			TsError::EvalFailed,
+		)
 	}
 
 	/// Render a Preact/React component to HTML string.
@@ -312,30 +302,75 @@ impl TsRuntime {
 			});
 		}
 
-		let (response_tx, response_rx) = mpsc::channel();
-		self.command_tx
-			.try_send(RuntimeCommand::RenderComponent {
+		self.execute(
+			|response_tx| RuntimeCommand::RenderComponent {
 				component_code: component_code.to_string(),
 				props_json: props_json.to_string(),
 				response_tx,
-			})
-			.map_err(|_| {
-				TsError::RenderFailed("Runtime queue is unavailable or full".to_string())
-			})?;
+			},
+			TsError::RenderFailed,
+		)
+	}
 
-		response_rx
+	/// Wait for worker admission separately from the execution deadline.
+	fn execute<T>(
+		&self,
+		command: impl FnOnce(mpsc::Sender<Result<T, TsError>>) -> RuntimeCommand,
+		unavailable: fn(String) -> TsError,
+	) -> Result<T, TsError> {
+		let (response_tx, response_rx) = mpsc::channel();
+		let (started_tx, started_rx) = mpsc::channel();
+		let state = Arc::new(AtomicU8::new(COMMAND_QUEUED));
+		self.command_tx
+			.try_send(RuntimeRequest {
+				command: command(response_tx),
+				started_tx,
+				state: Arc::clone(&state),
+			})
+			.map_err(|_| unavailable("Runtime queue is unavailable or full".into()))?;
+
+		match started_rx.recv_timeout(self.limits.execution_timeout) {
+			Ok(()) => {}
+			Err(mpsc::RecvTimeoutError::Timeout) => {
+				// The worker and caller race to admit or cancel this command.
+				// Cancellation wins only while the command is still queued.
+				if state
+					.compare_exchange(
+						COMMAND_QUEUED,
+						COMMAND_CANCELLED,
+						Ordering::AcqRel,
+						Ordering::Acquire,
+					)
+					.is_ok()
+				{
+					return Err(unavailable("Runtime command timed out while queued".into()));
+				}
+			}
+			Err(mpsc::RecvTimeoutError::Disconnected) => {
+				return Err(unavailable(
+					"Runtime thread terminated before evaluation".into(),
+				));
+			}
+		}
+
+		let result = response_rx
 			.recv_timeout(self.limits.execution_timeout)
-			.map_err(|e| match e {
+			.map_err(|error| match error {
 				mpsc::RecvTimeoutError::Timeout => {
+					state.store(COMMAND_TIMED_OUT, Ordering::Release);
 					self.poisoned.store(true, Ordering::Release);
 					TsError::ExecutionTimeout {
 						timeout: self.limits.execution_timeout,
 					}
 				}
 				mpsc::RecvTimeoutError::Disconnected => {
-					TsError::RenderFailed("Runtime thread terminated during rendering".to_string())
+					unavailable("Runtime thread terminated during evaluation".into())
 				}
-			})?
+			})?;
+		if matches!(result, Err(TsError::ExecutionTimeout { .. })) {
+			self.poisoned.store(true, Ordering::Release);
+		}
+		result
 	}
 
 	/// Check if Preact is initialized and ready for SSR.
@@ -376,9 +411,10 @@ impl TsRuntime {
 /// and processes commands received via channel. The context never leaves
 /// this thread, ensuring safe single-threaded access without `unsafe`.
 fn runtime_thread_main(
-	command_rx: Receiver<RuntimeCommand>,
+	command_rx: Receiver<RuntimeRequest>,
 	init_tx: mpsc::Sender<Result<(), TsError>>,
 	execution_timeout: Duration,
+	loop_iteration_limit: u64,
 ) {
 	let mut context = Context::default();
 
@@ -398,18 +434,34 @@ fn runtime_thread_main(
 	}
 	context
 		.runtime_limits_mut()
-		.set_loop_iteration_limit(MAX_LOOP_ITERATIONS);
-
+		.set_loop_iteration_limit(loop_iteration_limit);
 	// Process commands until the channel is closed (all senders dropped)
-	while let Ok(command) = command_rx.recv() {
-		match command {
+	while let Ok(request) = command_rx.recv() {
+		if request
+			.state
+			.compare_exchange(
+				COMMAND_QUEUED,
+				COMMAND_STARTED,
+				Ordering::AcqRel,
+				Ordering::Acquire,
+			)
+			.is_err()
+		{
+			continue;
+		}
+		let _ = request.started_tx.send(());
+		let timed_out = match request.command {
 			RuntimeCommand::Eval { code, response_tx } => {
 				let result = eval_code(&code, &mut context, execution_timeout);
+				let timed_out = matches!(result, Err(TsError::ExecutionTimeout { .. }));
 				let _ = response_tx.send(result);
+				timed_out
 			}
 			RuntimeCommand::EvalVoid { code, response_tx } => {
 				let result = eval_void_code(&code, &mut context, execution_timeout);
+				let timed_out = matches!(result, Err(TsError::ExecutionTimeout { .. }));
 				let _ = response_tx.send(result);
+				timed_out
 			}
 			RuntimeCommand::RenderComponent {
 				component_code,
@@ -422,8 +474,15 @@ fn runtime_thread_main(
 					&mut context,
 					execution_timeout,
 				);
+				let timed_out = matches!(result, Err(TsError::ExecutionTimeout { .. }));
 				let _ = response_tx.send(result);
+				timed_out
 			}
+		};
+		if timed_out || request.state.load(Ordering::Acquire) == COMMAND_TIMED_OUT {
+			// Cancelling Boa's evaluation leaves VM frames suspended. Discard the
+			// entire context instead of admitting another command into that state.
+			break;
 		}
 	}
 }
@@ -471,18 +530,14 @@ fn init_preact(context: &mut Context) -> Result<(), TsError> {
 
 /// Evaluate JavaScript code and return the result as a string.
 fn eval_code(code: &str, context: &mut Context, timeout: Duration) -> Result<String, TsError> {
-	let result = context
-		.eval(Source::from_bytes(code))
-		.map_err(|e| js_execution_error(&e, context, timeout, false))?;
+	let result = eval_with_deadline(code, context, timeout, false)?;
 
 	js_value_to_string(&result, context)
 }
 
 /// Evaluate JavaScript code without expecting a return value.
 fn eval_void_code(code: &str, context: &mut Context, timeout: Duration) -> Result<(), TsError> {
-	context
-		.eval(Source::from_bytes(code))
-		.map_err(|e| js_execution_error(&e, context, timeout, false))?;
+	eval_with_deadline(code, context, timeout, false)?;
 	Ok(())
 }
 
@@ -503,29 +558,55 @@ fn render_component_code(
 		"#
 	);
 
-	let result = context
-		.eval(Source::from_bytes(&render_script))
-		.map_err(|e| js_execution_error(&e, context, timeout, true))?;
+	let result = eval_with_deadline(&render_script, context, timeout, true)?;
 
 	js_value_to_string(&result, context)
 }
 
-fn js_execution_error(
-	error: &JsError,
+/// Poll Boa cooperatively so the elapsed-time deadline stops the interpreter.
+/// The VM budget controls yielding frequency, not the number of loop iterations.
+fn eval_with_deadline(
+	code: &str,
 	context: &mut Context,
 	timeout: Duration,
 	render: bool,
-) -> TsError {
-	if error
-		.as_native()
-		.is_some_and(|native| native.is_runtime_limit())
-	{
-		TsError::ExecutionTimeout { timeout }
-	} else if render {
-		TsError::RenderFailed(js_error_to_string(error, context))
-	} else {
-		TsError::EvalFailed(js_error_to_string(error, context))
-	}
+) -> Result<JsValue, TsError> {
+	use std::future::Future;
+	use std::task::{Context as TaskContext, Poll, Waker};
+
+	let started = Instant::now();
+	let map_error = |error: JsError, context: &mut Context| {
+		if error
+			.as_native()
+			.is_some_and(|native| native.is_runtime_limit())
+		{
+			TsError::RuntimeLimitExceeded {
+				message: error.to_string(),
+			}
+		} else if render {
+			TsError::RenderFailed(js_error_to_string(&error, context))
+		} else {
+			TsError::EvalFailed(js_error_to_string(&error, context))
+		}
+	};
+	let script = Script::parse(Source::from_bytes(code), None, context)
+		.map_err(|error| map_error(error, context))?;
+	let outcome = {
+		let mut evaluation = std::pin::pin!(script.evaluate_async_with_budget(context, 256));
+		let mut task_context = TaskContext::from_waker(Waker::noop());
+		loop {
+			if started.elapsed() >= timeout {
+				break None;
+			}
+			match evaluation.as_mut().poll(&mut task_context) {
+				Poll::Ready(result) => break Some(result),
+				Poll::Pending => {}
+			}
+		}
+	};
+	outcome
+		.ok_or(TsError::ExecutionTimeout { timeout })?
+		.map_err(|error| map_error(error, context))
 }
 
 /// Convert `JsValue` to String
@@ -533,16 +614,24 @@ fn js_value_to_string(value: &JsValue, context: &mut Context) -> Result<String, 
 	value
 		.to_string(context)
 		.map(|s| s.to_std_string_escaped())
-		.map_err(|e| TsError::EvalFailed(js_error_to_string(&e, context)))
+		.map_err(|e| {
+			if e.as_native()
+				.is_some_and(|native| native.is_runtime_limit())
+			{
+				TsError::RuntimeLimitExceeded {
+					message: e.to_string(),
+				}
+			} else {
+				TsError::EvalFailed(js_error_to_string(&e, context))
+			}
+		})
 }
 
 /// Convert `JsError` to String
-fn js_error_to_string(error: &JsError, context: &mut Context) -> String {
-	error
-		.to_opaque(context)
-		.to_string(context)
-		.map(|s| s.to_std_string_escaped())
-		.unwrap_or_else(|_| "Unknown JavaScript error".to_string())
+fn js_error_to_string(error: &JsError, _context: &mut Context) -> String {
+	// Display reads the error representation without invoking user toString
+	// hooks, which must never execute while formatting an evaluation failure.
+	error.to_string()
 }
 
 /// Shared JavaScript runtime instance type.
@@ -556,6 +645,12 @@ pub type SharedTsRuntime = Arc<TsRuntime>;
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
 pub enum TsError {
+	/// The interpreter exhausted an operation budget independently of elapsed time.
+	#[error("JavaScript interpreter resource limit exceeded: {message}")]
+	RuntimeLimitExceeded {
+		/// Interpreter diagnostic identifying the exhausted resource budget.
+		message: String,
+	},
 	/// JavaScript runtime initialization failed
 	#[error("JavaScript runtime initialization failed: {0}")]
 	InitFailed(String),
@@ -810,11 +905,151 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case("while (true) {}")]
+	#[case("String({ toString() { while (true) {} } })")]
+	#[case("[1].map(function () { while (true) {} })")]
+	#[case("({ toString() { while (true) {} } })")]
+	fn interpreter_budget_is_distinct_from_execution_timeout(#[case] code: &str) {
+		let runtime = TsRuntime::with_limits(TsResourceLimits {
+			loop_iteration_limit: 1000,
+			execution_timeout: Duration::from_secs(2),
+			..TsResourceLimits::default()
+		})
+		.unwrap();
+
+		let result = runtime.eval(code);
+
+		assert!(
+			matches!(result, Err(TsError::RuntimeLimitExceeded { .. })),
+			"unexpected result: {result:?}"
+		);
+	}
+
+	#[rstest]
+	fn thrown_object_error_does_not_execute_its_conversion_hook() {
+		let runtime = TsRuntime::with_limits(TsResourceLimits {
+			loop_iteration_limit: 1000,
+			..TsResourceLimits::default()
+		})
+		.unwrap();
+
+		let result = runtime.eval("throw { toString() { while (true) {} } }");
+
+		assert!(matches!(result, Err(TsError::EvalFailed(_))));
+	}
+
+	#[rstest]
+	fn queued_evaluations_each_receive_a_full_execution_budget() {
+		// Arrange: the total work exceeds one budget, while each evaluation fits.
+		let runtime = TsRuntime::with_limits(TsResourceLimits {
+			execution_timeout: Duration::from_millis(500),
+			..TsResourceLimits::default()
+		})
+		.unwrap();
+		let barrier = std::sync::Barrier::new(3);
+		let code = "(() => { const end = Date.now() + 300; while (Date.now() < end) {} return 'ready'; })()";
+
+		// Act: both requests enter the same worker queue concurrently.
+		thread::scope(|scope| {
+			let handles: Vec<_> = (0..2)
+				.map(|_| {
+					scope.spawn(|| {
+						barrier.wait();
+						runtime.eval(code)
+					})
+				})
+				.collect();
+			barrier.wait();
+
+			// Assert: queue time does not consume the evaluation's budget.
+			for handle in handles {
+				assert_eq!(handle.join().unwrap().unwrap(), "ready");
+			}
+		});
+		assert_eq!(runtime.eval("'still-ready'").unwrap(), "still-ready");
+	}
+
+	#[rstest]
+	fn cancelled_queued_commands_do_not_execute_or_poison_the_runtime() {
+		// Arrange: two admitted evaluations keep the worker busy beyond a queue budget.
+		let runtime = TsRuntime::with_limits(TsResourceLimits {
+			execution_timeout: Duration::from_millis(400),
+			..TsResourceLimits::default()
+		})
+		.unwrap();
+		let code = "(() => { const end = Date.now() + 250; while (Date.now() < end) {} return 'ready'; })()";
+		let mut responses = Vec::new();
+		for _ in 0..2 {
+			let (response_tx, response_rx) = mpsc::channel();
+			let (started_tx, _started_rx) = mpsc::channel();
+			runtime
+				.command_tx
+				.try_send(RuntimeRequest {
+					command: RuntimeCommand::Eval {
+						code: code.into(),
+						response_tx,
+					},
+					started_tx,
+					state: Arc::new(AtomicU8::new(COMMAND_QUEUED)),
+				})
+				.unwrap();
+			responses.push(response_rx);
+		}
+
+		// Act: cancel a command that has not started.
+		let result = runtime.eval("globalThis.cancelledCommandRan = true");
+
+		// Assert: the runtime stays healthy and the cancelled side effect never runs.
+		assert!(matches!(result, Err(TsError::EvalFailed(message)) if message.contains("queued")));
+		for response in responses {
+			assert_eq!(
+				response
+					.recv_timeout(Duration::from_secs(2))
+					.unwrap()
+					.unwrap(),
+				"ready"
+			);
+		}
+		assert_eq!(
+			runtime
+				.eval("typeof globalThis.cancelledCommandRan")
+				.unwrap(),
+			"undefined"
+		);
+	}
+
+	#[rstest]
+	fn test_large_finite_loop_completes_within_execution_timeout() {
+		let runtime = TsRuntime::new().unwrap();
+
+		let result: String = runtime
+			.eval("var n = 0; for (var i = 0; i < 150000; i++) { n++; } n.toString()")
+			.unwrap();
+
+		assert_eq!(result, "150000");
+	}
+
+	#[rstest]
+	fn test_deadline_stops_the_interpreter_without_a_iteration_budget() {
+		let mut context = Context::default();
+		let timeout = Duration::from_millis(20);
+		let started = Instant::now();
+
+		let result = eval_with_deadline("while (true) {}", &mut context, timeout, false);
+
+		assert!(
+			matches!(result, Err(TsError::ExecutionTimeout { timeout: elapsed }) if elapsed == timeout)
+		);
+		assert!(started.elapsed() < Duration::from_secs(1));
+	}
+
+	#[rstest]
 	fn test_execution_timeout_rejects_long_running_code() {
 		// Arrange: use a very short timeout
 		let limits = TsResourceLimits {
 			execution_timeout: Duration::from_millis(100),
 			max_source_size: DEFAULT_MAX_SOURCE_SIZE,
+			loop_iteration_limit: u64::MAX,
 		};
 		let runtime = TsRuntime::with_limits(limits).unwrap();
 		// Intentionally long-running JavaScript (busy loop)
@@ -833,6 +1068,7 @@ mod tests {
 		let limits = TsResourceLimits {
 			execution_timeout: Duration::from_secs(10),
 			max_source_size: 512,
+			..TsResourceLimits::default()
 		};
 
 		// Act

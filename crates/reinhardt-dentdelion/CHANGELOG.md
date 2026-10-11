@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep JavaScript queue deadlines separate from execution budgets, cancel unstarted work without poisoning the runtime, and reset WASM epoch deadlines for each guest call.
+
+- Preserve custom plugin HTTP transport settings through a trusted client-builder factory while retaining destination pinning, disabled redirects/proxies, and the request timeout.
+- Apply cooperative JavaScript elapsed-time deadlines and distinguish the separately configured interpreter loop budget from a timeout.
+
+### Migration
+
+- Replace `.http_client(client)` with `.http_client_factory(|| reqwest::Client::builder().default_headers(headers.clone()))`; add custom CA roots or client certificates in the factory as needed. Opaque prebuilt clients now return a clear migration error instead of silently losing configuration.
+- Add `loop_iteration_limit` to explicit `TsResourceLimits` literals, or use `..TsResourceLimits::default()` (default: 1,000,000 iterations per loop). Handle `TsError::RuntimeLimitExceeded` independently of elapsed-time timeouts. Native builtin callbacks can run synchronously, so this interpreter guard must remain enabled.
+- API approval and rationale: [RFC #6763](https://github.com/kent8192/reinhardt-web/issues/6763).
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.3.20...reinhardt-dentdelion@v0.3.21) - 2026-10-05
 
 ### Documentation

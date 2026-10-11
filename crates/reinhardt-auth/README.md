@@ -545,7 +545,11 @@ assert!(permission.has_permission(&context).await);
 must send the session-bound token in `X-CSRFToken`; `CsrfMiddleware` can issue
 that token on a safe request when it runs before authentication middleware and
 reads the same `sessionid` cookie. If the session cookie name is customized,
-configure token issuance to use that same session key. Disable
+use `CsrfMiddleware::with_session_cookie_name` with the same name as
+`SessionAuthConfig::cookie_name`. For a custom token header, pass the same
+`CsrfConfig` to `CsrfMiddlewareConfig::csrf_config` and
+`SessionAuthentication::with_csrf_config`. The token remains bound to that
+session key; changing the cookie or header name does not disable validation. Disable
 `SessionAuthConfig::enforce_csrf` only when another CSRF check protects the
 request.
 
