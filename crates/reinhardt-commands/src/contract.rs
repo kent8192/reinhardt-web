@@ -549,6 +549,14 @@ fn contract_field_type(field: &FieldState) -> CommandResult<ContractFieldType> {
 			through: through.clone(),
 		},
 		FieldType::Custom(name) => ContractFieldType::Custom { name: name.clone() },
+		// `FieldType` is non-exhaustive; a type this contract version cannot
+		// describe must fail resolution instead of being exported incorrectly.
+		other => {
+			return Err(resolution_error(format!(
+				"field type `{other:?}` of field `{}` is not supported by contract version 0",
+				field.name
+			)));
+		}
 	})
 }
 
@@ -637,8 +645,18 @@ fn constraint_contract(
 	})
 }
 
-fn index_method(index: &IndexDefinition) -> Option<IndexMethodContract> {
-	index.index_type().map(|method| match method {
+fn index_method(index: &IndexDefinition) -> CommandResult<Option<IndexMethodContract>> {
+	index
+		.index_type()
+		.map(|method| index_method_contract(index, method))
+		.transpose()
+}
+
+fn index_method_contract(
+	index: &IndexDefinition,
+	method: reinhardt_db::migrations::IndexType,
+) -> CommandResult<IndexMethodContract> {
+	Ok(match method {
 		reinhardt_db::migrations::IndexType::BTree => IndexMethodContract::BTree,
 		reinhardt_db::migrations::IndexType::Hash => IndexMethodContract::Hash,
 		reinhardt_db::migrations::IndexType::Gin => IndexMethodContract::Gin,
@@ -652,6 +670,14 @@ fn index_method(index: &IndexDefinition) -> Option<IndexMethodContract> {
 		}
 		#[cfg(feature = "pgvector")]
 		reinhardt_db::migrations::IndexType::Ivfflat { lists } => IndexMethodContract::IvfFlat { lists },
+		// `IndexType` is non-exhaustive; reporting no method for an unknown one
+		// would silently change the exported index definition.
+		other => {
+			return Err(resolution_error(format!(
+				"index method `{other:?}` of index `{}` is not supported by contract version 0",
+				index.name
+			)));
+		}
 	})
 }
 
@@ -877,16 +903,18 @@ fn model_contracts(state: &ProjectState) -> CommandResult<Vec<ModelContract>> {
 			let indexes = model
 				.indexes
 				.iter()
-				.map(|index| IndexContract {
-					name: index.name.clone(),
-					fields: index.fields.clone(),
-					unique: index.unique,
-					predicate: index.where_clause.clone(),
-					method: index_method(index),
-					operator_class: index.operator_class().cloned(),
-					expressions: index.expressions().cloned(),
+				.map(|index| {
+					Ok(IndexContract {
+						name: index.name.clone(),
+						fields: index.fields.clone(),
+						unique: index.unique,
+						predicate: index.where_clause.clone(),
+						method: index_method(index)?,
+						operator_class: index.operator_class().cloned(),
+						expressions: index.expressions().cloned(),
+					})
 				})
-				.collect();
+				.collect::<CommandResult<Vec<_>>>()?;
 			Ok(ModelContract {
 				app_label: model.app_label.clone(),
 				model_name: model.name.clone(),

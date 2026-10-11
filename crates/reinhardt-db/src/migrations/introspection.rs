@@ -10,7 +10,15 @@ use super::{MigrationError, Result};
 use crate::backends::{DatabaseConnection, DatabaseType};
 
 /// Schema information extracted from a database
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`DatabaseSchema::new`] and the chained `with_*` builders; public fields
+/// stay readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct DatabaseSchema {
 	/// All tables in the schema
 	pub tables: HashMap<String, TableInfo>,
@@ -32,7 +40,15 @@ pub struct InspectDbOptions {
 }
 
 /// Table metadata
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`TableInfo::new`] and the chained `with_*` builders; public fields stay
+/// readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct TableInfo {
 	/// Table name
 	pub name: String,
@@ -51,7 +67,15 @@ pub struct TableInfo {
 }
 
 /// Column metadata
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`ColumnInfo::new`] and the chained `with_*` builders; public fields stay
+/// readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ColumnInfo {
 	/// Column name
 	pub name: String,
@@ -71,6 +95,215 @@ pub struct ColumnInfo {
 	pub identity: Option<super::IdentityDefinition>,
 	/// Catalog-resolved plain nextval dependency, without SQL-name heuristics.
 	pub sequence_default: Option<super::QualifiedName>,
+}
+
+impl DatabaseSchema {
+	/// Creates an empty schema snapshot without tables, sequences, or a resolved
+	/// default schema.
+	///
+	/// Populate it with the `with_*` builders, or by mutating the public fields.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::introspection::{ColumnInfo, DatabaseSchema, TableInfo};
+	/// use reinhardt_db::migrations::FieldType;
+	///
+	/// let schema = DatabaseSchema::new()
+	///     .with_default_schema(Some("public".to_string()))
+	///     .with_table(
+	///         TableInfo::new("users")
+	///             .with_column(ColumnInfo::new("id", FieldType::BigInteger, false))
+	///             .with_primary_key(vec!["id".to_string()]),
+	///     );
+	///
+	/// assert_eq!(schema.default_schema.as_deref(), Some("public"));
+	/// assert_eq!(schema.tables["users"].primary_key, vec!["id".to_string()]);
+	/// ```
+	pub fn new() -> Self {
+		Self {
+			tables: HashMap::new(),
+			sequences: Vec::new(),
+			default_schema: None,
+		}
+	}
+
+	/// Adds or replaces a table, keyed by [`TableInfo::name`].
+	pub fn with_table(mut self, table: TableInfo) -> Self {
+		self.tables.insert(table.name.clone(), table);
+		self
+	}
+
+	/// Adds a sequence catalog definition.
+	pub fn with_sequence(mut self, sequence: SequenceInfo) -> Self {
+		self.sequences.push(sequence);
+		self
+	}
+
+	/// Sets the resolved default schema, including an explicit `None`.
+	pub fn with_default_schema(mut self, default_schema: Option<String>) -> Self {
+		self.default_schema = default_schema;
+		self
+	}
+}
+
+impl Default for DatabaseSchema {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl TableInfo {
+	/// Creates table metadata with the given name and no columns, indexes,
+	/// primary key, or constraints.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::introspection::{
+	///     CheckConstraintInfo, ColumnInfo, TableInfo, UniqueConstraintInfo,
+	/// };
+	/// use reinhardt_db::migrations::FieldType;
+	///
+	/// let table = TableInfo::new("accounts")
+	///     .with_column(ColumnInfo::new("id", FieldType::BigInteger, false))
+	///     .with_column(ColumnInfo::new("email", FieldType::VarChar(255), false))
+	///     .with_primary_key(vec!["id".to_string()])
+	///     .with_unique_constraint(UniqueConstraintInfo {
+	///         name: "accounts_email_key".to_string(),
+	///         columns: vec!["email".to_string()],
+	///     })
+	///     .with_check_constraint(CheckConstraintInfo {
+	///         name: Some("accounts_email_check".to_string()),
+	///         expression: "email <> ''".to_string(),
+	///     });
+	///
+	/// assert_eq!(table.name, "accounts");
+	/// assert_eq!(table.columns.len(), 2);
+	/// assert_eq!(table.unique_constraints.len(), 1);
+	/// assert_eq!(table.check_constraints.len(), 1);
+	/// ```
+	pub fn new(name: impl Into<String>) -> Self {
+		Self {
+			name: name.into(),
+			columns: HashMap::new(),
+			indexes: HashMap::new(),
+			primary_key: Vec::new(),
+			foreign_keys: Vec::new(),
+			unique_constraints: Vec::new(),
+			check_constraints: Vec::new(),
+		}
+	}
+
+	/// Adds or replaces a column, keyed by [`ColumnInfo::name`].
+	pub fn with_column(mut self, column: ColumnInfo) -> Self {
+		self.columns.insert(column.name.clone(), column);
+		self
+	}
+
+	/// Adds or replaces an index, keyed by [`IndexInfo::name`].
+	pub fn with_index(mut self, index: IndexInfo) -> Self {
+		self.indexes.insert(index.name.clone(), index);
+		self
+	}
+
+	/// Sets the ordered primary-key column list.
+	pub fn with_primary_key(mut self, primary_key: Vec<String>) -> Self {
+		self.primary_key = primary_key;
+		self
+	}
+
+	/// Adds a foreign-key constraint.
+	pub fn with_foreign_key(mut self, foreign_key: ForeignKeyInfo) -> Self {
+		self.foreign_keys.push(foreign_key);
+		self
+	}
+
+	/// Adds a unique constraint.
+	pub fn with_unique_constraint(mut self, constraint: UniqueConstraintInfo) -> Self {
+		self.unique_constraints.push(constraint);
+		self
+	}
+
+	/// Adds a CHECK constraint.
+	pub fn with_check_constraint(mut self, constraint: CheckConstraintInfo) -> Self {
+		self.check_constraints.push(constraint);
+		self
+	}
+}
+
+impl ColumnInfo {
+	/// Creates column metadata from the semantically required name, type, and
+	/// nullability.
+	///
+	/// Optional catalog details (default expression, auto-increment, identity,
+	/// generated expression, and sequence default) start unset and are populated
+	/// with the `with_*` builders.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::introspection::ColumnInfo;
+	/// use reinhardt_db::migrations::FieldType;
+	///
+	/// let column = ColumnInfo::new("created_at", FieldType::TimestampTz, false)
+	///     .with_default(Some("now()".to_string()));
+	///
+	/// assert_eq!(column.name, "created_at");
+	/// assert_eq!(column.default.as_deref(), Some("now()"));
+	/// assert!(!column.auto_increment);
+	/// assert!(column.identity.is_none());
+	/// ```
+	pub fn new(name: impl Into<String>, column_type: super::FieldType, nullable: bool) -> Self {
+		Self {
+			name: name.into(),
+			column_type,
+			nullable,
+			default: None,
+			auto_increment: false,
+			identity_generation: None,
+			generated: None,
+			identity: None,
+			sequence_default: None,
+		}
+	}
+
+	/// Sets the default value expression, including an explicit `None`.
+	pub fn with_default(mut self, default: Option<String>) -> Self {
+		self.default = default;
+		self
+	}
+
+	/// Sets the auto-increment flag.
+	pub fn with_auto_increment(mut self, auto_increment: bool) -> Self {
+		self.auto_increment = auto_increment;
+		self
+	}
+
+	/// Sets the PostgreSQL identity generation mode, including an explicit `None`.
+	pub fn with_identity_generation(mut self, identity_generation: Option<String>) -> Self {
+		self.identity_generation = identity_generation;
+		self
+	}
+
+	/// Sets generated-column metadata, including an explicit `None`.
+	pub fn with_generated(mut self, generated: Option<super::GeneratedColumnDefinition>) -> Self {
+		self.generated = generated;
+		self
+	}
+
+	/// Sets the column-owned identity definition, including an explicit `None`.
+	pub fn with_identity(mut self, identity: Option<super::IdentityDefinition>) -> Self {
+		self.identity = identity;
+		self
+	}
+
+	/// Sets the catalog-resolved `nextval` sequence dependency, including an
+	/// explicit `None`.
+	pub fn with_sequence_default(mut self, sequence_default: Option<super::QualifiedName>) -> Self {
+		self.sequence_default = sequence_default;
+		self
+	}
 }
 
 /// Index metadata
@@ -3045,6 +3278,148 @@ mod postgres_tests {
 
 			assert_eq!(field_type, FieldType::Custom("vector".to_string()));
 		}
+	}
+}
+
+#[cfg(test)]
+mod builder_tests {
+	use super::*;
+	use crate::migrations::{
+		FieldType, GeneratedColumnDefinition, GeneratedStorage, IdentityDefinition,
+		IdentityGeneration, QualifiedName,
+	};
+	use rstest::rstest;
+
+	#[rstest]
+	fn column_info_new_sets_required_fields_and_clears_optional_metadata() {
+		// Act
+		let column = ColumnInfo::new("email", FieldType::VarChar(255), true);
+
+		// Assert
+		assert_eq!(
+			column,
+			ColumnInfo {
+				name: "email".to_string(),
+				column_type: FieldType::VarChar(255),
+				nullable: true,
+				default: None,
+				auto_increment: false,
+				identity_generation: None,
+				generated: None,
+				identity: None,
+				sequence_default: None,
+			}
+		);
+	}
+
+	#[rstest]
+	fn column_info_builders_set_every_optional_field() {
+		// Arrange
+		let generated = GeneratedColumnDefinition::raw_sql("id * 2", GeneratedStorage::Stored);
+		let identity = IdentityDefinition::new(IdentityGeneration::ByDefault);
+		let sequence = QualifiedName::new("accounts_id_seq").with_schema("public");
+
+		// Act
+		let column = ColumnInfo::new("id", FieldType::BigInteger, false)
+			.with_default(Some("0".to_string()))
+			.with_auto_increment(true)
+			.with_identity_generation(Some("BY DEFAULT".to_string()))
+			.with_generated(Some(generated.clone()))
+			.with_identity(Some(identity.clone()))
+			.with_sequence_default(Some(sequence.clone()));
+
+		// Assert
+		assert_eq!(
+			column,
+			ColumnInfo {
+				name: "id".to_string(),
+				column_type: FieldType::BigInteger,
+				nullable: false,
+				default: Some("0".to_string()),
+				auto_increment: true,
+				identity_generation: Some("BY DEFAULT".to_string()),
+				generated: Some(generated),
+				identity: Some(identity),
+				sequence_default: Some(sequence),
+			}
+		);
+	}
+
+	#[rstest]
+	fn table_info_builders_key_members_by_name_and_keep_constraint_order() {
+		// Arrange
+		let index = IndexInfo {
+			name: "accounts_email_idx".to_string(),
+			columns: vec!["email".to_string()],
+			unique: false,
+			#[cfg(feature = "pgvector")]
+			access_method: None,
+			index_type: None,
+			#[cfg(feature = "pgvector")]
+			expressions: None,
+			#[cfg(feature = "pgvector")]
+			operator_class: None,
+			#[cfg(feature = "pgvector")]
+			operator_class_is_default: false,
+		};
+		let foreign_key = ForeignKeyInfo {
+			name: "accounts_owner_fk".to_string(),
+			columns: vec!["owner_id".to_string()],
+			referenced_table: "owners".to_string(),
+			referenced_columns: vec!["id".to_string()],
+			on_delete: Some("CASCADE".to_string()),
+			on_update: None,
+		};
+		let unique = UniqueConstraintInfo {
+			name: "accounts_email_key".to_string(),
+			columns: vec!["email".to_string()],
+		};
+		let check = CheckConstraintInfo {
+			name: None,
+			expression: "email <> ''".to_string(),
+		};
+
+		// Act
+		let table = TableInfo::new("accounts")
+			.with_column(ColumnInfo::new("id", FieldType::BigInteger, false))
+			.with_column(ColumnInfo::new("email", FieldType::Text, false))
+			.with_index(index.clone())
+			.with_primary_key(vec!["id".to_string()])
+			.with_foreign_key(foreign_key.clone())
+			.with_unique_constraint(unique.clone())
+			.with_check_constraint(check.clone());
+
+		// Assert
+		assert_eq!(table.name, "accounts");
+		assert_eq!(
+			table.columns.keys().collect::<HashSet<_>>(),
+			HashSet::from([&"id".to_string(), &"email".to_string()])
+		);
+		assert_eq!(table.indexes.get("accounts_email_idx"), Some(&index));
+		assert_eq!(table.primary_key, vec!["id".to_string()]);
+		assert_eq!(table.foreign_keys, vec![foreign_key]);
+		assert_eq!(table.unique_constraints, vec![unique]);
+		assert_eq!(table.check_constraints, vec![check]);
+	}
+
+	#[rstest]
+	fn database_schema_new_matches_default_and_builders_populate_it() {
+		// Act
+		let empty = DatabaseSchema::new();
+		let schema = DatabaseSchema::new()
+			.with_table(TableInfo::new("accounts"))
+			.with_default_schema(Some("public".to_string()));
+
+		// Assert
+		assert_eq!(empty, DatabaseSchema::default());
+		assert!(empty.tables.is_empty());
+		assert!(empty.sequences.is_empty());
+		assert_eq!(empty.default_schema, None);
+		assert_eq!(
+			schema.tables.get("accounts"),
+			Some(&TableInfo::new("accounts"))
+		);
+		assert_eq!(schema.default_schema.as_deref(), Some("public"));
 	}
 }
 
