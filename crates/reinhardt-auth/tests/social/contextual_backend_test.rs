@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use reinhardt_auth::social::{
 	OAuthProvider, SocialAuthBackend, SocialAuthError, StandardClaims, TokenResponse,
 };
+use rstest::{fixture, rstest};
 use std::collections::HashMap;
 use std::sync::{
 	Arc,
@@ -76,6 +77,23 @@ impl OAuthProvider for TestProvider {
 			additional_claims: HashMap::new(),
 		})
 	}
+}
+
+/// Builds a backend with one registered `github` provider and returns the
+/// counter that provider increments on every token exchange.
+///
+/// rstest does not share fixture instances, so the backend and the counter are
+/// created together by a single fixture to guarantee the counter observes the
+/// registered provider.
+#[fixture]
+fn backend_with_calls() -> (SocialAuthBackend, Arc<AtomicUsize>) {
+	let exchange_calls = Arc::new(AtomicUsize::new(0));
+	let mut backend = SocialAuthBackend::new();
+	backend.register_provider(Arc::new(TestProvider::new(
+		"github",
+		exchange_calls.clone(),
+	)));
+	(backend, exchange_calls)
 }
 
 #[tokio::test]
@@ -224,24 +242,25 @@ async fn contextual_callback_rejects_provider_swap_before_exchange() {
 
 #[tokio::test]
 async fn contextual_begin_rejects_empty_binding() {
+	// Arrange
 	let backend = SocialAuthBackend::new();
 
+	// Act
 	let result = backend
 		.begin_auth_with_context("missing", None, None, b"", Vec::new())
 		.await;
 
+	// Assert
 	assert!(matches!(result, Err(SocialAuthError::StateValidation(_))));
 }
 
+#[rstest]
 #[tokio::test]
-async fn contextual_callback_rejects_empty_binding_without_consuming_state() {
+async fn contextual_callback_consumes_state_when_binding_is_empty(
+	backend_with_calls: (SocialAuthBackend, Arc<AtomicUsize>),
+) {
 	// Arrange
-	let exchange_calls = Arc::new(AtomicUsize::new(0));
-	let mut backend = SocialAuthBackend::new();
-	backend.register_provider(Arc::new(TestProvider::new(
-		"github",
-		exchange_calls.clone(),
-	)));
+	let (backend, exchange_calls) = backend_with_calls;
 	let authorization = backend
 		.begin_auth_with_context("github", None, None, b"browser-a", Vec::new())
 		.await
@@ -251,17 +270,17 @@ async fn contextual_callback_rejects_empty_binding_without_consuming_state() {
 	let empty_binding = backend
 		.handle_callback_with_context("github", "code", &authorization.state, b"")
 		.await;
-	let valid_binding = backend
+	let valid_binding_retry = backend
 		.handle_callback_with_context("github", "code", &authorization.state, b"browser-a")
 		.await;
 
 	// Assert
+	assert!(matches!(empty_binding, Err(SocialAuthError::InvalidState)));
 	assert!(matches!(
-		empty_binding,
-		Err(SocialAuthError::StateValidation(_))
+		valid_binding_retry,
+		Err(SocialAuthError::InvalidState)
 	));
-	assert!(valid_binding.is_ok());
-	assert_eq!(exchange_calls.load(Ordering::SeqCst), 1);
+	assert_eq!(exchange_calls.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
