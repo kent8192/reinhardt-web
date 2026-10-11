@@ -17,6 +17,8 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  # Listing branches verifies that the RC exception is currently available.
+  contents: read
   checks: write
   issues: write
   # The issue-comment endpoint also requires access to the PR conversation.
@@ -37,8 +39,16 @@ jobs:
               core.setFailed('Security approval reevaluation must run from main.');
               return;
             }
+            const dispatchInput = context.payload.inputs?.pull_request_number;
+            // Canonical decimal input shares the normal PR concurrency key.
+            // Number() aliases such as 06739 or 6.739e3 would use another key.
+            if (context.eventName === 'workflow_dispatch'
+              && (typeof dispatchInput !== 'string' || !/^[1-9]\d*$/.test(dispatchInput))) {
+              core.setFailed('A canonical positive decimal pull request number is required.');
+              return;
+            }
             const targetNumber = context.payload.pull_request?.number
-              ?? Number(context.payload.inputs?.pull_request_number);
+              ?? Number(dispatchInput);
             if (!Number.isSafeInteger(targetNumber) || targetNumber <= 0) {
               core.setFailed('A positive pull request number is required.');
               return;
@@ -63,43 +73,53 @@ jobs:
             if (breakingTitle && labels.includes('security') && labels.includes('rc-breaking-approved')
               && labels.includes('breaking-change')) {
               try {
-                const events = await github.paginate(github.rest.issues.listEvents, {
+                const branches = await github.paginate(github.rest.repos.listBranches, {
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  issue_number: pr.number,
                   per_page: 100,
                 });
-                const approval = events
-                  .filter(event => ['labeled', 'unlabeled'].includes(event.event)
-                    && event.label?.name === 'rc-breaking-approved')
-                  .reduce((latest, event) => !latest || event.id > latest.id ? event : latest, undefined);
-                if (approval?.event === 'labeled' && approval.actor?.login) {
-                  const { data: access } = await github.rest.repos.getCollaboratorPermissionLevel({
+                // BB-4 defines the RC phase by an active versioned develop branch.
+                if (branches.some(branch => /^develop\/\d+\.\d+\.\d+$/.test(branch.name))) {
+                  const events = await github.paginate(github.rest.issues.listEvents, {
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    username: approval.actor.login,
+                    issue_number: pr.number,
+                    per_page: 100,
                   });
-                  // The legacy permission maps maintain to write, so write
-                  // alone is insufficient. Custom admin roles remain valid.
-                  approvedSecurityFix = access.permission === 'admin'
-                    || ['admin', 'maintain'].includes(access.role_name)
-                    || access.user?.permissions?.maintain === true
-                    || access.user?.permissions?.admin === true;
-                  if (!approvedSecurityFix && access.permission === 'write'
-                    && access.role_name !== 'write') {
-                    // Custom role names do not identify their base role. The
-                    // collaborator permission flags expose that base access.
-                    const collaborators = await github.paginate(github.rest.repos.listCollaborators, {
+                  const approval = events
+                    .filter(event => ['labeled', 'unlabeled'].includes(event.event)
+                      && event.label?.name === 'rc-breaking-approved')
+                    .reduce((latest, event) => !latest || event.id > latest.id ? event : latest, undefined);
+                  if (approval?.event === 'labeled' && approval.actor?.login) {
+                    const { data: access } = await github.rest.repos.getCollaboratorPermissionLevel({
                       owner: context.repo.owner,
                       repo: context.repo.repo,
-                      per_page: 100,
+                      username: approval.actor.login,
                     });
-                    const approver = collaborators.find(user =>
-                      user.login.toLowerCase() === approval.actor.login.toLowerCase());
-                    approvedSecurityFix = approver?.permissions?.maintain === true
-                      || approver?.permissions?.admin === true;
+                    // The legacy permission maps maintain to write, so write
+                    // alone is insufficient. Custom admin roles remain valid.
+                    approvedSecurityFix = access.permission === 'admin'
+                      || ['admin', 'maintain'].includes(access.role_name)
+                      || access.user?.permissions?.maintain === true
+                      || access.user?.permissions?.admin === true;
+                    if (!approvedSecurityFix && access.permission === 'write'
+                      && access.role_name !== 'write') {
+                      // Custom role names do not identify their base role. The
+                      // collaborator permission flags expose that base access.
+                      const collaborators = await github.paginate(github.rest.repos.listCollaborators, {
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        per_page: 100,
+                      });
+                      const approver = collaborators.find(user =>
+                        user.login.toLowerCase() === approval.actor.login.toLowerCase());
+                      approvedSecurityFix = approver?.permissions?.maintain === true
+                        || approver?.permissions?.admin === true;
+                    }
+                    if (approvedSecurityFix) approvalActor = approval.actor.login;
                   }
-                  if (approvedSecurityFix) approvalActor = approval.actor.login;
+                } else {
+                  core.info('No active versioned develop branch; the RC security exception is unavailable.');
                 }
               } catch (error) {
                 // Publish a failing head check even when provenance cannot be
@@ -109,7 +129,7 @@ jobs:
             }
             const invalidTarget = pr.base.ref === 'main' && breakingChange && !validDevelopBranch && !approvedSecurityFix;
             const summary = invalidTarget
-              ? `Breaking change from '${sourceBranch}' must target a versioned develop/X.Y.Z branch unless maintainers approve a security fix for main with a breaking title, security, rc-breaking-approved, and breaking-change labels, and verified maintainer approval.`
+              ? `Breaking change from '${sourceBranch}' must target a versioned develop/X.Y.Z branch unless an active versioned develop branch exists and maintainers approve an RC security fix for main with a breaking title, security, rc-breaking-approved, and breaking-change labels, and verified maintainer approval.`
               : pr.base.ref === 'main' && breakingChange && approvedSecurityFix
                 ? `Approved security fix targets main under STABILITY_POLICY.md SP-3; approval label applied by verified maintainer @${approvalActor}.`
                 : 'No invalid breaking-change target detected.';
@@ -161,7 +181,7 @@ jobs:
               `- Source branch: \`${sourceBranch}\``,
               `- Detected by: ${labels.includes('breaking-change') ? '`breaking-change` label' : 'breaking Conventional Commit title'}`,
               '',
-              'Breaking changes must target the appropriate versioned `develop/X.Y.Z` branch. Maintainers may approve an SP-3 security fix for `main` by applying both `security` and `rc-breaking-approved` after the API Change Proposal and migration guide are approved. The `breaking-change` label must remain present so required announcements run. The latest approval-label event must be applied by a user with current maintain or admin repository access; triage or write access alone is insufficient. This required check fails until the target, classification, or security approval is corrected.',
+              'Breaking changes must target the appropriate versioned `develop/X.Y.Z` branch. During an active RC phase with a versioned `develop/X.Y.Z` branch, maintainers may approve an SP-3 security fix for `main` by applying both `security` and `rc-breaking-approved` after the API Change Proposal and migration guide are approved. The `breaking-change` label must remain present so required announcements run. The latest approval-label event must be applied by a user with current maintain or admin repository access; triage or write access alone is insufficient. This required check fails until the target, classification, or security approval is corrected.',
             ].join('\n');
 
             await github.rest.issues.createComment({
