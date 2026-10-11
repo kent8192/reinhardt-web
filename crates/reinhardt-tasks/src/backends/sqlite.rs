@@ -347,7 +347,7 @@ impl ResultBackend for SqliteResultBackend {
 		.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
 		match record {
-			Some((status_str, result, error, _created_at)) => {
+			Some((status_str, result, error, created_at)) => {
 				let status = match status_str.as_str() {
 					"pending" => TaskStatus::Pending,
 					"running" => TaskStatus::Running,
@@ -357,7 +357,8 @@ impl ResultBackend for SqliteResultBackend {
 					_ => TaskStatus::Pending,
 				};
 
-				let mut metadata = TaskResultMetadata::new(task_id, status, result);
+				let mut metadata =
+					TaskResultMetadata::with_created_at(task_id, status, result, created_at);
 				if let Some(err) = error {
 					metadata.set_error(err);
 				}
@@ -386,6 +387,7 @@ mod tests {
 	use super::*;
 	use crate::backend::TaskBackend;
 	use crate::{TaskId, TaskPriority};
+	use rstest::rstest;
 
 	struct TestTask {
 		id: TaskId,
@@ -487,6 +489,58 @@ mod tests {
 			.expect("Failed to get result");
 		assert!(retrieved.is_some());
 		assert_eq!(retrieved.unwrap().result(), Some("Test result"));
+	}
+
+	#[rstest]
+	#[case::success_with_result(TaskStatus::Success, Some("Test result"), None)]
+	#[case::failure_with_error(TaskStatus::Failure, None, Some("boom"))]
+	#[case::retry_with_result_and_error(TaskStatus::Retry, Some("partial"), Some("transient"))]
+	#[tokio::test]
+	async fn test_sqlite_result_backend_get_result_preserves_created_at(
+		#[case] status: TaskStatus,
+		#[case] result: Option<&str>,
+		#[case] error: Option<&str>,
+	) {
+		// Arrange
+		const PERSISTED_CREATED_AT: i64 = 1_234;
+		let backend = SqliteResultBackend::new("sqlite::memory:")
+			.await
+			.expect("Failed to create backend");
+		let task_id = TaskId::new();
+		let mut metadata = TaskResultMetadata::with_created_at(
+			task_id,
+			status,
+			result.map(str::to_string),
+			PERSISTED_CREATED_AT,
+		);
+		if let Some(error) = error {
+			metadata.set_error(error.to_string());
+		}
+		backend
+			.store_result(metadata)
+			.await
+			.expect("Failed to store result");
+
+		// Act
+		let first = backend
+			.get_result(task_id)
+			.await
+			.expect("Failed to get result")
+			.expect("Result should exist");
+		let second = backend
+			.get_result(task_id)
+			.await
+			.expect("Failed to get result")
+			.expect("Result should exist");
+
+		// Assert
+		for retrieved in [&first, &second] {
+			assert_eq!(retrieved.created_at(), PERSISTED_CREATED_AT);
+			assert_eq!(retrieved.task_id(), task_id);
+			assert_eq!(retrieved.status(), status);
+			assert_eq!(retrieved.result(), result);
+			assert_eq!(retrieved.error(), error);
+		}
 	}
 
 	#[tokio::test]

@@ -116,6 +116,45 @@ impl TaskResultMetadata {
 		}
 	}
 
+	/// Create task result metadata with an explicit creation timestamp
+	///
+	/// Backends use this constructor to restore metadata that was persisted
+	/// earlier, so that reading a stored result preserves its original
+	/// creation time instead of substituting the time of retrieval.
+	///
+	/// `created_at` is a Unix timestamp in seconds, matching the value
+	/// returned by [`created_at`](Self::created_at).
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_tasks::{TaskResultMetadata, TaskId, TaskStatus};
+	///
+	/// let metadata = TaskResultMetadata::with_created_at(
+	///     TaskId::new(),
+	///     TaskStatus::Success,
+	///     Some("Done".to_string()),
+	///     1_234,
+	/// );
+	///
+	/// assert_eq!(metadata.created_at(), 1_234);
+	/// assert_eq!(metadata.result(), Some("Done"));
+	/// ```
+	pub fn with_created_at(
+		task_id: TaskId,
+		status: TaskStatus,
+		result: Option<String>,
+		created_at: i64,
+	) -> Self {
+		Self {
+			task_id,
+			status,
+			result,
+			error: None,
+			created_at,
+		}
+	}
+
 	/// Create a failed task result
 	///
 	/// # Examples
