@@ -663,7 +663,8 @@ high-entropy browser or session value and to carry opaque application context
 through the provider redirect. Only a SHA-256 digest of the binding is stored;
 the binding itself remains in the application-controlled cookie or session.
 State is consumed before the provider exchange, so a replay, provider swap,
-expired state, or binding mismatch cannot be retried with the same state.
+expired state, or missing or mismatched binding cannot be retried with the
+same state.
 
 ```rust,ignore
 use reinhardt::auth::{ContextualCallbackResult, SocialAuthBackend};
