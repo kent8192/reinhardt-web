@@ -38,6 +38,14 @@ impl TokenExchangeFlow {
 		code_verifier: Option<&CodeVerifier>,
 	) -> Result<TokenResponse, SocialAuthError> {
 		validate_endpoint_url(token_endpoint)?;
+		if let Some(oauth2) = &self.config.oauth2
+			&& oauth2.token_endpoint != token_endpoint
+		{
+			return Err(SocialAuthError::InsecureEndpoint(
+				"token endpoint differs from provider configuration".to_string(),
+			));
+		}
+		let client = self.client.for_endpoint(token_endpoint).await?;
 
 		let mut params = HashMap::new();
 		params.insert("grant_type", "authorization_code");
@@ -51,9 +59,7 @@ impl TokenExchangeFlow {
 			params.insert("code_verifier", verifier.as_str());
 		}
 
-		let response = self
-			.client
-			.client()
+		let response = client
 			.post(token_endpoint)
 			.header("Accept", "application/json")
 			.form(&params)

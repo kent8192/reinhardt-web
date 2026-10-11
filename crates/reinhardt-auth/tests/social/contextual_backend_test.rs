@@ -288,3 +288,29 @@ async fn legacy_callback_still_succeeds() {
 	assert_eq!(result.token_response.access_token, "access-token");
 	assert_eq!(exchange_calls.load(Ordering::SeqCst), 1);
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn legacy_state_cannot_be_redeemed_for_another_provider() {
+	let first_calls = Arc::new(AtomicUsize::new(0));
+	let second_calls = Arc::new(AtomicUsize::new(0));
+	let mut backend = SocialAuthBackend::new();
+	backend.register_provider(Arc::new(TestProvider::new("github", first_calls.clone())));
+	backend.register_provider(Arc::new(TestProvider::new("google", second_calls.clone())));
+	let authorization = backend.begin_auth("github", None, None).await.unwrap();
+
+	assert!(matches!(
+		backend
+			.handle_callback("google", "code", &authorization.state)
+			.await,
+		Err(SocialAuthError::InvalidState)
+	));
+	assert_eq!(second_calls.load(Ordering::SeqCst), 0);
+	assert!(
+		backend
+			.handle_callback("github", "code", &authorization.state)
+			.await
+			.is_ok()
+	);
+	assert_eq!(first_calls.load(Ordering::SeqCst), 1);
+}

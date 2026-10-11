@@ -31,6 +31,11 @@ pub(crate) fn sanitize_url(parsed: &Url) -> String {
 pub(crate) fn validate_endpoint_url(url: &str) -> Result<(), SocialAuthError> {
 	let parsed = Url::parse(url)
 		.map_err(|e| SocialAuthError::Configuration(format!("invalid endpoint URL: {}", e)))?;
+	if !parsed.username().is_empty() || parsed.password().is_some() {
+		return Err(SocialAuthError::InsecureEndpoint(
+			"endpoint URL must not contain userinfo".to_string(),
+		));
+	}
 
 	match parsed.scheme() {
 		"https" => Ok(()),
@@ -46,7 +51,7 @@ pub(crate) fn validate_endpoint_url(url: &str) -> Result<(), SocialAuthError> {
 /// Checks whether the URL's host is a loopback address using
 /// network-level detection to catch all loopback variants
 /// (e.g. `127.0.0.2`, `127.255.255.255`).
-fn is_loopback(parsed: &Url) -> bool {
+pub(crate) fn is_loopback(parsed: &Url) -> bool {
 	match parsed.host() {
 		Some(Host::Domain("localhost")) => true,
 		Some(Host::Ipv4(addr)) => addr.is_loopback(),
@@ -55,10 +60,47 @@ fn is_loopback(parsed: &Url) -> bool {
 	}
 }
 
+/// Accept only globally routable addresses for credential-bearing requests.
+pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
+	match ip {
+		std::net::IpAddr::V4(ip) => {
+			let o = ip.octets();
+			!(o[0] == 0
+				|| o[0] == 10
+				|| o[0] == 127
+				|| o[0] >= 224
+				|| (o[0] == 100 && (o[1] & 0xc0) == 64)
+				|| (o[0] == 169 && o[1] == 254)
+				|| (o[0] == 172 && (o[1] & 0xf0) == 16)
+				|| (o[0] == 192 && (o[1] == 168 || (o[1] == 0 && o[2] <= 2)))
+				|| (o[0] == 198 && (o[1] == 18 || o[1] == 19 || (o[1] == 51 && o[2] == 100)))
+				|| (o[0] == 203 && o[1] == 0 && o[2] == 113))
+		}
+		std::net::IpAddr::V6(ip) => {
+			(ip.segments()[0] & 0xe000) == 0x2000
+				&& !(ip.segments()[0] == 0x2001 && ip.segments()[1] == 0x0db8)
+				&& !(ip.segments()[0] == 0x2001 && ip.segments()[1] == 0)
+				&& ip.segments()[0] != 0x2002
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case("2606:4700:4700::1111", true)]
+	#[case("2001:db8::1", false)]
+	#[case("2001::a00:1", false)]
+	#[case("2002:a00:1::", false)]
+	fn public_ipv6_filter_rejects_tunnel_and_reserved_ranges(
+		#[case] address: &str,
+		#[case] expected_public: bool,
+	) {
+		assert_eq!(is_public_ip(address.parse().unwrap()), expected_public);
+	}
 
 	#[rstest]
 	#[case("https://accounts.google.com/o/oauth2/token")]

@@ -154,9 +154,8 @@ impl JwksCache {
 
 	/// Fetches JWKS from the given URI
 	async fn fetch_jwks(&self, jwks_uri: &str) -> Result<JwkSet, SocialAuthError> {
-		let response = self
-			.client
-			.client()
+		let client = self.client.for_endpoint(jwks_uri).await?;
+		let response = client
 			.get(jwks_uri)
 			.send()
 			.await
