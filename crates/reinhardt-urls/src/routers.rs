@@ -160,9 +160,10 @@ pub(crate) mod path_utils;
 pub mod pattern;
 /// Compile-time URL pattern registration via `inventory`.
 ///
-/// On native targets exposes `UrlPatternsRegistration`; on
-/// `wasm32-unknown-unknown` exposes `ClientRouterRegistration` and
-/// `collect_client_router_from_inventory` (refs #4453).
+/// On native targets exposes `UrlPatternsRegistration`. With the
+/// `client-router` feature it also exposes `ClientRouterRegistration` and the
+/// client inventory collectors, which receive `#[routes]` registrations on
+/// `wasm32-unknown-unknown` only (refs #4453, #6733).
 #[cfg(any(native, all(target_family = "wasm", target_os = "unknown")))]
 pub mod registration;
 /// URL resolver trait for type-safe URL generation.
@@ -216,19 +217,16 @@ pub use helpers::{IncludedRouter, include_routes, path, re_path};
 pub use native_routes::{NativeHttpRoutes, NativeRouteError, NativeRoutes};
 #[cfg(native)]
 pub use pattern::{MatchingMode, PathMatcher, PathPattern, RadixRouter, RadixRouterError};
+#[cfg(feature = "client-router")]
+pub use registration::{
+	AsyncClientRouterFactoryFn, ClientRouterRegistration, collect_client_router_from_inventory,
+	collect_client_router_from_inventory_async, iter_registered_client_routers,
+};
 #[cfg(native)]
 pub use registration::{
 	AsyncNativeRouterFactoryFn, NativeRouterFactoryFn, RouteTopologyError, RouterFactory,
 	UrlPatternsRegistration, collect_resolved_endpoints, collect_resolved_endpoints_for_export,
 	collect_resolved_endpoints_from_registration,
-};
-#[cfg(all(
-	target_family = "wasm",
-	target_os = "unknown",
-	feature = "client-router"
-))]
-pub use registration::{
-	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
 };
 #[cfg(native)]
 pub use reverse::{

@@ -493,13 +493,14 @@ impl ClientRoute {
 /// but can diverge if either is mutated to register new routes — this
 /// is **not** a deep clone of the router.
 ///
-/// In practice `Clone` is only invoked by
-/// `collect_client_router_from_inventory` (Refs #4453) as the fallback
-/// path for `Arc::try_unwrap` when the underlying factory `Arc` is
-/// shared, and `ClientLauncher::register_routes_from_inventory()` is the
-/// only caller. Application code should NOT call `.clone()` directly to
-/// "branch" routers; treat the router as a single owned value moved
-/// into the launcher. Refs Copilot review on PR #4477.
+/// In practice `Clone` is only invoked by the inventory collectors
+/// (`collect_client_router_from_inventory` and
+/// `collect_client_router_from_inventory_async`, Refs #4453, #6733) as the
+/// fallback path for `Arc::try_unwrap` when the underlying factory `Arc` is
+/// shared, and `ClientLauncher` is their only framework caller.
+/// Application code should NOT call `.clone()` directly to "branch"
+/// routers; treat the router as a single owned value moved into the
+/// launcher. Refs Copilot review on PR #4477.
 #[derive(Clone)]
 pub struct ClientRouter {
 	/// Registered routes.

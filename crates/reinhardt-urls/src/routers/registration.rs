@@ -514,49 +514,140 @@ fn sort_resolved_endpoints(endpoints: &mut [ResolvedEndpoint]) {
 	});
 }
 
-/// Client-router inventory registration (WASM target).
+/// Client-router inventory registration.
 ///
-/// This module is the WASM-side counterpart of `UrlPatternsRegistration`.
+/// This module is the client-side counterpart of `UrlPatternsRegistration`.
 /// The `#[routes]` macro submits one [`ClientRouterRegistration`] per
 /// annotated function on `wasm32-unknown-unknown`, and the launcher
-/// consumes them via [`collect_client_router_from_inventory`].
+/// consumes them via [`collect_client_router_from_inventory`] or, when a
+/// registration comes from an `async fn`,
+/// [`collect_client_router_from_inventory_async`].
 ///
-/// Also gated on the `client-router` feature because the module references
+/// # Target parity
+///
+/// P1 (symbol parity): the registration type and the collectors exist on
+/// every target that enables `client-router`. Only `wasm32-unknown-unknown`
+/// builds receive registrations from `#[routes]`; native builds register
+/// their routes through `UrlPatternsRegistration`, so the native client
+/// inventory is empty by design and the collectors return `None` without
+/// side effects.
+///
+/// Gated on the `client-router` feature because the module references
 /// `crate::routers::client_router::ClientRouter`, which is itself behind
-/// `#[cfg(feature = "client-router")]`. Without this guard, a WASM build
-/// of `reinhardt-urls` without `client-router` enabled would fail to
-/// resolve the import. Refs #4453, Codex review feedback.
-#[cfg(all(
-	target_family = "wasm",
-	target_os = "unknown",
-	feature = "client-router"
-))]
+/// `#[cfg(feature = "client-router")]`. Refs #4453, #6733.
+#[cfg(feature = "client-router")]
 mod client_registration {
 	use crate::routers::client_router::ClientRouter;
+	use std::future::Future;
+	use std::pin::Pin;
 	use std::sync::Arc;
 
-	/// WASM-side counterpart of [`UrlPatternsRegistration`].
+	/// Function pointer type for asynchronous client-router factories.
 	///
-	/// Submitted by the `#[routes]` macro on `wasm32-unknown-unknown`.
+	/// Returns a pinned, boxed future that produces the client router. The
+	/// future is not `Send`: browser futures run on a single thread and
+	/// `ClientRouter` owns thread-affine reactive state.
+	pub type AsyncClientRouterFactoryFn = fn() -> Pin<Box<dyn Future<Output = Arc<ClientRouter>>>>;
+
+	/// Factory stored by a [`ClientRouterRegistration`].
+	#[derive(Clone, Copy)]
+	enum ClientRouterFactory {
+		/// Factory submitted for a synchronous `#[routes]` function.
+		Sync(fn() -> Arc<ClientRouter>),
+		/// Factory submitted for an `async fn` `#[routes]` function.
+		Async(AsyncClientRouterFactoryFn),
+	}
+
+	/// Client-side counterpart of [`UrlPatternsRegistration`].
+	///
+	/// Submitted by the `#[routes]` macro on `wasm32-unknown-unknown`. A
+	/// synchronous `#[routes]` function produces a synchronous registration;
+	/// an `async fn` without `#[inject]` parameters produces an asynchronous
+	/// one. [`Self::client_router_async`] resolves either variant, while
+	/// [`Self::client_router`] only resolves synchronous registrations.
 	///
 	/// [`UrlPatternsRegistration`]: super::UrlPatternsRegistration
 	#[derive(Clone)]
 	pub struct ClientRouterRegistration {
-		get_client_router: fn() -> Arc<ClientRouter>,
+		factory: ClientRouterFactory,
 	}
 
 	impl ClientRouterRegistration {
-		/// Internal constructor used by the `#[routes]` macro.
+		/// Internal constructor used by the `#[routes]` macro for synchronous
+		/// functions.
 		///
 		/// Not part of the public API; do not call directly.
 		#[doc(hidden)]
 		pub const fn __macro_new(get_client_router: fn() -> Arc<ClientRouter>) -> Self {
-			Self { get_client_router }
+			Self {
+				factory: ClientRouterFactory::Sync(get_client_router),
+			}
 		}
 
-		/// Materialize the `ClientRouter` from this registration.
+		/// Internal constructor used by the `#[routes]` macro for `async fn`
+		/// functions without `#[inject]` parameters.
+		///
+		/// Not part of the public API; do not call directly.
+		#[doc(hidden)]
+		pub const fn __macro_new_async(get_client_router: AsyncClientRouterFactoryFn) -> Self {
+			Self {
+				factory: ClientRouterFactory::Async(get_client_router),
+			}
+		}
+
+		/// Returns `true` when this registration comes from an `async fn` and
+		/// must be resolved with [`Self::client_router_async`].
+		///
+		/// # Examples
+		///
+		/// ```
+		/// use reinhardt_urls::routers::iter_registered_client_routers;
+		///
+		/// let needs_await = iter_registered_client_routers().any(|registration| registration.is_async());
+		/// // Native builds never receive client registrations.
+		/// assert!(!needs_await);
+		/// ```
+		pub const fn is_async(&self) -> bool {
+			matches!(self.factory, ClientRouterFactory::Async(_))
+		}
+
+		/// Materialize the `ClientRouter` from a synchronous registration.
+		///
+		/// # Panics
+		///
+		/// Panics if the registration is asynchronous (see [`Self::is_async`]).
+		/// Use [`Self::client_router_async`] instead.
 		pub fn client_router(&self) -> Arc<ClientRouter> {
-			(self.get_client_router)()
+			match self.factory {
+				ClientRouterFactory::Sync(get_client_router) => get_client_router(),
+				ClientRouterFactory::Async(_) => panic!(
+					"Cannot call client_router() on an async #[routes] registration. \
+					 Use client_router_async() instead."
+				),
+			}
+		}
+
+		/// Materialize the `ClientRouter` from this registration, awaiting the
+		/// factory when the registration is asynchronous.
+		///
+		/// # Examples
+		///
+		/// ```no_run
+		/// use reinhardt_urls::routers::iter_registered_client_routers;
+		///
+		/// async fn count_client_routes() -> usize {
+		///     let mut count = 0;
+		///     for registration in iter_registered_client_routers() {
+		///         count += registration.client_router_async().await.route_count();
+		///     }
+		///     count
+		/// }
+		/// ```
+		pub async fn client_router_async(&self) -> Arc<ClientRouter> {
+			match self.factory {
+				ClientRouterFactory::Sync(get_client_router) => get_client_router(),
+				ClientRouterFactory::Async(get_client_router) => get_client_router().await,
+			}
 		}
 	}
 
@@ -568,32 +659,197 @@ mod client_registration {
 		inventory::iter::<ClientRouterRegistration>()
 	}
 
+	/// Merge one materialized registration into the accumulated router.
+	///
+	/// `ClientRouter::merge` keeps the last route on a name collision, so both
+	/// collectors visit registrations in the same inventory order.
+	fn merge_registered_router(
+		merged: Option<ClientRouter>,
+		registered: Arc<ClientRouter>,
+	) -> ClientRouter {
+		let router = Arc::try_unwrap(registered).unwrap_or_else(|shared| (*shared).clone());
+		match merged {
+			None => router,
+			Some(accumulated) => accumulated.merge(router),
+		}
+	}
+
 	/// Iterate inventory, merge every registered `ClientRouter`, and return
 	/// the merged router (or `None` if no entries are registered).
 	///
-	/// `ClientRouter::merge` is `pub(crate)`; this helper lives in the
-	/// same crate so the visibility holds. Refs #4442, #4453.
+	/// Refs #4442, #4453.
+	///
+	/// # Panics
+	///
+	/// Panics before invoking any factory if an asynchronous registration is
+	/// linked (see [`ClientRouterRegistration::is_async`]), because it cannot
+	/// be resolved without awaiting. Use
+	/// [`collect_client_router_from_inventory_async`] in that case.
 	pub fn collect_client_router_from_inventory() -> Option<ClientRouter> {
-		let mut merged: Option<ClientRouter> = None;
-		for reg in iter_registered_client_routers() {
-			let arc = reg.client_router();
-			let r = Arc::try_unwrap(arc).unwrap_or_else(|a| (*a).clone());
-			merged = Some(match merged.take() {
-				None => r,
-				Some(acc) => acc.merge(r),
-			});
+		assert!(
+			!iter_registered_client_routers().any(ClientRouterRegistration::is_async),
+			"collect_client_router_from_inventory: an async #[routes] registration is linked; \
+			 use collect_client_router_from_inventory_async() instead."
+		);
+		let mut merged = None;
+		for registration in iter_registered_client_routers() {
+			merged = Some(merge_registered_router(
+				merged,
+				registration.client_router(),
+			));
 		}
 		merged
 	}
+
+	/// Resolve every registered `ClientRouter`, awaiting asynchronous
+	/// registrations, and return the merged router (or `None` if no entries
+	/// are registered).
+	///
+	/// Registrations are resolved one at a time in the same order as
+	/// [`collect_client_router_from_inventory`], so both collectors produce
+	/// the same route table for the same registrations.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use reinhardt_urls::routers::collect_client_router_from_inventory_async;
+	///
+	/// async fn client_route_count() -> usize {
+	///     collect_client_router_from_inventory_async()
+	///         .await
+	///         .map_or(0, |router| router.route_count())
+	/// }
+	/// ```
+	pub async fn collect_client_router_from_inventory_async() -> Option<ClientRouter> {
+		let mut merged = None;
+		for registration in iter_registered_client_routers() {
+			let registered = registration.client_router_async().await;
+			merged = Some(merge_registered_router(merged, registered));
+		}
+		merged
+	}
+
+	#[cfg(test)]
+	mod tests {
+		use super::*;
+		use reinhardt_core::page::Page;
+		use rstest::rstest;
+
+		// The registration contract stores `Arc<ClientRouter>` although the
+		// router is thread-affine; these factories never cross threads.
+		#[allow(clippy::arc_with_non_send_sync)]
+		fn home_router() -> Arc<ClientRouter> {
+			Arc::new(ClientRouter::new().route("home", "/", || Page::Empty))
+		}
+
+		// See `home_router` for the `Arc` allowance.
+		#[allow(clippy::arc_with_non_send_sync)]
+		fn about_router() -> Pin<Box<dyn Future<Output = Arc<ClientRouter>>>> {
+			Box::pin(async {
+				Arc::new(ClientRouter::new().route("about", "/about/", || Page::Empty))
+			})
+		}
+
+		// One synchronous and one asynchronous registration, mirroring a wasm
+		// build that links both forms. Nothing else in this test binary
+		// submits client registrations.
+		inventory::submit! {
+			ClientRouterRegistration::__macro_new(home_router)
+		}
+
+		inventory::submit! {
+			ClientRouterRegistration::__macro_new_async(about_router)
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn sync_registration_resolves_through_both_accessors() {
+			// Arrange
+			let registration = ClientRouterRegistration::__macro_new(home_router);
+
+			// Act
+			let direct = registration.client_router();
+			let awaited = registration.client_router_async().await;
+
+			// Assert
+			assert!(!registration.is_async());
+			assert_eq!(direct.route_count(), 1);
+			assert_eq!(direct.reverse("home", &[]).unwrap(), "/");
+			assert_eq!(awaited.route_count(), 1);
+			assert_eq!(awaited.reverse("home", &[]).unwrap(), "/");
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn async_registration_resolves_through_client_router_async() {
+			// Arrange
+			let registration = ClientRouterRegistration::__macro_new_async(about_router);
+
+			// Act
+			let router = registration.client_router_async().await;
+
+			// Assert
+			assert!(registration.is_async());
+			assert_eq!(router.route_count(), 1);
+			assert_eq!(router.reverse("about", &[]).unwrap(), "/about/");
+		}
+
+		#[rstest]
+		#[should_panic(expected = "Use client_router_async() instead")]
+		fn async_registration_rejects_synchronous_resolution() {
+			// Arrange
+			let registration = ClientRouterRegistration::__macro_new_async(about_router);
+
+			// Act
+			let _ = registration.client_router();
+
+			// Assert
+			// (the call above panics)
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn async_collector_merges_sync_and_async_registrations() {
+			// Arrange
+			let registrations: Vec<bool> = iter_registered_client_routers()
+				.map(ClientRouterRegistration::is_async)
+				.collect();
+
+			// Act
+			let merged = collect_client_router_from_inventory_async()
+				.await
+				.expect("two registrations are linked");
+
+			// Assert
+			assert_eq!(registrations.len(), 2);
+			assert_eq!(
+				registrations.iter().filter(|is_async| **is_async).count(),
+				1
+			);
+			assert_eq!(merged.route_count(), 2);
+			assert_eq!(merged.reverse("home", &[]).unwrap(), "/");
+			assert_eq!(merged.reverse("about", &[]).unwrap(), "/about/");
+		}
+
+		#[rstest]
+		#[should_panic(expected = "use collect_client_router_from_inventory_async() instead")]
+		fn sync_collector_rejects_linked_async_registration() {
+			// Arrange
+			// (an asynchronous registration is submitted above)
+
+			// Act
+			let _ = collect_client_router_from_inventory();
+
+			// Assert
+			// (the call above panics)
+		}
+	}
 }
 
-#[cfg(all(
-	target_family = "wasm",
-	target_os = "unknown",
-	feature = "client-router"
-))]
+#[cfg(feature = "client-router")]
 pub use client_registration::{
-	ClientRouterRegistration, collect_client_router_from_inventory, iter_registered_client_routers,
+	AsyncClientRouterFactoryFn, ClientRouterRegistration, collect_client_router_from_inventory,
+	collect_client_router_from_inventory_async, iter_registered_client_routers,
 };
 
 #[cfg(all(test, native))]
