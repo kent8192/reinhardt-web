@@ -5,7 +5,7 @@ use super::{
 	render_entry_document,
 };
 use async_trait::async_trait;
-use http::{HeaderMap, Method, StatusCode, header};
+use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use reinhardt_http::{Handler, Middleware, Request, Response};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -21,6 +21,7 @@ pub struct ManifestServingConfig {
 	legacy_aliases: bool,
 	passthrough: Vec<String>,
 	trusted_html_injections: Vec<String>,
+	response_headers: HeaderMap,
 }
 
 impl ManifestServingConfig {
@@ -43,6 +44,7 @@ impl ManifestServingConfig {
 			legacy_aliases: false,
 			passthrough: vec!["/api".into(), "/docs".into(), "/openapi.json".into()],
 			trusted_html_injections: Vec::new(),
+			response_headers: HeaderMap::new(),
 		})
 	}
 	/// Select a named Pages entry. Call `validate` before starting a server.
@@ -60,6 +62,57 @@ impl ManifestServingConfig {
 		if !fragment.is_empty() {
 			self.trusted_html_injections.push(fragment);
 		}
+		self
+	}
+	/// Replace the response headers attached to every response this mount serves.
+	///
+	/// The middleware answers asset, manifest, and Pages document requests
+	/// without calling the next handler, so router-level middleware never sees
+	/// those responses. Use this map to attach security headers such as
+	/// `Content-Security-Policy`, `X-Frame-Options`, `Referrer-Policy`, or
+	/// `Strict-Transport-Security` to the SPA shell and static assets.
+	///
+	/// The headers apply to every response the middleware produces itself:
+	/// full, partial (`206`), and conditional (`304`) asset responses, manifests,
+	/// Pages documents including the navigation fallback, and the mount's own
+	/// error responses. Responses produced by the next handler are left
+	/// untouched. A configured name replaces every value the middleware set for
+	/// that name (for example `Cache-Control` or `X-Content-Type-Options`); all
+	/// other middleware headers are kept. Do not configure framing headers such
+	/// as `Content-Length` or `Content-Range`.
+	///
+	/// This filesystem-backed server API is target-only (P0).
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// use http::header::{self, HeaderMap, HeaderValue};
+	/// use reinhardt_utils::staticfiles::publication::{
+	///     ManifestServingConfig, ManifestStore, SnapshotOptions,
+	/// };
+	/// use std::sync::Arc;
+	///
+	/// let store = Arc::new(ManifestStore::open("staticfiles".into(), SnapshotOptions::production())?);
+	/// let mut headers = HeaderMap::new();
+	/// headers.insert(
+	///     header::CONTENT_SECURITY_POLICY,
+	///     HeaderValue::from_static("default-src 'self'"),
+	/// );
+	/// let config = ManifestServingConfig::new(store, "/static/".into())?
+	///     .with_response_headers(headers);
+	/// # Ok::<(), Box<dyn std::error::Error>>(())
+	/// ```
+	pub fn with_response_headers(mut self, headers: HeaderMap) -> Self {
+		self.response_headers = headers;
+		self
+	}
+	/// Add one response header attached to every response this mount serves.
+	///
+	/// Replaces any value previously configured for the same name. See
+	/// [`ManifestServingConfig::with_response_headers`] for which responses
+	/// receive the header. This filesystem-backed server API is target-only (P0).
+	pub fn with_response_header(mut self, name: HeaderName, value: HeaderValue) -> Self {
+		self.response_headers.insert(name, value);
 		self
 	}
 	/// Enable navigation fallback only after the application router returns 404.
@@ -139,6 +192,14 @@ struct RequestHeaders {
 	headers: HeaderMap,
 }
 
+/// Origin of a response returned through [`ManifestStaticMiddleware`].
+enum Routed {
+	/// Produced by this middleware; configured response headers apply.
+	Served(Response),
+	/// Produced by the next handler; returned unchanged.
+	Forwarded(Response),
+}
+
 enum Target {
 	Manifest,
 	Asset(String),
@@ -152,9 +213,37 @@ impl Middleware for ManifestStaticMiddleware {
 		request: Request,
 		next: Arc<dyn Handler>,
 	) -> reinhardt_core::exception::Result<Response> {
+		Ok(match self.route(request, next).await? {
+			Routed::Served(mut response) => {
+				if !self.config.response_headers.is_empty() {
+					// `HeaderMap::extend` replaces every existing value of each
+					// configured name and keeps repeated configured values intact.
+					response
+						.headers
+						.extend(self.config.response_headers.clone());
+				}
+				response
+			}
+			Routed::Forwarded(response) => response,
+		})
+	}
+}
+
+impl ManifestStaticMiddleware {
+	/// Route one request and record whether this middleware or `next` answered it.
+	async fn route(
+		&self,
+		request: Request,
+		next: Arc<dyn Handler>,
+	) -> reinhardt_core::exception::Result<Routed> {
 		let path = match decode_path(request.uri.path()) {
 			Ok(path) => path,
-			Err(_) => return Ok(error(StatusCode::BAD_REQUEST, &request.method)),
+			Err(_) => {
+				return Ok(Routed::Served(error(
+					StatusCode::BAD_REQUEST,
+					&request.method,
+				)));
+			}
 		};
 		// Explicit nested mounts (for example admin assets) belong to the router.
 		// An ancestor passthrough such as /docs must not shadow /docs/static/.
@@ -164,7 +253,7 @@ impl Middleware for ManifestStaticMiddleware {
 			.iter()
 			.any(|prefix| prefix.starts_with(&self.config.prefix) && matches_prefix(&path, prefix))
 		{
-			return next.handle(request).await;
+			return next.handle(request).await.map(Routed::Forwarded);
 		}
 		let active = self.config.store.active();
 		let relative = path
@@ -179,17 +268,26 @@ impl Middleware for ManifestStaticMiddleware {
 				Some((active.clone(), Target::Manifest, false))
 			} else if let Some(generation_path) = relative.strip_prefix("builds/") {
 				let Some((id, file)) = generation_path.split_once('/') else {
-					return Ok(error(StatusCode::NOT_FOUND, &request.method));
+					return Ok(Routed::Served(error(
+						StatusCode::NOT_FOUND,
+						&request.method,
+					)));
 				};
 				let Some(snapshot) = self.config.store.generation(id) else {
-					return Ok(error(StatusCode::NOT_FOUND, &request.method));
+					return Ok(Routed::Served(error(
+						StatusCode::NOT_FOUND,
+						&request.method,
+					)));
 				};
 				let target = if file == "manifest.json" {
 					Target::Manifest
 				} else if let Some(logical) = snapshot.logical_path(file) {
 					Target::Asset(logical.into())
 				} else {
-					return Ok(error(StatusCode::NOT_FOUND, &request.method));
+					return Ok(Routed::Served(error(
+						StatusCode::NOT_FOUND,
+						&request.method,
+					)));
 				};
 				Some((snapshot, target, true))
 			} else if self.config.legacy_aliases && active.manifest().paths.contains_key(relative) {
@@ -198,17 +296,22 @@ impl Middleware for ManifestStaticMiddleware {
 				None
 			};
 			if let Some((snapshot, target, immutable)) = selected {
-				return Ok(dispatch(
-					self.config.clone(),
-					snapshot,
-					target,
-					immutable,
-					request_headers,
-				)
-				.await);
+				return Ok(Routed::Served(
+					dispatch(
+						self.config.clone(),
+						snapshot,
+						target,
+						immutable,
+						request_headers,
+					)
+					.await,
+				));
 			}
 			if self.config.prefix != "/" || reserved(relative) {
-				return Ok(error(StatusCode::NOT_FOUND, &request.method));
+				return Ok(Routed::Served(error(
+					StatusCode::NOT_FOUND,
+					&request.method,
+				)));
 			}
 		}
 		if self
@@ -217,7 +320,7 @@ impl Middleware for ManifestStaticMiddleware {
 			.iter()
 			.any(|prefix| matches_prefix(&path, prefix))
 		{
-			return next.handle(request).await;
+			return next.handle(request).await.map(Routed::Forwarded);
 		}
 		// Outside the owned mount, asset suffixes only disable HTML fallback.
 		// The application may serve root-scoped workers or generated CSS/JS.
@@ -233,7 +336,10 @@ impl Middleware for ManifestStaticMiddleware {
 			});
 		// A root static mount owns asset-like URLs unless explicitly passed through.
 		if self.config.prefix == "/" && asset_like {
-			return Ok(error(StatusCode::NOT_FOUND, &request.method));
+			return Ok(Routed::Served(error(
+				StatusCode::NOT_FOUND,
+				&request.method,
+			)));
 		}
 		let navigation = !asset_like
 			&& matches!(request.method, Method::GET | Method::HEAD)
@@ -259,21 +365,23 @@ impl Middleware for ManifestStaticMiddleware {
 		if response.status == StatusCode::NOT_FOUND && self.config.navigation_fallback && navigation
 		{
 			let Some(entry) = self.config.selected_entrypoint(&active) else {
-				return Ok(error(
+				return Ok(Routed::Served(error(
 					StatusCode::SERVICE_UNAVAILABLE,
 					&request_headers.method,
-				));
+				)));
 			};
-			return Ok(dispatch(
-				self.config.clone(),
-				active,
-				Target::Document(entry),
-				false,
-				request_headers,
-			)
-			.await);
+			return Ok(Routed::Served(
+				dispatch(
+					self.config.clone(),
+					active,
+					Target::Document(entry),
+					false,
+					request_headers,
+				)
+				.await,
+			));
 		}
-		Ok(response)
+		Ok(Routed::Forwarded(response))
 	}
 }
 
