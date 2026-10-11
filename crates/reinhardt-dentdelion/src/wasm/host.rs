@@ -264,9 +264,12 @@ pub struct HostState {
 	/// Wrapped in Mutex to allow interior mutability while maintaining Sync
 	#[cfg(feature = "wasm")]
 	resource_table: parking_lot::Mutex<ResourceTable>,
-	/// Per-store linear-memory limit, installed by `WasmRuntime::create_store`.
+	/// Per-store memory/table limit, installed by `WasmRuntime::create_store`.
 	#[cfg(feature = "wasm")]
 	pub(super) store_limits: Option<StoreMemoryLimits>,
+	/// Absolute invocation deadline, including asynchronous host imports.
+	#[cfg(feature = "wasm")]
+	pub(super) execution_deadline: Option<std::time::Instant>,
 }
 
 impl HostState {
@@ -323,6 +326,8 @@ impl HostState {
 			resource_table: parking_lot::Mutex::new(ResourceTable::new()),
 			#[cfg(feature = "wasm")]
 			store_limits: None,
+			#[cfg(feature = "wasm")]
+			execution_deadline: None,
 		}
 	}
 
@@ -802,7 +807,7 @@ impl HostState {
 			)));
 		}
 		self.ssr_proxy
-			.render_react(component_path, props, options)
+			.render_react_until(component_path, props, options, self.execution_deadline)
 			.await
 	}
 
@@ -823,13 +828,18 @@ impl HostState {
 	/// This prevents untrusted or verified plugins from accessing the JavaScript
 	/// runtime directly.
 	pub fn eval_js(&self, code: &str) -> Result<Vec<u8>, SsrError> {
+		self.require_js_execution_trust()?;
+		self.ssr_proxy.eval_js(code).map(|s| s.into_bytes())
+	}
+
+	fn require_js_execution_trust(&self) -> Result<(), SsrError> {
 		if !self.trust_level.allows_js_execution() {
 			return Err(SsrError::PermissionDenied(format!(
 				"JavaScript execution requires Trusted trust level, but plugin '{}' has {:?} trust level",
 				self.plugin_name, self.trust_level
 			)));
 		}
-		self.ssr_proxy.eval_js(code).map(|s| s.into_bytes())
+		Ok(())
 	}
 
 	/// Render a component with trust level enforcement.
@@ -1097,6 +1107,8 @@ impl HostStateBuilder {
 			resource_table: parking_lot::Mutex::new(ResourceTable::new()),
 			#[cfg(feature = "wasm")]
 			store_limits: None,
+			#[cfg(feature = "wasm")]
+			execution_deadline: None,
 		}
 	}
 }
@@ -1545,7 +1557,15 @@ impl crate::wasm::runtime::reinhardt::dentdelion::ssr::Host for HostState {
 		&mut self,
 		code: String,
 	) -> Result<Result<Vec<u8>, GeneratedPluginError>, anyhow::Error> {
-		let result = Self::eval_js(self, &code).map_err(ssr_error_to_plugin_error);
+		let result = match self.require_js_execution_trust() {
+			Ok(()) => self
+				.ssr_proxy
+				.eval_js_until(code, self.execution_deadline)
+				.await
+				.map(|value| value.into_bytes()),
+			Err(error) => Err(error),
+		}
+		.map_err(ssr_error_to_plugin_error);
 		Ok(result)
 	}
 
@@ -1556,6 +1576,89 @@ impl crate::wasm::runtime::reinhardt::dentdelion::ssr::Host for HostState {
 
 #[cfg(test)]
 mod tests {
+	#[cfg(feature = "ts")]
+	#[rstest::rstest]
+	#[case(false)]
+	#[case(true)]
+	#[tokio::test(flavor = "current_thread")]
+	async fn javascript_imports_yield_and_use_the_remaining_lifecycle_deadline(
+		#[case] render: bool,
+	) {
+		use super::super::runtime::{WasmRuntime, WasmRuntimeConfigBuilder};
+		use super::super::ts_runtime::{TsResourceLimits, TsRuntime};
+		use crate::wasm::runtime::reinhardt::dentdelion::ssr::Host;
+		use std::time::{Duration, Instant};
+		// Arrange: JavaScript's own budget is much longer than the WASM invocation.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.timeout(Duration::from_millis(100))
+				.build(),
+		)
+		.unwrap();
+		let javascript = Arc::new(
+			TsRuntime::with_limits(TsResourceLimits {
+				execution_timeout: Duration::from_secs(2),
+				loop_iteration_limit: u64::MAX,
+				..TsResourceLimits::default()
+			})
+			.unwrap(),
+		);
+		let assets = tempfile::tempdir().unwrap();
+		std::fs::write(
+			assets.path().join("Component.js"),
+			"function Component() { while (true) {} }",
+		)
+		.unwrap();
+		let proxy = Arc::new(
+			SsrProxy::with_ts_runtime(javascript).with_plugin_base_dir(assets.path().to_path_buf()),
+		);
+		let state = HostState::builder("short-js-import")
+			.trust_level(TrustLevel::Trusted)
+			.ssr_proxy(proxy)
+			.build();
+		let started = Instant::now();
+
+		// Act: consume part of the invocation, then call the actual generated import.
+		let evaluation = runtime.with_execution_timeout(async {
+			let mut store = runtime.create_store(state);
+			tokio::time::sleep(Duration::from_millis(40)).await;
+			let result = if render {
+				Host::render_react(
+					store.data_mut(),
+					"Component.js".into(),
+					rmp_serde::to_vec(&serde_json::json!({})).unwrap(),
+					GeneratedRenderOptions {
+						include_hydration: false,
+						extract_css: false,
+						extract_meta: false,
+					},
+				)
+				.await
+				.unwrap()
+				.map(|_| ())
+			} else {
+				Host::eval_js(store.data_mut(), "while (true) {}".into())
+					.await
+					.unwrap()
+					.map(|_| ())
+			};
+			result.map_err(|error| crate::error::PluginError::WasmExecutionError(error.message))
+		});
+		let heartbeat = async {
+			tokio::time::sleep(Duration::from_millis(20)).await;
+			started.elapsed()
+		};
+		let (result, heartbeat_elapsed) = tokio::join!(evaluation, heartbeat);
+
+		// Assert: a single-thread executor stays responsive and the shorter deadline wins.
+		assert!(
+			matches!(result, Err(crate::error::PluginError::WasmExecutionError(message))
+			if message.contains("timed out"))
+		);
+		assert!(started.elapsed() < Duration::from_millis(500));
+		assert!(heartbeat_elapsed < Duration::from_millis(100));
+	}
+
 	#[rstest::rstest]
 	#[case("2001:1::1", true)]
 	#[case("2001:1::2", true)]

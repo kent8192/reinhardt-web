@@ -390,6 +390,17 @@ impl SsrProxy {
 		props: &[u8],
 		options: RenderOptions,
 	) -> Result<RenderResult, SsrError> {
+		self.render_react_until(component_path, props, options, None)
+			.await
+	}
+
+	pub(super) async fn render_react_until(
+		&self,
+		component_path: &str,
+		props: &[u8],
+		options: RenderOptions,
+		deadline: Option<std::time::Instant>,
+	) -> Result<RenderResult, SsrError> {
 		if !self.available {
 			return Err(SsrError::NotAvailable);
 		}
@@ -424,8 +435,29 @@ impl SsrProxy {
 			SsrError::PropsSerialization(format!("Failed to serialize props to JSON: {}", e))
 		})?;
 
-		// Call render_component with the loaded code
-		self.render_component(&component_code, &props_json, options)
+		// Blocking worker-channel waits must not prevent the WASM deadline from firing.
+		validate_component_code(&component_code)?;
+		#[cfg(feature = "ts")]
+		if let Some(runtime) = self.ts_runtime.clone() {
+			let hydration_script = options
+				.include_hydration
+				.then(|| self.generate_hydration_script(&component_code, &props_json));
+			let html = tokio::task::spawn_blocking(move || {
+				runtime.render_component_until(&component_code, &props_json, deadline)
+			})
+			.await
+			.map_err(|error| SsrError::RenderFailed(error.to_string()))??;
+			let (css, meta) = Self::extract_assets(&html, &options);
+			return Ok(RenderResult {
+				html,
+				css,
+				meta,
+				hydration_script,
+			});
+		}
+		#[cfg(not(feature = "ts"))]
+		let _ = (props_json, options, deadline);
+		Err(SsrError::NotAvailable)
 	}
 
 	/// Execute arbitrary JavaScript/TypeScript code and return the result.
@@ -451,6 +483,26 @@ impl SsrProxy {
 			return runtime.eval(code).map_err(SsrError::from);
 		}
 
+		Err(SsrError::NotAvailable)
+	}
+
+	pub(super) async fn eval_js_until(
+		&self,
+		code: String,
+		deadline: Option<std::time::Instant>,
+	) -> Result<String, SsrError> {
+		if !self.available {
+			return Err(SsrError::NotAvailable);
+		}
+		#[cfg(feature = "ts")]
+		if let Some(runtime) = self.ts_runtime.clone() {
+			return tokio::task::spawn_blocking(move || runtime.eval_until(&code, deadline))
+				.await
+				.map_err(|error| SsrError::EvalFailed(error.to_string()))?
+				.map_err(SsrError::from);
+		}
+		#[cfg(not(feature = "ts"))]
+		let _ = (code, deadline);
 		Err(SsrError::NotAvailable)
 	}
 

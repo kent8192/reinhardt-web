@@ -50,10 +50,20 @@ expired evaluation retires its context. The separate configured iteration guard
 remains enabled for getters and nested native reentry. It is not a wall-clock
 preemption mechanism for arbitrary native work.
 
+WASM SSR imports move blocking worker-channel waits onto Tokio's blocking pool.
+The lifecycle's absolute deadline is passed through blocking-task scheduling,
+queue admission, VM execution, and completion-value conversion. Component-file
+loading consumes that same deadline. Expired queued work is cancelled before
+execution; an admitted timeout retires the context. The WASM executor can enforce
+its shorter deadline even while the interpreter is inside native work.
+
 Regression tests cover expensive `toString` and `Symbol.toPrimitive` methods,
 string-hint semantics and receiver binding, getter/nested native iteration limits,
 large finite loops, worker admission, and context retirement. Direct-worker tests
 prevent a caller-side receive timeout from disguising continued interpreter work.
+Generated SSR import tests also check responsiveness on a single-thread executor
+with a WASM deadline shorter than the JavaScript limit and partially consumed
+before import entry.
 
 ## Removal condition and reporting disposition
 

@@ -131,6 +131,8 @@ struct RuntimeRequest {
 	command: RuntimeCommand,
 	started_tx: mpsc::Sender<()>,
 	state: Arc<AtomicU8>,
+	/// A host invocation may impose a shorter deadline including queue admission.
+	deadline: Option<Instant>,
 }
 
 /// JavaScript runtime for SSR.
@@ -227,6 +229,14 @@ impl TsRuntime {
 	/// assert_eq!(result, "3");
 	/// ```
 	pub fn eval(&self, code: &str) -> Result<String, TsError> {
+		self.eval_until(code, None)
+	}
+
+	pub(super) fn eval_until(
+		&self,
+		code: &str,
+		deadline: Option<Instant>,
+	) -> Result<String, TsError> {
 		self.check_source_size(code)?;
 		self.check_ready()?;
 
@@ -236,6 +246,7 @@ impl TsRuntime {
 				response_tx,
 			},
 			TsError::EvalFailed,
+			deadline,
 		)
 	}
 
@@ -252,6 +263,7 @@ impl TsRuntime {
 				response_tx,
 			},
 			TsError::EvalFailed,
+			None,
 		)
 	}
 
@@ -292,6 +304,15 @@ impl TsRuntime {
 		component_code: &str,
 		props_json: &str,
 	) -> Result<String, TsError> {
+		self.render_component_until(component_code, props_json, None)
+	}
+
+	pub(super) fn render_component_until(
+		&self,
+		component_code: &str,
+		props_json: &str,
+		deadline: Option<Instant>,
+	) -> Result<String, TsError> {
 		if !self.preact_initialized {
 			return Err(TsError::InitFailed("Preact not initialized".to_string()));
 		}
@@ -313,15 +334,30 @@ impl TsRuntime {
 				response_tx,
 			},
 			TsError::RenderFailed,
+			deadline,
 		)
 	}
 
-	/// Wait for worker admission separately from the execution deadline.
+	/// Ordinary callers have separate admission/execution budgets. Host deadlines
+	/// are absolute and constrain both waits without being reset at worker admission.
 	fn execute<T>(
 		&self,
 		command: impl FnOnce(mpsc::Sender<Result<T, TsError>>) -> RuntimeCommand,
 		unavailable: fn(String) -> TsError,
+		deadline: Option<Instant>,
 	) -> Result<T, TsError> {
+		let remaining = || {
+			deadline.map_or(self.limits.execution_timeout, |deadline| {
+				self.limits
+					.execution_timeout
+					.min(deadline.saturating_duration_since(Instant::now()))
+			})
+		};
+		if remaining().is_zero() {
+			return Err(unavailable(
+				"Host execution deadline expired before admission".into(),
+			));
+		}
 		let (response_tx, response_rx) = mpsc::channel();
 		let (started_tx, started_rx) = mpsc::channel();
 		let state = Arc::new(AtomicU8::new(COMMAND_QUEUED));
@@ -330,10 +366,11 @@ impl TsRuntime {
 				command: command(response_tx),
 				started_tx,
 				state: Arc::clone(&state),
+				deadline,
 			})
 			.map_err(|_| unavailable("Runtime queue is unavailable or full".into()))?;
 
-		match started_rx.recv_timeout(self.limits.execution_timeout) {
+		match started_rx.recv_timeout(remaining()) {
 			Ok(()) => {}
 			Err(mpsc::RecvTimeoutError::Timeout) => {
 				// The worker and caller race to admit or cancel this command.
@@ -357,15 +394,14 @@ impl TsRuntime {
 			}
 		}
 
+		let timeout = remaining();
 		let result = response_rx
-			.recv_timeout(self.limits.execution_timeout)
+			.recv_timeout(timeout)
 			.map_err(|error| match error {
 				mpsc::RecvTimeoutError::Timeout => {
 					state.store(COMMAND_TIMED_OUT, Ordering::Release);
 					self.poisoned.store(true, Ordering::Release);
-					TsError::ExecutionTimeout {
-						timeout: self.limits.execution_timeout,
-					}
+					TsError::ExecutionTimeout { timeout }
 				}
 				mpsc::RecvTimeoutError::Disconnected => {
 					unavailable("Runtime thread terminated during evaluation".into())
@@ -455,13 +491,20 @@ fn runtime_thread_main(
 		let _ = request.started_tx.send(());
 		let timed_out = match request.command {
 			RuntimeCommand::Eval { code, response_tx } => {
-				let result = eval_code(&code, &mut context, &stringifier, execution_timeout);
+				let result = eval_code(
+					&code,
+					&mut context,
+					&stringifier,
+					execution_timeout,
+					request.deadline,
+				);
 				let timed_out = matches!(result, Err(TsError::ExecutionTimeout { .. }));
 				let _ = response_tx.send(result);
 				timed_out
 			}
 			RuntimeCommand::EvalVoid { code, response_tx } => {
-				let result = eval_void_code(&code, &mut context, execution_timeout);
+				let result =
+					eval_void_code(&code, &mut context, execution_timeout, request.deadline);
 				let timed_out = matches!(result, Err(TsError::ExecutionTimeout { .. }));
 				let _ = response_tx.send(result);
 				timed_out
@@ -477,6 +520,7 @@ fn runtime_thread_main(
 					&mut context,
 					&stringifier,
 					execution_timeout,
+					request.deadline,
 				);
 				let timed_out = matches!(result, Err(TsError::ExecutionTimeout { .. }));
 				let _ = response_tx.send(result);
@@ -628,15 +672,29 @@ fn eval_code(
 	context: &mut Context,
 	stringifier: &JsObject,
 	timeout: Duration,
+	deadline: Option<Instant>,
 ) -> Result<String, TsError> {
 	let started = Instant::now();
+	let timeout = timeout_until(timeout, deadline, started);
 	let result = eval_until_deadline(code, context, timeout, started, false)?;
 	js_value_to_string(&result, context, stringifier, timeout, started)
 }
 
 /// Evaluate JavaScript code without expecting a return value.
-fn eval_void_code(code: &str, context: &mut Context, timeout: Duration) -> Result<(), TsError> {
-	eval_with_deadline(code, context, timeout, false)?;
+fn eval_void_code(
+	code: &str,
+	context: &mut Context,
+	timeout: Duration,
+	deadline: Option<Instant>,
+) -> Result<(), TsError> {
+	let started = Instant::now();
+	eval_until_deadline(
+		code,
+		context,
+		timeout_until(timeout, deadline, started),
+		started,
+		false,
+	)?;
 	Ok(())
 }
 
@@ -647,8 +705,10 @@ fn render_component_code(
 	context: &mut Context,
 	stringifier: &JsObject,
 	timeout: Duration,
+	deadline: Option<Instant>,
 ) -> Result<String, TsError> {
 	let started = Instant::now();
+	let timeout = timeout_until(timeout, deadline, started);
 	let render_script = format!(
 		r#"
 		(function() {{
@@ -664,8 +724,16 @@ fn render_component_code(
 	js_value_to_string(&result, context, stringifier, timeout, started)
 }
 
+fn timeout_until(timeout: Duration, deadline: Option<Instant>, started: Instant) -> Duration {
+	// Anchor both values to the same Instant: descheduling cannot reset the host budget.
+	deadline.map_or(timeout, |deadline| {
+		timeout.min(deadline.saturating_duration_since(started))
+	})
+}
+
 /// Poll Boa cooperatively so the elapsed-time deadline stops the interpreter.
 /// The VM budget controls yielding frequency, not the number of loop iterations.
+#[cfg(test)]
 fn eval_with_deadline(
 	code: &str,
 	context: &mut Context,
@@ -1118,6 +1186,7 @@ mod tests {
 					},
 					started_tx,
 					state: Arc::new(AtomicU8::new(COMMAND_QUEUED)),
+					deadline: None,
 				})
 				.unwrap();
 			responses.push(response_rx);
@@ -1147,6 +1216,87 @@ mod tests {
 
 	#[rstest]
 	#[case(
+		"(() => { const end = Date.now() + 500; while (Date.now() < end) {} return 'late'; })()"
+	)]
+	#[case(
+		"({ toString() { const end = Date.now() + 500; while (Date.now() < end) {} return 'late'; } })"
+	)]
+	fn host_deadline_reaches_the_worker_and_result_conversion(#[case] code: &str) {
+		// Arrange: bypass the caller wait so it cannot conceal continued VM work.
+		let runtime = TsRuntime::with_limits(TsResourceLimits {
+			execution_timeout: Duration::from_secs(2),
+			loop_iteration_limit: u64::MAX,
+			..TsResourceLimits::default()
+		})
+		.unwrap();
+		let (response_tx, response_rx) = mpsc::channel();
+		let (started_tx, _started_rx) = mpsc::channel();
+		let started = Instant::now();
+		let budget = Duration::from_millis(100);
+
+		// Act: the worker receives an absolute host deadline shorter than its own limit.
+		runtime
+			.command_tx
+			.try_send(RuntimeRequest {
+				command: RuntimeCommand::Eval {
+					code: code.into(),
+					response_tx,
+				},
+				started_tx,
+				state: Arc::new(AtomicU8::new(COMMAND_QUEUED)),
+				deadline: Some(started + budget),
+			})
+			.unwrap();
+		let result = response_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+
+		// Assert: execution and conversion stop in the worker under the remaining budget.
+		assert!(matches!(result, Err(TsError::ExecutionTimeout { timeout }) if timeout <= budget));
+		assert!(started.elapsed() < Duration::from_millis(500));
+	}
+
+	#[rstest]
+	fn expired_host_deadlines_do_not_admit_queued_or_delayed_commands() {
+		// Arrange: an admitted public evaluation keeps the dedicated worker occupied.
+		let runtime = TsRuntime::new().unwrap();
+		let (response_tx, response_rx) = mpsc::channel();
+		let (started_tx, started_rx) = mpsc::channel();
+		runtime.command_tx.try_send(RuntimeRequest {
+			command: RuntimeCommand::Eval {
+				code: "(() => { const end = Date.now() + 200; while (Date.now() < end) {} return 'ready'; })()".into(),
+				response_tx,
+			}, started_tx, state: Arc::new(AtomicU8::new(COMMAND_QUEUED)), deadline: None,
+		}).unwrap();
+		started_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+
+		// Act: queue admission cannot restart a host deadline; delayed blocking work is rejected.
+		let queued = runtime.eval_until(
+			"globalThis.queuedHostRan = true",
+			Some(Instant::now() + Duration::from_millis(30)),
+		);
+		let expired = runtime.eval_until("globalThis.delayedHostRan = true", Some(Instant::now()));
+
+		// Assert: cancelled queued work has no effects and does not retire the healthy context.
+		assert!(matches!(queued, Err(TsError::EvalFailed(message)) if message.contains("queued")));
+		assert!(
+			matches!(expired, Err(TsError::EvalFailed(message)) if message.contains("before admission"))
+		);
+		assert_eq!(
+			response_rx
+				.recv_timeout(Duration::from_secs(1))
+				.unwrap()
+				.unwrap(),
+			"ready"
+		);
+		assert_eq!(
+			runtime
+				.eval("typeof queuedHostRan + ':' + typeof delayedHostRan")
+				.unwrap(),
+			"undefined:undefined"
+		);
+	}
+
+	#[rstest]
+	#[case(
 		"({ toString() { const until = Date.now() + 1000; while (Date.now() < until) {} return 'late'; } })"
 	)]
 	#[case(
@@ -1160,7 +1310,7 @@ mod tests {
 		let started = Instant::now();
 
 		// Act: the object has a finite but expensive guest conversion hook.
-		let result = eval_code(code, &mut context, &stringifier, timeout);
+		let result = eval_code(code, &mut context, &stringifier, timeout, None);
 
 		// Assert: the interpreter itself stops instead of continuing for a second.
 		assert!(
@@ -1180,7 +1330,13 @@ mod tests {
 		let started = Instant::now();
 
 		// Act: getters and nested native String calls can reenter the synchronous VM.
-		let result = eval_code(code, &mut context, &stringifier, Duration::from_secs(2));
+		let result = eval_code(
+			code,
+			&mut context,
+			&stringifier,
+			Duration::from_secs(2),
+			None,
+		);
 
 		// Assert: the independent guard stops the interpreter, rather than just the caller.
 		assert!(matches!(result, Err(TsError::RuntimeLimitExceeded { .. })));

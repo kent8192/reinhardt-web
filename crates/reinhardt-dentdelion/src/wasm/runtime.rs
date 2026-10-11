@@ -37,13 +37,26 @@ use wasmtime_wasi::p2;
 
 use super::host::HostState;
 
-/// Aggregate linear-memory accounting retained for the lifetime of one store.
-/// Wasmtime invokes the limiter before each non-shared memory allocation/growth.
+tokio::task_local! {
+	/// The lifecycle deadline remains fixed across guest calls and host imports.
+	static EXECUTION_DEADLINE: Option<std::time::Instant>;
+}
+
+fn invocation_deadline(timeout: Duration) -> Option<std::time::Instant> {
+	EXECUTION_DEADLINE
+		.try_with(|deadline| *deadline)
+		.unwrap_or_else(|_| std::time::Instant::now().checked_add(timeout))
+}
+
+/// Aggregate linear-memory and table accounting for the lifetime of one store.
+/// Wasmtime invokes the limiter before each allocation/growth; table elements
+/// occupy one pointer each in the pinned Wasmtime version.
 pub(super) struct StoreMemoryLimits {
 	limits: StoreLimits,
 	budget: usize,
 	allocated: usize,
 	last_growth: usize,
+	last_table_growth: usize,
 }
 
 impl StoreMemoryLimits {
@@ -51,11 +64,13 @@ impl StoreMemoryLimits {
 		Self {
 			limits: StoreLimitsBuilder::new()
 				.memory_size(budget)
+				.table_elements(budget / std::mem::size_of::<usize>())
 				.trap_on_grow_failure(true)
 				.build(),
 			budget,
 			allocated: 0,
 			last_growth: 0,
+			last_table_growth: 0,
 		}
 	}
 }
@@ -73,7 +88,7 @@ impl ResourceLimiter for StoreMemoryLimits {
 		}
 		let growth = desired.saturating_sub(current);
 		if growth > self.budget.saturating_sub(self.allocated) {
-			anyhow::bail!("WASM store linear-memory budget exceeded");
+			anyhow::bail!("WASM store memory and table budget exceeded");
 		}
 		self.allocated += growth;
 		self.last_growth = growth;
@@ -93,9 +108,24 @@ impl ResourceLimiter for StoreMemoryLimits {
 		desired: usize,
 		maximum: Option<usize>,
 	) -> anyhow::Result<bool> {
-		self.limits.table_growing(current, desired, maximum)
+		self.last_table_growth = 0;
+		if !self.limits.table_growing(current, desired, maximum)? {
+			return Ok(false);
+		}
+		let growth = desired
+			.saturating_sub(current)
+			.checked_mul(std::mem::size_of::<usize>())
+			.ok_or_else(|| anyhow::anyhow!("WASM table allocation size overflow"))?;
+		if growth > self.budget.saturating_sub(self.allocated) {
+			anyhow::bail!("WASM store memory and table budget exceeded");
+		}
+		self.allocated += growth;
+		self.last_table_growth = growth;
+		Ok(true)
 	}
 	fn table_grow_failed(&mut self, error: anyhow::Error) -> anyhow::Result<()> {
+		self.allocated -= self.last_table_growth;
+		self.last_table_growth = 0;
 		self.limits.table_grow_failed(error)
 	}
 	fn instances(&self) -> usize {
@@ -118,7 +148,7 @@ pub(super) const DEFAULT_TIMEOUT_SECS: u32 = 30;
 /// Configuration for the WASM runtime.
 #[derive(Debug, Clone)]
 pub struct WasmRuntimeConfig {
-	/// Aggregate linear-memory limit in megabytes for one store.
+	/// Aggregate linear-memory and table allocation limit in megabytes for one store.
 	pub memory_limit_mb: u32,
 	/// Execution timeout.
 	pub timeout: Duration,
@@ -373,6 +403,7 @@ impl WasmRuntime {
 	///
 	/// * `host_state` - The host state for this store
 	pub fn create_store(&self, mut host_state: HostState) -> Store<HostState> {
+		host_state.execution_deadline = invocation_deadline(self.config.timeout);
 		host_state.store_limits = Some(StoreMemoryLimits::new(
 			(self.config.memory_limit_mb as usize).saturating_mul(1024 * 1024),
 		));
@@ -387,11 +418,13 @@ impl WasmRuntime {
 		store.set_epoch_deadline(u64::try_from(ticks).unwrap_or(u64::MAX));
 		store.epoch_deadline_trap();
 		let ticks = u64::try_from(ticks).unwrap_or(u64::MAX);
+		let timeout = self.config.timeout;
 		// Reset only on a new host-to-guest call. Returning from a host import
 		// must not extend the budget of an already-running guest invocation.
 		store.call_hook(move |mut context, transition| {
 			if matches!(transition, CallHook::CallingWasm) {
 				context.set_epoch_deadline(ticks);
+				context.data_mut().execution_deadline = invocation_deadline(timeout);
 			}
 			Ok(())
 		});
@@ -409,14 +442,21 @@ impl WasmRuntime {
 		&self,
 		invocation: impl std::future::Future<Output = PluginResult<T>>,
 	) -> PluginResult<T> {
-		tokio::time::timeout(self.config.timeout, invocation)
-			.await
-			.map_err(|_| {
-				PluginError::WasmExecutionError(format!(
-					"WASM execution timed out after {:?}",
-					self.config.timeout
-				))
-			})?
+		let deadline = std::time::Instant::now().checked_add(self.config.timeout);
+		let invocation = EXECUTION_DEADLINE.scope(deadline, invocation);
+		let result = match deadline {
+			Some(deadline) => {
+				tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), invocation).await
+			}
+			// Preserve Tokio's far-future behavior for durations that cannot fit in Instant.
+			None => tokio::time::timeout(self.config.timeout, invocation).await,
+		};
+		result.map_err(|_| {
+			PluginError::WasmExecutionError(format!(
+				"WASM execution timed out after {:?}",
+				self.config.timeout
+			))
+		})?
 	}
 
 	/// Add fuel to a store.
@@ -464,6 +504,29 @@ impl std::fmt::Debug for WasmRuntime {
 
 #[cfg(test)]
 mod tests {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn unrepresentable_deadlines_preserve_ready_invocations() {
+		// Arrange: Tokio accepts an effectively unbounded configured timeout.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.timeout(Duration::MAX)
+				.build(),
+		)
+		.unwrap();
+
+		// Act: ready work and store construction must not overflow Instant.
+		let result = runtime
+			.with_execution_timeout(async {
+				let store = runtime.create_store(HostState::new("far-future"));
+				Ok(store.data().execution_deadline.is_none())
+			})
+			.await
+			.unwrap();
+
+		// Assert: no artificial short host deadline was introduced.
+		assert!(result);
+	}
 	use super::*;
 
 	#[test]
@@ -576,6 +639,153 @@ mod tests {
 				.await
 				.is_err()
 		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn table_growth_counts_all_tables_and_instances_in_store_budget() {
+		// Arrange: two empty tables sharing a one-MiB store budget.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.memory_limit_mb(1)
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let half = (1024 * 1024 / std::mem::size_of::<usize>()) / 2;
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			format!(
+				r#"(module
+			(table $a 0 funcref) (table $b 0 funcref)
+			(func (export "grow_a") (result i32) ref.null func i32.const {half} table.grow $a)
+			(func (export "grow_b") (result i32) ref.null func i32.const {half} table.grow $b)
+			(func (export "grow_again") (result i32) ref.null func i32.const 1 table.grow $a)
+		)"#
+			),
+		)
+		.unwrap();
+		let mut store = runtime.create_store(HostState::new("aggregate-tables"));
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+			.await
+			.unwrap();
+		let a = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_a")
+			.unwrap();
+		let b = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_b")
+			.unwrap();
+		let again = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_again")
+			.unwrap();
+
+		// Act: each table consumes half of the store's allocation budget.
+		assert_eq!(a.call_async(&mut store, ()).await.unwrap(), 0);
+		assert_eq!(b.call_async(&mut store, ()).await.unwrap(), 0);
+
+		// Assert: even one extra element or a table in another instance is denied.
+		assert!(again.call_async(&mut store, ()).await.is_err());
+		let another =
+			wasmtime::Module::new(runtime.engine(), "(module (table 1 funcref))").unwrap();
+		assert!(
+			wasmtime::Instance::new_async(&mut store, &another, &[])
+				.await
+				.is_err()
+		);
+	}
+
+	#[rstest::rstest]
+	#[case(true)]
+	#[case(false)]
+	#[tokio::test]
+	async fn tables_cannot_exceed_memory_budget_at_initialization_or_in_one_growth(
+		#[case] initial_allocation: bool,
+	) {
+		// Arrange: request more than one MiB in a single table allocation.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.memory_limit_mb(1)
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let elements = 1024 * 1024 / std::mem::size_of::<usize>() + 1;
+		let wat = if initial_allocation {
+			format!("(module (table {elements} funcref))")
+		} else {
+			format!(
+				"(module (table $t 0 externref) (func (export \"grow\") (result i32) ref.null extern i32.const {elements} table.grow $t))"
+			)
+		};
+		let module = wasmtime::Module::new(runtime.engine(), wat).unwrap();
+		let mut store = runtime.create_store(HostState::new("large-table"));
+
+		// Act / Assert: both initial allocation and the single guest instruction fail.
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[]).await;
+		if initial_allocation {
+			assert!(instance.is_err());
+		} else {
+			let grow = instance
+				.unwrap()
+				.get_typed_func::<(), i32>(&mut store, "grow")
+				.unwrap();
+			assert!(grow.call_async(&mut store, ()).await.is_err());
+		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn tables_and_linear_memory_share_the_same_allocation_budget() {
+		// Arrange: half a MiB each of linear memory and table elements.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.memory_limit_mb(1)
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let elements = 512 * 1024 / std::mem::size_of::<usize>();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			format!(
+				r#"(module
+			(memory 8) (table $t {elements} funcref)
+			(func (export "grow") (result i32) ref.null func i32.const 1 table.grow $t)
+		)"#
+			),
+		)
+		.unwrap();
+		let mut store = runtime.create_store(HostState::new("mixed-allocations"));
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+			.await
+			.unwrap();
+		let grow = instance
+			.get_typed_func::<(), i32>(&mut store, "grow")
+			.unwrap();
+
+		// Act / Assert: table growth cannot spend memory already used by linear memory.
+		assert!(grow.call_async(&mut store, ()).await.is_err());
+	}
+
+	#[rstest::rstest]
+	fn failed_table_allocation_releases_only_its_budget_reservation() {
+		// Arrange: a memory reservation followed by a permitted table allocation.
+		let mut limiter = StoreMemoryLimits::new(65536);
+		assert!(limiter.memory_growing(0, 32768, None).unwrap());
+		let elements = 32768 / std::mem::size_of::<usize>();
+		assert!(limiter.table_growing(0, elements, None).unwrap());
+
+		// Act: simulate an OS failure after the table growth was permitted.
+		assert!(
+			limiter
+				.table_grow_failed(anyhow::anyhow!("allocation failed"))
+				.is_err()
+		);
+
+		// Assert: the memory reservation survives and the table reservation is released.
+		assert_eq!(limiter.allocated, 32768);
+		assert!(limiter.table_growing(0, elements, None).unwrap());
+		assert!(limiter.memory_growing(32768, 32769, None).is_err());
 	}
 
 	#[rstest::rstest]
