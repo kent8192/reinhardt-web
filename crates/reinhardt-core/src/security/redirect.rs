@@ -78,9 +78,19 @@ pub fn validate_redirect_url(
 	if trimmed.is_empty() {
 		return Ok(());
 	}
+	if trimmed.contains('\\') || trimmed.chars().any(char::is_control) {
+		return Err(RedirectValidationError::SuspiciousEncoding);
+	}
 
 	// Check for URL-encoded bypass attempts before any other processing
 	let decoded = percent_decode(trimmed);
+	if decoded != trimmed
+		&& (decoded.contains('\\')
+			|| decoded.starts_with("//")
+			|| decoded.chars().any(char::is_control))
+	{
+		return Err(RedirectValidationError::SuspiciousEncoding);
+	}
 	if decoded != trimmed {
 		// Re-check the decoded version for dangerous patterns
 		if has_dangerous_protocol(&decoded) {
@@ -245,6 +255,14 @@ mod tests {
 
 		// Assert
 		assert!(result.is_ok(), "Expected Ok for relative URL: {url}");
+	}
+
+	#[rstest]
+	#[case("/\\evil.test/path")]
+	#[case("/%5cevil.test/path")]
+	#[case("/%2f%2fevil.test/path")]
+	fn test_validate_redirect_url_rejects_network_path_variants(#[case] url: &str) {
+		assert!(validate_redirect_url(url, &HashSet::new()).is_err());
 	}
 
 	#[rstest]
