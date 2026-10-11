@@ -57,7 +57,8 @@ pub enum ActiveMatch {
 /// - it renders `aria-current="page"` while it matches the current path,
 ///   unless an explicit `aria-current` attribute was set with [`Link::attr`];
 /// - with [`Link::active_class`], the active class is appended to the
-///   [`Link::class`] value while it matches.
+///   [`Link::class`] value while it matches, unless an explicit `class`
+///   attribute was set with [`Link::attr`].
 ///
 /// Matching is exact by default; [`Link::match_prefix`] switches to
 /// path-segment prefix matching (see [`ActiveMatch`]). Without an installed
@@ -172,6 +173,11 @@ impl Link {
 	/// destination. It only takes effect when an SPA router is installed; see
 	/// the [active links](Link#active-links) section.
 	///
+	/// An explicit `class` attribute set with [`Link::attr`] takes precedence:
+	/// the link then keeps that static value and the active class is not
+	/// applied, mirroring how an explicit `aria-current` attribute replaces
+	/// the automatic one.
+	///
 	/// # Example
 	///
 	/// ```rust
@@ -248,7 +254,14 @@ impl Link {
 		if self.external || !self.to.starts_with('/') || self.to.starts_with("//") {
 			return None;
 		}
-		crate::app::try_with_spa_router(|router| *router.current_path())
+		crate::reactive::hooks::use_router().current_path().ok()
+	}
+
+	/// Returns whether `name` was set explicitly through [`Link::attr`].
+	fn has_explicit_attr(&self, name: &str) -> bool {
+		self.attrs
+			.iter()
+			.any(|(attr_name, _)| attr_name.eq_ignore_ascii_case(name))
 	}
 }
 
@@ -293,7 +306,14 @@ impl Component for Link {
 			.active_path_source()
 			.map(|current_path| (current_path, ActiveTarget::new(&self.to, self.active_match)));
 
-		match (&active, self.active_class.as_ref()) {
+		// Explicit `attr("class", ..)` / `attr("aria-current", ..)` values take
+		// precedence over the route-derived reactive attributes.
+		let reactive_class = if self.has_explicit_attr("class") {
+			None
+		} else {
+			self.active_class.as_ref()
+		};
+		match (&active, reactive_class) {
 			(Some((current_path, target)), Some(active_class)) => {
 				let current_path = *current_path;
 				let target = target.clone();
@@ -338,14 +358,8 @@ impl Component for Link {
 			el = el.attr(name.clone(), value.clone());
 		}
 
-		// An explicit `aria-current` from `attr()` takes precedence over the
-		// automatic route-derived value.
-		let has_explicit_aria_current = self
-			.attrs
-			.iter()
-			.any(|(name, _)| name.eq_ignore_ascii_case("aria-current"));
 		if let Some((current_path, target)) = active
-			&& !has_explicit_aria_current
+			&& !self.has_explicit_attr("aria-current")
 		{
 			el = el.reactive_attr("aria-current", move || {
 				target
@@ -855,6 +869,10 @@ mod tests {
 	#[case::explicit_aria_current_wins(
 		Link::new("/", "Step").attr("aria-current", "step"),
 		"<a href=\"/\" data-link=\"true\" aria-current=\"step\">Step</a>"
+	)]
+	#[case::explicit_class_attr_wins(
+		Link::new("/", "Overview").active_class("active").attr("class", "custom"),
+		"<a href=\"/\" data-link=\"true\" class=\"custom\" aria-current=\"page\">Overview</a>"
 	)]
 	#[case::external_link_is_never_active(
 		Link::new("/", "Mirror").external(true).active_class("active"),
