@@ -243,6 +243,67 @@ mod tests {
 	use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
 
 	#[rstest::rstest]
+	#[case(FilterValue::Integer(42), "42", serde_json::json!(42))]
+	#[case(FilterValue::Int(42), "42", serde_json::json!(42))]
+	#[case(FilterValue::Boolean(true), "true", serde_json::json!(true))]
+	#[case(FilterValue::Bool(false), "false", serde_json::json!(false))]
+	fn delimited_import_scope_accepts_matching_typed_cells(
+		#[values(b',', b'\t')] delimiter: u8,
+		#[case] scope: FilterValue,
+		#[case] cell: &str,
+		#[case] expected: serde_json::Value,
+	) {
+		// Arrange: use the same CSV deserializer as CSV/TSV imports.
+		let text = format!(
+			"scope{}name\n{cell}{}safe\n",
+			delimiter as char, delimiter as char
+		);
+		let mut reader = csv::ReaderBuilder::new()
+			.delimiter(delimiter)
+			.from_reader(text.as_bytes());
+		let mut record = reader
+			.deserialize::<std::collections::HashMap<String, serde_json::Value>>()
+			.next()
+			.unwrap()
+			.unwrap();
+		assert_eq!(record["scope"], expected);
+		let filter = Filter::new("scope", FilterOperator::Eq, scope);
+
+		// Act: authorize the typed delimited field against its trusted predicate.
+		enforce_creation_scope(&mut record, &[filter]).unwrap();
+
+		// Assert: the value saved to the database has the predicate's type.
+		assert_eq!(record["scope"], expected);
+		assert_eq!(record["name"], serde_json::json!("safe"));
+	}
+
+	#[rstest::rstest]
+	#[case(FilterValue::Integer(42), serde_json::json!("99"))]
+	#[case(FilterValue::Integer(42), serde_json::json!("42 OR 1=1"))]
+	#[case(FilterValue::Integer(42), serde_json::json!(true))]
+	#[case(FilterValue::Boolean(true), serde_json::json!("false"))]
+	#[case(FilterValue::Boolean(true), serde_json::json!("1"))]
+	#[case(FilterValue::String("42".into()), serde_json::json!(42))]
+	fn creation_scope_denies_mismatched_values_and_json_types(
+		#[case] scope: FilterValue,
+		#[case] actual: serde_json::Value,
+	) {
+		// Arrange / Act: caller values cannot redefine the trusted predicate's type.
+		let mut data = std::collections::HashMap::from([("scope".into(), actual)]);
+		let error = enforce_creation_scope(
+			&mut data,
+			&[Filter::new("scope", FilterOperator::Eq, scope)],
+		)
+		.unwrap_err();
+
+		// Assert: invalid, cross-scope and mismatched JSON types remain forbidden.
+		assert_eq!(
+			error.to_string(),
+			"Server error (403): Object permission denied"
+		);
+	}
+
+	#[rstest::rstest]
 	fn creation_scope_sets_or_rejects_tenant_id() {
 		let filters = [Filter::new(
 			"tenant_id",
