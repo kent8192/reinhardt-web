@@ -63,6 +63,11 @@ pub struct AdminSite {
 	///
 	/// When `None`, admin login is disabled.
 	jwt_secret: Option<Vec<u8>>,
+
+	/// Whether the built-in password login server functions are registered.
+	///
+	/// Defaults to `true`; cleared by [`AdminSite::without_password_login`].
+	password_login_enabled: bool,
 }
 
 /// Provider key for the admin site dependency.
@@ -124,6 +129,7 @@ impl AdminSite {
 			user_loader: None,
 			login_authenticator: None,
 			jwt_secret: None,
+			password_login_enabled: true,
 		}
 	}
 
@@ -287,6 +293,57 @@ impl AdminSite {
 	/// Returns the JWT secret, if configured.
 	pub(crate) fn jwt_secret(&self) -> Option<&[u8]> {
 		self.jwt_secret.as_deref()
+	}
+
+	/// Omits the built-in password login server functions from the admin router.
+	///
+	/// By default [`admin_routes_with_di`] registers `admin_login` and
+	/// `admin_login_with_header`, two public endpoints that accept a username
+	/// and password. Call this method when users authenticate elsewhere, for
+	/// example only through an OAuth provider such as GitHub, or when the
+	/// configured `BaseUser` model has no usable password. The admin router
+	/// then registers neither endpoint nor the login authenticator they
+	/// depend on, and authentication is left to whatever middleware publishes
+	/// `AuthState` for admin requests.
+	///
+	/// `admin_logout` stays registered: it accepts no credentials and only
+	/// clears the admin authentication cookie. The bundled admin SPA login
+	/// page targets the omitted endpoints, so the project must provide its own
+	/// sign-in entry point.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_admin::core::AdminSite;
+	///
+	/// let mut site = AdminSite::new("Admin");
+	/// site.without_password_login();
+	/// assert!(!site.password_login_enabled());
+	/// ```
+	///
+	/// [`admin_routes_with_di`]: crate::core::admin_routes_with_di
+	pub fn without_password_login(&mut self) -> &mut Self {
+		self.password_login_enabled = false;
+		self
+	}
+
+	/// Returns whether the built-in password login server functions are
+	/// registered by [`admin_routes_with_di`].
+	///
+	/// This is `true` unless [`AdminSite::without_password_login`] was called.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use reinhardt_admin::core::AdminSite;
+	///
+	/// let site = AdminSite::new("Admin");
+	/// assert!(site.password_login_enabled());
+	/// ```
+	///
+	/// [`admin_routes_with_di`]: crate::core::admin_routes_with_di
+	pub fn password_login_enabled(&self) -> bool {
+		self.password_login_enabled
 	}
 
 	/// Register a model with the admin site
@@ -798,6 +855,34 @@ mod tests {
 
 		assert!(result.is_ok());
 		assert_eq!(result.unwrap().name(), "Registry Admin");
+	}
+
+	#[rstest]
+	fn test_password_login_enabled_by_default() {
+		// Arrange
+		let site = AdminSite::new("Admin");
+
+		// Act
+		let enabled = site.password_login_enabled();
+
+		// Assert
+		assert!(enabled, "password login must be enabled by default");
+	}
+
+	#[rstest]
+	fn test_without_password_login_disables_password_login() {
+		// Arrange
+		let mut site = AdminSite::new("Admin");
+
+		// Act
+		site.without_password_login();
+
+		// Assert
+		assert!(!site.password_login_enabled());
+		assert!(
+			!site.clone().password_login_enabled(),
+			"cloned site must keep password login disabled"
+		);
 	}
 
 	#[rstest]

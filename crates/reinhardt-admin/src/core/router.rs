@@ -392,8 +392,13 @@ pub fn admin_csp_exempt_paths() -> Vec<String> {
 ///
 /// When `jwt_secret` is provided, adds `AdminCookieAuthMiddleware` to extract
 /// JWT tokens from HTTP-Only cookies (and `Authorization` header as fallback).
+///
+/// When `password_login_enabled` is `false`, the `admin_login` and
+/// `admin_login_with_header` server functions are not registered; see
+/// [`AdminSite::without_password_login`].
 fn build_admin_router(
 	#[cfg(not(target_arch = "wasm32"))] jwt_secret: Option<&[u8]>,
+	password_login_enabled: bool,
 ) -> ServerRouter {
 	let router = ServerRouter::new().with_namespace("admin");
 
@@ -442,15 +447,23 @@ fn build_admin_router(
 		let router = router
 			.server_fn(create_record_multipart::marker)
 			.server_fn(update_record_multipart::marker);
-		router
+		let router = router
 			.server_fn(update_inline_edits::marker)
 			.server_fn(delete_record::marker)
 			.server_fn(bulk_delete_records::marker)
 			.server_fn(execute_admin_action::marker)
 			.server_fn(export_data::marker)
-			.server_fn(import_data::marker)
-			.server_fn(admin_login::marker)
-			.server_fn(admin_login_with_header::marker)
+			.server_fn(import_data::marker);
+		// Credential-submission endpoints are omitted when the site delegates
+		// authentication to external middleware.
+		let router = if password_login_enabled {
+			router
+				.server_fn(admin_login::marker)
+				.server_fn(admin_login_with_header::marker)
+		} else {
+			router
+		};
+		router
 			.server_fn(admin_logout::marker)
 			.endpoint(|| AdminSpaRootEndpoint)
 			.endpoint(|| AdminSpaCatchAllEndpoint)
@@ -470,6 +483,10 @@ fn build_admin_router(
 /// If a custom user type was configured via [`AdminSite::set_user_type`],
 /// that type is used for admin authentication. Otherwise,
 /// [`AdminDefaultUser`] (table `auth_user`) is registered as a fallback.
+///
+/// If [`AdminSite::without_password_login`] was called, the `admin_login`
+/// and `admin_login_with_header` server functions and their login
+/// authenticator are omitted; `admin_logout` is always registered.
 ///
 /// `AdminDatabase` is **not** registered here; it is lazily constructed
 /// from `DatabaseConnection` at first request via its `Injectable` impl.
@@ -498,7 +515,18 @@ fn build_admin_router(
 /// let (admin_router, admin_di) = admin_routes_with_di(site);
 /// ```
 ///
+/// ```rust,no_run
+/// use reinhardt_admin::core::{AdminSite, admin_routes_with_di};
+/// use std::sync::Arc;
+///
+/// // External authentication: no password login endpoints are registered
+/// let mut site = AdminSite::new("My Admin");
+/// site.without_password_login();
+/// let (admin_router, admin_di) = admin_routes_with_di(Arc::new(site));
+/// ```
+///
 /// [`AdminSite::set_user_type`]: AdminSite::set_user_type
+/// [`AdminSite::without_password_login`]: AdminSite::without_password_login
 /// [`AdminDefaultUser`]: crate::server::user::AdminDefaultUser
 /// [`DiRegistrationList`]: reinhardt_di::DiRegistrationList
 /// [`UnifiedRouter`]: reinhardt_urls::routers::UnifiedRouter
@@ -520,14 +548,19 @@ pub fn admin_routes_with_di(
 
 	// Register the login authenticator for admin login.
 	// Falls back to AdminDefaultUser if no custom user type was set.
-	let login_auth = site.login_authenticator().unwrap_or_else(|| {
-		Arc::new(
-			crate::server::admin_auth::create_admin_login_authenticator::<
-				crate::server::user::AdminDefaultUser,
-			>(),
-		)
-	});
-	registrations.register_arc(login_auth);
+	// Only the password login server functions resolve this type, so it is
+	// skipped when they are omitted.
+	let password_login_enabled = site.password_login_enabled();
+	if password_login_enabled {
+		let login_auth = site.login_authenticator().unwrap_or_else(|| {
+			Arc::new(
+				crate::server::admin_auth::create_admin_login_authenticator::<
+					crate::server::user::AdminDefaultUser,
+				>(),
+			)
+		});
+		registrations.register_arc(login_auth);
+	}
 
 	let jwt_secret = site.jwt_secret().map(|s| s.to_vec());
 	registrations.register_arc(site);
@@ -535,6 +568,7 @@ pub fn admin_routes_with_di(
 		build_admin_router(
 			#[cfg(not(target_arch = "wasm32"))]
 			jwt_secret.as_deref(),
+			password_login_enabled,
 		),
 		registrations,
 	)
@@ -553,6 +587,7 @@ mod tests {
 		build_admin_router(
 			#[cfg(not(target_arch = "wasm32"))]
 			Some(b"test-jwt-secret"),
+			true,
 		)
 	}
 
@@ -654,6 +689,99 @@ mod tests {
 				paths
 			);
 		}
+	}
+
+	/// Collects the registered route paths of a router built from `site`.
+	fn admin_route_paths(site: AdminSite) -> Vec<String> {
+		let (router, _registrations) = admin_routes_with_di(Arc::new(site));
+		router
+			.get_all_routes()
+			.into_iter()
+			.map(|(path, _, _, _)| path)
+			.collect()
+	}
+
+	#[cfg(server)]
+	#[rstest]
+	#[case::default_site(false, 1)]
+	#[case::without_password_login(true, 0)]
+	fn test_admin_routes_with_di_password_login_endpoints(
+		#[case] without_password_login: bool,
+		#[case] expected_login_routes: usize,
+	) {
+		// Arrange
+		let mut site = AdminSite::new("Test Admin");
+		if without_password_login {
+			site.without_password_login();
+		}
+
+		// Act
+		let paths = admin_route_paths(site);
+		let count = |expected: &str| paths.iter().filter(|path| *path == expected).count();
+
+		// Assert
+		assert_eq!(count("/api/server_fn/admin_login"), expected_login_routes);
+		assert_eq!(
+			count("/api/server_fn/admin_login_with_header"),
+			expected_login_routes
+		);
+		assert_eq!(count("/api/server_fn/admin_logout"), 1);
+	}
+
+	#[cfg(server)]
+	#[rstest]
+	fn test_without_password_login_omits_only_password_login_routes() {
+		// Arrange
+		let default_site = AdminSite::new("Default Admin");
+		let mut external_site = AdminSite::new("External Admin");
+		external_site.without_password_login();
+
+		// Act
+		let default_paths = admin_route_paths(default_site);
+		let external_paths = admin_route_paths(external_site);
+
+		// Assert
+		let expected: Vec<String> = default_paths
+			.into_iter()
+			.filter(|path| {
+				path != "/api/server_fn/admin_login"
+					&& path != "/api/server_fn/admin_login_with_header"
+			})
+			.collect();
+		assert_eq!(external_paths, expected);
+	}
+
+	#[rstest]
+	#[case::default_site(false, true)]
+	#[case::without_password_login(true, false)]
+	fn test_admin_routes_with_di_login_authenticator_registration(
+		#[case] without_password_login: bool,
+		#[case] expected_registered: bool,
+	) {
+		// Arrange
+		let mut site = AdminSite::new("Test Admin");
+		if without_password_login {
+			site.without_password_login();
+		}
+		let scope = SingletonScope::new();
+
+		// Act
+		let (_router, registrations) = admin_routes_with_di(Arc::new(site));
+		registrations.apply_to(&scope);
+
+		// Assert
+		assert_eq!(
+			scope
+				.get::<crate::server::admin_auth::AdminLoginAuthenticator>()
+				.is_some(),
+			expected_registered
+		);
+		assert!(
+			scope
+				.get::<crate::server::admin_auth::AdminUserLoader>()
+				.is_some(),
+			"AdminUserLoader must stay registered for request authorization"
+		);
 	}
 
 	#[rstest]
