@@ -4,10 +4,16 @@ on:
   pull_request_target:
     branches: [main]
     types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Reevaluate current security approval before merging or after access changes
+        required: true
+        type: string
 
 # Use the PR number because pull_request_target runs on the base branch ref.
 concurrency:
-  group: "${{ github.workflow }}-${{ github.event.pull_request.number }}"
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pull_request_number || github.run_id }}"
   cancel-in-progress: true
 
 permissions:
@@ -26,12 +32,24 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
+            // Manual reevaluation must load the trusted main workflow.
+            if (context.eventName === 'workflow_dispatch' && context.ref !== 'refs/heads/main') {
+              core.setFailed('Security approval reevaluation must run from main.');
+              return;
+            }
+            const targetNumber = context.payload.pull_request?.number
+              ?? Number(context.payload.inputs?.pull_request_number);
+            if (!Number.isSafeInteger(targetNumber) || targetNumber <= 0) {
+              core.setFailed('A positive pull request number is required.');
+              return;
+            }
+
             // Read current metadata so queued title, label, or base changes
             // cannot leave an obsolete policy result on the current commit.
             const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number,
+              pull_number: targetNumber,
             });
             const sourceBranch = pr.head.ref;
             const labels = pr.labels.map(label => label.name);
@@ -42,7 +60,7 @@ jobs:
             // approval-label event and its actor's current maintainer role.
             let approvedSecurityFix = false;
             let approvalActor;
-            if (labels.includes('security') && labels.includes('rc-breaking-approved')
+            if (breakingTitle && labels.includes('security') && labels.includes('rc-breaking-approved')
               && labels.includes('breaking-change')) {
               try {
                 const events = await github.paginate(github.rest.issues.listEvents, {
@@ -64,7 +82,23 @@ jobs:
                   // The legacy permission maps maintain to write, so write
                   // alone is insufficient. Custom admin roles remain valid.
                   approvedSecurityFix = access.permission === 'admin'
-                    || ['admin', 'maintain'].includes(access.role_name);
+                    || ['admin', 'maintain'].includes(access.role_name)
+                    || access.user?.permissions?.maintain === true
+                    || access.user?.permissions?.admin === true;
+                  if (!approvedSecurityFix && access.permission === 'write'
+                    && access.role_name !== 'write') {
+                    // Custom role names do not identify their base role. The
+                    // collaborator permission flags expose that base access.
+                    const collaborators = await github.paginate(github.rest.repos.listCollaborators, {
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      per_page: 100,
+                    });
+                    const approver = collaborators.find(user =>
+                      user.login.toLowerCase() === approval.actor.login.toLowerCase());
+                    approvedSecurityFix = approver?.permissions?.maintain === true
+                      || approver?.permissions?.admin === true;
+                  }
                   if (approvedSecurityFix) approvalActor = approval.actor.login;
                 }
               } catch (error) {
@@ -75,7 +109,7 @@ jobs:
             }
             const invalidTarget = pr.base.ref === 'main' && breakingChange && !validDevelopBranch && !approvedSecurityFix;
             const summary = invalidTarget
-              ? `Breaking change from '${sourceBranch}' must target a versioned develop/X.Y.Z branch unless maintainers approve a security fix for main with security, rc-breaking-approved, and breaking-change labels and verified maintainer approval.`
+              ? `Breaking change from '${sourceBranch}' must target a versioned develop/X.Y.Z branch unless maintainers approve a security fix for main with a breaking title, security, rc-breaking-approved, and breaking-change labels, and verified maintainer approval.`
               : pr.base.ref === 'main' && breakingChange && approvedSecurityFix
                 ? `Approved security fix targets main under STABILITY_POLICY.md SP-3; approval label applied by verified maintainer @${approvalActor}.`
                 : 'No invalid breaking-change target detected.';

@@ -457,9 +457,14 @@ warning never makes an invalid target pass. Retarget the breaking change to the
 appropriate develop branch, correct an inaccurate classification, or obtain
 explicit maintainer approval for the documented security exception. All three
 labels, `security`, `rc-breaking-approved`, and `breaking-change`, must remain
-present. The latest approval-label event must identify a user with current `maintain` or `admin` repository
-access. Triage or write access alone, missing event history, or failed permission
-verification cannot approve the exception.
+present, alongside a breaking Conventional Commit title. The latest
+approval-label event must identify a user with current `maintain` or `admin`
+repository access, including custom roles with either base role. Triage or write access
+alone, missing event history, or failed permission verification cannot approve
+the exception. Before merging an approved security exception and after an
+approver loses access, dispatch the trusted main workflow as required by
+[BB-3 approval reevaluation](PR_BASE_BRANCH_POLICY.md#bb-3-should-how-to-choose-the-source-branch)
+and wait for its new head check; an old success is insufficient.
 
 The trusted `pull_request_target` workflow publishes this named check explicitly
 on the current `pr.head.sha` through the Checks API with `checks: write`. Both
