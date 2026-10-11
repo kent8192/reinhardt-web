@@ -89,6 +89,9 @@ impl SocialAuthBackend {
 	}
 
 	/// Begin an authorization flow with browser or session binding and opaque context.
+	///
+	/// Returns [`SocialAuthError::StateValidation`] when `binding` is empty.
+	/// Nothing has been stored at that point, so no state is left behind.
 	pub async fn begin_auth_with_context(
 		&self,
 		provider_name: &str,
@@ -168,6 +171,19 @@ impl SocialAuthBackend {
 	}
 
 	/// Handle a contextual authorization callback with binding verification.
+	///
+	/// Once `provider_name` resolves to a registered provider, the single-use
+	/// state is consumed before the callback data is validated, so a callback
+	/// that fails validation can never be retried with the same state. A
+	/// callback is rejected with [`SocialAuthError::InvalidState`] (after the
+	/// state has been consumed) when:
+	///
+	/// - the state is unknown, already consumed, or expired,
+	/// - the state was issued for a different provider, or
+	/// - the supplied `binding` does not match the one recorded by
+	///   [`begin_auth_with_context`](Self::begin_auth_with_context). An empty
+	///   `binding` never matches, so a callback that carries no browser binding
+	///   is treated exactly like one with a wrong binding.
 	pub async fn handle_callback_with_context(
 		&self,
 		provider_name: &str,
@@ -175,12 +191,6 @@ impl SocialAuthBackend {
 		state: &str,
 		binding: &[u8],
 	) -> Result<ContextualCallbackResult, SocialAuthError> {
-		if binding.is_empty() {
-			return Err(SocialAuthError::StateValidation(
-				"OAuth state binding must not be empty".to_string(),
-			));
-		}
-
 		let provider = self.providers.get(provider_name).ok_or_else(|| {
 			SocialAuthError::Provider(format!("Provider not registered: {}", provider_name))
 		})?;
