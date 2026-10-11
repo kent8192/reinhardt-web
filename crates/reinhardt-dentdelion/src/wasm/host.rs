@@ -60,9 +60,23 @@ use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 /// 1. Only allows `http://` and `https://` schemes
 /// 2. Resolves the hostname to an IP address
 /// 3. Rejects requests to private, loopback, and link-local IP addresses
-fn validate_url_for_ssrf(url: &str) -> Result<Vec<std::net::SocketAddr>, WitPluginError> {
-	use std::net::ToSocketAddrs;
+async fn validate_url_for_ssrf(url: &str) -> Result<Vec<std::net::SocketAddr>, WitPluginError> {
+	validate_url_for_ssrf_with_resolver(url, |domain, port| async move {
+		tokio::net::lookup_host((domain, port))
+			.await
+			.map(Iterator::collect)
+	})
+	.await
+}
 
+async fn validate_url_for_ssrf_with_resolver<R, F>(
+	url: &str,
+	resolver: R,
+) -> Result<Vec<std::net::SocketAddr>, WitPluginError>
+where
+	R: FnOnce(String, u16) -> F,
+	F: std::future::Future<Output = std::io::Result<Vec<std::net::SocketAddr>>>,
+{
 	// Parse the URL
 	let parsed = url::Url::parse(url)
 		.map_err(|e| WitPluginError::with_details(400, "Invalid URL", e.to_string()))?;
@@ -94,12 +108,15 @@ fn validate_url_for_ssrf(url: &str) -> Result<Vec<std::net::SocketAddr>, WitPlug
 
 	// Resolve hostname to IP addresses for DNS rebinding protection
 	let socket_addrs: Vec<_> = match host {
-		url::Host::Domain(domain) => (domain, port)
-			.to_socket_addrs()
-			.map_err(|e| {
-				WitPluginError::with_details(400, "Failed to resolve hostname", e.to_string())
-			})?
-			.collect(),
+		url::Host::Domain(domain) => tokio::time::timeout(
+			std::time::Duration::from_secs(30),
+			resolver(domain.to_owned(), port),
+		)
+		.await
+		.map_err(|_| WitPluginError::new(408, "DNS resolution timed out"))?
+		.map_err(|e| {
+			WitPluginError::with_details(400, "Failed to resolve hostname", e.to_string())
+		})?,
 		url::Host::Ipv4(ip) => vec![std::net::SocketAddr::new(ip.into(), port)],
 		url::Host::Ipv6(ip) => vec![std::net::SocketAddr::new(ip.into(), port)],
 	};
@@ -129,11 +146,11 @@ fn validate_url_for_ssrf(url: &str) -> Result<Vec<std::net::SocketAddr>, WitPlug
 
 /// Construct a one-request client pinned to addresses checked above.
 /// A fresh client avoids reusing a pooled connection resolved for another URL.
-fn ssrf_safe_client(
+async fn ssrf_safe_client(
 	url: &str,
 	factory: &HttpClientFactory,
 ) -> Result<reqwest::Client, WitPluginError> {
-	let addrs = validate_url_for_ssrf(url)?;
+	let addrs = validate_url_for_ssrf(url).await?;
 	build_pinned_http_client(url, factory, &addrs)
 }
 
@@ -401,14 +418,14 @@ impl HostState {
 
 	// ===== HTTP Client API =====
 
-	fn pinned_http_client(&self, url: &str) -> Result<reqwest::Client, WitPluginError> {
+	async fn pinned_http_client(&self, url: &str) -> Result<reqwest::Client, WitPluginError> {
 		self.http_client
 			.as_ref()
 			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))?;
 		let factory = self.http_client_factory.as_ref().ok_or_else(|| {
 			WitPluginError::new(500, "A prebuilt HTTP client cannot be safely pinned; configure HostStateBuilder::http_client_factory instead")
 		})?;
-		ssrf_safe_client(url, factory)
+		ssrf_safe_client(url, factory).await
 	}
 
 	/// Check if HTTP access is allowed.
@@ -432,7 +449,7 @@ impl HostState {
 			return Err(WitPluginError::new(403, "HTTP access not permitted"));
 		}
 
-		let client = self.pinned_http_client(url)?;
+		let client = self.pinned_http_client(url).await?;
 
 		let mut request = client.get(url);
 
@@ -477,7 +494,7 @@ impl HostState {
 			return Err(WitPluginError::new(403, "HTTP access not permitted"));
 		}
 
-		let client = self.pinned_http_client(url)?;
+		let client = self.pinned_http_client(url).await?;
 
 		let mut request = client.post(url).body(body.to_vec());
 
@@ -1567,6 +1584,7 @@ mod tests {
 	) {
 		assert_eq!(!is_private_ip(&address.parse().unwrap()), expected_public);
 	}
+
 	use super::*;
 
 	#[test]
@@ -2046,15 +2064,81 @@ mod tests {
 		assert!(matches!(result, Err(SsrError::DangerousPattern(_))));
 	}
 
+	#[cfg(feature = "wasm")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn lifecycle_deadline_cancels_a_pending_dns_lookup() {
+		use super::super::runtime::{WasmRuntime, WasmRuntimeConfigBuilder};
+		use std::sync::atomic::{AtomicBool, Ordering};
+		// Arrange: a resolver future delayed longer than the invocation budget.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.timeout(std::time::Duration::from_millis(30))
+				.build(),
+		)
+		.unwrap();
+		let cancelled = Arc::new(AtomicBool::new(false));
+		struct LookupGuard(Arc<AtomicBool>);
+		impl Drop for LookupGuard {
+			fn drop(&mut self) {
+				self.0.store(true, Ordering::Release);
+			}
+		}
+		let started = std::time::Instant::now();
+		let flag = Arc::clone(&cancelled);
+
+		// Act: exercise the production URL validation path with an asynchronous resolver.
+		let result = runtime
+			.with_execution_timeout(async {
+				validate_url_for_ssrf_with_resolver(
+					"https://slow.example/",
+					|domain, port| async move {
+						assert_eq!(domain, "slow.example");
+						assert_eq!(port, 443);
+						let _guard = LookupGuard(flag);
+						tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+						Ok(vec!["8.8.8.8:443".parse().unwrap()])
+					},
+				)
+				.await
+				.map_err(|error| crate::error::PluginError::WasmExecutionError(error.message))
+			})
+			.await;
+
+		// Assert: the executor regains control and drops the pending DNS wait.
+		assert!(
+			matches!(result, Err(crate::error::PluginError::WasmExecutionError(message)) if message.contains("timed out"))
+		);
+		assert!(started.elapsed() < std::time::Duration::from_millis(500));
+		assert!(cancelled.load(Ordering::Acquire));
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn resolved_addresses_are_all_validated_before_pinning() {
+		// Arrange: DNS returns both a public and internal destination.
+		let result = validate_url_for_ssrf_with_resolver("https://mixed.example/", |_, _| async {
+			Ok(vec![
+				"8.8.8.8:443".parse().unwrap(),
+				"127.0.0.1:443".parse().unwrap(),
+			])
+		})
+		.await;
+
+		// Assert: no address in a mixed result bypasses validation.
+		assert_eq!(result.unwrap_err().code, 403);
+	}
+
 	// ===== SSRF Validation Tests =====
 
-	#[test]
-	fn test_ssrf_rejects_file_scheme() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_file_scheme() {
 		// Arrange
 		let url = "file:///etc/passwd";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2062,13 +2146,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_gopher_scheme() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_gopher_scheme() {
 		// Arrange
 		let url = "gopher://evil.com/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2076,13 +2161,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_ftp_scheme() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_ftp_scheme() {
 		// Arrange
 		let url = "ftp://internal-server/data";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2090,13 +2176,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_loopback_ipv4() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_loopback_ipv4() {
 		// Arrange
 		let url = "http://127.0.0.1/admin";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2104,13 +2191,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_loopback_ipv4_other() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_loopback_ipv4_other() {
 		// Arrange
 		let url = "http://127.0.0.2:8080/internal";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2118,13 +2206,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_private_10_network() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_private_10_network() {
 		// Arrange
 		let url = "http://10.0.0.1/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2132,13 +2221,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_private_172_network() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_private_172_network() {
 		// Arrange
 		let url = "http://172.16.0.1/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2146,13 +2236,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_private_192_168_network() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_private_192_168_network() {
 		// Arrange
 		let url = "http://192.168.1.1/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2160,13 +2251,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_link_local() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_link_local() {
 		// Arrange
 		let url = "http://169.254.169.254/latest/meta-data/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2174,13 +2266,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_ipv6_loopback() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_ipv6_loopback() {
 		// Arrange
 		let url = "http://[::1]/admin";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2188,13 +2281,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_localhost() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_localhost() {
 		// Arrange
 		let url = "http://localhost/admin";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2202,13 +2296,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_zero_ip() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_zero_ip() {
 		// Arrange
 		let url = "http://0.0.0.0/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2216,13 +2311,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_invalid_url() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_invalid_url() {
 		// Arrange
 		let url = "not-a-valid-url";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2230,25 +2326,27 @@ mod tests {
 		assert_eq!(err.code, 400);
 	}
 
-	#[test]
-	fn test_ssrf_allows_public_http() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_allows_public_http() {
 		// Arrange
 		let url = "http://8.8.8.8/api/data";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
-	fn test_ssrf_allows_public_https() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_allows_public_https() {
 		// Arrange
 		let url = "https://1.1.1.1/repos";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_ok());
@@ -2301,7 +2399,8 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn http_client_factory_survives_cloning_and_disabled_clients_remain_disabled() {
+	#[tokio::test]
+	async fn http_client_factory_survives_cloning_and_disabled_clients_remain_disabled() {
 		let host = HostStateBuilder::new("factory")
 			.http_client_factory(reqwest::Client::builder)
 			.build();
@@ -2314,6 +2413,7 @@ mod tests {
 			disabled
 				.clone()
 				.pinned_http_client("https://192.0.1.1/")
+				.await
 				.unwrap_err()
 				.message
 				.contains("not available")
@@ -2324,6 +2424,7 @@ mod tests {
 		assert!(
 			legacy
 				.pinned_http_client("https://192.0.1.1/")
+				.await
 				.unwrap_err()
 				.message
 				.contains("http_client_factory")
@@ -2342,17 +2443,43 @@ mod tests {
 	}
 
 	#[rstest::rstest]
-	fn test_ssrf_allows_public_ipv6_literal() {
-		assert!(validate_url_for_ssrf("https://[2606:4700:4700::1111]/").is_ok());
+	#[tokio::test]
+	async fn test_ssrf_allows_public_ipv6_literal() {
+		assert!(
+			validate_url_for_ssrf("https://[2606:4700:4700::1111]/")
+				.await
+				.is_ok()
+		);
 	}
 
 	#[rstest::rstest]
-	fn test_ssrf_rejects_userinfo_and_reserved_addresses() {
-		assert!(validate_url_for_ssrf("https://user@8.8.8.8/path").is_err());
-		assert!(validate_url_for_ssrf("http://100.64.0.1/path").is_err());
-		assert!(validate_url_for_ssrf("http://198.18.0.1/path").is_err());
-		assert!(validate_url_for_ssrf("http://[2001:db8::1]/path").is_err());
-		assert!(validate_url_for_ssrf("http://[2002:a00:1::]/path").is_err());
+	#[tokio::test]
+	async fn test_ssrf_rejects_userinfo_and_reserved_addresses() {
+		assert!(
+			validate_url_for_ssrf("https://user@8.8.8.8/path")
+				.await
+				.is_err()
+		);
+		assert!(
+			validate_url_for_ssrf("http://100.64.0.1/path")
+				.await
+				.is_err()
+		);
+		assert!(
+			validate_url_for_ssrf("http://198.18.0.1/path")
+				.await
+				.is_err()
+		);
+		assert!(
+			validate_url_for_ssrf("http://[2001:db8::1]/path")
+				.await
+				.is_err()
+		);
+		assert!(
+			validate_url_for_ssrf("http://[2002:a00:1::]/path")
+				.await
+				.is_err()
+		);
 	}
 
 	#[test]

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Resolve plugin DNS asynchronously within the lifecycle deadline.
+
 - Reject non-global and overlay IPv6 assignments while preserving routable locator exceptions.
 
 - Enforce one aggregate linear-memory budget across a WASM store and reject shared memories that bypass limiter callbacks.

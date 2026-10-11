@@ -337,11 +337,11 @@ for path in discovered {
   covers each complete lifecycle invocation, including asynchronous host imports;
   Wasmtime epoch interruption also stops guest CPU execution.
 - Fuel-based CPU metering: 100M instructions default (configurable)
-- Plugin HTTP requests reject internal/reserved addresses, pin validated DNS
-  results, and never follow redirects or environment proxies. IPv6 special
-  assignments exclude non-global ranges and ORCHID/DET overlay identifiers while
-  preserving routable anycast, AMT and AS112 locators (RFC 7343 and RFC 9374
-  distinguish identifiers from IPv6 locators).
+- Plugin HTTP requests resolve DNS asynchronously, reject internal/reserved
+  addresses, pin every validated DNS result, and never follow redirects or
+  environment proxies. IPv6 special assignments exclude non-global ranges and
+  ORCHID/DET overlay identifiers while preserving routable anycast, AMT and AS112
+  locators (RFC 7343 and RFC 9374 distinguish identifiers from IPv6 locators).
 - JavaScript evaluation and result conversion share one elapsed-time timeout,
   with a separate
   `TsResourceLimits::loop_iteration_limit` (default: 1,000,000 iterations per
