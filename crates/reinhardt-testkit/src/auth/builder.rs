@@ -61,6 +61,7 @@ impl<'a> AuthBuilder<'a> {
 ///
 /// Privilege overrides are fixture metadata. Cookie authentication also requires
 /// a current-account `AuthBackend` that reflects the overridden identity.
+/// [`super::TestSessionAuthBackend`] supplies both backends for trusted fixtures.
 #[doc = include_str!("session_auth.md")]
 pub struct SessionAuthBuilder<'a> {
 	client: &'a APIClient,
@@ -76,7 +77,8 @@ impl<'a> SessionAuthBuilder<'a> {
 	/// Use this when the user's `ForceLoginUser` impl defaults `is_staff` to `false`
 	/// but the test requires staff access. The fixture's current-account
 	/// `AuthBackend` must reflect this override; the cookie middleware ignores
-	/// cached session privilege flags. See [`SessionAuthBuilder`] for wiring.
+	/// cached session privilege flags. Pass [`super::TestSessionAuthBackend`] to
+	/// the builder and both middleware backends. See [`SessionAuthBuilder`] for wiring.
 	pub fn with_staff(mut self, is_staff: bool) -> Self {
 		self.identity.is_staff = is_staff;
 		self

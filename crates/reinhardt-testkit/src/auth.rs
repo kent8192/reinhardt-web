@@ -36,6 +36,11 @@ mod builder;
 pub use builder::{AuthBuilder, JwtAuthBuilder, JwtTestConfig, SessionAuthBuilder};
 
 #[cfg(native)]
+mod session_backend;
+#[cfg(native)]
+pub use session_backend::TestSessionAuthBackend;
+
+#[cfg(native)]
 mod server_fn_builder;
 #[cfg(native)]
 pub use server_fn_builder::ServerFnAuthBuilder;
