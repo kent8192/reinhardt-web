@@ -38,10 +38,15 @@ jobs:
             const breakingTitle = /^(?:[a-z][a-z0-9-]*!(?:\([^)]*\))?|[a-z][a-z0-9-]*\([^)]*\)!)\s*:/i.test(pr.title);
             const breakingChange = labels.includes('breaking-change') || breakingTitle;
             const validDevelopBranch = /^develop\/\d+\.\d+\.\d+$/.test(sourceBranch);
-            const invalidTarget = pr.base.ref === 'main' && breakingChange && !validDevelopBranch;
+            // Repository labels are maintainer-controlled. A security title or
+            // branch name alone cannot approve the SP-3 security exception.
+            const approvedSecurityFix = labels.includes('security') && labels.includes('rc-breaking-approved');
+            const invalidTarget = pr.base.ref === 'main' && breakingChange && !validDevelopBranch && !approvedSecurityFix;
             const summary = invalidTarget
-              ? `Breaking change from '${sourceBranch}' must target a versioned develop/X.Y.Z branch, not main.`
-              : 'No invalid breaking-change target detected.';
+              ? `Breaking change from '${sourceBranch}' must target a versioned develop/X.Y.Z branch unless maintainers approve a security fix for main with both security and rc-breaking-approved labels.`
+              : pr.base.ref === 'main' && breakingChange && approvedSecurityFix
+                ? 'Approved security fix targets main under STABILITY_POLICY.md SP-3.'
+                : 'No invalid breaking-change target detected.';
 
             // pull_request_target's automatic job check belongs to the base
             // commit. Publish both policy outcomes on the current PR head before
@@ -90,7 +95,7 @@ jobs:
               `- Source branch: \`${sourceBranch}\``,
               `- Detected by: ${labels.includes('breaking-change') ? '`breaking-change` label' : 'breaking Conventional Commit title'}`,
               '',
-              'Breaking changes must target the appropriate versioned `develop/X.Y.Z` branch. This required check fails until the target or breaking-change classification is corrected.',
+              'Breaking changes must target the appropriate versioned `develop/X.Y.Z` branch. Maintainers may approve an SP-3 security fix for `main` by applying both `security` and `rc-breaking-approved` after the API Change Proposal and migration guide are approved. This required check fails until the target, classification, or security approval is corrected.',
             ].join('\n');
 
             await github.rest.issues.createComment({

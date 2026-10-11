@@ -132,6 +132,67 @@ test('a breaking-change label fails even without a breaking title', async () => 
 	assert.equal(result.comments.length, 1);
 });
 
+
+const securityApproval = [{ name: 'security' }, { name: 'rc-breaking-approved' }];
+
+for (const title of ['fix!(security): remediate findings', 'fix(auth)!: revalidate sessions']) {
+	test(`accepts a maintainer-approved security fix: ${title}`, async () => {
+		const result = await run(pullRequest({
+			title, labels: [...securityApproval, { name: 'breaking-change' }],
+		}));
+		assertCheck(result, 'success');
+		assert.match(result.checks[0].output.summary, /Approved security fix/);
+		assert.deepEqual(result.failures, []);
+		assert.deepEqual(result.comments, []);
+		assert.equal(result.listed, 0);
+	});
+}
+
+for (const labels of [[], [{ name: 'security' }], [{ name: 'rc-breaking-approved' }]]) {
+	test(`security claims without both approval labels still fail: ${JSON.stringify(labels)}`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels,
+			head: { ref: 'security/remediate-findings', sha: headSha },
+		}));
+		assertCheck(result, 'failure');
+		assert.equal(result.failures.length, 1);
+	});
+}
+
+test('security approval also covers breaking changes detected only by label', async () => {
+	const result = await run(pullRequest({
+		labels: [...securityApproval, { name: 'breaking-change' }],
+	}));
+	assertCheck(result, 'success');
+	assert.deepEqual(result.failures, []);
+});
+
+test('current approval labels override an older unapproved event', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), {
+		payload: pullRequest({ title: 'fix!(security): remediate findings' }),
+		comments: [{ body: marker }],
+	});
+	assertCheck(result, 'success');
+	assert.deepEqual(result.failures, []);
+	assert.equal(result.listed, 0);
+});
+
+for (const remainingLabel of ['security', 'rc-breaking-approved']) {
+	test(`removing either security approval label restores failure: ${remainingLabel}`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels: [{ name: remainingLabel }],
+		}), {
+			payload: pullRequest({ title: 'fix!(security): remediate findings', labels: securityApproval }),
+			comments: [{ body: marker }],
+		});
+		assertCheck(result, 'failure');
+		assert.equal(result.failures.length, 1);
+		assert.deepEqual(result.comments, []);
+	});
+}
+
 test('an existing warning still fails without posting a duplicate', async () => {
 	const result = await run(pullRequest({ title: 'fix!(pages): support RadioInput' }), {
 		comments: [{ body: 'unrelated' }, { body: `${marker}\nExisting warning` }],
