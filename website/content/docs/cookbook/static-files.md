@@ -570,6 +570,14 @@ Precedence:
 > `[static_files]`, that table replaces the one from `base.toml`. Repeat
 > `response_headers` in every profile file that declares the section.
 
+> **Note**: A script-restricting policy blocks inline scripts unless it allows
+> them, for example with `'unsafe-inline'`, a nonce, or a `'sha256-...'` hash.
+> Without a unified asset manifest, the root SPA mount injects an inline WASM
+> auto-loader into the shell. Development hot reload injects an inline HMR
+> client in both modes. Serve the shell from a manifest published with
+> `buildstatic`, which loads Pages through an external loader script, or allow
+> the inline script explicitly.
+
 The headers apply to every response the static layer produces. That includes
 assets, the SPA shell, conditional (`304`) and range (`206`) responses, and the
 unified manifest server's error responses. Responses from the application router
