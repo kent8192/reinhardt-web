@@ -390,12 +390,13 @@ pub fn admin_csp_exempt_paths() -> Vec<String> {
 
 /// Internal route builder shared by [`admin_routes_with_di`].
 ///
-/// When `jwt_secret` is provided, adds `AdminCookieAuthMiddleware` to extract
-/// JWT tokens from HTTP-Only cookies (and `Authorization` header as fallback).
+/// When `jwt_secret` is provided and `password_login_enabled` is `true`, adds
+/// `AdminCookieAuthMiddleware` to extract JWT tokens from HTTP-Only cookies
+/// (and `Authorization` header as fallback).
 ///
-/// When `password_login_enabled` is `false`, the `admin_login` and
-/// `admin_login_with_header` server functions are not registered; see
-/// [`AdminSite::without_password_login`].
+/// When `password_login_enabled` is `false`, neither the `admin_login` and
+/// `admin_login_with_header` server functions nor `AdminCookieAuthMiddleware`
+/// are registered; see [`AdminSite::without_password_login`].
 fn build_admin_router(
 	#[cfg(not(target_arch = "wasm32"))] jwt_secret: Option<&[u8]>,
 	password_login_enabled: bool,
@@ -407,14 +408,16 @@ fn build_admin_router(
 	#[cfg(not(target_arch = "wasm32"))]
 	let router = router.with_middleware(crate::server::origin_guard::AdminOriginGuardMiddleware);
 
-	// Apply cookie-based JWT authentication middleware when a secret is configured.
+	// Apply cookie-based JWT authentication middleware when a secret is configured
+	// and password login is enabled. `admin_login` is the only issuer of the
+	// admin token, so without it the middleware could only replace an
+	// `AuthState` published by outer middleware with an anonymous one.
 	#[cfg(not(target_arch = "wasm32"))]
-	let router = if let Some(secret) = jwt_secret {
-		router.with_middleware(crate::server::cookie_auth::AdminCookieAuthMiddleware::new(
-			secret,
-		))
-	} else {
-		router
+	let router = match jwt_secret {
+		Some(secret) if password_login_enabled => router.with_middleware(
+			crate::server::cookie_auth::AdminCookieAuthMiddleware::new(secret),
+		),
+		_ => router,
 	};
 
 	// Register all admin server functions on server-side targets.
@@ -485,8 +488,10 @@ fn build_admin_router(
 /// [`AdminDefaultUser`] (table `auth_user`) is registered as a fallback.
 ///
 /// If [`AdminSite::without_password_login`] was called, the `admin_login`
-/// and `admin_login_with_header` server functions and their login
-/// authenticator are omitted; `admin_logout` is always registered.
+/// and `admin_login_with_header` server functions, their login
+/// authenticator, and the admin cookie authentication middleware are
+/// omitted, so an `AuthState` published by outer middleware reaches the
+/// admin handlers unchanged; `admin_logout` is always registered.
 ///
 /// `AdminDatabase` is **not** registered here; it is lazily constructed
 /// from `DatabaseConnection` at first request via its `Injectable` impl.
@@ -717,9 +722,9 @@ mod tests {
 
 		// Act
 		let paths = admin_route_paths(site);
-		let count = |expected: &str| paths.iter().filter(|path| *path == expected).count();
 
 		// Assert
+		let count = |expected: &str| paths.iter().filter(|path| *path == expected).count();
 		assert_eq!(count("/api/server_fn/admin_login"), expected_login_routes);
 		assert_eq!(
 			count("/api/server_fn/admin_login_with_header"),
@@ -781,6 +786,81 @@ mod tests {
 				.get::<crate::server::admin_auth::AdminUserLoader>()
 				.is_some(),
 			"AdminUserLoader must stay registered for request authorization"
+		);
+	}
+
+	#[rstest]
+	#[case::default_site(false, &["AdminOriginGuardMiddleware", "AdminCookieAuthMiddleware"])]
+	#[case::without_password_login(true, &["AdminOriginGuardMiddleware"])]
+	fn test_admin_routes_with_di_cookie_auth_middleware_installation(
+		#[case] without_password_login: bool,
+		#[case] expected_middleware: &[&str],
+	) {
+		// Arrange
+		let mut site = AdminSite::new("Test Admin");
+		site.set_jwt_secret(b"test-jwt-secret");
+		if without_password_login {
+			site.without_password_login();
+		}
+
+		// Act
+		let (router, _registrations) = admin_routes_with_di(Arc::new(site));
+		let middleware = router.get_registered_middleware();
+
+		// Assert
+		let names: Vec<&str> = middleware.iter().map(|info| info.name.as_str()).collect();
+		assert_eq!(names, expected_middleware);
+	}
+
+	/// Echoes the request's `AuthState` so tests can observe what reaches
+	/// handlers behind the admin router middleware.
+	struct AuthStateProbe;
+
+	#[async_trait::async_trait]
+	impl Handler for AuthStateProbe {
+		async fn handle(&self, request: Request) -> Result<Response> {
+			let body = match request.extensions.get::<reinhardt_http::AuthState>() {
+				Some(state) if state.is_authenticated() => {
+					format!("authenticated:{}", state.user_id())
+				}
+				Some(_) => "anonymous".to_owned(),
+				None => "missing".to_owned(),
+			};
+			Ok(Response::ok().with_body(body))
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_without_password_login_preserves_outer_auth_state() {
+		// Arrange
+		let mut site = AdminSite::new("External Admin");
+		site.set_jwt_secret(b"test-jwt-secret");
+		site.without_password_login();
+		let (router, _registrations) = admin_routes_with_di(Arc::new(site));
+		let router = router.handler("/auth-probe", AuthStateProbe);
+		let request = Request::builder()
+			.method(hyper::Method::GET)
+			.uri("/auth-probe")
+			.body(bytes::Bytes::new())
+			.build()
+			.unwrap();
+		request
+			.extensions
+			.insert(reinhardt_http::AuthState::authenticated(
+				"outer-user",
+				true,
+				true,
+			));
+
+		// Act
+		let response = router.handle(request).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, hyper::StatusCode::OK);
+		assert_eq!(
+			response.body,
+			bytes::Bytes::from("authenticated:outer-user")
 		);
 	}
 

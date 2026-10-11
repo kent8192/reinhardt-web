@@ -667,8 +667,10 @@ Projects that authenticate users elsewhere (for example GitHub-only sign-in,
 or a `BaseUser` model without a usable password) can omit the password login
 endpoints. `admin_login` and `admin_login_with_header` are then not registered,
 `admin_logout` remains available, and authentication is left to the middleware
-that publishes `AuthState`. The bundled admin login page targets the omitted
-endpoints, so such projects must provide their own sign-in entry point:
+that publishes `AuthState`. The admin cookie authentication middleware is also
+omitted, even if `set_jwt_secret` was called, so it cannot replace that
+`AuthState` with an anonymous one. The bundled admin login page targets the
+omitted endpoints, so such projects must provide their own sign-in entry point:
 
 ```rust
 use reinhardt_admin::core::{AdminSite, admin_routes_with_di};

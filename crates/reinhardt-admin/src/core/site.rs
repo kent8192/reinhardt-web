@@ -59,9 +59,10 @@ pub struct AdminSite {
 	/// [`AdminDefaultUser`]: crate::server::user::AdminDefaultUser
 	login_authenticator: Option<Arc<AdminLoginAuthenticator>>,
 
-	/// JWT secret for token generation during admin login.
+	/// JWT secret used by password login to issue and verify admin tokens.
 	///
-	/// When `None`, admin login is disabled.
+	/// When `None`, password login cannot issue tokens. Unused when password
+	/// login is omitted via [`AdminSite::without_password_login`].
 	jwt_secret: Option<Vec<u8>>,
 
 	/// Whether the built-in password login server functions are registered.
@@ -275,7 +276,9 @@ impl AdminSite {
 	/// Sets the JWT secret used for token generation during admin login.
 	///
 	/// The secret should be at least 32 bytes for adequate security.
-	/// Without this, admin login functionality will be disabled.
+	/// Without this, admin login functionality will be disabled. The secret
+	/// is unused when password login is omitted via
+	/// [`AdminSite::without_password_login`].
 	///
 	/// # Example
 	///
@@ -305,6 +308,12 @@ impl AdminSite {
 	/// then registers neither endpoint nor the login authenticator they
 	/// depend on, and authentication is left to whatever middleware publishes
 	/// `AuthState` for admin requests.
+	///
+	/// The admin cookie authentication middleware is omitted as well, even
+	/// when [`AdminSite::set_jwt_secret`] was called. `admin_login` is the
+	/// only issuer of the admin token, so that middleware would otherwise
+	/// replace the outer `AuthState` with an anonymous one on every admin
+	/// request.
 	///
 	/// `admin_logout` stays registered: it accepts no credentials and only
 	/// clears the admin authentication cookie. The bundled admin SPA login
