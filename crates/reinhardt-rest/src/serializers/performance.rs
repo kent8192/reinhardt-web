@@ -163,7 +163,10 @@ impl BatchValidator {
 		}
 	}
 
-	/// Add a unique field check
+	/// Add a unique field check.
+	///
+	/// For PostgreSQL JSONB columns (including domains), pass a serialized JSON
+	/// value, such as `r#"{"a":1}"#`. JSON strings include their JSON quotes.
 	///
 	/// # Examples
 	///
@@ -202,12 +205,15 @@ impl BatchValidator {
 	///
 	/// 1. **Group checks by table**: Organize all validation checks by their target table
 	/// 2. **Build optimized queries**: Create UNION ALL queries for checks on the same table
-	/// 3. **Execute batched queries**: Run one query per table instead of N individual queries
+	/// 3. **Execute batched queries**: Run one validation query per table instead of
+	///    N individual queries. PostgreSQL additionally resolves column types
+	///    once per table, including domains and type modifiers.
 	/// 4. **Map results**: Parse query results and identify which specific checks failed
 	///
 	/// # Performance Benefits
 	///
-	/// - Reduces N database round-trips to T round-trips (where T = number of unique tables)
+	/// - Groups N checks into T validation round-trips (T is the number of tables),
+	///   plus one type-introspection round-trip per PostgreSQL table
 	/// - Leverages database query optimization for UNION ALL
 	/// - Minimizes connection pool contention
 	///
@@ -294,7 +300,40 @@ impl BatchValidator {
 			message: format!("Failed to get database connection: {}", e),
 		})?;
 
-		let (final_query, params) = build_validation_query(table, queries, conn.backend())?;
+		let column_types =
+			if conn.backend() == reinhardt_db::orm::connection::DatabaseBackend::Postgres {
+				let table_name = quoted_validation_table(table, conn.backend())?;
+				// PostgreSQL format_type emits valid, quoted SQL type names, including
+				// domains and typmods. Only server-produced names enter the cast syntax.
+				let rows = conn
+					.query(
+						concat!(
+							"SELECT attr.attname AS field, ",
+							"pg_catalog.format_type(attr.atttypid, attr.atttypmod) AS cast_type ",
+							"FROM pg_catalog.pg_attribute attr ",
+							"WHERE attr.attrelid = $1::text::regclass AND attr.attnum > 0 ",
+							"AND NOT attr.attisdropped",
+						),
+						vec![reinhardt_db::orm::connection::QueryValue::String(
+							table_name,
+						)],
+					)
+					.await
+					.map_err(|error| SerializerError::Other {
+						message: format!("Failed to resolve validation column types: {error}"),
+					})?;
+				rows.into_iter()
+					.filter_map(|row| {
+						let field = row.data.get("field")?.as_str()?.to_owned();
+						let type_name = row.data.get("cast_type")?.as_str()?.to_owned();
+						Some((field, type_name))
+					})
+					.collect()
+			} else {
+				HashMap::new()
+			};
+		let (final_query, params) =
+			build_validation_query(table, queries, conn.backend(), &column_types)?;
 
 		// Execute query
 		let rows = conn
@@ -362,10 +401,27 @@ fn validation_identifier(identifier: &str) -> Result<&str, SerializerError> {
 	}
 }
 
+fn quoted_validation_table(
+	table: &str,
+	backend: reinhardt_db::orm::connection::DatabaseBackend,
+) -> Result<String, SerializerError> {
+	let quote = if backend == reinhardt_db::orm::connection::DatabaseBackend::MySql {
+		'`'
+	} else {
+		'"'
+	};
+	table
+		.split('.')
+		.map(|part| validation_identifier(part).map(|part| format!("{quote}{part}{quote}")))
+		.collect::<Result<Vec<_>, _>>()
+		.map(|parts| parts.join("."))
+}
+
 fn build_validation_query(
 	table: &str,
 	queries: &[UniqueCheckQuery],
 	backend: reinhardt_db::orm::connection::DatabaseBackend,
+	column_types: &HashMap<String, String>,
 ) -> Result<(String, Vec<reinhardt_db::orm::connection::QueryValue>), SerializerError> {
 	use reinhardt_db::orm::connection::{DatabaseBackend, QueryValue};
 
@@ -374,11 +430,7 @@ fn build_validation_query(
 	} else {
 		'"'
 	};
-	let table = table
-		.split('.')
-		.map(|part| validation_identifier(part).map(|part| format!("{quote}{part}{quote}")))
-		.collect::<Result<Vec<_>, _>>()?
-		.join(".");
+	let table = quoted_validation_table(table, backend)?;
 	let mut params = Vec::new();
 	let mut subqueries = Vec::new();
 	for query in queries {
@@ -417,16 +469,20 @@ fn build_validation_query(
 			let field = validation_identifier(field)?;
 			params.push(QueryValue::String(value.to_string()));
 			let value_placeholder = placeholder(params.len());
-			// PostgreSQL binds String as text. Convert the bound text through
-			// the table's composite row type so integer, UUID, temporal, and
-			// other column input functions retain their native comparison semantics.
-			let typed_value = if backend == DatabaseBackend::Postgres {
-				format!(
-					"(jsonb_populate_record(NULL::{table}, jsonb_build_object('{field}', {value_placeholder}::text))).{quote}{field}{quote}"
-				)
+			// Bind as text first, then invoke the actual column's input cast.
+			// JSONB values stay JSON (including JSON null), and domains/typmods
+			// apply only to this field rather than a partly-null composite row.
+			let postgres_value = if backend == DatabaseBackend::Postgres {
+				let type_name = column_types
+					.get(field)
+					.ok_or_else(|| SerializerError::Other {
+						message: format!("Unknown validation column: {field}"),
+					})?;
+				Some(format!("{value_placeholder}::text::{type_name}"))
 			} else {
-				value_placeholder
+				None
 			};
+			let typed_value = postgres_value.as_deref().unwrap_or(&value_placeholder);
 			conditions.push(format!("{quote}{field}{quote} = {typed_value}"));
 		}
 		subqueries.push(format!(
@@ -714,29 +770,42 @@ mod tests {
 			field: "email".to_string(),
 			value: "x' OR 1=1 --".to_string(),
 		}];
-		let (sql, params) =
-			build_validation_query("users", &checks, DatabaseBackend::Postgres).unwrap();
+		let (sql, params) = build_validation_query(
+			"users",
+			&checks,
+			DatabaseBackend::Postgres,
+			&HashMap::from([("email".to_owned(), "text".to_owned())]),
+		)
+		.unwrap();
 		assert_eq!(
 			sql,
-			"SELECT $1 as check_id, COUNT(*) as cnt FROM \"users\" WHERE \"email\" = (jsonb_populate_record(NULL::\"users\", jsonb_build_object('email', $2::text))).\"email\""
+			"SELECT $1 as check_id, COUNT(*) as cnt FROM \"users\" WHERE \"email\" = $2::text::text"
 		);
+		assert!(!sql.contains("x' OR 1=1 --"));
 		assert_eq!(params.len(), 2);
 		assert!(
 			matches!(&params[0], QueryValue::String(value) if value == "users:email:x' OR 1=1 --")
 		);
 		assert!(matches!(&params[1], QueryValue::String(value) if value == "x' OR 1=1 --"));
 		assert!(
-			build_validation_query("users; DROP TABLE users", &checks, DatabaseBackend::Sqlite)
-				.is_err()
+			build_validation_query(
+				"users; DROP TABLE users",
+				&checks,
+				DatabaseBackend::Sqlite,
+				&HashMap::new()
+			)
+			.is_err()
 		);
 		let (mysql_sql, _) =
-			build_validation_query("users", &checks, DatabaseBackend::MySql).unwrap();
+			build_validation_query("users", &checks, DatabaseBackend::MySql, &HashMap::new())
+				.unwrap();
 		assert_eq!(
 			mysql_sql,
 			"SELECT ? as check_id, COUNT(*) as cnt FROM `users` WHERE `email` = ?"
 		);
 		let (sqlite_sql, _) =
-			build_validation_query("users", &checks, DatabaseBackend::Sqlite).unwrap();
+			build_validation_query("users", &checks, DatabaseBackend::Sqlite, &HashMap::new())
+				.unwrap();
 		assert_eq!(
 			sqlite_sql,
 			"SELECT ? as check_id, COUNT(*) as cnt FROM \"users\" WHERE \"email\" = ?"
