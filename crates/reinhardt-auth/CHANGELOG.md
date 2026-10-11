@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Decline anonymous and expired sessions before enforcing session-authentication CSRF checks.
+
 - Share custom CSRF headers with session authentication and configure token issuance for custom session cookies.
 
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.20...reinhardt-auth@v0.3.21) - 2026-10-05

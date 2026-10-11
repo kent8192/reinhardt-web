@@ -541,7 +541,9 @@ assert!(permission.has_permission(&context).await);
 - **SessionId**: Type-safe session identifier wrapper
 - **Cookie Integration**: Secure session cookie handling
 
-`SessionAuthentication` enforces CSRF on unsafe methods by default. Clients
+`SessionAuthentication` enforces CSRF on unsafe methods when it authenticates
+a valid session. Anonymous and expired sessions return no authenticated user,
+allowing other authentication backends to proceed. Authenticated clients
 must send the session-bound token in `X-CSRFToken`; `CsrfMiddleware` can issue
 that token on a safe request when it runs before authentication middleware and
 reads the same `sessionid` cookie. If the session cookie name is customized,

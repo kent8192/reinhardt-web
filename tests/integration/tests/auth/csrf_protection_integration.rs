@@ -575,6 +575,12 @@ async fn middleware_issued_csrf_token_matches_session_authentication(
 		.unwrap();
 	session.save().await.unwrap();
 	let session_key = session.get_or_create_key().to_string();
+	let mut other_session = Session::new(backend.clone());
+	other_session
+		.set("_auth_user_id", "550e8400-e29b-41d4-a716-446655440001")
+		.unwrap();
+	other_session.save().await.unwrap();
+	let other_session_key = other_session.get_or_create_key().to_string();
 	let mut csrf_config = CsrfConfig::default();
 	csrf_config.header_name = csrf_header_name.into();
 	let mut middleware_config = CsrfMiddlewareConfig::default();
@@ -626,7 +632,10 @@ async fn middleware_issued_csrf_token_matches_session_authentication(
 	let wrong_session = Request::builder()
 		.method(Method::POST)
 		.uri("/protected")
-		.header("Cookie", format!("{session_cookie_name}=another-session"))
+		.header(
+			"Cookie",
+			format!("{session_cookie_name}={other_session_key}"),
+		)
 		.header(csrf_header_name, token)
 		.body(Bytes::new())
 		.build()

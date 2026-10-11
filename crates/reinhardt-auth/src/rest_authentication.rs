@@ -521,7 +521,6 @@ impl<B: SessionBackend> RestAuthentication for SessionAuthentication<B> {
 				let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
 				if parts.len() == 2 && parts[0] == self.config.cookie_name {
 					let session_key = parts[1];
-					self.check_csrf(request, session_key)?;
 
 					// Load session from backend
 					let mut session =
@@ -579,6 +578,9 @@ impl<B: SessionBackend> RestAuthentication for SessionAuthentication<B> {
 						is_staff,
 						is_superuser,
 					};
+
+					// CSRF applies only when this backend adopts an authenticated session.
+					self.check_csrf(request, session_key)?;
 
 					return Ok(Some(Box::new(user)));
 				}
@@ -757,6 +759,43 @@ mod tests {
 		assert!(user.is_authenticated());
 		let expected_id = uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"bob").to_string();
 		assert_eq!(user.id(), expected_id);
+	}
+
+	#[rstest]
+	#[case(false)]
+	#[case(true)]
+	#[tokio::test]
+	async fn anonymous_or_expired_session_cookie_does_not_require_csrf(#[case] expired: bool) {
+		// Arrange: an anonymous session, or a previously authenticated deleted session.
+		use crate::sessions::InMemorySessionBackend;
+		let backend = InMemorySessionBackend::new();
+		let mut session = Session::new(backend.clone());
+		if expired {
+			session
+				.set("_auth_user_id", "550e8400-e29b-41d4-a716-446655440000")
+				.unwrap();
+		} else {
+			session.set("login_nonce", "anonymous").unwrap();
+		}
+		session.save().await.unwrap();
+		let key = session.get_or_create_key().to_string();
+		if expired {
+			backend.delete(&key).await.unwrap();
+		}
+		let auth = SessionAuthentication::new(backend);
+		let request = Request::builder()
+			.method(Method::POST)
+			.uri("/login")
+			.header("Cookie", format!("sessionid={key}"))
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act: an unsafe anonymous request has no CSRF header.
+		let result = RestAuthentication::authenticate(&auth, &request).await;
+
+		// Assert: this backend declines authentication without masking fallback paths.
+		assert!(result.unwrap().is_none());
 	}
 
 	#[tokio::test]
