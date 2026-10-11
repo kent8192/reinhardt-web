@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Bound empty WASM core instances, memories and tables with per-store count quotas derived from the configured memory budget, capped at 128 of each kind. The count quota is `bytes / (3 * 64 KiB)` per kind (five for a one-MiB budget); it bounds resource metadata cardinality rather than process RSS.
+- Check SSR component file size before decoding or hydration allocation, cap reads if the file grows, and include blocking-pool preparation and hydration in the existing lifecycle deadline.
+
 - Resolve plugin DNS asynchronously within the lifecycle deadline.
 
 - Reject non-global and overlay IPv6 assignments while preserving routable locator exceptions.
@@ -20,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Include result conversion in the JavaScript cooperative deadline.
 
-- Keep JavaScript queue deadlines separate from execution budgets, cancel unstarted work without poisoning the runtime, and reset WASM epoch deadlines for each guest call.
+- Keep JavaScript queue deadlines separate from execution budgets, cancel unstarted work without poisoning the runtime, and preserve the remaining WASM lifecycle epoch budget across guest calls.
 
 - Preserve custom plugin HTTP transport settings through a trusted client-builder factory while retaining destination pinning, disabled redirects/proxies, and the request timeout.
 - Apply cooperative JavaScript elapsed-time deadlines and distinguish the separately configured interpreter loop budget from a timeout.

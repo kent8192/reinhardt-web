@@ -56,6 +56,12 @@ queue admission, VM execution, and completion-value conversion. Component-file
 loading consumes that same deadline. Expired queued work is cancelled before
 execution; an admitted timeout retires the context. The WASM executor can enforce
 its shorter deadline even while the interpreter is inside native work.
+File metadata and bounded reads reject oversized component sources before UTF-8
+decoding, pattern scanning or hydration allocation. Path/file work, props
+conversion, rendering, asset extraction and hydration run in the blocking pool.
+Queue admission and the returned result retain the lifecycle deadline; queued
+expired preparation never enters JavaScript. Hydration escaping also checks the
+deadline while processing the validated source and before returning its result.
 Subsequent guest calls within that lifecycle also use the remaining deadline
 for epoch interruption rather than renewing the configured CPU budget. Standalone
 calls receive a fresh deadline; guest entry after an expired lifecycle is denied.
