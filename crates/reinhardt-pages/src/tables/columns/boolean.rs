@@ -1,7 +1,7 @@
 //! Boolean column type implementation
 
-use crate::builder::html::td;
-use crate::dom::Element;
+use super::{cell, placeholder_cell};
+use crate::component::Page;
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
 
@@ -12,10 +12,12 @@ use std::any::Any;
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_pages::tables::columns::BooleanColumn;
+/// ```
+/// use reinhardt_pages::tables::{BooleanColumn, ColumnTrait};
 ///
 /// let column = BooleanColumn::new("is_active", "Active");
+///
+/// assert_eq!(column.render(&true).render_to_string(), "<td>✓</td>");
 /// ```
 pub struct BooleanColumn {
 	name: String,
@@ -90,16 +92,11 @@ impl ColumnTrait for BooleanColumn {
 		&self.label
 	}
 
-	fn render(&self, value: &dyn Any) -> Element {
-		if let Some(&val) = value.downcast_ref::<bool>() {
-			let icon = if val {
-				&self.true_icon
-			} else {
-				&self.false_icon
-			};
-			td().text(icon).build()
-		} else {
-			td().text("-").build()
+	fn render(&self, value: &dyn Any) -> Page {
+		match value.downcast_ref::<bool>() {
+			Some(true) => cell(&self.true_icon),
+			Some(false) => cell(&self.false_icon),
+			None => placeholder_cell(),
 		}
 	}
 

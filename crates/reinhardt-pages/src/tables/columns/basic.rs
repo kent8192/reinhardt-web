@@ -1,7 +1,7 @@
 //! Basic column type implementation
 
-use crate::builder::html::td;
-use crate::dom::Element;
+use super::{cell, placeholder_cell};
+use crate::component::Page;
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
 use std::marker::PhantomData;
@@ -11,12 +11,19 @@ use std::marker::PhantomData;
 /// This is the most basic column type that renders values as-is using their
 /// `Display` implementation.
 ///
+/// Values of any other type render as the `<td>-</td>` placeholder.
+///
 /// # Example
 ///
-/// ```rust,ignore
-/// use reinhardt_pages::tables::columns::Column;
+/// ```
+/// use reinhardt_pages::tables::{ColumnTrait, columns::Column};
 ///
 /// let column = Column::<String>::new("name", "Name");
+///
+/// assert_eq!(
+///     column.render(&String::from("alice")).render_to_string(),
+///     "<td>alice</td>"
+/// );
 /// ```
 pub struct Column<T> {
 	name: String,
@@ -65,11 +72,10 @@ impl<T: std::fmt::Display + 'static> ColumnTrait for Column<T> {
 		&self.label
 	}
 
-	fn render(&self, value: &dyn Any) -> Element {
-		if let Some(val) = value.downcast_ref::<T>() {
-			td().text(&val.to_string()).build()
-		} else {
-			td().text("-").build()
+	fn render(&self, value: &dyn Any) -> Page {
+		match value.downcast_ref::<T>() {
+			Some(val) => cell(val.to_string()),
+			None => placeholder_cell(),
 		}
 	}
 
