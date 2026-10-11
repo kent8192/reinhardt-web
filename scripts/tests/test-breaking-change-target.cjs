@@ -21,6 +21,13 @@ const marker = '<!-- invalid-breaking-change-target-warning -->';
 const headSha = '1111111111111111111111111111111111111111';
 const baseSha = '2222222222222222222222222222222222222222';
 
+function approvalEvent(overrides = {}) {
+	return {
+		id: 100, event: 'labeled', label: { name: 'rc-breaking-approved' },
+		actor: { login: 'maintainer' }, ...overrides,
+	};
+}
+
 function pullRequest(overrides = {}) {
 	return {
 		number: 6276,
@@ -33,7 +40,7 @@ function pullRequest(overrides = {}) {
 }
 
 async function run(pr, options = {}) {
-	const result = { failures: [], comments: [], checks: [], listed: 0, reads: [] };
+	const result = { failures: [], comments: [], checks: [], listed: 0, reads: [], eventsListed: 0, permissionsRead: [] };
 	const context = {
 		repo: { owner: 'kent8192', repo: 'reinhardt-web' },
 		sha: baseSha,
@@ -56,7 +63,15 @@ async function run(pr, options = {}) {
 					result.checks.push(check);
 				},
 			},
+			repos: {
+				getCollaboratorPermissionLevel: async (request) => {
+					result.permissionsRead.push(request);
+					if (options.permissionError) throw new Error('HTTP 403 reading approval actor');
+					return { data: options.access ?? { permission: 'admin', role_name: 'admin' } };
+				},
+			},
 			issues: {
+				listEvents: Symbol('listEvents'),
 				listComments: Symbol('listComments'),
 				createComment: async (comment) => {
 					assert.equal(result.failures.length, 1, 'fail before posting');
@@ -67,6 +82,14 @@ async function run(pr, options = {}) {
 			},
 		},
 		paginate: async (endpoint, request) => {
+			if (endpoint === github.rest.issues.listEvents) {
+				assert.deepEqual(request, {
+					owner: 'kent8192', repo: 'reinhardt-web', issue_number: 6276, per_page: 100,
+				});
+				result.eventsListed += 1;
+				if (options.eventsError) throw new Error('HTTP 403 reading approval history');
+				return options.events ?? [approvalEvent()];
+			}
 			assert.equal(endpoint, github.rest.issues.listComments);
 			assert.deepEqual(request, {
 				owner: 'kent8192', repo: 'reinhardt-web',
@@ -156,6 +179,93 @@ for (const labels of [[], [{ name: 'security' }], [{ name: 'rc-breaking-approved
 		}));
 		assertCheck(result, 'failure');
 		assert.equal(result.failures.length, 1);
+	});
+}
+
+for (const access of [
+	{ permission: 'read', role_name: 'triage' },
+	{ permission: 'write', role_name: 'write' },
+	{ permission: 'none', role_name: 'none' },
+	{ permission: 'write', role_name: 'custom-labeler' },
+]) {
+	test(`rejects approval applied by ${access.role_name} access`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels: securityApproval,
+		}), { access });
+		assert.equal(result.error, undefined);
+		assertCheck(result, 'failure');
+		assert.equal(result.failures.length, 1);
+		assert.deepEqual(result.permissionsRead, [{
+			owner: 'kent8192', repo: 'reinhardt-web', username: 'maintainer',
+		}]);
+	});
+}
+
+for (const access of [
+	{ permission: 'write', role_name: 'maintain' },
+	{ permission: 'admin', role_name: 'custom-admin' },
+]) {
+	test(`accepts approval applied by ${access.role_name} access`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels: securityApproval,
+		}), { access });
+		assertCheck(result, 'success');
+		assert.match(result.checks[0].output.summary, /verified maintainer @maintainer/);
+	});
+}
+
+for (const events of [
+	[],
+	[approvalEvent({ event: 'unlabeled' })],
+	[approvalEvent({ actor: null })],
+	[approvalEvent({ label: { name: 'security' } })],
+]) {
+	test(`fails closed without a current approval event: ${JSON.stringify(events)}`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels: securityApproval,
+		}), { events });
+		assertCheck(result, 'failure');
+		assert.deepEqual(result.permissionsRead, []);
+	});
+}
+
+test('a newer triager reapplication supersedes an old maintainer approval', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), {
+		events: [
+			approvalEvent({ id: 103, actor: { login: 'triager' } }),
+			approvalEvent({ id: 101 }),
+			approvalEvent({ id: 102, event: 'unlabeled' }),
+		],
+		access: { permission: 'read', role_name: 'triage' },
+	});
+	assertCheck(result, 'failure');
+	assert.equal(result.permissionsRead[0].username, 'triager');
+});
+
+test('a maintainer can approve again after an unauthorized label event', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), {
+		events: [
+			approvalEvent({ id: 102, actor: { login: 'maintainer' } }),
+			approvalEvent({ id: 101, actor: { login: 'triager' } }),
+		],
+	});
+	assertCheck(result, 'success');
+	assert.equal(result.permissionsRead[0].username, 'maintainer');
+});
+
+for (const option of ['eventsError', 'permissionError']) {
+	test(`${option} publishes failure instead of retaining an old success`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels: securityApproval,
+		}), { [option]: true, comments: [{ body: marker }] });
+		assert.equal(result.error, undefined);
+		assertCheck(result, 'failure');
+		assert.equal(result.failures.length, 1);
+		assert.deepEqual(result.comments, []);
 	});
 }
 

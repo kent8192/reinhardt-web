@@ -38,14 +38,45 @@ jobs:
             const breakingTitle = /^(?:[a-z][a-z0-9-]*!(?:\([^)]*\))?|[a-z][a-z0-9-]*\([^)]*\)!)\s*:/i.test(pr.title);
             const breakingChange = labels.includes('breaking-change') || breakingTitle;
             const validDevelopBranch = /^develop\/\d+\.\d+\.\d+$/.test(sourceBranch);
-            // Repository labels are maintainer-controlled. A security title or
-            // branch name alone cannot approve the SP-3 security exception.
-            const approvedSecurityFix = labels.includes('security') && labels.includes('rc-breaking-approved');
+            // Triage and write users can apply labels. Verify the most recent
+            // approval-label event and its actor's current maintainer role.
+            let approvedSecurityFix = false;
+            let approvalActor;
+            if (labels.includes('security') && labels.includes('rc-breaking-approved')) {
+              try {
+                const events = await github.paginate(github.rest.issues.listEvents, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  per_page: 100,
+                });
+                const approval = events
+                  .filter(event => ['labeled', 'unlabeled'].includes(event.event)
+                    && event.label?.name === 'rc-breaking-approved')
+                  .reduce((latest, event) => !latest || event.id > latest.id ? event : latest, undefined);
+                if (approval?.event === 'labeled' && approval.actor?.login) {
+                  const { data: access } = await github.rest.repos.getCollaboratorPermissionLevel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    username: approval.actor.login,
+                  });
+                  // The legacy permission maps maintain to write, so write
+                  // alone is insufficient. Custom admin roles remain valid.
+                  approvedSecurityFix = access.permission === 'admin'
+                    || ['admin', 'maintain'].includes(access.role_name);
+                  if (approvedSecurityFix) approvalActor = approval.actor.login;
+                }
+              } catch (error) {
+                // Publish a failing head check even when provenance cannot be
+                // verified; do not leave an earlier success as the result.
+                core.info(`Security approval verification failed: ${error.message}`);
+              }
+            }
             const invalidTarget = pr.base.ref === 'main' && breakingChange && !validDevelopBranch && !approvedSecurityFix;
             const summary = invalidTarget
-              ? `Breaking change from '${sourceBranch}' must target a versioned develop/X.Y.Z branch unless maintainers approve a security fix for main with both security and rc-breaking-approved labels.`
+              ? `Breaking change from '${sourceBranch}' must target a versioned develop/X.Y.Z branch unless maintainers approve a security fix for main with both security and rc-breaking-approved labels and verified maintainer approval.`
               : pr.base.ref === 'main' && breakingChange && approvedSecurityFix
-                ? 'Approved security fix targets main under STABILITY_POLICY.md SP-3.'
+                ? `Approved security fix targets main under STABILITY_POLICY.md SP-3; approval label applied by verified maintainer @${approvalActor}.`
                 : 'No invalid breaking-change target detected.';
 
             // pull_request_target's automatic job check belongs to the base
@@ -95,7 +126,7 @@ jobs:
               `- Source branch: \`${sourceBranch}\``,
               `- Detected by: ${labels.includes('breaking-change') ? '`breaking-change` label' : 'breaking Conventional Commit title'}`,
               '',
-              'Breaking changes must target the appropriate versioned `develop/X.Y.Z` branch. Maintainers may approve an SP-3 security fix for `main` by applying both `security` and `rc-breaking-approved` after the API Change Proposal and migration guide are approved. This required check fails until the target, classification, or security approval is corrected.',
+              'Breaking changes must target the appropriate versioned `develop/X.Y.Z` branch. Maintainers may approve an SP-3 security fix for `main` by applying both `security` and `rc-breaking-approved` after the API Change Proposal and migration guide are approved. The latest approval-label event must be applied by a user with current maintain or admin repository access; triage or write access alone is insufficient. This required check fails until the target, classification, or security approval is corrected.',
             ].join('\n');
 
             await github.rest.issues.createComment({
