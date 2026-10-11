@@ -37,12 +37,14 @@ use redis::{AsyncCommands, Client};
 use tracing::warn;
 
 /// Redis channel layer configuration
+///
+/// The `Debug` output redacts `password`.
 #[cfg(feature = "redis-channel")]
 #[deprecated(
 	since = "0.2.0",
 	note = "Use `RedisChannelSettings` with the `#[settings]` macro instead."
 )]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RedisConfig {
 	/// Redis connection URL
 	pub url: String,
@@ -60,6 +62,34 @@ pub struct RedisConfig {
 	pub tls: bool,
 	/// Require authentication (warns if disabled without credentials)
 	pub require_auth: bool,
+}
+
+#[cfg(feature = "redis-channel")]
+impl std::fmt::Debug for RedisConfig {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		// Exhaustive destructuring makes adding a field a compile error here,
+		// so new fields cannot silently bypass the redaction review.
+		let Self {
+			url,
+			channel_prefix,
+			group_prefix,
+			message_expiry,
+			password,
+			username,
+			tls,
+			require_auth,
+		} = self;
+		f.debug_struct("RedisConfig")
+			.field("url", url)
+			.field("channel_prefix", channel_prefix)
+			.field("group_prefix", group_prefix)
+			.field("message_expiry", message_expiry)
+			.field("password", &password.as_ref().map(|_| "[REDACTED]"))
+			.field("username", username)
+			.field("tls", tls)
+			.field("require_auth", require_auth)
+			.finish()
+	}
 }
 
 #[cfg(feature = "redis-channel")]
@@ -831,5 +861,22 @@ mod tests {
 		// Should pass validation
 		let result = config.validate_auth();
 		assert!(result.is_ok());
+	}
+
+	#[rstest::rstest]
+	fn test_redis_config_debug_redacts_password() {
+		// Arrange
+		let config = RedisConfig::new("redis://127.0.0.1:6379".to_string())
+			.with_password("redis-config-password".to_string());
+
+		// Act
+		let output = format!("{config:?}");
+
+		// Assert
+		assert!(!output.contains("redis-config-password"), "{output}");
+		assert!(
+			output.contains("password: Some(\"[REDACTED]\")"),
+			"{output}"
+		);
 	}
 }

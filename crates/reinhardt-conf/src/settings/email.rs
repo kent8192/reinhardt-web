@@ -149,4 +149,25 @@ mod tests {
 		assert!(settings.ssl_keyfile.is_none());
 		assert!(settings.file_path.is_none());
 	}
+
+	#[rstest]
+	#[case::set(Some("smtp-password-value"), "password: Some(\"[REDACTED]\")")]
+	#[case::unset(None, "password: None")]
+	fn test_email_debug_redacts_password(
+		#[case] password: Option<&str>,
+		#[case] expected_field: &str,
+	) {
+		// Arrange
+		let settings = EmailSettings {
+			password: password.map(str::to_owned),
+			..Default::default()
+		};
+
+		// Act
+		let output = format!("{settings:?}");
+
+		// Assert
+		assert!(!output.contains("smtp-password-value"), "{output}");
+		assert!(output.contains(expected_field), "{output}");
+	}
 }

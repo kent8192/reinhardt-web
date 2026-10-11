@@ -85,6 +85,11 @@ impl From<OAuthError> for OidcError {
 			OAuthError::UnsupportedGrantType => Self::UnsupportedGrantType,
 			OAuthError::UnsupportedResponseType => Self::UnsupportedResponseType,
 			OAuthError::ServerError => Self::ServerError,
+			// Device Authorization Grant errors are never produced by the OIDC Code Flow;
+			// map them to the closest closed-set code rather than widening OidcError.
+			OAuthError::AuthorizationPending | OAuthError::SlowDown | OAuthError::ExpiredToken => {
+				Self::InvalidGrant
+			}
 		}
 	}
 }

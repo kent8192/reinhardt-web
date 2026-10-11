@@ -35,6 +35,9 @@ pub(crate) struct ParsedField {
 	pub ty: syn::Type,
 	pub vis: syn::Visibility,
 	pub setting_attr: Option<SettingAttr>,
+	/// Whether the field carries `#[setting(secret)]` and must be redacted in
+	/// generated `Debug` output.
+	pub secret: bool,
 	#[cfg(test)]
 	pub shape_hint: Option<ShapeHint>,
 	pub has_serde_default: bool,
@@ -184,6 +187,7 @@ pub(crate) fn parse_fields(input: &ItemStruct) -> Result<Vec<ParsedField>> {
 				ty: field.ty.clone(),
 				vis: field.vis.clone(),
 				setting_attr: setting_attr.requirement,
+				secret: setting_attr.secret,
 				#[cfg(test)]
 				shape_hint: setting_attr.shape_hint,
 				has_serde_default: has_serde_default(field),

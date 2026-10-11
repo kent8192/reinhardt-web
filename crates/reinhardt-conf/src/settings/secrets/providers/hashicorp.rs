@@ -6,6 +6,7 @@ use crate::settings::secrets::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -26,8 +27,10 @@ impl CachedSecret {
 }
 
 /// HashiCorp Vault client configuration
+///
+/// The `Debug` output redacts `token`.
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct VaultConfig {
 	/// Vault server address (e.g., "http://127.0.0.1:8200")
 	pub addr: String,
@@ -43,6 +46,27 @@ pub struct VaultConfig {
 
 	/// Cache TTL in seconds (default: 300 = 5 minutes)
 	pub cache_ttl: Duration,
+}
+
+impl fmt::Debug for VaultConfig {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// Exhaustive destructuring makes adding a field a compile error here,
+		// so new fields cannot silently bypass the redaction review.
+		let Self {
+			addr,
+			token: _,
+			mount,
+			namespace,
+			cache_ttl,
+		} = self;
+		f.debug_struct("VaultConfig")
+			.field("addr", addr)
+			.field("token", &"[REDACTED]")
+			.field("mount", mount)
+			.field("namespace", namespace)
+			.field("cache_ttl", cache_ttl)
+			.finish()
+	}
 }
 
 impl VaultConfig {
@@ -472,5 +496,18 @@ mod tests {
 
 		// Assert: Should recover from poisoned lock and find cached entry
 		assert_eq!(result, true);
+	}
+
+	#[rstest]
+	fn test_vault_config_debug_redacts_token() {
+		// Arrange
+		let config = VaultConfig::new("http://127.0.0.1:8200", "vault-token-value");
+
+		// Act
+		let output = format!("{config:?}");
+
+		// Assert
+		assert!(!output.contains("vault-token-value"), "{output}");
+		assert!(output.contains("token: \"[REDACTED]\""), "{output}");
 	}
 }

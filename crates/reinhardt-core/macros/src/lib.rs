@@ -1395,6 +1395,10 @@ pub fn dto(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// Mark a terminal field as secret with `#[setting(secret)]`. Resolved settings
 /// metadata records only its classification and key presence, never its value.
+/// When the fragment derives `Debug` (explicitly or through the macro's default
+/// derives), the macro replaces that derive with an impl that prints secret
+/// fields as `"[REDACTED]"` (`Some("[REDACTED]")` / `None` for `Option`).
+/// A hand-written `Debug` impl is left untouched.
 ///
 /// Omitting `section = "..."` creates an embedded settings node instead of a
 /// root fragment. Embedded nodes participate in recursive schema metadata and
