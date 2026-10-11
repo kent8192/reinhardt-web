@@ -583,8 +583,9 @@ fn next_path_subscription_match(
 	if should_fire { new_match } else { None }
 }
 
-/// The router source `launch()` will use, decided from the three
-/// mutually-exclusive launcher methods.
+/// The router source `launch()` will use, decided from the two
+/// mutually-exclusive launcher methods and the kind of `#[routes]`
+/// registrations linked into the binary.
 ///
 /// Used only by `launch()` (WASM-only) and the native test module that
 /// exercises the pure decision logic. On non-test native builds the
@@ -596,8 +597,13 @@ fn next_path_subscription_match(
 enum RouterSourceChoice {
 	/// `router_client(...)` was the only source set.
 	Client,
-	/// `register_routes_from_inventory()` was the only source set.
+	/// `register_routes_from_inventory()` was the only source set and every
+	/// linked registration is synchronous.
 	Inventory,
+	/// `register_routes_from_inventory()` was the only source set and at least
+	/// one linked registration comes from an `async fn`, so the routes must be
+	/// awaited by `launch_async()` (Refs #6733).
+	AsyncInventory,
 	/// No source was set.
 	None,
 	/// More than one source was set.
@@ -605,20 +611,68 @@ enum RouterSourceChoice {
 }
 
 /// Decide which router source `launch()` will use, based on which of the
-/// three launcher methods were called. Returns `Conflict` if more than one
-/// was called; `None` if none were called.
+/// two launcher methods were called. Returns `Conflict` if more than one
+/// was called; `None` if none were called. `inventory_has_async` reports
+/// whether any linked `#[routes]` registration comes from an `async fn`.
 ///
 /// Pure function — testable on the native target without the WASM runtime.
 ///
-/// Refs #4453.
+/// Refs #4453, #6733.
 #[cfg_attr(not(wasm), allow(dead_code))]
-fn select_router_source_counts(client: bool, inventory: bool) -> RouterSourceChoice {
+fn select_router_source_counts(
+	client: bool,
+	inventory: bool,
+	inventory_has_async: bool,
+) -> RouterSourceChoice {
 	match (client as u8) + (inventory as u8) {
 		0 => RouterSourceChoice::None,
 		1 if client => RouterSourceChoice::Client,
+		1 if inventory && inventory_has_async => RouterSourceChoice::AsyncInventory,
 		1 if inventory => RouterSourceChoice::Inventory,
 		_ => RouterSourceChoice::Conflict,
 	}
+}
+
+/// Error returned by `launch()` when an `async fn` `#[routes]` registration
+/// is linked. Only the WASM launcher returns it; native unit tests check it.
+#[cfg_attr(not(wasm), allow(dead_code))]
+const ASYNC_INVENTORY_REQUIRES_LAUNCH_ASYNC: &str = "ClientLauncher::launch: a `#[routes]` \
+	registration comes from an `async fn` and cannot be resolved synchronously. \
+	Call `launch_async().await` instead of `launch()`.";
+
+/// Error returned when `register_routes_from_inventory()` finds no
+/// `#[routes]` registration at runtime.
+#[cfg(wasm)]
+const NO_INVENTORY_REGISTRATIONS: &str = "ClientLauncher::register_routes_from_inventory: no \
+	`#[routes]` registrations found. Ensure the project has a `#[routes]`-annotated \
+	function returning a `UnifiedRouter` with client routes.";
+
+/// Launcher state created before the router source is resolved and carried
+/// to router installation. Dropping it removes the provided root contexts.
+#[cfg(wasm)]
+struct LaunchPrelude {
+	query_client: QueryClient,
+	root_context_guards: Vec<Box<dyn Any>>,
+}
+
+/// Router source resolved after the launcher prelude has run.
+#[cfg(wasm)]
+enum PendingRouter {
+	/// The router was built synchronously.
+	Ready(Box<dyn super::SpaRouter>),
+	/// At least one linked `#[routes]` registration must be awaited.
+	AsyncInventory,
+}
+
+/// Poll `future` with `scope` entered on every poll, so reactive state created
+/// while it runs is owned by the launcher scope (as on the synchronous path).
+#[cfg(wasm)]
+async fn poll_in_scope<F: std::future::Future>(
+	scope: &reinhardt_core::reactive::ReactiveScope,
+	future: F,
+) -> F::Output {
+	let mut future = std::pin::pin!(future);
+	std::future::poll_fn(move |cx| scope.enter(|| future.as_mut().poll(cx))).await
 }
 
 impl ClientLauncher {
@@ -717,6 +771,14 @@ impl ClientLauncher {
 	///
 	/// `launch()` returns an error if no `#[routes]` registration is found
 	/// at runtime (i.e. the `inventory` iterator is empty).
+	///
+	/// # Async `#[routes]` functions
+	///
+	/// An `async fn` annotated with `#[routes]` (without `#[inject]`
+	/// parameters) registers routes that must be awaited. `launch()` returns
+	/// an error when such a registration is linked; call `launch_async()`
+	/// instead, which awaits every registration before mounting. (Both
+	/// methods are `#[cfg(wasm)]`, so they cannot be linked from native docs.)
 	pub fn register_routes_from_inventory(mut self) -> Self {
 		self.use_inventory = true;
 		self
@@ -1080,18 +1142,99 @@ impl ClientLauncher {
 	///
 	/// Calling none of them or more than one returns `Err`. The
 	/// `register_routes_from_inventory` path additionally returns `Err`
-	/// when no `#[routes]` registrations are found at runtime.
-	/// (Refs #4453)
+	/// when no `#[routes]` registrations are found at runtime, or when a
+	/// registration comes from an `async fn` (use [`Self::launch_async`]).
+	/// (Refs #4453, #6733)
 	pub fn launch(self) -> Result<(), wasm_bindgen::JsValue> {
 		let scope = std::rc::Rc::new(reinhardt_core::reactive::ReactiveScope::new());
 		let stored_scope = std::rc::Rc::clone(&scope);
 		scope.enter(move || self.launch_in_scope(stored_scope))
 	}
 
+	/// Start the WASM client application after resolving asynchronous
+	/// `#[routes]` registrations.
+	///
+	/// Accepts every router source that [`Self::launch`] accepts and is
+	/// required when [`Self::register_routes_from_inventory`] pulls a
+	/// registration produced by an `async fn` annotated with `#[routes]`,
+	/// which `launch()` rejects. Sync registrations and
+	/// [`Self::router_client`] behave exactly as in `launch()`.
+	///
+	/// # Ordering
+	///
+	/// The panic hook, reactive scheduler, query client, root contexts, and
+	/// `before_launch` callbacks run first, as in `launch()`. When an async
+	/// registration is linked, the launcher then awaits every registration in
+	/// inventory order, polling them inside its reactive scope, and merges
+	/// the results the same way as the synchronous path. Phases A to C of
+	/// `launch()` run unchanged once the router has resolved. While the
+	/// registrations are pending nothing is mounted: the root element keeps
+	/// its existing markup (for example a loading indicator), no link
+	/// interception or history listener is installed, and `after_launch` /
+	/// `on_path` callbacks have not fired yet.
+	///
+	/// # Errors
+	///
+	/// Returns the same errors as `launch()`, except that an async
+	/// registration is awaited instead of rejected.
+	///
+	/// # Examples
+	///
+	/// ```rust,ignore
+	/// use reinhardt::pages::ClientLauncher;
+	/// use wasm_bindgen::prelude::*;
+	///
+	/// // src/config/urls.rs: `#[routes] pub async fn routes() -> UnifiedRouter { ... }`
+	///
+	/// #[wasm_bindgen(start)]
+	/// pub async fn main() -> Result<(), JsValue> {
+	///     ClientLauncher::new("#root")
+	///         .register_routes_from_inventory()
+	///         .launch_async()
+	///         .await
+	/// }
+	/// ```
+	pub async fn launch_async(mut self) -> Result<(), wasm_bindgen::JsValue> {
+		let scope = std::rc::Rc::new(reinhardt_core::reactive::ReactiveScope::new());
+		let (prelude, pending) = scope.enter(|| {
+			let prelude = self.prepare_launch();
+			self.take_router_source().map(|pending| (prelude, pending))
+		})?;
+		let spa_router: Box<dyn super::SpaRouter> = match pending {
+			PendingRouter::Ready(router) => router,
+			PendingRouter::AsyncInventory => {
+				let router = poll_in_scope(
+					&scope,
+					reinhardt_urls::routers::collect_client_router_from_inventory_async(),
+				)
+				.await
+				.ok_or_else(|| wasm_bindgen::JsValue::from_str(NO_INVENTORY_REGISTRATIONS))?;
+				Box::new(router)
+			}
+		};
+		let stored_scope = std::rc::Rc::clone(&scope);
+		scope.enter(move || self.install_router(stored_scope, prelude, spa_router))
+	}
+
 	fn launch_in_scope(
 		mut self,
 		scope: std::rc::Rc<reinhardt_core::reactive::ReactiveScope>,
 	) -> Result<(), wasm_bindgen::JsValue> {
+		let prelude = self.prepare_launch();
+		let spa_router = match self.take_router_source()? {
+			PendingRouter::Ready(router) => router,
+			PendingRouter::AsyncInventory => {
+				return Err(wasm_bindgen::JsValue::from_str(
+					ASYNC_INVENTORY_REQUIRES_LAUNCH_ASYNC,
+				));
+			}
+		};
+		self.install_router(scope, prelude, spa_router)
+	}
+
+	/// Configure the panic hook, scheduler, query client, and root contexts,
+	/// then drain the `before_launch` callbacks.
+	fn prepare_launch(&mut self) -> LaunchPrelude {
 		#[cfg(feature = "console_error_panic_hook")]
 		console_error_panic_hook::set_once();
 
@@ -1122,47 +1265,60 @@ impl ClientLauncher {
 			hook();
 		}
 
-		// (Refs #4453) Pick exactly one router source. The
-		// `router_client(...)` builder produces a `ClientRouter` from
-		// a user-supplied closure; `register_routes_from_inventory()`
-		// pulls a `ClientRouter` from `inventory`-registered
-		// `#[routes]` functions at module load time.
+		LaunchPrelude {
+			query_client,
+			root_context_guards,
+		}
+	}
+
+	/// Pick exactly one router source (Refs #4453). The `router_client(...)`
+	/// builder produces a `ClientRouter` from a user-supplied closure;
+	/// `register_routes_from_inventory()` pulls a `ClientRouter` from
+	/// `inventory`-registered `#[routes]` functions at module load time, and
+	/// defers to the caller when one of them must be awaited (Refs #6733).
+	fn take_router_source(&mut self) -> Result<PendingRouter, wasm_bindgen::JsValue> {
 		let client_init = self.client_router_init.take();
 		let use_inventory = self.use_inventory;
+		let inventory_has_async = use_inventory
+			&& reinhardt_urls::routers::iter_registered_client_routers()
+				.any(reinhardt_urls::routers::ClientRouterRegistration::is_async);
 
-		let spa_router: Box<dyn super::SpaRouter> =
-			match select_router_source_counts(client_init.is_some(), use_inventory) {
-				RouterSourceChoice::Client => {
-					Box::new((client_init.expect("Client variant guarantees Some"))())
+		match select_router_source_counts(client_init.is_some(), use_inventory, inventory_has_async)
+		{
+			RouterSourceChoice::Client => Ok(PendingRouter::Ready(Box::new((client_init
+				.expect("Client variant guarantees Some"))(
+			)))),
+			RouterSourceChoice::Inventory => {
+				match reinhardt_urls::routers::collect_client_router_from_inventory() {
+					Some(router) => Ok(PendingRouter::Ready(Box::new(router))),
+					None => Err(wasm_bindgen::JsValue::from_str(NO_INVENTORY_REGISTRATIONS)),
 				}
-				RouterSourceChoice::Inventory => {
-					match reinhardt_urls::routers::collect_client_router_from_inventory() {
-						Some(router) => Box::new(router),
-						None => {
-							return Err(wasm_bindgen::JsValue::from_str(
-								"ClientLauncher::register_routes_from_inventory: no \
-							 `#[routes]` registrations found. Ensure the project has \
-							 a `#[routes]`-annotated function returning a \
-							 `UnifiedRouter` with client routes.",
-							));
-						}
-					}
-				}
-				RouterSourceChoice::None => {
-					return Err(wasm_bindgen::JsValue::from_str(
-						"ClientLauncher: `router_client(...)`, or \
-					 `register_routes_from_inventory()` must be called before \
-					 `launch()`.",
-					));
-				}
-				RouterSourceChoice::Conflict => {
-					return Err(wasm_bindgen::JsValue::from_str(
-						"ClientLauncher: `router_client(...)`, and \
-					 `register_routes_from_inventory()` are mutually exclusive; \
-					 configure exactly one.",
-					));
-				}
-			};
+			}
+			RouterSourceChoice::AsyncInventory => Ok(PendingRouter::AsyncInventory),
+			RouterSourceChoice::None => Err(wasm_bindgen::JsValue::from_str(
+				"ClientLauncher: `router_client(...)`, or \
+				 `register_routes_from_inventory()` must be called before \
+				 `launch()`.",
+			)),
+			RouterSourceChoice::Conflict => Err(wasm_bindgen::JsValue::from_str(
+				"ClientLauncher: `router_client(...)`, and \
+				 `register_routes_from_inventory()` are mutually exclusive; \
+				 configure exactly one.",
+			)),
+		}
+	}
+
+	/// Install the resolved router and run Phases A (DOM part) to C.
+	fn install_router(
+		mut self,
+		scope: std::rc::Rc<reinhardt_core::reactive::ReactiveScope>,
+		prelude: LaunchPrelude,
+		spa_router: Box<dyn super::SpaRouter>,
+	) -> Result<(), wasm_bindgen::JsValue> {
+		let LaunchPrelude {
+			query_client,
+			root_context_guards,
+		} = prelude;
 		store_spa_router(spa_router, std::rc::Rc::clone(&scope));
 		let window = web_sys::window()
 			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no global `window`"))?;
@@ -1704,7 +1860,7 @@ mod select_router_source_tests {
 		let client = false;
 		let inventory = false;
 		// Act
-		let result = select_router_source_counts(client, inventory);
+		let result = select_router_source_counts(client, inventory, false);
 		// Assert
 		assert_eq!(result, RouterSourceChoice::None);
 	}
@@ -1712,7 +1868,7 @@ mod select_router_source_tests {
 	#[rstest::rstest]
 	fn returns_client_when_only_client_set() {
 		// Arrange + Act
-		let result = select_router_source_counts(true, false);
+		let result = select_router_source_counts(true, false, false);
 		// Assert
 		assert_eq!(result, RouterSourceChoice::Client);
 	}
@@ -1720,17 +1876,60 @@ mod select_router_source_tests {
 	#[rstest::rstest]
 	fn returns_inventory_when_only_inventory_set() {
 		// Arrange + Act
-		let result = select_router_source_counts(false, true);
+		let result = select_router_source_counts(false, true, false);
 		// Assert
 		assert_eq!(result, RouterSourceChoice::Inventory);
 	}
 
+	// Refs #6733: an async `#[routes]` registration must be awaited, so the
+	// synchronous `launch()` can tell it apart from a plain inventory source.
 	#[rstest::rstest]
-	#[case(true, true)]
-	fn returns_conflict_when_multiple_sources_set(#[case] client: bool, #[case] inventory: bool) {
+	fn returns_async_inventory_when_an_inventory_registration_is_async() {
 		// Arrange + Act
-		let result = select_router_source_counts(client, inventory);
+		let result = select_router_source_counts(false, true, true);
+		// Assert
+		assert_eq!(result, RouterSourceChoice::AsyncInventory);
+	}
+
+	#[rstest::rstest]
+	#[case(true, true, false)]
+	#[case(true, true, true)]
+	fn returns_conflict_when_multiple_sources_set(
+		#[case] client: bool,
+		#[case] inventory: bool,
+		#[case] inventory_has_async: bool,
+	) {
+		// Arrange + Act
+		let result = select_router_source_counts(client, inventory, inventory_has_async);
 		// Assert
 		assert_eq!(result, RouterSourceChoice::Conflict);
+	}
+
+	#[rstest::rstest]
+	#[case::no_source(false)]
+	#[case::client_source(true)]
+	fn ignores_async_flag_without_inventory_source(#[case] client: bool) {
+		// Arrange
+		let expected = if client {
+			RouterSourceChoice::Client
+		} else {
+			RouterSourceChoice::None
+		};
+		// Act
+		let result = select_router_source_counts(client, false, true);
+		// Assert
+		assert_eq!(result, expected);
+	}
+
+	#[rstest::rstest]
+	fn async_inventory_error_points_to_launch_async() {
+		// Arrange
+		let message = ASYNC_INVENTORY_REQUIRES_LAUNCH_ASYNC;
+		// Act
+		let names_cause = message.contains("`async fn`");
+		let names_remedy = message.contains("Call `launch_async().await` instead of `launch()`.");
+		// Assert
+		assert!(names_cause, "error must name the async cause: {message}");
+		assert!(names_remedy, "error must name the remedy: {message}");
 	}
 }

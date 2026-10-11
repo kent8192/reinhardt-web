@@ -1356,6 +1356,29 @@ before exposing queryable text and roles.
 
 ## Architecture
 
+### Async `#[routes]` functions
+
+An `async fn` annotated with `#[routes]` (without `#[inject]` parameters)
+registers its client routes asynchronously on `wasm32-unknown-unknown`.
+`launch()` rejects such a registration with an error; await `launch_async()`
+instead:
+
+```rust,ignore
+#[wasm_bindgen(start)]
+pub async fn main() -> Result<(), JsValue> {
+    ClientLauncher::new("#root")
+        .register_routes_from_inventory()
+        .launch_async()
+        .await
+}
+```
+
+`launch_async()` installs root contexts and runs `before_launch` callbacks
+first, then awaits the registrations, and mounts the application only after
+every registration has resolved. Until then the root element keeps its existing
+markup. `#[routes]` functions with `#[inject]` parameters stay native-only and
+fail to compile for wasm.
+
 ### Fresh CSR root contexts
 
 Install application-wide contexts on `ClientLauncher` so their RAII guards
