@@ -59,6 +59,19 @@
 //! }
 //! ```
 //!
+//! # Target Behavior
+//!
+//! Only the synchronous form (1) registers routes on every target: native
+//! builds register the server aggregate and `wasm32-unknown-unknown` builds
+//! register the client router in `ClientRouterRegistration`. The async forms
+//! (2 and 3) are native-only because the annotated function is gated out of
+//! wasm builds, so a wasm build would otherwise start with an empty client
+//! route table. To keep that failure out of the browser, the macro emits a
+//! `compile_error!` for async functions under the wasm cfg. Keep `routes()`
+//! synchronous and move native-only async setup behind a native cfg to
+//! build for both targets. Client registration from an async function is
+//! tracked in issue #6733.
+//!
 //! # Generated Code
 //!
 //! The macro preserves the original function and adds:
@@ -75,6 +88,12 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{FnArg, ItemFn, PatType, Result, spanned::Spanned};
 
+/// Diagnostic emitted for async `#[routes]` functions under the wasm cfg.
+///
+/// The async expansions are native-only, so without this error a wasm build
+/// would silently register no client routes (Issue #6722).
+const ASYNC_WASM_DIAGNOSTIC: &str = "`#[routes]` on an `async fn` cannot register client routes on wasm32-unknown-unknown; client route discovery needs a synchronous function. Keep `routes()` synchronous and move async setup behind a native-only cfg, or track async client registration in issue #6733.";
+
 /// Check if an attribute is `#[inject]`
 fn is_inject_attr(attr: &syn::Attribute) -> bool {
 	attr.path().is_ident("inject")
@@ -86,6 +105,8 @@ fn is_inject_attr(attr: &syn::Attribute) -> bool {
 /// 1. Preserves the original function definition
 /// 2. Adds `inventory::submit!` to register the function with the framework
 /// 3. Emits a linker marker to enforce single-usage
+/// 4. Emits a wasm-only `compile_error!` for `async` functions, which cannot
+///    register client routes
 ///
 /// The `#[routes]` macro no longer accepts arguments. All per-app struct
 /// generation, `ResolvedUrls`, `url_prelude`, callback macros, and flags
@@ -176,6 +197,12 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 
 	let reinhardt_urls = crate::crate_paths::get_reinhardt_urls_crate();
 
+	// Async forms only register native routes. Reject them on wasm at compile
+	// time, pointing at the `async` keyword, instead of silently launching the
+	// SPA with an empty client route table (Issue #6722).
+	let async_wasm_error =
+		syn::Error::new_spanned(input.sig.asyncness, ASYNC_WASM_DIAGNOSTIC).to_compile_error();
+
 	let expanded = if !is_async {
 		// Case 1: Sync, no #[inject]
 		let fn_sig = &input.sig;
@@ -259,6 +286,10 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			#[unsafe(no_mangle)]
 			#[allow(non_upper_case_globals, dead_code)]
 			static __reinhardt_routes_registration_marker: () = ();
+
+			// WASM: async functions cannot register client routes.
+			#wasm_only
+			#async_wasm_error
 		}
 	} else {
 		// Case 3: Async, with #[inject]
@@ -359,6 +390,10 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			#[unsafe(no_mangle)]
 			#[allow(non_upper_case_globals, dead_code)]
 			static __reinhardt_routes_registration_marker: () = ();
+
+			// WASM: async functions cannot register client routes.
+			#wasm_only
+			#async_wasm_error
 		}
 	};
 
@@ -368,12 +403,48 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use syn::parse_quote;
+	use quote::ToTokens;
+	use rstest::rstest;
+	use syn::{Item, parse_quote};
+
+	fn expand(input: ItemFn) -> TokenStream {
+		routes_impl(TokenStream::new(), input).expect("routes expansion must succeed")
+	}
 
 	fn expansion(input: ItemFn) -> String {
-		routes_impl(TokenStream::new(), input)
-			.expect("routes expansion must succeed")
-			.to_string()
+		expand(input).to_string()
+	}
+
+	/// Messages of the top-level `compile_error!` items that are gated on the
+	/// wasm cfg, so the assertions cannot be satisfied by an unconditional
+	/// error or by a message that only appears inside another item.
+	fn wasm_gated_compile_errors(generated: TokenStream) -> Vec<String> {
+		let wasm_cfg: syn::Attribute =
+			parse_quote!(#[cfg(all(target_family = "wasm", target_os = "unknown"))]);
+		let file: syn::File = syn::parse2(generated).expect("expansion must parse as items");
+
+		file.items
+			.into_iter()
+			.filter_map(|item| match item {
+				Item::Macro(item_macro)
+					if item_macro
+						.mac
+						.path
+						.segments
+						.last()
+						.is_some_and(|segment| segment.ident == "compile_error")
+						&& item_macro.attrs.iter().any(|attr| {
+							attr.to_token_stream().to_string()
+								== wasm_cfg.to_token_stream().to_string()
+						}) =>
+				{
+					let message: syn::LitStr = syn::parse2(item_macro.mac.tokens)
+						.expect("compile_error! must carry a string literal");
+					Some(message.value())
+				}
+				_ => None,
+			})
+			.collect()
 	}
 
 	#[test]
@@ -408,5 +479,64 @@ mod tests {
 
 		assert_eq!(generated.matches("ClientRouterRegistration").count(), 1);
 		assert_eq!(generated.matches("into_client").count(), 1);
+	}
+
+	#[test]
+	fn sync_expansion_has_no_compile_error() {
+		// Arrange
+		let input: ItemFn = parse_quote! {
+			fn routes() -> UnifiedRouter { UnifiedRouter::new() }
+		};
+
+		// Act
+		let generated = expand(input);
+
+		// Assert
+		assert_eq!(generated.to_string().matches("compile_error").count(), 0);
+		assert_eq!(wasm_gated_compile_errors(generated), Vec::<String>::new());
+	}
+
+	#[rstest]
+	#[case::async_without_inject(parse_quote! {
+		pub async fn routes() -> UnifiedRouter { UnifiedRouter::new() }
+	})]
+	#[case::async_with_inject(parse_quote! {
+		pub async fn routes(#[inject] value: Arc<Value>) -> UnifiedRouter {
+			let _ = value;
+			UnifiedRouter::new()
+		}
+	})]
+	fn async_expansion_rejects_wasm_with_diagnostic(#[case] input: ItemFn) {
+		// Arrange
+		// (the annotated function is supplied by the case)
+
+		// Act
+		let generated = expand(input);
+		let rendered = generated.to_string();
+		let errors = wasm_gated_compile_errors(generated);
+
+		// Assert
+		assert_eq!(errors, vec![ASYNC_WASM_DIAGNOSTIC.to_string()]);
+		assert_eq!(rendered.matches("compile_error").count(), 1);
+		assert_eq!(rendered.matches("ClientRouterRegistration").count(), 0);
+	}
+
+	#[test]
+	fn async_diagnostic_names_the_cause_and_the_remedy() {
+		// Arrange
+		let message = ASYNC_WASM_DIAGNOSTIC;
+
+		// Act
+		let names_cause =
+			message.contains("`async fn`") && message.contains("wasm32-unknown-unknown");
+		let names_remedy = message.contains("synchronous");
+
+		// Assert
+		assert!(
+			names_cause,
+			"diagnostic must name the async cause: {message}"
+		);
+		assert!(names_remedy, "diagnostic must name the remedy: {message}");
+		assert_eq!(message.lines().count(), 1);
 	}
 }

@@ -507,6 +507,20 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// the same context in the complete HTTP, WebSocket, gRPC, DI, and streaming
 /// route aggregate returned to server startup.
 ///
+/// # Target behavior
+///
+/// The synchronous form (1) registers both native routes and client routes: on
+/// `wasm32-unknown-unknown` it submits a `ClientRouterRegistration` built from
+/// the router's client side. The async forms (2 and 3) are native-only: the
+/// annotated function is compiled out of wasm builds, so no client routes could
+/// be registered and the single-page application would launch with an empty
+/// route table. To surface that at build time, an `async fn` annotated with
+/// `#[routes]` fails to compile for wasm with a diagnostic that asks for a
+/// synchronous function. Keep `routes()` synchronous and move native-only async
+/// setup behind a native `#[cfg]` when the project also builds for wasm. Client
+/// registration from an async function is tracked in
+/// [issue #6733](https://github.com/kent8192/reinhardt-web/issues/6733).
+///
 /// # Arguments
 ///
 /// The `#[routes]` macro does not accept any arguments. It only emits
@@ -522,6 +536,8 @@ pub fn installed_apps(input: TokenStream) -> TokenStream {
 /// - The return type must be `UnifiedRouter` (not `Arc<UnifiedRouter>`)
 /// - Native registration preserves the complete protocol aggregate
 /// - Sync functions cannot use `#[inject]` (DI resolution is inherently async)
+/// - Async functions are native-only and are rejected on wasm (see
+///   "Target behavior")
 #[proc_macro_attribute]
 pub fn routes(args: TokenStream, input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as ItemFn);

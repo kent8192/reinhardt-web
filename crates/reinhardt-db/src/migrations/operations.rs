@@ -229,8 +229,21 @@ pub(super) fn named_index_has_target(columns: &[String], expressions: Option<&[S
 /// // GIN is best for containment operators (arrays, JSONB)
 /// let gin = IndexType::Gin;
 /// ```
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new index methods may be added in a minor
+/// release. Existing variants remain directly constructible, but code outside
+/// `reinhardt-db` that matches on `IndexType` must include a wildcard arm.
+/// Interpreters should return an explicit unsupported-index-method error from that
+/// arm instead of silently ignoring the value.
+///
+/// The variant set already depends on Cargo features (`Hnsw` and `Ivfflat`
+/// exist only with `pgvector`), so feature unification alone can add variants
+/// to a downstream build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum IndexType {
 	/// B-tree index (default)
 	///
@@ -718,8 +731,17 @@ impl std::fmt::Display for DeferrableOption {
 }
 
 /// Constraint definition for tables
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new constraint kinds may be added in a minor
+/// release. Existing variants remain directly constructible, but code outside
+/// `reinhardt-db` that matches on `Constraint` must include a wildcard arm.
+/// Interpreters should return an explicit unsupported-constraint error from that
+/// arm instead of silently ignoring the value.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub enum Constraint {
 	/// PrimaryKey constraint
 	///
@@ -1276,11 +1298,40 @@ impl BulkLoadOptions {
 /// This enum is maintained for backward compatibility with existing code.
 /// New code should use the specific operation types from the `models`, `fields`,
 /// and `special` modules instead.
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new operations may be added in a minor
+/// release. Existing variants remain directly constructible, but code outside
+/// `reinhardt-db` that matches on `Operation` must include a wildcard arm.
+/// Interpreters should return an explicit unsupported-operation error from that
+/// arm instead of silently ignoring the value.
+///
+/// Only the enum is non-exhaustive; individual variants are not, so migration
+/// source files can keep constructing known variants with struct-variant syntax.
+///
+/// ```rust
+/// use reinhardt_db::migrations::Operation;
+///
+/// fn describe(operation: &Operation) -> Result<String, String> {
+///     match operation {
+///         Operation::CreateTable { name, .. } => Ok(format!("create {name}")),
+///         Operation::DropTable { name } => Ok(format!("drop {name}")),
+///         // Required outside `reinhardt-db`: fail explicitly on operations this
+///         // caller does not interpret, including ones added in later releases.
+///         other => Err(format!("unsupported migration operation: {other:?}")),
+///     }
+/// }
+///
+/// let drop = Operation::DropTable { name: "legacy".to_string() };
+/// assert_eq!(describe(&drop).unwrap(), "drop legacy");
+/// ```
 // The legacy public variants embed ColumnDefinition by value, so boxing them would break
 // migration source compatibility. Structured field domains intentionally preserve that shape.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub enum Operation {
 	/// CreateTable variant.
 	CreateTable {
@@ -6968,6 +7019,18 @@ impl Operation {
 pub use Operation::{AddColumn, AlterColumn, CreateTable, DropColumn};
 
 /// Operation statement types (reinhardt-query or sanitized raw SQL)
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new statement kinds may be added in a minor
+/// release. Existing variants remain directly constructible, but code outside
+/// `reinhardt-db` that matches on `OperationStatement` must include a wildcard arm.
+/// Interpreters should return an explicit unsupported-statement error from that
+/// arm instead of silently ignoring the value.
+///
+/// Prefer [`OperationStatement::try_to_sql_string`] over matching on the
+/// variants when only the rendered SQL is needed.
+#[non_exhaustive]
 pub enum OperationStatement {
 	/// TableCreate variant.
 	TableCreate(CreateTableStatement),

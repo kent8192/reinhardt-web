@@ -130,7 +130,16 @@ pub struct ForeignKeyInfo {
 }
 
 /// Field state for migration detection
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`FieldState::new`] (or [`FieldState::with_foreign_key`]) and the chained
+/// `with_*` builders; public fields stay readable and assignable after
+/// construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FieldState {
 	/// The name.
 	pub name: String,
@@ -202,12 +211,78 @@ impl FieldState {
 		self.domain = Some(domain.canonicalized());
 		self
 	}
+
+	/// Sets optional structured database value domain metadata, including an
+	/// explicit `None`.
+	pub fn with_domain_opt(mut self, domain: Option<crate::field_domain::FieldDomain>) -> Self {
+		self.domain = domain.map(crate::field_domain::FieldDomain::canonicalized);
+		self
+	}
+
+	/// Sets a field parameter (for example `primary_key`, `unique`, or
+	/// `default`) and returns self for chaining.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::{FieldState, FieldType};
+	///
+	/// let field = FieldState::new("id", FieldType::BigInteger, false)
+	///     .with_param("primary_key", "true")
+	///     .with_param("auto_increment", "true");
+	///
+	/// assert_eq!(field.params.get("primary_key").map(String::as_str), Some("true"));
+	/// assert_eq!(field.params.len(), 2);
+	/// ```
+	pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+		self.params.insert(key.into(), value.into());
+		self
+	}
+
+	/// Inserts every parameter from `params`, replacing existing keys, and
+	/// returns self for chaining.
+	pub fn with_params<K, V>(mut self, params: impl IntoIterator<Item = (K, V)>) -> Self
+	where
+		K: Into<String>,
+		V: Into<String>,
+	{
+		self.params.extend(
+			params
+				.into_iter()
+				.map(|(key, value)| (key.into(), value.into())),
+		);
+		self
+	}
+
+	/// Sets generated-column metadata, including an explicit `None`.
+	pub fn with_generated(mut self, generated: Option<super::GeneratedColumnDefinition>) -> Self {
+		self.generated = generated;
+		self
+	}
+
+	/// Sets foreign-key reference metadata, including an explicit `None`.
+	///
+	/// Use this builder on a field created with [`FieldState::new`]; the
+	/// [`FieldState::with_foreign_key`] associated function remains available
+	/// for constructing a foreign-key field in one call.
+	pub fn with_foreign_key_info(mut self, foreign_key: Option<ForeignKeyInfo>) -> Self {
+		self.foreign_key = foreign_key;
+		self
+	}
 }
 
 /// Model state for migration detection
 ///
 /// Django equivalent: `ModelState` in django/db/migrations/state.py
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`ModelState::new`] and the chained `with_*` builders; public fields stay
+/// readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ModelState {
 	/// Application label (e.g., "auth", "blog")
 	pub app_label: String,
@@ -858,6 +933,92 @@ impl ModelState {
 		self.constraints.push(constraint);
 	}
 
+	/// Adds an index definition to this model.
+	pub fn add_index(&mut self, index: IndexDefinition) {
+		self.indexes.push(index);
+	}
+
+	/// Adds a many-to-many relationship to this model.
+	pub fn add_many_to_many(&mut self, many_to_many: ManyToManyMetadata) {
+		self.many_to_many_fields.push(many_to_many);
+	}
+
+	/// Overrides the physical table name derived by [`ModelState::new`] and
+	/// returns self for chaining.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::{FieldState, FieldType, IndexDefinition, ModelState};
+	///
+	/// let model = ModelState::new("blog", "Post")
+	///     .with_table_name("posts")
+	///     .with_field(FieldState::new("id", FieldType::BigInteger, false))
+	///     .with_field(FieldState::new("slug", FieldType::VarChar(64), false))
+	///     .with_option("ordering", "-id")
+	///     .with_index(IndexDefinition::new("posts_slug_idx", vec!["slug".to_string()], true));
+	///
+	/// assert_eq!(model.table_name, "posts");
+	/// assert_eq!(model.fields.len(), 2);
+	/// assert_eq!(model.options.get("ordering").map(String::as_str), Some("-id"));
+	/// assert_eq!(model.indexes.len(), 1);
+	/// ```
+	pub fn with_table_name(mut self, table_name: impl Into<String>) -> Self {
+		self.table_name = table_name.into();
+		self
+	}
+
+	/// Adds a field (keyed by [`FieldState::name`]) and returns self for chaining.
+	pub fn with_field(mut self, field: FieldState) -> Self {
+		self.add_field(field);
+		self
+	}
+
+	/// Sets a model option (for example `db_table` or `ordering`) and returns
+	/// self for chaining.
+	pub fn with_option(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+		self.options.insert(key.into(), value.into());
+		self
+	}
+
+	/// Sets the inheritance base model, including an explicit `None`.
+	pub fn with_base_model(mut self, base_model: Option<String>) -> Self {
+		self.base_model = base_model;
+		self
+	}
+
+	/// Sets the inheritance type (`single_table` or `joined_table`), including
+	/// an explicit `None`.
+	pub fn with_inheritance_type(mut self, inheritance_type: Option<String>) -> Self {
+		self.inheritance_type = inheritance_type;
+		self
+	}
+
+	/// Sets the single-table-inheritance discriminator column, including an
+	/// explicit `None`.
+	pub fn with_discriminator_column(mut self, discriminator_column: Option<String>) -> Self {
+		self.discriminator_column = discriminator_column;
+		self
+	}
+
+	/// Adds an index definition and returns self for chaining.
+	pub fn with_index(mut self, index: IndexDefinition) -> Self {
+		self.add_index(index);
+		self
+	}
+
+	/// Adds a constraint definition and returns self for chaining.
+	pub fn with_constraint(mut self, constraint: ConstraintDefinition) -> Self {
+		self.add_constraint(constraint);
+		self
+	}
+
+	/// Adds a many-to-many relationship and returns self for chaining.
+	pub fn with_many_to_many(mut self, many_to_many: ManyToManyMetadata) -> Self {
+		self.add_many_to_many(many_to_many);
+		self
+	}
+
 	/// Add a ForeignKey constraint from field information
 	pub fn add_foreign_key_constraint_from_field(&mut self, field_name: &str) {
 		if let Some(field) = self.fields.get(field_name)
@@ -896,7 +1057,15 @@ impl ModelState {
 ///
 /// assert!(state.get_model("myapp", "User").is_some());
 /// ```
+///
+/// # Construction
+///
+/// This struct is `#[non_exhaustive]`, so code outside `reinhardt-db` cannot
+/// build it with a struct literal (struct update syntax does not bypass this).
+/// Use [`ProjectState::new`] and the chained `with_*` builders; public fields
+/// stay readable and assignable after construction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ProjectState {
 	/// Models: (app_label, model_name) -> ModelState
 	pub models: std::collections::BTreeMap<(String, String), ModelState>,
@@ -1186,6 +1355,36 @@ impl ProjectState {
 	pub fn add_model(&mut self, model: ModelState) {
 		let key = (model.app_label.clone(), model.name.clone());
 		self.models.insert(key, model);
+	}
+
+	/// Adds or replaces a model, keyed by its app label and model name, and
+	/// returns self for chaining.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use reinhardt_db::migrations::{FieldState, FieldType, ModelState, ProjectState};
+	///
+	/// let state = ProjectState::new()
+	///     .with_model(
+	///         ModelState::new("blog", "Post")
+	///             .with_field(FieldState::new("id", FieldType::BigInteger, false)),
+	///     )
+	///     .with_model(ModelState::new("blog", "Comment"));
+	///
+	/// assert_eq!(state.models.len(), 2);
+	/// assert!(state.get_model("blog", "Post").is_some());
+	/// ```
+	pub fn with_model(mut self, model: ModelState) -> Self {
+		self.add_model(model);
+		self
+	}
+
+	/// Restricts sequence planning to one app, including an explicit `None`
+	/// for every app, and returns self for chaining.
+	pub fn with_sequence_scope(mut self, sequence_scope: Option<String>) -> Self {
+		self.sequence_scope = sequence_scope;
+		self
 	}
 
 	/// Get a model by app_label and model_name
@@ -19080,5 +19279,153 @@ mod tests {
 		let tables = create_table_names(cycle_migration);
 		assert!(tables.contains(&"cycles_alpha".to_string()));
 		assert!(tables.contains(&"cycles_beta".to_string()));
+	}
+}
+
+#[cfg(test)]
+mod state_builder_tests {
+	use super::*;
+	use crate::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
+	use crate::migrations::{FieldType, GeneratedColumnDefinition, GeneratedStorage};
+	use rstest::rstest;
+
+	fn string_domain(values: &[&str]) -> FieldDomain {
+		FieldDomain::Enum {
+			repr: ModelEnumRepr::String,
+			values: values
+				.iter()
+				.map(|value| ModelEnumValue::String((*value).to_string()))
+				.collect(),
+		}
+	}
+
+	fn foreign_key() -> ForeignKeyInfo {
+		ForeignKeyInfo {
+			referenced_table: "owners".to_string(),
+			referenced_column: "id".to_string(),
+			on_delete: ForeignKeyAction::Cascade,
+			on_update: ForeignKeyAction::NoAction,
+		}
+	}
+
+	#[rstest]
+	fn field_state_builders_set_every_optional_field() {
+		// Arrange
+		let generated =
+			GeneratedColumnDefinition::raw_sql("owner_id + 1", GeneratedStorage::Stored);
+		let domain = string_domain(&["published", "draft"]);
+
+		// Act
+		let field = FieldState::new("owner_id", FieldType::BigInteger, true)
+			.with_param("db_index", "true")
+			.with_params([("unique", "false"), ("db_index", "false")])
+			.with_generated(Some(generated.clone()))
+			.with_domain_opt(Some(domain.clone()))
+			.with_foreign_key_info(Some(foreign_key()));
+
+		// Assert
+		assert_eq!(
+			field,
+			FieldState {
+				name: "owner_id".to_string(),
+				field_type: FieldType::BigInteger,
+				nullable: true,
+				params: HashMap::from([
+					("db_index".to_string(), "false".to_string()),
+					("unique".to_string(), "false".to_string()),
+				]),
+				generated: Some(generated),
+				domain: Some(domain.canonicalized()),
+				foreign_key: Some(foreign_key()),
+			}
+		);
+	}
+
+	#[rstest]
+	fn field_state_option_builders_clear_values() {
+		// Arrange
+		let field =
+			FieldState::with_foreign_key("owner_id", FieldType::BigInteger, false, foreign_key())
+				.with_domain(string_domain(&["a"]));
+
+		// Act
+		let cleared = field
+			.with_foreign_key_info(None)
+			.with_domain_opt(None)
+			.with_generated(None);
+
+		// Assert
+		assert_eq!(
+			cleared,
+			FieldState::new("owner_id", FieldType::BigInteger, false)
+		);
+	}
+
+	#[rstest]
+	fn model_state_builders_set_every_field() {
+		// Arrange
+		let index = IndexDefinition::new("posts_slug_idx", vec!["slug".to_string()], true);
+		let constraint = ConstraintDefinition {
+			name: "posts_slug_check".to_string(),
+			constraint_type: "check".to_string(),
+			fields: vec!["slug".to_string()],
+			expression: Some("slug <> ''".to_string()),
+			foreign_key_info: None,
+		};
+		let many_to_many = ManyToManyMetadata::new("tags", "Tag");
+
+		// Act
+		let model = ModelState::new("blog", "Post")
+			.with_table_name("posts")
+			.with_field(FieldState::new("slug", FieldType::VarChar(64), false))
+			.with_option("ordering", "-id")
+			.with_base_model(Some("Content".to_string()))
+			.with_inheritance_type(Some("joined_table".to_string()))
+			.with_discriminator_column(Some("kind".to_string()))
+			.with_index(index.clone())
+			.with_constraint(constraint.clone())
+			.with_many_to_many(many_to_many.clone());
+
+		// Assert
+		assert_eq!(model.app_label, "blog");
+		assert_eq!(model.name, "Post");
+		assert_eq!(model.table_name, "posts");
+		assert_eq!(
+			model.fields,
+			BTreeMap::from([(
+				"slug".to_string(),
+				FieldState::new("slug", FieldType::VarChar(64), false)
+			)])
+		);
+		assert_eq!(
+			model.options,
+			HashMap::from([("ordering".to_string(), "-id".to_string())])
+		);
+		assert_eq!(model.base_model.as_deref(), Some("Content"));
+		assert_eq!(model.inheritance_type.as_deref(), Some("joined_table"));
+		assert_eq!(model.discriminator_column.as_deref(), Some("kind"));
+		assert_eq!(model.indexes, vec![index]);
+		assert_eq!(model.constraints, vec![constraint]);
+		assert_eq!(model.many_to_many_fields, vec![many_to_many]);
+	}
+
+	#[rstest]
+	fn project_state_builders_key_models_and_set_sequence_scope() {
+		// Act
+		let state = ProjectState::new()
+			.with_model(ModelState::new("blog", "Post"))
+			.with_model(ModelState::new("blog", "Post").with_table_name("posts"))
+			.with_sequence_scope(Some("blog".to_string()));
+
+		// Assert
+		assert_eq!(state.models.len(), 1);
+		assert_eq!(
+			state
+				.get_model("blog", "Post")
+				.map(|model| model.table_name.as_str()),
+			Some("posts")
+		);
+		assert_eq!(state.sequence_scope.as_deref(), Some("blog"));
+		assert!(!state.has_opaque_schema_operations);
 	}
 }
