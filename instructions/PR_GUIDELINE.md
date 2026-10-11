@@ -463,10 +463,18 @@ remain in force. All three
 labels, `security`, `rc-breaking-approved`, and `breaking-change`, must remain
 present, alongside a breaking Conventional Commit title. The latest
 approval-label event must identify a user with current `maintain` or `admin`
-repository access, including custom roles with either base role. Triage or write access
-alone, missing event history, or failed permission verification cannot approve
-the exception. Before merging an approved security exception and after an
-approver loses access or the RC phase ends, dispatch the trusted main workflow
+repository access, including custom roles with either base role. That same user
+must post an unedited PR conversation comment after the latest label event,
+starting with `Approved RC breaking security exception for head` followed by the
+current complete SHA in backticks and a period. Follow the exact format in
+[BB-3](PR_BASE_BRANCH_POLICY.md#bb-3-should-how-to-choose-the-source-branch).
+Every new head requires a fresh approval record; an old label cannot approve
+later commits. Reapplying the label requires a new record, and editing or
+deleting the only valid record causes a fresh failing check. The trusted main
+workflow reevaluates PR conversation comments on creation, editing, and deletion.
+Triage or write access alone, missing provenance, or failed approval verification
+cannot approve the exception. Before merging an approved security exception,
+and after an approver loses access or the RC phase ends, dispatch the trusted main workflow
 with a canonical decimal PR number as required by
 [BB-3 approval reevaluation](PR_BASE_BRANCH_POLICY.md#bb-3-should-how-to-choose-the-source-branch)
 and wait for its new head check; an old success is insufficient.
