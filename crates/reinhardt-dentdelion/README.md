@@ -330,9 +330,13 @@ for path in discovered {
 ### Limitations
 
 - **Models capability is NOT supported** for WASM plugins (requires compile-time integration)
-- Memory limit: 128MB default (configurable via `WasmRuntimeConfig`)
-- Execution timeout: 30 seconds default (configurable)
+- Linear-memory limit: 128MB per memory by default (enforced by Wasmtime's
+  store limiter; configurable via `WasmRuntimeConfig`)
+- Execution timeout: 30 seconds by default (enforced by Wasmtime epoch
+  interruption; configurable)
 - Fuel-based CPU metering: 100M instructions default (configurable)
+- Plugin HTTP requests reject internal/reserved addresses, pin validated DNS
+  results, and never follow redirects or environment proxies.
 - Config values must be MessagePack-serializable
 
 ## CLI Integration

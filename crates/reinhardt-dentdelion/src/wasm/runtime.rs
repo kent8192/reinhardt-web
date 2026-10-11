@@ -29,9 +29,10 @@ use crate::error::{PluginError, PluginResult};
 
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use wasmtime::component::{Component, HasSelf, Linker};
-use wasmtime::{Config, Engine, Store};
+use wasmtime::{Config, Engine, Store, StoreLimitsBuilder};
 use wasmtime_wasi::p2;
 
 use super::host::HostState;
@@ -134,6 +135,9 @@ pub struct WasmRuntime {
 	config: WasmRuntimeConfig,
 	/// Component linker (thread-safe, shareable).
 	linker: Arc<Linker<HostState>>,
+	/// Stops the epoch ticker when the runtime is dropped.
+	stop_epoch_ticker: Arc<AtomicBool>,
+	epoch_ticker: Option<std::thread::JoinHandle<()>>,
 }
 
 impl WasmRuntime {
@@ -161,6 +165,7 @@ impl WasmRuntime {
 
 		// Enable Component Model
 		wasmtime_config.wasm_component_model(true);
+		wasmtime_config.epoch_interruption(true);
 
 		// Create the engine
 		let engine = Engine::new(&wasmtime_config)
@@ -191,10 +196,22 @@ impl WasmRuntime {
 			},
 		)?;
 
+		let stop_epoch_ticker = Arc::new(AtomicBool::new(false));
+		let ticker_engine = engine.clone();
+		let ticker_stop = Arc::clone(&stop_epoch_ticker);
+		let epoch_ticker = std::thread::spawn(move || {
+			while !ticker_stop.load(Ordering::Relaxed) {
+				std::thread::sleep(Duration::from_millis(10));
+				ticker_engine.increment_epoch();
+			}
+		});
+
 		Ok(Self {
 			engine,
 			config,
 			linker: Arc::new(linker),
+			stop_epoch_ticker,
+			epoch_ticker: Some(epoch_ticker),
 		})
 	}
 
@@ -281,8 +298,23 @@ impl WasmRuntime {
 	/// # Arguments
 	///
 	/// * `host_state` - The host state for this store
-	pub fn create_store(&self, host_state: HostState) -> Store<HostState> {
+	pub fn create_store(&self, mut host_state: HostState) -> Store<HostState> {
+		host_state.store_limits = Some(
+			StoreLimitsBuilder::new()
+				.memory_size((self.config.memory_limit_mb as usize).saturating_mul(1024 * 1024))
+				.trap_on_grow_failure(true)
+				.build(),
+		);
 		let mut store = Store::new(&self.engine, host_state);
+		store.limiter(|state| {
+			state
+				.store_limits
+				.as_mut()
+				.expect("store limits configured")
+		});
+		let ticks = self.config.timeout.as_millis().div_ceil(10).max(1);
+		store.set_epoch_deadline(u64::try_from(ticks).unwrap_or(u64::MAX));
+		store.epoch_deadline_trap();
 
 		// Configure fuel if enabled
 		if self.config.fuel_metering {
@@ -315,6 +347,15 @@ impl WasmRuntime {
 	/// The remaining fuel, or `None` if fuel metering is disabled.
 	pub fn remaining_fuel(&self, store: &Store<HostState>) -> Option<u64> {
 		store.get_fuel().ok()
+	}
+}
+
+impl Drop for WasmRuntime {
+	fn drop(&mut self) {
+		self.stop_epoch_ticker.store(true, Ordering::Relaxed);
+		if let Some(ticker) = self.epoch_ticker.take() {
+			let _ = ticker.join();
+		}
 	}
 }
 
@@ -373,5 +414,68 @@ mod tests {
 		let result = runtime.load_component_from_bytes(&invalid_bytes);
 
 		assert!(matches!(result, Err(PluginError::InvalidWasmBinary)));
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn store_memory_limit_allows_small_growth_and_traps_excess() {
+		let config = WasmRuntimeConfigBuilder::new()
+			.memory_limit_mb(1)
+			.fuel_metering(false)
+			.build();
+		let runtime = WasmRuntime::new(config).unwrap();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			r#"(module
+				(memory (export "memory") 1)
+				(func (export "grow_one") (result i32) i32.const 1 memory.grow)
+				(func (export "grow_past_limit") (result i32) i32.const 15 memory.grow)
+			)"#,
+		)
+		.unwrap();
+		let mut store = runtime.create_store(HostState::new("memory-test"));
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+			.await
+			.unwrap();
+
+		let grow_one = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_one")
+			.unwrap();
+		assert_eq!(grow_one.call_async(&mut store, ()).await.unwrap(), 1);
+		let grow_past_limit = instance
+			.get_typed_func::<(), i32>(&mut store, "grow_past_limit")
+			.unwrap();
+		assert!(grow_past_limit.call_async(&mut store, ()).await.is_err());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn store_epoch_deadline_interrupts_busy_loop() {
+		let config = WasmRuntimeConfigBuilder::new()
+			.timeout(Duration::from_millis(30))
+			.fuel_metering(false)
+			.build();
+		let runtime = WasmRuntime::new(config).unwrap();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			r#"(module
+				(func (export "noop"))
+				(func (export "spin") (loop (br 0)))
+			)"#,
+		)
+		.unwrap();
+		let mut store = runtime.create_store(HostState::new("timeout-test"));
+		let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+			.await
+			.unwrap();
+		let noop = instance
+			.get_typed_func::<(), ()>(&mut store, "noop")
+			.unwrap();
+		assert!(noop.call_async(&mut store, ()).await.is_ok());
+		let spin = instance
+			.get_typed_func::<(), ()>(&mut store, "spin")
+			.unwrap();
+
+		assert!(spin.call_async(&mut store, ()).await.is_err());
 	}
 }

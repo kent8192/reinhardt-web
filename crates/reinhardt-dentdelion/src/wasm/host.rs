@@ -42,6 +42,8 @@ use super::ts_runtime::SharedTsRuntime;
 use reinhardt_db::backends::connection::DatabaseConnection;
 
 #[cfg(feature = "wasm")]
+use wasmtime::StoreLimits;
+#[cfg(feature = "wasm")]
 use wasmtime::component::ResourceTable;
 #[cfg(feature = "wasm")]
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
@@ -52,12 +54,15 @@ use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 /// 1. Only allows `http://` and `https://` schemes
 /// 2. Resolves the hostname to an IP address
 /// 3. Rejects requests to private, loopback, and link-local IP addresses
-fn validate_url_for_ssrf(url: &str) -> Result<(), WitPluginError> {
+fn validate_url_for_ssrf(url: &str) -> Result<Vec<std::net::SocketAddr>, WitPluginError> {
 	use std::net::ToSocketAddrs;
 
 	// Parse the URL
 	let parsed = url::Url::parse(url)
 		.map_err(|e| WitPluginError::with_details(400, "Invalid URL", e.to_string()))?;
+	if !parsed.username().is_empty() || parsed.password().is_some() {
+		return Err(WitPluginError::new(403, "URL userinfo is not allowed"));
+	}
 
 	// Validate scheme: only http and https are allowed
 	match parsed.scheme() {
@@ -75,19 +80,23 @@ fn validate_url_for_ssrf(url: &str) -> Result<(), WitPluginError> {
 
 	// Extract host
 	let host = parsed
-		.host_str()
+		.host()
 		.ok_or_else(|| WitPluginError::new(400, "URL must contain a host"))?;
 
 	// Determine port (default to 80 for http, 443 for https)
 	let port = parsed.port_or_known_default().unwrap_or(80);
 
 	// Resolve hostname to IP addresses for DNS rebinding protection
-	let socket_addrs: Vec<_> = format!("{}:{}", host, port)
-		.to_socket_addrs()
-		.map_err(|e| {
-			WitPluginError::with_details(400, "Failed to resolve hostname", e.to_string())
-		})?
-		.collect();
+	let socket_addrs: Vec<_> = match host {
+		url::Host::Domain(domain) => (domain, port)
+			.to_socket_addrs()
+			.map_err(|e| {
+				WitPluginError::with_details(400, "Failed to resolve hostname", e.to_string())
+			})?
+			.collect(),
+		url::Host::Ipv4(ip) => vec![std::net::SocketAddr::new(ip.into(), port)],
+		url::Host::Ipv6(ip) => vec![std::net::SocketAddr::new(ip.into(), port)],
+	};
 
 	if socket_addrs.is_empty() {
 		return Err(WitPluginError::new(
@@ -109,7 +118,25 @@ fn validate_url_for_ssrf(url: &str) -> Result<(), WitPluginError> {
 		}
 	}
 
-	Ok(())
+	Ok(socket_addrs)
+}
+
+/// Construct a one-request client pinned to addresses checked above.
+/// A fresh client avoids reusing a pooled connection resolved for another URL.
+fn ssrf_safe_client(url: &str) -> Result<reqwest::Client, WitPluginError> {
+	let addrs = validate_url_for_ssrf(url)?;
+	let parsed = url::Url::parse(url)
+		.map_err(|e| WitPluginError::with_details(400, "Invalid URL", e.to_string()))?;
+	let mut builder = reqwest::Client::builder()
+		.redirect(reqwest::redirect::Policy::none())
+		.no_proxy()
+		.timeout(std::time::Duration::from_secs(30));
+	if let Some(url::Host::Domain(domain)) = parsed.host() {
+		builder = builder.resolve_to_addrs(domain, &addrs);
+	}
+	builder
+		.build()
+		.map_err(|e| WitPluginError::with_details(500, "HTTP client failed", e.to_string()))
 }
 
 /// Check if an IP address is private, loopback, or link-local.
@@ -118,6 +145,7 @@ fn is_private_ip(ip: &std::net::IpAddr) -> bool {
 
 	match ip {
 		IpAddr::V4(ipv4) => {
+			let o = ipv4.octets();
 			// 127.0.0.0/8 - Loopback
 			ipv4.is_loopback()
 			// 10.0.0.0/8 - Private
@@ -129,43 +157,23 @@ fn is_private_ip(ip: &std::net::IpAddr) -> bool {
 			// 169.254.0.0/16 - Link-local
 			|| (ipv4.octets()[0] == 169 && ipv4.octets()[1] == 254)
 			// 0.0.0.0/8 - Current network
-			|| ipv4.octets()[0] == 0
+			|| o[0] == 0
+			// Shared, reserved, documentation, benchmarking, and multicast ranges
+			|| (o[0] == 100 && (o[1] & 0xc0) == 64)
+			|| (o[0] == 192 && o[1] == 0 && o[2] <= 2)
+			|| (o[0] == 198 && (o[1] == 18 || o[1] == 19 || (o[1] == 51 && o[2] == 100)))
+			|| (o[0] == 203 && o[1] == 0 && o[2] == 113)
+			|| o[0] >= 224
 		}
 		IpAddr::V6(ipv6) => {
-			// ::1 - IPv6 loopback
-			ipv6.is_loopback()
-			// fc00::/7 - IPv6 unique local address (private)
-			|| (ipv6.segments()[0] & 0xfe00) == 0xfc00
-			// fe80::/10 - IPv6 link-local
-			|| (ipv6.segments()[0] & 0xffc0) == 0xfe80
-			// :: - IPv6 unspecified
-			|| ipv6.is_unspecified()
-			// ::ffff:0:0/96 - IPv4-mapped IPv6 (check the embedded IPv4)
-			|| is_ipv4_mapped_private(ipv6)
+			// Only global-unicast 2000::/3 is eligible. Exclude documentation and
+			// transition ranges that can encode another destination address.
+			(ipv6.segments()[0] & 0xe000) != 0x2000
+				|| (ipv6.segments()[0] == 0x2001 && ipv6.segments()[1] == 0x0db8)
+				|| (ipv6.segments()[0] == 0x2001 && ipv6.segments()[1] == 0)
+				|| ipv6.segments()[0] == 0x2002
 		}
 	}
-}
-
-/// Check if an IPv4-mapped IPv6 address contains a private IPv4 address.
-fn is_ipv4_mapped_private(ipv6: &std::net::Ipv6Addr) -> bool {
-	// Check for ::ffff:x.x.x.x pattern (IPv4-mapped IPv6)
-	let segments = ipv6.segments();
-	if segments[0] == 0
-		&& segments[1] == 0
-		&& segments[2] == 0
-		&& segments[3] == 0
-		&& segments[4] == 0
-		&& segments[5] == 0xffff
-	{
-		let ipv4 = std::net::Ipv4Addr::new(
-			(segments[6] >> 8) as u8,
-			(segments[6] & 0xff) as u8,
-			(segments[7] >> 8) as u8,
-			(segments[7] & 0xff) as u8,
-		);
-		return is_private_ip(&std::net::IpAddr::V4(ipv4));
-	}
-	false
 }
 
 /// Host state that is passed to WASM instances.
@@ -184,7 +192,7 @@ pub struct HostState {
 	typed_services: RwLock<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
 	/// Granted capabilities for this plugin
 	capabilities: HashSet<Capability>,
-	/// HTTP client for making external requests (optional)
+	/// Whether plugin HTTP requests are enabled; requests use a fresh pinned client.
 	http_client: Option<reqwest::Client>,
 	/// Database connection for SQL queries (optional, requires DatabaseAccess capability)
 	#[cfg(feature = "wasm")]
@@ -205,6 +213,9 @@ pub struct HostState {
 	/// Wrapped in Mutex to allow interior mutability while maintaining Sync
 	#[cfg(feature = "wasm")]
 	resource_table: parking_lot::Mutex<ResourceTable>,
+	/// Per-store linear-memory limit, installed by `WasmRuntime::create_store`.
+	#[cfg(feature = "wasm")]
+	pub(super) store_limits: Option<StoreLimits>,
 }
 
 impl HostState {
@@ -258,6 +269,8 @@ impl HostState {
 			wasi_ctx: parking_lot::Mutex::new(WasiCtxBuilder::new().build()),
 			#[cfg(feature = "wasm")]
 			resource_table: parking_lot::Mutex::new(ResourceTable::new()),
+			#[cfg(feature = "wasm")]
+			store_limits: None,
 		}
 	}
 
@@ -374,12 +387,10 @@ impl HostState {
 			return Err(WitPluginError::new(403, "HTTP access not permitted"));
 		}
 
-		validate_url_for_ssrf(url)?;
-
-		let client = self
-			.http_client
+		self.http_client
 			.as_ref()
 			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))?;
+		let client = ssrf_safe_client(url)?;
 
 		let mut request = client.get(url);
 
@@ -424,12 +435,10 @@ impl HostState {
 			return Err(WitPluginError::new(403, "HTTP access not permitted"));
 		}
 
-		validate_url_for_ssrf(url)?;
-
-		let client = self
-			.http_client
+		self.http_client
 			.as_ref()
 			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))?;
+		let client = ssrf_safe_client(url)?;
 
 		let mut request = client.post(url).body(body.to_vec());
 
@@ -630,14 +639,16 @@ impl HostState {
 
 	/// Unsubscribe from a subscription.
 	pub fn unsubscribe_events(&self, subscription_id: u64) -> bool {
-		self.event_bus.unsubscribe(subscription_id)
+		self.event_bus
+			.unsubscribe_for_owner(subscription_id, &self.plugin_name)
 	}
 
 	/// Poll for pending events on a subscription.
 	///
 	/// Events are removed from the queue once polled.
 	pub fn poll_pending_events(&self, subscription_id: u64, limit: usize) -> Vec<Event> {
-		self.event_bus.poll(subscription_id, limit)
+		self.event_bus
+			.poll_for_owner(subscription_id, limit, &self.plugin_name)
 	}
 
 	// ===== Model Registry API =====
@@ -912,7 +923,8 @@ impl HostStateBuilder {
 		self
 	}
 
-	/// Set a custom HTTP client.
+	/// Enable HTTP access with a supplied client handle.
+	/// Plugin requests always use a fresh pinned client to enforce SSRF controls.
 	pub fn http_client(mut self, client: reqwest::Client) -> Self {
 		self.http_client = Some(client);
 		self
@@ -1004,6 +1016,8 @@ impl HostStateBuilder {
 			wasi_ctx: parking_lot::Mutex::new(WasiCtxBuilder::new().build()),
 			#[cfg(feature = "wasm")]
 			resource_table: parking_lot::Mutex::new(ResourceTable::new()),
+			#[cfg(feature = "wasm")]
+			store_limits: None,
 		}
 	}
 }
@@ -2129,7 +2143,7 @@ mod tests {
 	#[test]
 	fn test_ssrf_allows_public_http() {
 		// Arrange
-		let url = "http://example.com/api/data";
+		let url = "http://8.8.8.8/api/data";
 
 		// Act
 		let result = validate_url_for_ssrf(url);
@@ -2141,13 +2155,27 @@ mod tests {
 	#[test]
 	fn test_ssrf_allows_public_https() {
 		// Arrange
-		let url = "https://api.github.com/repos";
+		let url = "https://1.1.1.1/repos";
 
 		// Act
 		let result = validate_url_for_ssrf(url);
 
 		// Assert
 		assert!(result.is_ok());
+	}
+
+	#[rstest::rstest]
+	fn test_ssrf_allows_public_ipv6_literal() {
+		assert!(validate_url_for_ssrf("https://[2606:4700:4700::1111]/").is_ok());
+	}
+
+	#[rstest::rstest]
+	fn test_ssrf_rejects_userinfo_and_reserved_addresses() {
+		assert!(validate_url_for_ssrf("https://user@8.8.8.8/path").is_err());
+		assert!(validate_url_for_ssrf("http://100.64.0.1/path").is_err());
+		assert!(validate_url_for_ssrf("http://198.18.0.1/path").is_err());
+		assert!(validate_url_for_ssrf("http://[2001:db8::1]/path").is_err());
+		assert!(validate_url_for_ssrf("http://[2002:a00:1::]/path").is_err());
 	}
 
 	#[test]

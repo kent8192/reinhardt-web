@@ -45,6 +45,7 @@
 //! ```
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
 use std::time::Duration;
@@ -56,6 +57,10 @@ const DEFAULT_EXECUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Default maximum JavaScript source code size in bytes (1 MiB).
 const DEFAULT_MAX_SOURCE_SIZE: usize = 1024 * 1024;
+
+/// Boa does not interrupt a running context when a channel receive times out.
+/// This interpreter-level limit ensures a nonterminating loop eventually stops.
+const MAX_LOOP_ITERATIONS: u64 = 100_000;
 
 /// Resource limits for JavaScript execution.
 ///
@@ -129,6 +134,8 @@ pub struct TsRuntime {
 	preact_initialized: bool,
 	/// Resource limits for JavaScript execution
 	limits: TsResourceLimits,
+	/// Stop admitting work after a timed-out evaluation may still be running.
+	poisoned: AtomicBool,
 }
 
 impl TsRuntime {
@@ -167,8 +174,9 @@ impl TsRuntime {
 
 		// Spawn dedicated thread for boa_engine::Context.
 		// Context is !Send + !Sync, so it must stay on this single thread.
+		let execution_timeout = limits.execution_timeout;
 		thread::spawn(move || {
-			runtime_thread_main(command_rx, init_tx);
+			runtime_thread_main(command_rx, init_tx, execution_timeout);
 		});
 
 		// Wait for initialization result from the dedicated thread
@@ -180,6 +188,7 @@ impl TsRuntime {
 			command_tx,
 			preact_initialized: true,
 			limits,
+			poisoned: AtomicBool::new(false),
 		})
 	}
 
@@ -197,21 +206,25 @@ impl TsRuntime {
 	/// ```
 	pub fn eval(&self, code: &str) -> Result<String, TsError> {
 		self.check_source_size(code)?;
+		self.check_ready()?;
 
 		let (response_tx, response_rx) = mpsc::channel();
 		self.command_tx
-			.send(RuntimeCommand::Eval {
+			.try_send(RuntimeCommand::Eval {
 				code: code.to_string(),
 				response_tx,
 			})
-			.map_err(|_| TsError::EvalFailed("Runtime thread is not available".to_string()))?;
+			.map_err(|_| TsError::EvalFailed("Runtime queue is unavailable or full".to_string()))?;
 
 		response_rx
 			.recv_timeout(self.limits.execution_timeout)
 			.map_err(|e| match e {
-				mpsc::RecvTimeoutError::Timeout => TsError::ExecutionTimeout {
-					timeout: self.limits.execution_timeout,
-				},
+				mpsc::RecvTimeoutError::Timeout => {
+					self.poisoned.store(true, Ordering::Release);
+					TsError::ExecutionTimeout {
+						timeout: self.limits.execution_timeout,
+					}
+				}
 				mpsc::RecvTimeoutError::Disconnected => {
 					TsError::EvalFailed("Runtime thread terminated during evaluation".to_string())
 				}
@@ -223,21 +236,25 @@ impl TsRuntime {
 	/// Useful for executing side-effect code like defining functions.
 	pub fn eval_void(&self, code: &str) -> Result<(), TsError> {
 		self.check_source_size(code)?;
+		self.check_ready()?;
 
 		let (response_tx, response_rx) = mpsc::channel();
 		self.command_tx
-			.send(RuntimeCommand::EvalVoid {
+			.try_send(RuntimeCommand::EvalVoid {
 				code: code.to_string(),
 				response_tx,
 			})
-			.map_err(|_| TsError::EvalFailed("Runtime thread is not available".to_string()))?;
+			.map_err(|_| TsError::EvalFailed("Runtime queue is unavailable or full".to_string()))?;
 
 		response_rx
 			.recv_timeout(self.limits.execution_timeout)
 			.map_err(|e| match e {
-				mpsc::RecvTimeoutError::Timeout => TsError::ExecutionTimeout {
-					timeout: self.limits.execution_timeout,
-				},
+				mpsc::RecvTimeoutError::Timeout => {
+					self.poisoned.store(true, Ordering::Release);
+					TsError::ExecutionTimeout {
+						timeout: self.limits.execution_timeout,
+					}
+				}
 				mpsc::RecvTimeoutError::Disconnected => {
 					TsError::EvalFailed("Runtime thread terminated during evaluation".to_string())
 				}
@@ -284,6 +301,7 @@ impl TsRuntime {
 		if !self.preact_initialized {
 			return Err(TsError::InitFailed("Preact not initialized".to_string()));
 		}
+		self.check_ready()?;
 
 		// Check combined size of component code and props
 		let total_size = component_code.len().saturating_add(props_json.len());
@@ -296,19 +314,24 @@ impl TsRuntime {
 
 		let (response_tx, response_rx) = mpsc::channel();
 		self.command_tx
-			.send(RuntimeCommand::RenderComponent {
+			.try_send(RuntimeCommand::RenderComponent {
 				component_code: component_code.to_string(),
 				props_json: props_json.to_string(),
 				response_tx,
 			})
-			.map_err(|_| TsError::RenderFailed("Runtime thread is not available".to_string()))?;
+			.map_err(|_| {
+				TsError::RenderFailed("Runtime queue is unavailable or full".to_string())
+			})?;
 
 		response_rx
 			.recv_timeout(self.limits.execution_timeout)
 			.map_err(|e| match e {
-				mpsc::RecvTimeoutError::Timeout => TsError::ExecutionTimeout {
-					timeout: self.limits.execution_timeout,
-				},
+				mpsc::RecvTimeoutError::Timeout => {
+					self.poisoned.store(true, Ordering::Release);
+					TsError::ExecutionTimeout {
+						timeout: self.limits.execution_timeout,
+					}
+				}
 				mpsc::RecvTimeoutError::Disconnected => {
 					TsError::RenderFailed("Runtime thread terminated during rendering".to_string())
 				}
@@ -335,6 +358,16 @@ impl TsRuntime {
 		}
 		Ok(())
 	}
+
+	fn check_ready(&self) -> Result<(), TsError> {
+		if self.poisoned.load(Ordering::Acquire) {
+			Err(TsError::ExecutionTimeout {
+				timeout: self.limits.execution_timeout,
+			})
+		} else {
+			Ok(())
+		}
+	}
 }
 
 /// Main function for the dedicated JavaScript runtime thread.
@@ -345,6 +378,7 @@ impl TsRuntime {
 fn runtime_thread_main(
 	command_rx: Receiver<RuntimeCommand>,
 	init_tx: mpsc::Sender<Result<(), TsError>>,
+	execution_timeout: Duration,
 ) {
 	let mut context = Context::default();
 
@@ -362,16 +396,19 @@ fn runtime_thread_main(
 		// Initialization failed; exit the thread
 		return;
 	}
+	context
+		.runtime_limits_mut()
+		.set_loop_iteration_limit(MAX_LOOP_ITERATIONS);
 
 	// Process commands until the channel is closed (all senders dropped)
 	while let Ok(command) = command_rx.recv() {
 		match command {
 			RuntimeCommand::Eval { code, response_tx } => {
-				let result = eval_code(&code, &mut context);
+				let result = eval_code(&code, &mut context, execution_timeout);
 				let _ = response_tx.send(result);
 			}
 			RuntimeCommand::EvalVoid { code, response_tx } => {
-				let result = eval_void_code(&code, &mut context);
+				let result = eval_void_code(&code, &mut context, execution_timeout);
 				let _ = response_tx.send(result);
 			}
 			RuntimeCommand::RenderComponent {
@@ -379,7 +416,12 @@ fn runtime_thread_main(
 				props_json,
 				response_tx,
 			} => {
-				let result = render_component_code(&component_code, &props_json, &mut context);
+				let result = render_component_code(
+					&component_code,
+					&props_json,
+					&mut context,
+					execution_timeout,
+				);
 				let _ = response_tx.send(result);
 			}
 		}
@@ -428,19 +470,19 @@ fn init_preact(context: &mut Context) -> Result<(), TsError> {
 }
 
 /// Evaluate JavaScript code and return the result as a string.
-fn eval_code(code: &str, context: &mut Context) -> Result<String, TsError> {
+fn eval_code(code: &str, context: &mut Context, timeout: Duration) -> Result<String, TsError> {
 	let result = context
 		.eval(Source::from_bytes(code))
-		.map_err(|e| TsError::EvalFailed(js_error_to_string(&e, context)))?;
+		.map_err(|e| js_execution_error(&e, context, timeout, false))?;
 
 	js_value_to_string(&result, context)
 }
 
 /// Evaluate JavaScript code without expecting a return value.
-fn eval_void_code(code: &str, context: &mut Context) -> Result<(), TsError> {
+fn eval_void_code(code: &str, context: &mut Context, timeout: Duration) -> Result<(), TsError> {
 	context
 		.eval(Source::from_bytes(code))
-		.map_err(|e| TsError::EvalFailed(js_error_to_string(&e, context)))?;
+		.map_err(|e| js_execution_error(&e, context, timeout, false))?;
 	Ok(())
 }
 
@@ -449,6 +491,7 @@ fn render_component_code(
 	component_code: &str,
 	props_json: &str,
 	context: &mut Context,
+	timeout: Duration,
 ) -> Result<String, TsError> {
 	let render_script = format!(
 		r#"
@@ -462,9 +505,27 @@ fn render_component_code(
 
 	let result = context
 		.eval(Source::from_bytes(&render_script))
-		.map_err(|e| TsError::RenderFailed(js_error_to_string(&e, context)))?;
+		.map_err(|e| js_execution_error(&e, context, timeout, true))?;
 
 	js_value_to_string(&result, context)
+}
+
+fn js_execution_error(
+	error: &JsError,
+	context: &mut Context,
+	timeout: Duration,
+	render: bool,
+) -> TsError {
+	if error
+		.as_native()
+		.is_some_and(|native| native.is_runtime_limit())
+	{
+		TsError::ExecutionTimeout { timeout }
+	} else if render {
+		TsError::RenderFailed(js_error_to_string(error, context))
+	} else {
+		TsError::EvalFailed(js_error_to_string(error, context))
+	}
 }
 
 /// Convert `JsValue` to String

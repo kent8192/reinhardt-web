@@ -279,6 +279,17 @@ impl EventBus {
 		self.subscriptions.write().remove(&id).is_some()
 	}
 
+	/// Remove a subscription only when it belongs to the requesting plugin.
+	pub(crate) fn unsubscribe_for_owner(&self, id: u64, owner: &str) -> bool {
+		let mut subs = self.subscriptions.write();
+		if subs.get(&id).is_some_and(|sub| sub.owner == owner) {
+			subs.remove(&id);
+			true
+		} else {
+			false
+		}
+	}
+
 	/// Poll for pending events on a subscription.
 	///
 	/// Events are removed from the queue once polled.
@@ -298,6 +309,18 @@ impl EventBus {
 			sub.queue.drain(..count).collect()
 		} else {
 			Vec::new()
+		}
+	}
+
+	/// Poll a subscription only when it belongs to the requesting plugin.
+	pub(crate) fn poll_for_owner(&self, id: u64, limit: usize, owner: &str) -> Vec<Event> {
+		let mut subs = self.subscriptions.write();
+		match subs.get_mut(&id) {
+			Some(sub) if sub.owner == owner => {
+				let count = limit.min(sub.queue.len());
+				sub.queue.drain(..count).collect()
+			}
+			_ => Vec::new(),
 		}
 	}
 
@@ -413,6 +436,20 @@ mod tests {
 		assert!(removed);
 		assert!(!bus.has_subscription(id));
 		assert_eq!(bus.subscription_count(), 0);
+	}
+
+	#[rstest]
+	fn test_subscription_owner_cannot_poll_or_unsubscribe_another_plugin() {
+		let bus = EventBus::new();
+		let id = bus.subscribe("user.*", "owner").unwrap();
+		bus.emit("user.created", vec![1], "producer");
+
+		assert!(bus.poll_for_owner(id, 10, "attacker").is_empty());
+		assert_eq!(bus.pending_count(id), 1);
+		assert!(!bus.unsubscribe_for_owner(id, "attacker"));
+		assert!(bus.has_subscription(id));
+		assert_eq!(bus.poll_for_owner(id, 10, "owner").len(), 1);
+		assert!(bus.unsubscribe_for_owner(id, "owner"));
 	}
 
 	#[rstest]
