@@ -156,12 +156,14 @@ test('a breaking-change label fails even without a breaking title', async () => 
 });
 
 
-const securityApproval = [{ name: 'security' }, { name: 'rc-breaking-approved' }];
+const securityApproval = [
+	{ name: 'security' }, { name: 'rc-breaking-approved' }, { name: 'breaking-change' },
+];
 
 for (const title of ['fix!(security): remediate findings', 'fix(auth)!: revalidate sessions']) {
 	test(`accepts a maintainer-approved security fix: ${title}`, async () => {
 		const result = await run(pullRequest({
-			title, labels: [...securityApproval, { name: 'breaking-change' }],
+			title, labels: securityApproval,
 		}));
 		assertCheck(result, 'success');
 		assert.match(result.checks[0].output.summary, /Approved security fix/);
@@ -269,9 +271,20 @@ for (const option of ['eventsError', 'permissionError']) {
 	});
 }
 
+for (const title of ['fix!(security): remediate findings', 'fix(security)!: remediate findings']) {
+	test(`requires the announcement label for approved breaking title: ${title}`, async () => {
+		const result = await run(pullRequest({
+			title, labels: securityApproval.filter(label => label.name !== 'breaking-change'),
+		}));
+		assertCheck(result, 'failure');
+		assert.equal(result.eventsListed, 0);
+		assert.deepEqual(result.permissionsRead, []);
+	});
+}
+
 test('security approval also covers breaking changes detected only by label', async () => {
 	const result = await run(pullRequest({
-		labels: [...securityApproval, { name: 'breaking-change' }],
+		labels: securityApproval,
 	}));
 	assertCheck(result, 'success');
 	assert.deepEqual(result.failures, []);
@@ -289,10 +302,10 @@ test('current approval labels override an older unapproved event', async () => {
 	assert.equal(result.listed, 0);
 });
 
-for (const remainingLabel of ['security', 'rc-breaking-approved']) {
-	test(`removing either security approval label restores failure: ${remainingLabel}`, async () => {
+for (const removedLabel of ['security', 'rc-breaking-approved', 'breaking-change']) {
+	test(`removing a required security exception label restores failure: ${removedLabel}`, async () => {
 		const result = await run(pullRequest({
-			title: 'fix!(security): remediate findings', labels: [{ name: remainingLabel }],
+			title: 'fix!(security): remediate findings', labels: securityApproval.filter(label => label.name !== removedLabel),
 		}), {
 			payload: pullRequest({ title: 'fix!(security): remediate findings', labels: securityApproval }),
 			comments: [{ body: marker }],

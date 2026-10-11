@@ -455,9 +455,9 @@ title, label, base, and source changes, including label removal. The failed
 result is independent of warning-comment delivery or deduplication; an existing
 warning never makes an invalid target pass. Retarget the breaking change to the
 appropriate develop branch, correct an inaccurate classification, or obtain
-explicit maintainer approval for the documented security exception. Both
-`security` and `rc-breaking-approved` must remain present, and the latest approval
-label event must identify a user with current `maintain` or `admin` repository
+explicit maintainer approval for the documented security exception. All three
+labels, `security`, `rc-breaking-approved`, and `breaking-change`, must remain
+present. The latest approval-label event must identify a user with current `maintain` or `admin` repository
 access. Triage or write access alone, missing event history, or failed permission
 verification cannot approve the exception.
 
