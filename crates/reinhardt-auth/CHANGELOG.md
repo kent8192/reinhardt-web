@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Bound OAuth endpoint DNS resolution by the connection deadline and include it in the request budget.
+
 - Reject non-global and overlay IPv6 assignments for OAuth requests while retaining routable special-purpose locator exceptions.
 
 - Decline anonymous and expired sessions before enforcing session-authentication CSRF checks.
