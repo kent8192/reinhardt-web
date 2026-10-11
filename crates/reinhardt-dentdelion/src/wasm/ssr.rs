@@ -410,6 +410,7 @@ impl SsrProxy {
 			check_render_deadline(deadline)?;
 			let max = runtime.limits().max_source_size;
 			// Bound the borrowed input before copying it into the blocking task.
+			check_render_source_size(component_path.len(), max)?;
 			check_render_source_size(props.len(), max)?;
 			let base_dir = self.plugin_base_dir.clone().ok_or_else(|| {
 				SsrError::ComponentNotFound(
@@ -1372,6 +1373,36 @@ mod tests {
 		use super::*;
 		use crate::wasm::ts_runtime::TsRuntime;
 		use std::sync::Arc;
+
+		#[rstest::rstest]
+		#[tokio::test(flavor = "current_thread")]
+		async fn oversized_component_path_is_rejected_before_admission_copy() {
+			use crate::wasm::ts_runtime::TsResourceLimits;
+			// Arrange: a borrowed path exceeds the cap, with no base directory configured.
+			let path = format!("{}.js", "a".repeat(1024));
+			let runtime = Arc::new(
+				TsRuntime::with_limits(TsResourceLimits {
+					max_source_size: 64,
+					..TsResourceLimits::default()
+				})
+				.unwrap(),
+			);
+			let proxy = SsrProxy::with_ts_runtime(runtime);
+			// Act: admission must reject the path before cloning or filesystem setup.
+			let result = proxy
+				.render_react(
+					&path,
+					&rmp_serde::to_vec(&serde_json::json!({})).unwrap(),
+					RenderOptions {
+						include_hydration: true,
+						..RenderOptions::default()
+					},
+				)
+				.await;
+			// Assert: the size error precedes the missing-base-directory error.
+			assert!(matches!(result, Err(SsrError::RenderFailed(message))
+				if message == "source size (1027 bytes) exceeds limit (64 bytes)"));
+		}
 
 		#[rstest::rstest]
 		fn component_reader_stops_at_the_limit_if_input_outgrows_metadata() {
