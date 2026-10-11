@@ -30,7 +30,14 @@ use crate::types::{DynIden, IntoIden};
 ///     .min_value(Some(1))
 ///     .max_value(Some(1000));
 /// ```
+///
+/// # Extensibility
+///
+/// This struct is `#[non_exhaustive]` and its fields are crate-private, so new
+/// sequence options can be added without breaking downstream code. Construct it
+/// with [`SequenceDef::new`] and the chained builder methods.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct SequenceDef {
 	pub(crate) name: DynIden,
 	pub(crate) schema: Option<DynIden>,
@@ -68,7 +75,35 @@ impl SequenceType {
 }
 
 /// Ownership specification for sequences
+///
+/// This enum is `#[non_exhaustive]`: PostgreSQL ownership forms may gain new
+/// variants in a minor release. Existing variants remain directly constructible,
+/// but code outside this crate that matches on `OwnedBy` must include a wildcard
+/// arm. Interpreters should report an explicit unsupported-ownership error from
+/// that arm instead of silently ignoring the value.
+///
+/// # Examples
+///
+/// ```rust
+/// use reinhardt_query::types::{IntoIden, sequence::OwnedBy};
+///
+/// let owner = OwnedBy::Column {
+///     table: "orders".into_iden(),
+///     column: "id".into_iden(),
+/// };
+///
+/// let kind = match &owner {
+///     OwnedBy::Column { .. } => "column",
+///     OwnedBy::SchemaColumn { .. } => "schema column",
+///     OwnedBy::None => "none",
+///     // Required outside `reinhardt-query`: future ownership forms land here.
+///     _ => return Err("unsupported sequence ownership"),
+/// };
+/// assert_eq!(kind, "column");
+/// # Ok::<(), &'static str>(())
+/// ```
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum OwnedBy {
 	/// OWNED BY table.column
 	Column {
@@ -108,7 +143,34 @@ pub enum OwnedBy {
 /// // INCREMENT BY 5
 /// let opt = SequenceOption::IncrementBy(5);
 /// ```
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new `ALTER SEQUENCE` options may be added
+/// in a minor release. Existing variants remain directly constructible, but code
+/// outside this crate that matches on `SequenceOption` must include a wildcard
+/// arm. Interpreters should report an explicit unsupported-option error from
+/// that arm instead of silently skipping the option.
+///
+/// ```rust
+/// use reinhardt_query::types::sequence::SequenceOption;
+///
+/// fn describe(option: &SequenceOption) -> Result<String, String> {
+///     match option {
+///         SequenceOption::IncrementBy(step) => Ok(format!("INCREMENT BY {step}")),
+///         SequenceOption::Cycle => Ok("CYCLE".to_string()),
+///         SequenceOption::NoCycle => Ok("NO CYCLE".to_string()),
+///         // Required outside `reinhardt-query`: fail explicitly on options this
+///         // caller does not interpret, including ones added in later releases.
+///         other => Err(format!("unsupported sequence option: {other:?}")),
+///     }
+/// }
+///
+/// assert_eq!(describe(&SequenceOption::IncrementBy(5)).unwrap(), "INCREMENT BY 5");
+/// assert!(describe(&SequenceOption::Cache(20)).is_err());
+/// ```
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SequenceOption {
 	/// RESTART [WITH value]
 	Restart(Option<i64>),
