@@ -26,6 +26,7 @@ use tokio::time::timeout;
 use crate::shutdown::ShutdownCoordinator;
 
 use super::body::{RequestBodyPlan, collect_request_body, request_body_plan};
+use super::{PreBodyAdmitted, RequestAdmission, RequestHead};
 
 /// A listener-owned WebSocket Upgrade task.
 #[doc(hidden)]
@@ -73,6 +74,7 @@ pub struct HttpServer {
 	/// that reach the configured handler or middleware chain. Set through
 	/// [`HttpServer::with_exception_handler`].
 	exception_handler: Option<Arc<dyn ExceptionHandler>>,
+	request_admission: Option<Arc<dyn RequestAdmission>>,
 }
 
 impl HttpServer {
@@ -102,6 +104,7 @@ impl HttpServer {
 			middlewares: Vec::new(),
 			di_context: None,
 			exception_handler: None,
+			request_admission: None,
 		}
 	}
 
@@ -147,6 +150,12 @@ impl HttpServer {
 	/// ```
 	pub fn with_exception_handler(mut self, exception_handler: Arc<dyn ExceptionHandler>) -> Self {
 		self.exception_handler = Some(exception_handler);
+		self
+	}
+
+	/// Check headers and acquire an owned admission resource before reading the body.
+	pub fn with_request_admission(mut self, policy: Arc<dyn RequestAdmission>) -> Self {
+		self.request_admission = Some(policy);
 		self
 	}
 
@@ -344,6 +353,7 @@ impl HttpServer {
 		// Build the handler with middleware chain
 		let handler = self.build_handler();
 		let di_context = self.di_context.clone();
+		let request_admission = self.request_admission.clone();
 		let mut shutdown_rx = coordinator.subscribe();
 		let (upgrade_tx, mut upgrade_rx) = mpsc::unbounded_channel::<UpgradeTask>();
 		let mut tasks = JoinSet::new();
@@ -365,6 +375,7 @@ impl HttpServer {
 					};
 					let handler = handler.clone();
 					let di_context = di_context.clone();
+					let request_admission = request_admission.clone();
 					let conn_shutdown = coordinator.subscribe();
 					let shutdown_started = coordinator.is_shutdown();
 					let upgrade_tx = upgrade_tx.clone();
@@ -375,6 +386,7 @@ impl HttpServer {
 							socket_addr,
 							handler,
 							di_context,
+							request_admission,
 							upgrade_tx,
 							conn_shutdown,
 							shutdown_started,
@@ -490,6 +502,7 @@ impl HttpServer {
 		socket_addr: SocketAddr,
 		handler: Arc<dyn Handler>,
 		di_context: Option<Arc<InjectionContext>>,
+		request_admission: Option<Arc<dyn RequestAdmission>>,
 		upgrade_tasks: mpsc::UnboundedSender<UpgradeTask>,
 		mut shutdown: tokio::sync::broadcast::Receiver<()>,
 		shutdown_started: bool,
@@ -498,6 +511,7 @@ impl HttpServer {
 		let service = service_fn(move |req| {
 			let handler = Arc::clone(&handler);
 			let di_context = di_context.clone();
+			let request_admission = request_admission.clone();
 			let upgrade_tasks = upgrade_tasks.clone();
 
 			handle_request_with(
@@ -508,6 +522,7 @@ impl HttpServer {
 				},
 				socket_addr,
 				di_context,
+				request_admission,
 				DEFAULT_MAX_BODY_SIZE,
 				Some(upgrade_tasks),
 			)
@@ -561,6 +576,7 @@ impl HttpServer {
 				handler,
 				socket_addr,
 				di_context,
+				None,
 				DEFAULT_MAX_BODY_SIZE,
 				Some(upgrade_tasks),
 			)
@@ -698,6 +714,7 @@ async fn handle_request_with<F, Fut>(
 	handler: F,
 	remote_addr: SocketAddr,
 	di_context: Option<Arc<InjectionContext>>,
+	request_admission: Option<Arc<dyn RequestAdmission>>,
 	max_body_size: u64,
 	upgrade_tasks: Option<mpsc::UnboundedSender<UpgradeTask>>,
 ) -> Result<hyper::Response<ServerResponseBody>, BoxError>
@@ -708,13 +725,49 @@ where
 	let upgrade_context =
 		upgrade_tasks.map(|tasks| HttpUpgradeContext::new(hyper::upgrade::on(&mut req), tasks));
 	let (parts, body) = req.into_parts();
+	let admission = match request_admission {
+		Some(policy) => match policy
+			.admit(RequestHead {
+				method: &parts.method,
+				uri: &parts.uri,
+				headers: &parts.headers,
+				remote_addr: Some(remote_addr),
+			})
+			.await
+		{
+			Ok(admission) => Some(admission),
+			Err(response) => return Ok(into_hyper_response(response)),
+		},
+		None => None,
+	};
+	let max_body_size = admission
+		.as_ref()
+		.map_or(max_body_size, |admission| admission.max_body_size);
+	let receive_timeout = admission
+		.as_ref()
+		.map(|admission| admission.receive_timeout);
 
 	let body_bytes = match request_body_plan(&parts.method, &parts.headers, max_body_size) {
 		RequestBodyPlan::Empty => Bytes::new(),
-		RequestBodyPlan::Collect => match collect_request_body(body, max_body_size).await {
-			Ok(body) => body,
-			Err(error) if error.is_too_large() => return Ok(request_body_too_large_response()),
-			Err(error) => return Err(error.into_box_error()),
+		RequestBodyPlan::Collect => match async {
+			if let Some(receive_timeout) = receive_timeout {
+				timeout(receive_timeout, collect_request_body(body, max_body_size))
+					.await
+					.map_err(|_| ())
+			} else {
+				Ok(collect_request_body(body, max_body_size).await)
+			}
+		}
+		.await
+		{
+			Err(()) => {
+				return Ok(into_hyper_response(Response::new(
+					hyper::StatusCode::REQUEST_TIMEOUT,
+				)));
+			}
+			Ok(Ok(body)) => body,
+			Ok(Err(error)) if error.is_too_large() => return Ok(request_body_too_large_response()),
+			Ok(Err(error)) => return Err(error.into_box_error()),
 		},
 		RequestBodyPlan::RejectTooLarge => return Ok(request_body_too_large_response()),
 	};
@@ -736,6 +789,9 @@ where
 	}
 	if let Some(upgrade_context) = upgrade_context {
 		request.extensions.insert(upgrade_context);
+	}
+	if admission.is_some() {
+		request.extensions.insert(PreBodyAdmitted);
 	}
 
 	// Handle request.
@@ -944,6 +1000,75 @@ pub async fn serve_with_shutdown<H: Handler + 'static>(
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	use std::sync::atomic::{AtomicUsize, Ordering};
+
+	struct CountingAdmission(Arc<AtomicUsize>);
+	struct AdmissionGuard(Arc<AtomicUsize>);
+
+	impl Drop for AdmissionGuard {
+		fn drop(&mut self) {
+			self.0.fetch_sub(1, Ordering::SeqCst);
+		}
+	}
+
+	#[async_trait::async_trait]
+	impl RequestAdmission for CountingAdmission {
+		async fn admit(
+			&self,
+			_head: RequestHead<'_>,
+		) -> Result<super::super::AdmittedRequest, Response> {
+			self.0.fetch_add(1, Ordering::SeqCst);
+			Ok(super::super::AdmittedRequest::new(
+				3,
+				std::time::Duration::from_secs(1),
+				AdmissionGuard(self.0.clone()),
+			))
+		}
+	}
+
+	struct AdmittedHandler(Arc<AtomicUsize>);
+
+	#[async_trait::async_trait]
+	impl Handler for AdmittedHandler {
+		async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
+			assert!(request.extensions.get::<PreBodyAdmitted>().is_some());
+			self.0.fetch_add(1, Ordering::SeqCst);
+			Ok(Response::ok())
+		}
+	}
+
+	#[tokio::test]
+	async fn request_admission_rejects_before_handler_and_releases_guard() {
+		let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let address = listener.local_addr().unwrap();
+		let coordinator = ShutdownCoordinator::new(std::time::Duration::from_secs(2));
+		let active = Arc::new(AtomicUsize::new(0));
+		let handled = Arc::new(AtomicUsize::new(0));
+		let server_coordinator = coordinator.clone();
+		let server_task = tokio::spawn({
+			let active = active.clone();
+			let handled = handled.clone();
+			async move {
+				HttpServer::new(AdmittedHandler(handled))
+					.with_request_admission(Arc::new(CountingAdmission(active)))
+					.listen_on_with_shutdown(listener, server_coordinator)
+					.await
+					.unwrap();
+			}
+		});
+		let client = reqwest::Client::new();
+		let url = format!("http://{address}/upload");
+		let rejected = client.post(&url).body("four").send().await.unwrap();
+		assert_eq!(rejected.status(), StatusCode::PAYLOAD_TOO_LARGE);
+		assert_eq!(handled.load(Ordering::SeqCst), 0);
+		assert_eq!(active.load(Ordering::SeqCst), 0);
+		let accepted = client.post(&url).body("yes").send().await.unwrap();
+		assert_eq!(accepted.status(), StatusCode::OK);
+		assert_eq!(handled.load(Ordering::SeqCst), 1);
+		assert_eq!(active.load(Ordering::SeqCst), 0);
+		coordinator.shutdown();
+		server_task.await.unwrap();
+	}
 
 	struct TestHandler;
 
