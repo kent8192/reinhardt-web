@@ -465,6 +465,29 @@ impl<B: SessionBackend> SessionAuthentication<B> {
 			session_backend,
 		}
 	}
+
+	fn check_csrf(&self, request: &Request, session_key: &str) -> Result<(), AuthenticationError> {
+		if !self.config.enforce_csrf
+			|| matches!(
+				request.method.as_str(),
+				"GET" | "HEAD" | "OPTIONS" | "TRACE"
+			) {
+			return Ok(());
+		}
+
+		let header_name = reinhardt_core::security::csrf::CsrfConfig::default().header_name;
+		let token = request
+			.headers
+			.get(header_name.as_str())
+			.and_then(|value| value.to_str().ok())
+			.ok_or(AuthenticationError::InvalidToken)?;
+		let mut hasher = Sha256::new();
+		hasher.update(b"csrf_secret");
+		hasher.update(session_key.as_bytes());
+		let secret = hasher.finalize();
+		reinhardt_core::security::csrf::check_token_hmac(token, &secret, session_key)
+			.map_err(|_| AuthenticationError::InvalidToken)
+	}
 }
 
 impl<B: SessionBackend + Default> Default for SessionAuthentication<B> {
@@ -487,6 +510,7 @@ impl<B: SessionBackend> RestAuthentication for SessionAuthentication<B> {
 				let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
 				if parts.len() == 2 && parts[0] == self.config.cookie_name {
 					let session_key = parts[1];
+					self.check_csrf(request, session_key)?;
 
 					// Load session from backend
 					let mut session =
@@ -585,6 +609,65 @@ mod tests {
 	use hyper::{HeaderMap, Method};
 	use rstest::rstest;
 	use std::sync::Mutex;
+
+	#[rstest]
+	#[case(true, None, false)]
+	#[case(true, Some("invalid"), false)]
+	#[case(true, Some("valid"), true)]
+	#[case(false, None, true)]
+	#[tokio::test]
+	async fn session_authentication_enforces_csrf_on_post(
+		#[case] enforce_csrf: bool,
+		#[case] supplied_token: Option<&str>,
+		#[case] expected_authenticated: bool,
+	) {
+		use crate::sessions::InMemorySessionBackend;
+
+		let backend = InMemorySessionBackend::new();
+		let mut session = Session::new(backend.clone());
+		session
+			.set("_auth_user_id", "550e8400-e29b-41d4-a716-446655440000")
+			.unwrap();
+		session.save().await.unwrap();
+		let session_key = session.get_or_create_key().to_string();
+		let auth = SessionAuthentication::with_config(
+			SessionAuthConfig {
+				cookie_name: "sessionid".into(),
+				enforce_csrf,
+			},
+			backend,
+		);
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			"Cookie",
+			format!("sessionid={session_key}").parse().unwrap(),
+		);
+		if let Some(supplied_token) = supplied_token {
+			let token = if supplied_token == "valid" {
+				let mut hasher = Sha256::new();
+				hasher.update(b"csrf_secret");
+				hasher.update(session_key.as_bytes());
+				reinhardt_core::security::csrf::get_token_hmac(&hasher.finalize(), &session_key)
+			} else {
+				supplied_token.to_string()
+			};
+			headers.insert("X-CSRFToken", token.parse().unwrap());
+		}
+		let request = Request::builder()
+			.method(Method::POST)
+			.uri("/")
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		let result = RestAuthentication::authenticate(&auth, &request).await;
+		if expected_authenticated {
+			assert!(result.unwrap().is_some());
+		} else {
+			assert!(matches!(result, Err(AuthenticationError::InvalidToken)));
+		}
+	}
 
 	#[tokio::test]
 	#[cfg(feature = "jwt")]
