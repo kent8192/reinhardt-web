@@ -279,7 +279,7 @@ impl BatchValidator {
 
 	/// Execute all validation checks for a single table
 	///
-	/// Builds and executes a UNION ALL query combining all checks for the table.
+	/// Builds and executes a parameterized UNION ALL query for the table.
 	async fn execute_table_checks(
 		&self,
 		table: &str,
@@ -294,55 +294,11 @@ impl BatchValidator {
 			message: format!("Failed to get database connection: {}", e),
 		})?;
 
-		// Build UNION ALL query combining all checks
-		let mut union_queries = Vec::new();
-
-		for query in queries {
-			match query {
-				UniqueCheckQuery::Single {
-					check_id,
-					field,
-					value,
-				} => {
-					// Escape single quotes in value
-					let escaped_value = value.replace('\'', "''");
-					let subquery = format!(
-						"SELECT '{}' as check_id, COUNT(*) as cnt FROM {} WHERE {} = '{}'",
-						check_id, table, field, escaped_value
-					);
-					union_queries.push(subquery);
-				}
-				UniqueCheckQuery::Together {
-					check_id,
-					fields,
-					values,
-				} => {
-					// Build WHERE conditions for all fields
-					let conditions: Vec<String> = fields
-						.iter()
-						.zip(values.iter())
-						.map(|(field, value)| {
-							let escaped_value = value.replace('\'', "''");
-							format!("{} = '{}'", field, escaped_value)
-						})
-						.collect();
-
-					let where_clause = conditions.join(" AND ");
-					let subquery = format!(
-						"SELECT '{}' as check_id, COUNT(*) as cnt FROM {} WHERE {}",
-						check_id, table, where_clause
-					);
-					union_queries.push(subquery);
-				}
-			}
-		}
-
-		// Combine all subqueries with UNION ALL
-		let final_query = union_queries.join(" UNION ALL ");
+		let (final_query, params) = build_validation_query(table, queries, conn.backend())?;
 
 		// Execute query
 		let rows = conn
-			.query(&final_query, vec![])
+			.query(&final_query, params)
 			.await
 			.map_err(|e| SerializerError::Other {
 				message: format!("Failed to execute batch validation query: {}", e),
@@ -389,6 +345,88 @@ impl BatchValidator {
 		self.unique_checks.clear();
 		self.unique_together_checks.clear();
 	}
+}
+
+fn validation_identifier(identifier: &str) -> Result<&str, SerializerError> {
+	if !identifier.is_empty()
+		&& identifier
+			.chars()
+			.all(|c| c.is_ascii_alphanumeric() || c == '_')
+		&& !identifier.as_bytes()[0].is_ascii_digit()
+	{
+		Ok(identifier)
+	} else {
+		Err(SerializerError::Other {
+			message: "Invalid validation table or field identifier".to_string(),
+		})
+	}
+}
+
+fn build_validation_query(
+	table: &str,
+	queries: &[UniqueCheckQuery],
+	backend: reinhardt_db::orm::connection::DatabaseBackend,
+) -> Result<(String, Vec<reinhardt_db::orm::connection::QueryValue>), SerializerError> {
+	use reinhardt_db::orm::connection::{DatabaseBackend, QueryValue};
+
+	let quote = if backend == DatabaseBackend::MySql {
+		'`'
+	} else {
+		'"'
+	};
+	let table = table
+		.split('.')
+		.map(|part| validation_identifier(part).map(|part| format!("{quote}{part}{quote}")))
+		.collect::<Result<Vec<_>, _>>()?
+		.join(".");
+	let mut params = Vec::new();
+	let mut subqueries = Vec::new();
+	for query in queries {
+		let (check_id, fields, values): (&str, Vec<&str>, Vec<&str>) = match query {
+			UniqueCheckQuery::Single {
+				check_id,
+				field,
+				value,
+			} => (check_id, vec![field], vec![value]),
+			UniqueCheckQuery::Together {
+				check_id,
+				fields,
+				values,
+			} => (
+				check_id,
+				fields.iter().map(String::as_str).collect(),
+				values.iter().map(String::as_str).collect(),
+			),
+		};
+		if fields.is_empty() || fields.len() != values.len() {
+			return Err(SerializerError::Other {
+				message: "Validation fields and values must have equal nonzero lengths".to_string(),
+			});
+		}
+		let placeholder = |number: usize| {
+			if backend == DatabaseBackend::Postgres {
+				format!("${number}")
+			} else {
+				"?".to_string()
+			}
+		};
+		params.push(QueryValue::String(check_id.to_string()));
+		let check_placeholder = placeholder(params.len());
+		let mut conditions = Vec::with_capacity(fields.len());
+		for (field, value) in fields.into_iter().zip(values) {
+			let field = validation_identifier(field)?;
+			params.push(QueryValue::String(value.to_string()));
+			conditions.push(format!(
+				"{quote}{field}{quote} = {}",
+				placeholder(params.len())
+			));
+		}
+		subqueries.push(format!(
+			"SELECT {check_placeholder} as check_id, COUNT(*) as cnt FROM {table} WHERE {}",
+			conditions.join(" AND ")
+		));
+	}
+	Ok((subqueries.join(" UNION ALL "), params))
 }
 
 impl Default for BatchValidator {
@@ -657,6 +695,44 @@ mod tests {
 		// Test execute
 		let result = validator.execute().await;
 		assert!(result.is_ok());
+	}
+
+	#[rstest::rstest]
+	fn test_batch_validation_binds_values_and_rejects_sql_identifiers() {
+		use reinhardt_db::orm::connection::{DatabaseBackend, QueryValue};
+
+		let checks = [UniqueCheckQuery::Single {
+			check_id: "users:email:x' OR 1=1 --".to_string(),
+			field: "email".to_string(),
+			value: "x' OR 1=1 --".to_string(),
+		}];
+		let (sql, params) =
+			build_validation_query("users", &checks, DatabaseBackend::Postgres).unwrap();
+		assert_eq!(
+			sql,
+			"SELECT $1 as check_id, COUNT(*) as cnt FROM \"users\" WHERE \"email\" = $2"
+		);
+		assert_eq!(params.len(), 2);
+		assert!(
+			matches!(&params[0], QueryValue::String(value) if value == "users:email:x' OR 1=1 --")
+		);
+		assert!(matches!(&params[1], QueryValue::String(value) if value == "x' OR 1=1 --"));
+		assert!(
+			build_validation_query("users; DROP TABLE users", &checks, DatabaseBackend::Sqlite)
+				.is_err()
+		);
+		let (mysql_sql, _) =
+			build_validation_query("users", &checks, DatabaseBackend::MySql).unwrap();
+		assert_eq!(
+			mysql_sql,
+			"SELECT ? as check_id, COUNT(*) as cnt FROM `users` WHERE `email` = ?"
+		);
+		let (sqlite_sql, _) =
+			build_validation_query("users", &checks, DatabaseBackend::Sqlite).unwrap();
+		assert_eq!(
+			sqlite_sql,
+			"SELECT ? as check_id, COUNT(*) as cnt FROM \"users\" WHERE \"email\" = ?"
+		);
 	}
 
 	#[test]
