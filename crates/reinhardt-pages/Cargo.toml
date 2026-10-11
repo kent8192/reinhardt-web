@@ -455,6 +455,11 @@ path = "tests/wasm/named_navigation_wasm_test.rs"
 required-features = []
 
 [[test]]
+name = "router_active_link_wasm_test"
+path = "tests/wasm/router_active_link_wasm_test.rs"
+required-features = []
+
+[[test]]
 name = "route_loader_navigation_wasm_test"
 path = "tests/wasm/route_loader_navigation_wasm_test.rs"
 required-features = []

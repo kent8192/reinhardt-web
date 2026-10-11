@@ -3810,11 +3810,32 @@ struct AutoreloadChildOptions<'a> {
 	generated_style_root: Option<&'a std::path::Path>,
 }
 
+/// Resolve the response headers attached to every static asset and SPA shell
+/// response (Issue #6721).
+///
+/// Starts from the `response_headers` table of the `[static_files]` (or
+/// `[static]`) settings section; for each header name a runserver hook returns
+/// from [`crate::RunserverHook::static_response_headers`], the hook's values
+/// replace the settings values. A malformed settings table aborts startup so a
+/// misconfigured security header never silently disappears.
 #[cfg(feature = "server")]
-fn configured_static_assets(
-	base_dir: &std::path::Path,
-) -> Result<crate::StaticAssetSettings, String> {
-	crate::StaticAssetSettings::from_project_dir(base_dir)
+fn resolve_static_response_headers(
+	settings: Option<&reinhardt_conf::settings::builder::MergedSettings>,
+	hooks: &[crate::runserver_hooks::CollectedRunserverHook],
+) -> CommandResult<hyper::HeaderMap> {
+	let configured = settings
+		.map(crate::static_asset_settings::static_response_headers_from_merged)
+		.transpose()
+		.map_err(|error| {
+			crate::CommandError::ExecutionError(format!("Invalid static response headers: {error}"))
+		})?
+		.unwrap_or_default();
+	Ok(crate::static_asset_settings::merge_static_response_headers(
+		configured,
+		hooks
+			.iter()
+			.map(|collected| collected.hook.static_response_headers()),
+	))
 }
 
 #[cfg(feature = "server")]
@@ -4814,19 +4835,40 @@ impl RunServerCommand {
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
 			use reinhardt_utils::staticfiles::{PathResolver, TemplateStaticConfig};
-			let static_asset_settings =
-				match PathResolver::find_project_root().or_else(|| std::env::current_dir().ok()) {
-					Some(project_root) => match configured_static_assets(&project_root) {
-						Ok(settings) => Some(settings),
+			let project_settings = match PathResolver::find_project_root()
+				.or_else(|| std::env::current_dir().ok())
+			{
+				Some(project_root) => {
+					match crate::static_asset_settings::load_project_settings(&project_root) {
+						Ok(settings) => Some((project_root, settings)),
 						Err(error) => {
 							ctx.warning(&format!(
-								"Failed to load static URL for generated component styles: {error}. Using /static/."
+								"Failed to load static URL for generated component styles: {error}. Using /static/ without settings-defined static response headers."
 							));
 							None
 						}
-					},
-					None => None,
-				};
+					}
+				}
+				None => None,
+			};
+			let static_asset_settings =
+				project_settings.as_ref().map(|(project_root, settings)| {
+					crate::StaticAssetSettings::from_merged(settings, project_root)
+				});
+			// Issue #6721: every static mount below answers before the router,
+			// so configured security headers must be attached by the mounts.
+			let static_response_headers = resolve_static_response_headers(
+				project_settings.as_ref().map(|(_, settings)| settings),
+				&hooks,
+			)?;
+			if !static_response_headers.is_empty() {
+				let names = static_response_headers
+					.keys()
+					.map(|name| name.as_str())
+					.collect::<Vec<_>>()
+					.join(", ");
+				ctx.verbose(&format!("Static response headers enabled: {names}"));
+			}
 			let generated_style_url = normalize_static_url_prefix(
 				static_asset_settings
 					.as_ref()
@@ -4837,7 +4879,8 @@ impl RunServerCommand {
 				let mut generated_config = StaticFilesConfig::new(generated_root.to_path_buf())
 					.url_prefix(generated_style_url.clone())
 					.spa_mode(false)
-					.auto_inject_wasm(false);
+					.auto_inject_wasm(false)
+					.response_headers(static_response_headers.clone());
 				#[cfg(debug_assertions)]
 				{
 					generated_config =
@@ -4881,7 +4924,8 @@ impl RunServerCommand {
 					.url_prefix(project_static_url.clone())
 					.spa_mode(false)
 					.auto_inject_wasm(false)
-					.passthrough_prefixes(passthrough);
+					.passthrough_prefixes(passthrough)
+					.response_headers(static_response_headers.clone());
 				#[cfg(debug_assertions)]
 				{
 					project_static_config =
@@ -4915,7 +4959,8 @@ impl RunServerCommand {
 					ctx.option("asset-entrypoint").map(String::as_str),
 					navigation,
 				)
-				.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+				.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?
+				.with_response_headers(static_response_headers.clone());
 				if let Some(injection) = &hmr_injection {
 					config = config.with_trusted_html_injection(injection.clone());
 				}
@@ -4957,7 +5002,8 @@ impl RunServerCommand {
 					.url_prefix(generated_style_url.clone())
 					.spa_mode(false)
 					.auto_inject_wasm(false)
-					.manifest_aliases(manifest_aliases.clone());
+					.manifest_aliases(manifest_aliases.clone())
+					.response_headers(static_response_headers.clone());
 				#[cfg(debug_assertions)]
 				{
 					collected_static_config =
@@ -4979,7 +5025,8 @@ impl RunServerCommand {
 				// Exclude framework-managed route prefixes from SPA fallback
 				// so that API endpoints and admin panel are handled by the
 				// application router instead of receiving index.html.
-				.excluded_prefixes(spa_excluded_prefixes(&generated_style_url, &websocket_paths));
+				.excluded_prefixes(spa_excluded_prefixes(&generated_style_url, &websocket_paths))
+				.response_headers(static_response_headers);
 
 			// Issue #4383: In debug builds (dev runserver), disable the
 			// long-lived `public, immutable, max-age=31536000` Cache-Control
@@ -7472,6 +7519,297 @@ mod tests {
 		assert_eq!(modified.status, hyper::StatusCode::SERVICE_UNAVAILABLE);
 	}
 
+	#[cfg(feature = "server")]
+	const STATIC_HEADERS_TEST_CSP: &str = "default-src 'self'; frame-ancestors 'none'";
+
+	/// Runserver hook that overrides the settings-defined `X-Frame-Options`.
+	#[cfg(feature = "server")]
+	struct FrameOptionsHook;
+
+	#[cfg(feature = "server")]
+	#[async_trait::async_trait]
+	impl crate::RunserverHook for FrameOptionsHook {
+		fn static_response_headers(&self) -> hyper::HeaderMap {
+			let mut headers = hyper::HeaderMap::new();
+			headers.insert(
+				hyper::header::X_FRAME_OPTIONS,
+				hyper::header::HeaderValue::from_static("DENY"),
+			);
+			headers
+		}
+	}
+
+	#[cfg(feature = "server")]
+	fn frame_options_hooks() -> Vec<crate::runserver_hooks::CollectedRunserverHook> {
+		vec![crate::runserver_hooks::CollectedRunserverHook {
+			hook: Box::new(FrameOptionsHook),
+			type_name: "FrameOptionsHook",
+		}]
+	}
+
+	/// Resolve static response headers the way `run_server` does: load the
+	/// project's settings profile, then merge the runserver hooks over it.
+	#[cfg(feature = "server")]
+	fn resolve_project_static_headers(project: &std::path::Path) -> hyper::HeaderMap {
+		let settings_dir = project.join("settings");
+		std::fs::create_dir_all(&settings_dir).unwrap();
+		std::fs::write(
+			settings_dir.join("base.toml"),
+			format!(
+				"[static_files.response_headers]\n\
+				 \"Content-Security-Policy\" = \"{STATIC_HEADERS_TEST_CSP}\"\n\
+				 \"X-Frame-Options\" = \"SAMEORIGIN\"\n"
+			),
+		)
+		.unwrap();
+		let settings = crate::static_asset_settings::load_project_settings(project).unwrap();
+		resolve_static_response_headers(Some(&settings), &frame_options_hooks()).unwrap()
+	}
+
+	#[cfg(feature = "server")]
+	fn assert_static_security_headers(response: &reinhardt_http::Response) {
+		assert_eq!(
+			response.headers[hyper::header::CONTENT_SECURITY_POLICY],
+			STATIC_HEADERS_TEST_CSP
+		);
+		let frame_options: Vec<_> = response
+			.headers
+			.get_all(hyper::header::X_FRAME_OPTIONS)
+			.iter()
+			.collect();
+		assert_eq!(frame_options, ["DENY"]);
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::rstest]
+	fn static_response_hook_headers_override_settings_per_name() {
+		// Arrange
+		let project = tempfile::tempdir().unwrap();
+
+		// Act
+		let headers = resolve_project_static_headers(project.path());
+
+		// Assert
+		assert_eq!(headers.len(), 2);
+		assert_eq!(
+			headers[hyper::header::CONTENT_SECURITY_POLICY],
+			STATIC_HEADERS_TEST_CSP
+		);
+		assert_eq!(headers[hyper::header::X_FRAME_OPTIONS], "DENY");
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::rstest]
+	fn static_response_headers_without_settings_use_hooks_only() {
+		// Act
+		let headers = resolve_static_response_headers(None, &frame_options_hooks()).unwrap();
+
+		// Assert
+		assert_eq!(headers.len(), 1);
+		assert_eq!(headers[hyper::header::X_FRAME_OPTIONS], "DENY");
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::rstest]
+	fn malformed_static_response_headers_abort_startup() {
+		// Arrange
+		let project = tempfile::tempdir().unwrap();
+		std::fs::create_dir_all(project.path().join("settings")).unwrap();
+		std::fs::write(
+			project.path().join("settings/base.toml"),
+			"[static_files.response_headers]\n\"Bad Header\" = \"x\"\n",
+		)
+		.unwrap();
+		let settings = crate::static_asset_settings::load_project_settings(project.path()).unwrap();
+
+		// Act
+		let error = resolve_static_response_headers(Some(&settings), &[]).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Execution error: Invalid static response headers: `static_files.response_headers` has an invalid header name `Bad Header`: invalid HTTP header name"
+		);
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn static_response_headers_reach_spa_shell_and_assets() {
+		use reinhardt_http::{Handler, Middleware, MiddlewareChain, Request, Response};
+		use reinhardt_utils::staticfiles::middleware::{StaticFilesConfig, StaticFilesMiddleware};
+		use std::sync::Arc;
+
+		struct NotFound;
+		#[async_trait::async_trait]
+		impl Handler for NotFound {
+			async fn handle(&self, _: Request) -> reinhardt_core::exception::Result<Response> {
+				Ok(Response::not_found())
+			}
+		}
+
+		// Arrange
+		let project = tempfile::tempdir().unwrap();
+		let headers = resolve_project_static_headers(project.path());
+		let dist = project.path().join("dist");
+		std::fs::create_dir_all(&dist).unwrap();
+		std::fs::write(dist.join("index.html"), "<html><body>shell</body></html>").unwrap();
+		std::fs::write(dist.join("app.css"), "body { margin: 0 }").unwrap();
+		let config = StaticFilesConfig::new(&dist)
+			.url_prefix("/")
+			.spa_mode(true)
+			.auto_inject_wasm(false)
+			.excluded_prefixes(spa_excluded_prefixes("/static/", &[]))
+			.response_headers(headers);
+		let chain = MiddlewareChain::new(Arc::new(NotFound))
+			.with_middleware(Arc::new(StaticFilesMiddleware::new(config)) as Arc<dyn Middleware>);
+
+		// Act
+		let mut responses = Vec::new();
+		for path in ["/", "/dashboard/settings", "/app.css"] {
+			responses.push(
+				chain
+					.handle(Request::builder().uri(path).build().unwrap())
+					.await
+					.unwrap(),
+			);
+		}
+		let api = chain
+			.handle(Request::builder().uri("/api/items").build().unwrap())
+			.await
+			.unwrap();
+
+		// Assert
+		let bodies: Vec<_> = responses
+			.iter()
+			.map(|response| String::from_utf8(response.body.to_vec()).unwrap())
+			.collect();
+		assert_eq!(
+			bodies,
+			[
+				"<html><body>shell</body></html>",
+				"<html><body>shell</body></html>",
+				"body { margin: 0 }",
+			]
+		);
+		for response in &responses {
+			assert_eq!(response.status, hyper::StatusCode::OK);
+			assert_static_security_headers(response);
+		}
+		assert_eq!(api.status, hyper::StatusCode::NOT_FOUND);
+		assert!(
+			!api.headers
+				.contains_key(hyper::header::CONTENT_SECURITY_POLICY)
+		);
+	}
+
+	#[cfg(feature = "server")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn static_response_headers_reach_manifest_document_and_assets() {
+		use reinhardt_http::{Handler, Middleware, MiddlewareChain, Request, Response};
+		use reinhardt_utils::staticfiles::publication::{
+			AssetInput, AssetMode, AssetPipeline, AssetProducer, AssetPublisher, AssetRole,
+			ManifestStaticMiddleware, ManifestStore, PagesEntrypoint, SnapshotOptions,
+		};
+		use std::sync::Arc;
+
+		struct NotFound;
+		#[async_trait::async_trait]
+		impl Handler for NotFound {
+			async fn handle(&self, _: Request) -> reinhardt_core::exception::Result<Response> {
+				Ok(Response::not_found())
+			}
+		}
+
+		// Arrange
+		let project = tempfile::tempdir().unwrap();
+		let headers = resolve_project_static_headers(project.path());
+		let root = project.path().join("staticfiles");
+		let mut pipeline = AssetPipeline::new();
+		pipeline
+			.add_input(
+				AssetInput::bytes(
+					"app.js",
+					b"export default function init(){};export const wasm=new URL('app.wasm',import.meta.url);".to_vec(),
+				)
+				.with_producer(AssetProducer::Pages),
+			)
+			.unwrap();
+		pipeline
+			.add_input(
+				AssetInput::bytes("app.wasm", b"\0asm\x01\0\0\0".to_vec())
+					.with_producer(AssetProducer::Pages),
+			)
+			.unwrap();
+		pipeline
+			.add_input(
+				AssetInput::bytes(
+					"index.html",
+					b"<html><head></head><body>shell</body></html>".to_vec(),
+				)
+				.with_role(AssetRole::EntryDocument),
+			)
+			.unwrap();
+		pipeline
+			.set_entrypoint(
+				"default",
+				PagesEntrypoint {
+					javascript: "app.js".into(),
+					wasm: "app.wasm".into(),
+					styles: vec![],
+					document: Some("index.html".into()),
+				},
+			)
+			.unwrap();
+		AssetPublisher::new(root.clone())
+			.publish(pipeline.prepare(AssetMode::Production).unwrap())
+			.unwrap();
+		let store = Arc::new(ManifestStore::open(root, SnapshotOptions::production()).unwrap());
+		let asset_url = store
+			.active()
+			.url_snapshot("/static/")
+			.unwrap()
+			.resolve("app.js")
+			.unwrap();
+		let config = crate::runserver_assets::serving_config(
+			store,
+			"/static/".into(),
+			Some("default"),
+			true,
+		)
+		.unwrap()
+		.with_response_headers(headers);
+		let chain = MiddlewareChain::new(Arc::new(NotFound))
+			.with_middleware(Arc::new(ManifestStaticMiddleware::new(config)) as Arc<dyn Middleware>);
+
+		// Act
+		let shell = chain
+			.handle(
+				Request::builder()
+					.uri("/")
+					.header(hyper::header::ACCEPT, "text/html")
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+		let asset = chain
+			.handle(Request::builder().uri(&asset_url).build().unwrap())
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(shell.status, hyper::StatusCode::OK);
+		assert_eq!(
+			shell.headers[hyper::header::CONTENT_TYPE],
+			"text/html; charset=utf-8"
+		);
+		assert_static_security_headers(&shell);
+		assert_eq!(asset.status, hyper::StatusCode::OK);
+		assert_static_security_headers(&asset);
+	}
+
 	#[rstest::rstest]
 	#[tokio::test]
 	async fn asset_entrypoint_requires_manifest_serving() {
@@ -8519,7 +8857,7 @@ mod tests {
 		)
 		.expect("write static settings");
 
-		let static_url = configured_static_assets(directory.path())
+		let static_url = crate::StaticAssetSettings::from_project_dir(directory.path())
 			.expect("resolve static asset settings")
 			.static_url;
 
@@ -8538,7 +8876,8 @@ mod tests {
 		)
 		.expect("write static settings");
 
-		let settings = configured_static_assets(directory.path()).expect("resolve static settings");
+		let settings = crate::StaticAssetSettings::from_project_dir(directory.path())
+			.expect("resolve static settings");
 
 		assert_eq!(settings.static_root, directory.path().join("collected"));
 	}
