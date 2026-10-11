@@ -868,7 +868,9 @@ pub enum Operation {
 		/// On PostgreSQL and CockroachDB, forward SQL compares its nullability
 		/// with `new_definition` and emits `SET NOT NULL` / `DROP NOT NULL` only
 		/// when they differ. If None, the nullability of `new_definition` is
-		/// always applied.
+		/// always applied. Primary key columns are always treated as NOT NULL,
+		/// and a column that stops being a primary key keeps NOT NULL because
+		/// this operation does not drop the primary key constraint.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		old_definition: Option<ColumnDefinition>,
 		/// The new definition.
@@ -1907,12 +1909,19 @@ impl Operation {
 						// `new_definition`: SET/DROP NOT NULL is idempotent on PostgreSQL
 						// and this matches MySQL `MODIFY COLUMN` and SQLite recreation,
 						// which both apply the full new definition. Primary key columns
-						// are implicitly NOT NULL, and PostgreSQL rejects DROP NOT NULL
-						// on them, so their effective nullability is always NOT NULL.
-						let new_not_null = new_definition.not_null || new_definition.primary_key;
-						let nullability_changed = old_definition
-							.as_ref()
-							.is_none_or(|old| (old.not_null || old.primary_key) != new_not_null);
+						// count as NOT NULL (see `ColumnDefinition::effective_not_null`).
+						let new_not_null = new_definition.effective_not_null();
+						let nullability_changed = match old_definition {
+							// PK demotion: the old column is NOT NULL as a primary key,
+							// and AlterColumn never drops the primary key constraint, so
+							// DROP NOT NULL would hit "column is in a primary key" and
+							// abort the migration. Keep NOT NULL until the constraint is
+							// gone. Remove this skip once a PK-constraint operation runs
+							// before AlterColumn.
+							Some(old) if old.primary_key && !new_definition.primary_key => false,
+							Some(old) => old.effective_not_null() != new_not_null,
+							None => true,
+						};
 						if nullability_changed {
 							statements.push(format!(
 								"ALTER TABLE {} ALTER COLUMN {} {} NOT NULL;",
@@ -2850,7 +2859,8 @@ impl Operation {
 				};
 
 				let type_sql = old_def.type_definition.to_sql_for_dialect(dialect);
-				let null_clause = if old_def.not_null { " NOT NULL" } else { "" };
+				let old_not_null = old_def.effective_not_null();
+				let null_clause = if old_not_null { " NOT NULL" } else { "" };
 
 				// Dispatch reverse SQL per dialect.
 				// SQLite is handled via the SQLite-recreation path before reaching
@@ -2874,7 +2884,7 @@ impl Operation {
 						// multi-statement path keeps the contract uniform and
 						// restores NOT NULL rollback fidelity on Cockroach.
 						// Refs #4630, #4640.
-						let nullability_clause = if old_def.not_null {
+						let nullability_clause = if old_not_null {
 							"SET NOT NULL"
 						} else {
 							"DROP NOT NULL"
@@ -3185,6 +3195,17 @@ impl ColumnDefinition {
 			auto_increment: false,
 			default: None,
 		}
+	}
+
+	/// Return whether the column is NOT NULL in the database.
+	///
+	/// Primary key columns cannot hold NULL, so they count as NOT NULL even
+	/// when a hand-built definition leaves `not_null` false. Use this
+	/// instead of the raw `not_null` flag when generating nullability
+	/// changes, because PostgreSQL rejects `DROP NOT NULL` on a primary key
+	/// column.
+	pub(crate) fn effective_not_null(&self) -> bool {
+		self.not_null || self.primary_key
 	}
 
 	/// Create a ColumnDefinition from FieldState with attribute parsing
@@ -6345,28 +6366,31 @@ mod tests {
 	/// `ALTER COLUMN ... TYPE` alone keeps the existing NOT NULL flag
 	/// (reinhardt-web#6724). A known `old_definition` limits the statement to
 	/// real changes; an unknown one applies `new_definition`. Primary key
-	/// columns are implicitly NOT NULL, so DROP NOT NULL is never emitted for
-	/// them.
+	/// columns count as NOT NULL, and a demoted primary key keeps NOT NULL
+	/// because AlterColumn does not drop the primary key constraint.
 	#[rstest]
-	#[case::not_null_to_nullable(Some(true), false, false, Some("DROP"))]
-	#[case::nullable_to_not_null(Some(false), true, false, Some("SET"))]
-	#[case::unchanged_not_null(Some(true), true, false, None)]
-	#[case::unchanged_nullable(Some(false), false, false, None)]
-	#[case::unknown_old_to_nullable(None, false, false, Some("DROP"))]
-	#[case::unknown_old_to_not_null(None, true, false, Some("SET"))]
-	#[case::primary_key_keeps_not_null(Some(true), false, true, None)]
-	#[case::primary_key_unknown_old(None, false, true, Some("SET"))]
+	#[case::not_null_to_nullable(Some(true), false, false, false, Some("DROP"))]
+	#[case::nullable_to_not_null(Some(false), false, true, false, Some("SET"))]
+	#[case::unchanged_not_null(Some(true), false, true, false, None)]
+	#[case::unchanged_nullable(Some(false), false, false, false, None)]
+	#[case::unknown_old_to_nullable(None, false, false, false, Some("DROP"))]
+	#[case::unknown_old_to_not_null(None, false, true, false, Some("SET"))]
+	#[case::primary_key_keeps_not_null(Some(true), true, false, true, None)]
+	#[case::primary_key_unknown_old(None, false, false, true, Some("SET"))]
+	#[case::primary_key_promoted(Some(false), false, false, true, Some("SET"))]
+	#[case::primary_key_demoted_to_nullable(Some(true), true, false, false, None)]
 	fn test_to_sql_alter_column_changes_nullability_for_postgres_family(
 		#[case] old_not_null: Option<bool>,
+		#[case] old_primary_key: bool,
 		#[case] new_not_null: bool,
-		#[case] primary_key: bool,
+		#[case] new_primary_key: bool,
 		#[case] expected_clause: Option<&str>,
 		#[values(SqlDialect::Postgres, SqlDialect::Cockroachdb)] dialect: SqlDialect,
 	) {
 		// Arrange
 		let new_definition = ColumnDefinition {
 			not_null: new_not_null,
-			primary_key,
+			primary_key: new_primary_key,
 			..ColumnDefinition::new("created_at", FieldType::TimestampTz)
 		};
 		let op = Operation::AlterColumn {
@@ -6374,6 +6398,7 @@ mod tests {
 			column: "created_at".to_string(),
 			old_definition: old_not_null.map(|not_null| ColumnDefinition {
 				not_null,
+				primary_key: old_primary_key,
 				..new_definition.clone()
 			}),
 			new_definition,
@@ -6392,6 +6417,60 @@ mod tests {
 
 		// Assert
 		assert_eq!(sql, expected.join(" "));
+	}
+
+	/// Reverse `AlterColumn` SQL must restore NOT NULL for a primary key
+	/// column even when a hand-built `old_definition` leaves `not_null`
+	/// false, because PostgreSQL rejects DROP NOT NULL on a primary key
+	/// column (reinhardt-web#6724).
+	#[rstest]
+	#[case::postgres(
+		SqlDialect::Postgres,
+		vec![
+			"ALTER TABLE example ALTER COLUMN id TYPE BIGINT;",
+			"ALTER TABLE example ALTER COLUMN id SET NOT NULL;",
+		]
+	)]
+	#[case::cockroachdb(
+		SqlDialect::Cockroachdb,
+		vec![
+			"ALTER TABLE example ALTER COLUMN id TYPE BIGINT;",
+			"ALTER TABLE example ALTER COLUMN id SET NOT NULL;",
+		]
+	)]
+	#[case::mysql(
+		SqlDialect::Mysql,
+		vec!["ALTER TABLE example MODIFY COLUMN id BIGINT NOT NULL;"]
+	)]
+	fn test_to_reverse_sql_alter_column_restores_not_null_for_primary_key(
+		#[case] dialect: SqlDialect,
+		#[case] expected: Vec<&str>,
+	) {
+		// Arrange
+		let old_definition = ColumnDefinition {
+			not_null: false,
+			primary_key: true,
+			..ColumnDefinition::new("id", FieldType::BigInteger)
+		};
+		let op = Operation::AlterColumn {
+			table: "example".to_string(),
+			column: "id".to_string(),
+			old_definition: Some(old_definition.clone()),
+			new_definition: ColumnDefinition {
+				type_definition: FieldType::Integer,
+				..old_definition
+			},
+			mysql_options: None,
+		};
+
+		// Act
+		let statements = op
+			.to_reverse_sql(&dialect, &ProjectState::default())
+			.unwrap();
+
+		// Assert
+		let expected: Vec<String> = expected.into_iter().map(str::to_owned).collect();
+		assert_eq!(statements, Some(expected));
 	}
 
 	/// The forward nullability statement must coexist with default changes
