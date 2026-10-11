@@ -7,8 +7,8 @@ use reinhardt_pages::app::{__clear_spa_router_for_test, __install_client_router_
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement, PageExt};
 use reinhardt_pages::dom::Element;
 use reinhardt_pages::prelude::defer_yield;
-use reinhardt_pages::reactive::ReactiveScope;
 use reinhardt_pages::reactive::hooks::use_router;
+use reinhardt_pages::reactive::{ReactiveScope, with_runtime};
 use reinhardt_pages::router::Link;
 use reinhardt_urls::routers::ClientRouter;
 use rstest::rstest;
@@ -162,6 +162,9 @@ async fn link_toggles_aria_current_on_navigation() {
 	let _state = BrowserStateGuard::capture();
 	replace_path("/");
 	let root = BodyRoot::new("router-active-link");
+	// `ReactiveScope` disposes itself on drop. Declared last, it is dropped
+	// first, so the mounted effects are disposed before the root is removed
+	// and the router is cleared, even when an assertion fails.
 	let scope = ReactiveScope::new();
 	scope.enter(|| {
 		__install_client_router_for_test(shell_router());
@@ -199,6 +202,10 @@ async fn link_toggles_aria_current_on_navigation() {
 			.push("/projects/41/")
 			.expect("push to a registered route");
 	});
+	// Mounted reactive attributes are passive effects. Without
+	// `ClientLauncher::launch` no scheduler is installed, so flush them
+	// explicitly before reading the DOM.
+	with_runtime(|runtime| runtime.flush_updates());
 	defer_yield().await;
 
 	// Assert
@@ -217,6 +224,4 @@ async fn link_toggles_aria_current_on_navigation() {
 		project.get_attribute("class").as_deref(),
 		Some("nav active")
 	);
-
-	scope.dispose();
 }

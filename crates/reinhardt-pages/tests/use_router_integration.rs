@@ -316,7 +316,6 @@ fn route_readers_return_not_installed_without_router() {
 	use reinhardt_pages::reactive::hooks::router::NavigateError;
 
 	// Arrange
-	let _noop_component = Page::text("Noop");
 	__clear_spa_router_for_test();
 
 	// Act
