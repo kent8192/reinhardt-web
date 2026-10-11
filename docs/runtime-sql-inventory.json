@@ -7757,8 +7757,8 @@
       "path": "crates/reinhardt-auth/src/sessions/backends/database.rs",
       "symbol": "DatabaseSessionBackend as AtomicSessionBackend::take",
       "kind": "execution-wrapper",
-      "line": 558,
-      "fingerprint": "a079e338b12b4bbd238a52458781f27e1ff7fc924b23896a7dc02c95bbe5dab3",
+      "line": 571,
+      "fingerprint": "337628c3dc2d28b27e6b56fffbb8e0f3fe827f9d0e2d892e0d2e51e3a1c2d94a",
       "conditions": [],
       "test_only": false,
       "category": "review-required",
@@ -7777,7 +7777,7 @@
       ],
       "rationale": "Atomic session take loads the row through the ORM manager, then renders a typed DELETE whose session_key, session_data and expire_date predicates are bound Values, through the same build_statement owned pair as SessionBackend::delete; only the caller observing one affected row receives the data, without backend-specific DELETE ... RETURNING.",
       "evidence": [
-        "Two SQLite database-session unit tests passed: take returns a saved session once and deletes its row, and take deletes an expired row without returning it.",
+        "Three SQLite database-session unit tests passed: take returns a saved session once and deletes its row, take deletes an expired row without returning it, and a deserialization failure returns an error before the DELETE and leaves the row for a correctly typed retry.",
         "Three PostgreSQL TestContainers integration tests passed with two DatabaseSessionBackend replicas sharing one database: 16 concurrent contenders for legacy and for contextual OAuth state produce exactly one winner, and a contextual state round-trips across replicas and rejects replay."
       ]
     },

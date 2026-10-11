@@ -522,13 +522,17 @@ impl SessionBackend for DatabaseSessionBackend {
 impl AtomicSessionBackend for DatabaseSessionBackend {
 	/// Atomically load and delete one unexpired session.
 	///
-	/// The row is read, then deleted with a compare-and-delete predicate on
-	/// the values that were read. Row-level locking lets exactly one
-	/// concurrent `DELETE` affect the row, so only the caller whose delete
-	/// reports an affected row receives the data. The predicate also keeps a
-	/// concurrent overwrite of the same key from being deleted on behalf of
-	/// the stale read. This works on every supported database, including
-	/// MySQL, which lacks `DELETE ... RETURNING`.
+	/// The row is read and its data deserialized, then deleted with a
+	/// compare-and-delete predicate on the values that were read. Row-level
+	/// locking lets exactly one concurrent `DELETE` affect the row, so only
+	/// the caller whose delete reports an affected row receives the data. The
+	/// predicate also keeps a concurrent overwrite of the same key from being
+	/// deleted on behalf of the stale read. This works on every supported
+	/// database, including MySQL, which lacks `DELETE ... RETURNING`.
+	///
+	/// Data that cannot be deserialized as `T` returns
+	/// [`SessionError::SerializationError`] and leaves the row in place.
+	/// Expired rows are deleted without being deserialized.
 	async fn take<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
 	where
 		T: for<'de> Deserialize<'de> + Send,
@@ -548,6 +552,15 @@ impl AtomicSessionBackend for DatabaseSessionBackend {
 			return Ok(None);
 		};
 
+		let data: Option<T> = if session.expire_date < Utc::now().timestamp_millis() {
+			None
+		} else {
+			let data = serde_json::from_str(&session.session_data).map_err(|e| {
+				SessionError::SerializationError(format!("Deserialization error: {}", e))
+			})?;
+			Some(data)
+		};
+
 		let stmt = Query::delete()
 			.from_table(Alias::new("sessions"))
 			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
@@ -564,15 +577,7 @@ impl AtomicSessionBackend for DatabaseSessionBackend {
 			// Another caller consumed or replaced the row after this read.
 			return Ok(None);
 		}
-
-		if session.expire_date < Utc::now().timestamp_millis() {
-			return Ok(None);
-		}
-
-		let data: T = serde_json::from_str(&session.session_data).map_err(|e| {
-			SessionError::SerializationError(format!("Deserialization error: {}", e))
-		})?;
-		Ok(Some(data))
+		Ok(data)
 	}
 }
 
@@ -916,6 +921,7 @@ mod tests {
 		backend
 	}
 
+	#[rstest::rstest]
 	#[tokio::test]
 	async fn take_returns_session_once_and_deletes_row() {
 		// Arrange
@@ -936,6 +942,7 @@ mod tests {
 		assert!(backend.get_all_keys().await.unwrap().is_empty());
 	}
 
+	#[rstest::rstest]
 	#[tokio::test]
 	async fn take_omits_and_deletes_expired_row() {
 		// Arrange
@@ -967,6 +974,30 @@ mod tests {
 
 		// Assert
 		assert_eq!(taken, None);
+		assert!(backend.get_all_keys().await.unwrap().is_empty());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn take_keeps_row_when_deserialization_fails() {
+		// Arrange
+		let backend = sqlite_backend().await;
+		let session_data = serde_json::json!({"state": "one-time"});
+		backend
+			.save("typed-key", &session_data, Some(60))
+			.await
+			.unwrap();
+
+		// Act
+		let mismatched = backend.take::<u64>("typed-key").await;
+		let retried: Option<serde_json::Value> = backend.take("typed-key").await.unwrap();
+
+		// Assert
+		assert!(matches!(
+			mismatched,
+			Err(SessionError::SerializationError(_))
+		));
+		assert_eq!(retried, Some(session_data));
 		assert!(backend.get_all_keys().await.unwrap().is_empty());
 	}
 }
