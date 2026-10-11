@@ -11,6 +11,7 @@ fn test_token_response_from_response() {
 		token_type: "Bearer".to_string(),
 		expires_in: Some(3600),
 		refresh_token: Some("test_refresh_token".to_string()),
+		refresh_token_expires_in: None,
 		scope: Some("openid email profile".to_string()),
 		id_token: Some("test_id_token".to_string()),
 	};
@@ -33,6 +34,7 @@ fn test_token_response_minimal() {
 		token_type: "Bearer".to_string(),
 		expires_in: None,
 		refresh_token: None,
+		refresh_token_expires_in: None,
 		scope: None,
 		id_token: None,
 	};
@@ -51,6 +53,7 @@ fn test_token_response_serialization() {
 		token_type: "Bearer".to_string(),
 		expires_in: Some(3600),
 		refresh_token: Some("refresh".to_string()),
+		refresh_token_expires_in: None,
 		scope: Some("openid email".to_string()),
 		id_token: None,
 	};
@@ -72,6 +75,7 @@ fn test_oauth_token_expiration_calculation() {
 		token_type: "Bearer".to_string(),
 		expires_in: Some(3600), // 1 hour
 		refresh_token: None,
+		refresh_token_expires_in: None,
 		scope: None,
 		id_token: None,
 	};
@@ -96,6 +100,7 @@ fn test_oauth_token_from_response_with_id_token() {
 		token_type: "Bearer".to_string(),
 		expires_in: Some(3600),
 		refresh_token: Some("refresh_token".to_string()),
+		refresh_token_expires_in: None,
 		scope: Some("openid email".to_string()),
 		id_token: Some("id_token_string".to_string()),
 	};
@@ -113,6 +118,7 @@ fn test_token_response_parse_scopes() {
 		token_type: "Bearer".to_string(),
 		expires_in: None,
 		refresh_token: None,
+		refresh_token_expires_in: None,
 		scope: Some("openid email profile".to_string()),
 		id_token: None,
 	};
@@ -140,6 +146,7 @@ fn test_token_response_empty_scope() {
 		token_type: "Bearer".to_string(),
 		expires_in: None,
 		refresh_token: None,
+		refresh_token_expires_in: None,
 		scope: Some("".to_string()),
 		id_token: None,
 	};

@@ -24,10 +24,11 @@ use rsa::traits::PublicKeyParts;
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use rstest::*;
 use serde_json::json;
-use wiremock::matchers::{bearer_token, body_string_contains, method, path};
+use wiremock::matchers::{bearer_token, body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use reinhardt_auth::social::core::OAuth2Client;
+use reinhardt_auth::social::core::SocialAuthError;
 use reinhardt_auth::social::core::claims::IdToken;
 use reinhardt_auth::social::core::config::ProviderConfig;
 use reinhardt_auth::social::flow::{RefreshFlow, TokenExchangeFlow};
@@ -249,6 +250,36 @@ async fn token_exchange_reports_provider_error(#[future] mock_env: MockEnv) {
 	assert!(result.is_err(), "400 response should surface as error");
 }
 
+#[rstest]
+#[tokio::test]
+async fn token_exchange_reports_oauth_error_in_success_response(#[future] mock_env: MockEnv) {
+	// Arrange
+	let env = mock_env.await;
+	Mock::given(method("POST"))
+		.and(path("/token"))
+		.respond_with(ResponseTemplate::new(200).set_body_json(json!({
+			"error": "bad_verification_code",
+		})))
+		.mount(&env.server)
+		.await;
+
+	let flow = TokenExchangeFlow::new(
+		OAuth2Client::new(),
+		test_provider("http://localhost/callback".into()),
+	);
+
+	// Act
+	let result = flow.exchange(&env.token_url(), "stale_code", None).await;
+
+	// Assert
+	assert_eq!(
+		result.unwrap_err(),
+		SocialAuthError::TokenExchangeError(
+			"Token exchange failed: bad_verification_code".to_string()
+		)
+	);
+}
+
 // ---------------------------------------------------------------------------
 // Refresh
 // ---------------------------------------------------------------------------
@@ -286,6 +317,94 @@ async fn refresh_flow_returns_new_access_token(#[future] mock_env: MockEnv) {
 	assert_eq!(response.access_token, "access-refreshed");
 	assert_eq!(response.token_type, "Bearer");
 	assert_eq!(response.expires_in, Some(7200));
+}
+
+/// GitHub's token endpoint answers form-encoded unless the request sends
+/// `Accept: application/json`; the JSON mock only matches with that header.
+#[rstest]
+#[tokio::test]
+async fn refresh_flow_requests_json_from_github_style_endpoint(#[future] mock_env: MockEnv) {
+	// Arrange
+	let env = mock_env.await;
+	Mock::given(method("POST"))
+		.and(path("/token"))
+		.and(header("accept", "application/json"))
+		.and(body_string_contains("grant_type=refresh_token"))
+		.and(body_string_contains("refresh_token=ghr_old"))
+		.respond_with(ResponseTemplate::new(200).set_body_json(json!({
+			"access_token": "ghu_new",
+			"expires_in": 28800,
+			"refresh_token": "ghr_new",
+			"refresh_token_expires_in": 15897600,
+			"token_type": "bearer",
+			"scope": "",
+		})))
+		.with_priority(1)
+		.mount(&env.server)
+		.await;
+	Mock::given(method("POST"))
+		.and(path("/token"))
+		.respond_with(ResponseTemplate::new(200).set_body_raw(
+			"access_token=ghu_new&expires_in=28800&refresh_token=ghr_new\
+			 &refresh_token_expires_in=15897600&scope=&token_type=bearer",
+			"application/x-www-form-urlencoded",
+		))
+		.with_priority(2)
+		.mount(&env.server)
+		.await;
+
+	let flow = RefreshFlow::new(
+		OAuth2Client::new(),
+		test_provider("http://localhost/callback".into()),
+	);
+
+	// Act
+	let response = flow
+		.refresh(&env.token_url(), "ghr_old")
+		.await
+		.expect("refresh should request and parse a JSON response");
+
+	// Assert
+	assert_eq!(response.access_token, "ghu_new");
+	assert_eq!(response.token_type, "bearer");
+	assert_eq!(response.expires_in, Some(28800));
+	assert_eq!(response.refresh_token.as_deref(), Some("ghr_new"));
+	assert_eq!(response.refresh_token_expires_in, Some(15897600));
+}
+
+/// GitHub reports refresh failures as HTTP 200 with an OAuth2 error body.
+#[rstest]
+#[tokio::test]
+async fn refresh_flow_reports_oauth_error_in_success_response(#[future] mock_env: MockEnv) {
+	// Arrange
+	let env = mock_env.await;
+	Mock::given(method("POST"))
+		.and(path("/token"))
+		.respond_with(ResponseTemplate::new(200).set_body_json(json!({
+			"error": "bad_refresh_token",
+			"error_description": "The refresh token passed is incorrect or expired.",
+			"error_uri": "https://docs.github.com",
+		})))
+		.mount(&env.server)
+		.await;
+
+	let flow = RefreshFlow::new(
+		OAuth2Client::new(),
+		test_provider("http://localhost/callback".into()),
+	);
+
+	// Act
+	let result = flow.refresh(&env.token_url(), "ghr_expired").await;
+
+	// Assert
+	assert_eq!(
+		result.unwrap_err(),
+		SocialAuthError::TokenRefreshError(
+			"Token refresh failed: bad_refresh_token: \
+			 The refresh token passed is incorrect or expired."
+				.to_string()
+		)
+	);
 }
 
 // ---------------------------------------------------------------------------

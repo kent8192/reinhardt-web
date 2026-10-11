@@ -33,6 +33,7 @@ impl TestFixtures {
 			token_type: "Bearer".into(),
 			expires_in: None,
 			refresh_token: None,
+			refresh_token_expires_in: None,
 			scope: Some("user,user:email".into()),
 			id_token: None,
 		}
@@ -73,6 +74,7 @@ impl TestFixtures {
 			token_type: "Bearer".into(),
 			expires_in: Some(3600),
 			refresh_token: Some("refresh_token".into()),
+			refresh_token_expires_in: None,
 			scope: Some("openid email profile".into()),
 			id_token: Some("test_id_token".into()),
 		}
@@ -134,6 +136,7 @@ impl TestFixtures {
 			token_type: "Bearer".into(),
 			expires_in: Some(3600),
 			refresh_token: Some("refresh_token".into()),
+			refresh_token_expires_in: None,
 			scope: Some("openid email profile".into()),
 			id_token: Some("test_id_token".into()),
 		}
@@ -194,6 +197,7 @@ impl TestFixtures {
 			token_type: "Bearer".into(),
 			expires_in: Some(3600),
 			refresh_token: Some("refresh_token".into()),
+			refresh_token_expires_in: None,
 			scope: Some("openid email name".into()),
 			id_token: Some("test_id_token".into()),
 		}
