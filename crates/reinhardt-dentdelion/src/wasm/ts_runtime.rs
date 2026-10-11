@@ -50,7 +50,11 @@ use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use boa_engine::{Context, JsError, JsValue, Script, Source};
+use boa_engine::builtins::function::BoundFunction;
+use boa_engine::object::FunctionObjectBuilder;
+use boa_engine::property::Attribute;
+use boa_engine::{Context, JsError, JsObject, JsValue, Script, Source};
+use boa_engine::{JsNativeError, JsResult, NativeFunction, js_string};
 
 /// Default maximum JavaScript execution time per evaluation (5 seconds).
 const DEFAULT_EXECUTION_TIMEOUT: Duration = Duration::from_secs(5);
@@ -418,20 +422,19 @@ fn runtime_thread_main(
 ) {
 	let mut context = Context::default();
 
-	// Initialize Preact libraries
-	let init_result = init_preact(&mut context);
-	let init_ok = init_result.is_ok();
-
-	// Send initialization result back to the caller
-	if init_tx.send(init_result).is_err() {
-		// Caller dropped the receiver; exit the thread
-		return;
-	}
-
-	if !init_ok {
-		// Initialization failed; exit the thread
-		return;
-	}
+	// Keep the converter and its intrinsic captures outside the guest's globals.
+	let stringifier = match init_preact(&mut context).and_then(|_| init_stringifier(&mut context)) {
+		Ok(stringifier) => {
+			if init_tx.send(Ok(())).is_err() {
+				return;
+			}
+			stringifier
+		}
+		Err(error) => {
+			let _ = init_tx.send(Err(error));
+			return;
+		}
+	};
 	context
 		.runtime_limits_mut()
 		.set_loop_iteration_limit(loop_iteration_limit);
@@ -452,7 +455,7 @@ fn runtime_thread_main(
 		let _ = request.started_tx.send(());
 		let timed_out = match request.command {
 			RuntimeCommand::Eval { code, response_tx } => {
-				let result = eval_code(&code, &mut context, execution_timeout);
+				let result = eval_code(&code, &mut context, &stringifier, execution_timeout);
 				let timed_out = matches!(result, Err(TsError::ExecutionTimeout { .. }));
 				let _ = response_tx.send(result);
 				timed_out
@@ -472,6 +475,7 @@ fn runtime_thread_main(
 					&component_code,
 					&props_json,
 					&mut context,
+					&stringifier,
 					execution_timeout,
 				);
 				let timed_out = matches!(result, Err(TsError::ExecutionTimeout { .. }));
@@ -528,11 +532,106 @@ fn init_preact(context: &mut Context) -> Result<(), TsError> {
 	Ok(())
 }
 
-/// Evaluate JavaScript code and return the result as a string.
-fn eval_code(code: &str, context: &mut Context, timeout: Duration) -> Result<String, TsError> {
-	let result = eval_with_deadline(code, context, timeout, false)?;
+// A non-enumerable host bridge is overwritten only after guest evaluation.
+const STRINGIFY_BRIDGE: &str = "__reinhardt_stringify_result";
 
-	js_value_to_string(&result, context)
+/// Create a bound method whose guest bytecode runs in the outer async VM.
+/// Function.prototype.call and String(object) would reenter the synchronous VM.
+/// Workaround evidence: docs/boa-cooperative-deadline.md. Replace this converter
+/// and its bridge when Boa provides cooperative ToString covering native reentry.
+/// Ideal implementation (unavailable API pseudocode): await value.to_string_async(context)
+/// under the evaluation's original deadline, without a guest-global binding.
+fn bind_conversion_method(
+	_: &JsValue,
+	args: &[JsValue],
+	context: &mut Context,
+) -> JsResult<JsValue> {
+	let method = args
+		.first()
+		.and_then(JsValue::as_callable)
+		.ok_or_else(|| JsNativeError::typ().with_message("Conversion method is not callable"))?;
+	BoundFunction::create(
+		method,
+		args.get(1).cloned().unwrap_or_default(),
+		Vec::new(),
+		context,
+	)
+	.map(JsValue::from)
+}
+
+fn init_stringifier(context: &mut Context) -> Result<JsObject, TsError> {
+	let binder = FunctionObjectBuilder::new(
+		context.realm(),
+		NativeFunction::from_fn_ptr(bind_conversion_method),
+	)
+	.build();
+	context
+		.register_global_property(js_string!(STRINGIFY_BRIDGE), binder, Attribute::WRITABLE)
+		.map_err(|error| TsError::InitFailed(error.to_string()))?;
+	let result = context.eval(Source::from_bytes(
+		r#"
+		(function(bind, primitiveSymbol, TypeError) {
+			function primitive(value) {
+				return value === null || (typeof value !== 'object' && typeof value !== 'function');
+			}
+			return function(value) {
+				if (primitive(value)) return '' + value;
+				const exotic = value[primitiveSymbol];
+				if (exotic !== undefined && exotic !== null) {
+					if (typeof exotic !== 'function') throw new TypeError('Invalid @@toPrimitive');
+					const result = bind(exotic, value)('string');
+					if (primitive(result)) return '' + result;
+					throw new TypeError('Cannot convert object to primitive value');
+				}
+				for (let index = 0; index < 2; index++) {
+					const method = value[index === 0 ? 'toString' : 'valueOf'];
+					if (typeof method === 'function') {
+						const result = bind(method, value)();
+						if (primitive(result)) return '' + result;
+					}
+				}
+				throw new TypeError('Cannot convert object to primitive value');
+			};
+		})(__reinhardt_stringify_result, Symbol.toPrimitive, TypeError)
+	"#,
+	));
+	context
+		.register_global_property(
+			js_string!(STRINGIFY_BRIDGE),
+			JsValue::undefined(),
+			Attribute::WRITABLE,
+		)
+		.map_err(|error| TsError::InitFailed(error.to_string()))?;
+	result
+		.map_err(|error| TsError::InitFailed(error.to_string()))?
+		.as_callable()
+		.ok_or_else(|| TsError::InitFailed("Missing result converter".into()))
+}
+
+/// Clear the result binding on every exit; a cancelled VM context is discarded.
+struct StringifyBinding<'a>(&'a mut Context);
+impl Drop for StringifyBinding<'_> {
+	fn drop(&mut self) {
+		// This ordinary global property cannot execute guest accessors. If the
+		// guest freezes it, later conversion fails closed; Context owns its value.
+		let _ = self.0.register_global_property(
+			js_string!(STRINGIFY_BRIDGE),
+			JsValue::undefined(),
+			Attribute::WRITABLE,
+		);
+	}
+}
+
+/// Evaluate code and convert its completion value within one elapsed-time budget.
+fn eval_code(
+	code: &str,
+	context: &mut Context,
+	stringifier: &JsObject,
+	timeout: Duration,
+) -> Result<String, TsError> {
+	let started = Instant::now();
+	let result = eval_until_deadline(code, context, timeout, started, false)?;
+	js_value_to_string(&result, context, stringifier, timeout, started)
 }
 
 /// Evaluate JavaScript code without expecting a return value.
@@ -546,8 +645,10 @@ fn render_component_code(
 	component_code: &str,
 	props_json: &str,
 	context: &mut Context,
+	stringifier: &JsObject,
 	timeout: Duration,
 ) -> Result<String, TsError> {
+	let started = Instant::now();
 	let render_script = format!(
 		r#"
 		(function() {{
@@ -558,9 +659,9 @@ fn render_component_code(
 		"#
 	);
 
-	let result = eval_with_deadline(&render_script, context, timeout, true)?;
+	let result = eval_until_deadline(&render_script, context, timeout, started, true)?;
 
-	js_value_to_string(&result, context)
+	js_value_to_string(&result, context, stringifier, timeout, started)
 }
 
 /// Poll Boa cooperatively so the elapsed-time deadline stops the interpreter.
@@ -571,10 +672,19 @@ fn eval_with_deadline(
 	timeout: Duration,
 	render: bool,
 ) -> Result<JsValue, TsError> {
+	eval_until_deadline(code, context, timeout, Instant::now(), render)
+}
+
+fn eval_until_deadline(
+	code: &str,
+	context: &mut Context,
+	timeout: Duration,
+	started: Instant,
+	render: bool,
+) -> Result<JsValue, TsError> {
 	use std::future::Future;
 	use std::task::{Context as TaskContext, Poll, Waker};
 
-	let started = Instant::now();
 	let map_error = |error: JsError, context: &mut Context| {
 		if error
 			.as_native()
@@ -604,27 +714,44 @@ fn eval_with_deadline(
 			}
 		}
 	};
+	if started.elapsed() >= timeout {
+		return Err(TsError::ExecutionTimeout { timeout });
+	}
 	outcome
 		.ok_or(TsError::ExecutionTimeout { timeout })?
 		.map_err(|error| map_error(error, context))
 }
 
-/// Convert `JsValue` to String
-fn js_value_to_string(value: &JsValue, context: &mut Context) -> Result<String, TsError> {
-	value
-		.to_string(context)
-		.map(|s| s.to_std_string_escaped())
-		.map_err(|e| {
-			if e.as_native()
-				.is_some_and(|native| native.is_runtime_limit())
-			{
-				TsError::RuntimeLimitExceeded {
-					message: e.to_string(),
-				}
-			} else {
-				TsError::EvalFailed(js_error_to_string(&e, context))
-			}
-		})
+/// Invoke the captured converter through cooperative VM execution, not native ToString.
+fn js_value_to_string(
+	value: &JsValue,
+	context: &mut Context,
+	stringifier: &JsObject,
+	timeout: Duration,
+	started: Instant,
+) -> Result<String, TsError> {
+	let bound = BoundFunction::create(
+		stringifier.clone(),
+		JsValue::undefined(),
+		vec![value.clone()],
+		context,
+	)
+	.map_err(|error| TsError::EvalFailed(error.to_string()))?;
+	context
+		.register_global_property(js_string!(STRINGIFY_BRIDGE), bound, Attribute::WRITABLE)
+		.map_err(|error| TsError::EvalFailed(error.to_string()))?;
+	let binding = StringifyBinding(context);
+	let result = eval_until_deadline(
+		"__reinhardt_stringify_result()",
+		binding.0,
+		timeout,
+		started,
+		false,
+	)?;
+	result
+		.as_string()
+		.map(|value| value.to_std_string_escaped())
+		.ok_or_else(|| TsError::EvalFailed("Result converter did not return a string".into()))
 }
 
 /// Convert `JsError` to String
@@ -1016,6 +1143,71 @@ mod tests {
 				.unwrap(),
 			"undefined"
 		);
+	}
+
+	#[rstest]
+	#[case(
+		"({ toString() { const until = Date.now() + 1000; while (Date.now() < until) {} return 'late'; } })"
+	)]
+	#[case(
+		"({ [Symbol.toPrimitive]() { const until = Date.now() + 1000; while (Date.now() < until) {} return 'late'; } })"
+	)]
+	fn result_conversion_obeys_the_same_cooperative_deadline(#[case] code: &str) {
+		// Arrange: isolate the worker path so caller recv_timeout cannot hide ongoing conversion.
+		let mut context = Context::default();
+		let stringifier = init_stringifier(&mut context).unwrap();
+		let timeout = Duration::from_millis(30);
+		let started = Instant::now();
+
+		// Act: the object has a finite but expensive guest conversion hook.
+		let result = eval_code(code, &mut context, &stringifier, timeout);
+
+		// Assert: the interpreter itself stops instead of continuing for a second.
+		assert!(
+			matches!(result, Err(TsError::ExecutionTimeout { timeout: limit }) if limit == timeout)
+		);
+		assert!(started.elapsed() < Duration::from_millis(500));
+	}
+
+	#[rstest]
+	#[case("({ get toString() { while (true) {} } })")]
+	#[case("({ toString() { return String({ toString() { while (true) {} } }); } })")]
+	fn conversion_native_reentry_retains_the_independent_iteration_guard(#[case] code: &str) {
+		// Arrange: use the worker directly so a caller timeout cannot hide continued execution.
+		let mut context = Context::default();
+		let stringifier = init_stringifier(&mut context).unwrap();
+		context.runtime_limits_mut().set_loop_iteration_limit(1000);
+		let started = Instant::now();
+
+		// Act: getters and nested native String calls can reenter the synchronous VM.
+		let result = eval_code(code, &mut context, &stringifier, Duration::from_secs(2));
+
+		// Assert: the independent guard stops the interpreter, rather than just the caller.
+		assert!(matches!(result, Err(TsError::RuntimeLimitExceeded { .. })));
+		assert!(started.elapsed() < Duration::from_millis(500));
+	}
+
+	#[rstest]
+	#[case("({ value: 42, toString() { return this.value; } })", "42")]
+	#[case(
+		"({ value: 42, [Symbol.toPrimitive](hint) { return hint + this.value; } })",
+		"string42"
+	)]
+	#[case("({ toString: null, valueOf() { return 7; } })", "7")]
+	#[case("({ toString() { return {}; }, valueOf() { return 7; } })", "7")]
+	#[case(
+		"var reads = 0; ({ value: 42, get toString() { reads++; return function() { return this.value + ':' + reads; }; } })",
+		"42:1"
+	)]
+	#[case("[1, 2, 3]", "1,2,3")]
+	#[case("null", "null")]
+	#[case("undefined", "undefined")]
+	fn cooperative_conversion_preserves_string_hint_semantics(
+		#[case] code: &str,
+		#[case] expected: &str,
+	) {
+		let runtime = TsRuntime::new().unwrap();
+		assert_eq!(runtime.eval(code).unwrap(), expected);
 	}
 
 	#[rstest]

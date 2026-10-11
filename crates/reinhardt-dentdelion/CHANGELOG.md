@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Include result conversion in the JavaScript cooperative deadline.
+
 - Keep JavaScript queue deadlines separate from execution budgets, cancel unstarted work without poisoning the runtime, and reset WASM epoch deadlines for each guest call.
 
 - Preserve custom plugin HTTP transport settings through a trusted client-builder factory while retaining destination pinning, disabled redirects/proxies, and the request timeout.

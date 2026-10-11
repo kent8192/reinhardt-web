@@ -337,7 +337,8 @@ for path in discovered {
 - Fuel-based CPU metering: 100M instructions default (configurable)
 - Plugin HTTP requests reject internal/reserved addresses, pin validated DNS
   results, and never follow redirects or environment proxies.
-- JavaScript has an elapsed-time timeout and a separate
+- JavaScript evaluation and result conversion share one elapsed-time timeout,
+  with a separate
   `TsResourceLimits::loop_iteration_limit` (default: 1,000,000 iterations per
   loop). Native builtins can synchronously reenter JavaScript, so the interpreter
   guard remains necessary even with cooperative deadline checks. Interpreter
