@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Optional HTTP/1.1 and HTTP/2 request admission before body collection, with per-request size and receive-time limits and an owned guard.
+
 ## [0.4.0-alpha.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.4.0-alpha.17...reinhardt-server@v0.4.0-alpha.18) - 2026-09-27
 
 ### Documentation
