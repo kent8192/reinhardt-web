@@ -23,8 +23,16 @@ const baseSha = '2222222222222222222222222222222222222222';
 
 function approvalEvent(overrides = {}) {
 	return {
-		id: 100, event: 'labeled', label: { name: 'rc-breaking-approved' },
+		id: 100, created_at: '2026-10-11T20:00:00Z', event: 'labeled', label: { name: 'rc-breaking-approved' },
 		actor: { login: 'maintainer' }, ...overrides,
+	};
+}
+
+function approvalRecord(sha = headSha, overrides = {}) {
+	return {
+		body: `Approved RC breaking security exception for head \`${sha}\`.`,
+		author: { login: 'maintainer' },
+		createdAt: '2026-10-11T20:01:00Z', lastEditedAt: null, ...overrides,
 	};
 }
 
@@ -40,17 +48,39 @@ function pullRequest(overrides = {}) {
 }
 
 async function run(pr, options = {}) {
-	const result = { failures: [], comments: [], checks: [], listed: 0, reads: [], eventsListed: 0, permissionsRead: [], collaboratorsListed: 0, branchesListed: 0 };
+	const result = { failures: [], comments: [], checks: [], listed: 0, reads: [], eventsListed: 0, permissionsRead: [], collaboratorsListed: 0, branchesListed: 0, approvalReads: [] };
 	const context = {
 		repo: { owner: 'kent8192', repo: 'reinhardt-web' },
 		sha: baseSha,
-		eventName: Object.hasOwn(options, 'dispatchInput') ? 'workflow_dispatch' : 'pull_request_target',
+		eventName: Object.hasOwn(options, 'dispatchInput') ? 'workflow_dispatch'
+			: options.commentAction ? 'issue_comment' : 'pull_request_target',
 		ref: options.ref ?? 'refs/heads/main',
 		payload: Object.hasOwn(options, 'dispatchInput')
 			? { inputs: { pull_request_number: options.dispatchInput } }
-			: { pull_request: options.payload ?? pr },
+			: options.commentAction
+				? { issue: { number: pr.number, ...(options.ordinaryIssue ? {} : { pull_request: {} }) }, action: options.commentAction }
+				: { pull_request: options.payload ?? pr, action: options.action },
 	};
 	const github = {
+		graphql: async (query, request) => {
+			assert.match(query, /comments\(first: 100, after: \$cursor\)/);
+			assert.match(query, /lastEditedAt/);
+			const index = result.approvalReads.length;
+			assert.deepEqual(request, {
+				owner: 'kent8192', repo: 'reinhardt-web', number: pr.number,
+				cursor: index === 0 ? null : `approval-page-${index}`,
+			});
+			result.approvalReads.push(request);
+			if (options.approvalError) throw new Error('HTTP 403 reading approval records');
+			if (options.missingApprovalConnection) return { repository: { pullRequest: null } };
+			const pages = options.approvalPages ?? [options.approvalRecords ?? [approvalRecord()]];
+			return { repository: { pullRequest: { comments: {
+				nodes: pages[index], pageInfo: {
+					hasNextPage: index + 1 < pages.length,
+					endCursor: options.stalledApprovalCursor ? null : `approval-page-${index + 1}`,
+				},
+			} } } };
+		},
 		rest: {
 			pulls: {
 				get: async (request) => {
@@ -130,10 +160,13 @@ async function run(pr, options = {}) {
 		result.error = error.message;
 	}
 	const dispatch = Object.hasOwn(options, 'dispatchInput');
-	const target = dispatch ? Number(options.dispatchInput) : context.payload.pull_request.number;
+	const commentEvent = Boolean(options.commentAction);
+	const target = dispatch ? Number(options.dispatchInput)
+		: commentEvent ? context.payload.issue.number : context.payload.pull_request.number;
 	const rejectedInput = !Number.isSafeInteger(target) || target <= 0
 		|| (dispatch && (context.ref !== 'refs/heads/main'
-			|| typeof options.dispatchInput !== 'string' || !/^[1-9]\d*$/.test(options.dispatchInput)));
+			|| typeof options.dispatchInput !== 'string' || !/^[1-9]\d*$/.test(options.dispatchInput)))
+		|| (commentEvent && (options.ordinaryIssue || context.ref !== 'refs/heads/main'));
 	assert.deepEqual(result.reads, rejectedInput ? [] : [{
 		owner: 'kent8192', repo: 'reinhardt-web', pull_number: target,
 	}]);
@@ -541,7 +574,7 @@ test('custom Write base permissions cannot approve an exception', async () => {
 
 test('manual reevaluation is registered and shares the PR concurrency key', () => {
 	assert.match(workflow, /workflow_dispatch:\s+inputs:\s+pull_request_number:/);
-	assert.match(workflow, /github\.event\.pull_request\.number \|\| inputs\.pull_request_number/);
+	assert.match(workflow, /github\.event\.pull_request\.number \|\| github\.event\.issue\.number \|\| inputs\.pull_request_number/);
 });
 
 for (const branches of [[], [{ name: 'main' }], [{ name: 'develop/next' }], [{ name: 'develop/0.4.0/archived' }]]) {
@@ -583,4 +616,114 @@ test('RC phase discovery considers all paginated branch results', async () => {
 	assertCheck(result, 'success');
 	assert.equal(result.branchesListed, 1);
 	assert.equal(result.eventsListed, 1);
+});
+
+test('a label approval cannot carry an old record to a synchronized head', async () => {
+	const currentSha = '3333333333333333333333333333333333333333';
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+		head: { ref: 'security/fix', sha: currentSha },
+	}), { action: 'synchronize', approvalRecords: [approvalRecord(headSha)] });
+	assertCheck(result, 'failure', currentSha);
+	assert.equal(result.failures.length, 1);
+});
+
+test('a fresh immutable maintainer record approves the exact new head', async () => {
+	const currentSha = '3333333333333333333333333333333333333333';
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+		head: { ref: 'security/fix', sha: currentSha },
+	}), { commentAction: 'created', approvalRecords: [approvalRecord(currentSha)] });
+	assertCheck(result, 'success', currentSha);
+	assert.match(result.checks[0].output.summary, new RegExp(currentSha));
+});
+
+for (const records of [
+	[],
+	[approvalRecord(headSha, { author: { login: 'contributor' } })],
+	[approvalRecord(headSha, { author: null })],
+	[approvalRecord(headSha, { lastEditedAt: '2026-10-11T20:02:00Z' })],
+	[approvalRecord(headSha, { lastEditedAt: undefined })],
+	[approvalRecord(headSha, { createdAt: '2026-10-11T19:59:00Z' })],
+	[approvalRecord(headSha, { createdAt: 'invalid' })],
+	[approvalRecord(headSha, { body: `Discussion of head ${headSha}` })],
+	[approvalRecord(headSha, { body: `> Approved RC breaking security exception for head \`${headSha}\`.` })],
+]) {
+	test(`rejects an absent, forged, edited or stale approval record: ${JSON.stringify(records)}`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels: securityApproval,
+		}), { approvalRecords: records });
+		assertCheck(result, 'failure');
+		assert.equal(result.failures.length, 1);
+	});
+}
+
+test('approval record discovery follows pagination beyond the first page', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), { approvalPages: [Array.from({ length: 100 }, () => ({ body: 'discussion' })), [approvalRecord()]] });
+	assertCheck(result, 'success');
+	assert.equal(result.approvalReads.length, 2);
+});
+
+for (const created_at of [undefined, 'invalid', '2026-10-11T20:02:00Z']) {
+	test(`a missing, invalid or reapplied label timestamp rejects the old approval record: ${created_at}`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels: securityApproval,
+		}), { events: [approvalEvent({ created_at })] });
+		assertCheck(result, 'failure');
+		assert.equal(result.failures.length, 1);
+	});
+}
+
+for (const option of ['approvalError', 'missingApprovalConnection', 'stalledApprovalCursor']) {
+	test(`${option} replaces an old success with a failing head check`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels: securityApproval,
+		}), { [option]: true, approvalPages: [[], [approvalRecord()]], comments: [{ body: marker }] });
+		assert.equal(result.error, undefined);
+		assertCheck(result, 'failure');
+		assert.equal(result.failures.length, 1);
+	});
+}
+
+for (const commentAction of ['created', 'edited', 'deleted']) {
+	test(`comment ${commentAction} reevaluates the current head and rejects a missing record`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels: securityApproval,
+		}), { commentAction, approvalRecords: [] });
+		assertCheck(result, 'failure');
+	});
+}
+
+test('comment events ignore ordinary issues without publishing or reading a PR', async () => {
+	const result = await run(pullRequest(), { commentAction: 'created', ordinaryIssue: true });
+	assert.deepEqual(result.checks, []);
+	assert.deepEqual(result.failures, []);
+});
+
+test('comment events outside main PRs do not publish a target check', async () => {
+	const result = await run(pullRequest({ base: { ref: 'develop/0.4.0' } }), { commentAction: 'created' });
+	assert.deepEqual(result.checks, []);
+	assert.deepEqual(result.failures, []);
+});
+
+test('comment reevaluation rejects an untrusted workflow ref', async () => {
+	const result = await run(pullRequest(), { commentAction: 'created', ref: 'refs/heads/untrusted' });
+	assert.deepEqual(result.checks, []);
+	assert.equal(result.failures.length, 1);
+});
+
+test('manual reevaluation cannot approve another head with an old record', async () => {
+	const currentSha = '3333333333333333333333333333333333333333';
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+		head: { ref: 'security/fix', sha: currentSha },
+	}), { dispatchInput: '6276', approvalRecords: [approvalRecord(headSha)] });
+	assertCheck(result, 'failure', currentSha);
+});
+
+test('approval record edits and deletions trigger trusted reevaluation', () => {
+	assert.match(workflow, /issue_comment:\s+types: \[created, edited, deleted\]/);
+	assert.match(workflow, /if: github.event_name != 'issue_comment' \|\| github.event.issue.pull_request/);
 });

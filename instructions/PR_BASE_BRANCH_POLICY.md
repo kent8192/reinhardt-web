@@ -96,16 +96,38 @@ preserves the required announcement. A security title, branch name, or `security
 label alone does not satisfy the required target check. The workflow reads the complete issue-event history and verifies that the latest
 `rc-breaking-approved` label event was applied by a user with current `maintain`
 or `admin` repository access, including custom roles with either base role.
-Triage and write access alone cannot approve this exception. Missing provenance, a later removal, or an access-check failure
-rejects approval; a maintainer can remove and reapply the label after review.
+The same user must then post an **unedited PR conversation comment** whose first
+line is exactly:
+
+```text
+Approved RC breaking security exception for head `<FULL_HEAD_SHA>`.
+```
+
+Replace `<FULL_HEAD_SHA>` with the complete current PR head SHA. The workflow
+paginates conversation comments and requires the record to have been created
+at or after the latest approval-label event. A review reply, edited comment,
+another actor's comment, or an approval for an earlier head cannot approve the
+current change. Every new head needs a fresh record after review, even while the
+label remains present. Reapplying the label also requires a new record; never
+edit an existing record to approve a different SHA.
+
+Triage and write access alone cannot approve this exception. Missing provenance,
+a later label removal, or failed approval verification rejects it. A maintainer
+can remove and reapply the label, then post a fresh record after review.
 
 The required check runs through `pull_request_target` using the trusted base
 branch workflow. Changes to this policy workflow must reach `main` separately
 before they can affect an open security PR. After the merge, remove and reapply
 the approval label to trigger a fresh `pull_request_target` event using the updated
-base workflow and publish a result on the current PR head. Rerunning an older
+base workflow, then post the exact-head approval record. The comment event
+publishes a result on the current PR head. Rerunning an older
 workflow execution retains its original SHA/ref and cannot activate the new
 policy.
+
+PR conversation comment creation, editing, and deletion also trigger the trusted
+main workflow. Editing or deleting the only valid approval record restores the
+failure. Ordinary issues and PRs targeting another branch are ignored by these
+comment events.
 
 **Approval reevaluation:** A successful check records the access observed when
 it ran; collaborator permission changes do not emit `pull_request_target` events.
@@ -121,8 +143,9 @@ gh workflow run warn-invalid-breaking-change.yml --ref main -f pull_request_numb
 Use the canonical decimal PR number (for example, `6739`); leading zeros,
 scientific notation, signs, and whitespace are rejected so manual and PR-event
 runs share one concurrency key. This reevaluation reads the current RC branch
-state, approval events, and base-role permissions again. Missing versioned develop
-branches or failed branch lookups reject the exception. The stable-phase RFC,
+state, approval events, exact-head records, and base-role permissions again.
+Missing versioned develop branches or failed branch lookups reject the exception.
+The stable-phase RFC,
 seven-day FCP, and MAJOR release requirements in
 [BC-3](STABILITY_POLICY.md#bc-3-must-breaking-change-approval-process) remain in force
 outside this RC exception.
