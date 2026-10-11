@@ -621,9 +621,13 @@ assert!(mfa.verify_code("alice", code).await?);
 ### OAuth2 Authorization Server
 
 Enable `oauth` for the authorization server and `database` for its PostgreSQL
-store. The server supports Authorization Code with mandatory PKCE `S256` and
-Client Credentials. It issues audience-bound opaque Bearer tokens. Refresh and
-Implicit grants are unavailable; no refresh token is issued.
+store. The server supports Authorization Code with mandatory PKCE `S256`,
+Client Credentials, and the Device Authorization Grant
+([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)) once it is configured with
+`OAuthServerConfig::with_device_authorization`. It issues audience-bound opaque
+Bearer tokens. Implicit grant is unavailable. Refresh tokens are issued only on
+the Authorization Code grant, and only when both the server configuration and
+the client registration opt in; see [Refresh Tokens](#refresh-tokens).
 
 `OAuthServer` provides administrative client and resource registration, typed
 pending authorization requests, explicit host approval, token inspection,
@@ -637,9 +641,9 @@ login and consent. The session binding must be unpredictable and retained
 across login redirects. Approval must call `complete_authorization` with that same
 browser-session binding and an authenticated active user ID. The host controls
 remembered consent and calls `revoke_user` after account security events. That
-operation invalidates outstanding authorization codes and tokens together,
-returns only the number of newly revoked tokens, and does not retire the user or
-OIDC subject. Code exchange rechecks the user's current authenticated, active
+operation invalidates outstanding authorization codes, device authorizations
+approved by the user, and tokens together, returns only the number of newly
+revoked tokens, and does not retire the user or OIDC subject. Code exchange rechecks the user's current authenticated, active
 status; a missing or inactive user, or failed user lookup, cannot consume a code.
 
 Register resource servers before clients. A confidential client receives a
@@ -653,20 +657,27 @@ original audience when re-registered. Custom stores used for registration must
 implement `insert_client_if_absent`, `insert_resource_if_absent`, and the
 corresponding compare-and-swap methods atomically.
 Code exchange commits redemption and token insertion together; custom stores
-must implement `redeem_code_and_store_token` atomically. `put_token` accepts
+must implement `redeem_code_and_store_token` atomically. Refresh tokens also need
+`redeem_code_and_store_tokens`, `inspect_refresh_token`, `rotate_refresh_token`,
+and `revoke_refresh_family`; their default implementations return an error (or
+find no family), so a store without them cannot issue refresh tokens. `put_token` accepts
 client-credentials tokens only. Authorization completion separately prepares its
 validated pending snapshot and code, then calls `complete_pending` to persist
 both atomically. Client-secret rotation uses `compare_and_swap_client` so a
 concurrent administrative update cannot be overwritten. A conflicting rotation,
 previous-secret revocation, or disable operation returns `ServerError`; retry
 with fresh state rather than using an uncommitted credential.
-Resource servers authenticate separately to introspection. Use
-`PostgresOAuthStore::migration()` in the host's Reinhardt migration graph before
-serving requests; enable `reinhardt-db/postgres` in the host that runs it.
+Resource servers authenticate separately to introspection. Apply every migration returned by
+`PostgresOAuthStore::migrations()`, in order, in the host's Reinhardt migration
+graph before serving requests; enable `reinhardt-db/postgres` in the host that
+runs it.
 Schedule `PostgresOAuthStore::purge_expired(now)` from a host maintenance job,
 passing the current UNIX time in seconds. It deletes expired pending requests,
-authorization codes, and tokens in one transaction and returns the deleted row count.
+device authorizations, authorization codes, and tokens in one transaction and
+returns the deleted row count.
 Codes referenced by unexpired tokens remain until those tokens can be removed.
+Redeemed device authorizations remain until they expire so that replays can be
+detected.
 Production construction uses `OAuthServer::for_production` with
 a PostgreSQL store and a host-provided shared `OAuthRateLimiter`. The
 `for_development` constructor accepts an in-memory store and limiter.
@@ -734,6 +745,265 @@ origins. Distribute each new confidential-client secret once. Update clients to
 use the mounted HTTPS endpoints and PKCE `S256`; users must authorize again.
 Retire the legacy helper only after its existing callers have moved.
 
+#### Refresh Tokens
+
+Refresh tokens are opt-in and apply only to the OAuth Authorization Code grant.
+They are never issued for Client Credentials, the Device Authorization Grant, or
+on the OIDC token endpoint. Both of the following must be set before a code
+exchange issues one:
+
+- `OAuthServerConfig::refresh_tokens` is `Some(RefreshTokenPolicy)`. It is `None`
+  in `OAuthServerConfig::new` and `OAuthServerConfig::for_loopback_development`.
+- The client registration sets `ClientRegistration::refresh_token` to `true`.
+  Registration rejects this flag unless `authorization_code` is also `true`.
+  Public clients may use it.
+
+The metadata document lists `refresh_token` in `grant_types_supported` only when
+the server policy is set. `IssuedToken` is `#[non_exhaustive]` and carries
+`refresh_token: Option<String>`, which is omitted from serialized output when
+no refresh token was issued. Match it with `..` or read its fields by name.
+
+`RefreshTokenPolicy::new(idle_ttl, max_lifetime)` returns `InvalidRequest` unless
+both durations are non-zero, `idle_ttl` is at most 90 days, `max_lifetime` is at
+most 365 days, and `idle_ttl` does not exceed `max_lifetime`. `Default` uses a
+30-day idle timeout and a 90-day maximum lifetime. The fields are public, so a
+policy edited after construction bypasses `new`; `OAuthServerConfig::validate()`
+checks the policy again.
+
+A successful code exchange creates a token family: the refresh-token rotation
+chain started by that code, plus every access token issued from it. The family
+records the code's scopes, audience, and user, and its absolute expiry is fixed
+at creation as `now + max_lifetime`. The first refresh token's idle expiry is
+`min(now + idle_ttl, absolute expiry)`. Refresh tokens are opaque high-entropy
+secrets; only their SHA-256 digests are stored, as for access tokens.
+
+Refresh uses the token endpoint's `refresh_token` grant, with the same client
+authentication as the code grant: confidential clients must present their
+secret, and public clients authenticate with `client_id` only. The request may
+include `scope` and `resource`.
+
+- A refresh may request a subset of the family's scopes. The access token
+  receives the requested scopes intersected with the client's current `scopes`
+  allowlist. An empty intersection returns `invalid_grant`, unless the family
+  was granted without any scope, in which case refreshes keep issuing unscoped
+  access tokens. A scope outside the family's scopes returns `invalid_scope`.
+- The refresh token keeps the family's original scopes, so a later refresh can
+  request the wider set again. Only the access token is narrowed.
+- A `resource` that differs from the family audience returns `invalid_target`.
+- A family audience that is no longer in the client's `audiences` allowlist, a
+  disabled audience resource, or a user that is missing, inactive, or no longer
+  authenticated returns `invalid_grant`. These failures do not revoke the
+  family.
+
+Every refresh rotates the refresh token. The presented token is marked rotated,
+and its replacement joins the same family. There is no grace window. Presenting
+a rotated token while its family is live and owned by the client is reuse: the
+server revokes the family and all of its access tokens atomically and returns
+`invalid_grant`. A concurrent refresh that loses the race is also treated as
+reuse. In PostgreSQL, row locks ensure that exactly one concurrent rotation
+succeeds.
+
+Because a losing refresh revokes the whole family, a client must serialize
+refreshes for each family. Let one process perform the refresh and persist the
+returned refresh token before any other process uses the previous one. For
+example, a CLI can hold an exclusive file lock around the read, refresh, and
+write sequence. Parallel refreshes from a shared copy of the token will end the
+session.
+
+Expired, revoked, reused, and other-client refresh tokens all return
+`invalid_grant` with no `error_description` that distinguishes them, so callers
+cannot probe token state. Reuse is logged with `tracing::warn!`, and the log
+contains only the client ID and family ID.
+
+Policy changes apply to existing families. The idle expiry for each refresh
+uses the policy in effect at that refresh, so a shorter `idle_ttl` takes effect
+on the next refresh. Absolute expiry is fixed at creation and keeps the
+`max_lifetime` from that time. Setting `refresh_tokens` to `None` makes refresh
+return `unsupported_grant_type`. Clearing a client's `refresh_token` flag makes
+refresh return `unauthorized_client`. To cut off existing families immediately,
+use `revoke_client` or `revoke_user`. `disable_client` and `retire_user` also
+revoke families.
+
+Revocation accepts an optional RFC 7009 `token_type_hint` on
+`OAuthServer::revoke_with_hint` and the `/revoke` endpoint; `OAuthServer::revoke`
+passes no hint. The hint only sets the order in which token types are tried;
+the server always tries both. Revoking a refresh token revokes its whole family,
+including access tokens already issued from it. This applies even when the
+presented refresh token was already rotated. Revoking an access token revokes
+only that token, and the family survives. Replaying an authorization code also
+revokes the family that the code produced. Revoking a token owned by another
+client has no effect and still returns success. `revoke_user`, `retire_user`,
+`revoke_client`, and `disable_client` revoke families as well, but their
+returned counts still include only access tokens.
+
+Introspection and `token_info` see only access tokens. A refresh token presented
+to either is reported as inactive.
+
+`PostgresOAuthStore::purge_expired(now)` deletes families whose absolute expiry
+has passed, together with their refresh tokens. Rotated refresh tokens remain
+until their family is purged, because reuse detection depends on them.
+Authorization codes referenced by a remaining family are kept. The refresh
+token tables are created by `0003_oauth_server_refresh_tokens`, which runs after
+`0002_oauth_server_device_authorizations` and modifies neither earlier migration.
+Existing deployments must apply it before enabling refresh tokens;
+`PostgresOAuthStore::migrations()` returns every migration in order.
+
+#### Device Authorization Grant
+
+The Device Authorization Grant (RFC 8628) lets input-constrained clients, such as
+TV apps and command-line tools, obtain a token while the user approves on
+another browser. It is disabled unless the configuration sets
+`device_authorization`. `DeviceAuthorizationConfig::new` defaults `code_ttl` to
+600 seconds and `poll_interval` to 5 seconds; valid ranges are 1 to 1800 seconds
+and 1 to 60 seconds. Both URLs must share the issuer origin and must not contain
+userinfo, a query, or a fragment.
+
+```rust
+use reinhardt_auth::oauth2_server::{DeviceAuthorizationConfig, OAuthError, OAuthServerConfig};
+
+fn create_config() -> Result<OAuthServerConfig, OAuthError> {
+    OAuthServerConfig::new(
+        "https://auth.example.com",
+        "https://auth.example.com/oauth/authorize",
+        "https://auth.example.com/oauth/token",
+        "https://auth.example.com/oauth/revoke",
+        "https://auth.example.com/oauth/introspect",
+    )?
+    .with_device_authorization(DeviceAuthorizationConfig::new(
+        "https://auth.example.com/oauth/device",
+        "https://auth.example.com/device",
+    ))
+}
+```
+
+Mount `OAuthEndpoint::DeviceAuthorization` at the configured `endpoint` URL:
+
+```rust
+use reinhardt_auth::oauth2_server::{OAuthEndpoint, OAuthHandler, OAuthServer};
+use reinhardt_urls::routers::ServerRouter;
+use std::sync::Arc;
+
+fn device_routes(server: Arc<OAuthServer>) -> ServerRouter {
+    ServerRouter::new().handler_arc(
+        "/oauth/device",
+        Arc::new(OAuthHandler::new(server, OAuthEndpoint::DeviceAuthorization)),
+    )
+}
+```
+
+The endpoint accepts form-encoded `POST` requests and authenticates the client
+as the token endpoint does. The response carries `device_code`, `user_code`,
+`verification_uri`, `verification_uri_complete` (the verification URI with a
+`user_code` query parameter), `expires_in`, and `interval`. Responses use
+`Cache-Control: no-store`. It sends no CORS headers, so browser clients cannot
+call it. When the grant is not configured, it returns HTTP 400 `invalid_request`;
+a client without the `device_code` flag receives `unauthorized_client`. Metadata
+advertises the endpoint and the `urn:ietf:params:oauth:grant-type:device_code`
+grant only when the grant is enabled.
+
+Clients opt in with the `device_code` flag. It is allowed for public and
+confidential clients and needs no redirect URIs. A client must enable at least
+one grant. Registration is rejected when `device_code` is set but the
+configuration has no device authorization. Register the audience resource first,
+as for other clients.
+
+```rust
+use reinhardt_auth::oauth2_server::{ClientKind, ClientRegistration, OAuthError, OAuthServer};
+
+async fn register_tv_client(server: &OAuthServer) -> Result<Option<String>, OAuthError> {
+    let mut client = ClientRegistration::new("tv-app", ClientKind::Public);
+    client.device_code = true;
+    client.scopes = vec!["read".to_owned()];
+    client.audiences = vec!["https://api.example.com".to_owned()];
+    server.register_client(client).await
+}
+```
+
+The Verification Page is host-owned and served from `verification_uri`. It calls
+`lookup_device_user_code` when the user submits a User Code, and
+`complete_device_authorization` only from its confirmation handler:
+
+```rust
+use reinhardt_auth::oauth2_server::{
+    AuthorizationDecision, OAuthError, OAuthServer, PendingDeviceAuthorization,
+};
+use std::net::IpAddr;
+
+// Called when the user submits the User Code on the Verification Page.
+// `client_ip` is the requester's address resolved through trusted proxies,
+// for example `Request::get_client_ip`.
+async fn review_request(
+    server: &OAuthServer,
+    user_code: &str,
+    browser_session: &str,
+    client_ip: IpAddr,
+) -> Result<PendingDeviceAuthorization, OAuthError> {
+    server
+        .lookup_device_user_code(user_code, browser_session, client_ip)
+        .await
+}
+
+// Called only from the confirmation form's submit handler.
+async fn approve_request(
+    server: &OAuthServer,
+    id: &str,
+    browser_session: &str,
+    user_id: String,
+    scopes: Vec<String>,
+) -> Result<(), OAuthError> {
+    server
+        .complete_device_authorization(
+            id,
+            browser_session,
+            AuthorizationDecision::Approve { user_id, scopes },
+        )
+        .await
+}
+```
+
+- The first browser session that looks up a User Code owns it. Repeat lookups
+  from that session return the same request; lookups from any other session
+  return `invalid_grant`.
+- Every lookup counts against the configured `OAuthRateLimiter` under two keys,
+  whether it succeeds or fails: `DeviceVerification:session:<digest>` for the
+  browser session and `DeviceVerification:ip:<client_ip>` for the requester's
+  address. The address key keeps the limit in force when an attacker discards
+  the session between guesses. A lookup over either limit returns `slow_down`.
+- Never approve a request reached through `verification_uri_complete`. Show the
+  client, scopes, and audience, and require an explicit user confirmation
+  (RFC 8628 §5.4). Use `AuthorizationDecision::Deny` for refusal. `Approve` needs
+  an authenticated, active user; otherwise the request is recorded as denied.
+  Approved scopes must be a subset of the requested scopes.
+- Carry `id` in the confirmation form. It is neither the User Code nor the
+  Device Code.
+- User Codes are 8 characters from `BCDFGHJKLMNPQRSTVWXZ`, displayed as
+  `XXXX-XXXX`. Input is uppercased and stripped of `-` and whitespace; any other
+  character is rejected.
+
+The token endpoint accepts `urn:ietf:params:oauth:grant-type:device_code` with
+the `device_code` parameter and normal client authentication. Errors use HTTP 400:
+
+- `authorization_pending`: the user has not decided yet. Keep polling.
+- `expired_token`: the device code has expired. Expiry is checked before
+  throttling and does not update the polling state, so the client stops polling.
+- `slow_down`: the client polled before the stored interval elapsed. The server
+  adds 5 seconds to that interval, and the client must add 5 seconds too. Only
+  replay detection and expiry run before this check.
+- `access_denied`: the user denied the request.
+- `invalid_grant`: the device code is unknown or belongs to another client, the
+  request was invalidated, or an approved code is replayed. A replay also revokes
+  the token issued from the first redemption.
+- `unsupported_grant_type` when the grant is not configured, and
+  `unauthorized_client` when the client lacks the `device_code` flag.
+
+`revoke_user` and user retirement invalidate requests that the user approved
+but the client has not redeemed yet. Undecided requests stay usable.
+`disable_client` invalidates every request of that client. Tokens issued
+through the grant are ordinary tokens, so `revoke_user` and `revoke_client`
+revoke them. Custom `OAuthServerStore`
+implementations must implement the device authorization methods atomically; the
+defaults return an error.
+
 ### OpenID Provider
 
 Enable `oidc-op` on `reinhardt-auth` (or `auth-oidc-op` on the root
@@ -741,7 +1011,8 @@ Enable `oidc-op` on `reinhardt-auth` (or `auth-oidc-op` on the root
 authorization server. The first profile supports first-party confidential web
 clients, Authorization Code with mandatory PKCE `S256`, `client_secret_basic`,
 the `openid` scope, RS256 ID Tokens, a UserInfo-only opaque access token,
-Discovery, and JWKS. It does not issue refresh tokens or expose a logout,
+Discovery, and JWKS. The OIDC token endpoint never issues refresh tokens, even
+when the OAuth refresh token policy is enabled. It does not expose a logout,
 dynamic registration, or claims endpoint. The RP redirect URI must match its
 registration exactly and use HTTPS. `OidcConfig::for_loopback_development`
 permits HTTP only for explicit loopback development.
@@ -767,7 +1038,7 @@ fn oidc_routes(
 }
 ```
 
-Apply `PostgresOAuthStore::migration()` and then
+Apply every migration from `PostgresOAuthStore::migrations()` and then
 `PostgresOidcStore::migration()` with the host's Reinhardt migration executor.
 Use the same database for both stores. Schedule
 `PostgresOidcStore::purge_expired(now)` after the OAuth purge job. It removes
@@ -856,6 +1127,37 @@ let ContextualCallbackResult { callback, context } = backend
 Use a per-browser, unpredictable binding with appropriate `Secure`,
 `HttpOnly`, and `SameSite` cookie settings. The context is opaque and is not
 encrypted by the state store, so do not place secrets in it.
+
+`CallbackResult::claims` is always present: when the provider cannot identify
+the user (ID token validation fails, or the UserInfo request fails because of
+an HTTP error, network error, or malformed body), the callback returns an
+error instead of a token response without an identity.
+
+#### GitHub Provider
+
+`GitHubProvider` maps GitHub's `/user` response to `StandardClaims`:
+
+- `sub` is the numeric user ID. Key accounts on it; GitHub users can rename
+  their login.
+- `additional_claims["login"]` is the login (the `@handle`), present even
+  when the user has set a display name.
+- `name` is the display name, falling back to the login when it is unset.
+- `email` is only the public profile email (`/user/emails` is not called),
+  and `email_verified` is always `None`.
+
+`ProviderConfig::github()` requests the classic OAuth App scopes `user` and
+`user:email`. GitHub Apps ignore OAuth scopes, so for GitHub App user
+authorization build the configuration without them; the authorization URL
+then omits the `scope` parameter:
+
+```rust,ignore
+use reinhardt::auth::ProviderConfig;
+
+let config = ProviderConfig {
+    scopes: Vec::new(),
+    ..ProviderConfig::github(client_id, client_secret, redirect_uri)
+};
+```
 
 ### Token Blacklist & Rotation
 
