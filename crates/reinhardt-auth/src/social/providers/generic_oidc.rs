@@ -73,6 +73,7 @@ use crate::social::core::{
 	TokenResponse,
 };
 use crate::social::flow::pkce::{CodeChallenge, CodeVerifier};
+use crate::social::flow::token_endpoint::parse_token_endpoint_response;
 use crate::social::flow::{AuthorizationFlow, RefreshFlow, TokenExchangeFlow};
 use crate::social::oidc::id_token::ValidationConfig;
 use crate::social::oidc::{
@@ -389,23 +390,12 @@ impl GenericOidcProvider {
 			.await
 			.map_err(|e| SocialAuthError::Network(e.to_string()))?;
 
-		if !response.status().is_success() {
-			let status = response.status();
-			let error_body = response
-				.text()
-				.await
-				.unwrap_or_else(|_| "Unknown error".to_string());
-			return Err(SocialAuthError::TokenExchangeError(format!(
-				"Token exchange failed ({}): {}",
-				status, error_body
-			)));
-		}
-
-		let token: TokenResponse = response
-			.json()
-			.await
-			.map_err(|e| SocialAuthError::TokenExchangeError(e.to_string()))?;
-		Ok(token)
+		parse_token_endpoint_response(
+			response,
+			"Token exchange",
+			SocialAuthError::TokenExchangeError,
+		)
+		.await
 	}
 
 	/// Default UserInfo mapping: deserialize the raw JSON directly into
