@@ -34,6 +34,7 @@
 //! ```
 
 // Shared request body handling for Hyper adapters.
+mod admission;
 mod body;
 // Shared buffered/file response transport with bounded memory.
 /// HTTP/1.1 server implementation based on Hyper.
@@ -58,6 +59,7 @@ pub mod graphql;
 /// WebSocket server support with broadcast capabilities (requires `websocket` feature).
 pub mod websocket;
 
+pub use admission::{AdmittedRequest, PreBodyAdmitted, RequestAdmission, RequestHead};
 pub use http::{HttpServer, serve, serve_with_shutdown};
 pub use http2::{Http2Server, serve_http2, serve_http2_with_shutdown};
 #[allow(deprecated)] // Re-export keeps the compatibility API discoverable during the 0.2 line.

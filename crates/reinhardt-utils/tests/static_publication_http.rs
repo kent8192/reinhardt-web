@@ -1,7 +1,7 @@
 #![cfg(feature = "asset-publication")]
 
 use async_trait::async_trait;
-use http::{Method, StatusCode, header};
+use http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use reinhardt_http::{Handler, Middleware, Request, Response};
 use reinhardt_utils::staticfiles::publication::{
 	AssetInput, AssetMode, AssetPipeline, AssetProducer, AssetPublisher, AssetRole,
@@ -102,6 +102,18 @@ impl Fixture {
 			.unwrap()
 			.resolve(logical)
 			.unwrap()
+	}
+	/// Rebuild the middleware with the given configured response headers.
+	fn with_response_headers(self, headers: HeaderMap) -> Self {
+		let config = ManifestServingConfig::new(self.store.clone(), self.prefix.clone())
+			.unwrap()
+			.with_pages("default".into())
+			.with_navigation_fallback(true)
+			.with_response_headers(headers);
+		Self {
+			middleware: ManifestStaticMiddleware::new(config),
+			..self
+		}
 	}
 }
 
@@ -1249,4 +1261,159 @@ async fn explicit_nested_admin_mount_reaches_router(#[case] prefix: &str) {
 		.await
 		.unwrap();
 	assert_eq!(body_bytes(&asset), b"body{color:rgb(1,2,3)}");
+}
+
+const TEST_CSP: &str = "default-src 'self'; frame-ancestors 'none'";
+
+fn security_headers() -> HeaderMap {
+	let mut headers = HeaderMap::new();
+	headers.insert(
+		header::CONTENT_SECURITY_POLICY,
+		HeaderValue::from_static(TEST_CSP),
+	);
+	headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+	headers
+}
+
+/// Request target for the configured response header tests.
+#[derive(Clone, Copy, Debug)]
+enum Target {
+	/// Logical asset name resolved to its published generation URL.
+	Asset(&'static str),
+	/// Literal request path.
+	Path(&'static str),
+}
+
+#[rstest]
+#[case::asset(Target::Asset("app.js"), None, 404, StatusCode::OK)]
+#[case::conditional(
+	Target::Asset("app.js"),
+	Some((header::IF_NONE_MATCH, "*")),
+	404,
+	StatusCode::NOT_MODIFIED
+)]
+#[case::range(
+	Target::Asset("app.js"),
+	Some((header::RANGE, "bytes=0-3")),
+	404,
+	StatusCode::PARTIAL_CONTENT
+)]
+#[case::unsatisfiable_range(
+	Target::Asset("app.js"),
+	Some((header::RANGE, "bytes=100000-")),
+	404,
+	StatusCode::RANGE_NOT_SATISFIABLE
+)]
+#[case::manifest(Target::Path("/static/manifest.json"), None, 404, StatusCode::OK)]
+#[case::navigation_document(
+	Target::Path("/account"),
+	Some((header::ACCEPT, "text/html")),
+	404,
+	StatusCode::OK
+)]
+#[case::mount_error(Target::Path("/static/missing.js"), None, 404, StatusCode::NOT_FOUND)]
+#[tokio::test]
+async fn configured_response_headers_cover_every_served_response(
+	#[case] target: Target,
+	#[case] request_header: Option<(header::HeaderName, &str)>,
+	#[case] next_status: u16,
+	#[case] expected: StatusCode,
+) {
+	// Arrange
+	let fixture =
+		Fixture::new("/static/", AssetMode::Production).with_response_headers(security_headers());
+	let probe = NavigationProbe::new(StatusCode::from_u16(next_status).unwrap());
+	let uri = match target {
+		Target::Asset(logical) => fixture.url(logical),
+		Target::Path(path) => path.to_owned(),
+	};
+	let mut builder = Request::builder().uri(&uri);
+	if let Some((name, value)) = request_header {
+		builder = builder.header(name, value);
+	}
+
+	// Act
+	let response = fixture
+		.middleware
+		.process(builder.build().unwrap(), probe.clone())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, expected);
+	assert_eq!(response.headers[header::CONTENT_SECURITY_POLICY], TEST_CSP);
+	assert_eq!(response.headers[header::X_FRAME_OPTIONS], "DENY");
+	assert!(!body_bytes(&response).starts_with(b"navigation-probe"));
+}
+
+#[rstest]
+#[case::passthrough("/api/account", "application/json", 200)]
+#[case::router_owned_navigation("/account", "text/html", 200)]
+#[case::router_not_found_without_html("/account", "application/json", 404)]
+#[tokio::test]
+async fn configured_response_headers_skip_forwarded_responses(
+	#[case] uri: &str,
+	#[case] accept: &str,
+	#[case] next_status: u16,
+) {
+	// Arrange
+	let fixture =
+		Fixture::new("/static/", AssetMode::Production).with_response_headers(security_headers());
+	let probe = NavigationProbe::new(StatusCode::from_u16(next_status).unwrap());
+	let request = Request::builder()
+		.uri(uri)
+		.header(header::ACCEPT, accept)
+		.build()
+		.unwrap();
+
+	// Act
+	let response = fixture
+		.middleware
+		.process(request, probe.clone())
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(probe.call_count(), 1);
+	assert_eq!(response.status.as_u16(), next_status);
+	assert_eq!(body_bytes(&response), b"navigation-probe");
+	assert!(
+		!response
+			.headers
+			.contains_key(header::CONTENT_SECURITY_POLICY)
+	);
+	assert!(!response.headers.contains_key(header::X_FRAME_OPTIONS));
+}
+
+#[rstest]
+#[tokio::test]
+async fn configured_response_header_replaces_middleware_default() {
+	// Arrange
+	let mut headers = HeaderMap::new();
+	headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+	let fixture = Fixture::new("/static/", AssetMode::Production).with_response_headers(headers);
+	let probe = NavigationProbe::new(StatusCode::NOT_FOUND);
+
+	// Act
+	let response = fixture
+		.middleware
+		.process(
+			Request::builder()
+				.uri(fixture.url("site.css"))
+				.build()
+				.unwrap(),
+			probe,
+		)
+		.await
+		.unwrap();
+
+	// Assert
+	let cache_control: Vec<_> = response
+		.headers
+		.get_all(header::CACHE_CONTROL)
+		.iter()
+		.collect();
+	assert_eq!(cache_control, [HeaderValue::from_static("no-store")]);
+	assert_eq!(response.headers[header::CONTENT_TYPE], "text/css");
+	assert_eq!(response.headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
 }

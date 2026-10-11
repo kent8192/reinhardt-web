@@ -1,0 +1,12 @@
+error[E0639]: cannot create non-exhaustive struct using struct expression
+  --> tests/ui/migration_non_exhaustive/fail/table_info_struct_literal.rs:7:10
+   |
+ 7 |       let _ = TableInfo {
+   |  _____________^
+ 8 | |         name: "accounts".to_string(),
+ 9 | |         columns: HashMap::new(),
+10 | |         indexes: HashMap::new(),
+...  |
+14 | |         check_constraints: Vec::new(),
+15 | |     };
+   | |_____^
