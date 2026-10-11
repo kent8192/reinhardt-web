@@ -864,6 +864,11 @@ pub enum Operation {
 		/// Original column definition (before alteration).
 		/// This is required for generating accurate rollback SQL.
 		/// If None, rollback will attempt to reconstruct from ProjectState.
+		///
+		/// On PostgreSQL and CockroachDB, forward SQL compares its nullability
+		/// with `new_definition` and emits `SET NOT NULL` / `DROP NOT NULL` only
+		/// when they differ. If None, the nullability of `new_definition` is
+		/// always applied.
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		old_definition: Option<ColumnDefinition>,
 		/// The new definition.
@@ -1893,6 +1898,27 @@ impl Operation {
 								quote_identifier(table),
 								quote_identifier(column),
 								default
+							));
+						}
+						// `ALTER COLUMN ... TYPE` keeps the existing NOT NULL flag, so a
+						// nullability change needs its own statement. Emit it as a
+						// separate payload (CockroachDB rejects the comma-combined form,
+						// see `to_reverse_sql`). When `old_definition` is unknown, follow
+						// `new_definition`: SET/DROP NOT NULL is idempotent on PostgreSQL
+						// and this matches MySQL `MODIFY COLUMN` and SQLite recreation,
+						// which both apply the full new definition. Primary key columns
+						// are implicitly NOT NULL, and PostgreSQL rejects DROP NOT NULL
+						// on them, so their effective nullability is always NOT NULL.
+						let new_not_null = new_definition.not_null || new_definition.primary_key;
+						let nullability_changed = old_definition
+							.as_ref()
+							.is_none_or(|old| (old.not_null || old.primary_key) != new_not_null);
+						if nullability_changed {
+							statements.push(format!(
+								"ALTER TABLE {} ALTER COLUMN {} {} NOT NULL;",
+								quote_identifier(table),
+								quote_identifier(column),
+								if new_not_null { "SET" } else { "DROP" }
 							));
 						}
 						statements.join(" ")
@@ -6311,6 +6337,101 @@ mod tests {
 			sql.contains("ALTER COLUMN is_active DROP DEFAULT"),
 			"AlterColumn must remove dropped database defaults, got: {}",
 			sql
+		);
+	}
+
+	/// Forward `AlterColumn` SQL on the PostgreSQL family must change the
+	/// column nullability as a separate statement after `TYPE`, because
+	/// `ALTER COLUMN ... TYPE` alone keeps the existing NOT NULL flag
+	/// (reinhardt-web#6724). A known `old_definition` limits the statement to
+	/// real changes; an unknown one applies `new_definition`. Primary key
+	/// columns are implicitly NOT NULL, so DROP NOT NULL is never emitted for
+	/// them.
+	#[rstest]
+	#[case::not_null_to_nullable(Some(true), false, false, Some("DROP"))]
+	#[case::nullable_to_not_null(Some(false), true, false, Some("SET"))]
+	#[case::unchanged_not_null(Some(true), true, false, None)]
+	#[case::unchanged_nullable(Some(false), false, false, None)]
+	#[case::unknown_old_to_nullable(None, false, false, Some("DROP"))]
+	#[case::unknown_old_to_not_null(None, true, false, Some("SET"))]
+	#[case::primary_key_keeps_not_null(Some(true), false, true, None)]
+	#[case::primary_key_unknown_old(None, false, true, Some("SET"))]
+	fn test_to_sql_alter_column_changes_nullability_for_postgres_family(
+		#[case] old_not_null: Option<bool>,
+		#[case] new_not_null: bool,
+		#[case] primary_key: bool,
+		#[case] expected_clause: Option<&str>,
+		#[values(SqlDialect::Postgres, SqlDialect::Cockroachdb)] dialect: SqlDialect,
+	) {
+		// Arrange
+		let new_definition = ColumnDefinition {
+			not_null: new_not_null,
+			primary_key,
+			..ColumnDefinition::new("created_at", FieldType::TimestampTz)
+		};
+		let op = Operation::AlterColumn {
+			table: "events".to_string(),
+			column: "created_at".to_string(),
+			old_definition: old_not_null.map(|not_null| ColumnDefinition {
+				not_null,
+				..new_definition.clone()
+			}),
+			new_definition,
+			mysql_options: None,
+		};
+		let mut expected =
+			vec!["ALTER TABLE events ALTER COLUMN created_at TYPE TIMESTAMPTZ;".to_string()];
+		if let Some(clause) = expected_clause {
+			expected.push(format!(
+				"ALTER TABLE events ALTER COLUMN created_at {clause} NOT NULL;"
+			));
+		}
+
+		// Act
+		let sql = op.to_sql(&dialect);
+
+		// Assert
+		assert_eq!(sql, expected.join(" "));
+	}
+
+	/// The forward nullability statement must coexist with default changes
+	/// and come after them, each as its own statement (reinhardt-web#6724).
+	#[rstest]
+	#[case::postgres(SqlDialect::Postgres)]
+	#[case::cockroachdb(SqlDialect::Cockroachdb)]
+	fn test_to_sql_alter_column_changes_nullability_after_default_statements(
+		#[case] dialect: SqlDialect,
+	) {
+		// Arrange
+		let op = Operation::AlterColumn {
+			table: "events".to_string(),
+			column: "attempts".to_string(),
+			old_definition: Some(ColumnDefinition {
+				not_null: true,
+				default: Some("0".to_string()),
+				..ColumnDefinition::new("attempts", FieldType::Integer)
+			}),
+			new_definition: ColumnDefinition {
+				not_null: false,
+				default: Some("1".to_string()),
+				..ColumnDefinition::new("attempts", FieldType::BigInteger)
+			},
+			mysql_options: None,
+		};
+
+		// Act
+		let sql = op.to_sql(&dialect);
+
+		// Assert
+		assert_eq!(
+			sql,
+			[
+				"ALTER TABLE events ALTER COLUMN attempts DROP DEFAULT;",
+				"ALTER TABLE events ALTER COLUMN attempts TYPE BIGINT;",
+				"ALTER TABLE events ALTER COLUMN attempts SET DEFAULT 1;",
+				"ALTER TABLE events ALTER COLUMN attempts DROP NOT NULL;",
+			]
+			.join(" ")
 		);
 	}
 
