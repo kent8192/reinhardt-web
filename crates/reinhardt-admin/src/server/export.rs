@@ -60,16 +60,24 @@ fn serialize_delimited(
 
 	// Write header row from first record's keys
 	let headers: Vec<&str> = flat_records[0].keys().map(|k| k.as_str()).collect();
-	wtr.write_record(&headers)
+	let safe_headers: Vec<_> = headers
+		.iter()
+		.map(|header| crate::core::export::formula_safe_cell(header))
+		.collect();
+	wtr.write_record(safe_headers.iter().map(|cell| cell.as_bytes()))
 		.map_err(|e| format!("header serialization failed: {}", e))?;
 
 	// Write each record's values in header order
 	for record in &flat_records {
-		let values: Vec<&str> = headers
+		let values: Vec<_> = headers
 			.iter()
-			.map(|h| record.get(*h).map(|v| v.as_str()).unwrap_or(""))
+			.map(|h| {
+				crate::core::export::formula_safe_cell(
+					record.get(*h).map(String::as_str).unwrap_or(""),
+				)
+			})
 			.collect();
-		wtr.write_record(&values)
+		wtr.write_record(values.iter().map(|cell| cell.as_bytes()))
 			.map_err(|e| format!("record serialization failed: {}", e))?;
 	}
 
@@ -197,4 +205,24 @@ pub async fn export_data(
 		truncated,
 		total_count: Some(total_count),
 	})
+}
+
+#[cfg(all(test, server))]
+mod tests {
+	use super::serialize_delimited;
+	use rstest::rstest;
+	use std::collections::HashMap;
+
+	#[rstest]
+	#[case(b',')]
+	#[case(b'\t')]
+	fn server_export_escapes_formula_cells(#[case] delimiter: u8) {
+		let records = vec![HashMap::from([(
+			"value".to_string(),
+			serde_json::json!(" \t=1+1"),
+		)])];
+		let output = serialize_delimited(&records, delimiter).unwrap();
+		let text = String::from_utf8(output).unwrap();
+		assert!(text.contains("' \t=1+1"));
+	}
 }

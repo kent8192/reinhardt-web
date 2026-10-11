@@ -19,7 +19,7 @@ use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 #[cfg(server)]
 use super::audit;
 #[cfg(server)]
-use super::error::{AdminAuth, MapServerFnError, ModelPermission};
+use super::error::{AdminAuth, MapServerFnError, ModelPermission, require_object_filters};
 #[cfg(server)]
 use super::security::{require_csrf_token, sanitize_mutation_values};
 #[cfg(server)]
@@ -75,8 +75,10 @@ pub async fn create_record(
 	let table_name = model_admin.table_name();
 	let pk_field = model_admin.pk_field();
 
-	let sanitized_data = prepare_create_data(request.data, model_admin.as_ref(), table_name)
+	let mut sanitized_data = prepare_create_data(request.data, model_admin.as_ref(), table_name)
 		.map_server_fn_error()?;
+	let object_filters = require_object_filters(model_admin.as_ref(), user.as_ref())?;
+	enforce_creation_scope(&mut sanitized_data, &object_filters)?;
 
 	let user_id = auth.user_id().unwrap_or("unknown").to_string();
 
@@ -108,6 +110,42 @@ pub(crate) fn prepare_create_data(
 	sanitize_mutation_values(&mut data);
 	inject_auto_timestamps(&mut data, table_name);
 	Ok(data)
+}
+
+/// Apply the same equality scope used for object reads before inserting a row.
+/// Unsupported predicates fail closed because their result cannot be proved for a new row.
+#[cfg(server)]
+pub(crate) fn enforce_creation_scope(
+	data: &mut std::collections::HashMap<String, serde_json::Value>,
+	filters: &[reinhardt_db::orm::Filter],
+) -> Result<(), ServerFnError> {
+	use reinhardt_db::orm::{FilterOperator, FilterValue};
+
+	for filter in filters {
+		if !matches!(&filter.operator, FilterOperator::Eq)
+			|| filter.source_field_name() != Some(filter.field.as_str())
+		{
+			return Err(ServerFnError::server(403, "Object permission denied"));
+		}
+		let expected = match &filter.value {
+			FilterValue::String(value) => serde_json::Value::String(value.clone()),
+			FilterValue::Integer(value) | FilterValue::Int(value) => (*value).into(),
+			FilterValue::Boolean(value) | FilterValue::Bool(value) => (*value).into(),
+			FilterValue::Uuid(value) => serde_json::Value::String(value.to_string()),
+			FilterValue::Null => serde_json::Value::Null,
+			_ => return Err(ServerFnError::server(403, "Object permission denied")),
+		};
+		match data.get(&filter.field) {
+			Some(actual) if actual != &expected => {
+				return Err(ServerFnError::server(403, "Object permission denied"));
+			}
+			Some(_) => {}
+			None => {
+				data.insert(filter.field.clone(), expected);
+			}
+		}
+	}
+	Ok(())
 }
 
 /// Injects the current UTC timestamp for fields with `auto_now` or `auto_now_add`.
@@ -202,6 +240,23 @@ pub(crate) fn inject_auto_now_timestamps(
 mod tests {
 	use super::*;
 	use crate::core::ModelAdminConfig;
+	use reinhardt_db::orm::{Filter, FilterOperator, FilterValue};
+
+	#[rstest::rstest]
+	fn creation_scope_sets_or_rejects_tenant_id() {
+		let filters = [Filter::new(
+			"tenant_id",
+			FilterOperator::Eq,
+			FilterValue::Integer(42),
+		)];
+		let mut data =
+			std::collections::HashMap::from([("name".to_string(), serde_json::json!("safe"))]);
+		enforce_creation_scope(&mut data, &filters).unwrap();
+		assert_eq!(data.get("tenant_id"), Some(&serde_json::json!(42)));
+
+		data.insert("tenant_id".to_string(), serde_json::json!(99));
+		assert!(enforce_creation_scope(&mut data, &filters).is_err());
+	}
 
 	#[test]
 	fn prepare_create_data_rejects_readonly_import_fields() {

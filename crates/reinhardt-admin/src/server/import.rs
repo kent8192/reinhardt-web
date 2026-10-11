@@ -16,7 +16,7 @@ use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::collections::HashMap;
 
 #[cfg(server)]
-use super::error::{AdminAuth, MapServerFnError, ModelPermission};
+use super::error::{AdminAuth, MapServerFnError, ModelPermission, require_object_filters};
 #[cfg(server)]
 use super::limits::{MAX_IMPORT_FILE_SIZE, MAX_IMPORT_RECORDS};
 
@@ -64,6 +64,7 @@ pub async fn import_data(
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
 	auth.require_model_permission(model_admin.as_ref(), user.as_ref(), ModelPermission::Add)
 		.await?;
+	let object_filters = require_object_filters(model_admin.as_ref(), user.as_ref())?;
 
 	// Validate import file size to prevent memory exhaustion
 	if data.len() > MAX_IMPORT_FILE_SIZE {
@@ -118,7 +119,7 @@ pub async fn import_data(
 			errors.push(format!("Record {}: import failed", index + 1));
 			continue;
 		}
-		let record =
+		let mut record =
 			match super::create::prepare_create_data(record, model_admin.as_ref(), table_name) {
 				Ok(record) => record,
 				Err(_) => {
@@ -127,6 +128,11 @@ pub async fn import_data(
 					continue;
 				}
 			};
+		if super::create::enforce_creation_scope(&mut record, &object_filters).is_err() {
+			failed += 1;
+			errors.push(format!("Record {}: import failed", index + 1));
+			continue;
+		}
 		match db
 			.create::<AdminRecord>(table_name, Some(pk_field), record)
 			.await
