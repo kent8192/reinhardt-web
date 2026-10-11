@@ -319,6 +319,7 @@ mod tests {
 				token_type: "Bearer".to_string(),
 				expires_in: Some(3600),
 				refresh_token: None,
+				refresh_token_expires_in: None,
 				scope: None,
 				id_token: None,
 			})
