@@ -40,11 +40,15 @@ function pullRequest(overrides = {}) {
 }
 
 async function run(pr, options = {}) {
-	const result = { failures: [], comments: [], checks: [], listed: 0, reads: [], eventsListed: 0, permissionsRead: [] };
+	const result = { failures: [], comments: [], checks: [], listed: 0, reads: [], eventsListed: 0, permissionsRead: [], collaboratorsListed: 0, branchesListed: 0 };
 	const context = {
 		repo: { owner: 'kent8192', repo: 'reinhardt-web' },
 		sha: baseSha,
-		payload: { pull_request: options.payload ?? pr },
+		eventName: Object.hasOwn(options, 'dispatchInput') ? 'workflow_dispatch' : 'pull_request_target',
+		ref: options.ref ?? 'refs/heads/main',
+		payload: Object.hasOwn(options, 'dispatchInput')
+			? { inputs: { pull_request_number: options.dispatchInput } }
+			: { pull_request: options.payload ?? pr },
 	};
 	const github = {
 		rest: {
@@ -64,6 +68,8 @@ async function run(pr, options = {}) {
 				},
 			},
 			repos: {
+				listBranches: Symbol('listBranches'),
+				listCollaborators: Symbol('listCollaborators'),
 				getCollaboratorPermissionLevel: async (request) => {
 					result.permissionsRead.push(request);
 					if (options.permissionError) throw new Error('HTTP 403 reading approval actor');
@@ -82,6 +88,18 @@ async function run(pr, options = {}) {
 			},
 		},
 		paginate: async (endpoint, request) => {
+			if (endpoint === github.rest.repos.listBranches) {
+				assert.deepEqual(request, { owner: 'kent8192', repo: 'reinhardt-web', per_page: 100 });
+				result.branchesListed += 1;
+				if (options.branchesError) throw new Error('HTTP 403 reading RC phase');
+				return options.branches ?? [{ name: 'develop/0.4.0' }];
+			}
+			if (endpoint === github.rest.repos.listCollaborators) {
+				assert.deepEqual(request, { owner: 'kent8192', repo: 'reinhardt-web', per_page: 100 });
+				result.collaboratorsListed += 1;
+				if (options.collaboratorsError) throw new Error('HTTP 403 reading base roles');
+				return options.collaborators ?? [];
+			}
 			if (endpoint === github.rest.issues.listEvents) {
 				assert.deepEqual(request, {
 					owner: 'kent8192', repo: 'reinhardt-web', issue_number: 6276, per_page: 100,
@@ -111,8 +129,13 @@ async function run(pr, options = {}) {
 	} catch (error) {
 		result.error = error.message;
 	}
-	assert.deepEqual(result.reads, [{
-		owner: 'kent8192', repo: 'reinhardt-web', pull_number: 6276,
+	const dispatch = Object.hasOwn(options, 'dispatchInput');
+	const target = dispatch ? Number(options.dispatchInput) : context.payload.pull_request.number;
+	const rejectedInput = !Number.isSafeInteger(target) || target <= 0
+		|| (dispatch && (context.ref !== 'refs/heads/main'
+			|| typeof options.dispatchInput !== 'string' || !/^[1-9]\d*$/.test(options.dispatchInput)));
+	assert.deepEqual(result.reads, rejectedInput ? [] : [{
+		owner: 'kent8192', repo: 'reinhardt-web', pull_number: target,
 	}]);
 	return result;
 }
@@ -282,12 +305,78 @@ for (const title of ['fix!(security): remediate findings', 'fix(security)!: reme
 	});
 }
 
-test('security approval also covers breaking changes detected only by label', async () => {
+test('recognizes a custom Maintain base role from returned permission flags', async () => {
 	const result = await run(pullRequest({
-		labels: securityApproval,
-	}));
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), { access: { permission: 'write', role_name: 'custom-maintainer', user: { permissions: { maintain: true } } } });
 	assertCheck(result, 'success');
-	assert.deepEqual(result.failures, []);
+	assert.equal(result.collaboratorsListed, 0);
+});
+
+test('resolves a custom Maintain base role when the permission response omits flags', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), {
+		access: { permission: 'write', role_name: 'custom-maintainer' },
+		collaborators: [{ login: 'MAINTAINER', permissions: { maintain: true, admin: false } }],
+	});
+	assertCheck(result, 'success');
+	assert.equal(result.collaboratorsListed, 1);
+});
+
+test('cannot infer Maintain access from a custom role name or another collaborator', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), {
+		access: { permission: 'write', role_name: 'custom-maintainer' },
+		collaborators: [{ login: 'someone-else', permissions: { maintain: true } }],
+	});
+	assertCheck(result, 'failure');
+});
+
+test('custom-role lookup failure cannot retain an approved result', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), { access: { permission: 'write', role_name: 'custom-maintainer' }, collaboratorsError: true });
+	assert.equal(result.error, undefined);
+	assertCheck(result, 'failure');
+});
+
+test('manual reevaluation invalidates an old approval after access revocation', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), { dispatchInput: '6276', access: { permission: 'read', role_name: 'triage' } });
+	assertCheck(result, 'failure');
+	assert.equal(result.permissionsRead.length, 1);
+});
+
+test('manual reevaluation accepts a current maintainer on the current PR head', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), { dispatchInput: '6276' });
+	assertCheck(result, 'success');
+});
+
+for (const dispatchInput of ['', '-1', '1.5', 'not-a-pr', '06276', '6.276e3', '0x1884', '+6276', ' 6276', '6276 ', '6276\n', '0', '9007199254740992', 6276]) {
+	test(`rejects invalid manual reevaluation input: ${dispatchInput}`, async () => {
+		const result = await run(pullRequest(), { dispatchInput });
+		assert.deepEqual(result.reads, []);
+		assert.deepEqual(result.checks, []);
+		assert.equal(result.failures.length, 1);
+	});
+}
+
+test('manual reevaluation rejects an untrusted workflow ref', async () => {
+	const result = await run(pullRequest(), { dispatchInput: '6276', ref: 'refs/heads/feature/untrusted' });
+	assert.deepEqual(result.checks, []);
+	assert.equal(result.failures.length, 1);
+});
+
+test('security approval requires a breaking title as well as all labels', async () => {
+	const result = await run(pullRequest({ labels: securityApproval }));
+	assertCheck(result, 'failure');
+	assert.equal(result.failures.length, 1);
+	assert.equal(result.eventsListed, 0);
 });
 
 test('current approval labels override an older unapproved event', async () => {
@@ -435,6 +524,63 @@ test('metadata changes trigger the trusted required check', () => {
 
 test('the publisher has check permission and a distinct automatic job name', () => {
 	assert.match(workflow, /^  checks: write$/m);
+	assert.match(workflow, /^  contents: read$/m);
 	assert.match(workflow, /^    name: Publish Breaking Change Target Check$/m);
 	assert.doesNotMatch(workflow, /^    name: Warn Invalid Breaking Change Target$/m);
+});
+
+test('custom Write base permissions cannot approve an exception', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), {
+		access: { permission: 'write', role_name: 'custom-maintainer' },
+		collaborators: [{ login: 'maintainer', permissions: { maintain: false, admin: false, push: true } }],
+	});
+	assertCheck(result, 'failure');
+});
+
+test('manual reevaluation is registered and shares the PR concurrency key', () => {
+	assert.match(workflow, /workflow_dispatch:\s+inputs:\s+pull_request_number:/);
+	assert.match(workflow, /github\.event\.pull_request\.number \|\| inputs\.pull_request_number/);
+});
+
+for (const branches of [[], [{ name: 'main' }], [{ name: 'develop/next' }], [{ name: 'develop/0.4.0/archived' }]]) {
+	test(`RC security exception is unavailable without an active versioned develop branch: ${JSON.stringify(branches)}`, async () => {
+		const result = await run(pullRequest({
+			title: 'fix!(security): remediate findings', labels: securityApproval,
+		}), { branches });
+		assert.equal(result.error, undefined);
+		assertCheck(result, 'failure');
+		assert.equal(result.branchesListed, 1);
+		assert.equal(result.eventsListed, 0);
+		assert.deepEqual(result.permissionsRead, []);
+	});
+}
+
+test('branch lookup failure replaces an earlier approved check with failure', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), { branchesError: true, comments: [{ body: marker }] });
+	assert.equal(result.error, undefined);
+	assertCheck(result, 'failure');
+	assert.equal(result.eventsListed, 0);
+	assert.deepEqual(result.permissionsRead, []);
+	assert.equal(result.failures.length, 1);
+});
+
+test('manual reevaluation invalidates an approval after the RC phase ends', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), { dispatchInput: '6276', branches: [] });
+	assertCheck(result, 'failure');
+	assert.equal(result.eventsListed, 0);
+});
+
+test('RC phase discovery considers all paginated branch results', async () => {
+	const result = await run(pullRequest({
+		title: 'fix!(security): remediate findings', labels: securityApproval,
+	}), { branches: [...Array.from({ length: 100 }, (_, i) => ({ name: `feature/${i}` })), { name: 'develop/0.4.0' }] });
+	assertCheck(result, 'success');
+	assert.equal(result.branchesListed, 1);
+	assert.equal(result.eventsListed, 1);
 });

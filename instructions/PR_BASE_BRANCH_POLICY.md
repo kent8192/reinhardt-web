@@ -80,8 +80,10 @@ While BB-1 makes the base branch automatic, the developer must still choose whic
 | Performance improvements (no API change) | `main` | Safe for RC |
 | Performance improvements (API change) | `develop/0.x+1.0` | Equivalent to breaking change |
 
-**Approved breaking security fixes:** Security fixes continue to target `main`
-when an API change is necessary, subject to the explicit maintainer approval and
+**Approved breaking security fixes during RC:** This exception is available only
+while a versioned `develop/X.Y.Z` branch exists, as verified from the current
+repository branch list. Security fixes continue to target `main` when an API
+change is necessary, subject to the explicit maintainer approval and
 API Change Proposal required by [Stability Policy SP-3](STABILITY_POLICY.md#sp-3-must-breaking-changes-require-approval).
 After approving the proposal and migration guide, a maintainer applies both
 `security` and `rc-breaking-approved` to the PR. The approval label records this
@@ -89,12 +91,12 @@ specific exception; create it with the description "Maintainer approval for an
 SP-3 breaking security fix targeting main" if it does not exist. Keep the
 `breaking-change` label and breaking title so release and announcement tooling
 still recognize the compatibility impact. The exception requires all three
-labels, including `breaking-change` for the required announcement. A security
-title, branch name, or `security` label alone does not satisfy the required target check. The workflow
-reads the complete issue-event history and verifies that the latest
+labels and a breaking Conventional Commit title. The `breaking-change` label
+preserves the required announcement. A security title, branch name, or `security`
+label alone does not satisfy the required target check. The workflow reads the complete issue-event history and verifies that the latest
 `rc-breaking-approved` label event was applied by a user with current `maintain`
-or `admin` repository access. Triage and write access alone cannot approve this
-exception. Missing provenance, a later removal, or an access-check failure
+or `admin` repository access, including custom roles with either base role.
+Triage and write access alone cannot approve this exception. Missing provenance, a later removal, or an access-check failure
 rejects approval; a maintainer can remove and reapply the label after review.
 
 The required check runs through `pull_request_target` using the trusted base
@@ -104,6 +106,29 @@ the approval label to trigger a fresh `pull_request_target` event using the upda
 base workflow and publish a result on the current PR head. Rerunning an older
 workflow execution retains its original SHA/ref and cannot activate the new
 policy.
+
+**Approval reevaluation:** A successful check records the access observed when
+it ran; collaborator permission changes do not emit `pull_request_target` events.
+Immediately before merging an approved security exception, and after changing
+or revoking an approver's access, or ending the RC phase, maintainers **MUST**
+dispatch the trusted main workflow for each affected open PR and wait for its
+newly published head check:
+
+```bash
+gh workflow run warn-invalid-breaking-change.yml --ref main -f pull_request_number=<PR_NUMBER>
+```
+
+Use the canonical decimal PR number (for example, `6739`); leading zeros,
+scientific notation, signs, and whitespace are rejected so manual and PR-event
+runs share one concurrency key. This reevaluation reads the current RC branch
+state, approval events, and base-role permissions again. Missing versioned develop
+branches or failed branch lookups reject the exception. The stable-phase RFC,
+seven-day FCP, and MAJOR release requirements in
+[BC-3](STABILITY_POLICY.md#bc-3-must-breaking-change-approval-process) remain in force
+outside this RC exception.
+Do not rely on an older successful check after an access change. Keep auto-merge
+disabled for approved security exceptions until this pre-merge reevaluation is
+complete.
 
 **During Normal Phase** (no `develop/*` branch exists):
 
