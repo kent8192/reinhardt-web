@@ -8,6 +8,13 @@ Django-style database layer for Reinhardt framework
 
 This crate provides a comprehensive database layer organized into multiple modules to deliver a unified database experience.
 
+File and image fields accept a single filename component and a relative upload
+directory; path separators, parent traversal, and absolute paths are rejected
+before storage is written. `QuerySet::values` accepts column names and the
+supported `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX` aggregate forms. Other
+projection text is treated as an identifier, never as executable SQL. Use an
+explicit raw-query interface for trusted custom SQL.
+
 `InsertBuilder::value` accepts `QueryValue::Now` as a database current-time
 expression. PostgreSQL, MySQL, and SQLite render it as `CURRENT_TIMESTAMP`.
 Rows containing `Now` use a typed `INSERT ... SELECT` source: current time and
