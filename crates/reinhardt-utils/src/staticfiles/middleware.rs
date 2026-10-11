@@ -297,8 +297,9 @@ impl StaticFilesConfig {
 
 	/// Replace the response headers attached to every served response.
 	///
-	/// See [`StaticFilesConfig::response_headers`] for which responses receive
-	/// the headers and how they interact with headers set by the middleware.
+	/// See the [`response_headers` field](StaticFilesConfig#structfield.response_headers)
+	/// for which responses receive the headers and how they interact with
+	/// headers set by the middleware.
 	/// A [`HeaderMap`] holding several values for one name sends that header
 	/// once per value.
 	///
@@ -323,9 +324,10 @@ impl StaticFilesConfig {
 
 	/// Add one response header attached to every served response.
 	///
-	/// Replaces any value previously configured for the same name. See
-	/// [`StaticFilesConfig::response_headers`] for which responses receive the
-	/// header and how it interacts with headers set by the middleware.
+	/// Replaces any value previously configured for the same name. See the
+	/// [`response_headers` field](StaticFilesConfig#structfield.response_headers)
+	/// for which responses receive the header and how it interacts with headers
+	/// set by the middleware.
 	///
 	/// # Examples
 	///
