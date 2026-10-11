@@ -59,7 +59,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::sessions::cleanup::{CleanupableBackend, SessionMetadata};
 
-use super::cache::{SessionBackend, SessionError};
+use super::cache::{AtomicSessionBackend, SessionBackend, SessionError};
 
 enum SessionStatement {
 	Select(SelectStatement),
@@ -519,6 +519,69 @@ impl SessionBackend for DatabaseSessionBackend {
 }
 
 #[async_trait]
+impl AtomicSessionBackend for DatabaseSessionBackend {
+	/// Atomically load and delete one unexpired session.
+	///
+	/// The row is read and its data deserialized, then deleted with a
+	/// compare-and-delete predicate on the values that were read. Row-level
+	/// locking lets exactly one concurrent `DELETE` affect the row, so only
+	/// the caller whose delete reports an affected row receives the data. The
+	/// predicate also keeps a concurrent overwrite of the same key from being
+	/// deleted on behalf of the stale read. This works on every supported
+	/// database, including MySQL, which lacks `DELETE ... RETURNING`.
+	///
+	/// Data that cannot be deserialized as `T` returns
+	/// [`SessionError::SerializationError`] and leaves the row in place.
+	/// Expired rows are deleted without being deserialized.
+	async fn take<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
+	where
+		T: for<'de> Deserialize<'de> + Send,
+	{
+		let mut connection = self.connection;
+
+		let session = Session::objects()
+			.filter(Filter::new(
+				"session_key".to_string(),
+				FilterOperator::Eq,
+				FilterValue::String(session_key.to_string()),
+			))
+			.first_with_db(&mut connection)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to load session: {}", e)))?;
+		let Some(session) = session else {
+			return Ok(None);
+		};
+
+		let data: Option<T> = if session.expire_date < Utc::now().timestamp_millis() {
+			None
+		} else {
+			let data = serde_json::from_str(&session.session_data).map_err(|e| {
+				SessionError::SerializationError(format!("Deserialization error: {}", e))
+			})?;
+			Some(data)
+		};
+
+		let stmt = Query::delete()
+			.from_table(Alias::new("sessions"))
+			.and_where(Expr::col(Alias::new("session_key")).eq(session_key))
+			.and_where(Expr::col(Alias::new("session_data")).eq(session.session_data.as_str()))
+			.and_where(Expr::col(Alias::new("expire_date")).eq(session.expire_date))
+			.to_owned();
+		let built = self.build_statement(SessionStatement::Delete(stmt))?;
+		let rows_affected = connection
+			.execute_generated(built, None)
+			.await
+			.map_err(|e| SessionError::CacheError(format!("Failed to take session: {}", e)))?
+			.rows_affected;
+		if rows_affected == 0 {
+			// Another caller consumed or replaced the row after this read.
+			return Ok(None);
+		}
+		Ok(data)
+	}
+}
+
+#[async_trait]
 impl CleanupableBackend for DatabaseSessionBackend {
 	async fn get_all_keys(&self) -> Result<Vec<String>, SessionError> {
 		let mut connection = self.connection;
@@ -849,5 +912,92 @@ mod tests {
 		backend.delete(session_key).await.unwrap();
 
 		assert!(!backend.exists(session_key).await.unwrap());
+	}
+
+	async fn sqlite_backend() -> DatabaseSessionBackend {
+		let owner = connect_backend("sqlite::memory:").await.unwrap();
+		let backend = DatabaseSessionBackend::from_connection(owner).unwrap();
+		backend.create_table().await.unwrap();
+		backend
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn take_returns_session_once_and_deletes_row() {
+		// Arrange
+		let backend = sqlite_backend().await;
+		let session_data = serde_json::json!({"state": "one-time"});
+		backend
+			.save("take-key", &session_data, Some(60))
+			.await
+			.unwrap();
+
+		// Act
+		let first: Option<serde_json::Value> = backend.take("take-key").await.unwrap();
+		let second: Option<serde_json::Value> = backend.take("take-key").await.unwrap();
+
+		// Assert
+		assert_eq!(first, Some(session_data));
+		assert_eq!(second, None);
+		assert!(backend.get_all_keys().await.unwrap().is_empty());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn take_omits_and_deletes_expired_row() {
+		// Arrange
+		let backend = sqlite_backend().await;
+		let expired = Utc::now().timestamp_millis() - 1_000;
+		let stmt = Query::insert()
+			.into_table(Alias::new("sessions"))
+			.columns([
+				Alias::new("session_key"),
+				Alias::new("session_data"),
+				Alias::new("expire_date"),
+				Alias::new("created_at"),
+			])
+			.values_panic([
+				"expired-key".into_value(),
+				r#"{"state":"stale"}"#.into_value(),
+				expired.into_value(),
+				expired.into_value(),
+			])
+			.to_owned();
+		let built = backend
+			.build_statement(SessionStatement::Insert(stmt))
+			.unwrap();
+		let mut connection = backend.connection;
+		connection.execute_generated(built, None).await.unwrap();
+
+		// Act
+		let taken: Option<serde_json::Value> = backend.take("expired-key").await.unwrap();
+
+		// Assert
+		assert_eq!(taken, None);
+		assert!(backend.get_all_keys().await.unwrap().is_empty());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn take_keeps_row_when_deserialization_fails() {
+		// Arrange
+		let backend = sqlite_backend().await;
+		let session_data = serde_json::json!({"state": "one-time"});
+		backend
+			.save("typed-key", &session_data, Some(60))
+			.await
+			.unwrap();
+
+		// Act
+		let mismatched = backend.take::<u64>("typed-key").await;
+		let retried: Option<serde_json::Value> = backend.take("typed-key").await.unwrap();
+
+		// Assert
+		assert!(matches!(
+			mismatched,
+			Err(SessionError::SerializationError(_))
+		));
+		assert_eq!(retried, Some(session_data));
+		assert!(backend.get_all_keys().await.unwrap().is_empty());
 	}
 }

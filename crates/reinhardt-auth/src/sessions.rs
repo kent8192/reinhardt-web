@@ -65,7 +65,7 @@ pub mod session;
 pub mod tenant;
 
 // Re-export common types
-pub use backends::cache::{SessionBackend, SessionError};
+pub use backends::cache::{AtomicSessionBackend, SessionBackend, SessionError};
 pub use backends::{CacheSessionBackend, InMemorySessionBackend};
 
 #[cfg(feature = "database")]

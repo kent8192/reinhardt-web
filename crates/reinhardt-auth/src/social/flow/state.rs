@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use subtle::ConstantTimeEq;
 use tokio::sync::RwLock;
 
-use crate::sessions::backends::cache::{SessionBackend, SessionError};
+use crate::sessions::backends::cache::{AtomicSessionBackend, SessionError};
 use crate::social::core::SocialAuthError;
 
 /// Data stored for each OAuth2 state
@@ -274,7 +274,39 @@ impl StateStore for InMemoryStateStore {
 /// Integrates with Reinhardt's session management system to persist
 /// OAuth2/OIDC state across requests. Each state entry is stored as
 /// a session key with a prefix and automatic TTL expiration.
-pub struct SessionStateStore<B: SessionBackend> {
+///
+/// The backend must implement [`AtomicSessionBackend`], so
+/// [`StateStore::consume`] and [`StateStore::consume_contextual`] return each
+/// state to at most one caller, even when several store instances share the
+/// backend. Use a shared backend such as `DatabaseSessionBackend` (feature
+/// `database`) for multi-replica deployments; `InMemorySessionBackend` only
+/// coordinates within one process. For Redis, use `AsyncSessionStateStore`
+/// with `RedisSessionBackend` from `reinhardt-middleware`.
+///
+/// Both legacy [`StateData`] and browser-bound [`ContextualStateData`]
+/// records are supported, so
+/// [`SocialAuthBackend::begin_auth_with_context`](crate::social::SocialAuthBackend::begin_auth_with_context)
+/// works with this store.
+///
+/// ## Example
+///
+/// ```rust
+/// use reinhardt_auth::sessions::backends::InMemorySessionBackend;
+/// use reinhardt_auth::social::flow::{SessionStateStore, StateData, StateStore};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let store = SessionStateStore::new(InMemorySessionBackend::new());
+/// store
+///     .store(StateData::new("state-1".to_string(), None, None))
+///     .await?;
+///
+/// assert!(store.consume("state-1").await.is_ok());
+/// assert!(store.consume("state-1").await.is_err());
+/// # Ok(())
+/// # }
+/// # tokio::runtime::Runtime::new().unwrap().block_on(example()).unwrap();
+/// ```
+pub struct SessionStateStore<B: AtomicSessionBackend> {
 	backend: B,
 	key_prefix: String,
 }
@@ -282,7 +314,24 @@ pub struct SessionStateStore<B: SessionBackend> {
 /// Default key prefix for session state entries
 const DEFAULT_KEY_PREFIX: &str = "_social_auth_state:";
 
-impl<B: SessionBackend> SessionStateStore<B> {
+/// Serialized form of a [`SessionStateStore`] entry.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
+enum SessionStoredStateData {
+	Legacy(StateData),
+	Contextual(ContextualStateData),
+}
+
+impl SessionStoredStateData {
+	fn state_data(&self) -> &StateData {
+		match self {
+			Self::Legacy(data) => data,
+			Self::Contextual(data) => data.state_data(),
+		}
+	}
+}
+
+impl<B: AtomicSessionBackend> SessionStateStore<B> {
 	/// Creates a new session-based state store with the given backend
 	pub fn new(backend: B) -> Self {
 		Self {
@@ -316,6 +365,24 @@ impl<B: SessionBackend> SessionStateStore<B> {
 			None
 		}
 	}
+
+	async fn save_entry(&self, entry: &SessionStoredStateData) -> Result<(), SocialAuthError> {
+		let state_data = entry.state_data();
+		let key = self.session_key(&state_data.state);
+		let ttl = Self::compute_ttl(state_data);
+		self.backend
+			.save(&key, entry, ttl)
+			.await
+			.map_err(map_session_error)
+	}
+
+	async fn take_entry(&self, state: &str) -> Result<SessionStoredStateData, SocialAuthError> {
+		self.backend
+			.take(&self.session_key(state))
+			.await
+			.map_err(map_session_error)?
+			.ok_or(SocialAuthError::InvalidState)
+	}
 }
 
 fn map_session_error(err: SessionError) -> SocialAuthError {
@@ -323,21 +390,22 @@ fn map_session_error(err: SessionError) -> SocialAuthError {
 }
 
 #[async_trait]
-impl<B: SessionBackend + 'static> StateStore for SessionStateStore<B> {
+impl<B: AtomicSessionBackend + 'static> StateStore for SessionStateStore<B> {
 	async fn store(&self, data: StateData) -> Result<(), SocialAuthError> {
-		let key = self.session_key(&data.state);
-		let ttl = Self::compute_ttl(&data);
-		self.backend
-			.save(&key, &data, ttl)
-			.await
-			.map_err(map_session_error)
+		self.save_entry(&SessionStoredStateData::Legacy(data)).await
 	}
 
 	async fn retrieve(&self, state: &str) -> Result<StateData, SocialAuthError> {
 		let key = self.session_key(state);
-		let data: Option<StateData> = self.backend.load(&key).await.map_err(map_session_error)?;
+		let entry: Option<SessionStoredStateData> =
+			self.backend.load(&key).await.map_err(map_session_error)?;
 
-		let data = data.ok_or(SocialAuthError::InvalidState)?;
+		let data = match entry {
+			Some(SessionStoredStateData::Legacy(data)) => data,
+			Some(SessionStoredStateData::Contextual(_)) | None => {
+				return Err(SocialAuthError::InvalidState);
+			}
+		};
 
 		if data.is_expired() {
 			// Clean up the expired entry
@@ -352,12 +420,38 @@ impl<B: SessionBackend + 'static> StateStore for SessionStateStore<B> {
 		let key = self.session_key(state);
 		self.backend.delete(&key).await.map_err(map_session_error)
 	}
+
+	async fn consume(&self, state: &str) -> Result<StateData, SocialAuthError> {
+		match self.take_entry(state).await? {
+			SessionStoredStateData::Legacy(data) if !data.is_expired() => Ok(data),
+			SessionStoredStateData::Legacy(_) | SessionStoredStateData::Contextual(_) => {
+				Err(SocialAuthError::InvalidState)
+			}
+		}
+	}
+
+	async fn store_contextual(&self, data: ContextualStateData) -> Result<(), SocialAuthError> {
+		self.save_entry(&SessionStoredStateData::Contextual(data))
+			.await
+	}
+
+	async fn consume_contextual(
+		&self,
+		state: &str,
+	) -> Result<ContextualStateData, SocialAuthError> {
+		match self.take_entry(state).await? {
+			SessionStoredStateData::Contextual(data) if !data.state_data().is_expired() => Ok(data),
+			SessionStoredStateData::Legacy(_) | SessionStoredStateData::Contextual(_) => {
+				Err(SocialAuthError::InvalidState)
+			}
+		}
+	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::sessions::backends::InMemorySessionBackend;
+	use crate::sessions::backends::{InMemorySessionBackend, SessionBackend};
 	use rstest::rstest;
 	use std::sync::Arc;
 
@@ -544,22 +638,114 @@ mod tests {
 		assert_eq!(usize::from(first.is_ok()) + usize::from(second.is_ok()), 1);
 	}
 
+	fn contextual_record(state: &str, ttl: Duration) -> ContextualStateData {
+		ContextualStateData::new(
+			StateData::with_ttl(state.to_string(), None, Some("verifier".to_string()), ttl),
+			"github".to_string(),
+			b"browser-a",
+			b"link-user-42".to_vec(),
+		)
+		.unwrap()
+	}
+
 	#[rstest]
 	#[tokio::test]
-	async fn test_session_state_store_rejects_contextual_record() {
-		let store = SessionStateStore::new(InMemorySessionBackend::new());
-		let data = ContextualStateData::new(
-			StateData::new("state-1".to_string(), None, None),
-			"github".to_string(),
-			b"binding",
-			Vec::new(),
-		)
-		.unwrap();
+	async fn test_session_state_store_contextual_round_trip_across_instances() {
+		// Arrange
+		let backend = InMemorySessionBackend::new();
+		let issuing = SessionStateStore::new(backend.clone());
+		let receiving = SessionStateStore::new(backend);
+		issuing
+			.store_contextual(contextual_record("state-1", Duration::minutes(10)))
+			.await
+			.unwrap();
 
-		assert!(matches!(
-			store.store_contextual(data).await,
-			Err(SocialAuthError::Storage(_)),
-		));
+		// Act
+		let consumed = receiving.consume_contextual("state-1").await.unwrap();
+		let replay = receiving.consume_contextual("state-1").await;
+
+		// Assert
+		assert_eq!(consumed.provider_name(), "github");
+		assert_eq!(consumed.context(), b"link-user-42");
+		assert_eq!(
+			consumed.state_data().code_verifier.as_deref(),
+			Some("verifier")
+		);
+		assert!(consumed.binding_matches(b"browser-a"));
+		assert!(!consumed.binding_matches(b"browser-b"));
+		assert!(matches!(replay, Err(SocialAuthError::InvalidState)));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_session_state_store_contextual_record_rejected_by_legacy_paths() {
+		// Arrange
+		let store = SessionStateStore::new(InMemorySessionBackend::new());
+		store
+			.store_contextual(contextual_record("state-1", Duration::minutes(10)))
+			.await
+			.unwrap();
+
+		// Act
+		let retrieved = store.retrieve("state-1").await;
+		let consumed = store.consume("state-1").await;
+		let retry = store.consume_contextual("state-1").await;
+
+		// Assert: a binding-protected state cannot be redeemed without the
+		// binding check, and the failed attempt still burns it.
+		assert!(matches!(retrieved, Err(SocialAuthError::InvalidState)));
+		assert!(matches!(consumed, Err(SocialAuthError::InvalidState)));
+		assert!(matches!(retry, Err(SocialAuthError::InvalidState)));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_session_state_store_legacy_record_rejected_by_contextual_consume() {
+		// Arrange
+		let store = SessionStateStore::new(InMemorySessionBackend::new());
+		store
+			.store(StateData::new("state-1".to_string(), None, None))
+			.await
+			.unwrap();
+
+		// Act
+		let result = store.consume_contextual("state-1").await;
+
+		// Assert
+		assert!(matches!(result, Err(SocialAuthError::InvalidState)));
+	}
+
+	#[rstest]
+	#[case::legacy(SessionStoredStateData::Legacy(StateData::with_ttl(
+		"expired".to_string(),
+		None,
+		None,
+		Duration::seconds(-1),
+	)))]
+	#[case::contextual(SessionStoredStateData::Contextual(contextual_record(
+		"expired",
+		Duration::seconds(-1),
+	)))]
+	#[tokio::test]
+	async fn test_session_state_store_consume_rejects_expired_record(
+		#[case] entry: SessionStoredStateData,
+	) {
+		// Arrange: the backend TTL outlives the record's own expiry.
+		let store = SessionStateStore::new(InMemorySessionBackend::new());
+		let key = store.session_key("expired");
+		store.backend.save(&key, &entry, Some(300)).await.unwrap();
+
+		// Act
+		let result = match entry {
+			SessionStoredStateData::Legacy(_) => store.consume("expired").await.map(drop),
+			SessionStoredStateData::Contextual(_) => {
+				store.consume_contextual("expired").await.map(drop)
+			}
+		};
+
+		// Assert
+		assert!(matches!(result, Err(SocialAuthError::InvalidState)));
+		assert!(!store.backend.exists(&key).await.unwrap());
 	}
 
 	#[rstest]
@@ -623,7 +809,11 @@ mod tests {
 		let key = format!("{}{}", DEFAULT_KEY_PREFIX, "expired_state");
 		store
 			.backend
-			.save(&key, &expired_data, Some(300))
+			.save(
+				&key,
+				&SessionStoredStateData::Legacy(expired_data),
+				Some(300),
+			)
 			.await
 			.unwrap();
 
@@ -688,5 +878,55 @@ mod tests {
 			.unwrap();
 		assert!(exists_with_custom_prefix);
 		assert!(!exists_with_default_prefix);
+	}
+
+	#[rstest]
+	#[case::legacy(false)]
+	#[case::contextual(true)]
+	#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+	async fn test_session_state_store_consume_has_one_winner_across_instances(
+		#[case] contextual: bool,
+	) {
+		// Arrange
+		const CONTENDERS: usize = 16;
+		let backend = InMemorySessionBackend::new();
+		let issuing = SessionStateStore::new(backend.clone());
+		if contextual {
+			issuing
+				.store_contextual(contextual_record("state-1", Duration::minutes(10)))
+				.await
+				.unwrap();
+		} else {
+			issuing
+				.store(StateData::new("state-1".to_string(), None, None))
+				.await
+				.unwrap();
+		}
+		let barrier = Arc::new(tokio::sync::Barrier::new(CONTENDERS));
+
+		// Act
+		let handles: Vec<_> = (0..CONTENDERS)
+			.map(|_| {
+				let store = SessionStateStore::new(backend.clone());
+				let barrier = Arc::clone(&barrier);
+				tokio::spawn(async move {
+					barrier.wait().await;
+					if contextual {
+						store.consume_contextual("state-1").await.is_ok()
+					} else {
+						store.consume("state-1").await.is_ok()
+					}
+				})
+			})
+			.collect();
+		let mut winners = 0;
+		for handle in handles {
+			if handle.await.unwrap() {
+				winners += 1;
+			}
+		}
+
+		// Assert
+		assert_eq!(winners, 1);
 	}
 }

@@ -35,6 +35,7 @@ use reinhardt_utils::cache::{Cache, InMemoryCache};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 use crate::sessions::cleanup::{CleanupableBackend, SessionMetadata};
 
@@ -78,6 +79,44 @@ pub trait SessionBackend: Send + Sync + Clone {
 	async fn exists(&self, session_key: &str) -> Result<bool, SessionError>;
 }
 
+/// Optional atomic get-and-delete capability for session backends.
+///
+/// Implementations must guarantee that, for one stored entry, at most one
+/// concurrent `take` call returns it, including callers that use different
+/// clones of the backend or, for shared stores, different processes.
+/// Missing and expired entries are returned as `None`.
+///
+/// Single-use secrets such as OAuth `state` parameters require this
+/// capability; a `load` followed by `delete` lets two callers observe the
+/// same entry.
+///
+/// ## Example
+///
+/// ```rust
+/// use reinhardt_auth::sessions::backends::{
+///     AtomicSessionBackend, InMemorySessionBackend, SessionBackend,
+/// };
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let backend = InMemorySessionBackend::new();
+/// backend.save("one_time_token", &"secret", Some(60)).await?;
+///
+/// let first: Option<String> = backend.take("one_time_token").await?;
+/// let second: Option<String> = backend.take("one_time_token").await?;
+/// assert_eq!(first.as_deref(), Some("secret"));
+/// assert_eq!(second, None);
+/// # Ok(())
+/// # }
+/// # tokio::runtime::Runtime::new().unwrap().block_on(example()).unwrap();
+/// ```
+#[async_trait]
+pub trait AtomicSessionBackend: SessionBackend {
+	/// Atomically load and delete one unexpired entry.
+	async fn take<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
+	where
+		T: for<'de> Deserialize<'de> + Serialize + Send + Sync;
+}
+
 /// In-memory session backend
 ///
 /// Stores sessions in memory using the InMemoryCache backend.
@@ -108,6 +147,10 @@ pub trait SessionBackend: Send + Sync + Clone {
 #[derive(Clone)]
 pub struct InMemorySessionBackend {
 	cache: Arc<InMemoryCache>,
+	// Serializes writes (`save`, `delete`) with `take`, so no write can land
+	// between the get and the delete of a `take`. The cache is private to
+	// this backend, so every write goes through this lock.
+	write_lock: Arc<Mutex<()>>,
 }
 
 impl InMemorySessionBackend {
@@ -115,6 +158,7 @@ impl InMemorySessionBackend {
 	pub fn new() -> Self {
 		Self {
 			cache: Arc::new(InMemoryCache::new()),
+			write_lock: Arc::new(Mutex::new(())),
 		}
 	}
 }
@@ -147,6 +191,7 @@ impl SessionBackend for InMemorySessionBackend {
 		T: Serialize + Send + Sync,
 	{
 		let duration = ttl.map(std::time::Duration::from_secs);
+		let _guard = self.write_lock.lock().await;
 		self.cache
 			.set(session_key, data, duration)
 			.await
@@ -154,6 +199,7 @@ impl SessionBackend for InMemorySessionBackend {
 	}
 
 	async fn delete(&self, session_key: &str) -> Result<(), SessionError> {
+		let _guard = self.write_lock.lock().await;
 		self.cache
 			.delete(session_key)
 			.await
@@ -165,6 +211,24 @@ impl SessionBackend for InMemorySessionBackend {
 			.has_key(session_key)
 			.await
 			.map_err(|e| SessionError::CacheError(e.to_string()))
+	}
+}
+
+#[async_trait]
+impl AtomicSessionBackend for InMemorySessionBackend {
+	async fn take<T>(&self, session_key: &str) -> Result<Option<T>, SessionError>
+	where
+		T: for<'de> Deserialize<'de> + Serialize + Send + Sync,
+	{
+		let _guard = self.write_lock.lock().await;
+		let data = self.load(session_key).await?;
+		if data.is_some() {
+			self.cache
+				.delete(session_key)
+				.await
+				.map_err(|e| SessionError::CacheError(e.to_string()))?;
+		}
+		Ok(data)
 	}
 }
 
@@ -392,6 +456,34 @@ mod tests {
 
 		// Assert
 		assert_eq!(loaded.unwrap()["ttl_test"], true);
+	}
+
+	#[rstest]
+	#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+	async fn test_in_memory_take_never_deletes_concurrent_save() {
+		// Arrange
+		let backend = InMemorySessionBackend::new();
+
+		for _ in 0..500 {
+			backend.save("race", &"old", Some(60)).await.unwrap();
+			let taker = backend.clone();
+			let writer = backend.clone();
+
+			// Act
+			let take = tokio::spawn(async move { taker.take::<String>("race").await });
+			let save = tokio::spawn(async move { writer.save("race", &"new", Some(60)).await });
+			let taken = take.await.unwrap().unwrap();
+			save.await.unwrap().unwrap();
+			let remaining: Option<String> = backend.load("race").await.unwrap();
+
+			// Assert: the take is ordered entirely before or after the save.
+			match taken.as_deref() {
+				Some("old") => assert_eq!(remaining.as_deref(), Some("new")),
+				Some("new") => assert_eq!(remaining, None),
+				other => panic!("unexpected take result: {other:?}"),
+			}
+			backend.delete("race").await.unwrap();
+		}
 	}
 
 	#[rstest]
