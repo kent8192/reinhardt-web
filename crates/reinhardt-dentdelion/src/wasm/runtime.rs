@@ -333,6 +333,21 @@ impl WasmRuntime {
 		store
 	}
 
+	/// Bound a lifecycle invocation, including its asynchronous host imports.
+	pub(super) async fn with_execution_timeout<T>(
+		&self,
+		invocation: impl std::future::Future<Output = PluginResult<T>>,
+	) -> PluginResult<T> {
+		tokio::time::timeout(self.config.timeout, invocation)
+			.await
+			.map_err(|_| {
+				PluginError::WasmExecutionError(format!(
+					"WASM execution timed out after {:?}",
+					self.config.timeout
+				))
+			})?
+	}
+
 	/// Add fuel to a store.
 	///
 	/// # Arguments
@@ -455,6 +470,69 @@ mod tests {
 			.get_typed_func::<(), i32>(&mut store, "grow_past_limit")
 			.unwrap();
 		assert!(grow_past_limit.call_async(&mut store, ()).await.is_err());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn execution_deadline_cancels_a_delayed_host_import() {
+		// Arrange: the guest awaits a host future much longer than its runtime budget.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.timeout(Duration::from_millis(30))
+				.fuel_metering(false)
+				.build(),
+		)
+		.unwrap();
+		let module = wasmtime::Module::new(
+			runtime.engine(),
+			r#"(module
+			(import "test" "delay" (func $delay))
+			(func (export "run") call $delay)
+		)"#,
+		)
+		.unwrap();
+		let cancelled = Arc::new(AtomicBool::new(false));
+		struct ImportGuard(Arc<AtomicBool>);
+		impl Drop for ImportGuard {
+			fn drop(&mut self) {
+				self.0.store(true, Ordering::Release);
+			}
+		}
+		let mut linker = wasmtime::Linker::<HostState>::new(runtime.engine());
+		let flag = Arc::clone(&cancelled);
+		linker
+			.func_wrap_async("test", "delay", move |_caller, (): ()| {
+				let flag = Arc::clone(&flag);
+				Box::new(async move {
+					let _guard = ImportGuard(flag);
+					tokio::time::sleep(Duration::from_secs(1)).await;
+					Ok(())
+				})
+			})
+			.unwrap();
+		let mut store = runtime.create_store(HostState::new("delayed-import"));
+		let instance = linker.instantiate_async(&mut store, &module).await.unwrap();
+		let function = instance
+			.get_typed_func::<(), ()>(&mut store, "run")
+			.unwrap();
+		let started = std::time::Instant::now();
+
+		// Act: use the same whole-invocation bound as the plugin lifecycle methods.
+		let result = runtime
+			.with_execution_timeout(async {
+				function
+					.call_async(&mut store, ())
+					.await
+					.map_err(|error| PluginError::WasmExecutionError(error.to_string()))
+			})
+			.await;
+
+		// Assert: expiration drops the suspended import rather than waiting for it.
+		assert!(
+			matches!(result, Err(PluginError::WasmExecutionError(message)) if message.contains("timed out"))
+		);
+		assert!(started.elapsed() < Duration::from_millis(500));
+		assert!(cancelled.load(Ordering::Acquire));
 	}
 
 	#[rstest::rstest]

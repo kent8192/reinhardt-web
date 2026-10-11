@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Cancel asynchronous WASM host imports when the whole lifecycle invocation expires.
+
 - Include result conversion in the JavaScript cooperative deadline.
 
 - Keep JavaScript queue deadlines separate from execution budgets, cancel unstarted work without poisoning the runtime, and reset WASM epoch deadlines for each guest call.
