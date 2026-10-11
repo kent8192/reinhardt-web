@@ -32,6 +32,14 @@ use super::{PreBodyAdmitted, RequestAdmission, RequestHead};
 #[doc(hidden)]
 pub type UpgradeTask = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 
+/// Server-wide request services cloned into every accepted connection.
+#[derive(Clone)]
+struct ConnectionServices {
+	handler: Arc<dyn Handler>,
+	di_context: Option<Arc<InjectionContext>>,
+	request_admission: Option<Arc<dyn RequestAdmission>>,
+}
+
 /// One-shot Hyper Upgrade state attached to a Reinhardt request.
 #[doc(hidden)]
 #[derive(Clone)]
@@ -351,9 +359,11 @@ impl HttpServer {
 		coordinator: ShutdownCoordinator,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		// Build the handler with middleware chain
-		let handler = self.build_handler();
-		let di_context = self.di_context.clone();
-		let request_admission = self.request_admission.clone();
+		let services = ConnectionServices {
+			handler: self.build_handler(),
+			di_context: self.di_context.clone(),
+			request_admission: self.request_admission.clone(),
+		};
 		let mut shutdown_rx = coordinator.subscribe();
 		let (upgrade_tx, mut upgrade_rx) = mpsc::unbounded_channel::<UpgradeTask>();
 		let mut tasks = JoinSet::new();
@@ -373,9 +383,7 @@ impl HttpServer {
 							break;
 						}
 					};
-					let handler = handler.clone();
-					let di_context = di_context.clone();
-					let request_admission = request_admission.clone();
+					let services = services.clone();
 					let conn_shutdown = coordinator.subscribe();
 					let shutdown_started = coordinator.is_shutdown();
 					let upgrade_tx = upgrade_tx.clone();
@@ -384,9 +392,7 @@ impl HttpServer {
 						if let Err(err) = Self::handle_connection_tracked(
 							stream,
 							socket_addr,
-							handler,
-							di_context,
-							request_admission,
+							services,
 							upgrade_tx,
 							conn_shutdown,
 							shutdown_started,
@@ -500,18 +506,18 @@ impl HttpServer {
 	async fn handle_connection_tracked(
 		stream: TcpStream,
 		socket_addr: SocketAddr,
-		handler: Arc<dyn Handler>,
-		di_context: Option<Arc<InjectionContext>>,
-		request_admission: Option<Arc<dyn RequestAdmission>>,
+		services: ConnectionServices,
 		upgrade_tasks: mpsc::UnboundedSender<UpgradeTask>,
 		mut shutdown: tokio::sync::broadcast::Receiver<()>,
 		shutdown_started: bool,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		let io = TokioIo::new(stream);
 		let service = service_fn(move |req| {
-			let handler = Arc::clone(&handler);
-			let di_context = di_context.clone();
-			let request_admission = request_admission.clone();
+			let ConnectionServices {
+				handler,
+				di_context,
+				request_admission,
+			} = services.clone();
 			let upgrade_tasks = upgrade_tasks.clone();
 
 			handle_request_with(
