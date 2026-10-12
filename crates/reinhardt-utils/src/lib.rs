@@ -16,6 +16,13 @@
 //! - `storage`: Storage utilities (feature: `storage`)
 //! - `staticfiles`: Static file serving utilities (feature: `staticfiles`)
 //!
+//! ## Browser WASM
+//!
+//! On `wasm32-unknown-unknown`, only the shared utilities (`utils_core`,
+//! `humanize`, and their re-exports) are compiled. `logging`, `cache`,
+//! `storage`, and `staticfiles` depend on the native runtime (filesystem,
+//! Tokio networking, and HTTP serving) and are not available there.
+//!
 //! ## Example
 //!
 //! ```rust
@@ -35,9 +42,13 @@
 //! let ordinal = text::ordinal(1); // "1st"
 //! ```
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub mod cache;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub mod logging;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub mod staticfiles;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub mod storage;
 pub mod utils_core;
 
