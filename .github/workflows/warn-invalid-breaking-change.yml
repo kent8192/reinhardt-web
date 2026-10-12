@@ -4,13 +4,23 @@ on:
   pull_request_target:
     branches: [main]
     types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review]
+  issue_comment:
+    types: [created, edited, deleted]
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Reevaluate current security approval before merging or after access changes
+        required: true
+        type: string
 
 # Use the PR number because pull_request_target runs on the base branch ref.
 concurrency:
-  group: "${{ github.workflow }}-${{ github.event.pull_request.number }}"
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pull_request_number || github.run_id }}"
   cancel-in-progress: true
 
 permissions:
+  # Listing branches verifies that the RC exception is currently available.
+  contents: read
   checks: write
   issues: write
   # The issue-comment endpoint also requires access to the PR conversation.
@@ -18,6 +28,7 @@ permissions:
 
 jobs:
   warn:
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     # Only the explicitly published PR-head check uses the required check name.
     name: Publish Breaking Change Target Check
     runs-on: ubuntu-latest
@@ -26,22 +37,149 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
+            // Approval records belong to PR conversations, not ordinary issues.
+            if (context.eventName === 'issue_comment' && !context.payload.issue?.pull_request) return;
+            // Manual and comment reevaluation must load the trusted main workflow.
+            if (['workflow_dispatch', 'issue_comment'].includes(context.eventName)
+              && context.ref !== 'refs/heads/main') {
+              core.setFailed('Security approval reevaluation must run from main.');
+              return;
+            }
+            const dispatchInput = context.payload.inputs?.pull_request_number;
+            // Canonical decimal input shares the normal PR concurrency key.
+            // Number() aliases such as 06739 or 6.739e3 would use another key.
+            if (context.eventName === 'workflow_dispatch'
+              && (typeof dispatchInput !== 'string' || !/^[1-9]\d*$/.test(dispatchInput))) {
+              core.setFailed('A canonical positive decimal pull request number is required.');
+              return;
+            }
+            const targetNumber = context.payload.pull_request?.number
+              ?? context.payload.issue?.number
+              ?? Number(dispatchInput);
+            if (!Number.isSafeInteger(targetNumber) || targetNumber <= 0) {
+              core.setFailed('A positive pull request number is required.');
+              return;
+            }
+
             // Read current metadata so queued title, label, or base changes
             // cannot leave an obsolete policy result on the current commit.
             const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number,
+              pull_number: targetNumber,
             });
+            if (context.eventName === 'issue_comment' && pr.base.ref !== 'main') return;
             const sourceBranch = pr.head.ref;
             const labels = pr.labels.map(label => label.name);
             const breakingTitle = /^(?:[a-z][a-z0-9-]*!(?:\([^)]*\))?|[a-z][a-z0-9-]*\([^)]*\)!)\s*:/i.test(pr.title);
             const breakingChange = labels.includes('breaking-change') || breakingTitle;
             const validDevelopBranch = /^develop\/\d+\.\d+\.\d+$/.test(sourceBranch);
-            const invalidTarget = pr.base.ref === 'main' && breakingChange && !validDevelopBranch;
+            // Triage and write users can apply labels. Verify the most recent
+            // approval-label event and its actor's current maintainer role.
+            let approvedSecurityFix = false;
+            let approvalActor;
+            if (breakingTitle && labels.includes('security') && labels.includes('rc-breaking-approved')
+              && labels.includes('breaking-change')) {
+              try {
+                const branches = await github.paginate(github.rest.repos.listBranches, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  per_page: 100,
+                });
+                // BB-4 defines the RC phase by an active versioned develop branch.
+                if (branches.some(branch => /^develop\/\d+\.\d+\.\d+$/.test(branch.name))) {
+                  const events = await github.paginate(github.rest.issues.listEvents, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number,
+                    per_page: 100,
+                  });
+                  const approval = events
+                    .filter(event => ['labeled', 'unlabeled'].includes(event.event)
+                      && event.label?.name === 'rc-breaking-approved')
+                    .reduce((latest, event) => !latest || event.id > latest.id ? event : latest, undefined);
+                  if (approval?.event === 'labeled' && approval.actor?.login) {
+                    const { data: access } = await github.rest.repos.getCollaboratorPermissionLevel({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      username: approval.actor.login,
+                    });
+                    // The legacy permission maps maintain to write, so write
+                    // alone is insufficient. Custom admin roles remain valid.
+                    let verifiedMaintainer = access.permission === 'admin'
+                      || ['admin', 'maintain'].includes(access.role_name)
+                      || access.user?.permissions?.maintain === true
+                      || access.user?.permissions?.admin === true;
+                    if (!verifiedMaintainer && access.permission === 'write'
+                      && access.role_name !== 'write') {
+                      // Custom role names do not identify their base role. The
+                      // collaborator permission flags expose that base access.
+                      const collaborators = await github.paginate(github.rest.repos.listCollaborators, {
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        per_page: 100,
+                      });
+                      const approver = collaborators.find(user =>
+                        user.login.toLowerCase() === approval.actor.login.toLowerCase());
+                      verifiedMaintainer = approver?.permissions?.maintain === true
+                        || approver?.permissions?.admin === true;
+                    }
+                    if (verifiedMaintainer) {
+                      // A label alone cannot carry approval to another commit.
+                      // Read immutable, maintainer-authored records from the PR
+                      // conversation. Edited records cannot retarget approval.
+                      const approvalLine = `Approved RC breaking security exception for head \`${pr.head.sha}\`.`;
+                      const labelTime = Date.parse(approval.created_at);
+                      let cursor = null;
+                      do {
+                        const response = await github.graphql(`
+                          query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+                            repository(owner: $owner, name: $repo) {
+                              pullRequest(number: $number) {
+                                comments(first: 100, after: $cursor) {
+                                  nodes { body author { login } createdAt lastEditedAt }
+                                  pageInfo { hasNextPage endCursor }
+                                }
+                              }
+                            }
+                          }`, {
+                          owner: context.repo.owner, repo: context.repo.repo,
+                          number: pr.number, cursor,
+                        });
+                        const page = response.repository.pullRequest.comments;
+                        approvedSecurityFix = page.nodes.some(comment =>
+                          comment.author?.login?.toLowerCase() === approval.actor.login.toLowerCase()
+                          && comment.lastEditedAt === null
+                          && comment.body?.split('\n')[0] === approvalLine
+                          && Number.isFinite(labelTime)
+                          && Date.parse(comment.createdAt) >= labelTime);
+                        if (approvedSecurityFix || !page.pageInfo.hasNextPage) break;
+                        const nextCursor = page.pageInfo.endCursor;
+                        if (!nextCursor || nextCursor === cursor) {
+                          throw new Error('Approval record pagination did not advance.');
+                        }
+                        cursor = nextCursor;
+                      } while (true);
+                    }
+                    if (approvedSecurityFix) approvalActor = approval.actor.login;
+                  }
+                } else {
+                  core.info('No active versioned develop branch; the RC security exception is unavailable.');
+                }
+              } catch (error) {
+                // Publish a failing head check even when provenance cannot be
+                // verified; do not leave an earlier success as the result.
+                approvedSecurityFix = false;
+                approvalActor = undefined;
+                core.info(`Security approval verification failed: ${error.message}`);
+              }
+            }
+            const invalidTarget = pr.base.ref === 'main' && breakingChange && !validDevelopBranch && !approvedSecurityFix;
             const summary = invalidTarget
-              ? `Breaking change from '${sourceBranch}' must target a versioned develop/X.Y.Z branch, not main.`
-              : 'No invalid breaking-change target detected.';
+              ? `Breaking change from '${sourceBranch}' must target a versioned develop/X.Y.Z branch unless an active versioned develop branch exists and maintainers approve an RC security fix for main with a breaking title, security, rc-breaking-approved, and breaking-change labels, and an unedited maintainer approval record for this exact head SHA.`
+              : pr.base.ref === 'main' && breakingChange && approvedSecurityFix
+                ? `Approved security fix targets main under STABILITY_POLICY.md SP-3; head ${pr.head.sha} approved by verified maintainer @${approvalActor}.`
+                : 'No invalid breaking-change target detected.';
 
             // pull_request_target's automatic job check belongs to the base
             // commit. Publish both policy outcomes on the current PR head before
@@ -90,7 +228,7 @@ jobs:
               `- Source branch: \`${sourceBranch}\``,
               `- Detected by: ${labels.includes('breaking-change') ? '`breaking-change` label' : 'breaking Conventional Commit title'}`,
               '',
-              'Breaking changes must target the appropriate versioned `develop/X.Y.Z` branch. This required check fails until the target or breaking-change classification is corrected.',
+              'Breaking changes must target the appropriate versioned `develop/X.Y.Z` branch. During an active RC phase with a versioned `develop/X.Y.Z` branch, maintainers may approve an SP-3 security fix for `main` by applying both `security` and `rc-breaking-approved` after the API Change Proposal and migration guide are approved. The `breaking-change` label must remain present so required announcements run. The latest approval-label event must be applied by a user with current maintain or admin repository access; triage or write access alone is insufficient. The same maintainer must post an unedited approval record for the current head SHA after applying the approval label; every new head needs a fresh record. This required check fails until the target, classification, or security approval is corrected.',
             ].join('\n');
 
             await github.rest.issues.createComment({
