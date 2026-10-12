@@ -30,6 +30,8 @@ const UNREVOKABLE_NAME: &str = "unrevokable";
 const REJECTION: &str = "sessions could not be ended";
 /// Name that new accounts may not use.
 const RESERVED_NAME: &str = "reserved";
+/// Name whose creation the hook denies as a permission failure.
+const FORBIDDEN_NAME: &str = "forbidden";
 
 struct RegistryGuard;
 
@@ -145,6 +147,13 @@ impl ModelAdmin for SaveHookAdmin {
 			&& change.new_value("name") == Some(&json!(RESERVED_NAME))
 		{
 			return Err(AdminError::ValidationError("name is reserved".to_owned()));
+		}
+		if ctx.mode() == AdminFormMode::Create
+			&& change.new_value("name") == Some(&json!(FORBIDDEN_NAME))
+		{
+			return Err(AdminError::PermissionDenied(
+				"account creation is not allowed".to_owned(),
+			));
 		}
 		Ok(())
 	}
@@ -475,6 +484,42 @@ async fn import_runs_hooks_per_record_and_counts_rejected_records_as_failed(
 			created_call("before_save", None),
 		]
 	);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(admin_save_hooks)]
+async fn import_aborts_with_hook_permission_error_instead_of_counting_failed_record(
+	#[future] save_hook_context: SaveHookContext,
+) {
+	// Arrange
+	let context = save_hook_context.await;
+	let records = serde_json::to_vec(&json!([
+		{"name": "dave", "is_active": true},
+		{"name": FORBIDDEN_NAME, "is_active": true},
+		{"name": "erin", "is_active": true},
+	]))
+	.expect("import fixture should serialize");
+
+	// Act
+	let error = import_data(
+		MODEL_NAME.to_owned(),
+		ImportFormat::JSON,
+		records,
+		context.site.clone(),
+		context.db.clone(),
+		make_staff_request(),
+		make_auth_user(),
+	)
+	.await
+	.expect_err("a hook permission denial must abort the import");
+
+	// Assert
+	assert_eq!(error.kind(), ServerFnErrorKind::Server);
+	assert_eq!(error.status(), Some(403));
+	assert_eq!(error.user_message(), "account creation is not allowed");
+	assert_eq!(context.row_count().await, 1);
+	assert_eq!(context.stored("1").await.get("name"), Some(&json!("dave")));
 }
 
 #[rstest]
