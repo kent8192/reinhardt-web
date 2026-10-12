@@ -2164,9 +2164,9 @@ pub(crate) async fn resolve_relation_option(
 /// Foreign-key values validated by [`validate_relation_values`].
 #[cfg(server)]
 pub(crate) struct ValidatedRelationValues {
-	/// Values keyed by the name each relation was submitted under (the logical
-	/// field name or its physical column alias), as seen by save hooks.
-	pub(crate) submitted: HashMap<String, serde_json::Value>,
+	/// Values keyed by the logical relation field name, whichever alias was
+	/// submitted, as seen by save hooks.
+	pub(crate) logical: HashMap<String, serde_json::Value>,
 	/// The same values keyed by their persisted database column.
 	pub(crate) columns: HashMap<String, serde_json::Value>,
 }
@@ -2186,15 +2186,15 @@ pub(crate) async fn validate_relation_values(
 	let relations =
 		resolve_relation_configuration(site, source_admin.as_ref()).map_server_fn_error()?;
 	let mut validated = ValidatedRelationValues {
-		submitted: HashMap::new(),
+		logical: HashMap::new(),
 		columns: HashMap::new(),
 	};
 
 	for relation in &relations {
 		let logical_name = relation.foreign_key.logical_name.as_str();
 		let column_name = relation.foreign_key.column_name.as_str();
-		let submitted = if logical_name == column_name {
-			data.remove(column_name).map(|value| (column_name, value))
+		let value = if logical_name == column_name {
+			data.remove(column_name)
 		} else {
 			match (data.remove(logical_name), data.remove(column_name)) {
 				(Some(_), Some(_)) => {
@@ -2203,12 +2203,11 @@ pub(crate) async fn validate_relation_values(
 					))
 					.into_server_fn_error());
 				}
-				(Some(value), None) => Some((logical_name, value)),
-				(None, Some(value)) => Some((column_name, value)),
+				(Some(value), None) | (None, Some(value)) => Some(value),
 				(None, None) => None,
 			}
 		};
-		let Some((submitted_name, value)) = submitted else {
+		let Some(value) = value else {
 			continue;
 		};
 
@@ -2248,8 +2247,8 @@ pub(crate) async fn validate_relation_values(
 		};
 
 		validated
-			.submitted
-			.insert(submitted_name.to_owned(), normalized.clone());
+			.logical
+			.insert(logical_name.to_owned(), normalized.clone());
 		validated.columns.insert(column_name.to_owned(), normalized);
 	}
 

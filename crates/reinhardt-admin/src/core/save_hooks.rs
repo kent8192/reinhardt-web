@@ -130,9 +130,12 @@ impl fmt::Debug for AdminSaveContext<'_> {
 /// names. It does not contain server-generated values such as `auto_now`
 /// timestamps, many-to-many selections, or inline child rows.
 ///
-/// The admin server reads each old value from the database column the field
-/// is written to, so a foreign key submitted as `author_id` is paired with the
-/// stored `author_id` value even when the stored record names it `author`.
+/// A foreign key is always keyed by its logical field name, such as `author`,
+/// even when the form submitted its database column such as `author_id`. A
+/// hook that checks `author` therefore sees every write to that relation, and
+/// the key matches the one used by [`AdminSaveContext::stored`]. The admin
+/// server reads each old value from the database column the field is written
+/// to.
 ///
 /// # Examples
 ///

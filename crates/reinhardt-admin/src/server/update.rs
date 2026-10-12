@@ -257,11 +257,11 @@ pub(crate) async fn update_record_with_trusted_file_fields(
 	#[cfg(not(feature = "file-uploads"))]
 	sanitize_mutation_values(&mut sanitized_data);
 	sanitize_inline_mutations_with_trusted_fields(&mut inline_mutations, trusted_file_fields);
-	// Save hooks see the submitted field names, including relation aliases,
-	// before server-generated timestamps are added and field names are
-	// translated to physical columns.
+	// Save hooks see the submitted fields, with foreign keys under their
+	// logical names, before server-generated timestamps are added and field
+	// names are translated to physical columns.
 	let mut submitted_data = sanitized_data.clone();
-	submitted_data.extend(relation_values.submitted);
+	submitted_data.extend(relation_values.logical);
 	sanitized_data.extend(relation_values.columns);
 	let mut audit_data = sanitized_data.clone();
 	for selection in &selections {

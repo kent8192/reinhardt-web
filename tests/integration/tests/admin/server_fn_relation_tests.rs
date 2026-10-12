@@ -906,14 +906,13 @@ async fn server_fn_relation_update_accepts_logical_name_for_physical_field_allow
 }
 
 #[rstest]
-#[case::logical_name("target", "target_key")]
-#[case::physical_column("target_key", "target")]
+#[case::logical_name("target")]
+#[case::physical_column("target_key")]
 #[tokio::test]
 #[serial(admin_relation_server_fn)]
-async fn server_fn_relation_create_save_hook_sees_relation_under_submitted_name(
+async fn server_fn_relation_create_save_hook_sees_relation_under_logical_name(
 	#[future] relation_save_hook_context: (ServerFnContext, SavedRelationChanges),
 	#[case] submitted_name: &str,
-	#[case] other_name: &str,
 ) {
 	// Arrange
 	let ((site, db, _connection_lease), saved_changes) = relation_save_hook_context.await;
@@ -950,24 +949,19 @@ async fn server_fn_relation_create_save_hook_sees_relation_under_submitted_name(
 	assert_eq!(response.success, true);
 	assert_eq!(created.get("target_key"), Some(&json!(2)));
 	assert_eq!(changes.len(), 1);
-	assert_eq!(changes[0].new_value(submitted_name), Some(&json!(2)));
-	assert_eq!(changes[0].new_value(other_name), None);
-	assert!(
-		changes[0]
-			.changed_fields()
-			.any(|field| field == submitted_name)
-	);
+	assert_eq!(changes[0].new_value("target"), Some(&json!(2)));
+	assert_eq!(changes[0].new_value("target_key"), None);
+	assert!(changes[0].changed_fields().any(|field| field == "target"));
 }
 
 #[rstest]
-#[case::logical_name("target", "target_key")]
-#[case::physical_column("target_key", "target")]
+#[case::logical_name("target")]
+#[case::physical_column("target_key")]
 #[tokio::test]
 #[serial(admin_relation_server_fn)]
-async fn server_fn_relation_update_save_hook_sees_relation_transition_under_submitted_name(
+async fn server_fn_relation_update_save_hook_sees_relation_transition_under_logical_name(
 	#[future] relation_save_hook_context: (ServerFnContext, SavedRelationChanges),
 	#[case] submitted_name: &str,
-	#[case] other_name: &str,
 ) {
 	// Arrange
 	let ((site, db, _connection_lease), saved_changes) = relation_save_hook_context.await;
@@ -998,11 +992,11 @@ async fn server_fn_relation_update_save_hook_sees_relation_transition_under_subm
 	assert_eq!(response.success, true);
 	assert_eq!(row.get("target_key"), Some(&json!(2)));
 	assert_eq!(changes.len(), 1);
-	assert_eq!(changes[0].transition::<i64>(submitted_name), Some((1, 2)));
-	assert_eq!(changes[0].new_value(other_name), None);
+	assert_eq!(changes[0].transition::<i64>("target"), Some((1, 2)));
+	assert_eq!(changes[0].new_value("target_key"), None);
 	assert_eq!(
 		changes[0].changed_fields().collect::<Vec<_>>(),
-		vec![submitted_name]
+		vec!["target"]
 	);
 }
 
