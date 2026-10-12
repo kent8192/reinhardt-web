@@ -159,13 +159,24 @@ impl fmt::Debug for AdminSaveContext<'_> {
 /// assert_eq!(change.transition::<bool>("is_active"), Some((false, true)));
 /// assert_eq!(change.transition::<String>("name"), None);
 /// ```
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct AdminChange {
 	fields: BTreeMap<String, FieldChange>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl fmt::Debug for AdminChange {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// Values are omitted because submitted and stored fields may contain
+		// credentials such as passwords.
+		f.debug_struct("AdminChange")
+			.field("fields", &self.fields.keys().collect::<Vec<_>>())
+			.field("changed", &self.changed_fields().collect::<Vec<_>>())
+			.finish()
+	}
+}
+
+#[derive(Clone, PartialEq)]
 struct FieldChange {
 	old: Option<Value>,
 	new: Value,
@@ -432,6 +443,29 @@ mod tests {
 		assert_eq!(
 			rendered,
 			"AdminSaveContext { user: \"hook-tester\", mode: Update, pk: Some(\"7\"), has_stored: true, .. }"
+		);
+	}
+
+	#[rstest]
+	fn change_debug_omits_field_values() {
+		// Arrange
+		let stored = values(&[
+			("password", json!("old-secret")),
+			("username", json!("alice")),
+		]);
+		let submitted = values(&[
+			("password", json!("new-secret")),
+			("username", json!("alice")),
+		]);
+		let change = AdminChange::new(Some(&stored), &submitted);
+
+		// Act
+		let rendered = format!("{change:?}");
+
+		// Assert
+		assert_eq!(
+			rendered,
+			"AdminChange { fields: [\"password\", \"username\"], changed: [\"password\"] }"
 		);
 	}
 }
