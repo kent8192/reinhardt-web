@@ -1,7 +1,7 @@
 //! CheckBox column type implementation
 
-use crate::builder::html::{input, td};
-use crate::dom::Element;
+use super::cell;
+use crate::component::{Page, PageElement};
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
 
@@ -48,18 +48,13 @@ impl ColumnTrait for CheckBoxColumn {
 		&self.label
 	}
 
-	fn render(&self, value: &dyn Any) -> Element {
-		let checkbox = input().attr("type", "checkbox");
-		let checkbox = if let Some(&val) = value.downcast_ref::<bool>() {
-			if val {
-				checkbox.attr("checked", "checked")
-			} else {
-				checkbox
-			}
-		} else {
-			checkbox
-		};
-		td().child(checkbox.build()).build()
+	fn render(&self, value: &dyn Any) -> Page {
+		let checked = value.downcast_ref::<bool>().copied().unwrap_or(false);
+		cell(
+			PageElement::new("input")
+				.attr("type", "checkbox")
+				.bool_attr("checked", checked),
+		)
 	}
 
 	fn is_orderable(&self) -> bool {

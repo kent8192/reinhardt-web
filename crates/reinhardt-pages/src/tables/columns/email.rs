@@ -1,13 +1,13 @@
 //! Email column type implementation
 
-use crate::builder::html::{a, td};
-use crate::dom::Element;
+use super::{cell, placeholder_cell};
+use crate::component::{Page, PageElement};
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
 
 /// Column for email addresses
 ///
-/// This column type renders email addresses as mailto: links.
+/// This column type renders `String` email addresses as `mailto:` links.
 pub struct EmailColumn {
 	name: String,
 	label: String,
@@ -48,13 +48,14 @@ impl ColumnTrait for EmailColumn {
 		&self.label
 	}
 
-	fn render(&self, value: &dyn Any) -> Element {
-		if let Some(email) = value.downcast_ref::<String>() {
-			let href = format!("mailto:{}", email);
-			let link = a().attr("href", &href).text(email).build();
-			td().child(link).build()
-		} else {
-			td().text("-").build()
+	fn render(&self, value: &dyn Any) -> Page {
+		match value.downcast_ref::<String>() {
+			Some(email) => cell(
+				PageElement::new("a")
+					.attr("href", format!("mailto:{email}"))
+					.child(email),
+			),
+			None => placeholder_cell(),
 		}
 	}
 

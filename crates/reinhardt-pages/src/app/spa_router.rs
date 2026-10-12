@@ -49,6 +49,11 @@ pub trait SpaRouter: 'static {
 	#[allow(dead_code)] // Part of the symmetric dispatch surface (mirrors `current_path`); not yet read by `launch`.
 	fn current_params(&self) -> &Signal<HashMap<String, String>>;
 
+	/// Reactive subscription to the name of the currently committed route.
+	///
+	/// `None` when the current path matched an unnamed route or no route.
+	fn current_route_name(&self) -> &Signal<Option<String>>;
+
 	/// Match `path` against registered routes, returning a
 	/// launcher-internal [`SpaRouteMatch`] when the active router's
 	/// native match succeeds (and any guard accepts the match).
@@ -152,6 +157,10 @@ impl SpaRouter for reinhardt_urls::routers::ClientRouter {
 
 	fn current_params(&self) -> &Signal<HashMap<String, String>> {
 		self.current_params()
+	}
+
+	fn current_route_name(&self) -> &Signal<Option<String>> {
+		self.current_route_name()
 	}
 
 	fn match_path(&self, path: &str) -> Option<SpaRouteMatch> {

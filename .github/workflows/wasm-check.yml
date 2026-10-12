@@ -262,6 +262,7 @@ jobs:
               --test model_form_file_upload_wasm_test \
               --test client_launcher_navigation_test \
               --test navigation_guard_wasm_test \
+              --test router_active_link_wasm_test \
               --test document_head_wasm_test \
               --test query_client_wasm_test \
               --test form_radio_input \

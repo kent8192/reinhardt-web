@@ -3,7 +3,20 @@
 use serde::{Deserialize, Serialize};
 
 /// Represents database field types
+///
+/// # Extensibility
+///
+/// This enum is `#[non_exhaustive]`: new database types may be added in a minor
+/// release. Existing variants remain directly constructible, but code outside
+/// `reinhardt-db` that matches on `FieldType` must include a wildcard arm.
+/// Interpreters should return an explicit unsupported-type error from that
+/// arm instead of silently ignoring the value.
+///
+/// The variant set already depends on Cargo features (`Vector` exists only with
+/// `pgvector`), so feature unification alone can add variants to a downstream
+/// build.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum FieldType {
 	// Integer types
 	/// BigInteger variant.

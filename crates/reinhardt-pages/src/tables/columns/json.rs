@@ -1,7 +1,7 @@
 //! JSON column type implementation
 
-use crate::builder::html::{pre, td};
-use crate::dom::Element;
+use super::{cell, placeholder_cell};
+use crate::component::{Page, PageElement};
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
 
@@ -48,16 +48,15 @@ impl ColumnTrait for JSONColumn {
 		&self.label
 	}
 
-	fn render(&self, value: &dyn Any) -> Element {
+	fn render(&self, value: &dyn Any) -> Page {
 		if let Some(json_val) = value.downcast_ref::<serde_json::Value>() {
 			let formatted =
 				serde_json::to_string_pretty(json_val).unwrap_or_else(|_| json_val.to_string());
-			let code = pre().text(&formatted).build();
-			td().child(code).build()
+			cell(PageElement::new("pre").child(formatted))
 		} else if let Some(s) = value.downcast_ref::<String>() {
-			td().text(s).build()
+			cell(s)
 		} else {
-			td().text("-").build()
+			placeholder_cell()
 		}
 	}
 

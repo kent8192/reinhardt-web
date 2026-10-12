@@ -17,6 +17,7 @@ Guide to serving static files (CSS, JavaScript, images, etc.).
 - [Development vs Production](#development-vs-production)
 - [Path Resolution](#path-resolution)
 - [Cache Strategies](#cache-strategies)
+- [Response Headers](#response-headers)
 
 ---
 
@@ -511,6 +512,80 @@ let immutable = CacheDirective::public()
 // HTML files (don't cache)
 let no_cache = CacheDirective::no_cache();
 ```
+
+---
+
+## Response Headers
+
+`runserver --with-pages` serves the SPA shell (`index.html` and the SPA
+fallback) and static assets from server-level static middleware. That
+middleware answers before the application router, so router middleware such as
+a Content Security Policy middleware never sees those responses. Configure the
+headers on the static layer instead.
+
+In settings, add a `response_headers` table to `[static_files]` (or `[static]`).
+Keys are header names and values are strings:
+
+```toml
+[static_files.response_headers]
+"Content-Security-Policy" = "default-src 'self'; frame-ancestors 'none'"
+"X-Content-Type-Options" = "nosniff"
+"Referrer-Policy" = "no-referrer"
+"Strict-Transport-Security" = "max-age=31536000; includeSubDomains"
+```
+
+To compute headers in code, implement `RunserverHook::static_response_headers`:
+
+```rust,ignore
+use hyper::header::{self, HeaderMap, HeaderValue};
+use reinhardt::commands::RunserverHook;
+
+#[reinhardt::hook(on = runserver)]
+struct SecurityHeadersHook;
+
+#[async_trait]
+impl RunserverHook for SecurityHeadersHook {
+    fn static_response_headers(&self) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+        headers
+    }
+}
+```
+
+Precedence:
+
+- For a header name set in both settings sections, `[static_files]` wins over
+  `[static]`.
+- Hook headers replace settings headers with the same name. Hooks run in
+  discovery order, which is not stable, so set each header in only one hook.
+- A configured header replaces the static middleware's own value for that name,
+  such as `Cache-Control`. Other headers like `Content-Type` and `ETag` are
+  kept.
+- `runserver` refuses to start when a `response_headers` table, header name, or
+  header value is invalid.
+
+> **Note**: `runserver` merges `settings/base.toml` and the active profile file
+> table by table. If a profile file such as `production.toml` declares
+> `[static_files]`, that table replaces the one from `base.toml`. Repeat
+> `response_headers` in every profile file that declares the section.
+
+> **Note**: A script-restricting policy blocks inline scripts unless it allows
+> them, for example with `'unsafe-inline'`, a nonce, or a `'sha256-...'` hash.
+> Without a unified asset manifest, the root SPA mount injects an inline WASM
+> auto-loader into the shell. Development hot reload injects an inline HMR
+> client in both modes. Serve the shell from a manifest published with
+> `buildstatic`, which loads Pages through an external loader script, or allow
+> the inline script explicitly.
+
+The headers apply to every response the static layer produces. That includes
+assets, the SPA shell, conditional (`304`) and range (`206`) responses, and the
+unified manifest server's error responses. Responses from the application router
+are unchanged.
+
+When you build the middleware yourself, use the same builders:
+`StaticFilesConfig::response_header` / `response_headers` and
+`ManifestServingConfig::with_response_header` / `with_response_headers`.
 
 ---
 

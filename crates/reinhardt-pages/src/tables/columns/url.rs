@@ -1,13 +1,15 @@
 //! URL column type implementation
 
-use crate::builder::html::{a, td};
-use crate::dom::Element;
+use super::{cell, placeholder_cell};
+use crate::component::{Page, PageElement};
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
 
 /// Column for URLs
 ///
-/// This column type renders URLs as clickable links.
+/// This column type renders `String` URLs as clickable links. The `href`
+/// passes through the [`Page`] URL sanitizer, so URLs with an unsafe scheme
+/// such as `javascript:` render as link text without an `href` attribute.
 pub struct URLColumn {
 	name: String,
 	label: String,
@@ -48,12 +50,10 @@ impl ColumnTrait for URLColumn {
 		&self.label
 	}
 
-	fn render(&self, value: &dyn Any) -> Element {
-		if let Some(url) = value.downcast_ref::<String>() {
-			let link = a().attr("href", url).text(url).build();
-			td().child(link).build()
-		} else {
-			td().text("-").build()
+	fn render(&self, value: &dyn Any) -> Page {
+		match value.downcast_ref::<String>() {
+			Some(url) => cell(PageElement::new("a").attr("href", url.clone()).child(url)),
+			None => placeholder_cell(),
 		}
 	}
 

@@ -85,8 +85,24 @@ where
 	})
 }
 
+/// Aligns the router's `current_route_name` signal with its current path.
+///
+/// `ClientRouter` writes `current_route_name` only when a navigation commits,
+/// while the route rendered at launch is selected directly from the browser
+/// location without a commit. Without this seed the hook API
+/// ([`crate::reactive::hooks::router::RouterHandle::current_route_name`])
+/// would report `None` for the initial route until the first navigation.
+/// The name is resolved through the router's own matcher, so it matches the
+/// value a later commit to the same path would record.
+fn sync_initial_route_name(router: &dyn SpaRouter) {
+	let path = router.current_path().get_untracked();
+	let name = router.match_path(&path).and_then(|matched| matched.name);
+	router.current_route_name().set(name);
+}
+
 #[cfg(wasm)]
 fn store_spa_router(router: Box<dyn SpaRouter>, scope: Rc<ReactiveScope>) {
+	sync_initial_route_name(&*router);
 	APP_ROUTER.with(|r| {
 		*r.borrow_mut() = Some(router);
 	});
@@ -143,9 +159,11 @@ where
 /// `APP_ROUTER` slot from integration tests on native targets.
 ///
 /// Companion to [`__install_router_for_test`] for the canonical
-/// `router_client` path. Refs #4610.
+/// `router_client` path. Refs #4610. Like `ClientLauncher::launch`, it seeds
+/// the router's `current_route_name` signal from the current path.
 #[doc(hidden)]
 pub fn __install_client_router_for_test(router: reinhardt_urls::routers::ClientRouter) {
+	sync_initial_route_name(&router);
 	let coordinator = navigation::NavigationCoordinator::new(Rc::new(router.clone())).ok();
 	APP_ROUTER.with(|slot| {
 		*slot.borrow_mut() = Some(Box::new(router));

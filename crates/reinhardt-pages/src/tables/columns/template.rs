@@ -1,7 +1,7 @@
 //! Template column type implementation
 
-use crate::builder::html::td;
-use crate::dom::Element;
+use super::{cell, placeholder_cell};
+use crate::component::Page;
 use crate::tables::column::Column as ColumnTrait;
 use std::any::Any;
 
@@ -48,13 +48,13 @@ impl ColumnTrait for TemplateColumn {
 		&self.label
 	}
 
-	fn render(&self, value: &dyn Any) -> Element {
+	fn render(&self, value: &dyn Any) -> Page {
 		if let Some(s) = value.downcast_ref::<String>() {
-			td().text(s).build()
-		} else if let Some(s) = value.downcast_ref::<&str>() {
-			td().text(s).build()
+			cell(s)
+		} else if let Some(&s) = value.downcast_ref::<&'static str>() {
+			cell(s)
 		} else {
-			td().text("-").build()
+			placeholder_cell()
 		}
 	}
 

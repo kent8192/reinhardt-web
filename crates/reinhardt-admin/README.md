@@ -641,7 +641,8 @@ individual modules under `src/server/`:
 - `update_inline_edits` — atomic changelist inline edits
 - `export_data` — export data (CSV, JSON, XML)
 - `import_data` — import data
-- `admin_login` / `admin_login_with_header` — admin authentication
+- `admin_login` / `admin_login_with_header` — admin password authentication
+  (omitted by `AdminSite::without_password_login()`)
 - `admin_logout` — admin session termination
 
 Successful mutations persist their per-object history metadata in the same
@@ -696,6 +697,24 @@ let router = UnifiedRouter::new()
 // Static assets registered under /static/admin/:
 // GET    /static/admin/{*path}
 // HEAD   /static/admin/{*path}
+```
+
+Projects that authenticate users elsewhere (for example GitHub-only sign-in,
+or a `BaseUser` model without a usable password) can omit the password login
+endpoints. `admin_login` and `admin_login_with_header` are then not registered,
+`admin_logout` remains available, and authentication is left to the middleware
+that publishes `AuthState`. The admin cookie authentication middleware is also
+omitted, even if `set_jwt_secret` was called, so it cannot replace that
+`AuthState` with an anonymous one. The bundled admin login page targets the
+omitted endpoints, so such projects must provide their own sign-in entry point:
+
+```rust
+use reinhardt_admin::core::{AdminSite, admin_routes_with_di};
+use std::sync::Arc;
+
+let mut site = AdminSite::new("My Admin");
+site.without_password_login();
+let (admin_router, admin_di) = admin_routes_with_di(Arc::new(site));
 ```
 
 For comprehensive routing documentation, see the [`core::router`](src/core/router.rs) module.

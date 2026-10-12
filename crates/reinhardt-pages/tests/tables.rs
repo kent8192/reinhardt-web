@@ -3,3 +3,6 @@
 
 #[path = "tables/column_test.rs"]
 mod column_test;
+
+#[path = "tables/render_test.rs"]
+mod render_test;

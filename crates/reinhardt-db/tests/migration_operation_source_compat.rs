@@ -707,6 +707,9 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			Operation::CreateCompositePrimaryKey { .. } => ("CreateCompositePrimaryKey", true),
 			Operation::Sequence { .. } => ("Sequence", true),
 			Operation::Identity { .. } => ("Identity", true),
+			// `Operation` is non-exhaustive outside reinhardt-db. A new variant
+			// must be added to the matrix above instead of being skipped here.
+			other => panic!("operation variant missing from the source matrix: {other:?}"),
 		};
 		let temp_dir = TempDir::new().unwrap();
 		let repository = FilesystemRepository::new(temp_dir.path());
@@ -736,5 +739,53 @@ async fn migration_renderer_compatibility_matrix_covers_every_operation_variant(
 			.await
 			.unwrap();
 		assert_eq!(loaded[0].operations, vec![operation], "{kind}");
+	}
+}
+
+#[cfg(feature = "migrations")]
+mod persisted_operations {
+	use reinhardt_db::migrations::Operation;
+	use rstest::rstest;
+
+	#[rstest]
+	fn known_operation_keeps_its_json_tag() {
+		// Arrange
+		let operation = Operation::RenameTable {
+			old_name: "accounts".to_string(),
+			new_name: "users".to_string(),
+		};
+
+		// Act
+		let json = serde_json::to_value(&operation).expect("operation should serialize");
+		let decoded: Operation =
+			serde_json::from_value(json.clone()).expect("operation should deserialize");
+
+		// Assert
+		assert_eq!(
+			json,
+			serde_json::json!({
+				"type": "RenameTable",
+				"old_name": "accounts",
+				"new_name": "users",
+			})
+		);
+		assert_eq!(decoded, operation);
+	}
+
+	#[rstest]
+	fn unknown_operation_type_fails_explicitly() {
+		// Arrange
+		let persisted = r#"{"type": "FutureOperation", "table": "accounts"}"#;
+
+		// Act
+		let error = serde_json::from_str::<Operation>(persisted)
+			.expect_err("an unknown operation type must not deserialize");
+
+		// Assert
+		let message = error.to_string();
+		assert!(
+			message.starts_with("unknown variant `FutureOperation`, expected one of"),
+			"{message}"
+		);
 	}
 }
