@@ -21,7 +21,10 @@
 //! On `wasm32-unknown-unknown`, only the shared utilities (`utils_core`,
 //! `humanize`, and their re-exports) are compiled. `logging`, `cache`,
 //! `storage`, and `staticfiles` depend on the native runtime (filesystem,
-//! Tokio networking, and HTTP serving) and are not available there.
+//! Tokio networking, and HTTP serving) and are not available there. Within
+//! `utils_core`, `safe_path_join`/`PathTraversalError` (filesystem
+//! canonicalization) and `timezone::make_aware_local` (DST gap/overlap
+//! detection) are also native-only.
 //!
 //! ## Example
 //!
@@ -64,9 +67,9 @@ pub use crate::utils_core::input_validation::{
 pub use crate::utils_core::lock_recovery::{
 	LockRecoveryError, recover_mutex, recover_rwlock_read, recover_rwlock_write,
 };
-pub use crate::utils_core::path_safety::{
-	PathTraversalError, is_safe_filename_component, safe_path_join,
-};
+pub use crate::utils_core::path_safety::is_safe_filename_component;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+pub use crate::utils_core::path_safety::{PathTraversalError, safe_path_join};
 pub use dateformat::format as format_date;
 pub use encoding::{escapejs, slugify, truncate_chars, truncate_words, urldecode, urlencode};
 pub use html::{SafeString, escape, escape_attr, strip_tags, unescape};

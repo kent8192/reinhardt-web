@@ -2,10 +2,17 @@
 //!
 //! Provides functions to safely join user-controlled path components
 //! with base directories, preventing path traversal vulnerabilities.
+//!
+//! `safe_path_join` and `PathTraversalError` resolve paths against the
+//! filesystem, so they are only compiled for native targets. Browser WASM
+//! (`wasm32-unknown-unknown`) has no filesystem and only gets the pure string
+//! check `is_safe_filename_component`.
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use std::path::{Component, Path, PathBuf};
 
 /// Errors that can occur during safe path operations
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[derive(Debug, thiserror::Error)]
 pub enum PathTraversalError {
 	/// The input contains `..` components that would traverse above the base directory.
@@ -43,6 +50,7 @@ pub enum PathTraversalError {
 /// - The user input contains null bytes
 /// - The resolved path escapes the base directory
 /// - An IO error occurs during canonicalization
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn safe_path_join(base: &Path, user_input: &str) -> Result<PathBuf, PathTraversalError> {
 	// Stage 1: Input validation
 
@@ -87,6 +95,7 @@ pub fn safe_path_join(base: &Path, user_input: &str) -> Result<PathBuf, PathTrav
 
 /// Canonicalize a path, handling non-existent paths by resolving existing ancestors
 /// and appending remaining (non-existent) components.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn safe_canonicalize(path: &Path) -> Result<PathBuf, PathTraversalError> {
 	// Try direct canonicalization first (works for existing paths)
 	if let Ok(canonical) = path.canonicalize() {
