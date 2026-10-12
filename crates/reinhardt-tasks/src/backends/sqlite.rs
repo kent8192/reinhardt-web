@@ -164,17 +164,9 @@ impl crate::backend::TaskBackend for SqliteBackend {
 			.map_err(|e| TaskExecutionError::BackendError(e.to_string()))?;
 
 		match record {
-			Some((status_str,)) => {
-				let status = match status_str.as_str() {
-					"pending" => TaskStatus::Pending,
-					"running" => TaskStatus::Running,
-					"success" => TaskStatus::Success,
-					"failure" => TaskStatus::Failure,
-					"retry" => TaskStatus::Retry,
-					_ => TaskStatus::Pending,
-				};
-				Ok(status)
-			}
+			Some((status_str,)) => status_str
+				.parse::<TaskStatus>()
+				.map_err(|e| TaskExecutionError::BackendError(format!("{e} for task {task_id}"))),
 			None => Err(TaskExecutionError::NotFound(task_id)),
 		}
 	}
@@ -185,17 +177,10 @@ impl crate::backend::TaskBackend for SqliteBackend {
 		status: TaskStatus,
 	) -> Result<(), TaskExecutionError> {
 		let id_str = task_id.to_string();
-		let status_str = match status {
-			TaskStatus::Pending => "pending",
-			TaskStatus::Running => "running",
-			TaskStatus::Success => "success",
-			TaskStatus::Failure => "failure",
-			TaskStatus::Retry => "retry",
-		};
 		let now = chrono::Utc::now().timestamp();
 
 		let result = sqlx::query("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?")
-			.bind(status_str)
+			.bind(status.as_str())
 			.bind(now)
 			.bind(&id_str)
 			.execute(&self.pool)
@@ -305,13 +290,6 @@ impl SqliteResultBackend {
 impl ResultBackend for SqliteResultBackend {
 	async fn store_result(&self, metadata: TaskResultMetadata) -> Result<(), TaskExecutionError> {
 		let task_id_str = metadata.task_id().to_string();
-		let status_str = match metadata.status() {
-			TaskStatus::Pending => "pending",
-			TaskStatus::Running => "running",
-			TaskStatus::Success => "success",
-			TaskStatus::Failure => "failure",
-			TaskStatus::Retry => "retry",
-		};
 
 		sqlx::query(
 			r#"
@@ -321,7 +299,7 @@ impl ResultBackend for SqliteResultBackend {
         "#,
 		)
 		.bind(&task_id_str)
-		.bind(status_str)
+		.bind(metadata.status().as_str())
 		.bind(metadata.result())
 		.bind(metadata.error())
 		.bind(metadata.created_at())
@@ -348,14 +326,9 @@ impl ResultBackend for SqliteResultBackend {
 
 		match record {
 			Some((status_str, result, error, created_at)) => {
-				let status = match status_str.as_str() {
-					"pending" => TaskStatus::Pending,
-					"running" => TaskStatus::Running,
-					"success" => TaskStatus::Success,
-					"failure" => TaskStatus::Failure,
-					"retry" => TaskStatus::Retry,
-					_ => TaskStatus::Pending,
-				};
+				let status = status_str.parse::<TaskStatus>().map_err(|e| {
+					TaskExecutionError::BackendError(format!("{e} for task {task_id}"))
+				})?;
 
 				let mut metadata =
 					TaskResultMetadata::with_created_at(task_id, status, result, created_at);
@@ -387,7 +360,7 @@ mod tests {
 	use super::*;
 	use crate::backend::TaskBackend;
 	use crate::{TaskId, TaskPriority};
-	use rstest::rstest;
+	use rstest::{fixture, rstest};
 
 	struct TestTask {
 		id: TaskId,
@@ -651,6 +624,124 @@ mod tests {
 			let serialized = task_data.unwrap();
 			assert_eq!(serialized.name(), task_name);
 			assert_eq!(serialized.data(), "{}");
+		}
+	}
+
+	#[fixture]
+	async fn result_backend() -> SqliteResultBackend {
+		SqliteResultBackend::new("sqlite::memory:")
+			.await
+			.expect("Failed to create result backend")
+	}
+
+	#[rstest]
+	#[case(TaskStatus::Pending, "pending")]
+	#[case(TaskStatus::Running, "running")]
+	#[case(TaskStatus::Success, "success")]
+	#[case(TaskStatus::Failure, "failure")]
+	#[case(TaskStatus::Retry, "retry")]
+	#[tokio::test]
+	async fn test_sqlite_result_backend_persists_status_text_and_round_trips(
+		#[future] result_backend: SqliteResultBackend,
+		#[case] status: TaskStatus,
+		#[case] expected_text: &str,
+	) {
+		// Arrange
+		let backend = result_backend.await;
+		let task_id = TaskId::new();
+
+		// Act
+		backend
+			.store_result(TaskResultMetadata::new(task_id, status, None))
+			.await
+			.expect("Failed to store result");
+		let stored_text: String =
+			sqlx::query_scalar("SELECT status FROM task_results WHERE task_id = ?")
+				.bind(task_id.to_string())
+				.fetch_one(&backend.pool)
+				.await
+				.expect("Failed to read raw status column");
+		let retrieved = backend
+			.get_result(task_id)
+			.await
+			.expect("Failed to get result")
+			.expect("Result should exist");
+
+		// Assert
+		assert_eq!(stored_text, expected_text);
+		assert_eq!(retrieved.status(), status);
+	}
+
+	#[rstest]
+	#[case("bogus")]
+	#[case("")]
+	#[case("Success")]
+	#[tokio::test]
+	async fn test_sqlite_result_backend_rejects_unknown_status(
+		#[future] result_backend: SqliteResultBackend,
+		#[case] corrupted_status: &str,
+	) {
+		// Arrange
+		let backend = result_backend.await;
+		let task_id = TaskId::new();
+		backend
+			.store_result(TaskResultMetadata::new(
+				task_id,
+				TaskStatus::Success,
+				Some("done".to_string()),
+			))
+			.await
+			.expect("Failed to store result");
+		sqlx::query("UPDATE task_results SET status = ? WHERE task_id = ?")
+			.bind(corrupted_status)
+			.bind(task_id.to_string())
+			.execute(&backend.pool)
+			.await
+			.expect("Failed to corrupt status column");
+
+		// Act
+		let result = backend.get_result(task_id).await;
+
+		// Assert
+		match result {
+			Err(TaskExecutionError::BackendError(message)) => assert_eq!(
+				message,
+				format!("unknown task status '{corrupted_status}' for task {task_id}")
+			),
+			other => panic!("expected BackendError for unknown status, got {other:?}"),
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_sqlite_backend_get_status_rejects_unknown_status() {
+		// Arrange
+		let backend = SqliteBackend::new("sqlite::memory:")
+			.await
+			.expect("Failed to create backend");
+		let task = Box::new(TestTask {
+			id: TaskId::new(),
+			name: "test_task".to_string(),
+		});
+		let task_id = task.id();
+		backend.enqueue(task).await.expect("Failed to enqueue");
+		sqlx::query("UPDATE tasks SET status = ? WHERE id = ?")
+			.bind("bogus")
+			.bind(task_id.to_string())
+			.execute(&backend.pool)
+			.await
+			.expect("Failed to corrupt status column");
+
+		// Act
+		let result = backend.get_status(task_id).await;
+
+		// Assert
+		match result {
+			Err(TaskExecutionError::BackendError(message)) => assert_eq!(
+				message,
+				format!("unknown task status 'bogus' for task {task_id}")
+			),
+			other => panic!("expected BackendError for unknown status, got {other:?}"),
 		}
 	}
 }
