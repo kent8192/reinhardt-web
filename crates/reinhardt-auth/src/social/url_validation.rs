@@ -78,6 +78,8 @@ pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
 				|| (o[0] == 169 && o[1] == 254)
 				|| (o[0] == 172 && (o[1] & 0xf0) == 16)
 				|| (o[0] == 192 && (o[1] == 168 || (o[1] == 0 && matches!(o[2], 0 | 2))))
+				// IANA marks the 6a44 relay anycast /32 as not globally reachable.
+				|| matches!(o, [192, 88, 99, 2])
 				|| (o[0] == 198 && (o[1] == 18 || o[1] == 19 || (o[1] == 51 && o[2] == 100)))
 				|| (o[0] == 203 && o[1] == 0 && o[2] == 113))
 		}

@@ -148,8 +148,11 @@ mod tests {
 	#[case("192.0.0.11", false)]
 	#[case("192.0.0.170", false)]
 	#[case("192.0.0.171", false)]
+	#[case("192.88.99.1", true)]
+	#[case("192.88.99.2", false)]
+	#[case("192.88.99.3", true)]
 	#[tokio::test]
-	async fn oauth_endpoints_apply_narrow_anycast_exceptions_to_literals_and_dns(
+	async fn oauth_endpoints_enforce_ipv4_special_assignments_for_literals_and_dns(
 		#[case] address: &str,
 		#[case] allowed: bool,
 	) {
@@ -174,7 +177,7 @@ mod tests {
 		.await
 		.unwrap();
 
-		// Assert: credentials can target only the two /32 exceptions, never adjacent ranges.
+		// Assert: literal and DNS destinations enforce the same narrow /32 assignments.
 		assert_eq!(direct.is_ok(), allowed);
 		assert_eq!(
 			resolved

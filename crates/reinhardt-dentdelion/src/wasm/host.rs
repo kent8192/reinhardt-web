@@ -200,6 +200,8 @@ fn is_private_ip(ip: &std::net::IpAddr) -> bool {
 			// Shared, reserved, documentation, benchmarking, and multicast ranges
 			|| (o[0] == 100 && (o[1] & 0xc0) == 64)
 			|| (o[0] == 192 && o[1] == 0 && matches!(o[2], 0 | 2))
+			// IANA marks the 6a44 relay anycast /32 as not globally reachable.
+			|| matches!(o, [192, 88, 99, 2])
 			|| (o[0] == 198 && (o[1] == 18 || o[1] == 19 || (o[1] == 51 && o[2] == 100)))
 			|| (o[0] == 203 && o[1] == 0 && o[2] == 113)
 			|| o[0] >= 224
@@ -2563,8 +2565,11 @@ mod tests {
 	#[case("192.0.0.11", false)]
 	#[case("192.0.0.170", false)]
 	#[case("192.0.0.171", false)]
+	#[case("192.88.99.1", true)]
+	#[case("192.88.99.2", false)]
+	#[case("192.88.99.3", true)]
 	#[tokio::test]
-	async fn plugin_urls_apply_narrow_anycast_exceptions_to_literals_and_dns(
+	async fn plugin_urls_enforce_ipv4_special_assignments_for_literals_and_dns(
 		#[case] address: &str,
 		#[case] allowed: bool,
 	) {
@@ -2584,7 +2589,7 @@ mod tests {
 		)
 		.await;
 
-		// Assert: only the two /32 exceptions pass, without a network request.
+		// Assert: literal and DNS destinations enforce the same narrow /32 assignments.
 		if allowed {
 			assert_eq!(direct.unwrap(), vec![socket]);
 			assert_eq!(resolved.unwrap(), vec![socket]);
