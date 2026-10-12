@@ -226,10 +226,13 @@ pub(crate) async fn create_record_with_trusted_file_fields(
 	#[cfg(not(feature = "file-uploads"))]
 	sanitize_mutation_values(&mut sanitized_data);
 	sanitize_inline_mutations_with_trusted_fields(&mut inline_mutations, trusted_file_fields);
-	sanitized_data.extend(relation_values);
-	// Save hooks see the submitted fields before server-generated timestamps
-	// are added and field names are translated to physical columns.
-	let change = AdminChange::new(None, &sanitized_data);
+	// Save hooks see the submitted field names, including relation aliases,
+	// before server-generated timestamps are added and field names are
+	// translated to physical columns.
+	let mut submitted_data = sanitized_data.clone();
+	submitted_data.extend(relation_values.submitted);
+	let change = AdminChange::new(None, &submitted_data);
+	sanitized_data.extend(relation_values.columns);
 	let mut audit_data = sanitized_data.clone();
 	for selection in &selections {
 		audit_data.insert(

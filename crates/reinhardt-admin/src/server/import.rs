@@ -209,8 +209,10 @@ pub async fn import_data(
 			)
 			.await?;
 			sanitize_mutation_values(&mut record);
-			record.extend(relation_values);
-			let change = AdminChange::new(None, &record);
+			let mut submitted_record = record.clone();
+			submitted_record.extend(relation_values.submitted);
+			let change = AdminChange::new(None, &submitted_record);
+			record.extend(relation_values.columns);
 			super::create::inject_auto_timestamps(&mut record, &table_name);
 			translate_logical_field_names(&table_name, &mut record).map_server_fn_error()?;
 			Ok::<_, ServerFnError>((record, change))
