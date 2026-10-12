@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keep unbounded WASM timeouts valid after engine epoch progress, using bounded relative epoch checks that retain the original lifecycle deadline.
 - Compile the `wasm` feature without `ts` by gating the TypeScript constructor and helpers with their backend feature; the `ts`-enabled signatures are unchanged.
 - Bound empty WASM core instances, memories and tables with per-store count quotas derived from the configured memory budget, capped at 128 of each kind. The count quota is `bytes / (3 * 64 KiB)` per kind (five for a one-MiB budget); it bounds resource metadata cardinality rather than process RSS.
 - Check SSR component file size before decoding or hydration allocation, cap reads if the file grows, and include blocking-pool preparation and hydration in the existing lifecycle deadline.

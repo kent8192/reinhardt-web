@@ -38,6 +38,9 @@ use wasmtime_wasi::p2;
 use super::host::HostState;
 
 const EPOCH_INTERVAL: Duration = Duration::from_millis(10);
+// Use bounded relative offsets: Wasmtime adds them to the current engine epoch.
+// A periodic callback retains the absolute deadline, including an unbounded one.
+const MAX_EPOCH_CHECK_TICKS: u64 = 6_000;
 // Cardinality policy, not an estimate of Wasmtime's exact metadata allocation.
 // Divide the configured budget between three resource classes in 64 KiB slots.
 const RESOURCE_COUNT_SLOT_BYTES: usize = 64 * 1024;
@@ -55,10 +58,12 @@ fn invocation_deadline(timeout: Duration) -> Option<std::time::Instant> {
 }
 
 fn remaining_epoch_ticks(deadline: Option<std::time::Instant>) -> u64 {
-	deadline.map_or(u64::MAX, |deadline| {
+	deadline.map_or(MAX_EPOCH_CHECK_TICKS, |deadline| {
 		let remaining = deadline.saturating_duration_since(std::time::Instant::now());
 		let ticks = remaining.as_nanos().div_ceil(EPOCH_INTERVAL.as_nanos());
-		u64::try_from(ticks).unwrap_or(u64::MAX)
+		u64::try_from(ticks)
+			.unwrap_or(MAX_EPOCH_CHECK_TICKS)
+			.min(MAX_EPOCH_CHECK_TICKS)
 	})
 }
 
@@ -437,7 +442,14 @@ impl WasmRuntime {
 				.expect("store limits configured")
 		});
 		store.set_epoch_deadline(remaining_epoch_ticks(store.data().execution_deadline));
-		store.epoch_deadline_trap();
+		store.epoch_deadline_callback(|context| {
+			let ticks = remaining_epoch_ticks(context.data().execution_deadline);
+			if ticks == 0 {
+				Err(wasmtime::Trap::Interrupt.into())
+			} else {
+				Ok(wasmtime::UpdateDeadline::Continue(ticks))
+			}
+		});
 		let timeout = self.config.timeout;
 		// Guest entries within a lifecycle share its remaining wall-clock budget.
 		// Standalone calls receive a fresh budget; returning from imports never resets it.
@@ -662,17 +674,51 @@ mod tests {
 		)
 		.unwrap();
 
-		// Act: ready work and store construction must not overflow Instant.
+		// Advance the engine explicitly: the relative deadline must also remain
+		// safe after the ticker starts, rather than depending on thread scheduling.
+		runtime.engine.increment_epoch();
+
+		let mut linker = wasmtime::Linker::new(&runtime.engine);
+		let engine = runtime.engine.clone();
+		linker
+			.func_wrap("test", "advance_epochs", move || {
+				for _ in 0..1_000_000 {
+					engine.increment_epoch();
+				}
+			})
+			.unwrap();
+		let module = wasmtime::Module::new(
+			&runtime.engine,
+			r#"(module
+				(import "test" "advance_epochs" (func $advance))
+				(func (export "ready") (result i32) (local $remaining i32)
+					call $advance
+					i32.const 1000 local.set $remaining
+					(loop $work
+						local.get $remaining i32.const 1 i32.sub
+						local.tee $remaining br_if $work)
+					i32.const 7))"#,
+		)
+		.unwrap();
+
+		// Act: store construction and guest re-entry remain valid after epoch progress.
 		let result = runtime
 			.with_execution_timeout(async {
-				let store = runtime.create_store(HostState::new("far-future"));
-				Ok(store.data().execution_deadline.is_none())
+				let mut store = runtime.create_store(HostState::new("far-future"));
+				let instance = linker.instantiate_async(&mut store, &module).await.unwrap();
+				let result = instance
+					.get_typed_func::<(), i32>(&mut store, "ready")
+					.unwrap()
+					.call_async(&mut store, ())
+					.await
+					.unwrap();
+				Ok((store.data().execution_deadline.is_none(), result))
 			})
 			.await
 			.unwrap();
 
 		// Assert: no artificial short host deadline was introduced.
-		assert!(result);
+		assert_eq!(result, (true, 7));
 	}
 	use super::*;
 
