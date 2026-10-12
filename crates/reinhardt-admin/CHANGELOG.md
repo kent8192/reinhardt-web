@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Accept all typed scalar equality scopes for creation and JSON/CSV/TSV imports, normalize matching temporal and decimal values, and inject missing scope fields while rejecting mismatches and non-finite floats.
+- Preserve native database types for scoped creation, listing, counts, retrieval, updates and deletes, including fractional seconds and exact decimal CSV/TSV input.
 - Preserve negative JSON numbers as numeric CSV/TSV cells while escaping formula-like strings and headers.
 
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.20...reinhardt-admin@v0.3.21) - 2026-10-05

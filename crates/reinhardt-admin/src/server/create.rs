@@ -4,7 +4,7 @@
 
 #[cfg(server)]
 use super::admin_auth::AdminAuthenticatedUser;
-use crate::adapters::{AdminDatabase, AdminRecord, AdminSite};
+use crate::adapters::{AdminDatabase, AdminSite};
 #[cfg(server)]
 use crate::core::{AdminDatabaseKey, AdminSiteKey, ModelAdmin};
 #[cfg(server)]
@@ -83,7 +83,12 @@ pub async fn create_record(
 	let user_id = auth.user_id().unwrap_or("unknown").to_string();
 
 	let result = db
-		.create::<AdminRecord>(table_name, Some(pk_field), sanitized_data.clone())
+		.create_with_scope(
+			table_name,
+			Some(pk_field),
+			sanitized_data.clone(),
+			&object_filters,
+		)
 		.await
 		.map_server_fn_error();
 
@@ -130,22 +135,65 @@ pub(crate) fn enforce_creation_scope(
 		let expected = match &filter.value {
 			FilterValue::String(value) => serde_json::Value::String(value.clone()),
 			FilterValue::Integer(value) | FilterValue::Int(value) => (*value).into(),
+			FilterValue::Float(value) => serde_json::Number::from_f64(*value)
+				.map(serde_json::Value::Number)
+				.ok_or_else(|| ServerFnError::server(403, "Object permission denied"))?,
 			FilterValue::Boolean(value) | FilterValue::Bool(value) => (*value).into(),
 			FilterValue::Uuid(value) => serde_json::Value::String(value.to_string()),
+			FilterValue::Timestamp(value) => creation_scope_json(value)?,
+			FilterValue::Date(value) => creation_scope_json(value)?,
+			FilterValue::Time(value) => creation_scope_json(value)?,
+			FilterValue::NaiveDateTime(value) => creation_scope_json(value)?,
+			FilterValue::Decimal(value) => serde_json::Value::String(value.to_string()),
 			FilterValue::Null => serde_json::Value::Null,
 			_ => return Err(ServerFnError::server(403, "Object permission denied")),
 		};
-		match data.get(&filter.field) {
-			Some(actual) if actual != &expected => {
+		if let Some(actual) = data.get(&filter.field) {
+			// Compare typed scalars by value, then retain the trusted representation.
+			// UTC offsets, fractional-second precision and decimal scale can differ
+			// between JSON and delimited input without changing scope membership.
+			let matches = match (&filter.value, actual) {
+				(FilterValue::Float(value), actual) => actual.as_f64() == Some(*value),
+				(FilterValue::Timestamp(value), serde_json::Value::String(actual)) => {
+					creation_scope_string_matches(actual, value)
+				}
+				(FilterValue::Date(value), serde_json::Value::String(actual)) => {
+					creation_scope_string_matches(actual, value)
+				}
+				(FilterValue::Time(value), serde_json::Value::String(actual)) => {
+					creation_scope_string_matches(actual, value)
+				}
+				(FilterValue::NaiveDateTime(value), serde_json::Value::String(actual)) => {
+					creation_scope_string_matches(actual, value)
+				}
+				(FilterValue::Decimal(value), serde_json::Value::String(actual)) => {
+					creation_scope_string_matches(actual, value)
+				}
+				(FilterValue::Decimal(value), serde_json::Value::Number(actual)) => {
+					creation_scope_string_matches(&actual.to_string(), value)
+				}
+				_ => actual == &expected,
+			};
+			if !matches {
 				return Err(ServerFnError::server(403, "Object permission denied"));
 			}
-			Some(_) => {}
-			None => {
-				data.insert(filter.field.clone(), expected);
-			}
 		}
+		data.insert(filter.field.clone(), expected);
 	}
 	Ok(())
+}
+
+#[cfg(server)]
+fn creation_scope_json<T: serde::Serialize>(value: &T) -> Result<serde_json::Value, ServerFnError> {
+	serde_json::to_value(value).map_err(|_| ServerFnError::server(403, "Object permission denied"))
+}
+
+#[cfg(server)]
+fn creation_scope_string_matches<T: std::str::FromStr + PartialEq>(
+	actual: &str,
+	expected: &T,
+) -> bool {
+	actual.parse::<T>().is_ok_and(|value| &value == expected)
 }
 
 /// Injects the current UTC timestamp for fields with `auto_now` or `auto_now_add`.
@@ -247,6 +295,32 @@ mod tests {
 	#[case(FilterValue::Int(42), "42", serde_json::json!(42))]
 	#[case(FilterValue::Boolean(true), "true", serde_json::json!(true))]
 	#[case(FilterValue::Bool(false), "false", serde_json::json!(false))]
+	#[case::float(FilterValue::Float(1.25), "1.25", serde_json::json!(1.25))]
+	#[case::timestamp(
+		FilterValue::Timestamp("2026-10-12T00:30:00Z".parse().unwrap()),
+		"2026-10-12T09:30:00+09:00",
+		serde_json::json!("2026-10-12T00:30:00Z")
+	)]
+	#[case::date(
+		FilterValue::Date("2026-10-12".parse().unwrap()),
+		"2026-10-12",
+		serde_json::json!("2026-10-12")
+	)]
+	#[case::time(
+		FilterValue::Time("09:30:00".parse().unwrap()),
+		"09:30:00.000",
+		serde_json::json!("09:30:00")
+	)]
+	#[case::naive_datetime(
+		FilterValue::NaiveDateTime("2026-10-12T09:30:00".parse().unwrap()),
+		"2026-10-12T09:30:00.000",
+		serde_json::json!("2026-10-12T09:30:00")
+	)]
+	#[case::decimal(
+		FilterValue::Decimal("42.50".parse().unwrap()),
+		"42.5",
+		serde_json::json!("42.50")
+	)]
 	fn delimited_import_scope_accepts_matching_typed_cells(
 		#[values(b',', b'\t')] delimiter: u8,
 		#[case] scope: FilterValue,
@@ -266,7 +340,6 @@ mod tests {
 			.next()
 			.unwrap()
 			.unwrap();
-		assert_eq!(record["scope"], expected);
 		let filter = Filter::new("scope", FilterOperator::Eq, scope);
 
 		// Act: authorize the typed delimited field against its trusted predicate.
@@ -278,12 +351,77 @@ mod tests {
 	}
 
 	#[rstest::rstest]
+	#[case::float(FilterValue::Float(1.0), serde_json::json!(1), serde_json::json!(1.0))]
+	#[case::timestamp(
+		FilterValue::Timestamp("2026-10-12T00:30:00Z".parse().unwrap()),
+		serde_json::json!("2026-10-12T09:30:00+09:00"),
+		serde_json::json!("2026-10-12T00:30:00Z")
+	)]
+	#[case::date(
+		FilterValue::Date("2026-10-12".parse().unwrap()),
+		serde_json::json!("2026-10-12"),
+		serde_json::json!("2026-10-12")
+	)]
+	#[case::time(
+		FilterValue::Time("09:30:00".parse().unwrap()),
+		serde_json::json!("09:30:00.000"),
+		serde_json::json!("09:30:00")
+	)]
+	#[case::naive_datetime(
+		FilterValue::NaiveDateTime("2026-10-12T09:30:00".parse().unwrap()),
+		serde_json::json!("2026-10-12T09:30:00.000"),
+		serde_json::json!("2026-10-12T09:30:00")
+	)]
+	#[case::decimal(
+		FilterValue::Decimal("42.50".parse().unwrap()),
+		serde_json::json!("42.5"),
+		serde_json::json!("42.50")
+	)]
+	fn creation_scope_accepts_and_injects_typed_scalars(
+		#[case] scope: FilterValue,
+		#[case] supplied: serde_json::Value,
+		#[case] expected: serde_json::Value,
+		#[values(false, true)] field_present: bool,
+	) {
+		// Arrange: the scope is trusted; the supplied field is application input.
+		let mut data =
+			std::collections::HashMap::from([("name".into(), serde_json::json!("safe"))]);
+		if field_present {
+			data.insert("scope".into(), supplied);
+		}
+		let filters = [Filter::new("scope", FilterOperator::Eq, scope)];
+
+		// Act: accept matching values or inject a missing scope before insertion.
+		enforce_creation_scope(&mut data, &filters).unwrap();
+
+		// Assert: both paths use the trusted scalar's canonical JSON representation.
+		assert_eq!(data["scope"], expected);
+		assert_eq!(data["name"], serde_json::json!("safe"));
+	}
+
+	#[rstest::rstest]
 	#[case(FilterValue::Integer(42), serde_json::json!("99"))]
 	#[case(FilterValue::Integer(42), serde_json::json!("42 OR 1=1"))]
 	#[case(FilterValue::Integer(42), serde_json::json!(true))]
 	#[case(FilterValue::Boolean(true), serde_json::json!("false"))]
 	#[case(FilterValue::Boolean(true), serde_json::json!("1"))]
 	#[case(FilterValue::String("42".into()), serde_json::json!(42))]
+	#[case(FilterValue::Float(1.25), serde_json::json!(1.5))]
+	#[case(FilterValue::Float(1.25), serde_json::json!("1.25"))]
+	#[case(FilterValue::Float(f64::NAN), serde_json::Value::Null)]
+	#[case(FilterValue::Float(f64::INFINITY), serde_json::Value::Null)]
+	#[case(FilterValue::Timestamp("2026-10-12T00:30:00Z".parse().unwrap()), serde_json::json!("2026-10-12T00:30:01Z"))]
+	#[case(FilterValue::Date("2026-10-12".parse().unwrap()), serde_json::json!("2026-10-13"))]
+	#[case(FilterValue::Date("2026-10-12".parse().unwrap()), serde_json::json!("2026-13-12"))]
+	#[case(FilterValue::Time("09:30:00".parse().unwrap()), serde_json::json!("09:31:00"))]
+	#[case(FilterValue::NaiveDateTime("2026-10-12T09:30:00".parse().unwrap()), serde_json::json!("2026-10-12T09:30:01"))]
+	#[case(FilterValue::Decimal("42.50".parse().unwrap()), serde_json::json!("42.51"))]
+	#[case(FilterValue::Decimal("42.50".parse().unwrap()), serde_json::json!(true))]
+	#[case(FilterValue::Timestamp("2026-10-12T00:30:00Z".parse().unwrap()), serde_json::json!(0))]
+	#[case(FilterValue::Date("2026-10-12".parse().unwrap()), serde_json::json!(20261012))]
+	#[case(FilterValue::Time("09:30:00".parse().unwrap()), serde_json::json!(false))]
+	#[case(FilterValue::NaiveDateTime("2026-10-12T09:30:00".parse().unwrap()), serde_json::json!({"date": "2026-10-12"}))]
+	#[case(FilterValue::Decimal("42.50".parse().unwrap()), serde_json::json!([42.5]))]
 	fn creation_scope_denies_mismatched_values_and_json_types(
 		#[case] scope: FilterValue,
 		#[case] actual: serde_json::Value,
@@ -301,6 +439,32 @@ mod tests {
 			error.to_string(),
 			"Server error (403): Object permission denied"
 		);
+	}
+
+	#[rstest::rstest]
+	#[case(FilterOperator::Ne, FilterValue::Int(42))]
+	#[case(FilterOperator::Gt, FilterValue::Int(42))]
+	#[case(FilterOperator::In, FilterValue::List(vec![FilterValue::Int(42)]))]
+	#[case(FilterOperator::Eq, FilterValue::Array(vec!["42".into()]))]
+	#[case(
+		FilterOperator::Eq,
+		FilterValue::FieldRef(reinhardt_db::orm::expressions::F::new("other_scope"))
+	)]
+	#[case(FilterOperator::Eq, FilterValue::Expression(reinhardt_db::orm::annotation::Expression::Coalesce(vec![])))]
+	fn creation_scope_denies_non_scalar_or_non_equality_predicates(
+		#[case] operator: FilterOperator,
+		#[case] value: FilterValue,
+	) {
+		// Arrange / Act: creation cannot derive a scalar from arbitrary predicates.
+		let mut data = std::collections::HashMap::new();
+		let error = enforce_creation_scope(&mut data, &[Filter::new("scope", operator, value)])
+			.unwrap_err();
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Server error (403): Object permission denied"
+		);
+		assert!(!data.contains_key("scope"));
 	}
 
 	#[rstest::rstest]
