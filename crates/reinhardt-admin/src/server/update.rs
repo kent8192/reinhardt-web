@@ -11,7 +11,10 @@ use crate::core::database::canonicalize_pk_value;
 #[cfg(server)]
 use crate::core::history::insert_history_event;
 #[cfg(server)]
-use crate::core::{AdminDatabaseKey, AdminQuery, AdminRequestContext, AdminSiteKey};
+use crate::core::{
+	AdminChange, AdminDatabaseKey, AdminFormMode, AdminQuery, AdminRequestContext,
+	AdminSaveContext, AdminSiteKey,
+};
 use crate::types::MutationResponse;
 #[cfg(server)]
 use reinhardt_di::KeyedDepends;
@@ -29,8 +32,8 @@ use super::error::{AdminAuth, MapServerFnError, ModelPermission};
 use super::form::prepare_parent_form_data;
 #[cfg(server)]
 use super::inline::{
-	map_inline_mutation_error, map_inline_transaction_error, parse_inline_mutations,
-	preflight_inline_permissions, remove_unchanged_inline_mutations,
+	InlineTransactionError, map_inline_mutation_error, map_inline_transaction_error,
+	parse_inline_mutations, preflight_inline_permissions, remove_unchanged_inline_mutations,
 	sanitize_inline_mutations_with_trusted_fields, save_inline_mutations,
 };
 #[cfg(server)]
@@ -46,7 +49,8 @@ use super::security::require_csrf_token;
 use super::security::sanitize_mutation_values;
 #[cfg(server)]
 use super::type_inference::{
-	translate_logical_field_names, translate_physical_field_names_to_logical,
+	stored_values_for_submitted_fields, translate_logical_field_names,
+	translate_physical_field_names_to_logical,
 };
 
 /// Update an existing model instance
@@ -62,6 +66,14 @@ use super::type_inference::{
 /// # Authentication
 ///
 /// Requires staff (admin) permission and change permission for the model.
+///
+/// # Save hooks
+///
+/// Calls [`ModelAdmin::before_save`](crate::core::ModelAdmin::before_save)
+/// with the locked stored record inside the write transaction, and
+/// [`ModelAdmin::after_save`](crate::core::ModelAdmin::after_save) after it
+/// commits. A `before_save` validation error is returned as an HTTP 422
+/// validation error.
 ///
 /// # Example
 ///
@@ -198,7 +210,7 @@ pub(crate) async fn update_record_with_trusted_file_fields(
 	let data = prepare_parent_form_data(
 		&site,
 		model_admin.as_ref(),
-		crate::core::AdminFormMode::Update,
+		AdminFormMode::Update,
 		request.data,
 	)?;
 	let descriptors = resolve_relations(&site, model_admin.as_ref()).map_server_fn_error()?;
@@ -245,7 +257,12 @@ pub(crate) async fn update_record_with_trusted_file_fields(
 	#[cfg(not(feature = "file-uploads"))]
 	sanitize_mutation_values(&mut sanitized_data);
 	sanitize_inline_mutations_with_trusted_fields(&mut inline_mutations, trusted_file_fields);
-	sanitized_data.extend(relation_values);
+	// Save hooks see the submitted fields, with foreign keys under their
+	// logical names, before server-generated timestamps are added and field
+	// names are translated to physical columns.
+	let mut submitted_data = sanitized_data.clone();
+	submitted_data.extend(relation_values.logical);
+	sanitized_data.extend(relation_values.columns);
 	let mut audit_data = sanitized_data.clone();
 	for selection in &selections {
 		audit_data.insert(
@@ -315,7 +332,7 @@ pub(crate) async fn update_record_with_trusted_file_fields(
 		.await?
 	};
 
-	let result: Result<_, super::inline::InlineTransactionError> = async {
+	let result: Result<_, InlineTransactionError> = async {
 		connection
 			.atomic_write(async |transaction| {
 				let current_data = db
@@ -333,6 +350,24 @@ pub(crate) async fn update_record_with_trusted_file_fields(
 					))
 					.into());
 				};
+				// Run the hook against the locked stored record before any write.
+				let change = AdminChange::new(
+					Some(&stored_values_for_submitted_fields(
+						&table_name,
+						&submitted_data,
+						&current_data,
+					)),
+					&submitted_data,
+				);
+				let mut stored_data = current_data.clone();
+				translate_physical_field_names_to_logical(&table_name, &mut stored_data)?;
+				let save_context = AdminSaveContext::new(user.as_ref(), AdminFormMode::Update)
+					.with_pk(&object_id)
+					.with_stored(&stored_data);
+				model_admin
+					.before_save(&save_context, &change)
+					.await
+					.map_err(InlineTransactionError::SaveHook)?;
 				if let Some(selection) = selections.first() {
 					lock_relation_source(transaction, &selection.descriptor, &object_id)
 						.await
@@ -434,25 +469,27 @@ pub(crate) async fn update_record_with_trusted_file_fields(
 					transaction,
 				)
 				.await?;
-				Ok((affected, current_data, outcomes))
+				Ok((affected, stored_data, outcomes, change))
 			})
 			.await
 	}
 	.await;
 
 	// Check for database errors first, logging failure before returning
-	let (affected, mut previous_data, outcomes) = match result {
+	let (affected, previous_data, outcomes, change) = match result {
 		Err(error) => {
 			audit::log_update(&audit_user_id, &model_name, &id, &audit_data, false);
 			return Err(map_inline_transaction_error(error));
 		}
-		Ok((affected, previous_data, outcomes)) => (affected, previous_data, outcomes),
+		Ok(committed) => committed,
 	};
 	audit::log_update(&audit_user_id, &model_name, &id, &audit_data, true);
 	audit::log_inline_outcomes(site.as_ref(), &audit_user_id, &outcomes);
+	let save_context = AdminSaveContext::new(user.as_ref(), AdminFormMode::Update)
+		.with_pk(&object_id)
+		.with_stored(&previous_data);
+	model_admin.after_save(&save_context, &change).await;
 
-	translate_physical_field_names_to_logical(&table_name, &mut previous_data)
-		.map_server_fn_error()?;
 	let response = MutationResponse {
 		success: true,
 		message: format!("{} updated successfully", model_name),

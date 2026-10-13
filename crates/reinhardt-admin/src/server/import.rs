@@ -10,7 +10,12 @@ use crate::core::database::canonicalize_pk_value;
 #[cfg(server)]
 use crate::core::history::insert_history_event;
 #[cfg(server)]
-use crate::core::{AdminDatabaseKey, AdminFormMode, AdminRequestContext, AdminSiteKey};
+use crate::core::{
+	AdminChange, AdminDatabaseKey, AdminFormMode, AdminRequestContext, AdminSaveContext,
+	AdminSiteKey,
+};
+#[cfg(server)]
+use crate::types::AdminError;
 #[cfg(server)]
 use reinhardt_di::KeyedDepends;
 #[cfg(server)]
@@ -22,9 +27,14 @@ use std::collections::HashMap;
 #[cfg(server)]
 use super::audit;
 #[cfg(server)]
-use super::error::{AdminAuth, IntoServerFnError, MapServerFnError, ModelPermission};
+use super::error::{
+	AdminAuth, IntoServerFnError, MapServerFnError, ModelPermission,
+	save_hook_error_to_server_error,
+};
 #[cfg(server)]
 use super::form::prepare_parent_form_data;
+#[cfg(server)]
+use super::inline::InlineTransactionError;
 #[cfg(server)]
 use super::limits::{MAX_IMPORT_FILE_SIZE, MAX_IMPORT_RECORDS};
 #[cfg(server)]
@@ -58,6 +68,17 @@ fn contains_import_primary_key(
 /// # Authentication
 ///
 /// Requires staff (admin) permission and add permission for the model.
+///
+/// # Save hooks
+///
+/// Each record calls
+/// [`ModelAdmin::before_save`](crate::core::ModelAdmin::before_save) without a
+/// stored record inside its write transaction, and
+/// [`ModelAdmin::after_save`](crate::core::ModelAdmin::after_save) with the
+/// new primary key after it commits. A record rejected by `before_save` with a
+/// validation or invalid-action error is counted as failed. Any other hook
+/// error aborts the import with its usual error mapping; records imported
+/// before the abort stay committed.
 ///
 /// # Example
 ///
@@ -181,7 +202,7 @@ pub async fn import_data(
 			let (mut record, selections) =
 				split_relation_values(record, &descriptors).map_server_fn_error()?;
 			if !selections.is_empty() {
-				return Err(crate::types::AdminError::ValidationError(
+				return Err(AdminError::ValidationError(
 					"Many-to-many fields are not supported by import".to_string(),
 				)
 				.into_server_fn_error());
@@ -197,14 +218,17 @@ pub async fn import_data(
 			)
 			.await?;
 			sanitize_mutation_values(&mut record);
-			record.extend(relation_values);
+			let mut submitted_record = record.clone();
+			submitted_record.extend(relation_values.logical);
+			let change = AdminChange::new(None, &submitted_record);
+			record.extend(relation_values.columns);
 			super::create::inject_auto_timestamps(&mut record, &table_name);
 			translate_logical_field_names(&table_name, &mut record).map_server_fn_error()?;
-			Ok::<_, ServerFnError>(record)
+			Ok::<_, ServerFnError>((record, change))
 		}
 		.await;
-		let record = match record {
-			Ok(record) => record,
+		let (record, change) = match record {
+			Ok(prepared) => prepared,
 			Err(_) => {
 				failed += 1;
 				errors.push(format!("Record {}: import failed", index + 1));
@@ -212,8 +236,13 @@ pub async fn import_data(
 			}
 		};
 		let changed_fields = record.keys().cloned().collect();
-		let result: reinhardt_core::exception::Result<_> = connection
+		let result: Result<_, InlineTransactionError> = connection
 			.atomic_write(async |transaction| {
+				let save_context = AdminSaveContext::new(user.as_ref(), AdminFormMode::Create);
+				model_admin
+					.before_save(&save_context, &change)
+					.await
+					.map_err(InlineTransactionError::SaveHook)?;
 				let created = db
 					.create_with_executor(transaction, &table_name, Some(&pk_field), record)
 					.await?;
@@ -233,11 +262,28 @@ pub async fn import_data(
 					created.affected,
 				);
 				insert_history_event(transaction, &event).await?;
-				Ok(())
+				Ok(object_id)
 			})
 			.await;
 		match result {
-			Ok(_) => imported += 1,
+			Ok(object_id) => {
+				imported += 1;
+				let save_context =
+					AdminSaveContext::new(user.as_ref(), AdminFormMode::Create).with_pk(&object_id);
+				model_admin.after_save(&save_context, &change).await;
+			}
+			// Only record-level rejections count as failed records. Other hook
+			// errors, such as a permission denial, abort the import with their
+			// usual mapping instead of being reported as a failed record.
+			Err(InlineTransactionError::SaveHook(
+				AdminError::ValidationError(_) | AdminError::InvalidAction(_),
+			)) => {
+				failed += 1;
+				errors.push(format!("Record {}: import failed", index + 1));
+			}
+			Err(InlineTransactionError::SaveHook(error)) => {
+				return Err(save_hook_error_to_server_error(error));
+			}
 			Err(_) => {
 				// Hide internal error details (SQL fragments, table structures, column names)
 				// to prevent information disclosure aiding reconnaissance attacks

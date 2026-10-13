@@ -3,6 +3,7 @@
 //! This crate provides the core business logic for the admin panel,
 //! including:
 //! - ModelAdmin trait and configuration
+//! - Asynchronous save hooks with stored-record and change views
 //! - AdminSite registry
 //! - Database operations
 //! - Import/Export functionality
@@ -18,6 +19,8 @@ pub mod import;
 pub mod inline;
 pub mod model_admin;
 pub mod router;
+/// Asynchronous save hooks for model admins.
+pub mod save_hooks;
 pub mod site;
 // Re-exports
 pub use crate::types::InlineStyle;
@@ -53,4 +56,5 @@ pub use model_admin::{
 	resolve_form_fields,
 };
 pub use router::{admin_csp_exempt_paths, admin_routes_with_di, admin_static_routes};
+pub use save_hooks::{AdminChange, AdminSaveContext};
 pub use site::{AdminSite, AdminSiteConfig, AdminSiteKey};
