@@ -201,8 +201,8 @@ impl ScoredResult {
 /// by their relevance to the search terms.
 ///
 /// The returned SQL embeds the search text as a quote-doubled string literal.
-/// Search text containing a backslash or NUL character is rejected with
-/// [`FilterError::InvalidParameter`] because no literal encoding of it is
+/// Search text containing a backslash, NUL or line break character is rejected
+/// with [`FilterError::InvalidParameter`] because no literal encoding of it is
 /// exact under every SQL backend. Field names and
 /// [`ScoringAlgorithm::Custom`] function names must be plain or dot-qualified
 /// SQL identifiers.

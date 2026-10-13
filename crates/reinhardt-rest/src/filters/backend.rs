@@ -59,9 +59,12 @@ use std::sync::Arc;
 /// otherwise [`FilterError::InvalidQuery`] is returned. That rejects quoted
 /// strings with an odd run of backslashes before the closing quote, nested
 /// block comments, and comments or dollar-quoted strings whose text would open
-/// a string under the backend that reads it as code. `#>`, `#>>` and `#-` are
-/// read as PostgreSQL operators, so a MySQL `#` comment starting with `>` or
-/// `-` must not contain these keywords.
+/// a string under the backend that reads it as code. SQL that ends inside a
+/// quoted string, identifier or comment is rejected too, because text appended
+/// to it would not be code. `#>`, `#>>` and `#-` are read as PostgreSQL
+/// operators, so a MySQL `#` comment starting with `>` or `-` must not contain
+/// these keywords; filters reject line breaks in inserted search text so such a
+/// comment cannot be ended by it.
 ///
 /// NOTE: Keywords inside subqueries can still match. A full SQL parser is out
 /// of scope for this filter layer; callers should be aware of this limitation.
@@ -82,7 +85,11 @@ pub(super) fn find_sql_keyword(sql: &str, keyword: &str) -> FilterResult<Option<
 			continue;
 		}
 		if sql_bytes[i] == b'#' {
-			mysql_comment_end = mysql_comment_end.max(line_end(sql_bytes, i));
+			// SQL may end on such a line: PostgreSQL reads it as code, and line
+			// breaks are rejected in inserted search text, so text appended to a
+			// MySQL comment here stays commented out.
+			mysql_comment_end =
+				mysql_comment_end.max(line_end(sql_bytes, i).unwrap_or(sql_bytes.len()));
 		}
 
 		// Keyword must match (ASCII case-insensitive) and be followed by
@@ -115,15 +122,22 @@ fn backend_dependent_boundary() -> FilterError {
 	)
 }
 
+fn unterminated_region() -> FilterError {
+	FilterError::InvalidQuery("SQL ends inside a quoted string or comment".to_string())
+}
+
 /// Return the index just past the quoted string, quoted identifier, comment or
 /// dollar-quoted string starting at `i`, or `None` when `i` starts SQL code.
+///
+/// Regions that reach the end of `sql` without their terminator, including
+/// line comments without a following line break, are rejected.
 fn skip_non_code(sql: &str, i: usize) -> FilterResult<Option<usize>> {
 	let bytes = sql.as_bytes();
 	let end = match bytes[i] {
 		b'\'' | b'"' => quoted_string_end(bytes, i)?,
-		b'`' => quoted_identifier_end(bytes, i),
+		b'`' => quoted_identifier_end(bytes, i)?,
 		b'-' if bytes.get(i + 1) == Some(&b'-') => {
-			let end = line_end(bytes, i);
+			let end = line_end(bytes, i)?;
 			// MySQL reads `--` without following whitespace as two minus signs.
 			if !bytes
 				.get(i + 2)
@@ -135,7 +149,7 @@ fn skip_non_code(sql: &str, i: usize) -> FilterResult<Option<usize>> {
 		}
 		// `#>`, `#>>` and `#-` are handled by the caller as PostgreSQL operators.
 		b'#' if !matches!(bytes.get(i + 1), Some(b'>' | b'-')) => {
-			let end = line_end(bytes, i);
+			let end = line_end(bytes, i)?;
 			// PostgreSQL reads `#` as an operator.
 			ensure_code_closes(sql, i + 1, end)?;
 			end
@@ -144,7 +158,8 @@ fn skip_non_code(sql: &str, i: usize) -> FilterResult<Option<usize>> {
 			let body_start = i + 2;
 			let body_end = sql[body_start..]
 				.find("*/")
-				.map_or(bytes.len(), |offset| body_start + offset);
+				.map(|offset| body_start + offset)
+				.ok_or_else(unterminated_region)?;
 			// PostgreSQL nests block comments; MySQL and SQLite do not.
 			if sql[body_start..body_end].contains("/*") {
 				return Err(backend_dependent_boundary());
@@ -153,15 +168,15 @@ fn skip_non_code(sql: &str, i: usize) -> FilterResult<Option<usize>> {
 			if bytes.get(body_start) == Some(&b'!') {
 				ensure_code_closes(sql, body_start + 1, body_end)?;
 			}
-			(body_end + 2).min(bytes.len())
+			body_end + 2
 		}
 		b'$' => {
-			let Some((tag_end, body_end)) = dollar_quote(sql, i) else {
+			let Some((tag_end, body_end)) = dollar_quote(sql, i)? else {
 				return Ok(None);
 			};
 			// MySQL reads the tags as identifiers and the body as code.
 			ensure_code_closes(sql, tag_end, body_end)?;
-			(body_end + tag_end - i).min(bytes.len())
+			body_end + tag_end - i
 		}
 		_ => return Ok(None),
 	};
@@ -183,14 +198,13 @@ fn ensure_code_closes(sql: &str, start: usize, end: usize) -> FilterResult<()> {
 }
 
 /// Locate a PostgreSQL dollar-quoted string starting at `start`, returning the
-/// end of its opening tag and the start of its closing tag (or the end of
-/// `sql` when unterminated).
-fn dollar_quote(sql: &str, start: usize) -> Option<(usize, usize)> {
+/// end of its opening tag and the start of its closing tag.
+fn dollar_quote(sql: &str, start: usize) -> FilterResult<Option<(usize, usize)>> {
 	let bytes = sql.as_bytes();
 	let is_tag_byte = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_' || !byte.is_ascii();
 	// `$` inside an identifier or before a digit (`$1`) does not open a string.
 	if start > 0 && (is_tag_byte(bytes[start - 1]) || bytes[start - 1] == b'$') {
-		return None;
+		return Ok(None);
 	}
 	let mut tag_end = start + 1;
 	if bytes
@@ -202,20 +216,21 @@ fn dollar_quote(sql: &str, start: usize) -> Option<(usize, usize)> {
 		}
 	}
 	if bytes.get(tag_end) != Some(&b'$') {
-		return None;
+		return Ok(None);
 	}
 	tag_end += 1;
 	let tag = &sql[start..tag_end];
 	let body_end = sql[tag_end..]
 		.find(tag)
-		.map_or(bytes.len(), |offset| tag_end + offset);
-	Some((tag_end, body_end))
+		.map(|offset| tag_end + offset)
+		.ok_or_else(unterminated_region)?;
+	Ok(Some((tag_end, body_end)))
 }
 
 /// Return the index just past the single- or double-quoted string at `start`.
 ///
-/// A doubled quote continues the string, and unterminated strings run to the
-/// end. Backslash runs of even length, or followed by any byte other than the
+/// A doubled quote continues the string; unterminated strings are rejected.
+/// Backslash runs of even length, or followed by any byte other than the
 /// quote, leave the string at the same end whether or not the backend treats
 /// backslash as an escape character; an odd run before the quote does not and
 /// is rejected.
@@ -238,31 +253,32 @@ fn quoted_string_end(bytes: &[u8], start: usize) -> FilterResult<usize> {
 			i += 1;
 		}
 	}
-	Ok(bytes.len())
+	Err(unterminated_region())
 }
 
 /// Return the index just past the backtick-quoted identifier at `start`.
-fn quoted_identifier_end(bytes: &[u8], start: usize) -> usize {
+fn quoted_identifier_end(bytes: &[u8], start: usize) -> FilterResult<usize> {
 	let mut i = start + 1;
 	while i < bytes.len() {
 		if bytes[i] == b'`' {
 			if bytes.get(i + 1) != Some(&b'`') {
-				return i + 1;
+				return Ok(i + 1);
 			}
 			i += 2;
 		} else {
 			i += 1;
 		}
 	}
-	bytes.len()
+	Err(unterminated_region())
 }
 
-/// Return the index of the line break ending the comment at `start`.
-fn line_end(bytes: &[u8], start: usize) -> usize {
+/// Return the index of the line break ending the line that contains `start`.
+fn line_end(bytes: &[u8], start: usize) -> FilterResult<usize> {
 	bytes[start..]
 		.iter()
 		.position(|&byte| matches!(byte, b'\n' | b'\r'))
-		.map_or(bytes.len(), |offset| start + offset)
+		.map(|offset| start + offset)
+		.ok_or_else(unterminated_region)
 }
 
 /// Find the end position of a SQL clause by locating the next top-level keyword.
@@ -565,6 +581,13 @@ impl FilterBackend for SimpleSearchBackend {
 			if self.fields.is_empty() {
 				return Err(FilterError::InvalidParameter(
 					"No search fields configured".to_string(),
+				));
+			}
+			// The rendered search text must not end a line comment that a
+			// backend reads differently from find_sql_keyword.
+			if search_query.contains(['\n', '\r']) {
+				return Err(FilterError::InvalidParameter(
+					"search text must not contain line breaks".to_string(),
 				));
 			}
 
@@ -1199,7 +1222,7 @@ mod tests {
 	#[case::line_comment_with_quote("SELECT 1 -- it's\nFROM t WHERE x", "WHERE", Some(24))]
 	#[case::json_path_operator("SELECT d #> '{a}' FROM t WHERE x", "WHERE", Some(25))]
 	#[case::only_in_literal("SELECT 'x WHERE y' FROM t", "WHERE", None)]
-	#[case::unterminated_literal("SELECT 'x FROM t WHERE y", "WHERE", None)]
+	#[case::json_operator_on_last_line("SELECT * FROM t WHERE d #>> '{a}' = 'x'", "ORDER BY", None)]
 	#[case::identifier_suffix("SELECT * FROM t WHERE_x", "WHERE", None)]
 	fn test_find_sql_keyword_skips_quoted_text_and_comments(
 		#[case] sql: &str,
@@ -1223,10 +1246,56 @@ mod tests {
 	#[case::string_crossing_mysql_hash_comment("SELECT d #>> 'a\nb' FROM t WHERE x")]
 	#[case::dollar_quote_opening_mysql_string("SELECT $$it's$$ FROM t WHERE x")]
 	#[case::executable_comment_opening_string("SELECT /*! 'x */ 1 FROM t WHERE x")]
+	#[case::unterminated_string("SELECT 'x FROM t WHERE y")]
+	#[case::unterminated_identifier("SELECT `x FROM t WHERE y")]
+	#[case::unterminated_block_comment("SELECT /* x FROM t WHERE y")]
+	#[case::unterminated_dollar_quote("SELECT $$ x FROM t WHERE y")]
+	#[case::trailing_line_comment("SELECT * FROM t -- WHERE")]
+	#[case::trailing_hash_comment("SELECT * FROM t # note")]
 	#[case::nested_block_comment("SELECT /* a /* b */ WHERE c */ 1 FROM t WHERE x")]
 	fn test_find_sql_keyword_rejects_backend_dependent_boundaries(#[case] sql: &str) {
 		// Act
 		let result = find_sql_keyword(sql, "WHERE");
+
+		// Assert
+		assert!(
+			matches!(result, Err(FilterError::InvalidQuery(_))),
+			"expected InvalidQuery, got {result:?}"
+		);
+	}
+
+	#[rstest]
+	#[case::line_feed("rust\nnews")]
+	#[case::carriage_return("rust\rnews")]
+	#[tokio::test]
+	async fn test_search_rejects_line_breaks(#[case] search: &str) {
+		// Arrange
+		let backend = SimpleSearchBackend::new("search").with_field("title");
+		let params = HashMap::from([("search".to_string(), search.to_string())]);
+
+		// Act
+		let result = backend
+			.filter_queryset(&params, "SELECT * FROM articles".to_string())
+			.await;
+
+		// Assert
+		assert!(
+			matches!(result, Err(FilterError::InvalidParameter(_))),
+			"expected InvalidParameter, got {result:?}"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_search_rejects_sql_ending_in_comment() {
+		// Arrange
+		let backend = SimpleSearchBackend::new("search").with_field("title");
+		let params = HashMap::from([("search".to_string(), "rust".to_string())]);
+
+		// Act
+		let result = backend
+			.filter_queryset(&params, "SELECT * FROM articles -- all rows".to_string())
+			.await;
 
 		// Assert
 		assert!(

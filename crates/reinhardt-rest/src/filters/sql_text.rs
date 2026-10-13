@@ -8,6 +8,8 @@
 //! single quotes is exact in all of them as long as the text contains no
 //! backslash, while no backslash encoding means the same thing in every mode.
 //! Text containing a backslash is therefore rejected rather than rewritten.
+//! Line breaks are rejected as well, so inserted text cannot end a line comment
+//! that one backend reads as code (see [`find_sql_keyword`]).
 
 use super::backend::{find_clause_end, find_sql_keyword};
 use super::{FilterError, FilterResult};
@@ -18,12 +20,12 @@ const WHERE_CLAUSE_END: [&str; 5] = ["GROUP BY", "ORDER BY", "LIMIT", "OFFSET", 
 /// Render `text` as a single-quoted SQL string literal.
 ///
 /// Returns [`FilterError::InvalidParameter`] when `text` contains a backslash,
-/// whose meaning depends on the backend's escape mode, or a NUL character,
-/// which PostgreSQL text cannot hold.
+/// whose meaning depends on the backend's escape mode, a NUL character, which
+/// PostgreSQL text cannot hold, or a line break.
 pub(super) fn quoted_text(text: &str) -> FilterResult<String> {
-	if text.contains(['\\', '\0']) {
+	if text.contains(['\\', '\0', '\n', '\r']) {
 		return Err(FilterError::InvalidParameter(
-			"search text must not contain backslash or NUL characters".to_string(),
+			"search text must not contain backslash, NUL or line break characters".to_string(),
 		));
 	}
 	Ok(format!("'{}'", text.replace('\'', "''")))
@@ -110,6 +112,8 @@ mod tests {
 	#[case::backslash_quote("x\\' OR 1=1 -- ")]
 	#[case::trailing_backslash("x\\")]
 	#[case::nul("x\0y")]
+	#[case::line_feed("x\ny")]
+	#[case::carriage_return("x\ry")]
 	fn quoted_text_rejects_mode_dependent_characters(#[case] text: &str) {
 		// Act
 		let result = quoted_text(text);

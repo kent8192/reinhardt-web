@@ -28,24 +28,25 @@ validate them.
   automatically prevent client input from mass-assigning identifiers,
   ownership, tenant, role, permission, read-only, computed, or otherwise
   protected fields, including through nested relations.
-- Filters, search, lookup expressions, field selectors, and ordering use
-  finite validated allowlists and bounded values. They preserve parameterized
-  query construction and cannot disclose protected fields or become executable
-  query structure. `SynonymExpander` and `RelevanceScorer` return SQL text
-  without bound parameters, so they embed search text as quote-doubled string
-  literals and reject text containing backslash or NUL characters, which no
+- Filters, search, lookup expressions, field selectors, and ordering use finite
+  validated allowlists and bounded values. They preserve parameterized query
+  construction and cannot disclose protected fields or become executable query
+  structure. `SynonymExpander` and `RelevanceScorer` return SQL text without
+  bound parameters, so they embed search text as quote-doubled string literals
+  and reject text containing backslash, NUL, or line break characters, which no
   literal encoding represents exactly under every MySQL, PostgreSQL, and SQLite
   string mode; their configured column and scoring-function names must be plain
   or dot-qualified SQL identifiers. These filters, `SimpleSearchBackend`, and
   `SimpleOrderingBackend` locate clauses outside quoted strings, comments, and
   dollar-quoted strings, and reject input SQL in which such a region ends at a
-  different position under MySQL (either backslash mode), PostgreSQL, or
-  SQLite rules. They read `#>`, `#>>`, and `#-` as PostgreSQL operators, so a
-  MySQL `#` comment in that SQL must not start with `>` or `-`. The
+  different position under MySQL (either backslash mode), PostgreSQL, or SQLite
+  rules, or that ends inside one. They read `#>`, `#>>`, and `#-` as PostgreSQL
+  operators, so a MySQL `#` comment in that SQL must not start with `>` or `-`;
+  `SimpleSearchBackend` also rejects line breaks in search text. The
   `BatchValidator` uniqueness fast path currently builds a raw `UNION ALL`
-  statement from table, field, and check values; callers must restrict that
-  path to trusted identifiers and non-attacker-controlled values, or disable it
-  until those checks use bound query values.
+  statement from table, field, and check values; callers must restrict that path
+  to trusted identifiers and non-attacker-controlled values, or disable it until
+  those checks use bound query values.
 - Pagination and cursor state remain bound to the authorized query, tenant,
   filter scope, ordering, and API version. Collection, cursor, and version
   variants cannot enumerate objects or traverse beyond the caller's permitted

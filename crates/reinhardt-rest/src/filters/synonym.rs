@@ -243,7 +243,8 @@ impl SynonymDictionary {
 /// Automatically expands search queries with synonyms to improve search coverage.
 ///
 /// The returned SQL embeds every expanded term as a quote-doubled string
-/// literal. Terms containing a backslash or NUL character are rejected with
+/// literal. Terms containing a backslash, NUL or line break character are
+/// rejected with
 /// [`FilterError::InvalidParameter`](super::FilterError::InvalidParameter)
 /// because no literal encoding of them is exact under every SQL backend.
 ///
@@ -947,6 +948,25 @@ mod tests {
 				&params,
 				"SELECT id FROM articles WHERE tenant_id = 1".to_string(),
 			)
+			.await;
+
+		// Assert
+		assert!(
+			matches!(result, Err(FilterError::InvalidQuery(_))),
+			"expected InvalidQuery, got {result:?}"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_synonym_expander_rejects_sql_ending_in_comment() {
+		// Arrange
+		let expander = SynonymExpander::new();
+		let params = HashMap::from([("q".to_string(), "fast".to_string())]);
+
+		// Act
+		let result = expander
+			.filter_queryset(&params, "SELECT * FROM articles -- all rows".to_string())
 			.await;
 
 		// Assert
