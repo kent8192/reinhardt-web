@@ -1150,8 +1150,13 @@ impl AdminDatabase {
 				.await
 				.map_err(|e| AdminError::DatabaseError(e.to_string()))?
 		} else {
-			// Preserve query_optional's existing absent/error semantics.
-			self.query_row(&sql, values, true).await.ok()
+			// The primary-key predicate matches at most one row. Fetching all rows
+			// keeps native bind types while distinguishing "no row" (`None`) from
+			// database failures, which must propagate.
+			self.query_rows(&sql, values, true)
+				.await?
+				.into_iter()
+				.next()
 		};
 
 		Ok(row.and_then(|r| {

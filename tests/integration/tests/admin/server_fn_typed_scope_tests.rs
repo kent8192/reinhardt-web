@@ -4,7 +4,9 @@ use super::server_fn_helpers::{
 	AdminDatabaseDepends, AdminSiteDepends, TEST_CSRF_TOKEN, make_auth_user, make_staff_request,
 };
 use reinhardt_admin::adapters::{ImportFormat, MutationRequest};
-use reinhardt_admin::core::{AdminDatabase, AdminRecord, AdminSite, AdminUser, ModelAdmin};
+use reinhardt_admin::core::{
+	AdminDatabase, AdminError, AdminRecord, AdminSite, AdminUser, ModelAdmin,
+};
 use reinhardt_admin::server::{create_record, import_data};
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
@@ -285,6 +287,33 @@ async fn create_record_preserves_native_scalar_scope(
 		}
 	}
 	assert_persisted(&pool, &db, &case).await;
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(admin_typed_scopes)]
+async fn scoped_get_propagates_database_errors(#[future] shared_db_pool: (sqlx::PgPool, String)) {
+	// Arrange
+	let (pool, url) = shared_db_pool.await;
+	let _table = ScopedTableGuard(url);
+	let case = scalar_case("float");
+	let (_site, db) = context(&pool, &case).await;
+	let invalid_scope = vec![Filter::new(
+		"missing_scope_column",
+		FilterOperator::Eq,
+		case.value.clone(),
+	)];
+
+	// Act
+	let result = db
+		.get_with_filters::<AdminRecord>(TABLE, "id", "1", invalid_scope)
+		.await;
+
+	// Assert
+	assert!(
+		matches!(&result, Err(AdminError::DatabaseError(message)) if message.contains("missing_scope_column")),
+		"a failing scoped query must not be reported as a missing record: {result:?}"
+	);
 }
 
 fn import_bytes(format: ImportFormat, scope: Option<Value>) -> Vec<u8> {
