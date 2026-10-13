@@ -4,8 +4,22 @@
 //! and DML (Data Manipulation Language) operations like INSERT and UPDATE.
 //!
 //! Based on SQLAlchemy's hybrid property DML support.
+//!
+//! # Identifier quoting
+//!
+//! Table and column names are always emitted as quoted identifiers, escaped
+//! for the configured backend: backticks for MySQL, double quotes for
+//! PostgreSQL and SQLite, and double quotes when no backend is configured.
+//! Table names may be schema-qualified with `.` (`schema.table`); each segment
+//! is quoted separately. Column names are quoted as a single identifier.
+//!
+//! Quoting prevents a name from changing the statement structure, but it does
+//! not decide which tables or columns a caller may write. Applications that
+//! derive identifiers from untrusted input must still restrict them to an
+//! allow-list.
 
 use crate::backends::backend::DatabaseBackend;
+use crate::backends::optimization::QuoteStyle;
 use crate::hybrid::HybridProperty;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -17,6 +31,14 @@ use std::sync::Arc;
 ///
 /// Uses a single underscore prefix following Rust conventions for internal identifiers.
 const EXPANDED_MARKER: &str = "_expanded";
+
+/// Resolve the identifier quoting style for an optional backend.
+///
+/// Without a backend the builders fall back to ANSI double quotes, mirroring
+/// the `?` placeholder fallback used for values.
+fn quote_style(backend: Option<&Arc<dyn DatabaseBackend>>) -> QuoteStyle {
+	backend.map_or(QuoteStyle::Ansi, |backend| backend.database_type().into())
+}
 
 /// A value that can be inserted/updated, either direct or from a hybrid property
 #[derive(Debug, Clone)]
@@ -55,7 +77,7 @@ impl InsertBuilder {
 		}
 	}
 
-	/// Set the database backend for placeholder generation
+	/// Set the database backend for placeholder generation and identifier quoting
 	pub fn with_backend(mut self, backend: Arc<dyn DatabaseBackend>) -> Self {
 		self.backend = Some(backend);
 		self
@@ -73,9 +95,9 @@ impl InsertBuilder {
 	///
 	/// let (sql, params) = builder.build();
 	/// // SQL output order may vary, verify components separately
-	/// assert!(sql.starts_with("INSERT INTO users ("));
-	/// assert!(sql.contains("name"));
-	/// assert!(sql.contains("email"));
+	/// assert!(sql.starts_with("INSERT INTO \"users\" ("));
+	/// assert!(sql.contains("\"name\""));
+	/// assert!(sql.contains("\"email\""));
 	/// assert!(sql.contains(") VALUES (?, ?)"));
 	/// assert_eq!(params.len(), 2);
 	/// // HashMap doesn't guarantee order, so check both values are present
@@ -110,7 +132,7 @@ impl InsertBuilder {
 	/// let (sql, _) = builder.build();
 	/// assert_eq!(
 	///     sql,
-	///     "INSERT INTO users (email) VALUES (LOWER('TEST@EXAMPLE.COM'))",
+	///     "INSERT INTO \"users\" (\"email\") VALUES (LOWER('TEST@EXAMPLE.COM'))",
 	///     "Expected INSERT with LOWER expression, got: {}",
 	///     sql
 	/// );
@@ -152,7 +174,7 @@ impl InsertBuilder {
 	/// let (sql, params) = builder.build();
 	/// assert_eq!(
 	///     sql,
-	///     "INSERT INTO points (x, y) VALUES (?, ?)",
+	///     "INSERT INTO \"points\" (\"x\", \"y\") VALUES (?, ?)",
 	///     "Expected INSERT with expanded columns x and y, got: {}",
 	///     sql
 	/// );
@@ -184,9 +206,9 @@ impl InsertBuilder {
 	///
 	/// let (sql, params) = builder.build();
 	/// // SQL output order may vary, verify components separately
-	/// assert!(sql.starts_with("INSERT INTO users ("));
-	/// assert!(sql.contains("name"));
-	/// assert!(sql.contains("age"));
+	/// assert!(sql.starts_with("INSERT INTO \"users\" ("));
+	/// assert!(sql.contains("\"name\""));
+	/// assert!(sql.contains("\"age\""));
 	/// assert!(sql.contains(") VALUES (?, ?)"));
 	/// assert_eq!(params.len(), 2);
 	/// assert!(params.contains(&"Bob".to_string()));
@@ -197,6 +219,7 @@ impl InsertBuilder {
 		let mut placeholders = Vec::new();
 		let mut params = Vec::new();
 		let mut param_index = 1;
+		let quote = quote_style(self.backend.as_ref());
 
 		// Get placeholder function
 		let get_placeholder = |index: usize| -> String {
@@ -211,7 +234,7 @@ impl InsertBuilder {
 		// Handle expanded values first
 		if let Some(DmlValue::Expanded(expanded)) = self.values.get(EXPANDED_MARKER) {
 			for (col, val) in expanded {
-				columns.push(col.clone());
+				columns.push(quote.quote_identifier(col));
 				placeholders.push(get_placeholder(param_index));
 				param_index += 1;
 				params.push(val.clone());
@@ -225,13 +248,13 @@ impl InsertBuilder {
 			}
 			match val {
 				DmlValue::Direct(v) => {
-					columns.push(col.clone());
+					columns.push(quote.quote_identifier(col));
 					placeholders.push(get_placeholder(param_index));
 					param_index += 1;
 					params.push(v.clone());
 				}
 				DmlValue::HybridExpression(expr) => {
-					columns.push(col.clone());
+					columns.push(quote.quote_identifier(col));
 					placeholders.push(expr.clone());
 				}
 				DmlValue::Expanded(_) => {
@@ -242,7 +265,7 @@ impl InsertBuilder {
 
 		let sql = format!(
 			"INSERT INTO {} ({}) VALUES ({})",
-			self.table_name,
+			quote.quote_qualified_identifier(&self.table_name),
 			columns.join(", "),
 			placeholders.join(", ")
 		);
@@ -279,7 +302,7 @@ impl UpdateBuilder {
 		}
 	}
 
-	/// Set the database backend for placeholder generation
+	/// Set the database backend for placeholder generation and identifier quoting
 	pub fn with_backend(mut self, backend: Arc<dyn DatabaseBackend>) -> Self {
 		self.backend = Some(backend);
 		self
@@ -298,9 +321,9 @@ impl UpdateBuilder {
 	///
 	/// let (sql, params) = builder.build();
 	/// // SQL output order may vary, verify components separately
-	/// assert!(sql.starts_with("UPDATE users SET "));
-	/// assert!(sql.contains("name=?"));
-	/// assert!(sql.contains("age=?"));
+	/// assert!(sql.starts_with("UPDATE \"users\" SET "));
+	/// assert!(sql.contains("\"name\"=?"));
+	/// assert!(sql.contains("\"age\"=?"));
 	/// assert!(sql.contains(" WHERE \"id\"=?"));
 	/// assert_eq!(params.len(), 3);
 	/// assert!(params.contains(&"Charlie".to_string()));
@@ -334,7 +357,7 @@ impl UpdateBuilder {
 	///     .where_clause("id", "1");
 	///
 	/// let (sql, params) = builder.build();
-	/// assert!(sql.contains("email=LOWER('UPDATED@EXAMPLE.COM')"));
+	/// assert!(sql.contains("\"email\"=LOWER('UPDATED@EXAMPLE.COM')"));
 	/// assert!(sql.contains("WHERE \"id\"=?"));
 	/// assert_eq!(params, vec!["1"]);
 	/// ```
@@ -373,7 +396,7 @@ impl UpdateBuilder {
 	///     .where_clause("id", "5");
 	///
 	/// let (sql, params) = builder.build();
-	/// assert!(sql.contains("UPDATE points SET x=?, y=?"));
+	/// assert!(sql.contains("UPDATE \"points\" SET \"x\"=?, \"y\"=?"));
 	/// assert!(sql.contains("WHERE \"id\"=?"));
 	/// assert_eq!(params.len(), 3);
 	/// assert_eq!(params[0], "100");
@@ -393,6 +416,7 @@ impl UpdateBuilder {
 	/// Add a parameterized WHERE clause using column equality.
 	///
 	/// Uses `"column" = ?` with a bind parameter to prevent SQL injection.
+	/// The column name is quoted and escaped like every other identifier.
 	///
 	/// # Examples
 	///
@@ -404,7 +428,7 @@ impl UpdateBuilder {
 	///     .where_clause("id", "42");
 	///
 	/// let (sql, params) = builder.build();
-	/// assert!(sql.contains("UPDATE users SET status=?"));
+	/// assert!(sql.contains("UPDATE \"users\" SET \"status\"=?"));
 	/// assert!(sql.contains("WHERE \"id\"=?"));
 	/// assert_eq!(params.len(), 2);
 	/// assert_eq!(params[0], "active");
@@ -426,7 +450,7 @@ impl UpdateBuilder {
 	///     .where_clause("id", "10");
 	///
 	/// let (sql, params) = builder.build();
-	/// assert!(sql.contains("UPDATE users SET name=?"));
+	/// assert!(sql.contains("UPDATE \"users\" SET \"name\"=?"));
 	/// assert!(sql.contains("WHERE \"id\"=?"));
 	/// assert_eq!(params.len(), 2);
 	/// assert_eq!(params[0], "David");
@@ -436,6 +460,7 @@ impl UpdateBuilder {
 		let mut set_clauses = Vec::new();
 		let mut params = Vec::new();
 		let mut param_index = 1;
+		let quote = quote_style(self.backend.as_ref());
 
 		// Get placeholder function
 		let get_placeholder = |index: usize| -> String {
@@ -450,7 +475,11 @@ impl UpdateBuilder {
 		// Handle expanded values first
 		if let Some(DmlValue::Expanded(expanded)) = self.values.get(EXPANDED_MARKER) {
 			for (col, val) in expanded {
-				set_clauses.push(format!("{}={}", col, get_placeholder(param_index)));
+				set_clauses.push(format!(
+					"{}={}",
+					quote.quote_identifier(col),
+					get_placeholder(param_index)
+				));
 				param_index += 1;
 				params.push(val.clone());
 			}
@@ -463,12 +492,16 @@ impl UpdateBuilder {
 			}
 			match val {
 				DmlValue::Direct(v) => {
-					set_clauses.push(format!("{}={}", col, get_placeholder(param_index)));
+					set_clauses.push(format!(
+						"{}={}",
+						quote.quote_identifier(col),
+						get_placeholder(param_index)
+					));
 					param_index += 1;
 					params.push(v.clone());
 				}
 				DmlValue::HybridExpression(expr) => {
-					set_clauses.push(format!("{}={}", col, expr));
+					set_clauses.push(format!("{}={}", quote.quote_identifier(col), expr));
 				}
 				DmlValue::Expanded(_) => {
 					// Already handled above
@@ -476,10 +509,14 @@ impl UpdateBuilder {
 			}
 		}
 
-		let mut sql = format!("UPDATE {} SET {}", self.table_name, set_clauses.join(", "));
+		let mut sql = format!(
+			"UPDATE {} SET {}",
+			quote.quote_qualified_identifier(&self.table_name),
+			set_clauses.join(", ")
+		);
 
 		if let Some((column, value)) = &self.where_clause {
-			sql.push_str(&format!(" WHERE \"{}\"=?", column));
+			sql.push_str(&format!(" WHERE {}=?", quote.quote_identifier(column)));
 			params.push(value.clone());
 		}
 
@@ -490,6 +527,53 @@ impl UpdateBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::backends::error::Result;
+	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
+	use rstest::rstest;
+
+	/// Backend stub that only reports a dialect; the builders never execute SQL.
+	struct DialectBackend(DatabaseType);
+
+	#[async_trait::async_trait]
+	impl DatabaseBackend for DialectBackend {
+		fn database_type(&self) -> DatabaseType {
+			self.0
+		}
+		fn placeholder(&self, index: usize) -> String {
+			match self.0 {
+				DatabaseType::Postgres => format!("${}", index),
+				DatabaseType::Mysql | DatabaseType::Sqlite => "?".to_string(),
+			}
+		}
+		fn supports_returning(&self) -> bool {
+			false
+		}
+		fn supports_on_conflict(&self) -> bool {
+			false
+		}
+		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
+			unreachable!("hybrid DML builders only build SQL and never execute it")
+		}
+		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
+			unreachable!("hybrid DML builders only build SQL and never execute it")
+		}
+		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
+			unreachable!("hybrid DML builders only build SQL and never execute it")
+		}
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Option<Row>> {
+			unreachable!("hybrid DML builders only build SQL and never execute it")
+		}
+		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
+			unreachable!("hybrid DML builders only build SQL and never execute it")
+		}
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+	}
 
 	#[test]
 	fn test_insert_builder_simple() {
@@ -500,17 +584,17 @@ mod tests {
 		let (sql, params) = builder.build();
 		// SQL output order may vary, verify components separately
 		assert!(
-			sql.starts_with("INSERT INTO person ("),
+			sql.starts_with("INSERT INTO \"person\" ("),
 			"Expected INSERT INTO person, got: {}",
 			sql
 		);
 		assert!(
-			sql.contains("first_name"),
+			sql.contains("\"first_name\""),
 			"Expected first_name in SQL: {}",
 			sql
 		);
 		assert!(
-			sql.contains("last_name"),
+			sql.contains("\"last_name\""),
 			"Expected last_name in SQL: {}",
 			sql
 		);
@@ -545,7 +629,7 @@ mod tests {
 
 		let (sql, params) = builder.build();
 		assert!(
-			sql.contains("UPDATE person SET first_name=?"),
+			sql.contains("UPDATE \"person\" SET \"first_name\"=?"),
 			"Expected UPDATE person SET, got: {}",
 			sql
 		);
@@ -570,7 +654,7 @@ mod tests {
 
 		let (sql, params) = builder.build();
 		assert_eq!(
-			sql, "INSERT INTO points (x, y) VALUES (?, ?)",
+			sql, "INSERT INTO \"points\" (\"x\", \"y\") VALUES (?, ?)",
 			"Expected INSERT with expanded columns, got: {}",
 			sql
 		);
@@ -600,7 +684,7 @@ mod tests {
 
 		let (sql, params) = builder.build();
 		assert!(
-			sql.contains("UPDATE points SET x=?, y=?"),
+			sql.contains("UPDATE \"points\" SET \"x\"=?, \"y\"=?"),
 			"Expected UPDATE with expanded columns, got: {}",
 			sql
 		);
@@ -636,17 +720,17 @@ mod tests {
 		let (sql, params) = builder.build();
 		// SQL output order may vary, verify components separately
 		assert!(
-			sql.starts_with("INSERT INTO users ("),
+			sql.starts_with("INSERT INTO \"users\" ("),
 			"Expected INSERT INTO users, got: {}",
 			sql
 		);
 		assert!(
-			sql.contains("name"),
+			sql.contains("\"name\""),
 			"Expected 'name' column in SQL: {}",
 			sql
 		);
 		assert!(
-			sql.contains("email"),
+			sql.contains("\"email\""),
 			"Expected 'email' column in SQL: {}",
 			sql
 		);
@@ -683,17 +767,17 @@ mod tests {
 		let (sql, params) = builder.build();
 		// SQL output order may vary, verify components separately
 		assert!(
-			sql.starts_with("INSERT INTO users ("),
+			sql.starts_with("INSERT INTO \"users\" ("),
 			"Expected INSERT INTO users, got: {}",
 			sql
 		);
 		assert!(
-			sql.contains("name"),
+			sql.contains("\"name\""),
 			"Expected 'name' column in SQL: {}",
 			sql
 		);
 		assert!(
-			sql.contains("email"),
+			sql.contains("\"email\""),
 			"Expected 'email' column in SQL: {}",
 			sql
 		);
@@ -735,7 +819,7 @@ mod tests {
 
 		let (sql, params) = builder.build();
 		assert!(
-			sql.contains("email=LOWER('UPDATED@EXAMPLE.COM')"),
+			sql.contains("\"email\"=LOWER('UPDATED@EXAMPLE.COM')"),
 			"Expected LOWER expression, got: {}",
 			sql
 		);
@@ -767,7 +851,7 @@ mod tests {
 
 		let (sql, params) = builder.build();
 		assert!(
-			sql.contains("UPDATE users SET email=?"),
+			sql.contains("UPDATE \"users\" SET \"email\"=?"),
 			"Expected UPDATE with direct value, got: {}",
 			sql
 		);
@@ -833,5 +917,166 @@ mod tests {
 			"SQL injection attempt must have single quotes escaped, got: {}",
 			sql
 		);
+	}
+
+	#[rstest]
+	#[case::benign_identifiers("users", "name", "INSERT INTO \"users\" (\"name\") VALUES (?)")]
+	#[case::schema_qualified_table(
+		"app.users",
+		"name",
+		"INSERT INTO \"app\".\"users\" (\"name\") VALUES (?)"
+	)]
+	#[case::table_name_breakout(
+		"users\" (id) VALUES (1); DROP TABLE accounts; --",
+		"name",
+		"INSERT INTO \"users\"\" (id) VALUES (1); DROP TABLE accounts; --\" (\"name\") VALUES (?)"
+	)]
+	#[case::column_name_breakout(
+		"users",
+		"name\") VALUES (1); DROP TABLE accounts; --",
+		"INSERT INTO \"users\" (\"name\"\") VALUES (1); DROP TABLE accounts; --\") VALUES (?)"
+	)]
+	fn test_insert_builder_quotes_identifiers(
+		#[case] table: &str,
+		#[case] column: &str,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let builder = InsertBuilder::new(table).value(column, "Alice");
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(params, vec!["Alice".to_string()]);
+	}
+
+	#[rstest]
+	fn test_insert_builder_quotes_expanded_columns() {
+		// Arrange
+		let builder = InsertBuilder::new("points")
+			.expanded_hybrid(vec![("x\") VALUES (1); DROP TABLE points; --", "10")]);
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"INSERT INTO \"points\" (\"x\"\") VALUES (1); DROP TABLE points; --\") VALUES (?)"
+		);
+		assert_eq!(params, vec!["10".to_string()]);
+	}
+
+	#[rstest]
+	#[case::postgres(
+		DatabaseType::Postgres,
+		"INSERT INTO \"app\".\"users\" (\"na\"\"m`e\") VALUES ($1)"
+	)]
+	#[case::mysql(
+		DatabaseType::Mysql,
+		"INSERT INTO `app`.`users` (`na\"m``e`) VALUES (?)"
+	)]
+	#[case::sqlite(
+		DatabaseType::Sqlite,
+		"INSERT INTO \"app\".\"users\" (\"na\"\"m`e\") VALUES (?)"
+	)]
+	fn test_insert_builder_quotes_identifiers_for_backend(
+		#[case] database_type: DatabaseType,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let builder = InsertBuilder::new("app.users")
+			.with_backend(Arc::new(DialectBackend(database_type)))
+			.value("na\"m`e", "Alice");
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(params, vec!["Alice".to_string()]);
+	}
+
+	#[rstest]
+	#[case::benign_identifiers(
+		"users",
+		"name",
+		"id",
+		"UPDATE \"users\" SET \"name\"=? WHERE \"id\"=?"
+	)]
+	#[case::table_name_breakout(
+		"users\" SET \"role\"='admin' --",
+		"name",
+		"id",
+		"UPDATE \"users\"\" SET \"\"role\"\"='admin' --\" SET \"name\"=? WHERE \"id\"=?"
+	)]
+	#[case::set_column_breakout(
+		"users",
+		"role\"='admin', \"name",
+		"id",
+		"UPDATE \"users\" SET \"role\"\"='admin', \"\"name\"=? WHERE \"id\"=?"
+	)]
+	#[case::where_column_breakout(
+		"users",
+		"name",
+		"id\"=? OR 1=1 --",
+		"UPDATE \"users\" SET \"name\"=? WHERE \"id\"\"=? OR 1=1 --\"=?"
+	)]
+	fn test_update_builder_quotes_identifiers(
+		#[case] table: &str,
+		#[case] column: &str,
+		#[case] where_column: &str,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let builder = UpdateBuilder::new(table)
+			.set(column, "Alice")
+			.where_clause(where_column, "1");
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(params, vec!["Alice".to_string(), "1".to_string()]);
+	}
+
+	#[rstest]
+	fn test_update_builder_quotes_expanded_columns() {
+		// Arrange
+		let builder = UpdateBuilder::new("points")
+			.set_expanded(vec![("x\"=1, \"y", "10")])
+			.where_clause("id", "1");
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"UPDATE \"points\" SET \"x\"\"=1, \"\"y\"=? WHERE \"id\"=?"
+		);
+		assert_eq!(params, vec!["10".to_string(), "1".to_string()]);
+	}
+
+	#[rstest]
+	fn test_update_builder_uses_backticks_for_mysql_backend() {
+		// Arrange
+		let builder = UpdateBuilder::new("users`; DROP TABLE accounts; --")
+			.with_backend(Arc::new(DialectBackend(DatabaseType::Mysql)))
+			.set("na`me", "Alice")
+			.where_clause("i`d", "1");
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"UPDATE `users``; DROP TABLE accounts; --` SET `na``me`=? WHERE `i``d`=?"
+		);
+		assert_eq!(params, vec!["Alice".to_string(), "1".to_string()]);
 	}
 }

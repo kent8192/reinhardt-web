@@ -2,7 +2,19 @@
 //!
 //! This module provides bulk update operations that integrate with hybrid properties.
 //! Based on SQLAlchemy's bulk update functionality.
+//!
+//! # Identifier quoting
+//!
+//! The table name and every SET and WHERE column are emitted as ANSI
+//! double-quoted identifiers with embedded `"` doubled, so a name can never
+//! terminate its identifier and change the statement structure. Each name is
+//! quoted as a single identifier. ANSI quoting matches PostgreSQL and SQLite.
+//!
+//! Quoting does not decide which tables or columns a caller may write.
+//! Applications that derive identifiers from untrusted input must still
+//! restrict them to an allow-list.
 
+use crate::backends::optimization::QuoteStyle;
 use crate::hybrid::HybridProperty;
 use std::collections::HashMap;
 
@@ -88,21 +100,22 @@ impl BulkUpdateBuilder {
 	pub fn build(&self) -> (String, Vec<String>, SynchronizeStrategy) {
 		let mut set_clauses = Vec::new();
 		let mut params = Vec::new();
+		let quote = QuoteStyle::Ansi;
 
 		// Build SET clauses with quoted column names
 		for (col, val) in &self.updates {
-			set_clauses.push(format!("\"{}\"=?", col));
+			set_clauses.push(format!("{}=?", quote.quote_identifier(col)));
 			params.push(val.clone());
 		}
 
 		let mut sql = format!(
-			"UPDATE \"{}\" SET {}",
-			self.table_name,
+			"UPDATE {} SET {}",
+			quote.quote_identifier(&self.table_name),
 			set_clauses.join(", ")
 		);
 
 		if let Some((column, value)) = &self.where_clause {
-			sql.push_str(&format!(" WHERE \"{}\"=?", column));
+			sql.push_str(&format!(" WHERE {}=?", quote.quote_identifier(column)));
 			params.push(value.clone());
 		}
 
@@ -113,6 +126,7 @@ impl BulkUpdateBuilder {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[test]
 	fn test_bulk_update_plain() {
@@ -157,5 +171,66 @@ mod tests {
 
 		let (_, _, strategy) = builder.build();
 		assert_eq!(strategy, SynchronizeStrategy::Fetch);
+	}
+
+	#[rstest]
+	#[case::benign_identifiers(
+		"person",
+		"first_name",
+		"id",
+		"UPDATE \"person\" SET \"first_name\"=? WHERE \"id\"=?"
+	)]
+	#[case::table_name_breakout(
+		"person\" SET \"is_admin\"=TRUE --",
+		"first_name",
+		"id",
+		"UPDATE \"person\"\" SET \"\"is_admin\"\"=TRUE --\" SET \"first_name\"=? WHERE \"id\"=?"
+	)]
+	#[case::set_column_breakout(
+		"person",
+		"is_admin\"=TRUE, \"first_name",
+		"id",
+		"UPDATE \"person\" SET \"is_admin\"\"=TRUE, \"\"first_name\"=? WHERE \"id\"=?"
+	)]
+	#[case::where_column_breakout(
+		"person",
+		"first_name",
+		"id\"=? OR 1=1 --",
+		"UPDATE \"person\" SET \"first_name\"=? WHERE \"id\"\"=? OR 1=1 --\"=?"
+	)]
+	fn test_bulk_update_quotes_identifiers(
+		#[case] table: &str,
+		#[case] column: &str,
+		#[case] where_column: &str,
+		#[case] expected_sql: &str,
+	) {
+		// Arrange
+		let builder = BulkUpdateBuilder::new(table)
+			.set(column, "Dr.")
+			.where_clause(where_column, "3");
+
+		// Act
+		let (sql, params, _) = builder.build();
+
+		// Assert
+		assert_eq!(sql, expected_sql);
+		assert_eq!(params, vec!["Dr.".to_string(), "3".to_string()]);
+	}
+
+	#[rstest]
+	fn test_bulk_update_quotes_expanded_columns() {
+		// Arrange
+		let builder = BulkUpdateBuilder::new("person")
+			.set_hybrid_expanded(vec![("first_name\"=NULL, \"last_name", "Dr.")]);
+
+		// Act
+		let (sql, params, _) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"UPDATE \"person\" SET \"first_name\"\"=NULL, \"\"last_name\"=?"
+		);
+		assert_eq!(params, vec!["Dr.".to_string()]);
 	}
 }
