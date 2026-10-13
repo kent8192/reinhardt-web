@@ -24,7 +24,9 @@
 //! Tokio networking, and HTTP serving) and are not available there. Within
 //! `utils_core`, `safe_path_join`/`PathTraversalError` (filesystem
 //! canonicalization) and `timezone::make_aware_local` (DST gap/overlap
-//! detection) are also native-only.
+//! detection) are also native-only. All of these APIs have **Parity: P0**
+//! (target-only behavior): naming them in a browser WASM build fails at
+//! compile time instead of diverging at runtime.
 //!
 //! ## Example
 //!

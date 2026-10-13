@@ -1,4 +1,8 @@
 //! Logging framework for Reinhardt
+//!
+//! **Parity: P0.** Native-only; this module is absent from
+//! `wasm32-unknown-unknown` builds because its handlers depend on the native
+//! runtime.
 
 /// Logging configuration and manager.
 pub mod config;

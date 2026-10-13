@@ -12,6 +12,9 @@
 use std::path::{Component, Path, PathBuf};
 
 /// Errors that can occur during safe path operations
+///
+/// **Parity: P0.** Native-only; absent from `wasm32-unknown-unknown` builds
+/// because it reports filesystem canonicalization failures.
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[derive(Debug, thiserror::Error)]
 pub enum PathTraversalError {
@@ -50,6 +53,9 @@ pub enum PathTraversalError {
 /// - The user input contains null bytes
 /// - The resolved path escapes the base directory
 /// - An IO error occurs during canonicalization
+///
+/// **Parity: P0.** Native-only; absent from `wasm32-unknown-unknown` builds
+/// because containment is verified by filesystem canonicalization.
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn safe_path_join(base: &Path, user_input: &str) -> Result<PathBuf, PathTraversalError> {
 	// Stage 1: Input validation
