@@ -60642,52 +60642,6 @@
       "evidence": []
     },
     {
-      "id": "crates/reinhardt-rest/src/filters/synonym.rs::SynonymExpander::apply_expansion::custom-fragment#1",
-      "path": "crates/reinhardt-rest/src/filters/synonym.rs",
-      "symbol": "SynonymExpander::apply_expansion",
-      "kind": "custom-fragment",
-      "line": 455,
-      "fingerprint": "9532ebf8dcaa1c7575de9814050a4e56121d303fffb68da36644bcc0b01038f5",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
-      "id": "crates/reinhardt-rest/src/filters/synonym.rs::SynonymExpander::apply_expansion::possible-inline-render#1",
-      "path": "crates/reinhardt-rest/src/filters/synonym.rs",
-      "symbol": "SynonymExpander::apply_expansion",
-      "kind": "possible-inline-render",
-      "line": 464,
-      "fingerprint": "a105a636667a7051f0cffa6a988eea3a6b15c691156079871c67ee95bc082d99",
-      "conditions": [],
-      "test_only": false,
-      "category": "review-required",
-      "ownership": "framework",
-      "status": "pending",
-      "operation": "review-required",
-      "representation": "review-required",
-      "feature_reachability": [
-        "review-required"
-      ],
-      "rationale": "Conservative runtime candidate; caller ownership, inherited feature reachability and SQL representation require slice review.",
-      "backends": [
-        "review-required"
-      ],
-      "evidence": []
-    },
-    {
       "id": "crates/reinhardt-rest/src/openapi/endpoint_inspector.rs::EndpointInspector::metadata_method_to_http_method::sql-literal#1",
       "path": "crates/reinhardt-rest/src/openapi/endpoint_inspector.rs",
       "symbol": "EndpointInspector::metadata_method_to_http_method",
