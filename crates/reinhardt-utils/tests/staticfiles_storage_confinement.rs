@@ -68,6 +68,9 @@ async fn manifest_open_rejects_unmapped_names_outside_root(sandbox: Sandbox, #[c
 	assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
 }
 
+// Unix absolute paths become root-relative after the leading `/` is trimmed;
+// Windows absolute paths keep their drive prefix and are rejected instead.
+#[cfg(unix)]
 #[rstest]
 #[tokio::test]
 async fn manifest_open_resolves_absolute_names_inside_root(sandbox: Sandbox) {
