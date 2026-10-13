@@ -42,9 +42,107 @@ pub use postgres::PostgresQueryBuilder;
 pub use sql_writer::SqlWriter;
 pub use sqlite::SqliteQueryBuilder;
 
-// Arithmetic has the same precedence in MySQL and SQLite. Restrict inference
-// to arithmetic parents; other operator levels differ between SQL dialects.
-fn write_arithmetic_operand(
+// Precedence levels shared by the MySQL and SQLite writers.
+const PORTABLE_NOT_PRECEDENCE: u8 = 3;
+const PORTABLE_PREDICATE_PRECEDENCE: u8 = 4;
+const PORTABLE_BITWISE_PRECEDENCE: u8 = 5;
+
+// MySQL and SQLite agree on the relative order of OR, AND, NOT, predicates,
+// bitwise operators, and arithmetic, but not within the predicate and bitwise
+// levels (SQLite binds `<` tighter than `=`; MySQL orders `|`, `&`, and
+// shifts). Those levels are non-associative here, so nested operands within
+// them are always grouped. Parentheses are omitted only where both dialects
+// parse the rendered text as the expression tree. Operators without a portable
+// precedence return `None` and always group their compound operands.
+fn portable_precedence(op: BinOper) -> Option<u8> {
+	match op {
+		BinOper::Or => Some(1),
+		BinOper::And => Some(2),
+		// Logical NOT has precedence 3.
+		BinOper::Equal
+		| BinOper::NotEqual
+		| BinOper::SmallerThan
+		| BinOper::SmallerThanOrEqual
+		| BinOper::GreaterThan
+		| BinOper::GreaterThanOrEqual
+		| BinOper::Is
+		| BinOper::IsNot
+		| BinOper::Like
+		| BinOper::NotLike
+		| BinOper::ILike
+		| BinOper::NotILike
+		| BinOper::SimilarTo
+		| BinOper::NotSimilarTo
+		| BinOper::Matches
+		| BinOper::NotMatches
+		| BinOper::Between
+		| BinOper::NotBetween
+		| BinOper::In
+		| BinOper::NotIn => Some(PORTABLE_PREDICATE_PRECEDENCE),
+		BinOper::BitAnd | BinOper::BitOr | BinOper::LShift | BinOper::RShift => {
+			Some(PORTABLE_BITWISE_PRECEDENCE)
+		}
+		BinOper::Add | BinOper::Sub => Some(6),
+		BinOper::Mul | BinOper::Div | BinOper::Mod => Some(7),
+		BinOper::PgOperator(_) => None,
+	}
+}
+
+// Whether an operand renders as an unparenthesized operator expression.
+fn is_compound_operand(expr: &SimpleExpr) -> bool {
+	match expr {
+		SimpleExpr::Binary(..)
+		| SimpleExpr::Unary(..)
+		| SimpleExpr::LikeWithEscape(..)
+		| SimpleExpr::Custom(_)
+		| SimpleExpr::CustomWithExpr(..) => true,
+		// MySQL and SQLite render enum casts as their inner expression.
+		SimpleExpr::AsEnum(_, inner) => is_compound_operand(inner),
+		_ => false,
+	}
+}
+
+// Whether MySQL or SQLite could bind `expr` differently from the expression
+// tree when it is rendered as an operand of `parent`.
+fn binary_operand_needs_grouping(expr: &SimpleExpr, parent: BinOper, right_operand: bool) -> bool {
+	let Some(parent_precedence) = portable_precedence(parent) else {
+		return is_compound_operand(expr);
+	};
+	match expr {
+		SimpleExpr::Binary(_, child, _) => {
+			let Some(child_precedence) = portable_precedence(*child) else {
+				return true;
+			};
+			let associative_logical = matches!(
+				(parent, child),
+				(BinOper::And, BinOper::And) | (BinOper::Or, BinOper::Or)
+			);
+			let non_associative = matches!(
+				parent_precedence,
+				PORTABLE_PREDICATE_PRECEDENCE | PORTABLE_BITWISE_PRECEDENCE
+			);
+			child_precedence < parent_precedence
+				|| (child_precedence == parent_precedence
+					// Equal-precedence right operands retain their grouping
+					// even for addition and multiplication: reassociation can
+					// change rounding.
+					&& (non_associative || (right_operand && !associative_logical)))
+		}
+		SimpleExpr::LikeWithEscape(..) => parent_precedence >= PORTABLE_PREDICATE_PRECEDENCE,
+		SimpleExpr::Unary(..) => parent_precedence > PORTABLE_NOT_PRECEDENCE,
+		// Opaque predicates have unknown precedence. Group them at boolean
+		// composition boundaries without interpreting their SQL text.
+		SimpleExpr::Custom(_) | SimpleExpr::CustomWithExpr(..) => {
+			matches!(parent, BinOper::And | BinOper::Or)
+		}
+		SimpleExpr::AsEnum(_, inner) => binary_operand_needs_grouping(inner, parent, right_operand),
+		_ => false,
+	}
+}
+
+// Write an operand of a MySQL or SQLite binary operator, preserving the
+// expression tree's grouping.
+fn write_binary_operand(
 	writer: &mut SqlWriter,
 	expr: &SimpleExpr,
 	parent: BinOper,
@@ -52,14 +150,41 @@ fn write_arithmetic_operand(
 	line_comment_markers: &[&str],
 	write_expr: impl FnOnce(&mut SqlWriter, &SimpleExpr),
 ) {
-	let parenthesized = matches!(
-		parent,
-		BinOper::Add | BinOper::Sub | BinOper::Mul | BinOper::Div | BinOper::Mod
-	) && matches!(expr, SimpleExpr::Binary(_, child, _) if
-		child.precedence() < parent.precedence()
-			// Equal-precedence right operands retain their grouping even for
-			// addition and multiplication: reassociation can change rounding.
-			|| (right_operand && child.precedence() == parent.precedence()));
+	let parenthesized = binary_operand_needs_grouping(expr, parent, right_operand);
+	write_grouped_operand(
+		writer,
+		expr,
+		parenthesized,
+		line_comment_markers,
+		write_expr,
+	);
+}
+
+// Write the operand of a MySQL or SQLite `NOT`. Compound operands are always
+// grouped: MySQL's HIGH_NOT_PRECEDENCE mode binds NOT tighter than comparisons.
+fn write_not_operand(
+	writer: &mut SqlWriter,
+	expr: &SimpleExpr,
+	line_comment_markers: &[&str],
+	write_expr: impl FnOnce(&mut SqlWriter, &SimpleExpr),
+) {
+	let parenthesized = is_compound_operand(expr) && !matches!(expr, SimpleExpr::Unary(..));
+	write_grouped_operand(
+		writer,
+		expr,
+		parenthesized,
+		line_comment_markers,
+		write_expr,
+	);
+}
+
+fn write_grouped_operand(
+	writer: &mut SqlWriter,
+	expr: &SimpleExpr,
+	parenthesized: bool,
+	line_comment_markers: &[&str],
+	write_expr: impl FnOnce(&mut SqlWriter, &SimpleExpr),
+) {
 	if parenthesized {
 		writer.push("(");
 	}
