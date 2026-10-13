@@ -20,6 +20,7 @@
 //! # }
 //! ```
 
+use super::sql_text::{and_where, quoted_text};
 use super::{FilterBackend, FilterResult};
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
@@ -241,6 +242,11 @@ impl SynonymDictionary {
 ///
 /// Automatically expands search queries with synonyms to improve search coverage.
 ///
+/// The returned SQL embeds every expanded term as a quote-doubled string
+/// literal. Terms containing a backslash or NUL character are rejected with
+/// [`FilterError::InvalidParameter`](super::FilterError::InvalidParameter)
+/// because no literal encoding of them is exact under every SQL backend.
+///
 /// # Examples
 ///
 /// ```
@@ -425,7 +431,9 @@ impl SynonymExpander {
 
 	/// Generate SQL with synonym expansion
 	///
-	/// This would modify the WHERE clause to include synonym alternatives.
+	/// Adds a parenthesized `content LIKE` alternative for every expanded term
+	/// to the WHERE clause, so the search can only narrow the existing
+	/// condition.
 	///
 	/// # Arguments
 	///
@@ -434,47 +442,27 @@ impl SynonymExpander {
 	///
 	/// # Returns
 	///
-	/// Modified SQL with synonym expansion in WHERE clause
+	/// Modified SQL with synonym expansion in WHERE clause, or
+	/// [`FilterError::InvalidParameter`](super::FilterError::InvalidParameter)
+	/// when an expanded term cannot be embedded as a SQL string literal.
 	fn apply_expansion(&self, sql: String, search_terms: &str) -> FilterResult<String> {
-		use reinhardt_query::prelude::{Cond, Expr, MySqlQueryBuilder, QueryStatementBuilder};
-
-		// Expand search terms with synonyms
 		let expanded_terms = self.expand_query(search_terms);
 
 		if expanded_terms.is_empty() {
 			return Ok(sql);
 		}
 
-		// Build WHERE conditions using reinhardt-query with Expr::cust() to avoid identifier quoting
-		// This ensures database-agnostic SQL generation
-		let mut cond = Cond::any();
-		for term in &expanded_terms {
-			// Escape single quotes for SQL safety
-			let escaped_term = term.replace('\'', "''");
-			let like_expr = format!("content LIKE '%{}%'", escaped_term);
-			cond = cond.add(Expr::cust(like_expr));
-		}
+		let alternatives = expanded_terms
+			.iter()
+			.map(|term| {
+				Ok(format!(
+					"content LIKE {}",
+					quoted_text(&format!("%{term}%"))?
+				))
+			})
+			.collect::<FilterResult<Vec<_>>>()?;
 
-		// Convert the condition to SQL string
-		let dummy_query = reinhardt_query::prelude::Query::select()
-			.expr(Expr::val(1))
-			.cond_where(cond)
-			.to_owned();
-
-		let full_sql = dummy_query.to_string(MySqlQueryBuilder);
-
-		// Extract the WHERE clause content from the dummy query
-		let where_idx = full_sql.find("WHERE").unwrap_or(0);
-		let where_clause = &full_sql[where_idx..];
-
-		// Inject WHERE clause into SQL
-		if sql.to_uppercase().contains("WHERE") {
-			// SQL already has WHERE clause, append with AND
-			Ok(sql.replace("WHERE", &format!("{} AND", where_clause)))
-		} else {
-			// No WHERE clause, append at the end
-			Ok(format!("{} {}", sql, where_clause))
-		}
+		Ok(and_where(&sql, &alternatives.join(" OR ")))
 	}
 }
 
@@ -505,7 +493,9 @@ impl FilterBackend for SynonymExpander {
 
 #[cfg(test)]
 mod tests {
+	use super::super::FilterError;
 	use super::*;
+	use rstest::rstest;
 
 	#[test]
 	fn test_synonym_dictionary_creation() {
@@ -833,54 +823,125 @@ mod tests {
 		);
 	}
 
+	#[rstest]
+	#[case::search_text("it's", "SELECT * FROM articles WHERE (content LIKE '%it''s%')")]
+	#[case::quote_breakout("x'||1--", "SELECT * FROM articles WHERE (content LIKE '%x''||1--%')")]
 	#[tokio::test]
-	async fn test_synonym_expander_sql_injection_protection() {
-		let mut dict = SynonymDictionary::new();
+	async fn test_synonym_expander_doubles_quotes_in_search_text(
+		#[case] search: &str,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let expander = SynonymExpander::new();
+		let params = HashMap::from([("q".to_string(), search.to_string())]);
+
+		// Act
+		let result = expander
+			.filter_queryset(&params, "SELECT * FROM articles".to_string())
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(result, expected);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_synonym_expander_doubles_quotes_in_dictionary_synonyms() {
+		// Arrange
+		let mut dict = SynonymDictionary::with_bidirectional(false);
 		dict.add_synonym("test", "test'; DROP TABLE articles; --");
-
 		let expander = SynonymExpander::new().with_dictionary(dict);
+		let params = HashMap::from([("q".to_string(), "test".to_string())]);
 
-		let mut params = HashMap::new();
-		params.insert("q".to_string(), "test".to_string());
+		// Act
+		let result = expander
+			.filter_queryset(&params, "SELECT * FROM articles".to_string())
+			.await
+			.unwrap();
 
-		let sql = "SELECT * FROM articles".to_string();
-		let result = expander.filter_queryset(&params, sql).await.unwrap();
-
-		// Single quotes should be escaped to prevent SQL injection
-		// The malicious synonym should be escaped: test'; DROP TABLE -> test''; DROP TABLE
-		let expected_escaped_synonym = "test''; drop table articles; --";
-		assert!(
-			result.contains(expected_escaped_synonym),
-			"Expected escaped malicious synonym '{}' in result, got: {}",
-			expected_escaped_synonym,
-			result
-		);
-
-		// Ensure the original test term is present
-		assert!(
-			result.contains("content LIKE '%test%'"),
-			"Expected original term 'content LIKE '%test%' in result, got: {}",
-			result
-		);
-
-		// Validate the malicious content is in a LIKE clause (treated as literal string)
-		assert!(
-			result.contains(&format!("content LIKE '%{}%'", expected_escaped_synonym)),
-			"Expected malicious content in LIKE clause 'content LIKE '%{}%', got: {}",
-			expected_escaped_synonym,
-			result
-		);
-
-		// Ensure dangerous SQL is treated as a string pattern, not as SQL command
-		// The WHERE clause should contain both terms connected with OR
-		let where_start = result.find("WHERE").expect("WHERE clause not found");
-		let where_clause = &result[where_start..];
-		let or_count = where_clause.matches(" OR ").count();
+		// Assert
 		assert_eq!(
-			or_count, 1,
-			"Expected 1 OR connector for 2 terms (test + malicious synonym), got: {}",
-			or_count
+			result,
+			"SELECT * FROM articles WHERE (content LIKE '%test%' OR content LIKE '%test''; drop table articles; --%')"
 		);
+	}
+
+	#[rstest]
+	#[case::backslash_quote("x\\' OR 1=1 -- ")]
+	#[case::backslash_before_term_end("x\\")]
+	#[case::nul("x\0")]
+	#[tokio::test]
+	async fn test_synonym_expander_rejects_mode_dependent_search_text(#[case] search: &str) {
+		// Arrange
+		let expander = SynonymExpander::new();
+		let params = HashMap::from([("q".to_string(), search.to_string())]);
+
+		// Act
+		let result = expander
+			.filter_queryset(&params, "SELECT * FROM articles".to_string())
+			.await;
+
+		// Assert
+		assert!(
+			matches!(result, Err(FilterError::InvalidParameter(_))),
+			"expected InvalidParameter, got {result:?}"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_synonym_expander_rejects_backslash_in_dictionary_synonyms() {
+		// Arrange
+		let mut dict = SynonymDictionary::with_bidirectional(false);
+		dict.add_synonym("test", "x\\' OR 1=1 -- ");
+		let expander = SynonymExpander::new().with_dictionary(dict);
+		let params = HashMap::from([("q".to_string(), "test".to_string())]);
+
+		// Act
+		let result = expander
+			.filter_queryset(&params, "SELECT * FROM articles".to_string())
+			.await;
+
+		// Assert
+		assert!(
+			matches!(result, Err(FilterError::InvalidParameter(_))),
+			"expected InvalidParameter, got {result:?}"
+		);
+	}
+
+	#[rstest]
+	#[case::or_condition(
+		"SELECT * FROM articles WHERE tenant_id = 1 OR public = 1",
+		"SELECT * FROM articles WHERE (content LIKE '%fast%' OR content LIKE '%quick%') AND (tenant_id = 1 OR public = 1)"
+	)]
+	#[case::lowercase_where(
+		"select * from articles where tenant_id = 1 order by id",
+		"select * from articles WHERE (content LIKE '%fast%' OR content LIKE '%quick%') AND (tenant_id = 1) order by id"
+	)]
+	#[case::where_text_in_literal(
+		"SELECT * FROM articles WHERE note = 'WHERE' AND tenant_id = 1",
+		"SELECT * FROM articles WHERE (content LIKE '%fast%' OR content LIKE '%quick%') AND (note = 'WHERE' AND tenant_id = 1)"
+	)]
+	#[tokio::test]
+	async fn test_synonym_expander_keeps_existing_condition_grouped(
+		#[case] sql: &str,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let mut dict = SynonymDictionary::with_bidirectional(false);
+		dict.add_synonym("fast", "quick");
+		let expander = SynonymExpander::new().with_dictionary(dict);
+		let params = HashMap::from([("q".to_string(), "fast".to_string())]);
+
+		// Act
+		let result = expander
+			.filter_queryset(&params, sql.to_string())
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(result, expected);
 	}
 
 	#[tokio::test]

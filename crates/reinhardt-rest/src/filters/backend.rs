@@ -53,7 +53,7 @@ use std::sync::Arc;
 /// NOTE: This naive scan can match keywords inside string literals, identifiers,
 /// comments, or subqueries. A full SQL parser is out of scope for this filter layer;
 /// callers should be aware of this limitation.
-fn find_sql_keyword(sql: &str, keyword: &str) -> Option<usize> {
+pub(super) fn find_sql_keyword(sql: &str, keyword: &str) -> Option<usize> {
 	let sql_bytes = sql.as_bytes();
 	let kw_bytes = keyword.as_bytes();
 	let kw_len = kw_bytes.len();
@@ -103,7 +103,7 @@ fn find_sql_keyword(sql: &str, keyword: &str) -> Option<usize> {
 ///
 /// NOTE: This naive scan can match keywords inside string literals, identifiers,
 /// comments, or subqueries. A full SQL parser is out of scope for this filter layer.
-fn find_clause_end(sql: &str, start_pos: usize, end_keywords: &[&str]) -> usize {
+pub(super) fn find_clause_end(sql: &str, start_pos: usize, end_keywords: &[&str]) -> usize {
 	end_keywords
 		.iter()
 		.filter_map(|kw| find_sql_keyword(&sql[start_pos..], kw).map(|pos| start_pos + pos))

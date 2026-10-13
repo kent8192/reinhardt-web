@@ -31,10 +31,16 @@ validate them.
 - Filters, search, lookup expressions, field selectors, and ordering use
   finite validated allowlists and bounded values. They preserve parameterized
   query construction and cannot disclose protected fields or become executable
-  query structure. The `BatchValidator` uniqueness fast path currently builds
-  a raw `UNION ALL` statement from table, field, and check values; callers must
-  restrict that path to trusted identifiers and non-attacker-controlled values,
-  or disable it until those checks use bound query values.
+  query structure. `SynonymExpander` and `RelevanceScorer` return SQL text
+  without bound parameters, so they embed search text as quote-doubled string
+  literals and reject text containing backslash or NUL characters, which no
+  literal encoding represents exactly under every MySQL, PostgreSQL, and SQLite
+  string mode; their configured column and scoring-function names must be plain
+  or dot-qualified SQL identifiers. The `BatchValidator` uniqueness fast path
+  currently builds a raw `UNION ALL` statement from table, field, and check
+  values; callers must restrict that path to trusted identifiers and
+  non-attacker-controlled values, or disable it until those checks use bound
+  query values.
 - Pagination and cursor state remain bound to the authorized query, tenant,
   filter scope, ordering, and API version. Collection, cursor, and version
   variants cannot enumerate objects or traverse beyond the caller's permitted
