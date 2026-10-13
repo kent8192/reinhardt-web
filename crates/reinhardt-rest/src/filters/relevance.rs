@@ -363,7 +363,7 @@ impl RelevanceScorer {
 			));
 		}
 
-		let from_pos = find_sql_keyword(&sql, "FROM")
+		let from_pos = find_sql_keyword(&sql, "FROM")?
 			.filter(|&pos| pos > 0)
 			.ok_or_else(|| FilterError::InvalidQuery("No FROM clause found in SQL".to_string()))?;
 
@@ -373,10 +373,10 @@ impl RelevanceScorer {
 		let mut rest_part = sql[from_pos..].to_string();
 
 		if let Some(min_score) = self.min_score {
-			rest_part = and_where(&rest_part, &format!("relevance_score >= {}", min_score));
+			rest_part = and_where(&rest_part, &format!("relevance_score >= {}", min_score))?;
 		}
 
-		rest_part = Self::add_order_by(&rest_part);
+		rest_part = Self::add_order_by(&rest_part)?;
 
 		Ok(format!(
 			"{}, {} AS relevance_score {}",
@@ -444,8 +444,8 @@ impl RelevanceScorer {
 	}
 
 	/// Add ORDER BY clause for relevance ranking
-	fn add_order_by(sql: &str) -> String {
-		match find_sql_keyword(sql, "ORDER BY") {
+	fn add_order_by(sql: &str) -> FilterResult<String> {
+		Ok(match find_sql_keyword(sql, "ORDER BY")? {
 			Some(order_pos) => {
 				let existing = sql[order_pos + "ORDER BY".len()..].trim_start();
 				format!(
@@ -455,7 +455,7 @@ impl RelevanceScorer {
 				)
 			}
 			None => format!("{} ORDER BY relevance_score DESC", sql),
-		}
+		})
 	}
 }
 

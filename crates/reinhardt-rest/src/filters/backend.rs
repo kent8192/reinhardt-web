@@ -52,15 +52,20 @@ use std::sync::Arc;
 ///
 /// Quoted strings, quoted identifiers and comments are skipped. Filters insert
 /// quoted search text at the returned position, so a match inside a literal
-/// would move that literal's boundary and turn search text into SQL. Inside
-/// quoted strings a backslash escapes the next character, as in MySQL's default
-/// mode; literals that never place an odd run of backslashes before a quote,
-/// which includes every literal rendered by these filters, have the same
-/// boundaries under every backend.
+/// would move that literal's boundary and turn search text into SQL. The
+/// filters do not know which backend runs their SQL, so a quoted string whose
+/// end depends on whether backslash is an escape character (an odd run of
+/// backslashes before its closing quote) is rejected with
+/// [`FilterError::InvalidQuery`], as is a block comment containing `/*`, which
+/// PostgreSQL nests and MySQL and SQLite do not. `--` always starts a comment.
+/// `#` starts a MySQL comment unless it begins PostgreSQL's `#>`, `#>>` or
+/// `#-` operator. Comments and PostgreSQL dollar-quoted strings in the SQL
+/// passed to a filter are application-authored and assumed to lex the same on
+/// its backend.
 ///
 /// NOTE: Keywords inside subqueries can still match. A full SQL parser is out
 /// of scope for this filter layer; callers should be aware of this limitation.
-pub(super) fn find_sql_keyword(sql: &str, keyword: &str) -> Option<usize> {
+pub(super) fn find_sql_keyword(sql: &str, keyword: &str) -> FilterResult<Option<usize>> {
 	let sql_bytes = sql.as_bytes();
 	let kw_bytes = keyword.as_bytes();
 	let kw_len = kw_bytes.len();
@@ -68,27 +73,31 @@ pub(super) fn find_sql_keyword(sql: &str, keyword: &str) -> Option<usize> {
 
 	while i < sql_bytes.len() {
 		match sql_bytes[i] {
-			quote @ (b'\'' | b'"' | b'`') => {
-				i = quoted_end(sql_bytes, i, quote != b'`');
+			b'\'' | b'"' => {
+				i = quoted_string_end(sql_bytes, i)?;
 				continue;
 			}
-			b'-' if sql_bytes.get(i + 1) == Some(&b'-')
-				&& sql_bytes
-					.get(i + 2)
-					.is_none_or(|next| next.is_ascii_whitespace() || next.is_ascii_control()) =>
-			{
+			b'`' => {
+				i = quoted_identifier_end(sql_bytes, i);
+				continue;
+			}
+			b'-' if sql_bytes.get(i + 1) == Some(&b'-') => {
 				i = line_end(sql_bytes, i);
 				continue;
 			}
-			// MySQL line comment; PostgreSQL uses `#>`, `#>>` and `#-` as JSON operators.
 			b'#' if !matches!(sql_bytes.get(i + 1), Some(b'>' | b'-')) => {
 				i = line_end(sql_bytes, i);
 				continue;
 			}
 			b'/' if sql_bytes.get(i + 1) == Some(&b'*') => {
-				i = sql[i + 2..]
-					.find("*/")
-					.map_or(sql_bytes.len(), |offset| i + 2 + offset + 2);
+				let body = &sql[i + 2..];
+				let body_len = body.find("*/").unwrap_or(body.len());
+				if body[..body_len].contains("/*") {
+					return Err(FilterError::InvalidQuery(
+						"SQL contains a nested block comment".to_string(),
+					));
+				}
+				i = (i + 2 + body_len + 2).min(sql_bytes.len());
 				continue;
 			}
 			_ => {}
@@ -109,25 +118,52 @@ pub(super) fn find_sql_keyword(sql: &str, keyword: &str) -> Option<usize> {
 		};
 
 		if matched && after_ok && before_ok {
-			return Some(i);
+			return Ok(Some(i));
 		}
 		i += 1;
 	}
 
-	None
+	Ok(None)
 }
 
-/// Return the index just past the quoted region starting at `start`.
+/// Return the index just past the single- or double-quoted string at `start`.
 ///
-/// A doubled quote continues the region. Unterminated regions run to the end.
-fn quoted_end(bytes: &[u8], start: usize, backslash_escapes: bool) -> usize {
+/// A doubled quote continues the string, and unterminated strings run to the
+/// end. Backslash runs of even length, or followed by any byte other than the
+/// quote, leave the string at the same end whether or not the backend treats
+/// backslash as an escape character; an odd run before the quote does not and
+/// is rejected.
+fn quoted_string_end(bytes: &[u8], start: usize) -> FilterResult<usize> {
 	let quote = bytes[start];
 	let mut i = start + 1;
 	while i < bytes.len() {
-		if backslash_escapes && bytes[i] == b'\\' {
-			i += 2;
+		if bytes[i] == b'\\' {
+			let run = bytes[i..].iter().take_while(|&&byte| byte == b'\\').count();
+			if run % 2 == 1 && bytes.get(i + run) == Some(&quote) {
+				return Err(FilterError::InvalidQuery(
+					"SQL contains a quoted string whose end depends on backslash escaping"
+						.to_string(),
+				));
+			}
+			i += run;
 		} else if bytes[i] == quote {
 			if bytes.get(i + 1) != Some(&quote) {
+				return Ok(i + 1);
+			}
+			i += 2;
+		} else {
+			i += 1;
+		}
+	}
+	Ok(bytes.len())
+}
+
+/// Return the index just past the backtick-quoted identifier at `start`.
+fn quoted_identifier_end(bytes: &[u8], start: usize) -> usize {
+	let mut i = start + 1;
+	while i < bytes.len() {
+		if bytes[i] == b'`' {
+			if bytes.get(i + 1) != Some(&b'`') {
 				return i + 1;
 			}
 			i += 2;
@@ -150,16 +186,23 @@ fn line_end(bytes: &[u8], start: usize) -> usize {
 ///
 /// Searches for each keyword in `end_keywords` after `start_pos` in `sql`,
 /// returning the earliest match position. If no keyword is found, returns `sql.len()`.
-/// `start_pos` must lie outside quoted regions and comments.
+/// `start_pos` must lie outside quoted regions and comments. Errors are those
+/// of [`find_sql_keyword`].
 ///
 /// NOTE: Keywords inside subqueries can still match. A full SQL parser is out
 /// of scope for this filter layer.
-pub(super) fn find_clause_end(sql: &str, start_pos: usize, end_keywords: &[&str]) -> usize {
-	end_keywords
-		.iter()
-		.filter_map(|kw| find_sql_keyword(&sql[start_pos..], kw).map(|pos| start_pos + pos))
-		.min()
-		.unwrap_or(sql.len())
+pub(super) fn find_clause_end(
+	sql: &str,
+	start_pos: usize,
+	end_keywords: &[&str],
+) -> FilterResult<usize> {
+	let mut end = sql.len();
+	for keyword in end_keywords {
+		if let Some(pos) = find_sql_keyword(&sql[start_pos..], keyword)? {
+			end = end.min(start_pos + pos);
+		}
+	}
+	Ok(end)
 }
 
 /// A composable filter backend that chains multiple filters
@@ -478,7 +521,7 @@ impl FilterBackend for SimpleSearchBackend {
 			// instead of string replacement which can corrupt complex WHERE clauses.
 			// Uses ASCII case-insensitive keyword scanning to avoid allocation and
 			// Unicode case-folding byte-length divergence from to_uppercase().
-			if let Some(where_pos) = find_sql_keyword(&sql, "WHERE") {
+			if let Some(where_pos) = find_sql_keyword(&sql, "WHERE")? {
 				// Skip past "WHERE" keyword and any trailing whitespace
 				let after_keyword = where_pos + "WHERE".len();
 				let content_start = sql[after_keyword..]
@@ -490,7 +533,7 @@ impl FilterBackend for SimpleSearchBackend {
 				// Find the end of the existing WHERE clause by locating
 				// the next top-level SQL keyword (GROUP BY, ORDER BY, LIMIT, etc.)
 				let clause_end_keywords = ["GROUP BY", "ORDER BY", "LIMIT", "OFFSET", "HAVING"];
-				let end_pos = find_clause_end(&sql, content_start, &clause_end_keywords);
+				let end_pos = find_clause_end(&sql, content_start, &clause_end_keywords)?;
 
 				let existing_where = sql[content_start..end_pos].trim();
 				let remainder = &sql[end_pos..];
@@ -623,7 +666,7 @@ impl FilterBackend for SimpleOrderingBackend {
 			// instead of replacing it, which would destroy previous orderings.
 			// Uses ASCII case-insensitive keyword scanning to avoid allocation and
 			// Unicode case-folding byte-length divergence from to_uppercase().
-			if let Some(order_pos) = find_sql_keyword(&sql, "ORDER BY") {
+			if let Some(order_pos) = find_sql_keyword(&sql, "ORDER BY")? {
 				// Skip past "ORDER BY" keyword and any trailing whitespace
 				let after_keyword = order_pos + "ORDER BY".len();
 				let content_start = sql[after_keyword..]
@@ -634,7 +677,7 @@ impl FilterBackend for SimpleOrderingBackend {
 
 				// Find end of existing ORDER BY clause (next top-level keyword)
 				let clause_end_keywords = ["LIMIT", "OFFSET"];
-				let end_pos = find_clause_end(&sql, content_start, &clause_end_keywords);
+				let end_pos = find_clause_end(&sql, content_start, &clause_end_keywords)?;
 
 				let existing_order = sql[content_start..end_pos].trim_end();
 				let remainder = &sql[end_pos..];
@@ -1056,10 +1099,11 @@ mod tests {
 	#[case::lowercase("select * from t where x = 1", "WHERE", Some(16))]
 	#[case::single_quoted("SELECT 'a WHERE b' FROM t WHERE x = 1", "WHERE", Some(26))]
 	#[case::doubled_quote("SELECT 'it''s WHERE ' FROM t WHERE x", "WHERE", Some(29))]
-	#[case::backslash_quote("SELECT 'a\\' WHERE ' FROM t WHERE x", "WHERE", Some(27))]
+	#[case::even_backslash_run("SELECT 'a\\\\' FROM t WHERE x", "WHERE", Some(20))]
 	#[case::double_quoted("SELECT \"a WHERE b\" FROM t WHERE x", "WHERE", Some(26))]
 	#[case::backtick("SELECT `a WHERE b` FROM t WHERE x", "WHERE", Some(26))]
 	#[case::line_comment("SELECT 1 -- WHERE x\nFROM t WHERE y", "WHERE", Some(27))]
+	#[case::line_comment_without_space("SELECT 1 --WHERE x\nFROM t WHERE y", "WHERE", Some(26))]
 	#[case::hash_comment("SELECT 1 # WHERE x\nFROM t WHERE y", "WHERE", Some(26))]
 	#[case::block_comment("SELECT 1 /* WHERE */ FROM t WHERE y", "WHERE", Some(28))]
 	#[case::json_operator(
@@ -1076,10 +1120,27 @@ mod tests {
 		#[case] expected: Option<usize>,
 	) {
 		// Act
-		let position = find_sql_keyword(sql, keyword);
+		let position = find_sql_keyword(sql, keyword).unwrap();
 
 		// Assert
 		assert_eq!(position, expected);
+	}
+
+	#[rstest]
+	#[case::odd_backslash_run_single("SELECT 'a\\' WHERE ' FROM t WHERE x")]
+	#[case::odd_backslash_run_triple("SELECT 'a\\\\\\' WHERE ' FROM t WHERE x")]
+	#[case::odd_backslash_run_double_quoted("SELECT \"a\\\" WHERE \" FROM t WHERE x")]
+	#[case::odd_backslash_run_before_doubled_quote("SELECT 'a\\'' WHERE ' FROM t WHERE x")]
+	#[case::nested_block_comment("SELECT /* a /* b */ WHERE c */ 1 FROM t WHERE x")]
+	fn test_find_sql_keyword_rejects_backend_dependent_boundaries(#[case] sql: &str) {
+		// Act
+		let result = find_sql_keyword(sql, "WHERE");
+
+		// Assert
+		assert!(
+			matches!(result, Err(FilterError::InvalidQuery(_))),
+			"expected InvalidQuery, got {result:?}"
+		);
 	}
 
 	#[rstest]

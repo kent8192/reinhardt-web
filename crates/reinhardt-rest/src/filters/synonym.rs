@@ -462,7 +462,7 @@ impl SynonymExpander {
 			})
 			.collect::<FilterResult<Vec<_>>>()?;
 
-		Ok(and_where(&sql, &alternatives.join(" OR ")))
+		and_where(&sql, &alternatives.join(" OR "))
 	}
 }
 
@@ -907,6 +907,52 @@ mod tests {
 		assert!(
 			matches!(result, Err(FilterError::InvalidParameter(_))),
 			"expected InvalidParameter, got {result:?}"
+		);
+	}
+
+	/// Appends a condition with quote-only escaping, like a filter rendering
+	/// request values through a MySQL query builder's `to_string`.
+	struct QuoteOnlyAuthorFilter;
+
+	#[async_trait]
+	impl FilterBackend for QuoteOnlyAuthorFilter {
+		async fn filter_queryset(
+			&self,
+			query_params: &HashMap<String, String>,
+			sql: String,
+		) -> FilterResult<String> {
+			let author = query_params.get("author").map_or("", String::as_str);
+			Ok(format!(
+				"{sql} AND author = '{}'",
+				author.replace('\'', "''")
+			))
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_synonym_expander_rejects_backend_dependent_literals_from_earlier_filters() {
+		// Arrange
+		let mut chain = CustomFilterBackend::new();
+		chain.add_filter(Box::new(QuoteOnlyAuthorFilter));
+		chain.add_filter(Box::new(SynonymExpander::new()));
+		let params = HashMap::from([
+			("author".to_string(), "x\\".to_string()),
+			("q".to_string(), "fast".to_string()),
+		]);
+
+		// Act
+		let result = chain
+			.filter_queryset(
+				&params,
+				"SELECT id FROM articles WHERE tenant_id = 1".to_string(),
+			)
+			.await;
+
+		// Assert
+		assert!(
+			matches!(result, Err(FilterError::InvalidQuery(_))),
+			"expected InvalidQuery, got {result:?}"
 		);
 	}
 

@@ -36,11 +36,15 @@ validate them.
   literals and reject text containing backslash or NUL characters, which no
   literal encoding represents exactly under every MySQL, PostgreSQL, and SQLite
   string mode; their configured column and scoring-function names must be plain
-  or dot-qualified SQL identifiers. The `BatchValidator` uniqueness fast path
-  currently builds a raw `UNION ALL` statement from table, field, and check
-  values; callers must restrict that path to trusted identifiers and
-  non-attacker-controlled values, or disable it until those checks use bound
-  query values.
+  or dot-qualified SQL identifiers. These filters, `SimpleSearchBackend`, and
+  `SimpleOrderingBackend` locate clauses outside quoted strings and comments,
+  and reject input SQL whose quoted-string boundaries depend on backslash
+  escaping or that nests block comments. Comments and dollar-quoted strings in
+  the SQL passed to them must lex the same on the target backend. The
+  `BatchValidator` uniqueness fast path currently builds a raw `UNION ALL`
+  statement from table, field, and check values; callers must restrict that
+  path to trusted identifiers and non-attacker-controlled values, or disable it
+  until those checks use bound query values.
 - Pagination and cursor state remain bound to the authorized query, tenant,
   filter scope, ordering, and API version. Collection, cursor, and version
   variants cannot enumerate objects or traverse beyond the caller's permitted

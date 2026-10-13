@@ -7,7 +7,7 @@
 
 use reinhardt_rest::filters::{
 	CustomFilterBackend, FilterBackend, FilterError, RelevanceScorer, ScoringAlgorithm,
-	SynonymDictionary, SynonymExpander,
+	SimpleSearchBackend, SynonymDictionary, SynonymExpander,
 };
 use rstest::{fixture, rstest};
 use sqlx::MySqlPool;
@@ -90,7 +90,15 @@ async fn search_filters_keep_literal_and_scope_boundaries_on_mysql(
 			.with_algorithm(ScoringAlgorithm::TfIdf)
 			.with_boost_field("content", 1.0),
 	));
-	chain.add_filter(Box::new(SynonymExpander::new().with_dictionary(dictionary)));
+	chain.add_filter(Box::new(
+		SynonymExpander::new().with_dictionary(dictionary.clone()),
+	));
+	// SimpleSearchBackend output is valid input for the synonym filter's scan.
+	let mut search_chain = CustomFilterBackend::new();
+	search_chain.add_filter(Box::new(
+		SimpleSearchBackend::new("search").with_field("content"),
+	));
+	search_chain.add_filter(Box::new(SynonymExpander::new().with_dictionary(dictionary)));
 
 	for mode in ["", "NO_BACKSLASH_ESCAPES"] {
 		sqlx::query("SET SESSION sql_mode = ?")
@@ -114,6 +122,16 @@ async fn search_filters_keep_literal_and_scope_boundaries_on_mysql(
 			.unwrap();
 		let chained = chain
 			.filter_queryset(&search("fast WHERE it's"), TENANT_ONE_ARTICLES.to_string())
+			.await
+			.unwrap();
+		let searched = search_chain
+			.filter_queryset(
+				&HashMap::from([
+					("q".to_string(), "fast".to_string()),
+					("search".to_string(), "steady".to_string()),
+				]),
+				TENANT_ONE_ARTICLES.to_string(),
+			)
 			.await
 			.unwrap();
 		let rejected = [
@@ -144,6 +162,7 @@ async fn search_filters_keep_literal_and_scope_boundaries_on_mysql(
 			vec![1, 2],
 			"mode {mode:?}"
 		);
+		assert_eq!(sorted_ids(&pool, &searched).await, vec![2], "mode {mode:?}");
 		for result in rejected {
 			assert!(
 				matches!(result, Err(FilterError::InvalidParameter(_))),
