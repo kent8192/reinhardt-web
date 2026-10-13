@@ -171,20 +171,25 @@ fn measure_depth_recursive(buf: &[u8], current_depth: u32) -> u32 {
 					None => break,
 				};
 				pos += bytes_read;
-				let length = length as usize;
 
-				if pos + length > buf.len() {
+				// The declared length is attacker-controlled and may reach
+				// `u64::MAX`, so convert and add with checked arithmetic. Stop
+				// scanning when it does not fit; prost reports the malformed
+				// field as a `DecodeError`.
+				let Some(sub_buf) = usize::try_from(length)
+					.ok()
+					.and_then(|length| buf.get(pos..pos.checked_add(length)?))
+				else {
 					break;
-				}
+				};
 
 				// Try to measure sub-message depth
-				let sub_buf = &buf[pos..pos + length];
 				let sub_depth = measure_depth_recursive(sub_buf, current_depth + 1);
 				if sub_depth > max_depth {
 					max_depth = sub_depth;
 				}
 
-				pos += length;
+				pos += sub_buf.len();
 			}
 			// Start group (deprecated)
 			3 => {
@@ -373,6 +378,69 @@ mod tests {
 
 		// Assert
 		assert_eq!(depth, 0);
+	}
+
+	#[rstest]
+	// Field 1, length u64::MAX: the 11-byte body overflows `pos + length`.
+	#[case::max_length_at_end(vec![
+		0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+	])]
+	// Field 1 varint 1, then field 2 with length u64::MAX and a trailing byte.
+	#[case::max_length_mid_message(vec![
+		0x08, 0x01, 0x12, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x00,
+	])]
+	// Field 1, length u64::MAX - 10: `pos + length` wraps to exactly zero.
+	#[case::length_wrapping_to_zero(vec![
+		0x0A, 0xF5, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+	])]
+	fn decode_overflowing_length_returns_decode_error(#[case] buf: Vec<u8>) {
+		// Arrange
+		let decoder = DepthLimitedDecoder::default();
+
+		// Act
+		let result = decoder.decode::<crate::proto::common::Empty>(&buf);
+
+		// Assert
+		assert!(
+			matches!(result, Err(DepthLimitError::DecodeError(_))),
+			"Expected DecodeError, got: {result:?}"
+		);
+	}
+
+	#[rstest]
+	fn decode_nested_overflowing_length_is_skipped_as_unknown_field() {
+		// Arrange: field 1 wraps the 11-byte overflowing payload as its contents
+		let decoder = DepthLimitedDecoder::default();
+		let buf: &[u8] = &[
+			0x0A, 0x0B, 0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+		];
+
+		// Act
+		let depth = measure_wire_depth(buf);
+		let result = decoder.decode::<crate::proto::common::Empty>(buf);
+
+		// Assert
+		assert_eq!(depth, 1);
+		assert_eq!(result.unwrap(), crate::proto::common::Empty {});
+	}
+
+	#[rstest]
+	fn decode_counts_length_reaching_end_of_buffer() {
+		// Arrange: field 1, length 2, exactly the remaining nested message bytes
+		let decoder = DepthLimitedDecoder::new(0);
+		let buf: &[u8] = &[0x0A, 0x02, 0x08, 0x01];
+
+		// Act
+		let result = decoder.decode::<crate::proto::common::Empty>(buf);
+
+		// Assert
+		assert!(
+			matches!(
+				result,
+				Err(DepthLimitError::ExceededMaxDepth { depth: 1, limit: 0 })
+			),
+			"Expected ExceededMaxDepth, got: {result:?}"
+		);
 	}
 
 	#[rstest]
