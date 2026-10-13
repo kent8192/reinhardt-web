@@ -461,6 +461,31 @@ through `BackendAnnotation` and `QuerySet::annotate_backend`; they are not
 silently accepted by portable typed annotations. Scalar raw subqueries stay at
 the explicit `QuerySet::annotate_subquery` boundary and remain fallible.
 
+## QuerySet projection and join identifiers
+
+`QuerySet::values`, `values_list`, and `only` treat every entry as a field
+name, optionally qualified as `table.field`, and always emit it as a quoted
+identifier. Entries shaped like SQL expressions, such as `COUNT(*)`, are no
+longer promoted to raw SQL; building or executing the query returns a
+`DatabaseErrorKind::Unsupported` error. Use `select_expr` for scalar
+projections and typed `func::*` aggregates with `annotate` for computed
+columns:
+
+```rust,ignore
+let counts = Book::objects()
+    .all()
+    .values(&[])
+    .annotate(func::count_all::<Book>().label("book_count")?)?;
+```
+
+`inner_join`, `left_join`, and `right_join` treat both arguments as single
+column names qualified by their model's table name, and the `*_join_as`
+methods emit their table aliases as quoted, case-sensitive identifiers. Use
+`inner_join_on`, `left_join_on`, or `right_join_on` only with a fixed, trusted
+SQL condition. These changes fix
+[GHSA-6rxp-cc74-26f5](https://github.com/kent8192/reinhardt-web/security/advisories/GHSA-6rxp-cc74-26f5),
+where attacker-selected projection or join fields could execute as SQL.
+
 ## Typed intrinsic events
 
 Standard intrinsic `page!` handlers no longer receive one raw event type.
