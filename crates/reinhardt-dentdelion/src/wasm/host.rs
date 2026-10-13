@@ -14,6 +14,13 @@
 //! The capability-based access control pattern ensures plugins can only access
 //! resources they have been explicitly granted. Capabilities are preserved
 //! across `Clone` operations so that WASM store creation does not lose state.
+//!
+//! # HTTP Resource Limits
+//!
+//! HTTP host calls buffer responses in host memory, outside the guest's memory
+//! and fuel limits. Every call is therefore bounded by [`HttpResourceLimits`]:
+//! a response-body cap, a request-body cap, a total deadline, and a per-plugin
+//! concurrency budget.
 
 use crate::capability::{Capability, TrustLevel};
 use crate::error::PluginResult;
@@ -22,18 +29,164 @@ use parking_lot::RwLock;
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
+use std::time::Duration;
+use tokio::sync::Semaphore;
 
 use super::events::{Event, EventBus, SharedEventBus};
 use super::models::{ModelRegistry, ModelSchema, SharedModelRegistry, SqlMigration};
 use super::ssr::{RenderOptions, RenderResult, SharedSsrProxy, SsrError, SsrProxy};
 use super::types::{ConfigValue, WitHttpResponse, WitPluginError};
 
+/// Default maximum decoded response-body size buffered per HTTP host call (10 MiB).
+const DEFAULT_HTTP_MAX_RESPONSE_BODY_BYTES: usize = 10 * 1024 * 1024;
+
+/// Default maximum request-body size a plugin may send per HTTP host call (10 MiB).
+const DEFAULT_HTTP_MAX_REQUEST_BODY_BYTES: usize = 10 * 1024 * 1024;
+
+/// Default deadline for one HTTP host call, including the full response body.
+const DEFAULT_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Default number of HTTP host calls one plugin may have in flight.
+const DEFAULT_HTTP_MAX_CONCURRENT_REQUESTS: usize = 4;
+
+/// Connection deadline of the shared default HTTP client.
+const DEFAULT_HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Read-idle deadline of the shared default HTTP client.
+const DEFAULT_HTTP_READ_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// Shared default HTTP client reused across all `HostState` instances.
 ///
 /// Creating a `reqwest::Client` per `HostState` wastes connection pools and
 /// may lead to file descriptor exhaustion under high load. This shared client
 /// ensures connection pools are reused across all plugins.
-static DEFAULT_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
+///
+/// The client carries connect and read-idle deadlines. The total deadline is
+/// enforced per call from [`HttpResourceLimits::request_timeout`], so it also
+/// applies to custom clients supplied through [`HostStateBuilder::http_client`].
+static DEFAULT_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+	reqwest::Client::builder()
+		.connect_timeout(DEFAULT_HTTP_CONNECT_TIMEOUT)
+		.read_timeout(DEFAULT_HTTP_READ_TIMEOUT)
+		.build()
+		.expect("Failed to build default plugin HTTP client")
+});
+
+/// Resource limits applied to capability-authorized HTTP host calls.
+///
+/// A plugin holding `NetworkAccess` chooses which public URL to fetch, so
+/// response size and timing are attacker-influenced. Responses are buffered in
+/// host memory before they are copied into the guest, where guest memory and
+/// fuel limits do not apply. These limits bound that host-side work:
+///
+/// - A response whose declared `Content-Length` exceeds
+///   [`max_response_body_bytes`](Self::max_response_body_bytes) is rejected
+///   before its body is read. Other responses are streamed through a byte
+///   counter, and the connection is dropped as soon as the limit is crossed.
+/// - A request body above [`max_request_body_bytes`](Self::max_request_body_bytes)
+///   is rejected before it is copied or sent.
+/// - [`request_timeout`](Self::request_timeout) covers connecting, sending,
+///   and reading the complete response body.
+/// - At most [`max_concurrent_requests`](Self::max_concurrent_requests) calls
+///   per plugin are in flight. Clones of a [`HostState`] share this budget, so
+///   the response memory one plugin can hold at once is bounded by
+///   `max_concurrent_requests * max_response_body_bytes`.
+///
+/// # Examples
+///
+/// ```
+/// use reinhardt_dentdelion::wasm::{HostStateBuilder, HttpResourceLimits};
+///
+/// let mut limits = HttpResourceLimits::default();
+/// limits.max_response_body_bytes = 1024 * 1024;
+///
+/// let state = HostStateBuilder::new("my-plugin").http_limits(limits).build();
+/// assert_eq!(state.http_limits().max_response_body_bytes, 1024 * 1024);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct HttpResourceLimits {
+	/// Maximum decoded response-body size buffered per call, in bytes.
+	pub max_response_body_bytes: usize,
+	/// Maximum request-body size a plugin may send per call, in bytes.
+	pub max_request_body_bytes: usize,
+	/// Deadline covering connection, request, and the complete response body.
+	pub request_timeout: Duration,
+	/// Maximum number of HTTP calls one plugin may have in flight.
+	///
+	/// Calls beyond this budget fail immediately instead of queueing.
+	/// `0` rejects every HTTP host call.
+	pub max_concurrent_requests: usize,
+}
+
+impl Default for HttpResourceLimits {
+	fn default() -> Self {
+		Self {
+			max_response_body_bytes: DEFAULT_HTTP_MAX_RESPONSE_BODY_BYTES,
+			max_request_body_bytes: DEFAULT_HTTP_MAX_REQUEST_BODY_BYTES,
+			request_timeout: DEFAULT_HTTP_REQUEST_TIMEOUT,
+			max_concurrent_requests: DEFAULT_HTTP_MAX_CONCURRENT_REQUESTS,
+		}
+	}
+}
+
+/// Create the in-flight permit pool for a set of HTTP limits.
+fn new_http_permits(limits: &HttpResourceLimits) -> Arc<Semaphore> {
+	// `Semaphore::new` panics above `MAX_PERMITS`; larger budgets are
+	// indistinguishable from it in practice.
+	Arc::new(Semaphore::new(
+		limits.max_concurrent_requests.min(Semaphore::MAX_PERMITS),
+	))
+}
+
+/// Read a response body, failing once it exceeds `limit` decoded bytes.
+///
+/// A declared `Content-Length` above the limit is rejected before any body
+/// bytes are read. The declared length can be absent or wrong, so every
+/// received chunk is still counted. Returning early drops the response, which
+/// closes the connection instead of draining the rest of the body.
+async fn read_limited_body(
+	mut response: reqwest::Response,
+	limit: usize,
+) -> Result<Vec<u8>, WitPluginError> {
+	let declared = response.content_length();
+	if let Some(declared) = declared
+		&& declared > limit as u64
+	{
+		return Err(response_body_too_large(limit));
+	}
+
+	// `declared` is at most `limit` here, so the conversion cannot truncate.
+	let mut body = Vec::with_capacity(declared.map_or(0, |len| len as usize));
+	while let Some(chunk) = response.chunk().await.map_err(|e| {
+		WitPluginError::with_details(500, "Failed to read response body", e.to_string())
+	})? {
+		if chunk.len() > limit - body.len() {
+			return Err(response_body_too_large(limit));
+		}
+		// Grow geometrically, but never past the limit, so the allocation
+		// itself stays within the budget.
+		if chunk.len() > body.capacity() - body.len() {
+			let target = body
+				.len()
+				.saturating_mul(2)
+				.max(body.len() + chunk.len())
+				.min(limit);
+			body.reserve_exact(target - body.len());
+		}
+		body.extend_from_slice(&chunk);
+	}
+	Ok(body)
+}
+
+/// Error returned when a response body exceeds the configured limit.
+fn response_body_too_large(limit: usize) -> WitPluginError {
+	WitPluginError::with_details(
+		502,
+		"HTTP response body exceeds the host limit",
+		format!("limit is {limit} bytes"),
+	)
+}
 
 #[cfg(feature = "ts")]
 use super::ts_runtime::SharedTsRuntime;
@@ -186,6 +339,10 @@ pub struct HostState {
 	capabilities: HashSet<Capability>,
 	/// HTTP client for making external requests (optional)
 	http_client: Option<reqwest::Client>,
+	/// Resource limits applied to HTTP host calls
+	http_limits: HttpResourceLimits,
+	/// In-flight HTTP call permits, shared with clones of this state
+	http_permits: Arc<Semaphore>,
 	/// Database connection for SQL queries (optional, requires DatabaseAccess capability)
 	#[cfg(feature = "wasm")]
 	db_connection: Option<Arc<DatabaseConnection>>,
@@ -242,6 +399,7 @@ impl HostState {
 		model_registry: SharedModelRegistry,
 		ssr_proxy: SharedSsrProxy,
 	) -> Self {
+		let http_limits = HttpResourceLimits::default();
 		Self {
 			plugin_name: plugin_name.into(),
 			trust_level: TrustLevel::default(),
@@ -250,6 +408,8 @@ impl HostState {
 			typed_services: RwLock::new(HashMap::new()),
 			capabilities: HashSet::new(),
 			http_client: Some(DEFAULT_HTTP_CLIENT.clone()),
+			http_permits: new_http_permits(&http_limits),
+			http_limits,
 			db_connection: None,
 			event_bus,
 			model_registry,
@@ -360,26 +520,23 @@ impl HostState {
 			.contains(&Capability::Core(PluginCapability::NetworkAccess))
 	}
 
+	/// Get the resource limits applied to HTTP host calls.
+	pub fn http_limits(&self) -> &HttpResourceLimits {
+		&self.http_limits
+	}
+
 	/// Perform an HTTP GET request.
 	///
 	/// Validates the URL against SSRF attacks before making the request.
 	/// Only `http://` and `https://` schemes are allowed, and requests to
-	/// private/loopback IP addresses are rejected.
+	/// private/loopback IP addresses are rejected. The call is bounded by
+	/// this state's [`HttpResourceLimits`].
 	pub async fn http_get(
 		&self,
 		url: &str,
 		headers: &[(String, String)],
 	) -> Result<WitHttpResponse, WitPluginError> {
-		if !self.has_http_capability() {
-			return Err(WitPluginError::new(403, "HTTP access not permitted"));
-		}
-
-		validate_url_for_ssrf(url)?;
-
-		let client = self
-			.http_client
-			.as_ref()
-			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))?;
+		let client = self.authorize_http_call(url)?;
 
 		let mut request = client.get(url);
 
@@ -387,76 +544,133 @@ impl HostState {
 			request = request.header(name, value);
 		}
 
-		let response = request
-			.send()
-			.await
-			.map_err(|e| WitPluginError::with_details(500, "HTTP request failed", e.to_string()))?;
-
-		let status = response.status().as_u16();
-		let headers: Vec<(String, String)> = response
-			.headers()
-			.iter()
-			.map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-			.collect();
-		let body = response.bytes().await.map_err(|e| {
-			WitPluginError::with_details(500, "Failed to read response body", e.to_string())
-		})?;
-
-		Ok(WitHttpResponse {
-			status,
-			headers,
-			body: body.to_vec(),
-		})
+		self.execute_http_request(request).await
 	}
 
 	/// Perform an HTTP POST request.
 	///
 	/// Validates the URL against SSRF attacks before making the request.
 	/// Only `http://` and `https://` schemes are allowed, and requests to
-	/// private/loopback IP addresses are rejected.
+	/// private/loopback IP addresses are rejected. The call is bounded by
+	/// this state's [`HttpResourceLimits`]; an oversized body is rejected
+	/// before it is copied into the request.
 	pub async fn http_post(
 		&self,
 		url: &str,
 		body: &[u8],
 		headers: &[(String, String)],
 	) -> Result<WitHttpResponse, WitPluginError> {
+		let client = self.authorize_http_call(url)?;
+		self.check_http_request_body(body.len())?;
+		self.send_http_post(client, url, body.to_vec(), headers)
+			.await
+	}
+
+	/// Owned-body form of [`Self::http_post`] for the WIT binding, which
+	/// already owns the body lifted from guest memory and would otherwise
+	/// copy it a second time.
+	async fn http_post_owned(
+		&self,
+		url: &str,
+		body: Vec<u8>,
+		headers: &[(String, String)],
+	) -> Result<WitHttpResponse, WitPluginError> {
+		let client = self.authorize_http_call(url)?;
+		self.check_http_request_body(body.len())?;
+		self.send_http_post(client, url, body, headers).await
+	}
+
+	/// Run the checks shared by every HTTP host call and return the client.
+	fn authorize_http_call(&self, url: &str) -> Result<&reqwest::Client, WitPluginError> {
 		if !self.has_http_capability() {
 			return Err(WitPluginError::new(403, "HTTP access not permitted"));
 		}
 
 		validate_url_for_ssrf(url)?;
 
-		let client = self
-			.http_client
+		self.http_client
 			.as_ref()
-			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))?;
+			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))
+	}
 
-		let mut request = client.post(url).body(body.to_vec());
+	/// Reject a plugin-supplied request body larger than the configured limit.
+	fn check_http_request_body(&self, len: usize) -> Result<(), WitPluginError> {
+		let limit = self.http_limits.max_request_body_bytes;
+		if len > limit {
+			return Err(WitPluginError::with_details(
+				413,
+				"HTTP request body exceeds the host limit",
+				format!("{len} bytes exceeds the limit of {limit} bytes"),
+			));
+		}
+		Ok(())
+	}
+
+	/// Build and execute a POST request with an already size-checked body.
+	async fn send_http_post(
+		&self,
+		client: &reqwest::Client,
+		url: &str,
+		body: Vec<u8>,
+		headers: &[(String, String)],
+	) -> Result<WitHttpResponse, WitPluginError> {
+		let mut request = client.post(url).body(body);
 
 		for (name, value) in headers {
 			request = request.header(name, value);
 		}
 
-		let response = request
-			.send()
-			.await
-			.map_err(|e| WitPluginError::with_details(500, "HTTP request failed", e.to_string()))?;
+		self.execute_http_request(request).await
+	}
 
-		let status = response.status().as_u16();
-		let resp_headers: Vec<(String, String)> = response
-			.headers()
-			.iter()
-			.map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-			.collect();
-		let resp_body = response.bytes().await.map_err(|e| {
-			WitPluginError::with_details(500, "Failed to read response body", e.to_string())
+	/// Send a prepared request under this plugin's HTTP resource limits.
+	///
+	/// The deadline wraps both sending and body reading, so it holds even for
+	/// a custom client without timeouts. The concurrency permit is held until
+	/// the body has been read, which bounds the response memory one plugin can
+	/// buffer at once.
+	async fn execute_http_request(
+		&self,
+		request: reqwest::RequestBuilder,
+	) -> Result<WitHttpResponse, WitPluginError> {
+		let limits = &self.http_limits;
+		let _permit = self.http_permits.try_acquire().map_err(|_| {
+			WitPluginError::with_details(
+				429,
+				"Too many concurrent HTTP requests",
+				format!("limit is {} per plugin", limits.max_concurrent_requests),
+			)
 		})?;
 
-		Ok(WitHttpResponse {
-			status,
-			headers: resp_headers,
-			body: resp_body.to_vec(),
-		})
+		let exchange = async {
+			let response = request.send().await.map_err(|e| {
+				WitPluginError::with_details(500, "HTTP request failed", e.to_string())
+			})?;
+
+			let status = response.status().as_u16();
+			let headers: Vec<(String, String)> = response
+				.headers()
+				.iter()
+				.map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+				.collect();
+			let body = read_limited_body(response, limits.max_response_body_bytes).await?;
+
+			Ok(WitHttpResponse {
+				status,
+				headers,
+				body,
+			})
+		};
+
+		tokio::time::timeout(limits.request_timeout, exchange)
+			.await
+			.map_err(|_| {
+				WitPluginError::with_details(
+					504,
+					"HTTP request timed out",
+					format!("deadline is {:?}", limits.request_timeout),
+				)
+			})?
 	}
 
 	// ===== Database API =====
@@ -814,6 +1028,12 @@ impl Clone for HostState {
 			builder = builder.no_http_client();
 		}
 
+		// Share the permit pool so every store of this plugin draws on one
+		// concurrency budget instead of receiving a fresh one per clone.
+		builder = builder
+			.http_limits(self.http_limits.clone())
+			.shared_http_permits(self.http_permits.clone());
+
 		#[cfg(feature = "wasm")]
 		if let Some(ref conn) = self.db_connection {
 			builder = builder.db_connection(conn.clone());
@@ -853,6 +1073,8 @@ pub struct HostStateBuilder {
 	config: HashMap<String, ConfigValue>,
 	capabilities: HashSet<Capability>,
 	http_client: Option<reqwest::Client>,
+	http_limits: HttpResourceLimits,
+	http_permits: Option<Arc<Semaphore>>,
 	#[cfg(feature = "wasm")]
 	db_connection: Option<Arc<DatabaseConnection>>,
 	#[cfg(not(feature = "wasm"))]
@@ -873,6 +1095,8 @@ impl HostStateBuilder {
 			config: HashMap::new(),
 			capabilities: HashSet::new(),
 			http_client: Some(DEFAULT_HTTP_CLIENT.clone()),
+			http_limits: HttpResourceLimits::default(),
+			http_permits: None,
 			db_connection: None,
 			event_bus: None,
 			model_registry: None,
@@ -921,6 +1145,23 @@ impl HostStateBuilder {
 	/// Disable HTTP client.
 	pub fn no_http_client(mut self) -> Self {
 		self.http_client = None;
+		self
+	}
+
+	/// Set the resource limits applied to HTTP host calls.
+	///
+	/// Defaults to [`HttpResourceLimits::default`]. The limits apply to both
+	/// the default client and a custom client set with [`Self::http_client`].
+	pub fn http_limits(mut self, limits: HttpResourceLimits) -> Self {
+		self.http_limits = limits;
+		self
+	}
+
+	/// Reuse an existing in-flight HTTP permit pool.
+	///
+	/// Used by `HostState::clone` so that clones share one concurrency budget.
+	fn shared_http_permits(mut self, permits: Arc<Semaphore>) -> Self {
+		self.http_permits = Some(permits);
 		self
 	}
 
@@ -986,6 +1227,9 @@ impl HostStateBuilder {
 
 	/// Build the host state.
 	pub fn build(self) -> HostState {
+		let http_permits = self
+			.http_permits
+			.unwrap_or_else(|| new_http_permits(&self.http_limits));
 		HostState {
 			plugin_name: self.plugin_name,
 			trust_level: self.trust_level,
@@ -994,6 +1238,8 @@ impl HostStateBuilder {
 			typed_services: RwLock::new(HashMap::new()),
 			capabilities: self.capabilities,
 			http_client: self.http_client,
+			http_limits: self.http_limits,
+			http_permits,
 			db_connection: self.db_connection,
 			event_bus: self.event_bus.unwrap_or_else(|| Arc::new(EventBus::new())),
 			model_registry: self
@@ -1163,8 +1409,8 @@ impl crate::wasm::runtime::reinhardt::dentdelion::host::Host for HostState {
 		body: Vec<u8>,
 		headers: Vec<(String, String)>,
 	) -> Result<Result<GeneratedHttpResponse, GeneratedPluginError>, anyhow::Error> {
-		// Call async function directly (no longer need to block)
-		let result = Self::http_post(self, &url, &body, &headers)
+		// Pass the owned body through so it is not copied a second time
+		let result = Self::http_post_owned(self, &url, body, &headers)
 			.await
 			.map(to_generated_http_response)
 			.map_err(to_generated_error);
@@ -2367,5 +2613,374 @@ mod tests {
 
 		// Assert - http_client should remain None
 		assert!(!cloned.has_http_capability());
+	}
+
+	mod http_limits {
+		use super::*;
+		use crate::capability::PluginCapability;
+		use rstest::rstest;
+		use std::io;
+		use tokio::io::{AsyncReadExt, AsyncWriteExt};
+		use tokio::net::{TcpListener, TcpStream};
+		use tokio::sync::oneshot;
+		use tokio::task::JoinHandle;
+
+		/// Public TEST-NET-3 address (RFC 5737).
+		///
+		/// It passes SSRF validation without DNS. The proxy-configured test
+		/// client delivers the request to the loopback mock upstream instead
+		/// of connecting to this address.
+		const PUBLIC_URL: &str = "http://203.0.113.10/resource";
+
+		/// Aborts the wrapped task on drop so stalled servers and in-flight
+		/// requests never outlive the test.
+		struct AbortOnDrop<T>(JoinHandle<T>);
+
+		impl<T> Drop for AbortOnDrop<T> {
+			fn drop(&mut self) {
+				self.0.abort();
+			}
+		}
+
+		/// What the mock upstream sends after reading one request.
+		struct MockReply {
+			head: String,
+			body_len: usize,
+			stall: bool,
+		}
+
+		/// Loopback HTTP server acting as the test client's forward proxy.
+		struct MockUpstream {
+			proxy_url: String,
+			request_seen: oneshot::Receiver<()>,
+			server: AbortOnDrop<io::Result<()>>,
+		}
+
+		async fn spawn_upstream(reply: MockReply) -> MockUpstream {
+			let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+			let proxy_url = format!("http://{}", listener.local_addr().unwrap());
+			let (seen_tx, request_seen) = oneshot::channel();
+			let server = tokio::spawn(async move {
+				let (mut socket, _) = listener.accept().await?;
+				read_request(&mut socket).await?;
+				let _ = seen_tx.send(());
+				socket.write_all(reply.head.as_bytes()).await?;
+				let chunk = [b'x'; 8192];
+				let mut remaining = reply.body_len;
+				while remaining > 0 {
+					let len = remaining.min(chunk.len());
+					socket.write_all(&chunk[..len]).await?;
+					remaining -= len;
+				}
+				if reply.stall {
+					std::future::pending::<()>().await;
+				}
+				Ok(())
+			});
+			MockUpstream {
+				proxy_url,
+				request_seen,
+				server: AbortOnDrop(server),
+			}
+		}
+
+		/// Read one request head and its `Content-Length` body, so closing
+		/// the socket afterwards never discards unread client data.
+		async fn read_request(socket: &mut TcpStream) -> io::Result<()> {
+			let mut received = Vec::new();
+			let mut buf = [0u8; 1024];
+			let head_end = loop {
+				let read = socket.read(&mut buf).await?;
+				if read == 0 {
+					return Err(io::ErrorKind::UnexpectedEof.into());
+				}
+				received.extend_from_slice(&buf[..read]);
+				if let Some(pos) = received.windows(4).position(|w| w == b"\r\n\r\n") {
+					break pos + 4;
+				}
+			};
+			let head = String::from_utf8_lossy(&received[..head_end]).to_ascii_lowercase();
+			let body_len = head
+				.lines()
+				.find_map(|line| line.strip_prefix("content-length:"))
+				.map_or(0, |value| value.trim().parse::<usize>().unwrap());
+			let mut remaining = body_len.saturating_sub(received.len() - head_end);
+			while remaining > 0 {
+				let read = socket.read(&mut buf).await?;
+				if read == 0 {
+					return Err(io::ErrorKind::UnexpectedEof.into());
+				}
+				remaining = remaining.saturating_sub(read);
+			}
+			Ok(())
+		}
+
+		/// Response head framing the body by `Content-Length` when given,
+		/// or by closing the connection otherwise.
+		fn response_head(content_length: Option<u64>) -> String {
+			match content_length {
+				Some(len) => format!("HTTP/1.1 200 OK\r\nContent-Length: {len}\r\n\r\n"),
+				None => "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_string(),
+			}
+		}
+
+		fn limits(max_body_bytes: usize, request_timeout: Duration) -> HttpResourceLimits {
+			HttpResourceLimits {
+				max_response_body_bytes: max_body_bytes,
+				max_request_body_bytes: max_body_bytes,
+				request_timeout,
+				..HttpResourceLimits::default()
+			}
+		}
+
+		/// Host state holding `NetworkAccess` whose client has no timeouts of
+		/// its own and reaches the internet only through `proxy_url`.
+		fn network_state(proxy_url: &str, limits: HttpResourceLimits) -> HostState {
+			let client = reqwest::Client::builder()
+				.proxy(reqwest::Proxy::http(proxy_url).unwrap())
+				.build()
+				.unwrap();
+			HostStateBuilder::new("network-plugin")
+				.capability(Capability::Core(PluginCapability::NetworkAccess))
+				.http_client(client)
+				.http_limits(limits)
+				.build()
+		}
+
+		#[rstest]
+		fn test_host_state_new_applies_default_http_limits() {
+			// Arrange
+			let state = HostState::new("test-plugin");
+
+			// Act
+			let limits = state.http_limits();
+
+			// Assert
+			assert_eq!(limits.max_response_body_bytes, 10 * 1024 * 1024);
+			assert_eq!(limits.max_request_body_bytes, 10 * 1024 * 1024);
+			assert_eq!(limits.request_timeout, Duration::from_secs(30));
+			assert_eq!(limits.max_concurrent_requests, 4);
+		}
+
+		#[rstest]
+		fn test_clone_shares_http_limits_and_permits() {
+			// Arrange
+			let limits = limits(42, Duration::from_secs(1));
+			let state = HostStateBuilder::new("test-plugin")
+				.http_limits(limits.clone())
+				.build();
+
+			// Act
+			let cloned = state.clone();
+
+			// Assert
+			assert_eq!(cloned.http_limits(), &limits);
+			assert!(Arc::ptr_eq(&state.http_permits, &cloned.http_permits));
+		}
+
+		#[rstest]
+		#[case::below_limit(1023)]
+		#[case::at_limit(1024)]
+		#[tokio::test]
+		async fn test_http_get_returns_body_within_limit(
+			#[case] body_len: usize,
+			#[values(true, false)] declare_length: bool,
+		) {
+			// Arrange
+			let upstream = spawn_upstream(MockReply {
+				head: response_head(declare_length.then_some(body_len as u64)),
+				body_len,
+				stall: false,
+			})
+			.await;
+			let state = network_state(&upstream.proxy_url, limits(1024, Duration::from_secs(10)));
+
+			// Act
+			let response = state.http_get(PUBLIC_URL, &[]).await.unwrap();
+
+			// Assert
+			assert_eq!(response.status, 200);
+			assert_eq!(response.body, vec![b'x'; body_len]);
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_http_get_rejects_body_one_byte_over_limit(
+			#[values(true, false)] declare_length: bool,
+		) {
+			// Arrange
+			let upstream = spawn_upstream(MockReply {
+				head: response_head(declare_length.then_some(1025)),
+				body_len: 1025,
+				stall: false,
+			})
+			.await;
+			let state = network_state(&upstream.proxy_url, limits(1024, Duration::from_secs(10)));
+
+			// Act
+			let error = state.http_get(PUBLIC_URL, &[]).await.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 502);
+			assert_eq!(error.message, "HTTP response body exceeds the host limit");
+			assert_eq!(error.details.as_deref(), Some("limit is 1024 bytes"));
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_http_get_rejects_declared_oversized_body_before_reading() {
+			// Arrange - the upstream declares 10 GiB and then sends nothing, so
+			// waiting for the body would end in the 504 deadline instead
+			let upstream = spawn_upstream(MockReply {
+				head: response_head(Some(10 * 1024 * 1024 * 1024)),
+				body_len: 0,
+				stall: true,
+			})
+			.await;
+			let state = network_state(&upstream.proxy_url, limits(1024, Duration::from_secs(10)));
+
+			// Act
+			let error = state.http_get(PUBLIC_URL, &[]).await.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 502);
+			assert_eq!(error.message, "HTTP response body exceeds the host limit");
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_http_get_drops_connection_once_stream_exceeds_limit() {
+			// Arrange - 64 MiB without Content-Length against a 1 KiB limit
+			let mut upstream = spawn_upstream(MockReply {
+				head: response_head(None),
+				body_len: 64 * 1024 * 1024,
+				stall: false,
+			})
+			.await;
+			let state = network_state(&upstream.proxy_url, limits(1024, Duration::from_secs(10)));
+
+			// Act
+			let error = state.http_get(PUBLIC_URL, &[]).await.unwrap_err();
+			let write_error = tokio::time::timeout(Duration::from_secs(10), &mut upstream.server.0)
+				.await
+				.expect("upstream kept writing after the limit was exceeded")
+				.unwrap()
+				.unwrap_err();
+
+			// Assert - the upstream could not finish writing because the host
+			// closed the connection instead of draining the body
+			assert_eq!(error.code, 502);
+			assert!(matches!(
+				write_error.kind(),
+				io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
+			));
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_http_get_times_out_when_body_stalls() {
+			// Arrange - the test client has no timeouts, so only the host
+			// deadline can end the call
+			let upstream = spawn_upstream(MockReply {
+				head: response_head(Some(10)),
+				body_len: 5,
+				stall: true,
+			})
+			.await;
+			let state = network_state(
+				&upstream.proxy_url,
+				limits(1024, Duration::from_millis(200)),
+			);
+
+			// Act
+			let error = state.http_get(PUBLIC_URL, &[]).await.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 504);
+			assert_eq!(error.message, "HTTP request timed out");
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_http_post_rejects_oversized_body_before_sending(
+			#[values(false, true)] owned_body: bool,
+		) {
+			// Arrange - nothing listens on the proxy port, so a request that
+			// was actually sent would fail with 500 instead of 413
+			let proxy_url = {
+				let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+				format!("http://{}", listener.local_addr().unwrap())
+			};
+			let state = network_state(&proxy_url, limits(16, Duration::from_secs(10)));
+
+			// Act
+			let error = if owned_body {
+				state.http_post_owned(PUBLIC_URL, vec![0; 17], &[]).await
+			} else {
+				state.http_post(PUBLIC_URL, &[0; 17], &[]).await
+			}
+			.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 413);
+			assert_eq!(error.message, "HTTP request body exceeds the host limit");
+			assert_eq!(
+				error.details.as_deref(),
+				Some("17 bytes exceeds the limit of 16 bytes")
+			);
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_http_post_sends_body_at_limit(#[values(false, true)] owned_body: bool) {
+			// Arrange
+			let upstream = spawn_upstream(MockReply {
+				head: response_head(Some(2)),
+				body_len: 2,
+				stall: false,
+			})
+			.await;
+			let state = network_state(&upstream.proxy_url, limits(16, Duration::from_secs(10)));
+
+			// Act
+			let response = if owned_body {
+				state.http_post_owned(PUBLIC_URL, vec![0; 16], &[]).await
+			} else {
+				state.http_post(PUBLIC_URL, &[0; 16], &[]).await
+			}
+			.unwrap();
+
+			// Assert
+			assert_eq!(response.status, 200);
+			assert_eq!(response.body, b"xx".to_vec());
+		}
+
+		#[rstest]
+		#[tokio::test]
+		async fn test_http_concurrency_budget_is_shared_with_clones() {
+			// Arrange - a clone holds the only permit while the upstream stalls
+			let mut upstream = spawn_upstream(MockReply {
+				head: response_head(Some(10)),
+				body_len: 0,
+				stall: true,
+			})
+			.await;
+			let mut limits = limits(1024, Duration::from_secs(10));
+			limits.max_concurrent_requests = 1;
+			let state = network_state(&upstream.proxy_url, limits);
+			let cloned = state.clone();
+			let _in_flight = AbortOnDrop(tokio::spawn(async move {
+				cloned.http_get(PUBLIC_URL, &[]).await
+			}));
+			(&mut upstream.request_seen).await.unwrap();
+
+			// Act
+			let error = state.http_get(PUBLIC_URL, &[]).await.unwrap_err();
+
+			// Assert
+			assert_eq!(error.code, 429);
+			assert_eq!(error.message, "Too many concurrent HTTP requests");
+			assert_eq!(error.details.as_deref(), Some("limit is 1 per plugin"));
+		}
 	}
 }
