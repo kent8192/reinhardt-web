@@ -17,7 +17,9 @@
 //! # }
 //! ```
 
-use super::{FilterBackend, FilterResult};
+use super::backend::find_sql_keyword;
+use super::sql_text::{and_where, quoted_text, validate_identifier};
+use super::{FilterBackend, FilterError, FilterResult};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -198,6 +200,13 @@ impl ScoredResult {
 /// Adds relevance scoring to search queries, enabling ranking of results
 /// by their relevance to the search terms.
 ///
+/// The returned SQL embeds the search text as a quote-doubled string literal.
+/// Search text containing a backslash or NUL character is rejected with
+/// [`FilterError::InvalidParameter`] because no literal encoding of it is
+/// exact under every SQL backend. Field names and
+/// [`ScoringAlgorithm::Custom`] function names must be plain or dot-qualified
+/// SQL identifiers.
+///
 /// # Examples
 ///
 /// ```
@@ -343,132 +352,109 @@ impl RelevanceScorer {
 
 	/// Generate SQL scoring expression
 	///
-	/// This would typically add scoring calculations to the SELECT clause
-	/// and ORDER BY for relevance-based ranking.
+	/// Adds the scoring calculation to the SELECT clause and ranks results
+	/// with ORDER BY. Clauses are located in the original SQL before the score
+	/// expression is inserted, so search text inside that expression is never
+	/// scanned as SQL keywords.
 	fn generate_scoring_sql(&self, sql: String, search_terms: &str) -> FilterResult<String> {
-		use super::FilterError;
-
 		if self.field_boosts.is_empty() {
 			return Err(FilterError::InvalidParameter(
 				"No search fields configured for relevance scoring".to_string(),
 			));
 		}
 
-		let sql_upper = sql.to_uppercase();
-
-		let select_end = sql_upper
-			.find(" FROM ")
+		let from_pos = find_sql_keyword(&sql, "FROM")
+			.filter(|&pos| pos > 0)
 			.ok_or_else(|| FilterError::InvalidQuery("No FROM clause found in SQL".to_string()))?;
 
-		let select_part = &sql[0..select_end];
-		let rest_part = &sql[select_end..];
+		let score_expr = self.generate_score_expression(search_terms)?;
 
-		let score_expr = self.generate_score_expression(search_terms);
-
-		let new_select = format!("{}, {} AS relevance_score", select_part, score_expr);
-
-		let mut result_sql = format!("{}{}", new_select, rest_part);
+		let select_part = sql[..from_pos].trim_end();
+		let mut rest_part = sql[from_pos..].to_string();
 
 		if let Some(min_score) = self.min_score {
-			result_sql = self.add_min_score_filter(result_sql, min_score)?;
+			rest_part = and_where(&rest_part, &format!("relevance_score >= {}", min_score));
 		}
 
-		result_sql = self.add_order_by(result_sql);
+		rest_part = Self::add_order_by(&rest_part);
 
-		Ok(result_sql)
+		Ok(format!(
+			"{}, {} AS relevance_score {}",
+			select_part, score_expr, rest_part
+		))
 	}
 
 	/// Generate scoring expression based on the algorithm
-	fn generate_score_expression(&self, search_terms: &str) -> String {
+	///
+	/// Returns [`FilterError::InvalidParameter`] when the search text cannot be
+	/// embedded as a SQL string literal or a configured field or function name
+	/// is not a plain SQL identifier.
+	fn generate_score_expression(&self, search_terms: &str) -> FilterResult<String> {
+		let terms = quoted_text(search_terms)?;
+		if let ScoringAlgorithm::Custom(func_name) = &self.algorithm {
+			validate_identifier(func_name, "custom scoring function name")?;
+		}
+
 		let field_scores: Vec<String> = self
             .field_boosts
             .iter()
             .map(|boost| {
                 let field_name = &boost.field_name;
+                validate_identifier(field_name, "relevance field name")?;
                 let boost_factor = boost.boost_factor;
                 let base_score = match &self.algorithm {
                     ScoringAlgorithm::TfIdf => {
                         format!(
-                            "(LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER('{terms}'), ''))) / LENGTH('{terms}') * LOG(1000.0 / (1.0 + (LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER('{terms}'), '')))))",
+                            "(LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER({terms}), ''))) / LENGTH({terms}) * LOG(1000.0 / (1.0 + (LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER({terms}), '')))))",
                             field = field_name,
-                            terms = search_terms.replace('\'', "''")
+                            terms = terms
                         )
                     }
                     ScoringAlgorithm::BM25 { k1, b } => {
                         let avg_field_len = 100.0;
                         format!(
-                            "((LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER('{terms}'), ''))) / LENGTH('{terms}')) * ({k1} + 1.0) / ((LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER('{terms}'), ''))) / LENGTH('{terms}') + {k1} * (1.0 - {b} + {b} * LENGTH({field}) / {avg_len}))",
+                            "((LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER({terms}), ''))) / LENGTH({terms})) * ({k1} + 1.0) / ((LENGTH({field}) - LENGTH(REPLACE(LOWER({field}), LOWER({terms}), ''))) / LENGTH({terms}) + {k1} * (1.0 - {b} + {b} * LENGTH({field}) / {avg_len}))",
                             field = field_name,
-                            terms = search_terms.replace('\'', "''"),
+                            terms = terms,
                             k1 = k1,
                             b = b,
                             avg_len = avg_field_len
                         )
                     }
                     ScoringAlgorithm::Custom(func_name) => {
-                        format!(
-                            "{}('{}', {})",
-                            func_name,
-                            search_terms.replace('\'', "''"),
-                            field_name
-                        )
+                        format!("{}({}, {})", func_name, terms, field_name)
                     }
                 };
 
-                if boost_factor == 1.0 {
+                Ok(if boost_factor == 1.0 {
                     base_score
                 } else {
                     format!("({}) * {}", base_score, boost_factor)
-                }
+                })
             })
-            .collect();
+            .collect::<FilterResult<_>>()?;
 
-		if field_scores.is_empty() {
+		Ok(if field_scores.is_empty() {
 			"0.0".to_string()
 		} else if field_scores.len() == 1 {
 			field_scores[0].clone()
 		} else {
 			format!("({})", field_scores.join(" + "))
-		}
-	}
-
-	/// Add minimum score filter to WHERE clause
-	fn add_min_score_filter(&self, sql: String, min_score: f64) -> FilterResult<String> {
-		let sql_upper = sql.to_uppercase();
-		let score_condition = format!("relevance_score >= {}", min_score);
-
-		if let Some(where_pos) = sql_upper.find(" WHERE ") {
-			let (before_where, after_where) = sql.split_at(where_pos);
-			let after_where_keyword = &after_where[7..];
-			Ok(format!(
-				"{} WHERE {} AND ({})",
-				before_where, score_condition, after_where_keyword
-			))
-		} else if let Some(group_pos) = sql_upper.find(" GROUP BY ") {
-			let (before_group, after_group) = sql.split_at(group_pos);
-			Ok(format!(
-				"{} WHERE {} {}",
-				before_group, score_condition, after_group
-			))
-		} else if let Some(order_pos) = sql_upper.find(" ORDER BY ") {
-			let (before_order, after_order) = sql.split_at(order_pos);
-			Ok(format!(
-				"{} WHERE {} {}",
-				before_order, score_condition, after_order
-			))
-		} else {
-			Ok(format!("{} WHERE {}", sql, score_condition))
-		}
+		})
 	}
 
 	/// Add ORDER BY clause for relevance ranking
-	fn add_order_by(&self, sql: String) -> String {
-		let sql_upper = sql.to_uppercase();
-
-		if sql_upper.contains(" ORDER BY ") {
-			sql.replace(" ORDER BY ", " ORDER BY relevance_score DESC, ")
-		} else {
-			format!("{} ORDER BY relevance_score DESC", sql)
+	fn add_order_by(sql: &str) -> String {
+		match find_sql_keyword(sql, "ORDER BY") {
+			Some(order_pos) => {
+				let existing = sql[order_pos + "ORDER BY".len()..].trim_start();
+				format!(
+					"{}ORDER BY relevance_score DESC, {}",
+					&sql[..order_pos],
+					existing
+				)
+			}
+			None => format!("{} ORDER BY relevance_score DESC", sql),
 		}
 	}
 }
@@ -503,6 +489,7 @@ impl FilterBackend for RelevanceScorer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
 
 	#[test]
 	fn test_scoring_algorithm_variants() {
@@ -766,8 +753,8 @@ mod tests {
 		let where_clause = &result[where_start..];
 
 		assert!(
-			where_clause.starts_with("WHERE relevance_score >= 0.5"),
-			"Expected WHERE clause to start with 'WHERE relevance_score >= 0.5', got: {}",
+			where_clause.starts_with("WHERE (relevance_score >= 0.5)"),
+			"Expected WHERE clause to start with 'WHERE (relevance_score >= 0.5)', got: {}",
 			where_clause
 		);
 	}
@@ -789,10 +776,10 @@ mod tests {
 		let where_start = result.find("WHERE").expect("WHERE clause not found");
 		let where_clause = &result[where_start..];
 
-		// Structure should be: WHERE relevance_score >= 0.3 AND (published = true)
+		// Structure should be: WHERE (relevance_score >= 0.3) AND (published = true)
 		assert!(
-			where_clause.starts_with("WHERE relevance_score >= 0.3 AND"),
-			"Expected WHERE clause to start with 'WHERE relevance_score >= 0.3 AND', got: {}",
+			where_clause.starts_with("WHERE (relevance_score >= 0.3) AND (published = true)"),
+			"Expected WHERE clause to start with 'WHERE (relevance_score >= 0.3) AND (published = true)', got: {}",
 			where_clause
 		);
 
@@ -1001,43 +988,119 @@ mod tests {
 		assert!(result_query.is_ok());
 	}
 
+	#[rstest]
 	#[tokio::test]
-	async fn test_relevance_scorer_sql_injection_protection() {
+	async fn test_relevance_scorer_doubles_quotes_in_search_text() {
+		// Arrange
 		let scorer = RelevanceScorer::new()
-			.with_algorithm(ScoringAlgorithm::TfIdf)
+			.with_algorithm(ScoringAlgorithm::Custom("score".to_string()))
 			.with_boost_field("title", 1.0);
+		let params = HashMap::from([(
+			"q".to_string(),
+			"rust'; DROP TABLE articles; --".to_string(),
+		)]);
 
-		let mut params = HashMap::new();
-		let malicious_input = "rust'; DROP TABLE articles; --";
-		params.insert("q".to_string(), malicious_input.to_string());
+		// Act
+		let result = scorer
+			.filter_queryset(&params, "SELECT id FROM articles".to_string())
+			.await
+			.unwrap();
 
-		let sql = "SELECT * FROM articles".to_string();
-		let result = scorer.filter_queryset(&params, sql).await.unwrap();
-
-		// Validate SQL injection is prevented by proper escaping
-		let escaped_input = malicious_input.replace('\'', "''");
-		assert!(
-			result.contains(&escaped_input),
-			"Expected properly escaped input '{}' in result, got: {}",
-			escaped_input,
-			result
+		// Assert
+		assert_eq!(
+			result,
+			"SELECT id, score('rust''; DROP TABLE articles; --', title) AS relevance_score FROM articles ORDER BY relevance_score DESC"
 		);
+	}
 
-		// The escaped malicious input should be within LOWER() function
+	#[rstest]
+	#[case::tfidf_backslash_quote(ScoringAlgorithm::TfIdf, "x\\' OR 1=1 -- ")]
+	#[case::bm25_trailing_backslash(ScoringAlgorithm::BM25 { k1: 1.2, b: 0.75 }, "x\\")]
+	#[case::custom_backslash(ScoringAlgorithm::Custom("score".to_string()), "\\'")]
+	#[case::nul(ScoringAlgorithm::TfIdf, "x\0")]
+	#[tokio::test]
+	async fn test_relevance_scorer_rejects_mode_dependent_search_text(
+		#[case] algorithm: ScoringAlgorithm,
+		#[case] search: &str,
+	) {
+		// Arrange
+		let scorer = RelevanceScorer::new()
+			.with_algorithm(algorithm)
+			.with_boost_field("title", 1.0);
+		let params = HashMap::from([("q".to_string(), search.to_string())]);
+
+		// Act
+		let result = scorer
+			.filter_queryset(&params, "SELECT id FROM articles".to_string())
+			.await;
+
+		// Assert
 		assert!(
-			result.contains(&format!("LOWER('{}')", escaped_input)),
-			"Expected malicious input to be in LOWER('{}') format, got: {}",
-			escaped_input,
-			result
+			matches!(result, Err(FilterError::InvalidParameter(_))),
+			"expected InvalidParameter, got {result:?}"
 		);
+	}
 
-		// Validate the malicious content is treated as a literal string in the scoring formula
-		// The formula should use the search term in multiple places for TF-IDF calculation
-		// Since it's escaped properly, we just verify it appears in the expected context
+	#[rstest]
+	#[case::field_expression(ScoringAlgorithm::TfIdf, "title) OR (1=1", "title")]
+	#[case::field_comment(ScoringAlgorithm::BM25 { k1: 1.2, b: 0.75 }, "title --", "title")]
+	#[case::function_call(
+		ScoringAlgorithm::Custom("sleep(5) + score".to_string()),
+		"title",
+		"title"
+	)]
+	#[case::function_empty(ScoringAlgorithm::Custom(String::new()), "title", "title")]
+	#[case::second_field(ScoringAlgorithm::TfIdf, "title", "content'")]
+	#[tokio::test]
+	async fn test_relevance_scorer_rejects_non_identifier_configuration(
+		#[case] algorithm: ScoringAlgorithm,
+		#[case] first_field: &str,
+		#[case] second_field: &str,
+	) {
+		// Arrange
+		let scorer = RelevanceScorer::new()
+			.with_algorithm(algorithm)
+			.with_boost_field(first_field, 1.0)
+			.with_boost_field(second_field, 2.0);
+		let params = HashMap::from([("q".to_string(), "rust".to_string())]);
+
+		// Act
+		let result = scorer
+			.filter_queryset(&params, "SELECT id FROM articles".to_string())
+			.await;
+
+		// Assert
 		assert!(
-			result.contains("LENGTH(title)"),
-			"Expected LENGTH(title) in scoring formula, got: {}",
-			result
+			matches!(result, Err(FilterError::InvalidParameter(_))),
+			"expected InvalidParameter, got {result:?}"
+		);
+	}
+
+	#[rstest]
+	#[case::keywords_in_search_text("x WHERE y ORDER BY z")]
+	#[case::uppercase_length_change("ﬀﬀﬀﬀﬀﬀﬀﬀ")]
+	#[tokio::test]
+	async fn test_relevance_scorer_locates_clauses_outside_search_text(#[case] search: &str) {
+		// Arrange
+		let scorer = RelevanceScorer::new()
+			.with_algorithm(ScoringAlgorithm::Custom("score".to_string()))
+			.with_boost_field("title", 1.0)
+			.with_min_score(0.5);
+		let params = HashMap::from([("q".to_string(), search.to_string())]);
+		let sql = "SELECT id FROM articles WHERE tenant_id = 1 OR public = 1 ORDER BY id";
+
+		// Act
+		let result = scorer
+			.filter_queryset(&params, sql.to_string())
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			result,
+			format!(
+				"SELECT id, score('{search}', title) AS relevance_score FROM articles WHERE (relevance_score >= 0.5) AND (tenant_id = 1 OR public = 1) ORDER BY relevance_score DESC, id"
+			)
 		);
 	}
 
@@ -1047,7 +1110,7 @@ mod tests {
 			.with_algorithm(ScoringAlgorithm::TfIdf)
 			.with_boost_field("title", 1.0);
 
-		let expr = scorer.generate_score_expression("test");
+		let expr = scorer.generate_score_expression("test").unwrap();
 
 		// Validate TF-IDF formula components
 		assert!(
@@ -1073,7 +1136,7 @@ mod tests {
 			.with_algorithm(ScoringAlgorithm::BM25 { k1: 1.2, b: 0.75 })
 			.with_boost_field("content", 1.0);
 
-		let expr = scorer.generate_score_expression("test");
+		let expr = scorer.generate_score_expression("test").unwrap();
 
 		// Validate BM25 parameters are present
 		assert!(
@@ -1094,7 +1157,7 @@ mod tests {
 			.with_algorithm(ScoringAlgorithm::Custom("custom_score".to_string()))
 			.with_boost_field("title", 1.0);
 
-		let expr = scorer.generate_score_expression("test");
+		let expr = scorer.generate_score_expression("test").unwrap();
 
 		// Validate custom function call format
 		assert_eq!(
@@ -1110,7 +1173,7 @@ mod tests {
 			.with_algorithm(ScoringAlgorithm::TfIdf)
 			.with_boost_field("title", 2.5);
 
-		let expr = scorer.generate_score_expression("test");
+		let expr = scorer.generate_score_expression("test").unwrap();
 
 		// Validate boost factor is applied
 		assert!(
@@ -1127,7 +1190,7 @@ mod tests {
 			.with_boost_field("title", 2.0)
 			.with_boost_field("content", 1.0);
 
-		let expr = scorer.generate_score_expression("test");
+		let expr = scorer.generate_score_expression("test").unwrap();
 
 		// Validate both fields are present
 		assert!(
