@@ -304,6 +304,32 @@ Host functions check capabilities at runtime:
 - `db_query`/`db_execute` require `DatabaseAccess` capability
 - Unauthorized calls return `PluginError` with code 403
 
+### HTTP Resource Limits
+
+`http_get`/`http_post` buffer responses in host memory, outside the guest's
+memory and fuel limits, so each `HostState` bounds them with
+`HttpResourceLimits`:
+
+| Limit | Default | Error code when exceeded |
+|-------|---------|--------------------------|
+| `max_response_body_bytes` | 10 MiB | 502 |
+| `max_request_body_bytes` | 10 MiB | 413 |
+| `request_timeout` (connect, send, and full body) | 30 s | 504 |
+| `max_concurrent_requests` per plugin | 4 | 429 |
+
+```rust
+use reinhardt::dentdelion::wasm::{HostStateBuilder, HttpResourceLimits};
+use std::time::Duration;
+
+let mut limits = HttpResourceLimits::default();
+limits.max_response_body_bytes = 1024 * 1024;
+limits.request_timeout = Duration::from_secs(5);
+
+let host_state = HostStateBuilder::new("my-plugin")
+    .http_limits(limits)
+    .build();
+```
+
 ### Loading WASM Plugins
 
 ```rust
