@@ -486,6 +486,31 @@ The release must identify the breaking security change prominently in the
 root and GraphQL changelogs and provide the
 [0.3.17 migration guide](MIGRATION_0.3.17.md).
 
+### ST-3: Scoped Security Exception for 0.3.24
+
+The 0.3.24 release includes the `QuerySet` identifier correction for
+[GHSA-6rxp-cc74-26f5](https://github.com/kent8192/reinhardt-web/security/advisories/GHSA-6rxp-cc74-26f5)
+as an explicit exception to the 0.3 patch compatibility guarantee and the
+version-bump requirement in BC-3. `QuerySet::values`, `values_list`, and
+`only` no longer emit expression-shaped entries such as `COUNT(*)` as SQL:
+`to_sql` renders them as quoted identifiers and execution returns
+`Error::Validation`. `inner_join`, `left_join`, and `right_join` treat both
+field arguments as single column names, and the `*_join_as` methods emit
+their table aliases as quoted identifiers.
+
+These methods accept plain strings that applications can derive from request
+data. Promoting those strings to raw SQL let an attacker-selected projection or
+join field execute as an SQL expression or widen an `ON` predicate, and no
+compatible signature can separate trusted expressions from attacker input. The
+security correction therefore takes precedence over retaining the previous
+string heuristics in this release.
+
+This exception applies only to those behaviors in 0.3.24. All other changes
+and later releases retain the normal compatibility policy. The release must
+identify the breaking security change prominently in the root and
+`reinhardt-db` changelogs and provide the
+[0.3.24 migration guide](MIGRATION_0.3.24.md).
+
 ---
 
 ## Breaking Change Policy

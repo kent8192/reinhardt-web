@@ -288,6 +288,13 @@ must be reviewed separately from `cargo-semver-checks`; keep the check enabled
 and investigate any additional incompatibility. Release-plz continues to own
 manifest version updates, and merging a preparation PR does not publish crates.
 
+For 0.3.24, [ST-3](STABILITY_POLICY.md#st-3-scoped-security-exception-for-0324)
+permits the `QuerySet` projection and identifier-join corrections for
+GHSA-6rxp-cc74-26f5. Review the generated Release PR for a 0.3.24 patch
+version, and retain the prominent breaking security notice and
+[migration guide](MIGRATION_0.3.24.md) in the root and `reinhardt-db`
+changelogs.
+
 **Release PR includes:**
 - Version bumps in `Cargo.toml`
 - Updated CHANGELOG.md files
