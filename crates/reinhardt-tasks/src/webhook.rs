@@ -10,6 +10,11 @@
 //! - Configurable timeout and max retries
 //! - Automatic serialization of task events to JSON
 //!
+//! # Redirects
+//!
+//! [`HttpWebhookSender`] never follows redirects. A `3xx` response is treated
+//! as a failed delivery, so the configured URL must be the final endpoint.
+//!
 //! # Example
 //!
 //! ```rust
@@ -595,6 +600,13 @@ pub struct HttpWebhookSender {
 impl HttpWebhookSender {
 	/// Create a new HTTP webhook sender
 	///
+	/// The sender does not follow redirects.
+	///
+	/// # Panics
+	///
+	/// Panics if the TLS backend cannot be initialized, the same condition
+	/// under which `reqwest::Client::new` panics.
+	///
 	/// # Example
 	///
 	/// ```rust
@@ -603,11 +615,7 @@ impl HttpWebhookSender {
 	/// let sender = HttpWebhookSender::new(WebhookConfig::default());
 	/// ```
 	pub fn new(config: WebhookConfig) -> Self {
-		let client = reqwest::Client::builder()
-			.timeout(config.timeout)
-			.build()
-			.unwrap_or_else(|_| reqwest::Client::new());
-
+		let client = build_client(&config);
 		Self { client, config }
 	}
 
@@ -704,6 +712,15 @@ impl HttpWebhookSender {
 			.await
 			.map_err(|e| WebhookError::RequestFailed(e.to_string()))?;
 
+		// Redirects are not followed: the target could be an address that was
+		// never validated, and following would replay headers and body to it.
+		if response.status().is_redirection() {
+			return Err(WebhookError::RequestFailed(format!(
+				"HTTP {}: webhook redirects are not followed; configure the final endpoint URL",
+				response.status()
+			)));
+		}
+
 		// Check response status
 		if !response.status().is_success() {
 			return Err(WebhookError::RequestFailed(format!(
@@ -718,6 +735,17 @@ impl HttpWebhookSender {
 
 		Ok(())
 	}
+}
+
+/// Build the HTTP client used for webhook delivery.
+fn build_client(config: &WebhookConfig) -> reqwest::Client {
+	reqwest::Client::builder()
+		.timeout(config.timeout)
+		.redirect(reqwest::redirect::Policy::none())
+		.build()
+		// A silent fallback to a default client would follow redirects, so a
+		// build failure must not be masked.
+		.expect("Failed to build webhook HTTP client")
 }
 
 #[async_trait]
@@ -1506,5 +1534,75 @@ mod tests {
 			min_elapsed,
 			elapsed
 		);
+	}
+
+	// Redirect tests. These drive the client built by `HttpWebhookSender::new`
+	// through `send_request`, because `send` additionally requires a public
+	// HTTPS endpoint.
+
+	fn test_event() -> WebhookEvent {
+		let now = Utc::now();
+		WebhookEvent {
+			task_id: TaskId::new(),
+			task_name: "address_policy".to_string(),
+			status: TaskStatus::Success,
+			result: None,
+			error: None,
+			started_at: now,
+			completed_at: now,
+			duration_ms: 0,
+		}
+	}
+
+	fn test_config(url: String, max_retries: u32) -> WebhookConfig {
+		let mut headers = HashMap::new();
+		headers.insert("Authorization".to_string(), "Bearer secret".to_string());
+		WebhookConfig {
+			url,
+			method: "POST".to_string(),
+			headers,
+			timeout: Duration::from_secs(5),
+			retry_config: RetryConfig {
+				max_retries,
+				initial_backoff: Duration::from_millis(10),
+				max_backoff: Duration::from_millis(50),
+				backoff_multiplier: 2.0,
+			},
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_webhook_redirect_is_not_followed() {
+		// Arrange
+		let mut server = mockito::Server::new_async().await;
+		let redirect = server
+			.mock("POST", "/webhook")
+			.with_status(302)
+			.with_header("location", &format!("{}/internal", server.url()))
+			.expect(1)
+			.create_async()
+			.await;
+		let internal = server
+			.mock("POST", "/internal")
+			.with_status(200)
+			.expect(0)
+			.create_async()
+			.await;
+		let sender = HttpWebhookSender::new(test_config(format!("{}/webhook", server.url()), 0));
+
+		// Act
+		let result = sender.send_request(&test_event()).await;
+
+		// Assert
+		match result {
+			Err(WebhookError::RequestFailed(message)) => assert_eq!(
+				message,
+				"HTTP 302 Found: webhook redirects are not followed; configure the final endpoint URL"
+			),
+			other => panic!("expected a redirect rejection, got {other:?}"),
+		}
+		redirect.assert_async().await;
+		internal.assert_async().await;
 	}
 }
