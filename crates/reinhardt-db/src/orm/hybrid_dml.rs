@@ -7,8 +7,8 @@
 //!
 //! # Identifier quoting
 //!
-//! Table and column names are always emitted as quoted identifiers, escaped
-//! for the configured backend: backticks for MySQL, double quotes for
+//! Table and column names are always emitted as quoted identifiers using the
+//! configured backend's escaping: backticks for MySQL, double quotes for
 //! PostgreSQL and SQLite, and double quotes when no backend is configured.
 //! Table names may be schema-qualified with `.` (`schema.table`); each segment
 //! is quoted separately. Column names are quoted as a single identifier.
