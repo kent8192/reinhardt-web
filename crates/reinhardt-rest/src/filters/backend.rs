@@ -50,59 +50,110 @@ use std::sync::Arc;
 /// Uses byte-level ASCII comparison to avoid allocation and Unicode case-folding issues
 /// (e.g., "ß" uppercasing to "SS" which would shift byte indices).
 ///
-/// NOTE: This naive scan can match keywords inside string literals, identifiers,
-/// comments, or subqueries. A full SQL parser is out of scope for this filter layer;
-/// callers should be aware of this limitation.
+/// Quoted strings, quoted identifiers and comments are skipped. Filters insert
+/// quoted search text at the returned position, so a match inside a literal
+/// would move that literal's boundary and turn search text into SQL. Inside
+/// quoted strings a backslash escapes the next character, as in MySQL's default
+/// mode; literals that never place an odd run of backslashes before a quote,
+/// which includes every literal rendered by these filters, have the same
+/// boundaries under every backend.
+///
+/// NOTE: Keywords inside subqueries can still match. A full SQL parser is out
+/// of scope for this filter layer; callers should be aware of this limitation.
 pub(super) fn find_sql_keyword(sql: &str, keyword: &str) -> Option<usize> {
 	let sql_bytes = sql.as_bytes();
 	let kw_bytes = keyword.as_bytes();
 	let kw_len = kw_bytes.len();
+	let mut i = 0;
 
-	if sql_bytes.len() < kw_len {
-		return None;
-	}
-
-	for i in 0..=(sql_bytes.len() - kw_len) {
-		// Check that the keyword matches (ASCII case-insensitive)
-		let matched = sql_bytes[i..i + kw_len]
-			.iter()
-			.zip(kw_bytes.iter())
-			.all(|(s, k)| s.eq_ignore_ascii_case(k));
-
-		if !matched {
-			continue;
+	while i < sql_bytes.len() {
+		match sql_bytes[i] {
+			quote @ (b'\'' | b'"' | b'`') => {
+				i = quoted_end(sql_bytes, i, quote != b'`');
+				continue;
+			}
+			b'-' if sql_bytes.get(i + 1) == Some(&b'-')
+				&& sql_bytes
+					.get(i + 2)
+					.is_none_or(|next| next.is_ascii_whitespace() || next.is_ascii_control()) =>
+			{
+				i = line_end(sql_bytes, i);
+				continue;
+			}
+			// MySQL line comment; PostgreSQL uses `#>`, `#>>` and `#-` as JSON operators.
+			b'#' if !matches!(sql_bytes.get(i + 1), Some(b'>' | b'-')) => {
+				i = line_end(sql_bytes, i);
+				continue;
+			}
+			b'/' if sql_bytes.get(i + 1) == Some(&b'*') => {
+				i = sql[i + 2..]
+					.find("*/")
+					.map_or(sql_bytes.len(), |offset| i + 2 + offset + 2);
+				continue;
+			}
+			_ => {}
 		}
 
-		// Keyword must be followed by whitespace or end of string
-		let after_ok = if i + kw_len >= sql_bytes.len() {
-			true
-		} else {
-			sql_bytes[i + kw_len].is_ascii_whitespace()
-		};
-
-		// Keyword must be preceded by whitespace, start of string, or ')'
-		let before_ok = if i == 0 {
-			true
-		} else {
+		// Keyword must match (ASCII case-insensitive) and be followed by
+		// whitespace or end of string, and preceded by whitespace, start of
+		// string, or ')'
+		let matched = sql_bytes
+			.get(i..i + kw_len)
+			.is_some_and(|candidate| candidate.eq_ignore_ascii_case(kw_bytes));
+		let after_ok = sql_bytes
+			.get(i + kw_len)
+			.is_none_or(u8::is_ascii_whitespace);
+		let before_ok = i == 0 || {
 			let prev = sql_bytes[i - 1];
 			prev.is_ascii_whitespace() || prev == b')'
 		};
 
-		if after_ok && before_ok {
+		if matched && after_ok && before_ok {
 			return Some(i);
 		}
+		i += 1;
 	}
 
 	None
+}
+
+/// Return the index just past the quoted region starting at `start`.
+///
+/// A doubled quote continues the region. Unterminated regions run to the end.
+fn quoted_end(bytes: &[u8], start: usize, backslash_escapes: bool) -> usize {
+	let quote = bytes[start];
+	let mut i = start + 1;
+	while i < bytes.len() {
+		if backslash_escapes && bytes[i] == b'\\' {
+			i += 2;
+		} else if bytes[i] == quote {
+			if bytes.get(i + 1) != Some(&quote) {
+				return i + 1;
+			}
+			i += 2;
+		} else {
+			i += 1;
+		}
+	}
+	bytes.len()
+}
+
+/// Return the index of the line break ending the comment at `start`.
+fn line_end(bytes: &[u8], start: usize) -> usize {
+	bytes[start..]
+		.iter()
+		.position(|&byte| matches!(byte, b'\n' | b'\r'))
+		.map_or(bytes.len(), |offset| start + offset)
 }
 
 /// Find the end position of a SQL clause by locating the next top-level keyword.
 ///
 /// Searches for each keyword in `end_keywords` after `start_pos` in `sql`,
 /// returning the earliest match position. If no keyword is found, returns `sql.len()`.
+/// `start_pos` must lie outside quoted regions and comments.
 ///
-/// NOTE: This naive scan can match keywords inside string literals, identifiers,
-/// comments, or subqueries. A full SQL parser is out of scope for this filter layer.
+/// NOTE: Keywords inside subqueries can still match. A full SQL parser is out
+/// of scope for this filter layer.
 pub(super) fn find_clause_end(sql: &str, start_pos: usize, end_keywords: &[&str]) -> usize {
 	end_keywords
 		.iter()
@@ -997,6 +1048,55 @@ mod tests {
 		assert_eq!(
 			result, "SELECT * FROM articles ORDER BY created_at DESC",
 			"Expected ORDER BY to be appended to query without existing ORDER BY"
+		);
+	}
+
+	#[rstest]
+	#[case::plain("SELECT * FROM t WHERE x = 1", "WHERE", Some(16))]
+	#[case::lowercase("select * from t where x = 1", "WHERE", Some(16))]
+	#[case::single_quoted("SELECT 'a WHERE b' FROM t WHERE x = 1", "WHERE", Some(26))]
+	#[case::doubled_quote("SELECT 'it''s WHERE ' FROM t WHERE x", "WHERE", Some(29))]
+	#[case::backslash_quote("SELECT 'a\\' WHERE ' FROM t WHERE x", "WHERE", Some(27))]
+	#[case::double_quoted("SELECT \"a WHERE b\" FROM t WHERE x", "WHERE", Some(26))]
+	#[case::backtick("SELECT `a WHERE b` FROM t WHERE x", "WHERE", Some(26))]
+	#[case::line_comment("SELECT 1 -- WHERE x\nFROM t WHERE y", "WHERE", Some(27))]
+	#[case::hash_comment("SELECT 1 # WHERE x\nFROM t WHERE y", "WHERE", Some(26))]
+	#[case::block_comment("SELECT 1 /* WHERE */ FROM t WHERE y", "WHERE", Some(28))]
+	#[case::json_operator(
+		"SELECT * FROM t WHERE d #>> '{a}' = 'x' ORDER BY id",
+		"ORDER BY",
+		Some(40)
+	)]
+	#[case::only_in_literal("SELECT 'x WHERE y' FROM t", "WHERE", None)]
+	#[case::unterminated_literal("SELECT 'x FROM t WHERE y", "WHERE", None)]
+	#[case::identifier_suffix("SELECT * FROM t WHERE_x", "WHERE", None)]
+	fn test_find_sql_keyword_skips_quoted_text_and_comments(
+		#[case] sql: &str,
+		#[case] keyword: &str,
+		#[case] expected: Option<usize>,
+	) {
+		// Act
+		let position = find_sql_keyword(sql, keyword);
+
+		// Assert
+		assert_eq!(position, expected);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_search_inserts_condition_outside_earlier_literals() {
+		// Arrange
+		let backend = SimpleSearchBackend::new("search").with_field("title");
+		let params = HashMap::from([("search".to_string(), "rust".to_string())]);
+		let sql = "SELECT id, 'x WHERE y' AS note FROM articles WHERE tenant_id = 1".to_string();
+
+		// Act
+		let result = backend.filter_queryset(&params, sql).await.unwrap();
+
+		// Assert
+		assert_eq!(
+			result,
+			"SELECT id, 'x WHERE y' AS note FROM articles WHERE (tenant_id = 1) AND (`title` LIKE '%rust%' ESCAPE 0x5C) "
 		);
 	}
 }

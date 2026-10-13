@@ -493,7 +493,7 @@ impl FilterBackend for SynonymExpander {
 
 #[cfg(test)]
 mod tests {
-	use super::super::FilterError;
+	use super::super::{CustomFilterBackend, FilterError, RelevanceScorer, ScoringAlgorithm};
 	use super::*;
 	use rstest::rstest;
 
@@ -907,6 +907,35 @@ mod tests {
 		assert!(
 			matches!(result, Err(FilterError::InvalidParameter(_))),
 			"expected InvalidParameter, got {result:?}"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_synonym_expander_after_relevance_scorer_targets_structural_where() {
+		// Arrange
+		let mut chain = CustomFilterBackend::new();
+		chain.add_filter(Box::new(
+			RelevanceScorer::new()
+				.with_algorithm(ScoringAlgorithm::Custom("score".to_string()))
+				.with_boost_field("title", 1.0),
+		));
+		chain.add_filter(Box::new(SynonymExpander::new()));
+		let params = HashMap::from([("q".to_string(), "x WHERE y".to_string())]);
+
+		// Act
+		let result = chain
+			.filter_queryset(
+				&params,
+				"SELECT id FROM articles WHERE tenant_id = 1".to_string(),
+			)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(
+			result,
+			"SELECT id, score('x WHERE y', title) AS relevance_score FROM articles WHERE (content LIKE '%x%' OR content LIKE '%WHERE%' OR content LIKE '%y%') AND (tenant_id = 1) ORDER BY relevance_score DESC"
 		);
 	}
 

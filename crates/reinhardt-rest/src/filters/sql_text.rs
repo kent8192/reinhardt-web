@@ -170,6 +170,14 @@ mod tests {
 		"SELECT tag FROM articles GROUP BY tag",
 		"SELECT tag FROM articles WHERE (c) GROUP BY tag"
 	)]
+	#[case::where_in_earlier_literal(
+		"SELECT id, 'x WHERE y' FROM articles WHERE tenant_id = 1",
+		"SELECT id, 'x WHERE y' FROM articles WHERE (c) AND (tenant_id = 1)"
+	)]
+	#[case::clause_keyword_in_literal(
+		"SELECT * FROM articles WHERE note = 'x ORDER BY y' ORDER BY id",
+		"SELECT * FROM articles WHERE (c) AND (note = 'x ORDER BY y') ORDER BY id"
+	)]
 	fn and_where_parenthesizes_both_conditions(#[case] sql: &str, #[case] expected: &str) {
 		// Act
 		let result = and_where(sql, "c");
