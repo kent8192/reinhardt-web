@@ -178,7 +178,11 @@ pub enum WebhookError {
 /// - Private IPv4 ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
 /// - Link-local addresses (169.254.0.0/16, fe80::/10)
 /// - Cloud metadata endpoints (169.254.169.254/32 for AWS/GCP/Azure)
+/// - Unspecified and "this network" addresses (0.0.0.0/8, ::/128), which
+///   connect to the local host on common platforms
 const BLOCKED_IP_RANGES: &[&str] = &[
+	// IPv4 "this network" (0.0.0.0 reaches the local host)
+	"0.0.0.0/8",
 	// IPv4 loopback
 	"127.0.0.0/8",
 	// IPv4 private ranges
@@ -187,6 +191,8 @@ const BLOCKED_IP_RANGES: &[&str] = &[
 	"192.168.0.0/16",
 	// IPv4 link-local (includes cloud metadata at 169.254.169.254)
 	"169.254.0.0/16",
+	// IPv6 unspecified
+	"::/128",
 	// IPv6 loopback
 	"::1/128",
 	// IPv6 link-local
@@ -196,6 +202,9 @@ const BLOCKED_IP_RANGES: &[&str] = &[
 ];
 
 /// Check if an IP address is in a blocked range for SSRF protection.
+///
+/// IPv4-mapped IPv6 addresses (for example `::ffff:127.0.0.1`) are checked as
+/// the IPv4 address they reach.
 ///
 /// # Arguments
 ///
@@ -214,14 +223,18 @@ const BLOCKED_IP_RANGES: &[&str] = &[
 /// let loopback: IpAddr = "127.0.0.1".parse().unwrap();
 /// assert!(is_blocked_ip(&loopback));
 ///
+/// let mapped_loopback: IpAddr = "::ffff:127.0.0.1".parse().unwrap();
+/// assert!(is_blocked_ip(&mapped_loopback));
+///
 /// let public: IpAddr = "8.8.8.8".parse().unwrap();
 /// assert!(!is_blocked_ip(&public));
 /// ```
 pub fn is_blocked_ip(ip: &IpAddr) -> bool {
+	let ip = ip.to_canonical();
 	BLOCKED_IP_RANGES.iter().any(|range| {
 		range
 			.parse::<IpNet>()
-			.map(|net| net.contains(ip))
+			.map(|net| net.contains(&ip))
 			.unwrap_or(false)
 	})
 }
@@ -1211,10 +1224,17 @@ mod tests {
 	#[case("::1", true)]
 	#[case("fe80::1", true)]
 	#[case("fc00::1", true)]
+	#[case("0.0.0.0", true)]
+	#[case("0.1.2.3", true)]
+	#[case("::", true)]
+	#[case("::ffff:127.0.0.1", true)]
+	#[case("::ffff:10.0.0.1", true)]
+	#[case("::ffff:169.254.169.254", true)]
 	#[case("8.8.8.8", false)]
 	#[case("1.1.1.1", false)]
 	#[case("203.0.113.1", false)]
 	#[case("2001:db8::1", false)]
+	#[case("::ffff:8.8.8.8", false)]
 	fn test_is_blocked_ip(#[case] ip_str: &str, #[case] expected: bool) {
 		// Arrange
 		let ip: IpAddr = ip_str.parse().unwrap();
@@ -1259,6 +1279,9 @@ mod tests {
 	#[case("https://[::1]/webhook", "BlockedIpAddress")]
 	#[case("https://[fe80::1]/webhook", "BlockedIpAddress")]
 	#[case("https://[fc00::1]/webhook", "BlockedIpAddress")]
+	#[case("https://[::ffff:127.0.0.1]/webhook", "BlockedIpAddress")]
+	#[case("https://0.0.0.0/webhook", "BlockedIpAddress")]
+	#[case("https://[::]/webhook", "BlockedIpAddress")]
 	#[case("https://localhost/webhook", "BlockedIpAddress")]
 	#[case("https://sub.localhost/webhook", "BlockedIpAddress")]
 	#[case("https://service.internal/webhook", "BlockedIpAddress")]
