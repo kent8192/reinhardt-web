@@ -9,11 +9,20 @@
 //! - Exponential backoff with jitter for failed requests
 //! - Configurable timeout and max retries
 //! - Automatic serialization of task events to JSON
+//! - SSRF protection: HTTPS-only URLs whose addresses are checked against
+//!   blocked ranges both before sending and at connection time
 //!
-//! # Redirects
+//! # Redirects and DNS resolution
 //!
 //! [`HttpWebhookSender`] never follows redirects. A `3xx` response is treated
 //! as a failed delivery, so the configured URL must be the final endpoint.
+//! Every DNS lookup for the configured host is checked against the blocked
+//! ranges at connection time, and the connection is made only to the checked
+//! addresses. A DNS answer that changes after the initial validation therefore
+//! cannot redirect a delivery or retry to a blocked address.
+//!
+//! When an HTTP proxy is configured through the environment, the proxy resolves
+//! the webhook host itself, so it must enforce the same egress policy.
 //!
 //! # Example
 //!
@@ -71,7 +80,7 @@ use ipnet::IpNet;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use thiserror::Error;
 use url::Url;
@@ -244,6 +253,71 @@ pub fn is_blocked_ip(ip: &IpAddr) -> bool {
 	})
 }
 
+/// Reject a DNS answer for `host` if any of its addresses is blocked.
+///
+/// The whole answer is rejected rather than filtered: a mix of public and
+/// blocked addresses is a common DNS rebinding pattern, and connecting to the
+/// remaining addresses would still let the attacker choose the peer.
+fn ensure_allowed_addrs(
+	host: &str,
+	addrs: impl IntoIterator<Item = SocketAddr>,
+) -> Result<Vec<SocketAddr>, WebhookError> {
+	let addrs: Vec<SocketAddr> = addrs.into_iter().collect();
+	if let Some(blocked) = addrs.iter().find(|addr| is_blocked_ip(&addr.ip())) {
+		return Err(WebhookError::BlockedIpAddress(format!(
+			"{} resolves to {}",
+			host,
+			blocked.ip()
+		)));
+	}
+	Ok(addrs)
+}
+
+/// DNS resolver that applies the webhook address policy to every connection.
+///
+/// The pre-flight [`validate_resolved_ips`] check performs a separate lookup,
+/// so on its own it cannot stop a DNS answer that changes before the request
+/// connects. reqwest connects only to the addresses returned here, which makes
+/// the checked addresses the actual peers for every attempt and reconnect while
+/// keeping the URL host for TLS hostname verification.
+struct AddressPolicyResolver {
+	/// Host of the configured webhook URL. With redirects disabled, the only
+	/// other name reqwest resolves is an operator-configured proxy, which may
+	/// legitimately use a private address. `None` enforces the policy for every
+	/// lookup.
+	target_host: Option<String>,
+}
+
+impl AddressPolicyResolver {
+	fn for_url(url: &str) -> Self {
+		Self {
+			target_host: Url::parse(url)
+				.ok()
+				.and_then(|url| url.host_str().map(str::to_owned)),
+		}
+	}
+}
+
+impl reqwest::dns::Resolve for AddressPolicyResolver {
+	fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+		let host = name.as_str().to_owned();
+		let enforce = self
+			.target_host
+			.as_deref()
+			.is_none_or(|target| target.eq_ignore_ascii_case(&host));
+		Box::pin(async move {
+			// The connector replaces port 0 with the request URL's port.
+			let resolved = tokio::net::lookup_host((host.as_str(), 0)).await?;
+			let addrs = if enforce {
+				ensure_allowed_addrs(&host, resolved)?
+			} else {
+				resolved.collect()
+			};
+			Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs)
+		})
+	}
+}
+
 /// Validate a webhook URL for SSRF protection.
 ///
 /// This function performs the following checks:
@@ -331,6 +405,10 @@ pub fn validate_webhook_url(url_str: &str) -> Result<Url, WebhookError> {
 /// This function performs DNS resolution and checks each resolved IP address
 /// against the blocked ranges.
 ///
+/// This is an early check only: the answer may change before a request
+/// connects. [`HttpWebhookSender`] applies the same check again to the
+/// addresses it actually connects to.
+///
 /// # Arguments
 ///
 /// * `url` - The parsed URL to validate
@@ -361,17 +439,7 @@ pub async fn validate_resolved_ips(url: &Url) -> Result<(), WebhookError> {
 		.await
 		.map_err(|e| WebhookError::DnsResolutionFailed(format!("{}: {}", host, e)))?;
 
-	// Check each resolved IP address
-	for addr in addrs {
-		if is_blocked_ip(&addr.ip()) {
-			return Err(WebhookError::BlockedIpAddress(format!(
-				"{} resolves to {}",
-				host,
-				addr.ip()
-			)));
-		}
-	}
-
+	ensure_allowed_addrs(host, addrs)?;
 	Ok(())
 }
 
@@ -600,7 +668,8 @@ pub struct HttpWebhookSender {
 impl HttpWebhookSender {
 	/// Create a new HTTP webhook sender
 	///
-	/// The sender does not follow redirects.
+	/// The sender does not follow redirects and checks every address it
+	/// connects to against the blocked ranges.
 	///
 	/// # Panics
 	///
@@ -665,6 +734,8 @@ impl HttpWebhookSender {
 		loop {
 			match self.send_request(event).await {
 				Ok(_) => return Ok(()),
+				// An address policy violation is not transient.
+				Err(e @ WebhookError::BlockedIpAddress(_)) => return Err(e),
 				Err(e) => {
 					if retry_count >= max_retries {
 						return Err(WebhookError::MaxRetriesExceeded);
@@ -710,7 +781,7 @@ impl HttpWebhookSender {
 			.body(json_body)
 			.send()
 			.await
-			.map_err(|e| WebhookError::RequestFailed(e.to_string()))?;
+			.map_err(request_error)?;
 
 		// Redirects are not followed: the target could be an address that was
 		// never validated, and following would replay headers and body to it.
@@ -742,16 +813,32 @@ fn build_client(config: &WebhookConfig) -> reqwest::Client {
 	reqwest::Client::builder()
 		.timeout(config.timeout)
 		.redirect(reqwest::redirect::Policy::none())
+		.dns_resolver(AddressPolicyResolver::for_url(&config.url))
 		.build()
-		// A silent fallback to a default client would follow redirects, so a
-		// build failure must not be masked.
+		// A silent fallback to a default client would follow redirects and skip
+		// the address policy, so a build failure must not be masked.
 		.expect("Failed to build webhook HTTP client")
+}
+
+/// Convert a transport error, preserving address policy rejections raised by
+/// [`AddressPolicyResolver`] so that they are reported and not retried.
+fn request_error(error: reqwest::Error) -> WebhookError {
+	let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&error);
+	while let Some(current) = source {
+		if let Some(WebhookError::BlockedIpAddress(detail)) = current.downcast_ref::<WebhookError>()
+		{
+			return WebhookError::BlockedIpAddress(detail.clone());
+		}
+		source = current.source();
+	}
+	WebhookError::RequestFailed(error.to_string())
 }
 
 #[async_trait]
 impl WebhookSender for HttpWebhookSender {
 	async fn send(&self, event: &WebhookEvent) -> Result<(), WebhookError> {
-		// Validate URL for SSRF protection before making any requests
+		// Validate URL for SSRF protection before making any requests. The
+		// client re-checks the addresses it actually connects to.
 		let validated_url = validate_webhook_url(&self.config.url)?;
 		validate_resolved_ips(&validated_url).await?;
 
@@ -1536,9 +1623,9 @@ mod tests {
 		);
 	}
 
-	// Redirect tests. These drive the client built by `HttpWebhookSender::new`
-	// through `send_request`, because `send` additionally requires a public
-	// HTTPS endpoint.
+	// Redirect and connection-time address policy tests. These drive the client
+	// built by `HttpWebhookSender::new` through `send_request`/`send_with_retry`,
+	// because `send` additionally requires a public HTTPS endpoint.
 
 	fn test_event() -> WebhookEvent {
 		let now = Utc::now();
@@ -1604,5 +1691,112 @@ mod tests {
 		}
 		redirect.assert_async().await;
 		internal.assert_async().await;
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_webhook_connection_rejects_host_resolving_to_blocked_address() {
+		// Arrange - `localhost` stands in for a host whose DNS answer changed to a
+		// blocked address after the pre-flight check, so `send_with_retry` is
+		// called directly to skip that check.
+		let mut server = mockito::Server::new_async().await;
+		let mock = server
+			.mock("POST", "/webhook")
+			.with_status(200)
+			.expect(0)
+			.create_async()
+			.await;
+		let port = server.socket_address().port();
+		let sender =
+			HttpWebhookSender::new(test_config(format!("http://localhost:{port}/webhook"), 3));
+
+		// Act
+		let result = sender.send_with_retry(&test_event()).await;
+
+		// Assert - rejected at connection time. Retrying would have ended in
+		// `MaxRetriesExceeded` instead of the policy error.
+		match result {
+			Err(WebhookError::BlockedIpAddress(detail)) => {
+				assert!(
+					detail.starts_with("localhost resolves to "),
+					"unexpected detail: {detail}"
+				);
+			}
+			other => panic!("expected BlockedIpAddress, got {other:?}"),
+		}
+		mock.assert_async().await;
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_webhook_connection_to_same_server_by_ip_literal_succeeds() {
+		// Arrange - negative control for the test above: the same server is
+		// reachable when the URL names an IP literal, which is validated by
+		// `validate_webhook_url` instead of the resolver.
+		let mut server = mockito::Server::new_async().await;
+		let mock = server
+			.mock("POST", "/webhook")
+			.with_status(200)
+			.expect(1)
+			.create_async()
+			.await;
+		let sender = HttpWebhookSender::new(test_config(format!("{}/webhook", server.url()), 0));
+
+		// Act
+		let result = sender.send_with_retry(&test_event()).await;
+
+		// Assert
+		assert!(result.is_ok(), "expected delivery, got {result:?}");
+		mock.assert_async().await;
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_address_policy_resolver_applies_only_to_webhook_host() {
+		// Arrange
+		let resolver = AddressPolicyResolver::for_url("https://localhost/webhook");
+		let proxy_resolver = AddressPolicyResolver::for_url("https://hooks.example.com/webhook");
+		let name = || "localhost".parse::<reqwest::dns::Name>().unwrap();
+
+		// Act
+		let webhook_lookup = reqwest::dns::Resolve::resolve(&resolver, name()).await;
+		let proxy_lookup = reqwest::dns::Resolve::resolve(&proxy_resolver, name()).await;
+
+		// Assert - the webhook host is checked, while another name such as an
+		// operator-configured proxy host is resolved unchanged.
+		let error = webhook_lookup.err().expect("webhook host must be rejected");
+		assert!(
+			matches!(
+				error.downcast_ref::<WebhookError>(),
+				Some(WebhookError::BlockedIpAddress(_))
+			),
+			"unexpected error: {error}"
+		);
+		let proxy_addrs: Vec<SocketAddr> = proxy_lookup.expect("proxy host must resolve").collect();
+		assert!(!proxy_addrs.is_empty());
+		assert!(proxy_addrs.iter().all(|addr| addr.ip().is_loopback()));
+	}
+
+	#[rstest]
+	#[case(&["93.184.215.14:443", "[2606:2800:21f:cb07:6820:80da:af6b:8b2c]:443"], None)]
+	#[case(&["93.184.215.14:443", "10.0.0.1:443"], Some("10.0.0.1"))]
+	#[case(&["[::ffff:127.0.0.1]:443"], Some("::ffff:127.0.0.1"))]
+	fn test_ensure_allowed_addrs(#[case] addrs: &[&str], #[case] blocked: Option<&str>) {
+		// Arrange
+		let addrs: Vec<SocketAddr> = addrs.iter().map(|addr| addr.parse().unwrap()).collect();
+
+		// Act
+		let result = ensure_allowed_addrs("hooks.example.com", addrs.clone());
+
+		// Assert
+		match blocked {
+			None => assert_eq!(result.unwrap(), addrs),
+			Some(ip) => match result {
+				Err(WebhookError::BlockedIpAddress(detail)) => {
+					assert_eq!(detail, format!("hooks.example.com resolves to {ip}"))
+				}
+				other => panic!("expected BlockedIpAddress, got {other:?}"),
+			},
+		}
 	}
 }
