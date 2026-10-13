@@ -37,10 +37,11 @@ validate them.
   literal encoding represents exactly under every MySQL, PostgreSQL, and SQLite
   string mode; their configured column and scoring-function names must be plain
   or dot-qualified SQL identifiers. These filters, `SimpleSearchBackend`, and
-  `SimpleOrderingBackend` locate clauses outside quoted strings and comments,
-  and reject input SQL whose quoted-string boundaries depend on backslash
-  escaping or that nests block comments. Comments and dollar-quoted strings in
-  the SQL passed to them must lex the same on the target backend. The
+  `SimpleOrderingBackend` locate clauses outside quoted strings, comments, and
+  dollar-quoted strings, and reject input SQL in which such a region ends at a
+  different position under MySQL (either backslash mode), PostgreSQL, or
+  SQLite rules. They read `#>`, `#>>`, and `#-` as PostgreSQL operators, so a
+  MySQL `#` comment in that SQL must not start with `>` or `-`. The
   `BatchValidator` uniqueness fast path currently builds a raw `UNION ALL`
   statement from table, field, and check values; callers must restrict that
   path to trusted identifiers and non-attacker-controlled values, or disable it
