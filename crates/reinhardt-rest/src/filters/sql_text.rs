@@ -52,13 +52,13 @@ pub(super) fn validate_identifier(name: &str, kind: &str) -> FilterResult<()> {
 /// `WHERE` clause before the first clause that must follow it.
 ///
 /// Both conditions are parenthesized so that an `OR` on either side cannot
-/// escape the conjunction. Clause detection shares the limits of
+/// escape the conjunction. Clause detection shares the limits and errors of
 /// [`find_sql_keyword`].
-pub(super) fn and_where(sql: &str, condition: &str) -> String {
-	let (prefix, existing, remainder) = match find_sql_keyword(sql, "WHERE") {
+pub(super) fn and_where(sql: &str, condition: &str) -> FilterResult<String> {
+	let (prefix, existing, remainder) = match find_sql_keyword(sql, "WHERE")? {
 		Some(where_pos) => {
 			let content_start = where_pos + "WHERE".len();
-			let content_end = find_clause_end(sql, content_start, &WHERE_CLAUSE_END);
+			let content_end = find_clause_end(sql, content_start, &WHERE_CLAUSE_END)?;
 			(
 				&sql[..where_pos],
 				Some(sql[content_start..content_end].trim()),
@@ -66,7 +66,7 @@ pub(super) fn and_where(sql: &str, condition: &str) -> String {
 			)
 		}
 		None => {
-			let insert_pos = find_clause_end(sql, 0, &WHERE_CLAUSE_END);
+			let insert_pos = find_clause_end(sql, 0, &WHERE_CLAUSE_END)?;
 			(&sql[..insert_pos], None, &sql[insert_pos..])
 		}
 	};
@@ -85,7 +85,7 @@ pub(super) fn and_where(sql: &str, condition: &str) -> String {
 		result.push(' ');
 		result.push_str(remainder);
 	}
-	result
+	Ok(result)
 }
 
 #[cfg(test)]
@@ -180,7 +180,7 @@ mod tests {
 	)]
 	fn and_where_parenthesizes_both_conditions(#[case] sql: &str, #[case] expected: &str) {
 		// Act
-		let result = and_where(sql, "c");
+		let result = and_where(sql, "c").unwrap();
 
 		// Assert
 		assert_eq!(result, expected);
