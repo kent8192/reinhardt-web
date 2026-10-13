@@ -6,8 +6,8 @@
 #![cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 
 use reinhardt_rest::filters::{
-	FilterBackend, FilterError, RelevanceScorer, ScoringAlgorithm, SynonymDictionary,
-	SynonymExpander,
+	CustomFilterBackend, FilterBackend, FilterError, RelevanceScorer, ScoringAlgorithm,
+	SynonymDictionary, SynonymExpander,
 };
 use rstest::{fixture, rstest};
 use sqlx::MySqlPool;
@@ -78,10 +78,19 @@ async fn search_filters_keep_literal_and_scope_boundaries_on_mysql(
 	let (_container, pool) = mysql_pool.await;
 	let mut dictionary = SynonymDictionary::new();
 	dictionary.add_synonym("fast", "quick");
-	let synonyms = SynonymExpander::new().with_dictionary(dictionary);
+	let synonyms = SynonymExpander::new().with_dictionary(dictionary.clone());
 	let scorer = RelevanceScorer::new()
 		.with_algorithm(ScoringAlgorithm::TfIdf)
 		.with_boost_field("content", 1.0);
+	// The scorer puts the search text, including " WHERE ", in the SELECT list
+	// before the synonym filter looks for the WHERE clause.
+	let mut chain = CustomFilterBackend::new();
+	chain.add_filter(Box::new(
+		RelevanceScorer::new()
+			.with_algorithm(ScoringAlgorithm::TfIdf)
+			.with_boost_field("content", 1.0),
+	));
+	chain.add_filter(Box::new(SynonymExpander::new().with_dictionary(dictionary)));
 
 	for mode in ["", "NO_BACKSLASH_ESCAPES"] {
 		sqlx::query("SET SESSION sql_mode = ?")
@@ -101,6 +110,10 @@ async fn search_filters_keep_literal_and_scope_boundaries_on_mysql(
 			.unwrap();
 		let scored = scorer
 			.filter_queryset(&search("' OR 1=1 -- "), TENANT_ONE_ARTICLES.to_string())
+			.await
+			.unwrap();
+		let chained = chain
+			.filter_queryset(&search("fast WHERE it's"), TENANT_ONE_ARTICLES.to_string())
 			.await
 			.unwrap();
 		let rejected = [
@@ -123,6 +136,11 @@ async fn search_filters_keep_literal_and_scope_boundaries_on_mysql(
 		assert_eq!(sorted_ids(&pool, &quoted).await, vec![1], "mode {mode:?}");
 		assert_eq!(
 			sorted_ids(&pool, &scored).await,
+			vec![1, 2],
+			"mode {mode:?}"
+		);
+		assert_eq!(
+			sorted_ids(&pool, &chained).await,
 			vec![1, 2],
 			"mode {mode:?}"
 		);
