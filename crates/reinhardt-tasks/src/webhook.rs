@@ -194,6 +194,10 @@ pub enum WebhookError {
 /// - Cloud metadata endpoints (169.254.169.254/32 for AWS/GCP/Azure)
 /// - Unspecified and "this network" addresses (0.0.0.0/8, ::/128), which
 ///   connect to the local host on common platforms
+/// - Shared address space (100.64.0.0/10), used for carrier-grade NAT and
+///   internal networks, including cloud metadata at 100.100.100.200
+/// - Benchmarking, multicast, reserved, and broadcast IPv4 ranges
+/// - IPv6 multicast, site-local, discard-only, and local-use NAT64 ranges
 const BLOCKED_IP_RANGES: &[&str] = &[
 	// IPv4 "this network" (0.0.0.0 reaches the local host)
 	"0.0.0.0/8",
@@ -203,16 +207,32 @@ const BLOCKED_IP_RANGES: &[&str] = &[
 	"10.0.0.0/8",
 	"172.16.0.0/12",
 	"192.168.0.0/16",
+	// IPv4 shared address space (CGNAT; Alibaba Cloud metadata at 100.100.100.200)
+	"100.64.0.0/10",
 	// IPv4 link-local (includes cloud metadata at 169.254.169.254)
 	"169.254.0.0/16",
+	// IPv4 benchmarking
+	"198.18.0.0/15",
+	// IPv4 multicast
+	"224.0.0.0/4",
+	// IPv4 reserved, including the limited broadcast address
+	"240.0.0.0/4",
 	// IPv6 unspecified
 	"::/128",
 	// IPv6 loopback
 	"::1/128",
+	// IPv6 discard-only
+	"100::/64",
+	// IPv6 local-use NAT64 (translates to internal IPv4 networks)
+	"64:ff9b:1::/48",
 	// IPv6 link-local
 	"fe80::/10",
+	// IPv6 site-local (deprecated)
+	"fec0::/10",
 	// IPv6 unique local (private)
 	"fc00::/7",
+	// IPv6 multicast
+	"ff00::/8",
 ];
 
 /// Check if an IP address is in a blocked range for SSRF protection.
@@ -1345,6 +1365,25 @@ mod tests {
 	#[case("::ffff:127.0.0.1", true)]
 	#[case("::ffff:10.0.0.1", true)]
 	#[case("::ffff:169.254.169.254", true)]
+	#[case("100.64.0.1", true)]
+	#[case("100.100.100.200", true)]
+	#[case("100.127.255.255", true)]
+	#[case("198.18.0.1", true)]
+	#[case("198.19.255.255", true)]
+	#[case("224.0.0.1", true)]
+	#[case("239.255.255.250", true)]
+	#[case("240.0.0.1", true)]
+	#[case("255.255.255.255", true)]
+	#[case("100::1", true)]
+	#[case("64:ff9b:1::a00:1", true)]
+	#[case("fec0::1", true)]
+	#[case("ff02::1", true)]
+	#[case("100.63.255.255", false)]
+	#[case("100.128.0.0", false)]
+	#[case("198.17.255.255", false)]
+	#[case("198.20.0.0", false)]
+	#[case("223.255.255.255", false)]
+	#[case("2606:4700:4700::1111", false)]
 	#[case("8.8.8.8", false)]
 	#[case("1.1.1.1", false)]
 	#[case("203.0.113.1", false)]
@@ -1432,6 +1471,7 @@ mod tests {
 			"https://169.254.169.254/latest/meta-data/",
 			"https://169.254.169.254/computeMetadata/v1/",
 			"https://169.254.170.2/v2/credentials",
+			"https://100.100.100.200/latest/meta-data/",
 		];
 
 		for url in &metadata_urls {
