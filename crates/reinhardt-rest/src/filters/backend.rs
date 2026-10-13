@@ -50,18 +50,18 @@ use std::sync::Arc;
 /// Uses byte-level ASCII comparison to avoid allocation and Unicode case-folding issues
 /// (e.g., "ß" uppercasing to "SS" which would shift byte indices).
 ///
-/// Quoted strings, quoted identifiers and comments are skipped. Filters insert
-/// quoted search text at the returned position, so a match inside a literal
-/// would move that literal's boundary and turn search text into SQL. The
-/// filters do not know which backend runs their SQL, so a quoted string whose
-/// end depends on whether backslash is an escape character (an odd run of
-/// backslashes before its closing quote) is rejected with
-/// [`FilterError::InvalidQuery`], as is a block comment containing `/*`, which
-/// PostgreSQL nests and MySQL and SQLite do not. `--` always starts a comment.
-/// `#` starts a MySQL comment unless it begins PostgreSQL's `#>`, `#>>` or
-/// `#-` operator. Comments and PostgreSQL dollar-quoted strings in the SQL
-/// passed to a filter are application-authored and assumed to lex the same on
-/// its backend.
+/// Quoted strings, quoted identifiers, comments and PostgreSQL dollar-quoted
+/// strings are skipped. Filters insert quoted search text at the returned
+/// position, so a match inside a literal would move that literal's boundary
+/// and turn search text into SQL. The filters do not know which backend runs
+/// their SQL, so a region is skipped only when MySQL (in either backslash
+/// mode), PostgreSQL and SQLite leave no quoted string open past its end;
+/// otherwise [`FilterError::InvalidQuery`] is returned. That rejects quoted
+/// strings with an odd run of backslashes before the closing quote, nested
+/// block comments, and comments or dollar-quoted strings whose text would open
+/// a string under the backend that reads it as code. `#>`, `#>>` and `#-` are
+/// read as PostgreSQL operators, so a MySQL `#` comment starting with `>` or
+/// `-` must not contain these keywords.
 ///
 /// NOTE: Keywords inside subqueries can still match. A full SQL parser is out
 /// of scope for this filter layer; callers should be aware of this limitation.
@@ -69,38 +69,20 @@ pub(super) fn find_sql_keyword(sql: &str, keyword: &str) -> FilterResult<Option<
 	let sql_bytes = sql.as_bytes();
 	let kw_bytes = keyword.as_bytes();
 	let kw_len = kw_bytes.len();
+	// End of a line that MySQL reads as a `#` comment and PostgreSQL as code.
+	let mut mysql_comment_end = 0;
 	let mut i = 0;
 
 	while i < sql_bytes.len() {
-		match sql_bytes[i] {
-			b'\'' | b'"' => {
-				i = quoted_string_end(sql_bytes, i)?;
-				continue;
+		if let Some(end) = skip_non_code(sql, i)? {
+			if i < mysql_comment_end && end > mysql_comment_end {
+				return Err(backend_dependent_boundary());
 			}
-			b'`' => {
-				i = quoted_identifier_end(sql_bytes, i);
-				continue;
-			}
-			b'-' if sql_bytes.get(i + 1) == Some(&b'-') => {
-				i = line_end(sql_bytes, i);
-				continue;
-			}
-			b'#' if !matches!(sql_bytes.get(i + 1), Some(b'>' | b'-')) => {
-				i = line_end(sql_bytes, i);
-				continue;
-			}
-			b'/' if sql_bytes.get(i + 1) == Some(&b'*') => {
-				let body = &sql[i + 2..];
-				let body_len = body.find("*/").unwrap_or(body.len());
-				if body[..body_len].contains("/*") {
-					return Err(FilterError::InvalidQuery(
-						"SQL contains a nested block comment".to_string(),
-					));
-				}
-				i = (i + 2 + body_len + 2).min(sql_bytes.len());
-				continue;
-			}
-			_ => {}
+			i = end;
+			continue;
+		}
+		if sql_bytes[i] == b'#' {
+			mysql_comment_end = mysql_comment_end.max(line_end(sql_bytes, i));
 		}
 
 		// Keyword must match (ASCII case-insensitive) and be followed by
@@ -126,6 +108,110 @@ pub(super) fn find_sql_keyword(sql: &str, keyword: &str) -> FilterResult<Option<
 	Ok(None)
 }
 
+fn backend_dependent_boundary() -> FilterError {
+	FilterError::InvalidQuery(
+		"SQL contains a quoted string or comment whose end depends on the database backend"
+			.to_string(),
+	)
+}
+
+/// Return the index just past the quoted string, quoted identifier, comment or
+/// dollar-quoted string starting at `i`, or `None` when `i` starts SQL code.
+fn skip_non_code(sql: &str, i: usize) -> FilterResult<Option<usize>> {
+	let bytes = sql.as_bytes();
+	let end = match bytes[i] {
+		b'\'' | b'"' => quoted_string_end(bytes, i)?,
+		b'`' => quoted_identifier_end(bytes, i),
+		b'-' if bytes.get(i + 1) == Some(&b'-') => {
+			let end = line_end(bytes, i);
+			// MySQL reads `--` without following whitespace as two minus signs.
+			if !bytes
+				.get(i + 2)
+				.is_none_or(|next| next.is_ascii_whitespace() || next.is_ascii_control())
+			{
+				ensure_code_closes(sql, i + 2, end)?;
+			}
+			end
+		}
+		// `#>`, `#>>` and `#-` are handled by the caller as PostgreSQL operators.
+		b'#' if !matches!(bytes.get(i + 1), Some(b'>' | b'-')) => {
+			let end = line_end(bytes, i);
+			// PostgreSQL reads `#` as an operator.
+			ensure_code_closes(sql, i + 1, end)?;
+			end
+		}
+		b'/' if bytes.get(i + 1) == Some(&b'*') => {
+			let body_start = i + 2;
+			let body_end = sql[body_start..]
+				.find("*/")
+				.map_or(bytes.len(), |offset| body_start + offset);
+			// PostgreSQL nests block comments; MySQL and SQLite do not.
+			if sql[body_start..body_end].contains("/*") {
+				return Err(backend_dependent_boundary());
+			}
+			// MySQL executes the body of `/*!` comments.
+			if bytes.get(body_start) == Some(&b'!') {
+				ensure_code_closes(sql, body_start + 1, body_end)?;
+			}
+			(body_end + 2).min(bytes.len())
+		}
+		b'$' => {
+			let Some((tag_end, body_end)) = dollar_quote(sql, i) else {
+				return Ok(None);
+			};
+			// MySQL reads the tags as identifiers and the body as code.
+			ensure_code_closes(sql, tag_end, body_end)?;
+			(body_end + tag_end - i).min(bytes.len())
+		}
+		_ => return Ok(None),
+	};
+	Ok(Some(end))
+}
+
+/// Check that `sql[start..end]`, read as SQL code, leaves no quoted string,
+/// comment or dollar-quoted string open past `end`.
+fn ensure_code_closes(sql: &str, start: usize, end: usize) -> FilterResult<()> {
+	let mut i = start;
+	while i < end {
+		match skip_non_code(sql, i)? {
+			Some(next) if next > end => return Err(backend_dependent_boundary()),
+			Some(next) => i = next,
+			None => i += 1,
+		}
+	}
+	Ok(())
+}
+
+/// Locate a PostgreSQL dollar-quoted string starting at `start`, returning the
+/// end of its opening tag and the start of its closing tag (or the end of
+/// `sql` when unterminated).
+fn dollar_quote(sql: &str, start: usize) -> Option<(usize, usize)> {
+	let bytes = sql.as_bytes();
+	let is_tag_byte = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_' || !byte.is_ascii();
+	// `$` inside an identifier or before a digit (`$1`) does not open a string.
+	if start > 0 && (is_tag_byte(bytes[start - 1]) || bytes[start - 1] == b'$') {
+		return None;
+	}
+	let mut tag_end = start + 1;
+	if bytes
+		.get(tag_end)
+		.is_some_and(|&byte| is_tag_byte(byte) && !byte.is_ascii_digit())
+	{
+		while bytes.get(tag_end).is_some_and(|&byte| is_tag_byte(byte)) {
+			tag_end += 1;
+		}
+	}
+	if bytes.get(tag_end) != Some(&b'$') {
+		return None;
+	}
+	tag_end += 1;
+	let tag = &sql[start..tag_end];
+	let body_end = sql[tag_end..]
+		.find(tag)
+		.map_or(bytes.len(), |offset| tag_end + offset);
+	Some((tag_end, body_end))
+}
+
 /// Return the index just past the single- or double-quoted string at `start`.
 ///
 /// A doubled quote continues the string, and unterminated strings run to the
@@ -140,10 +226,7 @@ fn quoted_string_end(bytes: &[u8], start: usize) -> FilterResult<usize> {
 		if bytes[i] == b'\\' {
 			let run = bytes[i..].iter().take_while(|&&byte| byte == b'\\').count();
 			if run % 2 == 1 && bytes.get(i + run) == Some(&quote) {
-				return Err(FilterError::InvalidQuery(
-					"SQL contains a quoted string whose end depends on backslash escaping"
-						.to_string(),
-				));
+				return Err(backend_dependent_boundary());
 			}
 			i += run;
 		} else if bytes[i] == quote {
@@ -1111,6 +1194,10 @@ mod tests {
 		"ORDER BY",
 		Some(40)
 	)]
+	#[case::dollar_quoted("SELECT $$ WHERE $$ FROM t WHERE x", "WHERE", Some(26))]
+	#[case::positional_parameter("SELECT $1 FROM t WHERE x", "WHERE", Some(17))]
+	#[case::line_comment_with_quote("SELECT 1 -- it's\nFROM t WHERE x", "WHERE", Some(24))]
+	#[case::json_path_operator("SELECT d #> '{a}' FROM t WHERE x", "WHERE", Some(25))]
 	#[case::only_in_literal("SELECT 'x WHERE y' FROM t", "WHERE", None)]
 	#[case::unterminated_literal("SELECT 'x FROM t WHERE y", "WHERE", None)]
 	#[case::identifier_suffix("SELECT * FROM t WHERE_x", "WHERE", None)]
@@ -1131,6 +1218,11 @@ mod tests {
 	#[case::odd_backslash_run_triple("SELECT 'a\\\\\\' WHERE ' FROM t WHERE x")]
 	#[case::odd_backslash_run_double_quoted("SELECT \"a\\\" WHERE \" FROM t WHERE x")]
 	#[case::odd_backslash_run_before_doubled_quote("SELECT 'a\\'' WHERE ' FROM t WHERE x")]
+	#[case::line_comment_opening_mysql_string("SELECT 1 --it's\nFROM t WHERE x")]
+	#[case::hash_comment_opening_postgres_string("SELECT 1 # it's\nFROM t WHERE x")]
+	#[case::string_crossing_mysql_hash_comment("SELECT d #>> 'a\nb' FROM t WHERE x")]
+	#[case::dollar_quote_opening_mysql_string("SELECT $$it's$$ FROM t WHERE x")]
+	#[case::executable_comment_opening_string("SELECT /*! 'x */ 1 FROM t WHERE x")]
 	#[case::nested_block_comment("SELECT /* a /* b */ WHERE c */ 1 FROM t WHERE x")]
 	fn test_find_sql_keyword_rejects_backend_dependent_boundaries(#[case] sql: &str) {
 		// Act
