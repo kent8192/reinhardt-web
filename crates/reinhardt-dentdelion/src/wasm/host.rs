@@ -23,7 +23,7 @@ use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
 
-use super::events::{Event, EventBus, SharedEventBus};
+use super::events::{Event, EventBus, EventEmitError, SharedEventBus};
 use super::models::{ModelRegistry, ModelSchema, SharedModelRegistry, SqlMigration};
 use super::ssr::{RenderOptions, RenderResult, SharedSsrProxy, SsrError, SsrProxy};
 use super::types::{ConfigValue, WitHttpResponse, WitPluginError};
@@ -594,6 +594,10 @@ impl HostState {
 
 	/// Emit an event to all matching subscribers.
 	///
+	/// Events that exceed the event bus size limits are not delivered and
+	/// `0` is returned; use [`try_emit_event`](Self::try_emit_event) to
+	/// observe the rejection.
+	///
 	/// # Arguments
 	///
 	/// * `name` - Event name (e.g., "user.created")
@@ -604,6 +608,20 @@ impl HostState {
 	/// The number of subscriptions that received the event.
 	pub fn emit_event(&self, name: &str, payload: Vec<u8>) -> usize {
 		self.event_bus.emit(name, payload, &self.plugin_name)
+	}
+
+	/// Emit an event to all matching subscribers, rejecting oversized events.
+	///
+	/// # Returns
+	///
+	/// The number of subscriptions that received the event.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the event name or payload exceeds the event bus
+	/// [`EventByteLimits`](crate::wasm::EventByteLimits).
+	pub fn try_emit_event(&self, name: &str, payload: Vec<u8>) -> Result<usize, EventEmitError> {
+		self.event_bus.try_emit(name, payload, &self.plugin_name)
 	}
 
 	/// Subscribe to events matching a pattern.
@@ -1223,8 +1241,13 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 		name: String,
 		payload: Vec<u8>,
 	) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
-		let _delivered = self.emit_event(&name, payload);
-		Ok(Ok(()))
+		match self.try_emit_event(&name, payload) {
+			Ok(_delivered) => Ok(Ok(())),
+			Err(e) => Ok(Err(to_generated_error(WitPluginError::new(
+				413,
+				e.to_string(),
+			)))),
+		}
 	}
 
 	async fn subscribe(
@@ -1563,6 +1586,115 @@ mod tests {
 		let sub_id = state.subscribe_events("*").unwrap();
 		assert!(state.unsubscribe_events(sub_id));
 		assert!(!state.unsubscribe_events(sub_id)); // Already unsubscribed
+	}
+
+	/// Shared event bus whose payload limit is `max_payload_bytes`.
+	fn event_bus_with_payload_limit(max_payload_bytes: usize) -> SharedEventBus {
+		let limits = crate::wasm::EventByteLimits {
+			max_payload_bytes,
+			..crate::wasm::EventByteLimits::default()
+		};
+		Arc::new(EventBus::new().with_byte_limits(limits))
+	}
+
+	#[cfg(feature = "wasm")]
+	#[tokio::test]
+	async fn wit_emit_rejects_payload_over_event_bus_limit() {
+		use crate::wasm::runtime::reinhardt::dentdelion::events::Host;
+
+		// Arrange
+		let event_bus = event_bus_with_payload_limit(16);
+		let consumer = HostStateBuilder::new("consumer")
+			.event_bus(event_bus.clone())
+			.build();
+		let mut producer = HostStateBuilder::new("producer")
+			.event_bus(event_bus.clone())
+			.build();
+		let sub_ids: Vec<u64> = (0..3)
+			.map(|_| consumer.subscribe_events("*").unwrap())
+			.collect();
+
+		// Act
+		let result = Host::emit(&mut producer, "user.created".to_string(), vec![0; 17])
+			.await
+			.expect("host adapter should return a plugin result");
+
+		// Assert
+		assert_eq!(
+			result
+				.expect_err("oversized payload should be rejected")
+				.code,
+			413
+		);
+		for sub_id in sub_ids {
+			assert_eq!(event_bus.pending_count(sub_id), 0);
+		}
+		assert_eq!(event_bus.total_pending_bytes(), 0);
+	}
+
+	#[cfg(feature = "wasm")]
+	#[tokio::test]
+	async fn wit_emit_rejects_name_over_default_limit() {
+		use crate::wasm::runtime::reinhardt::dentdelion::events::Host;
+
+		// Arrange
+		let event_bus: SharedEventBus = Arc::new(EventBus::new());
+		let consumer = HostStateBuilder::new("consumer")
+			.event_bus(event_bus.clone())
+			.build();
+		let mut producer = HostStateBuilder::new("producer")
+			.event_bus(event_bus.clone())
+			.build();
+		let sub_id = consumer.subscribe_events("*").unwrap();
+		let name = "e".repeat(event_bus.byte_limits().max_name_bytes + 1);
+
+		// Act
+		let result = Host::emit(&mut producer, name, Vec::new())
+			.await
+			.expect("host adapter should return a plugin result");
+
+		// Assert
+		assert_eq!(
+			result.expect_err("oversized name should be rejected").code,
+			413
+		);
+		assert_eq!(event_bus.pending_count(sub_id), 0);
+	}
+
+	#[cfg(feature = "wasm")]
+	#[tokio::test]
+	async fn wit_emit_delivers_payload_within_limit_to_every_subscriber() {
+		use crate::wasm::runtime::reinhardt::dentdelion::events::Host;
+
+		// Arrange
+		let event_bus = event_bus_with_payload_limit(16);
+		let mut consumer = HostStateBuilder::new("consumer")
+			.event_bus(event_bus.clone())
+			.build();
+		let mut producer = HostStateBuilder::new("producer")
+			.event_bus(event_bus.clone())
+			.build();
+		let sub_ids: Vec<u64> = (0..3)
+			.map(|_| consumer.subscribe_events("user.*").unwrap())
+			.collect();
+
+		// Act
+		let result = Host::emit(&mut producer, "user.created".to_string(), vec![7; 16])
+			.await
+			.expect("host adapter should return a plugin result");
+
+		// Assert
+		assert!(result.is_ok());
+		for sub_id in sub_ids {
+			let events = Host::poll_events(&mut consumer, sub_id, 10)
+				.await
+				.expect("host adapter should return polled events");
+			assert_eq!(events.len(), 1);
+			assert_eq!(events[0].name, "user.created");
+			assert_eq!(events[0].payload, vec![7; 16]);
+			assert_eq!(events[0].source, "producer");
+		}
+		assert_eq!(event_bus.total_pending_bytes(), 0);
 	}
 
 	#[test]
