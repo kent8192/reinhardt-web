@@ -19,6 +19,16 @@ ignore = [
   { id = "RUSTSEC-2026-0098", reason = "rustls-webpki 0.101.7 is retained by AWS SDK rustls 0.21 transports; the Kafka path is remediated and remaining work is tracked in issue #5492." },
   { id = "RUSTSEC-2026-0099", reason = "rustls-webpki 0.101.7 is retained by AWS SDK rustls 0.21 transports; the Kafka path is remediated and remaining work is tracked in issue #5492." },
   { id = "RUSTSEC-2026-0104", reason = "rustls-webpki 0.101.7 is retained by AWS SDK rustls 0.21 transports; the Kafka path is remediated and remaining work is tracked in issue #5492." },
+  # Temporary: rustls 0.21.12 is retained only by the AWS SDK legacy hyper 0.14
+  # transport (default `rustls` feature of aws-sdk-*), and both advisories are
+  # fixed only in rustls >=0.23.46. Neither applies to the 0.21 line here: it has
+  # no post-quantum key exchange groups to downgrade (0349), and no dependency
+  # in the graph implements ClientSessionStore (0346). See issue #6777.
+  # Remove both exceptions once rustls 0.21 leaves the full-feature graph.
+  # Ideal: aws-sdk-* declared with default-features = false plus
+  # default-https-client and rt-tokio, and no rustls 0.21 advisory entries.
+  { id = "RUSTSEC-2026-0346", reason = "rustls 0.21.12 is retained by the AWS SDK legacy transport and no dependency implements ClientSessionStore; removal of the legacy transport is tracked in issue #6777." },
+  { id = "RUSTSEC-2026-0349", reason = "rustls 0.21.12 is retained by the AWS SDK legacy transport and has no post-quantum key exchange groups to downgrade; removal of the legacy transport is tracked in issue #6777." },
   { id = "RUSTSEC-2025-0141", reason = "bincode 1 and 2 are retained by syntect and the optional authentication serializer; remediation is tracked in issue #5492." },
   { id = "RUSTSEC-2021-0141", reason = "dotenv remains a direct configuration dependency; migration is tracked in issue #5492." },
   { id = "RUSTSEC-2025-0057", reason = "fxhash is retained transitively by static asset processing dependencies; remediation is tracked in issue #5492." },
@@ -37,6 +47,14 @@ ignore = [
   # Ideal: the shell feature depends on evcxr without direct salsa or
   # salsa-macro-rules compatibility dependencies or this advisory exception.
   { id = "RUSTSEC-2026-0308", reason = "Optional evcxr shell pins Salsa 0.28.2 for rust-analyzer compatibility; temporary until a compatible patched Salsa can be used (issue #6379)." },
+  # Temporary: unsafe-libyaml is archived upstream and reached only through the
+  # deprecated serde_yaml, whose Error type is exposed by reinhardt-urls
+  # `to_yaml` methods, so replacing it is a breaking change (issue #6773).
+  # Remove this exception once no crate in the full-feature graph depends on
+  # unsafe-libyaml.
+  # Ideal: YAML output goes through a safe-Rust library such as serde-saphyr,
+  # `to_yaml` returns a Reinhardt-owned error, and no RUSTSEC-2024-0449 entry.
+  { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained with no safe upgrade and is retained by the deprecated serde_yaml, a direct dependency exposed in public APIs; migration is tracked in issue #6773." },
 ]
 
 [licenses]
