@@ -101,6 +101,10 @@ pub fn make_aware_utc(dt: NaiveDateTime) -> DateTime<Utc> {
 ///
 /// For ambiguous datetimes (fall-back), the earlier interpretation is used.
 ///
+/// **Parity: P0.** Native-only: chrono's browser WASM `Local` offset always
+/// reports a single mapping and cannot detect DST gaps or overlaps, so this
+/// contract cannot be upheld on `wasm32-unknown-unknown`.
+///
 /// # Errors
 ///
 /// Returns an error string if the naive datetime has no valid local representation
@@ -119,6 +123,7 @@ pub fn make_aware_utc(dt: NaiveDateTime) -> DateTime<Utc> {
 /// assert_eq!(aware.naive_local(), naive);
 /// ```
 // Fixes #799
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn make_aware_local(dt: NaiveDateTime) -> Result<DateTime<Local>, String> {
 	Local.from_local_datetime(&dt).earliest().ok_or_else(|| {
 		format!(
