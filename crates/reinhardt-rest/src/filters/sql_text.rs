@@ -50,6 +50,15 @@ pub(super) fn validate_identifier(name: &str, kind: &str) -> FilterResult<()> {
 	}
 }
 
+/// Trim spaces and tabs, but keep line breaks.
+///
+/// A line comment ends at the next line break. Trimming that break and then
+/// appending SQL to the same line would turn the appended SQL into comment
+/// text, so composed SQL keeps every line break that the caller wrote.
+pub(super) fn trim_inline_whitespace(sql: &str) -> &str {
+	sql.trim_matches([' ', '\t'])
+}
+
 /// Add `condition` to the first `WHERE` clause of `sql`, or insert a new
 /// `WHERE` clause before the first clause that must follow it.
 ///
@@ -63,7 +72,7 @@ pub(super) fn and_where(sql: &str, condition: &str) -> FilterResult<String> {
 			let content_end = find_clause_end(sql, content_start, &WHERE_CLAUSE_END)?;
 			(
 				&sql[..where_pos],
-				Some(sql[content_start..content_end].trim()),
+				Some(trim_inline_whitespace(&sql[content_start..content_end])),
 				&sql[content_end..],
 			)
 		}
@@ -73,7 +82,7 @@ pub(super) fn and_where(sql: &str, condition: &str) -> FilterResult<String> {
 		}
 	};
 
-	let mut result = prefix.trim_end().to_string();
+	let mut result = trim_inline_whitespace(prefix).to_string();
 	result.push_str(" WHERE (");
 	result.push_str(condition);
 	result.push(')');
@@ -82,7 +91,7 @@ pub(super) fn and_where(sql: &str, condition: &str) -> FilterResult<String> {
 		result.push_str(existing);
 		result.push(')');
 	}
-	let remainder = remainder.trim();
+	let remainder = trim_inline_whitespace(remainder);
 	if !remainder.is_empty() {
 		result.push(' ');
 		result.push_str(remainder);
@@ -185,6 +194,18 @@ mod tests {
 	#[case::clause_keyword_in_literal(
 		"SELECT * FROM articles WHERE note = 'x ORDER BY y' ORDER BY id",
 		"SELECT * FROM articles WHERE (c) AND (note = 'x ORDER BY y') ORDER BY id"
+	)]
+	#[case::existing_where_ends_in_line_comment(
+		"SELECT * FROM articles WHERE tenant_id = 1 -- tenant scope\nORDER BY id",
+		"SELECT * FROM articles WHERE (c) AND (tenant_id = 1 -- tenant scope\n) ORDER BY id"
+	)]
+	#[case::prefix_ends_in_line_comment(
+		"SELECT * FROM articles -- all rows\nWHERE tenant_id = 1",
+		"SELECT * FROM articles -- all rows\n WHERE (c) AND (tenant_id = 1)"
+	)]
+	#[case::remainder_ends_in_line_comment(
+		"SELECT * FROM articles ORDER BY id -- newest last\n",
+		"SELECT * FROM articles WHERE (c) ORDER BY id -- newest last\n"
 	)]
 	fn and_where_parenthesizes_both_conditions(#[case] sql: &str, #[case] expected: &str) {
 		// Act
