@@ -338,18 +338,31 @@ impl AddressPolicyResolver {
 		Self {
 			target_host: Url::parse(url)
 				.ok()
-				.and_then(|url| url.host_str().map(str::to_owned)),
+				.and_then(|url| url.host_str().map(|host| normalized_host(host).to_owned())),
 		}
 	}
+
+	/// Whether the policy applies to a lookup of `host`.
+	///
+	/// Names are compared without case and without a trailing root dot, so a
+	/// spelling difference between the configured URL and the name reqwest
+	/// resolves cannot skip the policy for the webhook host.
+	fn applies_to(&self, host: &str) -> bool {
+		self.target_host
+			.as_deref()
+			.is_none_or(|target| target.eq_ignore_ascii_case(normalized_host(host)))
+	}
+}
+
+/// A DNS name without its optional trailing root dot.
+fn normalized_host(host: &str) -> &str {
+	host.strip_suffix('.').unwrap_or(host)
 }
 
 impl reqwest::dns::Resolve for AddressPolicyResolver {
 	fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
 		let host = name.as_str().to_owned();
-		let enforce = self
-			.target_host
-			.as_deref()
-			.is_none_or(|target| target.eq_ignore_ascii_case(&host));
+		let enforce = self.applies_to(&host);
 		Box::pin(async move {
 			// The connector replaces port 0 with the request URL's port.
 			let resolved = tokio::net::lookup_host((host.as_str(), 0)).await?;
@@ -1807,6 +1820,27 @@ mod tests {
 			other => panic!("expected a redirect rejection, got {other:?}"),
 		}
 		redirect.assert_async().await;
+	}
+
+	#[rstest]
+	#[case::same("https://hooks.example.com/webhook", "hooks.example.com", true)]
+	#[case::case_insensitive("https://hooks.example.com/webhook", "HOOKS.Example.com", true)]
+	#[case::trailing_root_dot("https://hooks.example.com./webhook", "hooks.example.com", true)]
+	#[case::lookup_with_root_dot("https://hooks.example.com/webhook", "hooks.example.com.", true)]
+	#[case::other_name("https://hooks.example.com/webhook", "proxy.internal", false)]
+	fn test_address_policy_resolver_matches_webhook_host_spellings(
+		#[case] url: &str,
+		#[case] lookup: &str,
+		#[case] expected: bool,
+	) {
+		// Arrange
+		let resolver = AddressPolicyResolver::for_url(url);
+
+		// Act
+		let applies = resolver.applies_to(lookup);
+
+		// Assert
+		assert_eq!(applies, expected);
 	}
 
 	#[rstest]
