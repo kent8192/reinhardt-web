@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.23...reinhardt-testkit@v0.4.0) - 2026-10-14
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.23...reinhardt-testkit@v0.3.24) - 2026-10-14
 
 ### Added
 
