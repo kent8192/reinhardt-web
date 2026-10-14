@@ -1487,6 +1487,19 @@ enum JoinCondition {
 	RawSql(String),
 }
 
+impl JoinCondition {
+	/// Condition for the trusted SQL passed to the `*_join_on` methods.
+	///
+	/// An empty condition keeps its established meaning of a CROSS JOIN.
+	fn raw_sql(condition: &str) -> Self {
+		if condition.is_empty() {
+			Self::Cross
+		} else {
+			Self::RawSql(condition.to_owned())
+		}
+	}
+}
+
 /// Subquery condition specification for WHERE clause
 #[derive(Clone, Debug)]
 enum SubqueryCondition {
@@ -4036,6 +4049,7 @@ where
 	/// `condition` is trusted raw SQL and is emitted verbatim. Never build it
 	/// from request data or other attacker-controlled input; use the
 	/// identifier-based join methods or the typed `*_join_as` methods instead.
+	/// An empty `condition` produces a CROSS JOIN.
 	///
 	/// # Examples
 	///
@@ -4088,7 +4102,7 @@ where
 			join_type: super::sqlalchemy_query::JoinType::Inner,
 			target_table: R::table_name().to_string(),
 			target_alias: None,
-			on_condition: JoinCondition::RawSql(condition.to_string()),
+			on_condition: JoinCondition::raw_sql(condition),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -4112,6 +4126,7 @@ where
 	/// `condition` is trusted raw SQL and is emitted verbatim. Never build it
 	/// from request data or other attacker-controlled input; use the
 	/// identifier-based join methods or the typed `*_join_as` methods instead.
+	/// An empty `condition` produces a CROSS JOIN.
 	///
 	/// # Examples
 	///
@@ -4163,7 +4178,7 @@ where
 			join_type: super::sqlalchemy_query::JoinType::Left,
 			target_table: R::table_name().to_string(),
 			target_alias: None,
-			on_condition: JoinCondition::RawSql(condition.to_string()),
+			on_condition: JoinCondition::raw_sql(condition),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -4187,6 +4202,7 @@ where
 	/// `condition` is trusted raw SQL and is emitted verbatim. Never build it
 	/// from request data or other attacker-controlled input; use the
 	/// identifier-based join methods or the typed `*_join_as` methods instead.
+	/// An empty `condition` produces a CROSS JOIN.
 	///
 	/// # Examples
 	///
@@ -4238,7 +4254,7 @@ where
 			join_type: super::sqlalchemy_query::JoinType::Right,
 			target_table: R::table_name().to_string(),
 			target_alias: None,
-			on_condition: JoinCondition::RawSql(condition.to_string()),
+			on_condition: JoinCondition::raw_sql(condition),
 		});
 		self.rebase_filter_relation_aliases();
 
@@ -15288,6 +15304,28 @@ mod tests {
 
 		// Assert
 		assert_eq!(sql, expected);
+	}
+
+	type RawJoin = fn(QuerySet<TestUser>, &str) -> QuerySet<TestUser>;
+
+	#[rstest]
+	#[case::inner(QuerySet::<TestUser>::inner_join_on::<TestMembership>)]
+	#[case::left(QuerySet::<TestUser>::left_join_on::<TestMembership>)]
+	#[case::right(QuerySet::<TestUser>::right_join_on::<TestMembership>)]
+	fn raw_join_with_empty_condition_stays_cross_join(#[case] join: RawJoin) {
+		// Arrange
+		let queryset = join(QuerySet::<TestUser>::new(), "");
+		let expected = QuerySet::<TestUser>::new()
+			.cross_join::<TestMembership>()
+			.to_sql()
+			.expect("cross join should compile");
+
+		// Act
+		let sql = queryset.to_sql().expect("empty raw join should compile");
+
+		// Assert
+		assert_eq!(sql, expected);
+		assert!(sql.contains("CROSS JOIN"), "{sql}");
 	}
 
 	#[rstest]
