@@ -6734,7 +6734,7 @@ pub(crate) fn parse_column_reference(field: &str) -> reinhardt_query::prelude::C
 /// Table aliases and field paths become quoted column references, so alias
 /// strings passed to the `*_join_as` methods cannot contribute SQL syntax.
 /// [`FieldRef::Value`](crate::orm::query_fields::comparison::FieldRef::Value)
-/// keeps its documented fixed-value contract and is emitted as written.
+/// is trusted raw SQL by contract and is emitted as written.
 fn field_comparison_expr(comparison: &FieldComparison) -> SimpleExpr {
 	use crate::orm::query_fields::comparison::{ComparisonOperator, FieldRef};
 

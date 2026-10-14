@@ -29,7 +29,13 @@ pub enum FieldRef {
 		/// Field path (e.g., ["user_id"], ["posts", "id"])
 		field_path: Vec<String>,
 	},
-	/// Fixed value (string literal)
+	/// Raw SQL operand emitted verbatim, such as a numeric constant or `NULL`.
+	///
+	/// # Security
+	///
+	/// The text is neither quoted, escaped, nor bound as a parameter. Pass only
+	/// fixed, trusted SQL; never build it from request data or other
+	/// attacker-controlled input.
 	Value(String),
 }
 
@@ -50,7 +56,12 @@ impl FieldRef {
 		}
 	}
 
-	/// Create a fixed value
+	/// Create a raw SQL operand that is emitted verbatim.
+	///
+	/// # Security
+	///
+	/// `value` is not quoted, escaped, or bound. Pass only fixed, trusted SQL;
+	/// see [`FieldRef::Value`].
 	pub fn value(value: String) -> Self {
 		Self::Value(value)
 	}
