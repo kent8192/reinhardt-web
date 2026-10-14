@@ -80,7 +80,7 @@ use ipnet::IpNet;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 use thiserror::Error;
 use url::Url;
@@ -238,7 +238,9 @@ const BLOCKED_IP_RANGES: &[&str] = &[
 /// Check if an IP address is in a blocked range for SSRF protection.
 ///
 /// IPv4-mapped IPv6 addresses (for example `::ffff:127.0.0.1`) are checked as
-/// the IPv4 address they reach.
+/// the IPv4 address they reach. NAT64 well-known-prefix (`64:ff9b::/96`) and
+/// 6to4 (`2002::/16`) addresses are also checked against the IPv4 address they
+/// embed, because a translator or relay forwards them to that address.
 ///
 /// # Arguments
 ///
@@ -265,12 +267,35 @@ const BLOCKED_IP_RANGES: &[&str] = &[
 /// ```
 pub fn is_blocked_ip(ip: &IpAddr) -> bool {
 	let ip = ip.to_canonical();
+	if let IpAddr::V6(v6) = ip
+		&& let Some(embedded) = translated_ipv4(&v6)
+		&& is_blocked_ip(&IpAddr::V4(embedded))
+	{
+		return true;
+	}
 	BLOCKED_IP_RANGES.iter().any(|range| {
 		range
 			.parse::<IpNet>()
 			.map(|net| net.contains(&ip))
 			.unwrap_or(false)
 	})
+}
+
+/// IPv4 address that a NAT64 well-known-prefix or 6to4 address reaches.
+fn translated_ipv4(ip: &Ipv6Addr) -> Option<Ipv4Addr> {
+	let segments = ip.segments();
+	let octets = ip.octets();
+	if segments[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
+		// RFC 6052 well-known prefix: the IPv4 address is the last 32 bits.
+		Some(Ipv4Addr::new(
+			octets[12], octets[13], octets[14], octets[15],
+		))
+	} else if segments[0] == 0x2002 {
+		// RFC 3056 6to4: the IPv4 address follows the 16-bit prefix.
+		Some(Ipv4Addr::new(octets[2], octets[3], octets[4], octets[5]))
+	} else {
+		None
+	}
 }
 
 /// Reject a DNS answer for `host` if any of its addresses is blocked.
@@ -1376,6 +1401,13 @@ mod tests {
 	#[case("255.255.255.255", true)]
 	#[case("100::1", true)]
 	#[case("64:ff9b:1::a00:1", true)]
+	#[case("64:ff9b::7f00:1", true)]
+	#[case("64:ff9b::a9fe:a9fe", true)]
+	#[case("64:ff9b::a00:1", true)]
+	#[case("2002:7f00:1::1", true)]
+	#[case("2002:a9fe:a9fe::1", true)]
+	#[case("64:ff9b::808:808", false)]
+	#[case("2002:808:808::1", false)]
 	#[case("fec0::1", true)]
 	#[case("ff02::1", true)]
 	#[case("100.63.255.255", false)]
