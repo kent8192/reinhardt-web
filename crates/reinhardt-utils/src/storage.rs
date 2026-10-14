@@ -2,6 +2,10 @@
 //!
 //! This crate provides Django-style file storage with support for multiple
 //! storage backends (local, S3-compatible, etc.).
+//!
+//! **Parity: P0.** Native-only; this module is absent from
+//! `wasm32-unknown-unknown` builds because its backends depend on the
+//! filesystem and native networking.
 
 pub mod backend;
 pub mod errors;
