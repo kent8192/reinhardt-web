@@ -4,8 +4,8 @@
 //! and a permission-granting ModelAdmin for testing server functions.
 
 use reinhardt_admin::core::{
-	AdminDatabase, AdminDatabaseKey, AdminError, AdminQuery, AdminRequestContext, AdminSite,
-	AdminSiteKey, AdminUser, ListColumn, ModelAdmin,
+	AdminChange, AdminDatabase, AdminDatabaseKey, AdminError, AdminQuery, AdminRequestContext,
+	AdminResult, AdminSaveContext, AdminSite, AdminSiteKey, AdminUser, ListColumn, ModelAdmin,
 };
 use reinhardt_admin::server::{AdminAuthenticatedUser, AdminDefaultUser};
 use reinhardt_core::reactive::ReactiveScope;
@@ -37,6 +37,8 @@ pub(super) type ServerFnContext = (
 	AdminDatabaseDepends,
 	DatabaseConnectionLease,
 );
+/// Changes observed by `before_save` of the relation source admin.
+pub(super) type SavedRelationChanges = Arc<Mutex<Vec<AdminChange>>>;
 pub(super) type UuidPkContext = (
 	AdminSiteDepends,
 	AdminDatabaseDepends,
@@ -169,6 +171,7 @@ struct RelationSourceModelAdmin {
 	allow_view: bool,
 	fields: Vec<&'static str>,
 	readonly_fields: Vec<&'static str>,
+	saved_changes: SavedRelationChanges,
 }
 
 impl RelationSourceModelAdmin {
@@ -185,6 +188,7 @@ impl RelationSourceModelAdmin {
 				"optional_target_key",
 			],
 			readonly_fields: Vec::new(),
+			saved_changes: SavedRelationChanges::default(),
 		}
 	}
 
@@ -201,6 +205,7 @@ impl RelationSourceModelAdmin {
 				"optional_target",
 			],
 			readonly_fields,
+			saved_changes: SavedRelationChanges::default(),
 		}
 	}
 }
@@ -238,6 +243,18 @@ impl ModelAdmin for RelationSourceModelAdmin {
 			"uuid_target",
 			"optional_target",
 		]
+	}
+
+	async fn before_save(
+		&self,
+		_ctx: &AdminSaveContext<'_>,
+		change: &AdminChange,
+	) -> AdminResult<()> {
+		self.saved_changes
+			.lock()
+			.unwrap_or_else(PoisonError::into_inner)
+			.push(change.clone());
+		Ok(())
 	}
 
 	async fn has_view_permission(&self, _user: &dyn AdminUser) -> bool {
@@ -1344,6 +1361,18 @@ pub async fn relation_server_fn_context(
 ) -> ServerFnContext {
 	let (pool, _) = shared_db_pool.await;
 	relation_server_fn_context_with_permissions(pool, true, true, true, true).await
+}
+
+#[fixture]
+pub async fn relation_save_hook_context(
+	#[future] shared_db_pool: (sqlx::PgPool, String),
+) -> (ServerFnContext, SavedRelationChanges) {
+	let (pool, _) = shared_db_pool.await;
+	let source_admin = RelationSourceModelAdmin::physical_fields(true);
+	let saved_changes = Arc::clone(&source_admin.saved_changes);
+	let context =
+		relation_server_fn_context_with_source_admin(pool, source_admin, true, true, true).await;
+	(context, saved_changes)
 }
 
 #[fixture]

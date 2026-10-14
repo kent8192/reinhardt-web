@@ -26,6 +26,7 @@ mod admin {
 	mod server_fn_permission_tests;
 	mod server_fn_related_inline_history_tests;
 	mod server_fn_relation_tests;
+	mod server_fn_save_hooks_tests;
 	mod server_fn_state_transition_tests;
 	mod server_fn_update_tests;
 	mod server_fn_usecase_tests;

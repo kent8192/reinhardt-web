@@ -9,7 +9,10 @@ use super::error::{AdminAuth, IntoServerFnError, MapServerFnError, ModelPermissi
 #[cfg(server)]
 use super::security::{require_csrf_token, sanitize_mutation_values};
 #[cfg(server)]
-use super::type_inference::{get_field_metadata, infer_admin_field_type, infer_required};
+use super::type_inference::{
+	get_field_metadata, infer_admin_field_type, infer_required, stored_values_for_submitted_fields,
+	translate_physical_field_names_to_logical,
+};
 #[cfg(server)]
 use super::validation::validate_mutation_data_with_allowed_fields;
 #[cfg(server)]
@@ -18,8 +21,9 @@ use crate::adapters::{AdminDatabase, AdminSite, ModelAdmin};
 use crate::core::history::insert_history_event;
 #[cfg(server)]
 use crate::core::{
-	AdminBatchAtomicError, AdminBatchMutation, AdminDatabaseKey, AdminQuery, AdminRequestContext,
-	AdminSiteKey, canonicalize_admin_primary_key, validate_admin_database_value,
+	AdminBatchAtomicError, AdminBatchMutation, AdminChange, AdminDatabaseKey, AdminFormMode,
+	AdminQuery, AdminRequestContext, AdminSaveContext, AdminSiteKey,
+	canonicalize_admin_primary_key, validate_admin_database_value,
 };
 #[cfg(server)]
 use crate::types::{AdminError, FieldType, InlineEditError, InlineEditOutcome};
@@ -323,6 +327,13 @@ fn validate_update(
 }
 
 /// Applies dirty changelist row edits in one database transaction.
+///
+/// # Save hooks
+///
+/// Each row calls [`ModelAdmin::before_save`] with its locked stored record
+/// before the row is written, and [`ModelAdmin::after_save`] after the whole
+/// batch commits. A `before_save` validation error rolls back the batch
+/// and is returned as an error for that row.
 #[server_fn]
 pub async fn update_inline_edits(
 	model_name: String,
@@ -438,7 +449,7 @@ pub async fn update_inline_edits(
 			errors,
 		});
 	}
-	let mutations = prepared_updates
+	let (mutations, submitted_rows): (Vec<_>, Vec<_>) = prepared_updates
 		.into_iter()
 		.map(|update| {
 			let json_null_fields = update
@@ -465,10 +476,19 @@ pub async fn update_inline_edits(
 				.collect::<HashMap<_, _>>();
 			sanitize_mutation_values(&mut changes);
 			changes.extend(structured);
+			// Save hooks see the submitted fields without server timestamps.
+			let submitted = changes.clone();
 			super::create::inject_auto_now_timestamps(&mut changes, &table_name);
-			AdminBatchMutation::new_with_json_nulls(update.object_id, changes, json_null_fields)
+			(
+				AdminBatchMutation::new_with_json_nulls(
+					update.object_id,
+					changes,
+					json_null_fields,
+				),
+				submitted,
+			)
 		})
-		.collect::<Vec<_>>();
+		.unzip();
 	let outcomes = mutations
 		.iter()
 		.map(|mutation| InlineEditOutcome {
@@ -497,11 +517,42 @@ pub async fn update_inline_edits(
 		.collect::<Vec<_>>();
 	let history_table_name = table_name.clone();
 	let history_model_name = model_name.clone();
-	match db
+	let hook_admin = model_admin.as_ref();
+	let hook_user = user.as_ref();
+	let hook_table_name = table_name.as_str();
+	let hook_outcomes = &outcomes;
+	let hook_submitted_rows = &submitted_rows;
+	let before_row_update =
+		move |row_index: usize, mut stored: HashMap<String, serde_json::Value>| async move {
+			let (Some(outcome), Some(submitted)) = (
+				hook_outcomes.get(row_index),
+				hook_submitted_rows.get(row_index),
+			) else {
+				return Err(AdminError::DatabaseError(format!(
+					"changelist row {row_index} has no prepared mutation"
+				)));
+			};
+			let change = AdminChange::new(
+				Some(&stored_values_for_submitted_fields(
+					hook_table_name,
+					submitted,
+					&stored,
+				)),
+				submitted,
+			);
+			translate_physical_field_names_to_logical(hook_table_name, &mut stored)?;
+			let save_context = AdminSaveContext::new(hook_user, AdminFormMode::Update)
+				.with_pk(&outcome.object_id)
+				.with_stored(&stored);
+			hook_admin.before_save(&save_context, &change).await?;
+			Ok((stored, change))
+		};
+	let batch_result = db
 		.update_admin_query_batch_with(
 			&admin_query,
 			&pk_field,
 			mutations,
+			before_row_update,
 			async move |transaction| {
 				for (object_id, changed_fields) in history_metadata {
 					let event = audit::new_history_event(
@@ -520,10 +571,16 @@ pub async fn update_inline_edits(
 				Ok(())
 			},
 		)
-		.await
-	{
-		Ok(updated) => {
+		.await;
+	match batch_result {
+		Ok((updated, saved_rows)) => {
 			log_audit(true);
+			for ((stored, change), outcome) in saved_rows.iter().zip(&outcomes) {
+				let save_context = AdminSaveContext::new(user.as_ref(), AdminFormMode::Update)
+					.with_pk(&outcome.object_id)
+					.with_stored(stored);
+				model_admin.after_save(&save_context, change).await;
+			}
 			Ok(crate::types::InlineEditResponse {
 				updated,
 				outcomes,
@@ -549,7 +606,24 @@ pub async fn update_inline_edits(
 				)],
 			})
 		}
-		Err(AdminBatchAtomicError::Admin(error)) => {
+		Err(AdminBatchAtomicError::RowRejected {
+			row_index,
+			object_id,
+			error: AdminError::ValidationError(message) | AdminError::InvalidAction(message),
+		}) => {
+			let request_object_id = request_object_ids
+				.get(row_index)
+				.map(String::as_str)
+				.unwrap_or(&object_id);
+			log_audit(false);
+			Ok(crate::types::InlineEditResponse {
+				updated: 0,
+				outcomes: Vec::new(),
+				errors: vec![inline_error(request_object_id, None, message)],
+			})
+		}
+		Err(AdminBatchAtomicError::RowRejected { error, .. })
+		| Err(AdminBatchAtomicError::Admin(error)) => {
 			log_audit(false);
 			Err(error.into_server_fn_error())
 		}
