@@ -13,6 +13,11 @@
 //! Table names may be schema-qualified with `.` (`schema.table`); each segment
 //! is quoted separately. Column names are quoted as a single identifier.
 //!
+//! Quoted identifiers are matched exactly. On PostgreSQL an unquoted `Users`
+//! used to fold to `users`; it is now the distinct identifier `"Users"`, so
+//! pass names in the case the table was created with. A column name such as
+//! `alias.col` is one identifier, not a qualified reference.
+//!
 //! Quoting prevents a name from changing the statement structure, but it does
 //! not decide which tables or columns a caller may write. Applications that
 //! derive identifiers from untrusted input must still restrict them to an

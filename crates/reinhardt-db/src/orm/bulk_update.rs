@@ -9,6 +9,8 @@
 //! double-quoted identifiers with embedded `"` doubled, so a name can never
 //! terminate its identifier and change the statement structure. Each name is
 //! quoted as a single identifier. ANSI quoting matches PostgreSQL and SQLite.
+//! MySQL reads `"name"` as a string literal unless `ANSI_QUOTES` is enabled in
+//! `sql_mode`, so the generated statement is not valid MySQL without it.
 //!
 //! Quoting does not decide which tables or columns a caller may write.
 //! Applications that derive identifiers from untrusted input must still
