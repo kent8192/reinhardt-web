@@ -14,6 +14,8 @@ pub use checks::{Check, CheckLevel, CheckMessage, CheckRegistry};
 pub use dateformat::*;
 pub use encoding::*;
 pub use html::*;
-pub use path_safety::{PathTraversalError, is_safe_filename_component, safe_path_join};
+pub use path_safety::is_safe_filename_component;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+pub use path_safety::{PathTraversalError, safe_path_join};
 pub use text::*;
 pub use timezone::*;

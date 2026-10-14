@@ -2,6 +2,10 @@
 //!
 //! Caching framework for Reinhardt.
 //!
+//! **Parity: P0.** Native-only; this module is absent from
+//! `wasm32-unknown-unknown` builds because its backends depend on the native
+//! runtime.
+//!
 //! ## Features
 //!
 //! - **InMemoryCache**: Simple in-memory cache backend with optional layered cleanup
