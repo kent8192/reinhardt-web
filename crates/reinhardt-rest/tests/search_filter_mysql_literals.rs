@@ -82,6 +82,12 @@ async fn search_filters_keep_literal_and_scope_boundaries_on_mysql(
 	let scorer = RelevanceScorer::new()
 		.with_algorithm(ScoringAlgorithm::TfIdf)
 		.with_boost_field("content", 1.0);
+	// The minimum-score condition must run on MySQL, which does not resolve
+	// the `relevance_score` SELECT alias in WHERE.
+	let min_scorer = RelevanceScorer::new()
+		.with_algorithm(ScoringAlgorithm::TfIdf)
+		.with_boost_field("content", 1.0)
+		.with_min_score(0.0001);
 	// The scorer puts the search text, including " WHERE ", in the SELECT list
 	// before the synonym filter looks for the WHERE clause.
 	let mut chain = CustomFilterBackend::new();
@@ -120,6 +126,10 @@ async fn search_filters_keep_literal_and_scope_boundaries_on_mysql(
 			.filter_queryset(&search("' OR 1=1 -- "), TENANT_ONE_ARTICLES.to_string())
 			.await
 			.unwrap();
+		let thresholded = min_scorer
+			.filter_queryset(&search("fast"), TENANT_ONE_ARTICLES.to_string())
+			.await
+			.unwrap();
 		let chained = chain
 			.filter_queryset(&search("fast WHERE it's"), TENANT_ONE_ARTICLES.to_string())
 			.await
@@ -155,6 +165,12 @@ async fn search_filters_keep_literal_and_scope_boundaries_on_mysql(
 		assert_eq!(
 			sorted_ids(&pool, &scored).await,
 			vec![1, 2],
+			"mode {mode:?}"
+		);
+		// Row 1 contains "fast"; row 2 scores 0 and row 3 is another tenant.
+		assert_eq!(
+			sorted_ids(&pool, &thresholded).await,
+			vec![1],
 			"mode {mode:?}"
 		);
 		assert_eq!(

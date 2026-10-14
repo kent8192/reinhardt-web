@@ -18,7 +18,7 @@
 //! ```
 
 use super::backend::find_sql_keyword;
-use super::sql_text::{and_where, quoted_text, validate_identifier};
+use super::sql_text::{and_where, quoted_text, trim_inline_whitespace, validate_identifier};
 use super::{FilterBackend, FilterError, FilterResult};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -353,9 +353,13 @@ impl RelevanceScorer {
 	/// Generate SQL scoring expression
 	///
 	/// Adds the scoring calculation to the SELECT clause and ranks results
-	/// with ORDER BY. Clauses are located in the original SQL before the score
-	/// expression is inserted, so search text inside that expression is never
-	/// scanned as SQL keywords.
+	/// with ORDER BY. Clauses are located before the score expression is
+	/// inserted, so search text inside that expression is never scanned as SQL
+	/// keywords.
+	///
+	/// The minimum-score filter repeats the score expression instead of
+	/// referencing the `relevance_score` alias, because MySQL and PostgreSQL do
+	/// not resolve SELECT aliases in WHERE.
 	fn generate_scoring_sql(&self, sql: String, search_terms: &str) -> FilterResult<String> {
 		if self.field_boosts.is_empty() {
 			return Err(FilterError::InvalidParameter(
@@ -369,14 +373,19 @@ impl RelevanceScorer {
 
 		let score_expr = self.generate_score_expression(search_terms)?;
 
-		let select_part = sql[..from_pos].trim_end();
-		let mut rest_part = sql[from_pos..].to_string();
+		// Keep line breaks so that a trailing line comment in the select list
+		// cannot swallow the inserted score expression.
+		let select_part = trim_inline_whitespace(&sql[..from_pos]);
+		let mut rest_part = Self::add_order_by(&sql[from_pos..])?;
 
 		if let Some(min_score) = self.min_score {
-			rest_part = and_where(&rest_part, &format!("relevance_score >= {}", min_score))?;
+			if !min_score.is_finite() {
+				return Err(FilterError::InvalidParameter(
+					"Minimum relevance score must be a finite number".to_string(),
+				));
+			}
+			rest_part = and_where(&rest_part, &format!("({}) >= {}", score_expr, min_score))?;
 		}
-
-		rest_part = Self::add_order_by(&rest_part)?;
 
 		Ok(format!(
 			"{}, {} AS relevance_score {}",
@@ -741,6 +750,7 @@ mod tests {
 			.with_algorithm(ScoringAlgorithm::TfIdf)
 			.with_boost_field("title", 1.0)
 			.with_min_score(0.5);
+		let score_expr = scorer.generate_score_expression("rust").unwrap();
 
 		let mut params = HashMap::new();
 		params.insert("q".to_string(), "rust".to_string());
@@ -748,14 +758,12 @@ mod tests {
 		let sql = "SELECT * FROM articles".to_string();
 		let result = scorer.filter_queryset(&params, sql).await.unwrap();
 
-		// Validate WHERE clause with exact min_score condition
-		let where_start = result.find("WHERE").expect("WHERE clause not found");
-		let where_clause = &result[where_start..];
-
-		assert!(
-			where_clause.starts_with("WHERE (relevance_score >= 0.5)"),
-			"Expected WHERE clause to start with 'WHERE (relevance_score >= 0.5)', got: {}",
-			where_clause
+		// The WHERE clause repeats the score expression: MySQL and PostgreSQL
+		// do not resolve the `relevance_score` SELECT alias in WHERE.
+		let where_start = result.find(" WHERE ").expect("WHERE clause not found") + 1;
+		assert_eq!(
+			&result[where_start..],
+			format!("WHERE (({score_expr}) >= 0.5) ORDER BY relevance_score DESC")
 		);
 	}
 
@@ -765,6 +773,7 @@ mod tests {
 			.with_algorithm(ScoringAlgorithm::TfIdf)
 			.with_boost_field("title", 1.0)
 			.with_min_score(0.3);
+		let score_expr = scorer.generate_score_expression("rust").unwrap();
 
 		let mut params = HashMap::new();
 		params.insert("q".to_string(), "rust".to_string());
@@ -772,31 +781,60 @@ mod tests {
 		let sql = "SELECT * FROM articles WHERE published = true".to_string();
 		let result = scorer.filter_queryset(&params, sql).await.unwrap();
 
-		// Validate the WHERE clause structure combines min_score with existing condition
-		let where_start = result.find("WHERE").expect("WHERE clause not found");
-		let where_clause = &result[where_start..];
-
-		// Structure should be: WHERE (relevance_score >= 0.3) AND (published = true)
-		assert!(
-			where_clause.starts_with("WHERE (relevance_score >= 0.3) AND (published = true)"),
-			"Expected WHERE clause to start with 'WHERE (relevance_score >= 0.3) AND (published = true)', got: {}",
-			where_clause
+		// The score condition is added before the parenthesized existing one
+		let where_start = result.find(" WHERE ").expect("WHERE clause not found") + 1;
+		assert_eq!(
+			&result[where_start..],
+			format!(
+				"WHERE (({score_expr}) >= 0.3) AND (published = true) ORDER BY relevance_score DESC"
+			)
 		);
+	}
 
+	#[rstest]
+	#[case::nan(f64::NAN)]
+	#[case::infinite(f64::INFINITY)]
+	#[tokio::test]
+	async fn test_relevance_scorer_rejects_non_finite_min_score(#[case] min_score: f64) {
+		// Arrange
+		let scorer = RelevanceScorer::new()
+			.with_algorithm(ScoringAlgorithm::Custom("score".to_string()))
+			.with_boost_field("title", 1.0)
+			.with_min_score(min_score);
+		let params = HashMap::from([("q".to_string(), "rust".to_string())]);
+
+		// Act
+		let result = scorer
+			.filter_queryset(&params, "SELECT id FROM articles".to_string())
+			.await;
+
+		// Assert
 		assert!(
-			where_clause.contains("published = true"),
-			"Expected 'published = true' in WHERE clause, got: {}",
-			where_clause
+			matches!(result, Err(FilterError::InvalidParameter(_))),
+			"expected InvalidParameter, got {result:?}"
 		);
+	}
 
-		// Validate order: min_score condition comes before existing condition
-		let score_pos = where_clause.find("relevance_score >= 0.3").unwrap();
-		let and_pos = where_clause.find(" AND ").unwrap();
-		let published_pos = where_clause.find("published = true").unwrap();
-		assert!(
-			score_pos < and_pos && and_pos < published_pos,
-			"Expected order: relevance_score >= 0.3 AND published = true, got: {}",
-			where_clause
+	#[rstest]
+	#[tokio::test]
+	async fn test_relevance_scorer_keeps_line_break_after_select_list_comment() {
+		// Arrange
+		let scorer = RelevanceScorer::new()
+			.with_algorithm(ScoringAlgorithm::Custom("score".to_string()))
+			.with_boost_field("title", 1.0);
+		let params = HashMap::from([("q".to_string(), "rust".to_string())]);
+		let sql = "SELECT id -- identifiers only\nFROM articles WHERE tenant_id = 1";
+
+		// Act
+		let result = scorer
+			.filter_queryset(&params, sql.to_string())
+			.await
+			.unwrap();
+
+		// Assert: the score expression starts on the line after the comment
+		assert_eq!(
+			result,
+			"SELECT id -- identifiers only\n, score('rust', title) AS relevance_score FROM articles WHERE tenant_id = 1 ORDER BY relevance_score DESC"
 		);
 	}
 
@@ -1099,7 +1137,7 @@ mod tests {
 		assert_eq!(
 			result,
 			format!(
-				"SELECT id, score('{search}', title) AS relevance_score FROM articles WHERE (relevance_score >= 0.5) AND (tenant_id = 1 OR public = 1) ORDER BY relevance_score DESC, id"
+				"SELECT id, score('{search}', title) AS relevance_score FROM articles WHERE ((score('{search}', title)) >= 0.5) AND (tenant_id = 1 OR public = 1) ORDER BY relevance_score DESC, id"
 			)
 		);
 	}
