@@ -779,9 +779,8 @@ impl HttpWebhookSender {
 		loop {
 			match self.send_request(event).await {
 				Ok(_) => return Ok(()),
-				// An address policy violation is not transient.
-				Err(e @ WebhookError::BlockedIpAddress(_)) => return Err(e),
-				Err(e) => {
+				Err(AttemptError::Permanent(e)) => return Err(e),
+				Err(AttemptError::Transient(e)) => {
 					if retry_count >= max_retries {
 						return Err(WebhookError::MaxRetriesExceeded);
 					}
@@ -804,9 +803,10 @@ impl HttpWebhookSender {
 	}
 
 	/// Send a single webhook request
-	async fn send_request(&self, event: &WebhookEvent) -> Result<(), WebhookError> {
-		let json_body = serde_json::to_string(event)
-			.map_err(|e| WebhookError::SerializationError(e.to_string()))?;
+	async fn send_request(&self, event: &WebhookEvent) -> Result<(), AttemptError> {
+		let json_body = serde_json::to_string(event).map_err(|e| {
+			AttemptError::Transient(WebhookError::SerializationError(e.to_string()))
+		})?;
 
 		let mut request = match self.config.method.to_uppercase().as_str() {
 			"POST" => self.client.post(&self.config.url),
@@ -830,22 +830,27 @@ impl HttpWebhookSender {
 
 		// Redirects are not followed: the target could be an address that was
 		// never validated, and following would replay headers and body to it.
+		// Retrying cannot change the configured URL, so the failure is final.
 		if response.status().is_redirection() {
-			return Err(WebhookError::RequestFailed(format!(
-				"HTTP {}: webhook redirects are not followed; configure the final endpoint URL",
-				response.status()
+			return Err(AttemptError::Permanent(WebhookError::RequestFailed(
+				format!(
+					"HTTP {}: webhook redirects are not followed; configure the final endpoint URL",
+					response.status()
+				),
 			)));
 		}
 
 		// Check response status
 		if !response.status().is_success() {
-			return Err(WebhookError::RequestFailed(format!(
-				"HTTP {}: {}",
-				response.status(),
-				response
-					.text()
-					.await
-					.unwrap_or_else(|_| "No response body".to_string())
+			return Err(AttemptError::Transient(WebhookError::RequestFailed(
+				format!(
+					"HTTP {}: {}",
+					response.status(),
+					response
+						.text()
+						.await
+						.unwrap_or_else(|_| "No response body".to_string())
+				),
 			)));
 		}
 
@@ -865,18 +870,29 @@ fn build_client(config: &WebhookConfig) -> reqwest::Client {
 		.expect("Failed to build webhook HTTP client")
 }
 
+/// Failure of a single delivery attempt.
+#[derive(Debug)]
+enum AttemptError {
+	/// A failure that a later attempt may not repeat, such as a network error
+	/// or a server error response.
+	Transient(WebhookError),
+	/// A failure that every retry would repeat: an address policy violation
+	/// or a redirect response. It is reported without retrying.
+	Permanent(WebhookError),
+}
+
 /// Convert a transport error, preserving address policy rejections raised by
 /// [`AddressPolicyResolver`] so that they are reported and not retried.
-fn request_error(error: reqwest::Error) -> WebhookError {
+fn request_error(error: reqwest::Error) -> AttemptError {
 	let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&error);
 	while let Some(current) = source {
 		if let Some(WebhookError::BlockedIpAddress(detail)) = current.downcast_ref::<WebhookError>()
 		{
-			return WebhookError::BlockedIpAddress(detail.clone());
+			return AttemptError::Permanent(WebhookError::BlockedIpAddress(detail.clone()));
 		}
 		source = current.source();
 	}
-	WebhookError::RequestFailed(error.to_string())
+	AttemptError::Transient(WebhookError::RequestFailed(error.to_string()))
 }
 
 #[async_trait]
@@ -1755,7 +1771,7 @@ mod tests {
 
 		// Assert
 		match result {
-			Err(WebhookError::RequestFailed(message)) => assert_eq!(
+			Err(AttemptError::Permanent(WebhookError::RequestFailed(message))) => assert_eq!(
 				message,
 				"HTTP 302 Found: webhook redirects are not followed; configure the final endpoint URL"
 			),
@@ -1763,6 +1779,34 @@ mod tests {
 		}
 		redirect.assert_async().await;
 		internal.assert_async().await;
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_webhook_redirect_is_not_retried() {
+		// Arrange
+		let mut server = mockito::Server::new_async().await;
+		let redirect = server
+			.mock("POST", "/webhook")
+			.with_status(307)
+			.with_header("location", &format!("{}/internal", server.url()))
+			.expect(1)
+			.create_async()
+			.await;
+		let sender = HttpWebhookSender::new(test_config(format!("{}/webhook", server.url()), 3));
+
+		// Act
+		let result = sender.send_with_retry(&test_event()).await;
+
+		// Assert - the redirect is reported once instead of exhausting retries
+		match result {
+			Err(WebhookError::RequestFailed(message)) => assert_eq!(
+				message,
+				"HTTP 307 Temporary Redirect: webhook redirects are not followed; configure the final endpoint URL"
+			),
+			other => panic!("expected a redirect rejection, got {other:?}"),
+		}
+		redirect.assert_async().await;
 	}
 
 	#[rstest]
