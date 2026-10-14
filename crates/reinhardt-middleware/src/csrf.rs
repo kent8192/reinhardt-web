@@ -242,21 +242,23 @@ impl CsrfMiddleware {
 	///
 	/// Returns (secret_bytes, is_new)
 	fn get_or_create_secret(&self, request: &Request) -> (Vec<u8>, bool) {
+		let session_id = self.get_session_id(request);
+		(self.secret_for_session(&session_id), false)
+	}
+
+	/// Derive the HMAC secret bound to `session_id`
+	fn secret_for_session(&self, session_id: &str) -> Vec<u8> {
 		// Use test secret if available
 		if let Some(ref secret) = self.test_secret {
-			return (secret.as_bytes().to_vec(), false);
+			return secret.as_bytes().to_vec();
 		}
 
 		// For HMAC-based CSRF, we generate a secret based on session_id
 		// This ensures consistency across requests from the same session
-		let session_id = self.get_session_id(request);
 		let mut hasher = Sha256::new();
 		hasher.update(b"csrf_secret");
 		hasher.update(session_id.as_bytes());
-		let secret_hash = hasher.finalize();
-
-		// Convert to Vec<u8>
-		(secret_hash.to_vec(), false)
+		hasher.finalize().to_vec()
 	}
 
 	/// Build Set-Cookie header
@@ -350,9 +352,6 @@ impl Middleware for CsrfMiddleware {
 			return handler.handle(request).await;
 		}
 
-		// Get or create CSRF secret
-		let (secret, _is_new) = self.get_or_create_secret(&request);
-
 		// Safe methods (GET, HEAD, OPTIONS, TRACE) don't require CSRF validation
 		let is_safe_method = matches!(
 			request.method,
@@ -364,9 +363,11 @@ impl Middleware for CsrfMiddleware {
 			self.validate_csrf(&request)?;
 		}
 
-		// Generate HMAC-based token using session_id (before moving request)
+		// Capture the session ID before moving the request. Handlers may rotate
+		// it via `SessionData::regenerate_id` (e.g., on login), so keep the
+		// shared holder to read the ID the session middleware will set.
 		let session_id = self.get_session_id(&request);
-		let token = get_token(&secret, &session_id);
+		let active_session_id = request.extensions.get::<crate::session::ActiveSessionId>();
 
 		// Process request
 		// Convert errors to responses so post-processing (e.g., security headers)
@@ -375,6 +376,11 @@ impl Middleware for CsrfMiddleware {
 			Ok(resp) => resp,
 			Err(e) => Response::from(e),
 		};
+
+		// Bind the issued token to the final session ID so it stays valid for
+		// the session cookie returned alongside this response.
+		let session_id = active_session_id.map_or(session_id, |id| id.get());
+		let token = get_token(&self.secret_for_session(&session_id), &session_id);
 		let cookie_header = self.build_set_cookie_header(&token);
 		match cookie_header.parse() {
 			Ok(value) => {
