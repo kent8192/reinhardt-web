@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.23...reinhardt-admin@v0.4.0) - 2026-10-14
+
+### Fixed
+
+- *(admin)* [**breaking**] enforce tenant scope and neutralize exports
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(admin)* preserve typed scalar creation and object scopes
+- *(admin)* propagate database errors from scoped detail fetches
+
+### Testing
+
+- *(admin)* verify typed CSV and TSV creation scopes
+
 ### Fixed
 
 - Accept all typed scalar equality scopes for creation and JSON/CSV/TSV imports, normalize matching temporal and decimal values, and inject missing scope fields while rejecting mismatches and non-finite floats.
