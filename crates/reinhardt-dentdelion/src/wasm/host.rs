@@ -213,6 +213,14 @@ fn is_private_ip(ip: &std::net::IpAddr) -> bool {
 /// Global-unicast locators, excluding non-global and overlay identifier assignments.
 fn is_public_ipv6(ip: &std::net::Ipv6Addr) -> bool {
 	let segments = ip.segments();
+	// The NAT64 well-known prefix 64:ff9b::/96 is globally reachable (IANA) and
+	// DNS64 synthesizes it for public IPv4 hosts; judge the embedded IPv4
+	// address (RFC 6052 section 2.2) so private targets stay rejected. The
+	// local-use prefix 64:ff9b:1::/48 is not global and falls through below.
+	if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] {
+		let [.., a, b, c, d] = ip.octets();
+		return !is_private_ip(&std::net::IpAddr::V4(std::net::Ipv4Addr::new(a, b, c, d)));
+	}
 	if (segments[0] & 0xe000) != 0x2000
 		|| (segments[0] == 0x2001 && segments[1] == 0x0db8)
 		|| segments[0] == 0x2002
@@ -1688,6 +1696,11 @@ mod tests {
 	#[case("3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff", false)]
 	#[case("3fff:1000::1", true)]
 	#[case("2620:4f:8000::1", true)]
+	#[case("64:ff9b::808:808", true)]
+	#[case("64:ff9b::a00:1", false)]
+	#[case("64:ff9b::7f00:1", false)]
+	#[case("64:ff9b::a9fe:a9fe", false)]
+	#[case("64:ff9b:1::808:808", false)]
 	fn ipv6_special_assignments_preserve_global_locator_exceptions(
 		#[case] address: &str,
 		#[case] expected_public: bool,
