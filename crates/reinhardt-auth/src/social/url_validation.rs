@@ -31,6 +31,11 @@ pub(crate) fn sanitize_url(parsed: &Url) -> String {
 pub(crate) fn validate_endpoint_url(url: &str) -> Result<(), SocialAuthError> {
 	let parsed = Url::parse(url)
 		.map_err(|e| SocialAuthError::Configuration(format!("invalid endpoint URL: {}", e)))?;
+	if !parsed.username().is_empty() || parsed.password().is_some() {
+		return Err(SocialAuthError::InsecureEndpoint(
+			"endpoint URL must not contain userinfo".to_string(),
+		));
+	}
 
 	match parsed.scheme() {
 		"https" => Ok(()),
@@ -46,7 +51,7 @@ pub(crate) fn validate_endpoint_url(url: &str) -> Result<(), SocialAuthError> {
 /// Checks whether the URL's host is a loopback address using
 /// network-level detection to catch all loopback variants
 /// (e.g. `127.0.0.2`, `127.255.255.255`).
-fn is_loopback(parsed: &Url) -> bool {
+pub(crate) fn is_loopback(parsed: &Url) -> bool {
 	match parsed.host() {
 		Some(Host::Domain("localhost")) => true,
 		Some(Host::Ipv4(addr)) => addr.is_loopback(),
@@ -55,10 +60,131 @@ fn is_loopback(parsed: &Url) -> bool {
 	}
 }
 
+/// Accept only globally routable addresses for credential-bearing requests.
+pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
+	match ip {
+		std::net::IpAddr::V4(ip) => {
+			let o = ip.octets();
+			// IANA's globally reachable PCP/TURN anycast /32s override the /24 parent.
+			// https://www.iana.org/assignments/iana-ipv4-special-registry
+			if matches!(o, [192, 0, 0, 9 | 10]) {
+				return true;
+			}
+			!(o[0] == 0
+				|| o[0] == 10
+				|| o[0] == 127
+				|| o[0] >= 224
+				|| (o[0] == 100 && (o[1] & 0xc0) == 64)
+				|| (o[0] == 169 && o[1] == 254)
+				|| (o[0] == 172 && (o[1] & 0xf0) == 16)
+				|| (o[0] == 192 && (o[1] == 168 || (o[1] == 0 && matches!(o[2], 0 | 2))))
+				// IANA marks the 6a44 relay anycast /32 as not globally reachable.
+				|| matches!(o, [192, 88, 99, 2])
+				|| (o[0] == 198 && (o[1] == 18 || o[1] == 19 || (o[1] == 51 && o[2] == 100)))
+				|| (o[0] == 203 && o[1] == 0 && o[2] == 113))
+		}
+		std::net::IpAddr::V6(ip) => is_public_ipv6(&ip),
+	}
+}
+
+/// Global-unicast locators, excluding non-global and overlay identifier assignments.
+fn is_public_ipv6(ip: &std::net::Ipv6Addr) -> bool {
+	let segments = ip.segments();
+	// The NAT64 well-known prefix 64:ff9b::/96 is globally reachable (IANA) and
+	// DNS64 synthesizes it for public IPv4 hosts; judge the embedded IPv4
+	// address (RFC 6052 section 2.2) so private targets stay rejected. The
+	// local-use prefix 64:ff9b:1::/48 is not global and falls through below.
+	if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] {
+		let [.., a, b, c, d] = ip.octets();
+		return is_public_ip(std::net::IpAddr::V4(std::net::Ipv4Addr::new(a, b, c, d)));
+	}
+	if (segments[0] & 0xe000) != 0x2000
+		|| (segments[0] == 0x2001 && segments[1] == 0x0db8)
+		|| segments[0] == 0x2002
+		|| (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
+	{
+		return false;
+	}
+	// IANA 2001::/23 is non-global except more-specific assignments:
+	// https://www.iana.org/assignments/iana-ipv6-special-registry
+	if segments[0] == 0x2001 && (segments[1] & 0xfe00) == 0 {
+		// Keep actual anycast, AMT and AS112 locators. ORCHIDv2 and DETs have
+		// IANA Global=True, but are non-routable identifiers at the IPv6 layer
+		// (RFC 7343 section 1.2/3 and RFC 9374 section 1); HTTP uses locators.
+		return (segments[1] == 1 && segments[2..7] == [0; 5] && matches!(segments[7], 1..=3))
+			|| segments[1] == 3
+			|| (segments[1] == 4 && segments[2] == 0x0112);
+	}
+	true
+}
+
 #[cfg(test)]
 mod tests {
+	#[rstest::rstest]
+	#[case("2001:1::1", true)]
+	#[case("2001:1::2", true)]
+	#[case("2001:1::3", true)]
+	#[case("2001:1::4", false)]
+	#[case("2001:2::1", false)]
+	#[case("2001:2:ffff::1", false)]
+	#[case("2001:3::1", true)]
+	#[case("2001:3:ffff:ffff:ffff:ffff:ffff:ffff", true)]
+	#[case("2001:4:112::1", true)]
+	#[case("2001:4:113::1", false)]
+	#[case("2001:10::1", false)]
+	#[case("2001:20::1", false)]
+	#[case("2001:2f:ffff::1", false)]
+	#[case("2001:30::1", false)]
+	#[case("2001:3f:ffff::1", false)]
+	#[case("2001:1ff:ffff::1", false)]
+	#[case("2001:200::1", true)]
+	#[case("3fff::1", false)]
+	#[case("3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff", false)]
+	#[case("3fff:1000::1", true)]
+	#[case("2620:4f:8000::1", true)]
+	fn ipv6_special_assignments_preserve_global_locator_exceptions(
+		#[case] address: &str,
+		#[case] expected_public: bool,
+	) {
+		assert_eq!(is_public_ip(address.parse().unwrap()), expected_public);
+	}
+
 	use super::*;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case("192.0.0.1", false)]
+	#[case("192.0.0.8", false)]
+	#[case("192.0.0.9", true)]
+	#[case("192.0.0.10", true)]
+	#[case("192.0.0.11", false)]
+	#[case("192.0.0.170", false)]
+	#[case("192.0.0.171", false)]
+	#[case("192.0.1.1", true)]
+	#[case("192.0.2.1", false)]
+	fn public_ipv4_filter_preserves_anycast_exceptions_and_adjacent_prefix(
+		#[case] address: &str,
+		#[case] expected_public: bool,
+	) {
+		assert_eq!(is_public_ip(address.parse().unwrap()), expected_public);
+	}
+
+	#[rstest]
+	#[case("2606:4700:4700::1111", true)]
+	#[case("2001:db8::1", false)]
+	#[case("2001::a00:1", false)]
+	#[case("2002:a00:1::", false)]
+	#[case("64:ff9b::808:808", true)]
+	#[case("64:ff9b::a00:1", false)]
+	#[case("64:ff9b::7f00:1", false)]
+	#[case("64:ff9b::a9fe:a9fe", false)]
+	#[case("64:ff9b:1::808:808", false)]
+	fn public_ipv6_filter_rejects_tunnel_and_reserved_ranges(
+		#[case] address: &str,
+		#[case] expected_public: bool,
+	) {
+		assert_eq!(is_public_ip(address.parse().unwrap()), expected_public);
+	}
 
 	#[rstest]
 	#[case("https://accounts.google.com/o/oauth2/token")]

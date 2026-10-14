@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve JSONB and domain values in PostgreSQL batch uniqueness checks, including JSON null.
+
+- Convert bound PostgreSQL uniqueness-check values through the target row type, preserving integer, UUID, and temporal equality without casting indexed columns to text.
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.3.20...reinhardt-rest@v0.3.21) - 2026-10-05
 
 ### Fixed

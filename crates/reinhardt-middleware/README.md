@@ -261,9 +261,16 @@ middleware-owned `SessionStore` to DI. A session `USER_ID_SESSION_KEY` is only
 an identity reference; it does not establish `AuthState` because account status
 and privileges can change after a session is created. Configure an
 authentication middleware that validates the current user record before using
-`CurrentUser<U>` or authorization guards. `CookieSessionAuthMiddleware` remains
-available for custom `AsyncSessionBackend` integrations, but it only restores
-flags stored in the session and must not be treated as an account validator.
+`CurrentUser<U>` or authorization guards. For custom `AsyncSessionBackend`
+integrations, configure `CookieSessionAuthMiddleware::with_auth_backend` with
+an `AuthBackend` that resolves the current user. It checks account status and
+privileges on every request. Sessions without an auth backend remain anonymous,
+and stored `is_staff` / `is_superuser` flags no longer grant access.
+Applications that previously constructed `CookieSessionAuthMiddleware` with
+`new` or `with_config` must call `with_auth_backend` and provide an implementation
+of `AuthBackend::get_user` before cookie sessions can authenticate users.
+The returned `AuthIdentity::is_account_active` and `is_admin` values must reflect
+the current account record; return `None` when an account has been deleted.
 
 - `USER_ID_SESSION_KEY` — the canonical session-store key (`"user_id"`)
   every handler should read from / write to instead of hardcoding a literal.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Document and verify current-account backend wiring for session privilege overrides.
+
 ## [0.3.23](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.22...reinhardt-testkit@v0.3.23) - 2026-10-08
 
 ### Documentation

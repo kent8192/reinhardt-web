@@ -76,7 +76,7 @@ impl DepthLimitedDecoder {
 	/// nesting exceeds the configured limit, or [`DepthLimitError::DecodeError`]
 	/// if the message fails to decode.
 	pub fn decode<M: prost::Message + Default>(&self, buf: &[u8]) -> Result<M, DepthLimitError> {
-		let measured_depth = measure_wire_depth(buf);
+		let measured_depth = measure_wire_depth(buf, self.max_depth);
 		if measured_depth > self.max_depth {
 			tracing::warn!(
 				measured_depth = measured_depth,
@@ -124,89 +124,61 @@ pub enum DepthLimitError {
 ///
 /// This is a best-effort scan that works on valid protobuf encoding.
 /// For malformed data, it returns a conservative estimate.
-fn measure_wire_depth(buf: &[u8]) -> u32 {
+fn measure_wire_depth(buf: &[u8], max_allowed_depth: u32) -> u32 {
 	if buf.is_empty() {
 		return 0;
 	}
-	measure_depth_recursive(buf, 0)
-}
+	let mut max_depth = 0;
+	let mut pending = vec![(buf, 0usize, 0u32)];
 
-/// Recursively measure depth by scanning wire-format bytes.
-///
-/// Parses field tags and scans length-delimited fields for sub-messages.
-fn measure_depth_recursive(buf: &[u8], current_depth: u32) -> u32 {
-	let mut max_depth = current_depth;
-	let mut pos = 0;
+	while let Some((buf, mut pos, depth)) = pending.pop() {
+		while pos < buf.len() {
+			let (tag, bytes_read) = match decode_varint(&buf[pos..]) {
+				Some(value) => value,
+				None => break,
+			};
+			pos += bytes_read;
 
-	while pos < buf.len() {
-		// Parse varint field tag
-		let (tag, bytes_read) = match decode_varint(&buf[pos..]) {
-			Some(v) => v,
-			None => break,
-		};
-		pos += bytes_read;
-
-		let wire_type = (tag & 0x07) as u8;
-
-		match wire_type {
-			// Varint
-			0 => {
-				// Skip varint value
-				match decode_varint(&buf[pos..]) {
-					Some((_, n)) => pos += n,
+			match (tag & 0x07) as u8 {
+				0 => match decode_varint(&buf[pos..]) {
+					Some((_, bytes_read)) => pos += bytes_read,
 					None => break,
-				}
-			}
-			// 64-bit
-			1 => {
-				pos += 8;
-				if pos > buf.len() {
-					break;
-				}
-			}
-			// Length-delimited (could be a sub-message, string, or bytes)
-			2 => {
-				let (length, bytes_read) = match decode_varint(&buf[pos..]) {
-					Some(v) => v,
+				},
+				1 => match pos.checked_add(8).filter(|end| *end <= buf.len()) {
+					Some(end) => pos = end,
 					None => break,
-				};
-				pos += bytes_read;
+				},
+				2 => {
+					let (length, bytes_read) = match decode_varint(&buf[pos..]) {
+						Some(value) => value,
+						None => break,
+					};
+					pos += bytes_read;
+					let end = match usize::try_from(length)
+						.ok()
+						.and_then(|length| pos.checked_add(length))
+						.filter(|end| *end <= buf.len())
+					{
+						Some(end) => end,
+						None => break,
+					};
 
-				// The declared length is attacker-controlled and may reach
-				// `u64::MAX`, so convert and add with checked arithmetic. Stop
-				// scanning when it does not fit; prost reports the malformed
-				// field as a `DecodeError`.
-				let Some(sub_buf) = usize::try_from(length)
-					.ok()
-					.and_then(|length| buf.get(pos..pos.checked_add(length)?))
-				else {
-					break;
-				};
-
-				// Try to measure sub-message depth
-				let sub_depth = measure_depth_recursive(sub_buf, current_depth + 1);
-				if sub_depth > max_depth {
-					max_depth = sub_depth;
-				}
-
-				pos += sub_buf.len();
-			}
-			// Start group (deprecated)
-			3 => {
-				// Skip to end group
-				break;
-			}
-			// End group (deprecated)
-			4 => break,
-			// 32-bit
-			5 => {
-				pos += 4;
-				if pos > buf.len() {
+					let child_depth = depth.saturating_add(1);
+					max_depth = max_depth.max(child_depth);
+					if max_depth > max_allowed_depth {
+						return max_depth;
+					}
+					pending.push((buf, end, depth));
+					pending.push((&buf[pos..end], 0, child_depth));
 					break;
 				}
+				3 | 4 => break,
+				5 => match pos.checked_add(4).filter(|end| *end <= buf.len()) {
+					Some(end) => pos = end,
+					None => break,
+				},
+				_ => break,
 			}
-			// Unknown wire type
-			_ => break,
 		}
 	}
 
@@ -374,10 +346,42 @@ mod tests {
 		let buf: &[u8] = &[];
 
 		// Act
-		let depth = measure_wire_depth(buf);
+		let depth = measure_wire_depth(buf, DEFAULT_MAX_NESTING_DEPTH);
 
 		// Assert
 		assert_eq!(depth, 0);
+	}
+
+	#[rstest]
+	fn deeply_nested_unknown_fields_stop_at_configured_limit() {
+		let decoder = DepthLimitedDecoder::new(32);
+		let mut encoded = vec![0x08, 0x01];
+		for _ in 0..2_048 {
+			let mut wrapper = vec![0x0a];
+			prost::encoding::encode_varint(encoded.len() as u64, &mut wrapper);
+			wrapper.extend_from_slice(&encoded);
+			encoded = wrapper;
+		}
+
+		assert!(matches!(
+			decoder.decode::<crate::proto::common::Empty>(&encoded),
+			Err(DepthLimitError::ExceededMaxDepth {
+				depth: 33,
+				limit: 32
+			})
+		));
+	}
+
+	#[rstest]
+	fn oversized_length_returns_decode_error_without_panicking() {
+		let decoder = DepthLimitedDecoder::default();
+		let mut encoded = vec![0x0a];
+		prost::encoding::encode_varint(u64::MAX, &mut encoded);
+
+		assert!(matches!(
+			decoder.decode::<crate::proto::common::Empty>(&encoded),
+			Err(DepthLimitError::DecodeError(_))
+		));
 	}
 
 	#[rstest]
@@ -416,7 +420,7 @@ mod tests {
 		];
 
 		// Act
-		let depth = measure_wire_depth(buf);
+		let depth = measure_wire_depth(buf, DEFAULT_MAX_NESTING_DEPTH);
 		let result = decoder.decode::<crate::proto::common::Empty>(buf);
 
 		// Assert

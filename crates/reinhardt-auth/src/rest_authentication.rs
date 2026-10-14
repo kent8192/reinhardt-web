@@ -447,6 +447,8 @@ pub struct SessionAuthentication<B: SessionBackend> {
 	config: SessionAuthConfig,
 	/// Session backend for loading session data
 	session_backend: B,
+	/// Token configuration shared with the issuing CSRF middleware.
+	csrf_config: reinhardt_core::security::csrf::CsrfConfig,
 }
 
 impl<B: SessionBackend> SessionAuthentication<B> {
@@ -455,6 +457,7 @@ impl<B: SessionBackend> SessionAuthentication<B> {
 		Self {
 			config: SessionAuthConfig::default(),
 			session_backend,
+			csrf_config: reinhardt_core::security::csrf::CsrfConfig::default(),
 		}
 	}
 
@@ -463,7 +466,38 @@ impl<B: SessionBackend> SessionAuthentication<B> {
 		Self {
 			config,
 			session_backend,
+			csrf_config: reinhardt_core::security::csrf::CsrfConfig::default(),
 		}
+	}
+
+	/// Use the same CSRF token header configuration as the issuing middleware.
+	///
+	/// This is a native-only (P0) session authentication configuration.
+	pub fn with_csrf_config(mut self, config: reinhardt_core::security::csrf::CsrfConfig) -> Self {
+		self.csrf_config = config;
+		self
+	}
+
+	fn check_csrf(&self, request: &Request, session_key: &str) -> Result<(), AuthenticationError> {
+		if !self.config.enforce_csrf
+			|| matches!(
+				request.method.as_str(),
+				"GET" | "HEAD" | "OPTIONS" | "TRACE"
+			) {
+			return Ok(());
+		}
+
+		let token = request
+			.headers
+			.get(self.csrf_config.header_name.as_str())
+			.and_then(|value| value.to_str().ok())
+			.ok_or(AuthenticationError::InvalidToken)?;
+		let mut hasher = Sha256::new();
+		hasher.update(b"csrf_secret");
+		hasher.update(session_key.as_bytes());
+		let secret = hasher.finalize();
+		reinhardt_core::security::csrf::check_token_hmac(token, &secret, session_key)
+			.map_err(|_| AuthenticationError::InvalidToken)
 	}
 }
 
@@ -545,6 +579,9 @@ impl<B: SessionBackend> RestAuthentication for SessionAuthentication<B> {
 						is_superuser,
 					};
 
+					// CSRF applies only when this backend adopts an authenticated session.
+					self.check_csrf(request, session_key)?;
+
 					return Ok(Some(Box::new(user)));
 				}
 			}
@@ -585,6 +622,65 @@ mod tests {
 	use hyper::{HeaderMap, Method};
 	use rstest::rstest;
 	use std::sync::Mutex;
+
+	#[rstest]
+	#[case(true, None, false)]
+	#[case(true, Some("invalid"), false)]
+	#[case(true, Some("valid"), true)]
+	#[case(false, None, true)]
+	#[tokio::test]
+	async fn session_authentication_enforces_csrf_on_post(
+		#[case] enforce_csrf: bool,
+		#[case] supplied_token: Option<&str>,
+		#[case] expected_authenticated: bool,
+	) {
+		use crate::sessions::InMemorySessionBackend;
+
+		let backend = InMemorySessionBackend::new();
+		let mut session = Session::new(backend.clone());
+		session
+			.set("_auth_user_id", "550e8400-e29b-41d4-a716-446655440000")
+			.unwrap();
+		session.save().await.unwrap();
+		let session_key = session.get_or_create_key().to_string();
+		let auth = SessionAuthentication::with_config(
+			SessionAuthConfig {
+				cookie_name: "sessionid".into(),
+				enforce_csrf,
+			},
+			backend,
+		);
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			"Cookie",
+			format!("sessionid={session_key}").parse().unwrap(),
+		);
+		if let Some(supplied_token) = supplied_token {
+			let token = if supplied_token == "valid" {
+				let mut hasher = Sha256::new();
+				hasher.update(b"csrf_secret");
+				hasher.update(session_key.as_bytes());
+				reinhardt_core::security::csrf::get_token_hmac(&hasher.finalize(), &session_key)
+			} else {
+				supplied_token.to_string()
+			};
+			headers.insert("X-CSRFToken", token.parse().unwrap());
+		}
+		let request = Request::builder()
+			.method(Method::POST)
+			.uri("/")
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		let result = RestAuthentication::authenticate(&auth, &request).await;
+		if expected_authenticated {
+			assert!(result.unwrap().is_some());
+		} else {
+			assert!(matches!(result, Err(AuthenticationError::InvalidToken)));
+		}
+	}
 
 	#[tokio::test]
 	#[cfg(feature = "jwt")]
@@ -663,6 +759,43 @@ mod tests {
 		assert!(user.is_authenticated());
 		let expected_id = uuid::Uuid::new_v5(&crate::USER_ID_NAMESPACE, b"bob").to_string();
 		assert_eq!(user.id(), expected_id);
+	}
+
+	#[rstest]
+	#[case(false)]
+	#[case(true)]
+	#[tokio::test]
+	async fn anonymous_or_expired_session_cookie_does_not_require_csrf(#[case] expired: bool) {
+		// Arrange: an anonymous session, or a previously authenticated deleted session.
+		use crate::sessions::InMemorySessionBackend;
+		let backend = InMemorySessionBackend::new();
+		let mut session = Session::new(backend.clone());
+		if expired {
+			session
+				.set("_auth_user_id", "550e8400-e29b-41d4-a716-446655440000")
+				.unwrap();
+		} else {
+			session.set("login_nonce", "anonymous").unwrap();
+		}
+		session.save().await.unwrap();
+		let key = session.get_or_create_key().to_string();
+		if expired {
+			backend.delete(&key).await.unwrap();
+		}
+		let auth = SessionAuthentication::new(backend);
+		let request = Request::builder()
+			.method(Method::POST)
+			.uri("/login")
+			.header("Cookie", format!("sessionid={key}"))
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act: an unsafe anonymous request has no CSRF header.
+		let result = RestAuthentication::authenticate(&auth, &request).await;
+
+		// Assert: this backend declines authentication without masking fallback paths.
+		assert!(result.unwrap().is_none());
 	}
 
 	#[tokio::test]
