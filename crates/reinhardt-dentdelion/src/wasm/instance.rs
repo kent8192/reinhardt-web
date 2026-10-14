@@ -142,13 +142,18 @@ impl WasmPluginInstance {
 
 	/// Call the plugin's on_load function.
 	async fn call_on_load(&self, config: &[u8]) -> PluginResult<()> {
-		use crate::wasm::runtime::DentdelionPlugin;
+		self.runtime
+			.with_execution_timeout(async {
+				use crate::wasm::runtime::DentdelionPlugin;
 
-		let mut store = self.create_store();
+				let mut store = self.create_store();
 
-		// Instantiate the WASM component
-		let plugin =
-			DentdelionPlugin::instantiate_async(&mut store, &self.component, self.runtime.linker())
+				// Instantiate the WASM component
+				let plugin = DentdelionPlugin::instantiate_async(
+					&mut store,
+					&self.component,
+					self.runtime.linker(),
+				)
 				.await
 				.map_err(|e| {
 					PluginError::WasmExecutionError(format!(
@@ -157,35 +162,42 @@ impl WasmPluginInstance {
 					))
 				})?;
 
-		// Call the on_load exported function
-		plugin
-			.reinhardt_dentdelion_plugin()
-			.call_on_load(&mut store, config)
-			.await
-			.map_err(|e| {
-				PluginError::WasmExecutionError(format!(
-					"WASM trap in on_load for {}: {}",
-					self.name, e
-				))
-			})?
-			.map_err(|e| PluginError::LifecycleError {
-				plugin: self.name.clone(),
-				phase: "on_load".to_string(),
-				message: format!("[{}] {}", e.code, e.message),
-			})?;
+				// Call the on_load exported function
+				plugin
+					.reinhardt_dentdelion_plugin()
+					.call_on_load(&mut store, config)
+					.await
+					.map_err(|e| {
+						PluginError::WasmExecutionError(format!(
+							"WASM trap in on_load for {}: {}",
+							self.name, e
+						))
+					})?
+					.map_err(|e| PluginError::LifecycleError {
+						plugin: self.name.clone(),
+						phase: "on_load".to_string(),
+						message: format!("[{}] {}", e.code, e.message),
+					})?;
 
-		tracing::info!("Successfully called on_load for plugin: {}", self.name);
-		Ok(())
+				tracing::info!("Successfully called on_load for plugin: {}", self.name);
+				Ok(())
+			})
+			.await
 	}
 
 	/// Call the plugin's on_enable function.
 	async fn call_on_enable(&self) -> PluginResult<()> {
-		use crate::wasm::runtime::DentdelionPlugin;
+		self.runtime
+			.with_execution_timeout(async {
+				use crate::wasm::runtime::DentdelionPlugin;
 
-		let mut store = self.create_store();
+				let mut store = self.create_store();
 
-		let plugin =
-			DentdelionPlugin::instantiate_async(&mut store, &self.component, self.runtime.linker())
+				let plugin = DentdelionPlugin::instantiate_async(
+					&mut store,
+					&self.component,
+					self.runtime.linker(),
+				)
 				.await
 				.map_err(|e| {
 					PluginError::WasmExecutionError(format!(
@@ -194,34 +206,41 @@ impl WasmPluginInstance {
 					))
 				})?;
 
-		plugin
-			.reinhardt_dentdelion_plugin()
-			.call_on_enable(&mut store)
-			.await
-			.map_err(|e| {
-				PluginError::WasmExecutionError(format!(
-					"WASM trap in on_enable for {}: {}",
-					self.name, e
-				))
-			})?
-			.map_err(|e| PluginError::LifecycleError {
-				plugin: self.name.clone(),
-				phase: "on_enable".to_string(),
-				message: format!("[{}] {}", e.code, e.message),
-			})?;
+				plugin
+					.reinhardt_dentdelion_plugin()
+					.call_on_enable(&mut store)
+					.await
+					.map_err(|e| {
+						PluginError::WasmExecutionError(format!(
+							"WASM trap in on_enable for {}: {}",
+							self.name, e
+						))
+					})?
+					.map_err(|e| PluginError::LifecycleError {
+						plugin: self.name.clone(),
+						phase: "on_enable".to_string(),
+						message: format!("[{}] {}", e.code, e.message),
+					})?;
 
-		tracing::info!("Successfully called on_enable for plugin: {}", self.name);
-		Ok(())
+				tracing::info!("Successfully called on_enable for plugin: {}", self.name);
+				Ok(())
+			})
+			.await
 	}
 
 	/// Call the plugin's on_disable function.
 	async fn call_on_disable(&self) -> PluginResult<()> {
-		use crate::wasm::runtime::DentdelionPlugin;
+		self.runtime
+			.with_execution_timeout(async {
+				use crate::wasm::runtime::DentdelionPlugin;
 
-		let mut store = self.create_store();
+				let mut store = self.create_store();
 
-		let plugin =
-			DentdelionPlugin::instantiate_async(&mut store, &self.component, self.runtime.linker())
+				let plugin = DentdelionPlugin::instantiate_async(
+					&mut store,
+					&self.component,
+					self.runtime.linker(),
+				)
 				.await
 				.map_err(|e| {
 					PluginError::WasmExecutionError(format!(
@@ -230,34 +249,41 @@ impl WasmPluginInstance {
 					))
 				})?;
 
-		plugin
-			.reinhardt_dentdelion_plugin()
-			.call_on_disable(&mut store)
-			.await
-			.map_err(|e| {
-				PluginError::WasmExecutionError(format!(
-					"WASM trap in on_disable for {}: {}",
-					self.name, e
-				))
-			})?
-			.map_err(|e| PluginError::LifecycleError {
-				plugin: self.name.clone(),
-				phase: "on_disable".to_string(),
-				message: format!("[{}] {}", e.code, e.message),
-			})?;
+				plugin
+					.reinhardt_dentdelion_plugin()
+					.call_on_disable(&mut store)
+					.await
+					.map_err(|e| {
+						PluginError::WasmExecutionError(format!(
+							"WASM trap in on_disable for {}: {}",
+							self.name, e
+						))
+					})?
+					.map_err(|e| PluginError::LifecycleError {
+						plugin: self.name.clone(),
+						phase: "on_disable".to_string(),
+						message: format!("[{}] {}", e.code, e.message),
+					})?;
 
-		tracing::info!("Successfully called on_disable for plugin: {}", self.name);
-		Ok(())
+				tracing::info!("Successfully called on_disable for plugin: {}", self.name);
+				Ok(())
+			})
+			.await
 	}
 
 	/// Call the plugin's on_unload function.
 	async fn call_on_unload(&self) -> PluginResult<()> {
-		use crate::wasm::runtime::DentdelionPlugin;
+		self.runtime
+			.with_execution_timeout(async {
+				use crate::wasm::runtime::DentdelionPlugin;
 
-		let mut store = self.create_store();
+				let mut store = self.create_store();
 
-		let plugin =
-			DentdelionPlugin::instantiate_async(&mut store, &self.component, self.runtime.linker())
+				let plugin = DentdelionPlugin::instantiate_async(
+					&mut store,
+					&self.component,
+					self.runtime.linker(),
+				)
 				.await
 				.map_err(|e| {
 					PluginError::WasmExecutionError(format!(
@@ -266,24 +292,26 @@ impl WasmPluginInstance {
 					))
 				})?;
 
-		plugin
-			.reinhardt_dentdelion_plugin()
-			.call_on_unload(&mut store)
-			.await
-			.map_err(|e| {
-				PluginError::WasmExecutionError(format!(
-					"WASM trap in on_unload for {}: {}",
-					self.name, e
-				))
-			})?
-			.map_err(|e| PluginError::LifecycleError {
-				plugin: self.name.clone(),
-				phase: "on_unload".to_string(),
-				message: format!("[{}] {}", e.code, e.message),
-			})?;
+				plugin
+					.reinhardt_dentdelion_plugin()
+					.call_on_unload(&mut store)
+					.await
+					.map_err(|e| {
+						PluginError::WasmExecutionError(format!(
+							"WASM trap in on_unload for {}: {}",
+							self.name, e
+						))
+					})?
+					.map_err(|e| PluginError::LifecycleError {
+						plugin: self.name.clone(),
+						phase: "on_unload".to_string(),
+						message: format!("[{}] {}", e.code, e.message),
+					})?;
 
-		tracing::info!("Successfully called on_unload for plugin: {}", self.name);
-		Ok(())
+				tracing::info!("Successfully called on_unload for plugin: {}", self.name);
+				Ok(())
+			})
+			.await
 	}
 }
 

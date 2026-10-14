@@ -224,7 +224,7 @@ impl SqliteQueryBuilder {
 				self.write_simple_expr(writer, expr);
 			}
 			SimpleExpr::FunctionCall(func_name, args) => {
-				writer.push(&func_name.to_string());
+				writer.push(&super::safe_function_name(func_name, '"'));
 				writer.push("(");
 				writer.push_list(args, ", ", |w, arg| {
 					self.write_simple_expr(w, arg);

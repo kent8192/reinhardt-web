@@ -34,9 +34,8 @@ impl UserInfoClient {
 		userinfo_endpoint: &str,
 		access_token: &str,
 	) -> Result<StandardClaims, SocialAuthError> {
-		let response = self
-			.client
-			.client()
+		let client = self.client.for_endpoint(userinfo_endpoint).await?;
+		let response = client
 			.get(userinfo_endpoint)
 			.header("User-Agent", "reinhardt-auth")
 			.bearer_auth(access_token)

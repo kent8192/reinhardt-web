@@ -226,13 +226,11 @@ impl<S: SessionStore + 'static, A: AuthBackend + 'static> Middleware
 				None
 			};
 
-		let (user_id, is_authenticated, is_admin, is_active) = if let Some(ref user) = user {
-			(
-				user.id(),
-				user.is_authenticated(),
-				user.is_admin(),
-				user.is_account_active(),
-			)
+		let (user_id, is_authenticated, is_admin, is_active) = if let Some(ref user) = user
+			&& user.is_authenticated()
+			&& user.is_account_active()
+		{
+			(user.id(), true, user.is_admin(), true)
 		} else {
 			(String::new(), false, false, false)
 		};
@@ -385,7 +383,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_auth_middleware_preserves_inactive_session_user() {
+	async fn test_auth_middleware_rejects_inactive_session_user() {
 		let session_store = Arc::new(InMemorySessionStore::new());
 		let user = TestUser {
 			id: Uuid::now_v7(),
@@ -417,7 +415,8 @@ mod tests {
 
 		let response = middleware.process(request, handler).await.unwrap();
 		let body: serde_json::Value = serde_json::from_slice(response.body.as_ref()).unwrap();
-		assert_eq!(body["is_authenticated"], true);
+		assert_eq!(body["user_id"], "");
+		assert_eq!(body["is_authenticated"], false);
 		assert_eq!(body["is_active"], false);
 	}
 

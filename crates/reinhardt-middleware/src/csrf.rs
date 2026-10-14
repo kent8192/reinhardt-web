@@ -83,6 +83,7 @@ impl CsrfMiddlewareConfig {
 /// CSRF protection middleware
 pub struct CsrfMiddleware {
 	config: CsrfMiddlewareConfig,
+	session_cookie_name: String,
 	/// Shared CSRF secret for testing
 	test_secret: Option<String>,
 }
@@ -94,7 +95,10 @@ impl CsrfMiddleware {
 	/// 1. Session ID from extensions (set by session middleware)
 	/// 2. Session cookie
 	/// 3. Generated from request metadata
-	fn get_session_id(request: &Request) -> String {
+	fn get_session_id(&self, request: &Request) -> String {
+		if let Some(session_id) = request.extensions.get::<crate::session::SessionId>() {
+			return session_id.as_ref().to_string();
+		}
 		// Try to get session ID from extensions (set by session middleware)
 		if let Some(session_id) = request.extensions.get::<String>() {
 			return session_id.to_owned();
@@ -106,7 +110,14 @@ impl CsrfMiddleware {
 		{
 			for cookie in cookie_str.split(';') {
 				let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
-				if parts.len() == 2 && parts[0] == "sessionid" {
+				let cookie_name = request
+					.extensions
+					.get::<crate::session::SessionCookieName>();
+				let cookie_name = cookie_name
+					.as_ref()
+					.map(|name| name.as_str())
+					.unwrap_or(&self.session_cookie_name);
+				if parts.len() == 2 && parts[0] == cookie_name {
 					return parts[1].to_string();
 				}
 			}
@@ -162,6 +173,7 @@ impl CsrfMiddleware {
 	pub fn new() -> Self {
 		Self {
 			config: CsrfMiddlewareConfig::default(),
+			session_cookie_name: "sessionid".into(),
 			test_secret: None,
 		}
 	}
@@ -170,6 +182,7 @@ impl CsrfMiddleware {
 	pub fn with_config(config: CsrfMiddlewareConfig) -> Self {
 		Self {
 			config,
+			session_cookie_name: "sessionid".into(),
 			test_secret: None,
 		}
 	}
@@ -178,8 +191,18 @@ impl CsrfMiddleware {
 	pub fn with_test_secret(secret: String) -> Self {
 		Self {
 			config: CsrfMiddlewareConfig::default(),
+			session_cookie_name: "sessionid".into(),
 			test_secret: Some(secret),
 		}
+	}
+
+	/// Set the session cookie used for HMAC token issuance and validation.
+	///
+	/// Match the cookie name in `SessionAuthConfig`. Typed session extensions
+	/// from session middleware take precedence. This method is native-only (P0).
+	pub fn with_session_cookie_name(mut self, name: impl Into<String>) -> Self {
+		self.session_cookie_name = name.into();
+		self
 	}
 
 	/// Extract CSRF token from request
@@ -219,21 +242,23 @@ impl CsrfMiddleware {
 	///
 	/// Returns (secret_bytes, is_new)
 	fn get_or_create_secret(&self, request: &Request) -> (Vec<u8>, bool) {
+		let session_id = self.get_session_id(request);
+		(self.secret_for_session(&session_id), false)
+	}
+
+	/// Derive the HMAC secret bound to `session_id`
+	fn secret_for_session(&self, session_id: &str) -> Vec<u8> {
 		// Use test secret if available
 		if let Some(ref secret) = self.test_secret {
-			return (secret.as_bytes().to_vec(), false);
+			return secret.as_bytes().to_vec();
 		}
 
 		// For HMAC-based CSRF, we generate a secret based on session_id
 		// This ensures consistency across requests from the same session
-		let session_id = Self::get_session_id(request);
 		let mut hasher = Sha256::new();
 		hasher.update(b"csrf_secret");
 		hasher.update(session_id.as_bytes());
-		let secret_hash = hasher.finalize();
-
-		// Convert to Vec<u8>
-		(secret_hash.to_vec(), false)
+		hasher.finalize().to_vec()
 	}
 
 	/// Build Set-Cookie header
@@ -290,7 +315,7 @@ impl CsrfMiddleware {
 
 		// Get secret and session_id
 		let (secret, _) = self.get_or_create_secret(request);
-		let session_id = Self::get_session_id(request);
+		let session_id = self.get_session_id(request);
 
 		// Validate token using HMAC
 		check_token(&token, &secret, &session_id).map_err(|e| {
@@ -327,9 +352,6 @@ impl Middleware for CsrfMiddleware {
 			return handler.handle(request).await;
 		}
 
-		// Get or create CSRF secret
-		let (secret, _is_new) = self.get_or_create_secret(&request);
-
 		// Safe methods (GET, HEAD, OPTIONS, TRACE) don't require CSRF validation
 		let is_safe_method = matches!(
 			request.method,
@@ -341,9 +363,11 @@ impl Middleware for CsrfMiddleware {
 			self.validate_csrf(&request)?;
 		}
 
-		// Generate HMAC-based token using session_id (before moving request)
-		let session_id = Self::get_session_id(&request);
-		let token = get_token(&secret, &session_id);
+		// Capture the session ID before moving the request. Handlers may rotate
+		// it via `SessionData::regenerate_id` (e.g., on login), so keep the
+		// shared holder to read the ID the session middleware will set.
+		let session_id = self.get_session_id(&request);
+		let active_session_id = request.extensions.get::<crate::session::ActiveSessionId>();
 
 		// Process request
 		// Convert errors to responses so post-processing (e.g., security headers)
@@ -352,6 +376,11 @@ impl Middleware for CsrfMiddleware {
 			Ok(resp) => resp,
 			Err(e) => Response::from(e),
 		};
+
+		// Bind the issued token to the final session ID so it stays valid for
+		// the session cookie returned alongside this response.
+		let session_id = active_session_id.map_or(session_id, |id| id.get());
+		let token = get_token(&self.secret_for_session(&session_id), &session_id);
 		let cookie_header = self.build_set_cookie_header(&token);
 		match cookie_header.parse() {
 			Ok(value) => {
@@ -848,7 +877,7 @@ mod tests {
 			.unwrap();
 
 		// Act
-		let session_id = CsrfMiddleware::get_session_id(&request);
+		let session_id = CsrfMiddleware::new().get_session_id(&request);
 
 		// Assert - should be 64 hex chars (32 bytes encoded)
 		assert_eq!(
@@ -888,8 +917,8 @@ mod tests {
 			.unwrap();
 
 		// Act
-		let session_id1 = CsrfMiddleware::get_session_id(&request1);
-		let session_id2 = CsrfMiddleware::get_session_id(&request2);
+		let session_id1 = CsrfMiddleware::new().get_session_id(&request1);
+		let session_id2 = CsrfMiddleware::new().get_session_id(&request2);
 
 		// Assert - two calls should produce different values since they use CSPRNG
 		assert_ne!(

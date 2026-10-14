@@ -7,6 +7,7 @@ use crate::types::{AdminError, AdminResult};
 use async_trait::async_trait;
 use reinhardt_core::macros::injectable;
 use reinhardt_db::migrations::FieldType as DbFieldType;
+use reinhardt_db::orm::connection::QueryRow;
 use reinhardt_db::orm::execution::convert_values;
 use reinhardt_db::orm::{
 	DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue, Model,
@@ -724,6 +725,74 @@ pub struct AdminDatabase {
 pub struct AdminDatabaseKey;
 
 impl AdminDatabase {
+	// Scoped statements must retain native bind types. Unscoped statements keep
+	// the existing compatibility execution path for custom legacy backends.
+	async fn query_rows(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		scoped: bool,
+	) -> AdminResult<Vec<QueryRow>> {
+		if scoped {
+			self.connection
+				.inner()
+				.backend()
+				.__fetch_all_generated(sql, values)
+				.await
+				.map(|rows| rows.into_iter().map(QueryRow::from_backend_row).collect())
+				.map_err(|error| AdminError::DatabaseError(error.to_string()))
+		} else {
+			self.connection
+				.query(sql, convert_values(values))
+				.await
+				.map_err(|error| AdminError::DatabaseError(error.to_string()))
+		}
+	}
+
+	async fn query_row(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		scoped: bool,
+	) -> AdminResult<QueryRow> {
+		if scoped {
+			self.connection
+				.inner()
+				.backend()
+				.__fetch_one_generated(sql, values)
+				.await
+				.map(QueryRow::from_backend_row)
+				.map_err(|error| AdminError::DatabaseError(error.to_string()))
+		} else {
+			self.connection
+				.query_one(sql, convert_values(values))
+				.await
+				.map_err(|error| AdminError::DatabaseError(error.to_string()))
+		}
+	}
+
+	async fn execute_statement(
+		&self,
+		sql: &str,
+		values: reinhardt_query::Values,
+		scoped: bool,
+	) -> AdminResult<u64> {
+		if scoped {
+			self.connection
+				.inner()
+				.backend()
+				.__execute_generated(sql, values)
+				.await
+				.map(|result| result.rows_affected)
+				.map_err(|error| AdminError::DatabaseError(error.to_string()))
+		} else {
+			self.connection
+				.execute(sql, convert_values(values))
+				.await
+				.map_err(|error| AdminError::DatabaseError(error.to_string()))
+		}
+	}
+
 	/// Create a new admin database interface
 	///
 	/// This method accepts a DatabaseConnection directly without requiring `Arc` wrapping.
@@ -800,12 +869,7 @@ impl AdminDatabase {
 
 		// Execute query
 		let (sql, values) = query.build(PostgresQueryBuilder);
-		let params = convert_values(values);
-		let rows = self
-			.connection
-			.query(&sql, params)
-			.await
-			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+		let rows = self.query_rows(&sql, values, !filters.is_empty()).await?;
 
 		// Convert QueryRow to HashMap
 		Ok(rows
@@ -883,12 +947,7 @@ impl AdminDatabase {
 
 		// Execute query
 		let (sql, values) = query.build(PostgresQueryBuilder);
-		let params = convert_values(values);
-		let rows = self
-			.connection
-			.query(&sql, params)
-			.await
-			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+		let rows = self.query_rows(&sql, values, has_filter).await?;
 
 		// Convert QueryRow to HashMap
 		Ok(rows
@@ -958,12 +1017,7 @@ impl AdminDatabase {
 		query.limit(limit).offset(offset);
 
 		let (sql, values) = query.build(PostgresQueryBuilder);
-		let params = convert_values(values);
-		let rows = self
-			.connection
-			.query(&sql, params)
-			.await
-			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+		let rows = self.query_rows(&sql, values, has_filter).await?;
 
 		if rows.is_empty() {
 			if offset == 0 && limit > 0 {
@@ -1033,12 +1087,7 @@ impl AdminDatabase {
 		}
 
 		let (sql, values) = query.build(PostgresQueryBuilder);
-		let params = convert_values(values);
-		let row = self
-			.connection
-			.query_one(&sql, params)
-			.await
-			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+		let row = self.query_row(&sql, values, has_filter).await?;
 
 		// Extract count from result, propagating errors for unexpected formats
 		let count = extract_count_from_row(&row.data)?;
@@ -1095,12 +1144,20 @@ impl AdminDatabase {
 		}
 
 		let (sql, values) = query.build(PostgresQueryBuilder);
-		let params = convert_values(values);
-		let row = self
-			.connection
-			.query_optional(&sql, params)
-			.await
-			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+		let row = if filters.is_empty() {
+			self.connection
+				.query_optional(&sql, convert_values(values))
+				.await
+				.map_err(|e| AdminError::DatabaseError(e.to_string()))?
+		} else {
+			// The primary-key predicate matches at most one row. Fetching all rows
+			// keeps native bind types while distinguishing "no row" (`None`) from
+			// database failures, which must propagate.
+			self.query_rows(&sql, values, true)
+				.await?
+				.into_iter()
+				.next()
+		};
 
 		Ok(row.and_then(|r| {
 			// r.data is already a serde_json::Value, typically an Object
@@ -1142,6 +1199,18 @@ impl AdminDatabase {
 		pk_field: Option<&str>,
 		data: HashMap<String, serde_json::Value>,
 	) -> AdminResult<u64> {
+		self.create_with_scope(table_name, pk_field, data, &[])
+			.await
+	}
+
+	/// Persist already-authorized creation values using trusted scope types.
+	pub(crate) async fn create_with_scope(
+		&self,
+		table_name: &str,
+		pk_field: Option<&str>,
+		data: HashMap<String, serde_json::Value>,
+		filters: &[Filter],
+	) -> AdminResult<u64> {
 		let pk_field = pk_field.unwrap_or("id");
 		let mut query = Query::insert()
 			.into_table(Alias::new(table_name))
@@ -1161,7 +1230,14 @@ impl AdminDatabase {
 			let value = data.get(&key).cloned().unwrap_or(serde_json::Value::Null);
 			columns.push(Alias::new(&key));
 
-			let sea_value = json_to_sea_value(value);
+			let sea_value = filters
+				.iter()
+				.find(|filter| {
+					filter.source_field_name() == Some(key.as_str())
+						&& matches!(filter.operator, FilterOperator::Eq)
+				})
+				.map(|filter| filter_value_to_sea_value(&filter.value))
+				.unwrap_or_else(|| json_to_sea_value(value));
 			values.push(sea_value);
 		}
 
@@ -1174,12 +1250,7 @@ impl AdminDatabase {
 		query.returning([Alias::new(pk_field)]);
 
 		let (sql, values) = query.build(PostgresQueryBuilder);
-		let params = convert_values(values);
-		let row = self
-			.connection
-			.query_one(&sql, params)
-			.await
-			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+		let row = self.query_row(&sql, values, !filters.is_empty()).await?;
 
 		// Extract the ID from the returned row using the primary key field
 		match row.data.get(pk_field) {
@@ -1261,12 +1332,9 @@ impl AdminDatabase {
 		}
 
 		let (sql, values) = query.build(PostgresQueryBuilder);
-		let params = convert_values(values);
 		let affected = self
-			.connection
-			.execute(&sql, params)
-			.await
-			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+			.execute_statement(&sql, values, !filters.is_empty())
+			.await?;
 
 		Ok(affected)
 	}
@@ -1316,12 +1384,9 @@ impl AdminDatabase {
 		}
 
 		let (sql, values) = query.build(PostgresQueryBuilder);
-		let params = convert_values(values);
 		let affected = self
-			.connection
-			.execute(&sql, params)
-			.await
-			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+			.execute_statement(&sql, values, !filters.is_empty())
+			.await?;
 
 		Ok(affected)
 	}
@@ -1372,11 +1437,8 @@ impl AdminDatabase {
 			query.cond_where(condition);
 		}
 		let (sql, values) = query.build(PostgresQueryBuilder);
-		let params = convert_values(values);
-		self.connection
-			.execute(&sql, params)
+		self.execute_statement(&sql, values, !filters.is_empty())
 			.await
-			.map_err(|error| AdminError::DatabaseError(error.to_string()))
 	}
 
 	/// Delete multiple items by IDs without requiring Model type parameter
@@ -1464,12 +1526,7 @@ impl AdminDatabase {
 		}
 
 		let (sql, values) = query.build(PostgresQueryBuilder);
-		let params = convert_values(values);
-		let row = self
-			.connection
-			.query_one(&sql, params)
-			.await
-			.map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+		let row = self.query_row(&sql, values, !filters.is_empty()).await?;
 
 		// Extract count from result, propagating errors for unexpected formats
 		let count = extract_count_from_row(&row.data)?;

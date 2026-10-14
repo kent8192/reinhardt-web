@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Reject the non-global `192.88.99.2` relay anycast address for literal and DNS-resolved OAuth/OIDC destinations.
+
+- Bound OAuth endpoint DNS resolution by the connection deadline and include it in the request budget.
+
+- Reject non-global and overlay IPv6 assignments for OAuth requests while retaining routable special-purpose locator exceptions.
+
+- Decline anonymous and expired sessions before enforcing session-authentication CSRF checks.
+
+- Share custom CSRF headers with session authentication and configure token issuance for custom session cookies.
+
 ## [0.3.21](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.20...reinhardt-auth@v0.3.21) - 2026-10-05
 
 ### Changed

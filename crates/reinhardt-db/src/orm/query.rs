@@ -4344,8 +4344,8 @@ where
 
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					if field.contains('(') && field.contains(')') {
-						stmt.expr(Expr::cust(field.clone()));
+					if let Some(expr) = parse_projection_function(field) {
+						stmt.expr(expr);
 					} else {
 						stmt.column(parse_column_reference(field));
 					}
@@ -5710,10 +5710,8 @@ where
 			// Column selection considering selected_fields and deferred_fields
 			if let Some(ref fields) = self.selected_fields {
 				for field in fields {
-					// Detect raw SQL expressions (like COUNT(*), AVG(price), etc.)
-					if field.contains('(') && field.contains(')') {
-						// Use expr() for raw SQL expressions - clone to satisfy lifetime
-						stmt.expr(Expr::cust(field.clone()));
+					if let Some(expr) = parse_projection_function(field) {
+						stmt.expr(expr);
 					} else {
 						// Regular column reference
 						let col_ref = parse_column_reference(field);
@@ -6705,17 +6703,11 @@ fn filter_lhs_sql(filter: &Filter) -> String {
 /// Note: For reinhardt-query v1.0.0-rc.29+, we use the full qualified name as a column identifier.
 /// This works for most databases that support qualified column references.
 ///
-/// This function also detects raw SQL expressions (containing parentheses, like `COUNT(*)`,
-/// `AVG(price)`) and returns them wrapped in `Expr::cust()` instead of as column references.
+/// Computed projections are handled by [`parse_projection_function`].
 pub(crate) fn parse_column_reference(field: &str) -> reinhardt_query::prelude::ColumnRef {
 	use reinhardt_query::prelude::ColumnRef;
 
-	// Detect raw SQL expressions by checking for parentheses
-	// Examples: COUNT(*), AVG(price), SUM(amount), MAX(value)
-	if field.contains('(') && field.contains(')') {
-		// Use column reference with raw expression name
-		ColumnRef::column(Alias::new(field))
-	} else if field.contains('.') {
+	if field.contains('.') {
 		// Qualified column reference (table.column format)
 		let parts: Vec<&str> = field.split('.').collect();
 		match parts.as_slice() {
@@ -6739,6 +6731,37 @@ pub(crate) fn parse_column_reference(field: &str) -> reinhardt_query::prelude::C
 	} else {
 		// Simple column reference
 		ColumnRef::column(Alias::new(field))
+	}
+}
+
+/// Recognize the supported aggregate syntax without treating projection text as SQL.
+fn parse_projection_function(field: &str) -> Option<SimpleExpr> {
+	let (function, argument) = field.strip_suffix(')')?.split_once('(')?;
+	let argument = argument.trim();
+	let operand = if function.eq_ignore_ascii_case("COUNT") && argument == "*" {
+		Expr::asterisk().into_simple_expr()
+	} else if argument.split('.').all(|part| {
+		let mut chars = part.chars();
+		matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+			&& chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+	}) {
+		Expr::col(parse_column_reference(argument)).into_simple_expr()
+	} else {
+		return None;
+	};
+
+	if function.eq_ignore_ascii_case("COUNT") {
+		Some(Func::count(operand))
+	} else if function.eq_ignore_ascii_case("SUM") {
+		Some(Func::sum(operand))
+	} else if function.eq_ignore_ascii_case("AVG") {
+		Some(Func::avg(operand))
+	} else if function.eq_ignore_ascii_case("MIN") {
+		Some(Func::min(operand))
+	} else if function.eq_ignore_ascii_case("MAX") {
+		Some(Func::max(operand))
+	} else {
+		None
 	}
 }
 
@@ -6838,6 +6861,21 @@ mod tests {
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
+
+	#[rstest]
+	fn projection_text_cannot_become_raw_sql() {
+		let payload = "COUNT(*), (SELECT secret FROM credentials)";
+		let sql = QuerySet::<TestUser>::new().values(&[payload]).to_sql();
+
+		assert!(sql.contains("\"COUNT(*), (SELECT secret FROM credentials)\""));
+		assert!(!sql.contains("SELECT COUNT(*), (SELECT secret FROM credentials)"));
+		assert!(
+			QuerySet::<TestUser>::new()
+				.values(&["COUNT(*)"])
+				.to_sql()
+				.contains("COUNT(*)")
+		);
+	}
 
 	#[test]
 	fn render_select_statement_uses_mysql_identifier_quoting() {

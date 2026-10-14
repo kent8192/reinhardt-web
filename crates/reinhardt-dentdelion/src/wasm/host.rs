@@ -32,7 +32,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use tokio::sync::Semaphore;
 
-use super::events::{Event, EventBus, SharedEventBus};
+use super::events::{Event, EventBus, EventEmitError, SharedEventBus};
 use super::models::{ModelRegistry, ModelSchema, SharedModelRegistry, SqlMigration};
 use super::ssr::{RenderOptions, RenderResult, SharedSsrProxy, SsrError, SsrProxy};
 use super::types::{ConfigValue, WitHttpResponse, WitPluginError};
@@ -49,10 +49,10 @@ const DEFAULT_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Default number of HTTP host calls one plugin may have in flight.
 const DEFAULT_HTTP_MAX_CONCURRENT_REQUESTS: usize = 4;
 
-/// Connection deadline of the shared default HTTP client.
+/// Connection deadline of the default plugin HTTP client factory.
 const DEFAULT_HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Read-idle deadline of the shared default HTTP client.
+/// Read-idle deadline of the default plugin HTTP client factory.
 const DEFAULT_HTTP_READ_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Shared default HTTP client reused across all `HostState` instances.
@@ -60,17 +60,7 @@ const DEFAULT_HTTP_READ_TIMEOUT: Duration = Duration::from_secs(15);
 /// Creating a `reqwest::Client` per `HostState` wastes connection pools and
 /// may lead to file descriptor exhaustion under high load. This shared client
 /// ensures connection pools are reused across all plugins.
-///
-/// The client carries connect and read-idle deadlines. The total deadline is
-/// enforced per call from [`HttpResourceLimits::request_timeout`], so it also
-/// applies to custom clients supplied through [`HostStateBuilder::http_client`].
-static DEFAULT_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
-	reqwest::Client::builder()
-		.connect_timeout(DEFAULT_HTTP_CONNECT_TIMEOUT)
-		.read_timeout(DEFAULT_HTTP_READ_TIMEOUT)
-		.build()
-		.expect("Failed to build default plugin HTTP client")
-});
+static DEFAULT_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 /// Resource limits applied to capability-authorized HTTP host calls.
 ///
@@ -188,12 +178,29 @@ fn response_body_too_large(limit: usize) -> WitPluginError {
 	)
 }
 
+type HttpClientFactory = Arc<dyn Fn() -> reqwest::ClientBuilder + Send + Sync>;
+
+/// Default factory for pinned plugin HTTP clients.
+///
+/// The clients carry connect and read-idle deadlines. The total deadline is
+/// enforced per call from [`HttpResourceLimits::request_timeout`], so it also
+/// applies to clients from a custom [`HostStateBuilder::http_client_factory`].
+fn default_http_client_factory() -> HttpClientFactory {
+	Arc::new(|| {
+		reqwest::Client::builder()
+			.connect_timeout(DEFAULT_HTTP_CONNECT_TIMEOUT)
+			.read_timeout(DEFAULT_HTTP_READ_TIMEOUT)
+	})
+}
+
 #[cfg(feature = "ts")]
 use super::ts_runtime::SharedTsRuntime;
 
 #[cfg(feature = "wasm")]
 use reinhardt_db::backends::connection::DatabaseConnection;
 
+#[cfg(feature = "wasm")]
+use super::runtime::StoreMemoryLimits;
 #[cfg(feature = "wasm")]
 use wasmtime::component::ResourceTable;
 #[cfg(feature = "wasm")]
@@ -205,12 +212,29 @@ use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 /// 1. Only allows `http://` and `https://` schemes
 /// 2. Resolves the hostname to an IP address
 /// 3. Rejects requests to private, loopback, and link-local IP addresses
-fn validate_url_for_ssrf(url: &str) -> Result<(), WitPluginError> {
-	use std::net::ToSocketAddrs;
+async fn validate_url_for_ssrf(url: &str) -> Result<Vec<std::net::SocketAddr>, WitPluginError> {
+	validate_url_for_ssrf_with_resolver(url, |domain, port| async move {
+		tokio::net::lookup_host((domain, port))
+			.await
+			.map(Iterator::collect)
+	})
+	.await
+}
 
+async fn validate_url_for_ssrf_with_resolver<R, F>(
+	url: &str,
+	resolver: R,
+) -> Result<Vec<std::net::SocketAddr>, WitPluginError>
+where
+	R: FnOnce(String, u16) -> F,
+	F: std::future::Future<Output = std::io::Result<Vec<std::net::SocketAddr>>>,
+{
 	// Parse the URL
 	let parsed = url::Url::parse(url)
 		.map_err(|e| WitPluginError::with_details(400, "Invalid URL", e.to_string()))?;
+	if !parsed.username().is_empty() || parsed.password().is_some() {
+		return Err(WitPluginError::new(403, "URL userinfo is not allowed"));
+	}
 
 	// Validate scheme: only http and https are allowed
 	match parsed.scheme() {
@@ -228,19 +252,26 @@ fn validate_url_for_ssrf(url: &str) -> Result<(), WitPluginError> {
 
 	// Extract host
 	let host = parsed
-		.host_str()
+		.host()
 		.ok_or_else(|| WitPluginError::new(400, "URL must contain a host"))?;
 
 	// Determine port (default to 80 for http, 443 for https)
 	let port = parsed.port_or_known_default().unwrap_or(80);
 
 	// Resolve hostname to IP addresses for DNS rebinding protection
-	let socket_addrs: Vec<_> = format!("{}:{}", host, port)
-		.to_socket_addrs()
+	let socket_addrs: Vec<_> = match host {
+		url::Host::Domain(domain) => tokio::time::timeout(
+			std::time::Duration::from_secs(30),
+			resolver(domain.to_owned(), port),
+		)
+		.await
+		.map_err(|_| WitPluginError::new(408, "DNS resolution timed out"))?
 		.map_err(|e| {
 			WitPluginError::with_details(400, "Failed to resolve hostname", e.to_string())
-		})?
-		.collect();
+		})?,
+		url::Host::Ipv4(ip) => vec![std::net::SocketAddr::new(ip.into(), port)],
+		url::Host::Ipv6(ip) => vec![std::net::SocketAddr::new(ip.into(), port)],
+	};
 
 	if socket_addrs.is_empty() {
 		return Err(WitPluginError::new(
@@ -262,7 +293,38 @@ fn validate_url_for_ssrf(url: &str) -> Result<(), WitPluginError> {
 		}
 	}
 
-	Ok(())
+	Ok(socket_addrs)
+}
+
+/// Construct a one-request client pinned to addresses checked above.
+/// A fresh client avoids reusing a pooled connection resolved for another URL.
+async fn ssrf_safe_client(
+	url: &str,
+	factory: &HttpClientFactory,
+) -> Result<reqwest::Client, WitPluginError> {
+	let addrs = validate_url_for_ssrf(url).await?;
+	build_pinned_http_client(url, factory, &addrs)
+}
+
+fn build_pinned_http_client(
+	url: &str,
+	factory: &HttpClientFactory,
+	addrs: &[std::net::SocketAddr],
+) -> Result<reqwest::Client, WitPluginError> {
+	let parsed = url::Url::parse(url)
+		.map_err(|e| WitPluginError::with_details(400, "Invalid URL", e.to_string()))?;
+	// No client-level total timeout: `HostState::execute_http_request` bounds
+	// every call by `HttpResourceLimits::request_timeout`. A second timer of the
+	// same length would race it and could report the deadline as a 500.
+	let mut builder = factory()
+		.redirect(reqwest::redirect::Policy::none())
+		.no_proxy();
+	if let Some(url::Host::Domain(domain)) = parsed.host() {
+		builder = builder.resolve_to_addrs(domain, addrs);
+	}
+	builder
+		.build()
+		.map_err(|e| WitPluginError::with_details(500, "HTTP client failed", e.to_string()))
 }
 
 /// Check if an IP address is private, loopback, or link-local.
@@ -271,6 +333,12 @@ fn is_private_ip(ip: &std::net::IpAddr) -> bool {
 
 	match ip {
 		IpAddr::V4(ipv4) => {
+			let o = ipv4.octets();
+			// IANA's globally reachable PCP/TURN anycast /32s override the /24 parent.
+			// https://www.iana.org/assignments/iana-ipv4-special-registry
+			if matches!(o, [192, 0, 0, 9 | 10]) {
+				return false;
+			}
 			// 127.0.0.0/8 - Loopback
 			ipv4.is_loopback()
 			// 10.0.0.0/8 - Private
@@ -282,43 +350,49 @@ fn is_private_ip(ip: &std::net::IpAddr) -> bool {
 			// 169.254.0.0/16 - Link-local
 			|| (ipv4.octets()[0] == 169 && ipv4.octets()[1] == 254)
 			// 0.0.0.0/8 - Current network
-			|| ipv4.octets()[0] == 0
+			|| o[0] == 0
+			// Shared, reserved, documentation, benchmarking, and multicast ranges
+			|| (o[0] == 100 && (o[1] & 0xc0) == 64)
+			|| (o[0] == 192 && o[1] == 0 && matches!(o[2], 0 | 2))
+			// IANA marks the 6a44 relay anycast /32 as not globally reachable.
+			|| matches!(o, [192, 88, 99, 2])
+			|| (o[0] == 198 && (o[1] == 18 || o[1] == 19 || (o[1] == 51 && o[2] == 100)))
+			|| (o[0] == 203 && o[1] == 0 && o[2] == 113)
+			|| o[0] >= 224
 		}
-		IpAddr::V6(ipv6) => {
-			// ::1 - IPv6 loopback
-			ipv6.is_loopback()
-			// fc00::/7 - IPv6 unique local address (private)
-			|| (ipv6.segments()[0] & 0xfe00) == 0xfc00
-			// fe80::/10 - IPv6 link-local
-			|| (ipv6.segments()[0] & 0xffc0) == 0xfe80
-			// :: - IPv6 unspecified
-			|| ipv6.is_unspecified()
-			// ::ffff:0:0/96 - IPv4-mapped IPv6 (check the embedded IPv4)
-			|| is_ipv4_mapped_private(ipv6)
-		}
+		IpAddr::V6(ipv6) => !is_public_ipv6(ipv6),
 	}
 }
 
-/// Check if an IPv4-mapped IPv6 address contains a private IPv4 address.
-fn is_ipv4_mapped_private(ipv6: &std::net::Ipv6Addr) -> bool {
-	// Check for ::ffff:x.x.x.x pattern (IPv4-mapped IPv6)
-	let segments = ipv6.segments();
-	if segments[0] == 0
-		&& segments[1] == 0
-		&& segments[2] == 0
-		&& segments[3] == 0
-		&& segments[4] == 0
-		&& segments[5] == 0xffff
-	{
-		let ipv4 = std::net::Ipv4Addr::new(
-			(segments[6] >> 8) as u8,
-			(segments[6] & 0xff) as u8,
-			(segments[7] >> 8) as u8,
-			(segments[7] & 0xff) as u8,
-		);
-		return is_private_ip(&std::net::IpAddr::V4(ipv4));
+/// Global-unicast locators, excluding non-global and overlay identifier assignments.
+fn is_public_ipv6(ip: &std::net::Ipv6Addr) -> bool {
+	let segments = ip.segments();
+	// The NAT64 well-known prefix 64:ff9b::/96 is globally reachable (IANA) and
+	// DNS64 synthesizes it for public IPv4 hosts; judge the embedded IPv4
+	// address (RFC 6052 section 2.2) so private targets stay rejected. The
+	// local-use prefix 64:ff9b:1::/48 is not global and falls through below.
+	if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] {
+		let [.., a, b, c, d] = ip.octets();
+		return !is_private_ip(&std::net::IpAddr::V4(std::net::Ipv4Addr::new(a, b, c, d)));
 	}
-	false
+	if (segments[0] & 0xe000) != 0x2000
+		|| (segments[0] == 0x2001 && segments[1] == 0x0db8)
+		|| segments[0] == 0x2002
+		|| (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
+	{
+		return false;
+	}
+	// IANA 2001::/23 is non-global except more-specific assignments:
+	// https://www.iana.org/assignments/iana-ipv6-special-registry
+	if segments[0] == 0x2001 && (segments[1] & 0xfe00) == 0 {
+		// Keep actual anycast, AMT and AS112 locators. ORCHIDv2 and DETs have
+		// IANA Global=True, but are non-routable identifiers at the IPv6 layer
+		// (RFC 7343 section 1.2/3 and RFC 9374 section 1); HTTP uses locators.
+		return (segments[1] == 1 && segments[2..7] == [0; 5] && matches!(segments[7], 1..=3))
+			|| segments[1] == 3
+			|| (segments[1] == 4 && segments[2] == 0x0112);
+	}
+	true
 }
 
 /// Host state that is passed to WASM instances.
@@ -337,8 +411,9 @@ pub struct HostState {
 	typed_services: RwLock<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
 	/// Granted capabilities for this plugin
 	capabilities: HashSet<Capability>,
-	/// HTTP client for making external requests (optional)
+	/// Whether plugin HTTP requests are enabled; requests use a fresh pinned client.
 	http_client: Option<reqwest::Client>,
+	http_client_factory: Option<HttpClientFactory>,
 	/// Resource limits applied to HTTP host calls
 	http_limits: HttpResourceLimits,
 	/// In-flight HTTP call permits, shared with clones of this state
@@ -362,6 +437,12 @@ pub struct HostState {
 	/// Wrapped in Mutex to allow interior mutability while maintaining Sync
 	#[cfg(feature = "wasm")]
 	resource_table: parking_lot::Mutex<ResourceTable>,
+	/// Per-store memory/table limit, installed by `WasmRuntime::create_store`.
+	#[cfg(feature = "wasm")]
+	pub(super) store_limits: Option<StoreMemoryLimits>,
+	/// Absolute invocation deadline, including asynchronous host imports.
+	#[cfg(feature = "wasm")]
+	pub(super) execution_deadline: Option<std::time::Instant>,
 }
 
 impl HostState {
@@ -408,6 +489,7 @@ impl HostState {
 			typed_services: RwLock::new(HashMap::new()),
 			capabilities: HashSet::new(),
 			http_client: Some(DEFAULT_HTTP_CLIENT.clone()),
+			http_client_factory: Some(default_http_client_factory()),
 			http_permits: new_http_permits(&http_limits),
 			http_limits,
 			db_connection: None,
@@ -418,6 +500,10 @@ impl HostState {
 			wasi_ctx: parking_lot::Mutex::new(WasiCtxBuilder::new().build()),
 			#[cfg(feature = "wasm")]
 			resource_table: parking_lot::Mutex::new(ResourceTable::new()),
+			#[cfg(feature = "wasm")]
+			store_limits: None,
+			#[cfg(feature = "wasm")]
+			execution_deadline: None,
 		}
 	}
 
@@ -513,6 +599,16 @@ impl HostState {
 
 	// ===== HTTP Client API =====
 
+	async fn pinned_http_client(&self, url: &str) -> Result<reqwest::Client, WitPluginError> {
+		self.http_client
+			.as_ref()
+			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))?;
+		let factory = self.http_client_factory.as_ref().ok_or_else(|| {
+			WitPluginError::new(500, "A prebuilt HTTP client cannot be safely pinned; configure HostStateBuilder::http_client_factory instead")
+		})?;
+		ssrf_safe_client(url, factory).await
+	}
+
 	/// Check if HTTP access is allowed.
 	fn has_http_capability(&self) -> bool {
 		use crate::capability::PluginCapability;
@@ -536,7 +632,7 @@ impl HostState {
 		url: &str,
 		headers: &[(String, String)],
 	) -> Result<WitHttpResponse, WitPluginError> {
-		let client = self.authorize_http_call(url)?;
+		let client = self.authorize_http_call(url).await?;
 
 		let mut request = client.get(url);
 
@@ -560,9 +656,9 @@ impl HostState {
 		body: &[u8],
 		headers: &[(String, String)],
 	) -> Result<WitHttpResponse, WitPluginError> {
-		let client = self.authorize_http_call(url)?;
+		let client = self.authorize_http_call(url).await?;
 		self.check_http_request_body(body.len())?;
-		self.send_http_post(client, url, body.to_vec(), headers)
+		self.send_http_post(&client, url, body.to_vec(), headers)
 			.await
 	}
 
@@ -575,22 +671,19 @@ impl HostState {
 		body: Vec<u8>,
 		headers: &[(String, String)],
 	) -> Result<WitHttpResponse, WitPluginError> {
-		let client = self.authorize_http_call(url)?;
+		let client = self.authorize_http_call(url).await?;
 		self.check_http_request_body(body.len())?;
-		self.send_http_post(client, url, body, headers).await
+		self.send_http_post(&client, url, body, headers).await
 	}
 
-	/// Run the checks shared by every HTTP host call and return the client.
-	fn authorize_http_call(&self, url: &str) -> Result<&reqwest::Client, WitPluginError> {
+	/// Run the checks shared by every HTTP host call and return a client
+	/// pinned to the validated destination.
+	async fn authorize_http_call(&self, url: &str) -> Result<reqwest::Client, WitPluginError> {
 		if !self.has_http_capability() {
 			return Err(WitPluginError::new(403, "HTTP access not permitted"));
 		}
 
-		validate_url_for_ssrf(url)?;
-
-		self.http_client
-			.as_ref()
-			.ok_or_else(|| WitPluginError::new(500, "HTTP client not available"))
+		self.pinned_http_client(url).await
 	}
 
 	/// Reject a plugin-supplied request body larger than the configured limit.
@@ -808,6 +901,10 @@ impl HostState {
 
 	/// Emit an event to all matching subscribers.
 	///
+	/// Events that exceed the event bus size limits are not delivered and
+	/// `0` is returned; use [`try_emit_event`](Self::try_emit_event) to
+	/// observe the rejection.
+	///
 	/// # Arguments
 	///
 	/// * `name` - Event name (e.g., "user.created")
@@ -818,6 +915,20 @@ impl HostState {
 	/// The number of subscriptions that received the event.
 	pub fn emit_event(&self, name: &str, payload: Vec<u8>) -> usize {
 		self.event_bus.emit(name, payload, &self.plugin_name)
+	}
+
+	/// Emit an event to all matching subscribers, rejecting oversized events.
+	///
+	/// # Returns
+	///
+	/// The number of subscriptions that received the event.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the event name or payload exceeds the event bus
+	/// [`EventByteLimits`](crate::wasm::EventByteLimits).
+	pub fn try_emit_event(&self, name: &str, payload: Vec<u8>) -> Result<usize, EventEmitError> {
+		self.event_bus.try_emit(name, payload, &self.plugin_name)
 	}
 
 	/// Subscribe to events matching a pattern.
@@ -844,14 +955,16 @@ impl HostState {
 
 	/// Unsubscribe from a subscription.
 	pub fn unsubscribe_events(&self, subscription_id: u64) -> bool {
-		self.event_bus.unsubscribe(subscription_id)
+		self.event_bus
+			.unsubscribe_for_owner(subscription_id, &self.plugin_name)
 	}
 
 	/// Poll for pending events on a subscription.
 	///
 	/// Events are removed from the queue once polled.
 	pub fn poll_pending_events(&self, subscription_id: u64, limit: usize) -> Vec<Event> {
-		self.event_bus.poll(subscription_id, limit)
+		self.event_bus
+			.poll_for_owner(subscription_id, limit, &self.plugin_name)
 	}
 
 	// ===== Model Registry API =====
@@ -949,7 +1062,7 @@ impl HostState {
 			)));
 		}
 		self.ssr_proxy
-			.render_react(component_path, props, options)
+			.render_react_until(component_path, props, options, self.execution_deadline)
 			.await
 	}
 
@@ -970,13 +1083,18 @@ impl HostState {
 	/// This prevents untrusted or verified plugins from accessing the JavaScript
 	/// runtime directly.
 	pub fn eval_js(&self, code: &str) -> Result<Vec<u8>, SsrError> {
+		self.require_js_execution_trust()?;
+		self.ssr_proxy.eval_js(code).map(|s| s.into_bytes())
+	}
+
+	fn require_js_execution_trust(&self) -> Result<(), SsrError> {
 		if !self.trust_level.allows_js_execution() {
 			return Err(SsrError::PermissionDenied(format!(
 				"JavaScript execution requires Trusted trust level, but plugin '{}' has {:?} trust level",
 				self.plugin_name, self.trust_level
 			)));
 		}
-		self.ssr_proxy.eval_js(code).map(|s| s.into_bytes())
+		Ok(())
 	}
 
 	/// Render a component with trust level enforcement.
@@ -1027,6 +1145,7 @@ impl Clone for HostState {
 		} else {
 			builder = builder.no_http_client();
 		}
+		builder.http_client_factory = self.http_client_factory.clone();
 
 		// Share the permit pool so every store of this plugin draws on one
 		// concurrency budget instead of receiving a fresh one per clone.
@@ -1073,6 +1192,7 @@ pub struct HostStateBuilder {
 	config: HashMap<String, ConfigValue>,
 	capabilities: HashSet<Capability>,
 	http_client: Option<reqwest::Client>,
+	http_client_factory: Option<HttpClientFactory>,
 	http_limits: HttpResourceLimits,
 	http_permits: Option<Arc<Semaphore>>,
 	#[cfg(feature = "wasm")]
@@ -1095,6 +1215,7 @@ impl HostStateBuilder {
 			config: HashMap::new(),
 			capabilities: HashSet::new(),
 			http_client: Some(DEFAULT_HTTP_CLIENT.clone()),
+			http_client_factory: Some(default_http_client_factory()),
 			http_limits: HttpResourceLimits::default(),
 			http_permits: None,
 			db_connection: None,
@@ -1136,22 +1257,43 @@ impl HostStateBuilder {
 		self
 	}
 
-	/// Set a custom HTTP client.
+	/// Set a prebuilt HTTP client.
+	///
+	/// Requests fail with a migration error because an opaque client cannot
+	/// expose its DNS, proxy, redirect, or TLS settings for safe destination
+	/// pinning. Use `http_client_factory` to retain custom client settings.
 	pub fn http_client(mut self, client: reqwest::Client) -> Self {
 		self.http_client = Some(client);
+		self.http_client_factory = None;
+		self
+	}
+
+	/// Configure clients for validated plugin HTTP destinations (native-only, P0).
+	///
+	/// The trusted factory preserves custom headers, CA roots, and client
+	/// certificates. Address pinning and disabled redirects/proxies are applied
+	/// after the factory returns, and every call is bounded by the
+	/// [`HttpResourceLimits`] set with [`Self::http_limits`].
+	pub fn http_client_factory<F>(mut self, factory: F) -> Self
+	where
+		F: Fn() -> reqwest::ClientBuilder + Send + Sync + 'static,
+	{
+		self.http_client = Some(DEFAULT_HTTP_CLIENT.clone());
+		self.http_client_factory = Some(Arc::new(factory));
 		self
 	}
 
 	/// Disable HTTP client.
 	pub fn no_http_client(mut self) -> Self {
 		self.http_client = None;
+		self.http_client_factory = None;
 		self
 	}
 
 	/// Set the resource limits applied to HTTP host calls.
 	///
 	/// Defaults to [`HttpResourceLimits::default`]. The limits apply to both
-	/// the default client and a custom client set with [`Self::http_client`].
+	/// the default clients and clients from [`Self::http_client_factory`].
 	pub fn http_limits(mut self, limits: HttpResourceLimits) -> Self {
 		self.http_limits = limits;
 		self
@@ -1238,6 +1380,7 @@ impl HostStateBuilder {
 			typed_services: RwLock::new(HashMap::new()),
 			capabilities: self.capabilities,
 			http_client: self.http_client,
+			http_client_factory: self.http_client_factory,
 			http_limits: self.http_limits,
 			http_permits,
 			db_connection: self.db_connection,
@@ -1250,6 +1393,10 @@ impl HostStateBuilder {
 			wasi_ctx: parking_lot::Mutex::new(WasiCtxBuilder::new().build()),
 			#[cfg(feature = "wasm")]
 			resource_table: parking_lot::Mutex::new(ResourceTable::new()),
+			#[cfg(feature = "wasm")]
+			store_limits: None,
+			#[cfg(feature = "wasm")]
+			execution_deadline: None,
 		}
 	}
 }
@@ -1469,8 +1616,13 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 		name: String,
 		payload: Vec<u8>,
 	) -> Result<Result<(), GeneratedPluginError>, anyhow::Error> {
-		let _delivered = self.emit_event(&name, payload);
-		Ok(Ok(()))
+		match self.try_emit_event(&name, payload) {
+			Ok(_delivered) => Ok(Ok(())),
+			Err(e) => Ok(Err(to_generated_error(WitPluginError::new(
+				413,
+				e.to_string(),
+			)))),
+		}
 	}
 
 	async fn subscribe(
@@ -1698,7 +1850,15 @@ impl crate::wasm::runtime::reinhardt::dentdelion::ssr::Host for HostState {
 		&mut self,
 		code: String,
 	) -> Result<Result<Vec<u8>, GeneratedPluginError>, anyhow::Error> {
-		let result = Self::eval_js(self, &code).map_err(ssr_error_to_plugin_error);
+		let result = match self.require_js_execution_trust() {
+			Ok(()) => self
+				.ssr_proxy
+				.eval_js_until(code, self.execution_deadline)
+				.await
+				.map(|value| value.into_bytes()),
+			Err(error) => Err(error),
+		}
+		.map_err(ssr_error_to_plugin_error);
 		Ok(result)
 	}
 
@@ -1709,6 +1869,123 @@ impl crate::wasm::runtime::reinhardt::dentdelion::ssr::Host for HostState {
 
 #[cfg(test)]
 mod tests {
+	#[cfg(feature = "ts")]
+	#[rstest::rstest]
+	#[case(false)]
+	#[case(true)]
+	#[tokio::test(flavor = "current_thread")]
+	async fn javascript_imports_yield_and_use_the_remaining_lifecycle_deadline(
+		#[case] render: bool,
+	) {
+		use super::super::runtime::{WasmRuntime, WasmRuntimeConfigBuilder};
+		use super::super::ts_runtime::{TsResourceLimits, TsRuntime};
+		use crate::wasm::runtime::reinhardt::dentdelion::ssr::Host;
+		use std::time::{Duration, Instant};
+		// Arrange: JavaScript's own budget is much longer than the WASM invocation.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.timeout(Duration::from_millis(100))
+				.build(),
+		)
+		.unwrap();
+		let javascript = Arc::new(
+			TsRuntime::with_limits(TsResourceLimits {
+				execution_timeout: Duration::from_secs(2),
+				loop_iteration_limit: u64::MAX,
+				..TsResourceLimits::default()
+			})
+			.unwrap(),
+		);
+		let assets = tempfile::tempdir().unwrap();
+		std::fs::write(
+			assets.path().join("Component.js"),
+			"function Component() { while (true) {} }",
+		)
+		.unwrap();
+		let proxy = Arc::new(
+			SsrProxy::with_ts_runtime(javascript).with_plugin_base_dir(assets.path().to_path_buf()),
+		);
+		let state = HostState::builder("short-js-import")
+			.trust_level(TrustLevel::Trusted)
+			.ssr_proxy(proxy)
+			.build();
+		let started = Instant::now();
+
+		// Act: consume part of the invocation, then call the actual generated import.
+		let evaluation = runtime.with_execution_timeout(async {
+			let mut store = runtime.create_store(state);
+			tokio::time::sleep(Duration::from_millis(40)).await;
+			let result = if render {
+				Host::render_react(
+					store.data_mut(),
+					"Component.js".into(),
+					rmp_serde::to_vec(&serde_json::json!({})).unwrap(),
+					GeneratedRenderOptions {
+						include_hydration: false,
+						extract_css: false,
+						extract_meta: false,
+					},
+				)
+				.await
+				.unwrap()
+				.map(|_| ())
+			} else {
+				Host::eval_js(store.data_mut(), "while (true) {}".into())
+					.await
+					.unwrap()
+					.map(|_| ())
+			};
+			result.map_err(|error| crate::error::PluginError::WasmExecutionError(error.message))
+		});
+		let heartbeat = async {
+			tokio::time::sleep(Duration::from_millis(20)).await;
+			started.elapsed()
+		};
+		let (result, heartbeat_elapsed) = tokio::join!(evaluation, heartbeat);
+
+		// Assert: a single-thread executor stays responsive and the shorter deadline wins.
+		assert!(
+			matches!(result, Err(crate::error::PluginError::WasmExecutionError(message))
+			if message.contains("timed out"))
+		);
+		assert!(started.elapsed() < Duration::from_millis(500));
+		assert!(heartbeat_elapsed < Duration::from_millis(100));
+	}
+
+	#[rstest::rstest]
+	#[case("2001:1::1", true)]
+	#[case("2001:1::2", true)]
+	#[case("2001:1::3", true)]
+	#[case("2001:1::4", false)]
+	#[case("2001:2::1", false)]
+	#[case("2001:2:ffff::1", false)]
+	#[case("2001:3::1", true)]
+	#[case("2001:3:ffff:ffff:ffff:ffff:ffff:ffff", true)]
+	#[case("2001:4:112::1", true)]
+	#[case("2001:4:113::1", false)]
+	#[case("2001:10::1", false)]
+	#[case("2001:20::1", false)]
+	#[case("2001:2f:ffff::1", false)]
+	#[case("2001:30::1", false)]
+	#[case("2001:3f:ffff::1", false)]
+	#[case("2001:1ff:ffff::1", false)]
+	#[case("2001:200::1", true)]
+	#[case("3fff::1", false)]
+	#[case("3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff", false)]
+	#[case("3fff:1000::1", true)]
+	#[case("2620:4f:8000::1", true)]
+	#[case("64:ff9b::808:808", true)]
+	#[case("64:ff9b::a00:1", false)]
+	#[case("64:ff9b::7f00:1", false)]
+	#[case("64:ff9b::a9fe:a9fe", false)]
+	#[case("64:ff9b:1::808:808", false)]
+	fn ipv6_special_assignments_preserve_global_locator_exceptions(
+		#[case] address: &str,
+		#[case] expected_public: bool,
+	) {
+		assert_eq!(!is_private_ip(&address.parse().unwrap()), expected_public);
+	}
+
 	use super::*;
 
 	#[test]
@@ -1816,6 +2093,115 @@ mod tests {
 		let sub_id = state.subscribe_events("*").unwrap();
 		assert!(state.unsubscribe_events(sub_id));
 		assert!(!state.unsubscribe_events(sub_id)); // Already unsubscribed
+	}
+
+	/// Shared event bus whose payload limit is `max_payload_bytes`.
+	fn event_bus_with_payload_limit(max_payload_bytes: usize) -> SharedEventBus {
+		let limits = crate::wasm::EventByteLimits {
+			max_payload_bytes,
+			..crate::wasm::EventByteLimits::default()
+		};
+		Arc::new(EventBus::new().with_byte_limits(limits))
+	}
+
+	#[cfg(feature = "wasm")]
+	#[tokio::test]
+	async fn wit_emit_rejects_payload_over_event_bus_limit() {
+		use crate::wasm::runtime::reinhardt::dentdelion::events::Host;
+
+		// Arrange
+		let event_bus = event_bus_with_payload_limit(16);
+		let consumer = HostStateBuilder::new("consumer")
+			.event_bus(event_bus.clone())
+			.build();
+		let mut producer = HostStateBuilder::new("producer")
+			.event_bus(event_bus.clone())
+			.build();
+		let sub_ids: Vec<u64> = (0..3)
+			.map(|_| consumer.subscribe_events("*").unwrap())
+			.collect();
+
+		// Act
+		let result = Host::emit(&mut producer, "user.created".to_string(), vec![0; 17])
+			.await
+			.expect("host adapter should return a plugin result");
+
+		// Assert
+		assert_eq!(
+			result
+				.expect_err("oversized payload should be rejected")
+				.code,
+			413
+		);
+		for sub_id in sub_ids {
+			assert_eq!(event_bus.pending_count(sub_id), 0);
+		}
+		assert_eq!(event_bus.total_pending_bytes(), 0);
+	}
+
+	#[cfg(feature = "wasm")]
+	#[tokio::test]
+	async fn wit_emit_rejects_name_over_default_limit() {
+		use crate::wasm::runtime::reinhardt::dentdelion::events::Host;
+
+		// Arrange
+		let event_bus: SharedEventBus = Arc::new(EventBus::new());
+		let consumer = HostStateBuilder::new("consumer")
+			.event_bus(event_bus.clone())
+			.build();
+		let mut producer = HostStateBuilder::new("producer")
+			.event_bus(event_bus.clone())
+			.build();
+		let sub_id = consumer.subscribe_events("*").unwrap();
+		let name = "e".repeat(event_bus.byte_limits().max_name_bytes + 1);
+
+		// Act
+		let result = Host::emit(&mut producer, name, Vec::new())
+			.await
+			.expect("host adapter should return a plugin result");
+
+		// Assert
+		assert_eq!(
+			result.expect_err("oversized name should be rejected").code,
+			413
+		);
+		assert_eq!(event_bus.pending_count(sub_id), 0);
+	}
+
+	#[cfg(feature = "wasm")]
+	#[tokio::test]
+	async fn wit_emit_delivers_payload_within_limit_to_every_subscriber() {
+		use crate::wasm::runtime::reinhardt::dentdelion::events::Host;
+
+		// Arrange
+		let event_bus = event_bus_with_payload_limit(16);
+		let mut consumer = HostStateBuilder::new("consumer")
+			.event_bus(event_bus.clone())
+			.build();
+		let mut producer = HostStateBuilder::new("producer")
+			.event_bus(event_bus.clone())
+			.build();
+		let sub_ids: Vec<u64> = (0..3)
+			.map(|_| consumer.subscribe_events("user.*").unwrap())
+			.collect();
+
+		// Act
+		let result = Host::emit(&mut producer, "user.created".to_string(), vec![7; 16])
+			.await
+			.expect("host adapter should return a plugin result");
+
+		// Assert
+		assert!(result.is_ok());
+		for sub_id in sub_ids {
+			let events = Host::poll_events(&mut consumer, sub_id, 10)
+				.await
+				.expect("host adapter should return polled events");
+			assert_eq!(events.len(), 1);
+			assert_eq!(events[0].name, "user.created");
+			assert_eq!(events[0].payload, vec![7; 16]);
+			assert_eq!(events[0].source, "producer");
+		}
+		assert_eq!(event_bus.total_pending_bytes(), 0);
 	}
 
 	#[test]
@@ -2188,15 +2574,81 @@ mod tests {
 		assert!(matches!(result, Err(SsrError::DangerousPattern(_))));
 	}
 
+	#[cfg(feature = "wasm")]
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn lifecycle_deadline_cancels_a_pending_dns_lookup() {
+		use super::super::runtime::{WasmRuntime, WasmRuntimeConfigBuilder};
+		use std::sync::atomic::{AtomicBool, Ordering};
+		// Arrange: a resolver future delayed longer than the invocation budget.
+		let runtime = WasmRuntime::new(
+			WasmRuntimeConfigBuilder::new()
+				.timeout(std::time::Duration::from_millis(30))
+				.build(),
+		)
+		.unwrap();
+		let cancelled = Arc::new(AtomicBool::new(false));
+		struct LookupGuard(Arc<AtomicBool>);
+		impl Drop for LookupGuard {
+			fn drop(&mut self) {
+				self.0.store(true, Ordering::Release);
+			}
+		}
+		let started = std::time::Instant::now();
+		let flag = Arc::clone(&cancelled);
+
+		// Act: exercise the production URL validation path with an asynchronous resolver.
+		let result = runtime
+			.with_execution_timeout(async {
+				validate_url_for_ssrf_with_resolver(
+					"https://slow.example/",
+					|domain, port| async move {
+						assert_eq!(domain, "slow.example");
+						assert_eq!(port, 443);
+						let _guard = LookupGuard(flag);
+						tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+						Ok(vec!["8.8.8.8:443".parse().unwrap()])
+					},
+				)
+				.await
+				.map_err(|error| crate::error::PluginError::WasmExecutionError(error.message))
+			})
+			.await;
+
+		// Assert: the executor regains control and drops the pending DNS wait.
+		assert!(
+			matches!(result, Err(crate::error::PluginError::WasmExecutionError(message)) if message.contains("timed out"))
+		);
+		assert!(started.elapsed() < std::time::Duration::from_millis(500));
+		assert!(cancelled.load(Ordering::Acquire));
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn resolved_addresses_are_all_validated_before_pinning() {
+		// Arrange: DNS returns both a public and internal destination.
+		let result = validate_url_for_ssrf_with_resolver("https://mixed.example/", |_, _| async {
+			Ok(vec![
+				"8.8.8.8:443".parse().unwrap(),
+				"127.0.0.1:443".parse().unwrap(),
+			])
+		})
+		.await;
+
+		// Assert: no address in a mixed result bypasses validation.
+		assert_eq!(result.unwrap_err().code, 403);
+	}
+
 	// ===== SSRF Validation Tests =====
 
-	#[test]
-	fn test_ssrf_rejects_file_scheme() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_file_scheme() {
 		// Arrange
 		let url = "file:///etc/passwd";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2204,13 +2656,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_gopher_scheme() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_gopher_scheme() {
 		// Arrange
 		let url = "gopher://evil.com/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2218,13 +2671,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_ftp_scheme() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_ftp_scheme() {
 		// Arrange
 		let url = "ftp://internal-server/data";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2232,13 +2686,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_loopback_ipv4() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_loopback_ipv4() {
 		// Arrange
 		let url = "http://127.0.0.1/admin";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2246,13 +2701,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_loopback_ipv4_other() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_loopback_ipv4_other() {
 		// Arrange
 		let url = "http://127.0.0.2:8080/internal";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2260,13 +2716,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_private_10_network() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_private_10_network() {
 		// Arrange
 		let url = "http://10.0.0.1/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2274,13 +2731,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_private_172_network() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_private_172_network() {
 		// Arrange
 		let url = "http://172.16.0.1/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2288,13 +2746,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_private_192_168_network() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_private_192_168_network() {
 		// Arrange
 		let url = "http://192.168.1.1/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2302,13 +2761,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_link_local() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_link_local() {
 		// Arrange
 		let url = "http://169.254.169.254/latest/meta-data/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2316,13 +2776,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_ipv6_loopback() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_ipv6_loopback() {
 		// Arrange
 		let url = "http://[::1]/admin";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2330,13 +2791,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_localhost() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_localhost() {
 		// Arrange
 		let url = "http://localhost/admin";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2344,13 +2806,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_zero_ip() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_zero_ip() {
 		// Arrange
 		let url = "http://0.0.0.0/";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2358,13 +2821,14 @@ mod tests {
 		assert_eq!(err.code, 403);
 	}
 
-	#[test]
-	fn test_ssrf_rejects_invalid_url() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_invalid_url() {
 		// Arrange
 		let url = "not-a-valid-url";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_err());
@@ -2372,28 +2836,207 @@ mod tests {
 		assert_eq!(err.code, 400);
 	}
 
-	#[test]
-	fn test_ssrf_allows_public_http() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_allows_public_http() {
 		// Arrange
-		let url = "http://example.com/api/data";
+		let url = "http://8.8.8.8/api/data";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_ok());
 	}
 
-	#[test]
-	fn test_ssrf_allows_public_https() {
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_allows_public_https() {
 		// Arrange
-		let url = "https://api.github.com/repos";
+		let url = "https://1.1.1.1/repos";
 
 		// Act
-		let result = validate_url_for_ssrf(url);
+		let result = validate_url_for_ssrf(url).await;
 
 		// Assert
 		assert!(result.is_ok());
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn pinned_http_factory_preserves_headers_and_overrides_unsafe_transport() {
+		use tokio::io::{AsyncReadExt, AsyncWriteExt};
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let address = listener.local_addr().unwrap();
+		let factory: HttpClientFactory = Arc::new(|| {
+			let mut headers = reqwest::header::HeaderMap::new();
+			headers.insert(
+				"x-custom-client",
+				reqwest::header::HeaderValue::from_static("retained"),
+			);
+			reqwest::Client::builder()
+				.default_headers(headers)
+				.proxy(reqwest::Proxy::http("http://127.0.0.1:9").unwrap())
+				.redirect(reqwest::redirect::Policy::limited(10))
+				.resolve("plugin.example", "127.0.0.1:9".parse().unwrap())
+		});
+		// Exercise the transport seam with a local socket after address validation.
+		let url = format!("http://plugin.example:{}/", address.port());
+		let client = build_pinned_http_client(&url, &factory, &[address]).unwrap();
+		let server = async {
+			let (mut socket, _) = listener.accept().await.unwrap();
+			let mut request = Vec::new();
+			while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+				let mut buffer = [0u8; 1024];
+				let count = socket.read(&mut buffer).await.unwrap();
+				assert_ne!(count, 0);
+				request.extend_from_slice(&buffer[..count]);
+			}
+			assert!(
+				String::from_utf8(request)
+					.unwrap()
+					.to_lowercase()
+					.contains("x-custom-client: retained")
+			);
+			socket.write_all(b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:9/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+		};
+		let (response, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+			tokio::join!(client.get(&url).send(), server)
+		})
+		.await
+		.unwrap();
+		assert_eq!(response.unwrap().status(), reqwest::StatusCode::FOUND);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn http_client_factory_survives_cloning_and_disabled_clients_remain_disabled() {
+		let host = HostStateBuilder::new("factory")
+			.http_client_factory(reqwest::Client::builder)
+			.build();
+		assert!(host.clone().http_client_factory.is_some());
+		let disabled = HostStateBuilder::new("disabled")
+			.http_client_factory(reqwest::Client::builder)
+			.no_http_client()
+			.build();
+		assert!(
+			disabled
+				.clone()
+				.pinned_http_client("https://192.0.1.1/")
+				.await
+				.unwrap_err()
+				.message
+				.contains("not available")
+		);
+		let legacy = HostStateBuilder::new("legacy")
+			.http_client(reqwest::Client::new())
+			.build();
+		assert!(
+			legacy
+				.pinned_http_client("https://192.0.1.1/")
+				.await
+				.unwrap_err()
+				.message
+				.contains("http_client_factory")
+		);
+	}
+
+	#[rstest::rstest]
+	#[case("192.0.0.1", true)]
+	#[case("192.0.0.8", true)]
+	#[case("192.0.0.9", false)]
+	#[case("192.0.0.10", false)]
+	#[case("192.0.0.11", true)]
+	#[case("192.0.0.170", true)]
+	#[case("192.0.0.171", true)]
+	#[case("192.0.1.1", false)]
+	#[case("192.0.2.1", true)]
+	fn private_ipv4_filter_preserves_anycast_exceptions_and_adjacent_prefix(
+		#[case] address: &str,
+		#[case] expected_private: bool,
+	) {
+		assert_eq!(is_private_ip(&address.parse().unwrap()), expected_private);
+	}
+
+	#[rstest::rstest]
+	#[case("192.0.0.8", false)]
+	#[case("192.0.0.9", true)]
+	#[case("192.0.0.10", true)]
+	#[case("192.0.0.11", false)]
+	#[case("192.0.0.170", false)]
+	#[case("192.0.0.171", false)]
+	#[case("192.88.99.1", true)]
+	#[case("192.88.99.2", false)]
+	#[case("192.88.99.3", true)]
+	#[tokio::test]
+	async fn plugin_urls_enforce_ipv4_special_assignments_for_literals_and_dns(
+		#[case] address: &str,
+		#[case] allowed: bool,
+	) {
+		// Arrange: one literal and one DNS response represent the same destination.
+		let socket: std::net::SocketAddr = format!("{address}:443").parse().unwrap();
+		let literal = format!("https://{address}/component");
+
+		// Act: both paths run the production URL and resolved-address validation.
+		let direct = validate_url_for_ssrf(&literal).await;
+		let resolved = validate_url_for_ssrf_with_resolver(
+			"https://anycast.example/component",
+			|domain, port| async move {
+				assert_eq!(domain, "anycast.example");
+				assert_eq!(port, 443);
+				Ok(vec![socket])
+			},
+		)
+		.await;
+
+		// Assert: literal and DNS destinations enforce the same narrow /32 assignments.
+		if allowed {
+			assert_eq!(direct.unwrap(), vec![socket]);
+			assert_eq!(resolved.unwrap(), vec![socket]);
+		} else {
+			assert_eq!(direct.unwrap_err().code, 403);
+			assert_eq!(resolved.unwrap_err().code, 403);
+		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_allows_public_ipv6_literal() {
+		assert!(
+			validate_url_for_ssrf("https://[2606:4700:4700::1111]/")
+				.await
+				.is_ok()
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn test_ssrf_rejects_userinfo_and_reserved_addresses() {
+		assert!(
+			validate_url_for_ssrf("https://user@8.8.8.8/path")
+				.await
+				.is_err()
+		);
+		assert!(
+			validate_url_for_ssrf("http://100.64.0.1/path")
+				.await
+				.is_err()
+		);
+		assert!(
+			validate_url_for_ssrf("http://198.18.0.1/path")
+				.await
+				.is_err()
+		);
+		assert!(
+			validate_url_for_ssrf("http://[2001:db8::1]/path")
+				.await
+				.is_err()
+		);
+		assert!(
+			validate_url_for_ssrf("http://[2002:a00:1::]/path")
+				.await
+				.is_err()
+		);
 	}
 
 	#[test]
@@ -2620,17 +3263,16 @@ mod tests {
 		use crate::capability::PluginCapability;
 		use rstest::rstest;
 		use std::io;
+		use std::net::SocketAddr;
 		use tokio::io::{AsyncReadExt, AsyncWriteExt};
 		use tokio::net::{TcpListener, TcpStream};
 		use tokio::sync::oneshot;
 		use tokio::task::JoinHandle;
 
-		/// Public TEST-NET-3 address (RFC 5737).
+		/// Public address literal that passes SSRF validation without DNS.
 		///
-		/// It passes SSRF validation without DNS. The proxy-configured test
-		/// client delivers the request to the loopback mock upstream instead
-		/// of connecting to this address.
-		const PUBLIC_URL: &str = "http://203.0.113.10/resource";
+		/// Only used by tests whose request must be rejected before it is sent.
+		const PUBLIC_URL: &str = "http://8.8.8.8/resource";
 
 		/// Aborts the wrapped task on drop so stalled servers and in-flight
 		/// requests never outlive the test.
@@ -2649,16 +3291,29 @@ mod tests {
 			stall: bool,
 		}
 
-		/// Loopback HTTP server acting as the test client's forward proxy.
+		/// Loopback HTTP server standing in for a validated destination.
 		struct MockUpstream {
-			proxy_url: String,
+			/// Request URL on a reserved domain that the test client pins to
+			/// `addr`, the same way production pins validated DNS results.
+			url: String,
+			addr: SocketAddr,
 			request_seen: oneshot::Receiver<()>,
 			server: AbortOnDrop<io::Result<()>>,
 		}
 
+		impl MockUpstream {
+			/// Client from the production pinning path, connected to this
+			/// upstream. Its factory sets no timeouts, so only the host
+			/// deadline can end a stalled call.
+			fn pinned_client(&self) -> reqwest::Client {
+				let factory: HttpClientFactory = Arc::new(reqwest::Client::builder);
+				build_pinned_http_client(&self.url, &factory, &[self.addr]).unwrap()
+			}
+		}
+
 		async fn spawn_upstream(reply: MockReply) -> MockUpstream {
 			let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-			let proxy_url = format!("http://{}", listener.local_addr().unwrap());
+			let addr = listener.local_addr().unwrap();
 			let (seen_tx, request_seen) = oneshot::channel();
 			let server = tokio::spawn(async move {
 				let (mut socket, _) = listener.accept().await?;
@@ -2678,7 +3333,8 @@ mod tests {
 				Ok(())
 			});
 			MockUpstream {
-				proxy_url,
+				url: format!("http://upstream.test:{}/resource", addr.port()),
+				addr,
 				request_seen,
 				server: AbortOnDrop(server),
 			}
@@ -2733,16 +3389,10 @@ mod tests {
 			}
 		}
 
-		/// Host state holding `NetworkAccess` whose client has no timeouts of
-		/// its own and reaches the internet only through `proxy_url`.
-		fn network_state(proxy_url: &str, limits: HttpResourceLimits) -> HostState {
-			let client = reqwest::Client::builder()
-				.proxy(reqwest::Proxy::http(proxy_url).unwrap())
-				.build()
-				.unwrap();
+		/// Host state holding `NetworkAccess` with the given HTTP limits.
+		fn network_state(limits: HttpResourceLimits) -> HostState {
 			HostStateBuilder::new("network-plugin")
 				.capability(Capability::Core(PluginCapability::NetworkAccess))
-				.http_client(client)
 				.http_limits(limits)
 				.build()
 		}
@@ -2793,10 +3443,14 @@ mod tests {
 				stall: false,
 			})
 			.await;
-			let state = network_state(&upstream.proxy_url, limits(1024, Duration::from_secs(10)));
+			let state = network_state(limits(1024, Duration::from_secs(10)));
+			let client = upstream.pinned_client();
 
 			// Act
-			let response = state.http_get(PUBLIC_URL, &[]).await.unwrap();
+			let response = state
+				.execute_http_request(client.get(&upstream.url))
+				.await
+				.unwrap();
 
 			// Assert
 			assert_eq!(response.status, 200);
@@ -2815,10 +3469,14 @@ mod tests {
 				stall: false,
 			})
 			.await;
-			let state = network_state(&upstream.proxy_url, limits(1024, Duration::from_secs(10)));
+			let state = network_state(limits(1024, Duration::from_secs(10)));
+			let client = upstream.pinned_client();
 
 			// Act
-			let error = state.http_get(PUBLIC_URL, &[]).await.unwrap_err();
+			let error = state
+				.execute_http_request(client.get(&upstream.url))
+				.await
+				.unwrap_err();
 
 			// Assert
 			assert_eq!(error.code, 502);
@@ -2837,10 +3495,14 @@ mod tests {
 				stall: true,
 			})
 			.await;
-			let state = network_state(&upstream.proxy_url, limits(1024, Duration::from_secs(10)));
+			let state = network_state(limits(1024, Duration::from_secs(10)));
+			let client = upstream.pinned_client();
 
 			// Act
-			let error = state.http_get(PUBLIC_URL, &[]).await.unwrap_err();
+			let error = state
+				.execute_http_request(client.get(&upstream.url))
+				.await
+				.unwrap_err();
 
 			// Assert
 			assert_eq!(error.code, 502);
@@ -2857,10 +3519,14 @@ mod tests {
 				stall: false,
 			})
 			.await;
-			let state = network_state(&upstream.proxy_url, limits(1024, Duration::from_secs(10)));
+			let state = network_state(limits(1024, Duration::from_secs(10)));
+			let client = upstream.pinned_client();
 
 			// Act
-			let error = state.http_get(PUBLIC_URL, &[]).await.unwrap_err();
+			let error = state
+				.execute_http_request(client.get(&upstream.url))
+				.await
+				.unwrap_err();
 			let write_error = tokio::time::timeout(Duration::from_secs(10), &mut upstream.server.0)
 				.await
 				.expect("upstream kept writing after the limit was exceeded")
@@ -2887,13 +3553,14 @@ mod tests {
 				stall: true,
 			})
 			.await;
-			let state = network_state(
-				&upstream.proxy_url,
-				limits(1024, Duration::from_millis(200)),
-			);
+			let state = network_state(limits(1024, Duration::from_millis(200)));
+			let client = upstream.pinned_client();
 
 			// Act
-			let error = state.http_get(PUBLIC_URL, &[]).await.unwrap_err();
+			let error = state
+				.execute_http_request(client.get(&upstream.url))
+				.await
+				.unwrap_err();
 
 			// Assert
 			assert_eq!(error.code, 504);
@@ -2905,13 +3572,11 @@ mod tests {
 		async fn test_http_post_rejects_oversized_body_before_sending(
 			#[values(false, true)] owned_body: bool,
 		) {
-			// Arrange - nothing listens on the proxy port, so a request that
-			// was actually sent would fail with 500 instead of 413
-			let proxy_url = {
-				let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-				format!("http://{}", listener.local_addr().unwrap())
-			};
-			let state = network_state(&proxy_url, limits(16, Duration::from_secs(10)));
+			// Arrange - the real entry points validate the literal destination
+			// and pin a client without connecting, so only a check that runs
+			// before sending can produce 413; the short deadline bounds a
+			// request that is sent anyway
+			let state = network_state(limits(16, Duration::from_secs(1)));
 
 			// Act
 			let error = if owned_body {
@@ -2932,7 +3597,7 @@ mod tests {
 
 		#[rstest]
 		#[tokio::test]
-		async fn test_http_post_sends_body_at_limit(#[values(false, true)] owned_body: bool) {
+		async fn test_http_post_sends_body_at_limit() {
 			// Arrange
 			let upstream = spawn_upstream(MockReply {
 				head: response_head(Some(2)),
@@ -2940,15 +3605,16 @@ mod tests {
 				stall: false,
 			})
 			.await;
-			let state = network_state(&upstream.proxy_url, limits(16, Duration::from_secs(10)));
+			let state = network_state(limits(16, Duration::from_secs(10)));
+			let client = upstream.pinned_client();
+			let body = vec![0; 16];
 
-			// Act
-			let response = if owned_body {
-				state.http_post_owned(PUBLIC_URL, vec![0; 16], &[]).await
-			} else {
-				state.http_post(PUBLIC_URL, &[0; 16], &[]).await
-			}
-			.unwrap();
+			// Act - the size check both POST entry points run, then the send
+			state.check_http_request_body(body.len()).unwrap();
+			let response = state
+				.send_http_post(&client, &upstream.url, body, &[])
+				.await
+				.unwrap();
 
 			// Assert
 			assert_eq!(response.status, 200);
@@ -2967,15 +3633,20 @@ mod tests {
 			.await;
 			let mut limits = limits(1024, Duration::from_secs(10));
 			limits.max_concurrent_requests = 1;
-			let state = network_state(&upstream.proxy_url, limits);
+			let state = network_state(limits);
 			let cloned = state.clone();
+			let client = upstream.pinned_client();
+			let in_flight_request = client.get(&upstream.url);
 			let _in_flight = AbortOnDrop(tokio::spawn(async move {
-				cloned.http_get(PUBLIC_URL, &[]).await
+				cloned.execute_http_request(in_flight_request).await
 			}));
 			(&mut upstream.request_seen).await.unwrap();
 
 			// Act
-			let error = state.http_get(PUBLIC_URL, &[]).await.unwrap_err();
+			let error = state
+				.execute_http_request(client.get(&upstream.url))
+				.await
+				.unwrap_err();
 
 			// Assert
 			assert_eq!(error.code, 429);
