@@ -37,6 +37,14 @@ ignore = [
   # Ideal: the shell feature depends on evcxr without direct salsa or
   # salsa-macro-rules compatibility dependencies or this advisory exception.
   { id = "RUSTSEC-2026-0308", reason = "Optional evcxr shell pins Salsa 0.28.2 for rust-analyzer compatibility; temporary until a compatible patched Salsa can be used (issue #6379)." },
+  # Temporary: unsafe-libyaml is archived upstream and reached only through the
+  # deprecated serde_yaml, whose Error type is exposed by reinhardt-urls
+  # `to_yaml` methods, so replacing it is a breaking change (issue #6773).
+  # Remove this exception once no crate in the full-feature graph depends on
+  # unsafe-libyaml.
+  # Ideal: YAML output goes through a safe-Rust library such as serde-saphyr,
+  # `to_yaml` returns a Reinhardt-owned error, and no RUSTSEC-2024-0449 entry.
+  { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained with no safe upgrade and is retained by the deprecated serde_yaml, a direct dependency exposed in public APIs; migration is tracked in issue #6773." },
 ]
 
 [licenses]
