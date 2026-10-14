@@ -54,6 +54,14 @@ malicious. A plugin's requested capabilities do not establish trust.
   not check the stored owner. Numeric subscription IDs alone do not prove
   ownership, so protected deployments must isolate event buses or add an owner
   check around these operations.
+- Plugin events are bounded in bytes as well as counts. `EventBus` rejects
+  event names and payloads above `EventByteLimits` before queuing them, shares
+  one copy of each event among all receiving queues, and caps queued bytes per
+  subscription, per subscription owner, and per bus. Making room only drops
+  the receiving subscription's own oldest events; it never evicts another
+  subscription's queue, so a subscription that cannot make room skips the
+  event. Byte budgets bound memory, not delivery: plugins that stop polling
+  can consume the bus budget and cause other subscriptions to skip events.
 
 ## Reportable Findings
 
