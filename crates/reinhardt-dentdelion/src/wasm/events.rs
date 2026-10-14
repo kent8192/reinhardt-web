@@ -577,24 +577,31 @@ impl EventBus {
 	///
 	/// `true` if the subscription existed and was removed, `false` otherwise.
 	pub fn unsubscribe(&self, id: u64) -> bool {
+		self.remove_subscription(id, None)
+	}
+
+	/// Remove a subscription only when it belongs to the requesting plugin.
+	pub(crate) fn unsubscribe_for_owner(&self, id: u64, owner: &str) -> bool {
+		self.remove_subscription(id, Some(owner))
+	}
+
+	/// Remove a subscription, optionally only when `owner` owns it, and
+	/// release the bytes charged for its queued events.
+	fn remove_subscription(&self, id: u64, owner: Option<&str>) -> bool {
 		let mut state = self.state.write();
+		let permitted = state
+			.subscriptions
+			.get(&id)
+			.is_some_and(|sub| owner.is_none_or(|owner| sub.owner == owner));
+		if !permitted {
+			return false;
+		}
 		match state.subscriptions.remove(&id) {
 			Some(removed) => {
 				state.budget.release(&removed.owner, removed.queued_bytes);
 				true
 			}
 			None => false,
-		}
-	}
-
-	/// Remove a subscription only when it belongs to the requesting plugin.
-	pub(crate) fn unsubscribe_for_owner(&self, id: u64, owner: &str) -> bool {
-		let mut subs = self.subscriptions.write();
-		if subs.get(&id).is_some_and(|sub| sub.owner == owner) {
-			subs.remove(&id);
-			true
-		} else {
-			false
 		}
 	}
 
@@ -611,6 +618,17 @@ impl EventBus {
 	///
 	/// A vector of events, up to `limit` events.
 	pub fn poll(&self, id: u64, limit: usize) -> Vec<Event> {
+		self.poll_subscription(id, limit, None)
+	}
+
+	/// Poll a subscription only when it belongs to the requesting plugin.
+	pub(crate) fn poll_for_owner(&self, id: u64, limit: usize, owner: &str) -> Vec<Event> {
+		self.poll_subscription(id, limit, Some(owner))
+	}
+
+	/// Pop up to `limit` events, optionally only when `owner` owns the
+	/// subscription, releasing the bytes charged for each popped event.
+	fn poll_subscription(&self, id: u64, limit: usize, owner: Option<&str>) -> Vec<Event> {
 		let polled: Vec<Arc<Event>> = {
 			let mut state = self.state.write();
 			let BusState {
@@ -618,29 +636,17 @@ impl EventBus {
 				budget,
 			} = &mut *state;
 			match subscriptions.get_mut(&id) {
-				Some(sub) => {
+				Some(sub) if owner.is_none_or(|owner| sub.owner == owner) => {
 					let count = limit.min(sub.queue.len());
 					(0..count).filter_map(|_| sub.pop_oldest(budget)).collect()
 				}
-				None => Vec::new(),
+				_ => Vec::new(),
 			}
 		};
 
 		// Materialize outside the lock. The payload is copied only while
 		// another subscription still shares the same event.
 		polled.into_iter().map(Arc::unwrap_or_clone).collect()
-	}
-
-	/// Poll a subscription only when it belongs to the requesting plugin.
-	pub(crate) fn poll_for_owner(&self, id: u64, limit: usize, owner: &str) -> Vec<Event> {
-		let mut subs = self.subscriptions.write();
-		match subs.get_mut(&id) {
-			Some(sub) if sub.owner == owner => {
-				let count = limit.min(sub.queue.len());
-				sub.queue.drain(..count).collect()
-			}
-			_ => Vec::new(),
-		}
 	}
 
 	/// Get the number of pending events for a subscription.
@@ -1175,6 +1181,45 @@ mod tests {
 		assert_eq!(bus.pending_bytes(sub_id), charge(10) * 2);
 		let names: Vec<String> = bus.poll(sub_id, 10).into_iter().map(|e| e.name).collect();
 		assert_eq!(names, vec!["e.1", "e.2"]);
+	}
+
+	#[rstest]
+	fn test_owner_scoped_calls_from_another_plugin_keep_queued_bytes() {
+		// Arrange
+		let bus = EventBus::new();
+		let sub_id = bus.subscribe("*", "owner").unwrap();
+		bus.emit("e.0", vec![1; 10], "p");
+
+		// Act
+		let polled = bus.poll_for_owner(sub_id, 10, "attacker");
+		let unsubscribed = bus.unsubscribe_for_owner(sub_id, "attacker");
+
+		// Assert
+		assert!(polled.is_empty());
+		assert!(!unsubscribed);
+		assert_eq!(bus.pending_bytes(sub_id), charge(10));
+		assert_eq!(bus.total_pending_bytes(), charge(10));
+	}
+
+	#[rstest]
+	fn test_owner_scoped_poll_and_unsubscribe_release_queued_bytes() {
+		// Arrange
+		let bus = EventBus::new();
+		let polled_id = bus.subscribe("*", "owner").unwrap();
+		let removed_id = bus.subscribe("*", "owner").unwrap();
+		bus.emit("e.0", vec![1; 10], "p");
+
+		// Act
+		let events = bus.poll_for_owner(polled_id, 10, "owner");
+		let unsubscribed = bus.unsubscribe_for_owner(removed_id, "owner");
+
+		// Assert
+		assert_eq!(events.len(), 1);
+		assert_eq!(events[0].payload, vec![1; 10]);
+		assert!(unsubscribed);
+		assert!(!bus.has_subscription(removed_id));
+		assert_eq!(bus.pending_bytes(polled_id), 0);
+		assert_eq!(bus.total_pending_bytes(), 0);
 	}
 
 	#[rstest]
