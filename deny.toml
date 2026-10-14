@@ -31,6 +31,14 @@ ignore = [
   { id = "RUSTSEC-2024-0320", reason = "yaml-rust is retained by transitive configuration dependencies; remediation is tracked in issue #5492." },
   { id = "RUSTSEC-2026-0249", reason = "smartstring is retained transitively by rhai; no patched release exists, and remediation is tracked in issue #5492." },
   { id = "RUSTSEC-2026-0258", reason = "h2 0.3.27 is retained by aws-smithy-http-client and hyper 0.14; migration to the patched h2 0.4 line is tracked in issue #5492." },
+  # Temporary: unsafe-libyaml is archived upstream and reached only through the
+  # deprecated serde_yaml, whose Error type is exposed by reinhardt-urls
+  # `to_yaml` methods, so replacing it is a breaking change (issue #6773).
+  # Remove this exception once no crate in the full-feature graph depends on
+  # unsafe-libyaml.
+  # Ideal: YAML output goes through a safe-Rust library such as serde-saphyr,
+  # `to_yaml` returns a Reinhardt-owned error, and no RUSTSEC-2024-0449 entry.
+  { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained with no safe upgrade and is retained by the deprecated serde_yaml, a direct dependency exposed in public APIs; migration is tracked in issue #6773." },
 ]
 
 [licenses]
