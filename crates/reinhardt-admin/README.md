@@ -158,6 +158,12 @@ individual modules under `src/server/`:
 - `admin_login` / `admin_login_with_header` — admin authentication
 - `admin_logout` — admin session termination
 
+For non-superusers, create and import apply the model admin's `object_filters`
+to each new record. Equality filters supply missing scoped fields and reject
+conflicting values; predicates that cannot be checked before insertion deny
+the operation. CSV and TSV exports prefix spreadsheet formula cells with an
+apostrophe.
+
 ### Routing
 
 Route registration uses two free functions from `core::router`:

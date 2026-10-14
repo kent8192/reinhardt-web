@@ -158,8 +158,8 @@ impl HttpsRedirectMiddleware {
 	fn validate_host<'a>(&self, host: Option<&'a str>) -> Option<&'a str> {
 		let host = host?;
 
-		// Reject hosts containing path separators or whitespace (injection attempts)
-		if host.contains('/') || host.contains('\\') || host.contains(char::is_whitespace) {
+		// Host is an authority, never a URL with credentials or a path.
+		if host.contains(['/', '\\', '@', '?', '#', '%']) || host.contains(char::is_whitespace) {
 			return None;
 		}
 
@@ -168,15 +168,18 @@ impl HttpsRedirectMiddleware {
 			return None;
 		}
 
-		// Strip port for comparison (e.g., "example.com:8080" -> "example.com")
-		let host_without_port = host.split(':').next().unwrap_or(host);
+		let parsed = url::Url::parse(&format!("http://{host}/")).ok()?;
+		let parsed_host = parsed.host_str()?;
+		if parsed.username() != "" || parsed.password().is_some() {
+			return None;
+		}
 
 		// Check against allowed hosts list
-		let is_allowed = self.config.allowed_hosts.iter().any(|allowed| {
-			let allowed_lower = allowed.to_lowercase();
-			let host_lower = host_without_port.to_lowercase();
-			allowed_lower == host_lower
-		});
+		let is_allowed = self
+			.config
+			.allowed_hosts
+			.iter()
+			.any(|allowed| allowed.eq_ignore_ascii_case(parsed_host));
 
 		if is_allowed { Some(host) } else { None }
 	}
@@ -487,6 +490,17 @@ mod tests {
 			response.headers.get("Location").unwrap(),
 			"https://example.com:8080/test"
 		);
+	}
+
+	#[rstest]
+	#[case("example.com@evil.com")]
+	#[case("evil.com@example.com")]
+	#[case("example.com:invalid")]
+	#[case("example.com\\@evil.com")]
+	fn rejects_malformed_host_authorities(#[case] host: &str) {
+		let middleware =
+			HttpsRedirectMiddleware::new(config_with_allowed_hosts(vec!["example.com"]));
+		assert!(middleware.validate_host(Some(host)).is_none());
 	}
 
 	#[rstest]

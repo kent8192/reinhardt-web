@@ -6,6 +6,10 @@ HTTP request and response handling for the Reinhardt framework
 
 Core HTTP abstractions for the Reinhardt framework. Provides comprehensive request and response types, header handling, cookie management, content negotiation, and streaming support with a Django/DRF-inspired API design.
 
+`ChunkedUploadManager` requires each chunk to match its declared size (the
+final chunk must match the remaining bytes) and rejects excess data before
+writing it to disk.
+
 ## Features
 
 ### Implemented ✓

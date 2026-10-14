@@ -20,6 +20,7 @@ mod admin {
 	mod server_fn_middleware_helpers;
 	mod server_fn_permission_tests;
 	mod server_fn_state_transition_tests;
+	mod server_fn_typed_scope_tests;
 	mod server_fn_update_tests;
 	mod server_fn_usecase_tests;
 	mod server_fn_uuid_pk_tests;

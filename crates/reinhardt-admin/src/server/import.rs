@@ -4,7 +4,7 @@
 
 #[cfg(server)]
 use super::admin_auth::AdminAuthenticatedUser;
-use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, ImportFormat, ImportResponse};
+use crate::adapters::{AdminDatabase, AdminSite, ImportFormat, ImportResponse};
 #[cfg(server)]
 use crate::core::{AdminDatabaseKey, AdminSiteKey};
 #[cfg(server)]
@@ -16,7 +16,7 @@ use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use std::collections::HashMap;
 
 #[cfg(server)]
-use super::error::{AdminAuth, MapServerFnError, ModelPermission};
+use super::error::{AdminAuth, MapServerFnError, ModelPermission, require_object_filters};
 #[cfg(server)]
 use super::limits::{MAX_IMPORT_FILE_SIZE, MAX_IMPORT_RECORDS};
 
@@ -64,6 +64,7 @@ pub async fn import_data(
 	let model_admin = site.get_model_admin(&model_name).map_server_fn_error()?;
 	auth.require_model_permission(model_admin.as_ref(), user.as_ref(), ModelPermission::Add)
 		.await?;
+	let object_filters = require_object_filters(model_admin.as_ref(), user.as_ref())?;
 
 	// Validate import file size to prevent memory exhaustion
 	if data.len() > MAX_IMPORT_FILE_SIZE {
@@ -82,20 +83,10 @@ pub async fn import_data(
 	let records: Vec<HashMap<String, serde_json::Value>> = match format {
 		ImportFormat::JSON => serde_json::from_slice(&data)
 			.map_err(|_| ServerFnError::deserialization("Invalid JSON format in import data"))?,
-		ImportFormat::CSV => {
-			let mut rdr = csv::Reader::from_reader(&data[..]);
-			rdr.deserialize()
-				.collect::<Result<Vec<_>, _>>()
-				.map_err(|_| ServerFnError::deserialization("Invalid CSV format in import data"))?
-		}
-		ImportFormat::TSV => {
-			let mut rdr = csv::ReaderBuilder::new()
-				.delimiter(b'\t')
-				.from_reader(&data[..]);
-			rdr.deserialize()
-				.collect::<Result<Vec<_>, _>>()
-				.map_err(|_| ServerFnError::deserialization("Invalid TSV format in import data"))?
-		}
+		ImportFormat::CSV => parse_delimited_records(&data, b',', &object_filters)
+			.map_err(|_| ServerFnError::deserialization("Invalid CSV format in import data"))?,
+		ImportFormat::TSV => parse_delimited_records(&data, b'\t', &object_filters)
+			.map_err(|_| ServerFnError::deserialization("Invalid TSV format in import data"))?,
 	};
 
 	// Validate record count to prevent database overload
@@ -118,7 +109,7 @@ pub async fn import_data(
 			errors.push(format!("Record {}: import failed", index + 1));
 			continue;
 		}
-		let record =
+		let mut record =
 			match super::create::prepare_create_data(record, model_admin.as_ref(), table_name) {
 				Ok(record) => record,
 				Err(_) => {
@@ -127,8 +118,13 @@ pub async fn import_data(
 					continue;
 				}
 			};
+		if super::create::enforce_creation_scope(&mut record, &object_filters).is_err() {
+			failed += 1;
+			errors.push(format!("Record {}: import failed", index + 1));
+			continue;
+		}
 		match db
-			.create::<AdminRecord>(table_name, Some(pk_field), record)
+			.create_with_scope(table_name, Some(pk_field), record, &object_filters)
 			.await
 		{
 			Ok(_) => imported += 1,
@@ -161,4 +157,41 @@ pub async fn import_data(
 			Some(errors)
 		},
 	})
+}
+
+#[cfg(server)]
+fn parse_delimited_records(
+	data: &[u8],
+	delimiter: u8,
+	filters: &[reinhardt_db::orm::Filter],
+) -> Result<Vec<HashMap<String, serde_json::Value>>, csv::Error> {
+	use reinhardt_db::orm::{FilterOperator, FilterValue};
+	let mut reader = csv::ReaderBuilder::new()
+		.delimiter(delimiter)
+		.from_reader(data);
+	let headers = reader.headers()?.clone();
+	reader
+		.records()
+		.map(|record| {
+			let record = record?;
+			let mut parsed: HashMap<String, serde_json::Value> =
+				record.deserialize(Some(&headers))?;
+			// CSV's generic JSON decoder parses numeric cells as f64. Preserve the
+			// original decimal lexeme so authorization cannot lose numeric precision.
+			for filter in filters {
+				if matches!(filter.operator, FilterOperator::Eq)
+					&& matches!(filter.value, FilterValue::Decimal(_))
+					&& filter.source_field_name() == Some(filter.field.as_str())
+					&& let Some(index) = headers.iter().position(|header| header == filter.field)
+					&& let Some(cell) = record.get(index)
+				{
+					parsed.insert(
+						filter.field.clone(),
+						serde_json::Value::String(cell.to_owned()),
+					);
+				}
+			}
+			Ok(parsed)
+		})
+		.collect()
 }

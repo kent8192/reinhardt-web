@@ -2,8 +2,10 @@ use super::traits::ForceLoginUser;
 
 /// Type-erased session identity, decoupled from the user's concrete type.
 ///
-/// Holds the minimal fields that `CookieSessionAuthMiddleware` reads from
-/// `SessionData.data`: `user_id`, `is_staff`, `is_superuser`.
+/// Holds the fixture metadata written to `SessionData.data`: `user_id`,
+/// `is_staff`, `is_superuser`. Cookie authentication uses `user_id` to resolve
+/// a current account; privilege flags must also be reflected by the fixture's
+/// `AuthBackend`, as shown in `SessionAuthBuilder`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SessionIdentity {
 	/// User ID stored as `"user_id"` in session data.
@@ -26,8 +28,9 @@ impl SessionIdentity {
 
 	/// Convert to `SessionData` for `AsyncSessionBackend`.
 	///
-	/// Creates a `SessionData` with the fields that `CookieSessionAuthMiddleware`
-	/// expects: `user_id`, `is_staff`, `is_superuser`.
+	/// Creates fixture session metadata: `user_id`, `is_staff`, `is_superuser`.
+	/// Cookie authentication resolves current privileges through `AuthBackend`;
+	/// saving these flags alone does not authorize a request.
 	#[cfg(native)]
 	pub fn to_session_data(
 		&self,

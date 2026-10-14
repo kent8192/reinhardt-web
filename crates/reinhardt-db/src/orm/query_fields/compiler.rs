@@ -88,9 +88,23 @@ impl QueryFieldCompiler {
 	fn compile_field_path_raw(path: &[String]) -> String {
 		path.iter()
 			.filter(|segment| !Self::is_transform(segment))
-			.map(|s| s.as_str())
+			.map(|segment| Self::quote_identifier(segment))
 			.collect::<Vec<_>>()
 			.join(".")
+	}
+
+	/// Keep ordinary identifiers readable while quoting any segment containing SQL syntax.
+	fn quote_identifier(segment: &str) -> String {
+		let mut chars = segment.chars();
+		if chars
+			.next()
+			.is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+			&& chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+		{
+			segment.to_owned()
+		} else {
+			format!("\"{}\"", segment.replace('"', "\"\""))
+		}
 	}
 
 	/// Check if a path segment is a transform
@@ -146,7 +160,7 @@ impl QueryFieldCompiler {
 					if !field_name.is_empty() {
 						field_name.push('.');
 					}
-					field_name.push_str(segment);
+					field_name.push_str(&Self::quote_identifier(segment));
 				}
 			}
 		}
@@ -521,6 +535,19 @@ mod tests {
 			Field::<TestUser, String>::new(vec!["email"]).eq("test@example.com".to_string());
 		let sql = QueryFieldCompiler::compile(&lookup);
 		assert_eq!(sql, "email = 'test@example.com'");
+	}
+
+	#[rstest::rstest]
+	fn test_lookup_field_path_quotes_sql_syntax() {
+		let lookup = Lookup::<TestUser>::new(
+			vec!["email\" OR 1=1 --".to_string()],
+			LookupType::Exact,
+			"test@example.com".into(),
+		);
+		assert_eq!(
+			QueryFieldCompiler::compile(&lookup),
+			"\"email\"\" OR 1=1 --\" = 'test@example.com'"
+		);
 	}
 
 	#[test]
