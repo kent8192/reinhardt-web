@@ -10640,9 +10640,9 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
-	fn apply_migration_operations_replays_legacy_partial_index_lifecycle() {
+	fn apply_migration_operations_replays_partial_index_lifecycle() {
+		// Arrange
 		let create_table = super::super::Operation::CreateTable {
 			name: "auth_token".to_string(),
 			columns: Vec::new(),
@@ -10662,23 +10662,37 @@ mod tests {
 			mysql_options: None,
 			operator_class: None,
 		};
-		let drop_index = super::super::Operation::DropIndex {
-			table: "auth_token".to_string(),
-			columns: vec!["user_id".to_string()],
-		};
-		let mut state = ProjectState::new();
-
-		state.apply_migration_operations(&[create_table, create_index], "auth");
-		let model = state
-			.find_model_by_table("auth_token")
-			.expect("legacy index replay should create the model index");
-		assert_eq!(model.indexes.len(), 1);
-		assert_eq!(
-			model.indexes[0].where_clause.as_deref(),
-			Some("consumed_at IS NULL")
+		let mut expected_index = IndexDefinition::new(
+			super::super::operations::generated_index_name(
+				"auth_token",
+				&["user_id".to_string()],
+				None,
+				Some("consumed_at IS NULL"),
+			),
+			vec!["user_id".to_string()],
+			false,
 		);
+		expected_index.where_clause = Some("consumed_at IS NULL".to_string());
+		let mut state = ProjectState::new();
+		state.apply_migration_operations(&[create_table, create_index.clone()], "auth");
+		assert_eq!(
+			state
+				.find_model_by_table("auth_token")
+				.expect("partial index replay should create the model")
+				.indexes,
+			vec![expected_index]
+		);
+		// Partial indexes carry a hashed physical name, which the legacy
+		// `DropIndex` cannot address; the reverse operation names it exactly.
+		let drop_index = create_index
+			.to_reverse_operation(&state)
+			.expect("partial index creation should be reversible")
+			.expect("partial index creation should produce a drop operation");
 
+		// Act
 		state.apply_migration_operations(&[drop_index], "auth");
+
+		// Assert
 		assert!(
 			state
 				.find_model_by_table("auth_token")
@@ -11655,7 +11669,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn create_index_replay_preserves_concurrently_through_reverse_sql() {
 		// Arrange
@@ -11701,7 +11714,7 @@ mod tests {
 		));
 		assert!(matches!(
 			&reverse,
-			super::super::Operation::CreateIndexRepair {
+			super::super::Operation::CreateNamedIndex {
 				concurrently: true,
 				..
 			}
@@ -11713,7 +11726,6 @@ mod tests {
 		);
 	}
 
-	#[cfg(not(feature = "pgvector"))]
 	#[test]
 	fn create_index_repair_replay_preserves_mysql_options_through_reverse_sql() {
 		// Arrange
@@ -11763,7 +11775,7 @@ mod tests {
 		));
 		assert!(matches!(
 			&reverse,
-			super::super::Operation::CreateIndexRepair {
+			super::super::Operation::CreateNamedIndex {
 				mysql_options: Some(options),
 				..
 			} if *options == mysql_options
