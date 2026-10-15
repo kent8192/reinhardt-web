@@ -46,6 +46,8 @@ jobs:
           - { name: "reinhardt-core (core-full)",         pkg: "reinhardt-core",  features: "core-full",                                     no_default: "true",  all_features: "false" }
           # Shared utilities used by browser crates such as the reinhardt-admin client (#6766)
           - { name: "reinhardt-utils (utils-core)",       pkg: "reinhardt-utils", features: "utils-core",                                    no_default: "true",  all_features: "false" }
+          # Browser admin client; native clippy cannot see client-only imports (#6766)
+          - { name: "reinhardt-admin (default)",          pkg: "reinhardt-admin", features: "",                                              no_default: "false", all_features: "false" }
     steps:
       - name: Free Disk Space (Ubuntu)
         if: ${{ !contains(inputs.runner || '', 'self-hosted') }}
