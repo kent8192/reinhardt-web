@@ -14,7 +14,7 @@
 //!
 //! <!-- reinhardt-version-sync -->
 //! ```bash
-//! cargo install reinhardt-admin-cli --version "0.3.24"
+//! cargo install reinhardt-admin-cli --version "0.3.25"
 //! ```
 //!
 //! ## Usage
