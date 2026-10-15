@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.3.23...reinhardt-middleware@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(auth)* [**breaking**] revalidate cookie sessions and enforce CSRF
+- *(http)* [**breaking**] validate redirect authorities and referer origins
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(middleware)* issue CSRF token for the rotated session ID
+
 ### Fixed
 
 - Configure CSRF session cookies and honor typed session metadata when issuing and validating tokens.

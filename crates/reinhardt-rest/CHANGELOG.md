@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.24](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.3.23...reinhardt-rest@v0.3.24) - 2026-10-14
+
+### Fixed
+
+- *(orm)* [**breaking**] prevent SQL structure injection from query inputs
+- *(security)* [**breaking**] preserve configuration and typed values in hardening
+- *(rest)* preserve jsonb values in batch uniqueness checks
+
 ### Fixed
 
 - Preserve JSONB and domain values in PostgreSQL batch uniqueness checks, including JSON null.
