@@ -49,6 +49,7 @@ pub mod index_hint;
 #[cfg(feature = "serializers")]
 pub mod optimizer;
 pub mod relevance;
+mod sql_text;
 pub mod synonym;
 
 // Core exports
