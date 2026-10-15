@@ -8,6 +8,7 @@
 #![cfg(client)]
 
 use js_sys::{Function, Reflect};
+use reinhardt_admin::core::{AdminChange, AdminFormMode, AdminSaveContext, AdminUser, ModelAdmin};
 use reinhardt_admin::pages::components::features::{
 	Column, FormField, ListViewData, dashboard, detail_view, list_view, list_view_with_actions,
 	model_form, model_form_with_field_info, model_form_with_fieldsets, model_form_with_inlines,
@@ -15,9 +16,9 @@ use reinhardt_admin::pages::components::features::{
 use reinhardt_admin::pages::components::login::login_form;
 use reinhardt_admin::pages::components::relation_selector::relation_selector;
 use reinhardt_admin::types::{
-	AdminAction, AdminActionRequest, FieldInfo, FieldType, Fieldset, FormFieldSpec, InlineFormInfo,
-	InlineRowInfo, InlineStyle, ModelInfo, ModelPermission, MutationResponse, RelationOption,
-	RelationSelectorLayout, RelationWidget,
+	AdminAction, AdminActionRequest, AdminError, AdminResult, FieldInfo, FieldType, Fieldset,
+	FormFieldSpec, InlineFormInfo, InlineRowInfo, InlineStyle, ModelInfo, ModelPermission,
+	MutationResponse, RelationOption, RelationSelectorLayout, RelationWidget,
 };
 use reinhardt_pages::component::{PageExt, cleanup_reactive_nodes};
 use reinhardt_pages::dom::Element;
@@ -57,6 +58,87 @@ fn inline_model_admin_wasm_api_matches_p1_surface() {
 	assert_eq!(inline.child_model(), "Line Item");
 	assert_eq!(inline.foreign_key(), "parent_id");
 	assert_eq!(inline.fields(), &["name".to_owned()]);
+}
+
+struct WasmStaffUser;
+
+impl AdminUser for WasmStaffUser {
+	fn is_active(&self) -> bool {
+		true
+	}
+
+	fn is_staff(&self) -> bool {
+		true
+	}
+
+	fn is_superuser(&self) -> bool {
+		false
+	}
+
+	fn get_username(&self) -> &str {
+		"staff"
+	}
+}
+
+/// Shared model admin whose save hooks must compile unchanged on both targets.
+struct WasmSaveHookAdmin;
+
+#[async_trait::async_trait]
+impl ModelAdmin for WasmSaveHookAdmin {
+	fn model_name(&self) -> &str {
+		"Article"
+	}
+
+	fn table_name(&self) -> &str {
+		"articles"
+	}
+
+	async fn before_save(
+		&self,
+		ctx: &AdminSaveContext<'_>,
+		change: &AdminChange,
+	) -> AdminResult<()> {
+		if ctx.mode() == AdminFormMode::Update
+			&& change.transition::<bool>("published") == Some((false, true))
+		{
+			return Err(AdminError::ValidationError(
+				"publishing requires review".to_owned(),
+			));
+		}
+		Ok(())
+	}
+
+	async fn after_save(&self, _ctx: &AdminSaveContext<'_>, _change: &AdminChange) {}
+}
+
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
+async fn model_admin_save_hooks_wasm_api_matches_p2_surface() {
+	// Arrange
+	let admin = WasmSaveHookAdmin;
+	let stored = HashMap::from([("published".to_owned(), serde_json::json!(false))]);
+	let submitted = HashMap::from([("published".to_owned(), serde_json::json!(true))]);
+	let change = AdminChange::new(Some(&stored), &submitted);
+	let ctx = AdminSaveContext::new(&WasmStaffUser, AdminFormMode::Update)
+		.with_pk("42")
+		.with_stored(&stored);
+
+	// Act
+	let result = admin.before_save(&ctx, &change).await;
+	admin.after_save(&ctx, &change).await;
+
+	// Assert
+	assert_eq!(ctx.user().get_username(), "staff");
+	assert_eq!(ctx.pk(), Some("42"));
+	assert_eq!(ctx.stored(), Some(&stored));
+	assert_eq!(
+		change.changed_fields().collect::<Vec<_>>(),
+		vec!["published"]
+	);
+	assert!(matches!(
+		result,
+		Err(AdminError::ValidationError(message)) if message == "publishing requires review"
+	));
 }
 
 struct BodyRoot {
@@ -166,18 +248,20 @@ fn action_list_data() -> ListViewData {
 			linked: false,
 			required: false,
 			nullable: false,
+			step: None,
 			form_spec: None,
 		}],
+		pk_field: "slug".to_string(),
 		records: vec![
 			HashMap::from([
-				("id".to_string(), "41".to_string()),
-				("slug".to_string(), "article-a".to_string()),
-				("title".to_string(), "Article A".to_string()),
+				("id".to_string(), serde_json::json!(41)),
+				("slug".to_string(), serde_json::json!("article-a")),
+				("title".to_string(), serde_json::json!("Article A")),
 			]),
 			HashMap::from([
-				("id".to_string(), "42".to_string()),
-				("slug".to_string(), "article-b".to_string()),
-				("title".to_string(), "Article B".to_string()),
+				("id".to_string(), serde_json::json!(42)),
+				("slug".to_string(), serde_json::json!("article-b")),
+				("title".to_string(), serde_json::json!("Article B")),
 			]),
 		],
 		current_page: 1,
@@ -428,6 +512,7 @@ fn model_form_renders_help_placeholder_and_parent_error_description() {
 			html_type: "text".to_string(),
 		},
 		required: true,
+		nullable: false,
 		value: String::new(),
 	}];
 	let field_infos = vec![FieldInfo {
@@ -435,6 +520,7 @@ fn model_form_renders_help_placeholder_and_parent_error_description() {
 		label: "Title".to_string(),
 		field_type: FieldType::Text,
 		required: true,
+		nullable: false,
 		readonly: false,
 		help_text: Some("Shown in the page title".to_string()),
 		placeholder: Some("Write a headline".to_string()),
@@ -512,7 +598,7 @@ fn model_form_with_fieldsets_preserves_order_titles_and_initial_open_state() {
 }
 
 #[rstest]
-#[wasm_bindgen_test]
+#[test_attr(wasm_bindgen_test)]
 fn model_form_with_fieldsets_expands_collapsed_required_group() {
 	// Arrange
 	let fields = vec![FormField {
@@ -544,17 +630,17 @@ fn model_form_with_fieldsets_expands_collapsed_required_group() {
 #[rstest]
 #[case("")]
 #[case(" \t")]
-#[wasm_bindgen_test]
-fn model_form_with_fieldsets_uses_fallback_for_blank_title() {
-	for title in ["", " \t"] {
-		let fields = vec![text_field("slug", "Slug")];
-		let fieldsets = vec![Fieldset::new(Some(title), &["slug"])];
+#[test_attr(wasm_bindgen_test)]
+fn model_form_with_fieldsets_uses_fallback_for_blank_title(#[case] title: &str) {
+	// Arrange
+	let fields = vec![text_field("slug", "Slug")];
+	let fieldsets = vec![Fieldset::new(Some(title), &["slug"])];
 
-		let html =
-			model_form_with_fieldsets("Article", &fields, &fieldsets, None).render_to_string();
+	// Act
+	let html = model_form_with_fieldsets("Article", &fields, &fieldsets, None).render_to_string();
 
-		assert!(html.contains("<summary>Fields</summary>"));
-	}
+	// Assert
+	assert!(html.contains("<summary>Fields</summary>"));
 }
 
 #[wasm_bindgen_test]
@@ -870,6 +956,7 @@ async fn structured_parent_errors_update_field_and_form_alert() {
 			html_type: "text".to_string(),
 		},
 		required: false,
+		nullable: false,
 		value: String::new(),
 	}];
 	let page = model_form("Article", &fields, None);
@@ -1126,6 +1213,7 @@ fn inline_form(style: InlineStyle, can_delete: bool) -> InlineFormInfo {
 				values: HashMap::new(),
 			},
 		],
+		can_change: true,
 		can_delete,
 	}
 }
@@ -1177,6 +1265,7 @@ fn relation_raw_id_preserves_the_named_value_and_describes_the_resolved_label() 
 			readonly: false,
 		},
 		required: true,
+		nullable: false,
 		readonly: false,
 		help_text: Some("Choose an author".to_string()),
 		placeholder: None,
@@ -1231,6 +1320,7 @@ async fn structured_relation_parent_error_targets_raw_id_control() {
 			readonly: false,
 		},
 		required: false,
+		nullable: false,
 		value: "7".to_string(),
 	}];
 	let field_infos = vec![FieldInfo {
@@ -1246,6 +1336,7 @@ async fn structured_relation_parent_error_targets_raw_id_control() {
 			readonly: false,
 		},
 		required: false,
+		nullable: false,
 		readonly: false,
 		help_text: Some("Choose an author".to_string()),
 		placeholder: None,
@@ -1309,6 +1400,7 @@ async fn structured_many_to_many_parent_error_targets_search_control() {
 			has_more: false,
 		},
 		required: false,
+		nullable: false,
 		value: String::new(),
 	}];
 	let field_infos = vec![FieldInfo {
@@ -1322,6 +1414,7 @@ async fn structured_many_to_many_parent_error_targets_search_control() {
 			has_more: false,
 		},
 		required: false,
+		nullable: false,
 		readonly: false,
 		help_text: Some("Choose one or more tags".to_string()),
 		placeholder: None,
@@ -1487,6 +1580,7 @@ fn textarea_rows_propagate_from_field_type_to_markup() {
 		label: "Bio".to_string(),
 		spec: FormFieldSpec::from(&field_type),
 		required: false,
+		nullable: false,
 		value: "Hello world".to_string(),
 	}];
 
@@ -1591,6 +1685,7 @@ fn test_list_view_renders_table_with_data() {
 				linked: true,
 				required: true,
 				nullable: false,
+				step: None,
 				form_spec: None,
 			},
 			Column {
@@ -1601,6 +1696,7 @@ fn test_list_view_renders_table_with_data() {
 				linked: false,
 				required: false,
 				nullable: false,
+				step: None,
 				form_spec: None,
 			},
 		],
@@ -2214,6 +2310,7 @@ fn relation_field(layout: RelationSelectorLayout) -> FormField {
 			has_more: true,
 		},
 		required: false,
+		nullable: false,
 		value: String::new(),
 	}
 }
