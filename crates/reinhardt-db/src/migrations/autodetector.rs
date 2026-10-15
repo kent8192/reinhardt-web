@@ -10640,9 +10640,10 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn apply_migration_operations_replays_partial_index_lifecycle() {
-		// Arrange
+	/// Replays a partial index on `auth_token.user_id` and returns the state,
+	/// the replayed `CreateIndex`, and the hashed definition it produced.
+	fn replay_partial_auth_token_index() -> (ProjectState, super::super::Operation, IndexDefinition)
+	{
 		let create_table = super::super::Operation::CreateTable {
 			name: "auth_token".to_string(),
 			columns: Vec::new(),
@@ -10680,10 +10681,15 @@ mod tests {
 				.find_model_by_table("auth_token")
 				.expect("partial index replay should create the model")
 				.indexes,
-			vec![expected_index]
+			vec![expected_index.clone()]
 		);
-		// Partial indexes carry a hashed physical name, which the legacy
-		// `DropIndex` cannot address; the reverse operation names it exactly.
+		(state, create_index, expected_index)
+	}
+
+	#[test]
+	fn apply_migration_operations_replays_partial_index_lifecycle() {
+		// Arrange
+		let (mut state, create_index, _) = replay_partial_auth_token_index();
 		let drop_index = create_index
 			.to_reverse_operation(&state)
 			.expect("partial index creation should be reversible")
@@ -10699,6 +10705,30 @@ mod tests {
 				.expect("model should remain after dropping its index")
 				.indexes
 				.is_empty()
+		);
+	}
+
+	#[test]
+	fn apply_migration_operations_drop_index_keeps_hashed_partial_index() {
+		// Arrange
+		let (mut state, _, expected_index) = replay_partial_auth_token_index();
+		let drop_index = super::super::Operation::DropIndex {
+			table: "auth_token".to_string(),
+			columns: vec!["user_id".to_string()],
+		};
+
+		// Act
+		state.apply_migration_operations(&[drop_index], "auth");
+
+		// Assert
+		// A column-addressed `DropIndex` names only the unhashed physical index
+		// (#6443), so the hashed partial index must survive the replay.
+		assert_eq!(
+			state
+				.find_model_by_table("auth_token")
+				.expect("model should remain after replaying DropIndex")
+				.indexes,
+			vec![expected_index]
 		);
 	}
 
