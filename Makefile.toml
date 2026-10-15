@@ -548,7 +548,7 @@ args = ["llvm-cov", "nextest", "--workspace", "--lib", "--all-features", "--no-f
 # ============================================================================
 
 [tasks.feature-check]
-description = "Check representative feature combinations (32 patterns)"
+description = "Check representative feature combinations (33 patterns)"
 dependencies = ["feature-check-facade", "feature-check-subcrate"]
 
 [tasks.dependency-feature-audit]
@@ -601,7 +601,7 @@ echo "=== All facade checks passed ==="
 '''
 
 [tasks.feature-check-subcrate]
-description = "Check key sub-crate feature combinations (12 patterns)"
+description = "Check key sub-crate feature combinations (13 patterns)"
 script_runner = "bash"
 script = '''
 set -e
@@ -620,6 +620,7 @@ combos=(
 	"rest-minimal|reinhardt-rest|--no-default-features"
 	"rest-full|reinhardt-rest|--no-default-features -F rest-full"
 	"middleware-social-auth|reinhardt-middleware|--no-default-features -F social-auth,session-redis"
+	"dentdelion-wasm|reinhardt-dentdelion|--no-default-features -F wasm"
 )
 
 for combo in "${combos[@]}"; do
