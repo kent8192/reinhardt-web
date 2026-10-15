@@ -41,8 +41,6 @@ use crate::types::{HistoryResponse, ModelInfo};
 #[cfg(any(client, test))]
 use reinhardt_pages::ResourceState;
 use reinhardt_pages::Signal;
-#[cfg(client)]
-use reinhardt_pages::{Element, deps};
 use reinhardt_pages::component::{Component, Page};
 #[cfg(client)]
 use reinhardt_pages::component::{MountError, PageExt};
@@ -51,6 +49,8 @@ use reinhardt_pages::reactive::ReactiveScope;
 use reinhardt_pages::router::Link;
 #[cfg(client)]
 use reinhardt_pages::use_resource;
+#[cfg(client)]
+use reinhardt_pages::{Element, deps};
 use reinhardt_urls::routers::ClientRouter;
 use reinhardt_urls::routers::client_router::Path;
 #[cfg(any(client, test))]
