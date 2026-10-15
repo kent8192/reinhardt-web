@@ -191,14 +191,17 @@ impl ProtobufParser {
 					let (len, n) = self.decode_varint(&data[cursor..])?;
 					cursor += n;
 
-					if cursor + len as usize > data.len() {
-						return Err(Error::Validation(
-							"Insufficient data for length-delimited field".to_string(),
-						)
-						.into());
-					}
-
-					let field_data = &data[cursor..cursor + len as usize];
+					// The declared length is attacker-controlled and may reach
+					// `u64::MAX`, so convert and add with checked arithmetic
+					// before slicing instead of truncating or overflowing.
+					let field_data = usize::try_from(len)
+						.ok()
+						.and_then(|len| data.get(cursor..cursor.checked_add(len)?))
+						.ok_or_else(|| {
+							Error::Validation(
+								"Insufficient data for length-delimited field".to_string(),
+							)
+						})?;
 
 					// Check before descending: the speculative nested parse
 					// below recurses once per level of untrusted nesting.
@@ -223,7 +226,7 @@ impl ProtobufParser {
 						}
 					};
 
-					(value, len as usize)
+					(value, field_data.len())
 				}
 				3 | 4 => {
 					// Start/End group (deprecated)
@@ -383,6 +386,90 @@ mod tests {
 		}
 		reversed.reverse();
 		Bytes::from(reversed)
+	}
+
+	#[rstest]
+	// Field 1, length u64::MAX: the 11-byte body overflows `cursor + len`.
+	#[case::max_length_at_end(vec![
+		0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+	])]
+	// Field 1 varint 1, then field 2 with length u64::MAX and a trailing byte.
+	#[case::max_length_mid_message(vec![
+		0x08, 0x01, 0x12, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x00,
+	])]
+	// Field 1, length u64::MAX - 10: `cursor + len` wraps to exactly zero.
+	#[case::length_wrapping_to_zero(vec![
+		0x0A, 0xF5, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+	])]
+	#[tokio::test]
+	async fn test_protobuf_parser_rejects_overflowing_length(#[case] body: Vec<u8>) {
+		// Arrange
+		let parser = ProtobufParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), Bytes::from(body), &headers)
+			.await;
+
+		// Assert
+		let Err(err) = result else {
+			panic!("Expected overflowing length to be rejected, got: {result:?}");
+		};
+		assert!(
+			matches!(
+				&err,
+				Error::Validation(msg) if msg == "Insufficient data for length-delimited field"
+			),
+			"Unexpected error: {err:?}"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_protobuf_parser_nested_overflowing_length_falls_back_to_bytes() {
+		// Arrange: field 1 wraps the 11-byte overflowing payload as its contents
+		let body = Bytes::from(vec![
+			0x0A, 0x0B, 0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+		]);
+		let parser = ProtobufParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
+
+		// Assert
+		match result {
+			Ok(ParsedData::Protobuf(value)) => {
+				assert_eq!(
+					value,
+					json!({"1": [10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 1]})
+				);
+			}
+			other => panic!("Expected Protobuf variant, got: {other:?}"),
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_protobuf_parser_length_reaching_end_of_data() {
+		// Arrange: field 1, length 3, exactly the remaining bytes "abc"
+		let body = Bytes::from(vec![0x0A, 0x03, 0x61, 0x62, 0x63]);
+		let parser = ProtobufParser::new();
+		let headers = HeaderMap::new();
+
+		// Act
+		let result = parser
+			.parse(Some("application/protobuf"), body, &headers)
+			.await;
+
+		// Assert
+		match result {
+			Ok(ParsedData::Protobuf(value)) => assert_eq!(value, json!({"1": "abc"})),
+			other => panic!("Expected Protobuf variant, got: {other:?}"),
+		}
 	}
 
 	#[tokio::test]
