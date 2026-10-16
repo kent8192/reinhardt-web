@@ -311,7 +311,7 @@ impl InsertBuilder {
 						col,
 						&self.hybrid_values[col],
 						&mut param_index,
-						&get_placeholder,
+						get_placeholder,
 						&mut params,
 					));
 				}
@@ -565,7 +565,7 @@ impl UpdateBuilder {
 						col,
 						&self.hybrid_values[col],
 						&mut param_index,
-						&get_placeholder,
+						get_placeholder,
 						&mut params,
 					);
 					set_clauses.push(format!("{}={}", quote.quote_identifier(col), expr));
