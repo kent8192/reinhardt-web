@@ -513,11 +513,17 @@ impl Redirect {
 	///
 	/// # Panics
 	///
-	/// Panics if the URL does not start with `/` (use `validated` for absolute URLs).
+	/// Panics if the URL does not start with `/` (use `validated` for absolute URLs)
+	/// or if a browser could read it as another host, such as `//host` or `/\host`.
 	pub fn new(to: impl Into<String>) -> Self {
 		let url = to.into();
 		assert!(
-			url.starts_with('/') && !url.starts_with("//"),
+			url.starts_with('/')
+				&& reinhardt_core::security::redirect::validate_redirect_url(
+					&url,
+					&std::collections::HashSet::new(),
+				)
+				.is_ok(),
 			"Redirect::new only accepts relative URLs starting with '/'. Use Redirect::validated for absolute URLs."
 		);
 		Self {
@@ -718,6 +724,32 @@ mod tests {
 	#[should_panic(expected = "Redirect::new only accepts relative URLs")]
 	fn test_redirect_rejects_protocol_relative() {
 		Redirect::new("//evil.com/path");
+	}
+
+	#[rstest::rstest]
+	#[should_panic(expected = "Redirect::new only accepts relative URLs")]
+	fn test_redirect_rejects_backslash_network_path() {
+		Redirect::new("/\\evil.com/path");
+	}
+
+	#[rstest::rstest]
+	#[case("/\\evil.com/path")]
+	#[case("\\\\evil.com/path")]
+	#[case("/%5cevil.com/path")]
+	fn test_redirect_validated_rejects_backslash_network_path(#[case] url: &str) {
+		use reinhardt_core::security::redirect::RedirectValidationError;
+
+		// Arrange
+		let hosts = std::collections::HashSet::new();
+
+		// Act
+		let result = Redirect::validated(url, &hosts);
+
+		// Assert
+		assert!(
+			matches!(result, Err(RedirectValidationError::SuspiciousEncoding)),
+			"Redirect::validated must reject {url:?}"
+		);
 	}
 
 	#[test]
