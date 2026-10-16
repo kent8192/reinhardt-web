@@ -413,6 +413,38 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case::userinfo_with_password("example.com:secret@evil.com")]
+	#[case::userinfo_with_empty_password("example.com:@evil.com")]
+	#[case::userinfo_with_port_shaped_password("example.com:443@evil.com")]
+	#[tokio::test]
+	async fn test_reject_userinfo_after_allowed_host_prefix(#[case] host: &str) {
+		// Arrange - the text before the first colon names an allowed host, but
+		// a URL parser reads it as userinfo and resolves the host after `@`
+		let config = config_with_allowed_hosts(vec!["example.com"]);
+		let middleware = HttpsRedirectMiddleware::new(config);
+		let handler = Arc::new(TestHandler);
+
+		let mut headers = HeaderMap::new();
+		headers.insert(hyper::header::HOST, host.parse().unwrap());
+
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert - must not emit a Location that redirects to another host
+		assert_eq!(response.status, StatusCode::BAD_REQUEST);
+		assert!(response.headers.get("Location").is_none());
+	}
+
+	#[rstest]
 	#[tokio::test]
 	async fn test_reject_missing_host_header() {
 		// Arrange - no host header at all
