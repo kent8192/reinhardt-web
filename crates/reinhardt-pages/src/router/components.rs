@@ -732,11 +732,15 @@ mod tests {
 		Redirect::new("/\\evil.com/path");
 	}
 
+	// `render` embeds the target in `<meta http-equiv="refresh">`, whose URL
+	// parser also drops a leading quote.
 	#[rstest::rstest]
 	#[case("/\\evil.com/path")]
 	#[case("\\\\evil.com/path")]
 	#[case("/%5cevil.com/path")]
-	fn test_redirect_validated_rejects_backslash_network_path(#[case] url: &str) {
+	#[case("'//evil.com/path")]
+	#[case("\"//evil.com/path")]
+	fn test_redirect_validated_rejects_browser_normalized_network_path(#[case] url: &str) {
 		use reinhardt_core::security::redirect::RedirectValidationError;
 
 		// Arrange
