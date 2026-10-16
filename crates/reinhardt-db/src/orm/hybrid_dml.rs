@@ -22,6 +22,19 @@
 //! not decide which tables or columns a caller may write. Applications that
 //! derive identifiers from untrusted input must still restrict them to an
 //! allow-list.
+//!
+//! # Value binding
+//!
+//! Values are always returned as bind parameters, never rendered into the SQL
+//! text. For a hybrid property with an SQL expression, each `(column)`
+//! reference in the expression is replaced with `(placeholder)` and the value
+//! is bound once per reference. String escaping differs between backends
+//! (MySQL treats a backslash as an escape character unless
+//! `NO_BACKSLASH_ESCAPES` is set), so an inline literal could end early and let
+//! the rest of the value run as SQL.
+//!
+//! The expression itself is emitted as written and must come from trusted
+//! code.
 
 use crate::backends::backend::DatabaseBackend;
 use crate::backends::optimization::QuoteStyle;
@@ -45,12 +58,43 @@ fn quote_style(backend: Option<&Arc<dyn DatabaseBackend>>) -> QuoteStyle {
 	backend.map_or(QuoteStyle::Ansi, |backend| backend.database_type().into())
 }
 
+/// Render a hybrid SQL expression with `value` bound at each `(column)` reference.
+///
+/// Every reference gets its own placeholder, so `?`-style backends receive one
+/// parameter per occurrence. An expression without a reference is returned
+/// unchanged and binds nothing.
+fn bind_hybrid_expression(
+	expr: &str,
+	column: &str,
+	value: &str,
+	param_index: &mut usize,
+	placeholder: impl Fn(usize) -> String,
+	params: &mut Vec<String>,
+) -> String {
+	let reference = format!("({})", column);
+	let mut segments = expr.split(reference.as_str());
+	// `split` always yields at least one segment.
+	let mut sql = segments.next().unwrap_or_default().to_string();
+	for segment in segments {
+		sql.push('(');
+		sql.push_str(&placeholder(*param_index));
+		sql.push(')');
+		sql.push_str(segment);
+		*param_index += 1;
+		params.push(value.to_string());
+	}
+	sql
+}
+
 /// A value that can be inserted/updated, either direct or from a hybrid property
 #[derive(Debug, Clone)]
 pub enum DmlValue {
 	/// Direct value
 	Direct(String),
-	/// Value from hybrid property expression
+	/// SQL expression of a hybrid property, as written.
+	///
+	/// The builders bind the caller's value at each `(column)` reference when
+	/// the statement is built.
 	HybridExpression(String),
 	/// Multiple columns from hybrid property (e.g., Point(x, y) -> x, y)
 	Expanded(Vec<(String, String)>),
@@ -60,6 +104,8 @@ pub enum DmlValue {
 pub struct InsertBuilder {
 	table_name: String,
 	values: HashMap<String, DmlValue>,
+	/// Values bound into `DmlValue::HybridExpression` entries, keyed by column.
+	hybrid_values: HashMap<String, String>,
 	backend: Option<Arc<dyn DatabaseBackend>>,
 }
 
@@ -78,6 +124,7 @@ impl InsertBuilder {
 		Self {
 			table_name: table_name.to_string(),
 			values: HashMap::new(),
+			hybrid_values: HashMap::new(),
 			backend: None,
 		}
 	}
@@ -117,8 +164,9 @@ impl InsertBuilder {
 	/// Add a hybrid property value
 	///
 	/// This method integrates hybrid properties with DML operations.
-	/// If the hybrid property has an SQL expression, it will be used;
-	/// otherwise, the value is treated as a direct parameter.
+	/// If the hybrid property has an SQL expression, it will be used with the
+	/// value bound at each `(column)` reference; otherwise, the value is treated
+	/// as a direct parameter.
 	///
 	/// # Examples
 	///
@@ -134,13 +182,14 @@ impl InsertBuilder {
 	/// let builder = InsertBuilder::new("users")
 	///     .hybrid_value("email", &lower_email, "TEST@EXAMPLE.COM");
 	///
-	/// let (sql, _) = builder.build();
+	/// let (sql, params) = builder.build();
 	/// assert_eq!(
 	///     sql,
-	///     "INSERT INTO \"users\" (\"email\") VALUES (LOWER('TEST@EXAMPLE.COM'))",
+	///     "INSERT INTO \"users\" (\"email\") VALUES (LOWER(?))",
 	///     "Expected INSERT with LOWER expression, got: {}",
 	///     sql
 	/// );
+	/// assert_eq!(params, vec!["TEST@EXAMPLE.COM"]);
 	/// ```
 	pub fn hybrid_value<T, R>(
 		mut self,
@@ -150,15 +199,12 @@ impl InsertBuilder {
 	) -> Self {
 		// If the property has an expression, use it; otherwise treat as direct value
 		if let Some(expr) = property.expression() {
-			// Replace the column reference in the expression with the actual value
-			// For example: "LOWER(email)" -> "LOWER('value')"
-			let value_expr = format!("'{}'", value.replace('\'', "''"));
-			let expanded_expr =
-				expr.replace(&format!("({})", column), &format!("({})", value_expr));
-			self.values.insert(
-				column.to_string(),
-				DmlValue::HybridExpression(expanded_expr),
-			);
+			// Keep the expression as written; `build` binds the value at each
+			// `(column)` reference once placeholder numbering is known.
+			self.values
+				.insert(column.to_string(), DmlValue::HybridExpression(expr));
+			self.hybrid_values
+				.insert(column.to_string(), value.to_string());
 		} else {
 			// No expression, use direct value
 			self.values
@@ -260,7 +306,14 @@ impl InsertBuilder {
 				}
 				DmlValue::HybridExpression(expr) => {
 					columns.push(quote.quote_identifier(col));
-					placeholders.push(expr.clone());
+					placeholders.push(bind_hybrid_expression(
+						expr,
+						col,
+						&self.hybrid_values[col],
+						&mut param_index,
+						&get_placeholder,
+						&mut params,
+					));
 				}
 				DmlValue::Expanded(_) => {
 					// Already handled above
@@ -283,6 +336,8 @@ impl InsertBuilder {
 pub struct UpdateBuilder {
 	table_name: String,
 	values: HashMap<String, DmlValue>,
+	/// Values bound into `DmlValue::HybridExpression` entries, keyed by column.
+	hybrid_values: HashMap<String, String>,
 	where_clause: Option<(String, String)>,
 	backend: Option<Arc<dyn DatabaseBackend>>,
 }
@@ -302,6 +357,7 @@ impl UpdateBuilder {
 		Self {
 			table_name: table_name.to_string(),
 			values: HashMap::new(),
+			hybrid_values: HashMap::new(),
 			where_clause: None,
 			backend: None,
 		}
@@ -343,8 +399,9 @@ impl UpdateBuilder {
 	/// Add a hybrid property value
 	///
 	/// This method integrates hybrid properties with UPDATE operations.
-	/// If the hybrid property has an SQL expression, it will be used;
-	/// otherwise, the value is treated as a direct parameter.
+	/// If the hybrid property has an SQL expression, it will be used with the
+	/// value bound at each `(column)` reference; otherwise, the value is treated
+	/// as a direct parameter.
 	///
 	/// # Examples
 	///
@@ -362,9 +419,8 @@ impl UpdateBuilder {
 	///     .where_clause("id", "1");
 	///
 	/// let (sql, params) = builder.build();
-	/// assert!(sql.contains("\"email\"=LOWER('UPDATED@EXAMPLE.COM')"));
-	/// assert!(sql.contains("WHERE \"id\"=?"));
-	/// assert_eq!(params, vec!["1"]);
+	/// assert_eq!(sql, "UPDATE \"users\" SET \"email\"=LOWER(?) WHERE \"id\"=?");
+	/// assert_eq!(params, vec!["UPDATED@EXAMPLE.COM", "1"]);
 	/// ```
 	pub fn set_hybrid<T, R>(
 		mut self,
@@ -374,14 +430,12 @@ impl UpdateBuilder {
 	) -> Self {
 		// If the property has an expression, use it; otherwise treat as direct value
 		if let Some(expr) = property.expression() {
-			// Replace the column reference in the expression with the actual value
-			let value_expr = format!("'{}'", value.replace('\'', "''"));
-			let expanded_expr =
-				expr.replace(&format!("({})", column), &format!("({})", value_expr));
-			self.values.insert(
-				column.to_string(),
-				DmlValue::HybridExpression(expanded_expr),
-			);
+			// Keep the expression as written; `build` binds the value at each
+			// `(column)` reference once placeholder numbering is known.
+			self.values
+				.insert(column.to_string(), DmlValue::HybridExpression(expr));
+			self.hybrid_values
+				.insert(column.to_string(), value.to_string());
 		} else {
 			// No expression, use direct value
 			self.values
@@ -506,6 +560,14 @@ impl UpdateBuilder {
 					params.push(v.clone());
 				}
 				DmlValue::HybridExpression(expr) => {
+					let expr = bind_hybrid_expression(
+						expr,
+						col,
+						&self.hybrid_values[col],
+						&mut param_index,
+						&get_placeholder,
+						&mut params,
+					);
 					set_clauses.push(format!("{}={}", quote.quote_identifier(col), expr));
 				}
 				DmlValue::Expanded(_) => {
@@ -740,20 +802,25 @@ mod tests {
 			sql
 		);
 		assert!(
-			sql.contains("LOWER('TEST@EXAMPLE.COM')"),
-			"Expected LOWER expression in SQL: {}",
+			sql.contains("LOWER(?)"),
+			"Expected LOWER expression with a bound value in SQL: {}",
 			sql
 		);
 		assert_eq!(
 			params.len(),
-			1,
-			"Expected 1 parameter for name, got: {}",
+			2,
+			"Expected 2 parameters, got: {}",
 			params.len()
 		);
-		assert_eq!(
-			params[0], "John",
-			"Expected 'John' as parameter, got: {}",
-			params[0]
+		assert!(
+			params.contains(&"John".to_string()),
+			"Expected 'John' in params: {:?}",
+			params
+		);
+		assert!(
+			params.contains(&"TEST@EXAMPLE.COM".to_string()),
+			"Expected 'TEST@EXAMPLE.COM' in params: {:?}",
+			params
 		);
 	}
 
@@ -823,23 +890,11 @@ mod tests {
 			.where_clause("id", "1");
 
 		let (sql, params) = builder.build();
-		assert!(
-			sql.contains("\"email\"=LOWER('UPDATED@EXAMPLE.COM')"),
-			"Expected LOWER expression, got: {}",
-			sql
-		);
-		assert!(
-			sql.contains("WHERE \"id\"=?"),
-			"Expected parameterized WHERE, got: {}",
-			sql
-		);
 		assert_eq!(
-			params.len(),
-			1,
-			"Expected 1 parameter (WHERE value), got: {}",
-			params.len()
+			sql,
+			"UPDATE \"users\" SET \"email\"=LOWER(?) WHERE \"id\"=?"
 		);
-		assert_eq!(params[0], "1");
+		assert_eq!(params, vec!["UPDATED@EXAMPLE.COM", "1"]);
 	}
 
 	#[test]
@@ -875,53 +930,105 @@ mod tests {
 		assert_eq!(params[1], "1");
 	}
 
-	#[test]
-	fn test_insert_builder_hybrid_value_escapes_single_quotes() {
-		// Arrange
-		use crate::hybrid::property::HybridProperty;
-		let prop: HybridProperty<String, String> = HybridProperty::new(|s: &String| s.clone())
-			.with_expression(|| "LOWER(email)".to_string());
-
-		// Act
-		let builder = InsertBuilder::new("users").hybrid_value("email", &prop, "test@o'brien.com");
-		let (sql, _params) = builder.build();
-
-		// Assert
-		assert!(
-			sql.contains("LOWER('test@o''brien.com')"),
-			"Single quotes in values must be escaped with double single quotes, got: {}",
-			sql
-		);
-		assert!(
-			!sql.contains("o'brien.com')"),
-			"Unescaped single quote detected (SQL injection vulnerability), got: {}",
-			sql
-		);
+	fn lower_email() -> HybridProperty<String, String> {
+		HybridProperty::new(|s: &String| s.to_lowercase())
+			.with_expression(|| "LOWER(email)".to_string())
 	}
 
-	#[test]
-	fn test_update_builder_set_hybrid_escapes_single_quotes() {
+	#[rstest]
+	#[case::quote("test@o'brien.com")]
+	#[case::quote_breakout("'; DROP TABLE users;--")]
+	#[case::backslash_quote_breakout("x\\' OR 1=1 -- ")]
+	#[case::nul("x\0' OR 1=1 -- ")]
+	fn test_insert_builder_hybrid_value_binds_value(#[case] value: &str) {
 		// Arrange
-		use crate::hybrid::property::HybridProperty;
-		let prop: HybridProperty<String, String> = HybridProperty::new(|s: &String| s.clone())
-			.with_expression(|| "LOWER(email)".to_string());
+		let builder = InsertBuilder::new("users").hybrid_value("email", &lower_email(), value);
 
 		// Act
-		let builder = UpdateBuilder::new("users")
-			.set_hybrid("email", &prop, "'; DROP TABLE users;--")
-			.where_clause("id", "1");
-		let (sql, _params) = builder.build();
+		let (sql, params) = builder.build();
 
-		// Assert: the single quote in value is escaped to ''
-		// Input: '; DROP TABLE users;-- -> escaped: ''; DROP TABLE users;--
-		// Wrapped: ''''; DROP TABLE users;--' (open-quote, escaped-quote-pair, rest, close-quote)
-		// Wait: format!("'{}'", "''; DROP TABLE users;--") = "'''; DROP TABLE users;--'"
-		// 3 quotes = open + escaped pair, then rest + close
-		assert!(
-			sql.contains("'''; DROP TABLE users;--'"),
-			"SQL injection attempt must have single quotes escaped, got: {}",
-			sql
+		// Assert
+		assert_eq!(sql, "INSERT INTO \"users\" (\"email\") VALUES (LOWER(?))");
+		assert_eq!(params, vec![value.to_string()]);
+	}
+
+	#[rstest]
+	#[case::quote("test@o'brien.com")]
+	#[case::quote_breakout("'; DROP TABLE users;--")]
+	#[case::backslash_quote_breakout("x\\' OR 1=1 -- ")]
+	#[case::nul("x\0' OR 1=1 -- ")]
+	fn test_update_builder_set_hybrid_binds_value(#[case] value: &str) {
+		// Arrange
+		let builder = UpdateBuilder::new("users")
+			.set_hybrid("email", &lower_email(), value)
+			.where_clause("id", "1");
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			"UPDATE \"users\" SET \"email\"=LOWER(?) WHERE \"id\"=?"
 		);
+		assert_eq!(params, vec![value.to_string(), "1".to_string()]);
+	}
+
+	#[rstest]
+	#[case::single_reference("LOWER(email)", "LOWER($1)", 1)]
+	#[case::repeated_reference(
+		"CONCAT(LOWER(email), '-', UPPER(email))",
+		"CONCAT(LOWER($1), '-', UPPER($2))",
+		2
+	)]
+	#[case::no_reference("LOWER('fixed')", "LOWER('fixed')", 0)]
+	fn test_insert_builder_binds_each_hybrid_reference(
+		#[case] expression: &'static str,
+		#[case] expected_expression: &str,
+		#[case] bound_count: usize,
+	) {
+		// Arrange
+		let prop: HybridProperty<String, String> =
+			HybridProperty::new(|s: &String| s.clone()).with_expression(move || expression.into());
+		let builder = InsertBuilder::new("users")
+			.with_backend(Arc::new(DialectBackend(DatabaseType::Postgres)))
+			.hybrid_value("email", &prop, "x\\' OR 1=1 -- ");
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		assert_eq!(
+			sql,
+			format!("INSERT INTO \"users\" (\"email\") VALUES ({expected_expression})")
+		);
+		assert_eq!(params, vec!["x\\' OR 1=1 -- ".to_string(); bound_count]);
+	}
+
+	#[rstest]
+	fn test_update_builder_numbers_hybrid_and_direct_values_in_order() {
+		// Arrange
+		let builder = UpdateBuilder::new("users")
+			.with_backend(Arc::new(DialectBackend(DatabaseType::Postgres)))
+			.set("name", "Alice")
+			.set_hybrid("email", &lower_email(), "ALICE@EXAMPLE.COM");
+
+		// Act
+		let (sql, params) = builder.build();
+
+		// Assert
+		// Column order follows HashMap iteration; either way each placeholder
+		// number must point at that column's value.
+		let expected_params = match sql.as_str() {
+			"UPDATE \"users\" SET \"name\"=$1, \"email\"=LOWER($2)" => {
+				vec!["Alice", "ALICE@EXAMPLE.COM"]
+			}
+			"UPDATE \"users\" SET \"email\"=LOWER($1), \"name\"=$2" => {
+				vec!["ALICE@EXAMPLE.COM", "Alice"]
+			}
+			other => panic!("unexpected SQL: {other}"),
+		};
+		assert_eq!(params, expected_params);
 	}
 
 	#[rstest]
