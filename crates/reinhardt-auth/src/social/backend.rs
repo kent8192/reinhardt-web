@@ -127,7 +127,12 @@ impl SocialAuthBackend {
 		})?;
 
 		// Generate state for CSRF protection
-		let state = generate_random_string(32);
+		let state = format!(
+			"{}:{}:{}",
+			provider_name.len(),
+			provider_name,
+			generate_random_string(32)
+		);
 
 		// Generate nonce for OIDC providers
 		let nonce = if provider.is_oidc() {
@@ -164,6 +169,10 @@ impl SocialAuthBackend {
 		let provider = self.providers.get(provider_name).ok_or_else(|| {
 			SocialAuthError::Provider(format!("Provider not registered: {}", provider_name))
 		})?;
+		let expected_prefix = format!("{}:{}:", provider_name.len(), provider_name);
+		if !state.starts_with(&expected_prefix) {
+			return Err(SocialAuthError::InvalidState);
+		}
 
 		let state_data = self.state_store.consume(state).await?;
 		self.complete_callback(provider.as_ref(), provider_name, code, &state_data)

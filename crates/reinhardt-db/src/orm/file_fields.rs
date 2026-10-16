@@ -7,6 +7,27 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 
+fn validate_upload_path(upload_to: &str, file_name: &str) -> Result<(), FileFieldError> {
+	let directory = Path::new(upload_to);
+	if directory
+		.components()
+		.any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
+		|| upload_to.contains(['\\', ':', '\0'])
+	{
+		return Err(FileFieldError::InvalidPath(upload_to.into()));
+	}
+
+	let name = Path::new(file_name);
+	if name.components().count() != 1
+		|| !matches!(name.components().next(), Some(Component::Normal(_)))
+		|| file_name.contains(['/', '\\', ':', '\0'])
+	{
+		return Err(FileFieldError::InvalidPath(file_name.into()));
+	}
+
+	Ok(())
+}
+
 /// Error types for file field operations
 #[non_exhaustive]
 #[derive(Debug)]
@@ -227,11 +248,11 @@ impl FileField {
 	///
 	/// # Errors
 	///
-	/// Returns [`FileFieldError::InvalidPath`] when `file_name` or the
-	/// joined `upload_to/file_name` path is empty, absolute, has a platform
-	/// prefix, or contains a `..` component. Returns
-	/// [`FileFieldError::IoError`] when the write fails, including when a
-	/// symlink would lead outside the storage root.
+	/// Returns [`FileFieldError::InvalidPath`] when `file_name` is not a
+	/// single plain file name, when `upload_to` contains anything other than
+	/// plain or `.` components, or when either contains `\`, `:`, or NUL.
+	/// Returns [`FileFieldError::IoError`] when the write fails, including
+	/// when a symlink would lead outside the storage root.
 	///
 	/// # Examples
 	///
@@ -244,6 +265,7 @@ impl FileField {
 	/// assert!(path.contains("uploads/files/example.txt"));
 	/// ```
 	pub fn save(&self, file_name: &str, content: &[u8]) -> Result<String, FileFieldError> {
+		validate_upload_path(&self.upload_to, file_name)?;
 		save_confined(
 			self.storage_path.as_deref(),
 			&self.upload_to,
@@ -464,12 +486,13 @@ impl ImageField {
 	///
 	/// # Errors
 	///
-	/// Returns [`FileFieldError::InvalidImage`] when `content` is not a
-	/// decodable image. Returns [`FileFieldError::InvalidPath`] when
-	/// `file_name` or the joined `upload_to/file_name` path is empty, absolute,
-	/// has a platform prefix, or contains a `..` component. Returns
-	/// [`FileFieldError::IoError`] when the write fails, including when a
-	/// symlink would lead outside the storage root.
+	/// Returns [`FileFieldError::InvalidPath`] when `file_name` is not a
+	/// single plain file name, when `upload_to` contains anything other than
+	/// plain or `.` components, or when either contains `\`, `:`, or NUL; the
+	/// path is checked before the image. Returns
+	/// [`FileFieldError::InvalidImage`] when `content` is not a decodable image.
+	/// Returns [`FileFieldError::IoError`] when the write fails, including when
+	/// a symlink would lead outside the storage root.
 	///
 	/// # Examples
 	///
@@ -489,6 +512,7 @@ impl ImageField {
 		file_name: &str,
 		content: &[u8],
 	) -> Result<(String, u32, u32), FileFieldError> {
+		validate_upload_path(&self.upload_to, file_name)?;
 		// Validate image first
 		let (width, height) = self.validate_image(content)?;
 
@@ -854,6 +878,56 @@ mod tests {
 		fs::remove_dir_all(temp_dir).ok();
 	}
 
+	#[rstest::rstest]
+	fn file_field_rejects_traversal_before_creating_storage() {
+		let storage = tempfile::tempdir().unwrap();
+		let field = FileField::with_storage("uploads/files", storage.path().to_path_buf());
+
+		for name in [
+			"../escape.txt",
+			"/tmp/escape.txt",
+			"sub/file.txt",
+			"..\\escape.txt",
+			"C:escape.txt",
+		] {
+			assert!(matches!(
+				field.save(name, b"payload"),
+				Err(FileFieldError::InvalidPath(_))
+			));
+		}
+		assert!(!storage.path().join("uploads").exists());
+		assert!(!storage.path().join("escape.txt").exists());
+	}
+
+	#[rstest::rstest]
+	#[case("./uploads")]
+	#[case("./uploads/./files")]
+	#[case(".")]
+	fn file_field_accepts_current_directory_components(#[case] directory: &str) {
+		let storage = tempfile::tempdir().unwrap();
+		let field = FileField::with_storage(directory, storage.path().to_path_buf());
+
+		let saved = field.save("safe.txt", b"payload").unwrap();
+
+		assert_eq!(fs::read(storage.path().join(&saved)).unwrap(), b"payload");
+		assert!(field.exists(&saved));
+		assert!(!Path::new(&saved).is_absolute());
+		assert!(matches!(
+			field.save("../unsafe.txt", b"payload"),
+			Err(FileFieldError::InvalidPath(_))
+		));
+	}
+
+	#[rstest::rstest]
+	fn file_field_rejects_unsafe_upload_directory() {
+		let storage = tempfile::tempdir().unwrap();
+		let field = FileField::with_storage("../outside", storage.path().to_path_buf());
+		assert!(matches!(
+			field.save("safe.txt", b"payload"),
+			Err(FileFieldError::InvalidPath(_))
+		));
+	}
+
 	#[test]
 	fn test_file_field_delete() {
 		use std::env;
@@ -1175,7 +1249,7 @@ mod tests {
 		// Assert
 		assert!(matches!(
 			result,
-			Err(FileFieldError::InvalidPath(ref path)) if path == "../outside/file.txt"
+			Err(FileFieldError::InvalidPath(ref path)) if path == "../outside"
 		));
 		assert!(!layout.parent.path().join("outside").exists());
 	}
@@ -1273,16 +1347,17 @@ mod tests {
 	}
 
 	#[rstest]
-	#[case::flat("report.txt", "uploads/report.txt")]
-	#[case::nested("2026/10/report.txt", "uploads/2026/10/report.txt")]
-	#[case::double_dot_in_name("archive..tar", "uploads/archive..tar")]
+	#[case::flat("uploads", "report.txt", "uploads/report.txt")]
+	#[case::nested("uploads/2026/10", "report.txt", "uploads/2026/10/report.txt")]
+	#[case::double_dot_in_name("uploads", "archive..tar", "uploads/archive..tar")]
 	fn file_field_round_trips_paths_inside_storage_root(
 		layout: ConfinedLayout,
+		#[case] upload_to: &str,
 		#[case] file_name: &str,
 		#[case] expected: &str,
 	) {
 		// Arrange
-		let field = FileField::with_storage("uploads", layout.root.clone());
+		let field = FileField::with_storage(upload_to, layout.root.clone());
 
 		// Act
 		let saved = field

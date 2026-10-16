@@ -138,9 +138,8 @@ impl DiscoveryClient {
 
 		// Fetch from network
 		let discovery_url = format!("{}/.well-known/openid-configuration", issuer_url);
-		let response = self
-			.client
-			.client()
+		let client = self.client.for_endpoint(&discovery_url).await?;
+		let response = client
 			.get(&discovery_url)
 			.send()
 			.await

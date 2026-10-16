@@ -541,3 +541,107 @@ fn verify_csrf_token(expected: &str, provided: &str) -> bool {
 
 	expected.as_bytes().ct_eq(provided.as_bytes()).into()
 }
+
+#[rstest]
+#[case("sessionid", "X-CSRFToken")]
+#[case("custom_session", "X-Custom-CSRF")]
+#[tokio::test]
+async fn middleware_issued_csrf_token_matches_session_authentication(
+	#[case] session_cookie_name: &str,
+	#[case] csrf_header_name: &'static str,
+) {
+	use bytes::Bytes;
+	use hyper::Method;
+	use reinhardt_auth::sessions::{InMemorySessionBackend, Session};
+	use reinhardt_auth::{
+		AuthenticationError, RestAuthentication, SessionAuthConfig, SessionAuthentication,
+	};
+	use reinhardt_http::{Handler, Middleware, Request, Response};
+	use reinhardt_middleware::csrf::{CsrfConfig, CsrfMiddleware, CsrfMiddlewareConfig};
+
+	struct TokenHandler;
+	#[async_trait::async_trait]
+	impl Handler for TokenHandler {
+		async fn handle(&self, _request: Request) -> reinhardt_http::Result<Response> {
+			Ok(Response::ok())
+		}
+	}
+
+	// Arrange: issue a real middleware token using the same custom configuration.
+	let backend = InMemorySessionBackend::new();
+	let mut session = Session::new(backend.clone());
+	session
+		.set("_auth_user_id", "550e8400-e29b-41d4-a716-446655440000")
+		.unwrap();
+	session.save().await.unwrap();
+	let session_key = session.get_or_create_key().to_string();
+	let mut other_session = Session::new(backend.clone());
+	other_session
+		.set("_auth_user_id", "550e8400-e29b-41d4-a716-446655440001")
+		.unwrap();
+	other_session.save().await.unwrap();
+	let other_session_key = other_session.get_or_create_key().to_string();
+	let mut csrf_config = CsrfConfig::default();
+	csrf_config.header_name = csrf_header_name.into();
+	let mut middleware_config = CsrfMiddlewareConfig::default();
+	middleware_config.csrf_config = csrf_config.clone();
+	let csrf = CsrfMiddleware::with_config(middleware_config)
+		.with_session_cookie_name(session_cookie_name);
+	let auth = SessionAuthentication::with_config(
+		SessionAuthConfig {
+			cookie_name: session_cookie_name.into(),
+			enforce_csrf: true,
+		},
+		backend,
+	)
+	.with_csrf_config(csrf_config);
+	let request = Request::builder()
+		.method(Method::GET)
+		.uri("/token")
+		.header("Cookie", format!("{session_cookie_name}={session_key}"))
+		.body(Bytes::new())
+		.build()
+		.unwrap();
+	let response = csrf.process(request, Arc::new(TokenHandler)).await.unwrap();
+	let token = response
+		.headers
+		.get_all("Set-Cookie")
+		.iter()
+		.find_map(|value| {
+			value
+				.to_str()
+				.unwrap()
+				.strip_prefix("csrftoken=")
+				.map(|token| token.split(';').next().unwrap())
+		})
+		.expect("middleware must issue a CSRF cookie");
+
+	// Act: authenticate an unsafe request with the issued token.
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/protected")
+		.header("Cookie", format!("{session_cookie_name}={session_key}"))
+		.header(csrf_header_name, token)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
+	let result = RestAuthentication::authenticate(&auth, &request).await;
+
+	// Assert: custom settings interoperate and tokens remain session-bound.
+	assert!(result.unwrap().is_some());
+	let wrong_session = Request::builder()
+		.method(Method::POST)
+		.uri("/protected")
+		.header(
+			"Cookie",
+			format!("{session_cookie_name}={other_session_key}"),
+		)
+		.header(csrf_header_name, token)
+		.body(Bytes::new())
+		.build()
+		.unwrap();
+	assert!(matches!(
+		RestAuthentication::authenticate(&auth, &wrong_session).await,
+		Err(AuthenticationError::InvalidToken)
+	));
+}

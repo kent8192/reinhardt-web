@@ -198,12 +198,22 @@ impl GitHubProvider {
 		// `GenericOidcProvider::get_user_info` so the bearer token is never sent
 		// to an arbitrary scheme.
 		validate_endpoint_url(userinfo_endpoint)?;
+		if self
+			.config
+			.oauth2
+			.as_ref()
+			.and_then(|config| config.userinfo_endpoint.as_deref())
+			!= Some(userinfo_endpoint)
+		{
+			return Err(SocialAuthError::InsecureEndpoint(
+				"userinfo endpoint differs from provider configuration".to_string(),
+			));
+		}
+		let client = self.client.for_endpoint(userinfo_endpoint).await?;
 
 		// GitHub requires a User-Agent header on `/user` requests, and returns
 		// a non-OIDC payload, so we do not delegate to `UserInfoClient` here.
-		let response = self
-			.client
-			.client()
+		let response = client
 			.get(userinfo_endpoint)
 			.bearer_auth(access_token)
 			.header("User-Agent", "reinhardt-auth")
